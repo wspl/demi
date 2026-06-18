@@ -20,7 +20,10 @@
 
 - 删除 `replay_from`。transcript 因此变为纯追加（retry 截断最后一轮除外），简化 mutation 面与审计面。
 - 不引入 MCP / Skills / 子 agent。能力全部通过 Bash Environment 的命令表达。
+- 不做权限 / 审批系统。第一版追求最小但长期稳定的 agent runtime，而不是照搬完整 IDE/GUI agent 产品面。
 - 先做 `Host` 抽象与 `LocalHost`，远程 / 容器留待以后。
+
+产品目标是让一个最小 agent 能稳定完成长任务：会话状态、模型可见上下文、tool call/result、shell 控制面、compaction 与 context cache 都必须可靠。参考 agent-gui、Codex、pi agent、opencode 时，只吸收这条核心稳定性链路上的设计与测试要求；权限、分享、revert、审批、项目管理等产品能力不作为当前缺口。
 
 ## 2. 术语
 
@@ -465,6 +468,8 @@ Transcript 是全量无损的 append-only 日志。
 - block 只追加、不修改、不删除（retry 截断最后一轮是 Rust 蓝本既有行为，保留）。
 - 工具调用的完整 output（含 shell 的 OutputSnapshot 原文）落在 `ToolCall.output`，不丢。
 - transcript 持久化、可重放、可作审计依据。
+
+Compaction 是长任务能力的核心路径，不是附属优化。它必须保证 agent 在上下文接近上限时仍能继续工作，同时不破坏审计历史、不切坏 tool pair、不重复执行已完成工具、不留下失败中间态。
 
 Compaction **不删 transcript**，只控制"发给模型的部分"：
 

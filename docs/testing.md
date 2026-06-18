@@ -15,16 +15,34 @@
 
 测试点必须说明它能发现或规避的问题。没有明确风险的测试点不应进入矩阵。
 
-## 2. 默认测试入口
+## 2. 测试判定原则
+
+- 当前产品目标是最小但长期稳定的 agent runtime，不是完整 IDE/GUI agent 产品面。
+- 核心链路是 AgentSession 状态机、Transcript replay、Provider 可见上下文、Tool call/result、Shell 控制面、Compaction、Context cache/usage、RPC/TUI 事件呈现。
+- Compaction 是长任务能力的核心路径，必须作为 P0 测试面；它要证明上下文接近上限时 agent 能继续工作，并且不切坏 tool pair、不重复执行工具、不污染失败状态。
+- Context cache 是基线稳定性要求；即使不主动管理 provider cache，也必须保证模型可见上下文稳定、usage 指标不丢、compact 后上下文能重新稳定。
+- 参考项目只用于校准核心稳定性标准，不作为功能照抄清单。
+- 权限、审批、分享、revert、项目管理等能力是当前有意不做的产品面，不进入缺口矩阵；如果以后进入产品范围，再新增对应测试模块。
+
+## 3. 参考实现校准
+
+| 来源 | 对 demi 测试的影响 |
+|---|---|
+| agent-gui / Rust agent | 重点吸收 session marathon、compact long-conversation stories、tool pair invariant、abort/retry/resume/queue 组合压力测试。 |
+| Codex | 重点吸收模型可见上下文稳定、无界内容截断、cache prefix 稳定、compaction 后历史重建正确性。 |
+| pi agent | 重点吸收完整日志与模型上下文分离、compact 后仍保留可审计历史、provider conformance 的异常输入覆盖。 |
+| opencode | 只吸收 session/compact/abort 这类通用 runtime 语义；permission/share/revert 等产品面不进入当前范围。 |
+
+## 4. 默认测试入口
 
 - `bun run typecheck`：类型检查。
 - `bun run test`：主仓库默认自动化测试。
 - `bun run test:just-bash-core`：demi 依赖的 just-bash 核心解析保护测试。
 - `bun run check:registry`：public registry / package boundary 检查。
 
-## 3. 模块测试点
+## 5. 模块测试点
 
-### 3.1 平台与包边界
+### 5.1 平台与包边界
 
 Owner：`packages/core`
 
@@ -35,7 +53,7 @@ Owner：`packages/core`
 | package manifest 不引入越层依赖 | 已覆盖 | `platform-entrypoints.test.ts` | 防止平台无关包通过依赖声明暗中耦合 Node adapter、真实 provider 或 UI 包。 |
 | 主仓库使用 forked just-bash package，不维护第二份上游源码快照 | 已覆盖 | `platform-entrypoints.test.ts` | 防止 bash engine 出现两个来源，造成修复只改一份、运行消费另一份的分叉问题。 |
 
-### 3.2 Provider 抽象
+### 5.2 Provider 抽象
 
 Owner：`packages/provider`
 
@@ -47,7 +65,7 @@ Owner：`packages/provider`
 | `StubProvider` function script 能读取 request 并驱动 tool roundtrip | 已覆盖 | `stub.test.ts` | 能发现 provider request 内容错误、tool_result 没有回灌、下一轮上下文不正确等问题。 |
 | `StubProvider` 脚本耗尽时报错 | 已覆盖 | `stub.test.ts` | 防止测试悄悄多跑一轮但仍然通过，暴露意外 retry/resume/loop。 |
 
-### 3.3 Claude Code Provider
+### 5.3 Claude Code Provider
 
 Owner：`packages/provider-claude-code`
 
@@ -69,7 +87,7 @@ Owner：`packages/provider-claude-code`
 | 真实 Claude CLI e2e | 手动/Gated | `real-cli.e2e.test.ts`，不属于默认稳定测试 | 用来发现 fake transport 无法覆盖的本机 CLI、账号、网络、真实输出格式变化。 |
 | 真实模型 thinking/tool use/text 输出验收 | 手动/Gated | 需要 TUI/CLI smoke 流程 | 用来确认最终用户路径确实看到真实模型回复、thinking 和 tooluse，而不是只验证 mock。 |
 
-### 3.4 Agent Session Runtime
+### 5.4 Agent Session Runtime
 
 Owner：`packages/base-agent`
 
@@ -97,7 +115,7 @@ Owner：`packages/base-agent`
 | provider error 后恢复不重复发送已完成 tool result | 未覆盖 | 需要恢复场景测试 | 需要规避重启后重复执行破坏性工具或给模型重复上下文。 |
 | abort/retry/resume/compact 组合交错 | 部分覆盖 | 单点已测，组合路径不足 | 组合路径容易暴露单点测试发现不了的 phase、queue、transcript 原子性问题。 |
 
-### 3.5 Transcript 与 Replay
+### 5.5 Transcript 与 Replay
 
 Owner：`packages/base-agent`
 
@@ -113,7 +131,7 @@ Owner：`packages/base-agent`
 | transcript snapshot 序列化/反序列化等价 | 部分覆盖 | 有 store snapshot 写入测试，缺少重建后 replay 等价测试 | 需要发现保存后再加载丢 block、丢 metadata 或改变 replay 内容的问题。 |
 | provider request exact replay 内容 | 部分覆盖 | 简单 send 覆盖，复杂 transcript 未覆盖 | 需要发现复杂历史、tool、extension、compact 混合时喂给模型的上下文漂移。 |
 
-### 3.6 Compaction
+### 5.6 Compaction
 
 Owner：`packages/base-agent`
 
@@ -133,7 +151,7 @@ Owner：`packages/base-agent`
 | compact 后持久化再恢复，replayable blocks 保持一致 | 未覆盖 | 需要 persistence roundtrip 测试 | 需要发现 boundary/marker 在 snapshot 中丢失或恢复后 replay 起点错误。 |
 | thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 | 未覆盖 | 需要复杂 transcript fixture | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
 
-### 3.7 Context Cache 与 Usage
+### 5.7 Context Cache 与 Usage
 
 Owner：`packages/provider-claude-code`、`packages/base-agent`
 
@@ -147,7 +165,7 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 | compact 后 cache prefix 变化与重新稳定 | 未覆盖 | 需要 compact + cache contract 测试 | 需要发现 compact 后上下文前缀持续抖动，导致 cache 永远无法稳定命中。 |
 | 真实 provider cache 命中 | 手动/Gated | 只能做真实 provider smoke，不进默认 deterministic 测试 | 用来确认 deterministic contract 之外的真实 CLI/服务端 cache 行为没有退化。 |
 
-### 3.8 Command Registry
+### 5.8 Command Registry
 
 Owner：`packages/shell`
 
@@ -164,7 +182,7 @@ Owner：`packages/shell`
 | JSON mode output schema 校验 | 已覆盖 | `command.test.ts` | 防止注册命令声称 JSON 输出但返回不可解析或结构错误的数据。 |
 | 无 JSON schema 的 subcommand 拒绝 JSON mode | 已覆盖 | `command.test.ts` | 防止调用方误以为某命令有结构化输出而继续自动处理。 |
 
-### 3.9 Bash Environment 语义
+### 5.9 Bash Environment 语义
 
 Owner：`packages/shell`
 
@@ -186,7 +204,7 @@ Owner：`packages/shell`
 | system command audit events 和 spawn failure | 已覆盖 | `environment.test.ts` | 防止 UI/RPC 审计缺失，或命令不存在时工具调用挂死。 |
 | 更完整的 bash 兼容性 spec | 部分覆盖 | 主仓库覆盖关键 agent 语义；更完整 spec 在 just-bash 子模块 | 用来发现主仓库关键路径之外的 bash 兼容性回归。 |
 
-### 3.10 Shell 控制面
+### 5.10 Shell 控制面
 
 Owner：`packages/shell`
 
@@ -206,7 +224,7 @@ Owner：`packages/shell`
 | AgentSession abort signal 传播到 `shell_exec` / `shell_wait` / `shell_input` | 已覆盖 | `tools.test.ts` | 防止 UI abort 只停止 session 状态，不停止实际前台进程。 |
 | 模型在真实长进程场景中稳定选择 wait/input/abort | 手动/Gated | 需要真实 provider/TUI smoke 多次验证 | 用来发现 prompt/tool result 虽然单测正确，但真实模型仍然误用控制面的问题。 |
 
-### 3.11 Host、FS 与 Store
+### 5.11 Host、FS 与 Store
 
 Owner：`packages/shell`
 
@@ -221,7 +239,7 @@ Owner：`packages/shell`
 | `LocalDemiStore` 拒绝非相对 store path | 已覆盖 | `store.test.ts` | 防止本地 store 被路径穿越写到任意文件。 |
 | 远程 Host / 容器 Host | 未覆盖 | 尚未实现 | 未来实现时用于发现 LocalHost 假设泄漏到通用 Host 接口。 |
 
-### 3.12 Coding Agent Definition
+### 5.12 Coding Agent Definition
 
 Owner：`packages/agent-coding`
 
@@ -234,7 +252,7 @@ Owner：`packages/agent-coding`
 | definition dispose 清理 environment shell sessions | 已覆盖 | `coding-definition.test.ts` | 防止关闭 coding agent 后 shell 进程继续运行。 |
 | reference resolution 与 AgentSession send 顺序集成 | 部分覆盖 | base-agent 有通用覆盖，coding 只覆盖 definition 层 | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
 
-### 3.13 Editor Command
+### 5.13 Editor Command
 
 Owner：`packages/agent-coding`
 
@@ -249,7 +267,7 @@ Owner：`packages/agent-coding`
 | unified diff patch、timestamp headers、多文件创建/删除 | 已覆盖 | `editor-command.test.ts` | 防止常见 patch 格式无法应用，或删除/新增文件语义错。 |
 | patch 全量校验后再写入，保证跨文件事务 | 已覆盖 | `editor-command.test.ts` | 防止 patch 中后续文件失败时前面文件已经被部分修改。 |
 
-### 3.14 Todo Command
+### 5.14 Todo Command
 
 Owner：`packages/agent-coding`
 
@@ -260,7 +278,7 @@ Owner：`packages/agent-coding`
 | todo 状态按 agent session id 隔离 | 已覆盖 | `todo-command.test.ts` | 防止不同会话共享 todo，造成用户任务串线。 |
 | todo 与 shell id 不混淆 | 部分覆盖 | 已通过 session scoped storage 间接覆盖，缺少端到端多 shell 场景 | 需要发现多个 shell 共用同一 agent session 时 todo 是否仍归属正确会话。 |
 
-### 3.15 Coding Agent 工作流
+### 5.15 Coding Agent 工作流
 
 Owner：`packages/agent-coding`
 
@@ -276,7 +294,7 @@ Owner：`packages/agent-coding`
 | 多轮 user message 对 coding workflow 的影响 | 未覆盖 | 需要 multi-turn scenario | 用来发现 queued send、transcript 和 coding state 在连续用户输入下是否错序。 |
 | 多 shell + 同 agent session 的 todo/storage 一致性 | 未覆盖 | 需要 agent scenario | 用来发现 shellId 和 agentSessionId 再次混淆。 |
 
-### 3.16 RPC 协议
+### 5.16 RPC 协议
 
 Owner：`packages/rpc`
 
@@ -303,7 +321,7 @@ Owner：`packages/rpc`
 | stdio/WebSocket 下 queued send、abort、retry、resume、compact 与 in-process 一致 | 部分覆盖 | transport e2e 基础已测，复杂 action 组合未覆盖 | 需要发现真实 transport latency/frame ordering 下的 action 收敛差异。 |
 | close 时 active foreground process 通过真实 transport 被终止 | 未覆盖 | 需要 RPC + shell long process 场景 | 需要防止壳子关闭后远端 session 进程继续占资源。 |
 
-### 3.17 TUI
+### 5.17 TUI
 
 Owner：`packages/tui`
 
@@ -315,7 +333,7 @@ Owner：`packages/tui`
 | 真实 Claude Code provider 输出真实模型回复 | 手动/Gated | 需要指定真实模型和 thinking 等级 smoke | 防止验收只跑 stub provider，没有确认真实 provider 路径。 |
 | 交互式 shell 操作在 TUI 中顺畅 | 手动/Gated | 需要多次 smoke，因为模型行为有随机性 | 用来发现真实模型在模糊指令下是否会持续碰壁或误用 shell 控制面。 |
 
-### 3.18 just-bash 子模块
+### 5.18 just-bash 子模块
 
 Owner：`packages/just-bash`
 
@@ -326,16 +344,16 @@ Owner：`packages/just-bash`
 | parse errors | 已覆盖 | `bun run test:just-bash-core` | 防止非法语法被误解析并执行。 |
 | upstream bash/awk/sed/grep/jq 等 spec/comparison 测试 | 部分覆盖 | 存在于子模块，不属于主仓库默认入口 | 用来发现主仓库关键路径以外的命令兼容性回归。 |
 
-## 4. 当前优先补测顺序
+## 6. 当前优先补测顺序
 
-1. `base-agent` compaction invariants：tool boundary、exact replay、多次 compact、failure atomicity、persistence roundtrip。
-2. context cache contract：先决定是只记录 provider usage，还是主动保障 stable prompt prefix；再补对应测试。
-3. agent scenario tests：覆盖创建文件、测试失败、修复、测试通过、长命令和 tool error recovery。
-4. persistence/recovery：从 store snapshot 重建后继续 send/retry/resume/compact。
-5. RPC real transport complex actions：stdio/WebSocket 下 queued send、abort、retry、resume、compact 与 long shell process。
-6. TUI 自动化或 gated smoke SOP：覆盖真实 provider、thinking、tool use、交互式 shell 输出。
+1. `base-agent` compaction P0：tool boundary、exact replay、多次 compact、failure atomicity、auto compact after tool、preflight compact、persistence roundtrip。
+2. 模型可见上下文与 cache baseline：stable request prefix、usage/cache 字段端到端保留、compact 后上下文重新稳定、无界 tool output/ref/preamble 截断策略。
+3. AgentSession marathon invariants：单会话内组合 send/queue/retry/resume/abort/tool/error/compact，并在关键步骤断言 transcript 和 provider request。
+4. coding agent scenario：创建项目、测试失败、读取错误、修复、测试通过、长命令 wait/input/abort、tool error recovery。
+5. persistence/recovery：从 store snapshot 重建后继续 send/retry/resume/compact，且不重复发送或执行已完成 tool result。
+6. RPC/TUI：真实 transport 下复杂 action 收敛；gated smoke 覆盖真实 provider、thinking、tool use、交互式 shell 输出。
 
-## 5. 新增测试放置规则
+## 7. 新增测试放置规则
 
 - 单模块行为放在 owner package 的 `src/__tests__/`。
 - 跨模块行为放在最接近不变量 owner 的 package：session/runtime 放 `base-agent`，coding workflow 放 `agent-coding`，协议收敛放 `rpc`。
