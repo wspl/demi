@@ -1,0 +1,18 @@
+{
+  "name": "@demi/shell",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./local-host": "./src/local-host.ts",
+    "./store": "./src/store.ts",
+    "./storage": "./src/storage.ts",
+    "./host-fs": "./src/host-fs.ts"
+  },
+  "dependencies": {
+    "@demi/base-agent": "workspace:*",
+    "just-bash": "workspace:*",
+    "zod": "^4.0.0"
+  }
+}

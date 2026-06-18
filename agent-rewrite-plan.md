@@ -1,0 +1,1281 @@
+# Agent 架构重写方案
+
+| | |
+|---|---|
+| 日期 | 2026-06-17 |
+| 状态 | 草案 |
+| 范围 | 通用 agent 壳 + coding agent |
+
+## 1. 背景与目标
+
+在 TypeScript 里重写整套 agent 架构，覆盖通用 agent 壳与 coding agent。以 Rust `agent-session` / `coding-agent` 为实现蓝本：已验证的 session lifecycle、turn queue、retry/resume、compaction、mutation guard 等逻辑直接照搬，只在语言、包边界和 Bash Environment 设计上调整。
+
+参考实现：
+
+- Rust `agent-session`：session runtime、transcript、生命周期、compaction、queue、retry/resume、mutation guard。
+- Rust `coding-agent`：todo、ref expansion、shell。
+- `vercel-labs/just-bash`：Bash Engine 实现基线（维护完整 fork，见 §7）。
+
+相对 Rust 蓝本的有意取舍：
+
+- 删除 `replay_from`。transcript 因此变为纯追加（retry 截断最后一轮除外），简化 mutation 面与审计面。
+- 不引入 MCP / Skills / 子 agent。能力全部通过 Bash Environment 的命令表达。
+- 先做 `Host` 抽象与 `LocalHost`，远程 / 容器留待以后。
+
+## 2. 术语
+
+| 术语 | 含义 |
+|---|---|
+| Agent Loop | 通用 session runtime，不感知 coding / fs / shell / 业务命令。 |
+| Agent Definition | 描述某类 agent 的 prompt、状态、命令、策略。 |
+| Bash Environment | 可审计的 bash-like 执行环境，承载 shell session 工具。 |
+| Host | Bash Environment 之下的执行后端抽象，只负责"在哪 spawn"。 |
+| shell session | 一个长期存活的 shell 状态（cwd/env/进程表），跨多次 `shell_exec` 复用。 |
+| 注册命令 | agent 专属命令，TS 实现，经 command registry 调度。 |
+| 系统命令 | 非注册命令，一律 spawn 系统 command 执行。 |
+
+## 3. 架构
+
+demi 是纯 library，不含任何 UI 实现。最外层是**协议层**：一组稳定的事件流与命令接口，供任何壳子（TUI / Electron / Web / 服务进程）接入。壳子不是 demi 的一部分。
+
+```text
+壳子（TUI / Electron / Web / ...）   ← 不属于 demi
+  ↕  协议层（事件流 + 命令接口）
+Agent Loop
+  ↕
+Agent Definition
+  ↕
+Bash Environment
+  ↕
+Host
+```
+
+核心原则：
+
+- 协议层是 demi 的对外边界：壳子只通过协议层定义的事件和命令与 agent 交互，不接触内部实现。协议层不假设壳子是什么。
+- Agent Loop 是通用的，不感知 coding、文件系统、shell、git 或具体业务命令。
+- Agent Definition 定义某类 agent 的 prompt、状态、命令环境和策略。
+- 每个 agent 对模型只暴露四个 shell session 工具：`shell_exec` / `shell_wait` / `shell_input` / `shell_abort`。
+- Bash Environment 执行注册命令，其余命令 spawn 系统 command。
+- Host 只提供 `root` 与 `spawn`，不暴露文件 API（见 §8）。
+
+### 3.1 不可回退的架构守则
+
+这些原则是后续实现的硬约束，不能为了短期通过测试绕开：
+
+1. **默认入口先天多平台**：`@demi/shell` 和 `@demi/agent-coding` 的默认入口必须保持 browser-safe / runtime-neutral。不得用"另开 browser 入口"来掩盖根入口静态依赖 `node:*`、`Buffer`、`process.env` 或 Node-only adapter 的问题。
+2. **Node 能力显式隔离**：`LocalHost`、`LocalDemiStore`、stdio transport、真实 Claude CLI provider 等 Node-only 能力只能从明确的 adapter / provider 子路径或包内导入；测试可以使用 Node API，但运行时根入口不能被测试便利性污染。
+3. **Host 是唯一执行与文件访问边界**：bash runner、coding editor、reference resolver 都只能通过 `Host.spawn` 访问工作区。除显式 Node adapter 外，不直接读写本机 fs，不把 `node:path` 当成运行时依赖。
+4. **just-bash 是实现基线，不是零散复制来源**：`packages/just-bash` 是 `wspl/just-bash` fork 的 git submodule；demi 消费其中的 `just-bash` workspace package。fork 的改造边界是 bash engine 的可扩展性，不承载 Demi 的 Agent/RPC/provider 逻辑；demi 仓库内不得再维护第二套 just-bash 源码副本。
+5. **不整段回退系统 shell**：parser 或 runner 不支持的语法要明确拒绝，不能把整段 script 交给系统 shell 执行。否则 registered command、audit、session state、Host 抽象都会失效。
+6. **状态类 builtin 必须在 runner 内维护**：`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `pushd` / `popd` / `dirs` / `jobs` / `wait` / `exit` / loop control 等会改变 shell session 的行为不能 spawn 系统 command。
+7. **系统命令不要重造**：常见 Unix 命令名保留给系统命令。只有需要 agent 状态、审计、事务或协议层语义的能力才注册为 agent 专属命令。
+8. **注册命令不可被 shell function 遮蔽**：`editor` / `todo` 这类注册命令是 agent 能力边界，普通函数定义不能覆盖它们；`command` builtin 也不能把状态 builtin 强行改成系统命令。`command` 执行路径应跳过 shell function，但仍保留状态 builtin、注册命令和系统命令的正常边界。
+9. **Provider config 是协议输入**：经 RPC 进入真实 provider 的 `config` 必须按 provider 自己的可序列化白名单解析；测试/内部注入能力（如 fake transport factory）不能通过协议 config 暴露。
+10. **Manifest 不虚增层依赖**：package manifest 必须反映真实源码依赖，不能让平台无关包通过声明依赖暗中耦合 provider、Node-only adapter 或真实 CLI provider。
+11. **命令说明单一来源**：注册命令的 prompt、`<command> prompt` 输出、system prompt 中的命令说明必须由同一份 `CommandSpec` 渲染，不手写多份说明。
+12. **RPC action Promise 按 action 收敛**：RPC `phase` 是 session 级广播，不是 per-command ack。客户端在没有 commandId 的前提下，必须按本地发出的 action 顺序把每个 active→idle phase 周期分配给一个已接受 action；多个 queued `send` 不能因为监听到同一个 phase 周期而一起 resolve。
+13. **测试与文档跟着约束走**：新增架构约束时先写进方案文档，再用测试、扫描或门禁覆盖；不能只靠聊天上下文或临时记忆。
+14. **观测边界不改变 shell 可见语义**：长命令跨 `running` / `shell_wait` / `timeout` / `abort` 收敛时，重定向、fd duplicate、fd close、`!` 等 shell 语义必须保持一致；本该写入文件的 stdout/stderr 不能因为中途 yield 或中断泄漏到 tool output。
+15. **base-agent 只被 RPC host 消费**：非测试运行时代码只有 `packages/rpc` 的 host 可以直接实例化 `AgentSession`；其他包只能使用 base-agent 的类型契约或经 RPC client/transport 交互。
+16. **新增原则先入文档再实现**：新增架构原则先记录到本方案文档，再继续实现；实现后用测试、扫描或门禁验证。
+
+### 3.2 为什么只暴露四个工具
+
+传统做法给模型暴露 Read / Write / Edit / Grep / Shell / ... 等大量工具，会导致 Agent Loop 被工具协议污染，每个工具都要 provider glue、schema、协议层事件、测试，且业务工具会持续膨胀。
+
+本方案只暴露同一个 shell session 的控制面：
+
+```text
+shell_exec(script)
+shell_wait(sessionId)
+shell_input(sessionId, stdin)
+shell_abort(sessionId)
+```
+
+业务能力通过命令表达：
+
+```bash
+cat src/main.ts
+rg "createSession" packages/
+editor edit src/main.ts --old "foo" --new "bar"
+git status --short
+```
+
+这四个工具不是业务能力工具，只是 shell session 的控制面。agent core 保持极简，业务能力通过命令环境扩展。
+
+## 4. Bash Environment
+
+### 4.1 执行模型
+
+```text
+解析 script
+  → 逐条执行命令
+    → 注册命令：走 command registry 的 TS 实现
+    → 状态类 builtin：由 engine 内部实现维护 session 状态（见 §7）
+    → 其余命令：spawn 系统 command
+  → parser 不支持的语法：直接拒绝，不整段交给系统 shell
+```
+
+调度优先级：
+
+1. Bash Engine 解析语法。
+2. 注册命令走 command registry（如 `editor` / `todo`）。
+3. 状态类 builtin（`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `exit` 等）由 engine 内部实现，维护 shell session 的 cwd / env / 函数——这些不能 spawn 系统 command，否则状态不连续（见 §4.7.1、§7）。
+4. 其余命令 `spawn(command, args)`（如 `cat` / `rg` / `git` / `npm`）。
+5. parser 不支持时返回错误。
+
+非注册、非状态类命令没有"内置实现 vs 系统 fallback"两层——统一 spawn 系统 command。本地与远程行为一致（远程时 spawn 在远端跑），也不在 agent 进程里重写一遍 `cat` / `ls` / `rg`。
+
+系统命令第一版完全自由，不做 allowlist 或安全护栏。
+
+`source` / `.` 是状态类 builtin，不走系统 command。它在当前 shell session 中执行脚本，能修改 cwd/env/positional parameters；slashless 文件名先按当前 cwd、再按 `PATH` 经 Host 查找，source 脚本内部的 `read` 等命令继承外层 input redirection / heredoc / here-string。
+
+`set` 也是状态类 builtin，不允许落到系统 command。第一版至少维护 positional parameters（`set -- ...`）、`errexit`（`set -e/+e`、`set -o/+o errexit`）、`noglob`（`set -f/+f`、`set -o/+o noglob`）和 `noclobber`（`set -C/+C`、`set -o/+o noclobber`）；其他 shell option 不能伪装支持，必须明确报错。
+
+`eval` 也是状态类 builtin，不允许落到系统 command。它把参数拼接后在当前 shell session 中重新解析执行，能保留 cwd/env/function 变化，并继承外层 input redirection；eval 内解析错误或 unsupported syntax 应返回非零结果，不能把内部异常冒泡成 agent runtime 错误。
+
+`type` 是 introspection builtin，不允许落到系统 command。它必须按 runner 的真实调度顺序报告命令来源：shell builtin、注册命令、shell function、PATH 文件；`command type` 仍然走 builtin。
+
+### 4.2 命名规则
+
+- Unix 命令名保留给系统命令。
+- agent 专属能力使用 command + subcommand，如 `editor create` / `editor edit` / `editor patch`。
+- 注册命令不能复用 Unix 命令名。
+- 注册命令优先于系统命令；命名要克制，只注册少数明确属于 agent 的命令。
+- 需要 agent 状态、审计、事务或协议层语义的能力才注册成专属命令。
+
+已有 Unix 命令能做的事不要注册成专属命令，直接用系统命令：
+
+| 用途 | 命令 |
+|---|---|
+| 读文件 | `cat` / `head` / `tail` / `sed -n` / `nl` |
+| 列目录 | `ls` / `tree` / `find` |
+| 搜索 | `rg` / `grep` / `find` |
+| 文件信息 | `stat` / `file` / `wc` / `du` |
+| 文件操作 | `mkdir` / `rm` / `cp` / `mv` / `touch` / `chmod` |
+| 文本处理 | `sed` / `awk` / `cut` / `sort` / `uniq` / `tr` / `xargs` |
+| 数据处理 | `jq` / `yq` / `sqlite3` / `xan` |
+
+`git` 不做 wrapper，与 `npm` / `cargo` / `docker` 一样是普通系统命令。
+
+### 4.3 注册命令规格
+
+注册命令必须自带 prompt/help 生成能力，作用类似 tool schema：模型只看 system prompt 里的命令说明即可正确调用。
+
+```ts
+interface CommandSpec {
+  name: string
+  summary: string
+  subcommands: CommandSubcommandSpec[]
+}
+
+interface CommandSubcommandSpec {
+  name: string
+  summary: string
+  input?: CommandInputSpec
+  positionals?: string[]
+  stdinField?: string
+  output?: CommandOutputSpec
+  examples: string[]
+  run(ctx: CommandRunContext): Promise<CommandRunResult>
+}
+
+type CommandInputSpec = Record<string, ZodType>
+
+type ParsedCommandInput = {
+  subcommand: string
+  values: Record<string, unknown>
+}
+
+interface CommandOutputSpec {
+  json?: ZodType  // JSON 模式下的 stdout schema；raw 模式不约束
+}
+
+interface CommandRunResult {
+  exitCode: number
+}
+
+interface CommandRunContext {
+  argv: string[]
+  parsed: ParsedCommandInput
+  stdin: CommandStdin
+  env: Record<string, string>
+  cwd: string
+  io: CommandIO
+  storage: CommandStorage
+}
+```
+
+**input 用扁平字段表，不包 `z.object`。** shell 命令本质是扁平 argv 序列：
+
+```ts
+// 正确
+input: {
+  path: z.string().describe('Target file path'),
+  old: z.string().describe('Exact text to replace'),
+  new: z.string().describe('Replacement text'),
+}
+
+// 错误
+input: z.object({ path: z.string() })
+```
+
+Bash Engine 根据 `CommandSpec` 把扁平 argv 解析成 `parsed.values`，handler 不自己解析字符串。
+
+argv 映射规则：
+
+- `positionals` 声明字段顺序，如 `['path']`。
+- 不在 `positionals` 里的字段映射为长参数，如 `--old` / `--new`。
+- `stdinField` 声明哪个字段从 stdin / heredoc 读取。
+- 字段类型与描述来自对应 zod field。
+- `z.array(...)` 表示可重复参数。
+- `z.boolean()` 表示 boolean flag。
+
+示例：
+
+```ts
+const editor: CommandSpec = {
+  name: 'editor',
+  summary: 'Create, edit, and patch workspace files.',
+  subcommands: [
+    {
+      name: 'create',
+      summary: 'Create a new file. Fails if the file exists.',
+      input: {
+        path: z.string().describe('Target file path'),
+        content: z.string().describe('File content, usually passed via heredoc.'),
+      },
+      positionals: ['path'],
+      stdinField: 'content',
+      examples: [
+        "editor create src/foo.ts <<'EOF'\nexport const foo = 1\nEOF",
+      ],
+      run: async ({ parsed, stdin, env, storage }) => {
+        // parsed.values.path
+        // parsed.values.content
+      },
+    },
+  ],
+}
+```
+
+### 4.4 输出格式
+
+注册命令子命令接受标准 boolean 参数 `--json`：
+
+- 传 `--json`：输出 machine-readable JSON，结构由命令定义，写入 stdout，按 `output.json` 校验。
+- 不传 `--json`（默认）：输出 human-readable raw text。
+- 两种模式互斥，不允许混用。
+
+`--json` 是注册命令协议的一部分，由 Bash Engine 从 argv 识别并在 prompt 中说明。系统命令不强制遵守（它们有自己的 `--json`，如 `rg --json`、`git --json`）。
+
+### 4.5 命令 prompt 渲染
+
+prompt 文本由 `CommandSpec` 自动生成：
+
+```ts
+renderCommandPrompt(editor)
+```
+
+`<command> prompt` 子命令调用同一 renderer。约定：
+
+- 每个注册命令组必须实现 `<command> prompt` 子命令，只输出帮助文本，不改文件或状态。
+- `<command> prompt` 输出与 `renderCommandPrompt(spec)` 同源。
+- Agent Definition 构造 system prompt 时，从 command registry 收集 `CommandSpec` 渲染后注入。
+- 模型无需先调用 `<command> prompt` 即可使用命令；该子命令主要用于调试与人工查看。
+- 不允许 prompt 里手写一份说明、实现里再维护另一份。
+- renderer 只依赖命令配置与 agent 类型，不依赖 session state / transcript / provider turn。
+
+命令 prompt 至少包含：用途、子命令列表、参数与 stdin/heredoc 约定、成功/失败输出格式、是否修改文件或状态、2-3 个可复制示例。
+
+```bash
+editor prompt
+editor create src/foo.ts <<'EOF'
+...
+EOF
+editor edit src/foo.ts --old "foo" --new "bar"
+editor patch <<'PATCH'
+--- a/src/foo.ts
++++ b/src/foo.ts
+...
+PATCH
+```
+
+### 4.6 命令执行隔离
+
+注册命令不直接感知 AgentSession / transcript / provider turn / agent state，只通过 shell 执行上下文工作：argv / stdin / env / cwd / io / storage。
+
+Bash Environment 在每个 shell session 注入：
+
+```text
+DEMI_SESSION_ID=<session id>
+```
+
+命令需要隔离状态时，用 `DEMI_SESSION_ID` 作为隔离 key 的一部分。如 `todo`：
+
+```text
+todo storage key = todos/${DEMI_SESSION_ID}.json
+```
+
+`CommandStorage` 是 `DemiStore`（见 §8.2）的 session-scoped 视图：Bash Environment 创建 `CommandRunContext` 时用 `DEMI_SESSION_ID` 包一层，命令看到的 key 自动带 session 前缀。命令作者只写 `storage.writeJson('todos.json', ...)`，不拼前缀。需要跨 session 共享的状态第一版不开放。
+
+约束：
+
+- 不把 session object / transcript / agent state 传给 `CommandRunContext`。
+- 隔离信息通过 `DEMI_*` env 注入。
+- 持久化状态通过 `CommandStorage`，key 自带 session 隔离。
+- 第一版只强制注入 `DEMI_SESSION_ID`，其余按需增加。
+
+### 4.7 shell session 与输出流
+
+#### 4.7.1 状态连续性
+
+一个 agent 内的多次 `shell_exec` 复用同一个 shell session：
+
+- `cd packages/foo` 之后下一条 `cat package.json` 仍在 `packages/foo`。
+- `export` / shell 函数 / `pushd`/`popd` / 后台 job 句柄跨 `shell_exec` 保留。
+- session 持有自己的 cwd / env / 进程表。
+
+四个工具里的 `sessionId` 指此 shell session。session 同时只跑一条前台命令；前台命令 running 时 `shell_exec` 返回 `running + sessionId`，后续 `shell_wait` / `shell_input` / `shell_abort` 操作同一 session 直到其退出。
+
+shell session 通常对一个 AgentSession 长期存活（跨多个 user turn），销毁时其 cwd / env / 后台进程一并释放。第一版默认"一个 AgentSession 绑定一个长期 shell session"，需要多 session 时再加。
+
+#### 4.7.2 长命令
+
+`shell_exec` 不是同步 RPC。长命令需可观测，否则测试 / 构建 / 安装依赖等任务会变成黑盒。
+
+```text
+shell_exec(script)
+  → 在当前 shell session 执行
+  → runner 实时收集 stdout/stderr 到 buffer
+  → 默认约 10s yield 一次 output snapshot
+  → 命令未结束：返回 running + sessionId
+  → 后续 shell_wait / shell_input / shell_abort 操作同一 session
+```
+
+Agent Loop 只在边界点恢复：exit / timeout / abort / needs_input / yieldAfterMs / output_limit。每次恢复给模型的是程序化 output snapshot，不是模型生成的摘要。模型不应每个输出 chunk 都被唤醒。
+
+`running`、`timeout`、`abort` 都是观测边界，不是 shell 语义边界。若前台命令带输出重定向，runner 必须按 sink 映射过滤可见 stdout/stderr，并在后续 `shell_wait`、timeout 或 abort 收敛时通过 Host 完成已捕获内容的文件 sink 写入；不能把被重定向的内容暴露给模型，也不能绕过 Host 直接使用本机 fs。
+
+```ts
+type OutputSnapshot = {
+  stdoutDelta: string   // 上次 yield 到本次的新增原文
+  stderrDelta: string
+  stdoutTail: string    // 当前 buffer tail，输出过大时保留最近上下文
+  stderrTail: string
+  totalStdoutBytes: number
+  totalStderrBytes: number
+  truncated: boolean
+}
+
+type ShellToolResult =
+  | { status: 'exited'; exitCode: number; output: OutputSnapshot; audit: BashAuditEvent[] }
+  | { status: 'running'; sessionId: string; reason: 'yield' | 'output_limit'; output: OutputSnapshot; runningMs: number; idleMs: number }
+  | { status: 'needs_input'; sessionId: string; output: OutputSnapshot; prompt?: string; runningMs: number; idleMs: number }
+  | { status: 'timeout'; output: OutputSnapshot; runningMs: number }
+  | { status: 'aborted'; output: OutputSnapshot; runningMs: number }
+```
+
+卡死感知字段：`runningMs`（已跑时长）、`idleMs`（距上次输出时长）、`stdoutDelta/stderrDelta`（本次是否有新输出）、`totalStdoutBytes/totalStderrBytes`（是否异常大输出）。
+
+观测节奏（参考 Codex）：
+
+- `yieldAfterMs = 10_000`。
+- `idleMs` 仅作观测，不自动 kill。
+- `timeoutMs` 是硬终止。
+- 连续多次 `running` 且无输出时，由 agent 决定继续等 / abort / 询问用户。
+
+## 5. Agent Loop
+
+Agent Loop 是纯通用 runtime。
+
+**职责：** transcript、queue、send / retry / resume、abort / cancellation、provider turn、tool invocation、tool continuation 状态、compaction、extension state snapshot、mutation guard、事件产出（供 rpc host 消费）。
+
+**不负责：** fs、shell、git、业务领域能力、terminal、process session 内部状态、file explorer、project/worktree 管理。
+
+Agent Loop 支持通用 resumable tool result，但不理解其背后是不是进程：
+
+```ts
+type ToolContinuation = {
+  toolCallId: string
+  // 对 Agent Loop 是 opaque token。Bash Environment 内部即 shell sessionId；
+  // 其他 resumable tool 可以是别的句柄。Agent Loop 不解释，只透传回 wait/input/abort。
+  sessionId: string
+  status: 'running'
+}
+```
+
+真正的 pid、stdout buffer、idleMs、stdin、abort 都留在 Bash Environment 内部。术语统一：shell 工具入参/出参的 `sessionId`、`ToolContinuation.sessionId` 是同一个值，不另起 `continuationId`。
+
+### 5.1 接口
+
+```ts
+interface AgentSessionParams<State> {
+  provider: AgentProvider
+  model: ModelSelection
+  cwd: string
+  transcript?: Transcript
+  definition: AgentDefinition<State>
+}
+
+interface AgentSession<State> {
+  send(content: UserContentBlock[]): Promise<void>
+  retry(): Promise<void>
+  resume(): Promise<void>
+  compact(): Promise<void>
+  abort(): Promise<boolean>
+  waitUntilDone(): Promise<void>
+
+  transcript(): Transcript
+  state(): State
+  phase(): SessionPhase
+  queuedMessages(): QueuedMessage[]
+}
+```
+
+相对 Rust 蓝本删除 `replayFrom`。mutation guard 保留，用于外部 transcript 编辑（`reserve_mutation`）与 compact 期间的并发保护。
+
+### 5.2 Transcript 与 Compaction
+
+Transcript 是全量无损的 append-only 日志。
+
+- block 数组：`User` / `Resume` / `Thinking` / `Text` / `ToolCall` / `Response` / `Error` / `Abort` / `CompactionBoundary` / `CompactionMarker` / `ExtensionStateSnapshot`。
+- block 只追加、不修改、不删除（retry 截断最后一轮是 Rust 蓝本既有行为，保留）。
+- 工具调用的完整 output（含 shell 的 OutputSnapshot 原文）落在 `ToolCall.output`，不丢。
+- transcript 持久化、可重放、可作审计依据。
+
+Compaction **不删 transcript**，只控制"发给模型的部分"：
+
+- token 用量接近模型上限时（runtime 自动判断，非模型决定），runtime 在 transcript 上找 cut point，让模型对 cut point 之前的内容生成 summary。
+- 在 cut point 处插入 `CompactionBoundary`（带 summary），追加 `CompactionMarker`（记录被压缩 token 数）。
+- 老 block 原样保留在 transcript。
+- 下次构造 `InferenceRequest` 时从最后一个 `CompactionBoundary` 起取 blocks（`effective_transcript`），boundary 之前的内容被 summary 替代，不再整段发给模型。
+- 协议层暴露的永远是全量 transcript；只有发给 provider 的 items 被压缩。
+
+触发时机（照搬 Rust 蓝本）：
+
+- **preflight**：`send` 前若 effective transcript 估算 token 接近上限，先 compact 再跑。
+- **auto-recover**：provider 返回 usage 接近上限时，取消当前请求、跑完 pending tools、compact、push resume turn 继续。
+- **手动**：调用方经协议层主动调 `compact()`。
+
+cut point 选择：从末尾往前累加 token，超过 `KEEP_RECENT_TOKENS` 且落在 `Response` block 上时，取其后作为 cut point；找不到则不 compact。
+
+## 6. Agent Definition
+
+```ts
+interface AgentDefinition<State> {
+  name: string
+  initialState(): State
+  systemPrompt(ctx: AgentPromptContext<State>): string
+  preamble?(ctx: AgentPromptContext<State>): string | null
+  tools(ctx: AgentToolContext<State>): AgentTool[]
+  commands?(ctx: AgentCommandContext<State>): RegisteredCommand[]
+  lifecycle?(event: AgentLifecycleEvent<State>): Promise<void>
+}
+```
+
+- `tools()` 初版只返回四个 shell session 工具。
+- `commands()` 注册 agent 专属命令（如 `editor` / `todo`）。
+- `systemPrompt()` 生成基础行为说明；注册命令的调用说明由 command registry 自动注入，不在 prompt 里手写。
+- 第一版不设计其他专用 agent。`editor` / `todo` 都是 coding agent 的注册命令。
+
+## 7. Bash Engine 实现来源
+
+Bash Engine 以 `vercel-labs/just-bash` 为基线。just-bash 是一个完整的 bash 实现（约 13 万行，含 parser、interpreter、几十个 builtin、完整 expansion）。demi 通过 `packages/just-bash` submodule 维护 `wspl/just-bash` fork，并消费 fork 里的 `just-bash` package；不再把单个 helper / builtin / parser 文件复制进 `@demi/shell`。已有 just-bash 语义时，改动必须进入 fork 或 fork 暴露的稳定 API，禁止在 demi runner 里重新推导替代实现。
+
+fork 不是把上游源码当内部路径直接 import，也不是把 Demi runtime 塞进 just-bash。fork 的职责是让 bash engine 更容易被 Demi 使用：稳定 parser/AST 导出、长期 shell state、可插拔命令调度、Host IO 边界、输出 sink、审计和 job hooks。`@demi/shell` 是最终的 Demi shell runtime package，负责 Host contract、registered command、shell tools、OutputSnapshot、running/wait/input/abort、RPC/tool 集成；它只依赖 fork package 的稳定 API，不越过 package 边界 import fork 内部文件。
+
+需要明确的一点：just-bash 的状态类 builtin（`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `exit` 等）必须保留在 engine 内部，不能改成 spawn 系统 command。原因是 shell session 的状态连续性（§4.7.1）依赖它们：系统 `cd` 不会影响后续 `shell_exec`，只有 engine 内的 `cd` 改变 session 的 cwd。因此 §4.1 的"非注册命令一律 spawn 系统 command"对状态类 builtin 是例外——它们由 engine 内部实现维护 session 状态。
+
+只读 / 副作用类命令（`cat` / `ls` / `rg` / `git` 等）不取 just-bash 的实现，走 spawn 系统 command。
+
+fork 策略：
+
+1. fork `vercel-labs/just-bash`，记录 upstream repo、commit、license，并保留 Apache-2.0 license / NOTICE / 修改说明。
+2. 把 `wspl/just-bash` 作为 git submodule 放在 `packages/just-bash`；demi 根 workspace 显式包含 `packages/just-bash/packages/just-bash`，并以包名 `just-bash` 依赖它。
+3. fork 包保留 parser / interpreter / builtin / expansion / upstream tests 的完整基线。demi 需要的 parser bugfix、builtin 行为、IFS/read/set 等 bash 语义修正直接改 fork，不在 `@demi/shell` 或其他包复制实现。
+4. fork 默认入口必须 browser-safe / runtime-neutral。Node-only filesystem、worker、CLI、真实进程或重型命令能力只能从显式 Node-only 子路径导出；用静态入口扫描和 browser bundle smoke test 兜住。
+5. fork 对 `@demi/shell` 暴露稳定 engine API：长期 shell state、Host spawn/filesystem boundary、registered command hook、output sink/redirection hook、audit hook、foreground/background job control、parser/AST exports。
+6. `@demi/shell` 保留 Agent shell session tools、CommandRegistry、Host contract、OutputSnapshot、running/wait/input/abort 和 RPC/tool 集成；bash 语义下沉到 fork engine，Demi runtime concerns 不进入 fork。
+7. 上游关系在 `wspl/just-bash` fork 仓库内通过 git remote、commit、license 和 patch history 表达。demi 只保留 submodule 指针，不保留 `upstream/`、`vendor/` 或另一份 just-bash 源码。
+
+`just-bash` 只是实现来源，非对外概念。模型 / 协议层 / audit event / 文档里的运行时术语统一叫"注册命令"、"系统命令"，不暴露 `just-bash`。本方案不要求完全兼容真实系统 bash，但需具备 just-bash 已支持的能力；超过 parser 能力的语法直接拒绝，不整段交给系统 shell。
+
+验收标准：
+
+- fork package 上游核心测试通过。
+- fork 默认入口 browser-safe，不能静态依赖 `node:*`、`Buffer`、`process.env`、Node-only adapter 或 worker-only chunk。
+- 已支持的 parser/interpreter/builtin 行为保持 parity，并通过 demi shell session 回归测试。
+- registered command 可接入同一执行模型。
+- 非注册、非状态类命令正确 spawn 系统 command 并收集 stdout/stderr/exit。
+- shell session 状态（cwd/env/函数）跨 `shell_exec` 连续。
+
+### 7.1 fork engine 集成执行设计
+
+本小节是把 §7 原则落成代码的具体设计。fork 已有完整可运行的 interpreter（parser/AST/compound command/状态 builtin/expansion/arithmetic/glob/redirection/pipeline/function/local scope/set-shopt 全套），`@demi/shell` 不得再复制这些语义。
+
+#### fork 与 demi 的根本差异（4 个扩展点）
+
+fork 的设计目标是"纯 TS 模拟 bash + 虚拟 fs + 内置命令"，demi 的目标是"驱动真实 Host 的 agent shell session"。差异决定 fork 需要扩展的**唯一**地方：
+
+1. **执行后端是 `Host.spawn`，不是 `IFileSystem`**：fork 的外部命令走 `IFileSystem` + PATH 解析 + 内置命令实现；demi 的非注册、非状态类命令必须 `Host.spawn` 真实系统命令。**扩展点**：`InterpreterContext` 增加可选 `hostSpawn(command, args, { cwd, env, stdin })` 钩子，当命令不是 builtin/注册命令/function 时走钩子而不是 IFileSystem 解析。
+2. **长期 shell session，不是每次 exec 隔离**：fork 的 `Bash.exec()` 每次 copy state；demi 需要跨 exec 状态连续。**扩展点**：demi 绕过 `Bash` 类，直接用 `Interpreter` 类并自己持有 `InterpreterState`——`Interpreter` 原地修改传入的 state，demi 跨 exec 复用同一个 state 对象。
+3. **长命令可观测（yield/timeout/needs_input/abort）**：fork 的 `exec` 同步 await 到结束；demi 需要跑到边界点返回 `running`。**不进 fork**——这是 demi runtime concern，通过 `hostSpawn` 的 Promise 挂起实现（见下方执行模型）。
+4. **OutputSnapshot + audit + DEMI_SESSION_ID**：fork 的 `ExecResult` 只有 stdout/stderr/exitCode。**不进 fork**——audit 和 snapshot 是 demi runtime concern，`DEMI_SESSION_ID` 是 env 注入。
+
+#### 执行模型
+
+```text
+BashEnvironment.exec(script)
+  ├── parse(script) → AST                          [fork parser]
+  ├── new Interpreter({ hostSpawn, fs, ... }, state) [fork interpreter, state 跨 exec 复用]
+  ├── interpreter.executeScript(ast)               [fork 驱动 bash 语义]
+  │     ├── builtin (cd/export/...)                [fork builtins/]
+  │     ├── compound (if/for/while/case/...)       [fork control-flow.ts]
+  │     ├── expansion ($VAR/$(...)/$((...))/glob)  [fork expansion/]
+  │     ├── registered command (editor/todo)       [fork CommandRegistry → demi CommandSpec 适配]
+  │     └── external command (cat/git/npm)
+  │           └── hostSpawn(name, args, opts)      [demi 注入的钩子]
+  │                 ├── Host.spawn(name, args)
+  │                 ├── 启动 foreground 进程 + pump stdout/stderr 到 RingBuffer
+  │                 └── waitForForeground()        [demi 的边界点逻辑]
+  │                       ├── exit → resolve ExecResult
+  │                       ├── yieldAfterMs → 不 resolve，保留 pendingExec
+  │                       ├── timeout → kill + resolve ExecResult(timeout)
+  │                       ├── outputLimit → 不 resolve，保留 pendingExec
+  │                       └── needsInput → 不 resolve，保留 pendingExec
+  └── 收集 OutputSnapshot + audit → ShellToolResult
+```
+
+#### 长命令挂起机制
+
+fork interpreter 是"跑完整个 script 返回 ExecResult"的同步模型。demi 需要长命令跑到边界点时**暂停 script 执行**，返回 `running`，后续 `shell_wait` 续接。
+
+`BashEnvironment.exec()` 不直接 await `interpreter.executeScript`，而是 race 它和边界点：
+
+```ts
+async exec(input: ShellExecInput): Promise<ShellToolResult> {
+  const session = this.getOrCreateSession(input)
+  if (session.foreground) return runningResult(session, session.foreground, 'yield')
+
+  const interpreter = this.createInterpreter(session, input)
+  const ast = parse(input.script)
+  const execPromise = interpreter.executeScript(ast)
+
+  const boundary = this.waitForBoundary(session, input)
+  const outcome = await Promise.race([
+    execPromise.then(r => ({ kind: 'done' as const, r })),
+    boundary.promise,
+  ])
+
+  if (outcome.kind === 'done') return this.buildExitedResult(session, outcome.r, input)
+
+  // 边界点触发：foreground 进程已在 session.foreground，execPromise 仍 pending
+  session.pendingExec = execPromise
+  return this.buildRunningResult(session, outcome)
+}
+```
+
+`shell_wait(sessionId)` 续接：取出 `session.pendingExec`，继续 race `executeScript` 和新边界点。`shell_abort` / `shell_input` 操作 `session.foreground` 后继续 race。
+
+#### 注册命令适配
+
+fork 的 `Command` 接口：`{ name, execute(args, ctx) }`，`ctx` 是 `CommandContext`。demi 的 `CommandSpec` 有 `subcommands`/`positionals`/`stdinField`/`--json`/`renderCommandPrompt`/`storage`。
+
+适配器 `commandSpecToForkCommand(spec, storage, sessionId)` 把 demi `CommandSpec` 转成 fork `Command`：把 fork `CommandContext`（`env` Map、`stdin` ByteString）适配成 demi `CommandRunContext`（`env` Record、`stdin.text`），注入 `CommandStorage`/`io`/`DEMI_SESSION_ID`。每次 `exec()` 时把 demi `CommandRegistry` 里的 spec 转成 fork `Command` 放进 fork `CommandRegistry`，调度由 fork `builtin-dispatch.ts` 完成（注册命令优先于 `hostSpawn`）。
+
+**注册命令调度路径的已知缺口**：fork 的 `executeExternalCommand` 在有 `hostSpawn` 且 `!ctx.commands.has(commandName)` 时走 `hostSpawn`；注册命令（`ctx.commands.has` 为 true）会跳过 `hostSpawn`，fall through 到 `resolveCommand`——而 `resolveCommand` 通过 `IFileSystem` PATH 查找命令文件。fork 的 `Bash.registerCommand` 会在虚拟 fs 的 `/bin/`、`/usr/bin/` 创建 stub 文件让 PATH 查找成功。但 demi 用 `HostBackedFileSystem`（真实系统没有 `/bin/editor`），注册命令会 resolve 失败。**修正**：fork 的 `executeExternalCommand` 在 `hostSpawn` 检查之后、`resolveCommand` 之前，增加直接 `ctx.commands.get(commandName)` dispatch——如果命中注册命令，直接调 `cmd.execute()`，不走 PATH。这是 Step C 需要的第二个 fork 改动。
+
+**fork 内置命令必须排除**：fork 的 `src/commands/` 里有 `cat`/`ls`/`grep`/`sed`/`awk`/`jq` 等几十个内置命令实现，`Bash` 构造时通过 `createLazyCommands` 注册到 `CommandRegistry`。demi **不用 `Bash` 类**，直接构造 `Interpreter`，因此 demi 完全控制 `CommandRegistry` 的内容——**只放 demi 注册命令（editor/todo），不放 fork 内置命令**。这样 `cat`/`git`/`ls` 不在 `ctx.commands` 里，会走 `hostSpawn`（真实系统命令）。fork 的 shell builtin（`echo`/`true`/`false`/`test`/`[`/`:`/`cd`/`export`/...）在 `dispatchBuiltin` 里硬编码，不依赖 `CommandRegistry`，仍然可用。
+
+#### CommandContext 字段映射
+
+fork `CommandContext` 与 demi `CommandRunContext` 的字段差异：
+
+| fork `CommandContext` | demi `CommandRunContext` | 适配 |
+|---|---|---|
+| `env: Map<string, string>` | `env: Record<string, string>` | `mapToRecord(ctx.env)` |
+| `stdin: ByteString`（opaque 字节） | `stdin: { text: string }` | `decodeBytesToUtf8(ctx.stdin)` |
+| `cwd: string` | `cwd: string` | 直传 |
+| `fs: IFileSystem` | 无 | demi 命令不走 fs |
+| `execute(args, ctx)` | `run(ctx)`（args 在 `ctx.argv`） | 适配器把 `args` 放进 `ctx.argv` |
+| 返回 `ExecResult { stdout, stderr, exitCode }` | 返回 `CommandRunResult { exitCode, metadata? }` | 适配器把 demi 命令的 `io.stdout`/`io.stderr` 输出收集成 `ExecResult.stdout`/`stderr` |
+
+#### ExecutionLimits
+
+fork 有 `ExecutionLimits`（maxCommandCount/maxOutputSize/maxCallDepth/maxLoopIterations/maxHeredocSize）。demi 有自己的 output 限制（`outputLimitBytes` + RingBuffer），不需要 fork 的 `maxOutputSize`。构造 `Interpreter` 时传入高限值或禁用 fork 的 output limit，避免 fork 在 demi 的边界点之前就抛 `ExecutionLimitError`。
+
+#### fork 测试基础设施
+
+fork 用 **vitest**（不是 bun test），从 `packages/just-bash/packages/just-bash/` 跑 `npx vitest run`。demi 根 `package.json` 的 `test:just-bash-core` 脚本只用 bun test 跑 3 个 parser 测试文件，不覆盖 fork interpreter 全套。Step C 验证 fork 改动时需手动跑 `npx vitest run src/interpreter/`。
+
+#### 不用 fork 的 Bash 类
+
+demi **直接用 `Interpreter` 类**，不用 `Bash` 类。`Bash.exec()` 每次 copy state（`Bash.ts:634`），是"每次 exec 一个新 shell"模型；demi 需要跨 exec 状态连续，所以自己持有 `InterpreterState` 并传给 `new Interpreter(opts, state)`——`Interpreter` 原地修改传入的 state（`this.ctx.state.lastExitCode = exitCode` 等直接赋值）。
+
+#### 输出重定向：HostBackedFileSystem
+
+fork 的 redirection 走 `IFileSystem`（虚拟 fs 读写文件）。demi 的 redirection 走 `Host.spawn`（`tee`/`cat` 真实文件）。
+
+**不手写 redirection**。`@demi/shell` 实现 `HostBackedFileSystem implements IFileSystem`，把 fork 的 fs 操作（readFile/writeFile/exists/stat/readdir）路由到 `Host.spawn` 的 `cat`/`tee`/`test`/`find`。这样 fork 的完整 redirection 逻辑（noclobber、fd duplicate、fd close、process substitution、here-doc、here-string）全部复用，demi 不需要重新实现。`HostBackedFileSystem` 是 Demi runtime concern，放在 `@demi/shell`，不进 fork。
+
+#### audit 收集
+
+- **system-command audit**：在 `hostSpawn` 实现里，每次 spawn 后记录 `{ kind: 'system-command', name, args, cwd, exitCode }`。
+- **registered-command audit**：在 `commandSpecToForkCommand` 的 `execute` 里，记录 `{ kind: 'registered-command', name, args, exitCode }`。
+
+audit 收集到 per-exec accumulator，附在 `ShellToolResult.exited` 分支。
+
+#### DEMI_SESSION_ID 注入
+
+`createSession()` 时把 `DEMI_SESSION_ID` 写入 `InterpreterState.env`（Map）并加入 `exportedVars` 集合，fork interpreter 通过 `buildExportedEnv` 把它传给所有命令。
+
+#### 文件结构
+
+```text
+packages/shell/src/
+  index.ts              re-export
+  command.ts            demi CommandSpec 协议（不变）
+  host.ts               Host contract（不变）
+  local-host.ts         Node adapter（不变）
+  tools.ts              四个 shell AgentTool（不变）
+  storage.ts            CommandStorage（不变）
+  store.ts              DemiStore/LocalDemiStore（不变）
+  bytes.ts              UTF-8 helpers（不变）
+  environment.ts        重写：BashEnvironment + ShellSession + hostSpawn + 边界点
+  host-fs.ts            新增：HostBackedFileSystem，IFileSystem 路由到 Host.spawn
+  script-parser.ts      删除
+```
+
+#### 接口兼容
+
+`BashEnvironment`/`ShellToolResult`/`OutputSnapshot`/`BashAuditEvent`/`CommandMetadataRecord` 公开接口不变。`tools.ts`/`command.ts`/`coding-definition.ts`/`rpc/host.ts`/测试不需要改。
+
+### 7.2 前置事实
+
+- demi 目录最初只有方案文档；当前已按 §14 的 Step 0-6 落地 monorepo 和本地实现。
+- bun 1.3.11 可用。
+- just-bash（vercel-labs/just-bash）约 13 万行，含完整 parser/interpreter/builtin/expansion，**以 `wspl/just-bash` fork submodule 为实现基线；demi 只消费 fork 里的 `just-bash` package，不再新增零散复制片段**。
+- 方案原本漏了 provider 层——base-agent 强依赖 `AgentProvider.run`，必须先有 provider 包（哪怕只是 stub）。
+- Rust 蓝本的 `InferenceRequest` 是**纯 items 数组模型**（`items: InferenceItem[]` + systemPrompt + cwd + tools + thinking + cancel）。claude-code provider 内部把 items 转成 Claude CLI 的 stream-json stdin messages，并用 MCP control_request bridge 驱动工具；这些都是 provider 实现细节，不进 `InferenceRequest` 接口。
+- shell session 状态连续性要求状态类 builtin（cd/export/unset/read/local/return/source/shift/pushd/popd/dirs/jobs/wait/exit）、shell function 定义、`$?` 上一条命令状态和后台 job 句柄在 engine/session 内维护，不能 spawn 系统 command。
+- RPC 是唯一通信方式：本地 JS 调用方也是 RPC client（in-process transport），不存在绕过 RPC 直连 AgentSession 的另一套 API。base-agent 只被 rpc host 消费。
+
+### 7.3 Fork 可行性调研结论
+
+- 可行。上游 just-bash 是公开 TypeScript monorepo，`packages/just-bash` 是发布包；上游根仓库已有 build / typecheck / lint / unit / comparison / dist smoke test 脚本，适合作为 workspace fork 接入。
+- license 可行。上游包为 Apache-2.0；fork 时需要保留 LICENSE / NOTICE / upstream commit，并给修改文件保留修改说明。
+- 技术上需要 fork，而不是直接依赖 npm 包。上游 `Bash.exec()` 默认每次隔离 shell state；demi 需要长期 shell session、Host 边界、registered command、audit、job 和 output hooks。fork 的改造应最小化并聚焦这些 engine 扩展点；`@demi/shell` 负责 shell tools、OutputSnapshot、running/wait/input/abort、RPC/tool 集成。
+- browser-safe 不能直接信任上游。上游有 `just-bash/browser` 包含 `process` 的公开 issue，demi 的 fork 默认入口必须自己用静态闭包扫描和 browser bundle smoke test 验证。
+- 风险主要在维护成本和依赖体量。fork 会带来上游同步成本，但比继续复制 parser/helper/builtin 片段更可控；后续实现策略是稳定 fork package `just-bash` 的 API，再把 `@demi/shell` 里仍手写的 bash 语义逐步下沉到 fork engine。
+
+## 8. Host 与持久化
+
+### 8.1 Host
+
+```ts
+interface Host {
+  root: string  // workspace 根，shell session 默认 cwd 的基准
+  spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
+}
+
+interface HostSpawnHandle {
+  stdout: AsyncIterable<Uint8Array>
+  stderr: AsyncIterable<Uint8Array>
+  writeStdin(data: Uint8Array): Promise<void>
+  kill(): Promise<void>
+  wait(): Promise<{ exitCode: number | null; signal?: string }>
+}
+```
+
+Host 不暴露文件读写 API。文件操作全部走命令（`cat` / `tee` / `rm` / `mkdir`）：本地 spawn 真命令、远程 spawn 远端命令，自动路由到对应 workspace。注册命令的文件访问同理——`editor` 读文件走 `cat file` 拿 stdout 字节、写文件走 `tee file` 从 stdin 喂字节（字节流，无 heredoc 转义问题，二进制与大文件均可；editor 低频，两次 spawn 开销可忽略）。Host 的唯一职责是"在哪 spawn"。
+
+`LocalHost` 走 Node child_process。远程 / 容器以后换 `Host` 实现，`BashEnvironment` 不变。Agent Loop 不感知这些差异。
+
+默认运行时模块必须只依赖 `Host` 接口，不依赖 `LocalHost`。`LocalHost` 是 Node adapter，不从 `@demi/shell` 根入口导出；使用方需要本地进程能力时显式导入 adapter。这个隔离同样适用于 `LocalDemiStore`、stdio transport 和真实 Claude CLI provider。
+
+```ts
+interface BashEnvironment {
+  host: Host
+  root: string
+  exec(input: ShellExecInput): Promise<ShellToolResult>
+  wait(input: ShellWaitInput): Promise<ShellToolResult>
+  input(input: ShellStdinInput): Promise<ShellToolResult>
+  abort(input: ShellAbortInput): Promise<ShellToolResult>
+}
+
+class BashEnvironment {
+  constructor(options: { host: Host; store?: DemiStore }) {}
+}
+```
+
+Bash Environment 内部自由决定：系统 command 如何经 Host.spawn 执行、cwd/root 处理、`DEMI_SESSION_ID` 注入、shell session 保存、stdout/stderr buffer 截断、audit 记录。这些都不进 Agent Loop 公共接口。
+
+shell session 内部结构：
+
+```ts
+type ShellSession = {
+  id: string
+  cwd: string
+  env: Record<string, string>
+  startedAt: number
+  lastOutputAt: number
+  stdoutBuffer: RingBuffer
+  stderrBuffer: RingBuffer
+  totalStdoutBytes: number
+  totalStderrBytes: number
+  foreground?: { startedAt: number; spawn: HostSpawnHandle }  // 当前前台命令
+  exitState?: { exitCode: number | null; signal?: string }
+}
+```
+
+本地实现里 `foreground.spawn` 是 `LocalHost` 产生的真实子进程句柄；换 `RemoteHost` 后即远端句柄。Agent Loop 不关心。
+
+### 8.2 持久化
+
+```ts
+interface DemiStore {
+  readJson<T>(key: string): Promise<T | null>
+  writeJson<T>(key: string, value: T): Promise<void>
+  delete(key: string): Promise<void>
+  list(prefix: string): Promise<string[]>
+}
+
+class LocalDemiStore implements DemiStore {
+  // 直接 Node fs；root = "~/.demi"
+}
+```
+
+DemiStore 存 runtime 状态（transcript、todo、session metadata），属于 **agent 运行机器本地**，不属于 workspace，因此直接用 Node fs，不走 Host、不路由到远端。
+
+`DEMI_SESSION_ID` 在 AgentSession 创建时分配并记入 session metadata，Bash Environment 创建 shell session 时注入 env。注册命令经 `CommandStorage`（DemiStore 的 session-scoped 视图，自动按 `DEMI_SESSION_ID` 隔离 key，见 §4.6）访问 DemiStore。
+
+## 9. 审计
+
+shell session 工具调用必须产出 audit events：
+
+```ts
+type BashAuditEvent =
+  | { kind: 'registered-command'; name: string; args: string[]; exitCode: number }
+  | { kind: 'system-command'; name: string; args: string[]; cwd: string; exitCode: number }
+```
+
+| kind | 质量 | 说明 |
+|---|---|---|
+| registered-command | 最高 | 可解释 agent 专属语义与状态变化。 |
+| system-command | 中 | 可审计 argv / cwd / stdout / stderr / exit code。 |
+
+shell session 工具不记录 fs diff。系统命令修改文件不提供通用自动撤销。第一版不设计通用编辑日志；如以后 `editor` 需要类似能力，只能作为 `editor` 自己的实现细节。
+
+## 10. Coding Agent
+
+Coding Agent 是一个 Agent Definition。
+
+- todos 不放进 CodingState，是 `todo` 注册命令自己的状态，按 `DEMI_SESSION_ID` 隔离持久化。
+- Coding Bash Environment 注册少量 agent 专属命令。
+
+P0 命令：
+
+```text
+editor prompt
+editor create
+editor edit
+editor patch
+todo prompt
+todo list
+todo add
+todo update
+todo done
+```
+
+`prompt` 子命令只输出帮助文本，不改文件或状态。
+
+`editor` 子命令语义：
+
+- `editor create`：创建新文件，已存在则失败；内容从 stdin / heredoc 传入。
+- `editor edit`：对已有文件做精确替换，匹配不到或匹配多处时失败。匹配多处时可用 `--occurrence <n>`（1-based）或 `--context <line>`（锚定行号附近最近匹配）消歧；仍无法消歧则失败，返回所有匹配位置供模型调整。
+- `editor patch`：应用多文件 patch。格式用 unified diff（`diff -u` / `git apply` 风格）——模型训练数据多见、工具链成熟、可校验；不用 OpenAI `*** Begin Patch` 私有格式。
+
+直接使用系统命令（非模型工具，只是 Bash 环境里的命令）：`cat` `head` `tail` `ls` `tree` `find` `rg` `grep` `sed` `awk` `jq` `stat` `file` `wc` `mkdir` `rm` `cp` `mv` `touch` `git` `bun` `npm` `pnpm` `yarn` `node` `python` `cargo` `docker`。这些名字不被占用，一律 spawn 系统 command。
+
+## 11. 协议层
+
+协议层是 demi 的对外边界，也是唯一通信方式。壳子（TUI / Electron / Web / 服务进程 / 本地 JS 调用方）只通过协议层与 agent 交互，不接触 Agent Loop / Bash Environment / Host 等内部实现。协议层不假设壳子是什么，也不含任何渲染逻辑。
+
+**协议层即 RPC。** 不存在"本地直连绕过 RPC"的另一套 API。本地 JS 调用方也是一个 RPC client，只是 transport 是进程内直通（in-process），不跨网络。这样协议帧是唯一契约，base-agent 的实现只需服务一种调用方式，没有本地/远程两套路径的分裂。
+
+协议层 = §12 的 `ClientFrame` / `ServerFrame` 帧协议 + transport 抽象。客户端侧由 RPC client 把帧还原成可编程视图（见 §12.5）；服务端侧由 RPC host 把帧转成 AgentSession 调用。`AgentSessionHandle` 不作为对外 API 暴露，它是 RPC host 内部持有 base-agent 的句柄。
+
+### 11.1 客户端视图
+
+RPC client 把帧还原成可编程视图，供壳子调用：
+
+```ts
+interface AgentClient {
+  open(def: string, provider: ProviderConfig, cwd: string): Promise<void>
+  send(content: UserContentBlock[]): Promise<void>
+  retry(): Promise<void>
+  resume(): Promise<void>
+  compact(): Promise<void>
+  abort(): Promise<boolean>
+
+  subscribe(listener: (event: SessionEvent) => void): () => void
+  close(): Promise<void>
+}
+
+type SessionEvent =
+  | { type: 'transcript_snapshot'; blocks: Block[] }
+  | { type: 'transcript_patch'; patches: Patch[] }
+  | { type: 'phase'; phase: SessionPhase }
+  | { type: 'queue'; queue: QueuedMessage[] }
+  | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
+  | { type: 'shell_output'; sessionId: string; snapshot: OutputSnapshot }
+  | { type: 'shell_input_result'; sessionId: string; output: ToolResultContentBlock[] }
+  | { type: 'audit'; events: BashAuditEvent[] }
+  | { type: 'error'; message: string; code?: string }
+```
+
+事件携带程序化数据（block 数组、output snapshot、phase），不是渲染指令。壳子自己决定怎么显示。`transcript_snapshot` 首次/重连发全量，后续 `transcript_patch` 发增量，客户端无需自己合并。`shell_output` 透传 OutputSnapshot 原文。协议层不生成摘要、不替壳子做展示决策。
+
+### 11.2 壳子职责边界
+
+壳子可以：展示 transcript、展示 shell tool call 与流式输出、展示 running command session、消费 output snapshot / delta、展示 audit events、展示 file diff。
+
+壳子不应：直接读写 agent workspace；感知 Bash Environment 是 local / remote；感知系统命令如何 spawn；直接操作 Agent Loop 内部状态；绕过 RPC client 直接持有 AgentSession。
+
+## 12. RPC 层
+
+RPC 层是协议层（§11）的实现：定义 `ClientFrame` / `ServerFrame` 帧协议、`RPCTransport` 抽象、RPC host（服务端，帧→AgentSession）和 RPC client（客户端，帧→AgentClient 视图）。所有消费者——本地 JS 或远程 Web / Electron——都走同一套帧协议，只是 transport 不同。
+
+### 12.1 设计原则
+
+**动作帧 + 状态帧，不做 per-command id 编排。** demi 是单 worker 串行：同一时刻只有一轮工作在跑，客户端发 `send` 时如果已有 run 正在执行，则进入 AgentSession queue；`queue` 帧公开等待中的 user turn。`retry` / `resume` / `compact` 这类会重写 transcript 或改变当前控制流的动作在 busy 时回 `rejected` 帧带命令名，客户端据此确认。
+
+由于没有 per-command id，RPC client 不能让每个 `send` / `retry` / `resume` / `compact` Promise 各自独立监听同一组 `phase` 广播后自行判断完成。client 必须维护本地 action FIFO：每次从 idle 进入 active phase 只认领一个等待中的 action，回到 idle 时只 resolve 这个 action；`rejected` 只 reject 尚未进入 active phase 的同名动作；`error` 优先 reject 当前 active action，无法关联到 active action 时再 reject 全部等待动作；`closed` 让全部等待动作收敛。
+
+**sessionId 是唯一的关联标识。** 它关联的不是"命令"，而是 shell session 这个持续存在的对象——`shell_input` 和 `shell_output` 通过 sessionId 对上。除此之外帧与帧之间不需要 id 配对。
+
+**一连接一 session。** 一个 RPC 连接对应一个 agent session。`open` 在握手时完成（传 definition + provider 配置 + cwd），之后所有命令都作用在这个 session 上，帧里不带 sessionId。多 session 场景由多连接解决。
+
+**transcript 用 snapshot + patch。** 首次发 `transcript_snapshot`（全量），后续发 `transcript_patch`（immer patch 增量），避免长 transcript 全量重发。无论 transport 是 in-process 还是跨网络，都用同一套 snapshot/patch 策略。
+
+**shell 输出独立成帧。** `shell_output` 高频大体积，和 transcript 控制流分开，客户端按 sessionId 订阅/取消订阅，背压可控。
+
+### 12.2 帧类型
+
+```ts
+// client → server：对 session 做动作，不带 id
+type ClientFrame =
+  | { type: 'open'; definition: string; provider: ProviderConfig; cwd: string }  // definition 是 host 侧预注册的 definition 名
+  | { type: 'send'; content: UserContentBlock[] }
+  | { type: 'abort' }
+  | { type: 'retry' }
+  | { type: 'resume' }
+  | { type: 'compact' }
+  | { type: 'shell_input'; sessionId: string; stdin: string }
+  | { type: 'close' }
+
+// server → client：session 状态变化
+type ServerFrame =
+  | { type: 'opened' }
+  | { type: 'rejected'; command: string; reason: string }   // 命令被拒（busy 等），带命令名确认
+  | { type: 'transcript_snapshot'; blocks: Block[] }        // 首次/重连全量
+  | { type: 'transcript_patch'; patches: Patch[] }          // 后续增量
+  | { type: 'phase'; phase: SessionPhase }
+  | { type: 'queue'; queue: QueuedMessage[] }
+  | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
+  | { type: 'shell_output'; sessionId: string; snapshot: OutputSnapshot }
+  | { type: 'shell_input_result'; sessionId: string; output: ToolResultContentBlock[] } // shell_input 完成确认，按 sessionId 关联
+  | { type: 'audit'; events: BashAuditEvent[] }
+  | { type: 'error'; message: string; code?: string }
+  | { type: 'closed' }
+```
+
+### 12.3 Transport
+
+```ts
+interface RPCTransport {
+  send(frame: ServerFrame): void
+  onFrame(handler: (frame: ClientFrame) => void): () => void
+  close(): void
+}
+```
+
+Transport 只负责收发帧，不解释帧语义。第一版实现：
+
+- **in-process**：本地 JS 调用方，帧直接在内存里传递（不经序列化），是零成本直通。这是本地直连的本质——它仍然是 RPC client，只是 transport 不序列化。
+- **stdio**：CLI 壳子场景，帧以换行分隔的 JSON（NDJSON）。
+- **WebSocket**：Web / Electron 场景，帧为 JSON 文本消息。
+
+in-process transport 让"本地直连"和"跨进程"走完全相同的代码路径（同一套帧协议、同一个 RPC client/host），只是 transport 实现不同。序列化第一版用 JSON（可读、调试友好、Web 原生）；in-process 不序列化。msgpack 等二进制编码以后按需加。
+
+### 12.4 关联模型小结
+
+| 关联需求 | 靠什么 |
+|---|---|
+| 命令是否被接受 | `send` 可通过 `queue` 帧进入等待队列；其他动作被拒时发 `rejected` 帧（带命令名），无 rejected 即被接受 |
+| 这轮工作的事件边界 | transcript 的 User/Resume block（turn 边界，天然在 block 里）+ phase 事件（running→idle） |
+| shell 输入/输出配对 | sessionId |
+| retry 截断了哪些 | transcript_patch 里包含删除的 block |
+| 这轮是否跨了多个 turn | transcript 里 CompactionBoundary + Resume block，仍属同一次 send |
+
+协议层不暴露 turn id 作为独立字段——它在 transcript 的 block 里，客户端需要时自己读。
+
+### 12.5 RPC host 与 client
+
+**RPC host（服务端）**：持有 base-agent 的 `AgentSession`，把 `ClientFrame` 转成 session 调用，把 session 的 `SessionEvent` 转成 `ServerFrame` 发出。`open` 帧创建 session，`close` 帧销毁。transcript 变更经 immer 产出 snapshot/patch。host 是 base-agent 的唯一消费者——base-agent 不被任何其他代码直接调用。
+
+`AgentDefinition` 含闭包（`systemPrompt` / `tools` / `commands` / `lifecycle`），不可序列化。因此 host 侧维护一个 definition 注册表：宿主在启动时用 `registerDefinition(name, definition)` 注册（如 `'coding'` → coding agent definition），`open` 帧的 `definition: string` 是这个注册名。host 查表拿到 definition 对象后创建 AgentSession。definition 不跨传输序列化。
+
+**RPC client（客户端）**：持有 `RPCTransport`，把 `AgentClient` 方法调用转成 `ClientFrame` 发出，把收到的 `ServerFrame` 还原成 `SessionEvent` 推给 `subscribe` 监听器。客户端维护本地 transcript 视图（apply snapshot/patch），壳子基于此视图渲染。
+
+```text
+壳子 → AgentClient → ClientFrame → [transport] → ServerFrame → RPC host → AgentSession
+                                          ↑
+AgentSession 事件 → RPC host → ServerFrame → [transport] → ClientFrame → AgentClient → 壳子 subscribe
+```
+
+两端对称：host 和 client 都只懂帧协议，都不直接接触对方的内部对象。本地直连时 transport 是 in-process，两端在同一进程但仍是这套帧路径。
+
+## 13. 包结构
+
+demi 是纯 agent 库，不含 frontend 实现 / module 层。协议层（§11-§12）的帧协议是 demi 的唯一对外契约，由 `packages/rpc` 实现；base-agent 是 rpc host 的内部依赖，不直接对外暴露。
+
+```text
+packages/core/            基础类型：Block、Transcript、UserContentBlock、ModelSelection、
+                          TokenUsage 等跨包共享类型（base-agent 与 provider 都依赖）
+packages/provider/        AgentProvider 接口、InferenceRequest/InferenceItem、
+                          ProviderEvent、ProviderRegistry、auth 能力
+packages/base-agent/      通用 AgentSession（Agent Loop）
+packages/just-bash/       forked Bash Engine：parser/interpreter/builtin/expansion 基线、
+                          browser-safe 默认入口、Host/command/output/audit/job 扩展 API、
+                          fork core tests
+packages/shell/            Host contract、BashEnvironment、shell session tools、
+                          ShellSession、OutputSnapshot、command registry、command prompt、
+                          audit、系统 command spawn、DemiStore/CommandStorage；
+                          LocalHost / LocalDemiStore 作为显式 Node adapter 子路径
+packages/agent-coding/    Coding agent definition、prompt、coding commands、todo
+packages/provider-claude-code/  Claude Code provider：驱动系统 claude code CLI
+packages/rpc/             RPC 层（对外边界）：ClientFrame/ServerFrame、RPCTransport、
+                          RPC host（帧→AgentSession）、RPC client（帧→AgentClient）、
+                          in-process + WebSocket transport、显式 stdio adapter、
+                          transcript snapshot/patch
+```
+
+`packages/core` 与 `packages/provider` 是底层依赖：core 放跨包共享类型，provider 定义 base-agent 调用模型的标准接口。`InferenceRequest` 是纯 items 数组模型（`items: InferenceItem[]` + systemPrompt + cwd + tools + thinking + cancel），与 Rust 蓝本一致；provider 实现内部如何把 items 喂给模型（直连 API、stdin stream-json、或 provider 自己支持的 resume 机制）是 provider 自己的事，不进接口。
+
+`packages/rpc` 依赖 base-agent（RPC host 持有 AgentSession）和 core（Block 等类型），实现 §11-§12 的帧协议。base-agent 不依赖 rpc，也不直接对外暴露——rpc host 是 base-agent 的唯一消费者，无论本地还是远程都经 rpc client → transport → rpc host 这条路径。
+
+`packages/provider-claude-code` 的实现机制：直接 spawn 系统 `claude` CLI（`--print --output-format stream-json --input-format stream-json`），stdin/stdout JSON 行通信，手写 MCP JSON-RPC bridge 处理 tool 调用，`DISABLE_AUTO_COMPACT: 1`（用 demi 自己的 compaction）。**不依赖 `@anthropic-ai/claude-agent-sdk`**——Rust 蓝本完全自实现，demi 照搬。CLI 的 stream event 映射成 `ProviderEvent`。这套机制照搬 Rust `provider-claude-code` crate。
+
+没有 provider 包，base-agent 无法跑（§5 的 send/retry/resume/compact 都依赖 `AgentProvider.run`）。所以 provider 包先于 base-agent 实现，第一版带一个 stub provider（返回脚本化事件流）让 base-agent 测试能跑；claude-code provider 作为第一个真实 provider 单独成包。
+
+`agent-definition` 的类型先放进 `base-agent`，跑通后再拆。早期包太多可先合并实现，重要的是边界。
+
+## 14. 重写计划
+
+本文是把方案落成代码的执行路径。demi 是全新 bun monorepo，纯 agent 库（不含 UI 实现，通过协议层供壳子接入），从零开始，不搬 agent-gui 代码。每个 Step 都有明确的产物和验收，做完一个再做下一个。
+
+### 14.1 拆包顺序
+
+按依赖自底向上建，先建被依赖的：
+
+```text
+Step 0  core                    ← Block/Transcript/ModelSelection 等基础类型
+Step 1  provider                ← AgentProvider 接口 + InferenceRequest/ProviderEvent + stub
+Step 2  base-agent              ← AgentSession（依赖 core + provider）
+Step 3  just-bash + shell       ← forked just-bash engine + Host + shell session 工具
+Step 4  agent-coding            ← coding agent definition + editor/todo
+Step 5  rpc                     ← RPC 帧协议 + host/client + transport（唯一通信方式）
+Step 6  provider-claude-code    ← 驱动 claude code CLI 的真实 provider
+```
+
+`agent-definition` 的类型先放进 `base-agent`，跑通后再拆。demi 是纯库，不做 module-agent / frontend 实现，但提供协议层（§11）供壳子接入。
+
+### 14.2 测试执行方式
+
+测试不是单独最后补，而是跟每个 Step 的验收绑定：Step 2 用 StubProvider 复刻 AgentSession 行为规格，Step 3 覆盖 bash runtime / Host / shell tools，Step 4 覆盖 editor / todo / coding marathon，Step 5 覆盖 RPC client-host-transport，Step 6 覆盖 claude-code provider 的 CLI 参数、stream-json 输入转换、事件映射和 MCP control_request。
+
+日常门禁：
+
+```bash
+bun run lint
+bun run typecheck
+bun run test
+bun run test:just-bash-core
+```
+
+分层测试入口：
+
+```bash
+# base-agent session/transcript 行为
+bun test packages/base-agent/src/__tests__
+
+# bash runtime、注册命令、Host、shell tools
+bun test packages/shell/src/__tests__
+
+# coding agent、editor/todo、stub provider 端到端 marathon
+bun test packages/agent-coding/src/__tests__
+
+# RPC 帧协议、host/client、in-process/stdio/websocket transport
+bun test packages/rpc/src/__tests__
+
+# claude-code provider 的本地适配层测试，不依赖真实 Claude 请求
+bun test packages/provider-claude-code/src/__tests__
+
+# 平台默认入口静态闭包扫描
+bun test packages/core/src/__tests__/platform-entrypoints.test.ts
+```
+
+真实 Claude CLI e2e 是外部环境相关测试，默认跳过；只有本机安装并完成可用认证后再手动开启：
+
+```bash
+DEMI_CLAUDE_CODE_E2E=1 bun test packages/provider-claude-code/src/__tests__/real-cli.e2e.test.ts
+```
+
+fork interpreter 改动用 vitest 验证（fork 用 vitest，不是 bun test）：
+
+```bash
+cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
+```
+
+### 14.3 Step 0 — 初始化 monorepo 与 core 包
+
+**目标**：建起 bun workspace 骨架，落地跨包共享的基础类型。
+
+**做什么**：
+
+1. `bun init` 建 monorepo 根，配 `workspaces` 指向 `packages/*`。
+2. 根 `package.json`、`tsconfig.json`（base）、`biome.json`（或等价 lint）。
+3. 建 `packages/core`，对照 Rust `alloy-generated` 定义方案里反复引用的类型：
+   - `Block` 及其所有变体（User/Resume/Thinking/Text/ToolCall/Response/Error/Abort/CompactionBoundary/CompactionMarker/ExtensionStateSnapshot）。
+   - `Transcript`（blocks 数组 + 方法签名）。
+   - `UserContentBlock`、`ToolResultContentBlock`、`ToolCallStatus`。
+   - `ModelSelection`、`Model`、`TokenUsage`、`SessionPhase`、`QueuedMessage`、`ThinkingConfig`。
+4. 类型只定义、不实现逻辑。逻辑归各包。
+
+**验收**：`tsc --noEmit` 通过；core 包可被其他包 import 类型；类型与 Rust 蓝本 `alloy-generated` 对齐。
+
+### 14.4 Step 1 — provider 包（接口 + stub）
+
+**目标**：定义 base-agent 调用模型的标准接口，并提供 stub provider 让后续 base-agent 测试能跑。接口对照 Rust `provider` crate。
+
+**做什么**：
+
+1. `packages/provider`，定义 `InferenceRequest`（**纯 items 数组模型**，与 Rust 蓝本一致）：
+   ```ts
+   interface InferenceRequest {
+     modelId: string
+     systemPrompt: string
+     cwd: string
+     items: InferenceItem[]
+     tools: ToolDefinition[]
+     thinking?: ThinkingConfig
+     cancel: AbortSignal
+   }
+   ```
+   - `InferenceItem`：UserMessage / AssistantText / AssistantThinking / AssistantRedactedThinking / ToolUse / ToolResult。
+2. `ProviderEvent`（对照 Rust `runtime.rs`）：ThinkingStart / ThinkingDelta / ThinkingSignature / RedactedThinking / TextDelta / ToolCallRequested / Response(usage) / Error / Abort。
+3. `AgentProvider` 接口 + `ProviderDefinition` / `ProviderRegistry`（注册、按 type 取、createProvider、state 观察）。
+4. `StubProvider`：可脚本化的事件流——测试时传入一组 `ProviderEvent` 序列，`run()` 按序 yield。支持 tool call 请求 + 第二轮续接。
+5. auth 能力先留接口空壳，不实现。
+
+**关键点**：`InferenceRequest` 是纯 items，不含 JSONL / resume / MCP 任何 claude-code 专属概念。这些是 Step 6 provider 实现内部的事。base-agent 永远只构造 items、消费 ProviderEvent。
+
+**验收**：StubProvider 能模拟"返回文本 → 请求 tool call → 收到 tool result 后续接文本"的完整两轮；provider 包只依赖 core，不依赖 base-agent。
+
+**为什么放这么早**：Step 2 的 base-agent 测试（send/retry/resume/compaction）每一条都需要 provider 驱动。
+
+### 14.5 Step 2 — base-agent 包
+
+**目标**：实现通用 AgentSession，对照 Rust `agent-session` 蓝本，复刻已验证的 session lifecycle。不接 coding、不接 bash。
+
+**2.1 Transcript**：`Transcript` 实现 blocks 数组、append-only、所有 push/apply 方法（对照 `transcript.rs`）。单测覆盖 block 追加、tool call 完成、dangling 清理、compaction boundary 插入后 effective_transcript 切片正确。
+
+**2.2 Session runtime 骨架**：`AgentSession` + 内部 worker（单 worker 串行）；状态机 Idle/Running/Compacting；queue；mutation guard。**不实现 replay_from**。
+
+**2.3 动作实现**（对照 `worker.rs`）：send（BeforeRoundStart → resolve refs → push user turn → preflight compact → provider turn）、retry（truncate + AfterTranscriptRewrite + 重发）、resume（mark abort resumed + push resume turn + provider turn）、compact。
+
+**2.4 Provider turn + compaction**（对照 `turn.rs`）：execute_provider_turn（build InferenceRequest → stream events → 应用 transcript → 执行 pending tools → auto-recover）、execute_compaction（find cut point → provider 生成 summary → insert boundary + marker）、execute_pending_tools。
+
+**2.5 测试规格复刻**（11 条）：(1) send 先写 user turn 再跑 provider；(2) provider 请求含 system prompt/preamble/transcript；(3) tool 调用后继续 provider roundtrip；(4) abort 不被 ref resolution 或 tool execution 阻塞；(5) queue 在当前 run 结束后继续处理；(6) retry 截断最后一轮并重放 user message；(7) resume 添加 continue user turn；(8) transcript 全量无损 append-only，compaction 只插 boundary/marker；(9) compaction 插入 boundary 和 marker，下次 inference 从最后一个 boundary 起取；(10) extension state snapshot 持久化；(11) mutation guard 阻止 running/pending/reserved 下的并发外部编辑。
+
+**2.6 事件产出**：`SessionEvent` 类型（transcript 变更/phase/queue/tool_progress/error）。base-agent 不实现帧协议——那是 Step 5 rpc 包的事。`shell_output` 事件在 Step 3 接入 bash 后补。
+
+**验收**：11 条测试全过；事件流测试通过；base-agent 只依赖 core + provider，无 fs/bash/child_process 依赖（持久化通过注入 store 接口，测试用内存 store）；没有任何 Bash/editor/todo 字样。
+
+**关键注意**：Rust 蓝本里 transcript 持久化和 extension state 落盘用了 fs。demi 的 base-agent 要保持纯净——持久化通过注入的 store 接口（DemiStore 抽象，实现在 Step 3）。
+
+### 14.6 Step 3 — just-bash + shell 包
+
+最大的一步，分多个小步。策略是先把 `wspl/just-bash` 作为 `packages/just-bash` submodule 接入，再接 `@demi/shell` 的 shell session、Host、registered commands 和 audit；不继续复制零散 parser/interpreter 片段。
+
+**3.1 Fork just-bash**：fork `vercel-labs/just-bash`，记录 upstream repo/commit/license，保留 Apache-2.0；git submodule 接入 `packages/just-bash`；fork 包保留完整 parser/interpreter/builtin/expansion/upstream tests，demi 的 bash 语义改动直接在 fork 内维护；fork 默认入口 browser-safe；fork 暴露稳定 engine API（§7.1）；demi 只保留 submodule 指针。**验收**：fork core tests green；fork 默认入口 browser-safe；仓库内没有第二套 just-bash 源码树。
+
+**3.2 接入 command registry + 注册命令调度**：在 forked engine 的命令调度处插入 registered command hook；实现 `CommandSpec` 解析（扁平 argv → parsed.values）；`renderCommandPrompt(spec)` + `<command> prompt` 同源；`--json`/raw 双模式。**验收**：注册命令拦截 argv[0] 不落进系统 command；注册命令名不能复用 Unix/shell 命令名；prompt 与 renderer 一致。
+
+**3.3 Host + LocalHost**：定义 `Host`（`root` + `spawn`）；`LocalHost` 走 Node `child_process.spawn`。**验收**：LocalHost 跑通基本进程生命周期。
+
+**3.4 Shell session + 状态连续性**：`ShellSession` 结构；engine 的 cwd/env/last status 读写指向 session；状态类 builtin 改 session 状态；非注册、非状态类命令通过 Host.spawn 执行；list operators + pipeline 由 engine 解释；文件重定向经 Host.spawn 的 cat/tee；prefix assignment；parameter/command/glob expansion；根入口平台无关。**验收**：§4.7.1 的连续性场景全部通过。
+
+**3.5 OutputSnapshot + 长命令 yield**：runner 实时收集 stdout/stderr 到 RingBuffer；`yieldAfterMs`（默认 10s）定时 yield；输出上限触发 `output_limit`；`ShellToolResult` 五种 status。**验收**：长命令可观测，§4.7.2 行为通过。
+
+**3.6 wait / input / abort / timeout / dispose**：`shell_wait`/`shell_input`/`shell_abort`/`timeoutMs`/`disposeSession`/`disposeAllSessions`；AgentSession abort 时终止前台进程；coding definition dispose 清理 BashEnvironment；RPC `close` 等待 definition dispose。**验收**：各路径单测通过。
+
+**3.7 DEMI_SESSION_ID + DemiStore + CommandStorage**：创建 session 时注入 `DEMI_SESSION_ID`；`DemiStore` 接口 + `LocalDemiStore`；`CommandStorage` session-scoped 视图，拒绝绝对路径/`..`穿越/非法 session id。**验收**：不同 sessionId 读写互不干扰。
+
+**3.8 Audit**：`BashAuditEvent`（registered-command/system-command）；每次 shell_exec 收集 audit events 附在 `ShellToolResult.exited`。**验收**：注册命令和系统命令各产生对应 kind 的 event。
+
+**3.9 四个 shell session 工具封装**：把 BashEnvironment 的 exec/wait/input/abort 包装成 §3.2 的四个 AgentTool；zod schema；接入 base-agent 的 ToolContinuation；shell 命令实时输出经协议层 `shell_output` 事件流出。**验收**：主路径手测通过（cat/editor/git status）；长命令手测通过；shell session 状态跨 exec 连续。
+
+**3.10 fork engine 集成与 @demi/shell 重写**：把 `@demi/shell` 手写的 bash 语义（`environment.ts` 3340 行 + `script-parser.ts` 1444 行）替换成 fork `Interpreter`，对齐 §7.1。这是 Step 3 的收尾重构——3.1-3.9 的能力全部保留，实现从"手写 interpreter"切换到"消费 fork engine"。
+
+前置：fork 已暴露 `./interpreter` 子路径和 `hostSpawn` 钩子（fork commit `5e925b7`）。
+
+做什么：
+0. **fork 第二个改动**：`executeExternalCommand` 在 `hostSpawn` 检查之后、`resolveCommand` 之前，增加直接 `ctx.commands.get` dispatch（§7.1"注册命令调度路径的已知缺口"）。
+1. **新增 `host-fs.ts`**：`HostBackedFileSystem implements IFileSystem`，把 fork fs 操作路由到 Host.spawn（cat/tee/test/find/stat）。
+2. **重写 `environment.ts`**（目标 < 800 行）：`ShellSession` 持有 fork `InterpreterState`；**不用 fork 的 `Bash` 类**，直接用 `Interpreter`；fork `CommandRegistry` **只放 demi 注册命令**（§7.1"fork 内置命令必须排除"）；`BashEnvironment.exec` 用 `parse` + `new Interpreter` + race `executeScript` 和边界点（§7.1 执行模型）；`ExecutionLimits` 传高限值（§7.1）；`hostSpawn` 实现 Host.spawn + foreground + 边界点 + audit；`commandSpecToForkCommand` 适配器（§7.1 字段映射）；`wait`/`input`/`abort`/`dispose` 续接 `pendingExec` race。
+3. **删除 `script-parser.ts`**，AST 类型用 fork `./ast/types`。
+4. **更新 `@demi/shell` package.json**：从 fork `./interpreter`/`./ast/types`/`./parser` 导入；移除 `re2js`。
+5. **跑全部测试** + fork interpreter 用 vitest 验证（§7.1"fork 测试基础设施"）。
+6. **更新 git submodule pointer**：根仓库 `git add packages/just-bash` + 首次 commit。
+
+验收：`environment.ts` < 800 行；`script-parser.ts` 删除；`@demi/shell` 不再手写任何 bash 语义；所有现有测试绿；`platform-entrypoints.test.ts` 绿；`@demi/shell` 不再依赖 `re2js`。
+
+### 14.7 Step 4 — agent-coding 包
+
+**4.1 Coding agent definition**：`CodingState`（初版不放 todos）；`systemPrompt`（注册命令说明由 command registry 自动注入）；`tools()` 返回四个 shell session 工具；`commands()` 注册 editor/todo；`lifecycle`；`resolveReferences` 经 Host/cat 展开文件引用。
+
+**4.2 editor 命令**：`editor prompt`（renderCommandPrompt 同源）；`editor create`（cat 检查 → tee 写入）；`editor edit`（cat 读 → 精确替换 → tee 写回，`--occurrence`/`--context` 消歧）；`editor patch`（unified diff 解析 → 多文件应用）；文件访问全走命令（cat/tee）；editor/reference resolver 运行时不静态依赖 `node:*`/`Buffer`/`process.env`。
+
+**4.3 todo 命令**：`todo prompt`/`list`/`add`/`update`/`done`；状态经 CommandStorage 按 `DEMI_SESSION_ID` 隔离存 `todos.json`；`--json` 模式。
+
+**4.4 集成验收**：system prompt 自动包含 editor/todo 说明；`editor prompt` 与 system prompt 中的 editor 说明一致；coding marathon 测试通过。
+
+### 14.8 Step 5 — rpc 包
+
+**目标**：实现协议层（§11-§12）。RPC 是 demi 的唯一通信方式——本地 JS 调用方也是 RPC client，只是 transport 是 in-process。依赖 base-agent 和 bash（shell_output 事件），不依赖具体 provider。
+
+**5.1 帧协议**：`ClientFrame`/`ServerFrame`（§12.2）；`RPCTransport` 接口；跨进程帧序列化用 JSON，in-process 不序列化；默认 RPC 根入口不静态依赖 Node-only transport。
+
+**5.2 RPC host**：`RpcHost` 持有 `AgentSession`，把 ClientFrame 转成 session 调用，把 SessionEvent 转成 ServerFrame；一连接一 session；transcript 变更经 immer 产出 snapshot/patch；shell_output 透传 OutputSnapshot；`send` busy 时进 queue，`retry`/`resume`/`compact` busy 时回 `rejected`。
+
+**5.3 RPC client**：`RpcClient` 持有 transport，把 `AgentClient` 方法调用转成 ClientFrame；客户端维护本地 transcript 视图（apply snapshot/patch）；`send`/`retry`/`resume`/`compact` 的 Promise 按本地 action FIFO 收敛（§3.1 守则 12）。
+
+**5.4 Transport 实现**：`InProcessTransport`（本地直连，零成本）；`StdioTransport`（NDJSON，Node-only adapter，显式子路径）；`WebSocketTransport`（JSON 文本帧）。
+
+**5.5 验收**：InProcessTransport 端到端；shell_output 帧正确带 sessionId；busy 时 send 触发 queue 帧并按序 resolve；retry 的 transcript_patch 包含删除的 block；stdio transport 端到端；本地直连和跨进程走完全相同的 RpcClient/帧协议代码。
+
+### 14.9 Step 6 — provider-claude-code 包
+
+**目标**：实现第一个真实 provider，驱动系统装的 claude code CLI。以 Rust `provider-claude-code` crate 为蓝本。**不依赖 `@anthropic-ai/claude-agent-sdk`**。
+
+**机制**（零 SDK 依赖）：spawn `claude` CLI（`--print --output-format stream-json --verbose --input-format stream-json --tools ''`）；stdin/stdout JSON 行通信；history 由 `InferenceItem[]` 转成 stream-json stdin messages；MCP bridge 手写 JSON-RPC（initialize/tools/list/tools/call/ping）；env `DISABLE_AUTO_COMPACT=1`/`MAX_MCP_OUTPUT_TOKENS=1000000`/清除 `CLAUDECODE`；stream event → `ProviderEvent` 映射。
+
+**做什么**：`Transport`（spawn CLI/stdin 写/stdout 读/kill/wait）；`CliStatus`（which claude/claude --version）；stream-json input message 转换；MCP bridge；`StdoutMessage` 解析 + event 映射；auth/状态检测。
+
+**验收**：base-agent + claude-code provider 能完成多轮带 tool call 的对话；tool 执行经 bash 包的四个工具；compaction 由 base-agent 接管；abort 能 kill CLI 进程；provider 包 `package.json` 无 SDK 依赖。
+
+**为什么放最后**：需要系统装 claude code CLI + 登录。前面所有逻辑用 stub 验证清楚后，接真实 provider 只是适配层。
+
+### 14.10 当前进展
+
+Step 0-6 的本地包和集成测试已落地：core / provider / base-agent / just-bash / shell / agent-coding / rpc / provider-claude-code。当前门禁已通过：`bun run lint`、`bun run typecheck`、`bun run test`、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`pnpm lint`、`./node_modules/.bin/vitest run src/interpreter/`。
+
+**已完成的关键实现**（按 §3.1 架构守则覆盖）：
+
+- bash engine 边界已拆成 `just-bash` fork package 与 `@demi/shell`：`packages/just-bash` 是 submodule，暴露 parser/IFS 稳定导出。
+- `@demi/shell` 默认入口 browser-safe：根入口只导出平台无关实现；`LocalHost`/`LocalDemiStore` 走显式子路径。
+- `@demi/rpc` 默认入口去除 Node-only 依赖：stdio transport 从根入口移出，JSON codec 和 transcript patch diff 改为纯 TS/Web 标准。
+- `@demi/agent-coding` 运行时入口去除 Node-only 依赖：editor/reference resolver 使用 Host contract、Web UTF-8、平台无关路径归一化。
+- 平台默认入口静态闭包测试覆盖所有平台无关包；just-bash 边界静态扫描；RPC 边界静态扫描；package manifest 分层扫描。
+- shell session 生命周期、状态连续性、OutputSnapshot、长命令 yield、wait/input/abort/timeout、DEMI_SESSION_ID、DemiStore/CommandStorage、audit、注册命令 prompt/`--json`/commandMetadata、shell 工具接入 AgentSession abort signal——均已落地并有回归测试。
+- base-agent 的 transcript/queue/retry/resume/compaction/mutation guard/abort 收敛/tool error 局部化/extension state snapshot——均已落地。
+- RPC 的 action FIFO 收敛/abort Promise/shellInput 等待/transcript snapshot+patch/stdio+websocket transport/Uint8Array+bigint 安全编解码——均已落地。
+- claude-code provider 的 CLI spawn/stream-json/MCP bridge/event 映射/tool_use continuation/abort 清理/binary media 转换/config 白名单——均已落地。真实 CLI e2e 默认跳过，`DEMI_CLAUDE_CODE_E2E=1` 手动跑。
+- coding editor/todo/reference resolver 已约束到 `Host.root` 内，路径逃逸拒绝；editor patch 兼容 `diff -u`/git-style unified diff。
+
+**已修正 Step 3 的重大偏离**：
+
+`@demi/shell` 的 `environment.ts`（3340 行）+ `script-parser.ts`（1444 行）手写了一整套 bash interpreter（compound command / 状态 builtin / expansion / arithmetic / glob / pipeline / redirection），而 fork 只被当成 tokenizer 用（只导入 `parse` 和 IFS helpers）。这违背 §7"不在 `@demi/shell` 或其他包复制实现"、"不得重新创建内部 just-bash 副本"的核心约束。fork 实际已有完整可运行的 interpreter（7600+ 行，覆盖度远超 demi 手写版本）。
+
+**Step A 已完成**（fork commits `5e925b7`、`4e2ab29`、`c7f1be5`、`cabfc0f`）：fork 暴露 `./interpreter` 子路径（`Interpreter`/`InterpreterState`/`InterpreterContext`）；`InterpreterContext` 增加可选 `hostSpawn` 钩子，`executeExternalCommand` 在有 `hostSpawn` 且命令非注册命令时走钩子而不是 IFileSystem + PATH；`executeExternalCommand` 在 `hostSpawn` 检查之后增加直接 `ctx.commands.get` dispatch，让注册命令不走 PATH 查找；后续补齐 host-backed session hooks、bash 语义修正和 Node 25 fetch mock type compatibility。fork interpreter 完整 vitest 当前为 617 pass / 1 skip，demi 根测试当前为 211 pass / 1 skip。
+
+**git 状态**：demi 根仓库已完成首次提交，`packages/just-bash` 已通过 `git submodule add` 正式登记为 submodule（`.gitmodules` 指向 `https://github.com/wspl/just-bash.git`）。fork 子模块 worktree 已干净，当前 HEAD 是 `cabfc0f`；根仓库 submodule pointer 已指向 `cabfc0f`。
+
+**Step 3.10 代码与测试收尾已完成**：按 §7.1 的执行设计重写 `@demi/shell`——新增 `host-fs.ts`（`HostBackedFileSystem` 把 IFileSystem 路由到 Host.spawn），重写 `environment.ts`（用 fork `Interpreter` + `hostSpawn` 挂起模型 + 边界点 race），删除 `script-parser.ts`。`environment.ts` 已通过抽出 `environment-state.ts`、`environment-output.ts`、`registered-command-adapter.ts`、`background-command.ts` 降到 782 行，满足 Step 3.10 的 `< 800 行`目标。fork 完整 interpreter vitest 和 demi 门禁均已通过，root submodule pointer 和根仓库首次提交已完成。
+
+**本轮已修正的其他偏离**：
+
+1. `AgentDefinition` 已补 `commands()`（§6 定义），coding definition 通过该方法暴露 editor/todo 命令，命令 prompt 仍由 `CommandRegistry.renderPrompt()` 同源渲染。
+2. RPC host `shell_input` 不再伪造 `toolCallId`；server 增加 `shell_input_result` 帧，用 `sessionId` 作为完成确认与客户端 Promise 收敛的关联键。
+3. fork interpreter 的若干 bash 语义已按真实 bash 对齐：`break`/`continue` 外层与非法参数、`shift` 非数字/负数、`set` invalid option、`eval` 解析错误退出码；同时修正 group stdin consumption，避免非 stdin-consuming 注册命令误消费外层输入。
+4. fork 测试 mock 已兼容 Node 25 的 `fetch.preconnect` 类型变化，`pnpm typecheck` 当前通过；真实 DNS/network 集成测试仍受本机 DNS 策略影响，不作为 Step 3.10 验收证据。
+
+## 15. 优先级
+
+**P0**
+
+- Agent Loop 测试规格复刻
+- Agent Loop 实现
+- AgentSession 事件产出（供 rpc host 消费，§11.1）
+- Host 抽象 + LocalHost
+- Bash Engine 接入 just-bash parser/interpreter 能力
+- just-bash fork core tests
+- shell session tool 形状（exec/wait/input/abort，sessionId 统一）
+- shell running result + sessionId
+- OutputSnapshot
+- BashEnvironment（基于 Host contract）+ 显式 LocalHost adapter
+- 完全自由的系统 command spawn
+
+**P1**
+
+- shell session 状态连续性（跨 exec 复用 cwd/env，§4.7.1）
+- stdout/stderr 经协议层 `shell_output` 事件流出
+- wait / input / abort
+- `DEMI_SESSION_ID` env 注入与命令状态隔离
+- coding 注册命令：`editor` / `todo`
+- 注册命令 `--json` / raw 双模式输出
+- 注册命令 prompt 自动注入 system prompt
+- `<command> prompt` 与 `renderCommandPrompt(spec)` 同源
+- audit metadata
+
+**P2**
+
+- RPC 层：帧协议 + host/client + in-process / stdio / WebSocket transport（§12，唯一通信方式）
+- transcript snapshot/patch 增量同步
+- 超出 just-bash 基线的 shell compatibility
+- command-level diff
+
+**P3**
+
+- RemoteHost / ContainerHost（换 Host 实现，BashEnvironment 不变）
+- 更完整 bash compatibility
+
+> 注：本方案不设计安全护栏 / 权限模型，第一版系统命令 spawn 完全自由。这是有意取舍，不在优先级列表里。
+
+### 15.1 风险与应对
+
+| 风险 | 应对 |
+|---|---|
+| just-bash 体量大（13 万行），复制片段会无穷无尽 | 改为 fork-first：完整 fork 为实现基线，在 fork 内补 engine 扩展 API；`@demi/shell` 调稳定 fork API，不再新增零散复制，也不把 Agent/RPC/provider 逻辑塞进 fork。 |
+| 状态类 builtin 与系统 command 的边界模糊 | §4.1 调度优先级已明确：状态类 builtin engine 内实现，其余 spawn。Step 3.4 专门验证连续性。 |
+| Step 2 持久化若硬编码 fs 会破坏纯净性 | base-agent 持久化走注入 store 接口，Step 2 测试用内存 store，DemiStore 实现在 Step 3.7。 |
+| claude-code provider 的 stream-json/MCP 机制复杂 | 对照 Rust `provider-claude-code` crate 的结构实现；Step 6 专门拆成 CLI 输入转换 / MCP / event-mapping 三块。 |
+| `InferenceRequest` 接口设计不当导致 Step 6 重做 | Step 1 接口对照 Rust `provider` crate，纯 items 模型；stream-json/MCP 不进接口，是 Step 6 内部细节。 |
+| `hostSpawn` 挂起时 `executeScript` 的 Promise 一直 pending | 保留在 `session.pendingExec`，`shell_wait` 续接 race；`disposeSession` 时 kill 进程后 Promise 自然 settle。 |
+| `HostBackedFileSystem` 的 IFileSystem 接口实现不完整 | 只实现 redirection 需要的方法，其他方法抛 unsupported；fork 的 redirection 只用 readFile/writeFile/exists/stat/readdir。 |
+| fork 的注册命令调度顺序和 demi 预期不同 | fork 顺序：builtin > function > registered command > hostSpawn。demi 方案要求注册命令不被 function 遮蔽——Step 3.10 验证时确认，必要时在适配层调整。 |
+| 输出重定向跨 yield/abort 的文件 sink 写入 | fork 的 redirection 在 `applyRedirections` 里同步完成（命令结束后）；长命令 yield 时 fork interpreter 还在 await hostSpawn，redirection 还没到 applyRedirections 阶段——demi 在 hostSpawn 里自己处理 yield 时的 sink 状态。 |
+
+### 15.2 不做的事
+
+- 不搬 agent-gui 任何代码，只参考 Rust 蓝本结构。
+- 不做 module-agent / frontend 实现 / RPC facade（demi 是纯库，协议层供壳子接入）。
+- 不做安全护栏 / 权限模型（方案已定）。
+- 不做 MCP / Skills / 子 agent（方案已定）。
+- 不做 RemoteHost / ContainerHost（P3）。
+- 不做 replay（方案已删）。
+- 不预先裁剪 just-bash；先维护完整 fork，再按明确 package 边界接入 demi。

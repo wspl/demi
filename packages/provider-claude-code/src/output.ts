@@ -1,0 +1,145 @@
+import type { TokenUsage } from '@demi/core'
+import type { ProviderEvent } from '@demi/provider'
+
+export interface OutputMapping {
+  events: ProviderEvent[]
+  controlRequest?: ClaudeControlRequest
+  terminal: boolean
+}
+
+export interface ClaudeControlRequest {
+  id: string | number
+  method: string
+  params?: unknown
+}
+
+export function mapClaudeStdoutMessage(message: unknown): OutputMapping {
+  const events: ProviderEvent[] = []
+  if (!isRecord(message)) return { events, terminal: false }
+
+  if (message.type === 'assistant' && isRecord(message.message)) {
+    events.push(...mapContentArray((message.message as { content?: unknown }).content))
+  }
+
+  if (message.type === 'stream_event' && isRecord(message.event)) {
+    events.push(...mapStreamEvent(message.event))
+  }
+
+  if (message.type === 'control_request') {
+    const request = parseControlRequest(message)
+    if (request) return { events, controlRequest: request, terminal: false }
+  }
+
+  if (message.type === 'result') {
+    if (message.is_error === true) {
+      events.push({ type: 'error', message: String(message.result ?? 'Claude Code returned an error'), code: null })
+    }
+    events.push({ type: 'response', usage: mapUsage(message.usage) })
+    return { events, terminal: true }
+  }
+
+  if (message.type === 'error') {
+    events.push({ type: 'error', message: String(message.message ?? 'Claude Code error'), code: stringOrNull(message.code) })
+  }
+
+  return { events, terminal: false }
+}
+
+export function controlRequestToToolCall(request: ClaudeControlRequest): ProviderEvent | null {
+  if (request.method !== 'tools/call') return null
+  if (!isRecord(request.params)) return null
+  const name = typeof request.params.name === 'string' ? request.params.name : null
+  if (!name) return null
+  return {
+    type: 'tool_call_requested',
+    toolUseId: String(request.id),
+    toolName: stripMcpToolPrefix(name),
+    input: request.params.arguments ?? request.params.input ?? {},
+  }
+}
+
+function mapContentArray(content: unknown): ProviderEvent[] {
+  if (!Array.isArray(content)) return []
+  const events: ProviderEvent[] = []
+  for (const block of content) {
+    if (!isRecord(block)) continue
+    if (block.type === 'text') events.push({ type: 'text_delta', text: String(block.text ?? '') })
+    else if (block.type === 'thinking') {
+      events.push({ type: 'thinking_start' })
+      events.push({ type: 'thinking_delta', text: String(block.thinking ?? block.text ?? '') })
+      if (typeof block.signature === 'string') events.push({ type: 'thinking_signature', signature: block.signature })
+    } else if (block.type === 'redacted_thinking') {
+      events.push({ type: 'redacted_thinking', data: String(block.data ?? '') })
+    } else if (block.type === 'tool_use') {
+      events.push(mapToolUseBlock(block))
+    }
+  }
+  return events
+}
+
+function mapToolUseBlock(block: Record<string, unknown>): ProviderEvent {
+  const id = typeof block.id === 'string' || typeof block.id === 'number' ? String(block.id) : null
+  const name = typeof block.name === 'string' && block.name.length > 0 ? block.name : null
+  if (!id || !name) {
+    return { type: 'error', message: 'Invalid tool_use block from Claude Code', code: null }
+  }
+  return {
+    type: 'tool_call_requested',
+    toolUseId: id,
+    toolName: stripMcpToolPrefix(name),
+    input: block.input ?? {},
+  }
+}
+
+function mapStreamEvent(event: Record<string, unknown>): ProviderEvent[] {
+  if (event.type === 'content_block_start' && isRecord(event.content_block)) {
+    const block = event.content_block
+    if (block.type === 'thinking') return [{ type: 'thinking_start' }]
+    if (block.type === 'text' && typeof block.text === 'string') return [{ type: 'text_delta', text: block.text }]
+  }
+
+  if (event.type === 'content_block_delta' && isRecord(event.delta)) {
+    const delta = event.delta
+    if (delta.type === 'text_delta') return [{ type: 'text_delta', text: String(delta.text ?? '') }]
+    if (delta.type === 'thinking_delta') return [{ type: 'thinking_delta', text: String(delta.thinking ?? '') }]
+    if (delta.type === 'signature_delta') return [{ type: 'thinking_signature', signature: String(delta.signature ?? '') }]
+  }
+
+  return []
+}
+
+function parseControlRequest(message: Record<string, unknown>): ClaudeControlRequest | null {
+  const id = typeof message.id === 'string' || typeof message.id === 'number' ? message.id : undefined
+  const method = typeof message.method === 'string' ? message.method : undefined
+  if (id === undefined || !method) return null
+  return { id, method, params: message.params }
+}
+
+function mapUsage(usage: unknown): TokenUsage {
+  if (!isRecord(usage)) {
+    return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+  }
+  return {
+    inputTokens: numberValue(usage.input_tokens ?? usage.inputTokens),
+    outputTokens: numberValue(usage.output_tokens ?? usage.outputTokens),
+    cacheReadTokens: numberValue(usage.cache_read_input_tokens ?? usage.cacheReadTokens),
+    cacheWriteTokens: numberValue(usage.cache_creation_input_tokens ?? usage.cacheWriteTokens),
+  }
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === 'number' ? value : 0
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function stripMcpToolPrefix(name: string): string {
+  const match = /^mcp__[^_]+__(.+)$/.exec(name)
+  return match?.[1] ?? name
+}
