@@ -1,15 +1,12 @@
-- Read the relevant code and `agent-rewrite-plan.md` before changing behavior.
-- Update design docs before implementing new architecture rules.
+- Read the relevant code before changing behavior.
+- Check `agent-rewrite-plan.md` when the change touches architecture or workflow design.
+- Update docs when a design decision or operating convention changes.
 - Keep changes scoped to the current checkpoint and preserve unrelated user work.
-- Use `shellId` for shell control handles and agent session ids for agent-scoped state.
-- Use `shell_wait` to poll, `shell_input` only for non-empty stdin, and `shell_abort` to stop controlled foreground processes.
-- Run dev servers, watchers, and previews in the foreground with `yieldAfterMs`; avoid `pkill` or `killall` by process name.
-- Use the Claude Code provider with `claude-opus-4-8` and medium thinking for real TUI smoke tests.
-- Run focused tests for touched behavior, then `bun run typecheck` and `bun run test` before checkpoint commits.
-- If a submodule is dirty, inspect its diff first, then create a `codex/...` branch inside that submodule before committing.
-- Commit submodule work inside the submodule with a `feat: ...` subject, then commit the root submodule pointer with a separate `feat: ...` subject.
-- Record any validation that could not run, including missing dependencies or hung package-manager commands.
-- Keep the root worktree and touched submodules clean after each checkpoint.
-- Commit each completed checkpoint automatically.
-- Commit every `AGENTS.md` update immediately.
-- Use Conventional Commit subjects; feature checkpoints use `feat: ...`.
+- Prefer existing package boundaries, naming, and local patterns over new abstractions.
+- Validate with focused tests first; run broader checks when the change crosses package boundaries or affects user-facing behavior.
+- Record any validation that could not run and why.
+- Inspect dirty submodules before deciding whether their changes belong to the checkpoint.
+- Commit submodule changes inside the submodule, then commit the root submodule pointer separately.
+- Keep the root worktree and touched submodules clean after each completed checkpoint.
+- Commit completed checkpoints promptly using Conventional Commit subjects.
+- Commit every `AGENTS.md` update promptly.
