@@ -1,28 +1,16 @@
-- Keep `AGENTS.md` focused on durable operating principles.
+- Keep `AGENTS.md` limited to project-specific rules explicitly set by the user.
 
-## Context
+## Design Records
 
-- Read the relevant code before changing behavior.
-- Check `agent-rewrite-plan.md` when the change touches architecture or workflow design.
-- Update docs when a design decision or operating convention changes.
-
-## Change Discipline
-
-- Keep changes scoped to the current checkpoint and preserve unrelated user work.
-- Prefer existing package boundaries, naming, and local patterns over new abstractions.
-
-## Validation
-
-- Validate with focused tests first; run broader checks when the change crosses package boundaries or affects user-facing behavior.
-- Record any validation that could not run and why.
+- Update `agent-rewrite-plan.md` before implementing architecture or workflow changes.
 
 ## Submodules
 
 - Inspect dirty submodules before deciding whether their changes belong to the checkpoint.
-- Commit submodule changes inside the submodule, then commit the root submodule pointer separately.
+- Commit accepted submodule changes on a dedicated branch inside the submodule.
+- Commit the root submodule pointer separately after the submodule commit.
 
 ## Commits
 
-- Keep the root worktree and touched submodules clean after each completed checkpoint.
-- Commit completed checkpoints promptly using Conventional Commit subjects.
-- Commit every `AGENTS.md` update promptly.
+- Commit completed checkpoints automatically with appropriate Conventional Commit subjects.
+- Commit every `AGENTS.md` update immediately.
