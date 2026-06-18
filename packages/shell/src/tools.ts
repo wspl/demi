@@ -12,39 +12,43 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
   return [
     {
       name: 'shell_exec',
-      description: 'Execute a command in the long-lived shell session.',
+      description:
+        'Execute a command in a long-lived shell session. Returns exited or running with a shellId for continuation. Run observable long-lived commands in the foreground with yieldAfterMs, then use shell_wait or shell_abort instead of backgrounding and pkill/killall.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         required: ['script'],
         properties: {
           script: { type: 'string' },
-          sessionId: { type: 'string' },
+          shellId: { type: 'string' },
           yieldAfterMs: { type: 'number' },
           timeoutMs: { type: 'number' },
           outputLimitBytes: { type: 'number' },
-          needsInputAfterMs: { type: 'number' },
         },
       },
       invoke: async (ctx, input) => {
-        const result = await environment.exec({ ...parseShellExecInput(input), signal: ctx.signal })
+        const result = await environment.exec({
+          ...parseShellExecInput(input),
+          agentSessionId: ctx.agentSessionId,
+          signal: ctx.signal,
+        })
         ctx.emitProgress(result)
         return toToolResult(result, ctx.toolCallId)
       },
     },
     {
       name: 'shell_wait',
-      description: 'Wait for the foreground command in a shell session until it exits or yields again.',
+      description:
+        'Poll or wait for the foreground command in a shell session. Each call waits from the current call time, not from process start.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
-        required: ['sessionId'],
+        required: ['shellId'],
         properties: {
-          sessionId: { type: 'string' },
+          shellId: { type: 'string' },
           yieldAfterMs: { type: 'number' },
           timeoutMs: { type: 'number' },
           outputLimitBytes: { type: 'number' },
-          needsInputAfterMs: { type: 'number' },
         },
       },
       invoke: async (ctx, input) => {
@@ -55,40 +59,40 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
     },
     {
       name: 'shell_input',
-      description: 'Write stdin to the foreground command in a shell session.',
+      description: 'Write explicit stdin to the foreground command in a shell session. Use shell_wait to poll.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
-        required: ['sessionId', 'stdin'],
+        required: ['shellId', 'stdin'],
         properties: {
-          sessionId: { type: 'string' },
+          shellId: { type: 'string' },
           stdin: { type: 'string' },
           yieldAfterMs: { type: 'number' },
           outputLimitBytes: { type: 'number' },
-          needsInputAfterMs: { type: 'number' },
         },
       },
       invoke: async (ctx, input) => {
-        const result = await environment.input({ ...parseShellInput(input), signal: ctx.signal })
+        const parsed = parseShellInput(input)
+        const result = await environment.input({ ...parsed, signal: ctx.signal })
         ctx.emitProgress(result)
         return toToolResult(result, ctx.toolCallId)
       },
     },
     {
       name: 'shell_abort',
-      description: 'Abort the foreground command in a shell session.',
+      description: 'Stop the foreground command in a shell session. This is an intentional control action.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
-        required: ['sessionId'],
+        required: ['shellId'],
         properties: {
-          sessionId: { type: 'string' },
+          shellId: { type: 'string' },
         },
       },
       invoke: async (ctx, input) => {
         const result = await environment.abort(parseShellAbortInput(input))
         ctx.emitProgress(result)
-        return toToolResult(result, ctx.toolCallId)
+        return { ...toToolResult(result, ctx.toolCallId), isError: false }
       },
     },
   ]
@@ -96,14 +100,14 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
 
 export function toToolResult(result: ShellToolResult, toolCallId = ''): AgentToolInvokeResult {
   return {
-    output: [{ type: 'text', text: stringifyToolResult(result) }],
+    output: [{ type: 'text', text: formatToolResult(result) }],
     isError: result.status === 'timeout' || result.status === 'aborted',
     metadata: result,
     continuation:
-      result.status === 'running' || result.status === 'needs_input'
+      result.status === 'running'
         ? {
             toolCallId,
-            sessionId: result.sessionId,
+            shellId: result.shellId,
             status: 'running',
           }
         : undefined,
@@ -115,43 +119,41 @@ function parseShellExecInput(input: unknown): ShellExecInput {
   if (typeof record.script !== 'string') throw new Error('shell_exec requires string field "script"')
   return {
     script: record.script,
-    sessionId: optionalString(record.sessionId),
+    shellId: optionalString(record.shellId),
     yieldAfterMs: optionalNumber(record.yieldAfterMs),
     timeoutMs: optionalNumber(record.timeoutMs),
     outputLimitBytes: optionalNumber(record.outputLimitBytes),
-    needsInputAfterMs: optionalNumber(record.needsInputAfterMs),
   }
 }
 
 function parseShellWaitInput(input: unknown): ShellWaitInput {
   const record = asRecord(input)
-  if (typeof record.sessionId !== 'string') throw new Error('shell_wait requires string field "sessionId"')
+  if (typeof record.shellId !== 'string') throw new Error('shell_wait requires string field "shellId"')
   return {
-    sessionId: record.sessionId,
+    shellId: record.shellId,
     yieldAfterMs: optionalNumber(record.yieldAfterMs),
     timeoutMs: optionalNumber(record.timeoutMs),
     outputLimitBytes: optionalNumber(record.outputLimitBytes),
-    needsInputAfterMs: optionalNumber(record.needsInputAfterMs),
   }
 }
 
 function parseShellInput(input: unknown): ShellStdinInput {
   const record = asRecord(input)
-  if (typeof record.sessionId !== 'string') throw new Error('shell_input requires string field "sessionId"')
+  if (typeof record.shellId !== 'string') throw new Error('shell_input requires string field "shellId"')
   if (typeof record.stdin !== 'string') throw new Error('shell_input requires string field "stdin"')
+  if (record.stdin.length === 0) throw new Error('shell_input field "stdin" must not be empty; use shell_wait to poll')
   return {
-    sessionId: record.sessionId,
+    shellId: record.shellId,
     stdin: record.stdin,
     yieldAfterMs: optionalNumber(record.yieldAfterMs),
     outputLimitBytes: optionalNumber(record.outputLimitBytes),
-    needsInputAfterMs: optionalNumber(record.needsInputAfterMs),
   }
 }
 
 function parseShellAbortInput(input: unknown): ShellAbortInput {
   const record = asRecord(input)
-  if (typeof record.sessionId !== 'string') throw new Error('shell_abort requires string field "sessionId"')
-  return { sessionId: record.sessionId }
+  if (typeof record.shellId !== 'string') throw new Error('shell_abort requires string field "shellId"')
+  return { shellId: record.shellId }
 }
 
 function asRecord(input: unknown): Record<string, unknown> {
@@ -169,9 +171,36 @@ function optionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined
 }
 
-function stringifyToolResult(result: ShellToolResult): string {
-  return JSON.stringify(result, (_key, value) => {
-    if (typeof value === 'bigint') return value.toString()
-    return value
-  })
+function formatToolResult(result: ShellToolResult): string {
+  const lines = [`status: ${result.status}`, `shellId: ${result.shellId}`]
+
+  if (result.status === 'exited') {
+    lines.push(`exitCode: ${result.exitCode}`)
+  } else {
+    lines.push(`runningMs: ${result.runningMs}`)
+  }
+
+  if (result.status === 'running') {
+    lines.push(`reason: ${result.reason}`, `idleMs: ${result.idleMs}`)
+  }
+
+  appendOutput(lines, result.output)
+
+  if (result.status === 'running') {
+    lines.push('next: command is still running; call shell_wait to poll, shell_input with stdin to interact, or shell_abort to stop it intentionally. For dev servers or watchers, prefer shell_abort over process-name kills.')
+  } else if (result.status === 'timeout') {
+    lines.push('next: command exceeded timeoutMs and was stopped.')
+  } else if (result.status === 'aborted') {
+    lines.push('next: command was intentionally stopped.')
+  }
+
+  return lines.join('\n')
+}
+
+function appendOutput(lines: string[], output: ShellToolResult['output']): void {
+  lines.push('stdout:')
+  lines.push(output.stdoutDelta || '(empty)')
+  lines.push('stderr:')
+  lines.push(output.stderrDelta || '(empty)')
+  if (output.truncated) lines.push('output: truncated')
 }

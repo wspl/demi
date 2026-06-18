@@ -21,7 +21,7 @@ export type ClientFrame =
   | { type: 'retry' }
   | { type: 'resume' }
   | { type: 'compact' }
-  | { type: 'shell_input'; sessionId: string; stdin: string }
+  | { type: 'shell_input'; shellId: string; stdin: string }
   | { type: 'close' }
 
 export type ServerFrame =
@@ -32,8 +32,8 @@ export type ServerFrame =
   | { type: 'phase'; phase: SessionPhase }
   | { type: 'queue'; queue: QueuedMessage[] }
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
-  | { type: 'shell_output'; sessionId: string; snapshot: OutputSnapshotLike }
-  | { type: 'shell_input_result'; sessionId: string; output: ToolResultContentBlock[] }
+  | { type: 'shell_output'; shellId: string; snapshot: OutputSnapshotLike }
+  | { type: 'shell_input_result'; shellId: string; output: ToolResultContentBlock[] }
   | { type: 'audit'; events: BashAuditEvent[] }
   | { type: 'error'; message: string; code?: string }
   | { type: 'closed' }
@@ -51,8 +51,8 @@ export type ClientSessionEvent =
   | { type: 'phase'; phase: SessionPhase }
   | { type: 'queue'; queue: QueuedMessage[] }
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
-  | { type: 'shell_output'; sessionId: string; snapshot: OutputSnapshotLike }
-  | { type: 'shell_input_result'; sessionId: string; output: ToolResultContentBlock[] }
+  | { type: 'shell_output'; shellId: string; snapshot: OutputSnapshotLike }
+  | { type: 'shell_input_result'; shellId: string; output: ToolResultContentBlock[] }
   | { type: 'audit'; events: BashAuditEvent[] }
   | { type: 'rejected'; command: string; reason: string }
   | { type: 'error'; message: string; code?: string }

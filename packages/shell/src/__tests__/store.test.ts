@@ -2,13 +2,13 @@ import { mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
-import { LocalDemiStore, SessionCommandStorage } from '../store'
+import { AgentSessionCommandStorage, LocalDemiStore } from '../store'
 
-test('SessionCommandStorage prefixes keys by session id and exposes session-local keys', async () => {
+test('AgentSessionCommandStorage prefixes keys by agent session id and exposes session-local keys', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
   const store = new LocalDemiStore(root)
-  const first = new SessionCommandStorage(store, 'session-a')
-  const second = new SessionCommandStorage(store, 'session-b')
+  const first = new AgentSessionCommandStorage(store, 'session-a')
+  const second = new AgentSessionCommandStorage(store, 'session-b')
 
   await first.writeJson('todos.json', [{ text: 'a' }])
   await second.writeJson('todos.json', [{ text: 'b' }])
@@ -19,11 +19,11 @@ test('SessionCommandStorage prefixes keys by session id and exposes session-loca
   expect(await store.list('')).toEqual(['session-a/todos.json', 'session-b/todos.json'])
 })
 
-test('SessionCommandStorage rejects keys and session ids that escape the session prefix', async () => {
+test('AgentSessionCommandStorage rejects keys and agent session ids that escape the session prefix', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
   const store = new LocalDemiStore(root)
-  const first = new SessionCommandStorage(store, 'session-a')
-  const second = new SessionCommandStorage(store, 'session-b')
+  const first = new AgentSessionCommandStorage(store, 'session-a')
+  const second = new AgentSessionCommandStorage(store, 'session-b')
 
   await second.writeJson('todos.json', [{ text: 'b' }])
 
@@ -34,7 +34,7 @@ test('SessionCommandStorage rejects keys and session ids that escape the session
     'path traversal',
   )
   await expect(Promise.resolve().then(() => first.writeJson('/absolute.json', {}))).rejects.toThrow('must be relative')
-  expect(() => new SessionCommandStorage(store, '../session-b')).toThrow('Invalid command storage session id')
+  expect(() => new AgentSessionCommandStorage(store, '../session-b')).toThrow('Invalid command storage agent session id')
 
   expect(await second.readJson<Array<{ text: string }>>('todos.json')).toEqual([{ text: 'b' }])
 })

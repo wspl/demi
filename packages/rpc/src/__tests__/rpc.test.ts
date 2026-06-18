@@ -89,7 +89,7 @@ test('RpcHost maps shell tool progress into shell_output and audit frames', asyn
   const shellEnvironment = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     initialEnv: { PATH: process.env.PATH ?? '' },
-    sessionIdFactory: () => 'rpc-shell-session',
+    shellIdFactory: () => 'rpc-shell-shell',
   })
   const definition: AgentDefinition<Record<string, never>> = {
     name: 'shell-rpc',
@@ -121,7 +121,7 @@ test('RpcHost maps shell tool progress into shell_output and audit frames', asyn
   const shellOutput = seen.find((event) => event.type === 'shell_output')
   expect(shellOutput).toMatchObject({
     type: 'shell_output',
-    sessionId: 'rpc-shell-session',
+    shellId: 'rpc-shell-shell',
     snapshot: { stdoutDelta: 'hi' },
   })
   expect(seen.some((event) => event.type === 'audit')).toBe(true)
@@ -219,7 +219,7 @@ test('RpcHost bridges shell_input frames to the active shell session tool', asyn
   const shellEnvironment = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     initialEnv: { PATH: process.env.PATH ?? '' },
-    sessionIdFactory: () => 'rpc-input-session',
+    shellIdFactory: () => 'rpc-input-shell',
   })
   const definition: AgentDefinition<Record<string, never>> = {
     name: 'shell-rpc',
@@ -259,13 +259,13 @@ test('RpcHost bridges shell_input frames to the active shell session tool', asyn
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   seen.length = 0
-  await client.shellInput('rpc-input-session', 'typed\n')
+  await client.shellInput('rpc-input-shell', 'typed\n')
   await waitFor(() => seen.some((event) => event.type === 'shell_output' && event.snapshot.stdoutDelta === 'typed'))
-  await waitFor(() => seen.some((event) => event.type === 'shell_input_result' && event.sessionId === 'rpc-input-session'))
+  await waitFor(() => seen.some((event) => event.type === 'shell_input_result' && event.shellId === 'rpc-input-shell'))
 
   expect(seen).toContainEqual({
     type: 'shell_output',
-    sessionId: 'rpc-input-session',
+    shellId: 'rpc-input-shell',
     snapshot: {
       stdoutDelta: 'typed',
       stderrDelta: '',
@@ -278,14 +278,14 @@ test('RpcHost bridges shell_input frames to the active shell session tool', asyn
   })
   expect(seen).not.toContainEqual({
     type: 'tool_progress',
-    toolUseId: 'rpc-shell-input:rpc-input-session',
+    toolUseId: 'rpc-shell-input:rpc-input-shell',
     output: expect.any(Array),
   })
 })
 
 test('RpcClient.shellInput waits for shell_input_result and rejects when no session is open', async () => {
   const unopened = createRpcHarness({ providerTurns: [] })
-  await expect(unopened.client.shellInput('missing-session', 'stdin')).rejects.toThrow('No session is open')
+  await expect(unopened.client.shellInput('missing-shell', 'stdin')).rejects.toThrow('No session is open')
 
   const gate = deferred<void>()
   const seen: ClientSessionEvent[] = []
@@ -322,7 +322,7 @@ test('RpcClient.shellInput waits for shell_input_result and rejects when no sess
   expect(settled).toBe(true)
   expect(seen).toContainEqual({
     type: 'shell_input_result',
-    sessionId: 'delayed-input',
+    shellId: 'delayed-input',
     output: [{ type: 'text', text: 'accepted' }],
   })
   expect(seen).not.toContainEqual({
@@ -628,14 +628,14 @@ test('RpcHost disposes definition resources when a close frame is received', asy
   const shellEnvironment = new BashEnvironment({
     host: new LocalHost(root),
     initialEnv: { PATH: process.env.PATH ?? '' },
-    sessionIdFactory: () => 'rpc-dispose-shell',
+    shellIdFactory: () => 'rpc-dispose-shell',
   })
   const definition: AgentDefinition<Record<string, never>> = {
     name: 'shell-rpc',
     initialState: () => ({}),
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(shellEnvironment),
-    dispose: () => shellEnvironment.disposeAllSessions(),
+    dispose: () => shellEnvironment.disposeAllShells(),
   }
   const { client } = createRpcHarness({
     definition,
@@ -664,11 +664,11 @@ test('RpcHost disposes definition resources when a close frame is received', asy
     root,
   )
   await client.send([{ type: 'text', text: 'start shell' }])
-  await waitFor(() => shellEnvironment.getSession('rpc-dispose-shell') !== null)
+  await waitFor(() => shellEnvironment.getShell('rpc-dispose-shell') !== null)
 
   await client.close()
 
-  expect(shellEnvironment.getSession('rpc-dispose-shell')).toBeNull()
+  expect(shellEnvironment.getShell('rpc-dispose-shell')).toBeNull()
   await delay(250)
   await expect(access(leakedPath)).rejects.toThrow()
 })

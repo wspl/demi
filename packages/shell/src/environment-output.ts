@@ -10,18 +10,8 @@ const TAIL_SIZE = 4096
 export function runningResult(session: ShellSession, foreground: ForegroundProcess, reason: 'yield' | 'output_limit'): ShellToolResult {
   return {
     status: 'running',
-    sessionId: session.id,
+    shellId: session.id,
     reason,
-    output: snapshotFromForeground(session, foreground),
-    runningMs: Date.now() - foreground.startedAt,
-    idleMs: Date.now() - foreground.lastOutputAt,
-  }
-}
-
-export function needsInputResult(session: ShellSession, foreground: ForegroundProcess): ShellToolResult {
-  return {
-    status: 'needs_input',
-    sessionId: session.id,
     output: snapshotFromForeground(session, foreground),
     runningMs: Date.now() - foreground.startedAt,
     idleMs: Date.now() - foreground.lastOutputAt,
@@ -31,7 +21,7 @@ export function needsInputResult(session: ShellSession, foreground: ForegroundPr
 export function exitedResult(session: ShellSession, exitCode: number, output: OutputSnapshot): ShellToolResult {
   const result: ShellToolResult = {
     status: 'exited',
-    sessionId: session.id,
+    shellId: session.id,
     exitCode,
     output,
     audit: session.accumulator.audit,

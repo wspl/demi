@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto'
 import type { ToolResultContentBlock } from '@demi/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderDefinition, ProviderEvent } from '@demi/provider'
 import { claudeAuthState, claudeRuntimeState } from './cli'
-import { controlResponse, inferenceItemToClaudeMessage, requestToInputMessages, toolsListResponse } from './jsonl'
+import { controlResponse, inferenceItemToClaudeMessage, requestToInputMessages, toolResultsToClaudeMessage } from './jsonl'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
 import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
 
@@ -21,6 +22,9 @@ interface ActiveClaudeRun {
   iterator: AsyncIterator<unknown>
   pendingControlRequest: ClaudeControlRequest | null
   pendingToolUseIds: string[]
+  bufferedMessages: unknown[]
+  sdkMcpEnabled: boolean
+  hasStreamed: boolean
 }
 
 export class ClaudeCodeProvider implements AgentProvider {
@@ -34,11 +38,13 @@ export class ClaudeCodeProvider implements AgentProvider {
   }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-    const active = await this.ensureActive(request)
+    let active: ActiveClaudeRun | null = null
     let keepActiveForContinuation = false
     try {
+      active = await this.ensureActive(request)
+      const run = active
       const abort = abortPromise(request.cancel, async () => {
-        await active.transport.kill()
+        await run.transport.kill()
         this.active = null
       })
 
@@ -52,7 +58,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       }
 
       while (true) {
-        const next = await Promise.race([active.iterator.next(), abort])
+        const next = await Promise.race([this.nextMessage(run), abort])
         if (next.done) {
           const wasAborted = request.cancel.aborted
           const exit = await active.transport.wait()
@@ -67,13 +73,21 @@ export class ClaudeCodeProvider implements AgentProvider {
           return
         }
 
-        const mapped = mapClaudeStdoutMessage(next.value)
+        const raw = next.value
+        const ignoreAssistantContent = active.hasStreamed && isMessageType(raw, 'assistant')
+        const mapped = mapClaudeStdoutMessage(raw, {
+          ignoreAssistantContent,
+          ignoreAssistantToolUse: active.sdkMcpEnabled,
+        })
+        if (isMessageType(raw, 'stream_event')) active.hasStreamed = true
         if (mapped.controlRequest) {
           const handled = await this.handleControlRequest(active, mapped.controlRequest, request)
           if (handled === 'tool-call') {
             const event = controlRequestToToolCall(mapped.controlRequest)
             keepActiveForContinuation = true
-            if (event) yield event
+            if (event) {
+              yield event
+            }
             return
           }
           continue
@@ -88,18 +102,22 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (toolUseIds.length > 0) return
 
         if (mapped.terminal) {
-          await active.transport.wait()
           this.active = null
+          await active.transport.kill()
+          await active.transport.wait()
           return
         }
       }
     } catch (error) {
-      if (this.active === active) this.active = null
-      await active.transport.kill()
-      await active.transport.wait()
+      const cleanup = active ?? this.active
+      if (cleanup) {
+        if (this.active === cleanup) this.active = null
+        await cleanup.transport.kill()
+        await cleanup.transport.wait()
+      }
       throw error
     } finally {
-      if (!keepActiveForContinuation && this.active === active) {
+      if (!keepActiveForContinuation && active && this.active === active) {
         this.active = null
         await active.transport.kill()
         await active.transport.wait()
@@ -113,8 +131,20 @@ export class ClaudeCodeProvider implements AgentProvider {
     const transport = await this.transportFactory.start(request)
     const iterable = transport.messages()
     const iterator = iterable[Symbol.asyncIterator]()
-    const active: ActiveClaudeRun = { transport, iterator, pendingControlRequest: null, pendingToolUseIds: [] }
+    const active: ActiveClaudeRun = {
+      transport,
+      iterator,
+      pendingControlRequest: null,
+      pendingToolUseIds: [],
+      bufferedMessages: [],
+      sdkMcpEnabled: request.tools.length > 0,
+      hasStreamed: false,
+    }
     this.active = active
+
+    if (request.tools.length > 0) {
+      await this.initializeSdkMcp(active, request.systemPrompt)
+    }
 
     for (const message of requestToInputMessages(request)) {
       await transport.writeJson(message)
@@ -129,36 +159,45 @@ export class ClaudeCodeProvider implements AgentProvider {
     inference: InferenceRequest,
   ): Promise<'handled' | 'tool-call'> {
     if (request.method === 'initialize') {
-      await active.transport.writeJson(
-        controlResponse(request.id, {
-          protocolVersion: '2024-11-05',
-          capabilities: { tools: {} },
-          serverInfo: { name: 'demi', version: '0.0.0' },
-        }),
-      )
+      await this.writeControlResponse(active, request, {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'demi', version: '0.0.0' },
+      })
       return 'handled'
     }
 
     if (request.method === 'ping') {
-      await active.transport.writeJson(controlResponse(request.id, {}))
+      await this.writeControlResponse(active, request, {})
+      return 'handled'
+    }
+
+    if (request.method === 'notifications/initialized') {
+      await this.writeControlResponse(active, request, {})
       return 'handled'
     }
 
     if (request.method === 'tools/list') {
-      await active.transport.writeJson(controlResponse(request.id, toolsListResponse(inference.tools)))
+      await this.writeControlResponse(active, request, {
+        tools: inference.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        })),
+      })
       return 'handled'
     }
 
     if (request.method === 'tools/call') {
       if (!controlRequestToToolCall(request)) {
-        await active.transport.writeJson(controlResponse(request.id, { error: { message: 'Invalid tools/call request' } }))
+        await this.writeControlError(active, request, 'Invalid tools/call request')
         return 'handled'
       }
       active.pendingControlRequest = request
       return 'tool-call'
     }
 
-    await active.transport.writeJson(controlResponse(request.id, { error: { message: `Unsupported method: ${request.method}` } }))
+    await this.writeControlError(active, request, `Unsupported method: ${request.method}`)
     return 'handled'
   }
 
@@ -172,12 +211,18 @@ export class ClaudeCodeProvider implements AgentProvider {
     }
 
     const latest = results[results.length - 1]
-    await this.active.transport.writeJson(
-      controlResponse(controlRequest.id, {
-        content: toolResultContentToText(latest.output),
+    if (controlRequest.protocol === 'sdk-mcp') {
+      await this.writeControlResponse(this.active, controlRequest, {
+        content: toolResultContentToMcp(latest.output),
         isError: latest.isError,
-      }),
-    )
+      })
+      return
+    }
+
+    await this.writeControlResponse(this.active, controlRequest, {
+      content: toolResultContentToText(latest.output),
+      isError: latest.isError,
+    })
   }
 
   private async writeToolResultMessages(request: InferenceRequest, toolUseIds: string[]): Promise<void> {
@@ -192,10 +237,77 @@ export class ClaudeCodeProvider implements AgentProvider {
       throw new Error(`Claude Code provider missing tool_result for tool_use ${missing.join(', ')}`)
     }
 
-    for (const result of results) {
-      const message = inferenceItemToClaudeMessage(result)
-      if (message) await this.active.transport.writeJson(message)
+    await this.active.transport.writeJson(toolResultsToClaudeMessage(results))
+  }
+
+  private async initializeSdkMcp(active: ActiveClaudeRun, systemPrompt: string): Promise<void> {
+    const requestId = randomUUID()
+    await active.transport.writeJson({
+      type: 'control_request',
+      request_id: requestId,
+      request: {
+        subtype: 'initialize',
+        sdkMcpServers: ['main'],
+        systemPrompt,
+      },
+    })
+
+    while (true) {
+      const next = await active.iterator.next()
+      if (next.done) throw new Error('Claude Code exited before SDK MCP initialization completed')
+      if (isControlResponseFor(next.value, requestId)) return
+      active.bufferedMessages.push(next.value)
     }
+  }
+
+  private nextMessage(active: ActiveClaudeRun): Promise<IteratorResult<unknown>> {
+    const value = active.bufferedMessages.shift()
+    if (value !== undefined) return Promise.resolve({ done: false, value })
+    return active.iterator.next()
+  }
+
+  private async writeControlResponse(active: ActiveClaudeRun, request: ClaudeControlRequest, result: unknown): Promise<void> {
+    if (request.protocol === 'sdk-mcp') {
+      await active.transport.writeJson({
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: request.outerRequestId,
+          response: {
+            mcp_response: {
+              jsonrpc: '2.0',
+              id: request.id,
+              result,
+            },
+          },
+        },
+      })
+      return
+    }
+
+    await active.transport.writeJson(controlResponse(request.id, result))
+  }
+
+  private async writeControlError(active: ActiveClaudeRun, request: ClaudeControlRequest, message: string): Promise<void> {
+    if (request.protocol === 'sdk-mcp') {
+      await active.transport.writeJson({
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: request.outerRequestId,
+          response: {
+            mcp_response: {
+              jsonrpc: '2.0',
+              id: request.id,
+              error: { code: -32601, message },
+            },
+          },
+        },
+      })
+      return
+    }
+
+    await active.transport.writeJson(controlResponse(request.id, { error: { message } }))
   }
 }
 
@@ -227,16 +339,36 @@ export function parseClaudeCodeProviderConfig(config: unknown): ClaudeCodeProvid
   return parsed
 }
 
-function toolResultContentToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[image:${block.source.mediaType}]`)).join('\n')
-}
-
 function isToolCallRequested(event: ProviderEvent): event is Extract<ProviderEvent, { type: 'tool_call_requested' }> {
   return event.type === 'tool_call_requested'
 }
 
+function isControlResponseFor(value: unknown, requestId: string): boolean {
+  if (!isRecord(value) || value.type !== 'control_response' || !isRecord(value.response)) return false
+  return value.response.request_id === requestId && value.response.subtype === 'success'
+}
+
+function toolResultContentToText(output: ToolResultContentBlock[]): string {
+  return output.map((block) => (block.type === 'text' ? block.text : `[image:${block.source.mediaType}]`)).join('\n')
+}
+
+function toolResultContentToMcp(output: ToolResultContentBlock[]): Array<Record<string, unknown>> {
+  return output.map((block) => {
+    if (block.type === 'text') return { type: 'text', text: block.text }
+    return {
+      type: 'image',
+      data: Buffer.from(block.source.data).toString('base64'),
+      mimeType: block.source.mediaType,
+    }
+  })
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isMessageType(value: unknown, type: string): boolean {
+  return isRecord(value) && value.type === type
 }
 
 function abortPromise(

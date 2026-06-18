@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import { AgentSession } from '@demi/base-agent'
-import { BashEnvironment, type ShellToolResult } from '@demi/shell'
+import { BashEnvironment } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import { StubProvider, events, type InferenceRequest } from '@demi/provider'
 import { createCodingAgentDefinition } from '../index'
@@ -27,7 +27,7 @@ test('coding agent completes an editor/todo workflow through shell session tools
   const host = new LocalHost(root)
   const environment = new BashEnvironment({
     host,
-    sessionIdFactory: () => 'coding-session',
+    shellIdFactory: () => 'coding-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
   const definition = createCodingAgentDefinition({ environment })
@@ -40,18 +40,16 @@ test('coding agent completes an editor/todo workflow through shell session tools
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
-      if (result.status !== 'exited') throw new Error('expected exited result')
-      expect(result.output.stdoutDelta).toBe('Created src/app.ts\n')
-      return [events.toolCall('add-todo', 'shell_exec', { sessionId: result.sessionId, script: 'todo add "Run tests" --json' })]
+      expect(result.stdout).toBe('Created src/app.ts')
+      return [events.toolCall('add-todo', 'shell_exec', { shellId: result.shellId, script: 'todo add "Run tests" --json' })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
-      if (result.status !== 'exited') throw new Error('expected exited result')
-      expect(JSON.parse(result.output.stdoutDelta)).toEqual({ todo: { id: 'T1', text: 'Run tests', status: 'pending' } })
+      expect(JSON.parse(result.stdout)).toEqual({ todo: { id: 'T1', text: 'Run tests', status: 'pending' } })
       return [
         events.toolCall('edit-file', 'shell_exec', {
-          sessionId: result.sessionId,
+          shellId: result.shellId,
           script: 'editor edit src/app.ts --old "1" --new "2"',
         }),
       ]
@@ -59,8 +57,7 @@ test('coding agent completes an editor/todo workflow through shell session tools
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
-      if (result.status !== 'exited') throw new Error('expected exited result')
-      expect(result.output.stdoutDelta).toBe('Edited src/app.ts\n')
+      expect(result.stdout).toBe('Edited src/app.ts')
       return [events.text('done'), events.response()]
     },
   ])
@@ -76,16 +73,32 @@ test('coding agent completes an editor/todo workflow through shell session tools
     'text',
     'response',
   ])
-  const file = await environment.exec({ sessionId: 'coding-session', script: 'cat src/app.ts' })
+  const file = await environment.exec({ shellId: 'coding-shell', script: 'cat src/app.ts' })
   expect(file.output.stdoutDelta).toBe('export const value = 2\n')
-  const todos = await environment.exec({ sessionId: 'coding-session', script: 'todo list --json' })
+  const todos = await environment.exec({ agentSessionId: session.id(), shellId: 'coding-shell', script: 'todo list --json' })
   expect(JSON.parse(todos.output.stdoutDelta)).toEqual({ todos: [{ id: 'T1', text: 'Run tests', status: 'pending' }] })
 })
 
-function latestShellResult(request: InferenceRequest): ShellToolResult {
+function latestShellResult(request: InferenceRequest): { status: string; shellId: string; stdout: string } {
   const item = [...request.items].reverse().find((candidate) => candidate.type === 'tool_result')
   if (item?.type !== 'tool_result') throw new Error('missing tool result')
   const [first] = item.output
   if (first?.type !== 'text') throw new Error('tool result was not text')
-  return JSON.parse(first.text) as ShellToolResult
+  return {
+    status: requiredField(first.text, 'status'),
+    shellId: requiredField(first.text, 'shellId'),
+    stdout: section(first.text, 'stdout'),
+  }
+}
+
+function requiredField(text: string, name: string): string {
+  const match = new RegExp(`^${name}: (.*)$`, 'm').exec(text)
+  if (!match) throw new Error(`missing field ${name} in ${text}`)
+  return match[1]
+}
+
+function section(text: string, name: string): string {
+  const match = new RegExp(`^${name}:\\n([\\s\\S]*?)(?:\\n[a-zA-Z]+:|\\nnext:|$)`, 'm').exec(text)
+  if (!match) throw new Error(`missing section ${name} in ${text}`)
+  return match[1] === '(empty)' ? '' : match[1]
 }

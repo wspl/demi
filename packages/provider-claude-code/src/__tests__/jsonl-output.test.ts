@@ -32,6 +32,51 @@ test('requestToInputMessages converts inference items to stream-json input messa
   })
 })
 
+test('requestToInputMessages groups Claude assistant turns and tool results', () => {
+  const messages = requestToInputMessages({
+    modelId: 'model',
+    systemPrompt: 'system',
+    cwd: '/tmp',
+    tools: [],
+    thinking: null,
+    cancel: new AbortController().signal,
+    items: [
+      { type: 'user_message', content: [{ type: 'text', text: 'run checks' }] },
+      { type: 'assistant_thinking', modelId: 'model', text: 'I will inspect.', signature: 'sig' },
+      { type: 'assistant_text', modelId: 'model', text: 'Checking.' },
+      { type: 'tool_use', modelId: 'model', toolUseId: 'tool-1', toolName: 'mcp__main__shell_exec', input: { script: 'pwd' } },
+      { type: 'tool_use', modelId: 'model', toolUseId: 'tool-2', toolName: 'mcp__main__shell_exec', input: { script: 'ls' } },
+      { type: 'tool_result', toolUseId: 'tool-1', output: [{ type: 'text', text: '/tmp' }], isError: false },
+      { type: 'tool_result', toolUseId: 'tool-2', output: [{ type: 'text', text: 'file.txt' }], isError: false },
+      { type: 'assistant_text', modelId: 'model', text: 'Done.' },
+    ],
+  })
+
+  expect(messages).toHaveLength(4)
+  expect(messages[1]).toEqual({
+    type: 'assistant',
+    message: {
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'I will inspect.', signature: 'sig' },
+        { type: 'text', text: 'Checking.' },
+        { type: 'tool_use', id: 'tool-1', name: 'mcp__main__shell_exec', input: { script: 'pwd' } },
+        { type: 'tool_use', id: 'tool-2', name: 'mcp__main__shell_exec', input: { script: 'ls' } },
+      ],
+    },
+  })
+  expect(messages[2]).toEqual({
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'tool-1', is_error: false, content: '/tmp' },
+        { type: 'tool_result', tool_use_id: 'tool-2', is_error: false, content: 'file.txt' },
+      ],
+    },
+  })
+})
+
 test('requestToInputMessages converts binary media content to Claude base64 sources', () => {
   const messages = requestToInputMessages({
     modelId: 'model',

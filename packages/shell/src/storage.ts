@@ -2,15 +2,15 @@ import type { CommandStorage } from './command'
 
 export type DemiStore = CommandStorage
 
-export class SessionCommandStorage implements CommandStorage {
-  private readonly sessionPrefix: string
+export class AgentSessionCommandStorage implements CommandStorage {
+  private readonly agentSessionPrefix: string
 
   constructor(
     private readonly store: DemiStore,
-    sessionId: string,
+    agentSessionId: string,
   ) {
-    validateSessionId(sessionId)
-    this.sessionPrefix = `${sessionId}/`
+    validateAgentSessionId(agentSessionId)
+    this.agentSessionPrefix = `${agentSessionId}/`
   }
 
   readJson<T>(key: string): Promise<T | null> {
@@ -28,18 +28,24 @@ export class SessionCommandStorage implements CommandStorage {
   async list(prefix: string): Promise<string[]> {
     const scopedPrefix = this.key(prefix)
     const keys = await this.store.list(scopedPrefix)
-    return keys.map((key) => (key.startsWith(this.sessionPrefix) ? key.slice(this.sessionPrefix.length) : key))
+    return keys.map((key) => (key.startsWith(this.agentSessionPrefix) ? key.slice(this.agentSessionPrefix.length) : key))
   }
 
   private key(key: string): string {
     validateStorageKey(key)
-    return `${this.sessionPrefix}${key}`
+    return `${this.agentSessionPrefix}${key}`
   }
 }
 
-function validateSessionId(sessionId: string): void {
-  if (!sessionId || sessionId.includes('\0') || /[\\/]/.test(sessionId) || sessionId === '.' || sessionId === '..') {
-    throw new Error(`Invalid command storage session id: ${sessionId}`)
+function validateAgentSessionId(agentSessionId: string): void {
+  if (
+    !agentSessionId ||
+    agentSessionId.includes('\0') ||
+    /[\\/]/.test(agentSessionId) ||
+    agentSessionId === '.' ||
+    agentSessionId === '..'
+  ) {
+    throw new Error(`Invalid command storage agent session id: ${agentSessionId}`)
   }
 }
 

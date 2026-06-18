@@ -47,6 +47,16 @@ export function createCodingAgentDefinition(options: CodingAgentOptions): AgentD
       const sections = [
         'You are a coding agent. Use shell session tools to inspect, edit, test, and verify the workspace.',
         'Prefer registered commands for agent-specific state and audited workflows. Use normal system commands for ordinary shell work.',
+        [
+          'Shell session rules:',
+          '- Use shell_exec for commands. Its result is readable text with status, shellId, stdout, stderr, and next action.',
+          '- If status is running, poll with shell_wait; each poll waits from that call, not from process start.',
+          '- For dev servers, watch commands, previews, and other long-running processes that you need to observe and stop, run them in the foreground with a short yieldAfterMs, then use shell_wait and shell_abort. Avoid starting them with "&" and avoid pkill/killall by process name.',
+          '- Prefer non-interactive CLI flags for scaffolds and package tools when available.',
+          '- For underspecified scaffold requests, choose a reasonable non-interactive default and proceed unless the choice is destructive or impossible.',
+          '- Send non-empty stdin with shell_input only when the running command is known to be waiting for specific input.',
+          '- Use shell_abort only when intentionally stopping a foreground command.',
+        ].join('\n'),
         'File references attached by the client are expanded before provider calls.',
       ]
       if (commandPrompt.trim()) sections.push(`Registered commands:\n\n${commandPrompt}`)
@@ -55,7 +65,7 @@ export function createCodingAgentDefinition(options: CodingAgentOptions): AgentD
     resolveReferences,
     tools: () => createShellSessionTools(options.environment),
     commands: () => [...commands],
-    dispose: () => options.environment.disposeAllSessions(),
+    dispose: () => options.environment.disposeAllShells(),
   }
 }
 

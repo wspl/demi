@@ -162,7 +162,7 @@ export class RpcHost {
     try {
       if (session) await session.abort()
       if (session && definition && cwd) {
-        await definition.dispose?.({ state: session.state(), cwd, transcript: session.transcript() })
+        await definition.dispose?.({ agentSessionId: session.id(), state: session.state(), cwd, transcript: session.transcript() })
       }
     } finally {
       this.unsubscribeSession?.()
@@ -178,7 +178,7 @@ export class RpcHost {
     const session = this.sessionFor('shell_input')
     if (!session || !this.currentDefinition || !this.currentCwd) return
 
-    const tools = this.currentDefinition.tools({ state: session.state(), cwd: this.currentCwd })
+    const tools = this.currentDefinition.tools({ agentSessionId: session.id(), state: session.state(), cwd: this.currentCwd })
     const tool = tools.find((candidate) => candidate.name === 'shell_input')
     if (!tool) {
       this.send({ type: 'rejected', command: 'shell_input', reason: 'Current definition does not expose shell_input' })
@@ -188,18 +188,19 @@ export class RpcHost {
     let emittedProgress = false
     const result = await tool.invoke(
       {
+        agentSessionId: session.id(),
         state: session.state(),
         cwd: this.currentCwd,
-        toolCallId: frame.sessionId,
+        toolCallId: frame.shellId,
         signal: new AbortController().signal,
         emitProgress: (progress) => {
           emittedProgress = true
-          this.sendShellInputResult(frame.sessionId, progress)
+          this.sendShellInputResult(frame.shellId, progress)
         },
       },
-      { sessionId: frame.sessionId, stdin: frame.stdin },
+      { shellId: frame.shellId, stdin: frame.stdin },
     )
-    if (!emittedProgress) this.sendShellInputResult(frame.sessionId, result.metadata ?? result.output)
+    if (!emittedProgress) this.sendShellInputResult(frame.shellId, result.metadata ?? result.output)
   }
 
   private sessionFor(command: string): AgentSession<unknown> | null {
@@ -221,17 +222,17 @@ export class RpcHost {
     const output = progressToOutput(progress)
     this.send({ type: 'tool_progress', toolUseId: toolCallId, output })
     const shell = progressToShellOutput(progress)
-    if (shell) this.send({ type: 'shell_output', sessionId: shell.sessionId, snapshot: shell.snapshot })
+    if (shell) this.send({ type: 'shell_output', shellId: shell.shellId, snapshot: shell.snapshot })
     const audit = progressToAudit(progress)
     if (audit.length > 0) this.send({ type: 'audit', events: audit })
   }
 
-  private sendShellInputResult(sessionId: string, progress: unknown): void {
+  private sendShellInputResult(shellId: string, progress: unknown): void {
     const shell = progressToShellOutput(progress)
-    if (shell) this.send({ type: 'shell_output', sessionId: shell.sessionId, snapshot: shell.snapshot })
+    if (shell) this.send({ type: 'shell_output', shellId: shell.shellId, snapshot: shell.snapshot })
     const audit = progressToAudit(progress)
     if (audit.length > 0) this.send({ type: 'audit', events: audit })
-    this.send({ type: 'shell_input_result', sessionId, output: progressToOutput(progress) })
+    this.send({ type: 'shell_input_result', shellId, output: progressToOutput(progress) })
   }
 
   private send(frame: ServerFrame): void {
@@ -279,9 +280,9 @@ function safeStringify(value: unknown): string | undefined {
   })
 }
 
-function progressToShellOutput(progress: unknown): { sessionId: string; snapshot: OutputSnapshotLike } | null {
+function progressToShellOutput(progress: unknown): { shellId: string; snapshot: OutputSnapshotLike } | null {
   if (!isRecord(progress)) return null
-  if (typeof progress.sessionId !== 'string' || !isRecord(progress.output)) return null
+  if (typeof progress.shellId !== 'string' || !isRecord(progress.output)) return null
   const output = progress.output
   if (
     typeof output.stdoutDelta !== 'string' ||
@@ -294,7 +295,7 @@ function progressToShellOutput(progress: unknown): { sessionId: string; snapshot
   ) {
     return null
   }
-  return { sessionId: progress.sessionId, snapshot: output as unknown as OutputSnapshotLike }
+  return { shellId: progress.shellId, snapshot: output as unknown as OutputSnapshotLike }
 }
 
 function progressToAudit(progress: unknown): BashAuditEvent[] {

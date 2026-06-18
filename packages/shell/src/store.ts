@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
 import type { DemiStore } from './storage'
 
-export { SessionCommandStorage, type DemiStore } from './storage'
+export { AgentSessionCommandStorage, type DemiStore } from './storage'
 
 export class LocalDemiStore implements DemiStore {
   readonly root: string

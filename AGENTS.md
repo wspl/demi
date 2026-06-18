@@ -1,0 +1,10 @@
+- Read the relevant code and `agent-rewrite-plan.md` before changing behavior.
+- Update design docs before implementing new architecture rules.
+- Keep changes scoped to the current checkpoint and preserve unrelated user work.
+- Use `shellId` for shell control handles and agent session ids for agent-scoped state.
+- Use `shell_wait` to poll, `shell_input` only for non-empty stdin, and `shell_abort` to stop controlled foreground processes.
+- Run dev servers, watchers, and previews in the foreground with `yieldAfterMs`; avoid `pkill` or `killall` by process name.
+- Use the Claude Code provider with `claude-opus-4-8` and medium thinking for real TUI smoke tests.
+- Run focused tests for touched behavior, then `bun run typecheck` and `bun run test` before checkpoint commits.
+- Commit each completed checkpoint automatically.
+- Use Conventional Commit subjects; feature checkpoints use `feat: ...`.

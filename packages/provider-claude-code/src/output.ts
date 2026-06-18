@@ -8,17 +8,25 @@ export interface OutputMapping {
 }
 
 export interface ClaudeControlRequest {
+  protocol: 'legacy' | 'sdk-mcp'
+  outerRequestId?: string
+  serverName?: string
   id: string | number
   method: string
   params?: unknown
 }
 
-export function mapClaudeStdoutMessage(message: unknown): OutputMapping {
+export interface ClaudeOutputMapOptions {
+  ignoreAssistantContent?: boolean
+  ignoreAssistantToolUse?: boolean
+}
+
+export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMapOptions = {}): OutputMapping {
   const events: ProviderEvent[] = []
   if (!isRecord(message)) return { events, terminal: false }
 
-  if (message.type === 'assistant' && isRecord(message.message)) {
-    events.push(...mapContentArray((message.message as { content?: unknown }).content))
+  if (message.type === 'assistant' && isRecord(message.message) && !options.ignoreAssistantContent) {
+    events.push(...mapContentArray((message.message as { content?: unknown }).content, options))
   }
 
   if (message.type === 'stream_event' && isRecord(message.event)) {
@@ -32,7 +40,7 @@ export function mapClaudeStdoutMessage(message: unknown): OutputMapping {
 
   if (message.type === 'result') {
     if (message.is_error === true) {
-      events.push({ type: 'error', message: String(message.result ?? 'Claude Code returned an error'), code: null })
+      events.push({ type: 'error', message: resultErrorMessage(message), code: null })
     }
     events.push({ type: 'response', usage: mapUsage(message.usage) })
     return { events, terminal: true }
@@ -58,7 +66,7 @@ export function controlRequestToToolCall(request: ClaudeControlRequest): Provide
   }
 }
 
-function mapContentArray(content: unknown): ProviderEvent[] {
+function mapContentArray(content: unknown, options: ClaudeOutputMapOptions): ProviderEvent[] {
   if (!Array.isArray(content)) return []
   const events: ProviderEvent[] = []
   for (const block of content) {
@@ -70,7 +78,7 @@ function mapContentArray(content: unknown): ProviderEvent[] {
       if (typeof block.signature === 'string') events.push({ type: 'thinking_signature', signature: block.signature })
     } else if (block.type === 'redacted_thinking') {
       events.push({ type: 'redacted_thinking', data: String(block.data ?? '') })
-    } else if (block.type === 'tool_use') {
+    } else if (block.type === 'tool_use' && !options.ignoreAssistantToolUse) {
       events.push(mapToolUseBlock(block))
     }
   }
@@ -109,10 +117,29 @@ function mapStreamEvent(event: Record<string, unknown>): ProviderEvent[] {
 }
 
 function parseControlRequest(message: Record<string, unknown>): ClaudeControlRequest | null {
+  if (typeof message.request_id === 'string' && isRecord(message.request)) {
+    const request = message.request
+    if (request.subtype !== 'mcp_message') return null
+    if (request.server_name !== 'main') return null
+    if (!isRecord(request.message)) return null
+    const inner = request.message
+    const id = typeof inner.id === 'string' || typeof inner.id === 'number' ? inner.id : 0
+    const method = typeof inner.method === 'string' ? inner.method : undefined
+    if (!method) return null
+    return {
+      protocol: 'sdk-mcp',
+      outerRequestId: message.request_id,
+      serverName: request.server_name,
+      id,
+      method,
+      params: inner.params,
+    }
+  }
+
   const id = typeof message.id === 'string' || typeof message.id === 'number' ? message.id : undefined
   const method = typeof message.method === 'string' ? message.method : undefined
   if (id === undefined || !method) return null
-  return { id, method, params: message.params }
+  return { protocol: 'legacy', id, method, params: message.params }
 }
 
 function mapUsage(usage: unknown): TokenUsage {
@@ -133,6 +160,18 @@ function numberValue(value: unknown): number {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null
+}
+
+function resultErrorMessage(message: Record<string, unknown>): string {
+  const parts: string[] = []
+  if (typeof message.result === 'string' && message.result.trim()) parts.push(message.result.trim())
+  if (Array.isArray(message.errors)) {
+    for (const error of message.errors) {
+      const text = String(error).trim()
+      if (text) parts.push(text)
+    }
+  }
+  return parts.join('\n') || 'Claude Code returned an error'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

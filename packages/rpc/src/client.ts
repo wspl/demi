@@ -68,9 +68,9 @@ export class RpcClient {
     return wait
   }
 
-  shellInput(sessionId: string, stdin: string): Promise<void> {
-    const wait = this.waitForShellInput(sessionId)
-    this.sendFrame({ type: 'shell_input', sessionId, stdin })
+  shellInput(shellId: string, stdin: string): Promise<void> {
+    const wait = this.waitForShellInput(shellId)
+    this.sendFrame({ type: 'shell_input', shellId, stdin })
     return wait
   }
 
@@ -249,15 +249,15 @@ export class RpcClient {
     })
   }
 
-  private waitForShellInput(sessionId: string): Promise<void> {
+  private waitForShellInput(shellId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const unsubscribe = this.subscribe((event) => {
-        if (event.type === 'shell_output' && event.sessionId === sessionId) {
+        if (event.type === 'shell_output' && event.shellId === shellId) {
           unsubscribe()
           resolve()
           return
         }
-        if (event.type === 'shell_input_result' && event.sessionId === sessionId) {
+        if (event.type === 'shell_input_result' && event.shellId === shellId) {
           unsubscribe()
           resolve()
           return

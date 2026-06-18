@@ -14,10 +14,43 @@ export interface ClaudeInputMessage {
 
 export function requestToInputMessages(request: InferenceRequest): ClaudeInputMessage[] {
   const messages: ClaudeInputMessage[] = []
-  for (const item of request.items) {
-    const message = inferenceItemToClaudeMessage(item)
-    if (message) messages.push(message)
+  let pending: ClaudeInputMessage | null = null
+  let pendingUserKind: 'user_message' | 'tool_result' | null = null
+
+  const flush = (): void => {
+    if (pending) messages.push(pending)
+    pending = null
+    pendingUserKind = null
   }
+
+  for (const item of request.items) {
+    switch (item.type) {
+      case 'user_message':
+        flush()
+        messages.push({ type: 'user', message: { role: 'user', content: userContentToClaude(item.content) } })
+        break
+      case 'assistant_text':
+      case 'assistant_thinking':
+      case 'assistant_redacted_thinking':
+      case 'tool_use': {
+        if (pending?.type !== 'assistant') {
+          flush()
+          pending = { type: 'assistant', message: { role: 'assistant', content: [] } }
+        }
+        pending.message?.content.push(assistantItemToClaudeContent(item))
+        break
+      }
+      case 'tool_result':
+        if (pending?.type !== 'user' || pendingUserKind !== 'tool_result') {
+          flush()
+          pending = { type: 'user', message: { role: 'user', content: [] } }
+          pendingUserKind = 'tool_result'
+        }
+        pending.message?.content.push(toolResultToClaudeContent(item))
+        break
+    }
+  }
+  flush()
   return messages
 }
 
@@ -26,42 +59,27 @@ export function inferenceItemToClaudeMessage(item: InferenceItem): ClaudeInputMe
     case 'user_message':
       return { type: 'user', message: { role: 'user', content: userContentToClaude(item.content) } }
     case 'assistant_text':
-      return { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: item.text }] } }
+      return { type: 'assistant', message: { role: 'assistant', content: [assistantItemToClaudeContent(item)] } }
     case 'assistant_thinking':
-      return {
-        type: 'assistant',
-        message: { role: 'assistant', content: [{ type: 'thinking', thinking: item.text, signature: item.signature }] },
-      }
+      return { type: 'assistant', message: { role: 'assistant', content: [assistantItemToClaudeContent(item)] } }
     case 'assistant_redacted_thinking':
-      return {
-        type: 'assistant',
-        message: { role: 'assistant', content: [{ type: 'redacted_thinking', data: item.data }] },
-      }
+      return { type: 'assistant', message: { role: 'assistant', content: [assistantItemToClaudeContent(item)] } }
     case 'tool_use':
-      return {
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: item.toolUseId, name: item.toolName, input: item.input }],
-        },
-      }
+      return { type: 'assistant', message: { role: 'assistant', content: [assistantItemToClaudeContent(item)] } }
     case 'tool_result':
-      return {
-        type: 'user',
-        message: {
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: item.toolUseId,
-              is_error: item.isError,
-              content: toolResultToText(item.output),
-            },
-          ],
-        },
-      }
+      return toolResultsToClaudeMessage([item])
   }
   return null
+}
+
+export function toolResultsToClaudeMessage(results: Array<Extract<InferenceItem, { type: 'tool_result' }>>): ClaudeInputMessage {
+  return {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: results.map(toolResultToClaudeContent),
+    },
+  }
 }
 
 export function inputMessagesToJsonl(messages: ClaudeInputMessage[]): string {
@@ -89,6 +107,26 @@ function userContentToClaude(content: UserContentBlock[]): unknown[] {
     if (block.type === 'document') return documentSourceToClaude(block.source)
     return { type: 'text', text: block.reference }
   })
+}
+
+function assistantItemToClaudeContent(
+  item: Extract<InferenceItem, { type: 'assistant_text' | 'assistant_thinking' | 'assistant_redacted_thinking' | 'tool_use' }>,
+): unknown {
+  if (item.type === 'assistant_text') return { type: 'text', text: item.text }
+  if (item.type === 'assistant_thinking') {
+    return { type: 'thinking', thinking: item.text, signature: item.signature }
+  }
+  if (item.type === 'assistant_redacted_thinking') return { type: 'redacted_thinking', data: item.data }
+  return { type: 'tool_use', id: item.toolUseId, name: item.toolName, input: item.input }
+}
+
+function toolResultToClaudeContent(item: Extract<InferenceItem, { type: 'tool_result' }>): unknown {
+  return {
+    type: 'tool_result',
+    tool_use_id: item.toolUseId,
+    is_error: item.isError,
+    content: toolResultToText(item.output),
+  }
 }
 
 function imageSourceToClaude(source: ImageSource): unknown {

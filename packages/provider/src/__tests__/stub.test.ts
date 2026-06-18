@@ -67,9 +67,9 @@ test('StubProvider supports tool-call round-trip with function scripts', async (
 test('StubProvider throws when turns run out', async () => {
   const provider = new StubProvider([[events.response()]])
   // consume turn 1
-  for await (const _ of provider.run(makeRequest([]))) void _ // eslint-disable-line @typescript-eslint/no-unused-vars
+  for await (const _ of provider.run(makeRequest([]))) void _
   // turn 2 has no script
   await expect(async () => {
-    for await (const _ of provider.run(makeRequest([]))) void _ // eslint-disable-line @typescript-eslint/no-unused-vars
+    for await (const _ of provider.run(makeRequest([]))) void _
   }).toThrow('ran out of turns')
 })

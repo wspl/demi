@@ -3,7 +3,7 @@ import type { CommandSpec, CommandStorage } from '@demi/shell'
 
 const TODO_STORAGE_KEY = 'todos.json'
 
-const TodoStatus = z.enum(['pending', 'done'])
+const TodoStatus = z.enum(['pending', 'in_progress', 'done'])
 
 const TodoItemSchema = z.object({
   id: z.string(),
@@ -18,7 +18,7 @@ type TodoItem = z.infer<typeof TodoItemSchema>
 export function createTodoCommand(): CommandSpec {
   return {
     name: 'todo',
-    summary: 'Manage a session-scoped task list for coding work.',
+    summary: 'Manage an agent-session-scoped task list for coding work.',
     subcommands: [
       {
         name: 'list',
@@ -45,7 +45,7 @@ export function createTodoCommand(): CommandSpec {
       {
         name: 'add',
         summary: 'Add a new todo.',
-        effects: 'modifies session-scoped command storage; does not modify workspace files',
+        effects: 'modifies agent-session-scoped command storage; does not modify workspace files',
         successOutput: 'writes the created todo as raw text, or JSON matching { todo } when --json is passed',
         failureOutput: 'writes validation or storage errors to stderr and exits non-zero',
         input: {
@@ -73,7 +73,7 @@ export function createTodoCommand(): CommandSpec {
       {
         name: 'update',
         summary: 'Update todo text or status.',
-        effects: 'modifies session-scoped command storage; does not modify workspace files',
+        effects: 'modifies agent-session-scoped command storage; does not modify workspace files',
         successOutput: 'writes the updated todo as raw text, or JSON matching { todo } when --json is passed',
         failureOutput: 'writes "Todo not found" or validation/storage errors to stderr and exits non-zero',
         input: {
@@ -85,7 +85,7 @@ export function createTodoCommand(): CommandSpec {
         output: {
           json: z.object({ todo: TodoItemSchema }),
         },
-        examples: ['todo update T1 --text "Run full test suite"', 'todo update T1 --status done --json'],
+        examples: ['todo update T1 --text "Run full test suite"', 'todo update T1 --status in_progress --json'],
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           const todo = findTodo(todos, String(parsed.values.id))
@@ -104,7 +104,7 @@ export function createTodoCommand(): CommandSpec {
       {
         name: 'done',
         summary: 'Mark a todo as done.',
-        effects: 'modifies session-scoped command storage; does not modify workspace files',
+        effects: 'modifies agent-session-scoped command storage; does not modify workspace files',
         successOutput: 'writes the completed todo as raw text, or JSON matching { todo } when --json is passed',
         failureOutput: 'writes "Todo not found" or validation/storage errors to stderr and exits non-zero',
         input: {
@@ -155,6 +155,6 @@ function nextTodoId(todos: TodoItem[]): string {
 }
 
 function formatTodo(todo: TodoItem): string {
-  const marker = todo.status === 'done' ? 'x' : ' '
+  const marker = todo.status === 'done' ? 'x' : todo.status === 'in_progress' ? '-' : ' '
   return `[${marker}] ${todo.id} ${todo.text}`
 }

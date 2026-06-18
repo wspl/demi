@@ -38,6 +38,7 @@ export class AgentSession<State> {
   private readonly model: ModelSelection
   private readonly cwd: string
   private readonly definition: AgentDefinition<State>
+  private readonly agentSessionId: string
   private readonly idFactory: () => string
   private readonly store?: AgentSessionStore<State>
   private readonly compactionKeepRecentTokens: number
@@ -61,6 +62,7 @@ export class AgentSession<State> {
     this.cwd = params.cwd
     this.definition = params.definition
     this.agentState = params.definition.initialState()
+    this.agentSessionId = options.agentSessionId ?? defaultIdFactory()
     this.idFactory = options.idFactory ?? defaultIdFactory
     this.store = options.store
     this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens ?? DEFAULT_KEEP_RECENT_TOKENS
@@ -121,6 +123,10 @@ export class AgentSession<State> {
 
   state(): State {
     return this.agentState
+  }
+
+  id(): string {
+    return this.agentSessionId
   }
 
   phase(): SessionPhase {
@@ -241,6 +247,7 @@ export class AgentSession<State> {
   private async executeSend(content: UserContentBlock[]): Promise<void> {
     await this.definition.lifecycle?.({
       type: 'before_round_start',
+      agentSessionId: this.agentSessionId,
       state: this.agentState,
       transcript: this.transcriptLog,
       content,
@@ -265,6 +272,7 @@ export class AgentSession<State> {
         resolver(
           {
             state: this.agentState,
+            agentSessionId: this.agentSessionId,
             cwd: this.cwd,
             transcript: this.transcriptLog,
             signal,
@@ -284,6 +292,7 @@ export class AgentSession<State> {
     this.transcriptLog.blocks.splice(lastUserIndex + 1)
     await this.definition.lifecycle?.({
       type: 'after_transcript_rewrite',
+      agentSessionId: this.agentSessionId,
       state: this.agentState,
       transcript: this.transcriptLog,
       reason: 'retry',
@@ -381,6 +390,7 @@ export class AgentSession<State> {
       )
       await this.definition.lifecycle?.({
         type: 'after_tool_call',
+        agentSessionId: this.agentSessionId,
         state: this.agentState,
         transcript: this.transcriptLog,
         toolCallId: toolCall.toolUseId,
@@ -403,6 +413,7 @@ export class AgentSession<State> {
       Promise.resolve(
         tool.invoke(
           {
+            agentSessionId: this.agentSessionId,
             state: this.agentState,
             cwd: this.cwd,
             toolCallId,
@@ -517,11 +528,13 @@ export class AgentSession<State> {
   }
 
   private promptContext(): {
+    agentSessionId: string
     state: State
     cwd: string
     transcript: Transcript
   } {
     return {
+      agentSessionId: this.agentSessionId,
       state: this.agentState,
       cwd: this.cwd,
       transcript: this.transcriptLog,
@@ -529,7 +542,7 @@ export class AgentSession<State> {
   }
 
   private currentTools(): AgentTool<State>[] {
-    return this.definition.tools({ state: this.agentState, cwd: this.cwd })
+    return this.definition.tools({ agentSessionId: this.agentSessionId, state: this.agentState, cwd: this.cwd })
   }
 
   private isUsageNearLimit(usage: { inputTokens: number; outputTokens: number }): boolean {

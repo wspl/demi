@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import { AgentSession, type AgentDefinition } from '@demi/base-agent'
-import { BashEnvironment, createShellSessionTools, type ShellToolResult } from '@demi/shell'
+import { BashEnvironment, createShellSessionTools } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import type { InferenceRequest } from '@demi/provider'
 import {
@@ -43,6 +43,10 @@ function makeRequest(items: InferenceRequest['items'] = []): InferenceRequest {
   }
 }
 
+function makeRequestWithoutTools(items: InferenceRequest['items'] = []): InferenceRequest {
+  return { ...makeRequest(items), tools: [] }
+}
+
 test('Claude Code provider definition only accepts serializable config fields', async () => {
   const injectedFactory = fakeFactory(new FakeClaudeTransport([]))
   expect(
@@ -81,7 +85,7 @@ test('ClaudeCodeProvider streams text and response events from transport message
     { type: 'text_delta', text: 'hello' },
     { type: 'response', usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 } },
   ])
-  expect(transport.writes[0]).toMatchObject({ type: 'user' })
+  expect(transport.writes.find((write) => isRecord(write) && write.type === 'user')).toMatchObject({ type: 'user' })
   expect(transport.waitCalls).toBe(1)
 })
 
@@ -142,6 +146,54 @@ test('ClaudeCodeProvider handles control_request tool calls across run calls', a
   ])
 })
 
+test('ClaudeCodeProvider handles SDK MCP control_request tool calls across run calls', async () => {
+  const transport = new FakeClaudeTransport([
+    sdkMcpRequest('list-sdk', 'list-1', 'tools/list'),
+    sdkMcpRequest('call-sdk', 'call-1', 'tools/call', {
+      name: 'shell_exec',
+      arguments: { script: 'pwd' },
+    }),
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'after sdk tool' }] } },
+    { type: 'result', usage: { input_tokens: 2, output_tokens: 4 } },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+
+  const firstEvents = []
+  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
+    firstEvents.push(event)
+  }
+
+  expect(firstEvents).toEqual([
+    { type: 'tool_call_requested', toolUseId: 'call-1', toolName: 'shell_exec', input: { script: 'pwd' } },
+  ])
+  expect(findSdkMcpResponse(transport.writes, 'list-sdk').result).toEqual({
+    tools: [{ name: 'shell_exec', description: 'Execute shell', inputSchema: { type: 'object' } }],
+  })
+
+  const secondEvents = []
+  for await (const event of provider.run(
+    makeRequest([
+      {
+        type: 'tool_result',
+        toolUseId: 'call-1',
+        output: [{ type: 'text', text: '/tmp' }],
+        isError: false,
+      },
+    ]),
+  )) {
+    secondEvents.push(event)
+  }
+
+  expect(findSdkMcpResponse(transport.writes, 'call-sdk').result).toEqual({
+    content: [{ type: 'text', text: '/tmp' }],
+    isError: false,
+  })
+  expect(secondEvents).toEqual([
+    { type: 'text_delta', text: 'after sdk tool' },
+    { type: 'response', usage: { inputTokens: 2, outputTokens: 4, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ])
+})
+
 test('ClaudeCodeProvider handles assistant tool_use messages across run calls', async () => {
   const transport = new FakeClaudeTransport([
     {
@@ -159,7 +211,7 @@ test('ClaudeCodeProvider handles assistant tool_use messages across run calls', 
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
 
   const firstEvents = []
-  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
+  for await (const event of provider.run(makeRequestWithoutTools([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
     firstEvents.push(event)
   }
 
@@ -170,7 +222,7 @@ test('ClaudeCodeProvider handles assistant tool_use messages across run calls', 
 
   const secondEvents = []
   for await (const event of provider.run(
-    makeRequest([
+    makeRequestWithoutTools([
       {
         type: 'tool_result',
         toolUseId: 'native-tool-1',
@@ -208,7 +260,7 @@ test('ClaudeCodeProvider fails fast when an assistant tool_use has no matching t
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
 
   const firstEvents = []
-  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
+  for await (const event of provider.run(makeRequestWithoutTools([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
     firstEvents.push(event)
   }
   expect(firstEvents).toEqual([
@@ -216,7 +268,7 @@ test('ClaudeCodeProvider fails fast when an assistant tool_use has no matching t
   ])
 
   const secondRun = async () => {
-    for await (const _event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'missing result' }] }]))) {
+    for await (const _event of provider.run(makeRequestWithoutTools([{ type: 'user_message', content: [{ type: 'text', text: 'missing result' }] }]))) {
       // The provider should throw before reading more Claude output.
     }
   }
@@ -238,7 +290,7 @@ test('ClaudeCodeProvider reports malformed assistant tool_use blocks as provider
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
 
   const events = []
-  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
+  for await (const event of provider.run(makeRequestWithoutTools([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
     events.push(event)
     if (event.type === 'error') break
   }
@@ -347,7 +399,7 @@ test('ClaudeCodeProvider clears and terminates active transport when stdout iter
     events.push(event)
   }
 
-  expect(recovered.writes[0]).toMatchObject({ type: 'user' })
+  expect(recovered.writes.find((write) => isRecord(write) && write.type === 'user')).toMatchObject({ type: 'user' })
   expect(events).toEqual([
     { type: 'text_delta', text: 'recovered' },
     { type: 'response', usage: { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } },
@@ -387,7 +439,7 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
   const environment = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'claude-shell-session',
+    shellIdFactory: () => 'claude-shell-session',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
   const definition: AgentDefinition<Record<string, never>> = {
@@ -406,9 +458,9 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
 
   const callResponse = findControlResponse(transport.writes, 'call-1')
   expect(callResponse.response.isError).toBe(false)
-  const shellResult = JSON.parse(String(callResponse.response.content)) as ShellToolResult
-  expect(shellResult.status).toBe('exited')
-  expect(shellResult.output.stdoutDelta).toBe('demi-provider')
+  const shellResult = String(callResponse.response.content)
+  expect(shellResult).toContain('status: exited')
+  expect(shellResult).toContain('stdout:\ndemi-provider')
 })
 
 function fakeFactory(transport: FakeClaudeTransport): ClaudeTransportFactory {
@@ -440,6 +492,16 @@ class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
 
   async writeJson(value: unknown): Promise<void> {
     this.writes.push(value)
+    if (isSdkInitializeRequest(value)) {
+      this.queue.splice(this.index, 0, {
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: value.request_id,
+          response: {},
+        },
+      })
+    }
   }
 
   messages(): AsyncIterable<unknown> {
@@ -484,8 +546,45 @@ function findControlResponse(
   return found
 }
 
+function sdkMcpRequest(outerId: string, id: string, method: string, params?: unknown): unknown {
+  return {
+    type: 'control_request',
+    request_id: outerId,
+    request: {
+      subtype: 'mcp_message',
+      server_name: 'main',
+      message: { jsonrpc: '2.0', id, method, params },
+    },
+  }
+}
+
+function findSdkMcpResponse(writes: unknown[], outerId: string): { result?: unknown; error?: unknown } {
+  const found = writes.find((write): write is { response: { response: { mcp_response: { result?: unknown; error?: unknown } } } } => {
+    return (
+      isRecord(write) &&
+      write.type === 'control_response' &&
+      isRecord(write.response) &&
+      write.response.request_id === outerId &&
+      isRecord(write.response.response) &&
+      isRecord(write.response.response.mcp_response)
+    )
+  })
+  if (!found) throw new Error(`missing SDK MCP response ${outerId}`)
+  return found.response.response.mcp_response
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isSdkInitializeRequest(value: unknown): value is { request_id: string } {
+  return (
+    isRecord(value) &&
+    value.type === 'control_request' &&
+    typeof value.request_id === 'string' &&
+    isRecord(value.request) &&
+    value.request.subtype === 'initialize'
+  )
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

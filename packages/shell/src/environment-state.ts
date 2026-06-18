@@ -76,7 +76,6 @@ export interface ForegroundProcess {
   outputSinks: Record<1 | 2, ForegroundSink>
   abortController: AbortController
   outputLimitWaiters: Set<() => void>
-  needsInputWaiters: Set<() => void>
   redirectedStdoutBytes: number
   redirectedStderrBytes: number
 }
@@ -93,6 +92,5 @@ export type BoundaryOutcome =
   | { kind: 'foreground_appeared'; foreground: ForegroundProcess }
   | { kind: 'yield' }
   | { kind: 'output_limit' }
-  | { kind: 'needs_input' }
   | { kind: 'timeout' }
   | { kind: 'aborted' }

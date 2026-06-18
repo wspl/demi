@@ -11,7 +11,7 @@ test('BashEnvironment keeps cwd and env state across shell_exec calls', async ()
   await mkdir(join(root, 'pkg'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-1',
+    shellIdFactory: () => 'shell-1',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -19,13 +19,13 @@ test('BashEnvironment keeps cwd and env state across shell_exec calls', async ()
   expect(first.status).toBe('exited')
   expect(first.output.stdoutDelta).toBe(`${root}\n`)
 
-  const sessionId = first.sessionId
-  await env.exec({ sessionId, script: 'cd pkg' })
-  const second = await env.exec({ sessionId, script: 'pwd' })
+  const shellId = first.shellId
+  await env.exec({ shellId, script: 'cd pkg' })
+  const second = await env.exec({ shellId, script: 'pwd' })
   expect(second.output.stdoutDelta).toBe(`${join(root, 'pkg')}\n`)
 
-  await env.exec({ sessionId, script: 'export DEMI_TEST_VALUE=kept' })
-  const third = await env.exec({ sessionId, script: 'printf "$DEMI_TEST_VALUE"' })
+  await env.exec({ shellId, script: 'export DEMI_TEST_VALUE=kept' })
+  const third = await env.exec({ shellId, script: 'printf "$DEMI_TEST_VALUE"' })
   expect(third.output.stdoutDelta).toBe('kept')
 })
 
@@ -34,7 +34,7 @@ test('BashEnvironment applies stateful builtins before expanding later commands 
   await mkdir(join(root, 'pkg'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-inline-state',
+    shellIdFactory: () => 'shell-inline-state',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -51,7 +51,7 @@ test('BashEnvironment rejects invalid stateful builtin arguments without corrupt
   await mkdir(join(root, 'two'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-invalid-builtins',
+    shellIdFactory: () => 'shell-invalid-builtins',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -60,18 +60,18 @@ test('BashEnvironment rejects invalid stateful builtin arguments without corrupt
   if (cd.status !== 'exited') throw new Error('expected exited result')
   expect(cd.exitCode).toBe(2)
   expect(cd.output.stderrDelta).toContain('cd: too many arguments')
-  const pwd = await env.exec({ sessionId: cd.sessionId, script: 'pwd' })
+  const pwd = await env.exec({ shellId: cd.shellId, script: 'pwd' })
   expect(pwd.output.stdoutDelta).toBe(`${root}\n`)
 
   const exported = await env.exec({
-    sessionId: cd.sessionId,
+    shellId: cd.shellId,
     script: 'export GOOD=ok 1BAD=nope',
   })
   expect(exported.status).toBe('exited')
   if (exported.status !== 'exited') throw new Error('expected exited result')
   expect(exported.exitCode).toBe(1)
   expect(exported.output.stderrDelta).toContain('not a valid identifier')
-  const envState = await env.exec({ sessionId: cd.sessionId, script: 'env | grep -E "^(GOOD|1BAD)=" || true' })
+  const envState = await env.exec({ shellId: cd.shellId, script: 'env | grep -E "^(GOOD|1BAD)=" || true' })
   expect(envState.output.stdoutDelta).toBe('GOOD=ok\n')
 })
 
@@ -79,7 +79,7 @@ test('BashEnvironment unset builtin mutates variables and functions in the curre
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-unset-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-unset',
+    shellIdFactory: () => 'shell-unset',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -92,14 +92,14 @@ test('BashEnvironment unset builtin mutates variables and functions in the curre
   expect(removed.output.stdoutDelta).toBe('|stay|0')
 
   const invalid = await env.exec({
-    sessionId: removed.sessionId,
+    shellId: removed.shellId,
     script: 'unset BAD-NAME KEEP_ME; printf "%s|%s" "$KEEP_ME" "$?"',
   })
   expect(invalid.output.stdoutDelta).toBe('|1')
   expect(invalid.output.stderrDelta).toContain('unset: BAD-NAME: not a valid identifier')
 
   const functionRemoved = await env.exec({
-    sessionId: removed.sessionId,
+    shellId: removed.shellId,
     script: 'greet() { printf fn; }; unset -f greet; if greet; then printf kept; else printf missing; fi',
   })
   expect(functionRemoved.output.stdoutDelta).toBe('missing')
@@ -121,7 +121,7 @@ test('BashEnvironment read builtin consumes stdin into the current shell session
   await writeFile(join(root, 'backslash-chunk.txt'), 'a\\bcd\n')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-read',
+    shellIdFactory: () => 'shell-read',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -132,137 +132,137 @@ test('BashEnvironment read builtin consumes stdin into the current shell session
   expect(single.output.stdoutDelta).toBe('alpha beta|0')
 
   const replyPreservesWhitespace = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read <<< "  alpha beta  "; printf "<%s>:%s" "$REPLY" "$?"',
   })
   expect(replyPreservesWhitespace.output.stdoutDelta).toBe('<  alpha beta  >:0')
 
   const split = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read first rest <<< "alpha beta gamma"; printf "%s|%s|%s" "$first" "$rest" "$?"',
   })
   expect(split.output.stdoutDelta).toBe('alpha|beta gamma|0')
 
   const emptyIfs = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'IFS= read first rest <<< "  one two  "; printf "<%s>|<%s>:%s" "$first" "$rest" "$?"',
   })
   expect(emptyIfs.output.stdoutDelta).toBe('<  one two  >|<>:0')
 
   const nonWhitespaceIfs = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'IFS=: read a b c d <<< ":one::two:"; printf "<%s>|<%s>|<%s>|<%s>:%s" "$a" "$b" "$c" "$d" "$?"',
   })
   expect(nonWhitespaceIfs.output.stdoutDelta).toBe('<>|<one>|<>|<two>:0')
 
   const escapedIfs = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read first rest < escaped-space.txt; printf "<%s>|<%s>:%s" "$first" "$rest" "$?"',
   })
   expect(escapedIfs.output.stdoutDelta).toBe('<a b>|<c>:0')
 
   const loop = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'while IFS= read -r line; do printf "<%s>" "$line"; done < lines.txt; printf "|%s" "$?"',
   })
   expect(loop.output.stdoutDelta).toBe('<one>< two words><three\\\\four>|0')
 
-  const empty = await env.exec({ sessionId: single.sessionId, script: 'read missing < /dev/null; printf "$?"' })
+  const empty = await env.exec({ shellId: single.shellId, script: 'read missing < /dev/null; printf "$?"' })
   expect(empty.output.stdoutDelta).toBe('1')
 
   const chars = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: '{ read -n 3 chunk; printf "<%s>:%s:" "$chunk" "$?"; read rest; printf "<%s>:%s" "$rest" "$?"; } < chunk.txt',
   })
   expect(chars.output.stdoutDelta).toBe('<abc>:0:<def>:0')
 
   const newline = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script:
       '{ read -n 5 chunk; printf "<%s>:%s:" "$chunk" "$?"; read rest; printf "<%s>:%s" "$rest" "$?"; } < newline-chunk.txt',
   })
   expect(newline.output.stdoutDelta).toBe('<ab>:0:<cdef>:0')
 
   const short = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -n 5 chunk < short-chunk.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(short.output.stdoutDelta).toBe('<abc>:1')
 
   const clustered = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -rn3 chunk < backslash-chunk.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(clustered.output.stdoutDelta).toBe('<a\\b>:0')
 
   const exact = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: '{ read -N 5 chunk; printf "<%s>:%s:" "$chunk" "$?"; read rest; printf "<%s>:%s" "$rest" "$?"; } < newline-chunk.txt',
   })
   expect(exact.output.stdoutDelta).toBe('<ab\ncd>:0:<ef>:0')
 
   const exactSplit = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -N 7 first second < space-chunk.txt; printf "<%s>|<%s>:%s" "$first" "$second" "$?"',
   })
   expect(exactSplit.output.stdoutDelta).toBe('<abc def>|<>:0')
 
   const exactShort = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -N 5 chunk < short-chunk.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(exactShort.output.stdoutDelta).toBe('<abc>:1')
 
   const exactZero = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: '{ read -N 0 chunk; printf "<%s>:%s:" "$chunk" "$?"; read rest; printf "<%s>:%s" "$rest" "$?"; } < chunk.txt',
   })
   expect(exactZero.output.stdoutDelta).toBe('<>:0:<abcdef>:0')
 
   const exactEscaped = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -N 4 chunk < backslash-chunk.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(exactEscaped.output.stdoutDelta).toBe('<a\\bc>:0')
 
   const delimited = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: '{ read -d : chunk; printf "<%s>:%s:" "$chunk" "$?"; read rest; printf "<%s>:%s" "$rest" "$?"; } < colon-chunk.txt',
   })
   expect(delimited.output.stdoutDelta).toBe('<ab>:0:<cd:ef>:1')
 
   const delimitedSplit = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -d : first second < words-delim.txt; printf "<%s>|<%s>:%s" "$first" "$second" "$?"',
   })
   expect(delimitedSplit.output.stdoutDelta).toBe('<a>|<b>:0')
 
   const escapedDelimiter = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -d : chunk < escaped-delim.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(escapedDelimiter.output.stdoutDelta).toBe('<a:bc>:1')
 
   const rawDelimiter = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -rd : chunk < escaped-delim.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(rawDelimiter.output.stdoutDelta).toBe('<a\\>:0')
 
   const nulDelimiter = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -d "" chunk < nul-delim.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(nulDelimiter.output.stdoutDelta).toBe('<left>:0')
 
   const charsWithDelimiter = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -d : -n 5 chunk < colon-chunk.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(charsWithDelimiter.output.stdoutDelta).toBe('<ab>:0')
 
   const exactIgnoresDelimiter = await env.exec({
-    sessionId: single.sessionId,
+    shellId: single.shellId,
     script: 'read -d : -N 5 chunk < colon-chunk.txt; printf "<%s>:%s" "$chunk" "$?"',
   })
   expect(exactIgnoresDelimiter.output.stdoutDelta).toBe('<ab:cd>:0')
@@ -271,7 +271,7 @@ test('BashEnvironment read builtin consumes stdin into the current shell session
 test('BashEnvironment honors shell list operators without falling back to a system shell', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-list-operators',
+    shellIdFactory: () => 'shell-list-operators',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -281,10 +281,10 @@ test('BashEnvironment honors shell list operators without falling back to a syst
   expect(recovered.exitCode).toBe(0)
   expect(recovered.output.stdoutDelta).toBe('yes')
 
-  const success = await env.exec({ sessionId: recovered.sessionId, script: 'true && printf ok' })
+  const success = await env.exec({ shellId: recovered.shellId, script: 'true && printf ok' })
   expect(success.output.stdoutDelta).toBe('ok')
 
-  const continued = await env.exec({ sessionId: recovered.sessionId, script: 'false; printf after' })
+  const continued = await env.exec({ shellId: recovered.shellId, script: 'false; printf after' })
   expect(continued.status).toBe('exited')
   if (continued.status !== 'exited') throw new Error('expected exited result')
   expect(continued.exitCode).toBe(0)
@@ -294,52 +294,52 @@ test('BashEnvironment honors shell list operators without falling back to a syst
 test('BashEnvironment supports prefix assignments and assignment-only commands', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-assignments',
+    shellIdFactory: () => 'shell-assignments',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const temporary = await env.exec({ script: 'NAME=Alice sh -c \'printf "$NAME"\'' })
   expect(temporary.output.stdoutDelta).toBe('Alice')
-  const notPersisted = await env.exec({ sessionId: temporary.sessionId, script: 'printf "$NAME"' })
+  const notPersisted = await env.exec({ shellId: temporary.shellId, script: 'printf "$NAME"' })
   expect(notPersisted.output.stdoutDelta).toBe('')
 
-  await env.exec({ sessionId: temporary.sessionId, script: 'PERSIST=kept' })
-  const persisted = await env.exec({ sessionId: temporary.sessionId, script: 'printf "$PERSIST"' })
+  await env.exec({ shellId: temporary.shellId, script: 'PERSIST=kept' })
+  const persisted = await env.exec({ shellId: temporary.shellId, script: 'printf "$PERSIST"' })
   expect(persisted.output.stdoutDelta).toBe('kept')
 
-  await env.exec({ sessionId: temporary.sessionId, script: 'PERSIST+=-more' })
-  const appended = await env.exec({ sessionId: temporary.sessionId, script: 'printf "$PERSIST"' })
+  await env.exec({ shellId: temporary.shellId, script: 'PERSIST+=-more' })
+  const appended = await env.exec({ shellId: temporary.shellId, script: 'printf "$PERSIST"' })
   expect(appended.output.stdoutDelta).toBe('kept-more')
 
-  const piped = await env.exec({ sessionId: temporary.sessionId, script: 'NAME=Bob sh -c \'printf "$NAME"\' | tr a-z A-Z' })
+  const piped = await env.exec({ shellId: temporary.shellId, script: 'NAME=Bob sh -c \'printf "$NAME"\' | tr a-z A-Z' })
   expect(piped.output.stdoutDelta).toBe('BOB')
 })
 
 test('BashEnvironment keeps last exit status in $? across commands and exec calls', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-last-status',
+    shellIdFactory: () => 'shell-last-status',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const recovered = await env.exec({ script: 'false; printf "%s\\n" "$?"; true; printf "%s\\n" "$?"' })
   expect(recovered.output.stdoutDelta).toBe('1\n0\n')
 
-  await env.exec({ sessionId: recovered.sessionId, script: 'false' })
-  const crossExec = await env.exec({ sessionId: recovered.sessionId, script: 'printf "$?"' })
+  await env.exec({ shellId: recovered.shellId, script: 'false' })
+  const crossExec = await env.exec({ shellId: recovered.shellId, script: 'printf "$?"' })
   expect(crossExec.output.stdoutDelta).toBe('1')
 
-  const list = await env.exec({ sessionId: recovered.sessionId, script: 'false || printf "$?"' })
+  const list = await env.exec({ shellId: recovered.shellId, script: 'false || printf "$?"' })
   expect(list.output.stdoutDelta).toBe('1')
 
-  const pipeline = await env.exec({ sessionId: recovered.sessionId, script: 'false | true; printf "$?"' })
+  const pipeline = await env.exec({ shellId: recovered.shellId, script: 'false | true; printf "$?"' })
   expect(pipeline.output.stdoutDelta).toBe('0')
 })
 
 test('BashEnvironment exit builtin marks the shell session exited', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-exit',
+    shellIdFactory: () => 'shell-exit',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -349,8 +349,8 @@ test('BashEnvironment exit builtin marks the shell session exited', async () => 
   if (exited.status !== 'exited') throw new Error('expected exited result')
   expect(exited.exitCode).toBe(7)
   expect(exited.output.stdoutDelta).toBe('before')
-  expect(env.getSession(exited.sessionId)?.exited).toBe(true)
-  await expect(env.exec({ sessionId: exited.sessionId, script: 'printf unreachable' })).rejects.toThrow(
+  expect(env.getShell(exited.shellId)?.exited).toBe(true)
+  await expect(env.exec({ shellId: exited.shellId, script: 'printf unreachable' })).rejects.toThrow(
     'has exited',
   )
 })
@@ -359,7 +359,7 @@ test('BashEnvironment exit builtin follows shell exit status rules', async () =>
   let nextSession = 0
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => `session-exit-rules-${++nextSession}`,
+    shellIdFactory: () => `shell-exit-rules-${++nextSession}`,
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -390,7 +390,7 @@ test('BashEnvironment exit builtin follows shell exit status rules', async () =>
 test('BashEnvironment supports common parameter expansion operations', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-parameter-ops',
+    shellIdFactory: () => 'shell-parameter-ops',
     initialEnv: { PATH: process.env.PATH ?? '', EMPTY: '', SET_VALUE: 'value' },
   })
 
@@ -399,45 +399,45 @@ test('BashEnvironment supports common parameter expansion operations', async () 
   })
   expect(defaults.output.stdoutDelta).toBe('guest:guest::value')
 
-  const assigned = await env.exec({ sessionId: defaults.sessionId, script: `printf "\${ASSIGN_ME:=created}"` })
+  const assigned = await env.exec({ shellId: defaults.shellId, script: `printf "\${ASSIGN_ME:=created}"` })
   expect(assigned.output.stdoutDelta).toBe('created')
-  const persisted = await env.exec({ sessionId: defaults.sessionId, script: 'printf "$ASSIGN_ME"' })
+  const persisted = await env.exec({ shellId: defaults.shellId, script: 'printf "$ASSIGN_ME"' })
   expect(persisted.output.stdoutDelta).toBe('created')
 
   const alternative = await env.exec({
-    sessionId: defaults.sessionId,
+    shellId: defaults.shellId,
     script: `printf "%s:%s:%s" "\${SET_VALUE:+yes}" "\${EMPTY:+yes}" "\${MISSING+yes}"`,
   })
   expect(alternative.output.stdoutDelta).toBe('yes::')
 
   const patternOps = await env.exec({
-    sessionId: defaults.sessionId,
+    shellId: defaults.shellId,
     script: `PATH_VALUE=src/app.test.ts; printf "%s:%s:%s:%s:%s:%s:%s" "\${#PATH_VALUE}" "\${PATH_VALUE#*/}" "\${PATH_VALUE##*.}" "\${PATH_VALUE##*[./]}" "\${PATH_VALUE%.*}" "\${PATH_VALUE%%/*}" "\${PATH_VALUE#missing}"`,
   })
   expect(patternOps.output.stdoutDelta).toBe('15:app.test.ts:ts:ts:src/app.test:src:src/app.test.ts')
 
   const replacements = await env.exec({
-    sessionId: defaults.sessionId,
+    shellId: defaults.shellId,
     script: `REPL=foo-bar-foo; printf "%s:%s:%s:%s:%s" "\${REPL/foo/baz}" "\${REPL//foo/baz}" "\${REPL/#foo/baz}" "\${REPL/%foo/baz}" "\${REPL/-bar}"`,
   })
   expect(replacements.output.stdoutDelta).toBe('baz-bar-foo:baz-bar-baz:baz-bar-foo:foo-bar-baz:foo-foo')
 
   const substring = await env.exec({
-    sessionId: defaults.sessionId,
+    shellId: defaults.shellId,
     script: `SUB=abcdef; i=1; printf "%s:%s:%s:%s:%s:%s" "\${SUB:1}" "\${SUB:1:3}" "\${SUB: -2}" "\${SUB: -4:2}" "\${SUB:1:-1}" "\${SUB:i++:2}:$i"`,
   })
   expect(substring.output.stdoutDelta).toBe('bcdef:bcd:ef:cd:bcde:bc:2')
 
   const caseAndIndirect = await env.exec({
-    sessionId: defaults.sessionId,
+    shellId: defaults.shellId,
     script: `CASE_VALUE=heLLo; PATTERN_VALUE=hello; TARGET_NAME=SET_VALUE; printf "%s:%s:%s:%s:%s:%s" "\${CASE_VALUE^}" "\${CASE_VALUE^^}" "\${CASE_VALUE,}" "\${CASE_VALUE,,}" "\${PATTERN_VALUE^^[lo]}" "\${!TARGET_NAME}"`,
   })
   expect(caseAndIndirect.output.stdoutDelta).toBe('HeLLo:HELLO:heLLo:hello:heLLO:value')
 
-  await expect(env.exec({ sessionId: defaults.sessionId, script: `printf "\${MISSING:?required}"` })).rejects.toThrow(
+  await expect(env.exec({ shellId: defaults.shellId, script: `printf "\${MISSING:?required}"` })).rejects.toThrow(
     'MISSING: required',
   )
-  await expect(env.exec({ sessionId: defaults.sessionId, script: `SUB=abc; printf "\${SUB:2:-5}"` })).rejects.toThrow(
+  await expect(env.exec({ shellId: defaults.shellId, script: `SUB=abc; printf "\${SUB:2:-5}"` })).rejects.toThrow(
     'substring expression < 0',
   )
 })
@@ -445,7 +445,7 @@ test('BashEnvironment supports common parameter expansion operations', async () 
 test('BashEnvironment supports arithmetic expansion in the current shell session', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-arithmetic-expansion',
+    shellIdFactory: () => 'shell-arithmetic-expansion',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -458,7 +458,7 @@ test('BashEnvironment supports arithmetic expansion in the current shell session
   expect(result.output.stdoutDelta).toBe('7|1|2|3|6|9|8|6')
 
   const loop = await env.exec({
-    sessionId: result.sessionId,
+    shellId: result.shellId,
     script: 'i=0; while test "$i" -lt 3; do printf "$i"; i=$((i + 1)); done; printf "|$i|$?"',
   })
   expect(loop.output.stdoutDelta).toBe('012|3|0')
@@ -467,7 +467,7 @@ test('BashEnvironment supports arithmetic expansion in the current shell session
 test('BashEnvironment supports arithmetic commands in the current shell session', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-arithmetic-command',
+    shellIdFactory: () => 'shell-arithmetic-command',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -476,19 +476,19 @@ test('BashEnvironment supports arithmetic commands in the current shell session'
   if (nonZero.status !== 'exited') throw new Error('expected exited result')
   expect(nonZero.output.stdoutDelta).toBe('2|0')
 
-  const zero = await env.exec({ sessionId: nonZero.sessionId, script: '(( i -= 2 )); printf "%s|%s" "$i" "$?"' })
+  const zero = await env.exec({ shellId: nonZero.shellId, script: '(( i -= 2 )); printf "%s|%s" "$i" "$?"' })
   expect(zero.output.stdoutDelta).toBe('0|1')
 
   const loop = await env.exec({
-    sessionId: nonZero.sessionId,
+    shellId: nonZero.shellId,
     script: 'i=0; while (( i < 3 )); do printf "$i"; (( i++ )); done; printf "|$i|$?"',
   })
   expect(loop.output.stdoutDelta).toBe('012|3|0')
 
-  const divided = await env.exec({ sessionId: nonZero.sessionId, script: 'i=8; (( i /= 2 )); printf "%s|%s" "$i" "$?"' })
+  const divided = await env.exec({ shellId: nonZero.shellId, script: 'i=8; (( i /= 2 )); printf "%s|%s" "$i" "$?"' })
   expect(divided.output.stdoutDelta).toBe('4|0')
 
-  const negated = await env.exec({ sessionId: nonZero.sessionId, script: '! (( 0 )); printf "$?"' })
+  const negated = await env.exec({ shellId: nonZero.shellId, script: '! (( 0 )); printf "$?"' })
   expect(negated.output.stdoutDelta).toBe('0')
 })
 
@@ -497,7 +497,7 @@ test('BashEnvironment expands command substitutions in the current shell context
   await mkdir(join(root, 'pkg'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-command-substitution',
+    shellIdFactory: () => 'shell-command-substitution',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -507,34 +507,34 @@ test('BashEnvironment expands command substitutions in the current shell context
   expect(quoted.output.stdoutDelta).toBe(`Alice:${join(root, 'pkg')}`)
 
   const subshell = await env.exec({
-    sessionId: quoted.sessionId,
+    shellId: quoted.shellId,
     script: 'printf "%s" "$(cd ..; export INNER=changed; printf "$PWD:$INNER")"',
   })
   expect(subshell.output.stdoutDelta).toBe(`${root}:changed`)
 
-  const state = await env.exec({ sessionId: quoted.sessionId, script: 'printf "%s:%s" "$PWD" "$INNER"' })
+  const state = await env.exec({ shellId: quoted.shellId, script: 'printf "%s:%s" "$PWD" "$INNER"' })
   expect(state.output.stdoutDelta).toBe(`${join(root, 'pkg')}:`)
 
   const quotedNewlines = await env.exec({
-    sessionId: quoted.sessionId,
+    shellId: quoted.shellId,
     script: 'printf "<%s>" "$(printf "a\\nb\\n\\n")"',
   })
   expect(quotedNewlines.output.stdoutDelta).toBe('<a\nb>')
 
   const unquotedNewlines = await env.exec({
-    sessionId: quoted.sessionId,
+    shellId: quoted.shellId,
     script: 'echo $(printf "a\\nb\\n")',
   })
   expect(unquotedNewlines.output.stdoutDelta).toBe('a b\n')
 
-  const legacy = await env.exec({ sessionId: quoted.sessionId, script: 'printf "%s" `printf legacy`' })
+  const legacy = await env.exec({ shellId: quoted.shellId, script: 'printf "%s" `printf legacy`' })
   expect(legacy.output.stdoutDelta).toBe('legacy')
 })
 
 test('BashEnvironment uses command substitution status for assignment-only commands', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-command-sub-assignment',
+    shellIdFactory: () => 'shell-command-sub-assignment',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -543,19 +543,19 @@ test('BashEnvironment uses command substitution status for assignment-only comma
   if (failed.status !== 'exited') throw new Error('expected exited result')
   expect(failed.exitCode).toBe(1)
 
-  const lastStatus = await env.exec({ sessionId: failed.sessionId, script: 'printf "%s:%s" "$ASSIGNED" "$?"' })
+  const lastStatus = await env.exec({ shellId: failed.shellId, script: 'printf "%s:%s" "$ASSIGNED" "$?"' })
   expect(lastStatus.output.stdoutDelta).toBe(':1')
 
-  const succeeded = await env.exec({ sessionId: failed.sessionId, script: 'ASSIGNED=$(printf ok)' })
+  const succeeded = await env.exec({ shellId: failed.shellId, script: 'ASSIGNED=$(printf ok)' })
   expect(succeeded.status).toBe('exited')
   if (succeeded.status !== 'exited') throw new Error('expected exited result')
   expect(succeeded.exitCode).toBe(0)
 
-  const value = await env.exec({ sessionId: failed.sessionId, script: 'printf "%s:%s" "$ASSIGNED" "$?"' })
+  const value = await env.exec({ shellId: failed.shellId, script: 'printf "%s:%s" "$ASSIGNED" "$?"' })
   expect(value.output.stdoutDelta).toBe('ok:0')
 
   const pipeline = await env.exec({
-    sessionId: failed.sessionId,
+    shellId: failed.shellId,
     script: 'printf "$(false)" | PIPE_ASSIGNED=ok; printf "%s:%s" "$PIPE_ASSIGNED" "$?"',
   })
   expect(pipeline.output.stdoutDelta).toBe('ok:0')
@@ -567,29 +567,29 @@ test('BashEnvironment keeps pushd/popd directory stack across shell_exec calls',
   await mkdir(join(root, 'two'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-dirstack',
+    shellIdFactory: () => 'shell-dirstack',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const first = await env.exec({ script: 'pushd one' })
   expect(first.output.stdoutDelta).toBe(`${join(root, 'one')} ${root}\n`)
 
-  const second = await env.exec({ sessionId: first.sessionId, script: 'pushd ../two' })
+  const second = await env.exec({ shellId: first.shellId, script: 'pushd ../two' })
   expect(second.output.stdoutDelta).toBe(`${join(root, 'two')} ${join(root, 'one')} ${root}\n`)
 
-  const dirs = await env.exec({ sessionId: first.sessionId, script: 'dirs' })
+  const dirs = await env.exec({ shellId: first.shellId, script: 'dirs' })
   expect(dirs.output.stdoutDelta).toBe(`${join(root, 'two')} ${join(root, 'one')} ${root}\n`)
 
-  const swapped = await env.exec({ sessionId: first.sessionId, script: 'pushd' })
+  const swapped = await env.exec({ shellId: first.shellId, script: 'pushd' })
   expect(swapped.output.stdoutDelta).toBe(`${join(root, 'one')} ${join(root, 'two')} ${root}\n`)
 
-  const pop = await env.exec({ sessionId: first.sessionId, script: 'popd' })
+  const pop = await env.exec({ shellId: first.shellId, script: 'popd' })
   expect(pop.output.stdoutDelta).toBe(`${join(root, 'two')} ${root}\n`)
-  const pwd = await env.exec({ sessionId: first.sessionId, script: 'pwd' })
+  const pwd = await env.exec({ shellId: first.shellId, script: 'pwd' })
   expect(pwd.output.stdoutDelta).toBe(`${join(root, 'two')}\n`)
 
-  await env.exec({ sessionId: first.sessionId, script: 'popd' })
-  const empty = await env.exec({ sessionId: first.sessionId, script: 'popd' })
+  await env.exec({ shellId: first.shellId, script: 'popd' })
+  const empty = await env.exec({ shellId: first.shellId, script: 'popd' })
   expect(empty.status).toBe('exited')
   if (empty.status !== 'exited') throw new Error('expected exited result')
   expect(empty.exitCode).toBe(1)
@@ -601,7 +601,7 @@ test('BashEnvironment keeps shell functions across shell_exec calls', async () =
   await mkdir(join(root, 'pkg'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-functions',
+    shellIdFactory: () => 'shell-functions',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -609,14 +609,14 @@ test('BashEnvironment keeps shell functions across shell_exec calls', async () =
     script: 'set -- outer1 outer2\nsay() { printf "%s:%s:%s\\n" "$#" "$1" "$2"; }\ngo_pkg() { cd pkg\nexport FN_VALUE=kept\n}',
   })
 
-  const called = await env.exec({ sessionId: defined.sessionId, script: 'say inner1 inner2' })
+  const called = await env.exec({ shellId: defined.shellId, script: 'say inner1 inner2' })
   expect(called.output.stdoutDelta).toBe('2:inner1:inner2\n')
 
-  const restored = await env.exec({ sessionId: defined.sessionId, script: 'printf "%s:%s:%s\\n" "$#" "$1" "$2"' })
+  const restored = await env.exec({ shellId: defined.shellId, script: 'printf "%s:%s:%s\\n" "$#" "$1" "$2"' })
   expect(restored.output.stdoutDelta).toBe('2:outer1:outer2\n')
 
-  await env.exec({ sessionId: defined.sessionId, script: 'go_pkg' })
-  const state = await env.exec({ sessionId: defined.sessionId, script: 'printf "%s:%s" "$PWD" "$FN_VALUE"' })
+  await env.exec({ shellId: defined.shellId, script: 'go_pkg' })
+  const state = await env.exec({ shellId: defined.shellId, script: 'printf "%s:%s" "$PWD" "$FN_VALUE"' })
   expect(state.output.stdoutDelta).toBe(`${join(root, 'pkg')}:kept`)
 })
 
@@ -625,7 +625,7 @@ test('BashEnvironment supports local variables and return inside functions and s
   await writeFile(join(root, 'returning.sh'), 'printf sourced-before; return 9; printf sourced-after\n')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-local-return',
+    shellIdFactory: () => 'shell-local-return',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -642,21 +642,21 @@ test('BashEnvironment supports local variables and return inside functions and s
   expect(scoped.output.stdoutDelta).toBe('inner:temp:|outer::0')
 
   const returned = await env.exec({
-    sessionId: scoped.sessionId,
+    shellId: scoped.shellId,
     script: 'early() { local VALUE=inside; printf before; return 7; printf after; }\nearly\nprintf "|%s:%s" "$VALUE" "$?"',
   })
   expect(returned.output.stdoutDelta).toBe('before|outer:7')
 
-  const sourced = await env.exec({ sessionId: scoped.sessionId, script: 'source returning.sh; printf "|%s" "$?"' })
+  const sourced = await env.exec({ shellId: scoped.shellId, script: 'source returning.sh; printf "|%s" "$?"' })
   expect(sourced.output.stdoutDelta).toBe('sourced-before|9')
 
-  const outsideLocal = await env.exec({ sessionId: scoped.sessionId, script: 'local OUTSIDE=bad' })
+  const outsideLocal = await env.exec({ shellId: scoped.shellId, script: 'local OUTSIDE=bad' })
   expect(outsideLocal.status).toBe('exited')
   if (outsideLocal.status !== 'exited') throw new Error('expected exited result')
   expect(outsideLocal.exitCode).toBe(1)
   expect(outsideLocal.output.stderrDelta).toContain('local: can only be used in a function')
 
-  const outsideReturn = await env.exec({ sessionId: scoped.sessionId, script: 'return 3' })
+  const outsideReturn = await env.exec({ shellId: scoped.shellId, script: 'return 3' })
   expect(outsideReturn.status).toBe('exited')
   if (outsideReturn.status !== 'exited') throw new Error('expected exited result')
   expect(outsideReturn.exitCode).toBe(1)
@@ -668,7 +668,7 @@ test('BashEnvironment applies function definition redirections at call time', as
   await writeFile(join(root, 'input.txt'), 'from-input')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-function-redir',
+    shellIdFactory: () => 'shell-function-redir',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -680,19 +680,19 @@ test('BashEnvironment applies function definition redirections at call time', as
   expect(defined.output.stdoutDelta).toBe('call-one')
 
   const invocationRedirection = await env.exec({
-    sessionId: defined.sessionId,
+    shellId: defined.shellId,
     script: 'writer call-two > call.txt; printf "second=%s call=%s" "$(cat second.txt)" "$(cat call.txt 2>/dev/null)"',
   })
   expect(invocationRedirection.output.stdoutDelta).toBe('second=call-two call=')
 
   const input = await env.exec({
-    sessionId: defined.sessionId,
+    shellId: defined.shellId,
     script: 'reader() { cat; } < "$1"; reader input.txt',
   })
   expect(input.output.stdoutDelta).toBe('from-input')
 
   const combined = await env.exec({
-    sessionId: defined.sessionId,
+    shellId: defined.shellId,
     script: 'talk() { printf out; printf err >&2; } > both.txt 2>&1; talk; cat both.txt',
   })
   expect(combined.output.stdoutDelta).toBe('outerr')
@@ -702,7 +702,7 @@ test('BashEnvironment keeps background jobs across shell_exec calls', async () =
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-jobs-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-jobs',
+    shellIdFactory: () => 'shell-jobs',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -710,16 +710,16 @@ test('BashEnvironment keeps background jobs across shell_exec calls', async () =
   expect(started.status).toBe('exited')
   expect(started.output.stdoutDelta).toContain('[1] sh -c')
 
-  const listed = await env.exec({ sessionId: started.sessionId, script: 'jobs' })
+  const listed = await env.exec({ shellId: started.shellId, script: 'jobs' })
   expect(listed.output.stdoutDelta).toContain('[1] Running')
 
-  const waited = await env.exec({ sessionId: started.sessionId, script: 'wait %1' })
+  const waited = await env.exec({ shellId: started.shellId, script: 'wait %1' })
   expect(waited.status).toBe('exited')
   if (waited.status !== 'exited') throw new Error('expected exited result')
   expect(waited.exitCode).toBe(0)
   expect(waited.output.stdoutDelta).toBe('bg-done')
 
-  const empty = await env.exec({ sessionId: started.sessionId, script: 'jobs' })
+  const empty = await env.exec({ shellId: started.shellId, script: 'jobs' })
   expect(empty.output.stdoutDelta).toBe('')
 })
 
@@ -727,7 +727,7 @@ test('BashEnvironment reports background command spawn failures through wait', a
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-bg-spawn-failure-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-bg-spawn-failure',
+    shellIdFactory: () => 'shell-bg-spawn-failure',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -735,7 +735,7 @@ test('BashEnvironment reports background command spawn failures through wait', a
   expect(started.status).toBe('exited')
   expect(started.output.stdoutDelta).toContain('[1] demi-background-command-that-does-not-exist')
 
-  const waited = await env.exec({ sessionId: started.sessionId, script: 'wait %1' })
+  const waited = await env.exec({ shellId: started.shellId, script: 'wait %1' })
   expect(waited.status).toBe('exited')
   if (waited.status !== 'exited') throw new Error('expected exited result')
   expect(waited.exitCode).toBe(127)
@@ -748,14 +748,14 @@ test('BashEnvironment source builtin mutates the current shell session', async (
   await writeFile(join(root, 'env.sh'), 'export SOURCED_VALUE=from-source\ncd pkg\n')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-source',
+    shellIdFactory: () => 'shell-source',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const sourced = await env.exec({ script: 'source env.sh' })
   expect(sourced.status).toBe('exited')
 
-  const state = await env.exec({ sessionId: sourced.sessionId, script: 'sh -c \'printf "%s:%s" "$SOURCED_VALUE" "$PWD"\'' })
+  const state = await env.exec({ shellId: sourced.shellId, script: 'sh -c \'printf "%s:%s" "$SOURCED_VALUE" "$PWD"\'' })
   expect(state.output.stdoutDelta).toBe(`from-source:${join(root, 'pkg')}`)
 })
 
@@ -765,7 +765,7 @@ test('BashEnvironment source builtin resolves slashless files from PATH', async 
   await writeFile(join(root, 'scripts', 'from-path.sh'), 'export SOURCED_FROM_PATH=ok\n')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-source-path',
+    shellIdFactory: () => 'shell-source-path',
     initialEnv: { PATH: `${join(root, 'scripts')}:${process.env.PATH ?? ''}` },
   })
 
@@ -782,7 +782,7 @@ test('BashEnvironment source builtin inherits input redirections', async () => {
   await writeFile(join(root, 'input.txt'), 'from-input\n')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-source-input',
+    shellIdFactory: () => 'shell-source-input',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -796,50 +796,50 @@ test('BashEnvironment source builtin inherits input redirections', async () => {
 test('BashEnvironment set -- and shift mutate session positional parameters', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-shift',
+    shellIdFactory: () => 'shell-shift',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const set = await env.exec({ script: 'set -- alpha "bravo charlie" delta' })
-  const before = await env.exec({ sessionId: set.sessionId, script: 'printf "%s:%s:%s" "$#" "$1" "$2"' })
+  const before = await env.exec({ shellId: set.shellId, script: 'printf "%s:%s:%s" "$#" "$1" "$2"' })
   expect(before.output.stdoutDelta).toBe('3:alpha:bravo charlie')
 
-  const shifted = await env.exec({ sessionId: set.sessionId, script: 'shift 2' })
+  const shifted = await env.exec({ shellId: set.shellId, script: 'shift 2' })
   expect(shifted.status).toBe('exited')
   if (shifted.status !== 'exited') throw new Error('expected exited result')
   expect(shifted.exitCode).toBe(0)
 
-  const after = await env.exec({ sessionId: set.sessionId, script: 'printf "%s:%s:%s" "$#" "$1" "$2"' })
+  const after = await env.exec({ shellId: set.shellId, script: 'printf "%s:%s:%s" "$#" "$1" "$2"' })
   expect(after.output.stdoutDelta).toBe('1:delta:')
 
-  const tooFar = await env.exec({ sessionId: set.sessionId, script: 'shift 2' })
+  const tooFar = await env.exec({ shellId: set.shellId, script: 'shift 2' })
   expect(tooFar.status).toBe('exited')
   if (tooFar.status !== 'exited') throw new Error('expected exited result')
   expect(tooFar.exitCode).toBe(1)
-  const unchanged = await env.exec({ sessionId: set.sessionId, script: 'printf "%s:%s" "$#" "$1"' })
+  const unchanged = await env.exec({ shellId: set.shellId, script: 'printf "%s:%s" "$#" "$1"' })
   expect(unchanged.output.stdoutDelta).toBe('1:delta')
 
-  const tooMany = await env.exec({ sessionId: set.sessionId, script: 'shift 1 2' })
+  const tooMany = await env.exec({ shellId: set.shellId, script: 'shift 1 2' })
   expect(tooMany.status).toBe('exited')
   if (tooMany.status !== 'exited') throw new Error('expected exited result')
   expect(tooMany.exitCode).toBe(1)
   expect(tooMany.output.stderrDelta).toContain('too many arguments')
-  const afterTooMany = await env.exec({ sessionId: set.sessionId, script: 'printf "%s:%s" "$#" "$1"' })
+  const afterTooMany = await env.exec({ shellId: set.shellId, script: 'printf "%s:%s" "$#" "$1"' })
   expect(afterTooMany.output.stdoutDelta).toBe('1:delta')
 
-  const bad = await env.exec({ sessionId: set.sessionId, script: 'shift bad' })
+  const bad = await env.exec({ shellId: set.shellId, script: 'shift bad' })
   expect(bad.status).toBe('exited')
   if (bad.status !== 'exited') throw new Error('expected exited result')
   expect(bad.exitCode).toBe(1)
   expect(bad.output.stderrDelta).toContain('numeric argument required')
-  const afterBad = await env.exec({ sessionId: set.sessionId, script: 'printf "%s:%s" "$#" "$1"' })
+  const afterBad = await env.exec({ shellId: set.shellId, script: 'printf "%s:%s" "$#" "$1"' })
   expect(afterBad.output.stdoutDelta).toBe('1:delta')
 })
 
 test('BashEnvironment set builtin manages errexit in the current shell session', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-set-errexit',
+    shellIdFactory: () => 'shell-set-errexit',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -850,17 +850,17 @@ test('BashEnvironment set builtin manages errexit in the current shell session',
   expect(stopped.output.stdoutDelta).toBe('')
   expect(stopped.audit.map((event) => ('name' in event ? event.name : ''))).not.toContain('set')
 
-  const alive = await env.exec({ sessionId: stopped.sessionId, script: 'printf alive' })
+  const alive = await env.exec({ shellId: stopped.shellId, script: 'printf alive' })
   expect(alive.output.stdoutDelta).toBe('alive')
 
-  const disabled = await env.exec({ sessionId: stopped.sessionId, script: 'set +e; false; printf after' })
+  const disabled = await env.exec({ shellId: stopped.shellId, script: 'set +e; false; printf after' })
   expect(disabled.status).toBe('exited')
   if (disabled.status !== 'exited') throw new Error('expected exited result')
   expect(disabled.exitCode).toBe(0)
   expect(disabled.output.stdoutDelta).toBe('after')
 
   const controlled = await env.exec({
-    sessionId: stopped.sessionId,
+    shellId: stopped.shellId,
     script: 'set -e; false || printf recovered; if false; then printf bad; else printf else; fi; printf done',
   })
   expect(controlled.status).toBe('exited')
@@ -868,16 +868,16 @@ test('BashEnvironment set builtin manages errexit in the current shell session',
   expect(controlled.exitCode).toBe(0)
   expect(controlled.output.stdoutDelta).toBe('recoveredelsedone')
 
-  const optionForm = await env.exec({ sessionId: stopped.sessionId, script: 'set -o errexit; true && false; printf after' })
+  const optionForm = await env.exec({ shellId: stopped.shellId, script: 'set -o errexit; true && false; printf after' })
   expect(optionForm.status).toBe('exited')
   if (optionForm.status !== 'exited') throw new Error('expected exited result')
   expect(optionForm.exitCode).toBe(1)
   expect(optionForm.output.stdoutDelta).toBe('')
 
-  const plusOption = await env.exec({ sessionId: stopped.sessionId, script: 'set +o errexit; false; printf after' })
+  const plusOption = await env.exec({ shellId: stopped.shellId, script: 'set +o errexit; false; printf after' })
   expect(plusOption.output.stdoutDelta).toBe('after')
 
-  const unsupported = await env.exec({ sessionId: stopped.sessionId, script: 'set -z' })
+  const unsupported = await env.exec({ shellId: stopped.shellId, script: 'set -z' })
   expect(unsupported.status).toBe('exited')
   if (unsupported.status !== 'exited') throw new Error('expected exited result')
   expect(unsupported.exitCode).toBe(2)
@@ -891,7 +891,7 @@ test('BashEnvironment set builtin manages noglob in the current shell session', 
   await writeFile(join(root, 'beta.ts'), '')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-set-noglob',
+    shellIdFactory: () => 'shell-set-noglob',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -902,17 +902,17 @@ test('BashEnvironment set builtin manages noglob in the current shell session', 
   expect(disabled.output.stdoutDelta).toBe('*.ts|')
   expect(disabled.audit.map((event) => ('name' in event ? event.name : ''))).not.toContain('set')
 
-  const restored = await env.exec({ sessionId: disabled.sessionId, script: 'set +f; printf "%s|" *.ts' })
+  const restored = await env.exec({ shellId: disabled.shellId, script: 'set +f; printf "%s|" *.ts' })
   expect(restored.output.stdoutDelta).toBe('alpha.ts|beta.ts|')
 
   const optionForm = await env.exec({
-    sessionId: disabled.sessionId,
+    shellId: disabled.shellId,
     script: 'set -o noglob; for file in *.ts; do printf "<%s>" "$file"; done',
   })
   expect(optionForm.output.stdoutDelta).toBe('<*.ts>')
 
   const plusOption = await env.exec({
-    sessionId: disabled.sessionId,
+    shellId: disabled.shellId,
     script: 'set +o noglob; for file in *.ts; do printf "<%s>" "$file"; done',
   })
   expect(plusOption.output.stdoutDelta).toBe('<alpha.ts><beta.ts>')
@@ -924,7 +924,7 @@ test('BashEnvironment eval builtin executes in the current shell session', async
   await writeFile(join(root, 'input.txt'), 'from-input\n')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-eval',
+    shellIdFactory: () => 'shell-eval',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -936,28 +936,28 @@ test('BashEnvironment eval builtin executes in the current shell session', async
   expect(stateful.output.stdoutDelta).toBe(`hi|kept|${join(root, 'pkg')}`)
   expect(stateful.audit.map((event) => ('name' in event ? event.name : ''))).not.toContain('eval')
 
-  const args = await env.exec({ sessionId: stateful.sessionId, script: 'eval printf "%s:%s" "$EVAL_VALUE" "$PWD"' })
+  const args = await env.exec({ shellId: stateful.shellId, script: 'eval printf "%s:%s" "$EVAL_VALUE" "$PWD"' })
   expect(args.output.stdoutDelta).toBe(`kept:${join(root, 'pkg')}`)
 
-  const inheritedInput = await env.exec({ sessionId: stateful.sessionId, script: 'eval "read EVAL_INPUT" < ../input.txt; printf "$EVAL_INPUT"' })
+  const inheritedInput = await env.exec({ shellId: stateful.shellId, script: 'eval "read EVAL_INPUT" < ../input.txt; printf "$EVAL_INPUT"' })
   expect(inheritedInput.output.stdoutDelta).toBe('from-input')
 
-  const commandBuiltin = await env.exec({ sessionId: stateful.sessionId, script: 'command eval "printf command-eval"' })
+  const commandBuiltin = await env.exec({ shellId: stateful.shellId, script: 'command eval "printf command-eval"' })
   expect(commandBuiltin.output.stdoutDelta).toBe('command-eval')
 
-  const empty = await env.exec({ sessionId: stateful.sessionId, script: 'eval -- ""' })
+  const empty = await env.exec({ shellId: stateful.shellId, script: 'eval -- ""' })
   expect(empty.status).toBe('exited')
   if (empty.status !== 'exited') throw new Error('expected exited result')
   expect(empty.exitCode).toBe(0)
 
-  const invalidOption = await env.exec({ sessionId: stateful.sessionId, script: 'eval -z "printf bad"' })
+  const invalidOption = await env.exec({ shellId: stateful.shellId, script: 'eval -z "printf bad"' })
   expect(invalidOption.status).toBe('exited')
   if (invalidOption.status !== 'exited') throw new Error('expected exited result')
   expect(invalidOption.exitCode).toBe(2)
   expect(invalidOption.output.stderrDelta).toContain('invalid option')
   expect(invalidOption.audit).toEqual([])
 
-  const syntax = await env.exec({ sessionId: stateful.sessionId, script: 'eval "time printf bad"' })
+  const syntax = await env.exec({ shellId: stateful.shellId, script: 'eval "time printf bad"' })
   expect(syntax.status).toBe('exited')
   if (syntax.status !== 'exited') throw new Error('expected exited result')
   expect(syntax.exitCode).toBe(2)
@@ -972,15 +972,15 @@ test('BashEnvironment source args temporarily replace positional parameters', as
   )
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-source-args',
+    shellIdFactory: () => 'shell-source-args',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const set = await env.exec({ script: 'set -- outer1 outer2' })
-  const sourced = await env.exec({ sessionId: set.sessionId, script: 'source positional.sh inner1 inner2' })
+  const sourced = await env.exec({ shellId: set.shellId, script: 'source positional.sh inner1 inner2' })
   expect(sourced.output.stdoutDelta).toBe('inside-before:2:inner1:inner2\ninside-after:1:inner2:\n')
 
-  const restored = await env.exec({ sessionId: set.sessionId, script: 'printf "after:%s:%s:%s" "$#" "$1" "$2"' })
+  const restored = await env.exec({ shellId: set.shellId, script: 'printf "after:%s:%s:%s" "$#" "$1" "$2"' })
   expect(restored.output.stdoutDelta).toBe('after:2:outer1:outer2')
 })
 
@@ -990,7 +990,7 @@ test('BashEnvironment dispatches registered commands before system commands and 
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     commands: registry,
-    sessionIdFactory: () => 'session-registered',
+    shellIdFactory: () => 'shell-registered',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1025,7 +1025,7 @@ test('BashEnvironment supports command builtin lookup and system execution', asy
   const env = new BashEnvironment({
     host: new LocalHost(root),
     commands: registry,
-    sessionIdFactory: () => 'session-command-builtin',
+    shellIdFactory: () => 'shell-command-builtin',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1043,7 +1043,7 @@ test('BashEnvironment supports command builtin lookup and system execution', asy
   expect(lookupLines[3]).toMatch(/\/sh$/)
   expect(lookup.audit).toEqual([])
 
-  const run = await env.exec({ sessionId: lookup.sessionId, script: 'command sh -c "printf run"' })
+  const run = await env.exec({ shellId: lookup.shellId, script: 'command sh -c "printf run"' })
   expect(run.status).toBe('exited')
   if (run.status !== 'exited') throw new Error('expected exited result')
   expect(run.exitCode).toBe(0)
@@ -1059,7 +1059,7 @@ test('BashEnvironment supports command builtin lookup and system execution', asy
   ])
 
   const registeredPriority = await env.exec({
-    sessionId: lookup.sessionId,
+    shellId: lookup.shellId,
     script: 'echo-cmd() { printf function-shadow; }\necho-cmd run --value priority',
   })
   expect(registeredPriority.status).toBe('exited')
@@ -1076,7 +1076,7 @@ test('BashEnvironment supports command builtin lookup and system execution', asy
   ])
 
   const commandRegistered = await env.exec({
-    sessionId: lookup.sessionId,
+    shellId: lookup.shellId,
     script: 'echo-cmd() { printf function-shadow; }\ncommand echo-cmd run --value direct',
   })
   expect(commandRegistered.status).toBe('exited')
@@ -1093,7 +1093,7 @@ test('BashEnvironment supports command builtin lookup and system execution', asy
   ])
 
   const commandCd = await env.exec({
-    sessionId: lookup.sessionId,
+    shellId: lookup.shellId,
     script: 'command cd next; pwd',
   })
   expect(commandCd.status).toBe('exited')
@@ -1102,7 +1102,7 @@ test('BashEnvironment supports command builtin lookup and system execution', asy
   expect(commandCd.output.stdoutDelta).toBe(`${join(root, 'next')}\n`)
 
   const skippedFunction = await env.exec({
-    sessionId: lookup.sessionId,
+    shellId: lookup.shellId,
     script: 'function_only() { printf function; }\ncommand function_only',
   })
   expect(skippedFunction.status).toBe('exited')
@@ -1128,7 +1128,7 @@ test('BashEnvironment type builtin reports session command resolution', async ()
   const env = new BashEnvironment({
     host: new LocalHost(root),
     commands: registry,
-    sessionIdFactory: () => 'session-type-builtin',
+    shellIdFactory: () => 'shell-type-builtin',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1146,13 +1146,13 @@ test('BashEnvironment type builtin reports session command resolution', async ()
   expect(descriptionLines[3]).toMatch(/^sh is .*\/sh$/)
   expect(descriptions.audit).toEqual([])
 
-  const kinds = await env.exec({ sessionId: descriptions.sessionId, script: 'command type -t cd echo-cmd helper sh' })
+  const kinds = await env.exec({ shellId: descriptions.shellId, script: 'command type -t cd echo-cmd helper sh' })
   expect(kinds.status).toBe('exited')
   if (kinds.status !== 'exited') throw new Error('expected exited result')
   expect(kinds.output.stdoutDelta).toBe('builtin\nregistered\nfunction\nfile\n')
   expect(kinds.audit).toEqual([])
 
-  const invalid = await env.exec({ sessionId: descriptions.sessionId, script: 'type -z cd' })
+  const invalid = await env.exec({ shellId: descriptions.shellId, script: 'type -z cd' })
   expect(invalid.status).toBe('exited')
   if (invalid.status !== 'exited') throw new Error('expected exited result')
   expect(invalid.exitCode).toBe(2)
@@ -1160,24 +1160,30 @@ test('BashEnvironment type builtin reports session command resolution', async ()
   expect(invalid.audit).toEqual([])
 })
 
-test('BashEnvironment gives registered commands session-scoped storage', async () => {
+test('BashEnvironment scopes registered command storage by agent session with shell fallback', async () => {
   const registry = new CommandRegistry()
   registry.register(counterCommandSpec())
-  let nextSession = 0
+  let nextShell = 0
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     commands: registry,
-    sessionIdFactory: () => `session-${++nextSession}`,
+    shellIdFactory: () => `shell-${++nextShell}`,
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const first = await env.exec({ script: 'counter inc' })
   const second = await env.exec({ script: 'counter inc' })
-  const third = await env.exec({ sessionId: first.sessionId, script: 'counter inc' })
+  const third = await env.exec({ shellId: first.shellId, script: 'counter inc' })
+  const agentFirst = await env.exec({ agentSessionId: 'agent-a', script: 'counter inc' })
+  const agentSecond = await env.exec({ agentSessionId: 'agent-a', script: 'counter inc' })
+  const otherAgent = await env.exec({ agentSessionId: 'agent-b', script: 'counter inc' })
 
   expect(first.output.stdoutDelta).toBe('1\n')
   expect(second.output.stdoutDelta).toBe('1\n')
   expect(third.output.stdoutDelta).toBe('2\n')
+  expect(agentFirst.output.stdoutDelta).toBe('1\n')
+  expect(agentSecond.output.stdoutDelta).toBe('2\n')
+  expect(otherAgent.output.stdoutDelta).toBe('1\n')
 })
 
 test('BashEnvironment passes heredoc content to registered commands via stdinField', async () => {
@@ -1186,7 +1192,7 @@ test('BashEnvironment passes heredoc content to registered commands via stdinFie
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     commands: registry,
-    sessionIdFactory: () => 'session-heredoc-registered',
+    shellIdFactory: () => 'shell-heredoc-registered',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1201,7 +1207,7 @@ test('BashEnvironment passes heredoc content to registered commands via stdinFie
 test('BashEnvironment passes heredoc content to system commands and expands unquoted variables', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-heredoc-system',
+    shellIdFactory: () => 'shell-heredoc-system',
     initialEnv: { PATH: process.env.PATH ?? '', NAME: 'Alice' },
   })
 
@@ -1224,7 +1230,7 @@ test('BashEnvironment expands unquoted glob arguments through the host', async (
   await writeFile(join(root, 'src', 'skip.js'), '')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-glob',
+    shellIdFactory: () => 'shell-glob',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1233,11 +1239,11 @@ test('BashEnvironment expands unquoted glob arguments through the host', async (
   if (args.status !== 'exited') throw new Error('expected exited result')
   expect(args.output.stdoutDelta).toBe('alpha.ts|beta.ts|')
 
-  const quoted = await env.exec({ sessionId: args.sessionId, script: 'printf "%s|" "*.ts" \\*.ts missing-*.ts' })
+  const quoted = await env.exec({ shellId: args.shellId, script: 'printf "%s|" "*.ts" \\*.ts missing-*.ts' })
   expect(quoted.output.stdoutDelta).toBe('*.ts|*.ts|missing-*.ts|')
 
   const loop = await env.exec({
-    sessionId: args.sessionId,
+    shellId: args.shellId,
     script: 'for file in src/*.ts; do printf "<%s>" "$file"; done',
   })
   expect(loop.output.stdoutDelta).toBe('<src/one.ts><src/two.ts>')
@@ -1251,19 +1257,19 @@ test('BashEnvironment applies file redirections without handing scripts to a sys
   const env = new BashEnvironment({
     host: new LocalHost(root),
     commands: registry,
-    sessionIdFactory: () => 'session-redirections',
+    shellIdFactory: () => 'shell-redirections',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const write = await env.exec({ script: 'printf one > out.txt' })
   expect(write.output.stdoutDelta).toBe('')
-  const append = await env.exec({ sessionId: write.sessionId, script: 'printf two >> out.txt' })
+  const append = await env.exec({ shellId: write.shellId, script: 'printf two >> out.txt' })
   expect(append.output.stdoutDelta).toBe('')
-  const readBack = await env.exec({ sessionId: write.sessionId, script: 'cat out.txt' })
+  const readBack = await env.exec({ shellId: write.shellId, script: 'cat out.txt' })
   expect(readBack.output.stdoutDelta).toBe('onetwo')
 
   const blocked = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'set -C; sh -c "printf ran > marker.txt" > out.txt',
   })
   expect(blocked.status).toBe('exited')
@@ -1273,20 +1279,20 @@ test('BashEnvironment applies file redirections without handing scripts to a sys
   await expect(access(join(root, 'marker.txt'))).rejects.toThrow()
   await expect(readFile(join(root, 'out.txt'), 'utf8')).resolves.toBe('onetwo')
 
-  const forced = await env.exec({ sessionId: write.sessionId, script: 'printf forced >| out.txt' })
+  const forced = await env.exec({ shellId: write.shellId, script: 'printf forced >| out.txt' })
   expect(forced.status).toBe('exited')
   if (forced.status !== 'exited') throw new Error('expected exited result')
   expect(forced.exitCode).toBe(0)
   await expect(readFile(join(root, 'out.txt'), 'utf8')).resolves.toBe('forced')
 
-  const appendWithNoclobber = await env.exec({ sessionId: write.sessionId, script: 'printf append >> out.txt' })
+  const appendWithNoclobber = await env.exec({ shellId: write.shellId, script: 'printf append >> out.txt' })
   expect(appendWithNoclobber.status).toBe('exited')
   if (appendWithNoclobber.status !== 'exited') throw new Error('expected exited result')
   expect(appendWithNoclobber.exitCode).toBe(0)
   await expect(readFile(join(root, 'out.txt'), 'utf8')).resolves.toBe('forcedappend')
 
   const blockedShortcut = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf out; printf err >&2" &> out.txt',
   })
   expect(blockedShortcut.status).toBe('exited')
@@ -1294,100 +1300,100 @@ test('BashEnvironment applies file redirections without handing scripts to a sys
   expect(blockedShortcut.exitCode).toBe(1)
   expect(blockedShortcut.output.stderrDelta).toContain('cannot overwrite existing file')
 
-  const restoredClobber = await env.exec({ sessionId: write.sessionId, script: 'set +C; printf restored > out.txt' })
+  const restoredClobber = await env.exec({ shellId: write.shellId, script: 'set +C; printf restored > out.txt' })
   expect(restoredClobber.status).toBe('exited')
   if (restoredClobber.status !== 'exited') throw new Error('expected exited result')
   expect(restoredClobber.exitCode).toBe(0)
   await expect(readFile(join(root, 'out.txt'), 'utf8')).resolves.toBe('restored')
 
-  const stdin = await env.exec({ sessionId: write.sessionId, script: 'cat < input.txt' })
+  const stdin = await env.exec({ shellId: write.shellId, script: 'cat < input.txt' })
   expect(stdin.output.stdoutDelta).toBe('from-file')
 
-  const stderr = await env.exec({ sessionId: write.sessionId, script: 'sh -c "printf err >&2" 2> err.txt' })
+  const stderr = await env.exec({ shellId: write.shellId, script: 'sh -c "printf err >&2" 2> err.txt' })
   expect(stderr.output.stderrDelta).toBe('')
-  const errBack = await env.exec({ sessionId: write.sessionId, script: 'cat err.txt' })
+  const errBack = await env.exec({ shellId: write.shellId, script: 'cat err.txt' })
   expect(errBack.output.stdoutDelta).toBe('err')
 
-  const duplicated = await env.exec({ sessionId: write.sessionId, script: 'sh -c "printf err >&2" 2>&1' })
+  const duplicated = await env.exec({ shellId: write.shellId, script: 'sh -c "printf err >&2" 2>&1' })
   expect(duplicated.output.stdoutDelta).toBe('err')
   expect(duplicated.output.stderrDelta).toBe('')
 
   const bothToFile = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf out; printf err >&2" > both.txt 2>&1',
   })
   expect(bothToFile.output.stdoutDelta).toBe('')
   expect(bothToFile.output.stderrDelta).toBe('')
-  const bothBack = await env.exec({ sessionId: write.sessionId, script: 'cat both.txt' })
+  const bothBack = await env.exec({ shellId: write.shellId, script: 'cat both.txt' })
   expect(bothBack.output.stdoutDelta).toBe('outerr')
 
   const bothShortcut = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf out; printf err >&2" &> shortcut.txt',
   })
   expect(bothShortcut.output.stdoutDelta).toBe('')
   expect(bothShortcut.output.stderrDelta).toBe('')
-  const shortcutBack = await env.exec({ sessionId: write.sessionId, script: 'cat shortcut.txt' })
+  const shortcutBack = await env.exec({ shellId: write.shellId, script: 'cat shortcut.txt' })
   expect(shortcutBack.output.stdoutDelta).toBe('outerr')
 
   const bothAppend = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf more; printf err >&2" &>> shortcut.txt',
   })
   expect(bothAppend.output.stdoutDelta).toBe('')
   expect(bothAppend.output.stderrDelta).toBe('')
-  const appendedShortcutBack = await env.exec({ sessionId: write.sessionId, script: 'cat shortcut.txt' })
+  const appendedShortcutBack = await env.exec({ shellId: write.shellId, script: 'cat shortcut.txt' })
   expect(appendedShortcutBack.output.stdoutDelta).toBe('outerrmoreerr')
 
   const duplicateBeforeFile = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf out; printf err >&2" 2>&1 > stdout-only.txt',
   })
   expect(duplicateBeforeFile.output.stdoutDelta).toBe('err')
   expect(duplicateBeforeFile.output.stderrDelta).toBe('')
-  const stdoutOnlyBack = await env.exec({ sessionId: write.sessionId, script: 'cat stdout-only.txt' })
+  const stdoutOnlyBack = await env.exec({ shellId: write.shellId, script: 'cat stdout-only.txt' })
   expect(stdoutOnlyBack.output.stdoutDelta).toBe('out')
 
   const shortcutBeforeFile = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf out; printf err >&2" &> shortcut-order.txt > shortcut-stdout.txt',
   })
   expect(shortcutBeforeFile.output.stdoutDelta).toBe('')
   expect(shortcutBeforeFile.output.stderrDelta).toBe('')
-  const shortcutOrderBack = await env.exec({ sessionId: write.sessionId, script: 'cat shortcut-order.txt' })
+  const shortcutOrderBack = await env.exec({ shellId: write.shellId, script: 'cat shortcut-order.txt' })
   expect(shortcutOrderBack.output.stdoutDelta).toBe('err')
-  const shortcutStdoutBack = await env.exec({ sessionId: write.sessionId, script: 'cat shortcut-stdout.txt' })
+  const shortcutStdoutBack = await env.exec({ shellId: write.shellId, script: 'cat shortcut-stdout.txt' })
   expect(shortcutStdoutBack.output.stdoutDelta).toBe('out')
 
   const closedStderr = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf out; printf err >&2" 2>&-',
   })
   expect(closedStderr.output.stdoutDelta).toBe('out')
   expect(closedStderr.output.stderrDelta).toBe('')
 
   const closedStdout = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf out; printf err >&2" 1>&-',
   })
   expect(closedStdout.output.stdoutDelta).toBe('')
   expect(closedStdout.output.stderrDelta).toBe('err')
 
   const duplicateThenClose = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: 'sh -c "printf out; printf err >&2" 2>&1 1>&-',
   })
   expect(duplicateThenClose.output.stdoutDelta).toBe('err')
   expect(duplicateThenClose.output.stderrDelta).toBe('')
 
-  const registered = await env.exec({ sessionId: write.sessionId, script: 'echo-cmd run --value ok > registered.txt' })
+  const registered = await env.exec({ shellId: write.shellId, script: 'echo-cmd run --value ok > registered.txt' })
   expect(registered.output.stdoutDelta).toBe('')
-  const registeredBack = await env.exec({ sessionId: write.sessionId, script: 'cat registered.txt' })
+  const registeredBack = await env.exec({ shellId: write.shellId, script: 'cat registered.txt' })
   expect(registeredBack.output.stdoutDelta).toBe('registered:ok\n')
 
   const largeContent = 'x'.repeat(256 * 1024)
   const large = await env.exec({
-    sessionId: write.sessionId,
+    shellId: write.shellId,
     script: String.raw`sh -c "yes x | tr -d '\n' | head -c 262144; sleep 0.03" > large.txt`,
     yieldAfterMs: 1,
     outputLimitBytes: 512 * 1024,
@@ -1396,7 +1402,7 @@ test('BashEnvironment applies file redirections without handing scripts to a sys
   if (large.status !== 'running') throw new Error('expected running result')
   expect(large.output.stdoutDelta).toBe('')
 
-  const largeDone = await env.wait({ sessionId: write.sessionId, yieldAfterMs: 1_000, outputLimitBytes: 512 * 1024 })
+  const largeDone = await env.wait({ shellId: write.shellId, yieldAfterMs: 1_000, outputLimitBytes: 512 * 1024 })
   expect(largeDone.status).toBe('exited')
   if (largeDone.status !== 'exited') throw new Error('expected exited result')
   expect(largeDone.exitCode).toBe(0)
@@ -1410,7 +1416,7 @@ test('BashEnvironment executes simple pipelines without handing scripts to a sys
   await writeFile(join(root, 'input.txt'), 'alpha\nbeta\n')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-pipeline',
+    shellIdFactory: () => 'shell-pipeline',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1420,7 +1426,7 @@ test('BashEnvironment executes simple pipelines without handing scripts to a sys
   expect(result.exitCode).toBe(0)
   expect(result.output.stdoutDelta).toBe('BETA\n')
 
-  const stderr = await env.exec({ sessionId: result.sessionId, script: 'sh -c "printf err >&2; printf out" | cat' })
+  const stderr = await env.exec({ shellId: result.shellId, script: 'sh -c "printf err >&2; printf out" | cat' })
   expect(stderr.output.stdoutDelta).toBe('out')
   expect(stderr.output.stderrDelta).toBe('err')
 })
@@ -1429,7 +1435,7 @@ test('BashEnvironment executes compound commands inside pipelines', async () => 
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-compound-pipeline-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-compound-pipeline',
+    shellIdFactory: () => 'shell-compound-pipeline',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1438,25 +1444,25 @@ test('BashEnvironment executes compound commands inside pipelines', async () => 
   expect(group.output.stdoutDelta).toBe('left')
 
   const ifPipeline = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: 'if true; then printf "yes"; fi | cat',
   })
   expect(ifPipeline.output.stdoutDelta).toBe('yes')
 
   const forPipeline = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: 'for item in a b; do printf "$item"; done | cat',
   })
   expect(forPipeline.output.stdoutDelta).toBe('ab')
 
   const whilePipeline = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: 'printf "one\\ntwo\\n" | while read line; do printf "<%s>" "$line"; done',
   })
   expect(whilePipeline.output.stdoutDelta).toBe('<one><two>')
 
   const redirected = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: '{ printf hidden > file.txt; } | cat; printf "|"; cat file.txt',
   })
   expect(redirected.output.stdoutDelta).toBe('|hidden')
@@ -1465,7 +1471,7 @@ test('BashEnvironment executes compound commands inside pipelines', async () => 
 test('BashEnvironment supports negated pipelines and commands', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-negated',
+    shellIdFactory: () => 'shell-negated',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1474,34 +1480,34 @@ test('BashEnvironment supports negated pipelines and commands', async () => {
   if (trueResult.status !== 'exited') throw new Error('expected exited result')
   expect(trueResult.exitCode).toBe(1)
 
-  const status = await env.exec({ sessionId: trueResult.sessionId, script: 'printf "$?"' })
+  const status = await env.exec({ shellId: trueResult.shellId, script: 'printf "$?"' })
   expect(status.output.stdoutDelta).toBe('1')
 
-  const list = await env.exec({ sessionId: trueResult.sessionId, script: '! false && printf yes; ! true || printf no' })
+  const list = await env.exec({ shellId: trueResult.shellId, script: '! false && printf yes; ! true || printf no' })
   expect(list.output.stdoutDelta).toBe('yesno')
 
-  const pipeline = await env.exec({ sessionId: trueResult.sessionId, script: '! printf alpha | grep beta; printf "$?"' })
+  const pipeline = await env.exec({ shellId: trueResult.shellId, script: '! printf alpha | grep beta; printf "$?"' })
   expect(pipeline.output.stdoutDelta).toBe('0')
 
   const running = await env.exec({
-    sessionId: trueResult.sessionId,
+    shellId: trueResult.shellId,
     script: '! sh -c "sleep 0.03; exit 0"',
     yieldAfterMs: 1,
   })
   expect(running.status).toBe('running')
   if (running.status !== 'running') throw new Error('expected running result')
 
-  const waited = await env.wait({ sessionId: running.sessionId, yieldAfterMs: 1_000 })
+  const waited = await env.wait({ shellId: running.shellId, yieldAfterMs: 1_000 })
   expect(waited.status).toBe('exited')
   if (waited.status !== 'exited') throw new Error('expected exited result')
   expect(waited.exitCode).toBe(1)
   expect(waited.audit).toMatchObject([{ kind: 'system-command', name: 'sh', exitCode: 0 }])
 
-  const background = await env.exec({ sessionId: trueResult.sessionId, script: '! sh -c "exit 5" &' })
+  const background = await env.exec({ shellId: trueResult.shellId, script: '! sh -c "exit 5" &' })
   expect(background.status).toBe('exited')
   if (background.status !== 'exited') throw new Error('expected exited result')
   expect(background.exitCode).toBe(0)
-  const waitedBackground = await env.exec({ sessionId: trueResult.sessionId, script: 'wait %1' })
+  const waitedBackground = await env.exec({ shellId: trueResult.shellId, script: 'wait %1' })
   expect(waitedBackground.status).toBe('exited')
   if (waitedBackground.status !== 'exited') throw new Error('expected exited result')
   expect(waitedBackground.exitCode).toBe(5)
@@ -1510,7 +1516,7 @@ test('BashEnvironment supports negated pipelines and commands', async () => {
 test('BashEnvironment supports if compound commands in the current shell session', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-if',
+    shellIdFactory: () => 'shell-if',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1520,14 +1526,14 @@ test('BashEnvironment supports if compound commands in the current shell session
   expect(thenBranch.exitCode).toBe(0)
   expect(thenBranch.output.stdoutDelta).toBe('yes:0')
 
-  const elseBranch = await env.exec({ sessionId: thenBranch.sessionId, script: 'if false; then printf no; else printf else; fi' })
+  const elseBranch = await env.exec({ shellId: thenBranch.shellId, script: 'if false; then printf no; else printf else; fi' })
   expect(elseBranch.status).toBe('exited')
   if (elseBranch.status !== 'exited') throw new Error('expected exited result')
   expect(elseBranch.output.stdoutDelta).toBe('else')
   expect(elseBranch.exitCode).toBe(0)
 
   const elifBranch = await env.exec({
-    sessionId: thenBranch.sessionId,
+    shellId: thenBranch.shellId,
     script: 'if false; then printf no; elif true; then printf elif; false; else printf else; fi; printf ":$?"',
   })
   expect(elifBranch.status).toBe('exited')
@@ -1535,16 +1541,16 @@ test('BashEnvironment supports if compound commands in the current shell session
   expect(elifBranch.output.stdoutDelta).toBe('elif:1')
   expect(elifBranch.exitCode).toBe(0)
 
-  const noMatch = await env.exec({ sessionId: thenBranch.sessionId, script: 'if false; then printf no; fi; printf "no_match:$?"' })
+  const noMatch = await env.exec({ shellId: thenBranch.shellId, script: 'if false; then printf no; fi; printf "no_match:$?"' })
   expect(noMatch.output.stdoutDelta).toBe('no_match:0')
 
   const conditionList = await env.exec({
-    sessionId: thenBranch.sessionId,
+    shellId: thenBranch.shellId,
     script: 'if false; true; then X=from-if; fi; printf "$X"',
   })
   expect(conditionList.output.stdoutDelta).toBe('from-if')
 
-  const negated = await env.exec({ sessionId: thenBranch.sessionId, script: '! if true; then false; fi; printf "$?"' })
+  const negated = await env.exec({ shellId: thenBranch.shellId, script: '! if true; then false; fi; printf "$?"' })
   expect(negated.output.stdoutDelta).toBe('0')
 })
 
@@ -1554,7 +1560,7 @@ test('BashEnvironment supports common double-bracket conditional commands', asyn
   await writeFile(join(root, 'input.txt'), 'data')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-conditional',
+    shellIdFactory: () => 'shell-conditional',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1567,7 +1573,7 @@ test('BashEnvironment supports common double-bracket conditional commands', asyn
   expect(result.output.stdoutDelta).toBe('yes|0|0|0|0|0')
   expect(result.audit.some((event) => event.kind === 'system-command' && event.name === 'test')).toBe(false)
 
-  const quotedPattern = await env.exec({ sessionId: result.sessionId, script: '[[ "$name" == "a*" ]]; printf "$?"' })
+  const quotedPattern = await env.exec({ shellId: result.shellId, script: '[[ "$name" == "a*" ]]; printf "$?"' })
   expect(quotedPattern.output.stdoutDelta).toBe('1')
 })
 
@@ -1575,7 +1581,7 @@ test('BashEnvironment supports case compound commands in the current shell sessi
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-case-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-case',
+    shellIdFactory: () => 'shell-case',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1587,37 +1593,37 @@ test('BashEnvironment supports case compound commands in the current shell sessi
   expect(matched.output.stdoutDelta).toBe('ts|0')
 
   const quotedPattern = await env.exec({
-    sessionId: matched.sessionId,
+    shellId: matched.shellId,
     script: 'kind=alpha; case "$kind" in "a*") printf literal ;; a*) printf pattern ;; esac',
   })
   expect(quotedPattern.output.stdoutDelta).toBe('pattern')
 
   const characterClass = await env.exec({
-    sessionId: matched.sessionId,
+    shellId: matched.shellId,
     script: 'kind=beta; case "$kind" in [ab]*) printf class ;; *) printf other ;; esac',
   })
   expect(characterClass.output.stdoutDelta).toBe('class')
 
   const fallthrough = await env.exec({
-    sessionId: matched.sessionId,
+    shellId: matched.shellId,
     script: 'case x in x) printf one ;& y) printf two ;; esac; printf "|"; case x in x) printf match ;;& x) printf again ;; esac',
   })
   expect(fallthrough.output.stdoutDelta).toBe('onetwo|matchagain')
 
-  const unmatched = await env.exec({ sessionId: matched.sessionId, script: 'case x in y) false ;; esac; printf "$?"' })
+  const unmatched = await env.exec({ shellId: matched.shellId, script: 'case x in y) false ;; esac; printf "$?"' })
   expect(unmatched.output.stdoutDelta).toBe('0')
 
   const redirected = await env.exec({
-    sessionId: matched.sessionId,
+    shellId: matched.shellId,
     script: 'case foo in f*) printf ok ;; esac > case.txt; printf "$(cat case.txt)"',
   })
   expect(redirected.output.stdoutDelta).toBe('ok')
 
-  const negated = await env.exec({ sessionId: matched.sessionId, script: '! case x in x) false ;; esac; printf "$?"' })
+  const negated = await env.exec({ shellId: matched.shellId, script: '! case x in x) false ;; esac; printf "$?"' })
   expect(negated.output.stdoutDelta).toBe('0')
 
   const loopControl = await env.exec({
-    sessionId: matched.sessionId,
+    shellId: matched.shellId,
     script: 'for item in a b; do case "$item" in a) continue ;; esac; printf "$item"; done; printf "|$?"',
   })
   expect(loopControl.output.stdoutDelta).toBe('b|0')
@@ -1626,7 +1632,7 @@ test('BashEnvironment supports case compound commands in the current shell sessi
 test('BashEnvironment does not negate an explicit exit inside if', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-if-exit',
+    shellIdFactory: () => 'shell-if-exit',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1639,7 +1645,7 @@ test('BashEnvironment does not negate an explicit exit inside if', async () => {
 test('BashEnvironment supports finite for loops in the current shell session', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-for',
+    shellIdFactory: () => 'shell-for',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1652,19 +1658,19 @@ test('BashEnvironment supports finite for loops in the current shell session', a
   expect(words.output.stdoutDelta).toBe('ab|b|1')
 
   const positionals = await env.exec({
-    sessionId: words.sessionId,
+    shellId: words.shellId,
     script: 'set -- x y; for item; do printf "$item"; done; printf "|$item|$?"',
   })
   expect(positionals.output.stdoutDelta).toBe('xy|y|0')
 
   const empty = await env.exec({
-    sessionId: words.sessionId,
+    shellId: words.shellId,
     script: 'EMPTY=before; for EMPTY in; do printf nope; done; printf "$EMPTY|$?"',
   })
   expect(empty.output.stdoutDelta).toBe('before|0')
 
   const negated = await env.exec({
-    sessionId: words.sessionId,
+    shellId: words.shellId,
     script: '! for item in a b; do false; done; printf "$?"',
   })
   expect(negated.output.stdoutDelta).toBe('0')
@@ -1674,7 +1680,7 @@ test('BashEnvironment supports C-style for loops in the current shell session', 
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-c-for-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-c-for',
+    shellIdFactory: () => 'shell-c-for',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1685,28 +1691,28 @@ test('BashEnvironment supports C-style for loops in the current shell session', 
   expect(counted.output.stdoutDelta).toBe('012|3:0')
 
   const continued = await env.exec({
-    sessionId: counted.sessionId,
+    shellId: counted.shellId,
     script: 'for ((; i<6; i++)); do if (( i == 4 )); then continue; fi; printf "$i"; done; printf "|%s:%s" "$i" "$?"',
   })
   expect(continued.output.stdoutDelta).toBe('35|6:0')
 
-  const broken = await env.exec({ sessionId: counted.sessionId, script: 'for ((i=0; i<3; i++)); do break; done; printf "%s:%s" "$i" "$?"' })
+  const broken = await env.exec({ shellId: counted.shellId, script: 'for ((i=0; i<3; i++)); do break; done; printf "%s:%s" "$i" "$?"' })
   expect(broken.output.stdoutDelta).toBe('0:0')
 
   const redirected = await env.exec({
-    sessionId: counted.sessionId,
+    shellId: counted.shellId,
     script: 'for ((i=0; i<2; i++)); do printf "$i"; done > out.txt; cat out.txt',
   })
   expect(redirected.output.stdoutDelta).toBe('01')
 
-  const negated = await env.exec({ sessionId: counted.sessionId, script: '! for ((i=0; i<1; i++)); do false; done; printf "$?"' })
+  const negated = await env.exec({ shellId: counted.shellId, script: '! for ((i=0; i<1; i++)); do false; done; printf "$?"' })
   expect(negated.output.stdoutDelta).toBe('0')
 })
 
 test('BashEnvironment does not negate an explicit exit inside a for loop', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-for-exit',
+    shellIdFactory: () => 'shell-for-exit',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1719,7 +1725,7 @@ test('BashEnvironment does not negate an explicit exit inside a for loop', async
 test('BashEnvironment supports finite while and until loops in the current shell session', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-loops',
+    shellIdFactory: () => 'shell-loops',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1732,19 +1738,19 @@ test('BashEnvironment supports finite while and until loops in the current shell
   expect(whileLoop.output.stdoutDelta).toBe('01|2|1')
 
   const untilLoop = await env.exec({
-    sessionId: whileLoop.sessionId,
+    shellId: whileLoop.shellId,
     script: 'i=0; until test "$i" -ge 2; do printf "$i"; i=$(expr "$i" + 1); false; done; printf "|$i|$?"',
   })
   expect(untilLoop.output.stdoutDelta).toBe('01|2|1')
 
-  const emptyWhile = await env.exec({ sessionId: whileLoop.sessionId, script: 'while false; do printf nope; done; printf "$?"' })
+  const emptyWhile = await env.exec({ shellId: whileLoop.shellId, script: 'while false; do printf nope; done; printf "$?"' })
   expect(emptyWhile.output.stdoutDelta).toBe('0')
 
-  const emptyUntil = await env.exec({ sessionId: whileLoop.sessionId, script: 'until true; do printf nope; done; printf "$?"' })
+  const emptyUntil = await env.exec({ shellId: whileLoop.shellId, script: 'until true; do printf nope; done; printf "$?"' })
   expect(emptyUntil.output.stdoutDelta).toBe('0')
 
   const negated = await env.exec({
-    sessionId: whileLoop.sessionId,
+    shellId: whileLoop.shellId,
     script: '! while false; do printf nope; done; printf "$?"; ! until true; do printf nope; done; printf "|$?"',
   })
   expect(negated.output.stdoutDelta).toBe('1|1')
@@ -1753,7 +1759,7 @@ test('BashEnvironment supports finite while and until loops in the current shell
 test('BashEnvironment does not negate an explicit exit inside a loop', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-loop-exit',
+    shellIdFactory: () => 'shell-loop-exit',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1766,7 +1772,7 @@ test('BashEnvironment does not negate an explicit exit inside a loop', async () 
 test('BashEnvironment supports break and continue inside loops', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-loop-control',
+    shellIdFactory: () => 'shell-loop-control',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1779,25 +1785,25 @@ test('BashEnvironment supports break and continue inside loops', async () => {
   expect(broken.output.stdoutDelta).toBe('a|a|0')
 
   const continued = await env.exec({
-    sessionId: broken.sessionId,
+    shellId: broken.shellId,
     script: 'for item in a b; do printf "$item"; continue; printf no; done; printf "|$item|$?"',
   })
   expect(continued.output.stdoutDelta).toBe('ab|b|0')
 
   const nestedBreak = await env.exec({
-    sessionId: broken.sessionId,
+    shellId: broken.shellId,
     script: 'for i in 1 2; do for j in a b; do printf "$i$j"; break 2; done; printf after; done; printf "|$?"',
   })
   expect(nestedBreak.output.stdoutDelta).toBe('1a|0')
 
   const nestedContinue = await env.exec({
-    sessionId: broken.sessionId,
+    shellId: broken.shellId,
     script: 'for i in 1 2; do for j in a b; do printf "$i$j"; continue 2; printf no; done; printf after; done; printf "|$?"',
   })
   expect(nestedContinue.output.stdoutDelta).toBe('1a2a|0')
 
   const whileContinue = await env.exec({
-    sessionId: broken.sessionId,
+    shellId: broken.shellId,
     script:
       'i=0; while test "$i" -lt 3; do i=$(expr "$i" + 1); if test "$i" = 2; then continue; fi; printf "$i"; done; printf "|$i|$?"',
   })
@@ -1807,7 +1813,7 @@ test('BashEnvironment supports break and continue inside loops', async () => {
 test('BashEnvironment validates break and continue usage', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-loop-control-errors',
+    shellIdFactory: () => 'shell-loop-control-errors',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1818,13 +1824,13 @@ test('BashEnvironment validates break and continue usage', async () => {
   expect(outside.output.stderrDelta).toContain('only meaningful')
   expect(outside.audit).toEqual([])
 
-  const invalidCount = await env.exec({ sessionId: outside.sessionId, script: 'for item in a; do continue 0; done' })
+  const invalidCount = await env.exec({ shellId: outside.shellId, script: 'for item in a; do continue 0; done' })
   expect(invalidCount.status).toBe('exited')
   if (invalidCount.status !== 'exited') throw new Error('expected exited result')
   expect(invalidCount.exitCode).toBe(0)
   expect(invalidCount.output.stderrDelta).toContain('loop count out of range')
 
-  const nonNumeric = await env.exec({ sessionId: outside.sessionId, script: 'for item in a; do break bad; done' })
+  const nonNumeric = await env.exec({ shellId: outside.shellId, script: 'for item in a; do break bad; done' })
   expect(nonNumeric.status).toBe('exited')
   if (nonNumeric.status !== 'exited') throw new Error('expected exited result')
   expect(nonNumeric.exitCode).toBe(128)
@@ -1836,7 +1842,7 @@ test('BashEnvironment supports group commands in the current shell session', asy
   await mkdir(join(root, 'pkg'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-group',
+    shellIdFactory: () => 'shell-group',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1849,7 +1855,7 @@ test('BashEnvironment supports group commands in the current shell session', asy
   expect(result.exitCode).toBe(0)
   expect(result.output.stdoutDelta).toBe(`group|${join(root, 'pkg')}|1`)
 
-  const negated = await env.exec({ sessionId: result.sessionId, script: '! { false; }; printf "$?"' })
+  const negated = await env.exec({ shellId: result.shellId, script: '! { false; }; printf "$?"' })
   expect(negated.output.stdoutDelta).toBe('0')
 })
 
@@ -1857,7 +1863,7 @@ test('BashEnvironment applies output redirections to compound commands', async (
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-compound-redir-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-compound-redir',
+    shellIdFactory: () => 'shell-compound-redir',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1870,25 +1876,25 @@ test('BashEnvironment applies output redirections to compound commands', async (
   expect(group.output.stderrDelta).toBe('')
 
   const ifResult = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: 'if true; then printf yes; fi > if.txt; printf "$(cat if.txt)"',
   })
   expect(ifResult.output.stdoutDelta).toBe('yes')
 
   const forResult = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: 'for item in a b; do printf "$item"; done > loop.txt; (printf sub) >> loop.txt; printf "$(cat loop.txt)"',
   })
   expect(forResult.output.stdoutDelta).toBe('absub')
 
   const whileResult = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: 'i=0; while test "$i" -lt 2; do printf "$i"; i=$(expr "$i" + 1); done > while.txt; printf "$(cat while.txt)"',
   })
   expect(whileResult.output.stdoutDelta).toBe('01')
 
   const stderrOnly = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: '{ printf out; printf err >&2; } 1>&2; printf done',
   })
   expect(stderrOnly.output.stdoutDelta).toBe('done')
@@ -1900,7 +1906,7 @@ test('BashEnvironment applies input redirections to compound commands', async ()
   await writeFile(join(root, 'input.txt'), 'data')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-compound-input-redir',
+    shellIdFactory: () => 'shell-compound-input-redir',
     initialEnv: { PATH: process.env.PATH ?? '', NAME: 'world' },
   })
   env.registerCommand(stdinCommandSpec())
@@ -1910,29 +1916,29 @@ test('BashEnvironment applies input redirections to compound commands', async ()
   if (group.status !== 'exited') throw new Error('expected exited result')
   expect(group.output.stdoutDelta).toBe('data|')
 
-  const ifResult = await env.exec({ sessionId: group.sessionId, script: 'if true; then cat; fi < input.txt' })
+  const ifResult = await env.exec({ shellId: group.shellId, script: 'if true; then cat; fi < input.txt' })
   expect(ifResult.output.stdoutDelta).toBe('data')
 
   const whileResult = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: 'i=0; while (( i < 1 )); do cat; (( i++ )); done < input.txt',
   })
   expect(whileResult.output.stdoutDelta).toBe('data')
 
-  const subshell = await env.exec({ sessionId: group.sessionId, script: '(cat; cd /) < input.txt; printf "|$PWD"' })
+  const subshell = await env.exec({ shellId: group.shellId, script: '(cat; cd /) < input.txt; printf "|$PWD"' })
   expect(subshell.output.stdoutDelta).toBe(`data|${root}`)
 
   const heredoc = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: "{ cat; } <<'EOF'\nhello $NAME\nEOF",
   })
   expect(heredoc.output.stdoutDelta).toBe('hello $NAME\n')
 
-  const hereString = await env.exec({ sessionId: group.sessionId, script: '{ cat; } <<< "$NAME"' })
+  const hereString = await env.exec({ shellId: group.shellId, script: '{ cat; } <<< "$NAME"' })
   expect(hereString.output.stdoutDelta).toBe('world\n')
 
   const registered = await env.exec({
-    sessionId: group.sessionId,
+    shellId: group.shellId,
     script: '{ stdin-cmd write; printf "|"; stdin-cmd write; } < input.txt',
   })
   expect(registered.output.stdoutDelta).toBe('data|')
@@ -1943,7 +1949,7 @@ test('BashEnvironment supports subshell commands without leaking session state',
   await mkdir(join(root, 'pkg'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-subshell',
+    shellIdFactory: () => 'shell-subshell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1956,14 +1962,14 @@ test('BashEnvironment supports subshell commands without leaking session state',
   expect(result.exitCode).toBe(0)
   expect(result.output.stdoutDelta).toBe(`sub|${join(root, 'pkg')}||${root}|1`)
 
-  const negated = await env.exec({ sessionId: result.sessionId, script: '! (false); printf "$?"; (exit 7); printf "|$?"; ! (exit 7); printf "|$?"' })
+  const negated = await env.exec({ shellId: result.shellId, script: '! (false); printf "$?"; (exit 7); printf "|$?"; ! (exit 7); printf "|$?"' })
   expect(negated.output.stdoutDelta).toBe('0|7|0')
 })
 
 test('BashEnvironment does not negate an explicit exit inside a group command', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-group-exit',
+    shellIdFactory: () => 'shell-group-exit',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1976,7 +1982,7 @@ test('BashEnvironment does not negate an explicit exit inside a group command', 
 test('BashEnvironment does not negate an explicit exit builtin', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-negated-exit',
+    shellIdFactory: () => 'shell-negated-exit',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1989,7 +1995,7 @@ test('BashEnvironment does not negate an explicit exit builtin', async () => {
 test('BashEnvironment rejects unsupported parser constructs instead of handing them to system shell', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-unsupported',
+    shellIdFactory: () => 'shell-unsupported',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -1999,7 +2005,7 @@ test('BashEnvironment rejects unsupported parser constructs instead of handing t
 test('BashEnvironment records system command audit events', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-system',
+    shellIdFactory: () => 'shell-system',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2022,7 +2028,7 @@ test('BashEnvironment records system command audit events', async () => {
 test('BashEnvironment reports system command spawn failures without hanging', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-spawn-failure',
+    shellIdFactory: () => 'shell-spawn-failure',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2037,26 +2043,26 @@ test('BashEnvironment reports system command spawn failures without hanging', as
 test('BashEnvironment supports running/yield then shell_wait', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-wait',
+    shellIdFactory: () => 'shell-wait',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const first = await env.exec({ script: 'sh -c "sleep 0.03; printf done"', yieldAfterMs: 1 })
 
   expect(first.status).toBe('running')
-  const second = await env.wait({ sessionId: first.sessionId, yieldAfterMs: 1_000 })
+  const second = await env.wait({ shellId: first.shellId, yieldAfterMs: 1_000 })
   expect(second.status).toBe('exited')
   if (second.status !== 'exited') throw new Error('expected exited result')
   expect(second.output.stdoutDelta).toBe('done')
   expect(second.audit).toMatchObject([{ kind: 'system-command', name: 'sh' }])
-  const status = await env.exec({ sessionId: first.sessionId, script: 'printf "$?"' })
+  const status = await env.exec({ shellId: first.shellId, script: 'printf "$?"' })
   expect(status.output.stdoutDelta).toBe('0')
 })
 
 test('BashEnvironment yields running output_limit when output crosses the configured boundary', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-output-limit',
+    shellIdFactory: () => 'shell-output-limit',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2071,7 +2077,7 @@ test('BashEnvironment yields running output_limit when output crosses the config
   expect(first.reason).toBe('output_limit')
   expect(first.output.stdoutDelta).toBe('1234567890')
 
-  const second = await env.wait({ sessionId: first.sessionId, yieldAfterMs: 1_000, outputLimitBytes: 5 })
+  const second = await env.wait({ shellId: first.shellId, yieldAfterMs: 1_000, outputLimitBytes: 5 })
   expect(second.status).toBe('exited')
   if (second.status !== 'exited') throw new Error('expected exited result')
   expect(second.output.stdoutDelta).toBe('done')
@@ -2080,7 +2086,7 @@ test('BashEnvironment yields running output_limit when output crosses the config
 test('BashEnvironment supports shell_input for a foreground process', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-input',
+    shellIdFactory: () => 'shell-input',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2090,44 +2096,71 @@ test('BashEnvironment supports shell_input for a foreground process', async () =
   })
   expect(first.status).toBe('running')
 
-  const second = await env.input({ sessionId: first.sessionId, stdin: 'typed\n' })
+  const second = await env.input({ shellId: first.shellId, stdin: 'typed\n' })
   expect(second.status).toBe('exited')
   expect(second.output.stdoutDelta).toBe('typed')
 })
 
-test('BashEnvironment reports needs_input for idle foreground processes when configured', async () => {
+test('BashEnvironment keeps idle foreground processes running by default', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-needs-input',
+    shellIdFactory: () => 'shell-idle-default-running',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const first = await env.exec({
     script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
-    yieldAfterMs: 1_000,
-    needsInputAfterMs: 1,
+    yieldAfterMs: 1,
+  })
+  expect(first.status).toBe('running')
+
+  const second = await env.wait({
+    shellId: first.shellId,
+    yieldAfterMs: 5,
+  })
+  expect(second.status).toBe('running')
+
+  const third = await env.input({ shellId: first.shellId, stdin: 'typed\n' })
+  expect(third.status).toBe('exited')
+  expect(third.output.stdoutDelta).toBe('typed')
+})
+
+test('BashEnvironment waits from each shell_wait call before yielding again', async () => {
+  const env = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => 'shell-wait-call-window',
+    initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
-  expect(first.status).toBe('needs_input')
-  if (first.status !== 'needs_input') throw new Error('expected needs_input result')
-  expect(first.output.stdoutDelta).toBe('')
+  const first = await env.exec({
+    script: 'sh -c "sleep 0.2; printf done"',
+    yieldAfterMs: 1,
+  })
+  expect(first.status).toBe('running')
 
-  const second = await env.input({ sessionId: first.sessionId, stdin: 'typed\n' })
-  expect(second.status).toBe('exited')
-  expect(second.output.stdoutDelta).toBe('typed')
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  const waitStartedAt = Date.now()
+  const second = await env.wait({
+    shellId: first.shellId,
+    yieldAfterMs: 20,
+  })
+  expect(second.status).toBe('running')
+  expect(Date.now() - waitStartedAt).toBeGreaterThanOrEqual(10)
+
+  await env.abort({ shellId: first.shellId })
 })
 
 test('BashEnvironment supports shell_abort for a foreground process', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-abort',
+    shellIdFactory: () => 'shell-abort',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const first = await env.exec({ script: 'sleep 10', yieldAfterMs: 1 })
   expect(first.status).toBe('running')
 
-  const aborted = await env.abort({ sessionId: first.sessionId })
+  const aborted = await env.abort({ shellId: first.shellId })
   expect(aborted.status).toBe('aborted')
 })
 
@@ -2135,7 +2168,7 @@ test('BashEnvironment flushes redirected foreground output on shell_abort', asyn
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-abort-redir-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-abort-redir',
+    shellIdFactory: () => 'shell-abort-redir',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2148,19 +2181,19 @@ test('BashEnvironment flushes redirected foreground output on shell_abort', asyn
   if (first.status !== 'running') throw new Error('expected running result')
   expect(first.output.stdoutDelta).toBe('')
 
-  const aborted = await env.abort({ sessionId: first.sessionId })
+  const aborted = await env.abort({ shellId: first.shellId })
   expect(aborted.status).toBe('aborted')
   expect(aborted.output.stdoutDelta).toBe('')
   expect(aborted.output.stderrDelta).not.toContain('aborted')
   await expect(readFile(join(root, 'aborted.txt'), 'utf8')).resolves.toBe('aborted')
 })
 
-test('BashEnvironment disposeSession kills a foreground process and removes the session', async () => {
+test('BashEnvironment disposeShell kills a foreground process and removes the session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-dispose-foreground-'))
   const leakedPath = join(root, 'foreground-leaked.txt')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-dispose-foreground',
+    shellIdFactory: () => 'shell-dispose-foreground',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2169,23 +2202,23 @@ test('BashEnvironment disposeSession kills a foreground process and removes the 
     yieldAfterMs: 1,
   })
   expect(running.status).toBe('running')
-  expect(env.getSession(running.sessionId)).not.toBeNull()
+  expect(env.getShell(running.shellId)).not.toBeNull()
 
-  expect(await env.disposeSession(running.sessionId)).toBe(true)
-  expect(await env.disposeSession(running.sessionId)).toBe(false)
-  expect(env.getSession(running.sessionId)).toBeNull()
-  await expect(env.wait({ sessionId: running.sessionId })).rejects.toThrow('Unknown shell session')
+  expect(await env.disposeShell(running.shellId)).toBe(true)
+  expect(await env.disposeShell(running.shellId)).toBe(false)
+  expect(env.getShell(running.shellId)).toBeNull()
+  await expect(env.wait({ shellId: running.shellId })).rejects.toThrow('Unknown shell session')
 
   await delay(250)
   await expect(access(leakedPath)).rejects.toThrow()
 })
 
-test('BashEnvironment disposeSession kills background jobs and removes the session', async () => {
+test('BashEnvironment disposeShell kills background jobs and removes the session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-dispose-background-'))
   const leakedPath = join(root, 'background-leaked.txt')
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-dispose-background',
+    shellIdFactory: () => 'shell-dispose-background',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2195,37 +2228,37 @@ test('BashEnvironment disposeSession kills background jobs and removes the sessi
   expect(started.status).toBe('exited')
   expect(started.output.stdoutDelta).toContain('[1] sh -c')
 
-  expect(await env.disposeSession(started.sessionId)).toBe(true)
-  expect(env.getSession(started.sessionId)).toBeNull()
-  await expect(env.exec({ sessionId: started.sessionId, script: 'jobs' })).rejects.toThrow('Unknown shell session')
+  expect(await env.disposeShell(started.shellId)).toBe(true)
+  expect(env.getShell(started.shellId)).toBeNull()
+  await expect(env.exec({ shellId: started.shellId, script: 'jobs' })).rejects.toThrow('Unknown shell session')
 
   await delay(250)
   await expect(access(leakedPath)).rejects.toThrow()
 })
 
-test('BashEnvironment disposeAllSessions removes every shell session', async () => {
+test('BashEnvironment disposeAllShells removes every shell session', async () => {
   let nextSession = 0
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => `session-dispose-all-${++nextSession}`,
+    shellIdFactory: () => `shell-dispose-all-${++nextSession}`,
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const first = await env.exec({ script: 'printf one' })
   const second = await env.exec({ script: 'printf two' })
-  expect(env.getSession(first.sessionId)).not.toBeNull()
-  expect(env.getSession(second.sessionId)).not.toBeNull()
+  expect(env.getShell(first.shellId)).not.toBeNull()
+  expect(env.getShell(second.shellId)).not.toBeNull()
 
-  await env.disposeAllSessions()
+  await env.disposeAllShells()
 
-  expect(env.getSession(first.sessionId)).toBeNull()
-  expect(env.getSession(second.sessionId)).toBeNull()
+  expect(env.getShell(first.shellId)).toBeNull()
+  expect(env.getShell(second.shellId)).toBeNull()
 })
 
 test('BashEnvironment enforces timeoutMs by killing the foreground process', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'session-timeout',
+    shellIdFactory: () => 'shell-timeout',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2233,15 +2266,39 @@ test('BashEnvironment enforces timeoutMs by killing the foreground process', asy
 
   expect(result.status).toBe('timeout')
   expect(result.output.stdoutDelta).toBe('')
-  const after = await env.wait({ sessionId: result.sessionId })
+  const after = await env.wait({ shellId: result.shellId })
   expect(after.status).toBe('exited')
+})
+
+test('BashEnvironment reuses a shell after timeout or abort without leaking abort state', async () => {
+  const env = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => 'shell-reuse-after-stop',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const timed = await env.exec({ script: 'sleep 10', timeoutMs: 5, yieldAfterMs: 1_000 })
+  expect(timed.status).toBe('timeout')
+
+  const afterTimeout = await env.exec({ shellId: timed.shellId, script: 'printf after-timeout' })
+  expect(afterTimeout.status).toBe('exited')
+  expect(afterTimeout.output.stdoutDelta).toBe('after-timeout')
+
+  const running = await env.exec({ shellId: timed.shellId, script: 'sleep 10', yieldAfterMs: 1 })
+  expect(running.status).toBe('running')
+  const aborted = await env.abort({ shellId: timed.shellId })
+  expect(aborted.status).toBe('aborted')
+
+  const afterAbort = await env.exec({ shellId: timed.shellId, script: 'printf after-abort' })
+  expect(afterAbort.status).toBe('exited')
+  expect(afterAbort.output.stdoutDelta).toBe('after-abort')
 })
 
 test('BashEnvironment flushes redirected foreground output on timeout', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-timeout-redir-'))
   const env = new BashEnvironment({
     host: new LocalHost(root),
-    sessionIdFactory: () => 'session-timeout-redir',
+    shellIdFactory: () => 'shell-timeout-redir',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -2254,7 +2311,7 @@ test('BashEnvironment flushes redirected foreground output on timeout', async ()
   if (first.status !== 'running') throw new Error('expected running result')
   expect(first.output.stdoutDelta).toBe('')
 
-  const timedOut = await env.wait({ sessionId: first.sessionId, timeoutMs: 5, yieldAfterMs: 1_000 })
+  const timedOut = await env.wait({ shellId: first.shellId, timeoutMs: 5, yieldAfterMs: 1_000 })
   expect(timedOut.status).toBe('timeout')
   expect(timedOut.output.stdoutDelta).toBe('')
   expect(timedOut.output.stderrDelta).not.toContain('timed-out')

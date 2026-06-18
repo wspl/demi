@@ -2,9 +2,9 @@ import type { Command as ForkCommand, CommandContext as ForkCommandContext, Exec
 import { concatBytes, decodeUtf8, encodeUtf8 } from './bytes'
 import { runRegisteredCommand, type CommandIO, type CommandSpec } from './command'
 import type { ShellSession } from './environment-state'
-import type { SessionCommandStorage } from './storage'
+import type { AgentSessionCommandStorage } from './storage'
 
-export function commandSpecToForkCommand(session: ShellSession, spec: CommandSpec, storage: SessionCommandStorage): ForkCommand {
+export function commandSpecToForkCommand(session: ShellSession, spec: CommandSpec, storage: AgentSessionCommandStorage): ForkCommand {
   return {
     name: spec.name,
     consumesStdin: spec.subcommands.some((subcommand) => Boolean(subcommand.stdinField)),

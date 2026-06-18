@@ -15,14 +15,15 @@ test('coding agent definition exposes shell session tools and registered command
   const state = definition.initialState()
 
   expect(definition.name).toBe('coding')
-  expect(definition.commands?.({ state, cwd: process.cwd() }).map((command) => command.name)).toEqual(['editor', 'todo'])
-  expect(definition.tools({ state, cwd: process.cwd() }).map((tool) => tool.name)).toEqual([
+  expect(definition.commands?.({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() }).map((command) => command.name)).toEqual(['editor', 'todo'])
+  expect(definition.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() }).map((tool) => tool.name)).toEqual([
     'shell_exec',
     'shell_wait',
     'shell_input',
     'shell_abort',
   ])
   const prompt = definition.systemPrompt({
+    agentSessionId: 'coding-test-agent',
     state,
     cwd: process.cwd(),
     transcript: {} as never,
@@ -32,14 +33,16 @@ test('coding agent definition exposes shell session tools and registered command
   expect(prompt).toContain('Effects: modifies workspace files by creating a new file')
   expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
   expect(prompt).toContain('Failure output: writes the reason to stderr and exits non-zero')
-  expect(prompt).toContain('todo: Manage a session-scoped task list')
+  expect(prompt).toContain('todo: Manage an agent-session-scoped task list')
   expect(prompt).toContain('todo add "Run tests"')
-  expect(prompt).toContain('Effects: modifies session-scoped command storage')
+  expect(prompt).toContain('Effects: modifies agent-session-scoped command storage')
+  expect(prompt).toContain('run them in the foreground with a short yieldAfterMs')
+  expect(prompt).toContain('avoid pkill/killall by process name')
   expect(prompt).toContain('File references attached by the client are expanded before provider calls.')
 
   const todo = await environment.exec({ script: 'todo add "Verify default registration"' })
   expect(todo.output.stdoutDelta).toBe('[ ] T1 Verify default registration\n')
-  const editorPrompt = await environment.exec({ sessionId: todo.sessionId, script: 'editor prompt' })
+  const editorPrompt = await environment.exec({ shellId: todo.shellId, script: 'editor prompt' })
   expect(editorPrompt.output.stdoutDelta).toContain('editor create')
   expect(editorPrompt.output.stdoutDelta).toContain('Effects: modifies workspace files by creating a new file')
   expect(editorPrompt.output.stdoutDelta).toContain('Success output: writes "Created <path>" to stdout')
@@ -59,6 +62,7 @@ test('coding agent resolves file references through the workspace host', async (
 
   const resolved = await definition.resolveReferences(
     {
+      agentSessionId: 'coding-ref-agent',
       state: definition.initialState(),
       cwd: root,
       transcript: {} as never,
@@ -74,6 +78,7 @@ test('coding agent resolves file references through the workspace host', async (
 
   const resolvedUrl = await definition.resolveReferences(
     {
+      agentSessionId: 'coding-ref-agent',
       state: definition.initialState(),
       cwd: root,
       transcript: {} as never,
@@ -102,6 +107,7 @@ test('coding agent rejects file references outside the workspace host root', asy
   await expect(
     definition.resolveReferences(
       {
+        agentSessionId: 'coding-ref-agent',
         state: definition.initialState(),
         cwd: root,
         transcript: {} as never,
@@ -115,20 +121,21 @@ test('coding agent rejects file references outside the workspace host root', asy
 test('coding agent dispose clears shell sessions owned by its environment', async () => {
   const environment = new BashEnvironment({
     host: new LocalHost(process.cwd()),
-    sessionIdFactory: () => 'coding-dispose-session',
+    shellIdFactory: () => 'coding-dispose-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
   const definition = createCodingAgentDefinition({ environment })
   const state = definition.initialState()
 
   const created = await environment.exec({ script: 'printf live' })
-  expect(environment.getSession(created.sessionId)).not.toBeNull()
+  expect(environment.getShell(created.shellId)).not.toBeNull()
 
   await definition.dispose?.({
+    agentSessionId: 'coding-dispose-agent',
     state,
     cwd: process.cwd(),
     transcript: {} as never,
   })
 
-  expect(environment.getSession(created.sessionId)).toBeNull()
+  expect(environment.getShell(created.shellId)).toBeNull()
 })

@@ -17,7 +17,6 @@ import {
   exitedResult,
   flushForegroundSinks,
   memoryStorage,
-  needsInputResult,
   notifyForegroundWaiters,
   pumpStream,
   recordForegroundChunk,
@@ -28,51 +27,48 @@ import {
 import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } from './environment-state'
 import type { Host } from './host'
 import { HostBackedFileSystem } from './host-fs'
-import { SessionCommandStorage, type DemiStore } from './storage'
+import { AgentSessionCommandStorage, type DemiStore } from './storage'
 import { commandSpecToForkCommand } from './registered-command-adapter'
 
 export interface BashEnvironmentOptions {
   host: Host
   commands?: CommandRegistry
   storage?: DemiStore
-  sessionIdFactory?: () => string
+  shellIdFactory?: () => string
   initialEnv?: Record<string, string>
   yieldAfterMs?: number
   timeoutMs?: number
   outputLimitBytes?: number
-  needsInputAfterMs?: number
 }
 
 export interface ShellExecInput {
   script: string
-  sessionId?: string
+  shellId?: string
+  agentSessionId?: string
   yieldAfterMs?: number
   timeoutMs?: number
   outputLimitBytes?: number
-  needsInputAfterMs?: number
   signal?: AbortSignal
 }
 
 export interface ShellWaitInput {
-  sessionId: string
+  shellId: string
   yieldAfterMs?: number
   timeoutMs?: number
   outputLimitBytes?: number
-  needsInputAfterMs?: number
   signal?: AbortSignal
 }
 
 export interface ShellStdinInput {
-  sessionId: string
+  shellId: string
   stdin: string | Uint8Array
   yieldAfterMs?: number
   outputLimitBytes?: number
-  needsInputAfterMs?: number
   signal?: AbortSignal
 }
 
 export interface ShellAbortInput {
-  sessionId: string
+  shellId: string
 }
 
 export interface OutputSnapshot {
@@ -99,7 +95,7 @@ export interface CommandMetadataRecord {
 export type ShellToolResult =
   | {
       status: 'exited'
-      sessionId: string
+      shellId: string
       exitCode: number
       output: OutputSnapshot
       audit: BashAuditEvent[]
@@ -107,53 +103,43 @@ export type ShellToolResult =
     }
   | {
       status: 'running'
-      sessionId: string
+      shellId: string
       reason: 'yield' | 'output_limit'
       output: OutputSnapshot
       runningMs: number
       idleMs: number
     }
-  | {
-      status: 'needs_input'
-      sessionId: string
-      output: OutputSnapshot
-      prompt?: string
-      runningMs: number
-      idleMs: number
-    }
-  | { status: 'timeout'; sessionId: string; output: OutputSnapshot; runningMs: number }
-  | { status: 'aborted'; sessionId: string; output: OutputSnapshot; runningMs: number }
+  | { status: 'timeout'; shellId: string; output: OutputSnapshot; runningMs: number }
+  | { status: 'aborted'; shellId: string; output: OutputSnapshot; runningMs: number }
 
 const DEFAULT_YIELD_AFTER_MS = 10_000
 const DEFAULT_TIMEOUT_MS = 120_000
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
-const DEFAULT_NEEDS_INPUT_AFTER_MS = 30_000
 export class BashEnvironment {
   private readonly host: Host
   private readonly commands: CommandRegistry
   private readonly storage: DemiStore
-  private readonly sessionIdFactory: () => string
+  private readonly shellIdFactory: () => string
   private readonly initialEnv: Record<string, string>
   private readonly defaultYieldAfterMs: number
   private readonly defaultTimeoutMs: number
   private readonly defaultOutputLimitBytes: number
-  private readonly defaultNeedsInputAfterMs: number
-  private readonly sessions = new Map<string, ShellSession>()
+  private readonly shells = new Map<string, ShellSession>()
+  private readonly defaultShellByAgentSessionId = new Map<string, string>()
 
   constructor(options: BashEnvironmentOptions) {
     this.host = options.host
     this.commands = options.commands ?? new CommandRegistry()
     this.storage = options.storage ?? memoryStorage()
-    this.sessionIdFactory = options.sessionIdFactory ?? (() => globalThis.crypto.randomUUID())
+    this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}
     this.defaultYieldAfterMs = options.yieldAfterMs ?? DEFAULT_YIELD_AFTER_MS
     this.defaultTimeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.defaultOutputLimitBytes = options.outputLimitBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
-    this.defaultNeedsInputAfterMs = options.needsInputAfterMs ?? DEFAULT_NEEDS_INPUT_AFTER_MS
   }
 
-  getSession(sessionId: string): ShellSession | null {
-    return this.sessions.get(sessionId) ?? null
+  getShell(shellId: string): ShellSession | null {
+    return this.shells.get(shellId) ?? null
   }
 
   workspaceHost(): Host {
@@ -170,7 +156,7 @@ export class BashEnvironment {
   }
 
   async exec(input: ShellExecInput): Promise<ShellToolResult> {
-    const session = input.sessionId ? this.requireSession(input.sessionId) : this.createSession()
+    const session = input.shellId ? this.requireShell(input.shellId) : this.defaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
     if (session.pendingExec) return this.raceForeground(session, session.foreground, session.pendingExec, input)
     if (session.foreground) return runningResult(session, session.foreground, 'yield')
@@ -179,7 +165,7 @@ export class BashEnvironment {
   }
 
   async wait(input: ShellWaitInput): Promise<ShellToolResult> {
-    const session = this.requireSession(input.sessionId)
+    const session = this.requireShell(input.shellId)
     if (!session.pendingExec) {
       return exitedResult(session, 0, emptySnapshot())
     }
@@ -187,7 +173,7 @@ export class BashEnvironment {
   }
 
   async input(input: ShellStdinInput): Promise<ShellToolResult> {
-    const session = this.requireSession(input.sessionId)
+    const session = this.requireShell(input.shellId)
     if (!session.foreground || !session.pendingExec) {
       throw new Error(`Shell session "${session.id}" has no foreground process`)
     }
@@ -197,12 +183,12 @@ export class BashEnvironment {
   }
 
   async abort(input: ShellAbortInput): Promise<ShellToolResult> {
-    const session = this.requireSession(input.sessionId)
+    const session = this.requireShell(input.shellId)
     const foreground = session.foreground
     if (!foreground) {
       return {
         status: 'aborted',
-        sessionId: session.id,
+        shellId: session.id,
         output: emptySnapshot(),
         runningMs: 0,
       }
@@ -213,21 +199,24 @@ export class BashEnvironment {
     return this.collectAborted(session, foreground)
   }
 
-  async disposeSession(sessionId: string): Promise<boolean> {
-    const session = this.sessions.get(sessionId)
+  async disposeShell(shellId: string): Promise<boolean> {
+    const session = this.shells.get(shellId)
     if (!session) return false
-    await this.killSession(session)
-    this.sessions.delete(sessionId)
+    await this.killShell(session)
+    this.shells.delete(shellId)
+    for (const [agentSessionId, defaultShellId] of this.defaultShellByAgentSessionId) {
+      if (defaultShellId === shellId) this.defaultShellByAgentSessionId.delete(agentSessionId)
+    }
     return true
   }
 
-  async disposeAllSessions(): Promise<void> {
-    for (const sessionId of this.sessions.keys()) {
-      await this.disposeSession(sessionId)
+  async disposeAllShells(): Promise<void> {
+    for (const shellId of this.shells.keys()) {
+      await this.disposeShell(shellId)
     }
   }
 
-  private async killSession(session: ShellSession): Promise<void> {
+  private async killShell(session: ShellSession): Promise<void> {
     const foreground = session.foreground
     session.foreground = undefined
     session.pendingExec = undefined
@@ -244,25 +233,37 @@ export class BashEnvironment {
     if (session.abortController) session.abortController.abort()
   }
 
-  private requireSession(sessionId: string): ShellSession {
-    const session = this.sessions.get(sessionId)
-    if (!session) throw new Error(`Unknown shell session "${sessionId}"`)
+  private requireShell(shellId: string): ShellSession {
+    const session = this.shells.get(shellId)
+    if (!session) throw new Error(`Unknown shell session "${shellId}"`)
     return session
   }
 
-  private createSession(): ShellSession {
-    const id = this.sessionIdFactory()
+  private defaultShell(agentSessionId: string | undefined): ShellSession {
+    if (!agentSessionId) return this.createShell(undefined)
+    const existingShellId = this.defaultShellByAgentSessionId.get(agentSessionId)
+    const existing = existingShellId ? this.shells.get(existingShellId) : undefined
+    if (existing && !existing.exited) return existing
+    const shell = this.createShell(agentSessionId)
+    this.defaultShellByAgentSessionId.set(agentSessionId, shell.id)
+    return shell
+  }
+
+  private createShell(agentSessionId: string | undefined): ShellSession {
+    const id = this.shellIdFactory()
+    const commandScopeId = agentSessionId ?? id
     const cwd = this.host.root
     const fs = new HostBackedFileSystem(this.host)
     const env = new Map<string, string>()
     for (const [key, value] of Object.entries(this.initialEnv)) env.set(key, value)
     env.set('PWD', cwd)
-    env.set('DEMI_SESSION_ID', id)
+    env.set('DEMI_SESSION_ID', commandScopeId)
+    env.set('DEMI_SHELL_ID', id)
     if (!env.has('IFS')) env.set('IFS', ' \t\n')
     if (!env.has('PS1')) env.set('PS1', '')
     if (!env.has('PS2')) env.set('PS2', '> ')
     if (!env.has('SHLVL')) env.set('SHLVL', '1')
-    const exportedVars = new Set<string>(['PWD', 'DEMI_SESSION_ID'])
+    const exportedVars = new Set<string>(['PWD', 'DEMI_SESSION_ID', 'DEMI_SHELL_ID'])
     for (const key of env.keys()) {
       if (key !== key.toLowerCase()) exportedVars.add(key)
     }
@@ -344,7 +345,7 @@ export class BashEnvironment {
       nextBackgroundJobId: 1,
       exited: false,
     }
-    const storage = new SessionCommandStorage(this.storage, id)
+    const storage = new AgentSessionCommandStorage(this.storage, commandScopeId)
     for (const spec of this.commands.list()) {
       forkCommands.set(spec.name, commandSpecToForkCommand(session, spec, storage))
     }
@@ -368,7 +369,7 @@ export class BashEnvironment {
       state,
     )
     session.interpreter = interpreter
-    this.sessions.set(id, session)
+    this.shells.set(id, session)
     return session
   }
 
@@ -387,6 +388,7 @@ export class BashEnvironment {
     session.accumulator = { stdout: '', stderr: '', audit: [], commandMetadata: [] }
     session.startStdoutBytes = session.totalStdoutBytes
     session.startStderrBytes = session.totalStderrBytes
+    session.abortController = new AbortController()
 
     const execPromise = session.interpreter.executeScript(ast).then(
       (result) => result,
@@ -486,18 +488,26 @@ export class BashEnvironment {
     session: ShellSession,
     foreground: ForegroundProcess | undefined,
     execPromise: Promise<ForkExecResult | Error>,
-    input: { yieldAfterMs?: number; timeoutMs?: number; outputLimitBytes?: number; needsInputAfterMs?: number; signal?: AbortSignal },
+    input: { yieldAfterMs?: number; timeoutMs?: number; outputLimitBytes?: number; signal?: AbortSignal },
   ): Promise<ShellToolResult> {
     const yieldAfterMs = input.yieldAfterMs ?? this.defaultYieldAfterMs
     const timeoutMs = input.timeoutMs ?? this.defaultTimeoutMs
     const outputLimitBytes = input.outputLimitBytes ?? this.defaultOutputLimitBytes
-    const needsInputAfterMs = input.needsInputAfterMs ?? this.defaultNeedsInputAfterMs
+    const operationStartedAt = Date.now()
 
     while (true) {
       const foregroundNow = session.foreground
       if (foregroundNow && foregroundNow !== foreground) foreground = foregroundNow
 
-      const boundary = this.waitForBoundary(session, foreground, yieldAfterMs, timeoutMs, outputLimitBytes, needsInputAfterMs, input.signal)
+      const boundary = this.waitForBoundary(
+        session,
+        foreground,
+        operationStartedAt,
+        yieldAfterMs,
+        timeoutMs,
+        outputLimitBytes,
+        input.signal,
+      )
 
       const outcome = await Promise.race([
         execPromise.then((r) => ({ kind: 'done' as const, result: r })),
@@ -524,9 +534,6 @@ export class BashEnvironment {
       if (outcome.kind === 'output_limit') {
         return runningResult(session, activeForeground, 'output_limit')
       }
-      if (outcome.kind === 'needs_input') {
-        return needsInputResult(session, activeForeground)
-      }
       if (outcome.kind === 'timeout') {
         return this.collectTimeout(session, activeForeground)
       }
@@ -539,10 +546,10 @@ export class BashEnvironment {
   private waitForBoundary(
     session: ShellSession,
     foreground: ForegroundProcess | undefined,
+    operationStartedAt: number,
     yieldAfterMs: number,
     timeoutMs: number,
     outputLimitBytes: number,
-    needsInputAfterMs: number,
     externalSignal?: AbortSignal,
   ): { promise: Promise<BoundaryOutcome>; cancel: () => void } {
     const timers: Array<() => void> = []
@@ -583,10 +590,9 @@ export class BashEnvironment {
         return
       }
 
-      const startedAt = fg.startedAt
       const now = Date.now()
-      const yieldIn = Math.max(0, yieldAfterMs - (now - startedAt))
-      const timeoutIn = Math.max(0, timeoutMs - (now - startedAt))
+      const yieldIn = Math.max(0, yieldAfterMs - (now - operationStartedAt))
+      const timeoutIn = Math.max(0, timeoutMs - (now - fg.startedAt))
 
       if (yieldAfterMs > 0) {
         const t = setTimeout(() => resolve({ kind: 'yield' }), yieldIn)
@@ -594,16 +600,6 @@ export class BashEnvironment {
       }
       if (timeoutMs > 0) {
         const t = setTimeout(() => resolve({ kind: 'timeout' }), timeoutIn)
-        timers.push(() => clearTimeout(t))
-      }
-      if (needsInputAfterMs > 0) {
-        const idleSince = fg.lastOutputAt
-        const needsIn = Math.max(0, needsInputAfterMs - (Date.now() - idleSince))
-        const t = setTimeout(() => {
-          if (Date.now() - fg.lastOutputAt >= needsInputAfterMs) {
-            resolve({ kind: 'needs_input' })
-          }
-        }, needsIn + 5)
         timers.push(() => clearTimeout(t))
       }
       if (outputLimitBytes > 0) {
@@ -653,7 +649,7 @@ export class BashEnvironment {
       killProcessGroup: true,
     })
     const startedAt = Date.now()
-    const abortController = session.abortController ?? new AbortController()
+    const abortController = new AbortController()
     const foreground: ForegroundProcess = {
       command,
       args,
@@ -682,7 +678,6 @@ export class BashEnvironment {
       outputSinks: createOutputSinks(session.fs, opts.cwd, opts.redirections),
       abortController,
       outputLimitWaiters: new Set(),
-      needsInputWaiters: new Set(),
       redirectedStdoutBytes: 0,
       redirectedStderrBytes: 0,
     }
@@ -759,7 +754,7 @@ export class BashEnvironment {
     const snapshot = snapshotFromForeground(session, foreground)
     session.foreground = undefined
     session.pendingExec = undefined
-    return { status: 'timeout', sessionId: session.id, output: snapshot, runningMs: Date.now() - foreground.startedAt }
+    return { status: 'timeout', shellId: session.id, output: snapshot, runningMs: Date.now() - foreground.startedAt }
   }
 
   private async collectAborted(session: ShellSession, foreground: ForegroundProcess): Promise<ShellToolResult> {
@@ -769,13 +764,13 @@ export class BashEnvironment {
     const snapshot = snapshotFromForeground(session, foreground)
     session.foreground = undefined
     session.pendingExec = undefined
-    return { status: 'aborted', sessionId: session.id, output: snapshot, runningMs: Date.now() - foreground.startedAt }
+    return { status: 'aborted', shellId: session.id, output: snapshot, runningMs: Date.now() - foreground.startedAt }
   }
 
   private collectAbortedWithoutForeground(session: ShellSession): ShellToolResult {
     session.abortController?.abort()
     session.pendingExec = undefined
-    return { status: 'aborted', sessionId: session.id, output: snapshotFromAccumulator(session, session.accumulator), runningMs: 0 }
+    return { status: 'aborted', shellId: session.id, output: snapshotFromAccumulator(session, session.accumulator), runningMs: 0 }
   }
 }
 

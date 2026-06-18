@@ -24,7 +24,7 @@ test('editor create writes a new file from heredoc content', async () => {
   })
   expect(String(editorDiffs(created)[0].unifiedDiff)).toContain('+++ b/src/foo.txt')
 
-  const read = await env.exec({ sessionId: created.sessionId, script: 'cat src/foo.txt' })
+  const read = await env.exec({ shellId: created.shellId, script: 'cat src/foo.txt' })
   expect(read.output.stdoutDelta).toBe('hello\n')
 })
 
@@ -36,7 +36,7 @@ test('editor rejects paths outside the workspace root', async () => {
   const env = new BashEnvironment({
     host,
     commands: createCodingCommandRegistry({ editorHost: host }),
-    sessionIdFactory: () => 'editor-boundary-session',
+    shellIdFactory: () => 'editor-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -51,7 +51,7 @@ test('editor rejects paths outside the workspace root', async () => {
   await expect(access(absoluteOutside)).rejects.toThrow()
 
   const relative = await env.exec({
-    sessionId: absolute.sessionId,
+    shellId: absolute.shellId,
     script: "editor create ../relative-outside.txt <<'EOF'\nnope\nEOF",
   })
   expect(relative.status).toBe('exited')
@@ -70,7 +70,7 @@ test('editor patch rejects escaped paths before modifying any files', async () =
   const env = new BashEnvironment({
     host,
     commands: createCodingCommandRegistry({ editorHost: host }),
-    sessionIdFactory: () => 'editor-patch-boundary-session',
+    shellIdFactory: () => 'editor-patch-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
@@ -78,7 +78,7 @@ test('editor patch rejects escaped paths before modifying any files', async () =
     script: "editor create inside.txt <<'EOF'\ninside\nEOF",
   })
   const failed = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script: `editor patch <<'PATCH'\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ ${outsidePath}\n@@ -0,0 +1 @@\n+outside\nPATCH`,
   })
 
@@ -87,7 +87,7 @@ test('editor patch rejects escaped paths before modifying any files', async () =
   expect(failed.exitCode).toBe(1)
   expect(failed.output.stderrDelta).toContain('Path escapes workspace')
 
-  const inside = await env.exec({ sessionId: created.sessionId, script: 'cat inside.txt' })
+  const inside = await env.exec({ shellId: created.shellId, script: 'cat inside.txt' })
   expect(inside.output.stdoutDelta).toBe('inside\n')
   await expect(access(outsidePath)).rejects.toThrow()
 })
@@ -100,7 +100,7 @@ test('editor edit replaces exact text and fails on ambiguous matches', async () 
   })
 
   const ambiguous = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script: 'editor edit file.txt --old two --new changed',
   })
   if (ambiguous.status !== 'exited') throw new Error('expected exited result')
@@ -108,7 +108,7 @@ test('editor edit replaces exact text and fails on ambiguous matches', async () 
   expect(ambiguous.output.stderrDelta).toContain('Multiple matches')
 
   const edited = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script: 'editor edit file.txt --old two --new changed --occurrence 2',
   })
   expect(edited.output.stdoutDelta).toBe('Edited file.txt\n')
@@ -119,7 +119,7 @@ test('editor edit replaces exact text and fails on ambiguous matches', async () 
     newText: 'one\ntwo\nchanged\n',
   })
 
-  const read = await env.exec({ sessionId: created.sessionId, script: 'cat file.txt' })
+  const read = await env.exec({ shellId: created.shellId, script: 'cat file.txt' })
   expect(read.output.stdoutDelta).toBe('one\ntwo\nchanged\n')
 })
 
@@ -131,7 +131,7 @@ test('editor edit uses context only when it disambiguates to one nearest match',
   })
 
   const ambiguous = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script: 'editor edit context.txt --old target --new changed --context 2',
   })
   if (ambiguous.status !== 'exited') throw new Error('expected exited result')
@@ -140,16 +140,16 @@ test('editor edit uses context only when it disambiguates to one nearest match',
   expect(ambiguous.output.stderrDelta).toContain('occurrence 1 at line 1')
   expect(ambiguous.output.stderrDelta).toContain('occurrence 2 at line 3')
 
-  const unchanged = await env.exec({ sessionId: created.sessionId, script: 'cat context.txt' })
+  const unchanged = await env.exec({ shellId: created.shellId, script: 'cat context.txt' })
   expect(unchanged.output.stdoutDelta).toBe('target\nmiddle\ntarget\n')
 
   const edited = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script: 'editor edit context.txt --old target --new changed --context 3',
   })
   expect(edited.output.stdoutDelta).toBe('Edited context.txt\n')
 
-  const read = await env.exec({ sessionId: created.sessionId, script: 'cat context.txt' })
+  const read = await env.exec({ shellId: created.shellId, script: 'cat context.txt' })
   expect(read.output.stdoutDelta).toBe('target\nmiddle\nchanged\n')
 })
 
@@ -161,7 +161,7 @@ test('editor edit rejects empty old text without modifying the file', async () =
   })
 
   const failed = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script: 'editor edit empty-old.txt --old "" --new changed',
   })
   expect(failed.status).toBe('exited')
@@ -169,7 +169,7 @@ test('editor edit rejects empty old text without modifying the file', async () =
   expect(failed.exitCode).toBe(1)
   expect(failed.output.stderrDelta).toContain('Old text must not be empty')
 
-  const unchanged = await env.exec({ sessionId: created.sessionId, script: 'cat empty-old.txt' })
+  const unchanged = await env.exec({ shellId: created.shellId, script: 'cat empty-old.txt' })
   expect(unchanged.output.stdoutDelta).toBe('content\n')
 })
 
@@ -181,7 +181,7 @@ test('editor patch applies a unified diff', async () => {
   })
 
   const patched = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script: "editor patch <<'PATCH'\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
   })
   expect(patched.output.stdoutDelta).toBe('Patched 1 file(s)\n')
@@ -192,7 +192,7 @@ test('editor patch applies a unified diff', async () => {
     newText: 'one\nthree\n',
   })
 
-  const read = await env.exec({ sessionId: created.sessionId, script: 'cat patch.txt' })
+  const read = await env.exec({ shellId: created.shellId, script: 'cat patch.txt' })
   expect(read.output.stdoutDelta).toBe('one\nthree\n')
 })
 
@@ -204,13 +204,13 @@ test('editor patch accepts unified diff headers with timestamps', async () => {
   })
 
   const patched = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script:
       "editor patch <<'PATCH'\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
   })
   expect(patched.output.stdoutDelta).toBe('Patched 1 file(s)\n')
 
-  const read = await env.exec({ sessionId: created.sessionId, script: 'cat timed.txt' })
+  const read = await env.exec({ shellId: created.shellId, script: 'cat timed.txt' })
   expect(read.output.stdoutDelta).toBe('new\n')
 })
 
@@ -222,7 +222,7 @@ test('editor patch applies multiple files and creates new files', async () => {
   })
 
   const patched = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script:
       "editor patch <<'PATCH'\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
   })
@@ -237,9 +237,9 @@ test('editor patch applies multiple files and creates new files', async () => {
     newText: 'new\nfile\n',
   })
 
-  const existing = await env.exec({ sessionId: created.sessionId, script: 'cat existing.txt' })
+  const existing = await env.exec({ shellId: created.shellId, script: 'cat existing.txt' })
   expect(existing.output.stdoutDelta).toBe('changed\n')
-  const added = await env.exec({ sessionId: created.sessionId, script: 'cat nested/new.txt' })
+  const added = await env.exec({ shellId: created.shellId, script: 'cat nested/new.txt' })
   expect(added.output.stdoutDelta).toBe('new\nfile\n')
 })
 
@@ -251,7 +251,7 @@ test('editor patch deletes files with a /dev/null target', async () => {
   })
 
   const patched = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script: "editor patch <<'PATCH'\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
   })
   expect(patched.output.stdoutDelta).toBe('Patched 1 file(s)\n')
@@ -264,7 +264,7 @@ test('editor patch deletes files with a /dev/null target', async () => {
     newText: '',
   })
 
-  const missing = await env.exec({ sessionId: created.sessionId, script: 'test ! -e doomed.txt' })
+  const missing = await env.exec({ shellId: created.shellId, script: 'test ! -e doomed.txt' })
   expect(missing.status).toBe('exited')
   if (missing.status !== 'exited') throw new Error('expected exited result')
   expect(missing.exitCode).toBe(0)
@@ -278,7 +278,7 @@ test('editor patch validates all files before writing any changes', async () => 
   })
 
   const failed = await env.exec({
-    sessionId: created.sessionId,
+    shellId: created.shellId,
     script:
       "editor patch <<'PATCH'\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-wrong\n+changed\nPATCH",
   })
@@ -287,7 +287,7 @@ test('editor patch validates all files before writing any changes', async () => 
   expect(failed.exitCode).toBe(1)
   expect(failed.output.stderrDelta).toContain('Patch does not apply to second.txt')
 
-  const first = await env.exec({ sessionId: created.sessionId, script: 'cat first.txt' })
+  const first = await env.exec({ shellId: created.shellId, script: 'cat first.txt' })
   expect(first.output.stdoutDelta).toBe('first\n')
 })
 
@@ -297,7 +297,7 @@ async function createEditorEnvironment(): Promise<{ env: BashEnvironment }> {
   const env = new BashEnvironment({
     host,
     commands: createCodingCommandRegistry({ editorHost: host }),
-    sessionIdFactory: () => 'editor-session',
+    shellIdFactory: () => 'editor-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
   return { env }

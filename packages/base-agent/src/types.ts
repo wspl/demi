@@ -10,17 +10,20 @@ import type { AgentProvider, ToolDefinition } from '@demi/provider'
 import type { Transcript } from './transcript'
 
 export interface AgentPromptContext<State> {
+  agentSessionId: string
   state: State
   cwd: string
   transcript: Transcript
 }
 
 export interface AgentToolContext<State> {
+  agentSessionId: string
   state: State
   cwd: string
 }
 
 export interface AgentCommandContext<State> {
+  agentSessionId: string
   state: State
   cwd: string
 }
@@ -31,12 +34,14 @@ export interface AgentCommandSpec {
 }
 
 export interface AgentDisposeContext<State> {
+  agentSessionId: string
   state: State
   cwd: string
   transcript: Transcript
 }
 
 export interface AgentReferenceResolveContext<State> {
+  agentSessionId: string
   state: State
   cwd: string
   transcript: Transcript
@@ -44,6 +49,7 @@ export interface AgentReferenceResolveContext<State> {
 }
 
 export interface AgentToolInvokeContext<State> {
+  agentSessionId: string
   state: State
   cwd: string
   toolCallId: string
@@ -60,7 +66,7 @@ export interface AgentToolInvokeResult {
 
 export interface ToolContinuation {
   toolCallId: string
-  sessionId: string
+  shellId: string
   status: 'running'
 }
 
@@ -71,19 +77,21 @@ export interface AgentTool<State = unknown> extends ToolDefinition {
 export type AgentLifecycleEvent<State> =
   | {
       type: 'before_round_start'
+      agentSessionId: string
       state: State
       transcript: Transcript
       content: UserContentBlock[]
     }
   | {
       type: 'after_tool_call'
+      agentSessionId: string
       state: State
       transcript: Transcript
       toolCallId: string
       toolName: string
       result: AgentToolInvokeResult
     }
-  | { type: 'after_transcript_rewrite'; state: State; transcript: Transcript; reason: 'retry' }
+  | { type: 'after_transcript_rewrite'; agentSessionId: string; state: State; transcript: Transcript; reason: 'retry' }
 
 export interface AgentDefinition<State> {
   name: string
@@ -123,6 +131,7 @@ export interface AgentSessionStore<State = unknown> {
 }
 
 export interface AgentSessionOptions<State = unknown> {
+  agentSessionId?: string
   idFactory?: () => string
   now?: () => string
   store?: AgentSessionStore<State>
