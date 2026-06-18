@@ -1,4 +1,4 @@
-- Keep `AGENTS.md` focused on durable operating principles; do not turn recent task details into standing rules.
+- Keep `AGENTS.md` focused on durable operating principles.
 
 ## Context
 
