@@ -1,4 +1,4 @@
-- Do not overfit `AGENTS.md` to the last task; keep durable operating principles, not one-off commands, model choices, tool details, or accidental lessons.
+- Keep `AGENTS.md` focused on durable operating principles; do not turn recent task details into standing rules.
 
 ## Context
 
