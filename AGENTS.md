@@ -2,7 +2,9 @@
 
 ## Design Records
 
-- Update `agent-rewrite-plan.md` before implementing architecture or workflow changes.
+- Keep project documentation under `docs/`.
+- Update `docs/agent-rewrite-plan.md` before implementing architecture or workflow changes.
+- Document test modules and their intended coverage under `docs/`.
 
 ## Submodules
 
