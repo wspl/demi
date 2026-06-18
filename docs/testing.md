@@ -45,6 +45,25 @@
 | Coding workflow 能发现真实问题 | 不是只验证单步命令，而是覆盖创建项目、测试失败、读取错误、修复、测试通过、tool error recovery | `agent-coding` scenario tests，断言真实文件、todo、shell result、provider request |
 | 壳子路径能呈现真实模型行为 | TUI/RPC 能显示真实 text/thinking/tool output，真实 Claude Code provider 确实产出模型回复 | RPC transport tests，TUI 自动化或 gated smoke |
 
+### 3.2 当前门槛审查结论
+
+审查证据：
+
+- `bun run typecheck`：通过。
+- `bun run test`：217 pass，1 skip；skip 是真实 Claude CLI gated e2e。
+- `bun run test:just-bash-core`：93 pass。
+- `bun run check:registry`：通过。
+
+| 门槛 | 当前结论 | 证据与缺口 |
+|---|---|---|
+| AgentSession 长生命周期稳定 | 部分达成 | 单点 session/tool/queue/retry/resume/abort/compact 测试通过；缺少单会话 marathon、统一 invariant helper、全程 exact provider request。 |
+| 模型可见上下文稳定 | 部分达成 | 简单 request、tool replay、provider JSONL 转换已覆盖；缺少复杂 effective transcript fixture、stable prefix、bounded injection。 |
+| Compaction 可支撑长任务 | 未达成 P0 门槛 | 已覆盖 boundary/marker、latest boundary replay、一次 auto recover、hanging summary abort；缺少 preflight、summary request 契约、tool pair cut、failure/empty summary 原子性、多次 compact、queue/persistence。 |
+| Context cache baseline | 部分达成 | provider cache usage 字段解析已覆盖；缺少 AgentSession/RPC 传播断言、cache 不影响行为、compact 后 prefix 重新稳定。 |
+| Shell 控制面支撑真实长命令 | 基本达成默认测试门槛 | wait/input/abort、idle running、非空 input、AgentSession abort 传播、redirect flush 已覆盖；真实模型是否稳定使用控制面仍需 gated smoke。 |
+| Coding workflow 能发现真实问题 | 部分达成 | editor/todo workflow 真实写文件已覆盖；缺少创建项目、测试失败、读取错误、修复、测试通过、长命令和 tool error recovery 场景。 |
+| 壳子路径能呈现真实模型行为 | 未达成默认自动化门槛 | RPC transport 基础覆盖；TUI 自动化缺失，真实 Claude CLI e2e 是 gated skip，真实 thinking/tool/text 仍靠 smoke。 |
+
 ## 4. 默认测试入口
 
 - `bun run typecheck`：类型检查。
