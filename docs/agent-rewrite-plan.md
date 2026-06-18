@@ -485,7 +485,7 @@ Compaction **不删 transcript**，只控制"发给模型的部分"：
 - **auto-recover**：provider 返回 usage 接近上限时，取消当前请求、跑完 pending tools、compact、push resume turn 继续。
 - **手动**：调用方经协议层主动调 `compact()`。
 
-cut point 选择：从末尾往前累加 token，超过 `KEEP_RECENT_TOKENS` 且落在 `Response` block 上时，取其后作为 cut point；找不到则不 compact。
+cut point 选择：从末尾往前累加 token，优先落在完整 turn 边界；不能切断 `ToolCall -> output`，不能让 provider 看到孤立 tool_use/tool_result。如果单个 turn 本身超过 `KEEP_RECENT_TOKENS`，允许 split-turn compact，但必须把被切掉的 turn prefix 写进 summary，recent part 继续作为原始 blocks replay。找不到安全 cut point 时不 compact。
 
 ## 6. Agent Definition
 
@@ -1021,7 +1021,7 @@ Step 6  provider-claude-code    ← 驱动 claude code CLI 的真实 provider
 
 ### 14.2 测试执行方式
 
-测试不是单独最后补，而是跟每个 Step 的验收绑定：Step 2 用 StubProvider 复刻 AgentSession 行为规格，Step 3 覆盖 bash runtime / Host / shell tools，Step 4 覆盖 editor / todo / coding marathon，Step 5 覆盖 RPC client-host-transport，Step 6 覆盖 claude-code provider 的 CLI 参数、stream-json 输入转换、事件映射和 MCP control_request。
+测试不是单独最后补，而是跟每个 Step 的验收绑定：Step 2 用 StubProvider 复刻 AgentSession 行为规格，Step 3 覆盖 bash runtime / Host / shell tools，Step 4 覆盖 editor / todo / coding marathon，Step 5 覆盖 RPC client-host-transport，Step 6 覆盖 claude-code provider 的 CLI 参数、stream-json 输入转换、事件映射和 MCP control_request。完整测试模块、缺口和优先级以 `docs/testing.md` 为准，本小节只记录执行入口。
 
 日常门禁：
 

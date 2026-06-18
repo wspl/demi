@@ -77,6 +77,8 @@ agent-gui/Rust 的 compact 测试是当前最重要的校准对象；demi 不照
 | tool 运行期间不 compact；cut point 不切断 `tool_use -> tool_result` | P0 | `5.6 Compaction`，未覆盖 | 防止模型收到孤立 tool 历史，或 compact 后重复执行已完成工具。 |
 | 多次 compact 只从 latest boundary replay，不把旧 summary 反复套入上下文 | P0 | `5.6 Compaction`，未覆盖 | 防止摘要无限膨胀，或被压缩历史重新进入模型上下文。 |
 | compact/preflight 期间 queued send、abort、retry、resume 收敛 | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，未覆盖组合路径 | 防止用户在 summary 阶段继续操作时消息丢失、乱序或 session 卡在 compacting。 |
+| 长上下文里 stop/continue/retry 后触发 compact | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，未覆盖组合路径 | 防止 aborted text、completed tool result 或 retry 后的最新 user turn 在 summary 输入里丢失。 |
+| 单个 turn 本身超过 recent budget，需要 split-turn summary | P0 | `5.6 Compaction`，未覆盖 | 防止一个超长工具/assistant turn 找不到 cut point 后无法 compact，或硬切到 tool result 中间。 |
 | compact 后 close/reopen，summary 和 replay 起点保持一致 | P0 persistence | `5.4 Agent Session Runtime`、`5.6 Compaction`，未覆盖 | 防止重启后 boundary/marker 丢失，模型重新看到旧长历史或看不到摘要。 |
 | edit/replay 历史分支影响 summary | 当前无 `replay_from` 产品面；只保留 replay invariant | `5.5 Transcript 与 Replay` | 防止被删掉的历史 mutation 面重新进入设计，同时保证现有 replay 仍只取模型应见内容。 |
 | 切换到更小 context 的模型后触发 compact | 非 MVP 专项；纳入模型可见上下文/limit contract | `5.7 模型可见上下文与 Context Cache`，未覆盖 | 防止未来 provider/model 配置变化时仍按旧 context limit 请求模型。 |
@@ -93,6 +95,20 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 | compact 后历史重建与 live compaction 结果一致 | P0 | `5.6 Compaction`、`5.11 Host、FS 与 Store`，未覆盖 | 防止 session 恢复后 replay 起点、summary 或 recent context 与内存态不一致。 |
 | 完整审计日志与模型上下文分离 | P0 | `5.5 Transcript 与 Replay`、`5.6 Compaction`，部分覆盖 | 防止为了压缩模型上下文而删除完整历史，或把审计块误发给模型。 |
 | provider 异常输入：empty、malformed、unicode/media、context overflow、tool result 缺失 | P0 provider 边界 | `5.3 Claude Code Provider`，部分覆盖 | 防止真实 CLI/服务端返回边界事件时 agent 卡死、污染 pending state 或错误分类不可恢复。 |
+| pre-turn/mid-turn/manual compact 的 request shape 有 snapshot 级断言 | P0 | `5.6 Compaction`、`5.7 模型可见上下文与 Context Cache`，未覆盖 | 防止 incoming user 被重复放入请求、control-only item 被摘要、或 mid-turn continuation 丢失当前上下文。 |
+
+### 3.5 范围裁剪
+
+这些参考项目能力不进入当前测试缺口矩阵；如果产品范围变化，再作为新模块写入本文件。
+
+| 参考能力 | 当前处理 | 原因 |
+|---|---|---|
+| GUI 历史编辑、revert、branch/tree replay | 不作为缺口；只保留 append-only replay invariant | 当前架构已删除 `replay_from`，只允许 retry 截断最后一轮。 |
+| pi 的 branch summarization / tree navigation | 不作为缺口 | demi 当前没有分支会话树，compact 只服务单条 append-only session。 |
+| opencode 的 permission/share/project/worktree 管理 | 不作为缺口 | 当前产品目标是最小稳定 agent runtime，不是完整 IDE/协作产品。 |
+| plugin/custom compaction hooks | 不作为缺口 | 当前没有插件扩展 API；先保证默认 compact 的确定性和原子性。 |
+| opencode 式旧 tool output pruning | 不作为缺口；只接受未来作为模型上下文裁剪策略 | demi 的 transcript 必须保留完整审计历史，不能把 pruning 误写成默认行为。 |
+| 远程 Host / 容器 Host adapter | 不作为当前缺口 | 当前实现目标只要求 Host 抽象边界和 LocalHost 稳定，远程 adapter 属于后续产品范围。 |
 
 ## 4. 默认测试入口
 
@@ -217,16 +233,22 @@ Owner：`packages/base-agent`
 | preflight compact 在新 provider request 前发生 | 未覆盖 | 需要 send 前 token 阈值场景 | 防止新用户消息已经把上下文推过上限后才请求模型，导致真实 provider 直接 context overflow。 |
 | compaction summary request 的模型、thinking、cwd、tools 与契约一致 | 未覆盖 | 需要捕获 summary provider request | 防止 summary 用错模型/思考等级、错误 cwd，或把普通工具暴露给总结请求。 |
 | cut point 不能切断 `tool_use -> tool_result` | 未覆盖 | 需要 transcript cut-point invariant 测试 | 需要防止模型看到孤立 tool_use 或孤立 tool_result，引发 provider 协议错误。 |
+| 单个超长 turn 的 split-turn cut point | 未覆盖 | 需要 oversized single-turn fixture | 防止整轮超过 recent budget 时无法 compact，或把同一 turn 的早期上下文直接丢掉。 |
 | compact 后下一次 provider request 精确等于 summary + recent context | 未覆盖 | 需要 exact request 测试 | 需要发现 summary、recent blocks、preamble 或 tool history 被漏放、重复放、乱序放。 |
+| pre-turn compact request shape：incoming user 恰好出现一次，control-only item 不进 summary | 未覆盖 | 需要 request snapshot 测试 | 防止当前用户消息被重复注入，或模型切换、cwd/config diff、resume control block 等运行时控制信息污染 summary。 |
+| mid-turn compact / auto-recover continuation request shape | 未覆盖 | 需要 tool + usage + compact + resume snapshot | 防止工具执行后自动 compact 时丢失 continuation 上下文，或把已完成工具重新放成 pending。 |
 | 多次 compact 只 replay latest boundary，不重复旧 summary | 未覆盖 | 需要 multi-compact 测试 | 需要规避摘要套摘要无限膨胀，或旧历史重新进入上下文。 |
 | summary provider error/abort 不留下半截 boundary/marker | 部分覆盖 | abort 收敛已测，transcript 原子性未完整断言 | 需要防止 compact 失败后 transcript 处于既不像旧状态也不像新状态的中间态。 |
 | empty summary 不插入 boundary/marker，且 session 可继续 | 未覆盖 | 需要 summary provider 返回空文本场景 | 防止空摘要把旧历史替换成无信息 boundary，后续模型失去任务上下文。 |
 | 没有可压缩历史时 manual compact 明确 no-op 或可解释失败 | 未覆盖 | 需要 empty-session/manual compact 场景 | 防止用户触发 compact 后 session 状态变化但没有任何有效 summary，或 UI/RPC 收不到可解释结果。 |
 | auto compact + resume 不重复执行已完成 tool call | 未覆盖 | 需要 tool + compact 场景测试 | 需要防止上下文压缩后把已完成工具当成待执行工具再次运行。 |
+| aborted text、completed tool result 在 compact summary 输入中保留 | 未覆盖 | 需要 stop/continue/retry + compact fixture | 防止长任务中被用户停止过的有用进展或已完成工具证据在压缩后消失。 |
 | compact 期间 queued send 能按序 drain | 未覆盖 | 需要 compacting phase 中排队 user message 场景 | 防止长 summary 期间用户继续输入后消息丢失、乱序，或 compact 完成后没有继续处理。 |
 | compact/preflight 期间 abort、retry、resume 的 action 收敛 | 未覆盖 | 需要 compacting phase 组合场景 | 防止停止、重试或继续操作与 summary 写入交错，留下 busy phase、重复 action 或半截 transcript。 |
+| compact 过程遇到 context-window 错误与普通 provider 错误分流 | 未覆盖 | 需要 context overflow 与 non-context failure fixture | 防止可通过裁剪/重试恢复的超限错误被当成普通失败，或普通 provider 错误无限重试。 |
 | compact 后持久化再恢复，replayable blocks 保持一致 | 未覆盖 | 需要 persistence roundtrip 测试 | 需要发现 boundary/marker 在 snapshot 中丢失或恢复后 replay 起点错误。 |
 | thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 | 未覆盖 | 需要复杂 transcript fixture | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
+| thinking 模型下 summary request 的 token/budget 设置有效 | 未覆盖 | 需要 thinking provider config fixture | 防止 summary 请求因为 thinking budget 与 max output token 冲突而失败，导致长任务无法 compact。 |
 
 ### 5.7 模型可见上下文与 Context Cache
 
@@ -238,6 +260,7 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 | provider request 只由 effective transcript 和当前 prompt context 构成 | 部分覆盖 | 简单 request 已测，缺少复杂历史 | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
 | provider、retry、compact、resume 共用同一个 effective transcript 入口 | 未覆盖 | 需要集中 request-builder/effective-context fixture | 防止不同路径各自拼 request，导致正常 send 通过但 compact 或 retry 后真实模型上下文漂移。 |
 | 注入内容有明确上限和截断策略 | 部分覆盖 | shell output limit 已覆盖，ref/preamble/tool result 通用上限未覆盖 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
+| 记录给模型的 tool output 使用 head/tail + truncation marker | 部分覆盖 | shell output limit 已覆盖，通用 tool/ref 输出 marker 未覆盖 | 防止截断后模型不知道内容被省略，或只保留头部导致错误诊断。 |
 | provider context-overflow 错误触发可恢复路径或明确失败 | 未覆盖 | 需要 fake provider overflow 场景 | 防止模型上下文超限后 session 只记录 generic error，无法 compact/retry 或向壳子给出明确状态。 |
 | provider usage 中 cache read/write token 字段被解析 | 已覆盖 | `jsonl-output.test.ts` | 防止 provider cache 指标被丢弃，后续无法判断真实 cache 行为。 |
 | cache usage 被 AgentSession 记录并对外暴露 | 部分覆盖 | response usage 记录路径存在，缺少专门 cache usage 断言 | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
@@ -313,13 +336,13 @@ Owner：`packages/shell`
 | 测试点 | 状态 | 现有覆盖 / 待补 | 能发现或规避的问题 |
 |---|---|---|---|
 | `HostBackedFileSystem` 通过 `Host.spawn` 完成 read/exists/stat/write/append/readdir | 已覆盖 | `packages/shell/src/__tests__/host-fs.test.ts` | 防止 shell/coding 绕过 Host 直接读写本机 fs，破坏远程或容器后端边界。 |
+| shell root entry 只暴露 browser-safe Host contract / FS class | 已覆盖 | `packages/shell/src/__tests__/root-entry.test.ts` | 防止 `@demi/shell` 根入口静态带入 Node-only adapter，破坏 browser/runtime-neutral 包边界。 |
 | readFileBuffer 返回 raw bytes | 已覆盖 | `host-fs.test.ts` | 防止二进制文件被文本编码损坏。 |
 | `LocalHost` spawn capture stdout 和 stdin | 已覆盖 | `packages/shell/src/__tests__/local-host.test.ts` | 防止本地 adapter 不能正确连接进程输入输出。 |
 | `LocalHost` terminate foreground process | 已覆盖 | `local-host.test.ts` | 防止 shell abort/timeout 在本地进程层失效。 |
 | `AgentSessionCommandStorage` 按 agent session id prefix 隔离 keys | 已覆盖 | `packages/shell/src/__tests__/store.test.ts` | 防止多个 agent session 的 todo 或命令状态互相污染。 |
 | storage 拒绝逃逸 session prefix 的 key/session id | 已覆盖 | `store.test.ts` | 防止注册命令通过恶意 key 读写其他 session 或 store 根目录。 |
 | `LocalDemiStore` 拒绝非相对 store path | 已覆盖 | `store.test.ts` | 防止本地 store 被路径穿越写到任意文件。 |
-| 远程 Host / 容器 Host | 未覆盖 | 尚未实现 | 未来实现时用于发现 LocalHost 假设泄漏到通用 Host 接口。 |
 
 ### 5.12 Coding Agent Definition
 
@@ -428,7 +451,7 @@ Owner：`packages/just-bash`
 
 ## 6. 当前优先补测顺序
 
-1. `base-agent` compaction P0：tool boundary、exact replay、多次 compact、failure atomicity、auto compact after tool、preflight compact、persistence roundtrip。
+1. `base-agent` compaction P0：tool boundary、split-turn、request shape snapshot、exact replay、多次 compact、failure atomicity、auto compact after tool、preflight compact、persistence roundtrip、thinking summary budget。
 2. 模型可见上下文与 cache/provider conformance baseline：stable request prefix、usage/cache 字段端到端保留、compact 后上下文重新稳定、无界 tool output/ref/preamble 截断策略、empty/unicode/context-overflow 边界输入。
 3. AgentSession marathon invariants：单会话内组合 send/queue/retry/resume/abort/tool/error/compact，并在关键步骤断言 transcript 和 provider request。
 4. coding agent scenario：创建项目、测试失败、读取错误、修复、测试通过、长命令 wait/input/abort、tool error recovery。
