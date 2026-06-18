@@ -1,14 +1,19 @@
 import { PassThrough } from 'node:stream'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { access, mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import type { AgentDefinition } from '@demi/base-agent'
-import { ProviderRegistry, StubProvider, events } from '@demi/provider'
+import { BashEnvironment, createShellSessionTools } from '@demi/shell'
+import { LocalHost } from '@demi/shell/local-host'
+import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
 import {
   RpcClient,
   RpcHost,
+  type ClientSessionEvent,
   type ClientFrame,
   type ProviderConfig,
 } from '../index'
@@ -88,6 +93,111 @@ test('StdioTransport carries the same RpcClient/RpcHost frames over NDJSON', asy
   expect(textBlock).toMatchObject({ type: 'text', text: 'over stdio' })
 })
 
+test('StdioTransport preserves complex RpcClient action convergence over NDJSON', async () => {
+  const clientToHost = new PassThrough()
+  const hostToClient = new PassThrough()
+  const provider = new StdioScenarioProvider()
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'stdio-scenario',
+    displayName: 'Stdio Scenario',
+    createProvider: () => provider,
+  })
+
+  const host = new RpcHost({
+    transport: createStdioHostTransport(clientToHost, hostToClient),
+    providerRegistry,
+    definitions: { test: createDefinition() },
+  })
+  const client = new RpcClient(createStdioClientTransport(hostToClient, clientToHost))
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open('test', { type: 'stdio-scenario', model }, '/workspace')
+  const first = client.send([{ type: 'text', text: 'first ' + 'x'.repeat(20_000) }])
+  await provider.firstStarted.promise
+  const second = client.send([{ type: 'text', text: 'second' }])
+  await waitFor(() => seen.some((event) => event.type === 'queue' && event.queue.some((message) => message.text === 'second')))
+
+  provider.firstRelease.resolve(undefined)
+  await first
+  await expect(second).rejects.toThrow('second failed')
+  expect(client.transcript().blocks.some((block) => block.type === 'error')).toBe(true)
+
+  await client.retry()
+  expect(client.transcript().blocks.some((block) => block.type === 'error')).toBe(false)
+
+  const aborting = client.send([{ type: 'text', text: 'abort me' }])
+  await provider.abortStarted.promise
+  await expect(client.abort()).resolves.toBe(true)
+  await aborting
+  await client.resume()
+
+  await client.compact()
+  expect(client.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
+
+  await client.send([{ type: 'text', text: 'after compact' }])
+
+  expect(provider.summaryRequests).toBe(1)
+  expect(provider.afterCompactRequest?.items[0]).toEqual({
+    type: 'user_message',
+    content: [{ type: 'text', text: 'Previous conversation summary:\nstdio summary' }],
+  })
+  expect(client.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'after compact answer' })
+
+  await host.close()
+})
+
+test('StdioTransport close disposes shell foreground processes through RpcHost', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-stdio-close-shell-'))
+  const leakedPath = join(root, 'stdio-leaked.txt')
+  const clientToHost = new PassThrough()
+  const hostToClient = new PassThrough()
+  const shellEnvironment = new BashEnvironment({
+    host: new LocalHost(root),
+    initialEnv: { PATH: process.env.PATH ?? '' },
+    shellIdFactory: () => 'stdio-close-shell',
+  })
+  const definition: AgentDefinition<Record<string, never>> = {
+    name: 'shell-stdio',
+    initialState: () => ({}),
+    systemPrompt: () => 'system',
+    tools: () => createShellSessionTools(shellEnvironment),
+    dispose: () => shellEnvironment.disposeAllShells(),
+  }
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'stdio-shell',
+    displayName: 'Stdio Shell',
+    createProvider: () =>
+      new StubProvider([
+        [
+          events.toolCall('tool-1', 'shell_exec', {
+            script: 'sh -c "sleep 0.2; printf leaked > stdio-leaked.txt"',
+            yieldAfterMs: 1,
+          }),
+        ],
+        [events.text('running'), events.response()],
+      ]),
+  })
+  new RpcHost({
+    transport: createStdioHostTransport(clientToHost, hostToClient),
+    providerRegistry,
+    definitions: { test: definition },
+  })
+  const client = new RpcClient(createStdioClientTransport(hostToClient, clientToHost))
+
+  await client.open('test', { type: 'stdio-shell', model }, root)
+  await client.send([{ type: 'text', text: 'start long command' }])
+  await waitFor(() => shellEnvironment.getShell('stdio-close-shell') !== null)
+
+  await client.close()
+
+  expect(shellEnvironment.getShell('stdio-close-shell')).toBeNull()
+  await delay(250)
+  await expect(access(leakedPath)).rejects.toThrow()
+})
+
 test('StdioTransport carries RpcClient frames to a child-process RpcHost', async () => {
   const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'stdio-host-fixture.ts')], {
     cwd: process.cwd(),
@@ -149,6 +259,83 @@ function nextFrame<T>(transport: { onFrame(handler: (frame: T) => void): () => v
   })
 }
 
+class StdioScenarioProvider implements AgentProvider {
+  readonly firstStarted = deferred<void>()
+  readonly firstRelease = deferred<void>()
+  readonly abortStarted = deferred<void>()
+  summaryRequests = 0
+  afterCompactRequest: InferenceRequest | null = null
+  private normalCalls = 0
+
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+      this.summaryRequests += 1
+      yield events.text('stdio summary')
+      yield events.response()
+      return
+    }
+
+    const call = this.normalCalls
+    this.normalCalls += 1
+
+    if (call === 0) {
+      this.firstStarted.resolve(undefined)
+      await this.firstRelease.promise
+      yield events.text(`first answer ${'y'.repeat(20_000)}`)
+      yield events.response()
+      return
+    }
+    if (call === 1) {
+      if (latestUserText(request) !== 'second') throw new Error('second request did not preserve queued user')
+      yield events.error('second failed', 'test')
+      return
+    }
+    if (call === 2) {
+      if (latestUserText(request) !== 'second') throw new Error('retry did not replay latest user')
+      yield events.text('retry answer')
+      yield events.response()
+      return
+    }
+    if (call === 3) {
+      this.abortStarted.resolve(undefined)
+      await new Promise<void>((resolve) => request.cancel.addEventListener('abort', () => resolve(), { once: true }))
+      return
+    }
+    if (call === 4) {
+      const latest = request.items.at(-1)
+      if (
+        latest?.type !== 'user_message' ||
+        latest.content[0]?.type !== 'text' ||
+        latest.content[0].text !== 'Continue from where you left off.'
+      ) {
+        throw new Error('resume request did not include resume marker')
+      }
+      yield events.text('resume answer')
+      yield events.response()
+      return
+    }
+
+    this.afterCompactRequest = request
+    yield events.text('after compact answer')
+    yield events.response()
+  }
+}
+
+function latestUserText(request: InferenceRequest): string {
+  const latest = [...request.items].reverse().find((item) => item.type === 'user_message')
+  if (latest?.type !== 'user_message') return ''
+  const textBlock = [...latest.content].reverse().find((block) => block.type === 'text')
+  return textBlock?.type === 'text' ? textBlock.text : ''
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve
+  })
+  return { promise, resolve }
+}
+
 async function waitForWithError(predicate: () => boolean, errorDetails: () => string): Promise<void> {
   const startedAt = Date.now()
   while (!predicate()) {
@@ -181,6 +368,10 @@ function withTimeout<T>(promise: Promise<T>, label: string, errorDetails: () => 
       },
     )
   })
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {

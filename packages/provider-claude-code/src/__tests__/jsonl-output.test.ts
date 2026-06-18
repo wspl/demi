@@ -130,6 +130,51 @@ test('requestToInputMessages converts binary media content to Claude base64 sour
   expect(JSON.parse(inputMessagesToJsonl(messages))).toEqual(messages[0])
 })
 
+test('requestToInputMessages preserves unicode, long fields, and mixed tool results', () => {
+  const unicode = 'line separator \u2028 snowman \u2603 face \uD83D\uDE00'
+  const longText = 'x'.repeat(10_000)
+  const messages = requestToInputMessages({
+    modelId: 'model',
+    systemPrompt: 'system',
+    cwd: '/tmp',
+    tools: [],
+    thinking: null,
+    cancel: new AbortController().signal,
+    items: [
+      { type: 'user_message', content: [{ type: 'text', text: `${unicode}\n${longText}` }] },
+      {
+        type: 'tool_result',
+        toolUseId: 'tool-1',
+        output: [
+          { type: 'text', text: unicode },
+          { type: 'image', source: { mediaType: 'image/png', data: 'AQID' } },
+        ],
+        isError: true,
+      },
+    ],
+  })
+
+  expect(messages[0]).toEqual({
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'text', text: `${unicode}\n${longText}` }] },
+  })
+  expect(messages[1]).toEqual({
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'tool-1',
+          is_error: true,
+          content: `${unicode}\n[image:image/png]`,
+        },
+      ],
+    },
+  })
+  expect(inputMessagesToJsonl(messages)).toContain(longText)
+})
+
 test('mapClaudeStdoutMessage maps assistant content, stream deltas, tool calls, and usage', () => {
   expect(
     mapClaudeStdoutMessage({
@@ -168,6 +213,56 @@ test('mapClaudeStdoutMessage maps assistant content, stream deltas, tool calls, 
   ).toEqual({
     events: [{ type: 'response', usage: { inputTokens: 2, outputTokens: 3, cacheReadTokens: 4, cacheWriteTokens: 5 } }],
     terminal: true,
+  })
+})
+
+test('mapClaudeStdoutMessage handles empty content and thinking boundary events', () => {
+  expect(mapClaudeStdoutMessage({ type: 'assistant', message: { content: [] } })).toEqual({
+    events: [],
+    terminal: false,
+  })
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'assistant',
+      message: { content: [{ type: 'text' }, { type: 'thinking' }, { type: 'redacted_thinking' }] },
+    }).events,
+  ).toEqual([
+    { type: 'text_delta', text: '' },
+    { type: 'thinking_start' },
+    { type: 'thinking_delta', text: '' },
+    { type: 'redacted_thinking', data: '' },
+  ])
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'stream_event',
+      event: { type: 'content_block_delta', delta: { type: 'thinking_delta' } },
+    }).events,
+  ).toEqual([{ type: 'thinking_delta', text: '' }])
+})
+
+test('mapClaudeStdoutMessage preserves provider error codes and result error text', () => {
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'error',
+      message: 'context window exceeded',
+      code: 'context_length_exceeded',
+    }).events,
+  ).toEqual([{ type: 'error', message: 'context window exceeded', code: 'context_length_exceeded' }])
+
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'result',
+      is_error: true,
+      result: 'rate limited',
+      errors: ['try later'],
+      usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 },
+    }),
+  ).toEqual({
+    terminal: true,
+    events: [
+      { type: 'error', message: 'rate limited\ntry later', code: null },
+      { type: 'response', usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 } },
+    ],
   })
 })
 

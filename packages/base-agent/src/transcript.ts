@@ -12,6 +12,11 @@ export interface TranscriptOptions {
   now?: () => string
 }
 
+export interface CompactionWindow {
+  startIndex: number
+  cutPoint: number
+}
+
 export class Transcript implements CoreTranscript {
   readonly blocks: Block[]
 
@@ -175,14 +180,23 @@ export class Transcript implements CoreTranscript {
   }
 
   findCompactionCutPoint(keepRecentTokens: number): number | null {
+    return this.findCompactionWindow(keepRecentTokens)?.cutPoint ?? null
+  }
+
+  findCompactionWindow(keepRecentTokens: number): CompactionWindow | null {
+    const startIndex = this.findLastCompactionIndex() ?? 0
     let recentTokens = 0
-    for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
-      recentTokens += estimateBlockTokens(this.blocks[i])
-      if (recentTokens >= keepRecentTokens && this.blocks[i].type === 'response') {
-        return i + 1
+    let splitFallback: CompactionWindow | null = null
+
+    for (let i = this.blocks.length - 1; i > startIndex; i -= 1) {
+      const block = this.blocks[i]
+      recentTokens += estimateBlockTokens(block)
+      if (recentTokens >= keepRecentTokens) {
+        if (block.type === 'response') return splitFallback ?? { startIndex, cutPoint: i + 1 }
+        splitFallback ??= { startIndex, cutPoint: i }
       }
     }
-    return null
+    return splitFallback
   }
 
   insertCompactionBoundary(

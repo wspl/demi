@@ -349,12 +349,12 @@ export class AgentSession<State> {
     let shouldAutoRecover = false
     for await (const event of this.providerEvents(request)) {
       throwIfAborted(request.cancel)
+      if (event.type === 'abort') throw new AbortError()
       await this.applyProviderEvent(event)
       if (event.type === 'error') throw new ProviderStreamError(event.message, event.code)
       if (event.type === 'response' && this.isUsageNearLimit(event.usage)) {
         shouldAutoRecover = true
       }
-      if (event.type === 'abort') throw new AbortError()
     }
     return shouldAutoRecover
   }
@@ -453,17 +453,19 @@ export class AgentSession<State> {
   }
 
   private async executeCompaction(): Promise<boolean> {
-    const cutPoint = this.transcriptLog.findCompactionCutPoint(this.compactionKeepRecentTokens)
-    if (cutPoint === null || cutPoint <= 0) return false
+    if (this.transcriptLog.pendingToolCalls().length > 0) return false
 
-    const compactedBlocks = this.transcriptLog.blocks.slice(0, cutPoint)
+    const window = this.transcriptLog.findCompactionWindow(this.compactionKeepRecentTokens)
+    if (window === null || window.cutPoint <= window.startIndex) return false
+
+    const compactedBlocks = this.transcriptLog.blocks.slice(window.startIndex, window.cutPoint)
     const compactedTokens = compactedBlocks.reduce((total, block) => {
       return total + new Transcript([block]).estimateContextTokens()
     }, 0)
     const summary = await this.generateCompactionSummary(compactedBlocks)
     if (!summary) return false
 
-    const boundary = this.transcriptLog.insertCompactionBoundary(cutPoint, this.model, summary, estimateTokens(summary))
+    const boundary = this.transcriptLog.insertCompactionBoundary(window.cutPoint, this.model, summary, estimateTokens(summary))
     this.transcriptLog.appendCompactionMarker(this.model, boundary.id, compactedTokens)
     await this.commitTranscript()
     return true

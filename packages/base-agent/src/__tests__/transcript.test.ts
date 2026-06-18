@@ -92,15 +92,14 @@ test('Transcript inserts compaction boundary and replays from the latest boundar
   transcript.applyProviderEvent(model, events.text('recent answer'))
 
   const cutPoint = transcript.findCompactionCutPoint(1)
-  expect(cutPoint).toBe(3)
+  expect(cutPoint).toBe(4)
 
   const boundary = transcript.insertCompactionBoundary(cutPoint ?? 0, model, 'old summary', 10)
   transcript.appendCompactionMarker(model, boundary.id, 42)
 
-  expect(transcript.findLastCompactionIndex()).toBe(3)
+  expect(transcript.findLastCompactionIndex()).toBe(4)
   expect(transcript.replayableBlocks().map((block) => block.type)).toEqual([
     'compaction_boundary',
-    'user',
     'text',
     'compaction_marker',
   ])
@@ -110,7 +109,7 @@ test('Transcript inserts compaction boundary and replays from the latest boundar
     type: 'user_message',
     content: [{ type: 'text', text: 'Previous conversation summary:\nold summary' }],
   })
-  expect(items.map((item) => item.type)).toEqual(['user_message', 'user_message', 'assistant_text'])
+  expect(items.map((item) => item.type)).toEqual(['user_message', 'assistant_text'])
 })
 
 test('Transcript returns the latest extension state snapshot', () => {

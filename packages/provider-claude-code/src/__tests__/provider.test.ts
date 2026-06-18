@@ -89,6 +89,80 @@ test('ClaudeCodeProvider streams text and response events from transport message
   expect(transport.waitCalls).toBe(1)
 })
 
+test('ClaudeCodeProvider preserves cache usage fields from result messages', async () => {
+  const transport = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'cached' }] } },
+    {
+      type: 'result',
+      usage: {
+        input_tokens: 10,
+        output_tokens: 2,
+        cache_read_input_tokens: 7,
+        cache_creation_input_tokens: 3,
+      },
+    },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+
+  const received = []
+  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
+    received.push(event)
+  }
+
+  expect(received).toEqual([
+    { type: 'text_delta', text: 'cached' },
+    { type: 'response', usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 7, cacheWriteTokens: 3 } },
+  ])
+})
+
+test('ClaudeCodeProvider handles empty successful streams without leaking transport state', async () => {
+  const first = new FakeClaudeTransport([])
+  const second = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'next run' }] } },
+    { type: 'result', usage: { input_tokens: 1 } },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: sequenceFactory([first, second]) })
+
+  const emptyEvents = []
+  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'empty' }] }]))) {
+    emptyEvents.push(event)
+  }
+  expect(emptyEvents).toEqual([])
+  expect(first.waitCalls).toBe(1)
+
+  const nextEvents = []
+  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'again' }] }]))) {
+    nextEvents.push(event)
+  }
+  expect(nextEvents).toEqual([
+    { type: 'text_delta', text: 'next run' },
+    { type: 'response', usage: { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ])
+})
+
+test('ClaudeCodeProvider forwards context overflow result errors with usage', async () => {
+  const transport = new FakeClaudeTransport([
+    {
+      type: 'result',
+      is_error: true,
+      result: 'context window exceeded',
+      errors: ['input is too long'],
+      usage: { input_tokens: 200_000, output_tokens: 0 },
+    },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+
+  const received = []
+  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'huge' }] }]))) {
+    received.push(event)
+  }
+
+  expect(received).toEqual([
+    { type: 'error', message: 'context window exceeded\ninput is too long', code: null },
+    { type: 'response', usage: { inputTokens: 200_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ])
+})
+
 test('ClaudeCodeProvider handles control_request tool calls across run calls', async () => {
   const transport = new FakeClaudeTransport([
     { type: 'control_request', id: 'init-1', method: 'initialize', params: {} },

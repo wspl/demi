@@ -79,15 +79,134 @@ test('coding agent completes an editor/todo workflow through shell session tools
   expect(JSON.parse(todos.output.stdoutDelta)).toEqual({ todos: [{ id: 'T1', text: 'Run tests', status: 'pending' }] })
 })
 
-function latestShellResult(request: InferenceRequest): { status: string; shellId: string; stdout: string } {
+test('coding agent iterates from a failing project test to a passing fix', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-coding-test-fix-'))
+  const host = new LocalHost(root)
+  const environment = new BashEnvironment({
+    host,
+    shellIdFactory: () => 'coding-fix-shell',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const definition = createCodingAgentDefinition({ environment })
+  const provider = new StubProvider([
+    [
+      events.toolCall('create-project', 'shell_exec', {
+        script: [
+          'mkdir -p src',
+          "editor create src/todo.ts <<'EOF'\nexport function addTodo(items: string[], text: string): string[] {\n  return items\n}\nEOF",
+          "editor create src/todo.test.ts <<'EOF'\nimport { expect, test } from 'bun:test'\nimport { addTodo } from './todo'\n\ntest('adds a todo item', () => {\n  expect(addTodo([], 'ship tests')).toEqual(['ship tests'])\n})\nEOF",
+        ].join('\n'),
+      }),
+    ],
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('exited')
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('Created src/todo.ts')
+      return [events.toolCall('run-failing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts' })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('exited')
+      expect(result.exitCode).not.toBe(0)
+      expect(`${result.stdout}\n${result.stderr}`).toContain('ship tests')
+      return [events.toolCall('read-source', 'shell_exec', { shellId: result.shellId, script: 'cat src/todo.ts' })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.stdout).toContain('return items')
+      return [
+        events.toolCall('fix-source', 'shell_exec', {
+          shellId: result.shellId,
+          script: 'editor edit src/todo.ts --old "return items" --new "return [...items, text]"',
+        }),
+      ]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('exited')
+      expect(result.exitCode).toBe(0)
+      return [events.toolCall('run-passing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts' })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('exited')
+      expect(result.exitCode).toBe(0)
+      expect(`${result.stdout}\n${result.stderr}`).toContain('1 pass')
+      return [events.text('fixed'), events.response()]
+    },
+  ])
+  const session = new AgentSession({ provider, model, cwd: root, definition })
+
+  await session.send([{ type: 'text', text: 'Create a tiny todo module, run its test, fix the failure, and rerun.' }])
+
+  const file = await environment.exec({ shellId: 'coding-fix-shell', script: 'cat src/todo.ts' })
+  expect(file.output.stdoutDelta).toContain('return [...items, text]')
+})
+
+test('coding agent controls a long foreground command with wait, input, and abort', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-coding-long-command-'))
+  const environment = new BashEnvironment({
+    host: new LocalHost(root),
+    shellIdFactory: () => 'coding-long-shell',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const definition = createCodingAgentDefinition({ environment })
+  const provider = new StubProvider([
+    [
+      events.toolCall('start-long', 'shell_exec', {
+        script: "sh -c 'sleep 0.02; printf ready; IFS= read -r line; printf \" got:%s\" \"$line\"; sleep 10'",
+        yieldAfterMs: 1,
+      }),
+    ],
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('running')
+      return [events.toolCall('wait-ready', 'shell_wait', { shellId: result.shellId, yieldAfterMs: 1_000 })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('running')
+      expect(result.stdout).toContain('ready')
+      return [events.toolCall('send-input', 'shell_input', { shellId: result.shellId, stdin: 'typed\n', yieldAfterMs: 20 })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('running')
+      expect(result.stdout).toContain('got:typed')
+      return [events.toolCall('stop-long', 'shell_abort', { shellId: result.shellId })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('aborted')
+      return [events.text('stopped'), events.response()]
+    },
+  ])
+  const session = new AgentSession({ provider, model, cwd: root, definition })
+
+  await session.send([{ type: 'text', text: 'Run the interactive long command, feed it input, then stop it.' }])
+
+  expect(session.transcript().pendingToolCalls()).toHaveLength(0)
+})
+
+function latestShellResult(request: InferenceRequest): {
+  status: string
+  shellId: string
+  stdout: string
+  stderr: string
+  exitCode: number | null
+} {
   const item = [...request.items].reverse().find((candidate) => candidate.type === 'tool_result')
   if (item?.type !== 'tool_result') throw new Error('missing tool result')
   const [first] = item.output
   if (first?.type !== 'text') throw new Error('tool result was not text')
+  const exitCodeText = optionalField(first.text, 'exitCode')
   return {
     status: requiredField(first.text, 'status'),
     shellId: requiredField(first.text, 'shellId'),
     stdout: section(first.text, 'stdout'),
+    stderr: section(first.text, 'stderr'),
+    exitCode: exitCodeText === null ? null : Number(exitCodeText),
   }
 }
 
@@ -97,8 +216,18 @@ function requiredField(text: string, name: string): string {
   return match[1]
 }
 
+function optionalField(text: string, name: string): string | null {
+  const match = new RegExp(`^${name}: (.*)$`, 'm').exec(text)
+  return match?.[1] ?? null
+}
+
 function section(text: string, name: string): string {
-  const match = new RegExp(`^${name}:\\n([\\s\\S]*?)(?:\\n[a-zA-Z]+:|\\nnext:|$)`, 'm').exec(text)
-  if (!match) throw new Error(`missing section ${name} in ${text}`)
-  return match[1] === '(empty)' ? '' : match[1]
+  const start = text.indexOf(`${name}:\n`)
+  if (start === -1) throw new Error(`missing section ${name} in ${text}`)
+  const bodyStart = start + `${name}:\n`.length
+  const rest = text.slice(bodyStart)
+  const nextField = /\n(?:stdout|stderr|status|shellId|exitCode|runningMs|reason|idleMs|next):/.exec(rest)
+  const rawValue = nextField ? rest.slice(0, nextField.index) : rest
+  const value = nextField && rawValue.endsWith('\n') ? rawValue.slice(0, -1) : rawValue
+  return value === '(empty)' ? '' : value
 }
