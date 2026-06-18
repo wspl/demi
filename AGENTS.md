@@ -6,5 +6,10 @@
 - Run dev servers, watchers, and previews in the foreground with `yieldAfterMs`; avoid `pkill` or `killall` by process name.
 - Use the Claude Code provider with `claude-opus-4-8` and medium thinking for real TUI smoke tests.
 - Run focused tests for touched behavior, then `bun run typecheck` and `bun run test` before checkpoint commits.
+- If a submodule is dirty, inspect its diff first, then create a `codex/...` branch inside that submodule before committing.
+- Commit submodule work inside the submodule with a `feat: ...` subject, then commit the root submodule pointer with a separate `feat: ...` subject.
+- Record any validation that could not run, including missing dependencies or hung package-manager commands.
+- Keep the root worktree and touched submodules clean after each checkpoint.
 - Commit each completed checkpoint automatically.
+- Commit every `AGENTS.md` update immediately.
 - Use Conventional Commit subjects; feature checkpoints use `feat: ...`.
