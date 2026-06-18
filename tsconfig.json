@@ -20,7 +20,6 @@
       "just-bash/parser": ["packages/just-bash/packages/just-bash/src/parser/parser.ts"],
       "@demi/rpc/stdio": ["packages/rpc/src/stdio-transport.ts"],
       "@demi/shell/local-host": ["packages/shell/src/local-host.ts"],
-      "@demi/shell/parser": ["packages/shell/src/script-parser.ts"],
       "@demi/shell/storage": ["packages/shell/src/storage.ts"],
       "@demi/shell/store": ["packages/shell/src/store.ts"],
       "@demi/*": ["packages/*/src/index.ts"]

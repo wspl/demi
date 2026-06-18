@@ -19,7 +19,6 @@ const allowedWorkspaceSubpaths = new Map<string, string>([
   ['just-bash/ast/types', 'packages/just-bash/packages/just-bash/src/ast/types.ts'],
   ['just-bash/interpreter/helpers/ifs', 'packages/just-bash/packages/just-bash/src/interpreter/helpers/ifs.ts'],
   ['just-bash/parser', 'packages/just-bash/packages/just-bash/src/parser/parser.ts'],
-  ['@demi/shell/parser', 'packages/shell/src/script-parser.ts'],
   ['@demi/shell/storage', 'packages/shell/src/storage.ts'],
 ])
 
