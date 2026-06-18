@@ -1,3 +1,4 @@
+- Do not overfit `AGENTS.md` to the last task; keep durable operating principles, not one-off commands, model choices, tool details, or accidental lessons.
 - Read the relevant code before changing behavior.
 - Check `agent-rewrite-plan.md` when the change touches architecture or workflow design.
 - Update docs when a design decision or operating convention changes.
