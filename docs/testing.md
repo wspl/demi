@@ -114,6 +114,10 @@ Owner：`packages/base-agent`
 | 从 store snapshot 重建 session 后继续运行 | 未覆盖 | 需要 persistence/recovery 测试 | 需要发现 snapshot schema、idFactory、phase 或 transcript replay 在重启后不兼容的问题。 |
 | provider error 后恢复不重复发送已完成 tool result | 未覆盖 | 需要恢复场景测试 | 需要规避重启后重复执行破坏性工具或给模型重复上下文。 |
 | abort/retry/resume/compact 组合交错 | 部分覆盖 | 单点已测，组合路径不足 | 组合路径容易暴露单点测试发现不了的 phase、queue、transcript 原子性问题。 |
+| 单会话 marathon 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态 | 未覆盖 | 需要一个长生命周期 StubProvider 场景 | 用来发现状态只在单点测试里正确，长期累计后 id、phase、pending action、tool 状态或 transcript 顺序漂移。 |
+| 每个关键步骤精确断言 provider request | 部分覆盖 | 简单 send/tool 有断言，缺少 marathon 全程断言 | 防止模型实际看到的上下文与 transcript 看起来正确但不同，尤其是 compact、retry、resume 后的重放内容。 |
+| transcript 结构不变量集中校验 | 部分覆盖 | 分散在单测断言里，缺少通用 invariant helper | 防止出现重复 block id、缺 createdAt、turn 未以 user/resume 开始、terminal block 后仍追加内容、completed turn 里 tool_call 缺 output。 |
+| provider mock 行为贴近真实 provider 事件顺序 | 部分覆盖 | tool roundtrip 已覆盖，缺少 pending tool + response + auto compact 的组合 | 防止 deterministic 测试用一个过于理想的 provider，真实 Claude Code 路径才暴露 tool/response 时序问题。 |
 
 ### 5.5 Transcript 与 Replay
 
@@ -130,6 +134,9 @@ Owner：`packages/base-agent`
 | non-JSON extension state token estimate | 已覆盖 | `transcript.test.ts` | 防止 token estimate 被 BigInt/cycle 等扩展状态打断，影响 compact 判断。 |
 | transcript snapshot 序列化/反序列化等价 | 部分覆盖 | 有 store snapshot 写入测试，缺少重建后 replay 等价测试 | 需要发现保存后再加载丢 block、丢 metadata 或改变 replay 内容的问题。 |
 | provider request exact replay 内容 | 部分覆盖 | 简单 send 覆盖，复杂 transcript 未覆盖 | 需要发现复杂历史、tool、extension、compact 混合时喂给模型的上下文漂移。 |
+| effective replay 只包含模型应看到的 block | 部分覆盖 | `collectInferenceItems` 对 marker/extension 没有输出，缺少完整 fixture | 防止 compaction marker、extension snapshot、internal error 状态等内部块进入 provider request。 |
+| replay 保持 tool_use/tool_result 成对且顺序正确 | 部分覆盖 | 简单 tool pair 已测，缺少 compact/retry/resume 后的复杂历史 | 防止 provider 收到孤立 tool_result、孤立 tool_use 或乱序工具历史。 |
+| replay 中 thinking/redacted thinking 能跨 provider 边界保留 | 部分覆盖 | provider JSONL 有 thinking 映射，transcript 复杂 replay 不足 | 防止开启 thinking 的真实模型路径在重放或 compact 后丢失签名、redacted thinking 或顺序。 |
 
 ### 5.6 Compaction
 
@@ -143,24 +150,31 @@ Owner：`packages/base-agent`
 | boundary summary 转成下一次 inference user message | 已覆盖 | `transcript.test.ts` | 防止模型看不到摘要，只收到被截断的 recent context。 |
 | usage 接近 context limit 时自动 compact + resume | 已覆盖 | `session.test.ts` | 防止长会话到上下文边界后直接失败，而不是自动恢复。 |
 | compaction summary provider 卡住时 abort 可收敛 | 已覆盖 | `session.test.ts` | 防止 compact 阶段卡死导致用户无法停止 session。 |
+| preflight compact 在新 provider request 前发生 | 未覆盖 | 需要 send 前 token 阈值场景 | 防止新用户消息已经把上下文推过上限后才请求模型，导致真实 provider 直接 context overflow。 |
+| compaction summary request 的模型、thinking、cwd、tools 与契约一致 | 未覆盖 | 需要捕获 summary provider request | 防止 summary 用错模型/思考等级、错误 cwd，或把普通工具暴露给总结请求。 |
 | cut point 不能切断 `tool_use -> tool_result` | 未覆盖 | 需要 transcript cut-point invariant 测试 | 需要防止模型看到孤立 tool_use 或孤立 tool_result，引发 provider 协议错误。 |
 | compact 后下一次 provider request 精确等于 summary + recent context | 未覆盖 | 需要 exact request 测试 | 需要发现 summary、recent blocks、preamble 或 tool history 被漏放、重复放、乱序放。 |
 | 多次 compact 只 replay latest boundary，不重复旧 summary | 未覆盖 | 需要 multi-compact 测试 | 需要规避摘要套摘要无限膨胀，或旧历史重新进入上下文。 |
 | summary provider error/abort 不留下半截 boundary/marker | 部分覆盖 | abort 收敛已测，transcript 原子性未完整断言 | 需要防止 compact 失败后 transcript 处于既不像旧状态也不像新状态的中间态。 |
+| empty summary 不插入 boundary/marker，且 session 可继续 | 未覆盖 | 需要 summary provider 返回空文本场景 | 防止空摘要把旧历史替换成无信息 boundary，后续模型失去任务上下文。 |
 | auto compact + resume 不重复执行已完成 tool call | 未覆盖 | 需要 tool + compact 场景测试 | 需要防止上下文压缩后把已完成工具当成待执行工具再次运行。 |
+| compact 期间 queued send 能按序 drain | 未覆盖 | 需要 compacting phase 中排队 user message 场景 | 防止长 summary 期间用户继续输入后消息丢失、乱序，或 compact 完成后没有继续处理。 |
 | compact 后持久化再恢复，replayable blocks 保持一致 | 未覆盖 | 需要 persistence roundtrip 测试 | 需要发现 boundary/marker 在 snapshot 中丢失或恢复后 replay 起点错误。 |
 | thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 | 未覆盖 | 需要复杂 transcript fixture | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
 
-### 5.7 Context Cache 与 Usage
+### 5.7 模型可见上下文与 Context Cache
 
 Owner：`packages/provider-claude-code`、`packages/base-agent`
 
 | 测试点 | 状态 | 现有覆盖 / 待补 | 能发现或规避的问题 |
 |---|---|---|---|
+| provider request prefix 在普通多轮对话中稳定 | 未覆盖 | 需要连续 turn 捕获 request 并做 prefix 比较 | 防止 system prompt、tools schema、preamble 或历史 items 无意义重排，破坏 context cache 基线。 |
+| provider request 只由 effective transcript 和当前 prompt context 构成 | 部分覆盖 | 简单 request 已测，缺少复杂历史 | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
+| 注入内容有明确上限和截断策略 | 部分覆盖 | shell output limit 已覆盖，ref/preamble/tool result 通用上限未覆盖 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
 | provider usage 中 cache read/write token 字段被解析 | 已覆盖 | `jsonl-output.test.ts` | 防止 provider cache 指标被丢弃，后续无法判断真实 cache 行为。 |
 | cache usage 被 AgentSession 记录并对外暴露 | 部分覆盖 | response usage 记录路径存在，缺少专门 cache usage 断言 | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
 | cache 只是 provider 透明优化时，不影响 agent 行为 | 未覆盖 | 需要定义 contract 后测试 | 需要保证 cache 指标变化不会改变 transcript、tool loop 或错误处理。 |
-| demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 | 未覆盖 | 需要先定义是否要求主动保障 | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
+| demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 | 未覆盖 | 需要定义并断言 stable prefix contract | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
 | tools/schema/system prompt/model/preamble 改变时 cache 失效规则 | 未覆盖 | 需要先定义 contract | 需要防止 cache 命中建立在错误前缀上，或该失效时没有失效。 |
 | compact 后 cache prefix 变化与重新稳定 | 未覆盖 | 需要 compact + cache contract 测试 | 需要发现 compact 后上下文前缀持续抖动，导致 cache 永远无法稳定命中。 |
 | 真实 provider cache 命中 | 手动/Gated | 只能做真实 provider smoke，不进默认 deterministic 测试 | 用来确认 deterministic contract 之外的真实 CLI/服务端 cache 行为没有退化。 |
