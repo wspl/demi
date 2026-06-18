@@ -64,6 +64,36 @@
 | Coding workflow 能发现真实问题 | 部分达成 | editor/todo workflow 真实写文件已覆盖；缺少创建项目、测试失败、读取错误、修复、测试通过、长命令和 tool error recovery 场景。 |
 | 壳子路径能呈现真实模型行为 | 未达成默认自动化门槛 | RPC transport 基础覆盖；TUI 自动化缺失，真实 Claude CLI e2e 是 gated skip，真实 thinking/tool/text 仍靠 smoke。 |
 
+### 3.3 Compact 参考故事映射
+
+agent-gui/Rust 的 compact 测试是当前最重要的校准对象；demi 不照搬 UI 产品面，但长任务能力相关故事都必须落到 `base-agent` 或协议层测试里。
+
+| 参考故事 | demi 范围判定 | 落点与当前状态 | 能发现或规避的问题 |
+|---|---|---|---|
+| 新消息发给模型前先做 preflight compact | P0 | `5.6 Compaction`，未覆盖 | 防止新用户输入已经把上下文推过上限后才请求真实 provider，直接触发 context overflow。 |
+| usage 接近上限后 auto compact，再 resume 原动作 | P0 | `5.6 Compaction`，部分覆盖 | 防止长任务在接近 context limit 时直接失败，或 compact 后丢失当前 action。 |
+| 用户手动 compact 成功后，summary 成为下一轮模型可见上下文 | P0 runtime；UI 呈现走壳子测试 | `5.6 Compaction`，部分覆盖 | 防止 transcript 看似有 summary，但下一轮 provider request 没有使用它。 |
+| summary provider stop/error/empty 都能恢复到一致状态 | P0 | `5.6 Compaction`，部分覆盖到未覆盖 | 防止失败 compact 留下半截 boundary/marker，或空 summary 抹掉旧上下文。 |
+| tool 运行期间不 compact；cut point 不切断 `tool_use -> tool_result` | P0 | `5.6 Compaction`，未覆盖 | 防止模型收到孤立 tool 历史，或 compact 后重复执行已完成工具。 |
+| 多次 compact 只从 latest boundary replay，不把旧 summary 反复套入上下文 | P0 | `5.6 Compaction`，未覆盖 | 防止摘要无限膨胀，或被压缩历史重新进入模型上下文。 |
+| compact/preflight 期间 queued send、abort、retry、resume 收敛 | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，未覆盖组合路径 | 防止用户在 summary 阶段继续操作时消息丢失、乱序或 session 卡在 compacting。 |
+| compact 后 close/reopen，summary 和 replay 起点保持一致 | P0 persistence | `5.4 Agent Session Runtime`、`5.6 Compaction`，未覆盖 | 防止重启后 boundary/marker 丢失，模型重新看到旧长历史或看不到摘要。 |
+| edit/replay 历史分支影响 summary | 当前无 `replay_from` 产品面；只保留 replay invariant | `5.5 Transcript 与 Replay` | 防止被删掉的历史 mutation 面重新进入设计，同时保证现有 replay 仍只取模型应见内容。 |
+| 切换到更小 context 的模型后触发 compact | 非 MVP 专项；纳入模型可见上下文/limit contract | `5.7 模型可见上下文与 Context Cache`，未覆盖 | 防止未来 provider/model 配置变化时仍按旧 context limit 请求模型。 |
+
+### 3.4 模型上下文与 provider conformance 映射
+
+Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 provider 输入如何收敛、完整历史与模型上下文如何分离。
+
+| 参考能力 | demi 范围判定 | 落点与当前状态 | 能发现或规避的问题 |
+|---|---|---|---|
+| 模型可见上下文由一个中心 replay/effective context 产生 | P0 | `5.5 Transcript 与 Replay`、`5.7 模型可见上下文与 Context Cache`，部分覆盖 | 防止 provider、compact、retry 各自拼上下文，最终真实模型看到的内容不一致。 |
+| 大 tool output、引用内容、preamble 有边界和截断策略 | P0 | `5.7 模型可见上下文与 Context Cache`，部分覆盖 | 防止任意一次工具输出或文件引用直接撑爆 context，compact 也无法补救。 |
+| cache read/write usage 从 provider 传到 session/RPC，但不改变 agent 行为 | 基线 | `5.3 Claude Code Provider`、`5.7 模型可见上下文与 Context Cache`，部分覆盖 | 防止 cache 指标丢失，或把 provider cache 当成会影响 transcript/tool loop 的状态。 |
+| compact 后历史重建与 live compaction 结果一致 | P0 | `5.6 Compaction`、`5.11 Host、FS 与 Store`，未覆盖 | 防止 session 恢复后 replay 起点、summary 或 recent context 与内存态不一致。 |
+| 完整审计日志与模型上下文分离 | P0 | `5.5 Transcript 与 Replay`、`5.6 Compaction`，部分覆盖 | 防止为了压缩模型上下文而删除完整历史，或把审计块误发给模型。 |
+| provider 异常输入：empty、malformed、unicode/media、context overflow、tool result 缺失 | P0 provider 边界 | `5.3 Claude Code Provider`，部分覆盖 | 防止真实 CLI/服务端返回边界事件时 agent 卡死、污染 pending state 或错误分类不可恢复。 |
+
 ## 4. 默认测试入口
 
 - `bun run typecheck`：类型检查。
@@ -114,6 +144,9 @@ Owner：`packages/provider-claude-code`
 | control_request、SDK MCP control_request、assistant tool_use 跨 run 状态机 | 已覆盖 | `packages/provider-claude-code/src/__tests__/provider.test.ts` | 防止 Claude Code 多轮工具协议在 run 边界丢失 pending call 或重复提交结果。 |
 | 缺失 tool_result / pending control_request 收敛为 provider error | 已覆盖 | `provider.test.ts` | 防止协议断裂时 agent 卡死或继续用不完整上下文调用模型。 |
 | CLI 非零退出、stdout 迭代失败、abort 的 transport 清理 | 已覆盖 | `provider.test.ts` | 防止 CLI 进程泄漏、后续 run 复用坏 transport，或错误无法传回 session。 |
+| context overflow / rate limit / auth expired 等 provider 错误分类 | 未覆盖 | 需要 provider conformance fixture | 防止真实 provider 给出可恢复或需用户处理的错误时，session 只得到不可行动的 generic error。 |
+| empty assistant content、empty stream、空 thinking 事件 | 未覆盖 | 需要 provider conformance fixture | 防止 provider 返回空内容时误判成功、插入无意义 response，或 compact empty summary 污染 transcript。 |
+| unicode surrogate、超长 JSONL 字段、media + tool_result 混合输入 | 部分覆盖 | binary media 已覆盖；unicode/超长字段/混合 tool_result 缺失 | 防止 JSONL 编码、base64、tool result grouping 在真实边界输入下损坏。 |
 | 与 `AgentSession` 和 shell tools 的 provider 集成 | 已覆盖 | `provider.test.ts` | 能发现 provider event、AgentSession tool loop、shell tool result 三者之间的接口不匹配。 |
 | 真实 Claude CLI e2e | 手动/Gated | `real-cli.e2e.test.ts`，不属于默认稳定测试 | 用来发现 fake transport 无法覆盖的本机 CLI、账号、网络、真实输出格式变化。 |
 | 真实模型 thinking/tool use/text 输出验收 | 手动/Gated | 需要 TUI/CLI smoke 流程 | 用来确认最终用户路径确实看到真实模型回复、thinking 和 tooluse，而不是只验证 mock。 |
@@ -188,8 +221,10 @@ Owner：`packages/base-agent`
 | 多次 compact 只 replay latest boundary，不重复旧 summary | 未覆盖 | 需要 multi-compact 测试 | 需要规避摘要套摘要无限膨胀，或旧历史重新进入上下文。 |
 | summary provider error/abort 不留下半截 boundary/marker | 部分覆盖 | abort 收敛已测，transcript 原子性未完整断言 | 需要防止 compact 失败后 transcript 处于既不像旧状态也不像新状态的中间态。 |
 | empty summary 不插入 boundary/marker，且 session 可继续 | 未覆盖 | 需要 summary provider 返回空文本场景 | 防止空摘要把旧历史替换成无信息 boundary，后续模型失去任务上下文。 |
+| 没有可压缩历史时 manual compact 明确 no-op 或可解释失败 | 未覆盖 | 需要 empty-session/manual compact 场景 | 防止用户触发 compact 后 session 状态变化但没有任何有效 summary，或 UI/RPC 收不到可解释结果。 |
 | auto compact + resume 不重复执行已完成 tool call | 未覆盖 | 需要 tool + compact 场景测试 | 需要防止上下文压缩后把已完成工具当成待执行工具再次运行。 |
 | compact 期间 queued send 能按序 drain | 未覆盖 | 需要 compacting phase 中排队 user message 场景 | 防止长 summary 期间用户继续输入后消息丢失、乱序，或 compact 完成后没有继续处理。 |
+| compact/preflight 期间 abort、retry、resume 的 action 收敛 | 未覆盖 | 需要 compacting phase 组合场景 | 防止停止、重试或继续操作与 summary 写入交错，留下 busy phase、重复 action 或半截 transcript。 |
 | compact 后持久化再恢复，replayable blocks 保持一致 | 未覆盖 | 需要 persistence roundtrip 测试 | 需要发现 boundary/marker 在 snapshot 中丢失或恢复后 replay 起点错误。 |
 | thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 | 未覆盖 | 需要复杂 transcript fixture | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
 
@@ -201,7 +236,9 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 |---|---|---|---|
 | provider request prefix 在普通多轮对话中稳定 | 未覆盖 | 需要连续 turn 捕获 request 并做 prefix 比较 | 防止 system prompt、tools schema、preamble 或历史 items 无意义重排，破坏 context cache 基线。 |
 | provider request 只由 effective transcript 和当前 prompt context 构成 | 部分覆盖 | 简单 request 已测，缺少复杂历史 | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
+| provider、retry、compact、resume 共用同一个 effective transcript 入口 | 未覆盖 | 需要集中 request-builder/effective-context fixture | 防止不同路径各自拼 request，导致正常 send 通过但 compact 或 retry 后真实模型上下文漂移。 |
 | 注入内容有明确上限和截断策略 | 部分覆盖 | shell output limit 已覆盖，ref/preamble/tool result 通用上限未覆盖 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
+| provider context-overflow 错误触发可恢复路径或明确失败 | 未覆盖 | 需要 fake provider overflow 场景 | 防止模型上下文超限后 session 只记录 generic error，无法 compact/retry 或向壳子给出明确状态。 |
 | provider usage 中 cache read/write token 字段被解析 | 已覆盖 | `jsonl-output.test.ts` | 防止 provider cache 指标被丢弃，后续无法判断真实 cache 行为。 |
 | cache usage 被 AgentSession 记录并对外暴露 | 部分覆盖 | response usage 记录路径存在，缺少专门 cache usage 断言 | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
 | cache 只是 provider 透明优化时，不影响 agent 行为 | 未覆盖 | 需要定义 contract 后测试 | 需要保证 cache 指标变化不会改变 transcript、tool loop 或错误处理。 |
@@ -392,7 +429,7 @@ Owner：`packages/just-bash`
 ## 6. 当前优先补测顺序
 
 1. `base-agent` compaction P0：tool boundary、exact replay、多次 compact、failure atomicity、auto compact after tool、preflight compact、persistence roundtrip。
-2. 模型可见上下文与 cache baseline：stable request prefix、usage/cache 字段端到端保留、compact 后上下文重新稳定、无界 tool output/ref/preamble 截断策略。
+2. 模型可见上下文与 cache/provider conformance baseline：stable request prefix、usage/cache 字段端到端保留、compact 后上下文重新稳定、无界 tool output/ref/preamble 截断策略、empty/unicode/context-overflow 边界输入。
 3. AgentSession marathon invariants：单会话内组合 send/queue/retry/resume/abort/tool/error/compact，并在关键步骤断言 transcript 和 provider request。
 4. coding agent scenario：创建项目、测试失败、读取错误、修复、测试通过、长命令 wait/input/abort、tool error recovery。
 5. persistence/recovery：从 store snapshot 重建后继续 send/retry/resume/compact，且不重复发送或执行已完成 tool result。
