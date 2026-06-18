@@ -466,3 +466,22 @@ Owner：`packages/just-bash`
 - 测试应断言真实 artifact、provider request、transcript blocks、events、session state、RPC frames 或文件内容。
 - 新增测试点必须说明能发现或规避的具体问题；说不清风险的问题不进入矩阵。
 - 新增 architecture/workflow 约束时，先更新 `docs/agent-rewrite-plan.md` 或本文件，再补测试。
+
+## 8. 测试有效性门禁
+
+新增或重写测试时，必须先证明测试本身有意义。覆盖率、快照数量、mock 调用次数都不能单独作为有效性证据。
+
+| 门禁 | 要求 | 适用位置 | 防止的问题 |
+|---|---|---|---|
+| 风险先行 | 每个测试先写清楚要捕获的失败模式，再写 fixture 和断言 | 所有测试矩阵项 | 防止为了覆盖率或已有实现形状凭空写测试。 |
+| 产品边界 oracle | 优先断言 provider request、transcript、session state、RPC frame、真实文件、真实 shell output | agent/session/provider/RPC/coding workflow | 防止只验证 mock 自洽，真实用户路径仍然坏。 |
+| 反证检查 | P0 测试落地后，用临时破坏实现或 fixture 的方式确认测试会失败 | compact、context cache、tool pair、marathon | 防止测试永远绿但不能发现实际回归。 |
+| Mutation / fault injection | 人为注入 tool pair 断裂、summary 缺失、usage 错误、provider stream 异常、storage 丢 block | base-agent、provider、store/RPC | 防止只覆盖 happy path，错误路径没有有效 oracle。 |
+| Property-based / stateful | 对 append-only transcript、queue、phase、tool_call 状态生成多步 action 序列并校验不变量 | AgentSession、Transcript、Shell control | 防止少量手写场景漏掉 action 交错和状态漂移。 |
+| Metamorphic testing | 同一任务经过 retry/resume/compact/persist/reopen 后，模型可见上下文满足等价或明确变化规则 | replay、compact、context cache | 防止只测单一路径，无法发现等价操作后的上下文偏移。 |
+| Differential / reference testing | shell 语义对比 just-bash/upstream 或真实 shell；provider message shape 对比参考 fixture | shell、provider conversion | 防止本地实现悄悄偏离已有可靠语义。 |
+| Scenario / marathon | 单会话累计执行 send、queue、tool、error、abort、resume、retry、compact，并逐步断言不变量 | base-agent、coding workflow | 防止单点测试都过，但长任务累计后状态损坏。 |
+| Golden snapshot 有结构化入口 | snapshot 只用于 request/frame 这类结构化 artifact，并配合字段级断言 | compact request shape、RPC transport | 防止快照变成不可审查的大文本批准。 |
+| Gated smoke 只补充不替代 | 真实 Claude/TUI smoke 验证真实模型随机路径；默认 deterministic 测试仍负责契约 | TUI、真实 provider | 防止把不可复现的人工验收当成核心正确性证明。 |
+
+P0 测试合入前至少要满足：有明确失败模式、有产品边界 oracle、有一次反证检查；涉及状态机或上下文压缩时，还要覆盖多步 action 序列或等价路径。
