@@ -1,12 +1,13 @@
 import { expect, test } from 'bun:test'
 import type { AgentDefinition } from '@demi/base-agent'
 import type { ModelSelection } from '@demi/core'
-import { ProviderRegistry, StubProvider, events } from '@demi/provider'
+import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
 import {
   RpcClient,
   RpcHost,
   createWebSocketClientTransport,
   createWebSocketHostTransport,
+  type ClientSessionEvent,
   type ClientFrame,
   type JsonWebSocket,
   type ProviderConfig,
@@ -123,6 +124,55 @@ test('WebSocket transports carry RpcClient and RpcHost traffic end to end', asyn
   await client.close()
 })
 
+test('WebSocket transports preserve complex RpcClient action convergence', async () => {
+  const [clientSocket, hostSocket] = createSocketPair()
+  const provider = new WebSocketScenarioProvider()
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'ws-scenario',
+    displayName: 'WebSocket Scenario',
+    createProvider: () => provider,
+  })
+
+  new RpcHost({
+    transport: createWebSocketHostTransport(hostSocket),
+    providerRegistry,
+    definitions: { test: createDefinition() },
+  })
+  const client = new RpcClient(createWebSocketClientTransport(clientSocket))
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open('test', { type: 'ws-scenario', model }, '/workspace')
+  const first = client.send([{ type: 'text', text: 'first' }])
+  await provider.firstStarted.promise
+  const second = client.send([{ type: 'text', text: 'second ' + 'x'.repeat(20_000) }])
+  await waitFor(() => seen.some((event) => event.type === 'queue' && event.queue.some((message) => message.text.startsWith('second'))))
+
+  provider.firstRelease.resolve(undefined)
+  await first
+  await expect(second).rejects.toThrow('second failed')
+
+  await client.retry()
+
+  const aborting = client.send([{ type: 'text', text: 'abort me' }])
+  await provider.abortStarted.promise
+  await expect(client.abort()).resolves.toBe(true)
+  await aborting
+  await client.resume()
+  await client.compact()
+  await client.send([{ type: 'text', text: 'after compact' }])
+
+  expect(provider.summaryRequests).toBe(1)
+  expect(provider.afterCompactRequest?.items[0]).toEqual({
+    type: 'user_message',
+    content: [{ type: 'text', text: 'Previous conversation summary:\nwebsocket summary' }],
+  })
+  expect(client.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'after compact answer' })
+
+  await client.close()
+})
+
 function nextFrame<T>(transport: { onFrame(handler: (frame: T) => void): () => void }): Promise<T> {
   return new Promise((resolve) => {
     const unsubscribe = transport.onFrame((frame) => {
@@ -155,6 +205,83 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     if (Date.now() - startedAt > 1_000) throw new Error('Timed out waiting for predicate')
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
+}
+
+class WebSocketScenarioProvider implements AgentProvider {
+  readonly firstStarted = deferred<void>()
+  readonly firstRelease = deferred<void>()
+  readonly abortStarted = deferred<void>()
+  summaryRequests = 0
+  afterCompactRequest: InferenceRequest | null = null
+  private normalCalls = 0
+
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+      this.summaryRequests += 1
+      yield events.text('websocket summary')
+      yield events.response()
+      return
+    }
+
+    const call = this.normalCalls
+    this.normalCalls += 1
+
+    if (call === 0) {
+      this.firstStarted.resolve(undefined)
+      await this.firstRelease.promise
+      yield events.text('first answer')
+      yield events.response()
+      return
+    }
+    if (call === 1) {
+      if (!latestUserText(request).startsWith('second')) throw new Error('queued send did not reach provider')
+      yield events.error('second failed', 'test')
+      return
+    }
+    if (call === 2) {
+      if (!latestUserText(request).startsWith('second')) throw new Error('retry did not replay latest user')
+      yield events.text(`retry answer ${'y'.repeat(20_000)}`)
+      yield events.response()
+      return
+    }
+    if (call === 3) {
+      this.abortStarted.resolve(undefined)
+      await new Promise<void>((resolve) => request.cancel.addEventListener('abort', () => resolve(), { once: true }))
+      return
+    }
+    if (call === 4) {
+      const latest = request.items.at(-1)
+      if (
+        latest?.type !== 'user_message' ||
+        latest.content[0]?.type !== 'text' ||
+        latest.content[0].text !== 'Continue from where you left off.'
+      ) {
+        throw new Error('resume request did not include resume marker')
+      }
+      yield events.text('resume answer')
+      yield events.response()
+      return
+    }
+
+    this.afterCompactRequest = request
+    yield events.text('after compact answer')
+    yield events.response()
+  }
+}
+
+function latestUserText(request: InferenceRequest): string {
+  const latest = [...request.items].reverse().find((item) => item.type === 'user_message')
+  if (latest?.type !== 'user_message') return ''
+  const textBlock = [...latest.content].reverse().find((block) => block.type === 'text')
+  return textBlock?.type === 'text' ? textBlock.text : ''
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve
+  })
+  return { promise, resolve }
 }
 
 function createSocketPair(): [FakeSocket, FakeSocket] {

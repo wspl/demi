@@ -50,7 +50,7 @@
 审查证据：
 
 - `bun run typecheck`：通过。
-- `bun run test`：247 pass，1 skip；skip 是真实 Claude CLI gated e2e。
+- `bun run test`：254 pass，1 skip；skip 是真实 Claude CLI gated e2e。
 - `bun run test:just-bash-core`：93 pass。
 - `bun run check:registry`：通过。
 
@@ -58,7 +58,7 @@
 |---|---|---|
 | AgentSession 长生命周期稳定 | 基本达成默认测试门槛 | `session-marathon.test.ts` 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态、provider request 和 transcript invariant；真实模型随机路径仍靠 gated smoke。 |
 | 模型可见上下文稳定 | 基本达成默认测试门槛 | `context-cache.test.ts` 覆盖 stable prefix、effective transcript、retry/resume replay、snapshot replay；无界通用注入截断策略仍是部分覆盖。 |
-| Compaction 可支撑长任务 | 基本达成 P0 默认测试门槛 | `compaction.test.ts` 覆盖 preflight、summary request、tool pair、split-turn、多次 compact、failure/empty summary、queue、persistence、auto compact after tool；aborted text 和 compact summary overflow 仍是部分覆盖。 |
+| Compaction 可支撑长任务 | 达成 P0 默认测试门槛 | `compaction.test.ts` 覆盖 preflight、summary request、tool pair、split-turn、多次 compact、failure/empty summary、queue/retry/resume during compact、persistence、auto compact after tool、summary overflow。 |
 | Context cache baseline | 基本达成默认测试门槛 | provider cache usage、AgentSession usage 记录、cache 透明行为、compact 后 request shape 已覆盖；字节级主动 cache prefix/失效规则尚未定义。 |
 | Shell 控制面支撑真实长命令 | 基本达成默认测试门槛 | wait/input/abort、idle running、非空 input、AgentSession abort 传播、redirect flush 已覆盖；真实模型是否稳定使用控制面仍需 gated smoke。 |
 | Coding workflow 能发现真实问题 | 基本达成默认测试门槛 | `coding-marathon.test.ts` 覆盖真实写文件、todo、失败测试、读取错误、修复、测试通过、长命令 wait/input/abort。 |
@@ -192,7 +192,7 @@ Owner：`packages/base-agent`
 | store snapshot 写入 | 已覆盖 | `session.test.ts` | 防止进程退出或 host 重启后没有可恢复的会话状态。 |
 | extension state snapshot 通过 lifecycle 写入并持久化 | 已覆盖 | `session.test.ts` | 防止 todo 等 agent 扩展状态只在内存里存在，恢复后状态丢失。 |
 | 从 store snapshot 重建 session 后继续运行 | 已覆盖 | `session-marathon.test.ts` | 需要发现 snapshot schema、idFactory、phase 或 transcript replay 在重启后不兼容的问题。 |
-| provider error 后恢复不重复发送已完成 tool result | 部分覆盖 | `session-marathon.test.ts` 覆盖 snapshot 恢复后不重复执行已完成 tool；provider error 后恢复仍缺专门场景 | 需要规避重启后重复执行破坏性工具或给模型重复上下文。 |
+| provider error 后恢复不重复发送已完成 tool result | 已覆盖 | `session-marathon.test.ts` | 需要规避重启后重复执行破坏性工具或给模型重复上下文。 |
 | abort/retry/resume/compact 组合交错 | 已覆盖 | `session-marathon.test.ts` | 组合路径容易暴露单点测试发现不了的 phase、queue、transcript 原子性问题。 |
 | 单会话 marathon 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态 | 已覆盖 | `session-marathon.test.ts` | 用来发现状态只在单点测试里正确，长期累计后 id、phase、pending action、tool 状态或 transcript 顺序漂移。 |
 | 每个关键步骤精确断言 provider request | 已覆盖 | `session-marathon.test.ts`、`context-cache.test.ts`、`compaction.test.ts` | 防止模型实际看到的上下文与 transcript 看起来正确但不同，尤其是 compact、retry、resume 后的重放内容。 |
@@ -242,12 +242,12 @@ Owner：`packages/base-agent`
 | empty summary 不插入 boundary/marker，且 session 可继续 | 已覆盖 | `compaction.test.ts` | 防止空摘要把旧历史替换成无信息 boundary，后续模型失去任务上下文。 |
 | 没有可压缩历史时 manual compact 明确 no-op 或可解释失败 | 已覆盖 | `compaction.test.ts` | 防止用户触发 compact 后 session 状态变化但没有任何有效 summary，或 UI/RPC 收不到可解释结果。 |
 | auto compact + resume 不重复执行已完成 tool call | 已覆盖 | `compaction.test.ts` | 需要防止上下文压缩后把已完成工具当成待执行工具再次运行。 |
-| aborted text、completed tool result 在 compact summary 输入中保留 | 部分覆盖 | `compaction.test.ts` 覆盖 completed tool result；aborted text 仍缺少专门 fixture | 防止长任务中被用户停止过的有用进展或已完成工具证据在压缩后消失。 |
+| aborted text、completed tool result 在 compact summary 输入中保留 | 已覆盖 | `compaction.test.ts` | 防止长任务中被用户停止过的有用进展或已完成工具证据在压缩后消失。 |
 | compact 期间 queued send 能按序 drain | 已覆盖 | `compaction.test.ts` | 防止长 summary 期间用户继续输入后消息丢失、乱序，或 compact 完成后没有继续处理。 |
-| compact/preflight 期间 abort、retry、resume 的 action 收敛 | 部分覆盖 | `session.test.ts` 覆盖 abort；`compaction.test.ts` 覆盖 queued send；retry/resume during compact 仍缺专门场景 | 防止停止、重试或继续操作与 summary 写入交错，留下 busy phase、重复 action 或半截 transcript。 |
-| compact 过程遇到 context-window 错误与普通 provider 错误分流 | 部分覆盖 | `context-cache.test.ts` 覆盖 provider context overflow 明确失败；compact summary overflow 未单独覆盖 | 防止可通过裁剪/重试恢复的超限错误被当成普通失败，或普通 provider 错误无限重试。 |
+| compact/preflight 期间 abort、retry、resume 的 action 收敛 | 已覆盖 | `session.test.ts`、`compaction.test.ts` | 防止停止、重试或继续操作与 summary 写入交错，留下 busy phase、重复 action 或半截 transcript。 |
+| compact 过程遇到 context-window 错误与普通 provider 错误分流 | 已覆盖 | `compaction.test.ts`、`context-cache.test.ts` | 防止可通过裁剪/重试恢复的超限错误被当成普通失败，或普通 provider 错误无限重试。 |
 | compact 后持久化再恢复，replayable blocks 保持一致 | 已覆盖 | `compaction.test.ts`、`context-cache.test.ts` | 需要发现 boundary/marker 在 snapshot 中丢失或恢复后 replay 起点错误。 |
-| thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 | 部分覆盖 | `compaction.test.ts` 覆盖 tool metadata，`context-cache.test.ts` 覆盖 extension 不泄漏；thinking/redacted 复杂 cut fixture 仍缺 | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
+| thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 | 已覆盖 | `compaction.test.ts`、`context-cache.test.ts` | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
 | thinking 模型下 summary request 的 token/budget 设置有效 | 已覆盖 | `compaction.test.ts` | 防止 summary 请求因为 thinking budget 与 max output token 冲突而失败，导致长任务无法 compact。 |
 
 ### 5.7 模型可见上下文与 Context Cache
@@ -423,7 +423,7 @@ Owner：`packages/rpc`
 | abort idle 返回 false，active 返回 true | 已覆盖 | `rpc.test.ts` | 防止 UI stop 按钮在 idle/active 状态下显示错误结果。 |
 | close frame abort active session 并 dispose definition resources | 已覆盖 | `rpc.test.ts` | 防止关闭壳子后后台 run 或 shell environment 泄漏。 |
 | stdio/WebSocket 基础传输和 RpcClient/RpcHost 端到端 | 已覆盖 | `stdio-transport.test.ts`、`websocket-transport.test.ts` | 防止协议只在 in-process 测试里成立，真实 transport 序列化后失败。 |
-| stdio/WebSocket 下 queued send、abort、retry、resume、compact 与 in-process 一致 | 部分覆盖 | `stdio-transport.test.ts` 覆盖复杂 action；WebSocket 仍只有基础 e2e | 需要发现真实 transport latency/frame ordering 下的 action 收敛差异。 |
+| stdio/WebSocket 下 queued send、abort、retry、resume、compact 与 in-process 一致 | 已覆盖 | `stdio-transport.test.ts`、`websocket-transport.test.ts` | 需要发现真实 transport latency/frame ordering 下的 action 收敛差异。 |
 | close 时 active foreground process 通过真实 transport 被终止 | 已覆盖 | `stdio-transport.test.ts` | 需要防止壳子关闭后远端 session 进程继续占资源。 |
 
 ### 5.17 TUI
@@ -451,10 +451,8 @@ Owner：`packages/just-bash`
 
 ## 6. 当前剩余优先补测顺序
 
-1. `base-agent` compaction residual：aborted text 进入 summary、compact summary context-overflow、retry/resume during compact、thinking/redacted thinking 复杂 cut fixture。
-2. 模型可见上下文 residual：通用 reference / preamble / tool result 截断策略、主动 cache prefix 字节级稳定与失效规则。
-3. RPC residual：WebSocket 下复杂 action 收敛；stdio 已覆盖 queued send、abort、retry、resume、compact 和 close foreground。
-4. TUI / 真实 provider gated smoke：真实 Claude Code provider、thinking、tool use、交互式 shell 输出；当前不进入默认自动化测试。
+1. 模型可见上下文 residual：通用 reference / preamble / tool result 截断策略、主动 cache prefix 字节级稳定与失效规则。
+2. TUI / 真实 provider gated smoke：真实 Claude Code provider、thinking、tool use、交互式 shell 输出；当前不进入默认自动化测试。
 
 ## 7. 新增测试放置规则
 

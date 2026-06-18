@@ -146,6 +146,86 @@ test('compaction summary input keeps completed tool_use and tool_result paired',
   ])
 })
 
+test('compaction summary input keeps aborted text progress', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text('long task'))
+  transcript.applyProviderEvent(model, events.text('partial progress before abort'))
+  transcript.pushAbort(model)
+  transcript.pushUserTurn(model, text('recent question'))
+
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'long task' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'partial progress before abort' },
+      ])
+      return [events.text('aborted progress summary'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition(), transcript)
+
+  await session.compact()
+
+  expect(session.transcript().collectInferenceItems()[0]).toEqual({
+    type: 'user_message',
+    content: [{ type: 'text', text: 'Previous conversation summary:\naborted progress summary' }],
+  })
+})
+
+test('compaction summary context overflow errors are atomic and classified', async () => {
+  const transcript = oldAndRecentTranscript()
+  const before = transcript.snapshot()
+  const provider = new RecordingProvider([[events.error('summary context overflow', 'context_length_exceeded')]])
+  const session = createSession(provider, createDefinition(), transcript)
+
+  await expect(session.compact()).rejects.toThrow('summary context overflow')
+
+  expect(session.transcript().snapshot()).toEqual(before)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+})
+
+test('compaction summary input preserves thinking, redacted thinking, and tool metadata boundaries', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text('inspect deeply'))
+  transcript.applyProviderEvent(model, { type: 'thinking_start' })
+  transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'private chain' })
+  transcript.applyProviderEvent(model, { type: 'thinking_signature', signature: 'sig-1' })
+  transcript.applyProviderEvent(model, { type: 'redacted_thinking', data: 'redacted-data' })
+  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'a.txt' }))
+  transcript.completeToolCall('tool-1', [{ type: 'text', text: 'file content' }], false, { bytes: 12 })
+  transcript.appendExtensionStateSnapshot('todo', { internal: true })
+  transcript.applyProviderEvent(model, events.text('recent visible text'))
+
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.items.map((item) => item.type)).toEqual([
+        'user_message',
+        'assistant_thinking',
+        'assistant_redacted_thinking',
+        'tool_use',
+        'tool_result',
+      ])
+      expect(request.items[1]).toMatchObject({ type: 'assistant_thinking', signature: 'sig-1' })
+      assertNoOrphanToolItems(request.items)
+      expect(JSON.stringify(request.items)).not.toContain('internal')
+      return [events.text('complex summary'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition(), transcript, model, {
+    compaction: { keepRecentTokens: 2 },
+  })
+
+  await session.compact()
+
+  expect(session.transcript().collectInferenceItems()).toEqual([
+    {
+      type: 'user_message',
+      content: [{ type: 'text', text: 'Previous conversation summary:\ncomplex summary' }],
+    },
+    { type: 'assistant_text', modelId: 'test-model', text: 'recent visible text' },
+  ])
+})
+
 test('multiple compactions replay only the latest boundary summary', () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn(model, text('first question'))
@@ -291,6 +371,72 @@ test('queued send during compaction drains after the summary commits', async () 
   expect(session.queuedMessages()).toEqual([])
 })
 
+test('retry queued during compaction reruns the latest user after the summary commits', async () => {
+  const transcript = oldAndRecentTranscript()
+  const provider = new CompactGateProvider([
+    (request) => {
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
+        },
+        { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
+      ])
+      return [events.text('retried after compact'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition(), transcript)
+
+  const compacting = session.compact()
+  await provider.summaryStarted.promise
+  const retrying = session.retry()
+
+  provider.summaryRelease.resolve(undefined)
+  await Promise.all([compacting, retrying])
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'text',
+    'response',
+    'compaction_boundary',
+    'user',
+    'text',
+    'response',
+  ])
+  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'retried after compact' })
+})
+
+test('resume queued during compaction continues from the compacted abort point', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text('old question'))
+  transcript.applyProviderEvent(model, events.text('old answer'))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushAbort(model)
+  const provider = new CompactGateProvider([
+    (request) => {
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
+        },
+        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
+      ])
+      return [events.text('resumed after compact'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition(), transcript)
+
+  const compacting = session.compact()
+  await provider.summaryStarted.promise
+  const resuming = session.resume()
+
+  provider.summaryRelease.resolve(undefined)
+  await Promise.all([compacting, resuming])
+
+  expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
+  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'resumed after compact' })
+})
+
 test('auto compaction after a tool result resumes without re-executing the tool', async () => {
   const smallModel: ModelSelection = {
     ...model,
@@ -386,14 +532,23 @@ class CompactGateProvider implements AgentProvider {
   readonly requests: InferenceRequest[] = []
   readonly summaryStarted = deferred<void>()
   readonly summaryRelease = deferred<void>()
+  private normalCursor = 0
+
+  constructor(private readonly normalTurns: Array<(request: InferenceRequest) => ProviderEvent[]> = []) {}
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.requests.push(request)
-    if (request.tools.length === 0) {
+    if (request.systemPrompt.includes('Summarize the previous conversation')) {
       this.summaryStarted.resolve(undefined)
       await this.summaryRelease.promise
       yield events.text('gated summary')
       yield events.response()
+      return
+    }
+    const turn = this.normalTurns[this.normalCursor]
+    this.normalCursor += 1
+    if (turn) {
+      for (const event of turn(request)) yield event
       return
     }
     yield events.text('queued answer')

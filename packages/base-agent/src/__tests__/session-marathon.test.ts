@@ -172,6 +172,49 @@ test('restored session continues from snapshot without re-executing completed to
   expect(restored.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
+test('restored session after provider error does not duplicate completed tool results', async () => {
+  const store = new MemorySessionStore()
+  const firstProvider = new RecordingProvider([
+    [events.toolCall('tool-1', 'write_once', { path: 'file.txt' }), events.response()],
+    [events.text('wrote file'), events.response()],
+    [events.error('provider failed after write', 'rate_limit')],
+  ])
+  const definition = createDefinition({
+    tools: (ctx) => [
+      {
+        name: 'write_once',
+        description: 'Represents a non-idempotent write.',
+        inputSchema: { type: 'object' },
+        invoke: () => {
+          ctx.state.toolCalls += 1
+          return { output: [{ type: 'text', text: 'created file.txt' }] }
+        },
+      },
+    ],
+  })
+  const first = createSession(firstProvider, definition, undefined, undefined, { store })
+
+  await first.send(text('write file'))
+  await expect(first.send(text('after write'))).rejects.toThrow('provider failed after write')
+  expect(first.state().toolCalls).toBe(1)
+
+  const snapshot = store.snapshots.at(-1)
+  expect(snapshot?.transcript.blocks.at(-1)).toMatchObject({ type: 'error', code: 'rate_limit' })
+  const restoredProvider = new RecordingProvider([
+    (request) => {
+      const toolResults = request.items.filter((item) => item.type === 'tool_result')
+      expect(toolResults).toHaveLength(1)
+      assertNoOrphanToolItems(request.items)
+      return [events.text('recovered after restore'), events.response()]
+    },
+  ])
+  const restored = createSession(restoredProvider, definition, snapshot ? new Transcript(snapshot.transcript.blocks) : undefined)
+
+  await restored.send(text('recover after error'))
+
+  expect(restored.state().toolCalls).toBe(0)
+})
+
 function expectRequestMatchesTranscript(request: InferenceRequest, session: ReturnType<typeof createSession>): void {
   expect(request.items).toEqual(session.transcript().collectInferenceItems())
   assertNoOrphanToolItems(request.items)
