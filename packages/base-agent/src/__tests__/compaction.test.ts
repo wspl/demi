@@ -379,6 +379,54 @@ test('compaction summary context overflow retries with a smaller summary slice',
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
+test('compaction summary iterator context overflow retries with a smaller summary slice', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text('old question'))
+  transcript.applyProviderEvent(model, events.text('old answer'))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn(model, text('middle question'))
+  transcript.applyProviderEvent(model, events.text('middle answer'))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn(model, text('recent question'))
+
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      expect(request.items.map((item) => item.type)).toEqual([
+        'user_message',
+        'assistant_text',
+        'user_message',
+        'assistant_text',
+      ])
+      return throwingProviderError('iterator summary context overflow', 'context_length_exceeded')
+    },
+    (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
+      ])
+      return [events.text('iterator trimmed summary'), events.response()]
+    },
+    (request) => {
+      expect(request.items[0]).toEqual({
+        type: 'user_message',
+        content: [{ type: 'text', text: 'Previous conversation summary:\niterator trimmed summary' }],
+      })
+      return [events.text('after iterator compact'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition(), transcript)
+
+  await session.compact()
+  await session.send(text('after iterator retry'))
+
+  expect(provider.requests).toHaveLength(3)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
+  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'after iterator compact' })
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
 test('compaction summary input preserves thinking, redacted thinking, and tool metadata boundaries', async () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn(model, text('inspect deeply'))
@@ -1067,6 +1115,14 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
     resolve = innerResolve
   })
   return { promise, resolve }
+}
+
+function throwingProviderError(message: string, code: string): AsyncIterable<ProviderEvent> {
+  return (async function* (): AsyncIterable<ProviderEvent> {
+    const error = new Error(message)
+    Object.assign(error, { code })
+    throw error
+  })()
 }
 
 function withTimeout<T>(promise: Promise<T>, ms = 1_000): Promise<T> {
