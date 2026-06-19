@@ -3,7 +3,7 @@ import process from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import { resolve } from 'node:path'
 import type { AgentDefinition } from '@demi/base-agent'
-import type { Block, ModelSelection, SessionPhase, ThinkingEffort, UserContentBlock } from '@demi/core'
+import type { Block, ModelSelection, SessionPhase, ThinkingEffort, TokenUsage, UserContentBlock } from '@demi/core'
 import { createCodingAgentDefinition } from '@demi/agent-coding'
 import { ProviderRegistry } from '@demi/provider'
 import { claudeAuthState, claudeRuntimeState, createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
@@ -28,7 +28,13 @@ interface TuiOptions {
   timeoutMs: number
 }
 
-interface RenderState {
+export interface TuiOutput {
+  write(text: string): void
+  isTTY?: boolean
+}
+
+export interface RenderState {
+  output: TuiOutput
   phase: SessionPhase | null
   textLengths: Map<string, number>
   thinkingLengths: Map<string, number>
@@ -38,6 +44,14 @@ interface RenderState {
   seenUserIds: Set<string>
   activeStream: 'assistant' | 'thinking' | null
   streamAtLineStart: boolean
+}
+
+interface TuiCommandClient {
+  abort(): Promise<boolean>
+  retry(): Promise<void>
+  resume(): Promise<void>
+  compact(): Promise<void>
+  shellInput(shellId: string, stdin: string): Promise<void>
 }
 
 const helpText = `Commands:
@@ -131,41 +145,45 @@ async function main(): Promise<void> {
   }
 }
 
-async function handleCommand(input: string, client: RpcClient): Promise<boolean> {
+export async function handleCommand(
+  input: string,
+  client: TuiCommandClient,
+  output: TuiOutput = process.stdout,
+): Promise<boolean> {
   const [command, ...rest] = input.split(/\s+/)
   switch (command) {
     case '/help':
-      writeLine(helpText)
+      writeLineTo(output, helpText)
       return false
     case '/abort':
-      writeLine(color('abort requested', 'yellow'))
-      void client.abort().catch((error) => writeLine(color(`abort failed: ${messageOf(error)}`, 'red')))
+      writeLineTo(output, color('abort requested', 'yellow', output))
+      void client.abort().catch((error) => writeLineTo(output, color(`abort failed: ${messageOf(error)}`, 'red', output)))
       return false
     case '/retry':
-      void client.retry().catch((error) => writeLine(color(`retry failed: ${messageOf(error)}`, 'red')))
+      void client.retry().catch((error) => writeLineTo(output, color(`retry failed: ${messageOf(error)}`, 'red', output)))
       return false
     case '/resume':
-      void client.resume().catch((error) => writeLine(color(`resume failed: ${messageOf(error)}`, 'red')))
+      void client.resume().catch((error) => writeLineTo(output, color(`resume failed: ${messageOf(error)}`, 'red', output)))
       return false
     case '/compact':
-      void client.compact().catch((error) => writeLine(color(`compact failed: ${messageOf(error)}`, 'red')))
+      void client.compact().catch((error) => writeLineTo(output, color(`compact failed: ${messageOf(error)}`, 'red', output)))
       return false
     case '/input': {
       const shellId = rest.shift()
       if (!shellId) {
-        writeLine(color('usage: /input <shellId> <text>', 'red'))
+        writeLineTo(output, color('usage: /input <shellId> <text>', 'red', output))
         return false
       }
       void client
         .shellInput(shellId, `${rest.join(' ')}\n`)
-        .catch((error) => writeLine(color(`input failed: ${messageOf(error)}`, 'red')))
+        .catch((error) => writeLineTo(output, color(`input failed: ${messageOf(error)}`, 'red', output)))
       return false
     }
     case '/exit':
     case '/quit':
       return true
     default:
-      writeLine(color(`Unknown command: ${command}`, 'red'))
+      writeLineTo(output, color(`Unknown command: ${command}`, 'red', output))
       return false
   }
 }
@@ -183,7 +201,7 @@ async function cleanup(
   }
 }
 
-function renderEvent(state: RenderState, event: ClientSessionEvent): void {
+export function renderEvent(state: RenderState, event: ClientSessionEvent): void {
   switch (event.type) {
     case 'opened':
       return
@@ -191,24 +209,32 @@ function renderEvent(state: RenderState, event: ClientSessionEvent): void {
       if (event.phase !== state.phase) {
         finishStream(state)
         state.phase = event.phase
-        writeLine(color(`status: ${event.phase}`, event.phase === 'idle' ? 'green' : 'yellow'))
+        writeLineTo(state.output, color(`status: ${event.phase}`, event.phase === 'idle' ? 'green' : 'yellow', state.output))
       }
       return
     case 'queue':
       finishStream(state)
-      if (event.queue.length > 0) writeLine(color(`queue: ${event.queue.length} message(s)`, 'dim'))
+      if (event.queue.length > 0) {
+        writeLineTo(state.output, color(`queue: ${event.queue.length} message(s)`, 'dim', state.output))
+      }
       return
     case 'shell_output':
       finishStream(state)
-      renderShellOutput(event.shellId, event.snapshot.stdoutDelta, event.snapshot.stderrDelta)
+      renderShellOutput(state, event.shellId, event.snapshot.stdoutDelta, event.snapshot.stderrDelta)
       return
     case 'audit':
       finishStream(state)
       for (const item of event.events) {
         if (item.kind === 'registered-command') {
-          writeLine(color(`audit: registered ${item.name} ${item.args.join(' ')} -> ${item.exitCode}`, 'dim'))
+          writeLineTo(
+            state.output,
+            color(`audit: registered ${item.name} ${item.args.join(' ')} -> ${item.exitCode}`, 'dim', state.output),
+          )
         } else {
-          writeLine(color(`audit: system ${item.name} ${item.args.join(' ')} -> ${item.exitCode ?? 'signal'}`, 'dim'))
+          writeLineTo(
+            state.output,
+            color(`audit: system ${item.name} ${item.args.join(' ')} -> ${item.exitCode ?? 'signal'}`, 'dim', state.output),
+          )
         }
       }
       return
@@ -220,15 +246,15 @@ function renderEvent(state: RenderState, event: ClientSessionEvent): void {
       return
     case 'error':
       finishStream(state)
-      writeLine(color(`error: ${event.message}`, 'red'))
+      writeLineTo(state.output, color(`error: ${event.message}`, 'red', state.output))
       return
     case 'rejected':
       finishStream(state)
-      writeLine(color(`rejected ${event.command}: ${event.reason}`, 'red'))
+      writeLineTo(state.output, color(`rejected ${event.command}: ${event.reason}`, 'red', state.output))
       return
     case 'closed':
       finishStream(state)
-      writeLine(color('closed', 'dim'))
+      writeLineTo(state.output, color('closed', 'dim', state.output))
       return
     case 'transcript_snapshot':
       renderBlocks(state, event.blocks)
@@ -261,7 +287,7 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
         state.seenThinkingSignatures.add(block.id)
         if (block.text.length === 0) {
           finishStream(state)
-          writeLine(color('thinking> [signed]', 'dim'))
+          writeLineTo(state.output, color('thinking> [signed]', 'dim', state.output))
         }
       }
       continue
@@ -269,7 +295,7 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
     if (block.type === 'redacted_thinking') {
       if (!state.thinkingLengths.has(block.id)) {
         finishStream(state)
-        writeLine(color(`thinking> [redacted ${block.data.length} chars]`, 'dim'))
+        writeLineTo(state.output, color(`thinking> [redacted ${block.data.length} chars]`, 'dim', state.output))
         state.thinkingLengths.set(block.id, block.data.length)
       }
       continue
@@ -279,30 +305,30 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
       if (state.toolStatuses.get(block.id) !== marker) {
         finishStream(state)
         state.toolStatuses.set(block.id, marker)
-        writeLine(color(`tool: ${block.toolName} ${block.status} ${formatToolInput(block)}`, 'cyan'))
+        writeLineTo(state.output, color(`tool: ${block.toolName} ${block.status} ${formatToolInput(block)}`, 'cyan', state.output))
       }
       continue
     }
     if (block.type === 'response' && !state.seenResponseIds.has(block.id)) {
       finishStream(state)
       state.seenResponseIds.add(block.id)
-      writeLine(color(`usage: in=${block.usage.inputTokens} out=${block.usage.outputTokens}`, 'dim'))
+      writeLineTo(state.output, color(`usage: ${formatUsage(block.usage)}`, 'dim', state.output))
       continue
     }
     if (block.type === 'error') {
       finishStream(state)
-      writeLine(color(`agent error: ${block.message}`, 'red'))
+      writeLineTo(state.output, color(`agent error: ${block.message}`, 'red', state.output))
     }
     if (block.type === 'abort') {
       finishStream(state)
-      writeLine(color('turn aborted', 'yellow'))
+      writeLineTo(state.output, color('turn aborted', 'yellow', state.output))
     }
   }
 }
 
-function renderShellOutput(shellId: string, stdoutDelta: string, stderrDelta: string): void {
-  if (stdoutDelta) writePrefixed(`shell[${shellId}] stdout`, stdoutDelta, 'green')
-  if (stderrDelta) writePrefixed(`shell[${shellId}] stderr`, stderrDelta, 'red')
+function renderShellOutput(state: RenderState, shellId: string, stdoutDelta: string, stderrDelta: string): void {
+  if (stdoutDelta) writePrefixed(state.output, `shell[${shellId}] stdout`, stdoutDelta, 'green')
+  if (stderrDelta) writePrefixed(state.output, `shell[${shellId}] stderr`, stderrDelta, 'red')
 }
 
 function renderToolProgress(state: RenderState, output: Extract<ClientSessionEvent, { type: 'tool_progress' }>['output']): void {
@@ -310,12 +336,15 @@ function renderToolProgress(state: RenderState, output: Extract<ClientSessionEve
   const shell = parseShellProgress(text)
   if (shell) {
     finishStream(state)
-    writeLine(color(`progress: shell[${shell.shellId}] ${shell.status}${shell.reason ? ` (${shell.reason})` : ''}`, 'dim'))
+    writeLineTo(
+      state.output,
+      color(`progress: shell[${shell.shellId}] ${shell.status}${shell.reason ? ` (${shell.reason})` : ''}`, 'dim', state.output),
+    )
     return
   }
   if (text.trim()) {
     finishStream(state)
-    writePrefixed('progress', text, 'dim')
+    writePrefixed(state.output, 'progress', text, 'dim')
   }
 }
 
@@ -342,23 +371,32 @@ function writeStreamDelta(
 ): void {
   if (state.activeStream !== stream) {
     finishStream(state)
-    process.stdout.write(`\n${color(label, tone)}`)
+    state.output.write(`\n${color(label, tone, state.output)}`)
     state.activeStream = stream
     state.streamAtLineStart = false
   }
-  process.stdout.write(stream === 'thinking' ? color(delta, 'dim') : delta)
+  state.output.write(stream === 'thinking' ? color(delta, 'dim', state.output) : delta)
   state.streamAtLineStart = delta.endsWith('\n')
 }
 
 function finishStream(state: RenderState): void {
-  if (state.activeStream && !state.streamAtLineStart) process.stdout.write('\n')
+  if (state.activeStream && !state.streamAtLineStart) state.output.write('\n')
   state.activeStream = null
   state.streamAtLineStart = true
 }
 
-function writePrefixed(label: string, text: string, tone: Tone): void {
+function writePrefixed(output: TuiOutput, label: string, text: string, tone: Tone): void {
   const lines = text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n')
-  for (const line of lines) writeLine(`${color(`${label}>`, tone)} ${line}`)
+  for (const line of lines) writeLineTo(output, `${color(`${label}>`, tone, output)} ${line}`)
+}
+
+function formatUsage(usage: TokenUsage): string {
+  return [
+    `in=${usage.inputTokens}`,
+    `out=${usage.outputTokens}`,
+    `cache_read=${usage.cacheReadTokens}`,
+    `cache_write=${usage.cacheWriteTokens}`,
+  ].join(' ')
 }
 
 function formatToolInput(block: Extract<Block, { type: 'tool_call' }>): string {
@@ -381,8 +419,9 @@ function trimOneLine(text: string): string {
   return compact.length > 100 ? `${compact.slice(0, 97)}...` : compact
 }
 
-function createRenderer(): RenderState {
+export function createRenderer(output: TuiOutput = process.stdout): RenderState {
   return {
+    output,
     phase: null,
     textLengths: new Map(),
     thinkingLengths: new Map(),
@@ -510,10 +549,14 @@ function writeLine(text = ''): void {
   process.stdout.write(`${text}\n`)
 }
 
+function writeLineTo(output: TuiOutput, text = ''): void {
+  output.write(`${text}\n`)
+}
+
 type Tone = 'red' | 'green' | 'yellow' | 'blue' | 'cyan' | 'dim' | 'bold'
 
-function color(text: string, tone: Tone): string {
-  if (!process.stdout.isTTY) return text
+function color(text: string, tone: Tone, output: TuiOutput = process.stdout): string {
+  if (!output.isTTY) return text
   const codes: Record<Tone, [number, number]> = {
     red: [31, 39],
     green: [32, 39],
@@ -531,7 +574,9 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-main().catch((error) => {
-  process.stderr.write(`fatal: ${messageOf(error)}\n`)
-  process.exit(1)
-})
+if (import.meta.main) {
+  main().catch((error) => {
+    process.stderr.write(`fatal: ${messageOf(error)}\n`)
+    process.exit(1)
+  })
+}

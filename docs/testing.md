@@ -62,10 +62,10 @@
 | AgentSession 长生命周期稳定 | 部分有效 | `5.4`、`5.5`、`5.6`、`5.7` 已覆盖 send/queue/retry/resume/abort/tool/error/compact 的主要路径，并覆盖官方 `AgentSession.fromSnapshot`、transcript/store snapshot 不被 live mutation 污染；provider mock realism 仍是部分有效。 |
 | 模型可见上下文稳定 | 有效 | `5.5`、`5.7` 覆盖 exact transcript payload、effective transcript、当前 transcript schema 的 internal block 过滤、bounded injection、stable prefix 和 compact 后重稳。 |
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
-| Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播；TUI usage 呈现和真实 provider cache hit 仍未完整证明。 |
+| Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16`、`5.17` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播和 TUI usage 呈现；真实 provider cache hit 仍未完整证明。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
 | Coding workflow 能发现真实问题 | 有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制、shell cwd/env 复用、file reference Host 边界和 editor 写入失败事务。 |
-| 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，但 `5.17` TUI 自身没有自动化测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
+| 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，`5.17` TUI renderer/command 层已有 deterministic 测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
 
 ### 3.3 Compact 参考故事映射
 
@@ -267,7 +267,7 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 | 记录给模型的 tool output 使用 head/tail + truncation marker | 有效 | 同一截断测试断言 tool output 的 head `tool-head-`、tail `-tool-tail` 和 `[...] truncated` 标记都在 request 中，同时大段重复内容被移除；能发现只保留头部或无标记截断。验证同上。 | `context-cache.test.ts` 覆盖 head/tail 保留和 truncation marker | 防止截断后模型不知道内容被省略，或只保留头部导致错误诊断。 |
 | provider context-overflow 错误触发可恢复路径或明确失败 | 有效 | 测试 provider 返回 `context_length_exceeded` 后 `send` reject，transcript 写入带 code 的 error，phase 回 idle，随后再次 send 可成功；能发现 generic error 或不可恢复 busy 状态。验证同上。 | `context-cache.test.ts` | 防止模型上下文超限后 session 只记录 generic error，无法 compact/retry 或向壳子给出明确状态。 |
 | provider usage 中 cache read/write token 字段被解析 | 有效 | `jsonl-output.test.ts` 断言 Claude result usage 的 `cache_read_input_tokens`、`cache_creation_input_tokens` 映射成 `cacheReadTokens`、`cacheWriteTokens`；能发现 provider 字段被丢弃。验证同上。 | `jsonl-output.test.ts` | 防止 provider cache 指标被丢弃，后续无法判断真实 cache 行为。 |
-| cache usage 被 AgentSession 记录并对外暴露 | 部分有效 | `context-cache.test.ts` 断言 response blocks 记录 cacheRead/cacheWrite tokens，`rpc.test.ts` 断言同一 usage 经 transcript patch frame 到达 `RpcClient.transcript()`；TUI stdout 是否展示 cacheRead/cacheWrite 仍未覆盖。验证同上。 | `context-cache.test.ts`、`rpc.test.ts` | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
+| cache usage 被 AgentSession 记录并对外暴露 | 有效 | `context-cache.test.ts` 断言 response blocks 记录 cacheRead/cacheWrite tokens，`rpc.test.ts` 断言同一 usage 经 transcript patch frame 到达 `RpcClient.transcript()`；`packages/tui/src/__tests__/renderer.test.ts` 断言 TUI stdout 显示 `cache_read` 和 `cache_write` 字段。验证：5.7 targeted command 和 `bun test packages/tui/src`，TUI 3 pass。 | `context-cache.test.ts`、`rpc.test.ts`、`renderer.test.ts` | 需要发现 usage 在 provider 到 session 到 UI/RPC/TUI 呈现链路中丢字段。 |
 | cache 只是 provider 透明优化时，不影响 agent 行为 | 有效 | 测试 cache usage 极大但 input/output tokens 很小，断言没有触发 compaction，tool loop 仍执行一次并继续 provider roundtrip；能发现 cache 指标错误参与 agent 行为决策。验证同上。 | `context-cache.test.ts` | 需要保证 cache 指标变化不会改变 transcript、tool loop 或错误处理。 |
 | demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 | 有效 | `stable prompt prefix` 测试把第二轮 request 的 cache 输入 prefix JSON.stringify 后比较，等价历史下 byte-identical；能发现工具/system/preamble/history 无意义抖动。验证同上。 | `context-cache.test.ts` 断言等价历史下 stable prefix 字节级一致 | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
 | tools/schema/system prompt/model/preamble 改变时 cache 失效规则 | 有效 | 同一测试分别改变 system prompt、首轮 preamble、tool description、model id，并断言 prefix 与 baseline 不同；能发现该失效时没有失效或错误复用 prefix。验证同上。 | `context-cache.test.ts` 断言 tools、system prompt、model、preamble 变化会改变 cache 输入前缀 | 需要防止 cache 命中建立在错误前缀上，或该失效时没有失效。 |
@@ -436,9 +436,9 @@ Owner：`packages/tui`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| 基本渲染、输入、scroll | 缺口 | `packages/tui` 只有 `src/index.ts`、README、package.json；`bun test packages/tui` 没有匹配任何测试文件。当前没有自动化断言 readline 输入、终端渲染或滚动行为。 | 需要 TUI 自动化或 snapshot/integration 测试 | 防止核心能力可用但用户无法操作或看不到完整输出。 |
-| thinking/text/tool output 显示 | Gated | TUI 实现里有 text/thinking/redacted_thinking/tool_call 渲染分支，但没有测试捕获 stdout 或终端 snapshot；只能靠真实 TUI smoke 验收。 | 目前靠真实 TUI smoke 验收 | 防止真实模型输出被 TUI 分流、折叠或渲染错。 |
-| 通过 RPC client open/send/receive phase/transcript/shell frames | 部分有效 | RPC 5.16 已覆盖 open/send/phase/transcript/shell frames；TUI 代码订阅 `RpcClient` 并调用 `renderEvent`，但没有 TUI 层测试验证状态合并、去重、刷新节奏或 stdout 输出。 | RPC 层有效；TUI 壳子自身为缺口 | 需要发现 TUI 自己订阅、状态合并、刷新节奏的问题。 |
+| 基本渲染、输入、scroll | 部分有效 | 新增 `renderer.test.ts` 通过注入 output 断言 TUI renderer 会输出 phase、queue、shell stdout/stderr、audit、progress、error、rejected、closed；并断言 `/help`、`/abort`、`/retry`、`/resume`、`/compact`、`/input`、unknown、`/exit` 的命令分发和 usage 输出。未覆盖真实 readline 终端模式、scroll/backpressure。验证：`bun test packages/tui/src`，3 pass；已纳入根 `bun run test`。 | `packages/tui/src/__tests__/renderer.test.ts` | 防止核心 RPC 事件到了 TUI 后用户仍看不到状态/输出，或 `/input` 等命令没有发给 RPC client。 |
+| thinking/text/tool output 显示 | 有效 | `renderer.test.ts` 构造 thinking、assistant text、tool_call、response blocks，断言 stdout 包含 `thinking>`、`assistant>`、`tool:` 和 usage；随后用同 id 更新 block，断言只输出新增 delta、不重复完整 text、不重复 usage。真实模型是否产出这些 blocks 仍由真实 provider/TUI smoke 覆盖。验证同上。 | `renderer.test.ts` | 防止真实模型已经产生 thinking/text/tool blocks，但 TUI renderer 分流、重复或漏显示。 |
+| 通过 RPC client open/send/receive phase/transcript/shell frames | 部分有效 | RPC 5.16 已覆盖 open/send/phase/transcript/shell frames；TUI 层新增 `renderEvent` stdout snapshot 覆盖 phase、queue、transcript、shell_output、audit、tool_progress、error/rejected/closed 的呈现和去重。仍未跑真实 `RpcClient.subscribe -> renderEvent` 端到端 TUI 进程测试。 | `rpc.test.ts`、`renderer.test.ts` | 需要发现 TUI 自己订阅、状态合并、刷新节奏的问题。 |
 | 真实 Claude Code provider 输出真实模型回复 | Gated | Provider 层有 real-cli gated 测试候选，但 TUI 没有自动化证明 `bun run tui` 经过 Claude Code provider 后显示真实模型回复、thinking 和 tool output。 | 需要指定真实模型和 thinking 等级 smoke | 防止验收只跑 stub provider，没有确认真实 provider 路径。 |
 | 交互式 shell 操作在 TUI 中顺畅 | Gated | TUI 暴露 `/input`、`/abort` 等命令并转到 RpcClient，但没有自动化或多轮真实 smoke 记录验证模糊任务下的交互式 shell 体验。 | 需要多次 smoke，因为模型行为有随机性 | 用来发现真实模型在模糊指令下是否会持续碰壁或误用 shell 控制面。 |
 
@@ -455,7 +455,7 @@ Owner：`packages/just-bash`
 
 ## 6. 当前剩余优先补测顺序
 
-1. 补 `5.17 TUI` 自动化：cache usage 呈现、stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
+1. 继续补 `5.17 TUI` 自动化：真实 readline/TTY 输入、scroll/backpressure、`RpcClient.subscribe -> renderEvent` 端到端 TUI 进程路径。
 2. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
 3. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
