@@ -366,14 +366,14 @@ Owner：`packages/agent-coding`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `editor create` 用 heredoc 创建文件 |  |  | `packages/agent-coding/src/__tests__/editor-command.test.ts` | 防止模型写文件时多行内容、引号或换行被 shell 参数破坏。 |
-| editor 拒绝 workspace root 外路径 |  |  | `editor-command.test.ts` | 防止编辑命令越权修改工作区外文件。 |
-| patch escaped path 时写入前拒绝 |  |  | `editor-command.test.ts` | 防止 unified diff 中一个恶意路径导致部分文件已修改后才失败。 |
-| `editor edit` exact replace 和 ambiguous matches 失败 |  |  | `editor-command.test.ts` | 防止错误替换多个位置或在歧义情况下误改代码。 |
-| context disambiguation 只在唯一最近匹配时生效 |  |  | `editor-command.test.ts` | 防止模型提供上下文后仍改到错误位置。 |
-| empty old text 拒绝且不修改文件 |  |  | `editor-command.test.ts` | 防止空匹配导致在文件所有位置插入内容。 |
-| unified diff patch、timestamp headers、多文件创建/删除 |  |  | `editor-command.test.ts` | 防止常见 patch 格式无法应用，或删除/新增文件语义错。 |
-| patch 全量校验后再写入，保证跨文件事务 |  |  | `editor-command.test.ts` | 防止 patch 中后续文件失败时前面文件已经被部分修改。 |
+| `editor create` 用 heredoc 创建文件 | 有效 | 测试用 heredoc 创建 `src/foo.txt`，断言 stdout、diff metadata、unified diff header 和实际 `cat` 内容；能发现多行 stdin/heredoc 被参数解析破坏。验证：5.13 targeted command，11 pass。 | `packages/agent-coding/src/__tests__/editor-command.test.ts` | 防止模型写文件时多行内容、引号或换行被 shell 参数破坏。 |
+| editor 拒绝 workspace root 外路径 | 有效 | 测试 absolute outside 和 `../` relative outside 都 exit 1，stderr 包含 `Path escapes workspace`，并断言外部文件不存在；能发现越权写入。验证同上。 | `editor-command.test.ts` | 防止编辑命令越权修改工作区外文件。 |
+| patch escaped path 时写入前拒绝 | 有效 | 测试 patch 先声明修改 workspace 内文件，再声明创建 workspace 外文件；失败后断言内部文件仍为原内容且外部文件不存在。验证同上。 | `editor-command.test.ts` | 防止 unified diff 中一个恶意路径导致部分文件已修改后才失败。 |
+| `editor edit` exact replace 和 ambiguous matches 失败 | 有效 | 测试重复文本无 occurrence 时 exit 1 并报 `Multiple matches`，随后用 `--occurrence 2` 精确替换并断言 diff metadata 和实际文件内容；能发现歧义替换误改。验证同上。 | `editor-command.test.ts` | 防止错误替换多个位置或在歧义情况下误改代码。 |
+| context disambiguation 只在唯一最近匹配时生效 | 有效 | 测试 context line 2 与两个匹配等距时失败并列出 occurrence，断言文件未改；context line 3 时只替换最近唯一匹配。验证同上。 | `editor-command.test.ts` | 防止模型提供上下文后仍改到错误位置。 |
+| empty old text 拒绝且不修改文件 | 有效 | 测试 `--old ""` exit 1，stderr 为 `Old text must not be empty`，并断言原文件内容未变。验证同上。 | `editor-command.test.ts` | 防止空匹配导致在文件所有位置插入内容。 |
+| unified diff patch、timestamp headers、多文件创建/删除 | 有效 | 测试普通 unified diff、带 timestamp header、同时修改已有文件并创建新文件、`/dev/null` 删除文件，均断言 stdout/diff metadata/实际文件状态；能发现常见 patch 语义缺失。验证同上。 | `editor-command.test.ts` | 防止常见 patch 格式无法应用，或删除/新增文件语义错。 |
+| patch 全量校验后再写入，保证跨文件事务 | 部分有效 | 测试跨两个文件 patch 中第二个文件 context 不匹配时 exit 1，并断言第一个文件未被修改；能证明 validation failure 会在写入前中止。未模拟写入阶段第二个文件失败，因此不能证明真正的写入失败回滚。验证同上。 | `editor-command.test.ts` | 防止 patch 中后续文件失败时前面文件已经被部分修改。 |
 
 ### 5.14 Todo Command
 
