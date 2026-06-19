@@ -2,7 +2,15 @@ import { expect, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { buildClaudeArgs, buildClaudeEnv, claudeAuthState, claudeRuntimeState, detectClaudeCli, readClaudeStatsigState } from '../index'
+import {
+  buildClaudeArgs,
+  buildClaudeArgsForRequest,
+  buildClaudeEnv,
+  claudeAuthState,
+  claudeRuntimeState,
+  detectClaudeCli,
+  readClaudeStatsigState,
+} from '../index'
 
 test('detectClaudeCli reports path and version from shell runner', async () => {
   const status = await detectClaudeCli(async (command, args) => {
@@ -88,4 +96,27 @@ test('buildClaudeArgs and env match the planned CLI contract', () => {
   expect(env.DISABLE_AUTO_COMPACT).toBe('1')
   expect(env.MAX_MCP_OUTPUT_TOKENS).toBe('1000000')
   expect(env.CLAUDECODE).toBeUndefined()
+})
+
+test('buildClaudeArgsForRequest maps summary thinking effort and provider budget to CLI args', () => {
+  const args = buildClaudeArgsForRequest(
+    {
+      modelId: 'claude-opus-4-8',
+      systemPrompt: 'Summarize the previous conversation for continuation.',
+      cwd: '/workspace',
+      items: [],
+      tools: [],
+      thinking: { type: 'effort', effort: 'medium', summary: null },
+      cancel: new AbortController().signal,
+    },
+    { maxBudgetUsd: '0.25' },
+  )
+
+  expect(args).toContain('--effort')
+  expect(args.slice(args.indexOf('--effort'), args.indexOf('--effort') + 2)).toEqual(['--effort', 'medium'])
+  expect(args).toContain('--max-budget-usd')
+  expect(args.slice(args.indexOf('--max-budget-usd'), args.indexOf('--max-budget-usd') + 2)).toEqual([
+    '--max-budget-usd',
+    '0.25',
+  ])
 })

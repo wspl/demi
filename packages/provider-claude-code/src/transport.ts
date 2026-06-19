@@ -37,12 +37,7 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   async start(request: InferenceRequest): Promise<ClaudeTransport> {
     const child = spawn(
       this.claudePath,
-      buildClaudeArgs({
-        modelId: request.modelId,
-        systemPrompt: request.systemPrompt,
-        thinkingEffort: thinkingEffort(request.thinking),
-        maxBudgetUsd: this.maxBudgetUsd,
-      }),
+      buildClaudeArgsForRequest(request, { maxBudgetUsd: this.maxBudgetUsd }),
       {
         cwd: request.cwd,
         env: buildClaudeEnv(),
@@ -52,6 +47,18 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
 
     return new ChildProcessClaudeTransport(child)
   }
+}
+
+export function buildClaudeArgsForRequest(
+  request: InferenceRequest,
+  options: { maxBudgetUsd?: number | string | null } = {},
+): string[] {
+  return buildClaudeArgs({
+    modelId: request.modelId,
+    systemPrompt: request.systemPrompt,
+    thinkingEffort: thinkingEffort(request.thinking),
+    maxBudgetUsd: options.maxBudgetUsd,
+  })
 }
 
 class ChildProcessClaudeTransport implements ClaudeTransport {

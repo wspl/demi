@@ -151,9 +151,9 @@ Owner：`packages/provider-claude-code`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| Claude CLI path/version 检测 | 有效 | `cli.test.ts` 注入 shell runner，断言 `which claude` 后使用解析出的 `/bin/claude --version`，并返回修剪后的 path/version；能发现未按实际 CLI path 查询版本或 version 解析异常。验证：5.3 targeted command，30 pass / 1 skip。 | `packages/provider-claude-code/src/__tests__/cli.test.ts` | 防止 provider 在没有可用 CLI 或版本信息异常时进入半可用状态。 |
+| Claude CLI path/version 检测 | 有效 | `cli.test.ts` 注入 shell runner，断言 `which claude` 后使用解析出的 `/bin/claude --version`，并返回修剪后的 path/version；能发现未按实际 CLI path 查询版本或 version 解析异常。验证：5.3 targeted command，31 pass / 1 skip。 | `packages/provider-claude-code/src/__tests__/cli.test.ts` | 防止 provider 在没有可用 CLI 或版本信息异常时进入半可用状态。 |
 | Claude auth/runtime state 读取，不依赖 SDK | 有效 | 测试通过注入 runner 覆盖 CLI 不存在、`claude auth status --json` authenticated、auth 查询失败后 statsig fallback、statsig stable/session id 读取；没有引入 SDK，能发现认证/runtime 状态误报。验证同上。 | `cli.test.ts` | 防止认证状态判断依赖不可控 SDK 行为，导致 UI 误报可用或不可用。 |
-| Claude CLI args/env 构造契约 | 有效 | 测试精确断言 `--print`、stream-json input/output、partial messages、no session persistence、safe mode、disabled slash commands、empty tools、permission bypass、model、system prompt、thinking effort、max budget 和 env 清理；能发现关键 CLI flag 丢失或拼错。验证同上。 | `cli.test.ts` | 防止模型、thinking、MCP/config 等关键启动参数在 CLI 调用时丢失或拼错。 |
+| Claude CLI args/env 构造契约 | 有效 | 测试精确断言 `--print`、stream-json input/output、partial messages、no session persistence、safe mode、disabled slash commands、empty tools、permission bypass、model、system prompt、thinking effort、max budget 和 env 清理；`buildClaudeArgsForRequest` 还断言 summary request 的 medium thinking effort 与 provider max budget 会映射到 `--effort medium`、`--max-budget-usd`。验证同上。 | `cli.test.ts` | 防止模型、thinking、MCP/config 等关键启动参数在 CLI 调用时丢失或拼错。 |
 | demi inference items 转 Claude JSONL input messages | 有效 | `jsonl-output.test.ts` 构造 user/assistant/tool_result items，断言生成三条 stream-json message、tool_result 以 Claude user message 结构写入，并能 JSONL roundtrip；能发现历史 item 转换错位。验证同上。 | `packages/provider-claude-code/src/__tests__/jsonl-output.test.ts` | 防止 user/assistant/tool 历史转换错位，真实模型看到的上下文与 transcript 不一致。 |
 | assistant turn 与 tool result grouping | 有效 | 测试同一 assistant turn 内 thinking/text/两个 tool_use 被合并成一条 assistant message，随后两个 tool_result 被合并成一条 user message，之后的新 assistant text 开新 message；能发现 Claude 所需顺序被拆乱。验证同上。 | `jsonl-output.test.ts` | 防止 Claude 所需的 assistant/tool_result 顺序被拆乱，引发 tool_use 无匹配结果。 |
 | binary media content 转 Claude base64 source | 有效 | 测试 image binary、image URL、document binary 同时输入，断言二进制 image/document 转 Claude base64 source、URL 保留、document title 保留，并 JSONL roundtrip；能发现 media 编码损坏。验证同上。 | `jsonl-output.test.ts` | 防止图片或二进制输入在 provider 边界损坏。 |
@@ -251,7 +251,7 @@ Owner：`packages/base-agent`
 | compact 过程遇到 context-window 错误与普通 provider 错误分流 | 有效 | `compaction.test.ts` 覆盖 summary context overflow code 保留、不可裁剪时 transcript atomic、可裁剪时重试更小 summary slice 并写入正确 boundary；普通 summary error 只请求一次且 atomic。`context-cache.test.ts` 覆盖 provider context overflow 明确写 error 并可继续发送。验证同上。 | `compaction.test.ts`、`context-cache.test.ts` | 防止可通过裁剪/重试恢复的超限错误被当成普通失败，或普通 provider 错误无限重试。 |
 | compact 后持久化再恢复，replayable blocks 保持一致 | 有效 | `compaction boundary and marker survive snapshot reconstruction` 断言 store snapshot 中有 boundary/marker，恢复 Transcript 后下一次 request 精确等于 summary + recent + new user；context-cache 也断言 snapshot reconstruction 后 collectInferenceItems 等价。验证同上。 | `compaction.test.ts`、`context-cache.test.ts` | 需要发现 boundary/marker 在 snapshot 中丢失或恢复后 replay 起点错误。 |
 | thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 | 有效 | mixed transcript 测试把 thinking、signature、redacted thinking、tool metadata、extension state、recent text 放在一起，断言 summary request 保留 thinking/tool pair、排除 extension state，compact 后 recent text 留在 replay。验证同上。 | `compaction.test.ts`、`context-cache.test.ts` | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
-| thinking 模型下 summary request 的 token/budget 设置有效 | 部分有效 | preflight 测试断言 thinking 模型的 summary request 携带 `{ type: 'effort', effort: 'medium' }`；但当前 request 类型没有 max output/budget 字段，也没有真实 provider 下 thinking budget 与输出 token 冲突的验证。验证同上。 | `compaction.test.ts` | 防止 summary 请求因为 thinking budget 与 max output token 冲突而失败，导致长任务无法 compact。 |
+| thinking 模型下 summary request 的 token/budget 设置有效 | 部分有效 | preflight 测试断言 thinking 模型的 summary request 携带 `{ type: 'effort', effort: 'medium' }`；Claude Code CLI contract 测试断言该 request thinking effort 和 provider max budget 会映射到 `--effort medium`、`--max-budget-usd`。当前 request 类型没有 per-request max output token 字段，真实 provider 下预算冲突仍是 gated。验证同上。 | `compaction.test.ts`、`cli.test.ts` | 防止 summary 请求因为 thinking effort 或 provider budget 丢失而使用错误模型配置；真实输出 token 预算冲突仍需 gated/后续契约支持。 |
 
 ### 5.7 模型可见上下文与 Context Cache
 
@@ -454,7 +454,7 @@ Owner：`packages/just-bash`
 
 ## 6. 当前剩余优先补测顺序
 
-1. 先补 `5.6 Compaction` 的剩余 P0 部分有效项：preflight summary 卡住时 retry/resume 交错、thinking budget 与 summary 请求约束。
+1. 先补 `5.6 Compaction` 的剩余 P0 部分有效项：preflight summary 卡住时 retry/resume 交错、真实 provider 下 thinking 输出 token 预算冲突验证。
 2. 补 `5.5`/`5.7` 的模型可见上下文基线：更多 internal state 泄漏枚举、user/text/tool payload exactness、snapshot JSON 序列化、cache usage 经 RPC/UI 暴露。
 3. 补 `5.17 TUI` 自动化：stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
 4. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit；gated smoke 只补充 deterministic 测试，不替代契约测试。
