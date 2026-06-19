@@ -1045,6 +1045,8 @@ AgentSession 事件 → AgentServer → ServerFrame → [transport] → ClientFr
 
 demi 是纯 agent 库，不含 frontend 实现 / module 层。Agent runtime 和 server/client/transport 都由 `packages/agent` 提供；transport 是 AgentServer 的通信适配层，不作为独立领域包存在。
 
+包依赖方向是核心架构约束，权威规则见 `docs/dependency-boundaries.md`。本节只保留包职责概览；如果职责概览和依赖边界文档不一致，先修正边界文档或代码，再继续实现。
+
 ```text
 packages/core/            基础类型：Block、Transcript、UserContentBlock、ModelSelection、
                           TokenUsage 等跨包共享类型（agent 与 provider 都依赖）
@@ -1062,6 +1064,8 @@ packages/shell/            Host contract、BashEnvironment、shell session tools
                           LocalHost / LocalDemiStore 作为显式 Node adapter 子路径
 packages/coding-agent/    Coding agent harness、prompt、coding commands、todo
 packages/provider-claude-code/  Claude Code provider：驱动系统 claude code CLI
+packages/provider-codex/  Codex provider：复用官方 Codex auth，驱动 Responses transport
+packages/tui/             本地验收壳子和 composition root
 ```
 
 `packages/core` 与 `packages/provider` 是底层依赖：core 放跨包共享类型，provider 定义 AgentSession 调用模型的标准接口。`InferenceRequest` 是纯 items 数组模型（`items: InferenceItem[]` + systemPrompt + cwd + tools + thinking + cancel），与 Rust 蓝本一致；provider 实现内部如何把 items 喂给模型（直连 API、stdin stream-json、或 provider 自己支持的 resume 机制）是 provider 自己的事，不进接口。
