@@ -318,19 +318,19 @@ Owner：`packages/shell`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `shell_exec` running/yield 后可 `shell_wait` |  |  | `environment.test.ts`、`packages/shell/src/__tests__/tools.test.ts` | 防止长命令超出单次等待后失联，模型无法继续观察输出。 |
-| output limit 触发 running output_limit |  |  | `environment.test.ts` | 防止大输出撑爆 tool result 或 transcript。 |
-| `shell_input` 可向 foreground process 写 stdin |  |  | `environment.test.ts`、`tools.test.ts` | 防止交互式命令无法继续，或输入写入错误 shell。 |
-| idle foreground process 默认保持 running，不误报 needs_input |  |  | `environment.test.ts` | 防止安静安装、构建、dev server 被误判为需要用户输入。 |
-| `shell_wait` 的 `yieldAfterMs` 从每次调用重新计时 |  |  | `environment.test.ts` | 防止 wait 因累计时间错误立刻返回，模型反复空轮询。 |
-| `shell_abort` 终止 foreground process，且是 control action |  |  | `environment.test.ts`、`tools.test.ts` | 防止停止 dev server 被当作任务失败，或进程继续占端口。 |
-| abort/timeout flush redirected foreground output |  |  | `environment.test.ts` | 防止本应写入文件的输出泄漏到 tool output，或文件内容丢失。 |
-| dispose shell kill foreground/background 并移除 session |  |  | `environment.test.ts` | 防止关闭 session 后仍有子进程残留。 |
-| timeout kill foreground process，之后 shell 可复用 |  |  | `environment.test.ts` | 防止 timeout 后 abort state 泄漏，导致下一条命令立即失败。 |
-| shell tool result 格式保留 metadata 且模型可读 |  |  | `tools.test.ts` | 防止模型必须解析不稳定 JSON 或看不到 shellId/status/next action。 |
-| `shell_input` 拒绝空 stdin，不承担 polling |  |  | `tools.test.ts` | 防止空 input 被滥用成 wait，重新引入无意义控制动作。 |
-| AgentSession abort signal 传播到 `shell_exec` / `shell_wait` / `shell_input` |  |  | `tools.test.ts` | 防止 UI abort 只停止 session 状态，不停止实际前台进程。 |
-| 模型在真实长进程场景中稳定选择 wait/input/abort |  |  | 需要真实 provider/TUI smoke 多次验证 | 用来发现 prompt/tool result 虽然单测正确，但真实模型仍然误用控制面的问题。 |
+| `shell_exec` running/yield 后可 `shell_wait` | 有效 | `environment.test.ts` 断言长命令先返回 running，再 `wait` 得到 exited/stdout/audit/last status；`tools.test.ts` 用 AgentSession 验证模型可从 shell_exec tool_result 读出 shellId 并调用 shell_wait。验证：5.10 targeted command，80 pass。 | `environment.test.ts`、`packages/shell/src/__tests__/tools.test.ts` | 防止长命令超出单次等待后失联，模型无法继续观察输出。 |
+| output limit 触发 running output_limit | 有效 | 测试设置小 `outputLimitBytes`，断言首次 exec 返回 running、reason=`output_limit`、已有 stdoutDelta，随后 wait 收到剩余输出；能发现大输出撑爆单次 tool result。验证同上。 | `environment.test.ts` | 防止大输出撑爆 tool result 或 transcript。 |
+| `shell_input` 可向 foreground process 写 stdin | 有效 | `environment.test.ts` 启动等待 stdin 的 foreground process，再 input `typed\n` 并断言 exited/stdout；`tools.test.ts` 还覆盖 shell_input tool 在 AgentSession abort 路径。验证同上。 | `environment.test.ts`、`tools.test.ts` | 防止交互式命令无法继续，或输入写入错误 shell。 |
+| idle foreground process 默认保持 running，不误报 needs_input | 有效 | 测试启动等待 stdin 的安静 foreground process，`shell_wait` 超过 yield window 后仍返回 running，随后 input 可正常完成；能发现空闲进程被误判成特殊 needs_input 状态。验证同上。 | `environment.test.ts` | 防止安静安装、构建、dev server 被误判为需要用户输入。 |
+| `shell_wait` 的 `yieldAfterMs` 从每次调用重新计时 | 有效 | 测试先让进程 running，等待 20ms 后再调用 `wait(yieldAfterMs=20)`，断言该 wait 至少等待当前调用窗口而不是立刻返回；能发现累计时间错误导致空轮询。验证同上。 | `environment.test.ts` | 防止 wait 因累计时间错误立刻返回，模型反复空轮询。 |
+| `shell_abort` 终止 foreground process，且是 control action | 有效 | `environment.test.ts` 断言 abort running process 返回 status aborted；`tools.test.ts` 断言 shell_abort tool result 文本含 status aborted 且 `isError=false`；能发现停止被当作失败或进程残留。验证同上。 | `environment.test.ts`、`tools.test.ts` | 防止停止 dev server 被当作任务失败，或进程继续占端口。 |
+| abort/timeout flush redirected foreground output | 有效 | 测试 abort/timeout 正在写入重定向文件的 foreground process，断言 tool stdout/stderr 不泄漏内容且目标文件分别包含 aborted/timed-out 文本；能发现 flush 丢失或输出错路由。验证同上。 | `environment.test.ts` | 防止本应写入文件的输出泄漏到 tool output，或文件内容丢失。 |
+| dispose shell kill foreground/background 并移除 session | 有效 | 测试 disposeShell 会 kill foreground/background 进程、移除 shell、再次 dispose 返回 false、后续 wait/exec 报 unknown shell，并延迟检查泄漏文件不存在；disposeAll 也清空多个 session。验证同上。 | `environment.test.ts` | 防止关闭 session 后仍有子进程残留。 |
+| timeout kill foreground process，之后 shell 可复用 | 有效 | 测试 `timeoutMs` 返回 timeout，随后 wait 看到 exited；另一个测试在 timeout 后同 shell 能执行新命令，再 abort 后仍能执行新命令，证明 abort state 不泄漏。验证同上。 | `environment.test.ts` | 防止 timeout 后 abort state 泄漏，导致下一条命令立即失败。 |
+| shell tool result 格式保留 metadata 且模型可读 | 有效 | `toToolResult` 测试断言文本包含 status/shellId/exitCode 且 metadata 保留原 ShellToolResult；AgentSession integration 从文本中解析 status/shellId/stdout 再驱动 shell_wait，证明格式可被模型路径消费。验证同上。 | `tools.test.ts` | 防止模型必须解析不稳定 JSON 或看不到 shellId/status/next action。 |
+| `shell_input` 拒绝空 stdin，不承担 polling | 有效 | `tools.test.ts` 直接调用 shell_input tool，断言缺 stdin 和空字符串分别 reject，空字符串错误明确提示 use shell_wait to poll；能防止空 input 重新变成 wait。验证同上。 | `tools.test.ts` | 防止空 input 被滥用成 wait，重新引入无意义控制动作。 |
+| AgentSession abort signal 传播到 `shell_exec` / `shell_wait` / `shell_input` | 有效 | 三个 AgentSession 测试分别在 shell_exec、shell_wait、shell_input pending 时调用 session.abort，随后延迟检查本应写入的 leaked 文件不存在，证明实际 foreground process 被终止。验证同上。 | `tools.test.ts` | 防止 UI abort 只停止 session 状态，不停止实际前台进程。 |
+| 模型在真实长进程场景中稳定选择 wait/input/abort | Gated | 默认测试证明工具契约和 tool_result 文本可用，但不能证明真实模型会稳定选择 wait/input/abort；需要真实 provider/TUI smoke 多次验证。 | 需要真实 provider/TUI smoke 多次验证 | 用来发现 prompt/tool result 虽然单测正确，但真实模型仍然误用控制面的问题。 |
 
 ### 5.11 Host、FS 与 Store
 
