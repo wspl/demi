@@ -108,13 +108,10 @@ function userText(message) {
 }
 
 function floodScript() {
-  return [
-    "printf 'DEMI_FLOOD_START\\n'",
-    'i=0',
-    'while [ "$i" -lt 1500 ]; do',
-    "  printf 'flood-%04d abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789\\n' \"$i\"",
-    '  i=$((i + 1))',
-    'done',
-    "printf 'DEMI_FLOOD_END\\n'",
-  ].join('\n')
+  return (
+    "awk 'BEGIN { print \"DEMI_FLOOD_START\"; " +
+    'for (i = 0; i < 1500; i++) printf "flood-%04d abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789\\n", i; ' +
+    'print "DEMI_FLOOD_END" }' +
+    "'"
+  )
 }

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { inputMessagesToJsonl, mapClaudeStdoutMessage, requestToInputMessages } from '../index'
+import { inferenceItemToClaudeMessage, inputMessagesToJsonl, mapClaudeStdoutMessage, requestToInputMessages } from '../index'
 
 test('requestToInputMessages converts inference items to stream-json input messages', () => {
   const messages = requestToInputMessages({
@@ -75,6 +75,42 @@ test('requestToInputMessages groups Claude assistant turns and tool results', ()
       ],
     },
   })
+})
+
+test('requestToInputMessages skips unsigned assistant thinking for Claude replay', () => {
+  const unsignedThinking = { type: 'assistant_thinking' as const, modelId: 'model', text: 'partial reasoning', signature: null }
+  const messages = requestToInputMessages({
+    modelId: 'model',
+    systemPrompt: 'system',
+    cwd: '/tmp',
+    tools: [],
+    thinking: null,
+    cancel: new AbortController().signal,
+    items: [
+      { type: 'user_message', content: [{ type: 'text', text: 'resume' }] },
+      unsignedThinking,
+      { type: 'assistant_text', modelId: 'model', text: 'visible progress' },
+      { type: 'assistant_thinking', modelId: 'model', text: 'also partial', signature: '' },
+      { type: 'tool_use', modelId: 'model', toolUseId: 'tool-1', toolName: 'shell_exec', input: { script: 'pwd' } },
+    ],
+  })
+
+  expect(messages).toEqual([
+    { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'resume' }] } },
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'visible progress' },
+          { type: 'tool_use', id: 'tool-1', name: 'mcp__main__shell_exec', input: { script: 'pwd' } },
+        ],
+      },
+    },
+  ])
+  expect(inputMessagesToJsonl(messages)).not.toContain('"signature":null')
+  expect(inputMessagesToJsonl(messages)).not.toContain('"signature":""')
+  expect(inferenceItemToClaudeMessage(unsignedThinking)).toBeNull()
 })
 
 test('requestToInputMessages converts binary media content to Claude base64 sources', () => {

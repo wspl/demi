@@ -33,11 +33,13 @@ export function requestToInputMessages(request: InferenceRequest): ClaudeInputMe
       case 'assistant_thinking':
       case 'assistant_redacted_thinking':
       case 'tool_use': {
+        const content = assistantItemToClaudeContent(item)
+        if (content === null) break
         if (pending?.type !== 'assistant') {
           flush()
           pending = { type: 'assistant', message: { role: 'assistant', content: [] } }
         }
-        pending.message?.content.push(assistantItemToClaudeContent(item))
+        pending.message?.content.push(content)
         break
       }
       case 'tool_result':
@@ -59,13 +61,13 @@ export function inferenceItemToClaudeMessage(item: InferenceItem): ClaudeInputMe
     case 'user_message':
       return { type: 'user', message: { role: 'user', content: userContentToClaude(item.content) } }
     case 'assistant_text':
-      return { type: 'assistant', message: { role: 'assistant', content: [assistantItemToClaudeContent(item)] } }
     case 'assistant_thinking':
-      return { type: 'assistant', message: { role: 'assistant', content: [assistantItemToClaudeContent(item)] } }
     case 'assistant_redacted_thinking':
-      return { type: 'assistant', message: { role: 'assistant', content: [assistantItemToClaudeContent(item)] } }
-    case 'tool_use':
-      return { type: 'assistant', message: { role: 'assistant', content: [assistantItemToClaudeContent(item)] } }
+    case 'tool_use': {
+      const content = assistantItemToClaudeContent(item)
+      if (content === null) return null
+      return { type: 'assistant', message: { role: 'assistant', content: [content] } }
+    }
     case 'tool_result':
       return toolResultsToClaudeMessage([item])
   }
@@ -111,9 +113,10 @@ function userContentToClaude(content: UserContentBlock[]): unknown[] {
 
 function assistantItemToClaudeContent(
   item: Extract<InferenceItem, { type: 'assistant_text' | 'assistant_thinking' | 'assistant_redacted_thinking' | 'tool_use' }>,
-): unknown {
+): unknown | null {
   if (item.type === 'assistant_text') return { type: 'text', text: item.text }
   if (item.type === 'assistant_thinking') {
+    if (!item.signature) return null
     return { type: 'thinking', thinking: item.text, signature: item.signature }
   }
   if (item.type === 'assistant_redacted_thinking') return { type: 'redacted_thinking', data: item.data }

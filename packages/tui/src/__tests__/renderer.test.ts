@@ -56,13 +56,30 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
     model,
     usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 },
   })
+  const error = block({
+    type: 'error',
+    id: 'error-1',
+    createdAt: '2026-06-19T00:00:00.000Z',
+    model,
+    message: 'provider warning',
+    code: null,
+  })
+  const abort = block({
+    type: 'abort',
+    id: 'abort-1',
+    createdAt: '2026-06-19T00:00:00.000Z',
+    model,
+    isResumed: false,
+  })
 
-  renderEvent(renderer, { type: 'transcript_snapshot', blocks: [thinking, text, tool, response] })
+  renderEvent(renderer, { type: 'transcript_snapshot', blocks: [thinking, text, tool, response, error, abort] })
 
   expect(output.text()).toContain('thinking> plan')
   expect(output.text()).toContain('assistant> hello')
   expect(output.text()).toContain('tool: shell_exec executing bun test')
   expect(output.text()).toContain('usage: in=10 out=2 cache_read=3 cache_write=4')
+  expect(output.text()).toContain('agent error: provider warning')
+  expect(output.text()).toContain('turn aborted')
 
   const offset = output.text().length
   renderEvent(renderer, {
@@ -73,6 +90,8 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
       { ...text, text: 'hello world' },
       { ...tool, status: 'completed', output: [{ type: 'text', text: 'ok' }] },
       response,
+      error,
+      { ...abort, isResumed: true },
     ],
   })
   const delta = output.text().slice(offset)
@@ -82,6 +101,8 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
   expect(delta).toContain('tool: shell_exec completed bun test')
   expect(delta).not.toContain('hello world')
   expect(delta).not.toContain('usage:')
+  expect(delta).not.toContain('agent error:')
+  expect(delta).not.toContain('turn aborted')
 })
 
 test('TUI renderer prints phase, queue, shell output, audit, and progress frames', () => {

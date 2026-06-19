@@ -42,6 +42,8 @@ export interface RenderState {
   toolStatuses: Map<string, string>
   seenResponseIds: Set<string>
   seenUserIds: Set<string>
+  seenErrorIds: Set<string>
+  seenAbortIds: Set<string>
   activeStream: 'assistant' | 'thinking' | null
   streamAtLineStart: boolean
 }
@@ -345,13 +347,17 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
       writeLineTo(state.output, color(`usage: ${formatUsage(block.usage)}`, 'dim', state.output))
       continue
     }
-    if (block.type === 'error') {
+    if (block.type === 'error' && !state.seenErrorIds.has(block.id)) {
       finishStream(state)
+      state.seenErrorIds.add(block.id)
       writeLineTo(state.output, color(`agent error: ${block.message}`, 'red', state.output))
+      continue
     }
-    if (block.type === 'abort') {
+    if (block.type === 'abort' && !state.seenAbortIds.has(block.id)) {
       finishStream(state)
+      state.seenAbortIds.add(block.id)
       writeLineTo(state.output, color('turn aborted', 'yellow', state.output))
+      continue
     }
   }
 }
@@ -459,6 +465,8 @@ export function createRenderer(output: TuiOutput = process.stdout): RenderState 
     toolStatuses: new Map(),
     seenResponseIds: new Set(),
     seenUserIds: new Set(),
+    seenErrorIds: new Set(),
+    seenAbortIds: new Set(),
     activeStream: null,
     streamAtLineStart: true,
   }

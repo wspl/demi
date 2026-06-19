@@ -53,4 +53,5 @@ Every process record should include:
 - `docs/tui-acceptance/tool-heavy-compact-marathon.md` is passed and has been backfilled from the completed real TUI run.
 - `docs/tui-acceptance/real-project-build-marathon.md` is passed from a real Vue + Pinia project build run.
 - `docs/tui-acceptance/interactive-shell-control.md` is passed after five real TUI runs; the first four runs exposed shell-control friction that now has deterministic regression coverage.
-- Other records in `docs/tui-acceptance/` remain designs until they are executed and updated with real logs.
+- `docs/tui-acceptance/compact-abort-resume.md` is passed after three real TUI runs; the first two exposed unsigned-thinking replay and repeated abort rendering gaps now covered by deterministic tests.
+- Remaining P1 records in `docs/tui-acceptance/` remain designs until they are executed and updated with real logs.
