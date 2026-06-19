@@ -65,7 +65,7 @@
 | Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16`、`5.17` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播和 TUI usage 呈现；真实 provider cache hit 仍未完整证明。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
 | Coding workflow 能发现真实问题 | 有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制、shell cwd/env 复用、file reference Host 边界和 editor 写入失败事务。 |
-| 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，`5.17` TUI renderer/command 层已有 deterministic 测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
+| 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，`5.17` TUI renderer/command/process 层已有 deterministic 测试；真实 Claude Code provider 回复、thinking、tool output 显示已有 gated smoke 入口，仍依赖本机真实运行结果。 |
 
 ### 3.3 Compact 参考故事映射
 
@@ -168,7 +168,7 @@ Owner：`packages/provider-claude-code`
 | unicode surrogate、超长 JSONL 字段、media + tool_result 混合输入 | 有效 | 测试包含 Unicode separator、snowman、surrogate emoji、10k 长文本和 text+image tool_result，断言文本保留、image tool output 转标记、JSONL 包含长字段；能发现编码或 grouping 破坏。验证同上。 | `jsonl-output.test.ts` | 防止 JSONL 编码、base64、tool result grouping 在真实边界输入下损坏。 |
 | 与 `AgentSession` 和 shell tools 的 provider 集成 | 有效 | `provider.test.ts` 用真实 `AgentSession`、`BashEnvironment`、shell tools 和 fake Claude control_request 跑完整 tool loop，断言 transcript 为 user/tool_call/text/response，shell 结果写回 control_response；能发现 provider event、session tool loop、shell 输出格式接口不匹配。验证同上。 | `provider.test.ts` | 能发现 provider event、AgentSession tool loop、shell tool result 三者之间的接口不匹配。 |
 | 真实 Claude CLI e2e | Gated | `real-cli.e2e.test.ts` 只有 `DEMI_CLAUDE_CODE_E2E=1` 时启用；默认 targeted command 中 1 skip。它能验最小真实 CLI streaming response，但默认测试不能证明本机账号、网络和真实输出格式。 | `real-cli.e2e.test.ts`，不属于默认稳定测试 | 用来发现 fake transport 无法覆盖的本机 CLI、账号、网络、真实输出格式变化。 |
-| 真实模型 thinking/tool use/text 输出验收 | Gated | 当前没有默认自动测试能证明真实模型同时输出 thinking、tool use 和 text；必须通过真实 TUI/CLI smoke 验收最终用户路径，且结论不能由 fake transport 替代。 | 需要 TUI/CLI smoke 流程 | 用来确认最终用户路径确实看到真实模型回复、thinking 和 tooluse，而不是只验证 mock。 |
+| 真实模型 thinking/tool use/text 输出验收 | Gated | `real-tui.e2e.test.ts` 在 `DEMI_TUI_REAL_E2E=1` 时用真实 TUI + Claude Code 跑 opus/medium；每次 run 必须看到 tool、tool output、assistant text、usage，默认两次 run 中至少一次必须看到 `thinking>`。本机验证通过：`DEMI_TUI_REAL_E2E=1 bun test packages/tui/src/__tests__/real-tui.e2e.test.ts --timeout 360000`，1 pass。默认测试仍 skip。 | `real-tui.e2e.test.ts` gated smoke | 用来确认最终用户路径确实看到真实模型回复、thinking 和 tooluse，而不是只验证 mock。 |
 
 ### 5.4 Agent Session Runtime
 
@@ -436,10 +436,10 @@ Owner：`packages/tui`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| 基本渲染、输入、scroll | 部分有效 | `renderer.test.ts` 通过注入 output 断言 TUI renderer 会输出 phase、queue、shell stdout/stderr、audit、progress、error、rejected、closed；断言 `/help`、`/abort`、`/retry`、`/resume`、`/compact`、`/input`、unknown、`/exit` 的命令分发和 usage 输出；`runInputLoop` 测试断言普通消息异步发送时仍能继续处理 `/abort`，并断言 send 异步失败会打印 `send failed`；`process.test.ts` 真实启动 TUI `--help` 进程并断言不会打开 provider session，还通过 `--claude-path` 指向 Claude Code 协议 fixture 启动真实 TUI 会话进程，经 stdin prompt 触发 ClaudeCodeProvider、shell tool、RPC、renderer，再断言 tool、shell stdout、thinking、assistant text、usage 和 `/exit` close。未覆盖真实 TTY 会话模式、scroll/backpressure。验证：`bun test packages/tui/src`，8 pass；已纳入根 `bun run test`。 | `packages/tui/src/__tests__/renderer.test.ts`、`packages/tui/src/__tests__/process.test.ts` | 防止核心 RPC 事件到了 TUI 后用户仍看不到状态/输出，或输入循环因为等待 send 结果而卡住 `/abort`、`/input` 等控制命令；同时防止真实 TUI 进程入口、readline pipe、provider/RPC/session 组装后才暴露链路断裂。 |
+| 基本渲染、输入、scroll | 部分有效 | `renderer.test.ts` 通过注入 output 断言 TUI renderer 会输出 phase、queue、shell stdout/stderr、audit、progress、error、rejected、closed；断言 `/help`、`/abort`、`/retry`、`/resume`、`/compact`、`/input`、unknown、`/exit` 的命令分发和 usage 输出；`runInputLoop` 测试断言普通消息异步发送时仍能继续处理 `/abort`，并断言 send 异步失败会打印 `send failed`；`process.test.ts` 真实启动 TUI `--help` 进程并断言不会打开 provider session，还通过 `--claude-path` 指向 Claude Code 协议 fixture 启动真实 TUI 会话进程，经 stdin prompt 触发 ClaudeCodeProvider、shell tool、RPC、renderer，再断言 tool、shell stdout、thinking、assistant text、usage 和 `/exit` close。未覆盖真实 TTY 会话模式、scroll/backpressure。验证：`bun test packages/tui/src`，8 pass / 1 skip；已纳入根 `bun run test`。 | `packages/tui/src/__tests__/renderer.test.ts`、`packages/tui/src/__tests__/process.test.ts` | 防止核心 RPC 事件到了 TUI 后用户仍看不到状态/输出，或输入循环因为等待 send 结果而卡住 `/abort`、`/input` 等控制命令；同时防止真实 TUI 进程入口、readline pipe、provider/RPC/session 组装后才暴露链路断裂。 |
 | thinking/text/tool output 显示 | 有效 | `renderer.test.ts` 构造 thinking、assistant text、tool_call、response blocks，断言 stdout 包含 `thinking>`、`assistant>`、`tool:` 和 usage；随后用同 id 更新 block，断言只输出新增 delta、不重复完整 text、不重复 usage。真实模型是否产出这些 blocks 仍由真实 provider/TUI smoke 覆盖。验证同上。 | `renderer.test.ts` | 防止真实模型已经产生 thinking/text/tool blocks，但 TUI renderer 分流、重复或漏显示。 |
 | 通过 RPC client open/send/receive phase/transcript/shell frames | 有效 | RPC 5.16 已覆盖 open/send/phase/transcript/shell frames；TUI 层新增 `renderEvent` stdout snapshot 覆盖 phase、queue、transcript、shell_output、audit、tool_progress、error/rejected/closed 的呈现和去重；并用真实 `RpcClient`、`RpcHost`、in-process transport、StubProvider 断言 `attachRenderer(client, renderer)` 能收到 open/send/phase/transcript/closed 事件并渲染 assistant text 和 usage。验证同上。 | `rpc.test.ts`、`renderer.test.ts` | 需要发现 TUI 自己订阅、状态合并、刷新节奏的问题。 |
-| 真实 Claude Code provider 输出真实模型回复 | Gated | Provider 层有 real-cli gated 测试候选；TUI 默认测试已用 Claude Code 协议 fixture 证明进程会话链路能显示 thinking、tool output 和 text，但这不是实网真实模型回复证明。 | 需要指定真实模型和 thinking 等级 smoke | 防止验收只跑协议 fixture 或 stub provider，没有确认真实 provider/模型路径。 |
+| 真实 Claude Code provider 输出真实模型回复 | Gated | Provider 层有 `DEMI_CLAUDE_CODE_E2E=1` 的 real-cli gated 测试；TUI 层新增 `real-tui.e2e.test.ts`，只有 `DEMI_TUI_REAL_E2E=1` 时运行，会以 `--model opus` 映射到 `claude-opus-4-8`、`--thinking medium` 启动真实 TUI，要求模型触发 `shell_exec`，每次 run 断言 tool、tool output、assistant text、usage，默认两次 run 中至少一次断言 `thinking>`。默认测试中它是 1 skip，不能替代真实运行记录。本机验证命令：`DEMI_TUI_REAL_E2E=1 bun test packages/tui/src/__tests__/real-tui.e2e.test.ts --timeout 360000`，1 pass。 | `real-tui.e2e.test.ts` gated smoke | 防止验收只跑协议 fixture 或 stub provider，没有确认真实 provider/模型路径。 |
 | 交互式 shell 操作在 TUI 中顺畅 | Gated | TUI 暴露 `/input`、`/abort` 等命令并转到 RpcClient，但没有自动化或多轮真实 smoke 记录验证模糊任务下的交互式 shell 体验。 | 需要多次 smoke，因为模型行为有随机性 | 用来发现真实模型在模糊指令下是否会持续碰壁或误用 shell 控制面。 |
 
 ### 5.18 just-bash 子模块
@@ -456,7 +456,7 @@ Owner：`packages/just-bash`
 ## 6. 当前剩余优先补测顺序
 
 1. 继续补 `5.17 TUI` 自动化：真实 TTY 会话模式、scroll/backpressure；真实 Claude 端到端会话放入 gated smoke。
-2. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
+2. 继续运行并记录剩余真实 provider/TUI gated smoke：模糊任务下 shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
 3. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则
