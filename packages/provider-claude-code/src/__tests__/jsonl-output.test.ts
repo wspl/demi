@@ -44,7 +44,7 @@ test('requestToInputMessages groups Claude assistant turns and tool results', ()
       { type: 'user_message', content: [{ type: 'text', text: 'run checks' }] },
       { type: 'assistant_thinking', modelId: 'model', text: 'I will inspect.', signature: 'sig' },
       { type: 'assistant_text', modelId: 'model', text: 'Checking.' },
-      { type: 'tool_use', modelId: 'model', toolUseId: 'tool-1', toolName: 'mcp__main__shell_exec', input: { script: 'pwd' } },
+      { type: 'tool_use', modelId: 'model', toolUseId: 'tool-1', toolName: 'shell_exec', input: { script: 'pwd' } },
       { type: 'tool_use', modelId: 'model', toolUseId: 'tool-2', toolName: 'mcp__main__shell_exec', input: { script: 'ls' } },
       { type: 'tool_result', toolUseId: 'tool-1', output: [{ type: 'text', text: '/tmp' }], isError: false },
       { type: 'tool_result', toolUseId: 'tool-2', output: [{ type: 'text', text: 'file.txt' }], isError: false },

@@ -268,6 +268,51 @@ test('ClaudeCodeProvider handles SDK MCP control_request tool calls across run c
   ])
 })
 
+test('ClaudeCodeProvider replays internal tool names with MCP names on fresh runs', async () => {
+  const transport = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'ready' }] } },
+    { type: 'result', usage: { input_tokens: 3, output_tokens: 1 } },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+
+  const events = []
+  for await (const event of provider.run(
+    makeRequest([
+      { type: 'user_message', content: [{ type: 'text', text: 'previous work' }] },
+      {
+        type: 'tool_use',
+        modelId: 'claude-test',
+        toolUseId: 'tool-1',
+        toolName: 'shell_exec',
+        input: { script: 'pwd' },
+      },
+      {
+        type: 'tool_result',
+        toolUseId: 'tool-1',
+        output: [{ type: 'text', text: '/tmp' }],
+        isError: false,
+      },
+      { type: 'user_message', content: [{ type: 'text', text: 'continue' }] },
+    ]),
+  )) {
+    events.push(event)
+  }
+
+  const assistantWrite = transport.writes.find((write): write is { type: 'assistant'; message: { content: unknown[] } } => {
+    return isRecord(write) && write.type === 'assistant' && isRecord(write.message) && Array.isArray(write.message.content)
+  })
+  expect(assistantWrite?.message.content).toContainEqual({
+    type: 'tool_use',
+    id: 'tool-1',
+    name: 'mcp__main__shell_exec',
+    input: { script: 'pwd' },
+  })
+  expect(events).toEqual([
+    { type: 'text_delta', text: 'ready' },
+    { type: 'response', usage: { inputTokens: 3, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ])
+})
+
 test('ClaudeCodeProvider rejects malformed SDK MCP tools/call without entering pending state', async () => {
   const transport = new FakeClaudeTransport([
     sdkMcpRequest('call-sdk', 'call-1', 'tools/call', { arguments: { script: 'pwd' } }),

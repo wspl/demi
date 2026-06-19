@@ -117,7 +117,7 @@ function assistantItemToClaudeContent(
     return { type: 'thinking', thinking: item.text, signature: item.signature }
   }
   if (item.type === 'assistant_redacted_thinking') return { type: 'redacted_thinking', data: item.data }
-  return { type: 'tool_use', id: item.toolUseId, name: item.toolName, input: item.input }
+  return { type: 'tool_use', id: item.toolUseId, name: toolNameToClaude(item.toolName), input: item.input }
 }
 
 function toolResultToClaudeContent(item: Extract<InferenceItem, { type: 'tool_result' }>): unknown {
@@ -156,4 +156,9 @@ function toolResultToText(output: ToolResultContentBlock[]): string {
 
 function bytesToBase64(data: Uint8Array): string {
   return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64')
+}
+
+function toolNameToClaude(name: string): string {
+  if (/^mcp__[^_]+__.+$/.test(name)) return name
+  return `mcp__main__${name}`
 }

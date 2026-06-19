@@ -8,7 +8,7 @@
 | TUI model context | `packages/tui/src/index.ts` sets `contextWindow: 200_000` for the selected model |
 | Compaction threshold | `packages/base-agent/src/session.ts` preflight threshold is `0.8 * contextWindow`, so this run should compact near 160k estimated tokens |
 | Acceptance target | Drive the TUI past context pressure at least 3 times and verify compact lets the agent continue working |
-| Result | Failed. Real TUI observed compact once in the successful pressure setup, but did not continue tool work after compact; 3 compact cycles were not reached. |
+| Result | Partially fixed. Root cause for post-compact tool unavailability was found and fixed in the Claude Code provider replay layer. Real TUI now proves a tool can run after the first compact, but the 3-cycle Haiku TUI acceptance still has not passed because the model repeatedly reissues tool calls in synthetic probe prompts. |
 
 ## Runs
 
@@ -42,24 +42,40 @@
 - Failure mode: compact occurred, but the real post-compact model turn did not continue the tool workflow.
 - What it proves: the current real TUI/Claude Code compact path is not acceptable for long tool-heavy work. The observable failure is not merely missing UI; after compact, the model believed shell tools were unavailable.
 
+### 5. Provider replay fix
+
+- Root cause: Claude Code reports MCP tools as names like `mcp__main__shell_exec`, while demi stores the internal tool name as `shell_exec` for `AgentTool` lookup. Continuation inside the same active Claude transport works because it sends MCP control responses directly. Fresh Claude runs after compact/retry/reopen replay historical `tool_use` blocks through JSONL, and those were written back as bare `shell_exec`.
+- Fix: `packages/provider-claude-code/src/jsonl.ts` now maps internal tool names back to Claude MCP names when serializing historical `tool_use` blocks. Existing MCP-prefixed names are left unchanged.
+- Tests: `packages/provider-claude-code/src/__tests__/jsonl-output.test.ts` now covers bare internal names becoming `mcp__main__shell_exec`; `packages/provider-claude-code/src/__tests__/provider.test.ts` now covers a fresh provider run replaying historical internal tool names with MCP names.
+- Verification: `bun test packages/provider-claude-code/src` passed with 33 pass / 3 gated skips.
+
+### 6. Post-fix real TUI checks
+
+- Finite cycle rerun: cycle 2 triggered one compact and then continued to call shell tools instead of saying the tool was unavailable. This verifies the provider replay fix against the original failure symptom.
+- One-command rerun: cycle 2 triggered one compact and repeatedly executed the requested local command. Tool availability was fixed, but the turn did not stop before timeout.
+- Pressure/probe rerun: probe 1 triggered one compact and produced `PROBE_CYCLE_1_OK` via `shell_exec` after compact. The model then repeatedly called the probe tool; the harness aborted the turn. A second probe became confused by the abort/history interleaving and did not reach a second compact within the timeout.
+- Current real-TUI status: the original post-compact tool availability defect is fixed, but the acceptance target of 3 successful real Haiku compact continuations is still not satisfied.
+
 ## Code Observations
 
 - TUI does not render `compaction_boundary` or `compaction_marker`; the CLI-visible evidence is `status: compacting`, subsequent usage, and whether the agent continues work.
 - `executePreflightCompaction()` runs before provider calls when local `Transcript.estimateContextTokens()` crosses the threshold.
 - `generateCompactionSummary()` intentionally sends summary requests with `tools: []`.
-- Claude Code provider strips MCP tool names such as `mcp__main__shell_exec` to `shell_exec` when recording tool calls. Later replay writes the stored `toolName` back into Claude JSONL as-is.
+- Claude Code provider strips MCP tool names such as `mcp__main__shell_exec` to `shell_exec` when recording tool calls. Provider replay must restore MCP names when writing historical `tool_use` blocks back to Claude Code.
 - Existing deterministic tests cover runtime compact invariants and provider tool roundtrips, but they do not prove this real path: compacted replay containing prior shell tool history, followed by a new real Claude Code turn that must use tools again.
 
 ## Current Conclusion
 
-- This gated acceptance is not passed.
+- This gated acceptance is not fully passed.
 - We have verified the correct model path (`claude-haiku-4-5`) and 200k TUI context selection.
 - We have verified that real TUI can enter `status: compacting` after large raw tool history.
-- We have not verified 3 successful post-compact continuations; the strongest run failed immediately after the first compact because the model did not see or did not trust tool availability.
+- We have fixed and verified the provider replay defect that made the real model believe shell tools were unavailable after compact.
+- We have verified one real post-compact shell tool execution after the fix.
+- We have not verified 3 successful post-compact continuations; current real Haiku runs are blocked by repeated tool-call loops and abort/history interleaving in the synthetic harness.
 
 ## Follow-up Checks
 
 - Add event-level instrumentation or a gated test that records post-compact provider request shape, especially `request.tools`, replayed `tool_use` names, and summary text.
-- Verify whether Claude Code replay requires MCP-prefixed tool names in historical `tool_use` blocks after the provider strips them for internal tool dispatch.
 - Verify whether summary requests with `tools: []` cause summary text that implies tools are unavailable, and adjust the summary contract if needed.
 - Add TUI-visible compact evidence, or a structured gated harness, so acceptance can distinguish compact phase from actual boundary/marker insertion.
+- Build a stable real TUI compact harness that can stop repeated tool-call loops without polluting the next prompt with abort/history confusion.
