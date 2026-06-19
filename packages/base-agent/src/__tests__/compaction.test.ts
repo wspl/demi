@@ -572,6 +572,70 @@ test('aborting during preflight compaction stops before the model request and st
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
+test('aborting during retry preflight compaction stops before rerunning the model request', async () => {
+  const preflightModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 100 },
+  }
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn(model, text('retry this'))
+  transcript.applyProviderEvent(model, events.text('bad answer'))
+  transcript.applyProviderEvent(model, events.response())
+  const provider = new HangingSummaryProvider()
+  const session = createSession(provider, createDefinition(), transcript, preflightModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+  })
+
+  const retrying = session.retry()
+  await provider.summaryStarted.promise
+  const aborted = await session.abort()
+  await withTimeout(retrying)
+
+  expect(aborted).toBe(true)
+  await provider.cancelled.promise
+  expect(provider.requests).toHaveLength(1)
+  expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')
+  expect(session.phase()).toBe('idle')
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response', 'user', 'abort'])
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
+test('aborting during resume preflight compaction stops before continuing the model request', async () => {
+  const preflightModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 100 },
+  }
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
+  transcript.pushAbort(model)
+  const provider = new HangingSummaryProvider()
+  const session = createSession(provider, createDefinition(), transcript, preflightModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+  })
+
+  const resuming = session.resume()
+  await provider.summaryStarted.promise
+  const aborted = await session.abort()
+  await withTimeout(resuming)
+
+  expect(aborted).toBe(true)
+  await provider.cancelled.promise
+  expect(provider.requests).toHaveLength(1)
+  expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')
+  expect(session.phase()).toBe('idle')
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'abort', 'resume', 'abort'])
+  expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
 test('queued send during preflight compaction drains after the original send', async () => {
   const preflightModel: ModelSelection = {
     ...model,
