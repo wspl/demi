@@ -408,26 +408,26 @@ Owner：`packages/rpc`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| JSON codec 保留 BigInt metadata 和 Uint8Array |  |  | `packages/rpc/src/__tests__/json-codec.test.ts` | 防止跨进程/网络传输后 metadata 或二进制数据损坏。 |
-| transcript patch 更新 in-place tool_call metadata/status |  |  | `packages/rpc/src/__tests__/patch.test.ts` | 防止 UI 收不到 tool_call 状态变化，只能靠全量刷新。 |
-| transcript diff 处理非 JSON / cyclic metadata |  |  | `patch.test.ts` | 防止一个不可序列化 metadata 打断整个 RPC 同步。 |
-| root entry 不导出 node-only stdio transports |  |  | `packages/rpc/src/__tests__/root-entry.test.ts` | 防止 browser/client bundle 意外包含 Node-only transport。 |
-| RpcClient open/send 经 InProcessTransport 发 transcript/phase |  |  | `packages/rpc/src/__tests__/rpc.test.ts` | 防止基本协议动作不能驱动 session 或本地 view 不更新。 |
-| client close 清空本地 transcript view |  |  | `rpc.test.ts` | 防止关闭会话后 UI 还显示旧 transcript。 |
-| provider error code 只 forward 一次，并保留 transcript error block |  |  | `rpc.test.ts` | 防止 UI 重复报错，或错误只在 frame 中出现而 transcript 丢失。 |
-| shell output、bash audit、generic tool progress frame 映射 |  |  | `rpc.test.ts` | 防止 TUI/GUI 看不到实时 shell 输出、审计事件或工具进度。 |
-| shell_input frames 桥接到 active shell session tool |  |  | `rpc.test.ts` | 防止用户在壳子里输入内容但没有写入正在等待的进程。 |
-| client `shellInput` 等待 result，未 open 时 reject |  |  | `rpc.test.ts` | 防止 UI 认为输入成功但实际上没有 active session。 |
-| retry 产生 transcript patch removals |  |  | `rpc.test.ts` | 防止 retry 后 UI 留着已经被 runtime 截断的旧 assistant blocks。 |
-| host queued send while busy 并按序 drain |  |  | `rpc.test.ts` | 防止外部壳子连续发送时 action 顺序与 session 执行顺序不一致。 |
-| busy 时 host 拒绝 retry/resume/compact |  |  | `rpc.test.ts` | 防止外部壳子在 active run 中触发破坏性 mutation。 |
-| client queued send promise 按各自 phase cycle resolve |  |  | `rpc.test.ts` | 防止多个 queued send 因同一个 idle 事件一起 resolve。 |
-| error 后只 reject active action，queued send 继续 |  |  | `rpc.test.ts` | 防止一次 provider error 把后续排队用户消息全部错误取消。 |
-| abort idle 返回 false，active 返回 true |  |  | `rpc.test.ts` | 防止 UI stop 按钮在 idle/active 状态下显示错误结果。 |
-| close frame abort active session 并 dispose definition resources |  |  | `rpc.test.ts` | 防止关闭壳子后后台 run 或 shell environment 泄漏。 |
-| stdio/WebSocket 基础传输和 RpcClient/RpcHost 端到端 |  |  | `stdio-transport.test.ts`、`websocket-transport.test.ts` | 防止协议只在 in-process 测试里成立，真实 transport 序列化后失败。 |
-| stdio/WebSocket 下 queued send、abort、retry、resume、compact 与 in-process 一致 |  |  | `stdio-transport.test.ts`、`websocket-transport.test.ts` | 需要发现真实 transport latency/frame ordering 下的 action 收敛差异。 |
-| close 时 active foreground process 通过真实 transport 被终止 |  |  | `stdio-transport.test.ts` | 需要防止壳子关闭后远端 session 进程继续占资源。 |
+| JSON codec 保留 BigInt metadata 和 Uint8Array | 有效 | 测试 `stringifyRpcJson`/`parseRpcJson` 往返 BigInt、空数组、1/2/3 字节 Uint8Array，并断言类型和值；能发现 metadata 和二进制 payload 序列化损坏。验证：5.16 targeted command，30 pass。 | `packages/rpc/src/__tests__/json-codec.test.ts` | 防止跨进程/网络传输后 metadata 或二进制数据损坏。 |
+| transcript patch 更新 in-place tool_call metadata/status | 有效 | 测试同一位置 tool_call 从 executing 变 completed 且 metadata 改变时产生 remove/add patch，并用 `applyTranscriptPatches` 还原到 next；能发现 UI patch view 不更新。验证同上。 | `packages/rpc/src/__tests__/patch.test.ts` | 防止 UI 收不到 tool_call 状态变化，只能靠全量刷新。 |
+| transcript diff 处理非 JSON / cyclic metadata | 有效 | 测试 BigInt metadata 和 cyclic metadata 都能 diff/apply，不抛异常；能发现不可 JSON stringify 的 metadata 打断 RPC patch。验证同上。 | `patch.test.ts` | 防止一个不可序列化 metadata 打断整个 RPC 同步。 |
+| root entry 不导出 node-only stdio transports | 有效 | 测试 `@demi/rpc` root entry 不含 stdio transport，并仍导出 WebSocket transport；能发现 browser bundle 入口污染。验证同上。 | `packages/rpc/src/__tests__/root-entry.test.ts` | 防止 browser/client bundle 意外包含 Node-only transport。 |
+| RpcClient open/send 经 InProcessTransport 发 transcript/phase | 有效 | 测试 open/send 后 client transcript 为 user/text/response，并收到 snapshot、patch、idle phase；能发现基本协议动作无法驱动 session 或本地 view 不更新。验证同上。 | `packages/rpc/src/__tests__/rpc.test.ts` | 防止基本协议动作不能驱动 session 或本地 view 不更新。 |
+| client close 清空本地 transcript view | 有效 | 测试 close 前 transcript 非空，close 后收到 closed frame 且 client transcript blocks 为空；能发现 UI 显示旧会话残留。验证同上。 | `rpc.test.ts` | 防止关闭会话后 UI 还显示旧 transcript。 |
+| provider error code 只 forward 一次，并保留 transcript error block | 有效 | 测试 provider error 让 `client.send` reject，事件流里 error frame 精确只有一次，且 transcript 保留 user/error block 与 code；能发现重复报错或 transcript 丢错。验证同上。 | `rpc.test.ts` | 防止 UI 重复报错，或错误只在 frame 中出现而 transcript 丢失。 |
+| shell output、bash audit、generic tool progress frame 映射 | 有效 | 测试 shell tool progress 映射为 shell_output/audit，任意 progress 包括 undefined、BigInt、cyclic object 映射成 text output，并过滤非良构 audit；能发现 TUI/GUI 实时事件缺失或格式破坏。验证同上。 | `rpc.test.ts` | 防止 TUI/GUI 看不到实时 shell 输出、审计事件或工具进度。 |
+| shell_input frames 桥接到 active shell session tool | 有效 | 测试 shell foreground 等待 stdin，`client.shellInput` 后看到 typed stdout 和 shell_input_result，且不重复发 generic tool_progress；能发现输入没有写入 active shell。验证同上。 | `rpc.test.ts` | 防止用户在壳子里输入内容但没有写入正在等待的进程。 |
+| client `shellInput` 等待 result，未 open 时 reject | 有效 | 测试未 open 时 reject `No session is open`，并用 gate 延迟 shell_input invoke，断言 promise 在 result 前不 settle、result 后 resolve；能发现 UI 过早认为输入成功。验证同上。 | `rpc.test.ts` | 防止 UI 认为输入成功但实际上没有 active session。 |
+| retry 产生 transcript patch removals | 有效 | 测试 retry 后 provider 重跑最新 user，client 收到 remove patch，最终 transcript 不保留旧 assistant blocks；能发现 retry 后 UI 残留旧输出。验证同上。 | `rpc.test.ts` | 防止 retry 后 UI 留着已经被 runtime 截断的旧 assistant blocks。 |
+| host queued send while busy 并按序 drain | 有效 | 测试第一条 send running 时第二条进入 queue 而非 rejected，释放后 provider calls 为 2，transcript user 顺序为 first、second，queue 最终清空；能发现排队顺序错乱。验证同上。 | `rpc.test.ts` | 防止外部壳子连续发送时 action 顺序与 session 执行顺序不一致。 |
+| busy 时 host 拒绝 retry/resume/compact | 有效 | 测试 running phase 下 retry/resume/compact 都 reject `Session is busy`，并收到对应 rejected frame，provider calls 仍为 1；能发现 active run 中破坏性 mutation 被放行。验证同上。 | `rpc.test.ts` | 防止外部壳子在 active run 中触发破坏性 mutation。 |
+| client queued send promise 按各自 phase cycle resolve | 有效 | 测试三个 sequenced gates 下 first、second、third promise 只在各自 phase cycle 后依次 settle；能发现多个 queued send 被同一个 idle 一起 resolve。验证同上。 | `rpc.test.ts` | 防止多个 queued send 因同一个 idle 事件一起 resolve。 |
+| error 后只 reject active action，queued send 继续 | 有效 | 测试第一条 active send provider error 后仅 first reject，second queued send 继续进入第二次 provider call 并等待自身 gate 后 resolve；能发现错误误杀整条队列。验证同上。 | `rpc.test.ts` | 防止一次 provider error 把后续排队用户消息全部错误取消。 |
+| abort idle 返回 false，active 返回 true | 有效 | 测试 idle `abort()` resolve false；active send 中 abort resolve true，provider cancel signal 被触发且 send 收敛；能发现 stop 按钮状态语义错误。验证同上。 | `rpc.test.ts` | 防止 UI stop 按钮在 idle/active 状态下显示错误结果。 |
+| close frame abort active session 并 dispose definition resources | 有效 | 测试 close active run 时 provider cancel 被触发并收到 closed；另测 definition.dispose 清理 shell environment，延迟写文件不会落盘；能发现关闭后后台 run 或 shell 泄漏。验证同上。 | `rpc.test.ts` | 防止关闭壳子后后台 run 或 shell environment 泄漏。 |
+| stdio/WebSocket 基础传输和 RpcClient/RpcHost 端到端 | 有效 | stdio 测试覆盖 NDJSON streams、Uint8Array、RpcClient/RpcHost end-to-end 和 child-process host；WebSocket 测试覆盖 JSON socket frame 往返、二进制字段和 end-to-end。WebSocket 用 fake socket，不是外部网络服务。验证同上。 | `stdio-transport.test.ts`、`websocket-transport.test.ts` | 防止协议只在 in-process 测试里成立，真实 transport 序列化后失败。 |
+| stdio/WebSocket 下 queued send、abort、retry、resume、compact 与 in-process 一致 | 有效 | stdio 和 WebSocket scenario provider 都覆盖 queued send、provider error、retry、abort、resume、compact、after compact send，并断言 summary request 和 post-compact context；能发现 transport frame ordering 差异。验证同上。 | `stdio-transport.test.ts`、`websocket-transport.test.ts` | 需要发现真实 transport latency/frame ordering 下的 action 收敛差异。 |
+| close 时 active foreground process 通过真实 transport 被终止 | 有效 | stdio transport 测试启动会延迟写文件的 foreground shell，client close 后断言 shell 已清理且延迟文件不存在；能发现远端 session 关闭后进程继续占资源。验证同上。 | `stdio-transport.test.ts` | 需要防止壳子关闭后远端 session 进程继续占资源。 |
 
 ### 5.17 TUI
 
