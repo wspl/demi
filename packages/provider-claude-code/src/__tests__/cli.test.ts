@@ -101,6 +101,9 @@ test('buildClaudeArgs and env match the planned CLI contract', () => {
 test('buildClaudeArgsForRequest maps summary thinking effort and provider budget to CLI args', () => {
   const args = buildClaudeArgsForRequest(
     {
+      sessionId: 'test-session',
+      turnId: 'test-turn',
+      requestId: 'test-request',
       modelId: 'claude-opus-4-8',
       systemPrompt: 'Summarize the previous conversation for continuation.',
       cwd: '/workspace',

@@ -175,6 +175,24 @@ Owner：`packages/provider-claude-code`
 | 真实 Claude medium thinking + budget e2e | Gated | `real-cli.e2e.test.ts` 新增 `DEMI_CLAUDE_CODE_THINKING_E2E=1` gated smoke：用 `claude-opus-4-8`、medium thinking 和 provider budget 发起 summary-shaped request；每次 run 断言无 provider error、无 tool call、真实 text delta 拼接后包含 `DEMI_THINKING_BUDGET_OK`、response usage 有 input/output tokens；默认两次 run 中至少一次必须出现非空 thinking delta、thinking signature 或 redacted thinking。验证通过：`DEMI_CLAUDE_CODE_THINKING_E2E=1 bun test packages/provider-claude-code/src/__tests__/real-cli.e2e.test.ts --timeout 240000`，1 pass / 2 skip。 | `real-cli.e2e.test.ts` gated smoke，不进默认测试 | 用来发现真实 Claude Code CLI 在 medium thinking + budget 组合下不再返回可映射的 thinking 信号、response usage 或 exact model text。 |
 | 真实模型 thinking/tool use/text 输出验收 | Gated | `real-tui.e2e.test.ts` 在 `DEMI_TUI_REAL_E2E=1` 时用真实 TUI + Claude Code 跑 opus/medium；每次 run 必须看到 tool、tool output、assistant text、usage，默认两次 run 中至少一次必须看到 `thinking>`。本机验证通过：`DEMI_TUI_REAL_E2E=1 bun test packages/tui/src/__tests__/real-tui.e2e.test.ts --timeout 360000`，1 pass。默认测试仍 skip。 | `real-tui.e2e.test.ts` gated smoke | 用来确认最终用户路径确实看到真实模型回复、thinking 和 tooluse，而不是只验证 mock。 |
 
+### 5.3.1 Codex Provider
+
+Owner：`packages/provider-codex`
+
+验证：`bun test packages/provider-codex/src --timeout 120000`，18 pass / 4 gated skip。
+
+| 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
+|---|---|---|---|---|
+| 官方 Codex `auth.json` 解析与状态脱敏 | 有效 | `auth.test.ts` 构造官方形状的 ChatGPT token auth，断言 account/email/fedramp claim、auth status 和 access token 解析；另测 API key、缺失 auth 和 redaction，不把 secret 带入 status/error。 | `packages/provider-codex/src/__tests__/auth.test.ts` | 防止 provider 自建登录或读错官方 auth storage，也防止 token 进入 UI、日志或测试快照。 |
+| ChatGPT token refresh 写回契约 | 有效 | `auth.test.ts` 用 near-expiry access token 触发 refresh，断言使用 refresh token、写回新 token、保留未知字段、更新 `last_refresh`、文件权限保持 `0600`；`provider.test.ts` 覆盖真实请求 401 后强制 refresh 并重试一次。 | `auth.test.ts`、`provider.test.ts` | 防止 access token 过期后只能让用户重新登录，或 refresh 破坏官方 Codex 的 auth 文件。 |
+| Responses request conversion 与 prompt cache key | 有效 | `responses.test.ts` 精确断言 system prompt、user text/image、assistant text、signed thinking、tool_use、tool_result、tools、medium reasoning、`include: ["reasoning.encrypted_content"]`、`store:false`、`stream:true` 和 `prompt_cache_key=sessionId`；unsigned thinking 会被跳过。 | `responses.test.ts` | 防止模型可见上下文、thinking replay、tool pairing 或 cache 亲和在 provider 边界偏离官方 Responses schema。 |
+| Responses stream 映射 text/thinking/tool/usage/error | 有效 | `responses.test.ts` 覆盖 reasoning start/delta/signature、final raw reasoning fallback、text delta、function call args delta/done、completed usage、cache read token 扣减、failed/incomplete/error；`provider.test.ts` 又通过 fake transport 跑同一事件链。 | `responses.test.ts`、`provider.test.ts` | 防止真实模型输出被吞、thinking 不可见、tool call 不触发、cache usage 丢失或 context/rate/auth 错误无法被 agent 分类恢复。 |
+| SSE parser 与 WebSocket fallback/headers | 有效 | `responses.test.ts` 覆盖 SSE data chunk；`provider.test.ts` 覆盖 WebSocket connect 前失败 fallback SSE、已开始输出后失败不 fallback，避免重复输出；WebSocket transport 测试断言删除 SSE-only headers 并使用 `responses_websockets=2026-02-06` beta header。 | `responses.test.ts`、`provider.test.ts` | 防止传输层把 SSE/WebSocket 协议混用，或 WebSocket 中途失败后重复同一轮模型输出。 |
+| ChatGPT/OpenAI route 与 provider config 白名单 | 有效 | `provider.test.ts` 断言 ChatGPT/PAT 路由到 `chatgpt.com/backend-api/codex/responses`、API key 路由到 `api.openai.com/v1/responses`，并断言 public provider definition 只接受可序列化 config，测试注入不能经协议 config 泄漏。 | `provider.test.ts` | 防止 AgentServer/transport 接收不可序列化 provider 实例，也防止 auth mode 路由错误导致真实请求打到错误 backend。 |
+| 与 `AgentSession` 和 shell tools 的 provider 集成 | 有效 | `provider.test.ts` 用真实 `AgentSession`、`BashEnvironment`、shell tools 和 fake Codex Responses function call 跑完整 tool roundtrip，断言 `tool_result` 被写回下一次 Responses input，shell 输出进入 transcript。 | `provider.test.ts` | 能发现 provider event、Responses tool id、AgentSession tool loop、shell tool result 四者之间的接口错位。 |
+| 平台包边界不引入 Codex provider | 有效 | `platform-entrypoints.test.ts` 把 `@demi/provider-codex` 加入 platform-neutral 禁止依赖清单；根包静态 import 闭包不会把 Node-only auth/fetch/WebSocket provider 带入浏览器入口。 | `packages/core/src/__tests__/platform-entrypoints.test.ts` | 防止新增真实 provider 后污染 core/provider/agent 这些平台无关入口。 |
+| 真实 Codex e2e | Gated | `real-codex.e2e.test.ts` 默认 skip；`DEMI_CODEX_E2E=1` 验证本机官方 Codex auth、真实 Responses route 和真实文本输出；`DEMI_CODEX_THINKING_E2E=1` 验证 medium thinking、thinking signal 和 usage；`DEMI_CODEX_CACHE_E2E=1` 验证真实 cache usage；`DEMI_CODEX_TOOL_E2E=1` 通过真实 AgentSession + shell tool 验证真实 function call roundtrip。 | `real-codex.e2e.test.ts` gated smoke，不进默认测试 | 用来发现 fake transport 无法覆盖的账号、网络、真实模型、真实 Responses event、thinking/cache/tool 输出变化。 |
+
 ### 5.4 Agent Session Runtime
 
 Owner：`packages/agent`

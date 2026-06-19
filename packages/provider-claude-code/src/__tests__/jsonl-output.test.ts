@@ -3,6 +3,9 @@ import { inferenceItemToClaudeMessage, inputMessagesToJsonl, mapClaudeStdoutMess
 
 test('requestToInputMessages converts inference items to stream-json input messages', () => {
   const messages = requestToInputMessages({
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
     modelId: 'model',
     systemPrompt: 'system',
     cwd: '/tmp',
@@ -34,6 +37,9 @@ test('requestToInputMessages converts inference items to stream-json input messa
 
 test('requestToInputMessages groups Claude assistant turns and tool results', () => {
   const messages = requestToInputMessages({
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
     modelId: 'model',
     systemPrompt: 'system',
     cwd: '/tmp',
@@ -80,6 +86,9 @@ test('requestToInputMessages groups Claude assistant turns and tool results', ()
 test('requestToInputMessages skips unsigned assistant thinking for Claude replay', () => {
   const unsignedThinking = { type: 'assistant_thinking' as const, modelId: 'model', text: 'partial reasoning', signature: null }
   const messages = requestToInputMessages({
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
     modelId: 'model',
     systemPrompt: 'system',
     cwd: '/tmp',
@@ -115,6 +124,9 @@ test('requestToInputMessages skips unsigned assistant thinking for Claude replay
 
 test('requestToInputMessages converts binary media content to Claude base64 sources', () => {
   const messages = requestToInputMessages({
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
     modelId: 'model',
     systemPrompt: 'system',
     cwd: '/tmp',
@@ -170,6 +182,9 @@ test('requestToInputMessages preserves unicode, long fields, and mixed tool resu
   const unicode = 'line separator \u2028 snowman \u2603 face \uD83D\uDE00'
   const longText = 'x'.repeat(10_000)
   const messages = requestToInputMessages({
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
     modelId: 'model',
     systemPrompt: 'system',
     cwd: '/tmp',

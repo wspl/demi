@@ -16,6 +16,9 @@ e2e('ClaudeCodeProvider can stream a minimal response from the real claude CLI',
     maxBudgetUsd: process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.01',
   })
   const request: InferenceRequest = {
+    sessionId: 'claude-real-e2e-session',
+    turnId: 'claude-real-e2e-turn',
+    requestId: 'claude-real-e2e-request',
     modelId: process.env.DEMI_CLAUDE_CODE_MODEL ?? 'sonnet',
     systemPrompt: 'Reply tersely and follow exact-output requests.',
     cwd: process.cwd(),
@@ -70,6 +73,9 @@ async function runCacheRequest(systemPrompt: string): Promise<TokenUsage> {
     maxBudgetUsd: process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.15',
   })
   const request: InferenceRequest = {
+    sessionId: 'claude-cache-e2e-session',
+    turnId: 'claude-cache-e2e-turn',
+    requestId: `claude-cache-e2e-${randomUUID()}`,
     modelId: process.env.DEMI_CLAUDE_CODE_MODEL ?? 'claude-opus-4-8',
     systemPrompt,
     cwd: process.cwd(),
@@ -118,6 +124,9 @@ async function runThinkingBudgetRequest(): Promise<ProviderEvent[]> {
     maxBudgetUsd: process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.25',
   })
   const request: InferenceRequest = {
+    sessionId: 'claude-thinking-e2e-session',
+    turnId: 'claude-thinking-e2e-turn',
+    requestId: `claude-thinking-e2e-${randomUUID()}`,
     modelId: process.env.DEMI_CLAUDE_CODE_MODEL ?? 'claude-opus-4-8',
     systemPrompt: [
       'Summarize the previous conversation for continuation.',

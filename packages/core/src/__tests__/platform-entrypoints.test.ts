@@ -113,6 +113,7 @@ test('package manifests preserve layering boundaries', async () => {
   ]
   for (const packageName of platformNeutralPackages) {
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-claude-code')
+    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-codex')
   }
 
   const claudeProviderDependencies = packageDependencyNames(manifests.get('@demi/provider-claude-code'))

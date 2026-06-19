@@ -12,6 +12,7 @@
     "@demi/core": "workspace:*",
     "@demi/provider": "workspace:*",
     "@demi/provider-claude-code": "workspace:*",
+    "@demi/provider-codex": "workspace:*",
     "@demi/shell": "workspace:*"
   }
 }

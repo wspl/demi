@@ -6,6 +6,7 @@ import type { Block, ModelSelection, SessionPhase, ThinkingEffort, TokenUsage, U
 import { createCodingAgentHarness } from '@demi/coding-agent'
 import { ProviderRegistry } from '@demi/provider'
 import { claudeAuthState, claudeRuntimeState, createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
+import { FileCodexAuthStore, createCodexProviderDefinition, type CodexTransportMode } from '@demi/provider-codex'
 import {
   AgentClient,
   AgentServer,
@@ -15,12 +16,16 @@ import {
 import { LocalHost } from '@demi/shell/local-host'
 
 interface TuiOptions {
+  provider: 'claude-code' | 'codex'
   cwd: string
   modelId: string
   modelLabel: string
   thinkingEffort: ThinkingEffort | null
   maxBudgetUsd: string | null
   claudePath?: string
+  codexHome?: string
+  baseUrl?: string
+  transport: CodexTransportMode
   yieldAfterMs: number
   timeoutMs: number
 }
@@ -89,13 +94,14 @@ async function main(): Promise<void> {
   await mkdir(options.cwd, { recursive: true })
 
   printBanner(options)
-  await printClaudeStatus()
+  await printProviderStatus(options)
 
   const host = new LocalHost(options.cwd)
   const harness = createCodingAgentHarness({ host })
 
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register(createClaudeCodeProviderDefinition())
+  providerRegistry.register(createCodexProviderDefinition())
 
   const server = new AgentServer({
     agent: harness,
@@ -111,12 +117,9 @@ async function main(): Promise<void> {
   attachRenderer(client, renderer)
 
   const providerConfig: ProviderConfig = {
-    type: 'claude-code',
-    config: {
-      ...(options.claudePath ? { claudePath: options.claudePath } : {}),
-      ...(options.maxBudgetUsd === null ? {} : { maxBudgetUsd: options.maxBudgetUsd }),
-    },
-    model: modelSelection(options.modelId, options.thinkingEffort),
+    type: options.provider,
+    config: providerConfigForOptions(options),
+    model: modelSelection(options.provider, options.modelId, options.thinkingEffort),
   }
 
   await client.open(providerConfig, options.cwd)
@@ -481,11 +484,17 @@ export function createRenderer(output: TuiOutput = process.stdout): RenderState 
 }
 
 function parseArgs(args: string[]): TuiOptions {
+  let provider: TuiOptions['provider'] = parseProvider(process.env.DEMI_PROVIDER ?? 'claude-code')
   let cwd = process.cwd()
   let modelLabel = process.env.DEMI_CLAUDE_CODE_MODEL ?? 'sonnet'
-  let thinkingEffort = parseThinkingEffort(process.env.DEMI_CLAUDE_CODE_THINKING ?? null, 'DEMI_CLAUDE_CODE_THINKING')
+  let modelProvided = false
+  let thinkingEffort = parseThinkingEffort(envThinkingValue(provider), envThinkingSource(provider))
+  let thinkingProvided = false
   let maxBudgetUsd: string | null = process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.25'
   let claudePath: string | undefined
+  let codexHome: string | undefined = process.env.CODEX_HOME
+  let baseUrl: string | undefined
+  let transport: CodexTransportMode = 'auto'
   let yieldAfterMs = 10_000
   let timeoutMs = 120_000
 
@@ -496,31 +505,70 @@ function parseArgs(args: string[]): TuiOptions {
       process.exit(0)
     }
     if (arg === '--cwd') cwd = requiredValue(args, ++index, '--cwd')
-    else if (arg === '--model') modelLabel = requiredValue(args, ++index, '--model')
-    else if (arg === '--thinking') thinkingEffort = parseThinkingEffort(requiredValue(args, ++index, '--thinking'), '--thinking')
-    else if (arg === '--no-thinking') thinkingEffort = null
+    else if (arg === '--provider') provider = parseProvider(requiredValue(args, ++index, '--provider'))
+    else if (arg === '--model') {
+      modelLabel = requiredValue(args, ++index, '--model')
+      modelProvided = true
+    }
+    else if (arg === '--thinking') {
+      thinkingEffort = parseThinkingEffort(requiredValue(args, ++index, '--thinking'), '--thinking')
+      thinkingProvided = true
+    } else if (arg === '--no-thinking') {
+      thinkingEffort = null
+      thinkingProvided = true
+    }
     else if (arg === '--budget') maxBudgetUsd = requiredValue(args, ++index, '--budget')
     else if (arg === '--no-budget') maxBudgetUsd = null
     else if (arg === '--claude-path') claudePath = requiredValue(args, ++index, '--claude-path')
+    else if (arg === '--codex-home') codexHome = requiredValue(args, ++index, '--codex-home')
+    else if (arg === '--base-url') baseUrl = requiredValue(args, ++index, '--base-url')
+    else if (arg === '--transport') transport = parseCodexTransport(requiredValue(args, ++index, '--transport'))
     else if (arg === '--yield-after-ms') yieldAfterMs = Number(requiredValue(args, ++index, '--yield-after-ms'))
     else if (arg === '--timeout-ms') timeoutMs = Number(requiredValue(args, ++index, '--timeout-ms'))
     else if (!arg.startsWith('-')) cwd = arg
     else throw new Error(`Unknown option: ${arg}`)
   }
 
+  if (provider === 'codex' && !modelProvided) modelLabel = process.env.DEMI_CODEX_MODEL ?? 'gpt-5.4'
+  if (!thinkingProvided) thinkingEffort = parseThinkingEffort(envThinkingValue(provider), envThinkingSource(provider))
+
   return {
+    provider,
     cwd: resolve(cwd),
-    modelId: resolveClaudeModelId(modelLabel),
+    modelId: resolveModelId(provider, modelLabel),
     modelLabel,
     thinkingEffort,
     maxBudgetUsd,
     claudePath,
+    codexHome,
+    baseUrl,
+    transport,
     yieldAfterMs,
     timeoutMs,
   }
 }
 
-function resolveClaudeModelId(model: string): string {
+function envThinkingValue(provider: TuiOptions['provider']): string | null {
+  if (provider === 'codex') return process.env.DEMI_CODEX_THINKING ?? process.env.DEMI_CLAUDE_CODE_THINKING ?? null
+  return process.env.DEMI_CLAUDE_CODE_THINKING ?? null
+}
+
+function envThinkingSource(provider: TuiOptions['provider']): string {
+  if (provider === 'codex' && process.env.DEMI_CODEX_THINKING !== undefined) return 'DEMI_CODEX_THINKING'
+  return 'DEMI_CLAUDE_CODE_THINKING'
+}
+
+function parseProvider(value: string): TuiOptions['provider'] {
+  if (value === 'claude-code' || value === 'codex') return value
+  throw new Error('--provider must be one of: claude-code, codex')
+}
+
+function parseCodexTransport(value: string): CodexTransportMode {
+  if (value === 'auto' || value === 'sse' || value === 'websocket') return value
+  throw new Error('--transport must be one of: auto, sse, websocket')
+}
+
+function resolveModelId(provider: TuiOptions['provider'], model: string): string {
   if (model === 'opus') return 'claude-opus-4-8'
   return model
 }
@@ -537,13 +585,13 @@ function parseThinkingEffort(value: string | null, source: string): ThinkingEffo
   throw new Error(`${source} must be one of: low, medium, high, xhigh, max`)
 }
 
-function modelSelection(modelId: string, thinkingEffort: ThinkingEffort | null): ModelSelection {
+function modelSelection(provider: TuiOptions['provider'], modelId: string, thinkingEffort: ThinkingEffort | null): ModelSelection {
   return {
-    providerId: 'claude-code',
+    providerId: provider,
     model: {
       id: modelId,
-      name: `Claude Code ${modelId}`,
-      contextWindow: 200_000,
+      name: `${provider === 'codex' ? 'Codex' : 'Claude Code'} ${modelId}`,
+      contextWindow: provider === 'codex' ? 272_000 : 200_000,
       inputLimit: null,
       thinking: [
         {
@@ -566,12 +614,37 @@ async function printClaudeStatus(): Promise<void> {
   writeLine(color(`claude auth: ${auth.status}${'accountLabel' in auth && auth.accountLabel ? ` (${auth.accountLabel})` : ''}${'message' in auth && auth.message ? ` (${auth.message})` : ''}`, auth.status === 'authenticated' ? 'green' : 'yellow'))
 }
 
+async function printProviderStatus(options: TuiOptions): Promise<void> {
+  if (options.provider === 'claude-code') {
+    await printClaudeStatus()
+    return
+  }
+  const auth = await new FileCodexAuthStore({ codexHome: options.codexHome }).status()
+  writeLine(color(`codex auth: ${auth.status}${'accountLabel' in auth && auth.accountLabel ? ` (${auth.accountLabel})` : ''}${'message' in auth && auth.message ? ` (${auth.message})` : ''}`, auth.status === 'authenticated' ? 'green' : 'yellow'))
+}
+
+function providerConfigForOptions(options: TuiOptions): Record<string, unknown> {
+  if (options.provider === 'claude-code') {
+    return {
+      ...(options.claudePath ? { claudePath: options.claudePath } : {}),
+      ...(options.maxBudgetUsd === null ? {} : { maxBudgetUsd: options.maxBudgetUsd }),
+    }
+  }
+  return {
+    ...(options.codexHome ? { codexHome: options.codexHome } : {}),
+    ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
+    transport: options.transport,
+  }
+}
+
 function printBanner(options: TuiOptions): void {
   writeLine(color('Demi TUI acceptance shell', 'bold'))
+  writeLine(`provider: ${options.provider}`)
   writeLine(`workspace: ${options.cwd}`)
   writeLine(`model: ${options.modelId}${options.modelLabel === options.modelId ? '' : ` (${options.modelLabel})`}`)
   writeLine(`thinking: ${options.thinkingEffort ?? 'off'}`)
-  writeLine(`budget: ${options.maxBudgetUsd ?? 'none'}`)
+  if (options.provider === 'claude-code') writeLine(`budget: ${options.maxBudgetUsd ?? 'none'}`)
+  else writeLine(`transport: ${options.transport}`)
 }
 
 function printUsage(): void {
@@ -579,13 +652,17 @@ function printUsage(): void {
 
 Options:
   --cwd <path>             Workspace root. Defaults to current directory.
-  --model <id>             Claude Code model id. Defaults to sonnet.
+  --provider <id>          Provider: claude-code, codex. Defaults to claude-code.
+  --model <id>             Model id. Defaults to sonnet for claude-code, gpt-5.4 for codex.
   --thinking <effort>      Thinking effort: low, medium, high, xhigh, max.
   --no-thinking            Disable thinking effort. This is the default.
   --budget <usd>           Max budget passed to claude. Defaults to 0.25.
   --no-budget              Do not pass a max budget.
   --claude-path <path>     Path to claude CLI. Defaults to claude on PATH.
-  --yield-after-ms <n>     Shell yield interval. Defaults to 1000.
+  --codex-home <path>      Codex home containing auth.json. Defaults to CODEX_HOME or ~/.codex.
+  --base-url <url>         Override Codex/OpenAI base URL.
+  --transport <mode>       Codex transport: auto, sse, websocket. Defaults to auto.
+  --yield-after-ms <n>     Shell yield interval. Defaults to 10000.
   --timeout-ms <n>         Shell command timeout. Defaults to 120000.
 
 ${helpText}`)

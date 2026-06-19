@@ -18,6 +18,9 @@ test('ProviderRegistry registers, looks up, and creates providers by type', asyn
   const provider = await registry.createProvider('stub', { answer: 'ok' })
   const output = []
   for await (const event of provider.run({
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
     modelId: 'test-model',
     systemPrompt: '',
     cwd: '/tmp',

@@ -1,0 +1,358 @@
+import { expect, test } from 'bun:test'
+import type { ModelSelection } from '@demi/core'
+import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
+import type { InferenceRequest } from '@demi/provider'
+import { BashEnvironment, createShellSessionTools } from '@demi/shell'
+import { LocalHost } from '@demi/shell/local-host'
+import {
+  AutoCodexResponsesTransport,
+  CodexHttpError,
+  CodexProvider,
+  StaticCodexAuthStore,
+  WebSocketCodexResponsesTransport,
+  buildCodexHeaders,
+  createCodexProviderDefinition,
+  parseCodexProviderConfig,
+  responsesUrlForAuth,
+  type CodexResponseStreamEvent,
+  type CodexResponsesTransport,
+  type CodexTransportRequest,
+  type CodexResolvedAuth,
+} from '../index'
+
+const chatgptAuth: CodexResolvedAuth = {
+  kind: 'chatgpt',
+  mode: 'chatgpt',
+  accessToken: 'access-token',
+  refreshToken: 'refresh-token',
+  accountId: 'account-1',
+  email: 'dev@example.com',
+  isFedrampAccount: false,
+  expiresAt: null,
+  authFile: '/tmp/auth.json',
+}
+
+const model: ModelSelection = {
+  providerId: 'codex',
+  model: {
+    id: 'gpt-5.4',
+    name: 'GPT-5.4',
+    contextWindow: 100_000,
+    inputLimit: null,
+    thinking: [],
+    acceptedExtensions: [],
+  },
+  thinking: { type: 'effort', effort: 'medium', summary: null },
+}
+
+test('Codex provider definition only accepts serializable config fields', async () => {
+  const injectedTransport = new FakeCodexTransport([])
+  expect(
+    parseCodexProviderConfig({
+      codexHome: '/tmp/codex-home',
+      baseUrl: 'https://example.test/backend-api',
+      transport: 'sse',
+      headers: { 'x-test': 'ok' },
+      authStore: new StaticCodexAuthStore(chatgptAuth),
+      transportImpl: injectedTransport,
+    }),
+  ).toEqual({
+    codexHome: '/tmp/codex-home',
+    baseUrl: 'https://example.test/backend-api',
+    transport: 'sse',
+    headers: { 'x-test': 'ok' },
+  })
+  expect(() => parseCodexProviderConfig(1)).toThrow('must be an object')
+  expect(() => parseCodexProviderConfig({ transport: 'stdio' })).toThrow('transport')
+  expect(() => parseCodexProviderConfig({ headers: { ok: 1 } })).toThrow('headers.ok')
+
+  const provider = await createCodexProviderDefinition().createProvider({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    transportImpl: injectedTransport,
+  })
+  expect((provider as unknown as { transport?: unknown }).transport).not.toBe(injectedTransport)
+})
+
+test('buildCodexHeaders and responsesUrlForAuth follow Codex auth routing', () => {
+  const headers = buildCodexHeaders(chatgptAuth, makeRequest(), { userAgent: 'demi-test/1.0' })
+  expect(headers.get('Authorization')).toBe('Bearer access-token')
+  expect(headers.get('ChatGPT-Account-ID')).toBe('account-1')
+  expect(headers.get('OpenAI-Beta')).toBe('responses=experimental')
+  expect(headers.get('session-id')).toBe('session-1')
+  expect(headers.get('thread-id')).toBe('session-1')
+  expect(headers.get('x-client-request-id')).toBe('request-1')
+  expect(headers.get('User-Agent')).toBe('demi-test/1.0')
+
+  expect(responsesUrlForAuth(chatgptAuth)).toBe('https://chatgpt.com/backend-api/codex/responses')
+  expect(
+    responsesUrlForAuth({
+      kind: 'apiKey',
+      mode: 'apiKey',
+      apiKey: 'sk-test',
+      authFile: null,
+    }),
+  ).toBe('https://api.openai.com/v1/responses')
+})
+
+test('CodexProvider streams text, thinking, tool calls, and usage through transport events', async () => {
+  const transport = new FakeCodexTransport([
+    [
+      { type: 'response.output_item.added', item: { type: 'reasoning', id: 'rs_1' } },
+      { type: 'response.reasoning_text.delta', delta: 'think' },
+      { type: 'response.output_item.done', item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'enc' } },
+      { type: 'response.output_text.delta', delta: 'hello' },
+      { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'shell_exec', arguments: '{"script":"pwd"}' } },
+      { type: 'response.completed', response: { usage: { input_tokens: 10, output_tokens: 3 } } },
+    ],
+  ])
+  const provider = new CodexProvider({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    transportImpl: transport,
+    transport: 'sse',
+  })
+  const events = []
+  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
+    events.push(event)
+  }
+
+  expect(events).toEqual([
+    { type: 'thinking_start' },
+    { type: 'thinking_delta', text: 'think' },
+    { type: 'thinking_signature', signature: JSON.stringify({ type: 'reasoning', id: 'rs_1', encrypted_content: 'enc' }) },
+    { type: 'text_delta', text: 'hello' },
+    { type: 'tool_call_requested', toolUseId: 'call_1|fc_1', toolName: 'shell_exec', input: { script: 'pwd' } },
+    { type: 'response', usage: { inputTokens: 10, outputTokens: 3, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ])
+  expect(transport.requests[0]?.body).toMatchObject({ model: 'gpt-5.4', prompt_cache_key: 'session-1' })
+})
+
+test('CodexProvider refreshes auth once after a 401 response and retries the request', async () => {
+  const refreshedAuth: CodexResolvedAuth = { ...chatgptAuth, accessToken: 'new-access-token' }
+  const authStore = new RecordingAuthStore([chatgptAuth, refreshedAuth])
+  const transport = new FakeCodexTransport([
+    new CodexHttpError(401, 'Unauthorized', '{"error":{"message":"expired"}}'),
+    [{ type: 'response.output_text.delta', delta: 'ok' }, { type: 'response.completed', response: { usage: { input_tokens: 1 } } }],
+  ])
+  const provider = new CodexProvider({
+    authStore,
+    transportImpl: transport,
+    maxRetries: 0,
+  })
+  const events = []
+  for await (const event of provider.run(makeRequest())) events.push(event)
+
+  expect(authStore.forceRefreshes).toEqual([false, true])
+  expect(transport.requests).toHaveLength(2)
+  expect(transport.requests[0]?.headers.get('Authorization')).toBe('Bearer access-token')
+  expect(transport.requests[1]?.headers.get('Authorization')).toBe('Bearer new-access-token')
+  expect(events).toEqual([
+    { type: 'text_delta', text: 'ok' },
+    { type: 'response', usage: { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ])
+})
+
+test('AutoCodexResponsesTransport falls back to SSE only before WebSocket has emitted events', async () => {
+  const beforeStart = new AutoCodexResponsesTransport(
+    new FakeCodexTransport([new Error('connect failed')]),
+    new FakeCodexTransport([[{ type: 'response.output_text.delta', delta: 'sse' }]]),
+  )
+  const beforeEvents: CodexResponseStreamEvent[] = []
+  for await (const event of beforeStart.stream(makeTransportRequest())) beforeEvents.push(event)
+  expect(beforeEvents).toEqual([{ type: 'response.output_text.delta', delta: 'sse' }])
+
+  const afterStart = new AutoCodexResponsesTransport(
+    new YieldThenThrowTransport([{ type: 'response.output_text.delta', delta: 'ws' }], new Error('after start')),
+    new FakeCodexTransport([[{ type: 'response.output_text.delta', delta: 'sse' }]]),
+  )
+  const afterEvents: CodexResponseStreamEvent[] = []
+  await expect((async () => {
+    for await (const event of afterStart.stream(makeTransportRequest())) afterEvents.push(event)
+  })()).rejects.toThrow('after start')
+  expect(afterEvents).toEqual([{ type: 'response.output_text.delta', delta: 'ws' }])
+})
+
+test('WebSocketCodexResponsesTransport uses the Responses WebSocket beta header', async () => {
+  CapturingWebSocket.instances = []
+  const headers = new Headers({
+    accept: 'text/event-stream',
+    'content-type': 'application/json',
+    'OpenAI-Beta': 'responses=experimental',
+    Authorization: 'Bearer token',
+  })
+  const transport = new WebSocketCodexResponsesTransport({
+    WebSocket: CapturingWebSocket,
+  })
+  const events: CodexResponseStreamEvent[] = []
+
+  for await (const event of transport.stream({
+    ...makeTransportRequest(),
+    headers,
+    body: { model: 'gpt-5.4' },
+  })) {
+    events.push(event)
+  }
+
+  expect(events).toEqual([{ type: 'response.output_text.delta', delta: 'ws' }])
+  expect(CapturingWebSocket.instances).toHaveLength(1)
+  expect(CapturingWebSocket.instances[0]?.headers).toMatchObject({
+    authorization: 'Bearer token',
+    'openai-beta': 'responses_websockets=2026-02-06',
+  })
+  expect(CapturingWebSocket.instances[0]?.headers.accept).toBeUndefined()
+  expect(CapturingWebSocket.instances[0]?.headers['content-type']).toBeUndefined()
+})
+
+test('CodexProvider integrates with AgentSession and shell tools for function calls', async () => {
+  const transport = new FakeCodexTransport([
+    [
+      { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'shell_exec', arguments: '{"script":"printf demi-codex"}' } },
+      { type: 'response.completed', response: { usage: { input_tokens: 4, output_tokens: 2 } } },
+    ],
+    [
+      { type: 'response.output_text.delta', delta: 'done' },
+      { type: 'response.completed', response: { usage: { input_tokens: 8, output_tokens: 2 } } },
+    ],
+  ])
+  const provider = new CodexProvider({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    transportImpl: transport,
+    transport: 'sse',
+  })
+  const environment = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => 'codex-shell-session',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'codex-shell-test',
+    initialState: () => ({}),
+    systemPrompt: () => 'system',
+    tools: () => createShellSessionTools(environment),
+  }
+  const session = new AgentSession({ provider, model, cwd: process.cwd(), runtime }, { agentSessionId: 'agent-session-1' })
+
+  await session.send([{ type: 'text', text: 'run shell' }])
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'tool_call', 'response', 'text', 'response'])
+  const toolBlock = session.transcript().blocks.find((block) => block.type === 'tool_call')
+  expect(toolBlock).toMatchObject({ type: 'tool_call', toolName: 'shell_exec', status: 'completed' })
+  expect(toolBlock?.type === 'tool_call' ? toolBlock.output[0]?.type === 'text' && toolBlock.output[0].text : '').toContain('demi-codex')
+  expect(transport.requests).toHaveLength(2)
+  expect(transport.requests[0]?.body).toMatchObject({ prompt_cache_key: 'agent-session-1' })
+  expect(JSON.stringify(transport.requests[1]?.body)).toContain('"function_call_output"')
+  expect(JSON.stringify(transport.requests[1]?.body)).toContain('demi-codex')
+})
+
+function makeRequest(items: InferenceRequest['items'] = []): InferenceRequest {
+  return {
+    sessionId: 'session-1',
+    turnId: 'turn-1',
+    requestId: 'request-1',
+    modelId: 'gpt-5.4',
+    systemPrompt: 'system',
+    cwd: '/tmp',
+    items,
+    tools: [{ name: 'shell_exec', description: 'Execute shell', inputSchema: { type: 'object' } }],
+    thinking: { type: 'effort', effort: 'medium', summary: null },
+    cancel: new AbortController().signal,
+  }
+}
+
+function makeTransportRequest(): CodexTransportRequest {
+  return {
+    url: 'https://example.test/codex/responses',
+    websocketUrl: 'wss://example.test/codex/responses',
+    headers: new Headers(),
+    body: {},
+    signal: new AbortController().signal,
+  }
+}
+
+class FakeCodexTransport implements CodexResponsesTransport {
+  readonly requests: CodexTransportRequest[] = []
+  private index = 0
+
+  constructor(private readonly scripts: Array<CodexResponseStreamEvent[] | Error>) {}
+
+  async *stream(request: CodexTransportRequest): AsyncIterable<CodexResponseStreamEvent> {
+    this.requests.push(request)
+    while (this.index < this.scripts.length) {
+      const script = this.scripts[this.index]
+      this.index += 1
+      if (script instanceof Error) throw script
+      for (const event of script) yield event
+      if (script.length > 0) return
+    }
+  }
+}
+
+class YieldThenThrowTransport implements CodexResponsesTransport {
+  constructor(
+    private readonly events: CodexResponseStreamEvent[],
+    private readonly error: Error,
+  ) {}
+
+  async *stream(): AsyncIterable<CodexResponseStreamEvent> {
+    for (const event of this.events) yield event
+    throw this.error
+  }
+}
+
+class RecordingAuthStore {
+  readonly forceRefreshes: boolean[] = []
+  private index = 0
+
+  constructor(private readonly auths: CodexResolvedAuth[]) {}
+
+  async status() {
+    return { status: 'authenticated' as const }
+  }
+
+  async resolveAuth(options: { forceRefresh?: boolean } = {}): Promise<CodexResolvedAuth> {
+    this.forceRefreshes.push(options.forceRefresh === true)
+    const auth = this.auths[this.index] ?? this.auths[this.auths.length - 1]
+    this.index += 1
+    if (!auth) throw new Error('No fake auth left')
+    return auth
+  }
+}
+
+class CapturingWebSocket {
+  static instances: CapturingWebSocket[] = []
+
+  readonly headers: Record<string, string>
+  private readonly listeners: Record<string, Array<(event: unknown) => void>> = {}
+
+  constructor(
+    readonly url: string,
+    options: { headers?: Record<string, string> } = {},
+  ) {
+    this.headers = options.headers ?? {}
+    CapturingWebSocket.instances.push(this)
+    queueMicrotask(() => this.emit('open', {}))
+  }
+
+  send(): void {
+    queueMicrotask(() => {
+      this.emit('message', { data: JSON.stringify({ type: 'response.output_text.delta', delta: 'ws' }) })
+      this.emit('close', {})
+    })
+  }
+
+  close(): void {
+    // Test double; closing is idempotent.
+  }
+
+  addEventListener(type: 'open' | 'message' | 'error' | 'close', listener: (event: never) => void): void {
+    this.listeners[type] ??= []
+    this.listeners[type].push(listener as (event: unknown) => void)
+  }
+
+  removeEventListener(type: 'open' | 'message' | 'error' | 'close', listener: (event: never) => void): void {
+    this.listeners[type] = (this.listeners[type] ?? []).filter((candidate) => candidate !== (listener as (event: unknown) => void))
+  }
+
+  private emit(type: string, event: unknown): void {
+    for (const listener of this.listeners[type] ?? []) listener(event)
+  }
+}

@@ -7,6 +7,7 @@
     "packages/agent",
     "packages/core",
     "packages/provider",
+    "packages/provider-codex",
     "packages/provider-claude-code",
     "packages/shell",
     "packages/tui",
@@ -15,7 +16,7 @@
   "scripts": {
     "check:registry": "bun run scripts/check-public-registry.ts",
     "typecheck": "node node_modules/.bin/tsgo --noEmit",
-    "test": "bun test packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/coding-agent/src packages/provider-claude-code/src packages/tui/src",
+    "test": "bun test packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/tui/src",
     "test:just-bash-core": "bun test packages/just-bash/packages/just-bash/src/syntax/parser-protection.test.ts packages/just-bash/packages/just-bash/src/syntax/parser-edge-cases.test.ts packages/just-bash/packages/just-bash/src/syntax/parse-errors.test.ts",
     "tui": "bun run packages/tui/src/index.ts"
   },

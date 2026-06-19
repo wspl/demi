@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | 日期 | 2026-06-19 |
-| 状态 | 调研完成，未实现 |
+| 状态 | 调研完成，首版实现已落地 |
 | 范围 | `codex` provider、官方 Codex 鉴权复用、Responses 传输、tool/thinking 映射 |
 
 ## 1. 目标
@@ -363,3 +363,16 @@ Gated 真实验收：
 - Codex auth 是 provider 级能力，不进入 Agent Loop。
 - WebSocket/SSE transport 是 provider 内部机制，不进入 `InferenceRequest`。
 - Responses reasoning/tool replay 的 provider-specific signature 需要作为 transcript replay 的长期约束。
+
+## 13. 落地记录
+
+已新增 `packages/provider-codex`，并把 TUI provider 选择扩展为 `claude-code` / `codex`。当前实现按调研结论覆盖：
+
+- 复用官方 `$CODEX_HOME/auth.json` / `~/.codex/auth.json`，支持 ChatGPT token、API key、PAT、可用的 agent identity 记录；Bedrock 明确 unsupported。
+- ChatGPT token near-expiry refresh、401 force refresh retry、原子写回、未知字段保留、`0600` 权限和 secret redaction。
+- Responses request conversion：stable `sessionId`/`requestId`、`prompt_cache_key`、reasoning include、signed thinking replay、tool id 组合、tool result replay。
+- SSE + WebSocket + auto fallback transport；WebSocket 使用 `responses_websockets=2026-02-06` beta header。
+- Responses stream 映射为 Demi `ProviderEvent`，覆盖 text、thinking、tool call、usage/cache、failed/incomplete/error。
+- `AgentSession` + shell tools 集成测试，确保 Codex function call 能执行工具并把 `tool_result` 回灌到下一轮 provider request。
+
+测试覆盖记录见 `docs/testing.md#531-codex-provider`。真实 Codex 网络验收提供 gated `real-codex.e2e.test.ts` 入口，需要显式环境变量开启，不进入默认 `bun run test`。

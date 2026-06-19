@@ -1,0 +1,17 @@
+{
+  "name": "@demi/provider-codex",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@demi/core": "workspace:*",
+    "@demi/provider": "workspace:*"
+  },
+  "devDependencies": {
+    "@demi/agent": "workspace:*",
+    "@demi/shell": "workspace:*"
+  }
+}

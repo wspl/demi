@@ -55,6 +55,7 @@ export class AgentSession<State> {
   private workerRunning = false
   private externalMutationReserved = false
   private currentAbortController: AbortController | null = null
+  private activeTurnId: string | null = null
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
 
@@ -222,6 +223,7 @@ export class AgentSession<State> {
         if (action.type === 'send') this.removeQueuedMessage(action.id)
 
         this.currentAbortController = new AbortController()
+        this.activeTurnId = action.type === 'send' ? action.id : this.idFactory()
         this.abortRecorded = false
 
         try {
@@ -238,6 +240,7 @@ export class AgentSession<State> {
           }
         } finally {
           this.currentAbortController = null
+          this.activeTurnId = null
           this.abortRecorded = false
           this.setPhase('idle')
         }
@@ -516,6 +519,9 @@ export class AgentSession<State> {
   private async generateCompactionSummary(blocks: typeof this.transcriptLog.blocks): Promise<string> {
     const compactTranscript = new Transcript(blocks)
     const request: InferenceRequest = {
+      sessionId: this.agentSessionId,
+      turnId: this.currentTurnId(),
+      requestId: this.idFactory(),
       modelId: this.model.model.id,
       systemPrompt:
         'Summarize the previous conversation for continuation. Preserve user intent, decisions, tool results, and unresolved work.',
@@ -556,6 +562,9 @@ export class AgentSession<State> {
   private buildInferenceRequest(): InferenceRequest {
     const tools = this.currentTools().map(toToolDefinition)
     return {
+      sessionId: this.agentSessionId,
+      turnId: this.currentTurnId(),
+      requestId: this.idFactory(),
       modelId: this.model.model.id,
       systemPrompt: this.runtime.systemPrompt(this.promptContext()),
       cwd: this.cwd,
@@ -599,6 +608,11 @@ export class AgentSession<State> {
   private currentSignal(): AbortSignal {
     if (!this.currentAbortController) throw new Error('AgentSession: no active abort controller')
     return this.currentAbortController.signal
+  }
+
+  private currentTurnId(): string {
+    if (!this.activeTurnId) throw new Error('AgentSession: no active turn id')
+    return this.activeTurnId
   }
 
   private async recordAbort(): Promise<void> {

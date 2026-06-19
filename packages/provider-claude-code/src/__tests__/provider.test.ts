@@ -27,6 +27,9 @@ const model: ModelSelection = {
 
 function makeRequest(items: InferenceRequest['items'] = []): InferenceRequest {
   return {
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
     modelId: 'claude-test',
     systemPrompt: 'system',
     cwd: '/tmp',

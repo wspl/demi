@@ -3,6 +3,9 @@ import { StubProvider, events, type InferenceRequest, type ProviderEvent } from 
 
 function makeRequest(items: InferenceRequest['items']): InferenceRequest {
   return {
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
     modelId: 'test-model',
     systemPrompt: '',
     cwd: '/tmp',

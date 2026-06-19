@@ -43,6 +43,12 @@ export type InferenceItem =
 // ── inference request ───────────────────────────────────────────────
 
 export interface InferenceRequest {
+  /** Stable id for the owning agent session. */
+  sessionId: string
+  /** Stable id for the active user/maintenance turn; shared by provider continuations inside that turn. */
+  turnId: string
+  /** Unique id for this concrete provider request. */
+  requestId: string
   modelId: string
   systemPrompt: string
   cwd: string
