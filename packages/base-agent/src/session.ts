@@ -608,12 +608,12 @@ export class AgentSession<State> {
     const transcript = this.transcriptLog.snapshot()
     this.emit({ type: 'transcript_changed', transcript })
     await this.store?.saveSnapshot({
-      transcript,
-      state: this.agentState,
+      transcript: structuredClone(transcript),
+      state: structuredClone(this.agentState),
       phase: this.currentPhase,
-      queue: this.queuedMessages(),
+      queue: structuredClone(this.queuedMessages()),
       cwd: this.cwd,
-      model: this.model,
+      model: structuredClone(this.model),
       definitionName: this.definition.name,
     })
   }

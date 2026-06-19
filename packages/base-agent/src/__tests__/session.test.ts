@@ -228,6 +228,37 @@ test('AgentSession persists transcript snapshots through an injected store', asy
   expect(store.snapshots.at(-1)?.transcript.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 
+test('AgentSession store snapshots are insulated from later state mutations', async () => {
+  const store = new MemorySessionStore<{ toolCalls: number }>()
+  const provider = new StubProvider([
+    [events.toolCall('tool-1', 'count_tool', {}), events.response()],
+    [events.text('done'), events.response()],
+  ])
+  const definition = createDefinition({
+    tools: () => [
+      {
+        name: 'count_tool',
+        description: 'Mutates agent state.',
+        inputSchema: { type: 'object' },
+        invoke: (ctx) => {
+          ctx.state.toolCalls += 1
+          return { output: [{ type: 'text', text: 'counted' }] }
+        },
+      },
+    ],
+  })
+  const session = createSession(provider, definition, undefined, model, { store })
+
+  await session.send(text('count once'))
+
+  expect(store.snapshots[0]?.state).toEqual({ toolCalls: 0 })
+  expect(store.snapshots.at(-1)?.state).toEqual({ toolCalls: 1 })
+
+  if (!store.snapshots[0]) throw new Error('missing first snapshot')
+  store.snapshots[0].state.toolCalls = 99
+  expect(session.state()).toEqual({ toolCalls: 1 })
+})
+
 test('AgentSession persists extension state snapshots appended by lifecycle hooks', async () => {
   const store = new MemorySessionStore<{ toolCalls: number }>()
   const provider = new StubProvider([
