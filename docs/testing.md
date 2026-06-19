@@ -392,15 +392,15 @@ Owner：`packages/agent-coding`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| StubProvider 通过 shell tools 驱动 editor/todo，真实写文件 |  |  | `packages/agent-coding/src/__tests__/coding-marathon.test.ts` | 能发现 AgentSession、shell tools、registered command、Host 写文件之间的集成断裂。 |
-| workflow 中复用同一个 shell session |  |  | `coding-marathon.test.ts` | 防止模型后续命令丢 cwd/env 或拿不到之前的 shellId。 |
-| workflow 后文件内容正确 |  |  | `coding-marathon.test.ts` | 防止工具调用看似成功但真实 artifact 没写对。 |
-| workflow 后 todo 状态在 agent session 下可读 |  |  | `coding-marathon.test.ts` | 防止 workflow 中 todo 写到了 shell-local 或全局错误位置。 |
-| 创建文件 -> 测试失败 -> 读取错误 -> 修复 -> 测试通过 |  |  | `coding-marathon.test.ts` | 用来发现 agent 是否能围绕失败反馈迭代，而不是只验证单步命令。 |
-| 长命令 running/yield -> wait -> input/abort 的 agent 级流程 |  |  | `coding-marathon.test.ts` | 用来发现 shell 控制面在模型多轮工具调用中是否仍保持正确上下文。 |
-| tool error 后模型恢复继续执行任务 |  |  | `coding-marathon.test.ts` 覆盖命令非零退出后读取、修复、继续；base-agent 覆盖 invoke throw | 用来发现 coding 命令失败后模型是否有足够上下文修正，而不是 session 停死。 |
-| 多轮 user message 对 coding workflow 的影响 |  |  | `coding-marathon.test.ts` 覆盖两次 `session.send` 后继续读取上一轮文件、tool result 和 todo 状态 | 用来发现 queued send、transcript 和 coding state 在连续用户输入下是否错序。 |
-| 多 shell + 同 agent session 的 todo/storage 一致性 |  |  | `todo-command.test.ts` 覆盖同一 agent session 重建 shell 后仍读取同一 todo storage；`coding-marathon.test.ts` 覆盖 agent workflow 内 todo 状态延续 | 用来发现 shellId 和 agentSessionId 再次混淆。 |
+| StubProvider 通过 shell tools 驱动 editor/todo，真实写文件 | 有效 | 测试用 StubProvider 依次发起 `shell_exec`，通过 `editor create`、`todo add`、`editor edit` 驱动真实 BashEnvironment/LocalHost，并断言工具结果；能发现 AgentSession 到 registered command 的集成断裂。验证：5.15 targeted command，4 pass。 | `packages/agent-coding/src/__tests__/coding-marathon.test.ts` | 能发现 AgentSession、shell tools、registered command、Host 写文件之间的集成断裂。 |
+| workflow 中复用同一个 shell session | 部分有效 | 测试把上一轮 tool result 的 `shellId` 传给后续命令，并在多轮 workflow 中断言 result.shellId；但没有改变 cwd/env 来证明同一个 shell 进程状态被保留，且 StubProvider 不能证明真实模型会稳定复用 shellId。验证同上。 | `coding-marathon.test.ts` | 防止模型后续命令丢 cwd/env 或拿不到之前的 shellId。 |
+| workflow 后文件内容正确 | 有效 | workflow 结束后真实执行 `cat src/app.ts`，断言内容为 `export const value = 2`；能发现工具结果成功但文件实际未写对。验证同上。 | `coding-marathon.test.ts` | 防止工具调用看似成功但真实 artifact 没写对。 |
+| workflow 后 todo 状态在 agent session 下可读 | 有效 | workflow 后用 session id 读取 `todo list --json`，断言 `T1 Run tests` 存在；多轮测试也断言同一 agent session 下 todo 最终为 done。验证同上。 | `coding-marathon.test.ts` | 防止 workflow 中 todo 写到了 shell-local 或全局错误位置。 |
+| 创建文件 -> 测试失败 -> 读取错误 -> 修复 -> 测试通过 | 有效 | 测试创建带缺陷的 todo 模块和 bun test，断言首次测试非零且输出包含失败预期，再读源码、用 editor 修复、重跑测试并断言 `1 pass`；能发现失败反馈链路断裂。验证同上。 | `coding-marathon.test.ts` | 用来发现 agent 是否能围绕失败反馈迭代，而不是只验证单步命令。 |
+| 长命令 running/yield -> wait -> input/abort 的 agent 级流程 | 有效 | 测试启动长 foreground 命令并 yield 为 running，随后 `shell_wait` 看到 ready，`shell_input` 注入 stdin，`shell_abort` 结束并清空 pending tool calls；能发现多轮 shell 控制状态丢失。验证同上。 | `coding-marathon.test.ts` | 用来发现 shell 控制面在模型多轮工具调用中是否仍保持正确上下文。 |
+| tool error 后模型恢复继续执行任务 | 有效 | coding-marathon 覆盖 shell 命令非零退出后 provider 下一轮能看到失败输出、读取源码、修复并继续；base-agent `session.test.ts` 覆盖 invoke throw 被记录为 error tool result 且后续继续。验证同上，base-agent 行为已在 5.4 审查。 | `coding-marathon.test.ts` 覆盖命令非零退出后读取、修复、继续；base-agent 覆盖 invoke throw | 用来发现 coding 命令失败后模型是否有足够上下文修正，而不是 session 停死。 |
+| 多轮 user message 对 coding workflow 的影响 | 有效 | 测试连续两次 `session.send`，第二次 provider request 中断言包含两轮 user message、上一轮 assistant text 和 todo state，再继续完成 todo/list/cat；能发现 transcript 或 send 顺序错乱。验证同上。 | `coding-marathon.test.ts` 覆盖两次 `session.send` 后继续读取上一轮文件、tool result 和 todo 状态 | 用来发现 queued send、transcript 和 coding state 在连续用户输入下是否错序。 |
+| 多 shell + 同 agent session 的 todo/storage 一致性 | 有效 | `todo-command.test.ts` 断言 dispose 旧 shell 后同一 agent session 在新 shell 延续 todo storage，另一个 agent session 独立；coding-marathon 断言 workflow 内 todo 继续可读。验证：5.14/5.15 targeted commands。 | `todo-command.test.ts` 覆盖同一 agent session 重建 shell 后仍读取同一 todo storage；`coding-marathon.test.ts` 覆盖 agent workflow 内 todo 状态延续 | 用来发现 shellId 和 agentSessionId 再次混淆。 |
 
 ### 5.16 RPC 协议
 
