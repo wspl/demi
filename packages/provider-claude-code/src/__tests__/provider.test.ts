@@ -268,6 +268,29 @@ test('ClaudeCodeProvider handles SDK MCP control_request tool calls across run c
   ])
 })
 
+test('ClaudeCodeProvider rejects malformed SDK MCP tools/call without entering pending state', async () => {
+  const transport = new FakeClaudeTransport([
+    sdkMcpRequest('call-sdk', 'call-1', 'tools/call', { arguments: { script: 'pwd' } }),
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'continued after malformed sdk call' }] } },
+    { type: 'result', usage: { input_tokens: 3, output_tokens: 1 } },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+
+  const events = []
+  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
+    events.push(event)
+  }
+
+  expect(findSdkMcpResponse(transport.writes, 'call-sdk').error).toEqual({
+    code: -32601,
+    message: 'Invalid tools/call request',
+  })
+  expect(events).toEqual([
+    { type: 'text_delta', text: 'continued after malformed sdk call' },
+    { type: 'response', usage: { inputTokens: 3, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ])
+})
+
 test('ClaudeCodeProvider handles assistant tool_use messages across run calls', async () => {
   const transport = new FakeClaudeTransport([
     {
