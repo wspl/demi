@@ -64,7 +64,7 @@
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
 | Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播；TUI usage 呈现和真实 provider cache hit 仍未完整证明。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
-| Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制；editor 写入失败事务、todo 输出矩阵、shell cwd/env 复用仍有部分缺口。 |
+| Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制；editor 写入失败事务、file reference Host 边界、shell cwd/env 复用仍有部分缺口。 |
 | 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，但 `5.17` TUI 自身没有自动化测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
 
 ### 3.3 Compact 参考故事映射
@@ -381,8 +381,8 @@ Owner：`packages/agent-coding`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `todo add/list/update/done` raw output | 部分有效 | 测试断言 raw `todo add` 和 raw `todo update` 输出，但没有断言 raw `todo list` 和 raw `todo done`；能发现一部分可读输出退化，但矩阵未满。验证：5.14 targeted command，3 pass。 | `packages/agent-coding/src/__tests__/todo-command.test.ts` | 防止模型拿不到可读的任务状态反馈。 |
-| `todo add/list/update/done` JSON output | 部分有效 | 测试解析并精确断言 `update --json`、`done --json`、`list --json`；`add --json` 仅被执行但未解析断言形状。验证同上。 | `todo-command.test.ts` | 防止 agent 或 UI 需要结构化 todo 状态时解析失败。 |
+| `todo add/list/update/done` raw output | 有效 | 测试精确断言 raw `todo add`、`todo list`、`todo update`、`todo done` 输出，覆盖 pending/done marker 和多 todo 顺序；能发现模型可读任务状态反馈退化。验证：5.14 targeted command，3 pass。 | `packages/agent-coding/src/__tests__/todo-command.test.ts` | 防止模型拿不到可读的任务状态反馈。 |
+| `todo add/list/update/done` JSON output | 有效 | 测试解析并精确断言 `add --json`、`update --json`、`done --json`、`list --json` 的 `{ todo }` / `{ todos }` 形状、id/text/status 和顺序。验证同上。 | `todo-command.test.ts` | 防止 agent 或 UI 需要结构化 todo 状态时解析失败。 |
 | todo 状态按 agent session id 隔离 | 有效 | 测试不同 agent session 各自添加首个 todo 都得到 `T1`，并在 shell 重建测试中断言 `other-agent` 的列表只含自身 todo；能发现跨 session 串线。验证同上。 | `todo-command.test.ts` | 防止不同会话共享 todo，造成用户任务串线。 |
 | todo 与 shell id 不混淆 | 有效 | 测试 dispose 旧 shell 后，同一 agent session 在新 shell 中继续累积 `T1/T2`，而另一个 agent session 在第三个 shell 中独立为 `T1`；结合 `BashEnvironment` 的 storage scope 能发现把 todo 绑到 shellId 的回归。验证同上。 | `todo-command.test.ts` 覆盖 agent session 隔离和同一 agent session 下 shell 重建后的 storage 延续 | 需要发现 shellId 和 agentSessionId 再次混淆。 |
 
@@ -456,7 +456,7 @@ Owner：`packages/just-bash`
 
 1. 补 `5.17 TUI` 自动化：cache usage 呈现、stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
 2. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
-3. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务、todo raw/JSON 输出矩阵、shell cwd/env 复用。
+3. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务、shell cwd/env 复用。
 4. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则
