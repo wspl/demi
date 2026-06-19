@@ -369,6 +369,49 @@ test('AgentSession executes requested tools and continues provider roundtrip wit
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
+test('AgentSession continues when a provider pauses after a tool call without a response event', async () => {
+  const provider = new StubProvider([
+    [events.toolCall('tool-1', 'echo_tool', { value: 'hello' })],
+    (request) => {
+      expect(request.items.map((item) => item.type)).toEqual(['user_message', 'tool_use', 'tool_result'])
+      expect(request.items[2]).toMatchObject({
+        type: 'tool_result',
+        toolUseId: 'tool-1',
+        isError: false,
+        output: [{ type: 'text', text: '{"value":"hello"}' }],
+      })
+      return [events.text('continued after paused tool call'), events.response()]
+    },
+  ])
+  const definition = createDefinition({
+    tools: (ctx) => [
+      {
+        name: 'echo_tool',
+        description: 'Echoes a value.',
+        inputSchema: { type: 'object' },
+        invoke: (_toolCtx, input) => {
+          ctx.state.toolCalls += 1
+          return {
+            output: [{ type: 'text', text: JSON.stringify(input) }],
+          }
+        },
+      },
+    ],
+  })
+  const session = createSession(provider, definition)
+
+  await session.send(text('use tool'))
+
+  expect(session.state().toolCalls).toBe(1)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'tool_call',
+    'text',
+    'response',
+  ])
+  expect(session.transcript().pendingToolCalls()).toHaveLength(0)
+})
+
 test('AgentSession records thrown tool invocations as error tool results and continues', async () => {
   const provider = new StubProvider([
     [events.toolCall('tool-1', 'failing_tool', { value: 'hello' }), events.response()],
