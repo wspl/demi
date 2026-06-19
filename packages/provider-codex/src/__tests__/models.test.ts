@@ -36,8 +36,10 @@ test('Codex backend model catalog maps slug ids and explicit capabilities', () =
     supportsTools: true,
     supportsAttachments: true,
     supportsReasoning: true,
-    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'ultra'],
     defaultThinkingEffort: null,
+    serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
+    defaultServiceTierId: null,
     source: 'codex-backend',
     sourceFetchedAt: '2026-06-20T00:00:00.000Z',
     stale: false,
@@ -157,11 +159,16 @@ function codexModelsFixture(): unknown {
         input_modalities: ['text', 'image'],
         tool_mode: 'default',
         default_reasoning_level: 'medium',
+        service_tiers: [
+          { id: 'priority', name: 'Fast', description: '1.5x speed, increased usage' },
+        ],
+        additional_speed_tiers: ['fast'],
         supported_reasoning_levels: [
           { effort: 'low' },
           { effort: 'medium' },
           { effort: 'high' },
           { effort: 'xhigh' },
+          { effort: 'ultra' },
         ],
       },
       {

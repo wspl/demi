@@ -43,14 +43,7 @@ export interface TokenUsage {
 
 export type FileExtension = 'png' | 'jpg' | 'jpeg' | 'gif' | 'webp' | 'pdf'
 
-export type ThinkingEffort =
-  | 'none'
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'max'
-  | 'xhigh'
+export type ThinkingEffort = string
 
 export type ThinkingSummary = 'auto' | 'concise' | 'detailed' | 'off' | 'on'
 
@@ -90,6 +83,7 @@ export interface ModelSelection {
   providerId: string
   model: Model
   thinking: ThinkingConfig | null
+  serviceTierId?: string | null
 }
 
 // ── tool call ───────────────────────────────────────────────────────

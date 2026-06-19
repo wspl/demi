@@ -154,6 +154,7 @@ function codexModelFromBackendEntry(
   stale: boolean,
 ): ProviderModel {
   const supportedReasoningEfforts = supportedReasoningLevels(raw.supported_reasoning_levels)
+  const tiers = serviceTiers(raw.service_tiers)
   return {
     providerId: 'codex',
     id,
@@ -166,6 +167,8 @@ function codexModelFromBackendEntry(
     supportsReasoning: supportedReasoningEfforts ? supportedReasoningEfforts.length > 0 : null,
     supportedThinkingEfforts: supportedReasoningEfforts,
     defaultThinkingEffort: null,
+    serviceTiers: tiers,
+    defaultServiceTierId: null,
     source: stale ? 'cache' : 'codex-backend',
     sourceFetchedAt,
     stale,
@@ -211,16 +214,24 @@ function codexModelCatalogCacheKey(auth: CodexResolvedAuth, baseUrl: string | un
 function supportedReasoningLevels(value: unknown): ProviderModel['supportedThinkingEfforts'] {
   if (!Array.isArray(value)) return null
   const efforts = value
-    .map((level) => isRecord(level) ? thinkingEffortOrNull(level.effort) : null)
-    .filter((effort): effort is NonNullable<typeof effort> => effort !== null)
+    .map((level) => isRecord(level) ? stringOr(level.effort) : undefined)
+    .filter((effort): effort is string => effort !== undefined)
   return efforts.length > 0 ? efforts : []
 }
 
-function thinkingEffortOrNull(value: unknown): ProviderModel['defaultThinkingEffort'] {
-  if (value === 'none' || value === 'minimal' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max') {
-    return value
-  }
-  return null
+function serviceTiers(value: unknown): ProviderModel['serviceTiers'] {
+  if (!Array.isArray(value)) return null
+  const tiers = value.flatMap((tier) => {
+    if (!isRecord(tier)) return []
+    const id = stringOr(tier.id)
+    if (!id) return []
+    return [{
+      id,
+      label: stringOr(tier.name) ?? id,
+      ...(stringOr(tier.description) ? { description: stringOr(tier.description) } : {}),
+    }]
+  })
+  return tiers.length > 0 ? tiers : []
 }
 
 function supportsCodexTools(raw: Record<string, unknown>): boolean | null {
@@ -246,6 +257,7 @@ function cloneModelList(list: ProviderModelList): ProviderModelList {
       ...model,
       ...(model.cost ? { cost: { ...model.cost } } : {}),
       supportedThinkingEfforts: model.supportedThinkingEfforts ? [...model.supportedThinkingEfforts] : null,
+      serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({ ...tier })) : model.serviceTiers,
     })),
   }
 }

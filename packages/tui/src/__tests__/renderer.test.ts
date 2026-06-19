@@ -269,6 +269,7 @@ test('TUI model resolver selects from provider catalog when no full model id is 
     cwd: '/tmp',
     modelId: null,
     thinkingEffort: 'medium',
+    serviceTierId: null,
     maxBudgetUsd: null,
     transport: 'auto',
     yieldAfterMs: 10,
@@ -331,11 +332,120 @@ test('TUI model resolver rejects explicit thinking efforts not advertised by cat
     cwd: '/tmp',
     modelId: null,
     thinkingEffort: 'medium',
+    serviceTierId: null,
     maxBudgetUsd: null,
     transport: 'auto',
     yieldAfterMs: 10,
     timeoutMs: 100,
   }, {})).rejects.toThrow('does not support thinking effort "medium"')
+})
+
+test('TUI model resolver accepts provider-advertised future thinking effort ids', async () => {
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'claude-code',
+    displayName: 'Claude Code',
+    listModels: () => ({
+      providerId: 'claude-code',
+      defaultModelId: 'claude-opus-4-8',
+      sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+      stale: false,
+      warnings: [],
+      models: [
+        {
+          providerId: 'claude-code',
+          id: 'claude-opus-4-8',
+          displayName: 'Claude Opus 4.8',
+          contextWindow: 1_000_000,
+          outputLimit: 128_000,
+          supportsTools: true,
+          supportsAttachments: true,
+          supportsReasoning: true,
+          supportedThinkingEfforts: ['ultra'],
+          defaultThinkingEffort: null,
+          source: 'models.dev',
+          sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+          stale: false,
+        },
+      ],
+    }),
+    createProvider: () => new StubProvider([]),
+  })
+
+  const resolved = await resolveTuiModel(providerRegistry, {
+    provider: 'claude-code',
+    cwd: '/tmp',
+    modelId: null,
+    thinkingEffort: 'ultra',
+    serviceTierId: null,
+    maxBudgetUsd: null,
+    transport: 'auto',
+    yieldAfterMs: 10,
+    timeoutMs: 100,
+  }, {})
+
+  expect(resolved.selection.model.thinking).toMatchObject([{ type: 'effort', efforts: ['ultra'], defaultEffort: null }])
+  expect(resolved.selection.thinking).toEqual({ type: 'effort', effort: 'ultra', summary: null })
+})
+
+test('TUI model resolver validates provider-advertised service tier ids', async () => {
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'codex',
+    displayName: 'Codex',
+    listModels: () => ({
+      providerId: 'codex',
+      defaultModelId: 'gpt-5.5',
+      sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+      stale: false,
+      warnings: [],
+      models: [
+        {
+          providerId: 'codex',
+          id: 'gpt-5.5',
+          displayName: 'GPT-5.5',
+          contextWindow: 272_000,
+          outputLimit: null,
+          supportsTools: true,
+          supportsAttachments: true,
+          supportsReasoning: true,
+          supportedThinkingEfforts: ['medium'],
+          defaultThinkingEffort: null,
+          serviceTiers: [{ id: 'priority', label: 'Fast' }],
+          defaultServiceTierId: null,
+          source: 'codex-backend',
+          sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+          stale: false,
+        },
+      ],
+    }),
+    createProvider: () => new StubProvider([]),
+  })
+
+  const resolved = await resolveTuiModel(providerRegistry, {
+    provider: 'codex',
+    cwd: '/tmp',
+    modelId: null,
+    thinkingEffort: null,
+    serviceTierId: 'priority',
+    maxBudgetUsd: null,
+    transport: 'auto',
+    yieldAfterMs: 10,
+    timeoutMs: 100,
+  }, {})
+
+  expect(resolved.selection.serviceTierId).toBe('priority')
+  await expect(resolveTuiModel(providerRegistry, {
+    provider: 'codex',
+    cwd: '/tmp',
+    modelId: null,
+    thinkingEffort: null,
+    serviceTierId: 'fast',
+    maxBudgetUsd: null,
+    transport: 'auto',
+    yieldAfterMs: 10,
+    timeoutMs: 100,
+  }, {})).rejects.toThrow('does not support service tier "fast"')
 })
 
 test('TUI model resolver rejects aliases and does not call model catalog for explicit full ids', async () => {
@@ -354,6 +464,7 @@ test('TUI model resolver rejects aliases and does not call model catalog for exp
     provider: 'claude-code' as const,
     cwd: '/tmp',
     thinkingEffort: null,
+    serviceTierId: null,
     maxBudgetUsd: null,
     transport: 'auto' as const,
     yieldAfterMs: 10,

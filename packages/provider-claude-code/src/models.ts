@@ -157,7 +157,7 @@ function modelFromModelsDevEntry(id: string, raw: Record<string, unknown>, sourc
     supportsTools: booleanOrNull(isRecord(raw.tool) ? raw.tool.call : raw.tool_call),
     supportsAttachments: booleanOrNull(raw.attachment),
     supportsReasoning: booleanOrNull(raw.reasoning),
-    supportedThinkingEfforts: null,
+    supportedThinkingEfforts: reasoningEfforts(raw.reasoning_options),
     defaultThinkingEffort: null,
     ...(cost
       ? {
@@ -220,6 +220,14 @@ function numberOrNull(value: unknown): number | null {
 
 function booleanOrNull(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
+}
+
+function reasoningEfforts(value: unknown): ProviderModel['supportedThinkingEfforts'] {
+  if (!Array.isArray(value)) return null
+  const effortOption = value.find((option) => isRecord(option) && option.type === 'effort')
+  if (!isRecord(effortOption) || !Array.isArray(effortOption.values)) return null
+  const efforts = effortOption.values.map((effort) => stringOr(effort)).filter((effort): effort is string => effort !== undefined)
+  return efforts.length > 0 ? efforts : []
 }
 
 function messageOf(error: unknown): string {

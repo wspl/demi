@@ -56,6 +56,7 @@ export interface InferenceRequest {
   items: InferenceItem[]
   tools: ToolDefinition[]
   thinking: ThinkingConfig | null
+  serviceTierId?: string | null
   cancel: AbortSignal
 }
 
@@ -110,6 +111,12 @@ export interface ProviderModelCost {
   cacheWrite: number | null
 }
 
+export interface ProviderServiceTier {
+  id: string
+  label: string
+  description?: string
+}
+
 export type ProviderModelSource = 'codex-backend' | 'models.dev' | 'cache'
 
 export interface ProviderModel {
@@ -124,6 +131,8 @@ export interface ProviderModel {
   supportsReasoning: boolean | null
   supportedThinkingEfforts: ThinkingEffort[] | null
   defaultThinkingEffort: ThinkingEffort | null
+  serviceTiers?: ProviderServiceTier[] | null
+  defaultServiceTierId?: string | null
   cost?: ProviderModelCost
   source: ProviderModelSource
   sourceFetchedAt: string

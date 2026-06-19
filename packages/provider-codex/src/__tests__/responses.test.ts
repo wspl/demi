@@ -87,6 +87,14 @@ test('buildCodexResponsesRequestBody skips unsigned thinking and encodes tool re
   ])
 })
 
+test('buildCodexResponsesRequestBody writes service tier only when selected', () => {
+  const standard = buildCodexResponsesRequestBody({ ...makeRequest([]), thinking: null, serviceTierId: null })
+  const priority = buildCodexResponsesRequestBody({ ...makeRequest([]), thinking: null, serviceTierId: 'priority' })
+
+  expect(standard).not.toHaveProperty('service_tier')
+  expect(priority.service_tier).toBe('priority')
+})
+
 test('mapCodexResponseEvents streams thinking, text, tool calls, and usage', async () => {
   const reasoning = { type: 'reasoning' as const, id: 'rs_1', encrypted_content: 'enc', summary: [{ text: 'thought' }] }
   const events: ProviderEvent[] = []

@@ -529,6 +529,7 @@ export class AgentSession<State> {
       items: compactTranscript.collectInferenceItems(),
       tools: [],
       thinking: this.model.thinking,
+      serviceTierId: this.model.serviceTierId ?? null,
       cancel: this.currentSignal(),
     }
 
@@ -571,6 +572,7 @@ export class AgentSession<State> {
       items: this.transcriptLog.collectInferenceItems(),
       tools,
       thinking: this.model.thinking,
+      serviceTierId: this.model.serviceTierId ?? null,
       cancel: this.currentSignal(),
     }
   }

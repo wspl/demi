@@ -223,9 +223,9 @@ interface ModelSelection {
 serviceTierId?: string | null
 ```
 
-Codex provider 只在 selected model catalog 包含该 service tier 时映射到 Responses `service_tier`。
+TUI / model resolver 只在 selected model catalog 包含该 service tier 时允许选择；Codex provider 对非空 `serviceTierId` 原样映射到 Responses `service_tier`。
 
-不支持的 service tier 不能被静默改写成另一个 tier。稳定 UI 路径应阻止无效选择；provider request building 对 `null` 应省略字段，对无效非空值应报错。如果 catalog metadata 不可用，Demi 不应暴露或发送 service tier 控制。
+不支持的 service tier 不能被静默改写成另一个 tier。稳定 UI 路径应阻止无效选择；provider request building 对 `null` 应省略字段。如果 catalog metadata 不可用，Demi 不应暴露或发送 service tier 控制。
 
 ### 4.4 TUI 行为
 
@@ -302,9 +302,10 @@ Request mapping：
   - Claude Code 使用 catalog 广告的 effort 跑真实模型。
   - Codex 在广告 Fast 的模型上用 `service_tier: "priority"` 跑真实模型。
 
-## 7. 当前缺口
+## 7. 当前落地状态
 
-- Demi 当前会从 Codex backend catalog 映射 effort options，但存储类型仍是固定 `ThinkingEffort[]`。
-- Demi 当前没有映射 Claude `models.dev` 的 `reasoning_options`，Claude effort 元数据仍缺失。
-- Demi 当前没有 service tier metadata 或 request 字段，因此无法表示 Codex fast mode。
-- TUI 当前把 `--no-thinking` 表示为“不传 effort”。最终文案应使用“not requested”一类语义，不能描述成 provider-confirmed thinking off。
+- Demi 已把 reasoning effort id 放宽为 provider wire string，Codex 和 Claude catalog 都会保留未知 future effort id。
+- Claude Code catalog 已映射 `models.dev` 的 `reasoning_options[type="effort"].values[]`。
+- Codex catalog 已映射 `service_tiers[]`，并忽略 legacy `additional_speed_tiers` alias。
+- `ModelSelection` / `InferenceRequest` 已携带可选 `serviceTierId`；Codex request 只在选中时写入 Responses `service_tier`。
+- TUI 当前把 `--no-thinking` 表示为“不请求显式 effort”，banner 显示 `thinking: not requested`。

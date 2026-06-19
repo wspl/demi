@@ -10,6 +10,7 @@ export interface CodexResponsesRequestBody {
   tool_choice: 'auto'
   parallel_tool_calls: boolean
   reasoning?: { effort?: string; summary?: string }
+  service_tier?: string
   store: boolean
   stream: boolean
   include: string[]
@@ -125,6 +126,7 @@ export function buildCodexResponsesRequestBody(request: InferenceRequest): Codex
   }
   const reasoning = thinkingToReasoning(request.thinking)
   if (reasoning) body.reasoning = reasoning
+  if (request.serviceTierId) body.service_tier = request.serviceTierId
   return body
 }
 

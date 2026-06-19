@@ -48,6 +48,12 @@ interface ProviderModel {
   supportsReasoning: boolean | null
   supportedThinkingEfforts: string[] | null
   defaultThinkingEffort: string | null
+  serviceTiers?: Array<{
+    id: string
+    label: string
+    description?: string
+  }> | null
+  defaultServiceTierId?: string | null
   cost?: {
     input: number | null
     output: number | null
@@ -185,6 +191,7 @@ TUI 不再拥有 provider-specific model defaults。
 - `--model` 必须是 full id。
 - `opus`、`sonnet`、`haiku` 这类 alias 直接报错。
 - 显式 full id 不需要先拉 catalog；如果没有 catalog 元数据，上层按未知 context/capability 处理，真实 provider 响应是最终裁决。
+- `--service-tier` 需要 catalog-backed model selection；显式 `--model` 路径不发送 service tier，避免在没有 catalog metadata 时暴露未验证控制。
 
 请求行为：
 
@@ -203,6 +210,7 @@ TUI 不再拥有 provider-specific model defaults。
 - 断言缺失 capability 字段映射为 `null`，不从名字臆测。
 - 断言 stale cache 带 warning，网络失败且无 cache 不返回硬编码模型。
 - Codex fixture 覆盖默认静态 `client_version`、显式 override、ChatGPT auth headers、`slug` id 映射、401 refresh retry、cache key、server order 保留。
+- Codex fixture 覆盖 `service_tiers` 映射为 provider wire id，且不从 `additional_speed_tiers` 生成 legacy `fast` alias。
 - TUI / CLI 测试覆盖 alias 被拒绝、full id 透传、catalog default 或 first selection 不落回硬编码。
 
 Gated 真实验收：

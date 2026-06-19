@@ -30,6 +30,7 @@ export interface TuiOptions {
   cwd: string
   modelId: string | null
   thinkingEffort: ThinkingEffort | null
+  serviceTierId: string | null
   maxBudgetUsd: string | null
   claudePath?: string
   codexHome?: string
@@ -500,6 +501,7 @@ function parseArgs(args: string[]): TuiOptions {
   let modelId: string | null = null
   let thinkingEffort = parseThinkingEffort(envThinkingValue(provider), envThinkingSource(provider))
   let thinkingProvided = false
+  let serviceTierId: string | null = null
   let maxBudgetUsd: string | null = process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.25'
   let claudePath: string | undefined
   let codexHome: string | undefined = process.env.CODEX_HOME
@@ -528,6 +530,7 @@ function parseArgs(args: string[]): TuiOptions {
     }
     else if (arg === '--budget') maxBudgetUsd = requiredValue(args, ++index, '--budget')
     else if (arg === '--no-budget') maxBudgetUsd = null
+    else if (arg === '--service-tier') serviceTierId = requiredValue(args, ++index, '--service-tier')
     else if (arg === '--claude-path') claudePath = requiredValue(args, ++index, '--claude-path')
     else if (arg === '--codex-home') codexHome = requiredValue(args, ++index, '--codex-home')
     else if (arg === '--base-url') baseUrl = requiredValue(args, ++index, '--base-url')
@@ -545,6 +548,7 @@ function parseArgs(args: string[]): TuiOptions {
     cwd: resolve(cwd),
     modelId,
     thinkingEffort,
+    serviceTierId,
     maxBudgetUsd,
     claudePath,
     codexHome,
@@ -583,8 +587,10 @@ function requiredValue(args: string[], index: number, flag: string): string {
 
 function parseThinkingEffort(value: string | null, source: string): ThinkingEffort | null {
   if (value === null || value === '') return null
-  if (value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max') return value
-  throw new Error(`${source} must be one of: low, medium, high, xhigh, max`)
+  const effort = value.trim()
+  if (!effort) return null
+  if (effort.startsWith('-')) throw new Error(`${source} must be a provider-supported thinking effort id`)
+  return effort
 }
 
 export interface ResolvedTuiModel {
@@ -600,8 +606,9 @@ export async function resolveTuiModel(
 ): Promise<ResolvedTuiModel> {
   if (options.modelId) {
     validateExplicitModelId(options.provider, options.modelId)
+    if (options.serviceTierId) throw new Error('--service-tier requires catalog-backed model selection')
     return {
-      selection: modelSelectionFromCatalogModel(options.provider, options.modelId, options.thinkingEffort, null),
+      selection: modelSelectionFromCatalogModel(options.provider, options.modelId, options.thinkingEffort, options.serviceTierId, null),
       warnings: [],
       catalog: null,
     }
@@ -625,8 +632,9 @@ export async function resolveTuiModel(
     (catalog.defaultModelId ? catalog.models.find((model) => model.id === catalog.defaultModelId) : null) ?? catalog.models[0]
   if (!selected) throw new Error(`${options.provider} model catalog returned no selectable models`)
   validateThinkingEffortForCatalogModel(options.thinkingEffort, selected)
+  validateServiceTierForCatalogModel(options.serviceTierId, selected)
   return {
-    selection: modelSelectionFromCatalogModel(options.provider, selected.id, options.thinkingEffort, selected),
+    selection: modelSelectionFromCatalogModel(options.provider, selected.id, options.thinkingEffort, options.serviceTierId, selected),
     warnings: [...catalog.warnings],
     catalog,
   }
@@ -655,10 +663,22 @@ function validateThinkingEffortForCatalogModel(thinkingEffort: ThinkingEffort | 
   }
 }
 
+function validateServiceTierForCatalogModel(serviceTierId: string | null, model: ProviderModel): void {
+  if (!serviceTierId) return
+  const tiers = model.serviceTiers
+  if (!tiers || tiers.length === 0) {
+    throw new Error(`Model ${model.id} does not advertise service tier controls`)
+  }
+  if (!tiers.some((tier) => tier.id === serviceTierId)) {
+    throw new Error(`Model ${model.id} does not support service tier "${serviceTierId}"`)
+  }
+}
+
 function modelSelectionFromCatalogModel(
   provider: TuiOptions['provider'],
   modelId: string,
   thinkingEffort: ThinkingEffort | null,
+  serviceTierId: string | null,
   model: ProviderModel | null,
 ): ModelSelection {
   return {
@@ -672,6 +692,7 @@ function modelSelectionFromCatalogModel(
       acceptedExtensions: model?.supportsAttachments ? acceptedAttachmentExtensions() : [],
     },
     thinking: thinkingEffort ? { type: 'effort', effort: thinkingEffort, summary: null } : null,
+    serviceTierId,
   }
 }
 
@@ -720,6 +741,7 @@ function printBanner(options: TuiOptions, model: ResolvedTuiModel): void {
   writeLine(`workspace: ${options.cwd}`)
   writeLine(`model: ${model.selection.model.id}`)
   writeLine(`thinking: ${options.thinkingEffort ?? 'not requested'}`)
+  if (options.serviceTierId) writeLine(`service tier: ${options.serviceTierId}`)
   for (const warning of model.warnings) writeLine(color(`model warning: ${warning}`, 'yellow'))
   if (options.provider === 'claude-code') writeLine(`budget: ${options.maxBudgetUsd ?? 'none'}`)
   else writeLine(`transport: ${options.transport}`)
@@ -732,8 +754,9 @@ Options:
   --cwd <path>             Workspace root. Defaults to current directory.
   --provider <id>          Provider: claude-code, codex. Defaults to claude-code.
   --model <id>             Full model id. Defaults to the provider model catalog selection.
-  --thinking <effort>      Thinking effort: low, medium, high, xhigh, max.
+  --thinking <effort>      Provider-supported thinking effort id.
   --no-thinking            Do not request an explicit thinking effort. This is the default.
+  --service-tier <id>      Provider-supported service tier id.
   --budget <usd>           Max budget passed to claude. Defaults to 0.25.
   --no-budget              Do not pass a max budget.
   --claude-path <path>     Path to claude CLI. Defaults to claude on PATH.

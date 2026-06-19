@@ -50,7 +50,7 @@ test('models.dev mapping preserves explicit metadata and leaves missing capabili
     supportsTools: true,
     supportsAttachments: true,
     supportsReasoning: true,
-    supportedThinkingEfforts: null,
+    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     defaultThinkingEffort: null,
     cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
     source: 'models.dev',
@@ -135,6 +135,9 @@ function modelsDevFixture(): unknown {
           name: 'Claude Opus 4.8',
           limit: { context: 1_000_000, output: 128_000 },
           reasoning: true,
+          reasoning_options: [
+            { type: 'effort', values: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+          ],
           attachment: true,
           tool_call: true,
           cost: { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 },
@@ -150,6 +153,9 @@ function modelsDevFixture(): unknown {
           limit: { context: 1_000_000, output: 64_000 },
           reasoning: true,
           attachment: true,
+          reasoning_options: [
+            { type: 'effort', values: ['low', 'medium', 'high', 'max'] },
+          ],
         },
         'claude-3-5-sonnet-20241022': {
           name: 'Claude Sonnet 3.5',
@@ -159,6 +165,9 @@ function modelsDevFixture(): unknown {
           name: 'Claude Fable 5',
           limit: { context: 1_000_000, output: 128_000 },
           reasoning: true,
+          reasoning_options: [
+            { type: 'budget_tokens', min: 1024 },
+          ],
         },
         'claude-newfamily-5': {
           name: 'Claude Newfamily 5',
