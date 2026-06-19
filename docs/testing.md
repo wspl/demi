@@ -296,21 +296,21 @@ Owner：`packages/shell`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| cwd/env/last status 跨 `shell_exec` 保持 |  |  | `packages/shell/src/__tests__/environment.test.ts` | 防止 shell session 退化成一次性命令执行，模型后续命令跑在错误目录或环境。 |
-| stateful builtins 在当前 session 生效且非法参数不污染状态 |  |  | `environment.test.ts` | 防止 `cd/export/unset` 等失败后留下半修改状态。 |
-| `read`、stdin、heredoc、here-string 进入当前 shell 语义 |  |  | `environment.test.ts` | 防止交互式或 heredoc 命令的输入被错误丢弃或写到错误命令。 |
-| list operators、prefix assignments、assignment-only commands |  |  | `environment.test.ts` | 防止常见 shell 语法被错误 fallback 到系统 shell 或执行顺序错误。 |
-| parameter/arithmetic/command substitution expansion |  |  | `environment.test.ts` | 防止变量展开和命令替换与 bash 语义偏离，导致 agent 命令读写错误路径或值。 |
-| functions、local、return、function redirection |  |  | `environment.test.ts` | 防止 sourced script 或函数调用污染外层 scope，或 redirection 应用时机错误。 |
-| background jobs、jobs wait、spawn failure |  |  | `environment.test.ts` | 防止后台任务丢失、无法等待，或 spawn 失败导致 shell 挂死。 |
-| `source`、`set`、`shift`、`eval`、`type`、`command` builtin |  |  | `environment.test.ts` | 防止这些会改变 session 或 introspection 的 builtin 被错误交给系统命令。 |
-| registered command / builtin / function / system command 调度顺序 |  |  | `environment.test.ts` | 防止 agent 注册能力被 shell function 遮蔽，或 `command` 绕过状态 builtin。 |
-| glob、redirection、pipeline、compound command、subshell |  |  | `environment.test.ts` | 防止常见脚本组合在 agent shell 中与真实 shell 行为严重不一致。 |
-| `if`、`[[ ]]`、`case`、for/while/until、group、break/continue |  |  | `environment.test.ts` | 防止控制流判断错误，尤其是脚本自动化里跳错分支或循环无法退出。 |
-| explicit `exit` 不被 negation/control flow 改写 |  |  | `environment.test.ts` | 防止用户脚本已经退出但 runner 继续执行后续命令。 |
-| unsupported parser constructs 明确拒绝，不整段交给系统 shell |  |  | `environment.test.ts` | 防止逃过 audit/registered command/Host 抽象，直接用系统 shell 执行不可控脚本。 |
-| system command audit events 和 spawn failure |  |  | `environment.test.ts` | 防止 UI/RPC 审计缺失，或命令不存在时工具调用挂死。 |
-| 更完整的 bash 兼容性 spec |  |  | 主仓库覆盖关键 agent 语义；更完整 spec 在 just-bash 子模块 | 用来发现主仓库关键路径之外的 bash 兼容性回归。 |
+| cwd/env/last status 跨 `shell_exec` 保持 | 有效 | `environment.test.ts` 跨同一 shellId 断言 `cd` 后 pwd 改变、export 后 env 保持，并单独断言 `$?` 跨 exec、list、pipeline 更新；能发现 shell session 退化成一次性执行。验证：5.9 targeted command，73 pass。 | `packages/shell/src/__tests__/environment.test.ts` | 防止 shell session 退化成一次性命令执行，模型后续命令跑在错误目录或环境。 |
+| stateful builtins 在当前 session 生效且非法参数不污染状态 | 有效 | 测试覆盖 inline export/cd 对后续命令生效，非法 `cd one two` 不改 cwd，非法 export 只保留合法变量，unset 能删除变量/函数且非法 unset 不误删；能发现半修改状态。验证同上。 | `environment.test.ts` | 防止 `cd/export/unset` 等失败后留下半修改状态。 |
+| `read`、stdin、heredoc、here-string 进入当前 shell 语义 | 有效 | read 测试覆盖 here-string、IFS、`-r/-n/-N/-d`、EOF status；heredoc 测试覆盖 registered/system commands，compound input redirection 覆盖 here-string；能发现输入被丢到错误命令。验证同上。 | `environment.test.ts` | 防止交互式或 heredoc 命令的输入被错误丢弃或写到错误命令。 |
+| list operators、prefix assignments、assignment-only commands | 有效 | 测试断言 `&&/||/;` 执行顺序和 exit status，prefix assignment 只对单命令生效，assignment-only 持久化并支持 `+=`，command substitution status 用于 assignment-only。验证同上。 | `environment.test.ts` | 防止常见 shell 语法被错误 fallback 到系统 shell 或执行顺序错误。 |
+| parameter/arithmetic/command substitution expansion | 有效 | 测试覆盖默认值/赋值/替代/长度/pattern/substring/case/indirect parameter expansion，算术 expansion/commands，以及 command substitution 的 cwd/env 隔离、换行处理、legacy backtick/status。验证同上。 | `environment.test.ts` | 防止变量展开和命令替换与 bash 语义偏离，导致 agent 命令读写错误路径或值。 |
+| functions、local、return、function redirection | 有效 | 测试函数跨 exec 保持、函数参数不污染外层 positionals、函数内 cd/export 改 session，local 作用域、return 中断函数/source，function definition redirection 在 call time 生效。验证同上。 | `environment.test.ts` | 防止 sourced script 或函数调用污染外层 scope，或 redirection 应用时机错误。 |
+| background jobs、jobs wait、spawn failure | 有效 | 测试后台 job 跨 exec 可由 `jobs` 看到、`wait %1` 收集输出并清空 jobs；不存在命令作为后台 job 时 wait 返回 127 且 stderr 有命令名。验证同上。 | `environment.test.ts` | 防止后台任务丢失、无法等待，或 spawn 失败导致 shell 挂死。 |
+| `source`、`set`、`shift`、`eval`、`type`、`command` builtin | 有效 | 测试 source 改 env/cwd、PATH 查找、继承输入重定向和临时 positionals；set 管理 errexit/noglob 与 `set --`；shift 错误不污染；eval 当前 session 执行；type/command 做 lookup 和系统执行。验证同上。 | `environment.test.ts` | 防止这些会改变 session 或 introspection 的 builtin 被错误交给系统命令。 |
+| registered command / builtin / function / system command 调度顺序 | 有效 | 测试 registered command 优先于同名 shell function 且记录 registered-command audit，`command echo-cmd` 仍调用 registered，`command` 跳过普通函数转系统查找，`type` 报告 builtin/registered/function/file。验证同上。 | `environment.test.ts` | 防止 agent 注册能力被 shell function 遮蔽，或 `command` 绕过状态 builtin。 |
+| glob、redirection、pipeline、compound command、subshell | 有效 | 测试 glob 通过 host 展开且 quoted 不展开；文件/FD redirection、noclobber、registered command redirection、大输出重定向；pipeline 含 compound commands；group/subshell 状态与 redirection 语义。验证同上。 | `environment.test.ts` | 防止常见脚本组合在 agent shell 中与真实 shell 行为严重不一致。 |
+| `if`、`[[ ]]`、`case`、for/while/until、group、break/continue | 有效 | 测试覆盖 if/elif/no-match、`[[ ]]` file/string/regex/pattern、case/fallthrough/redirection、for/C-style for/while/until、group command、break/continue 嵌套和非法用法。验证同上。 | `environment.test.ts` | 防止控制流判断错误，尤其是脚本自动化里跳错分支或循环无法退出。 |
+| explicit `exit` 不被 negation/control flow 改写 | 有效 | 测试 `! if ... exit`、`! for ... exit`、`! while ... exit`、`! { exit; }`、`! exit` 都保持原 exit code 7；能发现 negation 或控制流吞掉显式 exit。验证同上。 | `environment.test.ts` | 防止用户脚本已经退出但 runner 继续执行后续命令。 |
+| unsupported parser constructs 明确拒绝，不整段交给系统 shell | 有效 | 测试 `time printf SHOULD_NOT_RUN` reject `Unsupported shell syntax: timed pipelines`；若错误 fallback 到系统 shell 会产生输出或 audit，因此能直接发现绕过 parser。验证同上。 | `environment.test.ts` | 防止逃过 audit/registered command/Host 抽象，直接用系统 shell 执行不可控脚本。 |
+| system command audit events 和 spawn failure | 有效 | 测试 `printf hi` 产生 system-command audit，cwd/args/exitCode 精确断言；不存在命令返回 exited 127 和 stderr，不挂住；能发现审计缺失或 spawn failure 不收敛。验证同上。 | `environment.test.ts` | 防止 UI/RPC 审计缺失，或命令不存在时工具调用挂死。 |
+| 更完整的 bash 兼容性 spec | Gated | 主仓库 5.9 targeted command 只覆盖关键 agent shell 语义；`packages/just-bash` 有独立 vitest/comparison 测试脚本和大量 imported specs，但未纳入本次默认 targeted command，需要在子模块单独运行。 | 主仓库覆盖关键 agent 语义；更完整 spec 在 just-bash 子模块 | 用来发现主仓库关键路径之外的 bash 兼容性回归。 |
 
 ### 5.10 Shell 控制面
 
