@@ -381,10 +381,10 @@ Owner：`packages/agent-coding`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `todo add/list/update/done` raw output |  |  | `packages/agent-coding/src/__tests__/todo-command.test.ts` | 防止模型拿不到可读的任务状态反馈。 |
-| `todo add/list/update/done` JSON output |  |  | `todo-command.test.ts` | 防止 agent 或 UI 需要结构化 todo 状态时解析失败。 |
-| todo 状态按 agent session id 隔离 |  |  | `todo-command.test.ts` | 防止不同会话共享 todo，造成用户任务串线。 |
-| todo 与 shell id 不混淆 |  |  | `todo-command.test.ts` 覆盖 agent session 隔离和同一 agent session 下 shell 重建后的 storage 延续 | 需要发现 shellId 和 agentSessionId 再次混淆。 |
+| `todo add/list/update/done` raw output | 部分有效 | 测试断言 raw `todo add` 和 raw `todo update` 输出，但没有断言 raw `todo list` 和 raw `todo done`；能发现一部分可读输出退化，但矩阵未满。验证：5.14 targeted command，3 pass。 | `packages/agent-coding/src/__tests__/todo-command.test.ts` | 防止模型拿不到可读的任务状态反馈。 |
+| `todo add/list/update/done` JSON output | 部分有效 | 测试解析并精确断言 `update --json`、`done --json`、`list --json`；`add --json` 仅被执行但未解析断言形状。验证同上。 | `todo-command.test.ts` | 防止 agent 或 UI 需要结构化 todo 状态时解析失败。 |
+| todo 状态按 agent session id 隔离 | 有效 | 测试不同 agent session 各自添加首个 todo 都得到 `T1`，并在 shell 重建测试中断言 `other-agent` 的列表只含自身 todo；能发现跨 session 串线。验证同上。 | `todo-command.test.ts` | 防止不同会话共享 todo，造成用户任务串线。 |
+| todo 与 shell id 不混淆 | 有效 | 测试 dispose 旧 shell 后，同一 agent session 在新 shell 中继续累积 `T1/T2`，而另一个 agent session 在第三个 shell 中独立为 `T1`；结合 `BashEnvironment` 的 storage scope 能发现把 todo 绑到 shellId 的回归。验证同上。 | `todo-command.test.ts` 覆盖 agent session 隔离和同一 agent session 下 shell 重建后的 storage 延续 | 需要发现 shellId 和 agentSessionId 再次混淆。 |
 
 ### 5.15 Coding Agent 工作流
 
