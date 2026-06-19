@@ -3,7 +3,7 @@ import type { ModelSelection } from '@demi/core'
 import { events } from '@demi/provider'
 import { Transcript } from '../index'
 import {
-  createDefinition,
+  createRuntime,
   createSession,
   makeTranscript,
   model,
@@ -17,7 +17,7 @@ test('provider request items preserve a stable prefix across ordinary turns', as
     [events.text('second answer'), events.response()],
     [events.text('third answer'), events.response()],
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: () => [
       {
         name: 'stable_tool',
@@ -27,7 +27,7 @@ test('provider request items preserve a stable prefix across ordinary turns', as
       },
     ],
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
 
   await session.send(text('first'))
   await session.send(text('second'))
@@ -74,7 +74,7 @@ test('provider request text content is bounded without mutating the transcript a
       return [events.text('bounded'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.send(text('continue'))
 
@@ -156,7 +156,7 @@ test('provider request prefix restabilizes after compaction replaces old history
     [events.text('after compact one'), events.response()],
     [events.text('after compact two'), events.response()],
   ])
-  const session = createSession(provider, createDefinition(), transcript, model, {
+  const session = createSession(provider, createRuntime(), transcript, model, {
     compaction: { keepRecentTokens: 1 },
   })
 
@@ -210,7 +210,7 @@ test('provider request is built from effective transcript without internal block
       return [events.text('answer'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.send(text('new question'))
 })
@@ -252,7 +252,7 @@ test('cache usage is recorded without leaking into model context or breaking too
       return [events.text('done'), events.response({ inputTokens: 1, outputTokens: 1 })]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'cache_tool',
@@ -265,7 +265,7 @@ test('cache usage is recorded without leaking into model context or breaking too
       },
     ],
   })
-  const session = createSession(provider, definition, undefined, smallModel)
+  const session = createSession(provider, runtime, undefined, smallModel)
 
   await session.send(text('use tool'))
 
@@ -333,7 +333,7 @@ async function prefixAfterTwoTurns(options: {
     [events.text('first answer'), events.response()],
     [events.text('second answer'), events.response()],
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     systemPrompt: () => options.systemPrompt,
     preamble: () => {
       round += 1
@@ -348,7 +348,7 @@ async function prefixAfterTwoTurns(options: {
       },
     ],
   })
-  const session = createSession(provider, definition, undefined, selection)
+  const session = createSession(provider, runtime, undefined, selection)
 
   await session.send(text('first'))
   await session.send(text(options.secondUser))

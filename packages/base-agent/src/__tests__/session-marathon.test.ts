@@ -5,7 +5,7 @@ import { AgentSession, Transcript } from '../index'
 import {
   assertNoOrphanToolItems,
   assertTranscriptInvariants,
-  createDefinition,
+  createRuntime,
   createSession,
   MemorySessionStore,
   RecordingProvider,
@@ -77,7 +77,7 @@ test('AgentSession marathon keeps requests and transcript consistent across long
       return [events.text('finished'), events.response()]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'echo_tool',
@@ -90,7 +90,7 @@ test('AgentSession marathon keeps requests and transcript consistent across long
       },
     ],
   })
-  session = createSession(provider, definition)
+  session = createSession(provider, runtime)
 
   await session.send(text('tool step'))
   expect(session.state().toolCalls).toBe(1)
@@ -131,7 +131,7 @@ test('restored session continues from snapshot without re-executing completed to
     [events.toolCall('tool-1', 'write_once', { path: 'file.txt' }), events.response()],
     [events.text('wrote file'), events.response()],
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'write_once',
@@ -144,7 +144,7 @@ test('restored session continues from snapshot without re-executing completed to
       },
     ],
   })
-  const first = createSession(firstProvider, definition, undefined, undefined, { store })
+  const first = createSession(firstProvider, runtime, undefined, undefined, { store })
 
   await first.send(text('write file'))
   expect(first.state().toolCalls).toBe(1)
@@ -164,7 +164,7 @@ test('restored session continues from snapshot without re-executing completed to
       return [events.text('restored follow-up'), events.response()]
     },
   ])
-  const restored = createSession(restoredProvider, definition, snapshot ? new Transcript(snapshot.transcript.blocks) : undefined)
+  const restored = createSession(restoredProvider, runtime, snapshot ? new Transcript(snapshot.transcript.blocks) : undefined)
 
   await restored.send(text('continue after restore'))
 
@@ -178,7 +178,7 @@ test('AgentSession.fromSnapshot restores state and model context with a fresh id
     [events.toolCall('tool-1', 'write_once', { path: 'file.txt' }), events.response()],
     [events.text('wrote file'), events.response()],
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'write_once',
@@ -191,7 +191,7 @@ test('AgentSession.fromSnapshot restores state and model context with a fresh id
       },
     ],
   })
-  const first = createSession(firstProvider, definition, undefined, undefined, { store })
+  const first = createSession(firstProvider, runtime, undefined, undefined, { store })
 
   await first.send(text('write file'))
 
@@ -222,7 +222,7 @@ test('AgentSession.fromSnapshot restores state and model context with a fresh id
   const restored = AgentSession.fromSnapshot(
     {
       provider: restoredProvider,
-      definition,
+      runtime,
       snapshot,
     },
     {
@@ -253,11 +253,11 @@ test('AgentSession.fromSnapshot restores state and model context with a fresh id
   expect(restoredProvider.requests).toHaveLength(2)
 })
 
-test('AgentSession.fromSnapshot rejects mismatched definitions', async () => {
+test('AgentSession.fromSnapshot rejects mismatched runtimes', async () => {
   const store = new MemorySessionStore()
   const provider = new RecordingProvider([[events.text('answer'), events.response()]])
-  const definition = createDefinition()
-  const session = createSession(provider, definition, undefined, undefined, { store })
+  const runtime = createRuntime()
+  const session = createSession(provider, runtime, undefined, undefined, { store })
 
   await session.send(text('save snapshot'))
 
@@ -267,10 +267,10 @@ test('AgentSession.fromSnapshot rejects mismatched definitions', async () => {
   expect(() => {
     AgentSession.fromSnapshot({
       provider: new RecordingProvider([]),
-      definition: createDefinition({ name: 'other-agent' }),
+      runtime: createRuntime({ harnessName: 'other-agent' }),
       snapshot,
     })
-  }).toThrow('snapshot definition "test-agent" does not match "other-agent"')
+  }).toThrow('snapshot harness "test-agent" does not match "other-agent"')
 })
 
 test('restored session after provider error does not duplicate completed tool results', async () => {
@@ -280,7 +280,7 @@ test('restored session after provider error does not duplicate completed tool re
     [events.text('wrote file'), events.response()],
     [events.error('provider failed after write', 'rate_limit')],
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'write_once',
@@ -293,7 +293,7 @@ test('restored session after provider error does not duplicate completed tool re
       },
     ],
   })
-  const first = createSession(firstProvider, definition, undefined, undefined, { store })
+  const first = createSession(firstProvider, runtime, undefined, undefined, { store })
 
   await first.send(text('write file'))
   await expect(first.send(text('after write'))).rejects.toThrow('provider failed after write')
@@ -309,7 +309,7 @@ test('restored session after provider error does not duplicate completed tool re
       return [events.text('recovered after restore'), events.response()]
     },
   ])
-  const restored = createSession(restoredProvider, definition, snapshot ? new Transcript(snapshot.transcript.blocks) : undefined)
+  const restored = createSession(restoredProvider, runtime, snapshot ? new Transcript(snapshot.transcript.blocks) : undefined)
 
   await restored.send(text('recover after error'))
 

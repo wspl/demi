@@ -2,9 +2,8 @@ import { mkdir } from 'node:fs/promises'
 import process from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import { resolve } from 'node:path'
-import type { AgentDefinition } from '@demi/base-agent'
 import type { Block, ModelSelection, SessionPhase, ThinkingEffort, TokenUsage, UserContentBlock } from '@demi/core'
-import { createCodingAgentDefinition } from '@demi/agent-coding'
+import { createCodingAgentHarness } from '@demi/coding-agent'
 import { ProviderRegistry } from '@demi/provider'
 import { claudeAuthState, claudeRuntimeState, createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
 import {
@@ -14,7 +13,6 @@ import {
   type ClientSessionEvent,
   type ProviderConfig,
 } from '@demi/rpc'
-import { BashEnvironment } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 
 interface TuiOptions {
@@ -95,13 +93,7 @@ async function main(): Promise<void> {
   await printClaudeStatus()
 
   const host = new LocalHost(options.cwd)
-  const environment = new BashEnvironment({
-    host,
-    initialEnv: { PATH: process.env.PATH ?? '' },
-    yieldAfterMs: options.yieldAfterMs,
-    timeoutMs: options.timeoutMs,
-  })
-  const definition = createCodingAgentDefinition({ environment })
+  const harness = createCodingAgentHarness({ host })
 
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register(createClaudeCodeProviderDefinition())
@@ -110,7 +102,12 @@ async function main(): Promise<void> {
   const rpcHost = new RpcHost({
     transport: transports.host,
     providerRegistry,
-    definitions: { coding: definition as AgentDefinition<unknown> },
+    harnesses: { coding: harness },
+    shell: {
+      initialEnv: { PATH: process.env.PATH ?? '' },
+      yieldAfterMs: options.yieldAfterMs,
+      timeoutMs: options.timeoutMs,
+    },
   })
   const client = new RpcClient(transports.client)
   const renderer = createRenderer()

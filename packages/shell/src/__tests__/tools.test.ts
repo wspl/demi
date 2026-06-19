@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, type AgentDefinition } from '@demi/base-agent'
+import { AgentSession, type AgentHarnessRuntime } from '@demi/base-agent'
 import { StubProvider, events, type InferenceRequest } from '@demi/provider'
 import { BashEnvironment, createShellSessionTools, toToolResult, type ShellToolResult } from '../index'
 import { LocalHost } from '../local-host'
@@ -62,19 +62,19 @@ test('createShellSessionTools integrates shell_exec and shell_wait with AgentSes
     shellIdFactory: () => 'tool-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-test',
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'shell-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
   }
-  const shellExec = definition.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_exec')
+  const shellExec = runtime.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_exec')
   expect(shellExec?.description).toContain('foreground with yieldAfterMs')
   expect(shellExec?.description).toContain('instead of backgrounding and pkill/killall')
-  const shellWait = definition.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_wait')
+  const shellWait = runtime.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_wait')
   expect(shellWait?.description).toContain('Use yieldAfterMs for short status polls')
   expect(shellWait?.description).toContain('timeoutMs is a hard stop')
-  const shellInput = definition.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_input')
+  const shellInput = runtime.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_input')
   expect(shellInput?.description).toContain('foreground system process')
   expect(shellInput?.description).toContain('Include a newline')
   expect(shellInput?.description).toContain('do not rely on the session script builtin read across turns')
@@ -96,7 +96,7 @@ test('createShellSessionTools integrates shell_exec and shell_wait with AgentSes
     provider,
     model,
     cwd: process.cwd(),
-    definition,
+    runtime,
   })
 
   await session.send([{ type: 'text', text: 'run command' }])
@@ -179,8 +179,8 @@ test('shell_exec repeat suppression returns to the provider and keeps later send
     shellIdFactory: () => 'tool-repeat-agent-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-repeat-agent-test',
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'shell-repeat-agent-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
@@ -207,7 +207,7 @@ test('shell_exec repeat suppression returns to the provider and keeps later send
       return [events.text('after works'), events.response()]
     },
   ])
-  const session = new AgentSession({ provider, model, cwd: process.cwd(), definition })
+  const session = new AgentSession({ provider, model, cwd: process.cwd(), runtime })
 
   await session.send([{ type: 'text', text: 'repeat command' }])
   await session.send([{ type: 'text', text: 'after suppression' }])
@@ -254,8 +254,8 @@ test('shell_exec observes AgentSession abort signals and terminates the foregrou
     shellIdFactory: () => 'tool-abort-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-abort-test',
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'shell-abort-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
@@ -272,7 +272,7 @@ test('shell_exec observes AgentSession abort signals and terminates the foregrou
     provider,
     model,
     cwd: root,
-    definition,
+    runtime,
   })
 
   const send = session.send([{ type: 'text', text: 'run long command' }])
@@ -294,8 +294,8 @@ test('shell_wait observes AgentSession abort signals and terminates the foregrou
     shellIdFactory: () => 'tool-wait-abort-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-wait-abort-test',
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'shell-wait-abort-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
@@ -314,7 +314,7 @@ test('shell_wait observes AgentSession abort signals and terminates the foregrou
       }),
     ],
   ])
-  const session = new AgentSession({ provider, model, cwd: root, definition })
+  const session = new AgentSession({ provider, model, cwd: root, runtime })
 
   const send = session.send([{ type: 'text', text: 'wait for long command' }])
   await waitFor(() => {
@@ -335,8 +335,8 @@ test('shell_input observes AgentSession abort signals and terminates the foregro
     shellIdFactory: () => 'tool-input-abort-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-input-abort-test',
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'shell-input-abort-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
@@ -356,7 +356,7 @@ test('shell_input observes AgentSession abort signals and terminates the foregro
       }),
     ],
   ])
-  const session = new AgentSession({ provider, model, cwd: root, definition })
+  const session = new AgentSession({ provider, model, cwd: root, runtime })
 
   const send = session.send([{ type: 'text', text: 'send input to long command' }])
   await waitFor(() => {

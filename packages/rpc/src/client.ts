@@ -27,9 +27,9 @@ export class RpcClient {
     this.unsubscribeTransport = transport.onFrame((frame) => this.handleServerFrame(frame))
   }
 
-  open(definition: string, provider: ProviderConfig, cwd: string): Promise<void> {
+  open(harness: string, provider: ProviderConfig, cwd: string): Promise<void> {
     const wait = this.waitForFrame('opened')
-    this.sendFrame({ type: 'open', definition, provider, cwd })
+    this.sendFrame({ type: 'open', harness, provider, cwd })
     return wait
   }
 

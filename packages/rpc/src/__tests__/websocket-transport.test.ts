@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
-import type { AgentDefinition } from '@demi/base-agent'
 import type { ModelSelection } from '@demi/core'
+import type { AgentHarness } from '@demi/shell'
+import { LocalHost } from '@demi/shell/local-host'
 import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
 import {
   RpcClient,
@@ -109,7 +110,7 @@ test('WebSocket transports carry RpcClient and RpcHost traffic end to end', asyn
   new RpcHost({
     transport: createWebSocketHostTransport(hostSocket),
     providerRegistry,
-    definitions: { test: createDefinition() },
+    harnesses: { test: createHarness() },
   })
   const client = new RpcClient(createWebSocketClientTransport(clientSocket))
 
@@ -137,7 +138,7 @@ test('WebSocket transports preserve complex RpcClient action convergence', async
   new RpcHost({
     transport: createWebSocketHostTransport(hostSocket),
     providerRegistry,
-    definitions: { test: createDefinition() },
+    harnesses: { test: createHarness() },
   })
   const client = new RpcClient(createWebSocketClientTransport(clientSocket))
   const seen: ClientSessionEvent[] = []
@@ -182,12 +183,12 @@ function nextFrame<T>(transport: { onFrame(handler: (frame: T) => void): () => v
   })
 }
 
-function createDefinition(): AgentDefinition<Record<string, never>> {
+function createHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
     initialState: () => ({}),
+    host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
-    tools: () => [],
   }
 }
 

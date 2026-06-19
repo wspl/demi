@@ -5,7 +5,7 @@ import { Transcript } from '../index'
 import {
   assertNoOrphanToolItems,
   assertTranscriptInvariants,
-  createDefinition,
+  createRuntime,
   createSession,
   makeTranscript,
   MemorySessionStore,
@@ -58,7 +58,7 @@ test('preflight compaction summarizes before the model request and keeps the inc
       return [events.text('new answer'), events.response()]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: () => [
       {
         name: 'noop_tool',
@@ -68,7 +68,7 @@ test('preflight compaction summarizes before the model request and keeps the inc
       },
     ],
   })
-  const session = createSession(provider, definition, transcript, thinkingModel, {
+  const session = createSession(provider, runtime, transcript, thinkingModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
   })
 
@@ -122,7 +122,7 @@ test('retry triggers preflight compaction before rerunning the latest user', asy
       return [events.text('retried answer'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition({ preamble: () => null }), transcript, preflightModel, {
+  const session = createSession(provider, createRuntime({ preamble: () => null }), transcript, preflightModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
   })
 
@@ -164,7 +164,7 @@ test('resume triggers preflight compaction before continuing an aborted long con
       return [events.text('continued after compact'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition({ preamble: () => null }), transcript, preflightModel, {
+  const session = createSession(provider, createRuntime({ preamble: () => null }), transcript, preflightModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
   })
 
@@ -180,7 +180,7 @@ test('compaction summary provider errors do not leave boundary or marker blocks'
   const transcript = oldAndRecentTranscript()
   const before = transcript.snapshot()
   const provider = new RecordingProvider([[events.error('summary failed', 'rate_limit')]])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await expect(session.compact()).rejects.toThrow('summary failed')
 
@@ -195,7 +195,7 @@ test('aborting a hanging compaction summary does not leave boundary or marker bl
   const transcript = oldAndRecentTranscript()
   const before = transcript.snapshot()
   const provider = new HangingSummaryProvider()
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   const compacting = session.compact()
   await provider.summaryStarted.promise
@@ -218,7 +218,7 @@ test('empty compaction summaries are no-op and keep the session usable', async (
     [events.response()],
     [events.text('after empty summary'), events.response()],
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
   await session.send(text('follow up'))
@@ -243,7 +243,7 @@ test('compaction summary input keeps completed tool_use and tool_result paired',
       return [events.text('tool summary'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
 
@@ -272,7 +272,7 @@ test('compaction summary input keeps aborted text progress', async () => {
       return [events.text('aborted progress summary'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
 
@@ -301,7 +301,7 @@ test('compaction summary context overflow errors are atomic and classified when 
       return [events.text('recovered'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
   const errors: Error[] = []
   session.subscribe((event) => {
     if (event.type === 'error') errors.push(event.error)
@@ -368,7 +368,7 @@ test('compaction summary context overflow retries with a smaller summary slice',
       return [events.text('after trimmed compact answer'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
   await session.send(text('after trimmed compact'))
@@ -416,7 +416,7 @@ test('compaction summary iterator context overflow retries with a smaller summar
       return [events.text('after iterator compact'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
   await session.send(text('after iterator retry'))
@@ -454,7 +454,7 @@ test('compaction summary input preserves thinking, redacted thinking, and tool m
       return [events.text('complex summary'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript, model, {
+  const session = createSession(provider, createRuntime(), transcript, model, {
     compaction: { keepRecentTokens: 2 },
   })
 
@@ -516,7 +516,7 @@ test('manual compaction after an existing boundary summarizes only the latest re
       return [events.text('summary two'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
   await session.send(text('after compact'))
@@ -546,7 +546,7 @@ test('single oversized turn can be compacted at a block boundary without orphani
       return [events.text('single turn summary'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript, model, {
+  const session = createSession(provider, createRuntime(), transcript, model, {
     compaction: { keepRecentTokens: 2 },
   })
 
@@ -566,7 +566,7 @@ test('compaction is a no-op while a tool call is still pending', async () => {
   transcript.pushUserTurn(model, text('start tool'))
   transcript.applyProviderEvent(model, events.toolCall('tool-1', 'slow_tool', {}))
   const provider = new RecordingProvider([])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
 
@@ -593,7 +593,7 @@ test('aborting during preflight compaction stops before the model request and st
   }
   const transcript = oldAndRecentTranscript()
   const provider = new HangingSummaryProvider()
-  const session = createSession(provider, createDefinition(), transcript, smallModel, {
+  const session = createSession(provider, createRuntime(), transcript, smallModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
   })
 
@@ -633,7 +633,7 @@ test('aborting during retry preflight compaction stops before rerunning the mode
   transcript.applyProviderEvent(model, events.text('bad answer'))
   transcript.applyProviderEvent(model, events.response())
   const provider = new HangingSummaryProvider()
-  const session = createSession(provider, createDefinition(), transcript, preflightModel, {
+  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
   })
 
@@ -663,7 +663,7 @@ test('aborting during resume preflight compaction stops before continuing the mo
   transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
   transcript.pushAbort(model)
   const provider = new HangingSummaryProvider()
-  const session = createSession(provider, createDefinition(), transcript, preflightModel, {
+  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
   })
 
@@ -728,7 +728,7 @@ test('queued send during preflight compaction drains after the original send', a
       return [events.text('second answer'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript, preflightModel, {
+  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
   })
 
@@ -790,7 +790,7 @@ test('retry queued during preflight compaction reruns the original send after it
       return [events.text('retried answer'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript, preflightModel, {
+  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
   })
 
@@ -851,7 +851,7 @@ test('resume queued during preflight compaction continues after the original sen
       return [events.text('resumed answer'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript, preflightModel, {
+  const session = createSession(provider, createRuntime(), transcript, preflightModel, {
     compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
   })
 
@@ -875,7 +875,7 @@ test('resume queued during preflight compaction continues after the original sen
 test('queued send during compaction drains after the summary commits', async () => {
   const transcript = oldAndRecentTranscript()
   const provider = new CompactGateProvider()
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   const compacting = session.compact()
   await provider.summaryStarted.promise
@@ -914,7 +914,7 @@ test('retry queued during compaction reruns the latest user after the summary co
       return [events.text('retried after compact'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   const compacting = session.compact()
   await provider.summaryStarted.promise
@@ -953,7 +953,7 @@ test('resume queued during compaction continues from the compacted abort point',
       return [events.text('resumed after compact'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   const compacting = session.compact()
   await provider.summaryStarted.promise
@@ -989,7 +989,7 @@ test('auto compaction after a tool result resumes without re-executing the tool'
       return [events.text('continued'), events.response()]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'count_tool',
@@ -1002,7 +1002,7 @@ test('auto compaction after a tool result resumes without re-executing the tool'
       },
     ],
   })
-  const session = createSession(provider, definition, undefined, smallModel)
+  const session = createSession(provider, runtime, undefined, smallModel)
 
   await session.send(text('use tool'))
 
@@ -1038,7 +1038,7 @@ test('auto compaction counts cache usage as context pressure', async () => {
       return [events.text('continued after cache pressure'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition({ preamble: () => null }), undefined, smallModel, {
+  const session = createSession(provider, createRuntime({ preamble: () => null }), undefined, smallModel, {
     compaction: { keepRecentTokens: 1 },
   })
 
@@ -1062,7 +1062,7 @@ test('compaction boundary and marker survive snapshot reconstruction', async () 
   const store = new MemorySessionStore()
   const transcript = oldAndRecentTranscript()
   const provider = new RecordingProvider([[events.text('persisted summary'), events.response()]])
-  const session = createSession(provider, createDefinition(), transcript, model, { store })
+  const session = createSession(provider, createRuntime(), transcript, model, { store })
 
   await session.compact()
 
@@ -1088,7 +1088,7 @@ test('compaction boundary and marker survive snapshot reconstruction', async () 
       return [events.text('restored ok'), events.response()]
     },
   ])
-  const restored = createSession(restoredProvider, createDefinition(), restoredTranscript)
+  const restored = createSession(restoredProvider, createRuntime(), restoredTranscript)
 
   await restored.send(text('after restore'))
 

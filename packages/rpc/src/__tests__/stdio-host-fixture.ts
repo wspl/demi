@@ -1,5 +1,6 @@
-import type { AgentDefinition } from '@demi/base-agent'
 import { ProviderRegistry, StubProvider, events } from '@demi/provider'
+import type { AgentHarness } from '@demi/shell'
+import { LocalHost } from '@demi/shell/local-host'
 import { RpcHost } from '../index'
 import { createStdioHostTransport } from '../stdio-transport'
 
@@ -16,14 +17,14 @@ providerRegistry.register({
 new RpcHost({
   transport: createStdioHostTransport(process.stdin, process.stdout),
   providerRegistry,
-  definitions: { test: createDefinition() },
+  harnesses: { test: createHarness() },
 })
 
-function createDefinition(): AgentDefinition<Record<string, never>> {
+function createHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
     initialState: () => ({}),
+    host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
-    tools: () => [],
   }
 }

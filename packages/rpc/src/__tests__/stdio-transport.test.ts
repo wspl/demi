@@ -6,8 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import type { AgentDefinition } from '@demi/base-agent'
-import { BashEnvironment, createShellSessionTools } from '@demi/shell'
+import type { AgentHarness } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
 import {
@@ -80,7 +79,7 @@ test('StdioTransport carries the same RpcClient/RpcHost frames over NDJSON', asy
   new RpcHost({
     transport: createStdioHostTransport(clientToHost, hostToClient),
     providerRegistry,
-    definitions: { test: createDefinition() },
+    harnesses: { test: createHarness() },
   })
   const client = new RpcClient(createStdioClientTransport(hostToClient, clientToHost))
 
@@ -107,7 +106,7 @@ test('StdioTransport preserves complex RpcClient action convergence over NDJSON'
   const host = new RpcHost({
     transport: createStdioHostTransport(clientToHost, hostToClient),
     providerRegistry,
-    definitions: { test: createDefinition() },
+    harnesses: { test: createHarness() },
   })
   const client = new RpcClient(createStdioClientTransport(hostToClient, clientToHost))
   const seen: ClientSessionEvent[] = []
@@ -153,18 +152,6 @@ test('StdioTransport close disposes shell foreground processes through RpcHost',
   const leakedPath = join(root, 'stdio-leaked.txt')
   const clientToHost = new PassThrough()
   const hostToClient = new PassThrough()
-  const shellEnvironment = new BashEnvironment({
-    host: new LocalHost(root),
-    initialEnv: { PATH: process.env.PATH ?? '' },
-    shellIdFactory: () => 'stdio-close-shell',
-  })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-stdio',
-    initialState: () => ({}),
-    systemPrompt: () => 'system',
-    tools: () => createShellSessionTools(shellEnvironment),
-    dispose: () => shellEnvironment.disposeAllShells(),
-  }
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'stdio-shell',
@@ -183,17 +170,20 @@ test('StdioTransport close disposes shell foreground processes through RpcHost',
   new RpcHost({
     transport: createStdioHostTransport(clientToHost, hostToClient),
     providerRegistry,
-    definitions: { test: definition },
+    shell: {
+      initialEnv: { PATH: process.env.PATH ?? '' },
+      shellIdFactory: () => 'stdio-close-shell',
+    },
+    harnesses: { test: createHarness() },
   })
   const client = new RpcClient(createStdioClientTransport(hostToClient, clientToHost))
 
   await client.open('test', { type: 'stdio-shell', model }, root)
   await client.send([{ type: 'text', text: 'start long command' }])
-  await waitFor(() => shellEnvironment.getShell('stdio-close-shell') !== null)
+  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   await client.close()
 
-  expect(shellEnvironment.getShell('stdio-close-shell')).toBeNull()
   await delay(250)
   await expect(access(leakedPath)).rejects.toThrow()
 })
@@ -225,12 +215,12 @@ test('StdioTransport carries RpcClient frames to a child-process RpcHost', async
   }
 })
 
-function createDefinition(): AgentDefinition<Record<string, never>> {
+function createHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
     initialState: () => ({}),
+    host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
-    tools: () => [],
   }
 }
 

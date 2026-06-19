@@ -45,8 +45,8 @@
 | 模型可见上下文稳定 | provider request 只来自 effective transcript 和当前 prompt context；内部块不泄漏；普通多轮 prefix 不无意义抖动 | `Transcript.collectInferenceItems` 复杂 fixture，连续 turn request prefix 比较，bounded injection 测试 |
 | Compaction 可支撑长任务 | preflight/manual/auto compact 都可恢复；summary request 契约正确；不切 tool pair；失败/空 summary 不污染 transcript；多次 compact 只 replay 最新 boundary | `base-agent` compact P0 套件，覆盖 summary request、exact replay、failure atomicity、multi-compact、queue/persistence |
 | Context cache baseline | cache usage 不丢；cache read/write 作为 provider 真实上下文 token 参与 auto compact；cache 字段本身不进入模型可见上下文；compact 后 request prefix 能重新稳定 | provider usage 映射、AgentSession/RPC usage 传播、compact 后 request 稳定性测试 |
-| Shell 控制面支撑真实长命令 | 长进程走 foreground，wait/input/abort 语义稳定；不恢复空 input 轮询；不误报 needs_input | `shell` 单测、`agent-coding` 长命令 scenario、真实 provider/TUI gated smoke |
-| Coding workflow 能发现真实问题 | 不是只验证单步命令，而是覆盖创建项目、测试失败、读取错误、修复、测试通过、tool error recovery | `agent-coding` scenario tests，断言真实文件、todo、shell result、provider request |
+| Shell 控制面支撑真实长命令 | 长进程走 foreground，wait/input/abort 语义稳定；不恢复空 input 轮询；不误报 needs_input | `shell` 单测、`coding-agent` 长命令 scenario、真实 provider/TUI gated smoke |
+| Coding workflow 能发现真实问题 | 不是只验证单步命令，而是覆盖创建项目、测试失败、读取错误、修复、测试通过、tool error recovery | `coding-agent` scenario tests，断言真实文件、todo、shell result、provider request |
 | 壳子路径能呈现真实模型行为 | TUI/RPC 能显示真实 text/thinking/tool output，真实 Claude Code provider 确实产出模型回复 | RPC transport tests，TUI 自动化或 gated smoke |
 
 ### 3.2 当前门槛审查结论
@@ -198,9 +198,9 @@ Owner：`packages/base-agent`
 | resume 标记 abort 为 resumed，并追加 resume turn | 有效 | 测试手工构造 user+abort transcript，resume 后断言 abort `isResumed=true`，并追加 resume/text/response；能发现恢复历史无法区分已处理 abort。验证同上。 | `session.test.ts` | 防止恢复后 transcript 无法区分已中止内容和继续执行内容。 |
 | abort 后 resume 前清理 pending tool calls | 有效 | 测试慢 tool pending 后 abort，断言 pending tool_call 被转成 error output 且 pending 清零；resume 的 provider request 必须包含 user/tool_use/error tool_result/resume user message，避免重复等待旧 tool。验证同上。 | `session.test.ts` | 防止恢复时模型看到仍在执行的旧 tool_call，重复等待或重复执行工具。 |
 | mutation guard 拒绝 busy/reserved 期间 mutation | 有效 | 测试 `reserveMutation` 期间再次 reserve 抛错、run busy 期间 reserve 抛错；另一个测试在 external mutation reserved 时 send/retry/resume/compact 都 reject，且不改 phase、queue、events。验证同上。 | `session.test.ts` | 防止 compact/retry/resume 与 active run 交错修改 transcript，造成不可恢复状态。 |
-| store snapshot 写入 | 有效 | 测试注入 MemorySessionStore 后 send，断言 store 收到 snapshots，最后 snapshot 包含 definitionName、cwd 和 user/text/response transcript；另测 store snapshot 的 state 是持久化边界深拷贝，后续 tool mutation 不会改写旧 snapshot，外部改 snapshot 也不会污染 live state。验证：5.4 targeted command，76 pass。 | `session.test.ts` | 防止进程退出或 host 重启后没有可恢复的会话状态，或旧持久化 snapshot 被 live state mutation 污染。 |
+| store snapshot 写入 | 有效 | 测试注入 MemorySessionStore 后 send，断言 store 收到 snapshots，最后 snapshot 包含 harnessName、cwd 和 user/text/response transcript；另测 store snapshot 的 state 是持久化边界深拷贝，后续 tool mutation 不会改写旧 snapshot，外部改 snapshot 也不会污染 live state。验证：5.4 targeted command，76 pass。 | `session.test.ts` | 防止进程退出或 host 重启后没有可恢复的会话状态，或旧持久化 snapshot 被 live state mutation 污染。 |
 | extension state snapshot 通过 lifecycle 写入并持久化 | 有效 | 测试 after_tool_call lifecycle 写入 extension state snapshot，随后检查 store snapshot 中包含 `extension_state_snapshot`、extensionName 和 `{ toolCalls: 1 }`；能发现扩展状态只留在内存。验证同上。 | `session.test.ts` | 防止 todo 等 agent 扩展状态只在内存里存在，恢复后状态丢失。 |
-| 从 store snapshot 重建 session 后继续运行 | 有效 | `session-marathon.test.ts` 覆盖旧的 transcript-only restore 不重复执行已完成工具；新增 `AgentSession.fromSnapshot` 官方 loader 测试，断言恢复 state、cwd、model、transcript replay，恢复后 runtime 为 idle 且不自动重放持久化 queue，后续 block 使用恢复时传入的 idFactory，外部修改 snapshot 不污染 restored session，并拒绝 definitionName mismatch。验证同上。 | `session-marathon.test.ts` | 需要发现 snapshot schema、definitionName、state、phase、queue、idFactory 或 transcript replay 在重启后不兼容的问题。 |
+| 从 store snapshot 重建 session 后继续运行 | 有效 | `session-marathon.test.ts` 覆盖旧的 transcript-only restore 不重复执行已完成工具；新增 `AgentSession.fromSnapshot` 官方 loader 测试，断言恢复 state、cwd、model、transcript replay，恢复后 runtime 为 idle 且不自动重放持久化 queue，后续 block 使用恢复时传入的 idFactory，外部修改 snapshot 不污染 restored session，并拒绝 harnessName mismatch。验证同上。 | `session-marathon.test.ts` | 需要发现 snapshot schema、harnessName、state、phase、queue、idFactory 或 transcript replay 在重启后不兼容的问题。 |
 | provider error 后恢复不重复发送已完成 tool result | 有效 | 测试先完成一次非幂等 tool，再让后续 provider error 写入 snapshot；恢复后新请求中 tool_result 数量必须仍为 1，并用 `assertNoOrphanToolItems` 检查配对，state.toolCalls 不增加。验证同上。 | `session-marathon.test.ts` | 需要规避重启后重复执行破坏性工具或给模型重复上下文。 |
 | abort/retry/resume/compact 组合交错 | 有效 | marathon 覆盖 tool、queued send、provider error、retry、abort、resume、manual compact、post-compact send 的连续状态；`compaction.test.ts` 还覆盖 compaction 期间 queue send/retry/resume，验证 queued action 在 summary commit 后按正确上下文运行。验证同上。 | `session-marathon.test.ts`、`compaction.test.ts` | 组合路径容易暴露单点测试发现不了的 phase、queue、transcript 原子性问题。 |
 | 单会话 marathon 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态 | 有效 | marathon 单测在同一 session 内跑 9 次 provider request，阶段性断言 request 与 transcript 一致、pending tools 清空、queue 清空、phase idle、invariants 成立；能发现长期累计后状态漂移。验证同上。 | `session-marathon.test.ts` | 用来发现状态只在单点测试里正确，长期累计后 id、phase、pending action、tool 状态或 transcript 顺序漂移。 |
@@ -325,20 +325,20 @@ Owner：`packages/shell`
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
 | `shell_exec` running/yield 后可 `shell_wait` | 有效 | `environment.test.ts` 断言长命令先返回 running，再 `wait` 得到 exited/stdout/audit/last status；`tools.test.ts` 用 AgentSession 验证模型可从 shell_exec tool_result 读出 shellId 并调用 shell_wait。验证：5.10 targeted command，80 pass。 | `environment.test.ts`、`packages/shell/src/__tests__/tools.test.ts` | 防止长命令超出单次等待后失联，模型无法继续观察输出。 |
-| 默认 shell 忙时，省略 `shellId` 的 `shell_exec` 使用辅助 shell | 有效 | 测试先在 agent 默认 shell 启动前台长进程，再调用不带 `shellId` 的 `shell_exec` 执行 probe，断言 probe 在新 shell 成功返回；随后 abort 原前台进程，再断言默认 shell 可复用。验证：`bun test packages/shell/src/__tests__/environment.test.ts packages/shell/src/__tests__/tools.test.ts packages/agent-coding/src/__tests__/coding-definition.test.ts packages/agent-coding/src/__tests__/coding-marathon.test.ts`，94 pass。 | `environment.test.ts` | 防止模型验证 dev server 时无法在同一 agent session 里发起 curl probe，只能背景化服务或误杀进程。 |
+| 默认 shell 忙时，省略 `shellId` 的 `shell_exec` 使用辅助 shell | 有效 | 测试先在 agent 默认 shell 启动前台长进程，再调用不带 `shellId` 的 `shell_exec` 执行 probe，断言 probe 在新 shell 成功返回；随后 abort 原前台进程，再断言默认 shell 可复用。验证：`bun test packages/shell/src/__tests__/environment.test.ts packages/shell/src/__tests__/tools.test.ts packages/coding-agent/src/__tests__/coding-harness.test.ts packages/coding-agent/src/__tests__/coding-marathon.test.ts`，94 pass。 | `environment.test.ts` | 防止模型验证 dev server 时无法在同一 agent session 里发起 curl probe，只能背景化服务或误杀进程。 |
 | output limit 触发 running output_limit | 有效 | 测试设置小 `outputLimitBytes`，断言首次 exec 返回 running、reason=`output_limit`、已有 stdoutDelta，随后 wait 收到剩余输出；能发现大输出撑爆单次 tool result。验证同上。 | `environment.test.ts` | 防止大输出撑爆 tool result 或 transcript。 |
 | `shell_input` 可向 foreground process 写 stdin | 有效 | `environment.test.ts` 启动等待 stdin 的 foreground process，再 input `typed\n` 并断言 exited/stdout；`tools.test.ts` 还覆盖 shell_input tool 在 AgentSession abort 路径。验证同上。 | `environment.test.ts`、`tools.test.ts` | 防止交互式命令无法继续，或输入写入错误 shell。 |
-| `shell_input` 精确写入 bytes，行式 reader 必须收到 newline 才继续 | 有效 | 测试启动 `read -r line`，先写入 `typed` 并断言进程仍 running 且无 stdout，再写入 `\n` 并断言输出 `typed` 后退出；tool description 和 coding prompt 都断言 line-oriented prompt 要包含 newline。验证同上。 | `environment.test.ts`、`tools.test.ts`、`coding-definition.test.ts` | 防止模型以为发送非空 stdin 就等于按下回车，导致真实 readline/read 进程卡住。 |
+| `shell_input` 精确写入 bytes，行式 reader 必须收到 newline 才继续 | 有效 | 测试启动 `read -r line`，先写入 `typed` 并断言进程仍 running 且无 stdout，再写入 `\n` 并断言输出 `typed` 后退出；tool description 和 coding prompt 都断言 line-oriented prompt 要包含 newline。验证同上。 | `environment.test.ts`、`tools.test.ts`、`coding-harness.test.ts` | 防止模型以为发送非空 stdin 就等于按下回车，导致真实 readline/read 进程卡住。 |
 | idle foreground process 默认保持 running，不误报 needs_input | 有效 | 测试启动等待 stdin 的安静 foreground process，`shell_wait` 超过 yield window 后仍返回 running，随后 input 可正常完成；能发现空闲进程被误判成特殊 needs_input 状态。验证同上。 | `environment.test.ts` | 防止安静安装、构建、dev server 被误判为需要用户输入。 |
 | `shell_wait` 的 `yieldAfterMs` 从每次调用重新计时 | 有效 | 测试先让进程 running，等待 20ms 后再调用 `wait(yieldAfterMs=20)`，断言该 wait 至少等待当前调用窗口而不是立刻返回；能发现累计时间错误导致空轮询。验证同上。 | `environment.test.ts` | 防止 wait 因累计时间错误立刻返回，模型反复空轮询。 |
 | `shell_abort` 终止 foreground process，且是 control action | 有效 | `environment.test.ts` 断言 abort running process 返回 status aborted；`tools.test.ts` 断言 shell_abort tool result 文本含 status aborted 且 `isError=false`；能发现停止被当作失败或进程残留。验证同上。 | `environment.test.ts`、`tools.test.ts` | 防止停止 dev server 被当作任务失败，或进程继续占端口。 |
 | abort/timeout flush redirected foreground output | 有效 | 测试 abort/timeout 正在写入重定向文件的 foreground process，断言 tool stdout/stderr 不泄漏内容且目标文件分别包含 aborted/timed-out 文本；能发现 flush 丢失或输出错路由。验证同上。 | `environment.test.ts` | 防止本应写入文件的输出泄漏到 tool output，或文件内容丢失。 |
 | dispose shell kill foreground/background 并移除 session | 有效 | 测试 disposeShell 会 kill foreground/background 进程、移除 shell、再次 dispose 返回 false、后续 wait/exec 报 unknown shell，并延迟检查泄漏文件不存在；disposeAll 也清空多个 session。验证同上。 | `environment.test.ts` | 防止关闭 session 后仍有子进程残留。 |
-| timeout kill foreground process，之后 shell 可复用 | 有效 | 测试 `timeoutMs` 返回 timeout，随后 wait 看到 exited；另一个测试在 timeout 后同 shell 能执行新命令，再 abort 后仍能执行新命令，证明 abort state 不泄漏；tool description 和 coding prompt 断言 `timeoutMs` 是 hard stop，不是 polling 参数。验证同上。 | `environment.test.ts`、`tools.test.ts`、`coding-definition.test.ts` | 防止 timeout 后 abort state 泄漏，导致下一条命令立即失败；也防止模型用 timeout 轮询时意外停止 dev server。 |
+| timeout kill foreground process，之后 shell 可复用 | 有效 | 测试 `timeoutMs` 返回 timeout，随后 wait 看到 exited；另一个测试在 timeout 后同 shell 能执行新命令，再 abort 后仍能执行新命令，证明 abort state 不泄漏；tool description 和 coding prompt 断言 `timeoutMs` 是 hard stop，不是 polling 参数。验证同上。 | `environment.test.ts`、`tools.test.ts`、`coding-harness.test.ts` | 防止 timeout 后 abort state 泄漏，导致下一条命令立即失败；也防止模型用 timeout 轮询时意外停止 dev server。 |
 | shell tool result 格式保留 metadata 且模型可读 | 有效 | `toToolResult` 测试断言文本包含 status/shellId/exitCode 且 metadata 保留原 ShellToolResult；AgentSession integration 从文本中解析 status/shellId/stdout 再驱动 shell_wait，证明格式可被模型路径消费。验证同上。 | `tools.test.ts` | 防止模型必须解析不稳定 JSON 或看不到 shellId/status/next action。 |
 | `shell_input` 拒绝空 stdin，不承担 polling | 有效 | `tools.test.ts` 直接调用 shell_input tool，断言缺 stdin 和空字符串分别 reject，空字符串错误明确提示 use shell_wait to poll；能防止空 input 重新变成 wait。验证同上。 | `tools.test.ts` | 防止空 input 被滥用成 wait，重新引入无意义控制动作。 |
 | AgentSession abort signal 传播到 `shell_exec` / `shell_wait` / `shell_input` | 有效 | 三个 AgentSession 测试分别在 shell_exec、shell_wait、shell_input pending 时调用 session.abort，随后延迟检查本应写入的 leaked 文件不存在，证明实际 foreground process 被终止。验证同上。 | `tools.test.ts` | 防止 UI abort 只停止 session 状态，不停止实际前台进程。 |
-| 模型在真实长进程场景中稳定选择 wait/input/abort | Gated | 真实 TUI 记录 `docs/tui-acceptance/interactive-shell-control.md`：用 Claude Code provider 跑模糊 Node CLI + foreground HTTP service 任务，要求模型自己选择 shell 控制序列。5 轮真实运行中，前 4 轮分别暴露 line-oriented stdin/newline、`shell_wait timeoutMs` 误当 poll、错误工作目录、重复背景重启服务等问题；第 5 轮通过，且 compact 后仍能在同一 workspace 复核。默认测试只证明 deterministic contract，真实记录负责发现模型策略漂移。 | `docs/tui-acceptance/interactive-shell-control.md`；`environment.test.ts`、`tools.test.ts`、`coding-definition.test.ts` 锁住本次修复契约 | 用来发现 prompt/tool result 虽然单测正确，但真实模型仍然误用控制面的问题；本次记录证明真实 TUI 能发现并回归这些 model-facing contract 缺口。 |
+| 模型在真实长进程场景中稳定选择 wait/input/abort | Gated | 真实 TUI 记录 `docs/tui-acceptance/interactive-shell-control.md`：用 Claude Code provider 跑模糊 Node CLI + foreground HTTP service 任务，要求模型自己选择 shell 控制序列。5 轮真实运行中，前 4 轮分别暴露 line-oriented stdin/newline、`shell_wait timeoutMs` 误当 poll、错误工作目录、重复背景重启服务等问题；第 5 轮通过，且 compact 后仍能在同一 workspace 复核。默认测试只证明 deterministic contract，真实记录负责发现模型策略漂移。 | `docs/tui-acceptance/interactive-shell-control.md`；`environment.test.ts`、`tools.test.ts`、`coding-harness.test.ts` 锁住本次修复契约 | 用来发现 prompt/tool result 虽然单测正确，但真实模型仍然误用控制面的问题；本次记录证明真实 TUI 能发现并回归这些 model-facing contract 缺口。 |
 
 ### 5.11 Host、FS 与 Store
 
@@ -355,26 +355,25 @@ Owner：`packages/shell`
 | storage 拒绝逃逸 session prefix 的 key/session id | 有效 | 测试 `../session-b`、反斜杠 traversal、absolute key 和非法 agentSessionId 都 reject，并确认 session-b 原值未被覆盖；能发现路径逃逸写其他 session。验证同上。 | `store.test.ts` | 防止注册命令通过恶意 key 读写其他 session 或 store 根目录。 |
 | `LocalDemiStore` 拒绝非相对 store path | 有效 | 测试 LocalDemiStore 拒绝 `../outside`、`nested/../inside`、absolute path、NUL key；能发现本地 store 路径穿越或任意文件写。验证同上。 | `store.test.ts` | 防止本地 store 被路径穿越写到任意文件。 |
 
-### 5.12 Coding Agent Definition
+### 5.12 Coding Agent Harness
 
-Owner：`packages/agent-coding`
+Owner：`packages/coding-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| coding definition 暴露 shell session tools | 有效 | 测试 createCodingAgentDefinition 后断言 `tools()` 暴露 `shell_exec/shell_wait/shell_input/shell_abort`，并通过环境执行默认 todo command；能发现 coding agent 没有 shell 控制面或默认命令未注册。验证：5.12 targeted command，6 pass。 | `packages/agent-coding/src/__tests__/coding-definition.test.ts` | 防止 coding agent 打开后模型没有可用的 shell 控制面。 |
-| registered command prompt 注入 system prompt | 有效 | 测试 systemPrompt 包含 editor/todo prompt、effects/success/failure output、todo example、workspace-cwd rule、foreground long-process rules、timeout hard-stop warning、auxiliary shell guidance、line-oriented stdin newline、avoid pkill/killall 和 no redundant restart 等文本，并断言 `editor prompt` 输出同源内容；能发现专属命令或 shell-control 说明未注入。验证同上。 | `coding-definition.test.ts` | 防止模型不知道 `editor`、`todo` 等专属命令的正确调用方式，也防止真实 TUI 里反复出现错误工作目录、误用 timeout 或重复启动已验证服务。 |
-| file reference 通过 workspace host 读取 | 有效 | 测试在 workspace root 下解析相对路径和 file URL，断言输出 `<file path=...>` 包含文件内容；另用 fake `RecordingHost` 断言 reference resolution 必须调用 `Host.spawn({ command: 'cat', args: ['note.txt'], cwd })`，能发现绕过 Host 的直接 fs 读取。验证同上。 | `coding-definition.test.ts` | 防止引用展开绕过 Host，或模型拿不到用户指定文件内容。 |
-| file reference 拒绝 workspace root 外路径 | 有效 | 测试 workspace root 外的 absolute path reference reject `File reference escapes workspace`；能发现引用展开读取工作区外文件。验证同上。 | `coding-definition.test.ts` | 防止通过 reference 读取工作区外文件。 |
-| definition dispose 清理 environment shell sessions | 有效 | 测试先在环境里创建 shell session，调用 definition.dispose 后断言 `getShell(shellId)` 为 null；能发现 coding agent 关闭后 shell session 残留。验证同上。 | `coding-definition.test.ts` | 防止关闭 coding agent 后 shell 进程继续运行。 |
-| reference resolution 与 AgentSession send 顺序集成 | 有效 | 测试通过真实 `AgentSession.send` 发送 text+reference，provider callback 精确断言 request.items 已展开为 file content 且不含 `reference`，随后 transcript user block 也保存展开内容；能发现先写未展开引用。验证同上。 | `coding-definition.test.ts` 通过 `AgentSession` 断言 provider request 和 transcript 都保存展开后的 file content | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
+| coding harness 暴露 Host/commands 并由组装层创建 shell tools | 有效 | 测试 `createCodingAgentHarness({ host })` 后断言默认 commands 为 `editor/todo`；测试局部按 RPC host 的标准组装创建 `BashEnvironment + createShellSessionTools`，断言 runtime tools 为 `shell_exec/shell_wait/shell_input/shell_abort`，并通过环境执行默认 todo command；同时断言 harness 自身不暴露 `tools()`/`dispose`。验证：5.12 targeted command，6 pass。 | `packages/coding-agent/src/__tests__/coding-harness.test.ts` | 防止 coding harness 回退到 public `BashEnvironment` 注入或自定义 tool 替换，同时防止模型打开后缺少标准 shell 控制面或默认命令未注册。 |
+| registered command prompt 注入 system prompt | 有效 | 测试 systemPrompt 包含 editor/todo prompt、effects/success/failure output、todo example、workspace-cwd rule、foreground long-process rules、timeout hard-stop warning、auxiliary shell guidance、line-oriented stdin newline、avoid pkill/killall 和 no redundant restart 等文本，并断言 `editor prompt` 输出同源内容；能发现专属命令或 shell-control 说明未注入。验证同上。 | `coding-harness.test.ts` | 防止模型不知道 `editor`、`todo` 等专属命令的正确调用方式，也防止真实 TUI 里反复出现错误工作目录、误用 timeout 或重复启动已验证服务。 |
+| file reference 通过 workspace host 读取 | 有效 | 测试在 workspace root 下解析相对路径和 file URL，断言输出 `<file path=...>` 包含文件内容；另用 fake `RecordingHost` 断言 reference resolution 必须调用 `Host.spawn({ command: 'cat', args: ['note.txt'], cwd })`，能发现绕过 Host 的直接 fs 读取。验证同上。 | `coding-harness.test.ts` | 防止引用展开绕过 Host，或模型拿不到用户指定文件内容。 |
+| file reference 拒绝 workspace root 外路径 | 有效 | 测试 workspace root 外的 absolute path reference reject `File reference escapes workspace`；能发现引用展开读取工作区外文件。验证同上。 | `coding-harness.test.ts` | 防止通过 reference 读取工作区外文件。 |
+| reference resolution 与 AgentSession send 顺序集成 | 有效 | 测试通过真实 `AgentSession.send` 发送 text+reference，provider callback 精确断言 request.items 已展开为 file content 且不含 `reference`，随后 transcript user block 也保存展开内容；能发现先写未展开引用。验证同上。 | `coding-harness.test.ts` 通过 `AgentSession` 断言 provider request 和 transcript 都保存展开后的 file content | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
 
 ### 5.13 Editor Command
 
-Owner：`packages/agent-coding`
+Owner：`packages/coding-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `editor create` 用 heredoc 创建文件 | 有效 | 测试用 heredoc 创建 `src/foo.txt`，断言 stdout、diff metadata、unified diff header 和实际 `cat` 内容；能发现多行 stdin/heredoc 被参数解析破坏。验证：5.13 targeted command，12 pass。 | `packages/agent-coding/src/__tests__/editor-command.test.ts` | 防止模型写文件时多行内容、引号或换行被 shell 参数破坏。 |
+| `editor create` 用 heredoc 创建文件 | 有效 | 测试用 heredoc 创建 `src/foo.txt`，断言 stdout、diff metadata、unified diff header 和实际 `cat` 内容；能发现多行 stdin/heredoc 被参数解析破坏。验证：5.13 targeted command，12 pass。 | `packages/coding-agent/src/__tests__/editor-command.test.ts` | 防止模型写文件时多行内容、引号或换行被 shell 参数破坏。 |
 | editor 拒绝 workspace root 外路径 | 有效 | 测试 absolute outside 和 `../` relative outside 都 exit 1，stderr 包含 `Path escapes workspace`，并断言外部文件不存在；能发现越权写入。验证同上。 | `editor-command.test.ts` | 防止编辑命令越权修改工作区外文件。 |
 | patch escaped path 时写入前拒绝 | 有效 | 测试 patch 先声明修改 workspace 内文件，再声明创建 workspace 外文件；失败后断言内部文件仍为原内容且外部文件不存在。验证同上。 | `editor-command.test.ts` | 防止 unified diff 中一个恶意路径导致部分文件已修改后才失败。 |
 | `editor edit` exact replace 和 ambiguous matches 失败 | 有效 | 测试重复文本无 occurrence 时 exit 1 并报 `Multiple matches`，随后用 `--occurrence 2` 精确替换并断言 diff metadata 和实际文件内容；能发现歧义替换误改。验证同上。 | `editor-command.test.ts` | 防止错误替换多个位置或在歧义情况下误改代码。 |
@@ -385,22 +384,22 @@ Owner：`packages/agent-coding`
 
 ### 5.14 Todo Command
 
-Owner：`packages/agent-coding`
+Owner：`packages/coding-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `todo add/list/update/done` raw output | 有效 | 测试精确断言 raw `todo add`、`todo list`、`todo update`、`todo done` 输出，覆盖 pending/done marker 和多 todo 顺序；能发现模型可读任务状态反馈退化。验证：5.14 targeted command，3 pass。 | `packages/agent-coding/src/__tests__/todo-command.test.ts` | 防止模型拿不到可读的任务状态反馈。 |
+| `todo add/list/update/done` raw output | 有效 | 测试精确断言 raw `todo add`、`todo list`、`todo update`、`todo done` 输出，覆盖 pending/done marker 和多 todo 顺序；能发现模型可读任务状态反馈退化。验证：5.14 targeted command，3 pass。 | `packages/coding-agent/src/__tests__/todo-command.test.ts` | 防止模型拿不到可读的任务状态反馈。 |
 | `todo add/list/update/done` JSON output | 有效 | 测试解析并精确断言 `add --json`、`update --json`、`done --json`、`list --json` 的 `{ todo }` / `{ todos }` 形状、id/text/status 和顺序。验证同上。 | `todo-command.test.ts` | 防止 agent 或 UI 需要结构化 todo 状态时解析失败。 |
 | todo 状态按 agent session id 隔离 | 有效 | 测试不同 agent session 各自添加首个 todo 都得到 `T1`，并在 shell 重建测试中断言 `other-agent` 的列表只含自身 todo；能发现跨 session 串线。验证同上。 | `todo-command.test.ts` | 防止不同会话共享 todo，造成用户任务串线。 |
 | todo 与 shell id 不混淆 | 有效 | 测试 dispose 旧 shell 后，同一 agent session 在新 shell 中继续累积 `T1/T2`，而另一个 agent session 在第三个 shell 中独立为 `T1`；结合 `BashEnvironment` 的 storage scope 能发现把 todo 绑到 shellId 的回归。验证同上。 | `todo-command.test.ts` 覆盖 agent session 隔离和同一 agent session 下 shell 重建后的 storage 延续 | 需要发现 shellId 和 agentSessionId 再次混淆。 |
 
 ### 5.15 Coding Agent 工作流
 
-Owner：`packages/agent-coding`
+Owner：`packages/coding-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| StubProvider 通过 shell tools 驱动 editor/todo，真实写文件 | 有效 | 测试用 StubProvider 依次发起 `shell_exec`，通过 `editor create`、`todo add`、`editor edit` 驱动真实 BashEnvironment/LocalHost，并断言工具结果；能发现 AgentSession 到 registered command 的集成断裂。验证：5.15 targeted command，5 pass。 | `packages/agent-coding/src/__tests__/coding-marathon.test.ts` | 能发现 AgentSession、shell tools、registered command、Host 写文件之间的集成断裂。 |
+| StubProvider 通过 shell tools 驱动 editor/todo，真实写文件 | 有效 | 测试用 StubProvider 依次发起 `shell_exec`，通过 `editor create`、`todo add`、`editor edit` 驱动真实 BashEnvironment/LocalHost，并断言工具结果；能发现 AgentSession 到 registered command 的集成断裂。验证：5.15 targeted command，5 pass。 | `packages/coding-agent/src/__tests__/coding-marathon.test.ts` | 能发现 AgentSession、shell tools、registered command、Host 写文件之间的集成断裂。 |
 | workflow 中复用同一个 shell session | 有效 | 测试把上一轮 tool result 的 `shellId` 传给后续命令，并断言 result.shellId；新增 workflow 先 `cd pkg`、`export WORKFLOW_TOKEN=kept`，后续同 shellId 读取 `$PWD` 和环境变量，证明 cwd/env 状态连续。真实模型是否稳定选择复用 shellId 仍由 gated smoke 覆盖。验证同上。 | `coding-marathon.test.ts` | 防止模型后续命令丢 cwd/env 或拿不到之前的 shellId。 |
 | workflow 后文件内容正确 | 有效 | workflow 结束后真实执行 `cat src/app.ts`，断言内容为 `export const value = 2`；能发现工具结果成功但文件实际未写对。验证同上。 | `coding-marathon.test.ts` | 防止工具调用看似成功但真实 artifact 没写对。 |
 | workflow 后 todo 状态在 agent session 下可读 | 有效 | workflow 后用 session id 读取 `todo list --json`，断言 `T1 Run tests` 存在；多轮测试也断言同一 agent session 下 todo 最终为 done。验证同上。 | `coding-marathon.test.ts` | 防止 workflow 中 todo 写到了 shell-local 或全局错误位置。 |
@@ -472,7 +471,7 @@ Owner：`packages/just-bash`
 ## 7. 新增测试放置规则
 
 - 单模块行为放在 owner package 的 `src/__tests__/`。
-- 跨模块行为放在最接近不变量 owner 的 package：session/runtime 放 `base-agent`，coding workflow 放 `agent-coding`，协议收敛放 `rpc`。
+- 跨模块行为放在最接近不变量 owner 的 package：session/runtime 放 `base-agent`，coding workflow 放 `coding-agent`，协议收敛放 `rpc`。
 - 涉及真实 CLI、真实模型、网络、本机登录状态或交互 UI 的测试必须 gated，不进入默认 `bun run test`。
 - 测试应断言真实 artifact、provider request、transcript blocks、events、session state、RPC frames 或文件内容。
 - 新增测试点必须说明能发现或规避的具体问题；说不清风险的问题不进入矩阵。

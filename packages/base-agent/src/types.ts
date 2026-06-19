@@ -22,17 +22,6 @@ export interface AgentToolContext<State> {
   cwd: string
 }
 
-export interface AgentCommandContext<State> {
-  agentSessionId: string
-  state: State
-  cwd: string
-}
-
-export interface AgentCommandSpec {
-  name: string
-  summary: string
-}
-
 export interface AgentDisposeContext<State> {
   agentSessionId: string
   state: State
@@ -94,8 +83,8 @@ export type AgentLifecycleEvent<State> =
     }
   | { type: 'after_transcript_rewrite'; agentSessionId: string; state: State; transcript: Transcript; reason: 'retry' }
 
-export interface AgentDefinition<State> {
-  name: string
+export interface AgentHarnessRuntime<State> {
+  harnessName: string
   initialState(): State
   systemPrompt(ctx: AgentPromptContext<State>): string
   preamble?(ctx: AgentPromptContext<State>): string | null
@@ -104,7 +93,6 @@ export interface AgentDefinition<State> {
     content: UserContentBlock[],
   ): Promise<UserContentBlock[]> | UserContentBlock[]
   tools(ctx: AgentToolContext<State>): AgentTool<State>[]
-  commands?(ctx: AgentCommandContext<State>): AgentCommandSpec[]
   lifecycle?(event: AgentLifecycleEvent<State>): Promise<void> | void
   dispose?(ctx: AgentDisposeContext<State>): Promise<void> | void
 }
@@ -113,7 +101,7 @@ export interface AgentSessionParams<State> {
   provider: AgentProvider
   model: ModelSelection
   cwd: string
-  definition: AgentDefinition<State>
+  runtime: AgentHarnessRuntime<State>
   transcript?: CoreTranscript | Transcript
   state?: State
 }
@@ -125,7 +113,7 @@ export interface AgentSessionSnapshot<State> {
   queue: QueuedMessage[]
   cwd: string
   model: ModelSelection
-  definitionName: string
+  harnessName: string
 }
 
 export interface AgentSessionStore<State = unknown> {
@@ -134,7 +122,7 @@ export interface AgentSessionStore<State = unknown> {
 
 export interface AgentSessionRestoreParams<State> {
   provider: AgentProvider
-  definition: AgentDefinition<State>
+  runtime: AgentHarnessRuntime<State>
   snapshot: AgentSessionSnapshot<State>
 }
 

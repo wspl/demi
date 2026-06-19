@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, type AgentDefinition } from '@demi/base-agent'
+import { AgentSession, type AgentHarnessRuntime } from '@demi/base-agent'
 import { BashEnvironment, createShellSessionTools } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import type { InferenceRequest } from '@demi/provider'
@@ -590,13 +590,13 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
     shellIdFactory: () => 'claude-shell-session',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'claude-shell-test',
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'claude-shell-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
   }
-  const session = new AgentSession({ provider, model, cwd: process.cwd(), definition })
+  const session = new AgentSession({ provider, model, cwd: process.cwd(), runtime })
 
   await session.send([{ type: 'text', text: 'run shell' }])
 
@@ -635,13 +635,13 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
     shellIdFactory: () => 'claude-repeated-id-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'claude-repeated-id-test',
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'claude-repeated-id-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
   }
-  const session = new AgentSession({ provider, model, cwd: process.cwd(), definition })
+  const session = new AgentSession({ provider, model, cwd: process.cwd(), runtime })
 
   await session.send([{ type: 'text', text: 'run shell twice' }])
 

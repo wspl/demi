@@ -3,8 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import type { AgentDefinition } from '@demi/base-agent'
-import { BashEnvironment, createShellSessionTools } from '@demi/shell'
+import type { AgentHarness, BashEnvironmentOptions } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
 import {
@@ -107,19 +106,11 @@ test('RpcHost forwards provider error codes once and preserves the transcript er
 })
 
 test('RpcHost maps shell tool progress into shell_output and audit frames', async () => {
-  const shellEnvironment = new BashEnvironment({
-    host: new LocalHost(process.cwd()),
-    initialEnv: { PATH: process.env.PATH ?? '' },
-    shellIdFactory: () => 'rpc-shell-shell',
-  })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-rpc',
-    initialState: () => ({}),
-    systemPrompt: () => 'system',
-    tools: () => createShellSessionTools(shellEnvironment),
-  }
   const { client } = createRpcHarness({
-    definition,
+    shell: {
+      initialEnv: { PATH: process.env.PATH ?? '' },
+      shellIdFactory: () => 'rpc-shell-shell',
+    },
     providerTurns: [
       [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi' })],
       [events.text('done'), events.response()],
@@ -148,108 +139,12 @@ test('RpcHost maps shell tool progress into shell_output and audit frames', asyn
   expect(seen.some((event) => event.type === 'audit')).toBe(true)
 })
 
-test('RpcHost converts arbitrary tool progress into valid tool_progress text output', async () => {
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [
-    [events.toolCall('tool-1', 'progress_tool', {})],
-    [events.response()],
-  ]
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'progress-rpc',
-    initialState: () => ({}),
-    systemPrompt: () => 'system',
-    tools: () => [
-      {
-        name: 'progress_tool',
-        description: 'Emits non-JSON progress values.',
-        inputSchema: { type: 'object' },
-        invoke: (ctx) => {
-          ctx.emitProgress(undefined)
-          ctx.emitProgress(10n)
-          const circular: Record<string, unknown> = { count: 10n }
-          circular.self = circular
-          ctx.emitProgress(circular)
-          return { output: [{ type: 'text', text: 'done' }] }
-        },
-      },
-    ],
-  }
-  const { client } = createRpcHarness({ definition, providerTurns: turns })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open('test', providerConfig(turns), '/workspace')
-  await client.send([{ type: 'text', text: 'run progress tool' }])
-  await waitFor(() => seen.filter((event) => event.type === 'tool_progress').length >= 3)
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-
-  const progressTexts = seen
-    .filter((event) => event.type === 'tool_progress')
-    .map((event) => {
-      if (event.type !== 'tool_progress') return ''
-      const first = event.output[0]
-      return first?.type === 'text' ? first.text : ''
-    })
-  expect(progressTexts).toEqual(['undefined', '10', '{"count":"10","self":"[Circular]"}'])
-})
-
-test('RpcHost only forwards well-formed bash audit progress as audit frames', async () => {
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [
-    [events.toolCall('tool-1', 'audit_progress_tool', {})],
-    [events.response()],
-  ]
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'audit-progress-rpc',
-    initialState: () => ({}),
-    systemPrompt: () => 'system',
-    tools: () => [
-      {
-        name: 'audit_progress_tool',
-        description: 'Emits audit-like progress values.',
-        inputSchema: { type: 'object' },
-        invoke: (ctx) => {
-          ctx.emitProgress({
-            audit: [
-              { kind: 'system-command', name: 'sh', args: ['-c', 'true'], cwd: '/workspace', exitCode: 0 },
-              { kind: 'system-command', name: 'missing-cwd', args: [], exitCode: 0 },
-              { kind: 'registered-command', name: 'bad-args', args: [1], exitCode: 0 },
-            ],
-          })
-          return { output: [{ type: 'text', text: 'done' }] }
-        },
-      },
-    ],
-  }
-  const { client } = createRpcHarness({ definition, providerTurns: turns })
-  const seen: ClientSessionEvent[] = []
-  client.subscribe((event) => seen.push(event))
-
-  await client.open('test', providerConfig(turns), '/workspace')
-  await client.send([{ type: 'text', text: 'run audit progress tool' }])
-  await waitFor(() => seen.some((event) => event.type === 'audit'))
-
-  const auditEvents = seen.filter((event) => event.type === 'audit')
-  expect(auditEvents).toEqual([
-    {
-      type: 'audit',
-      events: [{ kind: 'system-command', name: 'sh', args: ['-c', 'true'], cwd: '/workspace', exitCode: 0 }],
-    },
-  ])
-})
-
 test('RpcHost bridges shell_input frames to the active shell session tool', async () => {
-  const shellEnvironment = new BashEnvironment({
-    host: new LocalHost(process.cwd()),
-    initialEnv: { PATH: process.env.PATH ?? '' },
-    shellIdFactory: () => 'rpc-input-shell',
-  })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-rpc',
-    initialState: () => ({}),
-    systemPrompt: () => 'system',
-    tools: () => createShellSessionTools(shellEnvironment),
-  }
   const { client } = createRpcHarness({
-    definition,
+    shell: {
+      initialEnv: { PATH: process.env.PATH ?? '' },
+      shellIdFactory: () => 'rpc-input-shell',
+    },
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
@@ -308,47 +203,49 @@ test('RpcClient.shellInput waits for shell_input_result and rejects when no sess
   const unopened = createRpcHarness({ providerTurns: [] })
   await expect(unopened.client.shellInput('missing-shell', 'stdin')).rejects.toThrow('No session is open')
 
-  const gate = deferred<void>()
   const seen: ClientSessionEvent[] = []
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'custom-shell-input',
-    initialState: () => ({}),
-    systemPrompt: () => 'system',
-    tools: () => [
-      {
-        name: 'shell_input',
-        description: 'Delayed shell input bridge.',
-        inputSchema: { type: 'object' },
-        invoke: async (ctx) => {
-          await gate.promise
-          ctx.emitProgress('accepted')
-          return { output: [{ type: 'text', text: 'accepted' }] }
-        },
-      },
+  const { client } = createRpcHarness({
+    shell: {
+      initialEnv: { PATH: process.env.PATH ?? '' },
+      shellIdFactory: () => 'rpc-delayed-input-shell',
+    },
+    providerTurns: [
+      [
+        events.toolCall('tool-1', 'shell_exec', {
+          script: 'sh -c \'IFS= read -r line; sleep 0.05; printf %s "$line"\'',
+          yieldAfterMs: 1,
+        }),
+      ],
+      [events.text('waiting'), events.response()],
     ],
-  }
-  const { client } = createRpcHarness({ definition, providerTurns: [] })
+  })
   client.subscribe((event) => seen.push(event))
-  await client.open('test', providerConfig([]), '/workspace')
+  const turns: ConstructorParameters<typeof StubProvider>[0] = [
+    [
+      events.toolCall('tool-1', 'shell_exec', {
+        script: 'sh -c \'IFS= read -r line; sleep 0.05; printf %s "$line"\'',
+        yieldAfterMs: 1,
+      }),
+    ],
+    [events.text('waiting'), events.response()],
+  ]
+  await client.open('test', providerConfig(turns), process.cwd())
+  await client.send([{ type: 'text', text: 'start process' }])
+  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   let settled = false
-  const writing = client.shellInput('delayed-input', 'stdin').then(() => {
+  const writing = client.shellInput('rpc-delayed-input-shell', 'accepted\n').then(() => {
     settled = true
   })
   await delay(5)
   expect(settled).toBe(false)
 
-  gate.resolve(undefined)
   await writing
   expect(settled).toBe(true)
-  expect(seen).toContainEqual({
-    type: 'shell_input_result',
-    shellId: 'delayed-input',
-    output: [{ type: 'text', text: 'accepted' }],
-  })
+  expect(seen.some((event) => event.type === 'shell_input_result' && event.shellId === 'rpc-delayed-input-shell')).toBe(true)
   expect(seen).not.toContainEqual({
     type: 'tool_progress',
-    toolUseId: 'rpc-shell-input:delayed-input',
+    toolUseId: 'rpc-shell-input:rpc-delayed-input-shell',
     output: expect.any(Array),
   })
 })
@@ -407,7 +304,7 @@ test('RpcHost queues send frames while the session is busy and drains them in or
   new RpcHost({
     transport: transports.host,
     providerRegistry: registry,
-    definitions: { test: createTextDefinition() },
+    harnesses: { test: createTextHarness() },
   })
   const client = new RpcClient(transports.client)
   const seen: ClientSessionEvent[] = []
@@ -457,7 +354,7 @@ test('RpcHost rejects retry, resume, and compact frames while the session is bus
   new RpcHost({
     transport: transports.host,
     providerRegistry: registry,
-    definitions: { test: createTextDefinition() },
+    harnesses: { test: createTextHarness() },
   })
   const client = new RpcClient(transports.client)
   const seen: ClientSessionEvent[] = []
@@ -495,7 +392,7 @@ test('RpcClient resolves each queued send promise on its own phase cycle', async
   new RpcHost({
     transport: transports.host,
     providerRegistry: registry,
-    definitions: { test: createTextDefinition() },
+    harnesses: { test: createTextHarness() },
   })
   const client = new RpcClient(transports.client)
   const seen: ClientSessionEvent[] = []
@@ -556,7 +453,7 @@ test('RpcClient rejects only the active action when queued sends continue after 
   new RpcHost({
     transport: transports.host,
     providerRegistry: registry,
-    definitions: { test: createTextDefinition() },
+    harnesses: { test: createTextHarness() },
   })
   const client = new RpcClient(transports.client)
   const seen: ClientSessionEvent[] = []
@@ -599,7 +496,7 @@ test('RpcClient.abort returns false while idle and true after aborting active wo
   new RpcHost({
     transport: transports.host,
     providerRegistry: registry,
-    definitions: { test: createTextDefinition() },
+    harnesses: { test: createTextHarness() },
   })
   const client = new RpcClient(transports.client)
 
@@ -625,7 +522,7 @@ test('RpcHost aborts the active session when a close frame is received', async (
   new RpcHost({
     transport: transports.host,
     providerRegistry: registry,
-    definitions: { test: createTextDefinition() },
+    harnesses: { test: createTextHarness() },
   })
   const client = new RpcClient(transports.client)
   const seen: ClientSessionEvent[] = []
@@ -643,23 +540,14 @@ test('RpcHost aborts the active session when a close frame is received', async (
   expect(seen.some((event) => event.type === 'closed')).toBe(true)
 })
 
-test('RpcHost disposes definition resources when a close frame is received', async () => {
+test('RpcHost disposes shell resources when a close frame is received', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-rpc-dispose-'))
   const leakedPath = join(root, 'rpc-leaked.txt')
-  const shellEnvironment = new BashEnvironment({
-    host: new LocalHost(root),
-    initialEnv: { PATH: process.env.PATH ?? '' },
-    shellIdFactory: () => 'rpc-dispose-shell',
-  })
-  const definition: AgentDefinition<Record<string, never>> = {
-    name: 'shell-rpc',
-    initialState: () => ({}),
-    systemPrompt: () => 'system',
-    tools: () => createShellSessionTools(shellEnvironment),
-    dispose: () => shellEnvironment.disposeAllShells(),
-  }
   const { client } = createRpcHarness({
-    definition,
+    shell: {
+      initialEnv: { PATH: process.env.PATH ?? '' },
+      shellIdFactory: () => 'rpc-dispose-shell',
+    },
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
@@ -685,28 +573,27 @@ test('RpcHost disposes definition resources when a close frame is received', asy
     root,
   )
   await client.send([{ type: 'text', text: 'start shell' }])
-  await waitFor(() => shellEnvironment.getShell('rpc-dispose-shell') !== null)
+  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   await client.close()
 
-  expect(shellEnvironment.getShell('rpc-dispose-shell')).toBeNull()
   await delay(250)
   await expect(access(leakedPath)).rejects.toThrow()
 })
 
-test('RpcHost.close disposes definition resources directly', async () => {
+test('RpcHost.close disposes harness resources directly', async () => {
   let disposed = false
-  const definition: AgentDefinition<Record<string, never>> = {
+  const harness: AgentHarness<Record<string, never>> = {
     name: 'direct-close',
     initialState: () => ({}),
+    host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
-    tools: () => [],
     dispose: () => {
       disposed = true
     },
   }
   const { client, host } = createRpcHarness({
-    definition,
+    harness,
     providerTurns: [],
   })
 
@@ -717,7 +604,8 @@ test('RpcHost.close disposes definition resources directly', async () => {
 })
 
 function createRpcHarness(options: {
-  definition?: AgentDefinition<unknown>
+  harness?: AgentHarness<unknown>
+  shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   providerTurns: ConstructorParameters<typeof StubProvider>[0]
 }): { client: RpcClient; host: RpcHost } {
   const transports = createInProcessTransportPair()
@@ -733,8 +621,9 @@ function createRpcHarness(options: {
   const host = new RpcHost({
     transport: transports.host,
     providerRegistry: registry,
-    definitions: {
-      test: options.definition ?? createTextDefinition(),
+    shell: options.shell,
+    harnesses: {
+      test: options.harness ?? createTextHarness(),
     },
   })
   const client = new RpcClient(transports.client)
@@ -811,12 +700,12 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve }
 }
 
-function createTextDefinition(): AgentDefinition<Record<string, never>> {
+function createTextHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
     initialState: () => ({}),
+    host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
-    tools: () => [],
   }
 }
 

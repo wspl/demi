@@ -4,7 +4,7 @@ import { StubProvider, events, type AgentProvider, type InferenceRequest, type P
 import {
   AgentSession,
   Transcript,
-  type AgentDefinition,
+  type AgentHarnessRuntime,
   type AgentSessionOptions,
   type AgentSessionSnapshot,
   type AgentToolInvokeResult,
@@ -28,9 +28,9 @@ function text(value: string): UserContentBlock[] {
   return [{ type: 'text', text: value }]
 }
 
-function createDefinition(overrides: Partial<AgentDefinition<{ toolCalls: number }>> = {}): AgentDefinition<{ toolCalls: number }> {
+function createRuntime(overrides: Partial<AgentHarnessRuntime<{ toolCalls: number }>> = {}): AgentHarnessRuntime<{ toolCalls: number }> {
   return {
-    name: 'test-agent',
+    harnessName: 'test-agent',
     initialState: () => ({ toolCalls: 0 }),
     systemPrompt: () => 'system prompt',
     preamble: () => 'preamble',
@@ -41,7 +41,7 @@ function createDefinition(overrides: Partial<AgentDefinition<{ toolCalls: number
 
 function createSession(
   provider: AgentProvider,
-  definition: AgentDefinition<{ toolCalls: number }> = createDefinition(),
+  runtime: AgentHarnessRuntime<{ toolCalls: number }> = createRuntime(),
   transcript?: Transcript,
   selection: ModelSelection = model,
   options: Partial<AgentSessionOptions<{ toolCalls: number }>> = {},
@@ -52,7 +52,7 @@ function createSession(
       provider,
       model: selection,
       cwd: '/workspace',
-      definition,
+      runtime,
       transcript,
     },
     {
@@ -161,11 +161,11 @@ test('AgentSession resolves references before writing user turns and provider re
       return [events.response()]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     resolveReferences: (_ctx, content) =>
       content.map((block) => (block.type === 'reference' ? { type: 'text', text: 'expanded ref' } : block)),
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
 
   await session.send([{ type: 'reference', reference: 'file.txt' }])
 
@@ -185,13 +185,13 @@ test('AgentSession abort is not blocked by reference resolution', async () => {
   const started = new Promise<void>((resolve) => {
     markStarted = resolve
   })
-  const definition = createDefinition({
+  const runtime = createRuntime({
     resolveReferences: () => {
       markStarted()
       return new Promise<UserContentBlock[]>(() => {})
     },
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
   const emitted: SessionEvent[] = []
   session.subscribe((event) => emitted.push(event))
 
@@ -234,7 +234,7 @@ test('AgentSession abort is not blocked by a hanging compaction summary provider
   transcript.applyProviderEvent(model, events.text('answer'))
   transcript.applyProviderEvent(model, events.response())
   transcript.pushUserTurn(model, text('recent'))
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   const compacting = session.compact()
   await provider.started.promise
@@ -250,12 +250,12 @@ test('AgentSession abort is not blocked by a hanging compaction summary provider
 test('AgentSession persists transcript snapshots through an injected store', async () => {
   const store = new MemorySessionStore<{ toolCalls: number }>()
   const provider = new StubProvider([[events.text('persisted'), events.response()]])
-  const session = createSession(provider, createDefinition(), undefined, model, { store })
+  const session = createSession(provider, createRuntime(), undefined, model, { store })
 
   await session.send(text('save this'))
 
   expect(store.snapshots.length).toBeGreaterThan(0)
-  expect(store.snapshots.at(-1)?.definitionName).toBe('test-agent')
+  expect(store.snapshots.at(-1)?.harnessName).toBe('test-agent')
   expect(store.snapshots.at(-1)?.cwd).toBe('/workspace')
   expect(store.snapshots.at(-1)?.transcript.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
@@ -266,7 +266,7 @@ test('AgentSession store snapshots are insulated from later state mutations', as
     [events.toolCall('tool-1', 'count_tool', {}), events.response()],
     [events.text('done'), events.response()],
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: () => [
       {
         name: 'count_tool',
@@ -279,7 +279,7 @@ test('AgentSession store snapshots are insulated from later state mutations', as
       },
     ],
   })
-  const session = createSession(provider, definition, undefined, model, { store })
+  const session = createSession(provider, runtime, undefined, model, { store })
 
   await session.send(text('count once'))
 
@@ -297,7 +297,7 @@ test('AgentSession persists extension state snapshots appended by lifecycle hook
     [events.toolCall('tool-1', 'echo_tool', { value: 'hello' }), events.response()],
     [events.text('done'), events.response()],
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: () => [
       {
         name: 'echo_tool',
@@ -314,7 +314,7 @@ test('AgentSession persists extension state snapshots appended by lifecycle hook
       event.transcript.appendExtensionStateSnapshot('test-extension', { toolCalls: event.state.toolCalls })
     },
   })
-  const session = createSession(provider, definition, undefined, model, { store })
+  const session = createSession(provider, runtime, undefined, model, { store })
 
   await session.send(text('use tool'))
 
@@ -339,7 +339,7 @@ test('AgentSession executes requested tools and continues provider roundtrip wit
       return [events.text('done'), events.response()]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'echo_tool',
@@ -354,7 +354,7 @@ test('AgentSession executes requested tools and continues provider roundtrip wit
       },
     ],
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
 
   await session.send(text('use tool'))
 
@@ -383,7 +383,7 @@ test('AgentSession continues when a provider pauses after a tool call without a 
       return [events.text('continued after paused tool call'), events.response()]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'echo_tool',
@@ -398,7 +398,7 @@ test('AgentSession continues when a provider pauses after a tool call without a 
       },
     ],
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
 
   await session.send(text('use tool'))
 
@@ -419,7 +419,7 @@ test('AgentSession can stop a turn after a terminal tool result', async () => {
       throw new Error('provider should not be called after terminal tool result')
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: (ctx) => [
       {
         name: 'terminal_tool',
@@ -436,7 +436,7 @@ test('AgentSession can stop a turn after a terminal tool result', async () => {
       },
     ],
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
 
   await session.send(text('use terminal tool'))
 
@@ -465,7 +465,7 @@ test('AgentSession records thrown tool invocations as error tool results and con
       return [events.text('recovered'), events.response()]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: () => [
       {
         name: 'failing_tool',
@@ -477,7 +477,7 @@ test('AgentSession records thrown tool invocations as error tool results and con
       },
     ],
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
 
   await session.send(text('use failing tool'))
 
@@ -503,7 +503,7 @@ test('AgentSession emits tool_progress events from tool invocations', async () =
     [events.toolCall('tool-1', 'progress_tool', { value: 'hello' }), events.response()],
     [events.response()],
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: () => [
       {
         name: 'progress_tool',
@@ -516,7 +516,7 @@ test('AgentSession emits tool_progress events from tool invocations', async () =
       },
     ],
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
   const emitted: SessionEvent[] = []
   session.subscribe((event) => emitted.push(event))
 
@@ -584,7 +584,7 @@ test('AgentSession resume marks abort as resumed and adds a resume turn', async 
   })
   transcript.pushUserTurn(model, text('question'))
   transcript.pushAbort(model)
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.resume()
 
@@ -594,7 +594,7 @@ test('AgentSession resume marks abort as resumed and adds a resume turn', async 
 
 test('AgentSession abort is not blocked by a long-running tool invocation', async () => {
   const provider = new StubProvider([[events.toolCall('tool-1', 'slow_tool', {}), events.response()]])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: () => [
       {
         name: 'slow_tool',
@@ -607,7 +607,7 @@ test('AgentSession abort is not blocked by a long-running tool invocation', asyn
       },
     ],
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
   const running = session.send(text('run slow tool'))
   await waitFor(() => session.transcript().pendingToolCalls().length === 1)
 
@@ -634,7 +634,7 @@ test('AgentSession completes pending tool calls as errors before resuming after 
       return [events.text('continued'), events.response()]
     },
   ])
-  const definition = createDefinition({
+  const runtime = createRuntime({
     tools: () => [
       {
         name: 'slow_tool',
@@ -647,7 +647,7 @@ test('AgentSession completes pending tool calls as errors before resuming after 
       },
     ],
   })
-  const session = createSession(provider, definition)
+  const session = createSession(provider, runtime)
 
   const running = session.send(text('run slow tool'))
   await waitFor(() => session.transcript().pendingToolCalls().length === 1)
@@ -690,7 +690,7 @@ test('AgentSession compact inserts boundary and marker without deleting old bloc
   transcript.applyProviderEvent(model, events.text('answer'))
   transcript.applyProviderEvent(model, events.response())
   transcript.pushUserTurn(model, text('recent'))
-  const session = createSession(provider, createDefinition(), transcript)
+  const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
 
@@ -727,7 +727,7 @@ test('AgentSession auto-recovers by compacting and resuming when usage nears con
       return [events.text('continued'), events.response()]
     },
   ])
-  const session = createSession(provider, createDefinition(), undefined, smallModel)
+  const session = createSession(provider, createRuntime(), undefined, smallModel)
 
   await session.send(text('question'))
 

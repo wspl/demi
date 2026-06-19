@@ -126,5 +126,5 @@ The real failures are backed by deterministic coverage in:
 
 - `packages/shell/src/__tests__/environment.test.ts`: busy default shell gets an auxiliary shell; raw stdin without newline keeps a line reader running until newline arrives.
 - `packages/shell/src/__tests__/tools.test.ts`: tool descriptions expose auxiliary shell behavior, hard-stop timeout semantics, and newline guidance.
-- `packages/agent-coding/src/__tests__/coding-definition.test.ts`: coding-agent prompt locks workspace, polling, abort, no redundant restart, and line-oriented stdin guidance.
-- `packages/agent-coding/src/__tests__/coding-marathon.test.ts`: agent-level long-command wait/input/abort flow remains covered.
+- `packages/coding-agent/src/__tests__/coding-harness.test.ts`: coding-agent prompt locks workspace, polling, abort, no redundant restart, and line-oriented stdin guidance.
+- `packages/coding-agent/src/__tests__/coding-marathon.test.ts`: agent-level long-command wait/input/abort flow remains covered.

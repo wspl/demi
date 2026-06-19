@@ -9,7 +9,7 @@ const platformNeutralEntries = [
   ['@demi/provider', 'packages/provider/src/index.ts'],
   ['@demi/base-agent', 'packages/base-agent/src/index.ts'],
   ['@demi/shell', 'packages/shell/src/index.ts'],
-  ['@demi/agent-coding', 'packages/agent-coding/src/index.ts'],
+  ['@demi/coding-agent', 'packages/coding-agent/src/index.ts'],
   ['@demi/rpc', 'packages/rpc/src/index.ts'],
 ] as const
 
@@ -110,7 +110,7 @@ test('package manifests preserve layering boundaries', async () => {
     '@demi/provider',
     '@demi/base-agent',
     '@demi/shell',
-    '@demi/agent-coding',
+    '@demi/coding-agent',
     '@demi/rpc',
   ]
   for (const packageName of platformNeutralPackages) {

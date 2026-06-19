@@ -1,8 +1,6 @@
-import type { AgentDefinition } from '@demi/base-agent'
 import {
   CommandRegistry,
-  createShellSessionTools,
-  type BashEnvironment,
+  type AgentHarness,
   type CommandSpec,
   type Host,
 } from '@demi/shell'
@@ -12,9 +10,8 @@ import { createTodoCommand } from './todo-command'
 
 export type CodingState = Record<string, never>
 
-export interface CodingAgentOptions {
-  environment: BashEnvironment
-  editorHost?: Host
+export interface CodingAgentHarnessOptions {
+  host: Host
   referenceHost?: Host
   commands?: CommandSpec[]
 }
@@ -34,14 +31,15 @@ export function createCodingCommandRegistry(options: CodingCommandRegistryOption
   return registry
 }
 
-export function createCodingAgentDefinition(options: CodingAgentOptions): AgentDefinition<CodingState> {
-  const commands = options.commands ?? defaultCodingCommands(options.editorHost ?? options.environment.workspaceHost())
-  const referenceHost = options.referenceHost ?? options.editorHost ?? options.environment.workspaceHost()
-  for (const command of commands) options.environment.registerCommand(command)
+export function createCodingAgentHarness(options: CodingAgentHarnessOptions): AgentHarness<CodingState> {
+  const commands = options.commands ?? defaultCodingCommands(options.host)
+  const referenceHost = options.referenceHost ?? options.host
   const resolveReferences = createFileReferenceResolver<CodingState>(referenceHost)
   return {
     name: 'coding',
     initialState: () => ({}),
+    host: () => options.host,
+    commands: () => [...commands],
     systemPrompt: () => {
       const commandPrompt = renderCommandList(commands)
       const sections = [
@@ -68,9 +66,6 @@ export function createCodingAgentDefinition(options: CodingAgentOptions): AgentD
       return sections.join('\n\n')
     },
     resolveReferences,
-    tools: () => createShellSessionTools(options.environment),
-    commands: () => [...commands],
-    dispose: () => options.environment.disposeAllShells(),
   }
 }
 

@@ -4,7 +4,7 @@ import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent } fr
 import {
   AgentSession,
   Transcript,
-  type AgentDefinition,
+  type AgentHarnessRuntime,
   type AgentSessionOptions,
   type AgentSessionSnapshot,
 } from '../index'
@@ -30,11 +30,11 @@ export function text(value: string): UserContentBlock[] {
   return [{ type: 'text', text: value }]
 }
 
-export function createDefinition(
-  overrides: Partial<AgentDefinition<TestState>> = {},
-): AgentDefinition<TestState> {
+export function createRuntime(
+  overrides: Partial<AgentHarnessRuntime<TestState>> = {},
+): AgentHarnessRuntime<TestState> {
   return {
-    name: 'test-agent',
+    harnessName: 'test-agent',
     initialState: () => ({ toolCalls: 0 }),
     systemPrompt: () => 'system prompt',
     preamble: () => 'preamble',
@@ -45,7 +45,7 @@ export function createDefinition(
 
 export function createSession(
   provider: AgentProvider,
-  definition: AgentDefinition<TestState> = createDefinition(),
+  runtime: AgentHarnessRuntime<TestState> = createRuntime(),
   transcript?: Transcript,
   selection: ModelSelection = model,
   options: Partial<AgentSessionOptions<TestState>> = {},
@@ -56,7 +56,7 @@ export function createSession(
       provider,
       model: selection,
       cwd: '/workspace',
-      definition,
+      runtime,
       transcript,
     },
     {

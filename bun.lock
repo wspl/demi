@@ -9,8 +9,8 @@
         "@typescript/native-preview": "^7.0.0-dev.20260618.1",
       },
     },
-    "packages/agent-coding": {
-      "name": "@demi/agent-coding",
+    "packages/coding-agent": {
+      "name": "@demi/coding-agent",
       "version": "0.0.0",
       "dependencies": {
         "@demi/base-agent": "workspace:*",
@@ -119,7 +119,7 @@
       "name": "@demi/tui",
       "version": "0.0.0",
       "dependencies": {
-        "@demi/agent-coding": "workspace:*",
+        "@demi/coding-agent": "workspace:*",
         "@demi/base-agent": "workspace:*",
         "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
@@ -142,7 +142,7 @@
 
     "@borewit/text-codec": ["@borewit/text-codec@0.2.2", "", {}, "sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ=="],
 
-    "@demi/agent-coding": ["@demi/agent-coding@workspace:packages/agent-coding"],
+    "@demi/coding-agent": ["@demi/coding-agent@workspace:packages/coding-agent"],
 
     "@demi/base-agent": ["@demi/base-agent@workspace:packages/base-agent"],
 

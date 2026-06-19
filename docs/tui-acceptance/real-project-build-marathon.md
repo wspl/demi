@@ -69,4 +69,4 @@ Important observations:
 
 ## Follow-Up Deterministic Tests
 
-Failures should become `agent-coding` scenario tests, shell foreground-control tests, or TUI process tests depending on the broken layer.
+Failures should become `coding-agent` scenario tests, shell foreground-control tests, or TUI process tests depending on the broken layer.

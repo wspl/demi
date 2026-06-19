@@ -1,5 +1,6 @@
 export * from './command'
 export * from './environment'
+export * from './harness'
 export * from './host'
 export * from './host-fs'
 export * from './storage'

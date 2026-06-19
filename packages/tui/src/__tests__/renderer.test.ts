@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test'
-import type { AgentDefinition } from '@demi/base-agent'
 import type { Block, ModelSelection, UserContentBlock } from '@demi/core'
 import { events, ProviderRegistry, StubProvider } from '@demi/provider'
 import { createInProcessTransportPair, RpcClient, RpcHost, type ProviderConfig } from '@demi/rpc'
+import type { AgentHarness } from '@demi/shell'
+import { LocalHost } from '@demi/shell/local-host'
 import { attachRenderer, createRenderer, handleCommand, renderEvent, runInputLoop, type TuiOutput } from '../index'
 
 const model: ModelSelection = {
@@ -196,7 +197,7 @@ test('TUI renderer receives RpcClient subscription events end to end', async () 
   const rpcHost = new RpcHost({
     transport: transports.host,
     providerRegistry,
-    definitions: { test: testDefinition as AgentDefinition<unknown> },
+    harnesses: { test: testHarness },
   })
   const client = new RpcClient(transports.client)
   const output = new CaptureOutput()
@@ -328,12 +329,12 @@ class FakeLoopClient extends FakeCommandClient {
   }
 }
 
-const testDefinition: AgentDefinition<Record<string, never>> = {
+const testHarness: AgentHarness<Record<string, never>> = {
   name: 'tui-test',
   initialState: () => ({}),
+  host: (ctx) => new LocalHost(ctx.cwd),
   systemPrompt: () => 'system',
   preamble: () => null,
-  tools: () => [],
 }
 
 function promptQueue(values: string[]): { ask: () => Promise<string>; consumed: () => number } {

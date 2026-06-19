@@ -7,8 +7,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@demi/agent-coding": "workspace:*",
     "@demi/base-agent": "workspace:*",
+    "@demi/coding-agent": "workspace:*",
     "@demi/core": "workspace:*",
     "@demi/provider": "workspace:*",
     "@demi/provider-claude-code": "workspace:*",

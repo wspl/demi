@@ -3,11 +3,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession } from '@demi/base-agent'
+import { AgentSession, type AgentHarnessRuntime } from '@demi/base-agent'
 import { StubProvider, events, type InferenceRequest } from '@demi/provider'
-import { BashEnvironment, type Host, type HostSpawnHandle, type HostSpawnParams } from '@demi/shell'
+import {
+  BashEnvironment,
+  CommandRegistry,
+  createShellSessionTools,
+  type AgentHarness,
+  type Host,
+  type HostSpawnHandle,
+  type HostSpawnParams,
+} from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
-import { createCodingAgentDefinition } from '../index'
+import { createCodingAgentHarness } from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -22,23 +30,21 @@ const model: ModelSelection = {
   thinking: null,
 }
 
-test('coding agent definition exposes shell session tools and registered command prompt', async () => {
-  const environment = new BashEnvironment({
-    host: new LocalHost(process.cwd()),
-    initialEnv: { PATH: process.env.PATH ?? '' },
-  })
-  const definition = createCodingAgentDefinition({ environment })
-  const state = definition.initialState()
+test('coding agent harness exposes shell session tools and registered command prompt', async () => {
+  const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
+  const state = harness.initialState()
+  const commands = harness.commands?.({ state, cwd: process.cwd() }) ?? []
+  const { environment, runtime } = createRuntimeFromHarness(harness, process.cwd())
 
-  expect(definition.name).toBe('coding')
-  expect(definition.commands?.({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() }).map((command) => command.name)).toEqual(['editor', 'todo'])
-  expect(definition.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() }).map((tool) => tool.name)).toEqual([
+  expect(harness.name).toBe('coding')
+  expect(commands.map((command) => command.name)).toEqual(['editor', 'todo'])
+  expect(runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() }).map((tool) => tool.name)).toEqual([
     'shell_exec',
     'shell_wait',
     'shell_input',
     'shell_abort',
   ])
-  const prompt = definition.systemPrompt({
+  const prompt = harness.systemPrompt({
     agentSessionId: 'coding-test-agent',
     state,
     cwd: process.cwd(),
@@ -75,17 +81,13 @@ test('coding agent resolves file references through the workspace host', async (
   await writeFile(join(root, 'note.txt'), 'hello from file\n', 'utf8')
   const spacedPath = join(root, 'space note.txt')
   await writeFile(spacedPath, 'hello from encoded file URL\n', 'utf8')
-  const environment = new BashEnvironment({
-    host: new LocalHost(root),
-    initialEnv: { PATH: process.env.PATH ?? '' },
-  })
-  const definition = createCodingAgentDefinition({ environment })
-  if (!definition.resolveReferences) throw new Error('expected resolveReferences')
+  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+  if (!harness.resolveReferences) throw new Error('expected resolveReferences')
 
-  const resolved = await definition.resolveReferences(
+  const resolved = await harness.resolveReferences(
     {
       agentSessionId: 'coding-ref-agent',
-      state: definition.initialState(),
+      state: harness.initialState(),
       cwd: root,
       transcript: {} as never,
       signal: new AbortController().signal,
@@ -98,10 +100,10 @@ test('coding agent resolves file references through the workspace host', async (
     { type: 'text', text: '<file path="note.txt">\nhello from file\n\n</file>' },
   ])
 
-  const resolvedUrl = await definition.resolveReferences(
+  const resolvedUrl = await harness.resolveReferences(
     {
       agentSessionId: 'coding-ref-agent',
-      state: definition.initialState(),
+      state: harness.initialState(),
       cwd: root,
       transcript: {} as never,
       signal: new AbortController().signal,
@@ -116,17 +118,13 @@ test('coding agent resolves file references through the workspace host', async (
 
 test('coding agent file references read through Host.spawn', async () => {
   const host = new RecordingHost('/workspace', 'hello from fake host\n')
-  const environment = new BashEnvironment({
-    host,
-    initialEnv: { PATH: process.env.PATH ?? '' },
-  })
-  const definition = createCodingAgentDefinition({ environment })
-  if (!definition.resolveReferences) throw new Error('expected resolveReferences')
+  const harness = createCodingAgentHarness({ host })
+  if (!harness.resolveReferences) throw new Error('expected resolveReferences')
 
-  const resolved = await definition.resolveReferences(
+  const resolved = await harness.resolveReferences(
     {
       agentSessionId: 'coding-ref-agent',
-      state: definition.initialState(),
+      state: harness.initialState(),
       cwd: '/workspace',
       transcript: {} as never,
       signal: new AbortController().signal,
@@ -141,11 +139,8 @@ test('coding agent file references read through Host.spawn', async () => {
 test('coding agent resolves file references before AgentSession sends the provider request', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-session-refs-'))
   await writeFile(join(root, 'note.txt'), 'hello from session file\n', 'utf8')
-  const environment = new BashEnvironment({
-    host: new LocalHost(root),
-    initialEnv: { PATH: process.env.PATH ?? '' },
-  })
-  const definition = createCodingAgentDefinition({ environment })
+  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+  const { runtime } = createRuntimeFromHarness(harness, root)
   const provider = new StubProvider([
     (request: InferenceRequest) => {
       expect(request.items).toEqual([
@@ -161,7 +156,7 @@ test('coding agent resolves file references before AgentSession sends the provid
       return [events.text('read file'), events.response()]
     },
   ])
-  const session = new AgentSession({ provider, model, cwd: root, definition }, { agentSessionId: 'coding-ref-session' })
+  const session = new AgentSession({ provider, model, cwd: root, runtime }, { agentSessionId: 'coding-ref-session' })
 
   await session.send([{ type: 'text', text: 'inspect this file' }, { type: 'reference', reference: 'note.txt' }])
 
@@ -179,18 +174,14 @@ test('coding agent rejects file references outside the workspace host root', asy
   const outside = await mkdtemp(join(tmpdir(), 'demi-coding-ref-outside-'))
   const outsidePath = join(outside, 'secret.txt')
   await writeFile(outsidePath, 'outside\n', 'utf8')
-  const environment = new BashEnvironment({
-    host: new LocalHost(root),
-    initialEnv: { PATH: process.env.PATH ?? '' },
-  })
-  const definition = createCodingAgentDefinition({ environment })
-  if (!definition.resolveReferences) throw new Error('expected resolveReferences')
+  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+  if (!harness.resolveReferences) throw new Error('expected resolveReferences')
 
   await expect(
-    definition.resolveReferences(
+    harness.resolveReferences(
       {
         agentSessionId: 'coding-ref-agent',
-        state: definition.initialState(),
+        state: harness.initialState(),
         cwd: root,
         transcript: {} as never,
         signal: new AbortController().signal,
@@ -200,27 +191,37 @@ test('coding agent rejects file references outside the workspace host root', asy
   ).rejects.toThrow('File reference escapes workspace')
 })
 
-test('coding agent dispose clears shell sessions owned by its environment', async () => {
+test('coding agent harness leaves shell lifecycle to host assembly', () => {
+  const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
+
+  expect('tools' in harness).toBe(false)
+  expect(harness.dispose).toBeUndefined()
+})
+
+function createRuntimeFromHarness(
+  harness: AgentHarness<Record<string, never>>,
+  cwd: string,
+): { environment: BashEnvironment; runtime: AgentHarnessRuntime<Record<string, never>>; state: Record<string, never> } {
+  const state = harness.initialState()
+  const harnessContext = { state, cwd }
+  const registry = new CommandRegistry()
+  for (const command of harness.commands?.(harnessContext) ?? []) registry.register(command)
   const environment = new BashEnvironment({
-    host: new LocalHost(process.cwd()),
-    shellIdFactory: () => 'coding-dispose-shell',
+    host: harness.host(harnessContext),
+    commands: registry,
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition = createCodingAgentDefinition({ environment })
-  const state = definition.initialState()
-
-  const created = await environment.exec({ script: 'printf live' })
-  expect(environment.getShell(created.shellId)).not.toBeNull()
-
-  await definition.dispose?.({
-    agentSessionId: 'coding-dispose-agent',
-    state,
-    cwd: process.cwd(),
-    transcript: {} as never,
-  })
-
-  expect(environment.getShell(created.shellId)).toBeNull()
-})
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: harness.name,
+    initialState: () => state,
+    systemPrompt: (ctx) => harness.systemPrompt(ctx),
+    preamble: (ctx) => harness.preamble?.(ctx) ?? null,
+    resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
+    lifecycle: (event) => harness.lifecycle?.(event),
+    tools: () => createShellSessionTools(environment),
+  }
+  return { environment, runtime, state }
+}
 
 class RecordingHost implements Host {
   readonly calls: HostSpawnParams[] = []

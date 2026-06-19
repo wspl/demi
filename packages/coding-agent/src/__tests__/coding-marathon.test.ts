@@ -3,11 +3,17 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession } from '@demi/base-agent'
-import { BashEnvironment } from '@demi/shell'
+import { AgentSession, type AgentHarnessRuntime } from '@demi/base-agent'
+import {
+  BashEnvironment,
+  CommandRegistry,
+  createShellSessionTools,
+  type AgentHarness,
+  type BashEnvironmentOptions,
+} from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import { StubProvider, events, type InferenceRequest } from '@demi/provider'
-import { createCodingAgentDefinition } from '../index'
+import { createCodingAgentHarness } from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -25,12 +31,10 @@ const model: ModelSelection = {
 test('coding agent completes an editor/todo workflow through shell session tools', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-marathon-'))
   const host = new LocalHost(root)
-  const environment = new BashEnvironment({
-    host,
+  const harness = createCodingAgentHarness({ host })
+  const { environment, runtime } = createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-shell',
-    initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition = createCodingAgentDefinition({ environment })
   const provider = new StubProvider([
     [
       events.toolCall('create-file', 'shell_exec', {
@@ -61,7 +65,7 @@ test('coding agent completes an editor/todo workflow through shell session tools
       return [events.text('done'), events.response()]
     },
   ])
-  const session = new AgentSession({ provider, model, cwd: root, definition })
+  const session = new AgentSession({ provider, model, cwd: root, runtime })
 
   await session.send([{ type: 'text', text: 'Create app file, track tests, then update value.' }])
 
@@ -81,12 +85,10 @@ test('coding agent completes an editor/todo workflow through shell session tools
 
 test('coding agent preserves workflow state across multiple user messages', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-multiturn-'))
-  const environment = new BashEnvironment({
-    host: new LocalHost(root),
+  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+  const { environment, runtime } = createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-multiturn-shell',
-    initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition = createCodingAgentDefinition({ environment })
   const provider = new StubProvider([
     [
       events.toolCall('start-workflow', 'shell_exec', {
@@ -127,7 +129,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
       return [events.text('second turn complete'), events.response()]
     },
   ])
-  const session = new AgentSession({ provider, model, cwd: root, definition }, { agentSessionId: 'coding-multiturn-agent' })
+  const session = new AgentSession({ provider, model, cwd: root, runtime }, { agentSessionId: 'coding-multiturn-agent' })
 
   await session.send([{ type: 'text', text: 'Start the workflow.' }])
   await session.send([{ type: 'text', text: 'Continue the workflow and close the todo.' }])
@@ -141,12 +143,10 @@ test('coding agent preserves workflow state across multiple user messages', asyn
 
 test('coding agent preserves cwd and env when reusing a shell session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-shell-state-'))
-  const environment = new BashEnvironment({
-    host: new LocalHost(root),
+  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+  const { runtime } = createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-state-shell',
-    initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition = createCodingAgentDefinition({ environment })
   const provider = new StubProvider([
     [
       events.toolCall('prepare-shell-state', 'shell_exec', {
@@ -177,7 +177,7 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
       return [events.text('state preserved'), events.response()]
     },
   ])
-  const session = new AgentSession({ provider, model, cwd: root, definition })
+  const session = new AgentSession({ provider, model, cwd: root, runtime })
 
   await session.send([{ type: 'text', text: 'Prepare shell state, then reuse it.' }])
 
@@ -187,12 +187,10 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
 test('coding agent iterates from a failing project test to a passing fix', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-test-fix-'))
   const host = new LocalHost(root)
-  const environment = new BashEnvironment({
-    host,
+  const harness = createCodingAgentHarness({ host })
+  const { environment, runtime } = createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-fix-shell',
-    initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition = createCodingAgentDefinition({ environment })
   const provider = new StubProvider([
     [
       events.toolCall('create-project', 'shell_exec', {
@@ -241,7 +239,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
       return [events.text('fixed'), events.response()]
     },
   ])
-  const session = new AgentSession({ provider, model, cwd: root, definition })
+  const session = new AgentSession({ provider, model, cwd: root, runtime })
 
   await session.send([{ type: 'text', text: 'Create a tiny todo module, run its test, fix the failure, and rerun.' }])
 
@@ -251,12 +249,10 @@ test('coding agent iterates from a failing project test to a passing fix', async
 
 test('coding agent controls a long foreground command with wait, input, and abort', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-long-command-'))
-  const environment = new BashEnvironment({
-    host: new LocalHost(root),
+  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+  const { runtime } = createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-long-shell',
-    initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  const definition = createCodingAgentDefinition({ environment })
   const provider = new StubProvider([
     [
       events.toolCall('start-long', 'shell_exec', {
@@ -287,12 +283,39 @@ test('coding agent controls a long foreground command with wait, input, and abor
       return [events.text('stopped'), events.response()]
     },
   ])
-  const session = new AgentSession({ provider, model, cwd: root, definition })
+  const session = new AgentSession({ provider, model, cwd: root, runtime })
 
   await session.send([{ type: 'text', text: 'Run the interactive long command, feed it input, then stop it.' }])
 
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
+
+function createRuntimeFromHarness(
+  harness: AgentHarness<Record<string, never>>,
+  cwd: string,
+  options: Omit<BashEnvironmentOptions, 'host' | 'commands'> = {},
+): { environment: BashEnvironment; runtime: AgentHarnessRuntime<Record<string, never>> } {
+  const state = harness.initialState()
+  const harnessContext = { state, cwd }
+  const registry = new CommandRegistry()
+  for (const command of harness.commands?.(harnessContext) ?? []) registry.register(command)
+  const environment = new BashEnvironment({
+    initialEnv: { PATH: process.env.PATH ?? '' },
+    ...options,
+    host: harness.host(harnessContext),
+    commands: registry,
+  })
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: harness.name,
+    initialState: () => state,
+    systemPrompt: (ctx) => harness.systemPrompt(ctx),
+    preamble: (ctx) => harness.preamble?.(ctx) ?? null,
+    resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
+    lifecycle: (event) => harness.lifecycle?.(event),
+    tools: () => createShellSessionTools(environment),
+  }
+  return { environment, runtime }
+}
 
 function latestShellResult(request: InferenceRequest): {
   status: string

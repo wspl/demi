@@ -1,5 +1,12 @@
-import { AgentSession, type AgentDefinition, type SessionEvent } from '@demi/base-agent'
-import type { BashAuditEvent } from '@demi/shell'
+import { AgentSession, type AgentHarnessRuntime, type SessionEvent } from '@demi/base-agent'
+import {
+  BashEnvironment,
+  CommandRegistry,
+  createShellSessionTools,
+  type AgentHarness,
+  type BashAuditEvent,
+  type BashEnvironmentOptions,
+} from '@demi/shell'
 import type { Block, ToolResultContentBlock } from '@demi/core'
 import type { ProviderRegistry } from '@demi/provider'
 import { cloneBlocks, diffTranscriptBlocks } from './patch'
@@ -9,15 +16,18 @@ import type { RpcHostTransport } from './transport'
 export interface RpcHostOptions {
   transport: RpcHostTransport
   providerRegistry: ProviderRegistry
-  definitions?: Record<string, AgentDefinition<unknown>>
+  harnesses?: Record<string, AgentHarness<unknown>>
+  shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
 }
 
 export class RpcHost {
   private readonly transport: RpcHostTransport
   private readonly providerRegistry: ProviderRegistry
-  private readonly definitions = new Map<string, AgentDefinition<unknown>>()
+  private readonly harnesses = new Map<string, AgentHarness<unknown>>()
+  private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private session: AgentSession<unknown> | null = null
-  private currentDefinition: AgentDefinition<unknown> | null = null
+  private currentHarness: AgentHarness<unknown> | null = null
+  private currentEnvironment: BashEnvironment | null = null
   private currentCwd: string | null = null
   private unsubscribeSession: (() => void) | null = null
   private lastTranscriptBlocks: Block[] = []
@@ -26,17 +36,18 @@ export class RpcHost {
   constructor(options: RpcHostOptions) {
     this.transport = options.transport
     this.providerRegistry = options.providerRegistry
-    for (const [name, definition] of Object.entries(options.definitions ?? {})) {
-      this.registerDefinition(name, definition)
+    this.shellOptions = options.shell ?? {}
+    for (const [name, harness] of Object.entries(options.harnesses ?? {})) {
+      this.registerHarness(name, harness)
     }
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
     })
   }
 
-  registerDefinition(name: string, definition: AgentDefinition<unknown>): void {
-    if (this.definitions.has(name)) throw new Error(`RpcHost: definition "${name}" is already registered`)
-    this.definitions.set(name, definition)
+  registerHarness(name: string, harness: AgentHarness<unknown>): void {
+    if (this.harnesses.has(name)) throw new Error(`RpcHost: harness "${name}" is already registered`)
+    this.harnesses.set(name, harness)
   }
 
   async close(): Promise<void> {
@@ -105,20 +116,42 @@ export class RpcHost {
       return
     }
 
-    const definition = this.definitions.get(frame.definition)
-    if (!definition) {
-      this.send({ type: 'rejected', command: 'open', reason: `Unknown definition: ${frame.definition}` })
+    const harness = this.harnesses.get(frame.harness)
+    if (!harness) {
+      this.send({ type: 'rejected', command: 'open', reason: `Unknown harness: ${frame.harness}` })
       return
     }
 
     const provider = await this.providerRegistry.createProvider(frame.provider.type, frame.provider.config)
+    const state = harness.initialState()
+    const harnessContext = { state, cwd: frame.cwd }
+    const commands = harness.commands?.(harnessContext) ?? []
+    const commandRegistry = new CommandRegistry()
+    for (const command of commands) commandRegistry.register(command)
+    const environment = new BashEnvironment({
+      ...this.shellOptions,
+      host: harness.host(harnessContext),
+      commands: commandRegistry,
+    })
+    const tools = createShellSessionTools(environment)
+    const runtime: AgentHarnessRuntime<unknown> = {
+      harnessName: harness.name,
+      initialState: () => state,
+      systemPrompt: (ctx) => harness.systemPrompt(ctx),
+      preamble: (ctx) => harness.preamble?.(ctx) ?? null,
+      resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
+      lifecycle: (event) => harness.lifecycle?.(event),
+      tools: () => tools,
+    }
     this.session = new AgentSession({
       provider,
       model: frame.provider.model,
       cwd: frame.cwd,
-      definition,
+      runtime,
+      state,
     })
-    this.currentDefinition = definition
+    this.currentHarness = harness
+    this.currentEnvironment = environment
     this.currentCwd = frame.cwd
     this.lastTranscriptBlocks = []
     this.unsubscribeSession = this.session.subscribe((event) => this.handleSessionEvent(event))
@@ -156,19 +189,22 @@ export class RpcHost {
 
   private async closeSession(): Promise<void> {
     const session = this.session
-    const definition = this.currentDefinition
+    const harness = this.currentHarness
+    const environment = this.currentEnvironment
     const cwd = this.currentCwd
 
     try {
       if (session) await session.abort()
-      if (session && definition && cwd) {
-        await definition.dispose?.({ agentSessionId: session.id(), state: session.state(), cwd, transcript: session.transcript() })
+      if (environment) await environment.disposeAllShells()
+      if (session && harness && cwd) {
+        await harness.dispose?.({ agentSessionId: session.id(), state: session.state(), cwd, transcript: session.transcript() })
       }
     } finally {
       this.unsubscribeSession?.()
       this.unsubscribeSession = null
       this.session = null
-      this.currentDefinition = null
+      this.currentHarness = null
+      this.currentEnvironment = null
       this.currentCwd = null
       this.lastTranscriptBlocks = []
     }
@@ -176,12 +212,12 @@ export class RpcHost {
 
   private async handleShellInput(frame: Extract<ClientFrame, { type: 'shell_input' }>): Promise<void> {
     const session = this.sessionFor('shell_input')
-    if (!session || !this.currentDefinition || !this.currentCwd) return
+    if (!session || !this.currentEnvironment || !this.currentCwd) return
 
-    const tools = this.currentDefinition.tools({ agentSessionId: session.id(), state: session.state(), cwd: this.currentCwd })
+    const tools = createShellSessionTools(this.currentEnvironment)
     const tool = tools.find((candidate) => candidate.name === 'shell_input')
     if (!tool) {
-      this.send({ type: 'rejected', command: 'shell_input', reason: 'Current definition does not expose shell_input' })
+      this.send({ type: 'rejected', command: 'shell_input', reason: 'Current harness does not expose shell_input' })
       return
     }
 

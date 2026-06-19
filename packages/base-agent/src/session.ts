@@ -8,7 +8,7 @@ import type {
 import type { InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
 import { Transcript, type TranscriptOptions } from './transcript'
 import type {
-  AgentDefinition,
+  AgentHarnessRuntime,
   AgentSessionOptions,
   AgentSessionParams,
   AgentSessionRestoreParams,
@@ -39,7 +39,7 @@ export class AgentSession<State> {
   private readonly provider
   private readonly model: ModelSelection
   private readonly cwd: string
-  private readonly definition: AgentDefinition<State>
+  private readonly runtime: AgentHarnessRuntime<State>
   private readonly agentSessionId: string
   private readonly idFactory: () => string
   private readonly store?: AgentSessionStore<State>
@@ -62,9 +62,9 @@ export class AgentSession<State> {
     params: AgentSessionRestoreParams<State>,
     options: AgentSessionOptions<State> = {},
   ): AgentSession<State> {
-    if (params.snapshot.definitionName !== params.definition.name) {
+    if (params.snapshot.harnessName !== params.runtime.harnessName) {
       throw new Error(
-        `AgentSession: snapshot definition "${params.snapshot.definitionName}" does not match "${params.definition.name}"`,
+        `AgentSession: snapshot harness "${params.snapshot.harnessName}" does not match "${params.runtime.harnessName}"`,
       )
     }
     const snapshot = structuredClone(params.snapshot)
@@ -73,7 +73,7 @@ export class AgentSession<State> {
         provider: params.provider,
         model: snapshot.model,
         cwd: snapshot.cwd,
-        definition: params.definition,
+        runtime: params.runtime,
         transcript: snapshot.transcript,
         state: snapshot.state,
       },
@@ -85,8 +85,8 @@ export class AgentSession<State> {
     this.provider = params.provider
     this.model = params.model
     this.cwd = params.cwd
-    this.definition = params.definition
-    this.agentState = params.state === undefined ? params.definition.initialState() : structuredClone(params.state)
+    this.runtime = params.runtime
+    this.agentState = params.state === undefined ? params.runtime.initialState() : structuredClone(params.state)
     this.agentSessionId = options.agentSessionId ?? defaultIdFactory()
     this.idFactory = options.idFactory ?? defaultIdFactory
     this.store = options.store
@@ -270,7 +270,7 @@ export class AgentSession<State> {
   }
 
   private async executeSend(content: UserContentBlock[]): Promise<void> {
-    await this.definition.lifecycle?.({
+    await this.runtime.lifecycle?.({
       type: 'before_round_start',
       agentSessionId: this.agentSessionId,
       state: this.agentState,
@@ -280,7 +280,7 @@ export class AgentSession<State> {
 
     const resolvedContent = await this.resolveReferences(content)
     const promptContext = this.promptContext()
-    const preamble = this.definition.preamble?.(promptContext) ?? null
+    const preamble = this.runtime.preamble?.(promptContext) ?? null
     this.transcriptLog.pushUserTurn(this.model, resolvedContent, preamble)
     await this.commitTranscript()
 
@@ -289,7 +289,7 @@ export class AgentSession<State> {
   }
 
   private async resolveReferences(content: UserContentBlock[]): Promise<UserContentBlock[]> {
-    const resolver = this.definition.resolveReferences
+    const resolver = this.runtime.resolveReferences
     if (!resolver) return content
     const signal = this.currentSignal()
     const resolved = await abortable(
@@ -315,7 +315,7 @@ export class AgentSession<State> {
     if (lastUserIndex === null) throw new Error('AgentSession: cannot retry without a user turn')
 
     this.transcriptLog.blocks.splice(lastUserIndex + 1)
-    await this.definition.lifecycle?.({
+    await this.runtime.lifecycle?.({
       type: 'after_transcript_rewrite',
       agentSessionId: this.agentSessionId,
       state: this.agentState,
@@ -416,7 +416,7 @@ export class AgentSession<State> {
         result.isError ?? false,
         result.metadata ?? result.continuation ?? null,
       )
-      await this.definition.lifecycle?.({
+      await this.runtime.lifecycle?.({
         type: 'after_tool_call',
         agentSessionId: this.agentSessionId,
         state: this.agentState,
@@ -557,7 +557,7 @@ export class AgentSession<State> {
     const tools = this.currentTools().map(toToolDefinition)
     return {
       modelId: this.model.model.id,
-      systemPrompt: this.definition.systemPrompt(this.promptContext()),
+      systemPrompt: this.runtime.systemPrompt(this.promptContext()),
       cwd: this.cwd,
       items: this.transcriptLog.collectInferenceItems(),
       tools,
@@ -586,7 +586,7 @@ export class AgentSession<State> {
   }
 
   private currentTools(): AgentTool<State>[] {
-    return this.definition.tools({ agentSessionId: this.agentSessionId, state: this.agentState, cwd: this.cwd })
+    return this.runtime.tools({ agentSessionId: this.agentSessionId, state: this.agentState, cwd: this.cwd })
   }
 
   private isUsageNearLimit(usage: TokenUsage): boolean {
@@ -642,7 +642,7 @@ export class AgentSession<State> {
       queue: structuredClone(this.queuedMessages()),
       cwd: this.cwd,
       model: structuredClone(this.model),
-      definitionName: this.definition.name,
+      harnessName: this.runtime.harnessName,
     })
   }
 
