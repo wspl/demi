@@ -33,8 +33,8 @@ test('TUI process runs a Claude Code backed session through stdin and renders to
 
     await capture.waitForStdout('usage: in=12 out=3 cache_read=2 cache_write=1', 5_000)
     const stdout = capture.stdout()
-    expect(stdout).toContain('claude runtime: ready (fixture claude 0.0.0)')
-    expect(stdout).toContain('claude auth: authenticated (fixture@example.test)')
+    expect(stdout).not.toContain('claude runtime:')
+    expect(stdout).not.toContain('claude auth:')
     expect(stdout).toContain('model: claude-opus-4-8')
     expect(stdout).toContain('thinking: medium')
     expect(stdout).toContain('tool: shell_exec')

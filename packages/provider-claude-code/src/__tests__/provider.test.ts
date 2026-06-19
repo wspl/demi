@@ -72,6 +72,19 @@ test('Claude Code provider definition only accepts serializable config fields', 
   expect((provider as unknown as { transportFactory?: unknown }).transportFactory).not.toBe(injectedFactory)
 })
 
+test('Claude Code provider definition does not preflight external CLI state', async () => {
+  const definition = createClaudeCodeProviderDefinition()
+
+  expect(await definition.auth?.status()).toEqual({
+    status: 'unknown',
+    message: 'Auth is checked when a Claude Code request runs',
+  })
+  expect(await definition.state?.()).toEqual({
+    status: 'unknown',
+    message: 'Runtime is checked when a Claude Code request runs',
+  })
+})
+
 test('ClaudeCodeProvider streams text and response events from transport messages', async () => {
   const transport = new FakeClaudeTransport([
     { type: 'assistant', message: { content: [{ type: 'text', text: 'hello' }] } },

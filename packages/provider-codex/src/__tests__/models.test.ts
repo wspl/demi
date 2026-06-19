@@ -37,7 +37,7 @@ test('Codex backend model catalog maps slug ids and explicit capabilities', () =
     supportsAttachments: true,
     supportsReasoning: true,
     supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
-    defaultThinkingEffort: 'medium',
+    defaultThinkingEffort: null,
     source: 'codex-backend',
     sourceFetchedAt: '2026-06-20T00:00:00.000Z',
     stale: false,
@@ -64,6 +64,22 @@ test('listCodexModels requests Codex backend with auth headers and client versio
   expect(requests[0]?.headers.get('chatgpt-account-id')).toBe('account-1')
   expect(requests[0]?.headers.get('accept')).toBe('application/json')
   expect(list.models.map((model) => model.id)).toEqual(['gpt-5.5', 'gpt-5.4-mini'])
+  resetCodexModelCatalogCacheForTests()
+})
+
+test('listCodexModels uses the static catalog client version by default', async () => {
+  resetCodexModelCatalogCacheForTests()
+  const requests: string[] = []
+  await listCodexModels({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    fetch: async (url) => {
+      requests.push(String(url))
+      return Response.json(codexModelsFixture())
+    },
+    now: () => new Date('2026-06-20T00:00:00.000Z'),
+  })
+
+  expect(requests).toEqual(['https://chatgpt.com/backend-api/codex/models?client_version=0.130.0'])
   resetCodexModelCatalogCacheForTests()
 })
 

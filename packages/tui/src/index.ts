@@ -15,7 +15,7 @@ import type {
 } from '@demi/core'
 import { createCodingAgentHarness } from '@demi/coding-agent'
 import { ProviderRegistry, type ProviderModel, type ProviderModelList } from '@demi/provider'
-import { claudeAuthState, claudeRuntimeState, createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
+import { createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
 import { FileCodexAuthStore, createCodexProviderDefinition, type CodexTransportMode } from '@demi/provider-codex'
 import {
   AgentClient,
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
   const model = await resolveTuiModel(providerRegistry, options, providerConfigData)
 
   printBanner(options, model)
-  await printProviderStatus(options)
+  if (options.provider === 'codex') await printCodexAuthStatus(options)
 
   const server = new AgentServer({
     agent: harness,
@@ -624,6 +624,7 @@ export async function resolveTuiModel(
   const selected =
     (catalog.defaultModelId ? catalog.models.find((model) => model.id === catalog.defaultModelId) : null) ?? catalog.models[0]
   if (!selected) throw new Error(`${options.provider} model catalog returned no selectable models`)
+  validateThinkingEffortForCatalogModel(options.thinkingEffort, selected)
   return {
     selection: modelSelectionFromCatalogModel(options.provider, selected.id, options.thinkingEffort, selected),
     warnings: [...catalog.warnings],
@@ -640,6 +641,17 @@ function validateExplicitModelId(provider: TuiOptions['provider'], modelId: stri
   }
   if (provider === 'codex' && !modelId.startsWith('gpt-') && !modelId.startsWith('codex-')) {
     throw new Error('--model for codex must be a full Codex model id such as gpt-5.5')
+  }
+}
+
+function validateThinkingEffortForCatalogModel(thinkingEffort: ThinkingEffort | null, model: ProviderModel): void {
+  if (!thinkingEffort) return
+  const supported = model.supportedThinkingEfforts
+  if (!supported || supported.length === 0) {
+    throw new Error(`Model ${model.id} does not advertise explicit thinking effort controls`)
+  }
+  if (!supported.includes(thinkingEffort)) {
+    throw new Error(`Model ${model.id} does not support thinking effort "${thinkingEffort}"`)
   }
 }
 
@@ -672,7 +684,7 @@ function thinkingCapabilitiesFromProviderModel(model: ProviderModel | null): Thi
     {
       type: 'effort' as const,
       efforts: model.supportedThinkingEfforts,
-      defaultEffort: model.defaultThinkingEffort,
+      defaultEffort: null,
       summaries,
       defaultSummary: null,
     },
@@ -683,17 +695,7 @@ function acceptedAttachmentExtensions(): FileExtension[] {
   return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf']
 }
 
-async function printClaudeStatus(): Promise<void> {
-  const [runtime, auth] = await Promise.all([claudeRuntimeState(), claudeAuthState()])
-  writeLine(color(`claude runtime: ${runtime.status}${runtime.message ? ` (${runtime.message})` : ''}`, runtime.status === 'ready' ? 'green' : 'yellow'))
-  writeLine(color(`claude auth: ${auth.status}${'accountLabel' in auth && auth.accountLabel ? ` (${auth.accountLabel})` : ''}${'message' in auth && auth.message ? ` (${auth.message})` : ''}`, auth.status === 'authenticated' ? 'green' : 'yellow'))
-}
-
-async function printProviderStatus(options: TuiOptions): Promise<void> {
-  if (options.provider === 'claude-code') {
-    await printClaudeStatus()
-    return
-  }
+async function printCodexAuthStatus(options: TuiOptions): Promise<void> {
   const auth = await new FileCodexAuthStore({ codexHome: options.codexHome }).status()
   writeLine(color(`codex auth: ${auth.status}${'accountLabel' in auth && auth.accountLabel ? ` (${auth.accountLabel})` : ''}${'message' in auth && auth.message ? ` (${auth.message})` : ''}`, auth.status === 'authenticated' ? 'green' : 'yellow'))
 }
@@ -717,7 +719,7 @@ function printBanner(options: TuiOptions, model: ResolvedTuiModel): void {
   writeLine(`provider: ${options.provider}`)
   writeLine(`workspace: ${options.cwd}`)
   writeLine(`model: ${model.selection.model.id}`)
-  writeLine(`thinking: ${options.thinkingEffort ?? 'off'}`)
+  writeLine(`thinking: ${options.thinkingEffort ?? 'not requested'}`)
   for (const warning of model.warnings) writeLine(color(`model warning: ${warning}`, 'yellow'))
   if (options.provider === 'claude-code') writeLine(`budget: ${options.maxBudgetUsd ?? 'none'}`)
   else writeLine(`transport: ${options.transport}`)
@@ -731,7 +733,7 @@ Options:
   --provider <id>          Provider: claude-code, codex. Defaults to claude-code.
   --model <id>             Full model id. Defaults to the provider model catalog selection.
   --thinking <effort>      Thinking effort: low, medium, high, xhigh, max.
-  --no-thinking            Disable thinking effort. This is the default.
+  --no-thinking            Do not request an explicit thinking effort. This is the default.
   --budget <usd>           Max budget passed to claude. Defaults to 0.25.
   --no-budget              Do not pass a max budget.
   --claude-path <path>     Path to claude CLI. Defaults to claude on PATH.

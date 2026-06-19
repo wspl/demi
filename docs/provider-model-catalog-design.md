@@ -161,7 +161,7 @@ exclude: claude-3-5-sonnet-20241022
 - `attachment` → `supportsAttachments`
 - `cost.input/output/cache_read/cache_write` → `cost`
 - thinking effort options 只有 catalog 明确提供时才填充；否则设为 `null`。
-- catalog 中的 provider default effort 只能作为元数据保留；TUI / agent 默认选择固定为不请求显式 effort。
+- catalog 中的 provider default effort 不写入运行默认字段；TUI / agent 默认选择固定为不请求显式 effort。
 
 缓存：
 

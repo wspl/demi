@@ -285,13 +285,57 @@ test('TUI model resolver selects from provider catalog when no full model id is 
     {
       type: 'effort',
       efforts: ['low', 'medium', 'high', 'max'],
-      defaultEffort: 'medium',
+      defaultEffort: null,
       summaries: ['auto', 'concise', 'detailed', 'off', 'on'],
       defaultSummary: null,
     },
   ])
   expect(resolved.selection.thinking).toEqual({ type: 'effort', effort: 'medium', summary: null })
   expect(resolved.warnings).toEqual(['catalog warning'])
+})
+
+test('TUI model resolver rejects explicit thinking efforts not advertised by catalog', async () => {
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'claude-code',
+    displayName: 'Claude Code',
+    listModels: () => ({
+      providerId: 'claude-code',
+      defaultModelId: 'claude-sonnet-4-6',
+      sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+      stale: false,
+      warnings: [],
+      models: [
+        {
+          providerId: 'claude-code',
+          id: 'claude-sonnet-4-6',
+          displayName: 'Claude Sonnet 4.6',
+          contextWindow: 1_000_000,
+          outputLimit: 64_000,
+          supportsTools: true,
+          supportsAttachments: false,
+          supportsReasoning: true,
+          supportedThinkingEfforts: ['low'],
+          defaultThinkingEffort: null,
+          source: 'models.dev',
+          sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+          stale: false,
+        },
+      ],
+    }),
+    createProvider: () => new StubProvider([]),
+  })
+
+  await expect(resolveTuiModel(providerRegistry, {
+    provider: 'claude-code',
+    cwd: '/tmp',
+    modelId: null,
+    thinkingEffort: 'medium',
+    maxBudgetUsd: null,
+    transport: 'auto',
+    yieldAfterMs: 10,
+    timeoutMs: 100,
+  }, {})).rejects.toThrow('does not support thinking effort "medium"')
 })
 
 test('TUI model resolver rejects aliases and does not call model catalog for explicit full ids', async () => {

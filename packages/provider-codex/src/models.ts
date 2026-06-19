@@ -1,5 +1,3 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import type { ProviderModel, ProviderModelList } from '@demi/provider'
 import {
   CodexAuthError,
@@ -18,7 +16,6 @@ export interface CodexModelCatalogOptions {
   clientVersion?: string
   fetch?: ModelCatalogFetch
   now?: () => Date
-  codexVersion?: () => Promise<string>
 }
 
 export type ModelCatalogFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
@@ -29,8 +26,8 @@ interface CodexCatalogCache {
 }
 
 const DEFAULT_CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api'
+const DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION = '0.130.0'
 const CODEX_MODEL_CACHE_TTL_MS = 15 * 60 * 1000
-const execFileAsync = promisify(execFile)
 const codexCatalogCache = new Map<string, CodexCatalogCache>()
 
 export async function listCodexModels(options: CodexModelCatalogOptions = {}): Promise<ProviderModelList> {
@@ -38,7 +35,7 @@ export async function listCodexModels(options: CodexModelCatalogOptions = {}): P
   const now = options.now ?? (() => new Date())
   const nowDate = now()
   const authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
-  const clientVersion = options.clientVersion ?? await detectCodexClientVersion(options.codexVersion)
+  const clientVersion = options.clientVersion ?? DEFAULT_CODEX_MODEL_CATALOG_CLIENT_VERSION
   const auth = await authStore.resolveAuth()
   assertCodexBackendModelCatalogAuth(auth)
   const cacheKey = codexModelCatalogCacheKey(auth, options.baseUrl, clientVersion)
@@ -168,7 +165,7 @@ function codexModelFromBackendEntry(
     supportsAttachments: Array.isArray(raw.input_modalities) ? raw.input_modalities.includes('image') : null,
     supportsReasoning: supportedReasoningEfforts ? supportedReasoningEfforts.length > 0 : null,
     supportedThinkingEfforts: supportedReasoningEfforts,
-    defaultThinkingEffort: thinkingEffortOrNull(raw.default_reasoning_level),
+    defaultThinkingEffort: null,
     source: stale ? 'cache' : 'codex-backend',
     sourceFetchedAt,
     stale,
@@ -198,18 +195,6 @@ function codexModelsUrl(baseUrl: string, clientVersion: string): string {
       ? `${normalized}/models`
       : `${normalized}/codex/models`
   return `${path}?client_version=${encodeURIComponent(clientVersion)}`
-}
-
-async function detectCodexClientVersion(versionOverride: (() => Promise<string>) | undefined): Promise<string> {
-  if (versionOverride) return versionOverride()
-  try {
-    const { stdout } = await execFileAsync('codex', ['--version'])
-    const match = /(\d+\.\d+\.\d+)/.exec(stdout)
-    if (match) return match[1]
-  } catch (error) {
-    throw new Error(`Unable to detect Codex client version: ${messageOf(error)}`)
-  }
-  throw new Error('Unable to detect Codex client version from codex --version')
 }
 
 function assertCodexBackendModelCatalogAuth(auth: CodexResolvedAuth): asserts auth is Exclude<CodexResolvedAuth, { kind: 'apiKey' }> {

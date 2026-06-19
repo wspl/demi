@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { ToolResultContentBlock } from '@demi/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderDefinition, ProviderEvent } from '@demi/provider'
-import { claudeAuthState, claudeRuntimeState } from './cli'
 import { controlResponse, inferenceItemToClaudeMessage, requestToInputMessages, toolResultsToClaudeMessage } from './jsonl'
 import { listClaudeCodeModels } from './models'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
@@ -317,8 +316,8 @@ export function createClaudeCodeProviderDefinition(): ProviderDefinition<unknown
   return {
     type: 'claude-code',
     displayName: 'Claude Code',
-    auth: { status: claudeAuthState },
-    state: claudeRuntimeState,
+    auth: { status: () => ({ status: 'unknown', message: 'Auth is checked when a Claude Code request runs' }) },
+    state: () => ({ status: 'unknown', message: 'Runtime is checked when a Claude Code request runs' }),
     listModels: (config) => {
       parseClaudeCodeProviderConfig(config)
       return listClaudeCodeModels()

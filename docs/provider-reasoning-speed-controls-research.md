@@ -68,7 +68,7 @@ Demi 当前是固定枚举：
 结论：
 
 - Codex provider 应直接映射 `supported_reasoning_levels[]`。
-- `default_reasoning_level` 只能作为 provider catalog 元数据保留，不能成为 Demi 的自动默认选择。
+- `default_reasoning_level` 不能写入 Demi 的运行默认字段；除非后续有独立 raw metadata 字段，否则当前实现忽略它。
 - description 应保留。
 - 未知 effort 字符串不能被丢弃。
 - Demi 的默认 reasoning 选择固定为 `null`：用户没有显式选择 effort 时，请求里不发送 reasoning effort。
@@ -145,7 +145,7 @@ Codex 官方把 fast mode 建模为 service tier：
 
 ### 3.5 默认值与外部进程边界
 
-Reasoning effort 的默认选择不来自 provider catalog，也不来自外部 CLI 探测。Demi 的默认值是固定的 `null`，语义是“不请求显式 effort”。如果 provider 自身有隐含默认策略，应由 provider 服务端或官方 transport 自行处理，Demi 不把它复制成请求参数。
+Reasoning effort 的默认选择不来自 provider catalog，也不来自外部 CLI 探测。Demi 的默认值是固定的 `null`，语义是“不请求显式 effort”。如果 provider 自身有隐含默认策略，应由 provider 服务端或官方 transport 自行处理，Demi 不把它复制成请求参数，也不把 provider default 写入当前运行默认字段。
 
 模型目录、能力发现、auth 状态和运行时状态应优先使用协议/API/文件状态。除真正的 provider transport 外，不应通过调用外部 CLI 来发现模型目录、版本、auth 或 capability。Claude Code 当前真实请求路径仍需要走官方 provider transport；如果后续迁移到 RPC，也应把 RPC 作为 transport 边界，而不是增加独立 CLI preflight。
 
@@ -260,7 +260,7 @@ Catalog mapping：
 
 - `supported_reasoning_levels[].effort` -> effort option id。
 - `supported_reasoning_levels[].description` -> effort option description。
-- `default_reasoning_level` -> provider raw metadata；不作为 Demi 自动选择。
+- `default_reasoning_level` -> 当前忽略；后续若增加独立 raw metadata 字段，可以保留，但不能映射成运行默认。
 - `service_tiers[]` -> service tier options。
 - `default_service_tier` -> 当产品策略决定使用 catalog default 时，作为默认 service tier id。
 - `additional_speed_tiers` -> 新行为忽略。
