@@ -6,6 +6,8 @@ import { ClaudeCodeProvider } from '../index'
 
 const e2e = process.env.DEMI_CLAUDE_CODE_E2E === '1' ? test : test.skip
 const cacheE2e = process.env.DEMI_CLAUDE_CODE_CACHE_E2E === '1' ? test : test.skip
+const thinkingE2e = process.env.DEMI_CLAUDE_CODE_THINKING_E2E === '1' ? test : test.skip
+const thinkingAttempts = Math.max(1, Number.parseInt(process.env.DEMI_CLAUDE_CODE_THINKING_E2E_ATTEMPTS ?? '2', 10))
 
 e2e('ClaudeCodeProvider can stream a minimal response from the real claude CLI', async () => {
   const controller = new AbortController()
@@ -49,6 +51,17 @@ cacheE2e('ClaudeCodeProvider reports a real provider cache hit on repeated tool-
   expect(first.cacheWriteTokens + first.cacheReadTokens).toBeGreaterThan(0)
   expect(second.cacheReadTokens).toBeGreaterThan(0)
 })
+
+thinkingE2e(
+  'ClaudeCodeProvider streams real medium thinking for a budgeted summary request on opus',
+  async () => {
+    const runs: ProviderEvent[][] = []
+    for (let attempt = 0; attempt < thinkingAttempts; attempt++) runs.push(await runThinkingBudgetRequest())
+
+    expect(runs.some((events) => events.some(isVisibleThinkingEvent))).toBe(true)
+  },
+  thinkingAttempts * 120_000,
+)
 
 async function runCacheRequest(systemPrompt: string): Promise<TokenUsage> {
   const controller = new AbortController()
@@ -96,4 +109,65 @@ async function runCacheRequest(systemPrompt: string): Promise<TokenUsage> {
   const response = events.find((event): event is Extract<ProviderEvent, { type: 'response' }> => event.type === 'response')
   expect(response).toBeDefined()
   return response!.usage
+}
+
+async function runThinkingBudgetRequest(): Promise<ProviderEvent[]> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 90_000)
+  const provider = new ClaudeCodeProvider({
+    maxBudgetUsd: process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.25',
+  })
+  const request: InferenceRequest = {
+    modelId: process.env.DEMI_CLAUDE_CODE_MODEL ?? 'claude-opus-4-8',
+    systemPrompt: [
+      'Summarize the previous conversation for continuation.',
+      'For this smoke test, use the requested thinking effort and then output DEMI_THINKING_BUDGET_OK exactly.',
+    ].join('\n'),
+    cwd: process.cwd(),
+    items: [
+      {
+        type: 'user_message',
+        content: [
+          {
+            type: 'text',
+            text: [
+              'Conversation excerpt:',
+              'The user asked the agent to initialize a Vue project, add Pinia, implement a todo list, run tests, and explain failures.',
+              'The shell output included several transient prompts and a final successful test run.',
+              'Return the continuation marker exactly.',
+            ].join('\n'),
+          },
+        ],
+      },
+    ],
+    tools: [],
+    thinking: { type: 'effort', effort: 'medium', summary: null },
+    cancel: controller.signal,
+  }
+  const events: ProviderEvent[] = []
+
+  try {
+    for await (const event of provider.run(request)) events.push(event)
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  const errors = events.filter((event) => event.type === 'error')
+  expect(errors).toEqual([])
+  expect(events.filter((event) => event.type === 'tool_call_requested')).toEqual([])
+  const text = events.filter((event): event is Extract<ProviderEvent, { type: 'text_delta' }> => event.type === 'text_delta').map((event) => event.text).join('')
+  expect(text).toContain('DEMI_THINKING_BUDGET_OK')
+  const response = events.find((event): event is Extract<ProviderEvent, { type: 'response' }> => event.type === 'response')
+  expect(response).toBeDefined()
+  expect(response!.usage.inputTokens).toBeGreaterThan(0)
+  expect(response!.usage.outputTokens).toBeGreaterThan(0)
+  return events
+}
+
+function isVisibleThinkingEvent(event: ProviderEvent): boolean {
+  return (
+    (event.type === 'thinking_delta' && event.text.trim().length > 0)
+    || (event.type === 'thinking_signature' && event.signature.length > 0)
+    || (event.type === 'redacted_thinking' && event.data.length > 0)
+  )
 }
