@@ -36,21 +36,63 @@ test('Transcript appends user turns and provider text/response events', () => {
   expect(transcript.blocks[1]).toMatchObject({ type: 'text', text: 'hi there' })
 
   const items = transcript.collectInferenceItems()
-  expect(items.map((item) => item.type)).toEqual(['user_message', 'assistant_text'])
+  expect(items).toEqual([
+    {
+      type: 'user_message',
+      content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'hello' }],
+    },
+    { type: 'assistant_text', modelId: 'test-model', text: 'hi there' },
+  ])
 })
 
-test('Transcript completes pending tool calls and emits tool result inference items', () => {
+test('Transcript completes pending tool calls and emits exact tool inference items', () => {
   const transcript = makeTranscript()
 
-  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'shell_exec', { script: 'echo hi' }))
+  transcript.applyProviderEvent(
+    model,
+    events.toolCall('tool-1', 'shell_exec', {
+      script: 'echo hi',
+      cwd: '/workspace',
+      env: { NAME: 'demi' },
+    }),
+  )
   expect(transcript.findPendingToolUseId()).toBe('tool-1')
   expect(transcript.pendingToolCalls()).toHaveLength(1)
 
-  const completed = transcript.completeToolCall('tool-1', [{ type: 'text', text: 'hi' }])
+  const completed = transcript.completeToolCall(
+    'tool-1',
+    [
+      { type: 'text', text: 'hi' },
+      { type: 'image', source: { mediaType: 'image/png', data: 'base64-image' } },
+    ],
+    false,
+    { durationMs: 5, private: 'not model visible' },
+  )
 
   expect(completed).toMatchObject({ type: 'tool_call', status: 'completed' })
   expect(transcript.pendingToolCalls()).toHaveLength(0)
-  expect(transcript.collectInferenceItems().map((item) => item.type)).toEqual(['tool_use', 'tool_result'])
+  expect(transcript.collectInferenceItems()).toEqual([
+    {
+      type: 'tool_use',
+      modelId: 'test-model',
+      toolUseId: 'tool-1',
+      toolName: 'shell_exec',
+      input: {
+        script: 'echo hi',
+        cwd: '/workspace',
+        env: { NAME: 'demi' },
+      },
+    },
+    {
+      type: 'tool_result',
+      toolUseId: 'tool-1',
+      output: [
+        { type: 'text', text: 'hi' },
+        { type: 'image', source: { mediaType: 'image/png', data: 'base64-image' } },
+      ],
+      isError: false,
+    },
+  ])
 })
 
 test('Transcript replays thinking signatures and redacted thinking in provider order', () => {
