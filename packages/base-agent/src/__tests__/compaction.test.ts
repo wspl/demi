@@ -102,6 +102,27 @@ test('compaction summary provider errors do not leave boundary or marker blocks'
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
 })
 
+test('aborting a hanging compaction summary does not leave boundary or marker blocks', async () => {
+  const transcript = oldAndRecentTranscript()
+  const before = transcript.snapshot()
+  const provider = new HangingSummaryProvider()
+  const session = createSession(provider, createDefinition(), transcript)
+
+  const compacting = session.compact()
+  await provider.summaryStarted.promise
+  const aborted = await session.abort()
+  await withTimeout(compacting)
+
+  expect(aborted).toBe(true)
+  await provider.cancelled.promise
+  expect(session.phase()).toBe('idle')
+  expect(session.transcript().blocks.slice(0, before.blocks.length)).toEqual(before.blocks)
+  expect(session.transcript().blocks.at(-1)).toMatchObject({ type: 'abort' })
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
 test('empty compaction summaries are no-op and keep the session usable', async () => {
   const transcript = oldAndRecentTranscript()
   const provider = new RecordingProvider([
@@ -175,13 +196,39 @@ test('compaction summary input keeps aborted text progress', async () => {
 test('compaction summary context overflow errors are atomic and classified', async () => {
   const transcript = oldAndRecentTranscript()
   const before = transcript.snapshot()
-  const provider = new RecordingProvider([[events.error('summary context overflow', 'context_length_exceeded')]])
+  const provider = new RecordingProvider([
+    [events.error('summary context overflow', 'context_length_exceeded')],
+    (request) => {
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
+        { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'recover after overflow' }],
+        },
+      ])
+      return [events.text('recovered'), events.response()]
+    },
+  ])
   const session = createSession(provider, createDefinition(), transcript)
+  const errors: Error[] = []
+  session.subscribe((event) => {
+    if (event.type === 'error') errors.push(event.error)
+  })
 
   await expect(session.compact()).rejects.toThrow('summary context overflow')
 
   expect(session.transcript().snapshot()).toEqual(before)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+  expect(errors).toHaveLength(1)
+  expect(errors[0]).toMatchObject({ message: 'summary context overflow', code: 'context_length_exceeded' })
+
+  await session.send(text('recover after overflow'))
+
+  expect(session.phase()).toBe('idle')
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'recovered' })
 })
 
 test('compaction summary input preserves thinking, redacted thinking, and tool metadata boundaries', async () => {
@@ -341,6 +388,40 @@ test('manual compaction with no compressible history is a no-op', async () => {
   expect(provider.requests).toHaveLength(0)
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks).toEqual([])
+})
+
+test('aborting during preflight compaction stops before the model request and stays atomic', async () => {
+  const smallModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 100 },
+  }
+  const transcript = oldAndRecentTranscript()
+  const provider = new HangingSummaryProvider()
+  const session = createSession(provider, createDefinition(), transcript, smallModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
+  })
+
+  const sending = session.send(text('new question'))
+  await provider.summaryStarted.promise
+  const aborted = await session.abort()
+  await withTimeout(sending)
+
+  expect(aborted).toBe(true)
+  await provider.cancelled.promise
+  expect(provider.requests).toHaveLength(1)
+  expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')
+  expect(session.phase()).toBe('idle')
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'text',
+    'response',
+    'user',
+    'user',
+    'abort',
+  ])
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
+  assertTranscriptInvariants(session.transcript().blocks)
 })
 
 test('queued send during compaction drains after the summary commits', async () => {
@@ -556,10 +637,50 @@ class CompactGateProvider implements AgentProvider {
   }
 }
 
+class HangingSummaryProvider implements AgentProvider {
+  readonly requests: InferenceRequest[] = []
+  readonly summaryStarted = deferred<void>()
+  readonly cancelled = deferred<void>()
+
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    this.requests.push(request)
+    if (!request.systemPrompt.includes('Summarize the previous conversation')) {
+      throw new Error('HangingSummaryProvider received a non-summary request')
+    }
+    this.summaryStarted.resolve(undefined)
+    await new Promise<void>((resolve) => {
+      request.cancel.addEventListener(
+        'abort',
+        () => {
+          this.cancelled.resolve(undefined)
+          resolve()
+        },
+        { once: true },
+      )
+    })
+  }
+}
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((innerResolve) => {
     resolve = innerResolve
   })
   return { promise, resolve }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms = 1_000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timeout)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      },
+    )
+  })
 }
