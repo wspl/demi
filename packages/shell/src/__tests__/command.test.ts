@@ -156,12 +156,9 @@ test('CommandRegistry registers commands and renders all prompts', () => {
 
 test('CommandRegistry rejects names reserved for shell and system commands', () => {
   const registry = new CommandRegistry()
-  expect(() => registry.register({ ...editorSpec, name: 'cat' })).toThrow('reserved for shell/system commands')
-  expect(() => registry.register({ ...editorSpec, name: 'cd' })).toThrow('reserved for shell/system commands')
-  expect(() => registry.register({ ...editorSpec, name: 'local' })).toThrow('reserved for shell/system commands')
-  expect(() => registry.register({ ...editorSpec, name: 'read' })).toThrow('reserved for shell/system commands')
-  expect(() => registry.register({ ...editorSpec, name: 'return' })).toThrow('reserved for shell/system commands')
-  expect(() => registry.register({ ...editorSpec, name: 'unset' })).toThrow('reserved for shell/system commands')
+  for (const name of reservedCommandNames) {
+    expect(() => registry.register({ ...editorSpec, name })).toThrow('reserved for shell/system commands')
+  }
 })
 
 test('runRegisteredCommand implements prompt from the same renderer', async () => {
@@ -194,6 +191,32 @@ test('runRegisteredCommand validates JSON output when --json is set', async () =
   expect(JSON.parse(io.stdoutText())).toEqual({ files: ['src/foo.ts'] })
 })
 
+test('runRegisteredCommand rejects invalid JSON mode output', async () => {
+  const invalidJsonIO = new MemoryIO()
+  await expect(
+    runRegisteredCommand(editorSpecWithListOutput('not json'), {
+      argv: ['editor', 'list', '--json'],
+      env: {},
+      cwd: '/workspace',
+      io: invalidJsonIO,
+      storage: memoryStorage(),
+    }),
+  ).rejects.toThrow('Invalid JSON output for "editor list"')
+  expect(invalidJsonIO.stdoutText()).toBe('')
+
+  const schemaMismatchIO = new MemoryIO()
+  await expect(
+    runRegisteredCommand(editorSpecWithListOutput(JSON.stringify({ files: [1] })), {
+      argv: ['editor', 'list', '--json'],
+      env: {},
+      cwd: '/workspace',
+      io: schemaMismatchIO,
+      storage: memoryStorage(),
+    }),
+  ).rejects.toThrow('JSON output failed validation for "editor list"')
+  expect(schemaMismatchIO.stdoutText()).toBe('')
+})
+
 test('runRegisteredCommand rejects JSON mode when the subcommand has no JSON output schema', async () => {
   const io = new MemoryIO()
 
@@ -208,6 +231,70 @@ test('runRegisteredCommand rejects JSON mode when the subcommand has no JSON out
     }),
   ).rejects.toThrow('does not define JSON output')
 })
+
+const reservedCommandNames = [
+  '.',
+  'awk',
+  'bash',
+  'break',
+  'bun',
+  'cargo',
+  'cat',
+  'cd',
+  'chmod',
+  'command',
+  'continue',
+  'cp',
+  'cut',
+  'docker',
+  'du',
+  'echo',
+  'exit',
+  'export',
+  'file',
+  'find',
+  'git',
+  'grep',
+  'head',
+  'jobs',
+  'jq',
+  'local',
+  'ls',
+  'mkdir',
+  'mv',
+  'nl',
+  'node',
+  'npm',
+  'pnpm',
+  'popd',
+  'printf',
+  'pushd',
+  'python',
+  'read',
+  'return',
+  'rg',
+  'rm',
+  'sed',
+  'set',
+  'sh',
+  'shift',
+  'sort',
+  'source',
+  'stat',
+  'tail',
+  'tee',
+  'test',
+  'touch',
+  'tree',
+  'tr',
+  'uniq',
+  'unset',
+  'wait',
+  'wc',
+  'xargs',
+  'yarn',
+  'yq',
+]
 
 class MemoryIO implements CommandIO {
   private readonly stdoutChunks: Uint8Array[] = []
@@ -241,5 +328,22 @@ function memoryStorage(): CommandStorage {
       values.delete(key)
     },
     list: async (prefix) => [...values.keys()].filter((key) => key.startsWith(prefix)),
+  }
+}
+
+function editorSpecWithListOutput(output: string): CommandSpec {
+  return {
+    ...editorSpec,
+    subcommands: editorSpec.subcommands.map((subcommand) =>
+      subcommand.name === 'list'
+        ? {
+            ...subcommand,
+            run: async ({ io }) => {
+              await io.stdout(output)
+              return { exitCode: 0 }
+            },
+          }
+        : subcommand,
+    ),
   }
 }
