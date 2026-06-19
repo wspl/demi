@@ -176,31 +176,31 @@ Owner：`packages/base-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `send` 写入 user turn，再构造 provider request |  |  | `packages/base-agent/src/__tests__/session.test.ts` | 防止 provider request 漏掉用户输入、preamble 顺序错误，或 transcript 与模型上下文分叉。 |
-| provider response 写入 transcript |  |  | `session.test.ts` | 防止 UI/RPC 无法看到模型输出，或 retry/compact 基于缺失历史运行。 |
-| provider error 写入 transcript、发 event、reject action |  |  | `session.test.ts` | 防止错误只在 Promise 中出现而 transcript/UI 不可见，或者 action 静默成功。 |
-| provider error 后关闭 provider iterator |  |  | `session.test.ts` | 防止 provider stream 泄漏，后续 run 收到旧 stream 的残留事件。 |
-| reference resolution 在写入 user turn 和 provider request 前执行 |  |  | `session.test.ts` | 防止 transcript 保存未展开引用，导致恢复或重放时上下文不可复现。 |
-| reference resolution 卡住时 abort 可收敛 |  |  | `session.test.ts` | 防止文件引用或外部解析卡住后 session 无法取消。 |
-| provider 不 yield 时 abort 可收敛 |  |  | `session.test.ts` | 防止模型 stream 卡死时 UI 的停止按钮无效。 |
-| long-running tool invocation 卡住时 abort 可收敛 |  |  | `session.test.ts` | 防止工具实现挂起后占住 session，后续用户输入无法执行。 |
-| tool call 执行后继续 provider roundtrip |  |  | `session.test.ts` | 防止 tool_result 没有回传给模型，模型无法基于工具结果继续回答。 |
-| tool invocation throw 转成 error tool result 并继续 |  |  | `session.test.ts` | 防止工具异常升级成 session 崩溃，模型失去恢复机会。 |
-| tool progress event 发出 |  |  | `session.test.ts` | 防止 shell output/audit 等进度事件只留在内部，UI 无法实时显示。 |
-| queued send 排队并按顺序 drain |  |  | `session.test.ts` | 防止用户连续发送消息时顺序错乱，或后一条消息覆盖前一条运行状态。 |
-| retry 截断最后 assistant response 并 rerun latest user turn |  |  | `session.test.ts` | 防止 retry 把旧错误输出和新输出混在一起，或重跑了错误的用户 turn。 |
-| resume 标记 abort 为 resumed，并追加 resume turn |  |  | `session.test.ts` | 防止恢复后 transcript 无法区分已中止内容和继续执行内容。 |
-| abort 后 resume 前清理 pending tool calls |  |  | `session.test.ts` | 防止恢复时模型看到仍在执行的旧 tool_call，重复等待或重复执行工具。 |
-| mutation guard 拒绝 busy/reserved 期间 mutation |  |  | `session.test.ts` | 防止 compact/retry/resume 与 active run 交错修改 transcript，造成不可恢复状态。 |
-| store snapshot 写入 |  |  | `session.test.ts` | 防止进程退出或 host 重启后没有可恢复的会话状态。 |
-| extension state snapshot 通过 lifecycle 写入并持久化 |  |  | `session.test.ts` | 防止 todo 等 agent 扩展状态只在内存里存在，恢复后状态丢失。 |
-| 从 store snapshot 重建 session 后继续运行 |  |  | `session-marathon.test.ts` | 需要发现 snapshot schema、idFactory、phase 或 transcript replay 在重启后不兼容的问题。 |
-| provider error 后恢复不重复发送已完成 tool result |  |  | `session-marathon.test.ts` | 需要规避重启后重复执行破坏性工具或给模型重复上下文。 |
-| abort/retry/resume/compact 组合交错 |  |  | `session-marathon.test.ts` | 组合路径容易暴露单点测试发现不了的 phase、queue、transcript 原子性问题。 |
-| 单会话 marathon 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态 |  |  | `session-marathon.test.ts` | 用来发现状态只在单点测试里正确，长期累计后 id、phase、pending action、tool 状态或 transcript 顺序漂移。 |
-| 每个关键步骤精确断言 provider request |  |  | `session-marathon.test.ts`、`context-cache.test.ts`、`compaction.test.ts` | 防止模型实际看到的上下文与 transcript 看起来正确但不同，尤其是 compact、retry、resume 后的重放内容。 |
-| transcript 结构不变量集中校验 |  |  | `helpers.ts` 的 invariant helper 被 `session-marathon.test.ts`、`compaction.test.ts` 使用，覆盖 block id、createdAt、toolUseId、completed tool output、compaction marker 引用 | 防止出现重复 block id、缺 createdAt、重复 toolUseId、completed tool_call 缺 output，或 compaction marker 指向不存在的 boundary。 |
-| provider mock 行为贴近真实 provider 事件顺序 |  |  | `session-marathon.test.ts`、`compaction.test.ts` 覆盖 pending tool、response、auto compact、abort event；真实 Claude 随机路径仍靠 gated smoke | 防止 deterministic 测试用一个过于理想的 provider，真实 Claude Code 路径才暴露 tool/response 时序问题。 |
+| `send` 写入 user turn，再构造 provider request | 有效 | `session.test.ts` 在 provider function 内断言 `systemPrompt`、`cwd` 和 `request.items`，确认 user turn 先写入且 preamble 合并到同一 user message；随后断言 transcript 为 user/text/response。验证：5.4 targeted command，50 pass。 | `packages/base-agent/src/__tests__/session.test.ts` | 防止 provider request 漏掉用户输入、preamble 顺序错误，或 transcript 与模型上下文分叉。 |
+| provider response 写入 transcript | 有效 | 同一 send 测试断言 provider 的 text/response events 写入 transcript，并检查 phase 回到 idle、transcript_changed 事件发出；能发现模型输出没有进入可见历史。验证同上。 | `session.test.ts` | 防止 UI/RPC 无法看到模型输出，或 retry/compact 基于缺失历史运行。 |
+| provider error 写入 transcript、发 event、reject action | 有效 | 测试 StubProvider 返回 error event 后 `send` reject，transcript 写入 error block，session event 包含 `ProviderStreamError`，phase 回 idle；能发现错误只在 Promise 或只在 transcript 单边存在。验证同上。 | `session.test.ts` | 防止错误只在 Promise 中出现而 transcript/UI 不可见，或者 action 静默成功。 |
+| provider error 后关闭 provider iterator | 有效 | `ClosingProvider` 在第一条 error 后若 iterator 被 `return()` 会设置标志；测试断言 `send` reject 后 `returned=true`，能发现 provider stream 未关闭导致后续残留事件。验证同上。 | `session.test.ts` | 防止 provider stream 泄漏，后续 run 收到旧 stream 的残留事件。 |
+| reference resolution 在写入 user turn 和 provider request 前执行 | 有效 | 测试用 `resolveReferences` 把 reference 转成 text，并同时断言 provider request 和 transcript user block 都只包含展开后的 content；能发现 transcript/request 保存未展开引用。验证同上。 | `session.test.ts` | 防止 transcript 保存未展开引用，导致恢复或重放时上下文不可复现。 |
+| reference resolution 卡住时 abort 可收敛 | 有效 | 测试让 `resolveReferences` 返回永不完成的 Promise，abort 后 `send` 收敛、provider 未运行、transcript 只留下 abort，phase 回 idle；能发现引用解析卡死阻塞停止。验证同上。 | `session.test.ts` | 防止文件引用或外部解析卡住后 session 无法取消。 |
+| provider 不 yield 时 abort 可收敛 | 有效 | `HangingProvider` 监听 cancel signal 后永不 yield；测试 abort 后 `send` 在 timeout 内收敛、cancelled=true、phase idle、transcript user/abort；能发现模型 stream 卡死时停止无效。验证同上。 | `session.test.ts` | 防止模型 stream 卡死时 UI 的停止按钮无效。 |
+| long-running tool invocation 卡住时 abort 可收敛 | 有效 | 测试 tool invoke 永不 resolve，等 pending tool_call 出现后 abort，断言运行收敛、phase idle、最后写入 abort；能发现工具执行卡住占住 session。验证同上。 | `session.test.ts` | 防止工具实现挂起后占住 session，后续用户输入无法执行。 |
+| tool call 执行后继续 provider roundtrip | 有效 | 测试第一轮 provider 发 tool_call，tool 执行后第二轮 provider function 断言 `request.items` 为 user/tool_use/tool_result，再返回最终 text/response；能发现 tool_result 未回灌。验证同上。 | `session.test.ts` | 防止 tool_result 没有回传给模型，模型无法基于工具结果继续回答。 |
+| tool invocation throw 转成 error tool result 并继续 | 有效 | 测试 tool 抛错后第二轮 provider 断言 tool_result `isError=true` 且输出 `Tool failed: broken tool`，最终 transcript tool_call 为 error 且 pending 清空；能发现工具异常导致 session 崩溃。验证同上。 | `session.test.ts` | 防止工具异常升级成 session 崩溃，模型失去恢复机会。 |
+| tool progress event 发出 | 有效 | 测试 tool invoke 调用 `ctx.emitProgress`，订阅 session events 并断言收到 tool_progress 的 id/name/payload；能发现工具进度只停留在内部。验证同上。 | `session.test.ts` | 防止 shell output/audit 等进度事件只留在内部，UI 无法实时显示。 |
+| queued send 排队并按顺序 drain | 有效 | `GateProvider` 阻塞第一轮时发送第二条消息，断言 queuedMessages 先出现再清空，两轮 release 后 transcript user 文本顺序为 first/second；能发现 active run 期间输入乱序或丢失。验证同上。 | `session.test.ts` | 防止用户连续发送消息时顺序错乱，或后一条消息覆盖前一条运行状态。 |
+| retry 截断最后 assistant response 并 rerun latest user turn | 有效 | 测试先产生 old response，再 retry；第二轮 provider 断言 request 只包含 latest user message，最终 transcript 为 user/new text/response 且旧 assistant 输出不存在。验证同上。 | `session.test.ts` | 防止 retry 把旧错误输出和新输出混在一起，或重跑了错误的用户 turn。 |
+| resume 标记 abort 为 resumed，并追加 resume turn | 有效 | 测试手工构造 user+abort transcript，resume 后断言 abort `isResumed=true`，并追加 resume/text/response；能发现恢复历史无法区分已处理 abort。验证同上。 | `session.test.ts` | 防止恢复后 transcript 无法区分已中止内容和继续执行内容。 |
+| abort 后 resume 前清理 pending tool calls | 有效 | 测试慢 tool pending 后 abort，断言 pending tool_call 被转成 error output 且 pending 清零；resume 的 provider request 必须包含 user/tool_use/error tool_result/resume user message，避免重复等待旧 tool。验证同上。 | `session.test.ts` | 防止恢复时模型看到仍在执行的旧 tool_call，重复等待或重复执行工具。 |
+| mutation guard 拒绝 busy/reserved 期间 mutation | 有效 | 测试 `reserveMutation` 期间再次 reserve 抛错、run busy 期间 reserve 抛错；另一个测试在 external mutation reserved 时 send/retry/resume/compact 都 reject，且不改 phase、queue、events。验证同上。 | `session.test.ts` | 防止 compact/retry/resume 与 active run 交错修改 transcript，造成不可恢复状态。 |
+| store snapshot 写入 | 有效 | 测试注入 MemorySessionStore 后 send，断言 store 收到 snapshots，最后 snapshot 包含 definitionName、cwd 和 user/text/response transcript；能发现运行后未持久化。验证同上。 | `session.test.ts` | 防止进程退出或 host 重启后没有可恢复的会话状态。 |
+| extension state snapshot 通过 lifecycle 写入并持久化 | 有效 | 测试 after_tool_call lifecycle 写入 extension state snapshot，随后检查 store snapshot 中包含 `extension_state_snapshot`、extensionName 和 `{ toolCalls: 1 }`；能发现扩展状态只留在内存。验证同上。 | `session.test.ts` | 防止 todo 等 agent 扩展状态只在内存里存在，恢复后状态丢失。 |
+| 从 store snapshot 重建 session 后继续运行 | 部分有效 | `session-marathon.test.ts` 从 store 最后 snapshot 的 transcript blocks 重建 `Transcript` 并继续 send，断言 request replay 包含既有 user/tool_use/tool_result/assistant_text 且工具不重执行；但未覆盖完整 `AgentSessionSnapshot` loader、phase/idFactory/state 的恢复契约。验证同上。 | `session-marathon.test.ts` | 需要发现 snapshot schema、idFactory、phase 或 transcript replay 在重启后不兼容的问题。 |
+| provider error 后恢复不重复发送已完成 tool result | 有效 | 测试先完成一次非幂等 tool，再让后续 provider error 写入 snapshot；恢复后新请求中 tool_result 数量必须仍为 1，并用 `assertNoOrphanToolItems` 检查配对，state.toolCalls 不增加。验证同上。 | `session-marathon.test.ts` | 需要规避重启后重复执行破坏性工具或给模型重复上下文。 |
+| abort/retry/resume/compact 组合交错 | 有效 | marathon 覆盖 tool、queued send、provider error、retry、abort、resume、manual compact、post-compact send 的连续状态；`compaction.test.ts` 还覆盖 compaction 期间 queue send/retry/resume，验证 queued action 在 summary commit 后按正确上下文运行。验证同上。 | `session-marathon.test.ts`、`compaction.test.ts` | 组合路径容易暴露单点测试发现不了的 phase、queue、transcript 原子性问题。 |
+| 单会话 marathon 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态 | 有效 | marathon 单测在同一 session 内跑 9 次 provider request，阶段性断言 request 与 transcript 一致、pending tools 清空、queue 清空、phase idle、invariants 成立；能发现长期累计后状态漂移。验证同上。 | `session-marathon.test.ts` | 用来发现状态只在单点测试里正确，长期累计后 id、phase、pending action、tool 状态或 transcript 顺序漂移。 |
+| 每个关键步骤精确断言 provider request | 有效 | marathon 的 provider callbacks 多次断言 `request.items === transcript.collectInferenceItems()`；context-cache 精确断言 stable prefix、effective transcript、retry/resume、snapshot reconstruction；compaction 精确断言 summary request、post-compact request、queued action request。验证同上。 | `session-marathon.test.ts`、`context-cache.test.ts`、`compaction.test.ts` | 防止模型实际看到的上下文与 transcript 看起来正确但不同，尤其是 compact、retry、resume 后的重放内容。 |
+| transcript 结构不变量集中校验 | 有效 | `assertTranscriptInvariants` 检查 block id、createdAt、重复 block id、重复 toolUseId、completed tool_call output、compaction marker boundary 引用和 compactedTokens，并被 marathon/preflight compaction 等路径调用；能发现结构性破坏。验证同上。 | `helpers.ts` 的 invariant helper 被 `session-marathon.test.ts`、`compaction.test.ts` 使用，覆盖 block id、createdAt、toolUseId、completed tool output、compaction marker 引用 | 防止出现重复 block id、缺 createdAt、重复 toolUseId、completed tool_call 缺 output，或 compaction marker 指向不存在的 boundary。 |
+| provider mock 行为贴近真实 provider 事件顺序 | 部分有效 | `RecordingProvider`、`GateProvider`、`HangingProvider`、`CompactGateProvider` 覆盖 tool_call+response 后二次 roundtrip、async stall、abort event、summary gate、auto compact after tool_result 等非单步路径；但它们仍是 deterministic fake，不能证明真实 Claude stream/control_request 的全部时序。验证同上。 | `session-marathon.test.ts`、`compaction.test.ts` 覆盖 pending tool、response、auto compact、abort event；真实 Claude 随机路径仍靠 gated smoke | 防止 deterministic 测试用一个过于理想的 provider，真实 Claude Code 路径才暴露 tool/response 时序问题。 |
 
 ### 5.5 Transcript 与 Replay
 
