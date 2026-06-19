@@ -435,11 +435,11 @@ Owner：`packages/tui`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| 基本渲染、输入、scroll |  |  | 需要 TUI 自动化或 snapshot/integration 测试 | 防止核心能力可用但用户无法操作或看不到完整输出。 |
-| thinking/text/tool output 显示 |  |  | 目前靠真实 TUI smoke 验收 | 防止真实模型输出被 TUI 分流、折叠或渲染错。 |
-| 通过 RPC client open/send/receive phase/transcript/shell frames |  |  | RPC 层有候选覆盖；TUI 壳子自身待审查 | 需要发现 TUI 自己订阅、状态合并、刷新节奏的问题。 |
-| 真实 Claude Code provider 输出真实模型回复 |  |  | 需要指定真实模型和 thinking 等级 smoke | 防止验收只跑 stub provider，没有确认真实 provider 路径。 |
-| 交互式 shell 操作在 TUI 中顺畅 |  |  | 需要多次 smoke，因为模型行为有随机性 | 用来发现真实模型在模糊指令下是否会持续碰壁或误用 shell 控制面。 |
+| 基本渲染、输入、scroll | 缺口 | `packages/tui` 只有 `src/index.ts`、README、package.json；`bun test packages/tui` 没有匹配任何测试文件。当前没有自动化断言 readline 输入、终端渲染或滚动行为。 | 需要 TUI 自动化或 snapshot/integration 测试 | 防止核心能力可用但用户无法操作或看不到完整输出。 |
+| thinking/text/tool output 显示 | Gated | TUI 实现里有 text/thinking/redacted_thinking/tool_call 渲染分支，但没有测试捕获 stdout 或终端 snapshot；只能靠真实 TUI smoke 验收。 | 目前靠真实 TUI smoke 验收 | 防止真实模型输出被 TUI 分流、折叠或渲染错。 |
+| 通过 RPC client open/send/receive phase/transcript/shell frames | 部分有效 | RPC 5.16 已覆盖 open/send/phase/transcript/shell frames；TUI 代码订阅 `RpcClient` 并调用 `renderEvent`，但没有 TUI 层测试验证状态合并、去重、刷新节奏或 stdout 输出。 | RPC 层有候选覆盖；TUI 壳子自身待审查 | 需要发现 TUI 自己订阅、状态合并、刷新节奏的问题。 |
+| 真实 Claude Code provider 输出真实模型回复 | Gated | Provider 层有 real-cli gated 测试候选，但 TUI 没有自动化证明 `bun run tui` 经过 Claude Code provider 后显示真实模型回复、thinking 和 tool output。 | 需要指定真实模型和 thinking 等级 smoke | 防止验收只跑 stub provider，没有确认真实 provider 路径。 |
+| 交互式 shell 操作在 TUI 中顺畅 | Gated | TUI 暴露 `/input`、`/abort` 等命令并转到 RpcClient，但没有自动化或多轮真实 smoke 记录验证模糊任务下的交互式 shell 体验。 | 需要多次 smoke，因为模型行为有随机性 | 用来发现真实模型在模糊指令下是否会持续碰壁或误用 shell 控制面。 |
 
 ### 5.18 just-bash 子模块
 
