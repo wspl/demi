@@ -62,7 +62,7 @@
 | AgentSession 长生命周期稳定 | 部分有效 | `5.4`、`5.5`、`5.6`、`5.7` 已覆盖 send/queue/retry/resume/abort/tool/error/compact 的主要路径，并覆盖官方 `AgentSession.fromSnapshot`、transcript/store snapshot 不被 live mutation 污染；provider mock realism 仍是部分有效。 |
 | 模型可见上下文稳定 | 有效 | `5.5`、`5.7` 覆盖 exact transcript payload、effective transcript、当前 transcript schema 的 internal block 过滤、bounded injection、stable prefix 和 compact 后重稳。 |
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
-| Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16`、`5.17` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播和 TUI usage 呈现；真实 provider cache hit 仍未完整证明。 |
+| Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16`、`5.17` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播和 TUI usage 呈现；真实 provider cache hit 已有 gated 验证，默认测试仍只覆盖 deterministic contract。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
 | Coding workflow 能发现真实问题 | 有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制、shell cwd/env 复用、file reference Host 边界和 editor 写入失败事务。 |
 | 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，`5.17` TUI renderer/command/process 层已有 deterministic 测试；真实 Claude Code provider 回复、thinking、tool output 显示已有 gated smoke 入口，仍依赖本机真实运行结果。 |
@@ -272,7 +272,7 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 | demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 | 有效 | `stable prompt prefix` 测试把第二轮 request 的 cache 输入 prefix JSON.stringify 后比较，等价历史下 byte-identical；能发现工具/system/preamble/history 无意义抖动。验证同上。 | `context-cache.test.ts` 断言等价历史下 stable prefix 字节级一致 | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
 | tools/schema/system prompt/model/preamble 改变时 cache 失效规则 | 有效 | 同一测试分别改变 system prompt、首轮 preamble、tool description、model id，并断言 prefix 与 baseline 不同；能发现该失效时没有失效或错误复用 prefix。验证同上。 | `context-cache.test.ts` 断言 tools、system prompt、model、preamble 变化会改变 cache 输入前缀 | 需要防止 cache 命中建立在错误前缀上，或该失效时没有失效。 |
 | compact 后 cache prefix 变化与重新稳定 | 有效 | `provider request prefix restabilizes after compaction` 断言 compact 后 first request 以 summary 替换旧历史且不含 old question，第二个 post-compact request 的 prefix 与 first post-compact request byte-identical。验证同上。 | `context-cache.test.ts`、`compaction.test.ts` 覆盖 compact 后 summary prefix 替换旧历史，后续 request 重新形成稳定前缀 | 需要发现 compact 后上下文前缀持续抖动，导致 cache 永远无法稳定命中。 |
-| 真实 provider cache 命中 | Gated | 默认 deterministic 测试只证明 request prefix 和 usage 字段 contract，不能证明真实 CLI/服务端发生 cache hit；需要真实 provider smoke 或线上指标验收。 | 只能做真实 provider smoke，不进默认 deterministic 测试 | 用来确认 deterministic contract 之外的真实 CLI/服务端 cache 行为没有退化。 |
+| 真实 provider cache 命中 | Gated | `real-cli.e2e.test.ts` 新增 `DEMI_CLAUDE_CODE_CACHE_E2E=1` gated smoke：构造带 tools 的稳定大 system prompt，连续两次真实 `ClaudeCodeProvider` 请求，第一轮必须出现 cache read/write usage，第二轮必须 `cacheReadTokens > 0`，并断言真实 text delta 拼接后包含 `DEMI_CACHE_TOOL_OK` 且没有 tool_call。验证通过：`DEMI_CLAUDE_CODE_CACHE_E2E=1 bun test packages/provider-claude-code/src/__tests__/real-cli.e2e.test.ts --timeout 180000`，1 pass / 1 skip。默认 deterministic 测试仍只证明 prefix 与 usage contract。 | `real-cli.e2e.test.ts` gated smoke，不进默认测试 | 用来确认 deterministic contract 之外的真实 CLI/服务端 cache 行为没有退化，并发现 cache usage 字段虽然有 contract 但真实 provider 不再产生 hit 的问题。 |
 
 ### 5.8 Command Registry
 
@@ -456,7 +456,7 @@ Owner：`packages/just-bash`
 ## 6. 当前剩余优先补测顺序
 
 1. 继续补 `5.17 TUI` 自动化：真实 TTY 会话模式、scroll/backpressure；真实 Claude 端到端会话放入 gated smoke。
-2. 继续运行并记录剩余真实 provider/TUI gated smoke：模糊任务下 shell wait/input/abort 策略、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
+2. 继续运行并记录剩余真实 provider/TUI gated smoke：模糊任务下 shell wait/input/abort 策略、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
 3. 如需扩大 bash 兼容范围，先 triage `5.18` just-bash 完整 `test:run` 的现存 failures/timeouts；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则
