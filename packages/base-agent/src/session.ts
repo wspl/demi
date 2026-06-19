@@ -2,6 +2,7 @@ import type {
   ModelSelection,
   QueuedMessage,
   SessionPhase,
+  TokenUsage,
   UserContentBlock,
 } from '@demi/core'
 import type { InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
@@ -588,10 +589,10 @@ export class AgentSession<State> {
     return this.definition.tools({ agentSessionId: this.agentSessionId, state: this.agentState, cwd: this.cwd })
   }
 
-  private isUsageNearLimit(usage: { inputTokens: number; outputTokens: number }): boolean {
+  private isUsageNearLimit(usage: TokenUsage): boolean {
     const contextWindow = this.model.model.contextWindow
     if (contextWindow <= 0) return false
-    const usedTokens = usage.inputTokens + usage.outputTokens
+    const usedTokens = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
     return usedTokens >= Math.floor(contextWindow * this.compactionThresholdRatio)
   }
 

@@ -237,10 +237,10 @@ test('retry and resume provider requests match Transcript.collectInferenceItems'
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'abort', 'resume', 'text', 'response'])
 })
 
-test('cache usage is recorded without changing tool loop or compaction behavior', async () => {
+test('cache usage is recorded without leaking into model context or breaking tool loop', async () => {
   const smallModel: ModelSelection = {
     ...model,
-    model: { ...model.model, contextWindow: 10 },
+    model: { ...model.model, contextWindow: 10_000 },
   }
   const provider = new RecordingProvider([
     [
@@ -249,7 +249,7 @@ test('cache usage is recorded without changing tool loop or compaction behavior'
     ],
     (request) => {
       expect(request.items.map((item) => item.type)).toEqual(['user_message', 'tool_use', 'tool_result'])
-      return [events.text('done'), events.response({ cacheReadTokens: 700, cacheWriteTokens: 0 })]
+      return [events.text('done'), events.response({ inputTokens: 1, outputTokens: 1 })]
     },
   ])
   const definition = createDefinition({
@@ -270,6 +270,7 @@ test('cache usage is recorded without changing tool loop or compaction behavior'
   await session.send(text('use tool'))
 
   expect(session.state().toolCalls).toBe(1)
+  expect(provider.requests).toHaveLength(2)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
   const responseBlocks = session.transcript().blocks.filter((block) => block.type === 'response')
   expect(responseBlocks[0]).toMatchObject({
@@ -278,7 +279,7 @@ test('cache usage is recorded without changing tool loop or compaction behavior'
   })
   expect(responseBlocks[1]).toMatchObject({
     type: 'response',
-    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 700, cacheWriteTokens: 0 },
+    usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
   })
 })
 

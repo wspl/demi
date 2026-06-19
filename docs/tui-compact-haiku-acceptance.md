@@ -4,11 +4,11 @@
 |---|---|
 | Date | 2026-06-19 |
 | Scope | Real TUI + real Claude Code provider + `claude-haiku-4-5` |
-| TUI command | `bun run packages/tui/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 0.50 --yield-after-ms 1000 --timeout-ms 180000` |
+| TUI command | `bun run packages/tui/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
 | TUI model context | `packages/tui/src/index.ts` sets `contextWindow: 200_000` for the selected model |
-| Compaction threshold | `packages/base-agent/src/session.ts` preflight threshold is `0.8 * contextWindow`, so this run should compact near 160k estimated tokens |
+| Compaction threshold | `packages/base-agent/src/session.ts` uses `0.8 * contextWindow`, so this run should compact near 160k estimated or provider-reported context tokens |
 | Acceptance target | Drive the TUI past context pressure at least 3 times and verify compact lets the agent continue working |
-| Result | Passed after fixing Claude Code provider replay names, repeated MCP request-id handling, and runaway repeated `shell_exec` control. Real TUI exceeded the 200k context pressure path repeatedly, observed 4 compact phases, and continued after compact at least 3 times. |
+| Result | Passed after fixing Claude Code provider replay names, repeated MCP request-id handling, runaway repeated `shell_exec` control, and usage-based auto compact pressure accounting. Real TUI exceeded the 200k context pressure path repeatedly through both preflight and provider-usage auto compact paths. |
 
 ## Runs
 
@@ -18,13 +18,13 @@
 - Model: `claude-haiku-4-5`.
 - Observation: reached 29 sent turns / 26 acknowledged turns in one run; latest usage was `in=10 out=129 cache_read=0 cache_write=186222`; `compactCount=0`.
 - Failure mode: TUI stdin/readline driving became unreliable before local transcript estimate clearly crossed the 160k preflight threshold.
-- What it proves: cache write can grow near the 200k scale without triggering `AgentSession.isUsageNearLimit()`, because that path only considers `inputTokens + outputTokens`; preflight still depends on local transcript estimate and needs enough raw transcript.
+- What it proved at the time: cache write could grow near the 200k scale without triggering `AgentSession.isUsageNearLimit()` because that path only considered `inputTokens + outputTokens`. This was later identified as an auto-compact coverage/design gap; cache read/write usage should count as context pressure.
 
 ### 2. Exact big output + filler prompt
 
 - Shape: one big shell output, then a second prompt asking for one filler shell output and a final marker.
 - Observation: first big shell output completed. The filler turn did not stop after one tool call; it produced about 102MB of TUI stdout, 23 tool events, and 17 usage events, then the harness timed out with `phase=running` and `compactCount=0`.
-- Failure mode: model/tool loop stayed inside one user turn, so preflight compact had no chance to run. Auto compact also did not trigger because provider usage stayed small (`inputTokens + outputTokens`), even though raw transcript output was huge.
+- Failure mode: model/tool loop stayed inside one user turn, so preflight compact had no chance to run. Auto compact also did not trigger because provider usage pressure was not counted from cache read/write fields at that point, even though raw transcript output was huge.
 - What it proves: real model behavior can create large raw tool history mid-turn; relying only on next-turn preflight misses this pressure until the turn ends or is aborted.
 
 ### 3. Controlled pressure + `/abort` + trigger
@@ -81,6 +81,28 @@
 
 Final counters: `compacting=4`, `shellExec=8`, `usage=5`, `suppressed=0`, `toolUnavailable=0`, `idle=6`.
 
+### 9. Passing real TUI auto compact acceptance
+
+- Command shape: `bun run packages/tui/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000`.
+- Pressure shape: 37 sequential user turns, each below the 16k provider-visible text truncation threshold, each containing about 15k high-entropy ASCII fixture characters. This avoids one-block truncation and keeps local preflight estimate below the 160k threshold while real provider usage accumulates.
+- Process result: exit code 0.
+- Log path: `/var/folders/bj/xcm3f3zx2z710fbv_jt6p3zr0000gn/T/demi-tui-auto-compact-3x-CV5E5q/tui-auto-compact-3x-haiku.log`.
+
+| Compact | Sent turns at trigger | Usage event | Trigger usage total | Resume usage total | Outcome |
+|---|---:|---:|---:|---:|---|
+| 1 | 13 | 13 | `172946` | `16186` | `status: compacting`, then `status: running`, then `status: idle`. |
+| 2 | 25 | 26 | `173235` | `16216` | `status: compacting`, then `status: running`, then `status: idle`. |
+| 3 | 37 | 39 | `172910` | `16213` | `status: compacting`, then `status: running`, then `status: idle`. |
+
+Final counters: `sent=37`, `compacting=3`, `usage=40`, `idle=38`, `running=40`.
+
+What this proves:
+
+- This is the provider-usage auto compact path, not the send-time preflight path: each compact happened immediately after a `usage:` line with total tokens above the 160k threshold.
+- The triggering usage came through Claude Code cache fields (`cache_write` around 172k), so `cacheReadTokens + cacheWriteTokens` must count as real context pressure.
+- After each compact, the resumed request returned normally and usage reset to about 16k, showing that compacted history replaced the accumulated prefix.
+- A single huge user block is not a good auto compact acceptance shape because `Transcript.collectInferenceItems()` bounds model-visible text at 8k head + 8k tail. Multi-turn sub-16k chunks exercise accumulated real context without relying on truncation artifacts.
+
 ## Code Observations
 
 - TUI does not render `compaction_boundary` or `compaction_marker`; the CLI-visible evidence is `status: compacting`, subsequent usage, and whether the agent continues work.
@@ -95,9 +117,11 @@ Final counters: `compacting=4`, `shellExec=8`, `usage=5`, `suppressed=0`, `toolU
 - This gated acceptance is passed for `claude-haiku-4-5` with the TUI 200k context configuration.
 - We have verified the correct model path (`claude-haiku-4-5`) and 200k TUI context selection.
 - We have verified that real TUI can enter `status: compacting` after large tool history at least 4 times in one session.
+- We have verified that real TUI can enter provider-usage auto compact 3 times in one session after Claude Code reports cache-backed usage above the 160k threshold.
 - We have fixed and verified the provider replay defect that made the real model believe shell tools were unavailable after compact.
 - We have fixed and verified repeated MCP request-id handling so post-compact tool results complete the current pending tool call rather than mutating historical tool blocks.
 - We have verified at least 3 successful post-compact continuations with real shell tool execution, followed by one no-tool continuation after another compact.
+- We have verified auto compact resume after cache-pressure compaction, with usage resetting from about 173k to about 16k after each compact.
 
 ## Follow-up Checks
 

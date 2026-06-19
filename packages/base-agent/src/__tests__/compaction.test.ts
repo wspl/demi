@@ -1011,6 +1011,53 @@ test('auto compaction after a tool result resumes without re-executing the tool'
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
+test('auto compaction counts cache usage as context pressure', async () => {
+  const smallModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 10 },
+  }
+  const provider = new RecordingProvider([
+    [events.text('cached answer'), events.response({ inputTokens: 1, outputTokens: 1, cacheWriteTokens: 9 })],
+    (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      expect(request.tools).toEqual([])
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'cache-heavy question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'cached answer' },
+      ])
+      return [events.text('cache pressure summary'), events.response()]
+    },
+    (request) => {
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Previous conversation summary:\ncache pressure summary' }],
+        },
+        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
+      ])
+      return [events.text('continued after cache pressure'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition({ preamble: () => null }), undefined, smallModel, {
+    compaction: { keepRecentTokens: 1 },
+  })
+
+  await session.send(text('cache-heavy question'))
+
+  expect(provider.requests).toHaveLength(3)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'text',
+    'response',
+    'compaction_boundary',
+    'compaction_marker',
+    'resume',
+    'text',
+    'response',
+  ])
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
 test('compaction boundary and marker survive snapshot reconstruction', async () => {
   const store = new MemorySessionStore()
   const transcript = oldAndRecentTranscript()
