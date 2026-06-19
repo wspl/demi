@@ -114,6 +114,7 @@ export interface AgentSessionParams<State> {
   cwd: string
   definition: AgentDefinition<State>
   transcript?: CoreTranscript | Transcript
+  state?: State
 }
 
 export interface AgentSessionSnapshot<State> {
@@ -128,6 +129,12 @@ export interface AgentSessionSnapshot<State> {
 
 export interface AgentSessionStore<State = unknown> {
   saveSnapshot(snapshot: AgentSessionSnapshot<State>): Promise<void> | void
+}
+
+export interface AgentSessionRestoreParams<State> {
+  provider: AgentProvider
+  definition: AgentDefinition<State>
+  snapshot: AgentSessionSnapshot<State>
 }
 
 export interface AgentSessionOptions<State = unknown> {

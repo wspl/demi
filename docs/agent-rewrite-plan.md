@@ -418,6 +418,8 @@ Agent Loop 是纯通用 runtime。
 
 **不负责：** fs、shell、git、业务领域能力、terminal、process session 内部状态、file explorer、project/worktree 管理。
 
+Snapshot restore 是显式 API，不靠外部手工拼 constructor 参数。`AgentSession.fromSnapshot` 必须校验 `definitionName`，并从 snapshot 恢复 transcript、agent state、cwd 和 model；恢复后的 runtime 从 `idle` 开始。snapshot 中持久化的 active `phase` 和 `queue` 只作为最后观测状态保存，不在进程重启后自动重放，因为原 action promise、provider stream 和 tool invocation 已经不存在。
+
 Agent Loop 支持通用 resumable tool result，但不理解其背后是不是进程：
 
 ```ts

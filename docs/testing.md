@@ -59,7 +59,7 @@
 
 | 门槛 | 审查结论 | 审查记录 |
 |---|---|---|
-| AgentSession 长生命周期稳定 | 部分有效 | `5.4`、`5.5`、`5.6`、`5.7` 已覆盖 send/queue/retry/resume/abort/tool/error/compact 的主要路径，并覆盖 transcript/store snapshot 不被 live mutation 污染；完整 `AgentSessionSnapshot` loader 和 provider mock realism 仍是缺口或部分有效。 |
+| AgentSession 长生命周期稳定 | 部分有效 | `5.4`、`5.5`、`5.6`、`5.7` 已覆盖 send/queue/retry/resume/abort/tool/error/compact 的主要路径，并覆盖官方 `AgentSession.fromSnapshot`、transcript/store snapshot 不被 live mutation 污染；provider mock realism 仍是部分有效。 |
 | 模型可见上下文稳定 | 有效 | `5.5`、`5.7` 覆盖 exact transcript payload、effective transcript、当前 transcript schema 的 internal block 过滤、bounded injection、stable prefix 和 compact 后重稳。 |
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
 | Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播；TUI usage 呈现和真实 provider cache hit 仍未完整证明。 |
@@ -82,7 +82,7 @@ agent-gui/Rust 的 compact 测试是当前最重要的校准对象；demi 不照
 | compact/preflight 期间 queued send、abort、retry、resume 收敛 | P0 | `5.4`、`5.6`：有效 | 防止用户在 summary 阶段继续操作时消息丢失、乱序或 session 卡在 compacting。 |
 | 长上下文里 stop/continue/retry 后触发 compact | P0 | `5.4`、`5.6`：有效 | 防止 aborted text、completed tool result 或 retry 后的最新 user turn 在 summary 输入里丢失。 |
 | 单个 turn 本身超过 recent budget，需要 split-turn summary | P0 | `5.6 Compaction`：有效 | 防止一个超长工具/assistant turn 找不到 cut point 后无法 compact，或硬切到 tool result 中间。 |
-| compact 后 close/reopen，summary 和 replay 起点保持一致 | P0 persistence | `5.6`：有效；`5.4` snapshot reconstruction 部分有效 | 防止重启后 boundary/marker 丢失，模型重新看到旧长历史或看不到摘要。 |
+| compact 后 close/reopen，summary 和 replay 起点保持一致 | P0 persistence | `5.6`、`5.4` snapshot restore：有效 | 防止重启后 boundary/marker 丢失，模型重新看到旧长历史或看不到摘要。 |
 | edit/replay 历史分支影响 summary | 当前无 `replay_from` 产品面；只保留 replay invariant | `5.5 Transcript 与 Replay` | 防止被删掉的历史 mutation 面重新进入设计，同时保证现有 replay 仍只取模型应见内容。 |
 | 切换到更小 context 的模型后触发 compact | 当前无运行中切换模型产品面；保留 context limit contract | `5.7`：contract 有效；运行中切换不在范围 | 防止未来 provider/model 配置变化时仍按旧 context limit 请求模型。 |
 
@@ -92,11 +92,11 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 
 | 参考能力 | demi 范围判定 | 候选落点 / 当前结论 | 能发现或规避的问题 |
 |---|---|---|---|
-| 模型可见上下文由一个中心 replay/effective context 产生 | P0 | `5.5`、`5.7`：部分有效 | 防止 provider、compact、retry 各自拼上下文，最终真实模型看到的内容不一致。 |
+| 模型可见上下文由一个中心 replay/effective context 产生 | P0 | `5.5`、`5.7`：有效 | 防止 provider、compact、retry 各自拼上下文，最终真实模型看到的内容不一致。 |
 | 大 tool output、引用内容、preamble 有边界和截断策略 | P0 | `5.7`：有效 | 防止任意一次工具输出或文件引用直接撑爆 context，compact 也无法补救。 |
 | cache read/write usage 从 provider 传到 session/RPC，但不改变 agent 行为 | 基线 | `5.3`、`5.7`：部分有效；真实 provider hit gated | 防止 cache 指标丢失，或把 provider cache 当成会影响 transcript/tool loop 的状态。 |
-| compact 后历史重建与 live compaction 结果一致 | P0 | `5.6`：有效；`5.11`：部分有效 | 防止 session 恢复后 replay 起点、summary 或 recent context 与内存态不一致。 |
-| 完整审计日志与模型上下文分离 | P0 | `5.5`、`5.6`、`5.7`：部分有效 | 防止为了压缩模型上下文而删除完整历史，或把审计块误发给模型。 |
+| compact 后历史重建与 live compaction 结果一致 | P0 | `5.4`、`5.6`：有效 | 防止 session 恢复后 replay 起点、summary 或 recent context 与内存态不一致。 |
+| 完整审计日志与模型上下文分离 | P0 | `5.5`、`5.6`、`5.7`：有效 | 防止为了压缩模型上下文而删除完整历史，或把审计块误发给模型。 |
 | provider 异常输入：empty、malformed、unicode/media、context overflow、tool result 缺失 | P0 provider 边界 | `5.3`：部分有效；真实 CLI gated | 防止真实 CLI/服务端返回边界事件时 agent 卡死、污染 pending state 或错误分类不可恢复。 |
 | pre-turn/mid-turn/manual compact 的 request shape 有 snapshot 级断言 | P0 | `5.6`、`5.7`：有效，部分边界仍需 fault injection | 防止 incoming user 被重复放入请求、control-only item 被摘要、或 mid-turn continuation 丢失当前上下文。 |
 
@@ -192,9 +192,9 @@ Owner：`packages/base-agent`
 | resume 标记 abort 为 resumed，并追加 resume turn | 有效 | 测试手工构造 user+abort transcript，resume 后断言 abort `isResumed=true`，并追加 resume/text/response；能发现恢复历史无法区分已处理 abort。验证同上。 | `session.test.ts` | 防止恢复后 transcript 无法区分已中止内容和继续执行内容。 |
 | abort 后 resume 前清理 pending tool calls | 有效 | 测试慢 tool pending 后 abort，断言 pending tool_call 被转成 error output 且 pending 清零；resume 的 provider request 必须包含 user/tool_use/error tool_result/resume user message，避免重复等待旧 tool。验证同上。 | `session.test.ts` | 防止恢复时模型看到仍在执行的旧 tool_call，重复等待或重复执行工具。 |
 | mutation guard 拒绝 busy/reserved 期间 mutation | 有效 | 测试 `reserveMutation` 期间再次 reserve 抛错、run busy 期间 reserve 抛错；另一个测试在 external mutation reserved 时 send/retry/resume/compact 都 reject，且不改 phase、queue、events。验证同上。 | `session.test.ts` | 防止 compact/retry/resume 与 active run 交错修改 transcript，造成不可恢复状态。 |
-| store snapshot 写入 | 有效 | 测试注入 MemorySessionStore 后 send，断言 store 收到 snapshots，最后 snapshot 包含 definitionName、cwd 和 user/text/response transcript；另测 store snapshot 的 state 是持久化边界深拷贝，后续 tool mutation 不会改写旧 snapshot，外部改 snapshot 也不会污染 live state。验证：`session.test.ts`，22 pass；runtime subset，71 pass。 | `session.test.ts` | 防止进程退出或 host 重启后没有可恢复的会话状态，或旧持久化 snapshot 被 live state mutation 污染。 |
+| store snapshot 写入 | 有效 | 测试注入 MemorySessionStore 后 send，断言 store 收到 snapshots，最后 snapshot 包含 definitionName、cwd 和 user/text/response transcript；另测 store snapshot 的 state 是持久化边界深拷贝，后续 tool mutation 不会改写旧 snapshot，外部改 snapshot 也不会污染 live state。验证：5.4 targeted command，54 pass。 | `session.test.ts` | 防止进程退出或 host 重启后没有可恢复的会话状态，或旧持久化 snapshot 被 live state mutation 污染。 |
 | extension state snapshot 通过 lifecycle 写入并持久化 | 有效 | 测试 after_tool_call lifecycle 写入 extension state snapshot，随后检查 store snapshot 中包含 `extension_state_snapshot`、extensionName 和 `{ toolCalls: 1 }`；能发现扩展状态只留在内存。验证同上。 | `session.test.ts` | 防止 todo 等 agent 扩展状态只在内存里存在，恢复后状态丢失。 |
-| 从 store snapshot 重建 session 后继续运行 | 部分有效 | `session-marathon.test.ts` 从 store 最后 snapshot 的 transcript blocks 重建 `Transcript` 并继续 send，断言 request replay 包含既有 user/tool_use/tool_result/assistant_text 且工具不重执行；但未覆盖完整 `AgentSessionSnapshot` loader、phase/idFactory/state 的恢复契约。验证同上。 | `session-marathon.test.ts` | 需要发现 snapshot schema、idFactory、phase 或 transcript replay 在重启后不兼容的问题。 |
+| 从 store snapshot 重建 session 后继续运行 | 有效 | `session-marathon.test.ts` 覆盖旧的 transcript-only restore 不重复执行已完成工具；新增 `AgentSession.fromSnapshot` 官方 loader 测试，断言恢复 state、cwd、model、transcript replay，恢复后 runtime 为 idle 且不自动重放持久化 queue，后续 block 使用恢复时传入的 idFactory，外部修改 snapshot 不污染 restored session，并拒绝 definitionName mismatch。验证同上。 | `session-marathon.test.ts` | 需要发现 snapshot schema、definitionName、state、phase、queue、idFactory 或 transcript replay 在重启后不兼容的问题。 |
 | provider error 后恢复不重复发送已完成 tool result | 有效 | 测试先完成一次非幂等 tool，再让后续 provider error 写入 snapshot；恢复后新请求中 tool_result 数量必须仍为 1，并用 `assertNoOrphanToolItems` 检查配对，state.toolCalls 不增加。验证同上。 | `session-marathon.test.ts` | 需要规避重启后重复执行破坏性工具或给模型重复上下文。 |
 | abort/retry/resume/compact 组合交错 | 有效 | marathon 覆盖 tool、queued send、provider error、retry、abort、resume、manual compact、post-compact send 的连续状态；`compaction.test.ts` 还覆盖 compaction 期间 queue send/retry/resume，验证 queued action 在 summary commit 后按正确上下文运行。验证同上。 | `session-marathon.test.ts`、`compaction.test.ts` | 组合路径容易暴露单点测试发现不了的 phase、queue、transcript 原子性问题。 |
 | 单会话 marathon 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态 | 有效 | marathon 单测在同一 session 内跑 9 次 provider request，阶段性断言 request 与 transcript 一致、pending tools 清空、queue 清空、phase idle、invariants 成立；能发现长期累计后状态漂移。验证同上。 | `session-marathon.test.ts` | 用来发现状态只在单点测试里正确，长期累计后 id、phase、pending action、tool 状态或 transcript 顺序漂移。 |

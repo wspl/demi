@@ -10,6 +10,7 @@ import type {
   AgentDefinition,
   AgentSessionOptions,
   AgentSessionParams,
+  AgentSessionRestoreParams,
   AgentSessionStore,
   AgentTool,
   AgentToolInvokeResult,
@@ -56,12 +57,35 @@ export class AgentSession<State> {
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
 
+  static fromSnapshot<State>(
+    params: AgentSessionRestoreParams<State>,
+    options: AgentSessionOptions<State> = {},
+  ): AgentSession<State> {
+    if (params.snapshot.definitionName !== params.definition.name) {
+      throw new Error(
+        `AgentSession: snapshot definition "${params.snapshot.definitionName}" does not match "${params.definition.name}"`,
+      )
+    }
+    const snapshot = structuredClone(params.snapshot)
+    return new AgentSession(
+      {
+        provider: params.provider,
+        model: snapshot.model,
+        cwd: snapshot.cwd,
+        definition: params.definition,
+        transcript: snapshot.transcript,
+        state: snapshot.state,
+      },
+      options,
+    )
+  }
+
   constructor(params: AgentSessionParams<State>, options: AgentSessionOptions<State> = {}) {
     this.provider = params.provider
     this.model = params.model
     this.cwd = params.cwd
     this.definition = params.definition
-    this.agentState = params.definition.initialState()
+    this.agentState = params.state === undefined ? params.definition.initialState() : structuredClone(params.state)
     this.agentSessionId = options.agentSessionId ?? defaultIdFactory()
     this.idFactory = options.idFactory ?? defaultIdFactory
     this.store = options.store

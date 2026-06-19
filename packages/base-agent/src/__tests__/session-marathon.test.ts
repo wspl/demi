@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
 import { events } from '@demi/provider'
-import { Transcript } from '../index'
+import { AgentSession, Transcript } from '../index'
 import {
   assertNoOrphanToolItems,
   assertTranscriptInvariants,
@@ -170,6 +170,107 @@ test('restored session continues from snapshot without re-executing completed to
 
   expect(restored.state().toolCalls).toBe(0)
   expect(restored.transcript().pendingToolCalls()).toHaveLength(0)
+})
+
+test('AgentSession.fromSnapshot restores state and model context with a fresh idle runtime', async () => {
+  const store = new MemorySessionStore<{ toolCalls: number }>()
+  const firstProvider = new RecordingProvider([
+    [events.toolCall('tool-1', 'write_once', { path: 'file.txt' }), events.response()],
+    [events.text('wrote file'), events.response()],
+  ])
+  const definition = createDefinition({
+    tools: (ctx) => [
+      {
+        name: 'write_once',
+        description: 'Represents a non-idempotent write.',
+        inputSchema: { type: 'object' },
+        invoke: () => {
+          ctx.state.toolCalls += 1
+          return { output: [{ type: 'text', text: 'created file.txt' }] }
+        },
+      },
+    ],
+  })
+  const first = createSession(firstProvider, definition, undefined, undefined, { store })
+
+  await first.send(text('write file'))
+
+  const snapshot = structuredClone(store.snapshots.at(-1))
+  if (!snapshot) throw new Error('missing snapshot')
+  snapshot.phase = 'running'
+  snapshot.queue = [{ id: 'queued-after-crash', text: 'queued after crash', content: text('queued after crash') }]
+  const restoredProvider = new RecordingProvider([
+    (request) => {
+      expect(request.cwd).toBe(snapshot.cwd)
+      expect(request.modelId).toBe(snapshot.model.model.id)
+      expect(request.items.map((item) => item.type)).toEqual([
+        'user_message',
+        'tool_use',
+        'tool_result',
+        'assistant_text',
+        'user_message',
+      ])
+      assertNoOrphanToolItems(request.items)
+      return [events.toolCall('tool-2', 'write_once', { path: 'second.txt' }), events.response()]
+    },
+    (request) => {
+      expect(request.items.filter((item) => item.type === 'tool_result')).toHaveLength(2)
+      assertNoOrphanToolItems(request.items)
+      return [events.text('restored write complete'), events.response()]
+    },
+  ])
+  const restored = AgentSession.fromSnapshot(
+    {
+      provider: restoredProvider,
+      definition,
+      snapshot,
+    },
+    {
+      idFactory: (() => {
+        let id = 0
+        return () => `restored-${++id}`
+      })(),
+      now: () => '2026-06-17T00:00:00.000Z',
+    },
+  )
+
+  snapshot.state.toolCalls = 99
+  snapshot.transcript.blocks = []
+
+  expect(restored.state()).toEqual({ toolCalls: 1 })
+  expect(restored.phase()).toBe('idle')
+  expect(restored.queuedMessages()).toEqual([])
+
+  await restored.send(text('continue after restore'))
+
+  expect(restored.state()).toEqual({ toolCalls: 2 })
+  const restoredUser = restored.transcript().blocks.find((block) => {
+    if (block.type !== 'user') return false
+    return block.content.some((item) => item.type === 'text' && item.text === 'continue after restore')
+  })
+  expect(restoredUser).toMatchObject({ type: 'user', id: 'restored-2' })
+  expect(restored.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'restored write complete' })
+  expect(restoredProvider.requests).toHaveLength(2)
+})
+
+test('AgentSession.fromSnapshot rejects mismatched definitions', async () => {
+  const store = new MemorySessionStore()
+  const provider = new RecordingProvider([[events.text('answer'), events.response()]])
+  const definition = createDefinition()
+  const session = createSession(provider, definition, undefined, undefined, { store })
+
+  await session.send(text('save snapshot'))
+
+  const snapshot = store.snapshots.at(-1)
+  if (!snapshot) throw new Error('missing snapshot')
+
+  expect(() => {
+    AgentSession.fromSnapshot({
+      provider: new RecordingProvider([]),
+      definition: createDefinition({ name: 'other-agent' }),
+      snapshot,
+    })
+  }).toThrow('snapshot definition "test-agent" does not match "other-agent"')
 })
 
 test('restored session after provider error does not duplicate completed tool results', async () => {
