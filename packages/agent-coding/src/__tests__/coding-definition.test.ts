@@ -5,7 +5,7 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import { AgentSession } from '@demi/base-agent'
 import { StubProvider, events, type InferenceRequest } from '@demi/provider'
-import { BashEnvironment } from '@demi/shell'
+import { BashEnvironment, type Host, type HostSpawnHandle, type HostSpawnParams } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import { createCodingAgentDefinition } from '../index'
 
@@ -108,6 +108,30 @@ test('coding agent resolves file references through the workspace host', async (
   ])
 })
 
+test('coding agent file references read through Host.spawn', async () => {
+  const host = new RecordingHost('/workspace', 'hello from fake host\n')
+  const environment = new BashEnvironment({
+    host,
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const definition = createCodingAgentDefinition({ environment })
+  if (!definition.resolveReferences) throw new Error('expected resolveReferences')
+
+  const resolved = await definition.resolveReferences(
+    {
+      agentSessionId: 'coding-ref-agent',
+      state: definition.initialState(),
+      cwd: '/workspace',
+      transcript: {} as never,
+      signal: new AbortController().signal,
+    },
+    [{ type: 'reference', reference: 'note.txt' }],
+  )
+
+  expect(resolved).toEqual([{ type: 'text', text: '<file path="note.txt">\nhello from fake host\n\n</file>' }])
+  expect(host.calls).toEqual([{ command: 'cat', args: ['note.txt'], cwd: '/workspace' }])
+})
+
 test('coding agent resolves file references before AgentSession sends the provider request', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-session-refs-'))
   await writeFile(join(root, 'note.txt'), 'hello from session file\n', 'utf8')
@@ -191,3 +215,28 @@ test('coding agent dispose clears shell sessions owned by its environment', asyn
 
   expect(environment.getShell(created.shellId)).toBeNull()
 })
+
+class RecordingHost implements Host {
+  readonly calls: HostSpawnParams[] = []
+
+  constructor(
+    readonly root: string,
+    private readonly stdoutText: string,
+  ) {}
+
+  async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
+    this.calls.push(params)
+    return {
+      stdout: bytes(this.stdoutText),
+      stderr: bytes(''),
+      writeStdin: async () => {},
+      closeStdin: async () => {},
+      kill: async () => {},
+      wait: async () => ({ exitCode: 0 }),
+    }
+  }
+}
+
+async function* bytes(text: string): AsyncIterable<Uint8Array> {
+  yield new TextEncoder().encode(text)
+}

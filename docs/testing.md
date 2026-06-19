@@ -64,7 +64,7 @@
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
 | Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播；TUI usage 呈现和真实 provider cache hit 仍未完整证明。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
-| Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制和 shell cwd/env 复用；editor 写入失败事务、file reference Host 边界仍有部分缺口。 |
+| Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制、shell cwd/env 复用和 file reference Host 边界；editor 写入失败事务仍有缺口。 |
 | 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，但 `5.17` TUI 自身没有自动化测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
 
 ### 3.3 Compact 参考故事映射
@@ -353,9 +353,9 @@ Owner：`packages/agent-coding`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| coding definition 暴露 shell session tools | 有效 | 测试 createCodingAgentDefinition 后断言 `tools()` 暴露 `shell_exec/shell_wait/shell_input/shell_abort`，并通过环境执行默认 todo command；能发现 coding agent 没有 shell 控制面或默认命令未注册。验证：5.12 targeted command，5 pass。 | `packages/agent-coding/src/__tests__/coding-definition.test.ts` | 防止 coding agent 打开后模型没有可用的 shell 控制面。 |
+| coding definition 暴露 shell session tools | 有效 | 测试 createCodingAgentDefinition 后断言 `tools()` 暴露 `shell_exec/shell_wait/shell_input/shell_abort`，并通过环境执行默认 todo command；能发现 coding agent 没有 shell 控制面或默认命令未注册。验证：5.12 targeted command，6 pass。 | `packages/agent-coding/src/__tests__/coding-definition.test.ts` | 防止 coding agent 打开后模型没有可用的 shell 控制面。 |
 | registered command prompt 注入 system prompt | 有效 | 测试 systemPrompt 包含 editor/todo prompt、effects/success/failure output、todo example、foreground long-process rules、avoid pkill/killall 等文本，并断言 `editor prompt` 输出同源内容；能发现专属命令说明未注入。验证同上。 | `coding-definition.test.ts` | 防止模型不知道 `editor`、`todo` 等专属命令的正确调用方式。 |
-| file reference 通过 workspace host 读取 | 部分有效 | 测试在 workspace root 下解析相对路径和 file URL，断言输出 `<file path=...>` 包含文件内容；但使用 LocalHost 行为验证，没有 fake Host 记录 spawn，因此不能单独证明未绕过 Host。验证同上。 | `coding-definition.test.ts` | 防止引用展开绕过 Host，或模型拿不到用户指定文件内容。 |
+| file reference 通过 workspace host 读取 | 有效 | 测试在 workspace root 下解析相对路径和 file URL，断言输出 `<file path=...>` 包含文件内容；另用 fake `RecordingHost` 断言 reference resolution 必须调用 `Host.spawn({ command: 'cat', args: ['note.txt'], cwd })`，能发现绕过 Host 的直接 fs 读取。验证同上。 | `coding-definition.test.ts` | 防止引用展开绕过 Host，或模型拿不到用户指定文件内容。 |
 | file reference 拒绝 workspace root 外路径 | 有效 | 测试 workspace root 外的 absolute path reference reject `File reference escapes workspace`；能发现引用展开读取工作区外文件。验证同上。 | `coding-definition.test.ts` | 防止通过 reference 读取工作区外文件。 |
 | definition dispose 清理 environment shell sessions | 有效 | 测试先在环境里创建 shell session，调用 definition.dispose 后断言 `getShell(shellId)` 为 null；能发现 coding agent 关闭后 shell session 残留。验证同上。 | `coding-definition.test.ts` | 防止关闭 coding agent 后 shell 进程继续运行。 |
 | reference resolution 与 AgentSession send 顺序集成 | 有效 | 测试通过真实 `AgentSession.send` 发送 text+reference，provider callback 精确断言 request.items 已展开为 file content 且不含 `reference`，随后 transcript user block 也保存展开内容；能发现先写未展开引用。验证同上。 | `coding-definition.test.ts` 通过 `AgentSession` 断言 provider request 和 transcript 都保存展开后的 file content | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
@@ -456,7 +456,7 @@ Owner：`packages/just-bash`
 
 1. 补 `5.17 TUI` 自动化：cache usage 呈现、stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
 2. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
-3. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务。
+3. 补 `5.13` 的 coding 细节缺口：editor 写入阶段失败事务。
 4. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则
