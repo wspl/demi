@@ -2,9 +2,16 @@ import { access, mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
-import { BashEnvironment } from '@demi/shell'
+import {
+  BashEnvironment,
+  type CommandIO,
+  type CommandStorage,
+  type Host,
+  type HostSpawnHandle,
+  type HostSpawnParams,
+} from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
-import { createCodingCommandRegistry } from '../index'
+import { createCodingCommandRegistry, createEditorCommand } from '../index'
 
 test('editor create writes a new file from heredoc content', async () => {
   const { env } = await createEditorEnvironment()
@@ -291,6 +298,39 @@ test('editor patch validates all files before writing any changes', async () => 
   expect(first.output.stdoutDelta).toBe('first\n')
 })
 
+test('editor patch rolls back files when a later write fails', async () => {
+  const host = new FailingWriteHost('/workspace', {
+    'first.txt': 'first\n',
+    'second.txt': 'second\n',
+  })
+  const command = createEditorCommand(host)
+  const patch = command.subcommands.find((subcommand) => subcommand.name === 'patch')
+  if (!patch) throw new Error('missing editor patch command')
+  const output = commandOutput()
+
+  const result = await patch.run({
+    argv: ['editor', 'patch'],
+    parsed: {
+      subcommand: 'patch',
+      json: false,
+      values: {
+        patch:
+          '--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-second\n+changed\n',
+      },
+    },
+    stdin: { text: '' },
+    env: {},
+    cwd: '/workspace',
+    io: output.io,
+    storage: noopStorage,
+  })
+
+  expect(result.exitCode).toBe(1)
+  expect(output.stderr()).toContain('simulated write failure')
+  expect(host.read('first.txt')).toBe('first\n')
+  expect(host.read('second.txt')).toBe('second\n')
+})
+
 async function createEditorEnvironment(): Promise<{ env: BashEnvironment }> {
   const root = await mkdtemp(join(tmpdir(), 'demi-editor-'))
   const host = new LocalHost(root)
@@ -317,4 +357,127 @@ function editorDiffs(result: { status: string; commandMetadata?: Array<{ metadat
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+const noopStorage: CommandStorage = {
+  readJson: async () => null,
+  writeJson: async () => {},
+  delete: async () => {},
+  list: async () => [],
+}
+
+function commandOutput(): { io: CommandIO; stdout: () => string; stderr: () => string } {
+  const stdout: string[] = []
+  const stderr: string[] = []
+  return {
+    io: {
+      stdout: async (data) => {
+        stdout.push(text(data))
+      },
+      stderr: async (data) => {
+        stderr.push(text(data))
+      },
+    },
+    stdout: () => stdout.join(''),
+    stderr: () => stderr.join(''),
+  }
+}
+
+class FailingWriteHost implements Host {
+  private readonly files = new Map<string, string>()
+
+  constructor(
+    readonly root: string,
+    files: Record<string, string>,
+  ) {
+    for (const [path, content] of Object.entries(files)) {
+      this.files.set(this.resolve(path), content)
+    }
+  }
+
+  read(path: string): string | undefined {
+    return this.files.get(this.resolve(path))
+  }
+
+  async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
+    let stdin = ''
+    let result: Promise<HostCommandResult> | null = null
+    const finish = async () => {
+      result ??= Promise.resolve(this.run(params, stdin))
+      return result
+    }
+    return {
+      stdout: deferredBytes(async () => (await finish()).stdout),
+      stderr: deferredBytes(async () => (await finish()).stderr),
+      writeStdin: async (data) => {
+        stdin += text(data)
+      },
+      closeStdin: async () => {},
+      kill: async () => {},
+      wait: async () => ({ exitCode: (await finish()).exitCode }),
+    }
+  }
+
+  private run(params: HostSpawnParams, stdin: string): HostCommandResult {
+    const args = params.args ?? []
+    if (params.command === 'cat') {
+      const path = this.resolve(requiredArg(args, 0))
+      const content = this.files.get(path)
+      return content === undefined
+        ? { stdout: '', stderr: `cat: ${args[0]}: No such file or directory\n`, exitCode: 1 }
+        : { stdout: content, stderr: '', exitCode: 0 }
+    }
+
+    if (params.command === 'test' && args[0] === '-e') {
+      return { stdout: '', stderr: '', exitCode: this.files.has(this.resolve(requiredArg(args, 1))) ? 0 : 1 }
+    }
+
+    if (params.command === 'mkdir') {
+      return { stdout: '', stderr: '', exitCode: 0 }
+    }
+
+    if (params.command === 'rm') {
+      const path = this.resolve(requiredArg(args, args.length - 1))
+      this.files.delete(path)
+      return { stdout: '', stderr: '', exitCode: 0 }
+    }
+
+    if (params.command === 'tee') {
+      const pathArg = requiredArg(args, args.length - 1)
+      const path = this.resolve(pathArg)
+      this.files.set(path, stdin)
+      if (pathArg === 'second.txt') {
+        return { stdout: stdin, stderr: `tee: ${pathArg}: simulated write failure\n`, exitCode: 1 }
+      }
+      return { stdout: stdin, stderr: '', exitCode: 0 }
+    }
+
+    return { stdout: '', stderr: `unsupported command: ${params.command}\n`, exitCode: 127 }
+  }
+
+  private resolve(path: string): string {
+    if (path.startsWith('/')) return path
+    return `${this.root}/${path}`
+  }
+}
+
+interface HostCommandResult {
+  stdout: string
+  stderr: string
+  exitCode: number
+}
+
+function requiredArg(args: string[], index: number): string {
+  const value = args[index]
+  if (value === undefined) throw new Error(`missing argument ${index}`)
+  return value
+}
+
+async function* deferredBytes(read: () => Promise<string>): AsyncIterable<Uint8Array> {
+  const value = await read()
+  if (value.length > 0) yield new TextEncoder().encode(value)
+}
+
+function text(data: string | Uint8Array): string {
+  return typeof data === 'string' ? data : new TextDecoder().decode(data)
 }

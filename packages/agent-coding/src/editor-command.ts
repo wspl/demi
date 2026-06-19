@@ -112,7 +112,7 @@ export function createEditorCommand(host: Host): CommandSpec {
         summary: 'Apply a unified diff patch to one or more files.',
         effects: 'modifies workspace files described by the patch; validates all patch operations before writing',
         successOutput: 'writes "Patched <n> file(s)" to stdout',
-        failureOutput: 'writes parse, validation, or write errors to stderr and exits non-zero before applying partial patches when validation fails',
+        failureOutput: 'writes parse, validation, or write errors to stderr and exits non-zero after rolling back partial writes when possible',
         input: {
           patch: z.string().describe('Unified diff content, passed via stdin/heredoc'),
         },
@@ -132,30 +132,10 @@ export function createEditorCommand(host: Host): CommandSpec {
             return { exitCode: 1 }
           }
 
-          for (const operation of operations) {
-            if (operation.type === 'delete') {
-              const deleted = await deleteFile(host, cwd, operation.path)
-              if (deleted.exitCode !== 0) {
-                await io.stderr(deleted.stderr)
-                return { exitCode: deleted.exitCode }
-              }
-              continue
-            }
-
-            const parent = dirnamePath(operation.path)
-            if (parent !== '.') await run(host, cwd, 'mkdir', ['-p', parent])
-            const write = await writeFile(host, cwd, operation.path, operation.content)
-            if (write.exitCode !== 0) {
-              await io.stderr(write.stderr)
-              return { exitCode: write.exitCode }
-            }
-            if (operation.deletePath) {
-              const deleted = await deleteFile(host, cwd, operation.deletePath)
-              if (deleted.exitCode !== 0) {
-                await io.stderr(deleted.stderr)
-                return { exitCode: deleted.exitCode }
-              }
-            }
+          const applied = await applyPatchOperations(host, cwd, operations)
+          if (applied.exitCode !== 0) {
+            await io.stderr(applied.stderr)
+            return { exitCode: applied.exitCode }
           }
           await io.stdout(`Patched ${patches.length} file(s)\n`)
           return {
@@ -294,6 +274,77 @@ type PatchOperation =
       deletePath?: string
     }
   | { type: 'delete'; path: string; original: string; oldPath: string; newPath: null }
+
+type RollbackAction = { type: 'write'; path: string; content: string } | { type: 'delete'; path: string }
+
+async function applyPatchOperations(host: Host, cwd: string, operations: PatchOperation[]): Promise<ProcessResult> {
+  const rollback: RollbackAction[] = []
+
+  const fail = async (failure: ProcessResult): Promise<ProcessResult> => {
+    const rollbackFailures: ProcessResult[] = []
+    for (let index = rollback.length - 1; index >= 0; index -= 1) {
+      const result = await runRollbackAction(host, cwd, rollback[index])
+      if (result.exitCode !== 0) rollbackFailures.push(result)
+    }
+    return appendRollbackFailures(failure, rollbackFailures)
+  }
+
+  for (const operation of operations) {
+    if (operation.type === 'delete') {
+      rollback.push({ type: 'write', path: operation.path, content: operation.original })
+      const deleted = await deleteFile(host, cwd, operation.path)
+      if (deleted.exitCode !== 0) return fail(deleted)
+      continue
+    }
+
+    const parent = dirnamePath(operation.path)
+    if (parent !== '.') {
+      const made = await run(host, cwd, 'mkdir', ['-p', parent])
+      if (made.exitCode !== 0) return fail(made)
+    }
+
+    rollback.push(rollbackForWrite(operation))
+    const write = await writeFile(host, cwd, operation.path, operation.content)
+    if (write.exitCode !== 0) return fail(write)
+
+    if (operation.deletePath) {
+      rollback.push({ type: 'write', path: operation.deletePath, content: operation.original })
+      const deleted = await deleteFile(host, cwd, operation.deletePath)
+      if (deleted.exitCode !== 0) return fail(deleted)
+    }
+  }
+
+  return { stdout: '', stderr: '', exitCode: 0 }
+}
+
+function rollbackForWrite(operation: Extract<PatchOperation, { type: 'write' }>): RollbackAction {
+  if (operation.oldPath === operation.path) {
+    return { type: 'write', path: operation.path, content: operation.original }
+  }
+  return { type: 'delete', path: operation.path }
+}
+
+async function runRollbackAction(host: Host, cwd: string, action: RollbackAction): Promise<ProcessResult> {
+  if (action.type === 'delete') return deleteFile(host, cwd, action.path)
+  const parent = dirnamePath(action.path)
+  if (parent !== '.') {
+    const made = await run(host, cwd, 'mkdir', ['-p', parent])
+    if (made.exitCode !== 0) return made
+  }
+  return writeFile(host, cwd, action.path, action.content)
+}
+
+function appendRollbackFailures(failure: ProcessResult, rollbackFailures: ProcessResult[]): ProcessResult {
+  if (rollbackFailures.length === 0) return failure
+  const rollbackStderr = rollbackFailures
+    .map((result) => result.stderr.trim() || `rollback command exited ${result.exitCode}`)
+    .join('\n')
+  const separator = failure.stderr.length === 0 || failure.stderr.endsWith('\n') ? '' : '\n'
+  return {
+    ...failure,
+    stderr: `${failure.stderr}${separator}Rollback failed:\n${rollbackStderr}\n`,
+  }
+}
 
 function parseUnifiedDiff(diff: string): FilePatch[] {
   const lines = diff.split('\n')

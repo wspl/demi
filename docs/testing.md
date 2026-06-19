@@ -64,7 +64,7 @@
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
 | Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播；TUI usage 呈现和真实 provider cache hit 仍未完整证明。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
-| Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制、shell cwd/env 复用和 file reference Host 边界；editor 写入失败事务仍有缺口。 |
+| Coding workflow 能发现真实问题 | 有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制、shell cwd/env 复用、file reference Host 边界和 editor 写入失败事务。 |
 | 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，但 `5.17` TUI 自身没有自动化测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
 
 ### 3.3 Compact 参考故事映射
@@ -366,14 +366,14 @@ Owner：`packages/agent-coding`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `editor create` 用 heredoc 创建文件 | 有效 | 测试用 heredoc 创建 `src/foo.txt`，断言 stdout、diff metadata、unified diff header 和实际 `cat` 内容；能发现多行 stdin/heredoc 被参数解析破坏。验证：5.13 targeted command，11 pass。 | `packages/agent-coding/src/__tests__/editor-command.test.ts` | 防止模型写文件时多行内容、引号或换行被 shell 参数破坏。 |
+| `editor create` 用 heredoc 创建文件 | 有效 | 测试用 heredoc 创建 `src/foo.txt`，断言 stdout、diff metadata、unified diff header 和实际 `cat` 内容；能发现多行 stdin/heredoc 被参数解析破坏。验证：5.13 targeted command，12 pass。 | `packages/agent-coding/src/__tests__/editor-command.test.ts` | 防止模型写文件时多行内容、引号或换行被 shell 参数破坏。 |
 | editor 拒绝 workspace root 外路径 | 有效 | 测试 absolute outside 和 `../` relative outside 都 exit 1，stderr 包含 `Path escapes workspace`，并断言外部文件不存在；能发现越权写入。验证同上。 | `editor-command.test.ts` | 防止编辑命令越权修改工作区外文件。 |
 | patch escaped path 时写入前拒绝 | 有效 | 测试 patch 先声明修改 workspace 内文件，再声明创建 workspace 外文件；失败后断言内部文件仍为原内容且外部文件不存在。验证同上。 | `editor-command.test.ts` | 防止 unified diff 中一个恶意路径导致部分文件已修改后才失败。 |
 | `editor edit` exact replace 和 ambiguous matches 失败 | 有效 | 测试重复文本无 occurrence 时 exit 1 并报 `Multiple matches`，随后用 `--occurrence 2` 精确替换并断言 diff metadata 和实际文件内容；能发现歧义替换误改。验证同上。 | `editor-command.test.ts` | 防止错误替换多个位置或在歧义情况下误改代码。 |
 | context disambiguation 只在唯一最近匹配时生效 | 有效 | 测试 context line 2 与两个匹配等距时失败并列出 occurrence，断言文件未改；context line 3 时只替换最近唯一匹配。验证同上。 | `editor-command.test.ts` | 防止模型提供上下文后仍改到错误位置。 |
 | empty old text 拒绝且不修改文件 | 有效 | 测试 `--old ""` exit 1，stderr 为 `Old text must not be empty`，并断言原文件内容未变。验证同上。 | `editor-command.test.ts` | 防止空匹配导致在文件所有位置插入内容。 |
 | unified diff patch、timestamp headers、多文件创建/删除 | 有效 | 测试普通 unified diff、带 timestamp header、同时修改已有文件并创建新文件、`/dev/null` 删除文件，均断言 stdout/diff metadata/实际文件状态；能发现常见 patch 语义缺失。验证同上。 | `editor-command.test.ts` | 防止常见 patch 格式无法应用，或删除/新增文件语义错。 |
-| patch 全量校验后再写入，保证跨文件事务 | 部分有效 | 测试跨两个文件 patch 中第二个文件 context 不匹配时 exit 1，并断言第一个文件未被修改；能证明 validation failure 会在写入前中止。未模拟写入阶段第二个文件失败，因此不能证明真正的写入失败回滚。验证同上。 | `editor-command.test.ts` | 防止 patch 中后续文件失败时前面文件已经被部分修改。 |
+| patch 全量校验后再写入，保证跨文件事务 | 有效 | 测试跨两个文件 patch 中第二个文件 context 不匹配时 exit 1，并断言第一个文件未被修改；另用 fake Host 让第二个 `tee` 在已写入内容后返回失败，断言第一、第二个文件都恢复原内容。该测试先在旧实现上失败，修复后通过。验证同上。 | `editor-command.test.ts` | 防止 patch 中后续文件失败时前面文件已经被部分修改，或失败中的文件留下半写入内容。 |
 
 ### 5.14 Todo Command
 
@@ -456,8 +456,7 @@ Owner：`packages/just-bash`
 
 1. 补 `5.17 TUI` 自动化：cache usage 呈现、stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
 2. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
-3. 补 `5.13` 的 coding 细节缺口：editor 写入阶段失败事务。
-4. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
+3. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则
 
