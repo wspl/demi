@@ -447,10 +447,10 @@ Owner：`packages/just-bash`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| demi 依赖的 parser protection |  |  | `bun run test:just-bash-core` | 防止 parser 在安全边界或保护逻辑上退化。 |
-| parser edge cases |  |  | `bun run test:just-bash-core` | 防止 agent 常见脚本语法在升级 just-bash 后突然解析错误。 |
-| parse errors |  |  | `bun run test:just-bash-core` | 防止非法语法被误解析并执行。 |
-| upstream bash/awk/sed/grep/jq 等 spec/comparison 测试 |  |  | 存在于子模块，不属于主仓库默认入口 | 用来发现主仓库关键路径以外的命令兼容性回归。 |
+| demi 依赖的 parser protection | 有效 | `bun run test:just-bash-core` 跑 `parser-protection.test.ts`，覆盖超长输入、深嵌套、超多 token、病理 brace/redirection/quote pattern 和执行期 expansion limit；93 个 just-bash core 测试整体通过。 | `bun run test:just-bash-core` | 防止 parser 在安全边界或保护逻辑上退化。 |
+| parser edge cases | 有效 | 同一脚本跑 `parser-edge-cases.test.ts`，大量断言 quoting、escape、变量展开、空白、redirection、operator precedence、组合命令的 stdout/exit 行为；能发现 agent 常见脚本语法解析退化。验证同上。 | `bun run test:just-bash-core` | 防止 agent 常见脚本语法在升级 just-bash 后突然解析错误。 |
+| parse errors | 部分有效 | 同一脚本跑 `parse-errors.test.ts`，多数 if/for/while/until/function/local/command error 断言非零 exit 和 stderr；但部分非法 quote、redirect、pipe、trailing operator 用例只断言 result defined，不能证明非法语法不会被误执行。验证同上。 | `bun run test:just-bash-core` | 防止非法语法被误解析并执行。 |
+| upstream bash/awk/sed/grep/jq 等 spec/comparison 测试 | Gated | 子模块存在 spec-tests 和 comparison-tests，并有 `pnpm test:run`、`pnpm test:comparison` 等入口；主仓库默认脚本只跑三个 syntax 文件，本次未跑完整上游套件。 | 存在于子模块，不属于主仓库默认入口 | 用来发现主仓库关键路径以外的命令兼容性回归。 |
 
 ## 6. 当前剩余优先补测顺序
 
