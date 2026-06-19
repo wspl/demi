@@ -33,10 +33,15 @@ input.on('line', (line) => {
 
   if (message.type === 'user' && !sentToolCall) {
     sentToolCall = true
-    mode = userText(message).includes('interactive input fixture workflow') ? 'input' : 'basic'
+    const text = userText(message)
+    mode = text.includes('interactive input fixture workflow')
+      ? 'input'
+      : text.includes('flood output fixture workflow')
+        ? 'flood'
+        : 'basic'
     write({
       type: 'control_request',
-      request_id: mode === 'input' ? 'outer-input-tool-1' : 'outer-tool-1',
+      request_id: mode === 'input' ? 'outer-input-tool-1' : mode === 'flood' ? 'outer-flood-tool-1' : 'outer-tool-1',
       request: {
         subtype: 'mcp_message',
         server_name: 'main',
@@ -49,6 +54,8 @@ input.on('line', (line) => {
             arguments:
               mode === 'input'
                 ? { script: 'sh -c \'IFS= read -r line; printf "fixture-input:%s" "$line"\'', yieldAfterMs: 1 }
+                : mode === 'flood'
+                  ? { script: floodScript(), yieldAfterMs: 10_000, outputLimitBytes: 512 * 1024 }
                 : { script: 'printf fixture-shell' },
           },
         },
@@ -60,6 +67,12 @@ input.on('line', (line) => {
   if (message.type === 'control_response' && message.response?.request_id === 'outer-tool-1' && !sentFinal) {
     sentFinal = true
     writeFinal('fixture response', { input_tokens: 12, output_tokens: 3, cache_read_input_tokens: 2, cache_creation_input_tokens: 1 })
+    setTimeout(() => process.exit(0), 10)
+  }
+
+  if (message.type === 'control_response' && message.response?.request_id === 'outer-flood-tool-1' && !sentFinal) {
+    sentFinal = true
+    writeFinal('fixture flood complete', { input_tokens: 14, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 })
     setTimeout(() => process.exit(0), 10)
   }
 
@@ -92,4 +105,16 @@ function writeFinal(text, usage) {
 function userText(message) {
   if (!Array.isArray(message.message?.content)) return ''
   return message.message.content.map((block) => (block?.type === 'text' ? String(block.text ?? '') : '')).join('\n')
+}
+
+function floodScript() {
+  return [
+    "printf 'DEMI_FLOOD_START\\n'",
+    'i=0',
+    'while [ "$i" -lt 1500 ]; do',
+    "  printf 'flood-%04d abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789\\n' \"$i\"",
+    '  i=$((i + 1))',
+    'done',
+    "printf 'DEMI_FLOOD_END\\n'",
+  ].join('\n')
 }

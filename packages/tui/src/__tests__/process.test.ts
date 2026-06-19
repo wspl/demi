@@ -78,6 +78,35 @@ test('TUI process sends slash input to a running shell and renders the resulting
   }
 })
 
+test('TUI process renders high-volume shell output without losing sentinel lines', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'demi-tui-process-flood-'))
+  const child = spawnTuiFixture(workspace)
+  const capture = new ProcessCapture(child)
+
+  try {
+    await capture.waitForStdout('Session opened', 5_000)
+    child.stdin?.write('run the flood output fixture workflow\n')
+
+    await capture.waitForStdout('DEMI_FLOOD_END', 10_000)
+    await capture.waitForStdout('usage: in=14 out=5 cache_read=0 cache_write=0', 5_000)
+    const stdout = capture.stdout()
+    expect(stdout).toContain('shell[')
+    expect(stdout).toContain('DEMI_FLOOD_START')
+    expect(stdout).toContain('flood-0000')
+    expect(stdout).toContain('flood-1499')
+    expect(stdout).toContain('DEMI_FLOOD_END')
+    expect(stdout).toContain('assistant> fixture flood complete')
+
+    child.stdin?.write('/exit\n')
+    const exitCode = await capture.closed
+    expect(exitCode).toBe(0)
+    expect(capture.stderr()).toBe('')
+    expect(capture.stdout()).toContain('closed')
+  } finally {
+    if (!child.killed) child.kill('SIGTERM')
+  }
+})
+
 async function runTuiProcess(
   args: string[],
   options: { env?: NodeJS.ProcessEnv } = {},
