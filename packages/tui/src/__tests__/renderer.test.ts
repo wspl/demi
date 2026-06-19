@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test'
 import type { AgentDefinition } from '@demi/base-agent'
-import type { Block, ModelSelection } from '@demi/core'
+import type { Block, ModelSelection, UserContentBlock } from '@demi/core'
 import { events, ProviderRegistry, StubProvider } from '@demi/provider'
 import { createInProcessTransportPair, RpcClient, RpcHost, type ProviderConfig } from '@demi/rpc'
-import { attachRenderer, createRenderer, handleCommand, renderEvent, type TuiOutput } from '../index'
+import { attachRenderer, createRenderer, handleCommand, renderEvent, runInputLoop, type TuiOutput } from '../index'
 
 const model: ModelSelection = {
   providerId: 'claude-code',
@@ -207,6 +207,38 @@ test('TUI commands dispatch to the RPC client and validate input usage', async (
   expect(output.text()).toContain('Unknown command: /bogus')
 })
 
+test('TUI input loop sends messages asynchronously so commands remain responsive', async () => {
+  const output = new CaptureOutput()
+  const renderer = createRenderer(output)
+  const client = new FakeLoopClient()
+  const sendGate = deferred<void>()
+  client.onSend = () => sendGate.promise
+  const prompts = promptQueue(['', 'create a file', '/abort', '/exit'])
+
+  await runInputLoop({ ask: prompts.ask, client, renderer, output })
+
+  expect(prompts.consumed()).toBe(4)
+  expect(client.calls).toEqual([
+    ['send', 'create a file'],
+    ['abort'],
+  ])
+  sendGate.resolve()
+})
+
+test('TUI input loop prints asynchronous send failures', async () => {
+  const output = new CaptureOutput()
+  const renderer = createRenderer(output)
+  const client = new FakeLoopClient()
+  client.onSend = () => Promise.reject(new Error('provider failed'))
+  const prompts = promptQueue(['run task', '/exit'])
+
+  await runInputLoop({ ask: prompts.ask, client, renderer, output })
+  await waitForMicrotasks()
+
+  expect(client.calls).toEqual([['send', 'run task']])
+  expect(output.text()).toContain('send failed: provider failed')
+})
+
 function block<T extends Block>(value: T): T {
   return value
 }
@@ -225,7 +257,7 @@ class CaptureOutput implements TuiOutput {
 }
 
 class FakeCommandClient {
-  readonly calls: Array<[string] | [string, string, string]> = []
+  readonly calls: Array<[string] | [string, string] | [string, string, string]> = []
 
   async abort(): Promise<boolean> {
     this.calls.push(['abort'])
@@ -249,10 +281,44 @@ class FakeCommandClient {
   }
 }
 
+class FakeLoopClient extends FakeCommandClient {
+  onSend: () => Promise<void> = () => Promise.resolve()
+
+  async send(content: UserContentBlock[]): Promise<void> {
+    this.calls.push(['send', content.map((block) => (block.type === 'text' ? block.text : `[${block.type}]`)).join('\n')])
+    return this.onSend()
+  }
+}
+
 const testDefinition: AgentDefinition<Record<string, never>> = {
   name: 'tui-test',
   initialState: () => ({}),
   systemPrompt: () => 'system',
   preamble: () => null,
   tools: () => [],
+}
+
+function promptQueue(values: string[]): { ask: () => Promise<string>; consumed: () => number } {
+  let index = 0
+  return {
+    ask: async () => {
+      const value = values[index]
+      index += 1
+      if (value === undefined) throw new Error('promptQueue exhausted')
+      return value
+    },
+    consumed: () => index,
+  }
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve
+  })
+  return { promise, resolve }
+}
+
+function waitForMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
 }

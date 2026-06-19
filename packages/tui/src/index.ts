@@ -54,8 +54,19 @@ interface TuiCommandClient {
   shellInput(shellId: string, stdin: string): Promise<void>
 }
 
+interface TuiLoopClient extends TuiCommandClient {
+  send(content: UserContentBlock[]): Promise<void>
+}
+
 interface TuiEventSource {
   subscribe(listener: (event: ClientSessionEvent) => void): () => void
+}
+
+export interface TuiInputLoop {
+  ask(): Promise<string>
+  client: TuiLoopClient
+  renderer: RenderState
+  output?: TuiOutput
 }
 
 const helpText = `Commands:
@@ -129,23 +140,34 @@ async function main(): Promise<void> {
   })
 
   try {
-    while (!closing) {
-      const input = (await rl.question(color('\nyou> ', 'bold'))).trim()
-      if (!input) continue
-      if (input.startsWith('/')) {
-        const shouldExit = await handleCommand(input, client)
-        if (shouldExit) break
-        continue
-      }
-
-      const content: UserContentBlock[] = [{ type: 'text', text: input }]
-      void client.send(content).catch((error) => {
-        finishStream(renderer)
-        writeLine(color(`send failed: ${messageOf(error)}`, 'red'))
-      })
-    }
+    await runInputLoop({
+      ask: () => rl.question(color('\nyou> ', 'bold')),
+      client,
+      renderer,
+      output: process.stdout,
+      shouldContinue: () => !closing,
+    })
   } finally {
     await cleanup(rl, client, rpcHost)
+  }
+}
+
+export async function runInputLoop(options: TuiInputLoop & { shouldContinue?: () => boolean }): Promise<void> {
+  const output = options.output ?? process.stdout
+  while (options.shouldContinue?.() ?? true) {
+    const input = (await options.ask()).trim()
+    if (!input) continue
+    if (input.startsWith('/')) {
+      const shouldExit = await handleCommand(input, options.client, output)
+      if (shouldExit) break
+      continue
+    }
+
+    const content: UserContentBlock[] = [{ type: 'text', text: input }]
+    void options.client.send(content).catch((error) => {
+      finishStream(options.renderer)
+      writeLineTo(output, color(`send failed: ${messageOf(error)}`, 'red', output))
+    })
   }
 }
 
