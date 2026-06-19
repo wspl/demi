@@ -12,6 +12,7 @@ if (process.argv[2] === 'auth' && process.argv[3] === 'status' && process.argv.i
 
 let sentToolCall = false
 let sentFinal = false
+let mode = 'basic'
 
 const input = createInterface({ input: process.stdin })
 input.on('line', (line) => {
@@ -32,9 +33,10 @@ input.on('line', (line) => {
 
   if (message.type === 'user' && !sentToolCall) {
     sentToolCall = true
+    mode = userText(message).includes('interactive input fixture workflow') ? 'input' : 'basic'
     write({
       type: 'control_request',
-      request_id: 'outer-tool-1',
+      request_id: mode === 'input' ? 'outer-input-tool-1' : 'outer-tool-1',
       request: {
         subtype: 'mcp_message',
         server_name: 'main',
@@ -44,7 +46,10 @@ input.on('line', (line) => {
           method: 'tools/call',
           params: {
             name: 'shell_exec',
-            arguments: { script: 'printf fixture-shell' },
+            arguments:
+              mode === 'input'
+                ? { script: 'sh -c \'IFS= read -r line; printf "fixture-input:%s" "$line"\'', yieldAfterMs: 1 }
+                : { script: 'printf fixture-shell' },
           },
         },
       },
@@ -54,24 +59,13 @@ input.on('line', (line) => {
 
   if (message.type === 'control_response' && message.response?.request_id === 'outer-tool-1' && !sentFinal) {
     sentFinal = true
-    write({
-      type: 'assistant',
-      message: {
-        content: [
-          { type: 'thinking', thinking: 'fixture plan', signature: 'fixture-signature' },
-          { type: 'text', text: 'fixture response' },
-        ],
-      },
-    })
-    write({
-      type: 'result',
-      usage: {
-        input_tokens: 12,
-        output_tokens: 3,
-        cache_read_input_tokens: 2,
-        cache_creation_input_tokens: 1,
-      },
-    })
+    writeFinal('fixture response', { input_tokens: 12, output_tokens: 3, cache_read_input_tokens: 2, cache_creation_input_tokens: 1 })
+    setTimeout(() => process.exit(0), 10)
+  }
+
+  if (message.type === 'control_response' && message.response?.request_id === 'outer-input-tool-1' && !sentFinal) {
+    sentFinal = true
+    writeFinal('fixture input ready', { input_tokens: 13, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 1 })
     setTimeout(() => process.exit(0), 10)
   }
 })
@@ -80,4 +74,22 @@ input.on('close', () => setTimeout(() => process.exit(0), 10))
 
 function write(value) {
   process.stdout.write(`${JSON.stringify(value)}\n`)
+}
+
+function writeFinal(text, usage) {
+  write({
+    type: 'assistant',
+    message: {
+      content: [
+        { type: 'thinking', thinking: 'fixture plan', signature: 'fixture-signature' },
+        { type: 'text', text },
+      ],
+    },
+  })
+  write({ type: 'result', usage })
+}
+
+function userText(message) {
+  if (!Array.isArray(message.message?.content)) return ''
+  return message.message.content.map((block) => (block?.type === 'text' ? String(block.text ?? '') : '')).join('\n')
 }

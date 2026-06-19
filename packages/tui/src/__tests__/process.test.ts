@@ -22,32 +22,7 @@ test('TUI process entry prints help without opening a provider session', async (
 
 test('TUI process runs a Claude Code backed session through stdin and renders tool output', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'demi-tui-process-'))
-  const child = spawn(
-    process.execPath,
-    [
-      'run',
-      'packages/tui/src/index.ts',
-      '--cwd',
-      workspace,
-      '--claude-path',
-      claudeFixturePath,
-      '--model',
-      'opus',
-      '--thinking',
-      'medium',
-      '--budget',
-      '0.01',
-      '--yield-after-ms',
-      '5',
-      '--timeout-ms',
-      '5000',
-    ],
-    {
-      cwd: process.cwd(),
-      env: { ...process.env, PATH: `${fixtureDir}${delimiter}${process.env.PATH ?? ''}` },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    },
-  )
+  const child = spawnTuiFixture(workspace)
   const capture = new ProcessCapture(child)
 
   try {
@@ -76,6 +51,33 @@ test('TUI process runs a Claude Code backed session through stdin and renders to
   }
 })
 
+test('TUI process sends slash input to a running shell and renders the resulting stdout', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'demi-tui-process-input-'))
+  const child = spawnTuiFixture(workspace)
+  const capture = new ProcessCapture(child)
+
+  try {
+    await capture.waitForStdout('Session opened', 5_000)
+    child.stdin?.write('run the interactive input fixture workflow\n')
+
+    await capture.waitForStdout('assistant> fixture input ready', 5_000)
+    const shellId = extractFirstShellId(capture.stdout())
+    child.stdin?.write(`/input ${shellId} typed-from-tui\n`)
+
+    await capture.waitForStdout('shell[', 5_000)
+    await capture.waitForStdout('fixture-input:typed-from-tui', 5_000)
+    expect(capture.stdout()).toContain(`shell[${shellId}] stdout> fixture-input:typed-from-tui`)
+
+    child.stdin?.write('/exit\n')
+    const exitCode = await capture.closed
+    expect(exitCode).toBe(0)
+    expect(capture.stderr()).toBe('')
+    expect(capture.stdout()).toContain('closed')
+  } finally {
+    if (!child.killed) child.kill('SIGTERM')
+  }
+})
+
 async function runTuiProcess(
   args: string[],
   options: { env?: NodeJS.ProcessEnv } = {},
@@ -88,4 +90,39 @@ async function runTuiProcess(
   const capture = new ProcessCapture(child)
   const exitCode = await capture.closed
   return { stdout: capture.stdout(), stderr: capture.stderr(), exitCode }
+}
+
+function spawnTuiFixture(workspace: string): ReturnType<typeof spawn> {
+  return spawn(
+    process.execPath,
+    [
+      'run',
+      'packages/tui/src/index.ts',
+      '--cwd',
+      workspace,
+      '--claude-path',
+      claudeFixturePath,
+      '--model',
+      'opus',
+      '--thinking',
+      'medium',
+      '--budget',
+      '0.01',
+      '--yield-after-ms',
+      '5',
+      '--timeout-ms',
+      '5000',
+    ],
+    {
+      cwd: process.cwd(),
+      env: { ...process.env, PATH: `${fixtureDir}${delimiter}${process.env.PATH ?? ''}` },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    },
+  )
+}
+
+function extractFirstShellId(stdout: string): string {
+  const match = /shell\[([^\]]+)\]/.exec(stdout)
+  if (!match) throw new Error(`No shell id found in stdout:\n${stdout}`)
+  return match[1]
 }
