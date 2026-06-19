@@ -279,16 +279,16 @@ Owner：`packages/shell`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| positionals、flags、stdin fields 解析 |  |  | `packages/shell/src/__tests__/command.test.ts` | 防止模型调用注册命令时参数被错配到错误字段。 |
-| long options 校验与数字 coercion |  |  | `command.test.ts` | 防止字符串数字、非法 option 进入命令实现造成隐式行为。 |
-| `--json`、boolean、repeated array options |  |  | `command.test.ts` | 防止 agent 依赖结构化输出时拿到 raw text 或数组/布尔解析错。 |
-| unknown options / invalid values 拒绝 |  |  | `command.test.ts` | 防止模型拼错参数却被静默忽略，产生看似成功的错误操作。 |
-| `CommandSpec` 作为 prompt/help 单一来源 |  |  | `command.test.ts` | 防止 system prompt、`prompt` 子命令和实际 parser 三套说明漂移。 |
-| registry 注册命令并渲染 prompt |  |  | `command.test.ts` | 防止新增命令未进入 agent 可见能力列表。 |
-| 注册命令名不能复用 shell/system reserved names |  |  | `command.test.ts` | 防止 agent 命令遮蔽常见系统命令或 shell builtin，破坏用户预期。 |
-| `<command> prompt` 使用同一个 renderer |  |  | `command.test.ts` | 防止模型通过 help 学到的调用方式与 system prompt 不一致。 |
-| JSON mode output schema 校验 |  |  | `command.test.ts` | 防止注册命令声称 JSON 输出但返回不可解析或结构错误的数据。 |
-| 无 JSON schema 的 subcommand 拒绝 JSON mode |  |  | `command.test.ts` | 防止调用方误以为某命令有结构化输出而继续自动处理。 |
+| positionals、flags、stdin fields 解析 | 有效 | 测试 `editor create src/foo.ts` 加 stdin，断言 positional `path` 和 stdinField `content` 都进入 parsed values；能发现字段错配或 stdin 丢失。验证：5.8 targeted command，10 pass。 | `packages/shell/src/__tests__/command.test.ts` | 防止模型调用注册命令时参数被错配到错误字段。 |
+| long options 校验与数字 coercion | 有效 | 测试 `--old`、`--new`、`--occurrence 2` 解析后 occurrence 为数字 2，并在 invalid values 测试中断言 NaN 被拒绝；能发现数字仍以字符串进入命令。验证同上。 | `command.test.ts` | 防止字符串数字、非法 option 进入命令实现造成隐式行为。 |
+| `--json`、boolean、repeated array options | 有效 | 测试 `editor list --json --verbose --tag changed --tag staged`，断言 json=true、boolean 为 true、repeated tag 为数组；能发现结构化模式或 array/boolean 解析错误。验证同上。 | `command.test.ts` | 防止 agent 依赖结构化输出时拿到 raw text 或数组/布尔解析错。 |
+| unknown options / invalid values 拒绝 | 有效 | 测试 unknown `--missing` 抛 `Unknown option`，`--occurrence NaN` 抛 invalid value；能发现模型拼错参数被静默忽略或非法值继续执行。验证同上。 | `command.test.ts` | 防止模型拼错参数却被静默忽略，产生看似成功的错误操作。 |
+| `CommandSpec` 作为 prompt/help 单一来源 | 有效 | `renderCommandPrompt` 测试从同一个 spec 中断言 summary、effects、success/failure output、positionals、options、stdin/heredoc、examples、JSON 说明全部进入 prompt；能发现说明与 spec 漂移。验证同上。 | `command.test.ts` | 防止 system prompt、`prompt` 子命令和实际 parser 三套说明漂移。 |
+| registry 注册命令并渲染 prompt | 有效 | 测试 registry register 后 `get/list/renderPrompt` 返回同一 spec/prompt，并断言重复注册报错；能发现新增命令未进入 prompt 或 registry 覆盖旧命令。验证同上。 | `command.test.ts` | 防止新增命令未进入 agent 可见能力列表。 |
+| 注册命令名不能复用 shell/system reserved names | 部分有效 | 测试抽样断言 `cat`、`cd`、`local`、`read`、`return`、`unset` 被拒绝，覆盖系统命令、shell builtin、函数局部语义；但没有枚举完整 reserved set。验证同上。 | `command.test.ts` | 防止 agent 命令遮蔽常见系统命令或 shell builtin，破坏用户预期。 |
+| `<command> prompt` 使用同一个 renderer | 有效 | `runRegisteredCommand(editor prompt)` 断言 stdout 精确等于 `renderCommandPrompt(editorSpec) + '\n'`；能发现 prompt subcommand 与 system prompt renderer 分叉。验证同上。 | `command.test.ts` | 防止模型通过 help 学到的调用方式与 system prompt 不一致。 |
+| JSON mode output schema 校验 | 部分有效 | 测试 `editor list --json` 捕获 command stdout、parse JSON 并输出通过 schema 的 `{ files: [...] }`；但没有构造 invalid JSON 或 schema mismatch 的负向测试，不能完全证明拒绝错误结构。验证同上。 | `command.test.ts` | 防止注册命令声称 JSON 输出但返回不可解析或结构错误的数据。 |
+| 无 JSON schema 的 subcommand 拒绝 JSON mode | 有效 | 测试对没有 JSON schema 的 `editor create --json` 直接 reject `does not define JSON output`；能发现调用方误以为所有子命令都支持结构化输出。验证同上。 | `command.test.ts` | 防止调用方误以为某命令有结构化输出而继续自动处理。 |
 
 ### 5.9 Bash Environment 语义
 
