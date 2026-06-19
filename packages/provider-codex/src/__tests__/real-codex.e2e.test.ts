@@ -62,28 +62,36 @@ thinkingE2e(
 cacheE2e('CodexProvider reports provider cache usage on repeated stable-prefix requests', async () => {
   await expectCodexAuthAvailable()
   const cacheKey = `demi-codex-cache-${randomUUID()}`
+  const sessionId = `codex-cache-e2e-${randomUUID()}`
   const systemPrompt = [
     `Cache smoke key: ${cacheKey}`,
-    'You are testing a stable provider prefix. '.repeat(300),
+    'You are testing a stable provider prefix. '.repeat(1200),
     'When asked for the marker, output DEMI_CODEX_CACHE_OK exactly.',
   ].join('\n')
-  const first = usageFrom(await runCodexRequest({
-    sessionId: `codex-cache-e2e-${randomUUID()}`,
+  const firstEvents = await runCodexRequest({
+    sessionId,
     systemPrompt,
     items: [{ type: 'user_message', content: [{ type: 'text', text: 'Output DEMI_CODEX_CACHE_OK exactly.' }] }],
     tools: [],
     thinking: null,
-  }))
-  const second = usageFrom(await runCodexRequest({
-    sessionId: `codex-cache-e2e-${randomUUID()}`,
+  })
+  const secondEvents = await runCodexRequest({
+    sessionId,
     systemPrompt,
     items: [{ type: 'user_message', content: [{ type: 'text', text: 'Output DEMI_CODEX_CACHE_OK exactly.' }] }],
     tools: [],
     thinking: null,
-  }))
+  })
+  const first = usageFrom(firstEvents)
+  const second = usageFrom(secondEvents)
 
-  expect(first.cacheWriteTokens + first.cacheReadTokens).toBeGreaterThan(0)
+  expectNoProviderErrors(firstEvents)
+  expectNoProviderErrors(secondEvents)
+  expect(textFrom(firstEvents)).toContain('DEMI_CODEX_CACHE_OK')
+  expect(textFrom(secondEvents)).toContain('DEMI_CODEX_CACHE_OK')
+  expect(first.inputTokens).toBeGreaterThan(1000)
   expect(second.cacheReadTokens).toBeGreaterThan(0)
+  expect(second.inputTokens).toBeLessThan(first.inputTokens)
 })
 
 toolE2e('CodexProvider drives a real AgentSession shell tool roundtrip', async () => {

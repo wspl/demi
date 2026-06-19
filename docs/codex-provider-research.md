@@ -371,8 +371,8 @@ Gated 真实验收：
 - 复用官方 `$CODEX_HOME/auth.json` / `~/.codex/auth.json`，支持 ChatGPT token、API key、PAT、可用的 agent identity 记录；Bedrock 明确 unsupported。
 - ChatGPT token near-expiry refresh、401 force refresh retry、原子写回、未知字段保留、`0600` 权限和 secret redaction。
 - Responses request conversion：stable `sessionId`/`requestId`、`prompt_cache_key`、reasoning include、signed thinking replay、tool id 组合、tool result replay。
-- SSE + WebSocket + auto fallback transport；WebSocket 使用 `responses_websockets=2026-02-06` beta header。
+- SSE + WebSocket + auto fallback transport；WebSocket 使用 `responses_websockets=2026-02-06` beta header，并在 `response.completed` / failed / incomplete / error 事件后主动结束 stream。
 - Responses stream 映射为 Demi `ProviderEvent`，覆盖 text、thinking、tool call、usage/cache、failed/incomplete/error。
 - `AgentSession` + shell tools 集成测试，确保 Codex function call 能执行工具并把 `tool_result` 回灌到下一轮 provider request。
 
-测试覆盖记录见 `docs/testing.md#531-codex-provider`。真实 Codex 网络验收提供 gated `real-codex.e2e.test.ts` 入口，需要显式环境变量开启，不进入默认 `bun run test`。
+测试覆盖记录见 `docs/testing.md#531-codex-provider`。真实 Codex 网络验收提供 gated `real-codex.e2e.test.ts` 入口，需要显式环境变量开启，不进入默认 `bun run test`；本机已用官方 Codex auth 跑通 text、medium thinking、cache read 和 shell tool roundtrip，SSE 与默认 `auto` transport 均通过。

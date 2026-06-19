@@ -202,6 +202,27 @@ test('WebSocketCodexResponsesTransport uses the Responses WebSocket beta header'
   expect(CapturingWebSocket.instances[0]?.headers['content-type']).toBeUndefined()
 })
 
+test('WebSocketCodexResponsesTransport finishes when a response.completed event arrives without a close frame', async () => {
+  NonClosingCompletedWebSocket.instances = []
+  const transport = new WebSocketCodexResponsesTransport({
+    WebSocket: NonClosingCompletedWebSocket,
+  })
+  const events: CodexResponseStreamEvent[] = []
+
+  for await (const event of transport.stream({
+    ...makeTransportRequest(),
+    body: { model: 'gpt-5.4' },
+  })) {
+    events.push(event)
+  }
+
+  expect(events).toEqual([
+    { type: 'response.output_text.delta', delta: 'ws' },
+    { type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } },
+  ])
+  expect(NonClosingCompletedWebSocket.instances[0]?.closeReasons).toContain('response_done')
+})
+
 test('CodexProvider integrates with AgentSession and shell tools for function calls', async () => {
   const transport = new FakeCodexTransport([
     [
@@ -341,6 +362,47 @@ class CapturingWebSocket {
 
   close(): void {
     // Test double; closing is idempotent.
+  }
+
+  addEventListener(type: 'open' | 'message' | 'error' | 'close', listener: (event: never) => void): void {
+    this.listeners[type] ??= []
+    this.listeners[type].push(listener as (event: unknown) => void)
+  }
+
+  removeEventListener(type: 'open' | 'message' | 'error' | 'close', listener: (event: never) => void): void {
+    this.listeners[type] = (this.listeners[type] ?? []).filter((candidate) => candidate !== (listener as (event: unknown) => void))
+  }
+
+  private emit(type: string, event: unknown): void {
+    for (const listener of this.listeners[type] ?? []) listener(event)
+  }
+}
+
+class NonClosingCompletedWebSocket {
+  static instances: NonClosingCompletedWebSocket[] = []
+
+  readonly closeReasons: string[] = []
+  private readonly listeners: Record<string, Array<(event: unknown) => void>> = {}
+
+  constructor() {
+    NonClosingCompletedWebSocket.instances.push(this)
+    queueMicrotask(() => this.emit('open', {}))
+  }
+
+  send(): void {
+    queueMicrotask(() => {
+      this.emit('message', { data: JSON.stringify({ type: 'response.output_text.delta', delta: 'ws' }) })
+      this.emit('message', {
+        data: JSON.stringify({
+          type: 'response.completed',
+          response: { usage: { input_tokens: 1, output_tokens: 1 } },
+        }),
+      })
+    })
+  }
+
+  close(_code?: number, reason?: string): void {
+    if (reason) this.closeReasons.push(reason)
   }
 
   addEventListener(type: 'open' | 'message' | 'error' | 'close', listener: (event: never) => void): void {

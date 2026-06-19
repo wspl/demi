@@ -1281,7 +1281,7 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 ### 14.10 当前进展
 
-Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-bash / shell / coding-agent / provider-claude-code / provider-codex。公开运行入口已调整为 `AgentServer` + `AgentClient`：本地调用使用 `server.client()`，跨进程/网络使用 `attachTransport()`；coding harness 只定义 Host、commands、prompt、reference resolver 和 lifecycle。当前门禁已通过：`bun run typecheck`、`bun run test`（322 pass / 10 skip）、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`./node_modules/.bin/vitest run src/interpreter/`。
+Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-bash / shell / coding-agent / provider-claude-code / provider-codex。公开运行入口已调整为 `AgentServer` + `AgentClient`：本地调用使用 `server.client()`，跨进程/网络使用 `attachTransport()`；coding harness 只定义 Host、commands、prompt、reference resolver 和 lifecycle。当前门禁已通过：`bun run typecheck`、`bun run test`（323 pass / 10 skip）、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`./node_modules/.bin/vitest run src/interpreter/`。
 
 **已完成的关键实现**（按 §3.1 架构守则覆盖）：
 
@@ -1300,7 +1300,7 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 
 `@demi/shell` 的 `environment.ts`（3340 行）+ `script-parser.ts`（1444 行）手写了一整套 bash interpreter（compound command / 状态 builtin / expansion / arithmetic / glob / pipeline / redirection），而 fork 只被当成 tokenizer 用（只导入 `parse` 和 IFS helpers）。这违背 §7"不在 `@demi/shell` 或其他包复制实现"、"不得重新创建内部 just-bash 副本"的核心约束。fork 实际已有完整可运行的 interpreter（7600+ 行，覆盖度远超 demi 手写版本）。
 
-**Step A 已完成**（fork commits `5e925b7`、`4e2ab29`、`c7f1be5`、`cabfc0f`）：fork 暴露 `./interpreter` 子路径（`Interpreter`/`InterpreterState`/`InterpreterContext`）；`InterpreterContext` 增加可选 `hostSpawn` 钩子，`executeExternalCommand` 在有 `hostSpawn` 且命令非注册命令时走钩子而不是 IFileSystem + PATH；`executeExternalCommand` 在 `hostSpawn` 检查之后增加直接 `ctx.commands.get` dispatch，让注册命令不走 PATH 查找；后续补齐 host-backed session hooks、bash 语义修正和 Node 25 fetch mock type compatibility。fork interpreter 完整 vitest 当前为 617 pass / 1 skip，demi 根测试当前为 322 pass / 10 skip。
+**Step A 已完成**（fork commits `5e925b7`、`4e2ab29`、`c7f1be5`、`cabfc0f`）：fork 暴露 `./interpreter` 子路径（`Interpreter`/`InterpreterState`/`InterpreterContext`）；`InterpreterContext` 增加可选 `hostSpawn` 钩子，`executeExternalCommand` 在有 `hostSpawn` 且命令非注册命令时走钩子而不是 IFileSystem + PATH；`executeExternalCommand` 在 `hostSpawn` 检查之后增加直接 `ctx.commands.get` dispatch，让注册命令不走 PATH 查找；后续补齐 host-backed session hooks、bash 语义修正和 Node 25 fetch mock type compatibility。fork interpreter 完整 vitest 当前为 617 pass / 1 skip，demi 根测试当前为 323 pass / 10 skip。
 
 **git 状态**：demi 根仓库已完成首次提交，`packages/just-bash` 已通过 `git submodule add` 正式登记为 submodule（`.gitmodules` 指向 `https://github.com/wspl/just-bash.git`）。fork 子模块 worktree 已干净，当前 HEAD 是 `cabfc0f`；根仓库 submodule pointer 已指向 `cabfc0f`。
 
@@ -1319,7 +1319,7 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 
 已补齐 provider contract 的稳定 `sessionId` / `turnId` / `requestId`：AgentSession 负责生成并传入 provider，Codex provider 用它们设置 `session-id`、`thread-id`、`x-client-request-id` 和 `prompt_cache_key`。WebSocket/SSE、auth refresh、reasoning/tool replay 仍保持为 provider 内部机制，不进入 Agent Loop。
 
-当前实现包含 `packages/provider-codex`、TUI `--provider codex` 入口、platform boundary 检查、默认 deterministic provider tests，以及默认跳过的真实 Codex e2e。测试模块和 gated 验收入口见 `docs/testing.md#531-codex-provider`。
+当前实现包含 `packages/provider-codex`、TUI `--provider codex` 入口、platform boundary 检查、默认 deterministic provider tests，以及默认跳过的真实 Codex e2e。真实 e2e 已用本机官方 Codex auth 验证 text、medium thinking、cache usage 和 shell tool roundtrip；测试模块和 gated 验收入口见 `docs/testing.md#531-codex-provider`。
 
 ## 15. 优先级
 

@@ -76,6 +76,7 @@ export class WebSocketCodexResponsesTransport implements CodexResponsesTransport
     const queue: Array<CodexResponseStreamEvent | Error | null> = []
     const waiters: Array<() => void> = []
     let idleTimer: ReturnType<typeof setTimeout> | null = null
+    let finished = false
 
     const wake = (): void => {
       for (const waiter of waiters.splice(0)) waiter()
@@ -83,6 +84,11 @@ export class WebSocketCodexResponsesTransport implements CodexResponsesTransport
     const push = (value: CodexResponseStreamEvent | Error | null): void => {
       queue.push(value)
       wake()
+    }
+    const finish = (): void => {
+      if (finished) return
+      finished = true
+      push(null)
     }
     const armIdleTimer = (): void => {
       if (!request.streamIdleTimeoutMs) return
@@ -103,13 +109,19 @@ export class WebSocketCodexResponsesTransport implements CodexResponsesTransport
       armIdleTimer()
       try {
         const parsed = parseWebSocketMessage(event.data)
-        if (parsed) push(parsed)
+        if (parsed) {
+          push(parsed)
+          if (isTerminalResponseEvent(parsed)) {
+            finish()
+            socket.close(1000, 'response_done')
+          }
+        }
       } catch (error) {
         push(error instanceof Error ? error : new Error(String(error)))
       }
     }
     const onError = (): void => push(new Error('Codex WebSocket error'))
-    const onClose = (): void => push(null)
+    const onClose = (): void => finish()
     const onAbort = (): void => {
       socket.close(1000, 'aborted')
       push(new DOMException('Aborted', 'AbortError'))
@@ -304,6 +316,10 @@ function parseWebSocketJson(text: string): CodexResponseStreamEvent | null {
   }
   if ('event' in parsed && isRecord(parsed.event)) return parsed.event as CodexResponseStreamEvent
   return parsed as CodexResponseStreamEvent
+}
+
+function isTerminalResponseEvent(event: CodexResponseStreamEvent): boolean {
+  return event.type === 'response.completed' || event.type === 'response.failed' || event.type === 'response.incomplete' || event.type === 'error'
 }
 
 function headersToRecord(headers: Headers): Record<string, string> {
