@@ -91,7 +91,7 @@ Codex 使用官方 auth 文件直接请求模型列表接口。
 
 返回处理：
 
-- 保留 Codex backend 返回的模型 full id，例如 `gpt-5.5`、`gpt-5.4-mini`。
+- 保留 Codex backend 返回的模型 full id；当前接口字段是 `slug`，例如 `gpt-5.5`、`gpt-5.4-mini`。
 - 保留 backend 返回顺序，除非接口明确给出排序字段。
 - capability 字段只从接口返回值映射；没有字段就设为 `null`。
 - cache key 至少包含 provider、base URL、account id、client version 和 auth mode。
@@ -194,7 +194,7 @@ TUI 不再拥有 provider-specific model defaults。
 - 断言 key 作为 full id 输出，不加 `anthropic/` 前缀。
 - 断言缺失 capability 字段映射为 `null`，不从名字臆测。
 - 断言 stale cache 带 warning，网络失败且无 cache 不返回硬编码模型。
-- Codex fixture 覆盖 `client_version` 缺失失败、ChatGPT auth headers、401 refresh retry、cache key、server order 保留。
+- Codex fixture 覆盖 `client_version` 缺失失败、ChatGPT auth headers、`slug` id 映射、401 refresh retry、cache key、server order 保留。
 - TUI / CLI 测试覆盖 alias 被拒绝、full id 透传、catalog default 或 first selection 不落回硬编码。
 
 Gated 真实验收：
@@ -203,7 +203,158 @@ Gated 真实验收：
 - Claude 使用真实 `models.dev` 拉取并应用 `minimumModelVersion = "4.6"`，验证列表中不出现 4.5 / 3.x 模型。
 - 使用列表中的 full id 发起真实 provider smoke，确认请求没有别名 rewrite。
 
-## 7. 落地影响
+## 7. 外部接口验证记录
+
+验证日期：2026-06-20。
+
+这些验证只证明外部目录接口和鉴权路径当前可跑通；默认自动化测试仍需要用 fixture 固化转换规则。
+
+### 7.1 Codex backend models
+
+验证方式：
+
+```bash
+codex --version
+```
+
+结果：
+
+```text
+codex-cli 0.130.0
+```
+
+验证命令：
+
+```bash
+node - <<'NODE'
+const fs = require('node:fs/promises')
+const os = require('node:os')
+const path = require('node:path')
+const { execFileSync } = require('node:child_process')
+
+;(async () => {
+  const authPath = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'auth.json')
+  const auth = JSON.parse(await fs.readFile(authPath, 'utf8'))
+  const version = execFileSync('codex', ['--version'], { encoding: 'utf8' }).match(/(\d+\.\d+\.\d+)/)?.[1]
+  const headers = {
+    authorization: `Bearer ${auth.tokens.access_token}`,
+    accept: 'application/json',
+  }
+  if (auth.tokens?.account_id) headers['chatgpt-account-id'] = auth.tokens.account_id
+
+  const res = await fetch(`https://chatgpt.com/backend-api/codex/models?client_version=${version}`, { headers })
+  const json = await res.json()
+  console.log(JSON.stringify({
+    status: res.status,
+    clientVersion: version,
+    count: json.models?.length ?? null,
+    models: (json.models ?? []).map((m) => ({
+      slug: m.slug,
+      displayName: m.display_name,
+      contextWindow: m.context_window,
+      maxContextWindow: m.max_context_window,
+      defaultReasoningLevel: m.default_reasoning_level,
+      supportedReasoningLevels: (m.supported_reasoning_levels ?? []).map((level) => level.effort),
+      inputModalities: m.input_modalities,
+    })),
+  }, null, 2))
+})()
+NODE
+```
+
+结果摘要：
+
+```json
+{
+  "status": 200,
+  "clientVersion": "0.130.0",
+  "count": 5,
+  "models": [
+    { "slug": "gpt-5.5", "displayName": "GPT-5.5", "contextWindow": 272000, "maxContextWindow": 272000 },
+    { "slug": "gpt-5.4", "displayName": "GPT-5.4", "contextWindow": 272000, "maxContextWindow": 1000000 },
+    { "slug": "gpt-5.4-mini", "displayName": "GPT-5.4-Mini", "contextWindow": 272000, "maxContextWindow": 272000 },
+    { "slug": "gpt-5.3-codex-spark", "displayName": "GPT-5.3-Codex-Spark", "contextWindow": 128000, "maxContextWindow": 128000 },
+    { "slug": "codex-auto-review", "displayName": "Codex Auto Review", "contextWindow": 272000, "maxContextWindow": 1000000 }
+  ]
+}
+```
+
+结论：
+
+- 直接读取 `~/.codex/auth.json` 并请求 Codex backend models 接口可跑通。
+- `client_version=0.130.0` 可用。
+- 当前模型 id 字段是 `slug`，不是 `model` 或 `id`。
+- 接口返回 `context_window`、`max_context_window`、`default_reasoning_level`、`supported_reasoning_levels`、`input_modalities` 等能力字段。
+
+### 7.2 models.dev Anthropic catalog
+
+验证命令：
+
+```bash
+node - <<'NODE'
+function parseClaudeVersion(id) {
+  if (!id.startsWith('claude-')) return null
+  const parts = id.slice('claude-'.length).split('-')
+  const isInt = (s) => /^\d+$/.test(s)
+  const isDate = (s) => /^\d{8}$/.test(s)
+  if (isInt(parts[0])) return { major: Number(parts[0]), minor: isInt(parts[1]) ? Number(parts[1]) : 0 }
+  if (!isInt(parts[1])) return null
+  return {
+    major: Number(parts[1]),
+    minor: parts[2] && isInt(parts[2]) && !isDate(parts[2]) ? Number(parts[2]) : 0,
+  }
+}
+function gte(version, min) {
+  return version.major > min.major || (version.major === min.major && version.minor >= min.minor)
+}
+
+;(async () => {
+  const res = await fetch('https://models.dev/api.json', { headers: { accept: 'application/json' } })
+  const json = await res.json()
+  const min = { major: 4, minor: 6 }
+  const models = Object.entries(json.anthropic?.models ?? {})
+    .filter(([id]) => id.startsWith('claude-'))
+    .map(([id, model]) => ({ id, name: model.name, version: parseClaudeVersion(id), limit: model.limit, reasoning: model.reasoning, attachment: model.attachment }))
+  const included = models.filter((m) => m.version && gte(m.version, min))
+  const excluded = models.filter((m) => !m.version || !gte(m.version, min))
+  console.log(JSON.stringify({
+    status: res.status,
+    claudeModelCount: models.length,
+    minimumModelVersion: '4.6',
+    included: included.map((m) => ({ id: m.id, name: m.name, version: `${m.version.major}.${m.version.minor}`, context: m.limit?.context, output: m.limit?.output })),
+    hasExcluded45: excluded.some((m) => m.id === 'claude-haiku-4-5'),
+    hasIncluded5x: included.some((m) => m.version.major >= 5),
+  }, null, 2))
+})()
+NODE
+```
+
+结果摘要：
+
+```json
+{
+  "status": 200,
+  "claudeModelCount": 25,
+  "minimumModelVersion": "4.6",
+  "included": [
+    { "id": "claude-opus-4-7", "name": "Claude Opus 4.7", "version": "4.7", "context": 1000000, "output": 128000 },
+    { "id": "claude-opus-4-8", "name": "Claude Opus 4.8", "version": "4.8", "context": 1000000, "output": 128000 },
+    { "id": "claude-fable-5", "name": "Claude Fable 5", "version": "5.0", "context": 1000000, "output": 128000 },
+    { "id": "claude-opus-4-6", "name": "Claude Opus 4.6", "version": "4.6", "context": 1000000, "output": 128000 },
+    { "id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "version": "4.6", "context": 1000000, "output": 64000 }
+  ],
+  "hasExcluded45": true,
+  "hasIncluded5x": true
+}
+```
+
+结论：
+
+- `models.dev/api.json` 的 Anthropic catalog 可跑通。
+- `.anthropic.models` 的 key 是 Claude full model id，可直接作为 provider model id。
+- 默认 `minimumModelVersion = "4.6"` 当前会展示 5 个模型，排除 `claude-haiku-4-5` 和 3.x，并包含 `claude-fable-5`。
+
+## 8. 落地影响
 
 需要删除或迁移的现有行为：
 
