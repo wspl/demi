@@ -88,6 +88,94 @@ test('preflight compaction summarizes before the model request and keeps the inc
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
+test('retry triggers preflight compaction before rerunning the latest user', async () => {
+  const preflightModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 100 },
+  }
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn(model, text('retry this'))
+  transcript.applyProviderEvent(model, events.text('bad answer'))
+  transcript.applyProviderEvent(model, events.response())
+
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: `old question ${'x'.repeat(200)}` }] },
+        { type: 'assistant_text', modelId: 'test-model', text: `old answer ${'y'.repeat(300)}` },
+      ])
+      return [events.text('retry summary'), events.response()]
+    },
+    (request) => {
+      expect(request.systemPrompt).toBe('system prompt')
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Previous conversation summary:\nretry summary' }],
+        },
+        { type: 'user_message', content: [{ type: 'text', text: 'retry this' }] },
+      ])
+      return [events.text('retried answer'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition({ preamble: () => null }), transcript, preflightModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+  })
+
+  await session.retry()
+
+  expect(provider.requests).toHaveLength(2)
+  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'retried answer' })
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
+test('resume triggers preflight compaction before continuing an aborted long context', async () => {
+  const preflightModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 100 },
+  }
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
+  transcript.pushAbort(model)
+
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: `old question ${'x'.repeat(200)}` }] },
+        { type: 'assistant_text', modelId: 'test-model', text: `partial answer ${'y'.repeat(300)}` },
+      ])
+      return [events.text('resume summary'), events.response()]
+    },
+    (request) => {
+      expect(request.systemPrompt).toBe('system prompt')
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Previous conversation summary:\nresume summary' }],
+        },
+        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
+      ])
+      return [events.text('continued after compact'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition({ preamble: () => null }), transcript, preflightModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+  })
+
+  await session.resume()
+
+  expect(provider.requests).toHaveLength(2)
+  expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
+  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'continued after compact' })
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
 test('compaction summary provider errors do not leave boundary or marker blocks', async () => {
   const transcript = oldAndRecentTranscript()
   const before = transcript.snapshot()

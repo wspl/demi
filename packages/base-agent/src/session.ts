@@ -307,6 +307,7 @@ export class AgentSession<State> {
     this.transcriptLog.markLatestAbortResumed()
     this.transcriptLog.pushResumeTurn(this.model)
     await this.commitTranscript()
+    await this.executePreflightCompaction()
     await this.executeProviderTurn()
   }
 
