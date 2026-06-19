@@ -338,14 +338,14 @@ Owner：`packages/shell`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `HostBackedFileSystem` 通过 `Host.spawn` 完成 read/exists/stat/write/append/readdir |  |  | `packages/shell/src/__tests__/host-fs.test.ts` | 防止 shell/coding 绕过 Host 直接读写本机 fs，破坏远程或容器后端边界。 |
-| shell root entry 只暴露 browser-safe Host contract / FS class |  |  | `packages/shell/src/__tests__/root-entry.test.ts` | 防止 `@demi/shell` 根入口静态带入 Node-only adapter，破坏 browser/runtime-neutral 包边界。 |
-| readFileBuffer 返回 raw bytes |  |  | `host-fs.test.ts` | 防止二进制文件被文本编码损坏。 |
-| `LocalHost` spawn capture stdout 和 stdin |  |  | `packages/shell/src/__tests__/local-host.test.ts` | 防止本地 adapter 不能正确连接进程输入输出。 |
-| `LocalHost` terminate foreground process |  |  | `local-host.test.ts` | 防止 shell abort/timeout 在本地进程层失效。 |
-| `AgentSessionCommandStorage` 按 agent session id prefix 隔离 keys |  |  | `packages/shell/src/__tests__/store.test.ts` | 防止多个 agent session 的 todo 或命令状态互相污染。 |
-| storage 拒绝逃逸 session prefix 的 key/session id |  |  | `store.test.ts` | 防止注册命令通过恶意 key 读写其他 session 或 store 根目录。 |
-| `LocalDemiStore` 拒绝非相对 store path |  |  | `store.test.ts` | 防止本地 store 被路径穿越写到任意文件。 |
+| `HostBackedFileSystem` 通过 `Host.spawn` 完成 read/exists/stat/write/append/readdir | 部分有效 | `host-fs.test.ts` 用 LocalHost 验证 read/exists/stat/write/append/readdir 的行为正确；但没有 fake Host 记录 spawn 调用，不能单独证明实现没有直接读写本机 fs。验证：5.11 targeted command，15 pass。 | `packages/shell/src/__tests__/host-fs.test.ts` | 防止 shell/coding 绕过 Host 直接读写本机 fs，破坏远程或容器后端边界。 |
+| shell root entry 只暴露 browser-safe Host contract / FS class | 部分有效 | `root-entry.test.ts` 从 root entry 导入 Host contract 和 HostBackedFileSystem 并验证可构造/resolvePath；但未扫描静态 import 闭包，Node-only 入口泄漏主要由 5.1 平台边界测试兜住。验证同上。 | `packages/shell/src/__tests__/root-entry.test.ts` | 防止 `@demi/shell` 根入口静态带入 Node-only adapter，破坏 browser/runtime-neutral 包边界。 |
+| readFileBuffer 返回 raw bytes | 有效 | `host-fs.test.ts` 写入 `[0x68,0x69,0x0a]` 二进制内容，`readFileBuffer` 断言返回同一 byte array；能发现文本解码损坏二进制。验证同上。 | `host-fs.test.ts` | 防止二进制文件被文本编码损坏。 |
+| `LocalHost` spawn capture stdout 和 stdin | 有效 | `local-host.test.ts` 断言 LocalHost spawn `printf` 可收集 stdout，spawn `sh` 后 `writeStdin/closeStdin` 可被子进程读取；能发现本地 adapter I/O 管道断裂。验证同上。 | `packages/shell/src/__tests__/local-host.test.ts` | 防止本地 adapter 不能正确连接进程输入输出。 |
+| `LocalHost` terminate foreground process | 有效 | 测试 spawn `sleep 10` 后 `handle.kill()`，`wait()` 返回 `exitCode:null` 和 `signal:SIGTERM`；能发现 shell abort/timeout 在本地进程层无法终止。验证同上。 | `local-host.test.ts` | 防止 shell abort/timeout 在本地进程层失效。 |
+| `AgentSessionCommandStorage` 按 agent session id prefix 隔离 keys | 有效 | `store.test.ts` 用 session-a/session-b 写同名 `todos.json`，断言各自读回独立内容、session list 只见本 session key、底层 store list 带不同 prefix；能发现跨 session 污染。验证同上。 | `packages/shell/src/__tests__/store.test.ts` | 防止多个 agent session 的 todo 或命令状态互相污染。 |
+| storage 拒绝逃逸 session prefix 的 key/session id | 有效 | 测试 `../session-b`、反斜杠 traversal、absolute key 和非法 agentSessionId 都 reject，并确认 session-b 原值未被覆盖；能发现路径逃逸写其他 session。验证同上。 | `store.test.ts` | 防止注册命令通过恶意 key 读写其他 session 或 store 根目录。 |
+| `LocalDemiStore` 拒绝非相对 store path | 有效 | 测试 LocalDemiStore 拒绝 `../outside`、`nested/../inside`、absolute path、NUL key；能发现本地 store 路径穿越或任意文件写。验证同上。 | `store.test.ts` | 防止本地 store 被路径穿越写到任意文件。 |
 
 ### 5.12 Coding Agent Definition
 
