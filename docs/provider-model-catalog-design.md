@@ -17,6 +17,7 @@
 - Codex 模型列表复用官方 Codex 鉴权材料直接请求 Codex backend，不走 Demi 登录流程。
 - Claude Code 模型列表使用 `models.dev` 的 Anthropic catalog，避免在仓库里维护 Claude 模型表。
 - catalog 拉取失败不能伪造模型；可以使用带 stale 标记的缓存，也可以要求用户显式传 full id。
+- reasoning effort 与 Codex service tier / fast mode 的补充调研见 `docs/provider-reasoning-speed-controls-research.md`。
 
 非目标：
 
