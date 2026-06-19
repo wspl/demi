@@ -1313,6 +1313,12 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 3. fork interpreter 的若干 bash 语义已按真实 bash 对齐：`break`/`continue` 外层与非法参数、`shift` 非数字/负数、`set` invalid option、`eval` 解析错误退出码；同时修正 group stdin consumption，避免非 stdin-consuming 注册命令误消费外层输入。
 4. fork 测试 mock 已兼容 Node 25 的 `fetch.preconnect` 类型变化，`pnpm typecheck` 当前通过；真实 DNS/network 集成测试仍受本机 DNS 策略影响，不作为 Step 3.10 验收证据。
 
+### 14.11 Codex Provider 最终态入口
+
+Codex provider 的调研过程和最终态设计记录见 `docs/codex-provider-research.md`。核心结论：Demi 不实现自己的登录流程，而是兼容官方 Codex auth storage，默认复用 `$CODEX_HOME/auth.json` / `~/.codex/auth.json`，并按官方 refresh/route/header 规则请求 Responses。
+
+这会带来一个 provider contract 缺口：当前 `InferenceRequest` 没有稳定的 agent session / turn identity，而官方 Codex 和 pi 都依赖稳定 session id 做 `session-id`、`thread-id`、`x-client-request-id`、`prompt_cache_key`、WebSocket continuation 和 cache 亲和。实现 Codex provider 前，需要先把稳定 session/turn identity 作为 provider 可见上下文补进协议，同时保持 WebSocket/SSE、auth refresh、reasoning/tool replay 都是 provider 内部机制。
+
 ## 15. 优先级
 
 **P0**
