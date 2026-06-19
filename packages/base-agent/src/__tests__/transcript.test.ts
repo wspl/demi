@@ -212,6 +212,31 @@ test('Transcript snapshot survives JSON roundtrip without changing replay or met
   expect(restored.latestExtensionStateSnapshot('todo')).toEqual(transcript.latestExtensionStateSnapshot('todo'))
 })
 
+test('Transcript snapshot is insulated from later live block mutations', () => {
+  const transcript = makeTranscript()
+
+  transcript.applyProviderEvent(model, events.toolCall('tool-snapshot', 'shell_exec', { script: 'printf hi' }))
+  const snapshot = transcript.snapshot()
+
+  transcript.completeToolCall('tool-snapshot', [{ type: 'text', text: 'hi' }])
+
+  expect(snapshot.blocks[0]).toMatchObject({
+    type: 'tool_call',
+    status: 'executing',
+    output: [],
+  })
+
+  const snapshotTool = snapshot.blocks[0]
+  if (snapshotTool?.type !== 'tool_call') throw new Error('expected tool_call snapshot')
+  snapshotTool.output.push({ type: 'text', text: 'snapshot-only' })
+
+  expect(transcript.blocks[0]).toMatchObject({
+    type: 'tool_call',
+    status: 'completed',
+    output: [{ type: 'text', text: 'hi' }],
+  })
+})
+
 test('Transcript returns the latest extension state snapshot', () => {
   const transcript = makeTranscript()
 

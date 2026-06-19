@@ -34,7 +34,7 @@ export class Transcript implements CoreTranscript {
   }
 
   snapshot(): CoreTranscript {
-    return { blocks: [...this.blocks] }
+    return { blocks: structuredClone(this.blocks) }
   }
 
   pushUserTurn(model: ModelSelection, content: UserContentBlock[], preamble: string | null = null): Block {
