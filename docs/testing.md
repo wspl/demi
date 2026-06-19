@@ -67,6 +67,10 @@
 | Coding workflow 能发现真实问题 | 有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制、shell cwd/env 复用、file reference Host 边界和 editor 写入失败事务。 |
 | 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，`5.17` TUI renderer/command/process 层已有 deterministic 测试；真实 Claude Code provider 回复、thinking、tool output 显示已有 gated smoke 入口，仍依赖本机真实运行结果。 |
 
+### 3.2.1 长程 TUI Gated 验收设计
+
+长程真实 TUI 验收的设计清单和每个测试项的过程记录模板见 `docs/tui-long-run-acceptance.md`。这些记录用于补充默认 deterministic 测试，重点发现真实模型、真实 provider、长上下文、shell 控制和 TUI/RPC action 收敛中的问题。
+
 ### 3.3 Compact 参考故事映射
 
 agent-gui/Rust 的 compact 测试是当前最重要的校准对象；demi 不照搬 UI 产品面，但长任务能力相关故事都必须落到 `base-agent` 或协议层测试里。
