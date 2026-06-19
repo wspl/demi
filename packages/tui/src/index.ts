@@ -54,6 +54,10 @@ interface TuiCommandClient {
   shellInput(shellId: string, stdin: string): Promise<void>
 }
 
+interface TuiEventSource {
+  subscribe(listener: (event: ClientSessionEvent) => void): () => void
+}
+
 const helpText = `Commands:
   /help                 Show this help
   /abort                Abort the active turn
@@ -96,7 +100,7 @@ async function main(): Promise<void> {
   })
   const client = new RpcClient(transports.client)
   const renderer = createRenderer()
-  client.subscribe((event) => renderEvent(renderer, event))
+  attachRenderer(client, renderer)
 
   const providerConfig: ProviderConfig = {
     type: 'claude-code',
@@ -263,6 +267,10 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
       renderBlocks(state, event.blocks)
       return
   }
+}
+
+export function attachRenderer(source: TuiEventSource, state: RenderState): () => void {
+  return source.subscribe((event) => renderEvent(state, event))
 }
 
 function renderBlocks(state: RenderState, blocks: Block[]): void {

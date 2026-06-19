@@ -1,6 +1,9 @@
 import { expect, test } from 'bun:test'
+import type { AgentDefinition } from '@demi/base-agent'
 import type { Block, ModelSelection } from '@demi/core'
-import { createRenderer, handleCommand, renderEvent, type TuiOutput } from '../index'
+import { events, ProviderRegistry, StubProvider } from '@demi/provider'
+import { createInProcessTransportPair, RpcClient, RpcHost, type ProviderConfig } from '@demi/rpc'
+import { attachRenderer, createRenderer, handleCommand, renderEvent, type TuiOutput } from '../index'
 
 const model: ModelSelection = {
   providerId: 'claude-code',
@@ -138,6 +141,45 @@ test('TUI renderer prints phase, queue, shell output, audit, and progress frames
   expect(text).toContain('closed')
 })
 
+test('TUI renderer receives RpcClient subscription events end to end', async () => {
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'stub',
+    displayName: 'Stub',
+    createProvider: () =>
+      new StubProvider([
+        [
+          events.text('rpc hello'),
+          events.response({ inputTokens: 6, outputTokens: 2, cacheReadTokens: 1, cacheWriteTokens: 0 }),
+        ],
+      ]),
+  })
+  const transports = createInProcessTransportPair()
+  const rpcHost = new RpcHost({
+    transport: transports.host,
+    providerRegistry,
+    definitions: { test: testDefinition as AgentDefinition<unknown> },
+  })
+  const client = new RpcClient(transports.client)
+  const output = new CaptureOutput()
+  const renderer = createRenderer(output)
+  attachRenderer(client, renderer)
+
+  const provider: ProviderConfig = { type: 'stub', model: { ...model, providerId: 'stub' } }
+
+  await client.open('test', provider, '/tmp/demi-tui-test')
+  await client.send([{ type: 'text', text: 'hello' }])
+  await client.close()
+  await rpcHost.close()
+
+  const text = output.text()
+  expect(text).toContain('status: idle')
+  expect(text).toContain('status: running')
+  expect(text).toContain('assistant> rpc hello')
+  expect(text).toContain('usage: in=6 out=2 cache_read=1 cache_write=0')
+  expect(text).toContain('closed')
+})
+
 test('TUI commands dispatch to the RPC client and validate input usage', async () => {
   const output = new CaptureOutput()
   const client = new FakeCommandClient()
@@ -205,4 +247,12 @@ class FakeCommandClient {
   async shellInput(shellId: string, stdin: string): Promise<void> {
     this.calls.push(['shellInput', shellId, stdin])
   }
+}
+
+const testDefinition: AgentDefinition<Record<string, never>> = {
+  name: 'tui-test',
+  initialState: () => ({}),
+  systemPrompt: () => 'system',
+  preamble: () => null,
+  tools: () => [],
 }
