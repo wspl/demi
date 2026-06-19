@@ -169,7 +169,6 @@ function codexModelFromBackendEntry(
     defaultThinkingEffort: null,
     serviceTiers: tiers,
     defaultServiceTierId: null,
-    source: stale ? 'cache' : 'codex-backend',
     sourceFetchedAt,
     stale,
   }
@@ -245,7 +244,7 @@ function markModelListCache(list: ProviderModelList, stale: boolean): ProviderMo
   return {
     ...list,
     stale,
-    models: list.models.map((model) => ({ ...model, source: 'cache', stale })),
+    models: list.models.map((model) => ({ ...model, stale })),
   }
 }
 

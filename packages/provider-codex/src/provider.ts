@@ -14,8 +14,8 @@ import {
   codexWebSocketUrl,
   createCodexTransport,
   type CodexResponsesTransport,
-  type CodexTransportMode,
 } from './transport'
+import type { CodexTransportMode } from './types'
 
 export interface CodexProviderConfig {
   codexHome?: string

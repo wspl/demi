@@ -11,7 +11,8 @@ import {
   type BashEnvironmentOptions,
 } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
-import { StubProvider, events, type InferenceRequest } from '@demi/provider'
+import type { InferenceRequest } from '@demi/provider'
+import { StubProvider, events } from '@demi/provider/testing'
 import { createCodingAgentHarness } from '../index'
 
 const model: ModelSelection = {

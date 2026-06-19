@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import type { TokenUsage } from '@demi/core'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
-import { ClaudeCodeProvider } from '../index'
+import { ClaudeCodeProvider } from '../provider'
 
 const e2e = process.env.DEMI_CLAUDE_CODE_E2E === '1' ? test : test.skip
 const cacheE2e = process.env.DEMI_CLAUDE_CODE_CACHE_E2E === '1' ? test : test.skip

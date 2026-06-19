@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
-import { StubProvider, events, type InferenceRequest } from '@demi/provider'
+import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demi/provider'
 import { BashEnvironment, createShellSessionTools, toToolResult, type ShellToolResult } from '../index'
 import { LocalHost } from '../local-host'
 
@@ -19,6 +19,40 @@ const model: ModelSelection = {
     acceptedExtensions: [],
   },
   thinking: null,
+}
+
+class ScriptedProvider implements AgentProvider {
+  private cursor = 0
+
+  constructor(private readonly turns: Array<ProviderEvent[] | ((request: InferenceRequest) => ProviderEvent[])>) {}
+
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    const turn = this.turns[this.cursor]
+    this.cursor += 1
+    if (turn === undefined) throw new Error(`ScriptedProvider ran out of turns at call #${this.cursor}`)
+
+    const providerEvents = typeof turn === 'function' ? turn(request) : turn
+    for (const event of providerEvents) yield event
+  }
+}
+
+const events = {
+  text: (text: string): ProviderEvent => ({ type: 'text_delta', text }),
+  response: (): ProviderEvent => ({
+    type: 'response',
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    },
+  }),
+  toolCall: (toolUseId: string, toolName: string, input: unknown): ProviderEvent => ({
+    type: 'tool_call_requested',
+    toolUseId,
+    toolName,
+    input,
+  }),
 }
 
 test('toToolResult formats shell results while preserving metadata', () => {
@@ -78,7 +112,7 @@ test('createShellSessionTools integrates shell_exec and shell_wait with AgentSes
   expect(shellInput?.description).toContain('foreground system process')
   expect(shellInput?.description).toContain('Include a newline')
   expect(shellInput?.description).toContain('do not rely on the session script builtin read across turns')
-  const provider = new StubProvider([
+  const provider = new ScriptedProvider([
     [events.toolCall('call-1', 'shell_exec', { script: 'sh -c "sleep 0.02; printf done"', yieldAfterMs: 1 })],
     (request: InferenceRequest) => {
       const result = latestToolResult(request.items)
@@ -186,7 +220,7 @@ test('shell_exec repeat suppression returns to the provider and keeps later send
     tools: () => createShellSessionTools(environment),
   }
   let toolTurns = 0
-  const provider = new StubProvider([
+  const provider = new ScriptedProvider([
     (request: InferenceRequest) => {
       expect(latestUserText(request)).toBe('repeat command')
       toolTurns += 1
@@ -260,7 +294,7 @@ test('shell_exec observes AgentSession abort signals and terminates the foregrou
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
   }
-  const provider = new StubProvider([
+  const provider = new ScriptedProvider([
     [
       events.toolCall('call-1', 'shell_exec', {
         script: 'sh -c "sleep 0.2; printf leaked > tool-abort-leaked.txt"',
@@ -300,7 +334,7 @@ test('shell_wait observes AgentSession abort signals and terminates the foregrou
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
   }
-  const provider = new StubProvider([
+  const provider = new ScriptedProvider([
     [
       events.toolCall('call-1', 'shell_exec', {
         script: 'sh -c "sleep 0.2; printf leaked > tool-wait-abort-leaked.txt"',
@@ -341,7 +375,7 @@ test('shell_input observes AgentSession abort signals and terminates the foregro
     systemPrompt: () => 'system',
     tools: () => createShellSessionTools(environment),
   }
-  const provider = new StubProvider([
+  const provider = new ScriptedProvider([
     [
       events.toolCall('call-1', 'shell_exec', {
         script: 'sh -c \'IFS= read -r line; sleep 0.2; printf leaked > tool-input-abort-leaked.txt\'',

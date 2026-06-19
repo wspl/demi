@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { inferenceItemToClaudeMessage, inputMessagesToJsonl, mapClaudeStdoutMessage, requestToInputMessages } from '../index'
+import { inferenceItemToClaudeMessage, inputMessagesToJsonl, requestToInputMessages } from '../jsonl'
+import { mapClaudeStdoutMessage } from '../output'
 
 test('requestToInputMessages converts inference items to stream-json input messages', () => {
   const messages = requestToInputMessages({

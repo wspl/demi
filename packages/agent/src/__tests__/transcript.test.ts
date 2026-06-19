@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { events } from '@demi/provider'
+import { events } from '@demi/provider/testing'
 import { Transcript } from '../index'
 
 const model: ModelSelection = {

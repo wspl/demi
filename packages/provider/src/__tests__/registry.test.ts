@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { ProviderRegistry, StubProvider, events, type ProviderDefinition } from '../index'
+import { ProviderRegistry, type ProviderDefinition } from '../index'
+import { StubProvider, events } from '../testing'
 
 test('ProviderRegistry registers, looks up, and creates providers by type', async () => {
   const registry = new ProviderRegistry()
@@ -75,7 +76,6 @@ test('ProviderRegistry dispatches provider model catalogs', async () => {
           supportsReasoning: null,
           supportedThinkingEfforts: null,
           defaultThinkingEffort: null,
-          source: 'cache',
           sourceFetchedAt: '2026-06-20T00:00:00.000Z',
           stale: false,
         },

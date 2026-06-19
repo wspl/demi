@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { StubProvider, events, type InferenceRequest, type ProviderEvent } from '../index'
+import type { InferenceRequest, ProviderEvent } from '../index'
+import { StubProvider, events } from '../testing'
 
 function makeRequest(items: InferenceRequest['items']): InferenceRequest {
   return {

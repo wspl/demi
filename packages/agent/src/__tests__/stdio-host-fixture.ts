@@ -1,4 +1,5 @@
-import { ProviderRegistry, StubProvider, events } from '@demi/provider'
+import { ProviderRegistry } from '@demi/provider'
+import { StubProvider, events } from '@demi/provider/testing'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
 import { AgentServer } from '../index'

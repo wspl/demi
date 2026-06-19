@@ -8,11 +8,11 @@
   },
   "dependencies": {
     "@demi/agent": "workspace:*",
+    "@demi/core": "workspace:*",
     "@demi/shell": "workspace:*",
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@demi/core": "workspace:*",
     "@demi/provider": "workspace:*"
   }
 }

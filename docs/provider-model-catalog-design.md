@@ -60,7 +60,6 @@ interface ProviderModel {
     cacheRead: number | null
     cacheWrite: number | null
   }
-  source: 'codex-backend' | 'models.dev' | 'cache'
   sourceFetchedAt: string
   stale: boolean
 }

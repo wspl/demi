@@ -1,9 +1,6 @@
 import { expect, test } from 'bun:test'
-import {
-  buildClaudeArgs,
-  buildClaudeArgsForRequest,
-  buildClaudeEnv,
-} from '../index'
+import { buildClaudeArgs, buildClaudeEnv } from '../cli'
+import { buildClaudeArgsForRequest } from '../transport'
 
 test('buildClaudeArgs and env match the planned CLI contract', () => {
   expect(buildClaudeArgs({ modelId: 'claude-test', systemPrompt: 'system', thinkingEffort: 'high' })).toEqual([

@@ -8,7 +8,8 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
-import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
+import { ProviderRegistry, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
+import { StubProvider, events } from '@demi/provider/testing'
 import {
   AgentClient,
   AgentServer,

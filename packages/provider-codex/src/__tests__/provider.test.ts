@@ -4,21 +4,16 @@ import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
 import type { InferenceRequest } from '@demi/provider'
 import { BashEnvironment, createShellSessionTools } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
+import { StaticCodexAuthStore, type CodexResolvedAuth } from '../auth'
+import { CodexProvider, buildCodexHeaders, createCodexProviderDefinition, parseCodexProviderConfig, responsesUrlForAuth } from '../provider'
+import type { CodexResponseStreamEvent } from '../responses'
 import {
   AutoCodexResponsesTransport,
   CodexHttpError,
-  CodexProvider,
-  StaticCodexAuthStore,
   WebSocketCodexResponsesTransport,
-  buildCodexHeaders,
-  createCodexProviderDefinition,
-  parseCodexProviderConfig,
-  responsesUrlForAuth,
-  type CodexResponseStreamEvent,
   type CodexResponsesTransport,
   type CodexTransportRequest,
-  type CodexResolvedAuth,
-} from '../index'
+} from '../transport'
 
 const chatgptAuth: CodexResolvedAuth = {
   kind: 'chatgpt',

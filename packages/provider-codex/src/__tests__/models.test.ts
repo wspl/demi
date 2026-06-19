@@ -1,11 +1,10 @@
 import { expect, test } from 'bun:test'
+import { StaticCodexAuthStore, type CodexResolvedAuth } from '../auth'
 import {
-  StaticCodexAuthStore,
   codexBackendModelsToModelList,
   listCodexModels,
   resetCodexModelCatalogCacheForTests,
-  type CodexResolvedAuth,
-} from '../index'
+} from '../models'
 
 const chatgptAuth: CodexResolvedAuth = {
   kind: 'chatgpt',
@@ -40,7 +39,6 @@ test('Codex backend model catalog maps slug ids and explicit capabilities', () =
     defaultThinkingEffort: null,
     serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
     defaultServiceTierId: null,
-    source: 'codex-backend',
     sourceFetchedAt: '2026-06-20T00:00:00.000Z',
     stale: false,
   })
@@ -143,7 +141,7 @@ test('listCodexModels returns stale cache on non-auth catalog failures', async (
   })
 
   expect(stale.stale).toBe(true)
-  expect(stale.models.every((model) => model.source === 'cache' && model.stale)).toBe(true)
+  expect(stale.models.every((model) => model.stale)).toBe(true)
   expect(stale.warnings.join('\n')).toContain('HTTP 503')
   expect(stale.models.map((model) => model.id)).toEqual(first.models.map((model) => model.id))
   resetCodexModelCatalogCacheForTests()

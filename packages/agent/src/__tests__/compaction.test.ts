@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
+import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demi/provider'
+import { events } from '@demi/provider/testing'
 import { Transcript } from '../index'
 import {
   assertNoOrphanToolItems,

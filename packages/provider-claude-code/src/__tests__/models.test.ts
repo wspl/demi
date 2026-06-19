@@ -4,7 +4,7 @@ import {
   modelsDevAnthropicCatalogToModelList,
   parseClaudeModelVersion,
   resetClaudeCodeModelCatalogCacheForTests,
-} from '../index'
+} from '../models'
 
 test('parseClaudeModelVersion handles Claude full ids and date snapshots', () => {
   expect(parseClaudeModelVersion('claude-opus-4-8')).toEqual({ major: 4, minor: 8 })
@@ -53,7 +53,6 @@ test('models.dev mapping preserves explicit metadata and leaves missing capabili
     supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     defaultThinkingEffort: null,
     cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-    source: 'models.dev',
     sourceFetchedAt: '2026-06-20T00:00:00.000Z',
     stale: false,
   })
@@ -85,7 +84,7 @@ test('listClaudeCodeModels uses stale cache on network failure and never returns
     },
   })
   expect(freshCache.stale).toBe(false)
-  expect(freshCache.models.every((model) => model.source === 'cache' && !model.stale)).toBe(true)
+  expect(freshCache.models.every((model) => !model.stale)).toBe(true)
 
   const stale = await listClaudeCodeModels({
     now: () => new Date(now.getTime() + 25 * 60 * 60 * 1000),
@@ -95,7 +94,7 @@ test('listClaudeCodeModels uses stale cache on network failure and never returns
   })
   expect(fetches).toHaveLength(1)
   expect(stale.stale).toBe(true)
-  expect(stale.models.every((model) => model.source === 'cache' && model.stale)).toBe(true)
+  expect(stale.models.every((model) => model.stale)).toBe(true)
   expect(stale.warnings.join('\n')).toContain('offline')
   expect(stale.models.map((model) => model.id)).toEqual(first.models.map((model) => model.id))
   resetClaudeCodeModelCatalogCacheForTests()

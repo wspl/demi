@@ -16,7 +16,7 @@ import type {
 import { createCodingAgentHarness } from '@demi/coding-agent'
 import { ProviderRegistry, type ProviderModel, type ProviderModelList } from '@demi/provider'
 import { createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
-import { FileCodexAuthStore, createCodexProviderDefinition, type CodexTransportMode } from '@demi/provider-codex'
+import { codexAuthStatus, createCodexProviderDefinition, type CodexTransportMode } from '@demi/provider-codex'
 import {
   AgentClient,
   AgentServer,
@@ -717,7 +717,7 @@ function acceptedAttachmentExtensions(): FileExtension[] {
 }
 
 async function printCodexAuthStatus(options: TuiOptions): Promise<void> {
-  const auth = await new FileCodexAuthStore({ codexHome: options.codexHome }).status()
+  const auth = await codexAuthStatus({ codexHome: options.codexHome })
   writeLine(color(`codex auth: ${auth.status}${'accountLabel' in auth && auth.accountLabel ? ` (${auth.accountLabel})` : ''}${'message' in auth && auth.message ? ` (${auth.message})` : ''}`, auth.status === 'authenticated' ? 'green' : 'yellow'))
 }
 

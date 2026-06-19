@@ -69,6 +69,10 @@ export interface CodexAuthStore {
   resolveAuth(options?: { forceRefresh?: boolean }): Promise<CodexResolvedAuth>
 }
 
+export async function codexAuthStatus(options: FileCodexAuthStoreOptions = {}): Promise<ProviderAuthState> {
+  return new FileCodexAuthStore(options).status()
+}
+
 export interface FileCodexAuthStoreOptions {
   codexHome?: string
   refresh?: CodexTokenRefresh

@@ -8,9 +8,11 @@ import {
   ClaudeCodeProvider,
   createClaudeCodeProviderDefinition,
   parseClaudeCodeProviderConfig,
-  type ClaudeTransport,
-  type ClaudeTransportFactory,
-} from '../index'
+} from '../provider'
+import type {
+  ClaudeTransport,
+  ClaudeTransportFactory,
+} from '../transport'
 
 const model: ModelSelection = {
   providerId: 'claude-code',

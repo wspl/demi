@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection, UserContentBlock } from '@demi/core'
-import { StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
+import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demi/provider'
+import { StubProvider, events } from '@demi/provider/testing'
 import {
   AgentSession,
   Transcript,

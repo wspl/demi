@@ -12,7 +12,34 @@ const platformNeutralEntries = [
   ['@demi/coding-agent', 'packages/coding-agent/src/index.ts'],
 ] as const
 
-const workspaceEntries = new Map<string, string>(platformNeutralEntries)
+const workspaceEntries = new Map<string, string>([
+  ...platformNeutralEntries,
+  ['@demi/provider-claude-code', 'packages/provider-claude-code/src/index.ts'],
+  ['@demi/provider-codex', 'packages/provider-codex/src/index.ts'],
+  ['@demi/tui', 'packages/tui/src/index.ts'],
+])
+
+const productionPackageDirectories = new Map<string, string>([
+  ['@demi/core', 'packages/core'],
+  ['@demi/provider', 'packages/provider'],
+  ['@demi/shell', 'packages/shell'],
+  ['@demi/agent', 'packages/agent'],
+  ['@demi/coding-agent', 'packages/coding-agent'],
+  ['@demi/provider-claude-code', 'packages/provider-claude-code'],
+  ['@demi/provider-codex', 'packages/provider-codex'],
+  ['@demi/tui', 'packages/tui'],
+])
+
+const productionDependencyGraph = new Map<string, readonly string[]>([
+  ['@demi/core', []],
+  ['@demi/provider', ['@demi/core']],
+  ['@demi/shell', []],
+  ['@demi/agent', ['@demi/core', '@demi/provider', '@demi/shell']],
+  ['@demi/coding-agent', ['@demi/agent', '@demi/core', '@demi/shell']],
+  ['@demi/provider-claude-code', ['@demi/core', '@demi/provider']],
+  ['@demi/provider-codex', ['@demi/core', '@demi/provider']],
+  ['@demi/tui', ['@demi/agent', '@demi/coding-agent', '@demi/core', '@demi/provider', '@demi/provider-claude-code', '@demi/provider-codex', '@demi/shell']],
+])
 
 const allowedWorkspaceSubpaths = new Map<string, string>([
   ['just-bash/ast/types', 'packages/just-bash/packages/just-bash/src/ast/types.ts'],
@@ -32,6 +59,14 @@ const forbiddenSourcePatterns = [
   ['node builtin require', /\brequire\(\s*['"]node:/],
   ['Buffer global', /\bBuffer\b/],
   ['process env/cwd', /\bprocess\.(?:env|cwd)\b/],
+] as const
+
+const neutralPackageLeakPatterns = [
+  ['concrete provider package reference', /@demi\/provider-(?:claude-code|codex)\b|provider-(?:claude-code|codex)/i],
+  ['concrete provider implementation class', /\b(?:ClaudeCodeProvider|CodexProvider)\b/],
+  ['concrete catalog source label', /\b(?:codex-backend|models\.dev)\b/i],
+  ['provider backend identifier', /\b(?:backend-api|chatgpt\.com|api\.openai\.com|responses_websockets)\b/i],
+  ['concrete provider product name', /\bClaude Code\b|\bOpenAI Codex\b/i],
 ] as const
 
 const staticSpecifierPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g
@@ -118,6 +153,93 @@ test('package manifests preserve layering boundaries', async () => {
 
   const claudeProviderDependencies = packageDependencyNames(manifests.get('@demi/provider-claude-code'))
   expect(claudeProviderDependencies.some((name) => name === '@anthropic-ai/claude-agent-sdk' || name.includes('claude-agent-sdk'))).toBe(false)
+})
+
+test('@demi/core and @demi/provider contain no concrete provider product details', async () => {
+  const scopes = [
+    ['@demi/core', 'packages/core/src'],
+    ['@demi/provider', 'packages/provider/src'],
+  ] as const
+  const violations: string[] = []
+
+  for (const [packageName, directory] of scopes) {
+    const files = await listSourceFiles(resolveRepoPath(directory))
+    for (const file of files) {
+      const source = await readFile(file, 'utf8')
+      for (const [label, pattern] of neutralPackageLeakPatterns) {
+        if (pattern.test(source)) violations.push(`${packageName}: ${formatPath(file)} contains ${label}`)
+      }
+    }
+  }
+
+  expect(violations.sort()).toEqual([])
+})
+
+test('production source dependency graph follows documented package boundaries', async () => {
+  const edges = await collectProductionWorkspaceImportEdges()
+  const violations: string[] = []
+
+  for (const edge of edges) {
+    const allowed = productionDependencyGraph.get(edge.fromPackage) ?? []
+    if (!allowed.includes(edge.toPackage)) violations.push(`${edge.file} imports ${edge.specifier} (${edge.fromPackage} -> ${edge.toPackage})`)
+  }
+
+  expect([...new Set(violations)].sort()).toEqual([])
+  expect(findPackageDependencyCycle(edges)).toBeNull()
+})
+
+test('production workspace imports are declared as package dependencies', async () => {
+  const manifests = await readPackageManifests()
+  const edges = await collectProductionWorkspaceImportEdges()
+  const violations: string[] = []
+
+  for (const edge of edges) {
+    const manifest = manifests.get(edge.fromPackage)
+    if (manifest?.dependencies?.[edge.toPackage]) continue
+    violations.push(`${edge.fromPackage} imports ${edge.toPackage} in ${edge.file} but does not declare it in dependencies`)
+  }
+
+  expect([...new Set(violations)].sort()).toEqual([])
+})
+
+test('public root exports do not expose provider internals or testing helpers', async () => {
+  const checks = [
+    [
+      'packages/provider/src/index.ts',
+      [
+        ['testing helper export', /\bexport\b[\s\S]*?from\s+['"]\.\/(?:stub|testing)['"]/],
+      ],
+    ],
+    [
+      'packages/provider-claude-code/src/index.ts',
+      [
+        ['wildcard export', /\bexport\s+\*\s+from\b/],
+        ['internal module export', /['"]\.\/(?:cli|jsonl|output|transport)['"]/],
+        ['provider class export', /\bClaudeCodeProvider\b/],
+        ['catalog parser or test helper export', /\b(?:ModelCatalogFetch|modelsDevAnthropicCatalogToModelList|parseClaudeModelVersion|resetClaudeCodeModelCatalogCacheForTests)\b/],
+      ],
+    ],
+    [
+      'packages/provider-codex/src/index.ts',
+      [
+        ['wildcard export', /\bexport\s+\*\s+from\b/],
+        ['internal module export', /['"]\.\/(?:responses|sse|transport)['"]/],
+        ['provider class export', /\bCodexProvider\b/],
+        ['auth store or transport helper export', /\b(?:FileCodexAuthStore\b|StaticCodexAuthStore\b|CodexAuthStore\b|buildCodexHeaders|responsesUrlForAuth)\b/],
+        ['catalog parser or test helper export', /\b(?:ModelCatalogFetch|codexBackendModelsToModelList|resetCodexModelCatalogCacheForTests)\b/],
+      ],
+    ],
+  ] as const
+  const violations: string[] = []
+
+  for (const [path, rules] of checks) {
+    const source = await readFile(resolveRepoPath(path), 'utf8')
+    for (const [label, pattern] of rules) {
+      if (pattern.test(source)) violations.push(`${path} exposes ${label}`)
+    }
+  }
+
+  expect(violations.sort()).toEqual([])
 })
 
 async function findPlatformViolations(entry: string): Promise<string[]> {
@@ -247,6 +369,101 @@ interface PackageManifest {
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
+}
+
+interface ProductionImportEdge {
+  fromPackage: string
+  toPackage: string
+  file: string
+  specifier: string
+}
+
+async function collectProductionWorkspaceImportEdges(): Promise<ProductionImportEdge[]> {
+  const edges: ProductionImportEdge[] = []
+
+  for (const [packageName, packageDirectory] of productionPackageDirectories) {
+    const sourceDirectory = resolveRepoPath(`${packageDirectory}/src`)
+    if (!(await isDirectory(sourceDirectory))) continue
+
+    const files = await listSourceFiles(sourceDirectory)
+    for (const file of files) {
+      const source = await readFile(file, 'utf8')
+      for (const specifier of findModuleSpecifiers(source)) {
+        const toPackage = await resolveWorkspacePackageDependency(file, specifier)
+        if (!toPackage || toPackage === packageName) continue
+        edges.push({
+          fromPackage: packageName,
+          toPackage,
+          file: formatPath(file),
+          specifier,
+        })
+      }
+    }
+  }
+
+  return edges
+}
+
+async function resolveWorkspacePackageDependency(fromFile: string, specifier: string): Promise<string | null> {
+  const directPackage = workspacePackageNameFromSpecifier(specifier)
+  if (directPackage) return directPackage
+  if (!specifier.startsWith('.')) return null
+
+  const resolved = await resolveLocalModule(dirname(fromFile), specifier)
+  return workspacePackageNameForFile(resolved)
+}
+
+function workspacePackageNameFromSpecifier(specifier: string): string | null {
+  const match = /^@demi\/[^/]+/.exec(specifier)
+  if (!match) return null
+
+  const packageName = match[0]
+  return productionPackageDirectories.has(packageName) ? packageName : null
+}
+
+function workspacePackageNameForFile(path: string): string | null {
+  const relativePath = formatPath(path)
+  for (const [packageName, packageDirectory] of productionPackageDirectories) {
+    if (relativePath === packageDirectory || relativePath.startsWith(`${packageDirectory}/`)) return packageName
+  }
+  return null
+}
+
+function findPackageDependencyCycle(edges: ProductionImportEdge[]): string | null {
+  const adjacency = new Map<string, Set<string>>()
+  for (const packageName of productionPackageDirectories.keys()) adjacency.set(packageName, new Set())
+  for (const edge of edges) adjacency.get(edge.fromPackage)?.add(edge.toPackage)
+
+  const visited = new Set<string>()
+  const visiting = new Set<string>()
+  const stack: string[] = []
+
+  const visit = (packageName: string): string[] | null => {
+    visited.add(packageName)
+    visiting.add(packageName)
+    stack.push(packageName)
+
+    for (const dependency of adjacency.get(packageName) ?? []) {
+      if (!adjacency.has(dependency)) continue
+      if (visiting.has(dependency)) return [...stack.slice(stack.indexOf(dependency)), dependency]
+      if (!visited.has(dependency)) {
+        const cycle = visit(dependency)
+        if (cycle) return cycle
+      }
+    }
+
+    stack.pop()
+    visiting.delete(packageName)
+    return null
+  }
+
+  for (const packageName of adjacency.keys()) {
+    if (visited.has(packageName)) continue
+    const cycle = visit(packageName)
+    if (cycle) return cycle.join(' -> ')
+  }
+
+  return null
 }
 
 function hasRuntimeImportFromAgent(source: string, name: string): boolean {

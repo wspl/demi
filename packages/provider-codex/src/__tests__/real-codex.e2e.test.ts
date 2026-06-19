@@ -5,7 +5,8 @@ import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
 import { BashEnvironment, createShellSessionTools } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
-import { CodexProvider, FileCodexAuthStore } from '../index'
+import { FileCodexAuthStore } from '../auth'
+import { CodexProvider } from '../provider'
 
 const e2e = process.env.DEMI_CODEX_E2E === '1' ? test : test.skip
 const cacheE2e = process.env.DEMI_CODEX_CACHE_E2E === '1' ? test : test.skip

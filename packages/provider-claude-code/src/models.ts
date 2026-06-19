@@ -38,7 +38,7 @@ export async function listClaudeCodeModels(options: ClaudeCodeModelCatalogOption
   const headers = new Headers({ accept: 'application/json' })
 
   if (memoryCache?.cacheKey === cacheKey && nowDate.getTime() - memoryCache.fetchedAtMs < MODELS_DEV_CACHE_TTL_MS) {
-    return cloneModelList(markModelListSource(memoryCache.list, 'cache', false))
+    return cloneModelList(markModelListCache(memoryCache.list, false))
   }
   if (memoryCache?.cacheKey === cacheKey && memoryCache.etag) headers.set('if-none-match', memoryCache.etag)
   if (memoryCache?.cacheKey === cacheKey && memoryCache.lastModified) headers.set('if-modified-since', memoryCache.lastModified)
@@ -47,7 +47,7 @@ export async function listClaudeCodeModels(options: ClaudeCodeModelCatalogOption
     const response = await fetchImpl(modelsDevUrl, { headers })
     if (response.status === 304 && memoryCache?.cacheKey === cacheKey) {
       memoryCache = { ...memoryCache, fetchedAtMs: nowDate.getTime() }
-      return cloneModelList(markModelListSource(memoryCache.list, 'cache', false))
+      return cloneModelList(markModelListCache(memoryCache.list, false))
     }
     if (!response.ok) throw new Error(`models.dev catalog request failed with HTTP ${response.status}`)
 
@@ -68,7 +68,7 @@ export async function listClaudeCodeModels(options: ClaudeCodeModelCatalogOption
     return cloneModelList(list)
   } catch (error) {
     if (!memoryCache || memoryCache.cacheKey !== cacheKey) throw error
-    const list = markModelListSource(memoryCache.list, 'cache', true)
+    const list = markModelListCache(memoryCache.list, true)
     return {
       ...cloneModelList(list),
       warnings: [...list.warnings, `Using stale models.dev catalog: ${messageOf(error)}`],
@@ -169,7 +169,6 @@ function modelFromModelsDevEntry(id: string, raw: Record<string, unknown>, sourc
           },
         }
       : {}),
-    source: stale ? 'cache' : 'models.dev',
     sourceFetchedAt,
     stale,
   }
@@ -189,12 +188,12 @@ function claudeCatalogCacheKey(modelsDevUrl: string, minimum: ClaudeVersion): st
   return `${modelsDevUrl}\0${minimum.major}.${minimum.minor}`
 }
 
-function markModelListSource(list: ProviderModelList, source: 'cache', stale: boolean): ProviderModelList {
+function markModelListCache(list: ProviderModelList, stale: boolean): ProviderModelList {
   return {
     ...list,
     sourceFetchedAt: list.sourceFetchedAt,
     stale,
-    models: list.models.map((model) => ({ ...model, source, stale })),
+    models: list.models.map((model) => ({ ...model, stale })),
   }
 }
 

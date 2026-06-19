@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import { AgentSession, type AgentHarness, type AgentHarnessRuntime } from '@demi/agent'
-import { StubProvider, events, type InferenceRequest } from '@demi/provider'
+import type { InferenceRequest } from '@demi/provider'
+import { StubProvider, events } from '@demi/provider/testing'
 import {
   BashEnvironment,
   CommandRegistry,

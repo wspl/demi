@@ -1,6 +1,6 @@
 # Dependency Boundaries
 
-This document is the canonical package boundary contract. When code and this document disagree, fix the code or update this document before continuing with feature work.
+This document is the canonical package boundary contract and the highest architecture constraint for package work. When code and this document disagree, fix the code or update this document before continuing with feature work.
 
 ## Core Rule
 
@@ -71,12 +71,12 @@ Allowed common catalog fields:
 
 Provider-specific source labels such as `codex-backend` or `models.dev` belong inside provider implementation tests and provider-specific docs, not in `@demi/provider` public types.
 
-## Known Cleanup Items
+## Enforced Decisions
 
-- Remove `ProviderModelSource` and `ProviderModel.source` from `@demi/provider`; use `stale`, `sourceFetchedAt`, and `warnings` for common catalog state.
-- Move `StubProvider` and `events` out of `@demi/provider` root exports into an explicit testing entry.
-- Narrow concrete provider root exports so internal auth, parser, protocol, transport, and stream helpers are not public by default.
-- Keep direct production dependencies declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
+- `ProviderModel` has no provider-specific `source`; common catalog state is limited to portable fields such as `stale`, `sourceFetchedAt`, and `warnings`.
+- `StubProvider` and `events` are testing helpers and are exported only through `@demi/provider/testing`, not the `@demi/provider` root.
+- Concrete provider root exports are white-listed public API. Internal auth stores, parsers, protocol mappers, transports, stream helpers, and test cache reset helpers stay behind implementation files.
+- Any workspace package imported by production source must be declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
 
 ## Verification
 
@@ -86,9 +86,7 @@ Existing boundary coverage:
 - The same test checks that only AgentServer imports AgentSession as a runtime value outside tests.
 - The same test checks that `@demi/shell` does not depend on the agent runtime.
 - The same test checks selected package manifest layering boundaries.
-
-Required boundary coverage:
-
-- Add a source scan that fails if `@demi/core` or `@demi/provider` contains concrete provider names, concrete catalog source labels, backend URLs, or product-specific source identifiers.
-- Add a package dependency graph check that fails on any production source cycle or production edge outside the graph in this document.
-- Add root export checks for provider packages so internal transport/parser/testing helpers do not leak through public root entries by accident.
+- The same test scans `@demi/core` and `@demi/provider` production source for concrete provider names, concrete catalog source labels, backend identifiers, and product-specific source identifiers.
+- The same test builds the production source package graph and fails on cycles or edges outside this document.
+- The same test checks that production workspace imports are declared in package `dependencies`.
+- The same test checks public provider root exports so internal transport, parser, protocol, auth-store, stream, and testing helpers do not leak through by accident.

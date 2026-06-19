@@ -1,12 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
-import {
-  buildCodexResponsesRequestBody,
-  mapCodexResponseEvents,
-  parseSseChunk,
-  splitCodexToolUseId,
-  usageFromResponse,
-} from '../index'
+import { buildCodexResponsesRequestBody, mapCodexResponseEvents, splitCodexToolUseId, usageFromResponse } from '../responses'
+import { parseSseChunk } from '../sse'
 
 test('buildCodexResponsesRequestBody converts inference items, tools, thinking, and cache key', () => {
   const reasoningItem = {

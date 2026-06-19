@@ -117,8 +117,6 @@ export interface ProviderServiceTier {
   description?: string
 }
 
-export type ProviderModelSource = 'codex-backend' | 'models.dev' | 'cache'
-
 export interface ProviderModel {
   providerId: string
   id: string
@@ -134,7 +132,6 @@ export interface ProviderModel {
   serviceTiers?: ProviderServiceTier[] | null
   defaultServiceTierId?: string | null
   cost?: ProviderModelCost
-  source: ProviderModelSource
   sourceFetchedAt: string
   stale: boolean
 }

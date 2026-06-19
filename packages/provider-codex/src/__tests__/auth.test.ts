@@ -10,7 +10,7 @@ import {
   redactSecretText,
   resolvedAuthMode,
   StaticCodexAuthStore,
-} from '../index'
+} from '../auth'
 
 test('FileCodexAuthStore resolves ChatGPT auth from official auth.json shape', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'demi-codex-auth-'))

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
-import { events } from '@demi/provider'
+import { events } from '@demi/provider/testing'
 import { AgentSession, Transcript } from '../index'
 import {
   assertNoOrphanToolItems,

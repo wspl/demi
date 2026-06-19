@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection, UserContentBlock } from '@demi/core'
-import { events, ProviderRegistry, StubProvider } from '@demi/provider'
+import { ProviderRegistry } from '@demi/provider'
+import { StubProvider, events } from '@demi/provider/testing'
 import { AgentServer, type ProviderConfig } from '@demi/agent'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
@@ -240,7 +241,6 @@ test('TUI model resolver selects from provider catalog when no full model id is 
           supportsReasoning: true,
           supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
           defaultThinkingEffort: 'medium',
-          source: 'models.dev',
           sourceFetchedAt: '2026-06-20T00:00:00.000Z',
           stale: false,
         },
@@ -255,7 +255,6 @@ test('TUI model resolver selects from provider catalog when no full model id is 
           supportsReasoning: true,
           supportedThinkingEfforts: ['low', 'medium', 'high', 'max'],
           defaultThinkingEffort: 'medium',
-          source: 'models.dev',
           sourceFetchedAt: '2026-06-20T00:00:00.000Z',
           stale: false,
         },
@@ -318,7 +317,6 @@ test('TUI model resolver rejects explicit thinking efforts not advertised by cat
           supportsReasoning: true,
           supportedThinkingEfforts: ['low'],
           defaultThinkingEffort: null,
-          source: 'models.dev',
           sourceFetchedAt: '2026-06-20T00:00:00.000Z',
           stale: false,
         },
@@ -363,7 +361,6 @@ test('TUI model resolver accepts provider-advertised future thinking effort ids'
           supportsReasoning: true,
           supportedThinkingEfforts: ['ultra'],
           defaultThinkingEffort: null,
-          source: 'models.dev',
           sourceFetchedAt: '2026-06-20T00:00:00.000Z',
           stale: false,
         },
@@ -413,7 +410,6 @@ test('TUI model resolver validates provider-advertised service tier ids', async 
           defaultThinkingEffort: null,
           serviceTiers: [{ id: 'priority', label: 'Fast' }],
           defaultServiceTierId: null,
-          source: 'codex-backend',
           sourceFetchedAt: '2026-06-20T00:00:00.000Z',
           stale: false,
         },

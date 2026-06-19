@@ -1,7 +1,6 @@
 import { parseSseResponseStream } from './sse'
 import type { CodexResponseStreamEvent } from './responses'
-
-export type CodexTransportMode = 'auto' | 'sse' | 'websocket'
+import type { CodexTransportMode } from './types'
 
 export interface CodexTransportRequest {
   url: string
