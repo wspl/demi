@@ -353,12 +353,12 @@ Owner：`packages/agent-coding`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| coding definition 暴露 shell session tools |  |  | `packages/agent-coding/src/__tests__/coding-definition.test.ts` | 防止 coding agent 打开后模型没有可用的 shell 控制面。 |
-| registered command prompt 注入 system prompt |  |  | `coding-definition.test.ts` | 防止模型不知道 `editor`、`todo` 等专属命令的正确调用方式。 |
-| file reference 通过 workspace host 读取 |  |  | `coding-definition.test.ts` | 防止引用展开绕过 Host，或模型拿不到用户指定文件内容。 |
-| file reference 拒绝 workspace root 外路径 |  |  | `coding-definition.test.ts` | 防止通过 reference 读取工作区外文件。 |
-| definition dispose 清理 environment shell sessions |  |  | `coding-definition.test.ts` | 防止关闭 coding agent 后 shell 进程继续运行。 |
-| reference resolution 与 AgentSession send 顺序集成 |  |  | `coding-definition.test.ts` 通过 `AgentSession` 断言 provider request 和 transcript 都保存展开后的 file content | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
+| coding definition 暴露 shell session tools | 有效 | 测试 createCodingAgentDefinition 后断言 `tools()` 暴露 `shell_exec/shell_wait/shell_input/shell_abort`，并通过环境执行默认 todo command；能发现 coding agent 没有 shell 控制面或默认命令未注册。验证：5.12 targeted command，5 pass。 | `packages/agent-coding/src/__tests__/coding-definition.test.ts` | 防止 coding agent 打开后模型没有可用的 shell 控制面。 |
+| registered command prompt 注入 system prompt | 有效 | 测试 systemPrompt 包含 editor/todo prompt、effects/success/failure output、todo example、foreground long-process rules、avoid pkill/killall 等文本，并断言 `editor prompt` 输出同源内容；能发现专属命令说明未注入。验证同上。 | `coding-definition.test.ts` | 防止模型不知道 `editor`、`todo` 等专属命令的正确调用方式。 |
+| file reference 通过 workspace host 读取 | 部分有效 | 测试在 workspace root 下解析相对路径和 file URL，断言输出 `<file path=...>` 包含文件内容；但使用 LocalHost 行为验证，没有 fake Host 记录 spawn，因此不能单独证明未绕过 Host。验证同上。 | `coding-definition.test.ts` | 防止引用展开绕过 Host，或模型拿不到用户指定文件内容。 |
+| file reference 拒绝 workspace root 外路径 | 有效 | 测试 workspace root 外的 absolute path reference reject `File reference escapes workspace`；能发现引用展开读取工作区外文件。验证同上。 | `coding-definition.test.ts` | 防止通过 reference 读取工作区外文件。 |
+| definition dispose 清理 environment shell sessions | 有效 | 测试先在环境里创建 shell session，调用 definition.dispose 后断言 `getShell(shellId)` 为 null；能发现 coding agent 关闭后 shell session 残留。验证同上。 | `coding-definition.test.ts` | 防止关闭 coding agent 后 shell 进程继续运行。 |
+| reference resolution 与 AgentSession send 顺序集成 | 有效 | 测试通过真实 `AgentSession.send` 发送 text+reference，provider callback 精确断言 request.items 已展开为 file content 且不含 `reference`，随后 transcript user block 也保存展开内容；能发现先写未展开引用。验证同上。 | `coding-definition.test.ts` 通过 `AgentSession` 断言 provider request 和 transcript 都保存展开后的 file content | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
 
 ### 5.13 Editor Command
 
