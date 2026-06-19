@@ -537,7 +537,7 @@ export class AgentSession<State> {
     let completed = false
     try {
       while (true) {
-        const next = await abortable(iterator.next(), request.cancel)
+        const next = await readProviderIterator(iterator, request.cancel)
         if (next.done) {
           completed = true
           return
@@ -716,6 +716,34 @@ class ProviderStreamError extends Error {
 
 function isContextLengthExceeded(error: unknown): boolean {
   return error instanceof ProviderStreamError && error.code === 'context_length_exceeded'
+}
+
+async function readProviderIterator(
+  iterator: AsyncIterator<ProviderEvent>,
+  signal: AbortSignal,
+): Promise<IteratorResult<ProviderEvent>> {
+  try {
+    return await abortable(iterator.next(), signal)
+  } catch (error) {
+    if (isAbortError(error)) throw error
+    const normalized = asError(error)
+    return {
+      done: false,
+      value: {
+        type: 'error',
+        message: normalized.message,
+        code: providerErrorCode(error),
+      },
+    }
+  }
+}
+
+function providerErrorCode(error: unknown): string | null {
+  if (error !== null && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === 'string') return code
+  }
+  return null
 }
 
 class AbortError extends Error {

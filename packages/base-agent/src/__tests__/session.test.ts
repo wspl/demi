@@ -120,6 +120,38 @@ test('AgentSession closes provider iterators when provider error events stop a t
   expect(provider.returned).toBe(true)
 })
 
+test('AgentSession records provider iterator exceptions and continues queued sends', async () => {
+  const provider = new ThrowingProvider()
+  const session = createSession(provider)
+
+  const first = session.send(text('first'))
+  await provider.waitForPartial()
+
+  const second = session.send(text('second'))
+  expect(session.queuedMessages()).toMatchObject([{ text: 'second' }])
+
+  provider.releaseThrow()
+  await expect(first).rejects.toThrow('transport disconnected')
+  await second
+
+  expect(session.phase()).toBe('idle')
+  expect(session.queuedMessages()).toEqual([])
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'text',
+    'error',
+    'user',
+    'text',
+    'response',
+  ])
+  expect(session.transcript().blocks[2]).toMatchObject({
+    type: 'error',
+    message: 'transport disconnected',
+    code: 'TRANSPORT_CLOSED',
+  })
+  expect(provider.requests).toHaveLength(2)
+})
+
 test('AgentSession resolves references before writing user turns and provider requests', async () => {
   const provider = new StubProvider([
     (request) => {
@@ -735,6 +767,36 @@ class ClosingProvider implements AgentProvider {
         },
       }),
     }
+  }
+}
+
+class ThrowingProvider implements AgentProvider {
+  readonly requests: InferenceRequest[] = []
+  private readonly partial = deferred<void>()
+  private readonly release = deferred<void>()
+
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    const index = this.requests.length
+    this.requests.push(request)
+    if (index === 0) {
+      yield events.text('partial')
+      this.partial.resolve()
+      await this.release.promise
+      const error = new Error('transport disconnected')
+      Object.assign(error, { code: 'TRANSPORT_CLOSED' })
+      throw error
+    }
+
+    yield events.text('second ok')
+    yield events.response()
+  }
+
+  waitForPartial(): Promise<void> {
+    return this.partial.promise
+  }
+
+  releaseThrow(): void {
+    this.release.resolve()
   }
 }
 
