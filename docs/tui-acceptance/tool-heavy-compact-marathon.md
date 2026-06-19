@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Date | TBD |
-| Status | Designed |
+| Date | 2026-06-19 |
+| Status | Passed |
 | Scope | Real TUI + real Claude Code provider + shell tools + repeated compact |
 | Primary model | `claude-haiku-4-5`, thinking off |
 | TUI command | `bun run packages/tui/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
@@ -42,15 +42,38 @@ This test is specifically aimed at compacted replay with previous `tool_use` and
 
 ### Run 1
 
-- Date: TBD
-- Workspace: TBD
-- Log path: TBD
-- Prompt shape: TBD
-- Compact phases: TBD
-- Post-compact tool calls: TBD
-- Final artifacts: TBD
-- Verdict: TBD
+- Date: 2026-06-19
+- Workspace: `/var/folders/bj/xcm3f3zx2z710fbv_jt6p3zr0000gn/T/demi-tui-compact-haiku-q7wWRJ`
+- Log path: `/var/folders/bj/xcm3f3zx2z710fbv_jt6p3zr0000gn/T/demi-tui-compact-haiku-q7wWRJ/tui-compact-haiku.log`
+- Log size: 2,887,721 bytes.
+- Prompt shape: four finite local `shell_exec` pressure turns, each asking for one Python command that writes one marker line plus 720k repeated characters, followed by a no-tool continuation check.
+- Process result: exit code 0.
+- Compact phases: 4.
+- Post-compact tool calls: shell tool executed after compact in pressure turns 2, 3, and 4.
+- Final artifacts: pressure markers were observed through TUI shell output; continuation turn completed without shell tools.
+- Final counters: `compacting=4`, `shellExec=8`, `usage=5`, `suppressed=0`, `toolUnavailable=0`, `idle=6`.
+- Verdict: Passed.
+
+| Step | Compact delta | `shell_exec` render delta | Usage delta | Outcome |
+|---|---:|---:|---:|---|
+| pressure 1 | 0 | 2 | 1 | Completed without compact; seeded context pressure. |
+| pressure 2 | 1 | 2 | 1 | Compact ran before the turn; shell tool executed after compact; completion reply observed. |
+| pressure 3 | 1 | 2 | 1 | Second compact; shell tool executed after compact; completion reply observed. |
+| pressure 4 | 1 | 2 | 1 | Third compact; shell tool executed after compact; completion reply observed. |
+| continuation 5 | 1 | 0 | 1 | Fourth compact; no-tool continuation reply observed. |
+
+## Failure Analysis
+
+No failure remained in the passing run.
+
+Earlier runs exposed real defects before this pass:
+
+- Post-compact replay serialized historical tool names as bare internal names, making the real model believe shell tools were unavailable.
+- Repeated MCP request ids could pair a current tool result with an old historical tool call.
+- Real model behavior could repeat the same `shell_exec` command until timeout.
+
+Those defects are covered by deterministic provider/base-agent/shell tests and the passing real run above.
 
 ## Follow-Up Deterministic Tests
 
-Failures should map to provider replay tests, MCP id uniqueness tests, transcript tool-pair invariants, or shell loop guard tests.
+The passing run is backed by deterministic coverage for provider replay, MCP id uniqueness, transcript tool-pair invariants, and shell loop guard behavior. Future failures should map to the same areas before rerunning this acceptance.

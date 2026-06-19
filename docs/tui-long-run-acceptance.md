@@ -50,4 +50,5 @@ Every process record should include:
 
 - `docs/tui-compact-haiku-acceptance.md` is the first completed long-run record.
 - `docs/tui-acceptance/auto-compact-marathon.md` is passed and has been backfilled from the completed real TUI run.
+- `docs/tui-acceptance/tool-heavy-compact-marathon.md` is passed and has been backfilled from the completed real TUI run.
 - Other records in `docs/tui-acceptance/` remain designs until they are executed and updated with real logs.
