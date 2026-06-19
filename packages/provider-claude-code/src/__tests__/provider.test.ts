@@ -158,7 +158,7 @@ test('ClaudeCodeProvider forwards context overflow result errors with usage', as
   }
 
   expect(received).toEqual([
-    { type: 'error', message: 'context window exceeded\ninput is too long', code: null },
+    { type: 'error', message: 'context window exceeded\ninput is too long', code: 'context_length_exceeded' },
     { type: 'response', usage: { inputTokens: 200_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } },
   ])
 })

@@ -251,10 +251,31 @@ test('mapClaudeStdoutMessage preserves provider error codes and result error tex
   expect(
     mapClaudeStdoutMessage({
       type: 'error',
+      message: 'rate limited, try later',
+    }).events,
+  ).toEqual([{ type: 'error', message: 'rate limited, try later', code: 'rate_limit' }])
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'error',
       message: 'authentication expired',
       code: 'auth_expired',
     }).events,
   ).toEqual([{ type: 'error', message: 'authentication expired', code: 'auth_expired' }])
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'result',
+      is_error: true,
+      result: 'context window exceeded',
+      errors: ['input is too long'],
+    }).events[0],
+  ).toEqual({ type: 'error', message: 'context window exceeded\ninput is too long', code: 'context_length_exceeded' })
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'result',
+      is_error: true,
+      result: 'authentication failed',
+    }).events[0],
+  ).toEqual({ type: 'error', message: 'authentication failed', code: 'auth_expired' })
 
   expect(
     mapClaudeStdoutMessage({
@@ -267,7 +288,7 @@ test('mapClaudeStdoutMessage preserves provider error codes and result error tex
   ).toEqual({
     terminal: true,
     events: [
-      { type: 'error', message: 'rate limited\ntry later', code: null },
+      { type: 'error', message: 'rate limited\ntry later', code: 'rate_limit' },
       { type: 'response', usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 } },
     ],
   })

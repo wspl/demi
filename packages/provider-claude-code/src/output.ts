@@ -40,14 +40,16 @@ export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMa
 
   if (message.type === 'result') {
     if (message.is_error === true) {
-      events.push({ type: 'error', message: resultErrorMessage(message), code: null })
+      const errorMessage = resultErrorMessage(message)
+      events.push({ type: 'error', message: errorMessage, code: classifyProviderError(errorMessage) })
     }
     events.push({ type: 'response', usage: mapUsage(message.usage) })
     return { events, terminal: true }
   }
 
   if (message.type === 'error') {
-    events.push({ type: 'error', message: String(message.message ?? 'Claude Code error'), code: stringOrNull(message.code) })
+    const errorMessage = String(message.message ?? 'Claude Code error')
+    events.push({ type: 'error', message: errorMessage, code: stringOrNull(message.code) ?? classifyProviderError(errorMessage) })
   }
 
   return { events, terminal: false }
@@ -172,6 +174,42 @@ function resultErrorMessage(message: Record<string, unknown>): string {
     }
   }
   return parts.join('\n') || 'Claude Code returned an error'
+}
+
+function classifyProviderError(message: string): string | null {
+  const lower = message.toLowerCase()
+  if (
+    lower.includes('context_length_exceeded') ||
+    lower.includes('context window') ||
+    lower.includes('context length') ||
+    lower.includes('maximum context') ||
+    lower.includes('input is too long')
+  ) {
+    return 'context_length_exceeded'
+  }
+  if (
+    lower.includes('rate_limit') ||
+    lower.includes('rate limit') ||
+    lower.includes('rate-limit') ||
+    lower.includes('rate limited') ||
+    lower.includes('too many requests') ||
+    /\b429\b/.test(lower)
+  ) {
+    return 'rate_limit'
+  }
+  if (
+    lower.includes('auth_expired') ||
+    lower.includes('auth expired') ||
+    lower.includes('authentication expired') ||
+    lower.includes('auth failed') ||
+    lower.includes('authentication failed') ||
+    lower.includes('not logged in') ||
+    lower.includes('login required') ||
+    lower.includes('unauthorized')
+  ) {
+    return 'auth_expired'
+  }
+  return null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
