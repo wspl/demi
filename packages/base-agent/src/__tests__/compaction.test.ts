@@ -424,6 +424,74 @@ test('aborting during preflight compaction stops before the model request and st
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
+test('queued send during preflight compaction drains after the original send', async () => {
+  const preflightModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 100 },
+  }
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn(model, text('recent question'))
+
+  const provider = new CompactGateProvider([
+    (request) => {
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
+        },
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'first question' }],
+        },
+      ])
+      return [events.text('first answer'), events.response()]
+    },
+    (request) => {
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Previous conversation summary:\ngated summary' }],
+        },
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'first question' }],
+        },
+        { type: 'assistant_text', modelId: 'test-model', text: 'first answer' },
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'second question' }],
+        },
+      ])
+      return [events.text('second answer'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition(), transcript, preflightModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+  })
+
+  const first = session.send(text('first question'))
+  await provider.summaryStarted.promise
+  const second = session.send(text('second question'))
+
+  expect(session.phase()).toBe('compacting')
+  expect(session.queuedMessages()).toMatchObject([{ text: 'second question' }])
+
+  provider.summaryRelease.resolve(undefined)
+  await Promise.all([first, second])
+
+  const summaryRequests = provider.requests.filter((request) => {
+    return request.systemPrompt.includes('Summarize the previous conversation')
+  })
+  expect(summaryRequests).toHaveLength(1)
+  expect(provider.requests).toHaveLength(3)
+  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'second answer' })
+  expect(session.queuedMessages()).toEqual([])
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
 test('queued send during compaction drains after the summary commits', async () => {
   const transcript = oldAndRecentTranscript()
   const provider = new CompactGateProvider()
