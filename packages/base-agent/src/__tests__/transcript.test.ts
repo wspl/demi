@@ -132,6 +132,44 @@ test('Transcript inserts compaction boundary and replays from the latest boundar
   expect(items.map((item) => item.type)).toEqual(['user_message', 'assistant_text'])
 })
 
+test('Transcript snapshot survives JSON roundtrip without changing replay or metadata', () => {
+  const transcript = makeTranscript()
+
+  transcript.pushUserTurn(model, [{ type: 'text', text: 'old question' }], 'preamble')
+  transcript.applyProviderEvent(model, { type: 'thinking_start' })
+  transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'private notes' })
+  transcript.applyProviderEvent(model, { type: 'thinking_signature', signature: 'sig-json' })
+  transcript.applyProviderEvent(model, { type: 'redacted_thinking', data: 'redacted-json' })
+  transcript.applyProviderEvent(model, events.toolCall('tool-json', 'read_file', { path: 'src/a.ts' }))
+  transcript.completeToolCall(
+    'tool-json',
+    [
+      { type: 'text', text: 'file text' },
+      { type: 'image', source: { mediaType: 'image/png', data: 'base64-image' } },
+    ],
+    false,
+    { bytes: 42, paths: ['src/a.ts'] },
+  )
+  transcript.applyProviderEvent(model, events.text('old answer'))
+  transcript.applyProviderEvent(model, events.response({ inputTokens: 10, outputTokens: 2, cacheReadTokens: 3 }))
+  transcript.pushAbort(model, true)
+  const boundary = transcript.insertCompactionBoundary(transcript.blocks.length, model, 'json summary', 3)
+  transcript.pushUserTurn(model, [{ type: 'text', text: 'recent question' }])
+  transcript.appendExtensionStateSnapshot('todo', { items: [{ id: 'T1', text: 'persist me' }] })
+  transcript.appendCompactionMarker(model, boundary.id, 123)
+  transcript.pushResumeTurn(model)
+
+  const snapshot = transcript.snapshot()
+  const parsed = JSON.parse(JSON.stringify(snapshot)) as typeof snapshot
+  const restored = new Transcript(parsed.blocks)
+
+  expect(parsed).toEqual(snapshot)
+  expect(restored.snapshot()).toEqual(snapshot)
+  expect(restored.blocks.map((block) => block.type)).toEqual(transcript.blocks.map((block) => block.type))
+  expect(restored.collectInferenceItems()).toEqual(transcript.collectInferenceItems())
+  expect(restored.latestExtensionStateSnapshot('todo')).toEqual(transcript.latestExtensionStateSnapshot('todo'))
+})
+
 test('Transcript returns the latest extension state snapshot', () => {
   const transcript = makeTranscript()
 

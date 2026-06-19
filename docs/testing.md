@@ -208,14 +208,14 @@ Owner：`packages/base-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| user/text/response blocks 转 inference items | 部分有效 | `transcript.test.ts` 断言 text deltas 合并成 text block，`collectInferenceItems()` 输出 user_message/assistant_text 类型；但该行候选没有精确断言 user/text payload 全内容，完整 payload 主要由 provider request exact replay 行兜住。验证：5.5 targeted command，45 pass。 | `packages/base-agent/src/__tests__/transcript.test.ts` | 防止 transcript 能显示但不能正确喂回 provider。 |
+| user/text/response blocks 转 inference items | 部分有效 | `transcript.test.ts` 断言 text deltas 合并成 text block，`collectInferenceItems()` 输出 user_message/assistant_text 类型；但该行候选没有精确断言 user/text payload 全内容，完整 payload 主要由 provider request exact replay 行兜住。验证：5.5 targeted command，48 pass。 | `packages/base-agent/src/__tests__/transcript.test.ts` | 防止 transcript 能显示但不能正确喂回 provider。 |
 | pending tool call 发现与完成 | 有效 | 测试 tool_call_requested 后断言 `findPendingToolUseId()` 和 `pendingToolCalls()`，再 `completeToolCall()` 后 pending 清零；能发现 executing tool_call 无法被发现或完成。验证同上。 | `transcript.test.ts` | 防止 tool_call 状态卡在 executing，后续 run 误判还有未完成工具。 |
 | completed tool call 转 `tool_use` + `tool_result` | 部分有效 | `transcript.test.ts` 断言 completed tool_call replay 为 `tool_use` + `tool_result` 类型序列；但没有精确断言 tool input/output payload，payload 正确性依赖 session/context-cache/compaction 的 request exact assertions。验证同上。 | `transcript.test.ts` | 防止模型下一轮看不到工具输入或工具输出，导致重复调用工具。 |
 | non-JSON tool input 安全存储和 replay | 有效 | 测试 undefined tool input 存为 `null`，BigInt+circular input 经 safe stringify 后 replay 为 `{ id: '1', self: '[Circular]' }`；能发现异常输入对象导致序列化或 replay 崩溃。验证同上。 | `transcript.test.ts` | 防止异常输入对象让 transcript 序列化崩溃或 replay 失败。 |
 | dangling executing tool call 清理 | 有效 | 测试 completed tool_call 和 dangling executing tool_call 共存时，`removeDanglingToolCalls()` 只移除 executing 项并保留 completed 项；能发现 abort/restart 后 pending tool 残留。验证同上。 | `transcript.test.ts` | 防止 abort/restart 后遗留 executing tool 阻塞 resume。 |
 | extension state snapshot latest 查询 | 有效 | 测试同名 extension 写入两次、中间夹杂其他 extension，`latestExtensionStateSnapshot('todo')` 返回 count=2，未传名称时返回最新 snapshot；能发现恢复扩展状态取到旧值。验证同上。 | `transcript.test.ts` | 防止恢复 agent 扩展状态时拿到过期 snapshot。 |
 | non-JSON extension state token estimate | 有效 | 测试 extension state 含 BigInt 和 circular reference 时 `estimateContextTokens()` 仍返回正数；能发现 compact token estimate 被非 JSON 状态打断。验证同上。 | `transcript.test.ts` | 防止 token estimate 被 BigInt/cycle 等扩展状态打断，影响 compact 判断。 |
-| transcript snapshot 序列化/反序列化等价 | 部分有效 | `context-cache.test.ts` 用 `new Transcript(transcript.snapshot().blocks)` 断言 model-visible `collectInferenceItems()` 等价，marathon 从 store snapshot blocks 恢复后继续运行；但未覆盖 JSON stringify/parse 后的全字段等价。验证同上。 | `context-cache.test.ts`、`session-marathon.test.ts` | 需要发现保存后再加载丢 block、丢 metadata 或改变 replay 内容的问题。 |
+| transcript snapshot 序列化/反序列化等价 | 有效 | `transcript.test.ts` 构造 user/thinking/redacted/tool_result metadata/response/abort/boundary/marker/extension/resume 混合 transcript，经过 JSON stringify/parse 后断言完整 snapshot、block 类型序列、`collectInferenceItems()` 和 latest extension snapshot 都等价；context-cache 与 marathon 继续覆盖恢复后运行。验证同上。 | `transcript.test.ts`、`context-cache.test.ts`、`session-marathon.test.ts` | 需要发现保存后再加载丢 block、丢 metadata 或改变 replay 内容的问题。 |
 | provider request exact replay 内容 | 有效 | context-cache、marathon、compaction 多处在 provider callback 内精确断言 `request.items` 或断言等于 `Transcript.collectInferenceItems()`，覆盖普通 turns、retry/resume、snapshot restore、compaction summary/recent context、tool history。验证同上。 | `context-cache.test.ts`、`session-marathon.test.ts`、`compaction.test.ts` | 需要发现复杂历史、tool、extension、compact 混合时喂给模型的上下文漂移。 |
 | effective replay 只包含模型应看到的 block | 部分有效 | `context-cache.test.ts` 精确断言 effective transcript 会排除旧 compacted history、compaction marker、extension snapshot 和 compactedTokens；但没有专门构造 error/response/internal 状态泄漏的完整负向样例。验证同上。 | `context-cache.test.ts` | 防止 compaction marker、extension snapshot、internal error 状态等内部块进入 provider request。 |
 | replay 保持 tool_use/tool_result 成对且顺序正确 | 有效 | `compaction.test.ts`、marathon 和 helper `assertNoOrphanToolItems()` 断言 tool_use 必须先于 matching tool_result 且不能悬空，覆盖 summary input、restore、provider error 后恢复和单 turn compact。验证同上。 | `compaction.test.ts`、`context-cache.test.ts`、`session-marathon.test.ts` | 防止 provider 收到孤立 tool_result、孤立 tool_use 或乱序工具历史。 |
@@ -454,7 +454,7 @@ Owner：`packages/just-bash`
 
 ## 6. 当前剩余优先补测顺序
 
-1. 补 `5.5`/`5.7` 的模型可见上下文基线：更多 internal state 泄漏枚举、user/text/tool payload exactness、snapshot JSON 序列化、cache usage 经 RPC/UI 暴露。
+1. 补 `5.5`/`5.7` 的模型可见上下文基线：更多 internal state 泄漏枚举、user/text/tool payload exactness、cache usage 经 RPC/UI 暴露。
 2. 补 `5.17 TUI` 自动化：stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
 3. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
 4. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务、todo raw/JSON 输出矩阵、shell cwd/env 复用。
