@@ -60,7 +60,7 @@
 | 门槛 | 审查结论 | 审查记录 |
 |---|---|---|
 | AgentSession 长生命周期稳定 | 部分有效 | `5.4`、`5.5`、`5.6`、`5.7` 已覆盖 send/queue/retry/resume/abort/tool/error/compact 的主要路径；完整 `AgentSessionSnapshot` loader 和 provider mock realism 仍是缺口或部分有效。 |
-| 模型可见上下文稳定 | 部分有效 | `5.5`、`5.7` 覆盖 exact transcript payload、effective transcript、internal block 过滤、bounded injection、stable prefix 和 compact 后重稳；仍缺更全的内部状态泄漏枚举。 |
+| 模型可见上下文稳定 | 有效 | `5.5`、`5.7` 覆盖 exact transcript payload、effective transcript、当前 transcript schema 的 internal block 过滤、bounded injection、stable prefix 和 compact 后重稳。 |
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
 | Context cache baseline | 部分有效 | `5.3`、`5.7` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为；RPC/UI usage 传播和真实 provider cache hit 仍未完整证明。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
@@ -217,7 +217,7 @@ Owner：`packages/base-agent`
 | non-JSON extension state token estimate | 有效 | 测试 extension state 含 BigInt 和 circular reference 时 `estimateContextTokens()` 仍返回正数；能发现 compact token estimate 被非 JSON 状态打断。验证同上。 | `transcript.test.ts` | 防止 token estimate 被 BigInt/cycle 等扩展状态打断，影响 compact 判断。 |
 | transcript snapshot 序列化/反序列化等价 | 有效 | `transcript.test.ts` 构造 user/thinking/redacted/tool_result metadata/response/abort/boundary/marker/extension/resume 混合 transcript，经过 JSON stringify/parse 后断言完整 snapshot、block 类型序列、`collectInferenceItems()` 和 latest extension snapshot 都等价；context-cache 与 marathon 继续覆盖恢复后运行。验证同上。 | `transcript.test.ts`、`context-cache.test.ts`、`session-marathon.test.ts` | 需要发现保存后再加载丢 block、丢 metadata 或改变 replay 内容的问题。 |
 | provider request exact replay 内容 | 有效 | context-cache、marathon、compaction 多处在 provider callback 内精确断言 `request.items` 或断言等于 `Transcript.collectInferenceItems()`，覆盖普通 turns、retry/resume、snapshot restore、compaction summary/recent context、tool history。验证同上。 | `context-cache.test.ts`、`session-marathon.test.ts`、`compaction.test.ts` | 需要发现复杂历史、tool、extension、compact 混合时喂给模型的上下文漂移。 |
-| effective replay 只包含模型应看到的 block | 部分有效 | `context-cache.test.ts` 精确断言 effective transcript 会排除旧 compacted history、compaction marker、extension snapshot 和 compactedTokens；但没有专门构造 error/response/internal 状态泄漏的完整负向样例。验证同上。 | `context-cache.test.ts` | 防止 compaction marker、extension snapshot、internal error 状态等内部块进入 provider request。 |
+| effective replay 只包含模型应看到的 block | 有效 | `context-cache.test.ts` 精确断言 provider request 只包含 latest summary、recent user 和当前 preamble+user，并负向断言旧 compacted history、response usage、error code/message、abort state、compaction marker、extension snapshot 和 compactedTokens 都不泄漏。验证同上。 | `context-cache.test.ts` | 防止 compaction marker、extension snapshot、internal error 状态等内部块进入 provider request。 |
 | replay 保持 tool_use/tool_result 成对且顺序正确 | 有效 | `compaction.test.ts`、marathon 和 helper `assertNoOrphanToolItems()` 断言 tool_use 必须先于 matching tool_result 且不能悬空，覆盖 summary input、restore、provider error 后恢复和单 turn compact。验证同上。 | `compaction.test.ts`、`context-cache.test.ts`、`session-marathon.test.ts` | 防止 provider 收到孤立 tool_result、孤立 tool_use 或乱序工具历史。 |
 | replay 中 thinking/redacted thinking 能跨 provider 边界保留 | 有效 | `transcript.test.ts` 精确断言 thinking text、signature、redacted data 按 provider 顺序转 inference items；`compaction.test.ts` 断言 summary input 保留 thinking/redacted/tool metadata 边界；`jsonl-output.test.ts` 覆盖 Claude JSONL thinking 输出。验证同上。 | `transcript.test.ts`、`jsonl-output.test.ts`、`compaction.test.ts` | 防止开启 thinking 的真实模型路径在重放或 compact 后丢失签名、redacted thinking 或顺序。 |
 
@@ -260,7 +260,7 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
 | provider request prefix 在普通多轮对话中稳定 | 有效 | `context-cache.test.ts` 连续三轮 send 后断言后一轮 `items` prefix 等于前一轮完整 items，systemPrompt 和 tools 也保持同一结构；能发现无意义重排破坏 prefix。验证：5.7 targeted command，37 pass。 | `context-cache.test.ts` | 防止 system prompt、tools schema、preamble 或历史 items 无意义重排，破坏 context cache 基线。 |
-| provider request 只由 effective transcript 和当前 prompt context 构成 | 部分有效 | 测试精确断言 request 由 latest summary、recent user、current preamble+user 构成，并排除 old history、extension state、compactedTokens；但没有覆盖所有 store/UI-only 内部状态泄漏类型。验证同上。 | `context-cache.test.ts` | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
+| provider request 只由 effective transcript 和当前 prompt context 构成 | 有效 | 测试精确断言 request 由 latest summary、recent user、current preamble+user 构成，并排除 old history、response usage、error code/message、abort state、extension state、compaction marker 和 compactedTokens。验证同上。 | `context-cache.test.ts` | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
 | provider、retry、compact、resume 共用同一个 effective transcript 入口 | 有效 | `context-cache.test.ts` 断言 retry/resume request 等于 `Transcript.collectInferenceItems()`；marathon 多轮断言 request 与 transcript 一致；compaction 断言 summary/recent/queued request 的 exact items。验证同上。 | `context-cache.test.ts`、`session-marathon.test.ts`、`compaction.test.ts` | 防止不同路径各自拼 request，导致正常 send 通过但 compact 或 retry 后真实模型上下文漂移。 |
 | 注入内容有明确上限和截断策略 | 有效 | 测试构造超长 preamble、reference 文本、assistant text、tool output，断言 provider-visible JSON 含 truncation marker 和 head/tail，且不含大段原文；随后断言 transcript audit log 仍保留原文。验证同上。 | `context-cache.test.ts` 覆盖 preamble、reference 展开文本、assistant text、tool result 的 provider-visible 截断，且 transcript audit log 保留原文 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
 | 记录给模型的 tool output 使用 head/tail + truncation marker | 有效 | 同一截断测试断言 tool output 的 head `tool-head-`、tail `-tool-tail` 和 `[...] truncated` 标记都在 request 中，同时大段重复内容被移除；能发现只保留头部或无标记截断。验证同上。 | `context-cache.test.ts` 覆盖 head/tail 保留和 truncation marker | 防止截断后模型不知道内容被省略，或只保留头部导致错误诊断。 |
@@ -454,7 +454,7 @@ Owner：`packages/just-bash`
 
 ## 6. 当前剩余优先补测顺序
 
-1. 补 `5.5`/`5.7` 的模型可见上下文基线：更多 internal state 泄漏枚举、cache usage 经 RPC/UI 暴露。
+1. 补 `5.7` 的 Context cache 基线：cache usage 经 RPC/UI 暴露。
 2. 补 `5.17 TUI` 自动化：stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
 3. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
 4. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务、todo raw/JSON 输出矩阵、shell cwd/env 复用。

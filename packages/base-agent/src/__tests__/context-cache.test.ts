@@ -184,6 +184,9 @@ test('provider request is built from effective transcript without internal block
   transcript.applyProviderEvent(model, events.response())
   const boundary = transcript.insertCompactionBoundary(3, model, 'summary', 2)
   transcript.pushUserTurn(model, text('recent question'))
+  transcript.applyProviderEvent(model, events.response({ inputTokens: 9, outputTokens: 4, cacheReadTokens: 3 }))
+  transcript.applyProviderEvent(model, events.error('provider internal failure', 'context_length_exceeded'))
+  transcript.pushAbort(model, true)
   transcript.appendCompactionMarker(model, boundary.id, 10)
   transcript.appendExtensionStateSnapshot('todo', { secret: 'internal state' })
 
@@ -200,6 +203,10 @@ test('provider request is built from effective transcript without internal block
       expect(JSON.stringify(request.items)).not.toContain('old question')
       expect(JSON.stringify(request.items)).not.toContain('internal state')
       expect(JSON.stringify(request.items)).not.toContain('compactedTokens')
+      expect(JSON.stringify(request.items)).not.toContain('cacheReadTokens')
+      expect(JSON.stringify(request.items)).not.toContain('provider internal failure')
+      expect(JSON.stringify(request.items)).not.toContain('context_length_exceeded')
+      expect(JSON.stringify(request.items)).not.toContain('isResumed')
       return [events.text('answer'), events.response()]
     },
   ])
