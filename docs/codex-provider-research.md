@@ -359,6 +359,7 @@ Gated 真实验收：
 调研结论会影响现有 `docs/agent-rewrite-plan.md`：
 
 - provider contract 需要稳定 session/turn identity。
+- provider contract 需要模型目录能力；Codex 模型列表直接复用官方 auth 请求 backend，Claude 模型列表使用 `models.dev`。详细设计见 `docs/provider-model-catalog-design.md`。
 - Codex provider 需要 Node-only 子包，不能污染平台无关入口。
 - Codex auth 是 provider 级能力，不进入 Agent Loop。
 - WebSocket/SSE transport 是 provider 内部机制，不进入 `InferenceRequest`。

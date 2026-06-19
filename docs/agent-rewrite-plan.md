@@ -85,6 +85,7 @@ Host
 17. **Shell 控制面显式区分 wait 与 input**：模型面对的 shell 工具必须顺滑且不含隐式状态魔法：一次执行命令，命令未结束时返回可继续操作的 `shellId`；`shell_wait` 是唯一轮询/等待入口；`shell_input` 只写入非空 stdin；`yieldAfterMs` 表示本次调用最多等多久，不按进程启动时间累计；进程安静不等于需要输入，默认只能继续返回 `running`；主动终止前台命令是控制动作，不应默认当作任务失败污染模型上下文。
 18. **长进程优先走受控前台**：需要观测和停止的长进程（如 dev server、watch、preview）应作为 foreground command 运行，由 `yieldAfterMs` / `shell_wait` 观测、由 `shell_abort` 停止；不要用 `cmd &` 后再 `pkill` / `killall` 按进程名清理。后台 job 只用于明确需要在 shell session 生命周期内持续保留、且后续通过 jobs/wait 或 session dispose 管理的进程。
 19. **Bash Environment 不是 Harness 注入项**：Agent Harness 只能定义 `Host`、注册命令、prompt、引用解析和生命周期；不得让用户传入自定义 `BashEnvironment` 或替换 shell tool control surface。Demi 的差异化是统一、可审计、可长程运行的 shell session 机制，所有 agent 都走同一套 wait/input/abort、audit、tool result 和 compaction 语义。
+20. **模型目录属于 provider 能力**：TUI / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
 
 ### 3.2 Shell 控制面为什么要显式 wait/input
 
