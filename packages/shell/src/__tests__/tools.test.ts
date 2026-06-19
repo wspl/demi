@@ -163,6 +163,7 @@ test('shell_exec suppresses rapid repeated identical scripts for an agent sessio
 
   const suppressed = await shellExec.invoke(ctx, { script: 'printf repeat' })
   expect(suppressed.isError).toBe(true)
+  expect(suppressed.stopAfterToolResult).toBeUndefined()
   expect(suppressed.output[0]).toMatchObject({
     type: 'text',
     text: expect.stringContaining('Repeated identical shell_exec suppressed'),
@@ -170,6 +171,52 @@ test('shell_exec suppresses rapid repeated identical scripts for an agent sessio
 
   const changed = await shellExec.invoke(ctx, { script: 'printf changed' })
   expect(changed.isError).toBe(false)
+})
+
+test('shell_exec repeat suppression returns to the provider and keeps later sends usable', async () => {
+  const environment = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => 'tool-repeat-agent-shell',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const definition: AgentDefinition<Record<string, never>> = {
+    name: 'shell-repeat-agent-test',
+    initialState: () => ({}),
+    systemPrompt: () => 'system',
+    tools: () => createShellSessionTools(environment),
+  }
+  let toolTurns = 0
+  const provider = new StubProvider([
+    (request: InferenceRequest) => {
+      expect(latestUserText(request)).toBe('repeat command')
+      toolTurns += 1
+      return [events.toolCall(`repeat-${toolTurns}`, 'shell_exec', { script: 'printf repeat' })]
+    },
+    ...Array.from({ length: 7 }, () => (request: InferenceRequest) => {
+      const result = latestToolResultText(request.items)
+      if (toolTurns < 7) {
+        expect(result).toContain('status: exited')
+        toolTurns += 1
+        return [events.toolCall(`repeat-${toolTurns}`, 'shell_exec', { script: 'printf repeat' })]
+      }
+      expect(result).toContain('Repeated identical shell_exec suppressed')
+      return [events.text('suppression observed'), events.response()]
+    }),
+    (request: InferenceRequest) => {
+      expect(latestUserText(request)).toBe('after suppression')
+      return [events.text('after works'), events.response()]
+    },
+  ])
+  const session = new AgentSession({ provider, model, cwd: process.cwd(), definition })
+
+  await session.send([{ type: 'text', text: 'repeat command' }])
+  await session.send([{ type: 'text', text: 'after suppression' }])
+
+  const assistantTexts = session
+    .transcript()
+    .blocks.filter((block) => block.type === 'text')
+    .map((block) => (block.type === 'text' ? block.text : ''))
+  expect(assistantTexts).toEqual(['suppression observed', 'after works'])
 })
 
 test('shell_abort is an intentional control action, not a tool failure', async () => {
@@ -339,6 +386,22 @@ function latestToolResult(items: Array<{ type: string; output?: unknown }>): {
     shellId: requiredField(text, 'shellId'),
     stdout: section(text, 'stdout'),
   }
+}
+
+function latestToolResultText(items: Array<{ type: string; output?: unknown }>): string {
+  const item = [...items].reverse().find((candidate) => candidate.type === 'tool_result')
+  if (!item || !Array.isArray(item.output)) throw new Error('missing tool_result')
+  const first = item.output[0]
+  if (!first || typeof first !== 'object' || !('type' in first) || first.type !== 'text') {
+    throw new Error('tool_result was not text')
+  }
+  return (first as { text: string }).text
+}
+
+function latestUserText(request: InferenceRequest): string {
+  const item = [...request.items].reverse().find((candidate) => candidate.type === 'user_message')
+  if (!item || item.type !== 'user_message') throw new Error('missing user_message')
+  return item.content.map((block) => (block.type === 'text' ? block.text : '')).join('')
 }
 
 function textOutput(result: { output: Array<{ type: string; text?: string }> }): string {

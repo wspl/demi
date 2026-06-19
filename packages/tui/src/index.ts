@@ -44,6 +44,7 @@ export interface RenderState {
   seenUserIds: Set<string>
   seenErrorIds: Set<string>
   seenAbortIds: Set<string>
+  toolOutputCounts: Map<string, number>
   activeStream: 'assistant' | 'thinking' | null
   streamAtLineStart: boolean
 }
@@ -339,6 +340,7 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
         state.toolStatuses.set(block.id, marker)
         writeLineTo(state.output, color(`tool: ${block.toolName} ${block.status} ${formatToolInput(block)}`, 'cyan', state.output))
       }
+      renderToolCallOutput(state, block)
       continue
     }
     if (block.type === 'response' && !state.seenResponseIds.has(block.id)) {
@@ -360,6 +362,17 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
       continue
     }
   }
+}
+
+function renderToolCallOutput(state: RenderState, block: Extract<Block, { type: 'tool_call' }>): void {
+  if (block.status !== 'error') return
+  const previous = state.toolOutputCounts.get(block.id) ?? 0
+  const next = block.output.slice(previous)
+  if (next.length === 0) return
+  finishStream(state)
+  state.toolOutputCounts.set(block.id, block.output.length)
+  const text = next.map((item) => (item.type === 'text' ? item.text : `[image:${item.source.mediaType}]`)).join('\n')
+  writePrefixed(state.output, 'tool error', text, 'red')
 }
 
 function renderShellOutput(state: RenderState, shellId: string, stdoutDelta: string, stderrDelta: string): void {
@@ -467,6 +480,7 @@ export function createRenderer(output: TuiOutput = process.stdout): RenderState 
     seenUserIds: new Set(),
     seenErrorIds: new Set(),
     seenAbortIds: new Set(),
+    toolOutputCounts: new Map(),
     activeStream: null,
     streamAtLineStart: true,
   }

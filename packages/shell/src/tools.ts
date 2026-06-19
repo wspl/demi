@@ -199,7 +199,6 @@ function repeatedShellExecResult(
       },
     ],
     isError: true,
-    stopAfterToolResult: true,
     metadata: {
       kind: 'repeated_identical_shell_exec',
       script,

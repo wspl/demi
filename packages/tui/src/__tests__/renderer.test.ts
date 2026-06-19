@@ -49,6 +49,19 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
     output: [],
     metadata: null,
   })
+  const toolError = block({
+    type: 'tool_call',
+    id: 'tool-2',
+    createdAt: '2026-06-19T00:00:00.000Z',
+    model,
+    toolUseId: 'tool-use-2',
+    toolName: 'shell_exec',
+    input: JSON.stringify({ script: 'cat sentinel.txt' }),
+    status: 'error',
+    streamingOutput: [],
+    output: [{ type: 'text', text: 'Repeated identical shell_exec suppressed.\nUse a different command.' }],
+    metadata: null,
+  })
   const response = block({
     type: 'response',
     id: 'response-1',
@@ -72,11 +85,13 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
     isResumed: false,
   })
 
-  renderEvent(renderer, { type: 'transcript_snapshot', blocks: [thinking, text, tool, response, error, abort] })
+  renderEvent(renderer, { type: 'transcript_snapshot', blocks: [thinking, text, tool, toolError, response, error, abort] })
 
   expect(output.text()).toContain('thinking> plan')
   expect(output.text()).toContain('assistant> hello')
   expect(output.text()).toContain('tool: shell_exec executing bun test')
+  expect(output.text()).toContain('tool: shell_exec error cat sentinel.txt')
+  expect(output.text()).toContain('tool error> Repeated identical shell_exec suppressed.')
   expect(output.text()).toContain('usage: in=10 out=2 cache_read=3 cache_write=4')
   expect(output.text()).toContain('agent error: provider warning')
   expect(output.text()).toContain('turn aborted')
@@ -89,6 +104,7 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
       { ...thinking, text: 'plan more' },
       { ...text, text: 'hello world' },
       { ...tool, status: 'completed', output: [{ type: 'text', text: 'ok' }] },
+      toolError,
       response,
       error,
       { ...abort, isResumed: true },
@@ -100,6 +116,7 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
   expect(delta).toContain(' world')
   expect(delta).toContain('tool: shell_exec completed bun test')
   expect(delta).not.toContain('hello world')
+  expect(delta).not.toContain('Repeated identical shell_exec suppressed.')
   expect(delta).not.toContain('usage:')
   expect(delta).not.toContain('agent error:')
   expect(delta).not.toContain('turn aborted')

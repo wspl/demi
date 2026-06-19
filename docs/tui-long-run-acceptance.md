@@ -54,4 +54,9 @@ Every process record should include:
 - `docs/tui-acceptance/real-project-build-marathon.md` is passed from a real Vue + Pinia project build run.
 - `docs/tui-acceptance/interactive-shell-control.md` is passed after five real TUI runs; the first four runs exposed shell-control friction that now has deterministic regression coverage.
 - `docs/tui-acceptance/compact-abort-resume.md` is passed after three real TUI runs; the first two exposed unsigned-thinking replay and repeated abort rendering gaps now covered by deterministic tests.
-- Remaining P1 records in `docs/tui-acceptance/` remain designs until they are executed and updated with real logs.
+- `docs/tui-acceptance/thinking-tool-rendering-smoke.md` is passed with `claude-opus-4-8` and medium thinking; it verifies real thinking, real shell output, and real model text.
+- `docs/tui-acceptance/queued-input-long-turn.md` is passed after multiple real runs; it records queue-ordering failures before the final prompt shape converged.
+- `docs/tui-acceptance/large-output-boundaries.md` is passed; it verifies large shell output remains visible to the UI while the model recovers by precisely rereading the hidden middle line.
+- `docs/tui-acceptance/runaway-tool-loop-guard.md` is passed after exposing two product gaps: errored tool output was hidden in TUI, and repeated-shell suppression incorrectly stopped the session before provider continuation consumed the tool result. Both now have deterministic regression tests.
+- `docs/tui-acceptance/context-cache-stability-marathon.md` is passed; it records that short one-tool turns may report zero cache usage, while real multi-tool provider continuations report cache hits before and after manual compact.
+- All current P0 and P1 records in `docs/tui-acceptance/` have real process records.
