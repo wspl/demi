@@ -179,9 +179,11 @@ test('ClaudeCodeProvider handles control_request tool calls across run calls', a
     firstEvents.push(event)
   }
 
-  expect(firstEvents).toEqual([
-    { type: 'tool_call_requested', toolUseId: 'call-1', toolName: 'shell_exec', input: { script: 'pwd' } },
+  expect(firstEvents).toMatchObject([
+    { type: 'tool_call_requested', toolName: 'shell_exec', input: { script: 'pwd' } },
   ])
+  const firstToolUseId = firstEvents[0]?.type === 'tool_call_requested' ? firstEvents[0].toolUseId : null
+  expect(firstToolUseId).toMatch(/^mcp-control-/)
   expect(transport.writes).toContainEqual({
     type: 'control_response',
     id: 'list-1',
@@ -200,7 +202,7 @@ test('ClaudeCodeProvider handles control_request tool calls across run calls', a
     makeRequest([
       {
         type: 'tool_result',
-        toolUseId: 'call-1',
+        toolUseId: firstToolUseId ?? '',
         output: [{ type: 'text', text: '/tmp' }],
         isError: false,
       },
@@ -237,9 +239,11 @@ test('ClaudeCodeProvider handles SDK MCP control_request tool calls across run c
     firstEvents.push(event)
   }
 
-  expect(firstEvents).toEqual([
-    { type: 'tool_call_requested', toolUseId: 'call-1', toolName: 'shell_exec', input: { script: 'pwd' } },
+  expect(firstEvents).toMatchObject([
+    { type: 'tool_call_requested', toolName: 'shell_exec', input: { script: 'pwd' } },
   ])
+  const firstToolUseId = firstEvents[0]?.type === 'tool_call_requested' ? firstEvents[0].toolUseId : null
+  expect(firstToolUseId).toMatch(/^mcp-control-/)
   expect(findSdkMcpResponse(transport.writes, 'list-sdk').result).toEqual({
     tools: [{ name: 'shell_exec', description: 'Execute shell', inputSchema: { type: 'object' } }],
   })
@@ -249,7 +253,7 @@ test('ClaudeCodeProvider handles SDK MCP control_request tool calls across run c
     makeRequest([
       {
         type: 'tool_result',
-        toolUseId: 'call-1',
+        toolUseId: firstToolUseId ?? '',
         output: [{ type: 'text', text: '/tmp' }],
         isError: false,
       },
@@ -470,9 +474,11 @@ test('ClaudeCodeProvider fails fast when a pending control_request has no matchi
   for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
     firstEvents.push(event)
   }
-  expect(firstEvents).toEqual([
-    { type: 'tool_call_requested', toolUseId: 'call-1', toolName: 'shell_exec', input: { script: 'pwd' } },
+  expect(firstEvents).toMatchObject([
+    { type: 'tool_call_requested', toolName: 'shell_exec', input: { script: 'pwd' } },
   ])
+  const firstToolUseId = firstEvents[0]?.type === 'tool_call_requested' ? firstEvents[0].toolUseId : null
+  expect(firstToolUseId).toMatch(/^mcp-control-/)
 
   const secondRun = async () => {
     for await (const _event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'missing result' }] }]))) {
@@ -603,6 +609,57 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
   const shellResult = String(callResponse.response.content)
   expect(shellResult).toContain('status: exited')
   expect(shellResult).toContain('stdout:\ndemi-provider')
+})
+
+test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession', async () => {
+  const transport = new FakeClaudeTransport([
+    { type: 'control_request', id: 'list-1', method: 'tools/list', params: {} },
+    {
+      type: 'control_request',
+      id: '0',
+      method: 'tools/call',
+      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf first-tool' } },
+    },
+    {
+      type: 'control_request',
+      id: '0',
+      method: 'tools/call',
+      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf second-tool' } },
+    },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } },
+    { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+  const environment = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => 'claude-repeated-id-shell',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const definition: AgentDefinition<Record<string, never>> = {
+    name: 'claude-repeated-id-test',
+    initialState: () => ({}),
+    systemPrompt: () => 'system',
+    tools: () => createShellSessionTools(environment),
+  }
+  const session = new AgentSession({ provider, model, cwd: process.cwd(), definition })
+
+  await session.send([{ type: 'text', text: 'run shell twice' }])
+
+  const toolBlocks = session.transcript().blocks.filter((block) => block.type === 'tool_call')
+  expect(toolBlocks).toHaveLength(2)
+  expect(new Set(toolBlocks.map((block) => block.toolUseId)).size).toBe(2)
+  expect(toolBlocks.map((block) => block.status)).toEqual(['completed', 'completed'])
+  expect(toolBlocks.map((block) => block.input)).toEqual([
+    JSON.stringify({ script: 'printf first-tool' }),
+    JSON.stringify({ script: 'printf second-tool' }),
+  ])
+
+  const responses = transport.writes.filter((write): write is { type: string; id: string; response: Record<string, unknown> } => {
+    return isRecord(write) && write.type === 'control_response' && write.id === '0' && isRecord(write.response)
+  })
+  expect(responses).toHaveLength(2)
+  expect(String(responses[0].response.content)).toContain('first-tool')
+  expect(String(responses[1].response.content)).toContain('second-tool')
 })
 
 function fakeFactory(transport: FakeClaudeTransport): ClaudeTransportFactory {

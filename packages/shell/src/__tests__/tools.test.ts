@@ -133,6 +133,41 @@ test('shell_input requires non-empty stdin instead of polling', async () => {
   )
 })
 
+test('shell_exec suppresses rapid repeated identical scripts for an agent session', async () => {
+  const environment = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => 'tool-repeat-shell',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const tools = createShellSessionTools(environment)
+  const shellExec = tools.find((tool) => tool.name === 'shell_exec')
+  if (!shellExec) throw new Error('missing shell_exec tool')
+
+  const ctx = {
+    agentSessionId: 'tool-repeat-agent',
+    state: {},
+    cwd: process.cwd(),
+    toolCallId: 'call-repeat',
+    signal: new AbortController().signal,
+    emitProgress: () => {},
+  }
+
+  for (let index = 0; index < 6; index += 1) {
+    const result = await shellExec.invoke(ctx, { script: 'printf repeat' })
+    expect(result.isError).toBe(false)
+  }
+
+  const suppressed = await shellExec.invoke(ctx, { script: 'printf repeat' })
+  expect(suppressed.isError).toBe(true)
+  expect(suppressed.output[0]).toMatchObject({
+    type: 'text',
+    text: expect.stringContaining('Repeated identical shell_exec suppressed'),
+  })
+
+  const changed = await shellExec.invoke(ctx, { script: 'printf changed' })
+  expect(changed.isError).toBe(false)
+})
+
 test('shell_abort is an intentional control action, not a tool failure', async () => {
   const environment = new BashEnvironment({
     host: new LocalHost(process.cwd()),

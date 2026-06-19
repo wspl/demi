@@ -8,6 +8,17 @@ import type {
   ShellWaitInput,
 } from './environment'
 
+const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
+const REPEAT_WINDOW_MS = 60_000
+
+interface ShellExecRepeatState {
+  script: string
+  count: number
+  updatedAt: number
+}
+
+const execRepeatStates = new WeakMap<BashEnvironment, Map<string, ShellExecRepeatState>>()
+
 export function createShellSessionTools<State = unknown>(environment: BashEnvironment): AgentTool<State>[] {
   return [
     {
@@ -27,8 +38,11 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
         },
       },
       invoke: async (ctx, input) => {
+        const parsed = parseShellExecInput(input)
+        const repeatGuard = repeatedShellExecResult(environment, ctx.agentSessionId, parsed.script)
+        if (repeatGuard) return repeatGuard
         const result = await environment.exec({
-          ...parseShellExecInput(input),
+          ...parsed,
           agentSessionId: ctx.agentSessionId,
           signal: ctx.signal,
         })
@@ -155,6 +169,43 @@ function parseShellAbortInput(input: unknown): ShellAbortInput {
   const record = asRecord(input)
   if (typeof record.shellId !== 'string') throw new Error('shell_abort requires string field "shellId"')
   return { shellId: record.shellId }
+}
+
+function repeatedShellExecResult(
+  environment: BashEnvironment,
+  agentSessionId: string,
+  script: string,
+): AgentToolInvokeResult | null {
+  const now = Date.now()
+  const states = execRepeatStates.get(environment) ?? new Map<string, ShellExecRepeatState>()
+  execRepeatStates.set(environment, states)
+
+  const previous = states.get(agentSessionId)
+  const withinWindow = previous && now - previous.updatedAt <= REPEAT_WINDOW_MS
+  const count = previous && withinWindow && previous.script === script ? previous.count + 1 : 1
+  states.set(agentSessionId, { script, count, updatedAt: now })
+
+  if (count <= MAX_CONSECUTIVE_IDENTICAL_EXEC) return null
+
+  return {
+    output: [
+      {
+        type: 'text',
+        text: [
+          'Repeated identical shell_exec suppressed.',
+          `The same script has been run ${count} consecutive times in this agent session.`,
+          'Inspect the previous output, use a different command, or provide the final answer instead of repeating it.',
+        ].join('\n'),
+      },
+    ],
+    isError: true,
+    stopAfterToolResult: true,
+    metadata: {
+      kind: 'repeated_identical_shell_exec',
+      script,
+      count,
+    },
+  }
 }
 
 function asRecord(input: unknown): Record<string, unknown> {

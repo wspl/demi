@@ -8,7 +8,7 @@
 | TUI model context | `packages/tui/src/index.ts` sets `contextWindow: 200_000` for the selected model |
 | Compaction threshold | `packages/base-agent/src/session.ts` preflight threshold is `0.8 * contextWindow`, so this run should compact near 160k estimated tokens |
 | Acceptance target | Drive the TUI past context pressure at least 3 times and verify compact lets the agent continue working |
-| Result | Partially fixed. Root cause for post-compact tool unavailability was found and fixed in the Claude Code provider replay layer. Real TUI now proves a tool can run after the first compact, but the 3-cycle Haiku TUI acceptance still has not passed because the model repeatedly reissues tool calls in synthetic probe prompts. |
+| Result | Passed after fixing Claude Code provider replay names, repeated MCP request-id handling, and runaway repeated `shell_exec` control. Real TUI exceeded the 200k context pressure path repeatedly, observed 4 compact phases, and continued after compact at least 3 times. |
 
 ## Runs
 
@@ -54,7 +54,32 @@
 - Finite cycle rerun: cycle 2 triggered one compact and then continued to call shell tools instead of saying the tool was unavailable. This verifies the provider replay fix against the original failure symptom.
 - One-command rerun: cycle 2 triggered one compact and repeatedly executed the requested local command. Tool availability was fixed, but the turn did not stop before timeout.
 - Pressure/probe rerun: probe 1 triggered one compact and produced `PROBE_CYCLE_1_OK` via `shell_exec` after compact. The model then repeatedly called the probe tool; the harness aborted the turn. A second probe became confused by the abort/history interleaving and did not reach a second compact within the timeout.
-- Current real-TUI status: the original post-compact tool availability defect is fixed, but the acceptance target of 3 successful real Haiku compact continuations is still not satisfied.
+- Intermediate real-TUI status: the original post-compact tool availability defect was fixed, but the 3-cycle target was still blocked by repeated tool-call loops.
+
+### 7. Repeated MCP id and repeated command fixes
+
+- A later real TUI rerun produced only one compact. Its log showed a new `pressure2` `shell_exec` call, followed by an old `pressure1` tool block changing to error. That pointed to tool result completion matching an earlier historical block with the same tool id, leaving the current tool call pending; pending tool calls make compaction no-op by design.
+- Root cause: Claude Code MCP `tools/call` request ids are transport-level JSON-RPC ids, not durable transcript tool ids. Reusing them as `toolUseId` can collide across repeated MCP calls and corrupt `tool_use -> tool_result` pairing.
+- Fix: `ClaudeCodeProvider` now assigns a unique `mcp-control-*` transcript `toolUseId` for each MCP `tools/call`, while still responding to the original MCP request id. `Transcript.completeToolCall()` now completes only the latest pending matching tool call, so completed historical blocks are not rewritten.
+- Additional control fix: rapid identical `shell_exec` scripts are suppressed after repeated consecutive attempts in the same agent session, and the session can stop the current turn after such terminal tool results. This prevents one real model turn from looping forever on the same local command.
+- Tests: `ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession`, `Transcript completes the pending tool call when tool ids repeat`, `AgentSession can stop a turn after a terminal tool result`, and `shell_exec suppresses rapid repeated identical scripts for an agent session`.
+
+### 8. Passing real TUI acceptance
+
+- Command shape: `bun run packages/tui/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000`.
+- Pressure shape: four finite local `shell_exec` pressure turns, each asking for one Python command that writes one marker line plus 720k repeated characters, followed by a no-tool continuation check.
+- Log size: 2,887,721 bytes.
+- Process result: exit code 0.
+
+| Step | Compact delta | `shell_exec` render delta | Usage delta | Outcome |
+|---|---:|---:|---:|---|
+| pressure 1 | 0 | 2 | 1 | Completed without compact; seeded context pressure. |
+| pressure 2 | 1 | 2 | 1 | Compact ran before the turn; shell tool executed after compact; completion reply observed. |
+| pressure 3 | 1 | 2 | 1 | Second compact; shell tool executed after compact; completion reply observed. |
+| pressure 4 | 1 | 2 | 1 | Third compact; shell tool executed after compact; completion reply observed. |
+| continuation 5 | 1 | 0 | 1 | Fourth compact; no-tool continuation reply observed. |
+
+Final counters: `compacting=4`, `shellExec=8`, `usage=5`, `suppressed=0`, `toolUnavailable=0`, `idle=6`.
 
 ## Code Observations
 
@@ -62,20 +87,19 @@
 - `executePreflightCompaction()` runs before provider calls when local `Transcript.estimateContextTokens()` crosses the threshold.
 - `generateCompactionSummary()` intentionally sends summary requests with `tools: []`.
 - Claude Code provider strips MCP tool names such as `mcp__main__shell_exec` to `shell_exec` when recording tool calls. Provider replay must restore MCP names when writing historical `tool_use` blocks back to Claude Code.
+- MCP request ids are not transcript tool ids. Provider-generated transcript tool ids must stay unique even when Claude Code reuses JSON-RPC ids.
 - Existing deterministic tests cover runtime compact invariants and provider tool roundtrips, but they do not prove this real path: compacted replay containing prior shell tool history, followed by a new real Claude Code turn that must use tools again.
 
 ## Current Conclusion
 
-- This gated acceptance is not fully passed.
+- This gated acceptance is passed for `claude-haiku-4-5` with the TUI 200k context configuration.
 - We have verified the correct model path (`claude-haiku-4-5`) and 200k TUI context selection.
-- We have verified that real TUI can enter `status: compacting` after large raw tool history.
+- We have verified that real TUI can enter `status: compacting` after large tool history at least 4 times in one session.
 - We have fixed and verified the provider replay defect that made the real model believe shell tools were unavailable after compact.
-- We have verified one real post-compact shell tool execution after the fix.
-- We have not verified 3 successful post-compact continuations; current real Haiku runs are blocked by repeated tool-call loops and abort/history interleaving in the synthetic harness.
+- We have fixed and verified repeated MCP request-id handling so post-compact tool results complete the current pending tool call rather than mutating historical tool blocks.
+- We have verified at least 3 successful post-compact continuations with real shell tool execution, followed by one no-tool continuation after another compact.
 
 ## Follow-up Checks
 
-- Add event-level instrumentation or a gated test that records post-compact provider request shape, especially `request.tools`, replayed `tool_use` names, and summary text.
-- Verify whether summary requests with `tools: []` cause summary text that implies tools are unavailable, and adjust the summary contract if needed.
-- Add TUI-visible compact evidence, or a structured gated harness, so acceptance can distinguish compact phase from actual boundary/marker insertion.
-- Build a stable real TUI compact harness that can stop repeated tool-call loops without polluting the next prompt with abort/history confusion.
+- Convert the manual harness into a gated automated TUI compact e2e when cost and runtime are acceptable.
+- Add TUI-visible compact evidence if users need to inspect boundary/marker insertion directly rather than inferring it from `status: compacting`.

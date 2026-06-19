@@ -83,7 +83,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (mapped.controlRequest) {
           const handled = await this.handleControlRequest(active, mapped.controlRequest, request)
           if (handled === 'tool-call') {
-            const event = controlRequestToToolCall(mapped.controlRequest)
+            const event = active.pendingControlRequest ? controlRequestToToolCall(active.pendingControlRequest) : null
             keepActiveForContinuation = true
             if (event) {
               yield event
@@ -193,7 +193,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         await this.writeControlError(active, request, 'Invalid tools/call request')
         return 'handled'
       }
-      active.pendingControlRequest = request
+      active.pendingControlRequest = { ...request, toolUseId: `mcp-control-${randomUUID()}` }
       return 'tool-call'
     }
 
@@ -203,8 +203,9 @@ export class ClaudeCodeProvider implements AgentProvider {
 
   private async writeToolResults(request: InferenceRequest, controlRequest: ClaudeControlRequest): Promise<void> {
     if (!this.active) throw new Error('No active Claude transport')
+    const expectedToolUseId = controlRequest.toolUseId ?? String(controlRequest.id)
     const results = request.items.filter((item): item is Extract<InferenceItem, { type: 'tool_result' }> => {
-      return item.type === 'tool_result' && item.toolUseId === String(controlRequest.id)
+      return item.type === 'tool_result' && item.toolUseId === expectedToolUseId
     })
     if (results.length === 0) {
       throw new Error(`Claude Code provider missing tool_result for control_request ${String(controlRequest.id)}`)

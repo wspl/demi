@@ -412,6 +412,45 @@ test('AgentSession continues when a provider pauses after a tool call without a 
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
+test('AgentSession can stop a turn after a terminal tool result', async () => {
+  const provider = new StubProvider([
+    [events.toolCall('tool-1', 'terminal_tool', { value: 'stop' }), events.response()],
+    () => {
+      throw new Error('provider should not be called after terminal tool result')
+    },
+  ])
+  const definition = createDefinition({
+    tools: (ctx) => [
+      {
+        name: 'terminal_tool',
+        description: 'Stops the current turn.',
+        inputSchema: { type: 'object' },
+        invoke: () => {
+          ctx.state.toolCalls += 1
+          return {
+            output: [{ type: 'text', text: 'stop here' }],
+            isError: true,
+            stopAfterToolResult: true,
+          }
+        },
+      },
+    ],
+  })
+  const session = createSession(provider, definition)
+
+  await session.send(text('use terminal tool'))
+
+  expect(session.state().toolCalls).toBe(1)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'tool_call', 'response'])
+  const toolBlock = session.transcript().blocks.find((block) => block.type === 'tool_call')
+  expect(toolBlock).toMatchObject({
+    type: 'tool_call',
+    status: 'error',
+    output: [{ type: 'text', text: 'stop here' }],
+  })
+  expect(session.phase()).toBe('idle')
+})
+
 test('AgentSession records thrown tool invocations as error tool results and continues', async () => {
   const provider = new StubProvider([
     [events.toolCall('tool-1', 'failing_tool', { value: 'hello' }), events.response()],

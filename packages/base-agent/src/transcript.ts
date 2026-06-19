@@ -144,10 +144,8 @@ export class Transcript implements CoreTranscript {
     isError = false,
     metadata: unknown | null = null,
   ): Block | null {
-    const block = this.blocks.find((candidate) => {
-      return candidate.type === 'tool_call' && candidate.toolUseId === toolUseId
-    })
-    if (block?.type !== 'tool_call') return null
+    const block = findPendingToolCall(this.blocks, toolUseId)
+    if (!block) return null
 
     block.status = isError ? 'error' : 'completed'
     block.output = output
@@ -376,6 +374,14 @@ export class Transcript implements CoreTranscript {
     this.blocks.push(block)
     return block
   }
+}
+
+function findPendingToolCall(blocks: Block[], toolUseId: string): Extract<Block, { type: 'tool_call' }> | null {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index]
+    if (block.type === 'tool_call' && block.status === 'executing' && block.toolUseId === toolUseId) return block
+  }
+  return null
 }
 
 function defaultIdFactory(): string {

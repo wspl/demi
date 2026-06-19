@@ -95,6 +95,23 @@ test('Transcript completes pending tool calls and emits exact tool inference ite
   ])
 })
 
+test('Transcript completes the pending tool call when tool ids repeat', () => {
+  const transcript = makeTranscript()
+
+  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'shell_exec', { script: 'printf first' }))
+  transcript.completeToolCall('tool-1', [{ type: 'text', text: 'first' }])
+  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'shell_exec', { script: 'printf second' }))
+
+  const completed = transcript.completeToolCall('tool-1', [{ type: 'text', text: 'second' }])
+
+  expect(completed).toMatchObject({ type: 'tool_call', status: 'completed', output: [{ type: 'text', text: 'second' }] })
+  const toolBlocks = transcript.blocks.filter((block) => block.type === 'tool_call')
+  expect(toolBlocks).toHaveLength(2)
+  expect(toolBlocks[0]).toMatchObject({ type: 'tool_call', status: 'completed', output: [{ type: 'text', text: 'first' }] })
+  expect(toolBlocks[1]).toMatchObject({ type: 'tool_call', status: 'completed', output: [{ type: 'text', text: 'second' }] })
+  expect(transcript.pendingToolCalls()).toHaveLength(0)
+})
+
 test('Transcript replays thinking signatures and redacted thinking in provider order', () => {
   const transcript = makeTranscript()
 

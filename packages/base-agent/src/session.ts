@@ -353,7 +353,7 @@ export class AgentSession<State> {
       const shouldAutoRecover = await this.streamProviderOnce()
       throwIfAborted(this.currentSignal())
 
-      const executedTools = await this.executePendingTools()
+      const toolExecution = await this.executePendingTools()
       if (shouldAutoRecover) {
         const previousPhase = this.currentPhase
         this.setPhase('compacting')
@@ -365,7 +365,8 @@ export class AgentSession<State> {
           continue
         }
       }
-      if (!executedTools) return
+      if (toolExecution.stopAfterToolResult) return
+      if (!toolExecution.executed) return
     }
   }
 
@@ -384,12 +385,13 @@ export class AgentSession<State> {
     return shouldAutoRecover
   }
 
-  private async executePendingTools(): Promise<boolean> {
+  private async executePendingTools(): Promise<{ executed: boolean; stopAfterToolResult: boolean }> {
     const pending = this.transcriptLog.pendingToolCalls()
-    if (pending.length === 0) return false
+    if (pending.length === 0) return { executed: false, stopAfterToolResult: false }
 
     const tools = this.currentTools()
     const toolsByName = new Map(tools.map((tool) => [tool.name, tool]))
+    let stopAfterToolResult = false
 
     for (const toolCall of pending) {
       throwIfAborted(this.currentSignal())
@@ -423,9 +425,10 @@ export class AgentSession<State> {
         result,
       })
       await this.commitTranscript()
+      stopAfterToolResult ||= result.stopAfterToolResult === true
     }
 
-    return true
+    return { executed: true, stopAfterToolResult }
   }
 
   private async invokeTool(

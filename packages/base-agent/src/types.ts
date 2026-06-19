@@ -62,6 +62,7 @@ export interface AgentToolInvokeResult {
   isError?: boolean
   metadata?: unknown | null
   continuation?: ToolContinuation
+  stopAfterToolResult?: boolean
 }
 
 export interface ToolContinuation {

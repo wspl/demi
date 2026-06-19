@@ -12,6 +12,7 @@ export interface ClaudeControlRequest {
   outerRequestId?: string
   serverName?: string
   id: string | number
+  toolUseId?: string
   method: string
   params?: unknown
 }
@@ -62,7 +63,7 @@ export function controlRequestToToolCall(request: ClaudeControlRequest): Provide
   if (!name) return null
   return {
     type: 'tool_call_requested',
-    toolUseId: String(request.id),
+    toolUseId: request.toolUseId ?? String(request.id),
     toolName: stripMcpToolPrefix(name),
     input: request.params.arguments ?? request.params.input ?? {},
   }
