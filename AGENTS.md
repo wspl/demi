@@ -2,6 +2,7 @@
 - Work toward final-state designs; avoid framing architecture decisions as MVP stages.
 - Do not preserve historical baggage or compatibility paths when they conflict with the intended final design.
 - Prefer direct final-state changes over transitional layers; remove obsolete code instead of keeping shims.
+- Prefer protocol, API, or file-state integrations over spawning external CLIs; keep external processes limited to intentional provider transports.
 
 ## Design Records
 
