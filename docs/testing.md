@@ -227,31 +227,31 @@ Owner：`packages/base-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| 手动 compact 插入 boundary 和 marker |  |  | `session.test.ts` | 防止 compact 完成后 transcript 无法标识历史摘要边界。 |
-| compact 不删除旧 blocks |  |  | `session.test.ts` | 防止 compact 破坏审计历史，影响 UI 查看完整 transcript。 |
-| replay 从 latest compaction boundary 开始 |  |  | `transcript.test.ts` | 防止 compact 后仍把旧长历史发给 provider，失去压缩意义。 |
-| boundary summary 转成下一次 inference user message |  |  | `transcript.test.ts` | 防止模型看不到摘要，只收到被截断的 recent context。 |
-| usage 接近 context limit 时自动 compact + resume |  |  | `session.test.ts` | 防止长会话到上下文边界后直接失败，而不是自动恢复。 |
-| compaction summary provider 卡住时 abort 可收敛 |  |  | `session.test.ts` | 防止 compact 阶段卡死导致用户无法停止 session。 |
-| preflight compact 在新 provider request 前发生 |  |  | `compaction.test.ts` | 防止新用户消息已经把上下文推过上限后才请求模型，导致真实 provider 直接 context overflow。 |
-| compaction summary request 的模型、thinking、cwd、tools 与契约一致 |  |  | `compaction.test.ts` | 防止 summary 用错模型/思考等级、错误 cwd，或把普通工具暴露给总结请求。 |
-| cut point 不能切断 `tool_use -> tool_result` |  |  | `compaction.test.ts` | 需要防止模型看到孤立 tool_use 或孤立 tool_result，引发 provider 协议错误。 |
-| 单个超长 turn 的 split-turn cut point |  |  | `compaction.test.ts`、`transcript.test.ts` | 防止整轮超过 recent budget 时无法 compact，或把同一 turn 的早期上下文直接丢掉。 |
-| compact 后下一次 provider request 精确等于 summary + recent context |  |  | `compaction.test.ts` | 需要发现 summary、recent blocks、preamble 或 tool history 被漏放、重复放、乱序放。 |
-| pre-turn compact request shape：incoming user 恰好出现一次，control-only item 不进 summary |  |  | `compaction.test.ts` | 防止当前用户消息被重复注入，或模型切换、cwd/config diff、resume control block 等运行时控制信息污染 summary。 |
-| mid-turn compact / auto-recover continuation request shape |  |  | `compaction.test.ts` | 防止工具执行后自动 compact 时丢失 continuation 上下文，或把已完成工具重新放成 pending。 |
-| 多次 compact 只 replay latest boundary，不重复旧 summary |  |  | `compaction.test.ts` | 需要规避摘要套摘要无限膨胀，或旧历史重新进入上下文。 |
-| summary provider error/abort 不留下半截 boundary/marker |  |  | `compaction.test.ts`、`session.test.ts` | 需要防止 compact 失败后 transcript 处于既不像旧状态也不像新状态的中间态。 |
-| empty summary 不插入 boundary/marker，且 session 可继续 |  |  | `compaction.test.ts` | 防止空摘要把旧历史替换成无信息 boundary，后续模型失去任务上下文。 |
-| 没有可压缩历史时 manual compact 明确 no-op 或可解释失败 |  |  | `compaction.test.ts` | 防止用户触发 compact 后 session 状态变化但没有任何有效 summary，或 UI/RPC 收不到可解释结果。 |
-| auto compact + resume 不重复执行已完成 tool call |  |  | `compaction.test.ts` | 需要防止上下文压缩后把已完成工具当成待执行工具再次运行。 |
-| aborted text、completed tool result 在 compact summary 输入中保留 |  |  | `compaction.test.ts` | 防止长任务中被用户停止过的有用进展或已完成工具证据在压缩后消失。 |
-| compact 期间 queued send 能按序 drain |  |  | `compaction.test.ts` | 防止长 summary 期间用户继续输入后消息丢失、乱序，或 compact 完成后没有继续处理。 |
-| compact/preflight 期间 abort、retry、resume 的 action 收敛 |  |  | `session.test.ts`、`compaction.test.ts` | 防止停止、重试或继续操作与 summary 写入交错，留下 busy phase、重复 action 或半截 transcript。 |
-| compact 过程遇到 context-window 错误与普通 provider 错误分流 |  |  | `compaction.test.ts`、`context-cache.test.ts` | 防止可通过裁剪/重试恢复的超限错误被当成普通失败，或普通 provider 错误无限重试。 |
-| compact 后持久化再恢复，replayable blocks 保持一致 |  |  | `compaction.test.ts`、`context-cache.test.ts` | 需要发现 boundary/marker 在 snapshot 中丢失或恢复后 replay 起点错误。 |
-| thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 |  |  | `compaction.test.ts`、`context-cache.test.ts` | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
-| thinking 模型下 summary request 的 token/budget 设置有效 |  |  | `compaction.test.ts` | 防止 summary 请求因为 thinking budget 与 max output token 冲突而失败，导致长任务无法 compact。 |
+| 手动 compact 插入 boundary 和 marker | 有效 | `session.test.ts` 手动 compact 后精确断言 block 序列包含 `compaction_boundary` 和 `compaction_marker`，并检查 collectInferenceItems 的 summary user message；能发现 compact 成功但没有边界标记。验证：5.6 targeted command，55 pass。 | `session.test.ts` | 防止 compact 完成后 transcript 无法标识历史摘要边界。 |
+| compact 不删除旧 blocks | 有效 | 同一测试断言 compact 后 transcript 仍保留旧 user/text/response，再追加 boundary/recent user/marker；能发现 compact 破坏审计历史。验证同上。 | `session.test.ts` | 防止 compact 破坏审计历史，影响 UI 查看完整 transcript。 |
+| replay 从 latest compaction boundary 开始 | 有效 | `transcript.test.ts` 断言 `replayableBlocks()` 从 boundary 开始，`compaction.test.ts` 的多次 compact 测试断言只 replay 第二个 boundary summary 且不包含 first summary；能发现旧历史继续进上下文。验证同上。 | `transcript.test.ts`、`compaction.test.ts` | 防止 compact 后仍把旧长历史发给 provider，失去压缩意义。 |
+| boundary summary 转成下一次 inference user message | 有效 | `transcript.test.ts` 断言 boundary summary 转成 `Previous conversation summary:\n...` 的 user_message；session/compaction 的 post-compact provider request 也精确断言同一结构。验证同上。 | `transcript.test.ts`、`session.test.ts`、`compaction.test.ts` | 防止模型看不到摘要，只收到被截断的 recent context。 |
+| usage 接近 context limit 时自动 compact + resume | 有效 | `session.test.ts` 用小 contextWindow 和高 inputTokens 触发 auto compact，断言 transcript 为 user/text/response/boundary/marker/resume/text/response，且 continuation request 为 summary + resume；能发现到上限后未自动恢复。验证同上。 | `session.test.ts` | 防止长会话到上下文边界后直接失败，而不是自动恢复。 |
+| compaction summary provider 卡住时 abort 可收敛 | 有效 | `session.test.ts` 让 summary provider 永不 yield，compact 期间 abort 后断言 provider cancel signal 收到、phase idle、transcript 追加 abort，compact Promise 在 timeout 内收敛。验证同上。 | `session.test.ts` | 防止 compact 阶段卡死导致用户无法停止 session。 |
+| preflight compact 在新 provider request 前发生 | 有效 | `compaction.test.ts` 设置 preflight threshold，provider 第一轮必须是 summary request，第二轮才是普通 model request；同时断言 incoming user 只在第二轮出现一次。验证同上。 | `compaction.test.ts` | 防止新用户消息已经把上下文推过上限后才请求模型，导致真实 provider 直接 context overflow。 |
+| compaction summary request 的模型、thinking、cwd、tools 与契约一致 | 有效 | preflight 测试在 summary provider request 内断言 modelId、cwd、thinking、tools=[]、summary system prompt；能发现 summary 请求使用普通工具或丢 thinking 配置。验证同上。 | `compaction.test.ts` | 防止 summary 用错模型/思考等级、错误 cwd，或把普通工具暴露给总结请求。 |
+| cut point 不能切断 `tool_use -> tool_result` | 有效 | `compaction.test.ts` 在 completed tool history 和 single oversized turn 中断言 summary request items 为 user/tool_use/tool_result，并调用 `assertNoOrphanToolItems()`；pending tool 时 compact no-op。验证同上。 | `compaction.test.ts` | 需要防止模型看到孤立 tool_use 或孤立 tool_result，引发 provider 协议错误。 |
+| 单个超长 turn 的 split-turn cut point | 有效 | `compaction.test.ts` 构造单 turn 内 user/tool_use/tool_result/recent assistant text，断言 compact 摘要早期 tool history 且 recent assistant text 留在 replay；`transcript.test.ts` 覆盖 cut point 计算。验证同上。 | `compaction.test.ts`、`transcript.test.ts` | 防止整轮超过 recent budget 时无法 compact，或把同一 turn 的早期上下文直接丢掉。 |
+| compact 后下一次 provider request 精确等于 summary + recent context | 有效 | preflight、queued send、auto compact、snapshot restore 等测试都精确断言 post-compact `request.items` 为 summary user message 加 recent/resume/current user，含 preamble 时也断言顺序。验证同上。 | `compaction.test.ts` | 需要发现 summary、recent blocks、preamble 或 tool history 被漏放、重复放、乱序放。 |
+| pre-turn compact request shape：incoming user 恰好出现一次，control-only item 不进 summary | 有效 | preflight 测试统计 incoming user 只在普通 request 出现一次，summary request 只包含旧 user/assistant；aborted text summary 测试证明 abort control block 不进入 summary items。验证同上。 | `compaction.test.ts` | 防止当前用户消息被重复注入，或模型切换、cwd/config diff、resume control block 等运行时控制信息污染 summary。 |
+| mid-turn compact / auto-recover continuation request shape | 有效 | auto compact after tool result 测试断言 summary request 包含 user/tool_use/tool_result，continuation request 精确等于 summary + resume，并断言 toolCalls 仍为 1、pending tool 清零。验证同上。 | `compaction.test.ts` | 防止工具执行后自动 compact 时丢失 continuation 上下文，或把已完成工具重新放成 pending。 |
+| 多次 compact 只 replay latest boundary，不重复旧 summary | 有效 | `multiple compactions` 直接构造两次 boundary/marker 后断言 collectInferenceItems 只包含 second summary 和之后上下文，且 JSON 不含 first summary；manual compact after boundary 也断言旧 question 不再出现。验证同上。 | `compaction.test.ts` | 需要规避摘要套摘要无限膨胀，或旧历史重新进入上下文。 |
+| summary provider error/abort 不留下半截 boundary/marker | 部分有效 | `compaction.test.ts` 对 summary provider error 和 context overflow error 断言 transcript snapshot 完全等于 before 且无 boundary/marker；`session.test.ts` 证明 summary 卡住时 abort 可收敛，但未直接断言 abort 后无 boundary/marker。验证同上。 | `compaction.test.ts`、`session.test.ts` | 需要防止 compact 失败后 transcript 处于既不像旧状态也不像新状态的中间态。 |
+| empty summary 不插入 boundary/marker，且 session 可继续 | 有效 | 测试 summary provider 只返回 response 无 text，compact 后断言无 boundary/marker，再 send follow-up 并看到正常回答；能发现空摘要破坏上下文。验证同上。 | `compaction.test.ts` | 防止空摘要把旧历史替换成无信息 boundary，后续模型失去任务上下文。 |
+| 没有可压缩历史时 manual compact 明确 no-op 或可解释失败 | 有效 | 测试空 transcript manual compact 不调用 provider、phase idle、blocks 仍为空；pending tool 时 compact 也 no-op 并保留 pending tool。验证同上。 | `compaction.test.ts` | 防止用户触发 compact 后 session 状态变化但没有任何有效 summary，或 UI/RPC 收不到可解释结果。 |
+| auto compact + resume 不重复执行已完成 tool call | 有效 | auto compact after tool result 测试用计数工具断言 toolCalls 只增加一次，provider requests 为 tool call、summary、continuation 三轮，pending tools 清空；能发现 compact 后重复执行工具。验证同上。 | `compaction.test.ts` | 需要防止上下文压缩后把已完成工具当成待执行工具再次运行。 |
+| aborted text、completed tool result 在 compact summary 输入中保留 | 有效 | `compaction summary input keeps aborted text progress` 断言 abort 前 assistant text 进入 summary request；completed tool 测试断言 user/tool_use/tool_result 成对进入 summary request。验证同上。 | `compaction.test.ts` | 防止长任务中被用户停止过的有用进展或已完成工具证据在压缩后消失。 |
+| compact 期间 queued send 能按序 drain | 有效 | `CompactGateProvider` 阻塞 summary 时发送 queued question，断言 phase compacting、queue 出现，summary release 后第二个 provider request 精确包含 summary/recent/queued user，queue 清空、phase idle。验证同上。 | `compaction.test.ts` | 防止长 summary 期间用户继续输入后消息丢失、乱序，或 compact 完成后没有继续处理。 |
+| compact/preflight 期间 abort、retry、resume 的 action 收敛 | 部分有效 | 测试覆盖 manual compact summary 卡住时 abort 收敛，以及 compact 期间 queued retry/resume 在 summary commit 后运行；但没有直接覆盖 preflight summary 卡住时 abort 或所有 action 交错组合。验证同上。 | `session.test.ts`、`compaction.test.ts` | 防止停止、重试或继续操作与 summary 写入交错，留下 busy phase、重复 action 或半截 transcript。 |
+| compact 过程遇到 context-window 错误与普通 provider 错误分流 | 部分有效 | `compaction.test.ts` 覆盖 summary context overflow code 保留且 transcript atomic，普通 summary error 也 atomic；`context-cache.test.ts` 覆盖 provider context overflow 明确写 error 并可继续发送。未验证自动裁剪/重试策略或普通错误避免无限重试。验证同上。 | `compaction.test.ts`、`context-cache.test.ts` | 防止可通过裁剪/重试恢复的超限错误被当成普通失败，或普通 provider 错误无限重试。 |
+| compact 后持久化再恢复，replayable blocks 保持一致 | 有效 | `compaction boundary and marker survive snapshot reconstruction` 断言 store snapshot 中有 boundary/marker，恢复 Transcript 后下一次 request 精确等于 summary + recent + new user；context-cache 也断言 snapshot reconstruction 后 collectInferenceItems 等价。验证同上。 | `compaction.test.ts`、`context-cache.test.ts` | 需要发现 boundary/marker 在 snapshot 中丢失或恢复后 replay 起点错误。 |
+| thinking/redacted thinking/extension state/tool metadata 混合 transcript 下 cut point 正确 | 有效 | mixed transcript 测试把 thinking、signature、redacted thinking、tool metadata、extension state、recent text 放在一起，断言 summary request 保留 thinking/tool pair、排除 extension state，compact 后 recent text 留在 replay。验证同上。 | `compaction.test.ts`、`context-cache.test.ts` | 需要防止非文本 block 或扩展状态让 compact 切点算法误判。 |
+| thinking 模型下 summary request 的 token/budget 设置有效 | 部分有效 | preflight 测试断言 thinking 模型的 summary request 携带 `{ type: 'effort', effort: 'medium' }`；但当前 request 类型没有 max output/budget 字段，也没有真实 provider 下 thinking budget 与输出 token 冲突的验证。验证同上。 | `compaction.test.ts` | 防止 summary 请求因为 thinking budget 与 max output token 冲突而失败，导致长任务无法 compact。 |
 
 ### 5.7 模型可见上下文与 Context Cache
 
