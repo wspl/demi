@@ -1,4 +1,5 @@
 - Keep `AGENTS.md` limited to project-specific rules explicitly set by the user.
+- Work toward final-state designs; avoid framing architecture decisions as MVP stages.
 
 ## Design Records
 
