@@ -451,13 +451,13 @@ Owner：`packages/just-bash`
 | demi 依赖的 parser protection | 有效 | `bun run test:just-bash-core` 跑 `parser-protection.test.ts`，覆盖超长输入、深嵌套、超多 token、病理 brace/redirection/quote pattern 和执行期 expansion limit；93 个 just-bash core 测试整体通过。 | `bun run test:just-bash-core` | 防止 parser 在安全边界或保护逻辑上退化。 |
 | parser edge cases | 有效 | 同一脚本跑 `parser-edge-cases.test.ts`，大量断言 quoting、escape、变量展开、空白、redirection、operator precedence、组合命令的 stdout/exit 行为；能发现 agent 常见脚本语法解析退化。验证同上。 | `bun run test:just-bash-core` | 防止 agent 常见脚本语法在升级 just-bash 后突然解析错误。 |
 | parse errors | 有效 | 同一脚本跑 `parse-errors.test.ts`，覆盖 if/for/while/until/function/local/command error，并对未闭合 quote、缺 redirect target、前置 pipe、尾随 pipe、尾随 `&&`、尾随 `||` 精确断言 exit 2 和 syntax stderr；尾随 operator 断言先在旧实现上失败，修复 parser 后通过。验证同上。 | `bun run test:just-bash-core` | 防止非法语法被误解析并执行。 |
-| upstream bash/awk/sed/grep/jq 等 spec/comparison 测试 | Gated | 子模块存在 spec-tests 和 comparison-tests，并有 `pnpm test:run`、`pnpm test:comparison` 等入口；主仓库默认脚本只跑三个 syntax 文件，本次未跑完整上游套件。 | 存在于子模块，不属于主仓库默认入口 | 用来发现主仓库关键路径以外的命令兼容性回归。 |
+| upstream bash/awk/sed/grep/jq 等 spec/comparison 测试 | 部分有效 / Gated | 子模块 comparison 套件已单独验证通过：默认 `node` wrapper 在该子目录会挂起，改用 Node 22 运行 `/Users/plutonist/.nvm/versions/node/v22.14.0/bin/node node_modules/.bin/vitest run --config vitest.comparison.config.ts`，33 files / 538 tests passed。完整 `test:run` 对应命令已尝试，出现大量现存 failures/timeouts（security/js-exec/python/sqlite/browser bundle、部分 bash spec、help/tar bundle 等），运行 2 分多后停止；不能作为当前主仓库 green gate。 | comparison 可作为已记录 gated evidence；完整 upstream `test:run` 仍需单独 triage，不进入默认入口 | comparison 能发现主仓库关键路径以外的命令兼容性回归；完整 upstream 失败记录防止误以为子模块全量套件已经可靠通过。 |
 
 ## 6. 当前剩余优先补测顺序
 
 1. 继续补 `5.17 TUI` 自动化：真实 TTY 会话模式、scroll/backpressure；真实 Claude 端到端会话放入 gated smoke。
 2. 继续运行并记录剩余真实 provider/TUI gated smoke：模糊任务下 shell wait/input/abort 策略、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
-3. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
+3. 如需扩大 bash 兼容范围，先 triage `5.18` just-bash 完整 `test:run` 的现存 failures/timeouts；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则
 
