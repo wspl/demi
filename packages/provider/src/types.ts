@@ -1,5 +1,6 @@
 import type {
   ThinkingConfig,
+  ThinkingEffort,
   TokenUsage,
   ToolResultContentBlock,
   UserContentBlock,
@@ -100,10 +101,49 @@ export type ProviderRuntimeState =
   | { status: 'unavailable'; message: string }
   | { status: 'error'; message: string }
 
+// Provider model catalog.
+
+export interface ProviderModelCost {
+  input: number | null
+  output: number | null
+  cacheRead: number | null
+  cacheWrite: number | null
+}
+
+export type ProviderModelSource = 'codex-backend' | 'models.dev' | 'cache'
+
+export interface ProviderModel {
+  providerId: string
+  id: string
+  displayName: string
+  description?: string
+  contextWindow: number | null
+  outputLimit: number | null
+  supportsTools: boolean | null
+  supportsAttachments: boolean | null
+  supportsReasoning: boolean | null
+  supportedThinkingEfforts: ThinkingEffort[] | null
+  defaultThinkingEffort: ThinkingEffort | null
+  cost?: ProviderModelCost
+  source: ProviderModelSource
+  sourceFetchedAt: string
+  stale: boolean
+}
+
+export interface ProviderModelList {
+  providerId: string
+  models: ProviderModel[]
+  defaultModelId: string | null
+  warnings: string[]
+  sourceFetchedAt: string
+  stale: boolean
+}
+
 export interface ProviderDefinition<Config = unknown> {
   type: string
   displayName: string
   auth?: ProviderAuth
   state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
+  listModels?(config: Config): Promise<ProviderModelList> | ProviderModelList
   createProvider(config: Config): Promise<AgentProvider> | AgentProvider
 }

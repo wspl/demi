@@ -65,4 +65,4 @@ No product bug was found in this run. It confirms the real TUI path can display 
 
 - Existing `packages/provider-claude-code/src/__tests__/jsonl-output.test.ts` covers Claude thinking/text/tool/usage event mapping.
 - Existing `packages/tui/src/__tests__/renderer.test.ts` covers renderer delta de-duplication for thinking/text/tool/usage.
-- Existing `packages/tui/src/__tests__/real-tui.e2e.test.ts` keeps an opt-in gated smoke for repeated real TUI opus/medium runs.
+- Existing `packages/tui/src/__tests__/real-tui.e2e.test.ts` keeps an opt-in gated smoke for repeated real TUI `claude-opus-4-8` / medium runs.

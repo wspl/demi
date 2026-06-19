@@ -3,6 +3,7 @@ import type { ToolResultContentBlock } from '@demi/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderDefinition, ProviderEvent } from '@demi/provider'
 import { claudeAuthState, claudeRuntimeState } from './cli'
 import { controlResponse, inferenceItemToClaudeMessage, requestToInputMessages, toolResultsToClaudeMessage } from './jsonl'
+import { listClaudeCodeModels } from './models'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
 import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
 
@@ -318,6 +319,10 @@ export function createClaudeCodeProviderDefinition(): ProviderDefinition<unknown
     displayName: 'Claude Code',
     auth: { status: claudeAuthState },
     state: claudeRuntimeState,
+    listModels: (config) => {
+      parseClaudeCodeProviderConfig(config)
+      return listClaudeCodeModels()
+    },
     createProvider: (config) => new ClaudeCodeProvider(parseClaudeCodeProviderConfig(config)),
   }
 }

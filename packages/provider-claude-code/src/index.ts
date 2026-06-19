@@ -1,5 +1,6 @@
 export * from './cli'
 export * from './jsonl'
+export * from './models'
 export * from './output'
 export * from './provider'
 export * from './transport'

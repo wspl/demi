@@ -6,6 +6,7 @@ import {
   type CodexAuthStore,
   type CodexResolvedAuth,
 } from './auth'
+import { listCodexModels } from './models'
 import { buildCodexResponsesRequestBody, mapCodexResponseEvents } from './responses'
 import {
   CodexHttpError,
@@ -27,6 +28,7 @@ export interface CodexProviderConfig {
   headerTimeoutMs?: number
   websocketConnectTimeoutMs?: number
   streamIdleTimeoutMs?: number
+  clientVersion?: string
 }
 
 export interface CodexProviderOptions extends CodexProviderConfig {
@@ -42,8 +44,8 @@ const DEFAULT_SSE_HEADER_TIMEOUT_MS = 20_000
 const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 10_000
 
 export class CodexProvider implements AgentProvider {
-  private readonly config: Required<Omit<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers'>> &
-    Pick<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers'>
+  private readonly config: Required<Omit<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers' | 'clientVersion'>> &
+    Pick<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers' | 'clientVersion'>
   private readonly authStore: CodexAuthStore
   private readonly transport: CodexResponsesTransport
 
@@ -59,6 +61,7 @@ export class CodexProvider implements AgentProvider {
       headerTimeoutMs: options.headerTimeoutMs ?? DEFAULT_SSE_HEADER_TIMEOUT_MS,
       websocketConnectTimeoutMs: options.websocketConnectTimeoutMs ?? DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS,
       streamIdleTimeoutMs: options.streamIdleTimeoutMs ?? 0,
+      clientVersion: options.clientVersion,
     }
     this.authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
     this.transport = options.transportImpl ?? createCodexTransport(this.config.transport)
@@ -113,6 +116,7 @@ export function createCodexProviderDefinition(): ProviderDefinition<unknown> {
     displayName: 'Codex',
     auth: { status: () => new FileCodexAuthStore().status() },
     state: () => ({ status: 'ready', message: 'Uses official Codex auth storage' }),
+    listModels: (config) => listCodexModels(parseCodexProviderConfig(config)),
     createProvider: (config) => new CodexProvider(parseCodexProviderConfig(config)),
   }
 }
@@ -139,6 +143,7 @@ export function parseCodexProviderConfig(config: unknown): CodexProviderConfig {
     parsed.websocketConnectTimeoutMs = expectNumber(config.websocketConnectTimeoutMs, 'websocketConnectTimeoutMs')
   }
   if (config.streamIdleTimeoutMs !== undefined) parsed.streamIdleTimeoutMs = expectNumber(config.streamIdleTimeoutMs, 'streamIdleTimeoutMs')
+  if (config.clientVersion !== undefined) parsed.clientVersion = expectString(config.clientVersion, 'clientVersion')
   return parsed
 }
 

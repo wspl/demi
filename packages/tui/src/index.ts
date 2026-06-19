@@ -2,9 +2,19 @@ import { mkdir } from 'node:fs/promises'
 import process from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import { resolve } from 'node:path'
-import type { Block, ModelSelection, SessionPhase, ThinkingEffort, TokenUsage, UserContentBlock } from '@demi/core'
+import type {
+  Block,
+  FileExtension,
+  ModelSelection,
+  SessionPhase,
+  ThinkingCapability,
+  ThinkingEffort,
+  ThinkingSummary,
+  TokenUsage,
+  UserContentBlock,
+} from '@demi/core'
 import { createCodingAgentHarness } from '@demi/coding-agent'
-import { ProviderRegistry } from '@demi/provider'
+import { ProviderRegistry, type ProviderModel, type ProviderModelList } from '@demi/provider'
 import { claudeAuthState, claudeRuntimeState, createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
 import { FileCodexAuthStore, createCodexProviderDefinition, type CodexTransportMode } from '@demi/provider-codex'
 import {
@@ -15,11 +25,10 @@ import {
 } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
 
-interface TuiOptions {
+export interface TuiOptions {
   provider: 'claude-code' | 'codex'
   cwd: string
-  modelId: string
-  modelLabel: string
+  modelId: string | null
   thinkingEffort: ThinkingEffort | null
   maxBudgetUsd: string | null
   claudePath?: string
@@ -93,15 +102,17 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
   await mkdir(options.cwd, { recursive: true })
 
-  printBanner(options)
-  await printProviderStatus(options)
-
   const host = new LocalHost(options.cwd)
   const harness = createCodingAgentHarness({ host })
 
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register(createClaudeCodeProviderDefinition())
   providerRegistry.register(createCodexProviderDefinition())
+  const providerConfigData = providerConfigForOptions(options)
+  const model = await resolveTuiModel(providerRegistry, options, providerConfigData)
+
+  printBanner(options, model)
+  await printProviderStatus(options)
 
   const server = new AgentServer({
     agent: harness,
@@ -118,8 +129,8 @@ async function main(): Promise<void> {
 
   const providerConfig: ProviderConfig = {
     type: options.provider,
-    config: providerConfigForOptions(options),
-    model: modelSelection(options.provider, options.modelId, options.thinkingEffort),
+    config: providerConfigData,
+    model: model.selection,
   }
 
   await client.open(providerConfig, options.cwd)
@@ -486,8 +497,7 @@ export function createRenderer(output: TuiOutput = process.stdout): RenderState 
 function parseArgs(args: string[]): TuiOptions {
   let provider: TuiOptions['provider'] = parseProvider(process.env.DEMI_PROVIDER ?? 'claude-code')
   let cwd = process.cwd()
-  let modelLabel = process.env.DEMI_CLAUDE_CODE_MODEL ?? 'sonnet'
-  let modelProvided = false
+  let modelId: string | null = null
   let thinkingEffort = parseThinkingEffort(envThinkingValue(provider), envThinkingSource(provider))
   let thinkingProvided = false
   let maxBudgetUsd: string | null = process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.25'
@@ -507,8 +517,7 @@ function parseArgs(args: string[]): TuiOptions {
     if (arg === '--cwd') cwd = requiredValue(args, ++index, '--cwd')
     else if (arg === '--provider') provider = parseProvider(requiredValue(args, ++index, '--provider'))
     else if (arg === '--model') {
-      modelLabel = requiredValue(args, ++index, '--model')
-      modelProvided = true
+      modelId = requiredValue(args, ++index, '--model')
     }
     else if (arg === '--thinking') {
       thinkingEffort = parseThinkingEffort(requiredValue(args, ++index, '--thinking'), '--thinking')
@@ -529,14 +538,12 @@ function parseArgs(args: string[]): TuiOptions {
     else throw new Error(`Unknown option: ${arg}`)
   }
 
-  if (provider === 'codex' && !modelProvided) modelLabel = process.env.DEMI_CODEX_MODEL ?? 'gpt-5.4'
   if (!thinkingProvided) thinkingEffort = parseThinkingEffort(envThinkingValue(provider), envThinkingSource(provider))
 
   return {
     provider,
     cwd: resolve(cwd),
-    modelId: resolveModelId(provider, modelLabel),
-    modelLabel,
+    modelId,
     thinkingEffort,
     maxBudgetUsd,
     claudePath,
@@ -568,11 +575,6 @@ function parseCodexTransport(value: string): CodexTransportMode {
   throw new Error('--transport must be one of: auto, sse, websocket')
 }
 
-function resolveModelId(provider: TuiOptions['provider'], model: string): string {
-  if (model === 'opus') return 'claude-opus-4-8'
-  return model
-}
-
 function requiredValue(args: string[], index: number, flag: string): string {
   const value = args[index]
   if (!value) throw new Error(`${flag} requires a value`)
@@ -585,27 +587,100 @@ function parseThinkingEffort(value: string | null, source: string): ThinkingEffo
   throw new Error(`${source} must be one of: low, medium, high, xhigh, max`)
 }
 
-function modelSelection(provider: TuiOptions['provider'], modelId: string, thinkingEffort: ThinkingEffort | null): ModelSelection {
+export interface ResolvedTuiModel {
+  selection: ModelSelection
+  warnings: string[]
+  catalog: ProviderModelList | null
+}
+
+export async function resolveTuiModel(
+  registry: ProviderRegistry,
+  options: TuiOptions,
+  providerConfig: Record<string, unknown>,
+): Promise<ResolvedTuiModel> {
+  if (options.modelId) {
+    validateExplicitModelId(options.provider, options.modelId)
+    return {
+      selection: modelSelectionFromCatalogModel(options.provider, options.modelId, options.thinkingEffort, null),
+      warnings: [],
+      catalog: null,
+    }
+  }
+
+  let catalog: ProviderModelList | null = null
+  let catalogError: unknown = null
+  try {
+    catalog = await registry.listModels(options.provider, providerConfig)
+  } catch (error) {
+    catalogError = error
+  }
+
+  if (!catalog) {
+    throw new Error(`Unable to load ${options.provider} model catalog: ${messageOf(catalogError)}`)
+  }
+  if (catalog.models.length === 0) {
+    throw new Error(`${options.provider} model catalog returned no models`)
+  }
+  const selected =
+    (catalog.defaultModelId ? catalog.models.find((model) => model.id === catalog.defaultModelId) : null) ?? catalog.models[0]
+  if (!selected) throw new Error(`${options.provider} model catalog returned no selectable models`)
+  return {
+    selection: modelSelectionFromCatalogModel(options.provider, selected.id, options.thinkingEffort, selected),
+    warnings: [...catalog.warnings],
+    catalog,
+  }
+}
+
+function validateExplicitModelId(provider: TuiOptions['provider'], modelId: string): void {
+  if (modelId === 'opus' || modelId === 'sonnet' || modelId === 'haiku' || modelId === 'default') {
+    throw new Error(`--model must be a full ${provider} model id, not alias "${modelId}"`)
+  }
+  if (provider === 'claude-code' && !modelId.startsWith('claude-')) {
+    throw new Error('--model for claude-code must be a full Claude model id such as claude-opus-4-8')
+  }
+  if (provider === 'codex' && !modelId.startsWith('gpt-') && !modelId.startsWith('codex-')) {
+    throw new Error('--model for codex must be a full Codex model id such as gpt-5.5')
+  }
+}
+
+function modelSelectionFromCatalogModel(
+  provider: TuiOptions['provider'],
+  modelId: string,
+  thinkingEffort: ThinkingEffort | null,
+  model: ProviderModel | null,
+): ModelSelection {
   return {
     providerId: provider,
     model: {
       id: modelId,
-      name: `${provider === 'codex' ? 'Codex' : 'Claude Code'} ${modelId}`,
-      contextWindow: provider === 'codex' ? 272_000 : 200_000,
+      name: model?.displayName ?? `${provider === 'codex' ? 'Codex' : 'Claude Code'} ${modelId}`,
+      contextWindow: model?.contextWindow ?? 0,
       inputLimit: null,
-      thinking: [
-        {
-          type: 'effort',
-          efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-          defaultEffort: 'medium',
-          summaries: ['auto', 'concise', 'detailed', 'off', 'on'],
-          defaultSummary: null,
-        },
-      ],
-      acceptedExtensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'],
+      thinking: thinkingCapabilitiesFromProviderModel(model),
+      acceptedExtensions: model?.supportsAttachments ? acceptedAttachmentExtensions() : [],
     },
     thinking: thinkingEffort ? { type: 'effort', effort: thinkingEffort, summary: null } : null,
   }
+}
+
+function thinkingCapabilitiesFromProviderModel(model: ProviderModel | null): ThinkingCapability[] {
+  if (!model) return []
+  if (model.supportsReasoning === false) return [{ type: 'disabled' as const }]
+  if (!model.supportedThinkingEfforts || model.supportedThinkingEfforts.length === 0) return []
+  const summaries: ThinkingSummary[] = ['auto', 'concise', 'detailed', 'off', 'on']
+  return [
+    {
+      type: 'effort' as const,
+      efforts: model.supportedThinkingEfforts,
+      defaultEffort: model.defaultThinkingEffort,
+      summaries,
+      defaultSummary: null,
+    },
+  ]
+}
+
+function acceptedAttachmentExtensions(): FileExtension[] {
+  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf']
 }
 
 async function printClaudeStatus(): Promise<void> {
@@ -637,12 +712,13 @@ function providerConfigForOptions(options: TuiOptions): Record<string, unknown> 
   }
 }
 
-function printBanner(options: TuiOptions): void {
+function printBanner(options: TuiOptions, model: ResolvedTuiModel): void {
   writeLine(color('Demi TUI acceptance shell', 'bold'))
   writeLine(`provider: ${options.provider}`)
   writeLine(`workspace: ${options.cwd}`)
-  writeLine(`model: ${options.modelId}${options.modelLabel === options.modelId ? '' : ` (${options.modelLabel})`}`)
+  writeLine(`model: ${model.selection.model.id}`)
   writeLine(`thinking: ${options.thinkingEffort ?? 'off'}`)
+  for (const warning of model.warnings) writeLine(color(`model warning: ${warning}`, 'yellow'))
   if (options.provider === 'claude-code') writeLine(`budget: ${options.maxBudgetUsd ?? 'none'}`)
   else writeLine(`transport: ${options.transport}`)
 }
@@ -653,7 +729,7 @@ function printUsage(): void {
 Options:
   --cwd <path>             Workspace root. Defaults to current directory.
   --provider <id>          Provider: claude-code, codex. Defaults to claude-code.
-  --model <id>             Model id. Defaults to sonnet for claude-code, gpt-5.4 for codex.
+  --model <id>             Full model id. Defaults to the provider model catalog selection.
   --thinking <effort>      Thinking effort: low, medium, high, xhigh, max.
   --no-thinking            Disable thinking effort. This is the default.
   --budget <usd>           Max budget passed to claude. Defaults to 0.25.

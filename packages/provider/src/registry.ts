@@ -1,4 +1,4 @@
-import type { AgentProvider, ProviderDefinition, ProviderRuntimeState } from './types'
+import type { AgentProvider, ProviderDefinition, ProviderModelList, ProviderRuntimeState } from './types'
 
 export interface ProviderRegistrySnapshot {
   providers: ProviderDefinition[]
@@ -47,6 +47,17 @@ export class ProviderRegistry {
       return { status: 'unavailable', message: `Provider "${type}" is not registered` }
     }
     return definition.state?.() ?? { status: 'unknown' }
+  }
+
+  async listModels(type: string, config: unknown): Promise<ProviderModelList> {
+    const definition = this.providers.get(type)
+    if (!definition) {
+      throw new Error(`ProviderRegistry: provider "${type}" is not registered`)
+    }
+    if (!definition.listModels) {
+      throw new Error(`ProviderRegistry: provider "${type}" does not expose a model catalog`)
+    }
+    return definition.listModels(config)
   }
 
   observe(listener: ProviderRegistryListener): () => void {

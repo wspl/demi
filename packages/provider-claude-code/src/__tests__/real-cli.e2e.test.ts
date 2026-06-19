@@ -19,7 +19,7 @@ e2e('ClaudeCodeProvider can stream a minimal response from the real claude CLI',
     sessionId: 'claude-real-e2e-session',
     turnId: 'claude-real-e2e-turn',
     requestId: 'claude-real-e2e-request',
-    modelId: process.env.DEMI_CLAUDE_CODE_MODEL ?? 'sonnet',
+    modelId: process.env.DEMI_CLAUDE_CODE_E2E_MODEL ?? 'claude-sonnet-4-6',
     systemPrompt: 'Reply tersely and follow exact-output requests.',
     cwd: process.cwd(),
     items: [{ type: 'user_message', content: [{ type: 'text', text: 'Reply with exactly OK.' }] }],
@@ -56,7 +56,7 @@ cacheE2e('ClaudeCodeProvider reports a real provider cache hit on repeated tool-
 })
 
 thinkingE2e(
-  'ClaudeCodeProvider streams real medium thinking for a budgeted summary request on opus',
+  'ClaudeCodeProvider streams real medium thinking for a budgeted summary request on claude-opus-4-8',
   async () => {
     const runs: ProviderEvent[][] = []
     for (let attempt = 0; attempt < thinkingAttempts; attempt++) runs.push(await runThinkingBudgetRequest())
@@ -76,7 +76,7 @@ async function runCacheRequest(systemPrompt: string): Promise<TokenUsage> {
     sessionId: 'claude-cache-e2e-session',
     turnId: 'claude-cache-e2e-turn',
     requestId: `claude-cache-e2e-${randomUUID()}`,
-    modelId: process.env.DEMI_CLAUDE_CODE_MODEL ?? 'claude-opus-4-8',
+    modelId: process.env.DEMI_CLAUDE_CODE_E2E_MODEL ?? 'claude-opus-4-8',
     systemPrompt,
     cwd: process.cwd(),
     items: [
@@ -127,7 +127,7 @@ async function runThinkingBudgetRequest(): Promise<ProviderEvent[]> {
     sessionId: 'claude-thinking-e2e-session',
     turnId: 'claude-thinking-e2e-turn',
     requestId: `claude-thinking-e2e-${randomUUID()}`,
-    modelId: process.env.DEMI_CLAUDE_CODE_MODEL ?? 'claude-opus-4-8',
+    modelId: process.env.DEMI_CLAUDE_CODE_E2E_MODEL ?? 'claude-opus-4-8',
     systemPrompt: [
       'Summarize the previous conversation for continuation.',
       'For this smoke test, use the requested thinking effort and then output DEMI_THINKING_BUDGET_OK exactly.',

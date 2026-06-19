@@ -35,7 +35,7 @@ test('TUI process runs a Claude Code backed session through stdin and renders to
     const stdout = capture.stdout()
     expect(stdout).toContain('claude runtime: ready (fixture claude 0.0.0)')
     expect(stdout).toContain('claude auth: authenticated (fixture@example.test)')
-    expect(stdout).toContain('model: claude-opus-4-8 (opus)')
+    expect(stdout).toContain('model: claude-opus-4-8')
     expect(stdout).toContain('thinking: medium')
     expect(stdout).toContain('tool: shell_exec')
     expect(stdout).toContain('shell[')
@@ -160,7 +160,7 @@ function spawnTuiFixture(workspace: string): ReturnType<typeof spawn> {
       '--claude-path',
       claudeFixturePath,
       '--model',
-      'opus',
+      'claude-opus-4-8',
       '--thinking',
       'medium',
       '--budget',
@@ -187,7 +187,7 @@ function spawnTuiFixtureInPty(workspace: string): ReturnType<typeof spawn> {
     `${scriptPath} -q /dev/null "$DEMI_TUI_EXEC_PATH" run packages/tui/src/index.ts`,
     '--cwd "$DEMI_TUI_WORKSPACE"',
     '--claude-path "$DEMI_TUI_CLAUDE_PATH"',
-    '--model opus',
+    '--model claude-opus-4-8',
     '--thinking medium',
     '--budget 0.01',
     '--yield-after-ms 5',

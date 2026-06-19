@@ -176,7 +176,7 @@ TUI 不再拥有 provider-specific model defaults。
 
 - `--model` 必须是 full id。
 - `opus`、`sonnet`、`haiku` 这类 alias 直接报错。
-- 对 catalog 中不存在但看起来是 full id 的值，允许继续但显示 warning，便于使用 provider 刚上线而 catalog 未同步的新模型。
+- 显式 full id 不需要先拉 catalog；如果没有 catalog 元数据，上层按未知 context/capability 处理，真实 provider 响应是最终裁决。
 
 请求行为：
 

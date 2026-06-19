@@ -4,7 +4,7 @@ import { events, ProviderRegistry, StubProvider } from '@demi/provider'
 import { AgentServer, type ProviderConfig } from '@demi/agent'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
-import { attachRenderer, createRenderer, handleCommand, renderEvent, runInputLoop, type TuiOutput } from '../index'
+import { attachRenderer, createRenderer, handleCommand, renderEvent, resolveTuiModel, runInputLoop, type TuiOutput } from '../index'
 
 const model: ModelSelection = {
   providerId: 'claude-code',
@@ -215,6 +215,113 @@ test('TUI renderer receives AgentClient subscription events end to end', async (
   expect(text).toContain('assistant> agent hello')
   expect(text).toContain('usage: in=6 out=2 cache_read=1 cache_write=0')
   expect(text).toContain('closed')
+})
+
+test('TUI model resolver selects from provider catalog when no full model id is provided', async () => {
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'claude-code',
+    displayName: 'Claude Code',
+    listModels: () => ({
+      providerId: 'claude-code',
+      defaultModelId: 'claude-sonnet-4-6',
+      sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+      stale: false,
+      warnings: ['catalog warning'],
+      models: [
+        {
+          providerId: 'claude-code',
+          id: 'claude-opus-4-8',
+          displayName: 'Claude Opus 4.8',
+          contextWindow: 1_000_000,
+          outputLimit: 128_000,
+          supportsTools: true,
+          supportsAttachments: true,
+          supportsReasoning: true,
+          supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+          defaultThinkingEffort: 'medium',
+          source: 'models.dev',
+          sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+          stale: false,
+        },
+        {
+          providerId: 'claude-code',
+          id: 'claude-sonnet-4-6',
+          displayName: 'Claude Sonnet 4.6',
+          contextWindow: 1_000_000,
+          outputLimit: 64_000,
+          supportsTools: true,
+          supportsAttachments: false,
+          supportsReasoning: true,
+          supportedThinkingEfforts: ['low', 'medium', 'high', 'max'],
+          defaultThinkingEffort: 'medium',
+          source: 'models.dev',
+          sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+          stale: false,
+        },
+      ],
+    }),
+    createProvider: () => new StubProvider([]),
+  })
+
+  const resolved = await resolveTuiModel(providerRegistry, {
+    provider: 'claude-code',
+    cwd: '/tmp',
+    modelId: null,
+    thinkingEffort: 'medium',
+    maxBudgetUsd: null,
+    transport: 'auto',
+    yieldAfterMs: 10,
+    timeoutMs: 100,
+  }, {})
+
+  expect(resolved.selection.model).toMatchObject({
+    id: 'claude-sonnet-4-6',
+    name: 'Claude Sonnet 4.6',
+    contextWindow: 1_000_000,
+    acceptedExtensions: [],
+  })
+  expect(resolved.selection.model.thinking).toEqual([
+    {
+      type: 'effort',
+      efforts: ['low', 'medium', 'high', 'max'],
+      defaultEffort: 'medium',
+      summaries: ['auto', 'concise', 'detailed', 'off', 'on'],
+      defaultSummary: null,
+    },
+  ])
+  expect(resolved.selection.thinking).toEqual({ type: 'effort', effort: 'medium', summary: null })
+  expect(resolved.warnings).toEqual(['catalog warning'])
+})
+
+test('TUI model resolver rejects aliases and does not call model catalog for explicit full ids', async () => {
+  let listCalls = 0
+  const providerRegistry = new ProviderRegistry()
+  providerRegistry.register({
+    type: 'claude-code',
+    displayName: 'Claude Code',
+    listModels: () => {
+      listCalls += 1
+      throw new Error('catalog should not be called for explicit model ids')
+    },
+    createProvider: () => new StubProvider([]),
+  })
+  const baseOptions = {
+    provider: 'claude-code' as const,
+    cwd: '/tmp',
+    thinkingEffort: null,
+    maxBudgetUsd: null,
+    transport: 'auto' as const,
+    yieldAfterMs: 10,
+    timeoutMs: 100,
+  }
+
+  await expect(resolveTuiModel(providerRegistry, { ...baseOptions, modelId: 'opus' }, {})).rejects.toThrow('not alias "opus"')
+  const resolved = await resolveTuiModel(providerRegistry, { ...baseOptions, modelId: 'claude-opus-4-8' }, {})
+
+  expect(listCalls).toBe(0)
+  expect(resolved.selection.model.id).toBe('claude-opus-4-8')
+  expect(resolved.selection.model.contextWindow).toBe(0)
 })
 
 test('TUI commands dispatch to the agent client and validate input usage', async () => {

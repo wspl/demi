@@ -11,7 +11,7 @@ const fuzzyShellE2e = process.env.DEMI_TUI_FUZZY_SHELL_E2E === '1' ? test : test
 const fuzzyShellAttempts = Math.max(1, Number.parseInt(process.env.DEMI_TUI_FUZZY_SHELL_E2E_ATTEMPTS ?? '3', 10))
 
 e2e(
-  'TUI streams real Claude Code tool output and observes thinking across repeated opus medium runs',
+  'TUI streams real Claude Code tool output and observes thinking across repeated claude-opus-4-8 medium runs',
   async () => {
     const outputs: string[] = []
     for (let attempt = 0; attempt < attempts; attempt++) outputs.push(await runRealTuiSmokeOnce())
@@ -47,7 +47,7 @@ async function runRealTuiSmokeOnce(): Promise<string> {
       '--cwd',
       workspace,
       '--model',
-      'opus',
+      'claude-opus-4-8',
       '--thinking',
       'medium',
       '--budget',
@@ -74,7 +74,7 @@ async function runRealTuiSmokeOnce(): Promise<string> {
     await capture.waitForStdout('DEMI_REAL_TUI_TEXT_OK', 120_000)
     await capture.waitForStdout('usage:', 120_000)
     const stdout = capture.stdout()
-    expect(stdout).toContain('model: claude-opus-4-8 (opus)')
+    expect(stdout).toContain('model: claude-opus-4-8')
     expect(stdout).toContain('thinking: medium')
     expect(stdout).toContain('tool: shell_exec')
     expect(stdout).toContain('DEMI_REAL_TUI_TOOL_OK')
@@ -102,7 +102,7 @@ async function runRealTuiFuzzyShellOnce(): Promise<string> {
       '--cwd',
       workspace,
       '--model',
-      'opus',
+      'claude-opus-4-8',
       '--thinking',
       'medium',
       '--budget',
@@ -135,7 +135,7 @@ async function runRealTuiFuzzyShellOnce(): Promise<string> {
     await capture.waitForStdout('DEMI_FUZZY_SHELL_OK', 150_000)
     await capture.waitForStdout('usage:', 150_000)
     const stdout = capture.stdout()
-    expect(stdout).toContain('model: claude-opus-4-8 (opus)')
+    expect(stdout).toContain('model: claude-opus-4-8')
     expect(stdout).toContain('thinking: medium')
 
     child.stdin?.write('/exit\n')

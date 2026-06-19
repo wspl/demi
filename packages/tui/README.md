@@ -23,10 +23,12 @@ Useful options:
 
 ```sh
 bun run tui -- --help
-bun run tui -- --model sonnet
+bun run tui -- --model claude-opus-4-8
 bun run tui -- --yield-after-ms 250
 bun run tui -- --timeout-ms 120000
 ```
+
+Omit `--model` to use the provider catalog default.
 
 ## What To Verify
 

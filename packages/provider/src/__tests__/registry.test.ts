@@ -51,3 +51,49 @@ test('ProviderRegistry emits snapshots when registrations change', () => {
 
   expect(seen).toEqual([[], ['stub'], []])
 })
+
+test('ProviderRegistry dispatches provider model catalogs', async () => {
+  const registry = new ProviderRegistry()
+  registry.register({
+    type: 'stub',
+    displayName: 'Stub',
+    listModels: (config: { region: string }) => ({
+      providerId: 'stub',
+      defaultModelId: 'model-1',
+      sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+      stale: false,
+      warnings: [config.region],
+      models: [
+        {
+          providerId: 'stub',
+          id: 'model-1',
+          displayName: 'Model 1',
+          contextWindow: 100,
+          outputLimit: null,
+          supportsTools: null,
+          supportsAttachments: null,
+          supportsReasoning: null,
+          supportedThinkingEfforts: null,
+          defaultThinkingEffort: null,
+          source: 'cache',
+          sourceFetchedAt: '2026-06-20T00:00:00.000Z',
+          stale: false,
+        },
+      ],
+    }),
+    createProvider: () => new StubProvider([[events.response()]]),
+  })
+  registry.register({
+    type: 'no-catalog',
+    displayName: 'No Catalog',
+    createProvider: () => new StubProvider([[events.response()]]),
+  })
+
+  expect(await registry.listModels('stub', { region: 'test-region' })).toMatchObject({
+    providerId: 'stub',
+    defaultModelId: 'model-1',
+    warnings: ['test-region'],
+  })
+  await expect(registry.listModels('no-catalog', {})).rejects.toThrow('does not expose a model catalog')
+  await expect(registry.listModels('missing', {})).rejects.toThrow('is not registered')
+})

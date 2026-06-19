@@ -11,7 +11,7 @@ const e2e = process.env.DEMI_CODEX_E2E === '1' ? test : test.skip
 const cacheE2e = process.env.DEMI_CODEX_CACHE_E2E === '1' ? test : test.skip
 const thinkingE2e = process.env.DEMI_CODEX_THINKING_E2E === '1' ? test : test.skip
 const toolE2e = process.env.DEMI_CODEX_TOOL_E2E === '1' ? test : test.skip
-const modelId = process.env.DEMI_CODEX_MODEL ?? 'gpt-5.4'
+const modelId = process.env.DEMI_CODEX_E2E_MODEL ?? 'gpt-5.4'
 const transport = parseTransport(process.env.DEMI_CODEX_TRANSPORT)
 
 e2e('CodexProvider can stream a minimal response from real Codex auth', async () => {
