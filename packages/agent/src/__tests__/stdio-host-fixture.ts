@@ -1,8 +1,8 @@
 import { ProviderRegistry, StubProvider, events } from '@demi/provider'
-import type { AgentHarness } from '@demi/shell'
+import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
-import { RpcHost } from '../index'
-import { createStdioHostTransport } from '../stdio-transport'
+import { AgentServer } from '../index'
+import { createStdioServerTransport } from '../stdio-transport'
 
 const providerRegistry = new ProviderRegistry()
 providerRegistry.register({
@@ -14,11 +14,11 @@ providerRegistry.register({
   },
 })
 
-new RpcHost({
-  transport: createStdioHostTransport(process.stdin, process.stdout),
+const server = new AgentServer({
+  agent: createHarness(),
   providerRegistry,
-  harnesses: { test: createHarness() },
 })
+server.attachTransport(createStdioServerTransport(process.stdin, process.stdout))
 
 function createHarness(): AgentHarness<Record<string, never>> {
   return {

@@ -125,4 +125,4 @@ Both bugs were only visible when a real TUI session interleaved abort, resume, p
 
 - `packages/provider-claude-code/src/__tests__/jsonl-output.test.ts`: unsigned assistant thinking is skipped during Claude replay, while signed thinking remains serializable.
 - `packages/tui/src/__tests__/renderer.test.ts`: repeated transcript patches for the same abort/error block do not duplicate user-visible output.
-- Existing `packages/base-agent/src/__tests__/session.test.ts`, `packages/base-agent/src/__tests__/compaction.test.ts`, and `packages/rpc/src/__tests__/rpc.test.ts` continue to cover abort, resume, compact, transcript invariants, and RPC event propagation.
+- Existing `packages/agent/src/__tests__/session.test.ts`, `packages/agent/src/__tests__/compaction.test.ts`, and `packages/agent/src/__tests__/server.test.ts` continue to cover abort, resume, compact, transcript invariants, and AgentServer/transport event propagation.

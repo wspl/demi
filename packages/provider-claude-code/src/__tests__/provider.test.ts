@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, type AgentHarnessRuntime } from '@demi/base-agent'
+import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
 import { BashEnvironment, createShellSessionTools } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import type { InferenceRequest } from '@demi/provider'

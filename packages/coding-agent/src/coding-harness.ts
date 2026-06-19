@@ -1,9 +1,5 @@
-import {
-  CommandRegistry,
-  type AgentHarness,
-  type CommandSpec,
-  type Host,
-} from '@demi/shell'
+import type { AgentHarness } from '@demi/agent'
+import { CommandRegistry, type CommandSpec, type Host } from '@demi/shell'
 import { createEditorCommand } from './editor-command'
 import { createFileReferenceResolver } from './reference-resolver'
 import { createTodoCommand } from './todo-command'

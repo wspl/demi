@@ -1,5 +1,5 @@
-import type { AgentReferenceResolveContext } from '@demi/base-agent'
 import type { Host } from '@demi/shell'
+import type { AgentReferenceResolveContext } from '@demi/agent'
 import type { UserContentBlock } from '@demi/core'
 import { concatBytes, decodeUtf8, isPathInside, resolvePath } from './platform'
 

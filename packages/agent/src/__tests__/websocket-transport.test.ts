@@ -1,13 +1,13 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import type { AgentHarness } from '@demi/shell'
+import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
 import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
 import {
-  RpcClient,
-  RpcHost,
+  AgentClient,
+  AgentServer,
   createWebSocketClientTransport,
-  createWebSocketHostTransport,
+  createWebSocketServerTransport,
   type ClientSessionEvent,
   type ClientFrame,
   type JsonWebSocket,
@@ -29,19 +29,19 @@ const model: ModelSelection = {
 }
 
 test('WebSocket transports serialize frames as JSON text messages and preserve binary fields', async () => {
-  const [clientSocket, hostSocket] = createSocketPair()
+  const [clientSocket, serverSocket] = createSocketPair()
   const client = createWebSocketClientTransport(clientSocket)
-  const host = createWebSocketHostTransport(hostSocket)
+  const server = createWebSocketServerTransport(serverSocket)
 
-  const hostFrame = nextFrame<ClientFrame>(host)
+  const serverFrame = nextFrame<ClientFrame>(server)
   client.send({ type: 'send', content: [{ type: 'text', text: 'hello' }] })
-  expect(await hostFrame).toEqual({ type: 'send', content: [{ type: 'text', text: 'hello' }] })
+  expect(await serverFrame).toEqual({ type: 'send', content: [{ type: 'text', text: 'hello' }] })
 
   const clientFrame = nextFrame<ServerFrame>(client)
-  host.send({ type: 'phase', phase: 'running' })
+  server.send({ type: 'phase', phase: 'running' })
   expect(await clientFrame).toEqual({ type: 'phase', phase: 'running' })
 
-  const hostBinaryFrame = nextFrame<ClientFrame>(host)
+  const serverBinaryFrame = nextFrame<ClientFrame>(server)
   client.send({
     type: 'send',
     content: [
@@ -55,7 +55,7 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
       },
     ],
   })
-  const binarySend = await hostBinaryFrame
+  const binarySend = await serverBinaryFrame
   if (binarySend.type !== 'send') throw new Error('expected send frame')
   const sentContent = binarySend.content[0]
   if (sentContent?.type !== 'image' || sentContent.source.type !== 'binary') throw new Error('expected binary image')
@@ -63,7 +63,7 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
   expect([...sentContent.source.data]).toEqual([4, 5, 6])
 
   const clientSnapshotFrame = nextFrame<ServerFrame>(client)
-  host.send({
+  server.send({
     type: 'transcript_snapshot',
     blocks: [
       {
@@ -95,8 +95,8 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
   expect([...receivedContent.source.data]).toEqual([7, 8, 9])
 })
 
-test('WebSocket transports carry RpcClient and RpcHost traffic end to end', async () => {
-  const [clientSocket, hostSocket] = createSocketPair()
+test('WebSocket transports carry AgentClient and AgentServer traffic end to end', async () => {
+  const [clientSocket, serverSocket] = createSocketPair()
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'ws-stub',
@@ -107,14 +107,14 @@ test('WebSocket transports carry RpcClient and RpcHost traffic end to end', asyn
     },
   })
 
-  new RpcHost({
-    transport: createWebSocketHostTransport(hostSocket),
+  const server = new AgentServer({
+    agent: createHarness(),
     providerRegistry,
-    harnesses: { test: createHarness() },
   })
-  const client = new RpcClient(createWebSocketClientTransport(clientSocket))
+  server.attachTransport(createWebSocketServerTransport(serverSocket))
+  const client = new AgentClient(createWebSocketClientTransport(clientSocket))
 
-  await client.open('test', providerConfig('over websocket'), '/workspace')
+  await client.open(providerConfig('over websocket'), '/workspace')
   await client.send([{ type: 'text', text: 'hello' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -125,8 +125,8 @@ test('WebSocket transports carry RpcClient and RpcHost traffic end to end', asyn
   await client.close()
 })
 
-test('WebSocket transports preserve complex RpcClient action convergence', async () => {
-  const [clientSocket, hostSocket] = createSocketPair()
+test('WebSocket transports preserve complex AgentClient action convergence', async () => {
+  const [clientSocket, serverSocket] = createSocketPair()
   const provider = new WebSocketScenarioProvider()
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
@@ -135,16 +135,16 @@ test('WebSocket transports preserve complex RpcClient action convergence', async
     createProvider: () => provider,
   })
 
-  new RpcHost({
-    transport: createWebSocketHostTransport(hostSocket),
+  const server = new AgentServer({
+    agent: createHarness(),
     providerRegistry,
-    harnesses: { test: createHarness() },
   })
-  const client = new RpcClient(createWebSocketClientTransport(clientSocket))
+  server.attachTransport(createWebSocketServerTransport(serverSocket))
+  const client = new AgentClient(createWebSocketClientTransport(clientSocket))
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', { type: 'ws-scenario', model }, '/workspace')
+  await client.open({ type: 'ws-scenario', model }, '/workspace')
   const first = client.send([{ type: 'text', text: 'first' }])
   await provider.firstStarted.promise
   const second = client.send([{ type: 'text', text: 'second ' + 'x'.repeat(20_000) }])

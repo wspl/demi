@@ -7,12 +7,11 @@ import { createCodingAgentHarness } from '@demi/coding-agent'
 import { ProviderRegistry } from '@demi/provider'
 import { claudeAuthState, claudeRuntimeState, createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
 import {
-  createInProcessTransportPair,
-  RpcClient,
-  RpcHost,
+  AgentClient,
+  AgentServer,
   type ClientSessionEvent,
   type ProviderConfig,
-} from '@demi/rpc'
+} from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
 
 interface TuiOptions {
@@ -98,18 +97,16 @@ async function main(): Promise<void> {
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register(createClaudeCodeProviderDefinition())
 
-  const transports = createInProcessTransportPair()
-  const rpcHost = new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: harness,
     providerRegistry,
-    harnesses: { coding: harness },
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       yieldAfterMs: options.yieldAfterMs,
       timeoutMs: options.timeoutMs,
     },
   })
-  const client = new RpcClient(transports.client)
+  const client = server.client()
   const renderer = createRenderer()
   attachRenderer(client, renderer)
 
@@ -122,7 +119,7 @@ async function main(): Promise<void> {
     model: modelSelection(options.modelId, options.thinkingEffort),
   }
 
-  await client.open('coding', providerConfig, options.cwd)
+  await client.open(providerConfig, options.cwd)
   writeLine(color('Session opened. Type /help for commands, /exit to quit.', 'dim'))
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })
@@ -136,7 +133,7 @@ async function main(): Promise<void> {
     }
     closing = true
     writeLine(`\n${color('Closing...', 'dim')}`)
-    void cleanup(rl, client, rpcHost).finally(() => process.exit(0))
+    void cleanup(rl, client, server).finally(() => process.exit(0))
   })
 
   try {
@@ -148,7 +145,7 @@ async function main(): Promise<void> {
       shouldContinue: () => !closing,
     })
   } finally {
-    await cleanup(rl, client, rpcHost)
+    await cleanup(rl, client, server)
   }
 }
 
@@ -216,14 +213,14 @@ export async function handleCommand(
 
 async function cleanup(
   rl: ReturnType<typeof createInterface>,
-  client: RpcClient,
-  rpcHost: RpcHost,
+  client: AgentClient,
+  server: AgentServer,
 ): Promise<void> {
   rl.close()
   try {
     await client.close()
-  } catch {
-    await rpcHost.close()
+  } finally {
+    await server.close()
   }
 }
 

@@ -1,9 +1,9 @@
 import type { Block, SessionPhase, UserContentBlock } from '@demi/core'
 import { applyTranscriptPatches } from './patch'
 import type { ClientFrame, ClientSessionEvent, ProviderConfig, ServerFrame } from './frames'
-import type { RpcClientTransport } from './transport'
+import type { AgentClientTransport } from './transport'
 
-export type RpcClientListener = (event: ClientSessionEvent) => void
+export type AgentClientListener = (event: ClientSessionEvent) => void
 
 type ActionCommand = 'send' | 'retry' | 'resume' | 'compact'
 
@@ -14,22 +14,22 @@ interface ActionWaiter {
   reject: (error: Error) => void
 }
 
-export class RpcClient {
-  private readonly transport: RpcClientTransport
-  private readonly listeners = new Set<RpcClientListener>()
+export class AgentClient {
+  private readonly transport: AgentClientTransport
+  private readonly listeners = new Set<AgentClientListener>()
   private readonly pendingActionWaiters: ActionWaiter[] = []
   private blocks: Block[] = []
   private phase: SessionPhase | null = null
   private unsubscribeTransport: () => void
 
-  constructor(transport: RpcClientTransport) {
+  constructor(transport: AgentClientTransport) {
     this.transport = transport
     this.unsubscribeTransport = transport.onFrame((frame) => this.handleServerFrame(frame))
   }
 
-  open(harness: string, provider: ProviderConfig, cwd: string): Promise<void> {
+  open(provider: ProviderConfig, cwd: string): Promise<void> {
     const wait = this.waitForFrame('opened')
-    this.sendFrame({ type: 'open', harness, provider, cwd })
+    this.sendFrame({ type: 'open', provider, cwd })
     return wait
   }
 
@@ -83,7 +83,7 @@ export class RpcClient {
     })
   }
 
-  subscribe(listener: RpcClientListener): () => void {
+  subscribe(listener: AgentClientListener): () => void {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)

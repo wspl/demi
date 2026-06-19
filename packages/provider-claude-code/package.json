@@ -11,7 +11,7 @@
     "@demi/provider": "workspace:*"
   },
   "devDependencies": {
-    "@demi/base-agent": "workspace:*",
+    "@demi/agent": "workspace:*",
     "@demi/shell": "workspace:*"
   }
 }

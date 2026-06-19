@@ -79,6 +79,6 @@ No product bug was found in this run. The test confirms three distinct contracts
 
 ## Follow-Up Deterministic Tests
 
-- Existing `packages/base-agent/src/__tests__/context-cache.test.ts` covers provider-visible head/tail truncation and transcript audit preservation.
+- Existing `packages/agent/src/__tests__/context-cache.test.ts` covers provider-visible head/tail truncation and transcript audit preservation.
 - Existing `packages/tui/src/__tests__/process.test.ts` covers high-volume TUI process output with sentinel lines.
 - Existing `packages/tui/src/__tests__/renderer.test.ts` covers shell output rendering and delta de-duplication.

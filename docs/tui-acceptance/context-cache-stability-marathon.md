@@ -97,6 +97,6 @@ The meaningful real cache signal appeared when the same Claude Code turn perform
 
 ## Follow-Up Deterministic Tests
 
-- Existing provider and RPC usage propagation tests cover preserving `cacheReadTokens` and `cacheWriteTokens` through internal events.
+- Existing provider and AgentClient usage propagation tests cover preserving `cacheReadTokens` and `cacheWriteTokens` through internal events.
 - Existing TUI renderer tests cover `usage:` line rendering.
-- Existing base-agent context-cache tests cover stable provider request shape and compacted replay. This real TUI record covers the provider-dependent cache-hit signal that deterministic tests cannot prove.
+- Existing agent context-cache tests cover stable provider request shape and compacted replay. This real TUI record covers the provider-dependent cache-hit signal that deterministic tests cannot prove.

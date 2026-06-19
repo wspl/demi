@@ -6,17 +6,17 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import type { AgentHarness } from '@demi/shell'
+import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
 import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
 import {
-  RpcClient,
-  RpcHost,
+  AgentClient,
+  AgentServer,
   type ClientSessionEvent,
   type ClientFrame,
   type ProviderConfig,
 } from '../index'
-import { createStdioClientTransport, createStdioHostTransport } from '../stdio-transport'
+import { createStdioClientTransport, createStdioServerTransport } from '../stdio-transport'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -32,11 +32,11 @@ const model: ModelSelection = {
 }
 
 test('StdioTransport preserves Uint8Array fields through JSON frames', async () => {
-  const clientToHost = new PassThrough()
-  const hostToClient = new PassThrough()
-  const host = createStdioHostTransport(clientToHost, hostToClient)
-  const client = createStdioClientTransport(hostToClient, clientToHost)
-  const received = nextFrame<ClientFrame>(host)
+  const clientToServer = new PassThrough()
+  const serverToClient = new PassThrough()
+  const server = createStdioServerTransport(clientToServer, serverToClient)
+  const client = createStdioClientTransport(serverToClient, clientToServer)
+  const received = nextFrame<ClientFrame>(server)
 
   client.send({
     type: 'send',
@@ -60,12 +60,12 @@ test('StdioTransport preserves Uint8Array fields through JSON frames', async () 
   expect([...content.source.data]).toEqual([1, 2, 3])
 
   client.close()
-  host.close()
+  server.close()
 })
 
-test('StdioTransport carries the same RpcClient/RpcHost frames over NDJSON', async () => {
-  const clientToHost = new PassThrough()
-  const hostToClient = new PassThrough()
+test('StdioTransport carries the same AgentClient/AgentServer frames over NDJSON', async () => {
+  const clientToServer = new PassThrough()
+  const serverToClient = new PassThrough()
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'echo-stub',
@@ -76,14 +76,14 @@ test('StdioTransport carries the same RpcClient/RpcHost frames over NDJSON', asy
     },
   })
 
-  new RpcHost({
-    transport: createStdioHostTransport(clientToHost, hostToClient),
+  const server = new AgentServer({
+    agent: createHarness(),
     providerRegistry,
-    harnesses: { test: createHarness() },
   })
-  const client = new RpcClient(createStdioClientTransport(hostToClient, clientToHost))
+  server.attachTransport(createStdioServerTransport(clientToServer, serverToClient))
+  const client = new AgentClient(createStdioClientTransport(serverToClient, clientToServer))
 
-  await client.open('test', providerConfig('over stdio'), '/workspace')
+  await client.open(providerConfig('over stdio'), '/workspace')
   await client.send([{ type: 'text', text: 'hello' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -92,9 +92,9 @@ test('StdioTransport carries the same RpcClient/RpcHost frames over NDJSON', asy
   expect(textBlock).toMatchObject({ type: 'text', text: 'over stdio' })
 })
 
-test('StdioTransport preserves complex RpcClient action convergence over NDJSON', async () => {
-  const clientToHost = new PassThrough()
-  const hostToClient = new PassThrough()
+test('StdioTransport preserves complex AgentClient action convergence over NDJSON', async () => {
+  const clientToServer = new PassThrough()
+  const serverToClient = new PassThrough()
   const provider = new StdioScenarioProvider()
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
@@ -103,16 +103,16 @@ test('StdioTransport preserves complex RpcClient action convergence over NDJSON'
     createProvider: () => provider,
   })
 
-  const host = new RpcHost({
-    transport: createStdioHostTransport(clientToHost, hostToClient),
+  const server = new AgentServer({
+    agent: createHarness(),
     providerRegistry,
-    harnesses: { test: createHarness() },
   })
-  const client = new RpcClient(createStdioClientTransport(hostToClient, clientToHost))
+  server.attachTransport(createStdioServerTransport(clientToServer, serverToClient))
+  const client = new AgentClient(createStdioClientTransport(serverToClient, clientToServer))
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', { type: 'stdio-scenario', model }, '/workspace')
+  await client.open({ type: 'stdio-scenario', model }, '/workspace')
   const first = client.send([{ type: 'text', text: 'first ' + 'x'.repeat(20_000) }])
   await provider.firstStarted.promise
   const second = client.send([{ type: 'text', text: 'second' }])
@@ -144,14 +144,14 @@ test('StdioTransport preserves complex RpcClient action convergence over NDJSON'
   })
   expect(client.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'after compact answer' })
 
-  await host.close()
+  await server.close()
 })
 
-test('StdioTransport close disposes shell foreground processes through RpcHost', async () => {
+test('StdioTransport close disposes shell foreground processes through AgentServer', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-stdio-close-shell-'))
   const leakedPath = join(root, 'stdio-leaked.txt')
-  const clientToHost = new PassThrough()
-  const hostToClient = new PassThrough()
+  const clientToServer = new PassThrough()
+  const serverToClient = new PassThrough()
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'stdio-shell',
@@ -167,18 +167,18 @@ test('StdioTransport close disposes shell foreground processes through RpcHost',
         [events.text('running'), events.response()],
       ]),
   })
-  new RpcHost({
-    transport: createStdioHostTransport(clientToHost, hostToClient),
+  const server = new AgentServer({
+    agent: createHarness(),
     providerRegistry,
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       shellIdFactory: () => 'stdio-close-shell',
     },
-    harnesses: { test: createHarness() },
   })
-  const client = new RpcClient(createStdioClientTransport(hostToClient, clientToHost))
+  server.attachTransport(createStdioServerTransport(clientToServer, serverToClient))
+  const client = new AgentClient(createStdioClientTransport(serverToClient, clientToServer))
 
-  await client.open('test', { type: 'stdio-shell', model }, root)
+  await client.open({ type: 'stdio-shell', model }, root)
   await client.send([{ type: 'text', text: 'start long command' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -188,7 +188,7 @@ test('StdioTransport close disposes shell foreground processes through RpcHost',
   await expect(access(leakedPath)).rejects.toThrow()
 })
 
-test('StdioTransport carries RpcClient frames to a child-process RpcHost', async () => {
+test('StdioTransport carries AgentClient frames to a child-process AgentServer', async () => {
   const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'stdio-host-fixture.ts')], {
     cwd: process.cwd(),
     env: process.env,
@@ -199,9 +199,9 @@ test('StdioTransport carries RpcClient frames to a child-process RpcHost', async
     stderr += Buffer.from(chunk).toString('utf8')
   })
 
-  const client = new RpcClient(createStdioClientTransport(child.stdout, child.stdin))
+  const client = new AgentClient(createStdioClientTransport(child.stdout, child.stdin))
   try {
-    await withTimeout(client.open('test', childProviderConfig('from child'), '/workspace'), 'open child session', () => stderr)
+    await withTimeout(client.open(childProviderConfig('from child'), '/workspace'), 'open child session', () => stderr)
     await client.send([{ type: 'text', text: 'hello child' }])
     await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'), () => stderr)
 

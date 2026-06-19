@@ -2,7 +2,7 @@ const BINARY_MARKER = '__demiUint8Array'
 const BIGINT_MARKER = '__demiBigInt'
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
-export function stringifyRpcJson(value: unknown): string {
+export function stringifyAgentJson(value: unknown): string {
   return JSON.stringify(value, (_key, nested) => {
     if (nested instanceof Uint8Array) {
       return {
@@ -20,7 +20,7 @@ export function stringifyRpcJson(value: unknown): string {
   })
 }
 
-export function parseRpcJson<T>(text: string): T {
+export function parseAgentJson<T>(text: string): T {
   return JSON.parse(text, (_key, nested) => {
     if (isEncodedUint8Array(nested)) {
       return base64ToBytes(nested.base64)

@@ -72,7 +72,7 @@ Earlier runs exposed real defects before this pass:
 - Repeated MCP request ids could pair a current tool result with an old historical tool call.
 - Real model behavior could repeat the same `shell_exec` command until timeout.
 
-Those defects are covered by deterministic provider/base-agent/shell tests and the passing real run above.
+Those defects are covered by deterministic provider/agent/shell tests and the passing real run above.
 
 ## Follow-Up Deterministic Tests
 

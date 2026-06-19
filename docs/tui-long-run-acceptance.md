@@ -2,7 +2,7 @@
 
 This document lists the long-running real TUI acceptance tests we should use to validate the agent shell. Each test has its own process record under `docs/tui-acceptance/`.
 
-The purpose is to catch failures that deterministic unit tests usually miss: model drift, provider event mismatch, shell control friction, context pressure, compaction recovery, and UI/RPC action convergence.
+The purpose is to catch failures that deterministic unit tests usually miss: model drift, provider event mismatch, shell control friction, context pressure, compaction recovery, and UI/AgentClient action convergence.
 
 ## Run Discipline
 
@@ -22,7 +22,7 @@ The purpose is to catch failures that deterministic unit tests usually miss: mod
 | Real Project Build Marathon | P0 | End-to-end coding workflow under fuzzy requirements | [real-project-build-marathon.md](tui-acceptance/real-project-build-marathon.md) |
 | Interactive Shell Control | P0 | Foreground process, wait/input/abort, scaffold prompts | [interactive-shell-control.md](tui-acceptance/interactive-shell-control.md) |
 | Compact + Abort + Resume | P0 | Abort/compact/resume interleaving and transcript atomicity | [compact-abort-resume.md](tui-acceptance/compact-abort-resume.md) |
-| Queued Input During Long Turn | P1 | TUI/RPC queue ordering while a turn is active | [queued-input-long-turn.md](tui-acceptance/queued-input-long-turn.md) |
+| Queued Input During Long Turn | P1 | TUI/AgentClient queue ordering while a turn is active | [queued-input-long-turn.md](tui-acceptance/queued-input-long-turn.md) |
 | Context Cache Stability Marathon | P1 | Cache usage, stable prefix, post-compact restabilization | [context-cache-stability-marathon.md](tui-acceptance/context-cache-stability-marathon.md) |
 | Large Output Boundaries | P1 | Model-visible truncation and UI high-output stability | [large-output-boundaries.md](tui-acceptance/large-output-boundaries.md) |
 | Thinking + Tool Rendering Smoke | P1 | Real thinking, real text, real tool output rendering | [thinking-tool-rendering-smoke.md](tui-acceptance/thinking-tool-rendering-smoke.md) |

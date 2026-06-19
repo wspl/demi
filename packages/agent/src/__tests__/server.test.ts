@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import type { AgentHarness, BashEnvironmentOptions } from '@demi/shell'
+import type { AgentHarness } from '@demi/agent'
+import type { BashEnvironmentOptions } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import { ProviderRegistry, StubProvider, events, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
 import {
-  RpcClient,
-  RpcHost,
-  createInProcessTransportPair,
+  AgentClient,
+  AgentServer,
   type ClientSessionEvent,
   type ProviderConfig,
 } from '../index'
@@ -27,20 +27,20 @@ const model: ModelSelection = {
   thinking: null,
 }
 
-test('RpcClient.open and send run through InProcessTransport and emit transcript/phase frames', async () => {
+test('AgentClient.open and send run through InProcessTransport and emit transcript/phase frames', async () => {
   const turns: ConstructorParameters<typeof StubProvider>[0] = [
     [
       events.text('hello'),
       events.response({ inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, cacheWriteTokens: 3 }),
     ],
   ]
-  const { client } = createRpcHarness({
+  const { client } = createAgentClientHarness({
     providerTurns: turns,
   })
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', providerConfig(turns), '/workspace')
+  await client.open(providerConfig(turns), '/workspace')
   await client.send([{ type: 'text', text: 'hi' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -65,14 +65,14 @@ test('RpcClient.open and send run through InProcessTransport and emit transcript
   expect(seen).toContainEqual({ type: 'phase', phase: 'idle' })
 })
 
-test('RpcClient clears its local transcript view when the session is closed', async () => {
-  const { client } = createRpcHarness({
+test('AgentClient clears its local transcript view when the session is closed', async () => {
+  const { client } = createAgentClientHarness({
     providerTurns: [[events.text('hello'), events.response()]],
   })
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', providerConfig([[events.text('hello'), events.response()]]), '/workspace')
+  await client.open(providerConfig([[events.text('hello'), events.response()]]), '/workspace')
   await client.send([{ type: 'text', text: 'hi' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -83,13 +83,13 @@ test('RpcClient clears its local transcript view when the session is closed', as
   expect(client.transcript().blocks).toEqual([])
 })
 
-test('RpcHost forwards provider error codes once and preserves the transcript error block', async () => {
+test('AgentServer forwards provider error codes once and preserves the transcript error block', async () => {
   const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.error('auth failed', 'auth')]]
-  const { client } = createRpcHarness({ providerTurns: turns })
+  const { client } = createAgentClientHarness({ providerTurns: turns })
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', providerConfig(turns), '/workspace')
+  await client.open(providerConfig(turns), '/workspace')
   await expect(client.send([{ type: 'text', text: 'hi' }])).rejects.toThrow('auth failed')
   await waitFor(() => seen.some((event) => event.type === 'error'))
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'error'))
@@ -105,11 +105,11 @@ test('RpcHost forwards provider error codes once and preserves the transcript er
   })
 })
 
-test('RpcHost maps shell tool progress into shell_output and audit frames', async () => {
-  const { client } = createRpcHarness({
+test('AgentServer maps shell tool progress into shell_output and audit frames', async () => {
+  const { client } = createAgentClientHarness({
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
-      shellIdFactory: () => 'rpc-shell-shell',
+      shellIdFactory: () => 'agent-shell',
     },
     providerTurns: [
       [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi' })],
@@ -119,9 +119,7 @@ test('RpcHost maps shell tool progress into shell_output and audit frames', asyn
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(
-    'test',
-    providerConfig([
+  await client.open(providerConfig([
       [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi' })],
       [events.text('done'), events.response()],
     ]),
@@ -133,17 +131,17 @@ test('RpcHost maps shell tool progress into shell_output and audit frames', asyn
   const shellOutput = seen.find((event) => event.type === 'shell_output')
   expect(shellOutput).toMatchObject({
     type: 'shell_output',
-    shellId: 'rpc-shell-shell',
+    shellId: 'agent-shell',
     snapshot: { stdoutDelta: 'hi' },
   })
   expect(seen.some((event) => event.type === 'audit')).toBe(true)
 })
 
-test('RpcHost bridges shell_input frames to the active shell session tool', async () => {
-  const { client } = createRpcHarness({
+test('AgentServer bridges shell_input frames to the active shell session tool', async () => {
+  const { client } = createAgentClientHarness({
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
-      shellIdFactory: () => 'rpc-input-shell',
+      shellIdFactory: () => 'agent-input-shell',
     },
     providerTurns: [
       [
@@ -158,9 +156,7 @@ test('RpcHost bridges shell_input frames to the active shell session tool', asyn
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(
-    'test',
-    providerConfig([
+  await client.open(providerConfig([
       [
         events.toolCall('tool-1', 'shell_exec', {
           script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
@@ -175,13 +171,13 @@ test('RpcHost bridges shell_input frames to the active shell session tool', asyn
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   seen.length = 0
-  await client.shellInput('rpc-input-shell', 'typed\n')
+  await client.shellInput('agent-input-shell', 'typed\n')
   await waitFor(() => seen.some((event) => event.type === 'shell_output' && event.snapshot.stdoutDelta === 'typed'))
-  await waitFor(() => seen.some((event) => event.type === 'shell_input_result' && event.shellId === 'rpc-input-shell'))
+  await waitFor(() => seen.some((event) => event.type === 'shell_input_result' && event.shellId === 'agent-input-shell'))
 
   expect(seen).toContainEqual({
     type: 'shell_output',
-    shellId: 'rpc-input-shell',
+    shellId: 'agent-input-shell',
     snapshot: {
       stdoutDelta: 'typed',
       stderrDelta: '',
@@ -194,20 +190,20 @@ test('RpcHost bridges shell_input frames to the active shell session tool', asyn
   })
   expect(seen).not.toContainEqual({
     type: 'tool_progress',
-    toolUseId: 'rpc-shell-input:rpc-input-shell',
+    toolUseId: 'agent-shell-input:agent-input-shell',
     output: expect.any(Array),
   })
 })
 
-test('RpcClient.shellInput waits for shell_input_result and rejects when no session is open', async () => {
-  const unopened = createRpcHarness({ providerTurns: [] })
+test('AgentClient.shellInput waits for shell_input_result and rejects when no session is open', async () => {
+  const unopened = createAgentClientHarness({ providerTurns: [] })
   await expect(unopened.client.shellInput('missing-shell', 'stdin')).rejects.toThrow('No session is open')
 
   const seen: ClientSessionEvent[] = []
-  const { client } = createRpcHarness({
+  const { client } = createAgentClientHarness({
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
-      shellIdFactory: () => 'rpc-delayed-input-shell',
+      shellIdFactory: () => 'agent-delayed-input-shell',
     },
     providerTurns: [
       [
@@ -229,12 +225,12 @@ test('RpcClient.shellInput waits for shell_input_result and rejects when no sess
     ],
     [events.text('waiting'), events.response()],
   ]
-  await client.open('test', providerConfig(turns), process.cwd())
+  await client.open(providerConfig(turns), process.cwd())
   await client.send([{ type: 'text', text: 'start process' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   let settled = false
-  const writing = client.shellInput('rpc-delayed-input-shell', 'accepted\n').then(() => {
+  const writing = client.shellInput('agent-delayed-input-shell', 'accepted\n').then(() => {
     settled = true
   })
   await delay(5)
@@ -242,16 +238,16 @@ test('RpcClient.shellInput waits for shell_input_result and rejects when no sess
 
   await writing
   expect(settled).toBe(true)
-  expect(seen.some((event) => event.type === 'shell_input_result' && event.shellId === 'rpc-delayed-input-shell')).toBe(true)
+  expect(seen.some((event) => event.type === 'shell_input_result' && event.shellId === 'agent-delayed-input-shell')).toBe(true)
   expect(seen).not.toContainEqual({
     type: 'tool_progress',
-    toolUseId: 'rpc-shell-input:rpc-delayed-input-shell',
+    toolUseId: 'agent-shell-input:agent-delayed-input-shell',
     output: expect.any(Array),
   })
 })
 
-test('RpcHost emits transcript patches with removals on retry', async () => {
-  const { client } = createRpcHarness({
+test('AgentServer emits transcript patches with removals on retry', async () => {
+  const { client } = createAgentClientHarness({
     providerTurns: [
       [events.text('old'), events.response()],
       (request: InferenceRequest) => {
@@ -263,9 +259,7 @@ test('RpcHost emits transcript patches with removals on retry', async () => {
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(
-    'test',
-    providerConfig([
+  await client.open(providerConfig([
       [events.text('old'), events.response()],
       (request: InferenceRequest) => {
         expect(request.items.map((item) => item.type)).toEqual(['user_message'])
@@ -291,8 +285,7 @@ test('RpcHost emits transcript patches with removals on retry', async () => {
   expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 
-test('RpcHost queues send frames while the session is busy and drains them in order', async () => {
-  const transports = createInProcessTransportPair()
+test('AgentServer queues send frames while the session is busy and drains them in order', async () => {
   const registry = new ProviderRegistry()
   const gate = deferred<void>()
   const provider = new DelayedProvider(gate.promise)
@@ -301,16 +294,15 @@ test('RpcHost queues send frames while the session is busy and drains them in or
     displayName: 'Delayed',
     createProvider: () => provider,
   })
-  new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: createTextHarness(),
     providerRegistry: registry,
-    harnesses: { test: createTextHarness() },
   })
-  const client = new RpcClient(transports.client)
+  const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', { type: 'delayed', model }, '/workspace')
+  await client.open({ type: 'delayed', model }, '/workspace')
   let firstSettled = false
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     firstSettled = true
@@ -341,8 +333,7 @@ test('RpcHost queues send frames while the session is busy and drains them in or
   expect(seen.some((event) => event.type === 'queue' && event.queue.length === 0)).toBe(true)
 })
 
-test('RpcHost rejects retry, resume, and compact frames while the session is busy', async () => {
-  const transports = createInProcessTransportPair()
+test('AgentServer rejects retry, resume, and compact frames while the session is busy', async () => {
   const registry = new ProviderRegistry()
   const gate = deferred<void>()
   const provider = new DelayedProvider(gate.promise)
@@ -351,16 +342,15 @@ test('RpcHost rejects retry, resume, and compact frames while the session is bus
     displayName: 'Delayed Rejects',
     createProvider: () => provider,
   })
-  new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: createTextHarness(),
     providerRegistry: registry,
-    harnesses: { test: createTextHarness() },
   })
-  const client = new RpcClient(transports.client)
+  const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', { type: 'delayed-rejects', model }, '/workspace')
+  await client.open({ type: 'delayed-rejects', model }, '/workspace')
   const sending = client.send([{ type: 'text', text: 'first' }])
   await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
 
@@ -379,8 +369,7 @@ test('RpcHost rejects retry, resume, and compact frames while the session is bus
   expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 
-test('RpcClient resolves each queued send promise on its own phase cycle', async () => {
-  const transports = createInProcessTransportPair()
+test('AgentClient resolves each queued send promise on its own phase cycle', async () => {
   const registry = new ProviderRegistry()
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
@@ -389,16 +378,15 @@ test('RpcClient resolves each queued send promise on its own phase cycle', async
     displayName: 'Sequenced Delayed',
     createProvider: () => provider,
   })
-  new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: createTextHarness(),
     providerRegistry: registry,
-    harnesses: { test: createTextHarness() },
   })
-  const client = new RpcClient(transports.client)
+  const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', { type: 'sequenced-delayed', model }, '/workspace')
+  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
   const settlements: string[] = []
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     settlements.push('first')
@@ -439,8 +427,7 @@ test('RpcClient resolves each queued send promise on its own phase cycle', async
   expect(settlements).toEqual(['first', 'second', 'third'])
 })
 
-test('RpcClient rejects only the active action when queued sends continue after an error', async () => {
-  const transports = createInProcessTransportPair()
+test('AgentClient rejects only the active action when queued sends continue after an error', async () => {
   const registry = new ProviderRegistry()
   const errorGate = deferred<void>()
   const successGate = deferred<void>()
@@ -450,16 +437,15 @@ test('RpcClient rejects only the active action when queued sends continue after 
     displayName: 'Error Then Delayed',
     createProvider: () => provider,
   })
-  new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: createTextHarness(),
     providerRegistry: registry,
-    harnesses: { test: createTextHarness() },
   })
-  const client = new RpcClient(transports.client)
+  const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', { type: 'error-then-delayed', model }, '/workspace')
+  await client.open({ type: 'error-then-delayed', model }, '/workspace')
   let firstError = ''
   const firstSend = client.send([{ type: 'text', text: 'first' }]).catch((error) => {
     firstError = error instanceof Error ? error.message : String(error)
@@ -484,8 +470,7 @@ test('RpcClient rejects only the active action when queued sends continue after 
   expect(secondSettled).toBe(true)
 })
 
-test('RpcClient.abort returns false while idle and true after aborting active work', async () => {
-  const transports = createInProcessTransportPair()
+test('AgentClient.abort returns false while idle and true after aborting active work', async () => {
   const registry = new ProviderRegistry()
   const provider = new AbortAwareProvider()
   registry.register({
@@ -493,14 +478,13 @@ test('RpcClient.abort returns false while idle and true after aborting active wo
     displayName: 'Abort Aware',
     createProvider: () => provider,
   })
-  new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: createTextHarness(),
     providerRegistry: registry,
-    harnesses: { test: createTextHarness() },
   })
-  const client = new RpcClient(transports.client)
+  const client = server.client()
 
-  await client.open('test', { type: 'abort-aware', model }, '/workspace')
+  await client.open({ type: 'abort-aware', model }, '/workspace')
   expect(await client.abort()).toBe(false)
 
   const sending = client.send([{ type: 'text', text: 'start' }])
@@ -510,8 +494,7 @@ test('RpcClient.abort returns false while idle and true after aborting active wo
   await sending
 })
 
-test('RpcHost aborts the active session when a close frame is received', async () => {
-  const transports = createInProcessTransportPair()
+test('AgentServer aborts the active session when a close frame is received', async () => {
   const registry = new ProviderRegistry()
   const provider = new AbortAwareProvider()
   registry.register({
@@ -519,16 +502,15 @@ test('RpcHost aborts the active session when a close frame is received', async (
     displayName: 'Abort Aware',
     createProvider: () => provider,
   })
-  new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: createTextHarness(),
     providerRegistry: registry,
-    harnesses: { test: createTextHarness() },
   })
-  const client = new RpcClient(transports.client)
+  const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', { type: 'abort-aware', model }, '/workspace')
+  await client.open({ type: 'abort-aware', model }, '/workspace')
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.started.promise
 
@@ -540,18 +522,18 @@ test('RpcHost aborts the active session when a close frame is received', async (
   expect(seen.some((event) => event.type === 'closed')).toBe(true)
 })
 
-test('RpcHost disposes shell resources when a close frame is received', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-rpc-dispose-'))
-  const leakedPath = join(root, 'rpc-leaked.txt')
-  const { client } = createRpcHarness({
+test('AgentServer disposes shell resources when a close frame is received', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-agent-dispose-'))
+  const leakedPath = join(root, 'agent-leaked.txt')
+  const { client } = createAgentClientHarness({
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
-      shellIdFactory: () => 'rpc-dispose-shell',
+      shellIdFactory: () => 'agent-dispose-shell',
     },
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c "sleep 0.2; printf leaked > rpc-leaked.txt"',
+          script: 'sh -c "sleep 0.2; printf leaked > agent-leaked.txt"',
           yieldAfterMs: 1,
         }),
       ],
@@ -559,12 +541,10 @@ test('RpcHost disposes shell resources when a close frame is received', async ()
     ],
   })
 
-  await client.open(
-    'test',
-    providerConfig([
+  await client.open(providerConfig([
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c "sleep 0.2; printf leaked > rpc-leaked.txt"',
+          script: 'sh -c "sleep 0.2; printf leaked > agent-leaked.txt"',
           yieldAfterMs: 1,
         }),
       ],
@@ -581,7 +561,7 @@ test('RpcHost disposes shell resources when a close frame is received', async ()
   await expect(access(leakedPath)).rejects.toThrow()
 })
 
-test('RpcHost.close disposes harness resources directly', async () => {
+test('AgentServer.close disposes harness resources directly', async () => {
   let disposed = false
   const harness: AgentHarness<Record<string, never>> = {
     name: 'direct-close',
@@ -592,23 +572,22 @@ test('RpcHost.close disposes harness resources directly', async () => {
       disposed = true
     },
   }
-  const { client, host } = createRpcHarness({
+  const { client, server } = createAgentClientHarness({
     harness,
     providerTurns: [],
   })
 
-  await client.open('test', providerConfig([]), '/workspace')
-  await host.close()
+  await client.open(providerConfig([]), '/workspace')
+  await server.close()
 
   expect(disposed).toBe(true)
 })
 
-function createRpcHarness(options: {
+function createAgentClientHarness(options: {
   harness?: AgentHarness<unknown>
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   providerTurns: ConstructorParameters<typeof StubProvider>[0]
-}): { client: RpcClient; host: RpcHost } {
-  const transports = createInProcessTransportPair()
+}): { client: AgentClient; server: AgentServer } {
   const registry = new ProviderRegistry()
   registry.register({
     type: 'stub',
@@ -618,16 +597,13 @@ function createRpcHarness(options: {
       return new StubProvider(turns)
     },
   })
-  const host = new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: options.harness ?? createTextHarness(),
     providerRegistry: registry,
     shell: options.shell,
-    harnesses: {
-      test: options.harness ?? createTextHarness(),
-    },
   })
-  const client = new RpcClient(transports.client)
-  return { client, host }
+  const client = server.client()
+  return { client, server }
 }
 
 class DelayedProvider implements AgentProvider {

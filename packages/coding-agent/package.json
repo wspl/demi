@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@demi/base-agent": "workspace:*",
+    "@demi/agent": "workspace:*",
     "@demi/shell": "workspace:*",
     "zod": "^4.0.0"
   },

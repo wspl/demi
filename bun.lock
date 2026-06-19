@@ -9,23 +9,24 @@
         "@typescript/native-preview": "^7.0.0-dev.20260618.1",
       },
     },
+    "packages/agent": {
+      "name": "@demi/agent",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demi/core": "workspace:*",
+        "@demi/provider": "workspace:*",
+        "@demi/shell": "workspace:*",
+      },
+    },
     "packages/coding-agent": {
       "name": "@demi/coding-agent",
       "version": "0.0.0",
       "dependencies": {
-        "@demi/base-agent": "workspace:*",
+        "@demi/agent": "workspace:*",
         "@demi/shell": "workspace:*",
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demi/core": "workspace:*",
-        "@demi/provider": "workspace:*",
-      },
-    },
-    "packages/base-agent": {
-      "name": "@demi/base-agent",
-      "version": "0.0.0",
-      "dependencies": {
         "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
       },
@@ -92,17 +93,7 @@
         "@demi/provider": "workspace:*",
       },
       "devDependencies": {
-        "@demi/base-agent": "workspace:*",
-        "@demi/shell": "workspace:*",
-      },
-    },
-    "packages/rpc": {
-      "name": "@demi/rpc",
-      "version": "0.0.0",
-      "dependencies": {
-        "@demi/base-agent": "workspace:*",
-        "@demi/core": "workspace:*",
-        "@demi/provider": "workspace:*",
+        "@demi/agent": "workspace:*",
         "@demi/shell": "workspace:*",
       },
     },
@@ -110,7 +101,6 @@
       "name": "@demi/shell",
       "version": "0.0.0",
       "dependencies": {
-        "@demi/base-agent": "workspace:*",
         "just-bash": "workspace:*",
         "zod": "^4.0.0",
       },
@@ -119,12 +109,11 @@
       "name": "@demi/tui",
       "version": "0.0.0",
       "dependencies": {
+        "@demi/agent": "workspace:*",
         "@demi/coding-agent": "workspace:*",
-        "@demi/base-agent": "workspace:*",
         "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
         "@demi/provider-claude-code": "workspace:*",
-        "@demi/rpc": "workspace:*",
         "@demi/shell": "workspace:*",
       },
     },
@@ -142,17 +131,15 @@
 
     "@borewit/text-codec": ["@borewit/text-codec@0.2.2", "", {}, "sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ=="],
 
-    "@demi/coding-agent": ["@demi/coding-agent@workspace:packages/coding-agent"],
+    "@demi/agent": ["@demi/agent@workspace:packages/agent"],
 
-    "@demi/base-agent": ["@demi/base-agent@workspace:packages/base-agent"],
+    "@demi/coding-agent": ["@demi/coding-agent@workspace:packages/coding-agent"],
 
     "@demi/core": ["@demi/core@workspace:packages/core"],
 
     "@demi/provider": ["@demi/provider@workspace:packages/provider"],
 
     "@demi/provider-claude-code": ["@demi/provider-claude-code@workspace:packages/provider-claude-code"],
-
-    "@demi/rpc": ["@demi/rpc@workspace:packages/rpc"],
 
     "@demi/shell": ["@demi/shell@workspace:packages/shell"],
 

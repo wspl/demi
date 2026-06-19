@@ -1,18 +1,18 @@
 import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
 import type { ClientFrame, ServerFrame } from './frames'
-import { parseRpcJson, stringifyRpcJson } from './json-codec'
-import type { RPCTransport, RpcClientTransport, RpcHostTransport } from './transport'
+import { parseAgentJson, stringifyAgentJson } from './json-codec'
+import type { AgentTransport, AgentClientTransport, AgentServerTransport } from './transport'
 
-export function createStdioClientTransport(readable: Readable, writable: Writable): RpcClientTransport {
+export function createStdioClientTransport(readable: Readable, writable: Writable): AgentClientTransport {
   return new JsonLineTransport<ClientFrame, ServerFrame>(readable, writable)
 }
 
-export function createStdioHostTransport(readable: Readable, writable: Writable): RpcHostTransport {
+export function createStdioServerTransport(readable: Readable, writable: Writable): AgentServerTransport {
   return new JsonLineTransport<ServerFrame, ClientFrame>(readable, writable)
 }
 
-class JsonLineTransport<SendFrame, ReceiveFrame> implements RPCTransport<SendFrame, ReceiveFrame> {
+class JsonLineTransport<SendFrame, ReceiveFrame> implements AgentTransport<SendFrame, ReceiveFrame> {
   private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
   private readonly readline
   private closed = false
@@ -24,14 +24,14 @@ class JsonLineTransport<SendFrame, ReceiveFrame> implements RPCTransport<SendFra
     this.readline = createInterface({ input: readable })
     this.readline.on('line', (line) => {
       if (this.closed || line.trim() === '') return
-      const frame = parseRpcJson<ReceiveFrame>(line)
+      const frame = parseAgentJson<ReceiveFrame>(line)
       for (const handler of this.handlers) handler(frame)
     })
   }
 
   send(frame: SendFrame): void {
-    if (this.closed) throw new Error('RPC transport is closed')
-    this.writable.write(`${stringifyRpcJson(frame)}\n`)
+    if (this.closed) throw new Error('Agent transport is closed')
+    this.writable.write(`${stringifyAgentJson(frame)}\n`)
   }
 
   onFrame(handler: (frame: ReceiveFrame) => void): () => void {

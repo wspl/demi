@@ -8,7 +8,7 @@ import type { AgentProvider, InferenceRequest, ProviderEvent } from './types'
  * flows like "respond with text → request a tool call → receive tool
  * result → respond with follow-up text".
  *
- * Tool call round-trip: a turn yields `tool_call_requested`. base-agent
+ * Tool call round-trip: a turn yields `tool_call_requested`. AgentSession
  * executes the tool, then calls `run()` again with the tool result in
  * `items`. The next turn's events are then yielded.
  *

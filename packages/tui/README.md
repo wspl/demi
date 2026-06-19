@@ -1,7 +1,7 @@
 # Demi TUI
 
-A small acceptance shell for exercising the coding agent through the same RPC,
-agent, provider, and shell layers used by embedders.
+A small acceptance shell for exercising the coding agent through the same
+AgentServer, provider, and shell layers used by embedders.
 
 ## Run
 

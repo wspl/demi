@@ -6,7 +6,7 @@
 | Scope | Real TUI + real Claude Code provider + `claude-haiku-4-5` |
 | TUI command | `bun run packages/tui/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
 | TUI model context | `packages/tui/src/index.ts` sets `contextWindow: 200_000` for the selected model |
-| Compaction threshold | `packages/base-agent/src/session.ts` uses `0.8 * contextWindow`, so this run should compact near 160k estimated or provider-reported context tokens |
+| Compaction threshold | `packages/agent/src/session.ts` uses `0.8 * contextWindow`, so this run should compact near 160k estimated or provider-reported context tokens |
 | Acceptance target | Drive the TUI past context pressure at least 3 times and verify compact lets the agent continue working |
 | Result | Passed after fixing Claude Code provider replay names, repeated MCP request-id handling, runaway repeated `shell_exec` control, and usage-based auto compact pressure accounting. Real TUI exceeded the 200k context pressure path repeatedly through both preflight and provider-usage auto compact paths. |
 

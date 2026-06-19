@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
-import { parseRpcJson, stringifyRpcJson } from '../index'
+import { parseAgentJson, stringifyAgentJson } from '../index'
 
-test('RPC JSON codec preserves BigInt metadata and Uint8Array values', () => {
-  const encoded = stringifyRpcJson({
+test('agent JSON codec preserves BigInt metadata and Uint8Array values', () => {
+  const encoded = stringifyAgentJson({
     metadata: { count: 42n },
     bytes: new Uint8Array([1, 2, 3]),
     empty: new Uint8Array(),
@@ -10,7 +10,7 @@ test('RPC JSON codec preserves BigInt metadata and Uint8Array values', () => {
     two: new Uint8Array([254, 253]),
   })
 
-  const decoded = parseRpcJson<{
+  const decoded = parseAgentJson<{
     metadata: { count: bigint }
     bytes: Uint8Array
     empty: Uint8Array

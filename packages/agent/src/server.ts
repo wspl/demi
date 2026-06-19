@@ -1,62 +1,106 @@
-import { AgentSession, type AgentHarnessRuntime, type SessionEvent } from '@demi/base-agent'
+import { AgentSession } from './session'
 import {
   BashEnvironment,
   CommandRegistry,
   createShellSessionTools,
-  type AgentHarness,
   type BashAuditEvent,
   type BashEnvironmentOptions,
 } from '@demi/shell'
 import type { Block, ToolResultContentBlock } from '@demi/core'
 import type { ProviderRegistry } from '@demi/provider'
+import { AgentClient } from './client'
 import { cloneBlocks, diffTranscriptBlocks } from './patch'
 import type { ClientFrame, OutputSnapshotLike, ServerFrame } from './frames'
-import type { RpcHostTransport } from './transport'
+import { createInProcessTransportPair, type AgentServerTransport } from './transport'
+import type { AgentHarness, AgentHarnessRuntime, SessionEvent } from './types'
 
-export interface RpcHostOptions {
-  transport: RpcHostTransport
+export interface AgentServerOptions {
+  agent: AgentHarness<unknown>
   providerRegistry: ProviderRegistry
-  harnesses?: Record<string, AgentHarness<unknown>>
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
 }
 
-export class RpcHost {
-  private readonly transport: RpcHostTransport
+export interface AgentTransportBinding {
+  close(): Promise<void>
+}
+
+export class AgentServer {
+  private readonly agent: AgentHarness<unknown>
   private readonly providerRegistry: ProviderRegistry
-  private readonly harnesses = new Map<string, AgentHarness<unknown>>()
+  private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  private readonly bindings = new Set<AgentTransportBindingImpl>()
+
+  constructor(options: AgentServerOptions) {
+    this.agent = options.agent
+    this.providerRegistry = options.providerRegistry
+    this.shellOptions = options.shell ?? {}
+  }
+
+  client(): AgentClient {
+    const transports = createInProcessTransportPair()
+    this.attachTransport(transports.server)
+    return new AgentClient(transports.client)
+  }
+
+  attachTransport(transport: AgentServerTransport): AgentTransportBinding {
+    const binding = new AgentTransportBindingImpl({
+      transport,
+      agent: this.agent,
+      providerRegistry: this.providerRegistry,
+      shell: this.shellOptions,
+    })
+    this.bindings.add(binding)
+    return binding
+  }
+
+  async close(): Promise<void> {
+    const bindings = [...this.bindings]
+    this.bindings.clear()
+    await Promise.all(bindings.map((binding) => binding.close()))
+  }
+}
+
+interface AgentTransportBindingOptions {
+  transport: AgentServerTransport
+  agent: AgentHarness<unknown>
+  providerRegistry: ProviderRegistry
+  shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+}
+
+class AgentTransportBindingImpl implements AgentTransportBinding {
+  private readonly transport: AgentServerTransport
+  private readonly agent: AgentHarness<unknown>
+  private readonly providerRegistry: ProviderRegistry
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private session: AgentSession<unknown> | null = null
-  private currentHarness: AgentHarness<unknown> | null = null
+  private currentAgent: AgentHarness<unknown> | null = null
   private currentEnvironment: BashEnvironment | null = null
   private currentCwd: string | null = null
   private unsubscribeSession: (() => void) | null = null
   private lastTranscriptBlocks: Block[] = []
   private unsubscribeTransport: (() => void) | null = null
+  private closed = false
 
-  constructor(options: RpcHostOptions) {
+  constructor(options: AgentTransportBindingOptions) {
     this.transport = options.transport
+    this.agent = options.agent
     this.providerRegistry = options.providerRegistry
     this.shellOptions = options.shell ?? {}
-    for (const [name, harness] of Object.entries(options.harnesses ?? {})) {
-      this.registerHarness(name, harness)
-    }
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
     })
   }
 
-  registerHarness(name: string, harness: AgentHarness<unknown>): void {
-    if (this.harnesses.has(name)) throw new Error(`RpcHost: harness "${name}" is already registered`)
-    this.harnesses.set(name, harness)
-  }
-
   async close(): Promise<void> {
+    if (this.closed) return
+    this.closed = true
     try {
       await this.closeSession()
     } catch (error) {
       this.sendError(error)
     } finally {
       this.unsubscribeTransport?.()
+      this.unsubscribeTransport = null
       this.transport.close()
     }
   }
@@ -116,31 +160,26 @@ export class RpcHost {
       return
     }
 
-    const harness = this.harnesses.get(frame.harness)
-    if (!harness) {
-      this.send({ type: 'rejected', command: 'open', reason: `Unknown harness: ${frame.harness}` })
-      return
-    }
-
+    const agent = this.agent
     const provider = await this.providerRegistry.createProvider(frame.provider.type, frame.provider.config)
-    const state = harness.initialState()
+    const state = agent.initialState()
     const harnessContext = { state, cwd: frame.cwd }
-    const commands = harness.commands?.(harnessContext) ?? []
+    const commands = agent.commands?.(harnessContext) ?? []
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
     const environment = new BashEnvironment({
       ...this.shellOptions,
-      host: harness.host(harnessContext),
+      host: agent.host(harnessContext),
       commands: commandRegistry,
     })
     const tools = createShellSessionTools(environment)
     const runtime: AgentHarnessRuntime<unknown> = {
-      harnessName: harness.name,
+      harnessName: agent.name,
       initialState: () => state,
-      systemPrompt: (ctx) => harness.systemPrompt(ctx),
-      preamble: (ctx) => harness.preamble?.(ctx) ?? null,
-      resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
-      lifecycle: (event) => harness.lifecycle?.(event),
+      systemPrompt: (ctx) => agent.systemPrompt(ctx),
+      preamble: (ctx) => agent.preamble?.(ctx) ?? null,
+      resolveReferences: (ctx, content) => agent.resolveReferences?.(ctx, content) ?? content,
+      lifecycle: (event) => agent.lifecycle?.(event),
       tools: () => tools,
     }
     this.session = new AgentSession({
@@ -150,7 +189,7 @@ export class RpcHost {
       runtime,
       state,
     })
-    this.currentHarness = harness
+    this.currentAgent = agent
     this.currentEnvironment = environment
     this.currentCwd = frame.cwd
     this.lastTranscriptBlocks = []
@@ -189,21 +228,21 @@ export class RpcHost {
 
   private async closeSession(): Promise<void> {
     const session = this.session
-    const harness = this.currentHarness
+    const agent = this.currentAgent
     const environment = this.currentEnvironment
     const cwd = this.currentCwd
 
     try {
       if (session) await session.abort()
       if (environment) await environment.disposeAllShells()
-      if (session && harness && cwd) {
-        await harness.dispose?.({ agentSessionId: session.id(), state: session.state(), cwd, transcript: session.transcript() })
+      if (session && agent && cwd) {
+        await agent.dispose?.({ agentSessionId: session.id(), state: session.state(), cwd, transcript: session.transcript() })
       }
     } finally {
       this.unsubscribeSession?.()
       this.unsubscribeSession = null
       this.session = null
-      this.currentHarness = null
+      this.currentAgent = null
       this.currentEnvironment = null
       this.currentCwd = null
       this.lastTranscriptBlocks = []

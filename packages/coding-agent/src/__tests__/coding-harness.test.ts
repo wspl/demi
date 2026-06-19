@@ -3,13 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, type AgentHarnessRuntime } from '@demi/base-agent'
+import { AgentSession, type AgentHarness, type AgentHarnessRuntime } from '@demi/agent'
 import { StubProvider, events, type InferenceRequest } from '@demi/provider'
 import {
   BashEnvironment,
   CommandRegistry,
   createShellSessionTools,
-  type AgentHarness,
   type Host,
   type HostSpawnHandle,
   type HostSpawnParams,

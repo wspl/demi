@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection, UserContentBlock } from '@demi/core'
 import { events, ProviderRegistry, StubProvider } from '@demi/provider'
-import { createInProcessTransportPair, RpcClient, RpcHost, type ProviderConfig } from '@demi/rpc'
-import type { AgentHarness } from '@demi/shell'
+import { AgentServer, type ProviderConfig } from '@demi/agent'
+import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/shell/local-host'
 import { attachRenderer, createRenderer, handleCommand, renderEvent, runInputLoop, type TuiOutput } from '../index'
 
@@ -180,7 +180,7 @@ test('TUI renderer prints phase, queue, shell output, audit, and progress frames
   expect(text).toContain('closed')
 })
 
-test('TUI renderer receives RpcClient subscription events end to end', async () => {
+test('TUI renderer receives AgentClient subscription events end to end', async () => {
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'stub',
@@ -188,38 +188,36 @@ test('TUI renderer receives RpcClient subscription events end to end', async () 
     createProvider: () =>
       new StubProvider([
         [
-          events.text('rpc hello'),
+          events.text('agent hello'),
           events.response({ inputTokens: 6, outputTokens: 2, cacheReadTokens: 1, cacheWriteTokens: 0 }),
         ],
       ]),
   })
-  const transports = createInProcessTransportPair()
-  const rpcHost = new RpcHost({
-    transport: transports.host,
+  const server = new AgentServer({
+    agent: testHarness,
     providerRegistry,
-    harnesses: { test: testHarness },
   })
-  const client = new RpcClient(transports.client)
+  const client = server.client()
   const output = new CaptureOutput()
   const renderer = createRenderer(output)
   attachRenderer(client, renderer)
 
   const provider: ProviderConfig = { type: 'stub', model: { ...model, providerId: 'stub' } }
 
-  await client.open('test', provider, '/tmp/demi-tui-test')
+  await client.open(provider, '/tmp/demi-tui-test')
   await client.send([{ type: 'text', text: 'hello' }])
   await client.close()
-  await rpcHost.close()
+  await server.close()
 
   const text = output.text()
   expect(text).toContain('status: idle')
   expect(text).toContain('status: running')
-  expect(text).toContain('assistant> rpc hello')
+  expect(text).toContain('assistant> agent hello')
   expect(text).toContain('usage: in=6 out=2 cache_read=1 cache_write=0')
   expect(text).toContain('closed')
 })
 
-test('TUI commands dispatch to the RPC client and validate input usage', async () => {
+test('TUI commands dispatch to the agent client and validate input usage', async () => {
   const output = new CaptureOutput()
   const client = new FakeCommandClient()
 

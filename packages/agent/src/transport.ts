@@ -1,28 +1,28 @@
 import type { ClientFrame, ServerFrame } from './frames'
 
-export interface RPCTransport<SendFrame, ReceiveFrame> {
+export interface AgentTransport<SendFrame, ReceiveFrame> {
   send(frame: SendFrame): void
   onFrame(handler: (frame: ReceiveFrame) => void): () => void
   close(): void
 }
 
-export type RpcClientTransport = RPCTransport<ClientFrame, ServerFrame>
-export type RpcHostTransport = RPCTransport<ServerFrame, ClientFrame>
+export type AgentClientTransport = AgentTransport<ClientFrame, ServerFrame>
+export type AgentServerTransport = AgentTransport<ServerFrame, ClientFrame>
 
 export interface InProcessTransportPair {
-  client: RpcClientTransport
-  host: RpcHostTransport
+  client: AgentClientTransport
+  server: AgentServerTransport
 }
 
 export function createInProcessTransportPair(): InProcessTransportPair {
   const clientEndpoint = new InProcessEndpoint<ClientFrame, ServerFrame>()
-  const hostEndpoint = new InProcessEndpoint<ServerFrame, ClientFrame>()
-  clientEndpoint.connect(hostEndpoint)
-  hostEndpoint.connect(clientEndpoint)
-  return { client: clientEndpoint, host: hostEndpoint }
+  const serverEndpoint = new InProcessEndpoint<ServerFrame, ClientFrame>()
+  clientEndpoint.connect(serverEndpoint)
+  serverEndpoint.connect(clientEndpoint)
+  return { client: clientEndpoint, server: serverEndpoint }
 }
 
-class InProcessEndpoint<SendFrame, ReceiveFrame> implements RPCTransport<SendFrame, ReceiveFrame> {
+class InProcessEndpoint<SendFrame, ReceiveFrame> implements AgentTransport<SendFrame, ReceiveFrame> {
   private peer: InProcessEndpoint<ReceiveFrame, SendFrame> | null = null
   private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
   private closed = false
@@ -32,8 +32,8 @@ class InProcessEndpoint<SendFrame, ReceiveFrame> implements RPCTransport<SendFra
   }
 
   send(frame: SendFrame): void {
-    if (this.closed) throw new Error('RPC transport is closed')
-    if (!this.peer) throw new Error('RPC transport is not connected')
+    if (this.closed) throw new Error('Agent transport is closed')
+    if (!this.peer) throw new Error('Agent transport is not connected')
     this.peer.receive(frame)
   }
 

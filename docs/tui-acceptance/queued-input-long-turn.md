@@ -4,7 +4,7 @@
 |---|---|
 | Date | 2026-06-19 |
 | Status | Passed |
-| Scope | Real TUI + RPC queue + active long provider turn |
+| Scope | Real TUI + AgentClient queue + active long provider turn |
 | Primary model | `claude-haiku-4-5`, thinking off |
 | TUI command | `/usr/bin/script -q <log> bun run packages/tui/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
 | Acceptance target | Send multiple user inputs while a turn is active and verify ordering, queue display, and drain behavior |
@@ -135,7 +135,7 @@ Existing deterministic queue tests already verify the core runtime contract: que
 
 ## Follow-Up Deterministic Tests
 
-- Existing `packages/base-agent/src/__tests__/session.test.ts` covers queued sends while active and transcript user-turn order.
-- Existing `packages/base-agent/src/__tests__/session-marathon.test.ts` covers two queued sends plus retry/error recovery.
-- Existing `packages/rpc/src/__tests__/rpc.test.ts` covers RPC queue frames and queued send promise resolution.
+- Existing `packages/agent/src/__tests__/session.test.ts` covers queued sends while active and transcript user-turn order.
+- Existing `packages/agent/src/__tests__/session-marathon.test.ts` covers two queued sends plus retry/error recovery.
+- Existing `packages/agent/src/__tests__/server.test.ts` covers AgentClient queue frames and queued send promise resolution.
 - Existing `packages/tui/src/__tests__/renderer.test.ts` covers queue rendering.

@@ -1,6 +1,6 @@
 import type { ClientFrame, ServerFrame } from './frames'
-import { parseRpcJson, stringifyRpcJson } from './json-codec'
-import type { RPCTransport, RpcClientTransport, RpcHostTransport } from './transport'
+import { parseAgentJson, stringifyAgentJson } from './json-codec'
+import type { AgentTransport, AgentClientTransport, AgentServerTransport } from './transport'
 
 export interface JsonWebSocket {
   send(data: string): void
@@ -9,19 +9,19 @@ export interface JsonWebSocket {
   removeEventListener(type: 'message', listener: (event: { data: unknown }) => void): void
 }
 
-export function createWebSocketClientTransport(socket: JsonWebSocket): RpcClientTransport {
+export function createWebSocketClientTransport(socket: JsonWebSocket): AgentClientTransport {
   return new WebSocketJsonTransport<ClientFrame, ServerFrame>(socket)
 }
 
-export function createWebSocketHostTransport(socket: JsonWebSocket): RpcHostTransport {
+export function createWebSocketServerTransport(socket: JsonWebSocket): AgentServerTransport {
   return new WebSocketJsonTransport<ServerFrame, ClientFrame>(socket)
 }
 
-class WebSocketJsonTransport<SendFrame, ReceiveFrame> implements RPCTransport<SendFrame, ReceiveFrame> {
+class WebSocketJsonTransport<SendFrame, ReceiveFrame> implements AgentTransport<SendFrame, ReceiveFrame> {
   private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
   private readonly onMessage = (event: { data: unknown }): void => {
     const text = typeof event.data === 'string' ? event.data : String(event.data)
-    const frame = parseRpcJson<ReceiveFrame>(text)
+    const frame = parseAgentJson<ReceiveFrame>(text)
     for (const handler of this.handlers) handler(frame)
   }
 
@@ -30,7 +30,7 @@ class WebSocketJsonTransport<SendFrame, ReceiveFrame> implements RPCTransport<Se
   }
 
   send(frame: SendFrame): void {
-    this.socket.send(stringifyRpcJson(frame))
+    this.socket.send(stringifyAgentJson(frame))
   }
 
   onFrame(handler: (frame: ReceiveFrame) => void): () => void {

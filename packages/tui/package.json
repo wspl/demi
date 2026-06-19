@@ -7,12 +7,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@demi/base-agent": "workspace:*",
+    "@demi/agent": "workspace:*",
     "@demi/coding-agent": "workspace:*",
     "@demi/core": "workspace:*",
     "@demi/provider": "workspace:*",
     "@demi/provider-claude-code": "workspace:*",
-    "@demi/rpc": "workspace:*",
     "@demi/shell": "workspace:*"
   }
 }

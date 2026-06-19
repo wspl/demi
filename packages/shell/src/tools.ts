@@ -1,4 +1,3 @@
-import type { AgentTool, AgentToolInvokeResult } from '@demi/base-agent'
 import type {
   BashEnvironment,
   ShellAbortInput,
@@ -7,6 +6,34 @@ import type {
   ShellToolResult,
   ShellWaitInput,
 } from './environment'
+
+export interface ShellToolInvokeContext<State> {
+  agentSessionId: string
+  state: State
+  cwd: string
+  toolCallId: string
+  signal: AbortSignal
+  emitProgress(progress: unknown): void
+}
+
+export interface ShellToolInvokeResult {
+  output: Array<{ type: 'text'; text: string }>
+  isError?: boolean
+  metadata?: unknown | null
+  continuation?: {
+    toolCallId: string
+    shellId: string
+    status: 'running'
+  }
+  stopAfterToolResult?: boolean
+}
+
+export interface ShellAgentTool<State = unknown> {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  invoke(ctx: ShellToolInvokeContext<State>, input: unknown): Promise<ShellToolInvokeResult> | ShellToolInvokeResult
+}
 
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
 const REPEAT_WINDOW_MS = 60_000
@@ -19,7 +46,7 @@ interface ShellExecRepeatState {
 
 const execRepeatStates = new WeakMap<BashEnvironment, Map<string, ShellExecRepeatState>>()
 
-export function createShellSessionTools<State = unknown>(environment: BashEnvironment): AgentTool<State>[] {
+export function createShellSessionTools<State = unknown>(environment: BashEnvironment): ShellAgentTool<State>[] {
   return [
     {
       name: 'shell_exec',
@@ -113,7 +140,7 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
   ]
 }
 
-export function toToolResult(result: ShellToolResult, toolCallId = ''): AgentToolInvokeResult {
+export function toToolResult(result: ShellToolResult, toolCallId = ''): ShellToolInvokeResult {
   return {
     output: [{ type: 'text', text: formatToolResult(result) }],
     isError: result.status === 'timeout' || result.status === 'aborted',
@@ -175,7 +202,7 @@ function repeatedShellExecResult(
   environment: BashEnvironment,
   agentSessionId: string,
   script: string,
-): AgentToolInvokeResult | null {
+): ShellToolInvokeResult | null {
   const now = Date.now()
   const states = execRepeatStates.get(environment) ?? new Map<string, ShellExecRepeatState>()
   execRepeatStates.set(environment, states)

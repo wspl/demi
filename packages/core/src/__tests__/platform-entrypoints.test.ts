@@ -7,10 +7,9 @@ const repoRoot = resolve(import.meta.dir, '../../../..')
 const platformNeutralEntries = [
   ['@demi/core', 'packages/core/src/index.ts'],
   ['@demi/provider', 'packages/provider/src/index.ts'],
-  ['@demi/base-agent', 'packages/base-agent/src/index.ts'],
+  ['@demi/agent', 'packages/agent/src/index.ts'],
   ['@demi/shell', 'packages/shell/src/index.ts'],
   ['@demi/coding-agent', 'packages/coding-agent/src/index.ts'],
-  ['@demi/rpc', 'packages/rpc/src/index.ts'],
 ] as const
 
 const workspaceEntries = new Map<string, string>(platformNeutralEntries)
@@ -25,7 +24,7 @@ const allowedWorkspaceSubpaths = new Map<string, string>([
 const nodeOnlySubpaths = new Map<string, string>([
   ['@demi/shell/local-host', 'packages/shell/src/local-host.ts'],
   ['@demi/shell/store', 'packages/shell/src/store.ts'],
-  ['@demi/rpc/stdio', 'packages/rpc/src/stdio-transport.ts'],
+  ['@demi/agent/stdio', 'packages/agent/src/stdio-transport.ts'],
 ])
 
 const forbiddenSourcePatterns = [
@@ -48,15 +47,15 @@ for (const [entryName, entryPath] of platformNeutralEntries) {
   })
 }
 
-test('only the RPC host imports AgentSession as a runtime value outside tests', async () => {
+test('only AgentServer imports AgentSession as a runtime value outside tests', async () => {
   const files = await listSourceFiles(resolveRepoPath('packages'))
   const violations: string[] = []
 
   for (const file of files) {
     const relativeFile = formatPath(file)
     const source = await readFile(file, 'utf8')
-    if (!hasRuntimeImportFromBaseAgent(source, 'AgentSession')) continue
-    if (relativeFile !== 'packages/rpc/src/host.ts') violations.push(relativeFile)
+    if (!hasRuntimeImportFromAgent(source, 'AgentSession')) continue
+    if (relativeFile !== 'packages/agent/src/server.ts') violations.push(relativeFile)
   }
 
   expect(violations).toEqual([])
@@ -88,13 +87,13 @@ test('runtime source uses the forked bash package without embedded upstream snap
   expect([...existingForbiddenDirs, ...violations]).toEqual([])
 })
 
-test('@demi/shell keeps base-agent as a type-only integration dependency', async () => {
+test('@demi/shell does not depend on the agent runtime', async () => {
   const files = await listSourceFiles(resolveRepoPath('packages/shell/src'))
   const violations: string[] = []
 
   for (const file of files) {
     const source = await readFile(file, 'utf8')
-    if (hasRuntimeImportFromPackage(source, '@demi/base-agent')) violations.push(formatPath(file))
+    if (hasRuntimeImportFromPackage(source, '@demi/agent')) violations.push(formatPath(file))
   }
 
   expect(violations).toEqual([])
@@ -108,10 +107,9 @@ test('package manifests preserve layering boundaries', async () => {
   const platformNeutralPackages = [
     '@demi/core',
     '@demi/provider',
-    '@demi/base-agent',
+    '@demi/agent',
     '@demi/shell',
     '@demi/coding-agent',
-    '@demi/rpc',
   ]
   for (const packageName of platformNeutralPackages) {
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-claude-code')
@@ -250,8 +248,8 @@ interface PackageManifest {
   optionalDependencies?: Record<string, string>
 }
 
-function hasRuntimeImportFromBaseAgent(source: string, name: string): boolean {
-  const pattern = /\bimport\s+([\s\S]*?)\s+from\s+['"]@demi\/base-agent['"]/g
+function hasRuntimeImportFromAgent(source: string, name: string): boolean {
+  const pattern = /\bimport\s+([\s\S]*?)\s+from\s+['"]@demi\/agent['"]/g
   let match = pattern.exec(source)
   while (match) {
     if (importClauseHasRuntimeName(match[1] ?? '', name)) return true

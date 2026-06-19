@@ -47,7 +47,7 @@ test('StubProvider supports tool-call round-trip with function scripts', async (
   for await (const e of provider.run(makeRequest([]))) out1.push(e)
   expect(out1[0]).toEqual(events.toolCall('t1', 'shell_exec', { script: 'echo hi' }))
 
-  // base-agent would execute tool, then call run again with tool_result
+  // AgentSession would execute tool, then call run again with tool_result
   const out2: ProviderEvent[] = []
   for await (const e of provider.run(
     makeRequest([

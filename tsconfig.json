@@ -17,7 +17,7 @@
       "just-bash/ast/types": ["./packages/just-bash/packages/just-bash/src/ast/types.ts"],
       "just-bash/interpreter/helpers/ifs": ["./packages/just-bash/packages/just-bash/src/interpreter/helpers/ifs.ts"],
       "just-bash/parser": ["./packages/just-bash/packages/just-bash/src/parser/parser.ts"],
-      "@demi/rpc/stdio": ["./packages/rpc/src/stdio-transport.ts"],
+      "@demi/agent/stdio": ["./packages/agent/src/stdio-transport.ts"],
       "@demi/shell/local-host": ["./packages/shell/src/local-host.ts"],
       "@demi/shell/storage": ["./packages/shell/src/storage.ts"],
       "@demi/shell/store": ["./packages/shell/src/store.ts"],
