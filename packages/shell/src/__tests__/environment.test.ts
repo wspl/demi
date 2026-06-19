@@ -2059,6 +2059,45 @@ test('BashEnvironment supports running/yield then shell_wait', async () => {
   expect(status.output.stdoutDelta).toBe('0')
 })
 
+test('BashEnvironment runs shell_exec without shellId in an auxiliary shell when the default shell is busy', async () => {
+  let nextShell = 0
+  const env = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => `shell-busy-default-${++nextShell}`,
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const foreground = await env.exec({
+    agentSessionId: 'agent-busy-default',
+    script: 'sh -c "sleep 10"',
+    yieldAfterMs: 1,
+  })
+  expect(foreground.status).toBe('running')
+  if (foreground.status !== 'running') throw new Error('expected running result')
+  expect(foreground.shellId).toBe('shell-busy-default-1')
+
+  const probe = await env.exec({
+    agentSessionId: 'agent-busy-default',
+    script: 'printf probe',
+  })
+
+  expect(probe.status).toBe('exited')
+  if (probe.status !== 'exited') throw new Error('expected exited result')
+  expect(probe.shellId).toBe('shell-busy-default-2')
+  expect(probe.output.stdoutDelta).toBe('probe')
+
+  const aborted = await env.abort({ shellId: foreground.shellId })
+  expect(aborted.status).toBe('aborted')
+
+  const reusedDefault = await env.exec({
+    agentSessionId: 'agent-busy-default',
+    script: 'printf default',
+  })
+  expect(reusedDefault.status).toBe('exited')
+  expect(reusedDefault.shellId).toBe('shell-busy-default-1')
+  expect(reusedDefault.output.stdoutDelta).toBe('default')
+})
+
 test('BashEnvironment yields running output_limit when output crosses the configured boundary', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
@@ -2099,6 +2138,29 @@ test('BashEnvironment supports shell_input for a foreground process', async () =
   const second = await env.input({ shellId: first.shellId, stdin: 'typed\n' })
   expect(second.status).toBe('exited')
   expect(second.output.stdoutDelta).toBe('typed')
+})
+
+test('BashEnvironment writes shell_input exactly and line readers wait for a newline', async () => {
+  const env = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => 'shell-input-raw-line',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const first = await env.exec({
+    script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
+    yieldAfterMs: 1,
+  })
+  expect(first.status).toBe('running')
+
+  const withoutNewline = await env.input({ shellId: first.shellId, stdin: 'typed', yieldAfterMs: 1 })
+  expect(withoutNewline.status).toBe('running')
+  if (withoutNewline.status !== 'running') throw new Error('expected running result')
+  expect(withoutNewline.output.stdoutDelta).toBe('')
+
+  const withNewline = await env.input({ shellId: first.shellId, stdin: '\n' })
+  expect(withNewline.status).toBe('exited')
+  expect(withNewline.output.stdoutDelta).toBe('typed')
 })
 
 test('BashEnvironment keeps idle foreground processes running by default', async () => {

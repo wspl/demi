@@ -24,7 +24,7 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
     {
       name: 'shell_exec',
       description:
-        'Execute a command in a long-lived shell session. Returns exited or running with a shellId for continuation. Run observable long-lived commands in the foreground with yieldAfterMs, then use shell_wait or shell_abort instead of backgrounding and pkill/killall.',
+        'Execute a command in a long-lived shell session. Returns exited or running with a shellId for continuation. Run observable long-lived commands in the foreground with yieldAfterMs, then use shell_wait or shell_abort instead of backgrounding and pkill/killall. If the default shell already has a foreground process and you omit shellId, shell_exec runs the new command in an auxiliary shell; keep using the original shellId to wait/input/abort the foreground process.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -53,7 +53,7 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
     {
       name: 'shell_wait',
       description:
-        'Poll or wait for the foreground command in a shell session. Each call waits from the current call time, not from process start.',
+        'Poll or wait for the foreground command in a shell session. Each call waits from the current call time, not from process start. Use yieldAfterMs for short status polls. timeoutMs is a hard stop: when it expires, the foreground process is stopped.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -74,7 +74,7 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
     {
       name: 'shell_input',
       description:
-        'Write explicit stdin to the current foreground system process in a shell session. Use shell_wait to poll. For interactive stdin, keep the reader inside one foreground process such as sh -c, node, or python; do not rely on the session script builtin read across turns.',
+        'Write explicit stdin bytes to the current foreground system process in a shell session. Include a newline, such as "Alice\\n", when answering line-oriented prompts. Use shell_wait to poll. For interactive stdin, keep the reader inside one foreground process such as sh -c, node, or python; do not rely on the session script builtin read across turns.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,

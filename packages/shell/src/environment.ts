@@ -156,7 +156,7 @@ export class BashEnvironment {
   }
 
   async exec(input: ShellExecInput): Promise<ShellToolResult> {
-    const session = input.shellId ? this.requireShell(input.shellId) : this.defaultShell(input.agentSessionId)
+    const session = input.shellId ? this.requireShell(input.shellId) : this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
     if (session.pendingExec) return this.raceForeground(session, session.foreground, session.pendingExec, input)
     if (session.foreground) return runningResult(session, session.foreground, 'yield')
@@ -247,6 +247,12 @@ export class BashEnvironment {
     const shell = this.createShell(agentSessionId)
     this.defaultShellByAgentSessionId.set(agentSessionId, shell.id)
     return shell
+  }
+
+  private availableDefaultShell(agentSessionId: string | undefined): ShellSession {
+    const shell = this.defaultShell(agentSessionId)
+    if (!agentSessionId || shell.exited || (!shell.pendingExec && !shell.foreground)) return shell
+    return this.createShell(agentSessionId)
   }
 
   private createShell(agentSessionId: string | undefined): ShellSession {

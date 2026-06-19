@@ -46,15 +46,19 @@ export function createCodingAgentDefinition(options: CodingAgentOptions): AgentD
       const commandPrompt = renderCommandList(commands)
       const sections = [
         'You are a coding agent. Use shell session tools to inspect, edit, test, and verify the workspace.',
+        'Treat cwd as the task workspace. Create, edit, and verify task files there by default; do not create a separate project directory under /tmp or another absolute path unless the user asks for it or the workspace is unusable.',
         'Prefer registered commands for agent-specific state and audited workflows. Use normal system commands for ordinary shell work.',
         [
           'Shell session rules:',
           '- Use shell_exec for commands. Its result is readable text with status, shellId, stdout, stderr, and next action.',
           '- If status is running, poll with shell_wait; each poll waits from that call, not from process start.',
+          '- Use yieldAfterMs for short status polls; do not set timeoutMs on shell_wait for a process you intend to keep running, because timeoutMs stops the foreground process when it expires.',
           '- For dev servers, watch commands, previews, and other long-running processes that you need to observe and stop, run them in the foreground with a short yieldAfterMs, then use shell_wait and shell_abort. Avoid starting them with "&" and avoid pkill/killall by process name.',
+          '- After a long-running process has been verified and stopped, summarize the observed evidence instead of restarting it to demonstrate the same behavior again.',
+          '- If a foreground process is running and you need a separate one-off command, such as curl against a dev server, call shell_exec without shellId; keep using the running shellId to wait, input, or abort the foreground process.',
           '- Prefer non-interactive CLI flags for scaffolds and package tools when available.',
           '- For underspecified scaffold requests, choose a reasonable non-interactive default and proceed unless the choice is destructive or impossible.',
-          '- Send non-empty stdin with shell_input only when the running command is known to be waiting for specific input.',
+          '- Send non-empty stdin with shell_input only when the running command is known to be waiting for specific input; include a newline such as "Alice\\n" for line-oriented prompts.',
           '- For interactive stdin, keep the reader inside one foreground system process such as sh -c, node, or python; do not rely on the session script builtin read across turns.',
           '- Use shell_abort only when intentionally stopping a foreground command.',
         ].join('\n'),

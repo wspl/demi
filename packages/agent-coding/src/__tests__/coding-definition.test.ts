@@ -45,6 +45,8 @@ test('coding agent definition exposes shell session tools and registered command
     transcript: {} as never,
   })
   expect(prompt).toContain('editor: Create, edit, and patch workspace files.')
+  expect(prompt).toContain('Treat cwd as the task workspace')
+  expect(prompt).toContain('do not create a separate project directory under /tmp')
   expect(prompt).toContain('editor create')
   expect(prompt).toContain('Effects: modifies workspace files by creating a new file')
   expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
@@ -53,7 +55,10 @@ test('coding agent definition exposes shell session tools and registered command
   expect(prompt).toContain('todo add "Run tests"')
   expect(prompt).toContain('Effects: modifies agent-session-scoped command storage')
   expect(prompt).toContain('run them in the foreground with a short yieldAfterMs')
+  expect(prompt).toContain('do not set timeoutMs on shell_wait for a process you intend to keep running')
   expect(prompt).toContain('avoid pkill/killall by process name')
+  expect(prompt).toContain('instead of restarting it to demonstrate the same behavior again')
+  expect(prompt).toContain('include a newline such as "Alice\\n" for line-oriented prompts')
   expect(prompt).toContain('do not rely on the session script builtin read across turns')
   expect(prompt).toContain('File references attached by the client are expanded before provider calls.')
 

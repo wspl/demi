@@ -71,8 +71,12 @@ test('createShellSessionTools integrates shell_exec and shell_wait with AgentSes
   const shellExec = definition.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_exec')
   expect(shellExec?.description).toContain('foreground with yieldAfterMs')
   expect(shellExec?.description).toContain('instead of backgrounding and pkill/killall')
+  const shellWait = definition.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_wait')
+  expect(shellWait?.description).toContain('Use yieldAfterMs for short status polls')
+  expect(shellWait?.description).toContain('timeoutMs is a hard stop')
   const shellInput = definition.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_input')
   expect(shellInput?.description).toContain('foreground system process')
+  expect(shellInput?.description).toContain('Include a newline')
   expect(shellInput?.description).toContain('do not rely on the session script builtin read across turns')
   const provider = new StubProvider([
     [events.toolCall('call-1', 'shell_exec', { script: 'sh -c "sleep 0.02; printf done"', yieldAfterMs: 1 })],
