@@ -64,7 +64,7 @@
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
 | Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播；TUI usage 呈现和真实 provider cache hit 仍未完整证明。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
-| Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制；editor 写入失败事务、file reference Host 边界、shell cwd/env 复用仍有部分缺口。 |
+| Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制和 shell cwd/env 复用；editor 写入失败事务、file reference Host 边界仍有部分缺口。 |
 | 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，但 `5.17` TUI 自身没有自动化测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
 
 ### 3.3 Compact 参考故事映射
@@ -392,8 +392,8 @@ Owner：`packages/agent-coding`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| StubProvider 通过 shell tools 驱动 editor/todo，真实写文件 | 有效 | 测试用 StubProvider 依次发起 `shell_exec`，通过 `editor create`、`todo add`、`editor edit` 驱动真实 BashEnvironment/LocalHost，并断言工具结果；能发现 AgentSession 到 registered command 的集成断裂。验证：5.15 targeted command，4 pass。 | `packages/agent-coding/src/__tests__/coding-marathon.test.ts` | 能发现 AgentSession、shell tools、registered command、Host 写文件之间的集成断裂。 |
-| workflow 中复用同一个 shell session | 部分有效 | 测试把上一轮 tool result 的 `shellId` 传给后续命令，并在多轮 workflow 中断言 result.shellId；但没有改变 cwd/env 来证明同一个 shell 进程状态被保留，且 StubProvider 不能证明真实模型会稳定复用 shellId。验证同上。 | `coding-marathon.test.ts` | 防止模型后续命令丢 cwd/env 或拿不到之前的 shellId。 |
+| StubProvider 通过 shell tools 驱动 editor/todo，真实写文件 | 有效 | 测试用 StubProvider 依次发起 `shell_exec`，通过 `editor create`、`todo add`、`editor edit` 驱动真实 BashEnvironment/LocalHost，并断言工具结果；能发现 AgentSession 到 registered command 的集成断裂。验证：5.15 targeted command，5 pass。 | `packages/agent-coding/src/__tests__/coding-marathon.test.ts` | 能发现 AgentSession、shell tools、registered command、Host 写文件之间的集成断裂。 |
+| workflow 中复用同一个 shell session | 有效 | 测试把上一轮 tool result 的 `shellId` 传给后续命令，并断言 result.shellId；新增 workflow 先 `cd pkg`、`export WORKFLOW_TOKEN=kept`，后续同 shellId 读取 `$PWD` 和环境变量，证明 cwd/env 状态连续。真实模型是否稳定选择复用 shellId 仍由 gated smoke 覆盖。验证同上。 | `coding-marathon.test.ts` | 防止模型后续命令丢 cwd/env 或拿不到之前的 shellId。 |
 | workflow 后文件内容正确 | 有效 | workflow 结束后真实执行 `cat src/app.ts`，断言内容为 `export const value = 2`；能发现工具结果成功但文件实际未写对。验证同上。 | `coding-marathon.test.ts` | 防止工具调用看似成功但真实 artifact 没写对。 |
 | workflow 后 todo 状态在 agent session 下可读 | 有效 | workflow 后用 session id 读取 `todo list --json`，断言 `T1 Run tests` 存在；多轮测试也断言同一 agent session 下 todo 最终为 done。验证同上。 | `coding-marathon.test.ts` | 防止 workflow 中 todo 写到了 shell-local 或全局错误位置。 |
 | 创建文件 -> 测试失败 -> 读取错误 -> 修复 -> 测试通过 | 有效 | 测试创建带缺陷的 todo 模块和 bun test，断言首次测试非零且输出包含失败预期，再读源码、用 editor 修复、重跑测试并断言 `1 pass`；能发现失败反馈链路断裂。验证同上。 | `coding-marathon.test.ts` | 用来发现 agent 是否能围绕失败反馈迭代，而不是只验证单步命令。 |
@@ -456,7 +456,7 @@ Owner：`packages/just-bash`
 
 1. 补 `5.17 TUI` 自动化：cache usage 呈现、stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
 2. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
-3. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务、shell cwd/env 复用。
+3. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务。
 4. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则

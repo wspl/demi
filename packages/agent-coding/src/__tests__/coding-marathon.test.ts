@@ -139,6 +139,51 @@ test('coding agent preserves workflow state across multiple user messages', asyn
   })
 })
 
+test('coding agent preserves cwd and env when reusing a shell session', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-coding-shell-state-'))
+  const environment = new BashEnvironment({
+    host: new LocalHost(root),
+    shellIdFactory: () => 'coding-state-shell',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const definition = createCodingAgentDefinition({ environment })
+  const provider = new StubProvider([
+    [
+      events.toolCall('prepare-shell-state', 'shell_exec', {
+        script: [
+          'mkdir -p pkg',
+          'cd pkg',
+          'export WORKFLOW_TOKEN=kept',
+          'printf "prepared:%s:%s" "$PWD" "$WORKFLOW_TOKEN"',
+        ].join('\n'),
+      }),
+    ],
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('exited')
+      expect(result.stdout).toBe(`prepared:${join(root, 'pkg')}:kept`)
+      return [
+        events.toolCall('read-shell-state', 'shell_exec', {
+          shellId: result.shellId,
+          script: 'printf "state:%s:%s" "$PWD" "$WORKFLOW_TOKEN"',
+        }),
+      ]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('exited')
+      expect(result.shellId).toBe('coding-state-shell')
+      expect(result.stdout).toBe(`state:${join(root, 'pkg')}:kept`)
+      return [events.text('state preserved'), events.response()]
+    },
+  ])
+  const session = new AgentSession({ provider, model, cwd: root, definition })
+
+  await session.send([{ type: 'text', text: 'Prepare shell state, then reuse it.' }])
+
+  expect(session.transcript().pendingToolCalls()).toHaveLength(0)
+})
+
 test('coding agent iterates from a failing project test to a passing fix', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-test-fix-'))
   const host = new LocalHost(root)
