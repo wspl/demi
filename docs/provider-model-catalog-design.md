@@ -19,6 +19,12 @@
 - catalog 拉取失败不能伪造模型；可以使用带 stale 标记的缓存，也可以要求用户显式传 full id。
 - reasoning effort 与 Codex service tier / fast mode 的补充调研见 `docs/provider-reasoning-speed-controls-research.md`。
 
+运行边界：
+
+- 模型目录、能力发现、auth 状态和运行时状态不应依赖外部 CLI preflight。
+- provider 真正发起模型请求所需的官方 transport 是独立边界；目录和状态查询不能为了方便复用它去跑额外命令。
+- 对外部接口的具体方案必须先用真实 API、协议或文件状态验证能跑通，再写成设计。
+
 非目标：
 
 - 不用模型列表证明账号一定有调用权限。真实调用失败仍由 provider error 处理。
@@ -80,7 +86,7 @@ Codex 使用官方 auth 文件直接请求模型列表接口。
 
 - 默认读取 `$CODEX_HOME/auth.json`，未设置时读取 `~/.codex/auth.json`。
 - ChatGPT / Codex auth 走 `https://chatgpt.com/backend-api/codex/models?client_version=<version>`。
-- `client_version` 必须显式发送。默认值应来自可检测的本机 `codex --version`；无法检测时使用配置值；仍无法确定时失败并给出明确错误。
+- `client_version` 必须显式发送。默认值使用 Demi 维护并验证过的 catalog protocol client version；不调用 `codex --version` 做运行时发现。配置覆盖只用于测试或紧急兼容。
 - OpenAI API key auth 不请求 ChatGPT Codex backend。后续可以接 OpenAI 模型列表，但不能把 ChatGPT catalog 套到 API key auth 上。
 
 鉴权规则：
@@ -154,7 +160,8 @@ exclude: claude-3-5-sonnet-20241022
 - `reasoning` → `supportsReasoning`
 - `attachment` → `supportsAttachments`
 - `cost.input/output/cache_read/cache_write` → `cost`
-- thinking effort 只有 catalog 明确提供时才填充；否则设为 `null`。
+- thinking effort options 只有 catalog 明确提供时才填充；否则设为 `null`。
+- catalog 中的 provider default effort 只能作为元数据保留；TUI / agent 默认选择固定为不请求显式 effort。
 
 缓存：
 
@@ -195,12 +202,12 @@ TUI 不再拥有 provider-specific model defaults。
 - 断言 key 作为 full id 输出，不加 `anthropic/` 前缀。
 - 断言缺失 capability 字段映射为 `null`，不从名字臆测。
 - 断言 stale cache 带 warning，网络失败且无 cache 不返回硬编码模型。
-- Codex fixture 覆盖 `client_version` 缺失失败、ChatGPT auth headers、`slug` id 映射、401 refresh retry、cache key、server order 保留。
+- Codex fixture 覆盖默认静态 `client_version`、显式 override、ChatGPT auth headers、`slug` id 映射、401 refresh retry、cache key、server order 保留。
 - TUI / CLI 测试覆盖 alias 被拒绝、full id 透传、catalog default 或 first selection 不落回硬编码。
 
 Gated 真实验收：
 
-- Codex 使用本机 `~/.codex/auth.json` 拉真实模型列表，验证 client version、auth header、refresh 后重试。
+- Codex 使用本机 `~/.codex/auth.json` 拉真实模型列表，验证静态 catalog client version、auth header、refresh 后重试。
 - Claude 使用真实 `models.dev` 拉取并应用 `minimumModelVersion = "4.6"`，验证列表中不出现 4.5 / 3.x 模型。
 - 使用列表中的 full id 发起真实 provider smoke，确认请求没有别名 rewrite。
 
@@ -212,18 +219,6 @@ Gated 真实验收：
 
 ### 7.1 Codex backend models
 
-验证方式：
-
-```bash
-codex --version
-```
-
-结果：
-
-```text
-codex-cli 0.130.0
-```
-
 验证命令：
 
 ```bash
@@ -231,12 +226,11 @@ node - <<'NODE'
 const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
-const { execFileSync } = require('node:child_process')
 
 ;(async () => {
   const authPath = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'auth.json')
   const auth = JSON.parse(await fs.readFile(authPath, 'utf8'))
-  const version = execFileSync('codex', ['--version'], { encoding: 'utf8' }).match(/(\d+\.\d+\.\d+)/)?.[1]
+  const version = '0.130.0'
   const headers = {
     authorization: `Bearer ${auth.tokens.access_token}`,
     accept: 'application/json',
@@ -283,7 +277,7 @@ NODE
 结论：
 
 - 直接读取 `~/.codex/auth.json` 并请求 Codex backend models 接口可跑通。
-- `client_version=0.130.0` 可用。
+- 静态 `client_version=0.130.0` 可用，不需要调用 `codex --version`。
 - 当前模型 id 字段是 `slug`，不是 `model` 或 `id`。
 - 接口返回 `context_window`、`max_context_window`、`default_reasoning_level`、`supported_reasoning_levels`、`input_modalities` 等能力字段。
 

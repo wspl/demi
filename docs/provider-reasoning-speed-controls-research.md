@@ -68,9 +68,10 @@ Demi 当前是固定枚举：
 结论：
 
 - Codex provider 应直接映射 `supported_reasoning_levels[]`。
-- `default_reasoning_level` 应成为默认 reasoning 选择。
+- `default_reasoning_level` 只能作为 provider catalog 元数据保留，不能成为 Demi 的自动默认选择。
 - description 应保留。
 - 未知 effort 字符串不能被丢弃。
+- Demi 的默认 reasoning 选择固定为 `null`：用户没有显式选择 effort 时，请求里不发送 reasoning effort。
 
 ### 3.3 Claude Code reasoning levels 来自 `models.dev` 与 CLI 可控能力
 
@@ -108,7 +109,7 @@ Claude Code CLI help 当前公开：
 结论：
 
 - Claude Code provider 应把 `reasoning_options[type="effort"].values[]` 映射为 effort options。
-- Claude Code provider 不应从 `models.dev` 推断默认 effort；catalog 没给默认值，而且 Claude Code 默认值可能受 CLI、账号、模型策略影响。
+- Claude Code provider 不应从 `models.dev` 推断默认 effort；catalog 没给默认值，而且 Demi 的默认运行语义就是不请求显式 effort。
 - `budget_tokens` 是模型元数据，但目前不是已确认的 Claude Code CLI request control。在验证 CLI 真实模型行为前，不应作为 Demi 可选运行时控制暴露。
 - Claude CLI parser 接受 `--settings '{"alwaysThinkingEnabled":false}'` 和 `--settings '{"fastMode":true}'`，t3code 也这样使用；但它们不是 `claude --help` 中的一等 flag。产品化前需要单独做真实路径验证。
 
@@ -142,6 +143,12 @@ Codex 官方把 fast mode 建模为 service tier：
 - UI 可以显示 `Fast`，provider request 必须发送 `priority`。
 - 未选择 service tier 时应省略 `service_tier`，不能发送 `"default"`。
 
+### 3.5 默认值与外部进程边界
+
+Reasoning effort 的默认选择不来自 provider catalog，也不来自外部 CLI 探测。Demi 的默认值是固定的 `null`，语义是“不请求显式 effort”。如果 provider 自身有隐含默认策略，应由 provider 服务端或官方 transport 自行处理，Demi 不把它复制成请求参数。
+
+模型目录、能力发现、auth 状态和运行时状态应优先使用协议/API/文件状态。除真正的 provider transport 外，不应通过调用外部 CLI 来发现模型目录、版本、auth 或 capability。Claude Code 当前真实请求路径仍需要走官方 provider transport；如果后续迁移到 RPC，也应把 RPC 作为 transport 边界，而不是增加独立 CLI preflight。
+
 ## 4. 最终态设计方向
 
 ### 4.1 Provider model metadata
@@ -165,7 +172,6 @@ interface ProviderReasoningEffortOption {
 interface ProviderReasoningCapability {
   type: 'effort'
   options: ProviderReasoningEffortOption[]
-  defaultOptionId: string | null
 }
 
 interface ProviderBudgetReasoningCapability {
@@ -193,6 +199,8 @@ type ReasoningEffortId = string
 ```
 
 已知 effort id 可以有更好的 display label，但校验必须基于当前模型 catalog，而不是本地 enum。
+
+Core 不保存自动默认 effort。没有用户显式选择时，`thinking` 必须是 `null`，provider request builder 不能从 catalog 的 provider default 补出 effort。
 
 Model selection 还应携带 service tier：
 
@@ -252,7 +260,7 @@ Catalog mapping：
 
 - `supported_reasoning_levels[].effort` -> effort option id。
 - `supported_reasoning_levels[].description` -> effort option description。
-- `default_reasoning_level` -> default effort id。
+- `default_reasoning_level` -> provider raw metadata；不作为 Demi 自动选择。
 - `service_tiers[]` -> service tier options。
 - `default_service_tier` -> 当产品策略决定使用 catalog default 时，作为默认 service tier id。
 - `additional_speed_tiers` -> 新行为忽略。
@@ -260,6 +268,7 @@ Catalog mapping：
 Request mapping：
 
 - selected effort id -> Responses `reasoning.effort`
+- no selected effort -> 省略 `reasoning.effort`
 - selected service tier id -> Responses `service_tier`
 - `null` service tier -> 省略 `service_tier`
 - 不引入 `fast` legacy alias 作为 Demi 面向用户的值；使用 `priority`
@@ -278,12 +287,15 @@ Request mapping：
   - `additional_speed_tiers: ["fast"]` 被忽略
 - TUI / model resolver tests：
   - 保留 provider effort order
+  - 未显式选择 effort 时，model resolver 生成 `thinking: null`
   - catalog-backed selection 拒绝不在 catalog 内的 effort
   - 不把 service tier 显示成 thinking
   - service tier 选择与省略行为确定
 - Provider request tests：
   - Claude 只在选中 effort 时传 `--effort <id>`
+  - Claude 未选中 effort 时不传 `--effort`
   - Codex 独立写入 `reasoning.effort` 与 `service_tier`
+  - Codex 未选中 effort 时不写入 `reasoning.effort`
   - Codex 标准路由省略 `service_tier`
   - catalog 广告的未知 reasoning effort 能透传
 - Gated smoke：
@@ -295,4 +307,4 @@ Request mapping：
 - Demi 当前会从 Codex backend catalog 映射 effort options，但存储类型仍是固定 `ThinkingEffort[]`。
 - Demi 当前没有映射 Claude `models.dev` 的 `reasoning_options`，Claude effort 元数据仍缺失。
 - Demi 当前没有 service tier metadata 或 request 字段，因此无法表示 Codex fast mode。
-- TUI 当前把 `--no-thinking` 表示为“不传 effort”。这不能描述为 provider-confirmed 的 thinking off；必须等每个 provider 都有明确 off / standard 映射后再这样呈现。
+- TUI 当前把 `--no-thinking` 表示为“不传 effort”。最终文案应使用“not requested”一类语义，不能描述成 provider-confirmed thinking off。
