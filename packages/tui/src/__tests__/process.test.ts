@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
@@ -8,6 +9,7 @@ import { ProcessCapture } from './process-helpers'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 const claudeFixturePath = join(fixtureDir, 'claude')
+const ttyE2e = process.env.DEMI_TUI_TTY_E2E === '1' ? test : test.skip
 
 test('TUI process entry prints help without opening a provider session', async () => {
   const result = await runTuiProcess(['--help'])
@@ -107,6 +109,32 @@ test('TUI process renders high-volume shell output without losing sentinel lines
   }
 })
 
+ttyE2e('TUI process runs a fixture session under a real pseudo terminal', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'demi-tui-process-tty-'))
+  const child = spawnTuiFixtureInPty(workspace)
+  const capture = new ProcessCapture(child)
+
+  try {
+    await capture.waitForStdout('usage: in=12 out=3 cache_read=2 cache_write=1', 10_000)
+    const stdout = capture.stdout()
+    expect(stdout).toContain('\x1b[')
+    expect(stdout).toContain('Session opened')
+    expect(stdout).toContain('tool: shell_exec')
+    expect(stdout).toContain('fixture-shell')
+    expect(stdout).toContain('thinking>')
+    expect(stdout).toContain('fixture plan')
+    expect(stdout).toContain('assistant>')
+    expect(stdout).toContain('fixture response')
+
+    const exitCode = await capture.closed
+    expect(exitCode).toBe(0)
+    expect(capture.stderr()).toBe('')
+    expect(capture.stdout()).toContain('closed')
+  } finally {
+    if (!child.killed) child.kill('SIGTERM')
+  }
+})
+
 async function runTuiProcess(
   args: string[],
   options: { env?: NodeJS.ProcessEnv } = {},
@@ -146,6 +174,38 @@ function spawnTuiFixture(workspace: string): ReturnType<typeof spawn> {
       cwd: process.cwd(),
       env: { ...process.env, PATH: `${fixtureDir}${delimiter}${process.env.PATH ?? ''}` },
       stdio: ['pipe', 'pipe', 'pipe'],
+    },
+  )
+}
+
+function spawnTuiFixtureInPty(workspace: string): ReturnType<typeof spawn> {
+  const scriptPath = '/usr/bin/script'
+  if (!existsSync(scriptPath)) throw new Error('DEMI_TUI_TTY_E2E requires BSD script at /usr/bin/script')
+  const command = [
+    "{ printf 'run the fixture workflow\\n'; sleep 2; printf '/exit\\n'; }",
+    '|',
+    `${scriptPath} -q /dev/null "$DEMI_TUI_EXEC_PATH" run packages/tui/src/index.ts`,
+    '--cwd "$DEMI_TUI_WORKSPACE"',
+    '--claude-path "$DEMI_TUI_CLAUDE_PATH"',
+    '--model opus',
+    '--thinking medium',
+    '--budget 0.01',
+    '--yield-after-ms 5',
+    '--timeout-ms 5000',
+  ].join(' ')
+  return spawn(
+    'sh',
+    ['-c', command],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PATH: `${fixtureDir}${delimiter}${process.env.PATH ?? ''}`,
+        DEMI_TUI_CLAUDE_PATH: claudeFixturePath,
+        DEMI_TUI_EXEC_PATH: process.execPath,
+        DEMI_TUI_WORKSPACE: workspace,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
 }
