@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | 日期 | 2026-06-19 |
-| 阶段 | 有效性审查中；旧覆盖状态已清空 |
+| 阶段 | 第 5 章测试点已逐项审查；剩余工作见第 6 章 |
 | 范围 | demi agent、shell、provider、RPC、coding agent、TUI |
 
 ## 1. 审查结论定义
@@ -59,46 +59,46 @@
 
 | 门槛 | 审查结论 | 审查记录 |
 |---|---|---|
-| AgentSession 长生命周期稳定 |  | 待逐项审查 `5.4`、`5.5`、`5.6`、`5.7` 后回填。 |
-| 模型可见上下文稳定 |  | 待逐项审查 `5.5`、`5.7` 后回填。 |
-| Compaction 可支撑长任务 |  | 待逐项审查 `5.6` 后回填。 |
-| Context cache baseline |  | 待逐项审查 `5.3`、`5.7`、RPC usage 相关测试后回填。 |
-| Shell 控制面支撑真实长命令 |  | 待逐项审查 `5.10` 和 coding 长命令场景后回填。 |
-| Coding workflow 能发现真实问题 |  | 待逐项审查 `5.12`、`5.13`、`5.14`、`5.15` 后回填。 |
-| 壳子路径能呈现真实模型行为 |  | 待逐项审查 `5.16`、`5.17` 后回填。 |
+| AgentSession 长生命周期稳定 | 部分有效 | `5.4`、`5.5`、`5.6`、`5.7` 已覆盖 send/queue/retry/resume/abort/tool/error/compact 的主要路径；snapshot reconstruction、provider mock realism、部分 payload exactness 仍是缺口或部分有效。 |
+| 模型可见上下文稳定 | 部分有效 | `5.5`、`5.7` 覆盖 effective transcript、internal block 过滤、bounded injection、stable prefix 和 compact 后重稳；仍缺更全的内部状态泄漏枚举与部分 payload 精确断言。 |
+| Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore 多数有效；summary abort atomicity、action 交错、context overflow recovery、thinking budget 仍需补测。 |
+| Context cache baseline | 部分有效 | `5.3`、`5.7` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为；RPC/UI usage 传播和真实 provider cache hit 仍未完整证明。 |
+| Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
+| Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制；editor 写入失败事务、todo 输出矩阵、shell cwd/env 复用仍有部分缺口。 |
+| 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，但 `5.17` TUI 自身没有自动化测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
 
 ### 3.3 Compact 参考故事映射
 
 agent-gui/Rust 的 compact 测试是当前最重要的校准对象；demi 不照搬 UI 产品面，但长任务能力相关故事都必须落到 `base-agent` 或协议层测试里。
 
-| 参考故事 | demi 范围判定 | 候选落点 / 待审查 | 能发现或规避的问题 |
+| 参考故事 | demi 范围判定 | 候选落点 / 当前结论 | 能发现或规避的问题 |
 |---|---|---|---|
-| 新消息发给模型前先做 preflight compact | P0 | `5.6 Compaction`，待审查 | 防止新用户输入已经把上下文推过上限后才请求真实 provider，直接触发 context overflow。 |
-| usage 接近上限后 auto compact，再 resume 原动作 | P0 | `5.6 Compaction`，待审查 | 防止长任务在接近 context limit 时直接失败，或 compact 后丢失当前 action。 |
-| 用户手动 compact 成功后，summary 成为下一轮模型可见上下文 | P0 runtime；UI 呈现走壳子测试 | `5.6 Compaction`、`5.7 模型可见上下文与 Context Cache`，待审查 | 防止 transcript 看似有 summary，但下一轮 provider request 没有使用它。 |
-| summary provider stop/error/empty 都能恢复到一致状态 | P0 | `5.6 Compaction`，待审查 | 防止失败 compact 留下半截 boundary/marker，或空 summary 抹掉旧上下文。 |
-| tool 运行期间不 compact；cut point 不切断 `tool_use -> tool_result` | P0 | `5.6 Compaction`，待审查 | 防止模型收到孤立 tool 历史，或 compact 后重复执行已完成工具。 |
-| 多次 compact 只从 latest boundary replay，不把旧 summary 反复套入上下文 | P0 | `5.6 Compaction`，待审查 | 防止摘要无限膨胀，或被压缩历史重新进入模型上下文。 |
-| compact/preflight 期间 queued send、abort、retry、resume 收敛 | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，待审查 | 防止用户在 summary 阶段继续操作时消息丢失、乱序或 session 卡在 compacting。 |
-| 长上下文里 stop/continue/retry 后触发 compact | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，待审查 | 防止 aborted text、completed tool result 或 retry 后的最新 user turn 在 summary 输入里丢失。 |
-| 单个 turn 本身超过 recent budget，需要 split-turn summary | P0 | `5.6 Compaction`，待审查 | 防止一个超长工具/assistant turn 找不到 cut point 后无法 compact，或硬切到 tool result 中间。 |
-| compact 后 close/reopen，summary 和 replay 起点保持一致 | P0 persistence | `5.4 Agent Session Runtime`、`5.6 Compaction`，待审查 | 防止重启后 boundary/marker 丢失，模型重新看到旧长历史或看不到摘要。 |
+| 新消息发给模型前先做 preflight compact | P0 | `5.6 Compaction`：有效 | 防止新用户输入已经把上下文推过上限后才请求真实 provider，直接触发 context overflow。 |
+| usage 接近上限后 auto compact，再 resume 原动作 | P0 | `5.6 Compaction`：有效 | 防止长任务在接近 context limit 时直接失败，或 compact 后丢失当前 action。 |
+| 用户手动 compact 成功后，summary 成为下一轮模型可见上下文 | P0 runtime；UI 呈现走壳子测试 | `5.6`、`5.7`：runtime 有效；TUI 呈现 gated | 防止 transcript 看似有 summary，但下一轮 provider request 没有使用它。 |
+| summary provider stop/error/empty 都能恢复到一致状态 | P0 | `5.6 Compaction`：部分有效 | 防止失败 compact 留下半截 boundary/marker，或空 summary 抹掉旧上下文。 |
+| tool 运行期间不 compact；cut point 不切断 `tool_use -> tool_result` | P0 | `5.6 Compaction`：有效 | 防止模型收到孤立 tool 历史，或 compact 后重复执行已完成工具。 |
+| 多次 compact 只从 latest boundary replay，不把旧 summary 反复套入上下文 | P0 | `5.6 Compaction`：有效 | 防止摘要无限膨胀，或被压缩历史重新进入模型上下文。 |
+| compact/preflight 期间 queued send、abort、retry、resume 收敛 | P0 | `5.4`、`5.6`：部分有效 | 防止用户在 summary 阶段继续操作时消息丢失、乱序或 session 卡在 compacting。 |
+| 长上下文里 stop/continue/retry 后触发 compact | P0 | `5.4`、`5.6`：部分有效 | 防止 aborted text、completed tool result 或 retry 后的最新 user turn 在 summary 输入里丢失。 |
+| 单个 turn 本身超过 recent budget，需要 split-turn summary | P0 | `5.6 Compaction`：有效 | 防止一个超长工具/assistant turn 找不到 cut point 后无法 compact，或硬切到 tool result 中间。 |
+| compact 后 close/reopen，summary 和 replay 起点保持一致 | P0 persistence | `5.6`：有效；`5.4` snapshot reconstruction 部分有效 | 防止重启后 boundary/marker 丢失，模型重新看到旧长历史或看不到摘要。 |
 | edit/replay 历史分支影响 summary | 当前无 `replay_from` 产品面；只保留 replay invariant | `5.5 Transcript 与 Replay` | 防止被删掉的历史 mutation 面重新进入设计，同时保证现有 replay 仍只取模型应见内容。 |
-| 切换到更小 context 的模型后触发 compact | 当前无运行中切换模型产品面；保留 context limit contract | `5.7 模型可见上下文与 Context Cache`，待审查 | 防止未来 provider/model 配置变化时仍按旧 context limit 请求模型。 |
+| 切换到更小 context 的模型后触发 compact | 当前无运行中切换模型产品面；保留 context limit contract | `5.7`：contract 有效；运行中切换不在范围 | 防止未来 provider/model 配置变化时仍按旧 context limit 请求模型。 |
 
 ### 3.4 模型上下文与 provider conformance 映射
 
 Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 provider 输入如何收敛、完整历史与模型上下文如何分离。
 
-| 参考能力 | demi 范围判定 | 候选落点 / 待审查 | 能发现或规避的问题 |
+| 参考能力 | demi 范围判定 | 候选落点 / 当前结论 | 能发现或规避的问题 |
 |---|---|---|---|
-| 模型可见上下文由一个中心 replay/effective context 产生 | P0 | `5.5 Transcript 与 Replay`、`5.7 模型可见上下文与 Context Cache`，待审查 | 防止 provider、compact、retry 各自拼上下文，最终真实模型看到的内容不一致。 |
-| 大 tool output、引用内容、preamble 有边界和截断策略 | P0 | `5.7 模型可见上下文与 Context Cache`，待审查 | 防止任意一次工具输出或文件引用直接撑爆 context，compact 也无法补救。 |
-| cache read/write usage 从 provider 传到 session/RPC，但不改变 agent 行为 | 基线 | `5.3 Claude Code Provider`、`5.7 模型可见上下文与 Context Cache`，待审查 | 防止 cache 指标丢失，或把 provider cache 当成会影响 transcript/tool loop 的状态。 |
-| compact 后历史重建与 live compaction 结果一致 | P0 | `5.6 Compaction`、`5.11 Host、FS 与 Store`，待审查 | 防止 session 恢复后 replay 起点、summary 或 recent context 与内存态不一致。 |
-| 完整审计日志与模型上下文分离 | P0 | `5.5 Transcript 与 Replay`、`5.6 Compaction`、`5.7 模型可见上下文与 Context Cache`，待审查 | 防止为了压缩模型上下文而删除完整历史，或把审计块误发给模型。 |
-| provider 异常输入：empty、malformed、unicode/media、context overflow、tool result 缺失 | P0 provider 边界 | `5.3 Claude Code Provider`，待审查默认边界；真实 CLI 仍走 gated | 防止真实 CLI/服务端返回边界事件时 agent 卡死、污染 pending state 或错误分类不可恢复。 |
-| pre-turn/mid-turn/manual compact 的 request shape 有 snapshot 级断言 | P0 | `5.6 Compaction`、`5.7 模型可见上下文与 Context Cache`，待审查 | 防止 incoming user 被重复放入请求、control-only item 被摘要、或 mid-turn continuation 丢失当前上下文。 |
+| 模型可见上下文由一个中心 replay/effective context 产生 | P0 | `5.5`、`5.7`：部分有效 | 防止 provider、compact、retry 各自拼上下文，最终真实模型看到的内容不一致。 |
+| 大 tool output、引用内容、preamble 有边界和截断策略 | P0 | `5.7`：有效 | 防止任意一次工具输出或文件引用直接撑爆 context，compact 也无法补救。 |
+| cache read/write usage 从 provider 传到 session/RPC，但不改变 agent 行为 | 基线 | `5.3`、`5.7`：部分有效；真实 provider hit gated | 防止 cache 指标丢失，或把 provider cache 当成会影响 transcript/tool loop 的状态。 |
+| compact 后历史重建与 live compaction 结果一致 | P0 | `5.6`：有效；`5.11`：部分有效 | 防止 session 恢复后 replay 起点、summary 或 recent context 与内存态不一致。 |
+| 完整审计日志与模型上下文分离 | P0 | `5.5`、`5.6`、`5.7`：部分有效 | 防止为了压缩模型上下文而删除完整历史，或把审计块误发给模型。 |
+| provider 异常输入：empty、malformed、unicode/media、context overflow、tool result 缺失 | P0 provider 边界 | `5.3`：部分有效；真实 CLI gated | 防止真实 CLI/服务端返回边界事件时 agent 卡死、污染 pending state 或错误分类不可恢复。 |
+| pre-turn/mid-turn/manual compact 的 request shape 有 snapshot 级断言 | P0 | `5.6`、`5.7`：有效，部分边界仍需 fault injection | 防止 incoming user 被重复放入请求、control-only item 被摘要、或 mid-turn continuation 丢失当前上下文。 |
 
 ### 3.5 范围裁剪
 
@@ -437,7 +437,7 @@ Owner：`packages/tui`
 |---|---|---|---|---|
 | 基本渲染、输入、scroll | 缺口 | `packages/tui` 只有 `src/index.ts`、README、package.json；`bun test packages/tui` 没有匹配任何测试文件。当前没有自动化断言 readline 输入、终端渲染或滚动行为。 | 需要 TUI 自动化或 snapshot/integration 测试 | 防止核心能力可用但用户无法操作或看不到完整输出。 |
 | thinking/text/tool output 显示 | Gated | TUI 实现里有 text/thinking/redacted_thinking/tool_call 渲染分支，但没有测试捕获 stdout 或终端 snapshot；只能靠真实 TUI smoke 验收。 | 目前靠真实 TUI smoke 验收 | 防止真实模型输出被 TUI 分流、折叠或渲染错。 |
-| 通过 RPC client open/send/receive phase/transcript/shell frames | 部分有效 | RPC 5.16 已覆盖 open/send/phase/transcript/shell frames；TUI 代码订阅 `RpcClient` 并调用 `renderEvent`，但没有 TUI 层测试验证状态合并、去重、刷新节奏或 stdout 输出。 | RPC 层有候选覆盖；TUI 壳子自身待审查 | 需要发现 TUI 自己订阅、状态合并、刷新节奏的问题。 |
+| 通过 RPC client open/send/receive phase/transcript/shell frames | 部分有效 | RPC 5.16 已覆盖 open/send/phase/transcript/shell frames；TUI 代码订阅 `RpcClient` 并调用 `renderEvent`，但没有 TUI 层测试验证状态合并、去重、刷新节奏或 stdout 输出。 | RPC 层有效；TUI 壳子自身为缺口 | 需要发现 TUI 自己订阅、状态合并、刷新节奏的问题。 |
 | 真实 Claude Code provider 输出真实模型回复 | Gated | Provider 层有 real-cli gated 测试候选，但 TUI 没有自动化证明 `bun run tui` 经过 Claude Code provider 后显示真实模型回复、thinking 和 tool output。 | 需要指定真实模型和 thinking 等级 smoke | 防止验收只跑 stub provider，没有确认真实 provider 路径。 |
 | 交互式 shell 操作在 TUI 中顺畅 | Gated | TUI 暴露 `/input`、`/abort` 等命令并转到 RpcClient，但没有自动化或多轮真实 smoke 记录验证模糊任务下的交互式 shell 体验。 | 需要多次 smoke，因为模型行为有随机性 | 用来发现真实模型在模糊指令下是否会持续碰壁或误用 shell 控制面。 |
 
@@ -454,8 +454,12 @@ Owner：`packages/just-bash`
 
 ## 6. 当前剩余优先补测顺序
 
-1. 先按第 5 章从上到下逐项审查测试有效性和文档对齐；未审查条目不得视为已覆盖。
-2. TUI / 真实 provider smoke、just-bash 完整上游 spec 等候选 gated/部分范围项，也必须在逐项审查时明确记录原因。
+1. 先补 `5.6 Compaction` 的 P0 部分有效项：summary abort 后 boundary/marker 原子性、preflight summary 卡住时 abort/retry/resume/queued send 交错、context overflow recovery/fault injection、thinking budget 与 summary 请求约束。
+2. 补 `5.5`/`5.7` 的模型可见上下文基线：更多 internal state 泄漏枚举、user/text/tool payload exactness、snapshot JSON 序列化、cache usage 经 RPC/UI 暴露。
+3. 补 `5.17 TUI` 自动化：stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
+4. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit；gated smoke 只补充 deterministic 测试，不替代契约测试。
+5. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务、todo raw/JSON 输出矩阵、shell cwd/env 复用。
+6. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则
 
