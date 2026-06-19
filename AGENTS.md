@@ -1,5 +1,7 @@
 - Keep `AGENTS.md` limited to project-specific rules explicitly set by the user.
 - Work toward final-state designs; avoid framing architecture decisions as MVP stages.
+- Do not preserve historical baggage or compatibility paths when they conflict with the intended final design.
+- Prefer direct final-state changes over transitional layers; remove obsolete code instead of keeping shims.
 
 ## Design Records
 
