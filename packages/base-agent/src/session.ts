@@ -459,17 +459,30 @@ export class AgentSession<State> {
     const window = this.transcriptLog.findCompactionWindow(this.compactionKeepRecentTokens)
     if (window === null || window.cutPoint <= window.startIndex) return false
 
-    const compactedBlocks = this.transcriptLog.blocks.slice(window.startIndex, window.cutPoint)
-    const compactedTokens = compactedBlocks.reduce((total, block) => {
-      return total + new Transcript([block]).estimateContextTokens()
-    }, 0)
-    const summary = await this.generateCompactionSummary(compactedBlocks)
-    if (!summary) return false
+    let cutPoint = window.cutPoint
+    while (cutPoint > window.startIndex) {
+      const compactedBlocks = this.transcriptLog.blocks.slice(window.startIndex, cutPoint)
+      const compactedTokens = compactedBlocks.reduce((total, block) => {
+        return total + new Transcript([block]).estimateContextTokens()
+      }, 0)
 
-    const boundary = this.transcriptLog.insertCompactionBoundary(window.cutPoint, this.model, summary, estimateTokens(summary))
-    this.transcriptLog.appendCompactionMarker(this.model, boundary.id, compactedTokens)
-    await this.commitTranscript()
-    return true
+      try {
+        const summary = await this.generateCompactionSummary(compactedBlocks)
+        if (!summary) return false
+
+        const boundary = this.transcriptLog.insertCompactionBoundary(cutPoint, this.model, summary, estimateTokens(summary))
+        this.transcriptLog.appendCompactionMarker(this.model, boundary.id, compactedTokens)
+        await this.commitTranscript()
+        return true
+      } catch (error) {
+        if (!isContextLengthExceeded(error)) throw error
+        const nextCutPoint = nextSmallerCompactionCutPoint(window.startIndex, cutPoint)
+        if (nextCutPoint === null) throw error
+        cutPoint = nextCutPoint
+      }
+    }
+
+    return false
   }
 
   private async generateCompactionSummary(blocks: typeof this.transcriptLog.blocks): Promise<string> {
@@ -651,6 +664,12 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
+function nextSmallerCompactionCutPoint(startIndex: number, cutPoint: number): number | null {
+  const compactedBlockCount = cutPoint - startIndex
+  if (compactedBlockCount <= 1) return null
+  return startIndex + Math.max(1, Math.floor(compactedBlockCount / 2))
+}
+
 function defaultIdFactory(): string {
   return globalThis.crypto.randomUUID()
 }
@@ -669,6 +688,10 @@ class ProviderStreamError extends Error {
     this.name = 'ProviderStreamError'
     this.code = code
   }
+}
+
+function isContextLengthExceeded(error: unknown): boolean {
+  return error instanceof ProviderStreamError && error.code === 'context_length_exceeded'
 }
 
 class AbortError extends Error {

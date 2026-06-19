@@ -186,6 +186,7 @@ test('compaction summary provider errors do not leave boundary or marker blocks'
 
   expect(session.phase()).toBe('idle')
   expect(session.transcript().snapshot()).toEqual(before)
+  expect(provider.requests).toHaveLength(1)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
 })
@@ -281,15 +282,16 @@ test('compaction summary input keeps aborted text progress', async () => {
   })
 })
 
-test('compaction summary context overflow errors are atomic and classified', async () => {
-  const transcript = oldAndRecentTranscript()
+test('compaction summary context overflow errors are atomic and classified when no smaller slice is available', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn(model, text('recent question'))
   const before = transcript.snapshot()
   const provider = new RecordingProvider([
     [events.error('summary context overflow', 'context_length_exceeded')],
     (request) => {
       expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
-        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
+        { type: 'user_message', content: [{ type: 'text', text: `old question ${'x'.repeat(200)}` }] },
         { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
         {
           type: 'user_message',
@@ -317,6 +319,64 @@ test('compaction summary context overflow errors are atomic and classified', asy
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
   expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'recovered' })
+})
+
+test('compaction summary context overflow retries with a smaller summary slice', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text('old question'))
+  transcript.applyProviderEvent(model, events.text('old answer'))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn(model, text('middle question'))
+  transcript.applyProviderEvent(model, events.text('middle answer'))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn(model, text('recent question'))
+
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
+        { type: 'user_message', content: [{ type: 'text', text: 'middle question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'middle answer' },
+      ])
+      return [events.error('summary context overflow', 'context_length_exceeded')]
+    },
+    (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
+      ])
+      return [events.text('trimmed summary'), events.response()]
+    },
+    (request) => {
+      expect(request.systemPrompt).toBe('system prompt')
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'Previous conversation summary:\ntrimmed summary' }],
+        },
+        { type: 'user_message', content: [{ type: 'text', text: 'middle question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'middle answer' },
+        { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
+        {
+          type: 'user_message',
+          content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'after trimmed compact' }],
+        },
+      ])
+      return [events.text('after trimmed compact answer'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition(), transcript)
+
+  await session.compact()
+  await session.send(text('after trimmed compact'))
+
+  expect(provider.requests).toHaveLength(3)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
+  expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'after trimmed compact answer' })
+  assertTranscriptInvariants(session.transcript().blocks)
 })
 
 test('compaction summary input preserves thinking, redacted thinking, and tool metadata boundaries', async () => {
