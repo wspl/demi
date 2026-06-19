@@ -48,3 +48,33 @@ test('todo command state is isolated by agent session id', async () => {
   expect(first.output.stdoutDelta).toBe('[ ] T1 First session\n')
   expect(second.output.stdoutDelta).toBe('[ ] T1 Second session\n')
 })
+
+test('todo command keeps agent-session storage across shell recreation', async () => {
+  let nextShell = 0
+  const env = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    commands: createCodingCommandRegistry(),
+    shellIdFactory: () => `todo-recreated-shell-${++nextShell}`,
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const firstShell = await env.exec({ agentSessionId: 'todo-agent', script: 'todo add "First shell" --json' })
+  expect(firstShell.shellId).toBe('todo-recreated-shell-1')
+  expect(await env.disposeShell(firstShell.shellId)).toBe(true)
+  const secondShell = await env.exec({ agentSessionId: 'todo-agent', script: 'todo add "Second shell" --json' })
+  const otherAgent = await env.exec({ agentSessionId: 'other-agent', script: 'todo add "Other agent" --json' })
+
+  expect(secondShell.shellId).toBe('todo-recreated-shell-2')
+  expect(otherAgent.shellId).toBe('todo-recreated-shell-3')
+  const list = await env.exec({ agentSessionId: 'todo-agent', script: 'todo list --json' })
+  expect(JSON.parse(list.output.stdoutDelta)).toEqual({
+    todos: [
+      { id: 'T1', text: 'First shell', status: 'pending' },
+      { id: 'T2', text: 'Second shell', status: 'pending' },
+    ],
+  })
+  const otherList = await env.exec({ agentSessionId: 'other-agent', script: 'todo list --json' })
+  expect(JSON.parse(otherList.output.stdoutDelta)).toEqual({
+    todos: [{ id: 'T1', text: 'Other agent', status: 'pending' }],
+  })
+})

@@ -7,6 +7,10 @@ import type {
 } from '@demi/core'
 import type { InferenceItem, ProviderEvent } from '@demi/provider'
 
+const MODEL_TEXT_HEAD_CHARS = 8_000
+const MODEL_TEXT_TAIL_CHARS = 8_000
+const MODEL_TEXT_MAX_CHARS = MODEL_TEXT_HEAD_CHARS + MODEL_TEXT_TAIL_CHARS
+
 export interface TranscriptOptions {
   idFactory?: () => string
   now?: () => string
@@ -261,8 +265,8 @@ export class Transcript implements CoreTranscript {
             type: 'user_message',
             content:
               block.preamble === null
-                ? block.content
-                : [{ type: 'text', text: block.preamble }, ...block.content],
+                ? boundUserContent(block.content)
+                : boundUserContent([{ type: 'text', text: block.preamble }, ...block.content]),
           })
           break
         case 'resume':
@@ -275,7 +279,7 @@ export class Transcript implements CoreTranscript {
           items.push({
             type: 'assistant_thinking',
             modelId: block.model.model.id,
-            text: block.text,
+            text: boundText(block.text),
             signature: block.signature,
           })
           break
@@ -283,11 +287,11 @@ export class Transcript implements CoreTranscript {
           items.push({
             type: 'assistant_redacted_thinking',
             modelId: block.model.model.id,
-            data: block.data,
+            data: boundText(block.data),
           })
           break
         case 'text':
-          items.push({ type: 'assistant_text', modelId: block.model.model.id, text: block.text })
+          items.push({ type: 'assistant_text', modelId: block.model.model.id, text: boundText(block.text) })
           break
         case 'tool_call':
           items.push({
@@ -301,7 +305,7 @@ export class Transcript implements CoreTranscript {
             items.push({
               type: 'tool_result',
               toolUseId: block.toolUseId,
-              output: block.output,
+              output: boundToolResultContent(block.output),
               isError: block.status === 'error',
             })
           }
@@ -312,7 +316,7 @@ export class Transcript implements CoreTranscript {
             content: [
               {
                 type: 'text',
-                text: `Previous conversation summary:\n${block.summary}`,
+                text: boundText(`Previous conversation summary:\n${block.summary}`),
               },
             ],
           })
@@ -463,4 +467,26 @@ function stringifyToolResult(content: ToolResultContentBlock): string {
     case 'image':
       return content.source.mediaType
   }
+}
+
+function boundUserContent(content: UserContentBlock[]): UserContentBlock[] {
+  return content.map((block) => {
+    if (block.type !== 'text') return block
+    const text = boundText(block.text)
+    return text === block.text ? block : { ...block, text }
+  })
+}
+
+function boundToolResultContent(content: ToolResultContentBlock[]): ToolResultContentBlock[] {
+  return content.map((block) => {
+    if (block.type !== 'text') return block
+    const text = boundText(block.text)
+    return text === block.text ? block : { ...block, text }
+  })
+}
+
+function boundText(text: string): string {
+  if (text.length <= MODEL_TEXT_MAX_CHARS) return text
+  const omitted = text.length - MODEL_TEXT_MAX_CHARS
+  return `${text.slice(0, MODEL_TEXT_HEAD_CHARS)}\n\n[... truncated ${omitted} characters ...]\n\n${text.slice(-MODEL_TEXT_TAIL_CHARS)}`
 }

@@ -126,11 +126,24 @@ export function assertNoOrphanToolItems(items: InferenceItem[]): void {
 
 export function assertTranscriptInvariants(blocks: Block[]): void {
   const ids = new Set<string>()
+  const boundaryIds = new Set<string>()
+  const toolUseIds = new Set<string>()
   for (const block of blocks) {
     expect(block.id).toBeTruthy()
     expect(block.createdAt).toBeTruthy()
     expect(ids.has(block.id)).toBe(false)
     ids.add(block.id)
+    if (block.type === 'compaction_boundary') {
+      boundaryIds.add(block.id)
+    }
+    if (block.type === 'compaction_marker') {
+      expect(boundaryIds.has(block.boundaryId)).toBe(true)
+      expect(block.compactedTokens).toBeGreaterThanOrEqual(0)
+    }
+    if (block.type === 'tool_call') {
+      expect(toolUseIds.has(block.toolUseId)).toBe(false)
+      toolUseIds.add(block.toolUseId)
+    }
     if (block.type === 'tool_call' && block.status !== 'executing') {
       expect(block.output.length).toBeGreaterThan(0)
     }

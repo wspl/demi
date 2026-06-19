@@ -44,6 +44,139 @@ test('provider request items preserve a stable prefix across ordinary turns', as
   ])
 })
 
+test('provider request text content is bounded without mutating the transcript audit log', async () => {
+  const longPreamble = `pre-${'p'.repeat(20_000)}-amble`
+  const longReference = `<file path="big.txt">\nhead-${'r'.repeat(20_000)}-tail\n</file>`
+  const longToolOutput = `tool-head-${'t'.repeat(20_000)}-tool-tail`
+  const longAssistant = `assistant-head-${'a'.repeat(20_000)}-assistant-tail`
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, [{ type: 'text', text: longReference }], longPreamble)
+  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'big.txt' }))
+  transcript.completeToolCall('tool-1', [{ type: 'text', text: longToolOutput }])
+  transcript.applyProviderEvent(model, events.text(longAssistant))
+
+  const provider = new RecordingProvider([
+    (request) => {
+      const serialized = JSON.stringify(request.items)
+      expect(serialized).toContain('[... truncated ')
+      expect(serialized).toContain('pre-')
+      expect(serialized).toContain('-amble')
+      expect(serialized).toContain('head-')
+      expect(serialized).toContain('-tail')
+      expect(serialized).toContain('tool-head-')
+      expect(serialized).toContain('-tool-tail')
+      expect(serialized).toContain('assistant-head-')
+      expect(serialized).toContain('-assistant-tail')
+      expect(serialized).not.toContain('p'.repeat(18_000))
+      expect(serialized).not.toContain('r'.repeat(18_000))
+      expect(serialized).not.toContain('t'.repeat(18_000))
+      expect(serialized).not.toContain('a'.repeat(18_000))
+      return [events.text('bounded'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createDefinition(), transcript)
+
+  await session.send(text('continue'))
+
+  const userBlock = session.transcript().blocks.find((block) => block.type === 'user')
+  expect(userBlock).toMatchObject({ type: 'user', preamble: longPreamble })
+  const toolBlock = session.transcript().blocks.find((block) => block.type === 'tool_call')
+  expect(toolBlock).toMatchObject({
+    type: 'tool_call',
+    output: [{ type: 'text', text: longToolOutput }],
+  })
+  const textBlock = session.transcript().blocks.find((block) => block.type === 'text')
+  expect(textBlock).toMatchObject({ type: 'text', text: longAssistant })
+})
+
+test('stable prompt prefix is byte-identical for equivalent histories and changes on cache inputs', async () => {
+  const basePrefix = await prefixAfterTwoTurns({
+    systemPrompt: 'system prompt',
+    firstPreamble: 'preamble',
+    toolDescription: 'Stable tool schema.',
+    secondUser: 'second A',
+  })
+  const equivalentPrefix = await prefixAfterTwoTurns({
+    systemPrompt: 'system prompt',
+    firstPreamble: 'preamble',
+    toolDescription: 'Stable tool schema.',
+    secondUser: 'second B',
+  })
+  const changedSystem = await prefixAfterTwoTurns({
+    systemPrompt: 'changed system',
+    firstPreamble: 'preamble',
+    toolDescription: 'Stable tool schema.',
+    secondUser: 'second A',
+  })
+  const changedPreamble = await prefixAfterTwoTurns({
+    systemPrompt: 'system prompt',
+    firstPreamble: 'changed preamble',
+    toolDescription: 'Stable tool schema.',
+    secondUser: 'second A',
+  })
+  const changedTools = await prefixAfterTwoTurns({
+    systemPrompt: 'system prompt',
+    firstPreamble: 'preamble',
+    toolDescription: 'Changed tool schema.',
+    secondUser: 'second A',
+  })
+  const changedModel = await prefixAfterTwoTurns({
+    systemPrompt: 'system prompt',
+    firstPreamble: 'preamble',
+    toolDescription: 'Stable tool schema.',
+    secondUser: 'second A',
+    modelId: 'changed-model',
+  })
+
+  expect(equivalentPrefix).toBe(basePrefix)
+  expect(changedSystem).not.toBe(basePrefix)
+  expect(changedPreamble).not.toBe(basePrefix)
+  expect(changedTools).not.toBe(basePrefix)
+  expect(changedModel).not.toBe(basePrefix)
+})
+
+test('provider request prefix restabilizes after compaction replaces old history', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn(model, text('old question'))
+  transcript.applyProviderEvent(model, events.text('old answer'))
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn(model, text('recent question'))
+  transcript.applyProviderEvent(model, events.text('recent answer'))
+  transcript.applyProviderEvent(model, events.response())
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.items.map((item) => item.type)).toEqual([
+        'user_message',
+        'assistant_text',
+        'user_message',
+        'assistant_text',
+      ])
+      return [events.text('compacted summary'), events.response()]
+    },
+    [events.text('after compact one'), events.response()],
+    [events.text('after compact two'), events.response()],
+  ])
+  const session = createSession(provider, createDefinition(), transcript, model, {
+    compaction: { keepRecentTokens: 1 },
+  })
+
+  await session.compact()
+  await session.send(text('after compact question one'))
+  await session.send(text('after compact question two'))
+
+  const firstPostCompact = provider.requests[1]
+  const secondPostCompact = provider.requests[2]
+  if (!firstPostCompact || !secondPostCompact) throw new Error('missing post-compact provider requests')
+  expect(firstPostCompact.items[0]).toEqual({
+    type: 'user_message',
+    content: [{ type: 'text', text: 'Previous conversation summary:\ncompacted summary' }],
+  })
+  expect(JSON.stringify(firstPostCompact.items)).not.toContain('old question')
+  expect(JSON.stringify(secondPostCompact.items.slice(0, firstPostCompact.items.length))).toBe(
+    JSON.stringify(firstPostCompact.items),
+  )
+})
+
 test('provider request is built from effective transcript without internal blocks', async () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn(model, text('old question'))
@@ -175,3 +308,51 @@ test('snapshot reconstruction preserves model-visible context exactly', async ()
 
   expect(restored.collectInferenceItems()).toEqual(transcript.collectInferenceItems())
 })
+
+async function prefixAfterTwoTurns(options: {
+  systemPrompt: string
+  firstPreamble: string
+  toolDescription: string
+  secondUser: string
+  modelId?: string
+}): Promise<string> {
+  let round = 0
+  const selection: ModelSelection = {
+    ...model,
+    model: { ...model.model, id: options.modelId ?? model.model.id },
+  }
+  const provider = new RecordingProvider([
+    [events.text('first answer'), events.response()],
+    [events.text('second answer'), events.response()],
+  ])
+  const definition = createDefinition({
+    systemPrompt: () => options.systemPrompt,
+    preamble: () => {
+      round += 1
+      return round === 1 ? options.firstPreamble : 'second preamble'
+    },
+    tools: () => [
+      {
+        name: 'stable_tool',
+        description: options.toolDescription,
+        inputSchema: { type: 'object', properties: { value: { type: 'string' } } },
+        invoke: () => ({ output: [{ type: 'text', text: 'ok' }] }),
+      },
+    ],
+  })
+  const session = createSession(provider, definition, undefined, selection)
+
+  await session.send(text('first'))
+  await session.send(text(options.secondUser))
+
+  const secondRequest = provider.requests[1]
+  if (!secondRequest) throw new Error('missing second request')
+  return JSON.stringify({
+    modelId: secondRequest.modelId,
+    systemPrompt: secondRequest.systemPrompt,
+    cwd: secondRequest.cwd,
+    tools: secondRequest.tools,
+    thinking: secondRequest.thinking,
+    items: secondRequest.items.slice(0, -1),
+  })
+}

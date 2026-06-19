@@ -79,6 +79,66 @@ test('coding agent completes an editor/todo workflow through shell session tools
   expect(JSON.parse(todos.output.stdoutDelta)).toEqual({ todos: [{ id: 'T1', text: 'Run tests', status: 'pending' }] })
 })
 
+test('coding agent preserves workflow state across multiple user messages', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-coding-multiturn-'))
+  const environment = new BashEnvironment({
+    host: new LocalHost(root),
+    shellIdFactory: () => 'coding-multiturn-shell',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const definition = createCodingAgentDefinition({ environment })
+  const provider = new StubProvider([
+    [
+      events.toolCall('start-workflow', 'shell_exec', {
+        script: [
+          "editor create note.txt <<'EOF'",
+          'first turn',
+          'EOF',
+          'todo add "carry state" --json',
+        ].join('\n'),
+      }),
+    ],
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('exited')
+      expect(result.stdout).toContain('Created note.txt')
+      expect(result.stdout).toContain('"text":"carry state"')
+      return [events.text('first turn complete'), events.response()]
+    },
+    (request: InferenceRequest) => {
+      const serialized = JSON.stringify(request.items)
+      expect(serialized).toContain('Start the workflow.')
+      expect(serialized).toContain('Continue the workflow and close the todo.')
+      expect(serialized).toContain('first turn complete')
+      expect(serialized).toContain('carry state')
+      return [
+        events.toolCall('continue-workflow', 'shell_exec', {
+          script: ['todo done T1 --json', "printf '\\n'", 'todo list --json', "printf '\\n'", 'cat note.txt'].join('\n'),
+        }),
+      ]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('exited')
+      expect(result.shellId).toBe('coding-multiturn-shell')
+      expect(result.stdout).toContain('"status":"done"')
+      expect(result.stdout).toContain('"todos":[{"id":"T1","text":"carry state","status":"done"}]')
+      expect(result.stdout).toContain('first turn')
+      return [events.text('second turn complete'), events.response()]
+    },
+  ])
+  const session = new AgentSession({ provider, model, cwd: root, definition }, { agentSessionId: 'coding-multiturn-agent' })
+
+  await session.send([{ type: 'text', text: 'Start the workflow.' }])
+  await session.send([{ type: 'text', text: 'Continue the workflow and close the todo.' }])
+
+  expect(provider.consumedTurns).toBe(4)
+  const todos = await environment.exec({ agentSessionId: 'coding-multiturn-agent', script: 'todo list --json' })
+  expect(JSON.parse(todos.output.stdoutDelta)).toEqual({
+    todos: [{ id: 'T1', text: 'carry state', status: 'done' }],
+  })
+})
+
 test('coding agent iterates from a failing project test to a passing fix', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-test-fix-'))
   const host = new LocalHost(root)

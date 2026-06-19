@@ -248,6 +248,13 @@ test('mapClaudeStdoutMessage preserves provider error codes and result error tex
       code: 'context_length_exceeded',
     }).events,
   ).toEqual([{ type: 'error', message: 'context window exceeded', code: 'context_length_exceeded' }])
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'error',
+      message: 'authentication expired',
+      code: 'auth_expired',
+    }).events,
+  ).toEqual([{ type: 'error', message: 'authentication expired', code: 'auth_expired' }])
 
   expect(
     mapClaudeStdoutMessage({

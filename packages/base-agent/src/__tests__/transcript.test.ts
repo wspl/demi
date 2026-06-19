@@ -53,6 +53,26 @@ test('Transcript completes pending tool calls and emits tool result inference it
   expect(transcript.collectInferenceItems().map((item) => item.type)).toEqual(['tool_use', 'tool_result'])
 })
 
+test('Transcript replays thinking signatures and redacted thinking in provider order', () => {
+  const transcript = makeTranscript()
+
+  transcript.pushUserTurn(model, [{ type: 'text', text: 'think through this' }])
+  transcript.applyProviderEvent(model, { type: 'thinking_start' })
+  transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'private ' })
+  transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'notes' })
+  transcript.applyProviderEvent(model, { type: 'thinking_signature', signature: 'sig-1' })
+  transcript.applyProviderEvent(model, { type: 'redacted_thinking', data: 'opaque-redacted-data' })
+  transcript.applyProviderEvent(model, events.text('visible answer'))
+
+  expect(transcript.blocks.map((block) => block.type)).toEqual(['user', 'thinking', 'redacted_thinking', 'text'])
+  expect(transcript.collectInferenceItems()).toEqual([
+    { type: 'user_message', content: [{ type: 'text', text: 'think through this' }] },
+    { type: 'assistant_thinking', modelId: 'test-model', text: 'private notes', signature: 'sig-1' },
+    { type: 'assistant_redacted_thinking', modelId: 'test-model', data: 'opaque-redacted-data' },
+    { type: 'assistant_text', modelId: 'test-model', text: 'visible answer' },
+  ])
+})
+
 test('Transcript safely stores non-JSON tool inputs', () => {
   const transcript = makeTranscript()
   const circular: Record<string, unknown> = { id: 1n }

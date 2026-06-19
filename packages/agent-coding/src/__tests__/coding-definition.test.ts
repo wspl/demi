@@ -2,9 +2,25 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import type { ModelSelection } from '@demi/core'
+import { AgentSession } from '@demi/base-agent'
+import { StubProvider, events, type InferenceRequest } from '@demi/provider'
 import { BashEnvironment } from '@demi/shell'
 import { LocalHost } from '@demi/shell/local-host'
 import { createCodingAgentDefinition } from '../index'
+
+const model: ModelSelection = {
+  providerId: 'stub',
+  model: {
+    id: 'test-model',
+    name: 'Test Model',
+    contextWindow: 100_000,
+    inputLimit: null,
+    thinking: [],
+    acceptedExtensions: [],
+  },
+  thinking: null,
+}
 
 test('coding agent definition exposes shell session tools and registered command prompt', async () => {
   const environment = new BashEnvironment({
@@ -90,6 +106,42 @@ test('coding agent resolves file references through the workspace host', async (
   expect(resolvedUrl).toEqual([
     { type: 'text', text: `<file path="${spacedPath}">\nhello from encoded file URL\n\n</file>` },
   ])
+})
+
+test('coding agent resolves file references before AgentSession sends the provider request', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-coding-session-refs-'))
+  await writeFile(join(root, 'note.txt'), 'hello from session file\n', 'utf8')
+  const environment = new BashEnvironment({
+    host: new LocalHost(root),
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+  const definition = createCodingAgentDefinition({ environment })
+  const provider = new StubProvider([
+    (request: InferenceRequest) => {
+      expect(request.items).toEqual([
+        {
+          type: 'user_message',
+          content: [
+            { type: 'text', text: 'inspect this file' },
+            { type: 'text', text: '<file path="note.txt">\nhello from session file\n\n</file>' },
+          ],
+        },
+      ])
+      expect(JSON.stringify(request.items)).not.toContain('"reference"')
+      return [events.text('read file'), events.response()]
+    },
+  ])
+  const session = new AgentSession({ provider, model, cwd: root, definition }, { agentSessionId: 'coding-ref-session' })
+
+  await session.send([{ type: 'text', text: 'inspect this file' }, { type: 'reference', reference: 'note.txt' }])
+
+  expect(session.transcript().blocks[0]).toMatchObject({
+    type: 'user',
+    content: [
+      { type: 'text', text: 'inspect this file' },
+      { type: 'text', text: '<file path="note.txt">\nhello from session file\n\n</file>' },
+    ],
+  })
 })
 
 test('coding agent rejects file references outside the workspace host root', async () => {

@@ -50,18 +50,18 @@
 审查证据：
 
 - `bun run typecheck`：通过。
-- `bun run test`：254 pass，1 skip；skip 是真实 Claude CLI gated e2e。
+- `bun run test`：261 pass，1 skip；skip 是真实 Claude CLI gated e2e。
 - `bun run test:just-bash-core`：93 pass。
 - `bun run check:registry`：通过。
 
 | 门槛 | 当前结论 | 证据与缺口 |
 |---|---|---|
 | AgentSession 长生命周期稳定 | 基本达成默认测试门槛 | `session-marathon.test.ts` 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态、provider request 和 transcript invariant；真实模型随机路径仍靠 gated smoke。 |
-| 模型可见上下文稳定 | 基本达成默认测试门槛 | `context-cache.test.ts` 覆盖 stable prefix、effective transcript、retry/resume replay、snapshot replay；无界通用注入截断策略仍是部分覆盖。 |
+| 模型可见上下文稳定 | 达成 P0 默认测试门槛 | `context-cache.test.ts` 覆盖 stable prefix、effective transcript、retry/resume replay、snapshot replay、通用文本截断和 audit log 分离。 |
 | Compaction 可支撑长任务 | 达成 P0 默认测试门槛 | `compaction.test.ts` 覆盖 preflight、summary request、tool pair、split-turn、多次 compact、failure/empty summary、queue/retry/resume during compact、persistence、auto compact after tool、summary overflow。 |
-| Context cache baseline | 基本达成默认测试门槛 | provider cache usage、AgentSession usage 记录、cache 透明行为、compact 后 request shape 已覆盖；字节级主动 cache prefix/失效规则尚未定义。 |
+| Context cache baseline | 达成 P0 默认测试门槛 | provider cache usage、AgentSession usage 记录、cache 透明行为、字节级 stable prefix、cache 输入变化和 compact 后 prefix 重新稳定已覆盖。 |
 | Shell 控制面支撑真实长命令 | 基本达成默认测试门槛 | wait/input/abort、idle running、非空 input、AgentSession abort 传播、redirect flush 已覆盖；真实模型是否稳定使用控制面仍需 gated smoke。 |
-| Coding workflow 能发现真实问题 | 基本达成默认测试门槛 | `coding-marathon.test.ts` 覆盖真实写文件、todo、失败测试、读取错误、修复、测试通过、长命令 wait/input/abort。 |
+| Coding workflow 能发现真实问题 | 达成 P0 默认测试门槛 | `coding-marathon.test.ts` 覆盖真实写文件、todo、多轮用户消息、失败测试、读取错误、修复、测试通过、长命令 wait/input/abort。 |
 | 壳子路径能呈现真实模型行为 | 部分达成默认测试门槛 | RPC in-process/stdio/WebSocket 基础覆盖，stdio complex action 和 close foreground 已覆盖；TUI 自动化缺失，真实 Claude CLI e2e 是 gated skip，真实 thinking/tool/text 仍靠 smoke。 |
 
 ### 3.3 Compact 参考故事映射
@@ -70,18 +70,18 @@ agent-gui/Rust 的 compact 测试是当前最重要的校准对象；demi 不照
 
 | 参考故事 | demi 范围判定 | 落点与当前状态 | 能发现或规避的问题 |
 |---|---|---|---|
-| 新消息发给模型前先做 preflight compact | P0 | `5.6 Compaction`，未覆盖 | 防止新用户输入已经把上下文推过上限后才请求真实 provider，直接触发 context overflow。 |
-| usage 接近上限后 auto compact，再 resume 原动作 | P0 | `5.6 Compaction`，部分覆盖 | 防止长任务在接近 context limit 时直接失败，或 compact 后丢失当前 action。 |
-| 用户手动 compact 成功后，summary 成为下一轮模型可见上下文 | P0 runtime；UI 呈现走壳子测试 | `5.6 Compaction`，部分覆盖 | 防止 transcript 看似有 summary，但下一轮 provider request 没有使用它。 |
-| summary provider stop/error/empty 都能恢复到一致状态 | P0 | `5.6 Compaction`，部分覆盖到未覆盖 | 防止失败 compact 留下半截 boundary/marker，或空 summary 抹掉旧上下文。 |
-| tool 运行期间不 compact；cut point 不切断 `tool_use -> tool_result` | P0 | `5.6 Compaction`，未覆盖 | 防止模型收到孤立 tool 历史，或 compact 后重复执行已完成工具。 |
-| 多次 compact 只从 latest boundary replay，不把旧 summary 反复套入上下文 | P0 | `5.6 Compaction`，未覆盖 | 防止摘要无限膨胀，或被压缩历史重新进入模型上下文。 |
-| compact/preflight 期间 queued send、abort、retry、resume 收敛 | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，未覆盖组合路径 | 防止用户在 summary 阶段继续操作时消息丢失、乱序或 session 卡在 compacting。 |
-| 长上下文里 stop/continue/retry 后触发 compact | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，未覆盖组合路径 | 防止 aborted text、completed tool result 或 retry 后的最新 user turn 在 summary 输入里丢失。 |
-| 单个 turn 本身超过 recent budget，需要 split-turn summary | P0 | `5.6 Compaction`，未覆盖 | 防止一个超长工具/assistant turn 找不到 cut point 后无法 compact，或硬切到 tool result 中间。 |
-| compact 后 close/reopen，summary 和 replay 起点保持一致 | P0 persistence | `5.4 Agent Session Runtime`、`5.6 Compaction`，未覆盖 | 防止重启后 boundary/marker 丢失，模型重新看到旧长历史或看不到摘要。 |
+| 新消息发给模型前先做 preflight compact | P0 | `5.6 Compaction`，已覆盖 | 防止新用户输入已经把上下文推过上限后才请求真实 provider，直接触发 context overflow。 |
+| usage 接近上限后 auto compact，再 resume 原动作 | P0 | `5.6 Compaction`，已覆盖 | 防止长任务在接近 context limit 时直接失败，或 compact 后丢失当前 action。 |
+| 用户手动 compact 成功后，summary 成为下一轮模型可见上下文 | P0 runtime；UI 呈现走壳子测试 | `5.6 Compaction`、`5.7 模型可见上下文与 Context Cache`，已覆盖 | 防止 transcript 看似有 summary，但下一轮 provider request 没有使用它。 |
+| summary provider stop/error/empty 都能恢复到一致状态 | P0 | `5.6 Compaction`，已覆盖 | 防止失败 compact 留下半截 boundary/marker，或空 summary 抹掉旧上下文。 |
+| tool 运行期间不 compact；cut point 不切断 `tool_use -> tool_result` | P0 | `5.6 Compaction`，已覆盖 | 防止模型收到孤立 tool 历史，或 compact 后重复执行已完成工具。 |
+| 多次 compact 只从 latest boundary replay，不把旧 summary 反复套入上下文 | P0 | `5.6 Compaction`，已覆盖 | 防止摘要无限膨胀，或被压缩历史重新进入模型上下文。 |
+| compact/preflight 期间 queued send、abort、retry、resume 收敛 | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，已覆盖 | 防止用户在 summary 阶段继续操作时消息丢失、乱序或 session 卡在 compacting。 |
+| 长上下文里 stop/continue/retry 后触发 compact | P0 | `5.4 Agent Session Runtime`、`5.6 Compaction`，已覆盖 | 防止 aborted text、completed tool result 或 retry 后的最新 user turn 在 summary 输入里丢失。 |
+| 单个 turn 本身超过 recent budget，需要 split-turn summary | P0 | `5.6 Compaction`，已覆盖 | 防止一个超长工具/assistant turn 找不到 cut point 后无法 compact，或硬切到 tool result 中间。 |
+| compact 后 close/reopen，summary 和 replay 起点保持一致 | P0 persistence | `5.4 Agent Session Runtime`、`5.6 Compaction`，已覆盖 | 防止重启后 boundary/marker 丢失，模型重新看到旧长历史或看不到摘要。 |
 | edit/replay 历史分支影响 summary | 当前无 `replay_from` 产品面；只保留 replay invariant | `5.5 Transcript 与 Replay` | 防止被删掉的历史 mutation 面重新进入设计，同时保证现有 replay 仍只取模型应见内容。 |
-| 切换到更小 context 的模型后触发 compact | 非 MVP 专项；纳入模型可见上下文/limit contract | `5.7 模型可见上下文与 Context Cache`，未覆盖 | 防止未来 provider/model 配置变化时仍按旧 context limit 请求模型。 |
+| 切换到更小 context 的模型后触发 compact | 当前无运行中切换模型产品面；保留 context limit contract | `5.7 模型可见上下文与 Context Cache`，当前不作为缺口 | 防止未来 provider/model 配置变化时仍按旧 context limit 请求模型。 |
 
 ### 3.4 模型上下文与 provider conformance 映射
 
@@ -89,13 +89,13 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 
 | 参考能力 | demi 范围判定 | 落点与当前状态 | 能发现或规避的问题 |
 |---|---|---|---|
-| 模型可见上下文由一个中心 replay/effective context 产生 | P0 | `5.5 Transcript 与 Replay`、`5.7 模型可见上下文与 Context Cache`，部分覆盖 | 防止 provider、compact、retry 各自拼上下文，最终真实模型看到的内容不一致。 |
-| 大 tool output、引用内容、preamble 有边界和截断策略 | P0 | `5.7 模型可见上下文与 Context Cache`，部分覆盖 | 防止任意一次工具输出或文件引用直接撑爆 context，compact 也无法补救。 |
-| cache read/write usage 从 provider 传到 session/RPC，但不改变 agent 行为 | 基线 | `5.3 Claude Code Provider`、`5.7 模型可见上下文与 Context Cache`，部分覆盖 | 防止 cache 指标丢失，或把 provider cache 当成会影响 transcript/tool loop 的状态。 |
-| compact 后历史重建与 live compaction 结果一致 | P0 | `5.6 Compaction`、`5.11 Host、FS 与 Store`，未覆盖 | 防止 session 恢复后 replay 起点、summary 或 recent context 与内存态不一致。 |
-| 完整审计日志与模型上下文分离 | P0 | `5.5 Transcript 与 Replay`、`5.6 Compaction`，部分覆盖 | 防止为了压缩模型上下文而删除完整历史，或把审计块误发给模型。 |
-| provider 异常输入：empty、malformed、unicode/media、context overflow、tool result 缺失 | P0 provider 边界 | `5.3 Claude Code Provider`，部分覆盖 | 防止真实 CLI/服务端返回边界事件时 agent 卡死、污染 pending state 或错误分类不可恢复。 |
-| pre-turn/mid-turn/manual compact 的 request shape 有 snapshot 级断言 | P0 | `5.6 Compaction`、`5.7 模型可见上下文与 Context Cache`，未覆盖 | 防止 incoming user 被重复放入请求、control-only item 被摘要、或 mid-turn continuation 丢失当前上下文。 |
+| 模型可见上下文由一个中心 replay/effective context 产生 | P0 | `5.5 Transcript 与 Replay`、`5.7 模型可见上下文与 Context Cache`，已覆盖 | 防止 provider、compact、retry 各自拼上下文，最终真实模型看到的内容不一致。 |
+| 大 tool output、引用内容、preamble 有边界和截断策略 | P0 | `5.7 模型可见上下文与 Context Cache`，已覆盖 | 防止任意一次工具输出或文件引用直接撑爆 context，compact 也无法补救。 |
+| cache read/write usage 从 provider 传到 session/RPC，但不改变 agent 行为 | 基线 | `5.3 Claude Code Provider`、`5.7 模型可见上下文与 Context Cache`，已覆盖 | 防止 cache 指标丢失，或把 provider cache 当成会影响 transcript/tool loop 的状态。 |
+| compact 后历史重建与 live compaction 结果一致 | P0 | `5.6 Compaction`、`5.11 Host、FS 与 Store`，已覆盖 | 防止 session 恢复后 replay 起点、summary 或 recent context 与内存态不一致。 |
+| 完整审计日志与模型上下文分离 | P0 | `5.5 Transcript 与 Replay`、`5.6 Compaction`、`5.7 模型可见上下文与 Context Cache`，已覆盖 | 防止为了压缩模型上下文而删除完整历史，或把审计块误发给模型。 |
+| provider 异常输入：empty、malformed、unicode/media、context overflow、tool result 缺失 | P0 provider 边界 | `5.3 Claude Code Provider`，已覆盖默认边界；真实 CLI 仍走 gated | 防止真实 CLI/服务端返回边界事件时 agent 卡死、污染 pending state 或错误分类不可恢复。 |
+| pre-turn/mid-turn/manual compact 的 request shape 有 snapshot 级断言 | P0 | `5.6 Compaction`、`5.7 模型可见上下文与 Context Cache`，已覆盖 | 防止 incoming user 被重复放入请求、control-only item 被摘要、或 mid-turn continuation 丢失当前上下文。 |
 
 ### 3.5 范围裁剪
 
@@ -160,7 +160,7 @@ Owner：`packages/provider-claude-code`
 | control_request、SDK MCP control_request、assistant tool_use 跨 run 状态机 | 已覆盖 | `packages/provider-claude-code/src/__tests__/provider.test.ts` | 防止 Claude Code 多轮工具协议在 run 边界丢失 pending call 或重复提交结果。 |
 | 缺失 tool_result / pending control_request 收敛为 provider error | 已覆盖 | `provider.test.ts` | 防止协议断裂时 agent 卡死或继续用不完整上下文调用模型。 |
 | CLI 非零退出、stdout 迭代失败、abort 的 transport 清理 | 已覆盖 | `provider.test.ts` | 防止 CLI 进程泄漏、后续 run 复用坏 transport，或错误无法传回 session。 |
-| context overflow / rate limit / auth expired 等 provider 错误分类 | 部分覆盖 | `jsonl-output.test.ts`、`provider.test.ts` 覆盖 context overflow / result error / rate-limit code；auth expired 仍只靠 CLI/runtime state 路径 | 防止真实 provider 给出可恢复或需用户处理的错误时，session 只得到不可行动的 generic error。 |
+| context overflow / rate limit / auth expired 等 provider 错误分类 | 已覆盖 | `jsonl-output.test.ts`、`provider.test.ts` 覆盖 context overflow / result error / rate-limit code / auth expired code | 防止真实 provider 给出可恢复或需用户处理的错误时，session 只得到不可行动的 generic error。 |
 | empty assistant content、empty stream、空 thinking 事件 | 已覆盖 | `jsonl-output.test.ts`、`provider.test.ts` | 防止 provider 返回空内容时误判成功、插入无意义 response，或 compact empty summary 污染 transcript。 |
 | unicode surrogate、超长 JSONL 字段、media + tool_result 混合输入 | 已覆盖 | `jsonl-output.test.ts` | 防止 JSONL 编码、base64、tool result grouping 在真实边界输入下损坏。 |
 | 与 `AgentSession` 和 shell tools 的 provider 集成 | 已覆盖 | `provider.test.ts` | 能发现 provider event、AgentSession tool loop、shell tool result 三者之间的接口不匹配。 |
@@ -196,8 +196,8 @@ Owner：`packages/base-agent`
 | abort/retry/resume/compact 组合交错 | 已覆盖 | `session-marathon.test.ts` | 组合路径容易暴露单点测试发现不了的 phase、queue、transcript 原子性问题。 |
 | 单会话 marathon 覆盖 send/queue/retry/resume/abort/tool/error/compact 累计状态 | 已覆盖 | `session-marathon.test.ts` | 用来发现状态只在单点测试里正确，长期累计后 id、phase、pending action、tool 状态或 transcript 顺序漂移。 |
 | 每个关键步骤精确断言 provider request | 已覆盖 | `session-marathon.test.ts`、`context-cache.test.ts`、`compaction.test.ts` | 防止模型实际看到的上下文与 transcript 看起来正确但不同，尤其是 compact、retry、resume 后的重放内容。 |
-| transcript 结构不变量集中校验 | 部分覆盖 | `helpers.ts` 的 invariant helper 被 `session-marathon.test.ts`、`compaction.test.ts` 使用；turn/terminal 完整 invariant 仍可加强 | 防止出现重复 block id、缺 createdAt、turn 未以 user/resume 开始、terminal block 后仍追加内容、completed turn 里 tool_call 缺 output。 |
-| provider mock 行为贴近真实 provider 事件顺序 | 部分覆盖 | `session-marathon.test.ts`、`compaction.test.ts` 覆盖 pending tool、response、auto compact、abort event；真实 Claude 随机路径仍靠 gated smoke | 防止 deterministic 测试用一个过于理想的 provider，真实 Claude Code 路径才暴露 tool/response 时序问题。 |
+| transcript 结构不变量集中校验 | 已覆盖 | `helpers.ts` 的 invariant helper 被 `session-marathon.test.ts`、`compaction.test.ts` 使用，覆盖 block id、createdAt、toolUseId、completed tool output、compaction marker 引用 | 防止出现重复 block id、缺 createdAt、重复 toolUseId、completed tool_call 缺 output，或 compaction marker 指向不存在的 boundary。 |
+| provider mock 行为贴近真实 provider 事件顺序 | 已覆盖 | `session-marathon.test.ts`、`compaction.test.ts` 覆盖 pending tool、response、auto compact、abort event；真实 Claude 随机路径仍靠 gated smoke | 防止 deterministic 测试用一个过于理想的 provider，真实 Claude Code 路径才暴露 tool/response 时序问题。 |
 
 ### 5.5 Transcript 与 Replay
 
@@ -216,7 +216,7 @@ Owner：`packages/base-agent`
 | provider request exact replay 内容 | 已覆盖 | `context-cache.test.ts`、`session-marathon.test.ts`、`compaction.test.ts` | 需要发现复杂历史、tool、extension、compact 混合时喂给模型的上下文漂移。 |
 | effective replay 只包含模型应看到的 block | 已覆盖 | `context-cache.test.ts` | 防止 compaction marker、extension snapshot、internal error 状态等内部块进入 provider request。 |
 | replay 保持 tool_use/tool_result 成对且顺序正确 | 已覆盖 | `compaction.test.ts`、`context-cache.test.ts`、`session-marathon.test.ts` | 防止 provider 收到孤立 tool_result、孤立 tool_use 或乱序工具历史。 |
-| replay 中 thinking/redacted thinking 能跨 provider 边界保留 | 部分覆盖 | provider JSONL 有 thinking 映射，transcript 复杂 replay 不足 | 防止开启 thinking 的真实模型路径在重放或 compact 后丢失签名、redacted thinking 或顺序。 |
+| replay 中 thinking/redacted thinking 能跨 provider 边界保留 | 已覆盖 | `transcript.test.ts`、`jsonl-output.test.ts`、`compaction.test.ts` | 防止开启 thinking 的真实模型路径在重放或 compact 后丢失签名、redacted thinking 或顺序。 |
 
 ### 5.6 Compaction
 
@@ -259,15 +259,15 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 | provider request prefix 在普通多轮对话中稳定 | 已覆盖 | `context-cache.test.ts` | 防止 system prompt、tools schema、preamble 或历史 items 无意义重排，破坏 context cache 基线。 |
 | provider request 只由 effective transcript 和当前 prompt context 构成 | 已覆盖 | `context-cache.test.ts` | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
 | provider、retry、compact、resume 共用同一个 effective transcript 入口 | 已覆盖 | `context-cache.test.ts`、`session-marathon.test.ts`、`compaction.test.ts` | 防止不同路径各自拼 request，导致正常 send 通过但 compact 或 retry 后真实模型上下文漂移。 |
-| 注入内容有明确上限和截断策略 | 部分覆盖 | shell output limit 已覆盖，ref/preamble/tool result 通用上限未覆盖 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
-| 记录给模型的 tool output 使用 head/tail + truncation marker | 部分覆盖 | shell output limit 已覆盖，通用 tool/ref 输出 marker 未覆盖 | 防止截断后模型不知道内容被省略，或只保留头部导致错误诊断。 |
+| 注入内容有明确上限和截断策略 | 已覆盖 | `context-cache.test.ts` 覆盖 preamble、reference 展开文本、assistant text、tool result 的 provider-visible 截断，且 transcript audit log 保留原文 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
+| 记录给模型的 tool output 使用 head/tail + truncation marker | 已覆盖 | `context-cache.test.ts` 覆盖 head/tail 保留和 truncation marker | 防止截断后模型不知道内容被省略，或只保留头部导致错误诊断。 |
 | provider context-overflow 错误触发可恢复路径或明确失败 | 已覆盖 | `context-cache.test.ts` | 防止模型上下文超限后 session 只记录 generic error，无法 compact/retry 或向壳子给出明确状态。 |
 | provider usage 中 cache read/write token 字段被解析 | 已覆盖 | `jsonl-output.test.ts` | 防止 provider cache 指标被丢弃，后续无法判断真实 cache 行为。 |
 | cache usage 被 AgentSession 记录并对外暴露 | 已覆盖 | `context-cache.test.ts` | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
 | cache 只是 provider 透明优化时，不影响 agent 行为 | 已覆盖 | `context-cache.test.ts` | 需要保证 cache 指标变化不会改变 transcript、tool loop 或错误处理。 |
-| demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 | 未覆盖 | 需要定义并断言 stable prefix contract | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
-| tools/schema/system prompt/model/preamble 改变时 cache 失效规则 | 未覆盖 | 需要先定义 contract | 需要防止 cache 命中建立在错误前缀上，或该失效时没有失效。 |
-| compact 后 cache prefix 变化与重新稳定 | 部分覆盖 | `compaction.test.ts`、`session-marathon.test.ts` 覆盖 compact 后 request 形状；字节级 cache prefix contract 尚未定义 | 需要发现 compact 后上下文前缀持续抖动，导致 cache 永远无法稳定命中。 |
+| demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 | 已覆盖 | `context-cache.test.ts` 断言等价历史下 stable prefix 字节级一致 | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
+| tools/schema/system prompt/model/preamble 改变时 cache 失效规则 | 已覆盖 | `context-cache.test.ts` 断言 tools、system prompt、model、preamble 变化会改变 cache 输入前缀 | 需要防止 cache 命中建立在错误前缀上，或该失效时没有失效。 |
+| compact 后 cache prefix 变化与重新稳定 | 已覆盖 | `context-cache.test.ts`、`compaction.test.ts` 覆盖 compact 后 summary prefix 替换旧历史，后续 request 重新形成稳定前缀 | 需要发现 compact 后上下文前缀持续抖动，导致 cache 永远无法稳定命中。 |
 | 真实 provider cache 命中 | 手动/Gated | 只能做真实 provider smoke，不进默认 deterministic 测试 | 用来确认 deterministic contract 之外的真实 CLI/服务端 cache 行为没有退化。 |
 
 ### 5.8 Command Registry
@@ -355,7 +355,7 @@ Owner：`packages/agent-coding`
 | file reference 通过 workspace host 读取 | 已覆盖 | `coding-definition.test.ts` | 防止引用展开绕过 Host，或模型拿不到用户指定文件内容。 |
 | file reference 拒绝 workspace root 外路径 | 已覆盖 | `coding-definition.test.ts` | 防止通过 reference 读取工作区外文件。 |
 | definition dispose 清理 environment shell sessions | 已覆盖 | `coding-definition.test.ts` | 防止关闭 coding agent 后 shell 进程继续运行。 |
-| reference resolution 与 AgentSession send 顺序集成 | 部分覆盖 | base-agent 有通用覆盖，coding 只覆盖 definition 层 | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
+| reference resolution 与 AgentSession send 顺序集成 | 已覆盖 | `coding-definition.test.ts` 通过 `AgentSession` 断言 provider request 和 transcript 都保存展开后的 file content | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
 
 ### 5.13 Editor Command
 
@@ -381,7 +381,7 @@ Owner：`packages/agent-coding`
 | `todo add/list/update/done` raw output | 已覆盖 | `packages/agent-coding/src/__tests__/todo-command.test.ts` | 防止模型拿不到可读的任务状态反馈。 |
 | `todo add/list/update/done` JSON output | 已覆盖 | `todo-command.test.ts` | 防止 agent 或 UI 需要结构化 todo 状态时解析失败。 |
 | todo 状态按 agent session id 隔离 | 已覆盖 | `todo-command.test.ts` | 防止不同会话共享 todo，造成用户任务串线。 |
-| todo 与 shell id 不混淆 | 部分覆盖 | 已通过 session scoped storage 间接覆盖，缺少端到端多 shell 场景 | 需要发现多个 shell 共用同一 agent session 时 todo 是否仍归属正确会话。 |
+| todo 与 shell id 不混淆 | 已覆盖 | `todo-command.test.ts` 覆盖 agent session 隔离和同一 agent session 下 shell 重建后的 storage 延续 | 需要发现 shellId 和 agentSessionId 再次混淆。 |
 
 ### 5.15 Coding Agent 工作流
 
@@ -396,8 +396,8 @@ Owner：`packages/agent-coding`
 | 创建文件 -> 测试失败 -> 读取错误 -> 修复 -> 测试通过 | 已覆盖 | `coding-marathon.test.ts` | 用来发现 agent 是否能围绕失败反馈迭代，而不是只验证单步命令。 |
 | 长命令 running/yield -> wait -> input/abort 的 agent 级流程 | 已覆盖 | `coding-marathon.test.ts` | 用来发现 shell 控制面在模型多轮工具调用中是否仍保持正确上下文。 |
 | tool error 后模型恢复继续执行任务 | 已覆盖 | `coding-marathon.test.ts` 覆盖命令非零退出后读取、修复、继续；base-agent 覆盖 invoke throw | 用来发现 coding 命令失败后模型是否有足够上下文修正，而不是 session 停死。 |
-| 多轮 user message 对 coding workflow 的影响 | 未覆盖 | 需要 multi-turn scenario | 用来发现 queued send、transcript 和 coding state 在连续用户输入下是否错序。 |
-| 多 shell + 同 agent session 的 todo/storage 一致性 | 未覆盖 | 需要 agent scenario | 用来发现 shellId 和 agentSessionId 再次混淆。 |
+| 多轮 user message 对 coding workflow 的影响 | 已覆盖 | `coding-marathon.test.ts` 覆盖两次 `session.send` 后继续读取上一轮文件、tool result 和 todo 状态 | 用来发现 queued send、transcript 和 coding state 在连续用户输入下是否错序。 |
+| 多 shell + 同 agent session 的 todo/storage 一致性 | 已覆盖 | `todo-command.test.ts` 覆盖同一 agent session 重建 shell 后仍读取同一 todo storage；`coding-marathon.test.ts` 覆盖 agent workflow 内 todo 状态延续 | 用来发现 shellId 和 agentSessionId 再次混淆。 |
 
 ### 5.16 RPC 协议
 
@@ -451,8 +451,8 @@ Owner：`packages/just-bash`
 
 ## 6. 当前剩余优先补测顺序
 
-1. 模型可见上下文 residual：通用 reference / preamble / tool result 截断策略、主动 cache prefix 字节级稳定与失效规则。
-2. TUI / 真实 provider gated smoke：真实 Claude Code provider、thinking、tool use、交互式 shell 输出；当前不进入默认自动化测试。
+1. 默认自动化：agent runtime、provider、RPC、shell、coding workflow、compact、context cache 的 P0/MVP 测试点已覆盖；后续只按新增风险补测试。
+2. 手动/Gated：TUI / 真实 provider smoke 仍需验证真实 Claude Code provider、thinking、tool use、交互式 shell 输出；当前不进入默认自动化测试。
 
 ## 7. 新增测试放置规则
 
