@@ -62,7 +62,7 @@
 | AgentSession 长生命周期稳定 | 部分有效 | `5.4`、`5.5`、`5.6`、`5.7` 已覆盖 send/queue/retry/resume/abort/tool/error/compact 的主要路径；完整 `AgentSessionSnapshot` loader 和 provider mock realism 仍是缺口或部分有效。 |
 | 模型可见上下文稳定 | 有效 | `5.5`、`5.7` 覆盖 exact transcript payload、effective transcript、当前 transcript schema 的 internal block 过滤、bounded injection、stable prefix 和 compact 后重稳。 |
 | Compaction 可支撑长任务 | 部分有效 | `5.6` 是当前最强覆盖面，preflight/manual/auto、tool pair、multi-compact、snapshot restore、context overflow 裁剪重试、action 交错多数有效；真实 provider 下 thinking 输出预算冲突仍需 gated 验证。 |
-| Context cache baseline | 部分有效 | `5.3`、`5.7` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为；RPC/UI usage 传播和真实 provider cache hit 仍未完整证明。 |
+| Context cache baseline | 部分有效 | `5.3`、`5.7`、`5.16` 覆盖 usage 字段、stable prefix、cache 不影响 agent 行为、RPC client transcript usage 传播；TUI usage 呈现和真实 provider cache hit 仍未完整证明。 |
 | Shell 控制面支撑真实长命令 | 部分有效 | `5.10` 和 `5.15` 覆盖 wait/input/abort 的 deterministic 流程；真实模型是否稳定选择正确 shell 控制动作仍只能靠 gated smoke。 |
 | Coding workflow 能发现真实问题 | 部分有效 | `5.12` 到 `5.15` 覆盖真实文件、todo、测试失败到修复、长命令控制；editor 写入失败事务、todo 输出矩阵、shell cwd/env 复用仍有部分缺口。 |
 | 壳子路径能呈现真实模型行为 | Gated | `5.16` RPC 层有效，但 `5.17` TUI 自身没有自动化测试；真实 Claude Code provider 回复、thinking、tool output 显示仍依赖 gated smoke。 |
@@ -259,14 +259,14 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| provider request prefix 在普通多轮对话中稳定 | 有效 | `context-cache.test.ts` 连续三轮 send 后断言后一轮 `items` prefix 等于前一轮完整 items，systemPrompt 和 tools 也保持同一结构；能发现无意义重排破坏 prefix。验证：5.7 targeted command，37 pass。 | `context-cache.test.ts` | 防止 system prompt、tools schema、preamble 或历史 items 无意义重排，破坏 context cache 基线。 |
+| provider request prefix 在普通多轮对话中稳定 | 有效 | `context-cache.test.ts` 连续三轮 send 后断言后一轮 `items` prefix 等于前一轮完整 items，systemPrompt 和 tools 也保持同一结构；能发现无意义重排破坏 prefix。验证：5.7 targeted command，34 pass / 1 skip。 | `context-cache.test.ts` | 防止 system prompt、tools schema、preamble 或历史 items 无意义重排，破坏 context cache 基线。 |
 | provider request 只由 effective transcript 和当前 prompt context 构成 | 有效 | 测试精确断言 request 由 latest summary、recent user、current preamble+user 构成，并排除 old history、response usage、error code/message、abort state、extension state、compaction marker 和 compactedTokens。验证同上。 | `context-cache.test.ts` | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
 | provider、retry、compact、resume 共用同一个 effective transcript 入口 | 有效 | `context-cache.test.ts` 断言 retry/resume request 等于 `Transcript.collectInferenceItems()`；marathon 多轮断言 request 与 transcript 一致；compaction 断言 summary/recent/queued request 的 exact items。验证同上。 | `context-cache.test.ts`、`session-marathon.test.ts`、`compaction.test.ts` | 防止不同路径各自拼 request，导致正常 send 通过但 compact 或 retry 后真实模型上下文漂移。 |
 | 注入内容有明确上限和截断策略 | 有效 | 测试构造超长 preamble、reference 文本、assistant text、tool output，断言 provider-visible JSON 含 truncation marker 和 head/tail，且不含大段原文；随后断言 transcript audit log 仍保留原文。验证同上。 | `context-cache.test.ts` 覆盖 preamble、reference 展开文本、assistant text、tool result 的 provider-visible 截断，且 transcript audit log 保留原文 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
 | 记录给模型的 tool output 使用 head/tail + truncation marker | 有效 | 同一截断测试断言 tool output 的 head `tool-head-`、tail `-tool-tail` 和 `[...] truncated` 标记都在 request 中，同时大段重复内容被移除；能发现只保留头部或无标记截断。验证同上。 | `context-cache.test.ts` 覆盖 head/tail 保留和 truncation marker | 防止截断后模型不知道内容被省略，或只保留头部导致错误诊断。 |
 | provider context-overflow 错误触发可恢复路径或明确失败 | 有效 | 测试 provider 返回 `context_length_exceeded` 后 `send` reject，transcript 写入带 code 的 error，phase 回 idle，随后再次 send 可成功；能发现 generic error 或不可恢复 busy 状态。验证同上。 | `context-cache.test.ts` | 防止模型上下文超限后 session 只记录 generic error，无法 compact/retry 或向壳子给出明确状态。 |
 | provider usage 中 cache read/write token 字段被解析 | 有效 | `jsonl-output.test.ts` 断言 Claude result usage 的 `cache_read_input_tokens`、`cache_creation_input_tokens` 映射成 `cacheReadTokens`、`cacheWriteTokens`；能发现 provider 字段被丢弃。验证同上。 | `jsonl-output.test.ts` | 防止 provider cache 指标被丢弃，后续无法判断真实 cache 行为。 |
-| cache usage 被 AgentSession 记录并对外暴露 | 部分有效 | `context-cache.test.ts` 断言 response blocks 记录 cacheRead/cacheWrite tokens，覆盖 provider 到 AgentSession transcript；但未覆盖 RPC/UI 读取链路。验证同上。 | `context-cache.test.ts` | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
+| cache usage 被 AgentSession 记录并对外暴露 | 部分有效 | `context-cache.test.ts` 断言 response blocks 记录 cacheRead/cacheWrite tokens，`rpc.test.ts` 断言同一 usage 经 transcript patch frame 到达 `RpcClient.transcript()`；TUI stdout 是否展示 cacheRead/cacheWrite 仍未覆盖。验证同上。 | `context-cache.test.ts`、`rpc.test.ts` | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
 | cache 只是 provider 透明优化时，不影响 agent 行为 | 有效 | 测试 cache usage 极大但 input/output tokens 很小，断言没有触发 compaction，tool loop 仍执行一次并继续 provider roundtrip；能发现 cache 指标错误参与 agent 行为决策。验证同上。 | `context-cache.test.ts` | 需要保证 cache 指标变化不会改变 transcript、tool loop 或错误处理。 |
 | demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 | 有效 | `stable prompt prefix` 测试把第二轮 request 的 cache 输入 prefix JSON.stringify 后比较，等价历史下 byte-identical；能发现工具/system/preamble/history 无意义抖动。验证同上。 | `context-cache.test.ts` 断言等价历史下 stable prefix 字节级一致 | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
 | tools/schema/system prompt/model/preamble 改变时 cache 失效规则 | 有效 | 同一测试分别改变 system prompt、首轮 preamble、tool description、model id，并断言 prefix 与 baseline 不同；能发现该失效时没有失效或错误复用 prefix。验证同上。 | `context-cache.test.ts` 断言 tools、system prompt、model、preamble 变化会改变 cache 输入前缀 | 需要防止 cache 命中建立在错误前缀上，或该失效时没有失效。 |
@@ -412,7 +412,7 @@ Owner：`packages/rpc`
 | transcript patch 更新 in-place tool_call metadata/status | 有效 | 测试同一位置 tool_call 从 executing 变 completed 且 metadata 改变时产生 remove/add patch，并用 `applyTranscriptPatches` 还原到 next；能发现 UI patch view 不更新。验证同上。 | `packages/rpc/src/__tests__/patch.test.ts` | 防止 UI 收不到 tool_call 状态变化，只能靠全量刷新。 |
 | transcript diff 处理非 JSON / cyclic metadata | 有效 | 测试 BigInt metadata 和 cyclic metadata 都能 diff/apply，不抛异常；能发现不可 JSON stringify 的 metadata 打断 RPC patch。验证同上。 | `patch.test.ts` | 防止一个不可序列化 metadata 打断整个 RPC 同步。 |
 | root entry 不导出 node-only stdio transports | 有效 | 测试 `@demi/rpc` root entry 不含 stdio transport，并仍导出 WebSocket transport；能发现 browser bundle 入口污染。验证同上。 | `packages/rpc/src/__tests__/root-entry.test.ts` | 防止 browser/client bundle 意外包含 Node-only transport。 |
-| RpcClient open/send 经 InProcessTransport 发 transcript/phase | 有效 | 测试 open/send 后 client transcript 为 user/text/response，并收到 snapshot、patch、idle phase；能发现基本协议动作无法驱动 session 或本地 view 不更新。验证同上。 | `packages/rpc/src/__tests__/rpc.test.ts` | 防止基本协议动作不能驱动 session 或本地 view 不更新。 |
+| RpcClient open/send 经 InProcessTransport 发 transcript/phase | 有效 | 测试 open/send 后 client transcript 为 user/text/response，并收到 snapshot、patch、idle phase；同一测试精确断言 response usage 的 cacheRead/cacheWrite tokens 经 transcript patch 到达 client 本地 view。验证同上。 | `packages/rpc/src/__tests__/rpc.test.ts` | 防止基本协议动作不能驱动 session、本地 view 不更新，或 cache usage 在 RPC transcript 同步中丢字段。 |
 | client close 清空本地 transcript view | 有效 | 测试 close 前 transcript 非空，close 后收到 closed frame 且 client transcript blocks 为空；能发现 UI 显示旧会话残留。验证同上。 | `rpc.test.ts` | 防止关闭会话后 UI 还显示旧 transcript。 |
 | provider error code 只 forward 一次，并保留 transcript error block | 有效 | 测试 provider error 让 `client.send` reject，事件流里 error frame 精确只有一次，且 transcript 保留 user/error block 与 code；能发现重复报错或 transcript 丢错。验证同上。 | `rpc.test.ts` | 防止 UI 重复报错，或错误只在 frame 中出现而 transcript 丢失。 |
 | shell output、bash audit、generic tool progress frame 映射 | 有效 | 测试 shell tool progress 映射为 shell_output/audit，任意 progress 包括 undefined、BigInt、cyclic object 映射成 text output，并过滤非良构 audit；能发现 TUI/GUI 实时事件缺失或格式破坏。验证同上。 | `rpc.test.ts` | 防止 TUI/GUI 看不到实时 shell 输出、审计事件或工具进度。 |
@@ -454,11 +454,10 @@ Owner：`packages/just-bash`
 
 ## 6. 当前剩余优先补测顺序
 
-1. 补 `5.7` 的 Context cache 基线：cache usage 经 RPC/UI 暴露。
-2. 补 `5.17 TUI` 自动化：stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
-3. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
-4. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务、todo raw/JSON 输出矩阵、shell cwd/env 复用。
-5. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
+1. 补 `5.17 TUI` 自动化：cache usage 呈现、stdout renderer snapshot、readline command/input、phase/transcript/shell frame 合并、thinking/text/tool output 去重和刷新节奏。
+2. 补真实 provider/TUI gated smoke：真实 Claude Code provider 回复、thinking、tool use、shell wait/input/abort、真实 cache hit、真实 provider 下 thinking 输出 token 预算冲突；gated smoke 只补充 deterministic 测试，不替代契约测试。
+3. 补 `5.12` 到 `5.15` 的 coding 细节缺口：file reference 是否必经 Host、editor 写入阶段失败事务、todo raw/JSON 输出矩阵、shell cwd/env 复用。
+4. 按需单独运行并记录 `5.18` just-bash 完整 upstream spec/comparison；主仓库默认脚本只覆盖 demi 当前依赖的 parser 核心子集。
 
 ## 7. 新增测试放置规则
 

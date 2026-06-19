@@ -29,17 +29,38 @@ const model: ModelSelection = {
 }
 
 test('RpcClient.open and send run through InProcessTransport and emit transcript/phase frames', async () => {
+  const turns: ConstructorParameters<typeof StubProvider>[0] = [
+    [
+      events.text('hello'),
+      events.response({ inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, cacheWriteTokens: 3 }),
+    ],
+  ]
   const { client } = createRpcHarness({
-    providerTurns: [[events.text('hello'), events.response()]],
+    providerTurns: turns,
   })
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open('test', providerConfig([[events.text('hello'), events.response()]]), '/workspace')
+  await client.open('test', providerConfig(turns), '/workspace')
   await client.send([{ type: 'text', text: 'hi' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  expect(client.transcript().blocks[2]).toMatchObject({
+    type: 'response',
+    usage: { inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, cacheWriteTokens: 3 },
+  })
+  const responsePatch = seen
+    .filter((event) => event.type === 'transcript_patch')
+    .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
+    .find((patch) => patch.op === 'add' && patch.value.type === 'response')
+  expect(responsePatch).toMatchObject({
+    op: 'add',
+    value: {
+      type: 'response',
+      usage: { inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, cacheWriteTokens: 3 },
+    },
+  })
   expect(seen.map((event) => event.type)).toContain('transcript_snapshot')
   expect(seen.map((event) => event.type)).toContain('transcript_patch')
   expect(seen).toContainEqual({ type: 'phase', phase: 'idle' })
