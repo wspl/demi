@@ -259,19 +259,19 @@ Owner：`packages/provider-claude-code`、`packages/base-agent`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| provider request prefix 在普通多轮对话中稳定 |  |  | `context-cache.test.ts` | 防止 system prompt、tools schema、preamble 或历史 items 无意义重排，破坏 context cache 基线。 |
-| provider request 只由 effective transcript 和当前 prompt context 构成 |  |  | `context-cache.test.ts` | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
-| provider、retry、compact、resume 共用同一个 effective transcript 入口 |  |  | `context-cache.test.ts`、`session-marathon.test.ts`、`compaction.test.ts` | 防止不同路径各自拼 request，导致正常 send 通过但 compact 或 retry 后真实模型上下文漂移。 |
-| 注入内容有明确上限和截断策略 |  |  | `context-cache.test.ts` 覆盖 preamble、reference 展开文本、assistant text、tool result 的 provider-visible 截断，且 transcript audit log 保留原文 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
-| 记录给模型的 tool output 使用 head/tail + truncation marker |  |  | `context-cache.test.ts` 覆盖 head/tail 保留和 truncation marker | 防止截断后模型不知道内容被省略，或只保留头部导致错误诊断。 |
-| provider context-overflow 错误触发可恢复路径或明确失败 |  |  | `context-cache.test.ts` | 防止模型上下文超限后 session 只记录 generic error，无法 compact/retry 或向壳子给出明确状态。 |
-| provider usage 中 cache read/write token 字段被解析 |  |  | `jsonl-output.test.ts` | 防止 provider cache 指标被丢弃，后续无法判断真实 cache 行为。 |
-| cache usage 被 AgentSession 记录并对外暴露 |  |  | `context-cache.test.ts` | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
-| cache 只是 provider 透明优化时，不影响 agent 行为 |  |  | `context-cache.test.ts` | 需要保证 cache 指标变化不会改变 transcript、tool loop 或错误处理。 |
-| demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 |  |  | `context-cache.test.ts` 断言等价历史下 stable prefix 字节级一致 | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
-| tools/schema/system prompt/model/preamble 改变时 cache 失效规则 |  |  | `context-cache.test.ts` 断言 tools、system prompt、model、preamble 变化会改变 cache 输入前缀 | 需要防止 cache 命中建立在错误前缀上，或该失效时没有失效。 |
-| compact 后 cache prefix 变化与重新稳定 |  |  | `context-cache.test.ts`、`compaction.test.ts` 覆盖 compact 后 summary prefix 替换旧历史，后续 request 重新形成稳定前缀 | 需要发现 compact 后上下文前缀持续抖动，导致 cache 永远无法稳定命中。 |
-| 真实 provider cache 命中 |  |  | 只能做真实 provider smoke，不进默认 deterministic 测试 | 用来确认 deterministic contract 之外的真实 CLI/服务端 cache 行为没有退化。 |
+| provider request prefix 在普通多轮对话中稳定 | 有效 | `context-cache.test.ts` 连续三轮 send 后断言后一轮 `items` prefix 等于前一轮完整 items，systemPrompt 和 tools 也保持同一结构；能发现无意义重排破坏 prefix。验证：5.7 targeted command，37 pass。 | `context-cache.test.ts` | 防止 system prompt、tools schema、preamble 或历史 items 无意义重排，破坏 context cache 基线。 |
+| provider request 只由 effective transcript 和当前 prompt context 构成 | 部分有效 | 测试精确断言 request 由 latest summary、recent user、current preamble+user 构成，并排除 old history、extension state、compactedTokens；但没有覆盖所有 store/UI-only 内部状态泄漏类型。验证同上。 | `context-cache.test.ts` | 防止 store snapshot、extension state、compaction marker、UI-only 状态进入模型可见上下文。 |
+| provider、retry、compact、resume 共用同一个 effective transcript 入口 | 有效 | `context-cache.test.ts` 断言 retry/resume request 等于 `Transcript.collectInferenceItems()`；marathon 多轮断言 request 与 transcript 一致；compaction 断言 summary/recent/queued request 的 exact items。验证同上。 | `context-cache.test.ts`、`session-marathon.test.ts`、`compaction.test.ts` | 防止不同路径各自拼 request，导致正常 send 通过但 compact 或 retry 后真实模型上下文漂移。 |
+| 注入内容有明确上限和截断策略 | 有效 | 测试构造超长 preamble、reference 文本、assistant text、tool output，断言 provider-visible JSON 含 truncation marker 和 head/tail，且不含大段原文；随后断言 transcript audit log 仍保留原文。验证同上。 | `context-cache.test.ts` 覆盖 preamble、reference 展开文本、assistant text、tool result 的 provider-visible 截断，且 transcript audit log 保留原文 | 防止大文件引用、大工具输出或过长 preamble 直接撑爆上下文，compact 也来不及恢复。 |
+| 记录给模型的 tool output 使用 head/tail + truncation marker | 有效 | 同一截断测试断言 tool output 的 head `tool-head-`、tail `-tool-tail` 和 `[...] truncated` 标记都在 request 中，同时大段重复内容被移除；能发现只保留头部或无标记截断。验证同上。 | `context-cache.test.ts` 覆盖 head/tail 保留和 truncation marker | 防止截断后模型不知道内容被省略，或只保留头部导致错误诊断。 |
+| provider context-overflow 错误触发可恢复路径或明确失败 | 有效 | 测试 provider 返回 `context_length_exceeded` 后 `send` reject，transcript 写入带 code 的 error，phase 回 idle，随后再次 send 可成功；能发现 generic error 或不可恢复 busy 状态。验证同上。 | `context-cache.test.ts` | 防止模型上下文超限后 session 只记录 generic error，无法 compact/retry 或向壳子给出明确状态。 |
+| provider usage 中 cache read/write token 字段被解析 | 有效 | `jsonl-output.test.ts` 断言 Claude result usage 的 `cache_read_input_tokens`、`cache_creation_input_tokens` 映射成 `cacheReadTokens`、`cacheWriteTokens`；能发现 provider 字段被丢弃。验证同上。 | `jsonl-output.test.ts` | 防止 provider cache 指标被丢弃，后续无法判断真实 cache 行为。 |
+| cache usage 被 AgentSession 记录并对外暴露 | 部分有效 | `context-cache.test.ts` 断言 response blocks 记录 cacheRead/cacheWrite tokens，覆盖 provider 到 AgentSession transcript；但未覆盖 RPC/UI 读取链路。验证同上。 | `context-cache.test.ts` | 需要发现 usage 在 provider 到 session 到 UI/RPC 链路中丢字段。 |
+| cache 只是 provider 透明优化时，不影响 agent 行为 | 有效 | 测试 cache usage 极大但 input/output tokens 很小，断言没有触发 compaction，tool loop 仍执行一次并继续 provider roundtrip；能发现 cache 指标错误参与 agent 行为决策。验证同上。 | `context-cache.test.ts` | 需要保证 cache 指标变化不会改变 transcript、tool loop 或错误处理。 |
+| demi 主动保障 stable prompt prefix 时，跨 turn prefix 字节级稳定 | 有效 | `stable prompt prefix` 测试把第二轮 request 的 cache 输入 prefix JSON.stringify 后比较，等价历史下 byte-identical；能发现工具/system/preamble/history 无意义抖动。验证同上。 | `context-cache.test.ts` 断言等价历史下 stable prefix 字节级一致 | 如果要主动利用 cache，该测试能发现无意义重排 tools/system prompt 破坏命中率。 |
+| tools/schema/system prompt/model/preamble 改变时 cache 失效规则 | 有效 | 同一测试分别改变 system prompt、首轮 preamble、tool description、model id，并断言 prefix 与 baseline 不同；能发现该失效时没有失效或错误复用 prefix。验证同上。 | `context-cache.test.ts` 断言 tools、system prompt、model、preamble 变化会改变 cache 输入前缀 | 需要防止 cache 命中建立在错误前缀上，或该失效时没有失效。 |
+| compact 后 cache prefix 变化与重新稳定 | 有效 | `provider request prefix restabilizes after compaction` 断言 compact 后 first request 以 summary 替换旧历史且不含 old question，第二个 post-compact request 的 prefix 与 first post-compact request byte-identical。验证同上。 | `context-cache.test.ts`、`compaction.test.ts` 覆盖 compact 后 summary prefix 替换旧历史，后续 request 重新形成稳定前缀 | 需要发现 compact 后上下文前缀持续抖动，导致 cache 永远无法稳定命中。 |
+| 真实 provider cache 命中 | Gated | 默认 deterministic 测试只证明 request prefix 和 usage 字段 contract，不能证明真实 CLI/服务端发生 cache hit；需要真实 provider smoke 或线上指标验收。 | 只能做真实 provider smoke，不进默认 deterministic 测试 | 用来确认 deterministic contract 之外的真实 CLI/服务端 cache 行为没有退化。 |
 
 ### 5.8 Command Registry
 
