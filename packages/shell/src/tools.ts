@@ -59,7 +59,8 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
     },
     {
       name: 'shell_input',
-      description: 'Write explicit stdin to the foreground command in a shell session. Use shell_wait to poll.',
+      description:
+        'Write explicit stdin to the current foreground system process in a shell session. Use shell_wait to poll. For interactive stdin, keep the reader inside one foreground process such as sh -c, node, or python; do not rely on the session script builtin read across turns.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,

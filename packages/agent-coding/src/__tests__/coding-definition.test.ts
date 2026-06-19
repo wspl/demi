@@ -54,6 +54,7 @@ test('coding agent definition exposes shell session tools and registered command
   expect(prompt).toContain('Effects: modifies agent-session-scoped command storage')
   expect(prompt).toContain('run them in the foreground with a short yieldAfterMs')
   expect(prompt).toContain('avoid pkill/killall by process name')
+  expect(prompt).toContain('do not rely on the session script builtin read across turns')
   expect(prompt).toContain('File references attached by the client are expanded before provider calls.')
 
   const todo = await environment.exec({ script: 'todo add "Verify default registration"' })

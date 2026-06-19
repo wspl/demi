@@ -55,6 +55,7 @@ export function createCodingAgentDefinition(options: CodingAgentOptions): AgentD
           '- Prefer non-interactive CLI flags for scaffolds and package tools when available.',
           '- For underspecified scaffold requests, choose a reasonable non-interactive default and proceed unless the choice is destructive or impossible.',
           '- Send non-empty stdin with shell_input only when the running command is known to be waiting for specific input.',
+          '- For interactive stdin, keep the reader inside one foreground system process such as sh -c, node, or python; do not rely on the session script builtin read across turns.',
           '- Use shell_abort only when intentionally stopping a foreground command.',
         ].join('\n'),
         'File references attached by the client are expanded before provider calls.',
