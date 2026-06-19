@@ -338,7 +338,7 @@ Owner：`packages/shell`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `HostBackedFileSystem` 通过 `Host.spawn` 完成 read/exists/stat/write/append/readdir | 部分有效 | `host-fs.test.ts` 用 LocalHost 验证 read/exists/stat/write/append/readdir 的行为正确；但没有 fake Host 记录 spawn 调用，不能单独证明实现没有直接读写本机 fs。验证：5.11 targeted command，15 pass。 | `packages/shell/src/__tests__/host-fs.test.ts` | 防止 shell/coding 绕过 Host 直接读写本机 fs，破坏远程或容器后端边界。 |
+| `HostBackedFileSystem` 通过 `Host.spawn` 完成 read/exists/stat/write/append/readdir | 有效 | `host-fs.test.ts` 用 LocalHost 验证 read/exists/stat/write/append/readdir 的行为正确；另用 fake Host 记录 readFile、readFileBuffer、exists、stat、writeFile、appendFile、readdir 的 command/args/cwd/stdin，断言全部通过 `Host.spawn`。验证：5.11 targeted command，16 pass。 | `packages/shell/src/__tests__/host-fs.test.ts` | 防止 shell/coding 绕过 Host 直接读写本机 fs，破坏远程或容器后端边界。 |
 | shell root entry 只暴露 browser-safe Host contract / FS class | 部分有效 | `root-entry.test.ts` 从 root entry 导入 Host contract 和 HostBackedFileSystem 并验证可构造/resolvePath；但未扫描静态 import 闭包，Node-only 入口泄漏主要由 5.1 平台边界测试兜住。验证同上。 | `packages/shell/src/__tests__/root-entry.test.ts` | 防止 `@demi/shell` 根入口静态带入 Node-only adapter，破坏 browser/runtime-neutral 包边界。 |
 | readFileBuffer 返回 raw bytes | 有效 | `host-fs.test.ts` 写入 `[0x68,0x69,0x0a]` 二进制内容，`readFileBuffer` 断言返回同一 byte array；能发现文本解码损坏二进制。验证同上。 | `host-fs.test.ts` | 防止二进制文件被文本编码损坏。 |
 | `LocalHost` spawn capture stdout 和 stdin | 有效 | `local-host.test.ts` 断言 LocalHost spawn `printf` 可收集 stdout，spawn `sh` 后 `writeStdin/closeStdin` 可被子进程读取；能发现本地 adapter I/O 管道断裂。验证同上。 | `packages/shell/src/__tests__/local-host.test.ts` | 防止本地 adapter 不能正确连接进程输入输出。 |
