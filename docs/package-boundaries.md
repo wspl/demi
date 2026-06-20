@@ -34,6 +34,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demi/core`.
 - Owns: abstract provider contract, inference request items, provider events, provider definition, provider registry, auth/runtime status, and model catalog shape.
 - Public boundary: provider contract and registry from root; provider test helpers only from `@demi/provider/testing`.
+- Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
+- Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
 - Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or TUI.
 
 ### `@demi/shell`
@@ -42,6 +44,9 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `just-bash`.
 - Owns: Host contract, command specs, CommandRegistry, DemiStore contract, AgentSessionCommandStorage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
 - Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`.
+- Host boundary: Host is the only shell runtime interface for executing outside the interpreter.
+- HostBackedFileSystem stays here because it adapts just-bash filesystem operations to the Host contract and works for local, remote, or container hosts.
+- HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
 - Must not: import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, `@demi/host-local`, `@demi/tui`, or own local Node adapters.
 - Temporary gap: `@demi/shell/local-host` and `@demi/shell/store` still contain local Node adapters. They must be removed when `@demi/host-local` is extracted; no compatibility shim should remain.
 
@@ -53,7 +58,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: Node-only local host and local store implementations.
 - May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, and process-group signaling.
 - Must not: depend on `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, or `@demi/tui`.
-- Extraction target: move LocalHost and LocalDemiStore here, delete `@demi/shell/local-host` and `@demi/shell/store`, and move local adapter behavior tests under `packages/host-local`.
+- Extraction target: move LocalHost and LocalDemiStore here, delete `@demi/shell/local-host` and `@demi/shell/store`, move local adapter behavior tests under `packages/host-local`, and update boundary tests to reject production imports from the old shell subpaths.
 
 ### `@demi/agent`
 
@@ -63,6 +68,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only transports from explicit subpaths such as `@demi/agent/stdio`.
 - Must not: import concrete providers, `@demi/host-local`, or UI packages.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
+- Assembly rule: AgentServer receives one AgentHarness, one ProviderRegistry, and shell runtime options that do not replace the shell mechanism.
 
 ### `@demi/coding-agent`
 
@@ -71,7 +77,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: coding harness, coding prompt, coding commands, todo command, and file reference resolution.
 - Public boundary: harness and coding command construction based on Host and CommandSpec contracts.
 - Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, LocalHost, or LocalDemiStore.
-- Runtime rule: defines Host and command usage through the harness; it must not replace the shell mechanism or provide an alternate tool runtime.
+- Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism or provide an alternate BashEnvironment or tool runtime.
 
 ### `@demi/provider-claude-code`
 
@@ -128,51 +134,6 @@ The graph is a compact view of the `Production deps` fields in the package regis
 - Local Node adapters must live in adapter packages, not in platform-neutral runtime packages.
 - Do not keep compatibility shims when a package split moves an implementation to its final package.
 
-## Host Boundary
-
-`Host` is the only shell runtime interface for executing outside the interpreter. BashEnvironment, coding commands, and reference resolution depend on `Host`, not LocalHost.
-
-Final Host contract requirements:
-
-- `Host` stays in `@demi/shell`.
-- `HostBackedFileSystem` stays in `@demi/shell`; it adapts just-bash filesystem operations to the Host contract and therefore works for local, remote, or container hosts.
-- `LocalHost` moves to `@demi/host-local`.
-- `HostSpawnHandle.kill` uses a platform-neutral signal type such as `string` or a Demi-defined union, not `NodeJS.Signals`.
-
-## Composition Boundary
-
-`AgentServer` is the runtime assembly boundary. It receives:
-
-- one `AgentHarness`;
-- one `ProviderRegistry`;
-- shell runtime options that do not replace the shell mechanism.
-
-The harness may define Host, commands, prompt, preamble, lifecycle, and reference resolution. It must not provide an alternate BashEnvironment or tool runtime. Shell/Bash is part of the agent runtime core, not a replaceable coding-agent detail.
-
-`@demi/tui` is the local application composition root: it chooses concrete provider definitions, creates the local Host, creates the coding harness, constructs AgentServer, and renders AgentClient events.
-
-## Catalog Source Boundary
-
-Provider model catalogs are provider capabilities. The common provider contract should expose portable catalog state, not provider-specific source labels.
-
-Allowed common catalog fields:
-
-- model ids and display metadata;
-- capability metadata;
-- service tier metadata;
-- `sourceFetchedAt`;
-- `stale`;
-- `warnings`.
-
-Provider-specific source labels such as `codex-backend` or `models.dev` belong inside provider implementation tests and provider-specific docs, not in `@demi/provider` public types.
-
-## Enforced Decisions
-
-- `ProviderModel` has no provider-specific `source`; common catalog state is limited to portable fields such as `stale`, `sourceFetchedAt`, and `warnings`.
-- Provider testing helpers are explicit test helpers and are not part of the provider root contract.
-- Concrete provider root exports are white-listed public API.
-- Local Node adapters must live in adapter packages, not in platform-neutral runtime packages.
-
 ## Verification
 
 Existing boundary coverage:
@@ -186,11 +147,3 @@ Existing boundary coverage:
 - The same test builds the production source package graph and fails on cycles or edges outside the enforced graph.
 - The same test checks that production workspace imports are declared in package `dependencies`.
 - The same test checks public provider root exports so internal transport, parser, protocol, auth-store, stream, and testing helpers do not leak through by accident.
-
-Required verification when `@demi/host-local` is extracted:
-
-- Sync `platform-entrypoints.test.ts` enforced production graph with this document's complete graph, including `@demi/host-local -> @demi/shell`.
-- Add `@demi/host-local` to package manifest boundary checks.
-- Assert platform-neutral production packages do not depend on `@demi/host-local`.
-- Assert production source has no imports from `@demi/shell/local-host` or `@demi/shell/store`.
-- Keep LocalHost and LocalDemiStore behavior tests under `packages/host-local`.
