@@ -17,39 +17,39 @@ export class HostBackedFileSystem implements IFileSystem {
   constructor(private readonly host: Host) {}
 
   async readFile(path: string, options?: ReadFileOptions | BufferEncoding): Promise<string> {
-    return decodeBytes(await this.host.fs.readFile(path, { cwd: this.host.root }), encodingFrom(options))
+    return decodeBytes(await this.host.fs.readFile(path, { cwd: this.host.defaultCwd }), encodingFrom(options))
   }
 
   async readFileBuffer(path: string): Promise<Uint8Array> {
-    return this.host.fs.readFile(path, { cwd: this.host.root })
+    return this.host.fs.readFile(path, { cwd: this.host.defaultCwd })
   }
 
   async writeFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
-    await this.host.fs.writeFile(path, encodeContent(content, encodingFrom(options)), { cwd: this.host.root })
+    await this.host.fs.writeFile(path, encodeContent(content, encodingFrom(options)), { cwd: this.host.defaultCwd })
   }
 
   async appendFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
-    await this.host.fs.appendFile(path, encodeContent(content, encodingFrom(options)), { cwd: this.host.root })
+    await this.host.fs.appendFile(path, encodeContent(content, encodingFrom(options)), { cwd: this.host.defaultCwd })
   }
 
   async exists(path: string): Promise<boolean> {
-    return this.host.fs.exists(path, { cwd: this.host.root })
+    return this.host.fs.exists(path, { cwd: this.host.defaultCwd })
   }
 
   async stat(path: string): Promise<FsStat> {
-    return toFsStat(await this.host.fs.stat(path, { cwd: this.host.root }))
+    return toFsStat(await this.host.fs.stat(path, { cwd: this.host.defaultCwd }))
   }
 
   async lstat(path: string): Promise<FsStat> {
-    return toFsStat(await this.host.fs.lstat(path, { cwd: this.host.root }))
+    return toFsStat(await this.host.fs.lstat(path, { cwd: this.host.defaultCwd }))
   }
 
   async readdir(path: string): Promise<string[]> {
-    return this.host.fs.readdir(path, { cwd: this.host.root })
+    return this.host.fs.readdir(path, { cwd: this.host.defaultCwd })
   }
 
   async readdirWithFileTypes(path: string): Promise<DirentEntry[]> {
-    const entries = await this.host.fs.readdir(path, { cwd: this.host.root, withFileTypes: true })
+    const entries = await this.host.fs.readdir(path, { cwd: this.host.defaultCwd, withFileTypes: true })
     return entries.map(toDirentEntry)
   }
 
@@ -63,43 +63,43 @@ export class HostBackedFileSystem implements IFileSystem {
   }
 
   async mkdir(path: string, options?: MkdirOptions): Promise<void> {
-    await this.host.fs.mkdir(path, { cwd: this.host.root, recursive: options?.recursive })
+    await this.host.fs.mkdir(path, { cwd: this.host.defaultCwd, recursive: options?.recursive })
   }
 
   async rm(path: string, options?: RmOptions): Promise<void> {
-    await this.host.fs.rm(path, { cwd: this.host.root, recursive: options?.recursive, force: options?.force })
+    await this.host.fs.rm(path, { cwd: this.host.defaultCwd, recursive: options?.recursive, force: options?.force })
   }
 
   async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
-    await this.host.fs.cp(src, dest, { cwd: this.host.root, recursive: options?.recursive })
+    await this.host.fs.cp(src, dest, { cwd: this.host.defaultCwd, recursive: options?.recursive })
   }
 
   async mv(src: string, dest: string): Promise<void> {
-    await this.host.fs.mv(src, dest, { cwd: this.host.root })
+    await this.host.fs.mv(src, dest, { cwd: this.host.defaultCwd })
   }
 
   async chmod(path: string, mode: number): Promise<void> {
-    await this.host.fs.chmod(path, mode, { cwd: this.host.root })
+    await this.host.fs.chmod(path, mode, { cwd: this.host.defaultCwd })
   }
 
   async symlink(target: string, linkPath: string): Promise<void> {
-    await this.host.fs.symlink(target, linkPath, { cwd: this.host.root })
+    await this.host.fs.symlink(target, linkPath, { cwd: this.host.defaultCwd })
   }
 
   async link(existingPath: string, newPath: string): Promise<void> {
-    await this.host.fs.link(existingPath, newPath, { cwd: this.host.root })
+    await this.host.fs.link(existingPath, newPath, { cwd: this.host.defaultCwd })
   }
 
   async readlink(path: string): Promise<string> {
-    return this.host.fs.readlink(path, { cwd: this.host.root })
+    return this.host.fs.readlink(path, { cwd: this.host.defaultCwd })
   }
 
   async realpath(path: string): Promise<string> {
-    return this.host.fs.realpath(path, { cwd: this.host.root })
+    return this.host.fs.realpath(path, { cwd: this.host.defaultCwd })
   }
 
   async utimes(path: string, atime: Date, mtime: Date): Promise<void> {
-    await this.host.fs.utimes(path, atime, mtime, { cwd: this.host.root })
+    await this.host.fs.utimes(path, atime, mtime, { cwd: this.host.defaultCwd })
   }
 }
 

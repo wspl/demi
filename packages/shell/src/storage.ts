@@ -1,12 +1,11 @@
 import type { CommandStorage } from './command'
-
-export type DemiStore = CommandStorage
+import type { HostStore } from './host'
 
 export class AgentSessionCommandStorage implements CommandStorage {
   private readonly agentSessionPrefix: string
 
   constructor(
-    private readonly store: DemiStore,
+    private readonly store: HostStore,
     agentSessionId: string,
   ) {
     validateAgentSessionId(agentSessionId)

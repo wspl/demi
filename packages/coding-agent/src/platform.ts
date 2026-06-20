@@ -30,17 +30,6 @@ export function dirnamePath(path: string): string {
   return normalized.slice(0, index)
 }
 
-export function resolvePath(cwd: string, target: string): string {
-  if (isAbsolutePath(target)) return normalizePath(target)
-  return normalizePath(`${cwd.replace(/[\\/]+$/, '')}/${target}`)
-}
-
-export function isPathInside(root: string, target: string): boolean {
-  const normalizedRoot = normalizePath(root)
-  const normalizedTarget = normalizePath(target)
-  return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(`${normalizedRoot.replace(/\/+$/, '')}/`)
-}
-
 function normalizePath(path: string): string {
   const slashPath = path.replace(/\\/g, '/')
   const drive = /^[A-Za-z]:/.exec(slashPath)?.[0].toUpperCase() ?? ''
@@ -59,8 +48,4 @@ function normalizePath(path: string): string {
   if (drive) return parts.length > 0 ? `${drive}/${parts.join('/')}` : `${drive}/`
   if (absolute) return `/${parts.join('/')}`
   return parts.join('/') || '.'
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 }

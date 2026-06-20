@@ -6,7 +6,7 @@ import { LocalHost } from '../local-host'
 
 test('LocalHost spawns a command and captures stdout', async () => {
   const host = new LocalHost(process.cwd())
-  const handle = await host.spawn({ command: 'printf', args: ['hello\\n'] })
+  const handle = await host.process.spawn({ command: 'printf', args: ['hello\\n'] })
 
   const [stdout, exit] = await Promise.all([collectText(handle.stdout), handle.wait()])
 
@@ -16,7 +16,7 @@ test('LocalHost spawns a command and captures stdout', async () => {
 
 test('LocalHost writes stdin to a spawned process', async () => {
   const host = new LocalHost(process.cwd())
-  const handle = await host.spawn({
+  const handle = await host.process.spawn({
     command: 'sh',
     args: ['-c', 'IFS= read -r line; printf "%s" "$line"'],
   })
@@ -31,7 +31,7 @@ test('LocalHost writes stdin to a spawned process', async () => {
 
 test('LocalHost can terminate a foreground process', async () => {
   const host = new LocalHost(process.cwd())
-  const handle = await host.spawn({ command: 'sleep', args: ['10'] })
+  const handle = await host.process.spawn({ command: 'sleep', args: ['10'] })
 
   await handle.kill()
   const exit = await handle.wait()
@@ -40,7 +40,7 @@ test('LocalHost can terminate a foreground process', async () => {
   expect(exit.signal).toBe('SIGTERM')
 })
 
-test('LocalHost.fs supports workspace file operations', async () => {
+test('LocalHost.fs supports local file operations', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-local-host-fs-'))
   const host = new LocalHost(root)
 

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import type { AgentHarness } from '@demi/agent'
+import type { AgentHarness, AgentSessionSnapshot } from '@demi/agent'
 import type { BashEnvironmentOptions } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { ProviderRegistry, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
@@ -82,6 +82,34 @@ test('AgentClient clears its local transcript view when the session is closed', 
 
   expect(seen.some((event) => event.type === 'closed')).toBe(true)
   expect(client.transcript().blocks).toEqual([])
+})
+
+test('AgentServer persists session snapshots through Host.store', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-agent-server-store-'))
+  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+  const harness: AgentHarness<Record<string, never>> = {
+    name: 'stored-session',
+    initialState: () => ({}),
+    host: () => host,
+    systemPrompt: () => 'system',
+  }
+  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('stored'), events.response()]]
+  const { client } = createAgentClientHarness({ harness, providerTurns: turns })
+
+  await client.open(providerConfig(turns), root)
+  await client.send([{ type: 'text', text: 'persist me' }])
+  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
+
+  const keys = await host.store.list('agent-sessions')
+  expect(keys).toHaveLength(1)
+  expect(keys[0]).toEndWith('/snapshot.json')
+  const snapshot = await host.store.readJson<AgentSessionSnapshot<Record<string, never>>>(keys[0])
+  expect(snapshot).toMatchObject({
+    cwd: root,
+    harnessName: 'stored-session',
+    phase: 'running',
+  })
+  expect(snapshot?.transcript.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 
 test('AgentServer forwards provider error codes once and preserves the transcript error block', async () => {

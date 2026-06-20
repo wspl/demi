@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
-import { BashEnvironment, CommandRegistry, type CommandSpec, type HostSpawnHandle } from '../index'
+import { BashEnvironment, CommandRegistry, type CommandSpec, type HostProcess } from '../index'
 import { LocalHost } from '@demi/host-local'
 
 test('BashEnvironment keeps cwd and env state across shell_exec calls', async () => {
@@ -1164,8 +1164,9 @@ test('BashEnvironment scopes registered command storage by agent session with sh
   const registry = new CommandRegistry()
   registry.register(counterCommandSpec())
   let nextShell = 0
+  const root = await mkdtemp(join(tmpdir(), 'demi-command-storage-'))
   const env = new BashEnvironment({
-    host: new LocalHost(process.cwd()),
+    host: new LocalHost(root, { storeRoot: join(root, '.host-store') }),
     commands: registry,
     shellIdFactory: () => `shell-${++nextShell}`,
     initialEnv: { PATH: process.env.PATH ?? '' },
@@ -1431,7 +1432,7 @@ test('BashEnvironment executes simple pipelines without handing scripts to a sys
   expect(stderr.output.stderrDelta).toBe('err')
 })
 
-test('BashEnvironment routes portable file commands through Host.fs before Host.spawn', async () => {
+test('BashEnvironment routes portable file commands through Host.fs before Host.process.spawn', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-portable-host-fs-'))
   await writeFile(join(root, 'input.txt'), 'from host fs\n')
   const host = new NoSpawnLocalHost(root)
@@ -1447,7 +1448,7 @@ test('BashEnvironment routes portable file commands through Host.fs before Host.
   if (result.status !== 'exited') throw new Error('expected exited result')
   expect(result.exitCode).toBe(0)
   expect(result.output.stdoutDelta).toBe('from host fs\nfrom host fs\n')
-  expect(host.spawnCalls).toBe(0)
+  expect(host.processSpawnCalls).toBe(0)
   expect(result.audit).toEqual([
     {
       kind: 'portable-command',
@@ -2487,11 +2488,12 @@ function stdinCommandSpec(): CommandSpec {
 }
 
 class NoSpawnLocalHost extends LocalHost {
-  spawnCalls = 0
-
-  async spawn(): Promise<HostSpawnHandle> {
-    this.spawnCalls += 1
-    throw new Error('Host.spawn must not be used')
+  processSpawnCalls = 0
+  override readonly process: HostProcess = {
+    spawn: async (): Promise<never> => {
+      this.processSpawnCalls += 1
+      throw new Error('Host.process.spawn must not be used')
+    },
   }
 }
 

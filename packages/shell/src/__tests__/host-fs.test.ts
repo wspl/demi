@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile as fsReadFile, writeFile } from 'node:fs/promi
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
-import type { Host, HostDirent, HostFileStat, HostFileSystem, HostSpawnHandle } from '../host'
+import type { Host, HostDirent, HostFileStat, HostFileSystem, HostStore } from '../host'
 import { HostBackedFileSystem } from '../host-fs'
 import { LocalHost } from '@demi/host-local'
 
@@ -72,7 +72,7 @@ test('HostBackedFileSystem.readFileBuffer returns raw bytes via Host.fs', async 
   expect(Array.from(bytes)).toEqual([0x68, 0x69, 0x0a])
 })
 
-test('HostBackedFileSystem routes IFileSystem operations to Host.fs and never Host.spawn', async () => {
+test('HostBackedFileSystem routes IFileSystem operations to Host.fs and never Host.process.spawn', async () => {
   const host = new RecordingHost('/workspace')
   const fs = new HostBackedFileSystem(host)
 
@@ -90,7 +90,7 @@ test('HostBackedFileSystem routes IFileSystem operations to Host.fs and never Ho
   expect(await fs.readdir('/workspace')).toEqual(['blob.bin', 'out.txt', 'read.txt'])
   expect(host.fileText('/workspace/out.txt')).toBe('new\ntail\n')
 
-  expect(host.spawnCalls).toBe(0)
+  expect(host.processSpawnCalls).toBe(0)
   expect(host.fs.calls).toEqual([
     ['readFile', '/workspace/read.txt', '/workspace'],
     ['readFile', '/workspace/blob.bin', '/workspace'],
@@ -107,11 +107,20 @@ test('HostBackedFileSystem routes IFileSystem operations to Host.fs and never Ho
 })
 
 class RecordingHost implements Host {
+  readonly defaultCwd: string
   readonly fs: RecordingHostFileSystem
-  spawnCalls = 0
+  readonly store: HostStore = new MemoryHostStore()
+  processSpawnCalls = 0
+  readonly process = {
+    spawn: async (): Promise<never> => {
+      this.processSpawnCalls += 1
+      throw new Error('Host.process.spawn must not be used for filesystem operations')
+    },
+  }
 
-  constructor(readonly root: string) {
-    this.fs = new RecordingHostFileSystem(root)
+  constructor(defaultCwd: string) {
+    this.defaultCwd = defaultCwd
+    this.fs = new RecordingHostFileSystem(defaultCwd)
   }
 
   fileText(path: string): string {
@@ -119,10 +128,13 @@ class RecordingHost implements Host {
     return content ? decode(content) : ''
   }
 
-  async spawn(): Promise<HostSpawnHandle> {
-    this.spawnCalls += 1
-    throw new Error('Host.spawn must not be used for filesystem operations')
-  }
+}
+
+class MemoryHostStore implements HostStore {
+  async readJson<T>(): Promise<T | null> { return null }
+  async writeJson<T>(): Promise<void> {}
+  async delete(): Promise<void> {}
+  async list(): Promise<string[]> { return [] }
 }
 
 class RecordingHostFileSystem implements HostFileSystem {

@@ -1,7 +1,8 @@
 export interface Host {
-  root: string
+  defaultCwd: string
   fs: HostFileSystem
-  spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
+  process: HostProcess
+  store: HostStore
 }
 
 export interface HostFileSystem {
@@ -23,6 +24,17 @@ export interface HostFileSystem {
   readlink(path: string, options?: { cwd?: string }): Promise<string>
   realpath(path: string, options?: { cwd?: string }): Promise<string>
   utimes(path: string, atime: Date, mtime: Date, options?: { cwd?: string }): Promise<void>
+}
+
+export interface HostProcess {
+  spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
+}
+
+export interface HostStore {
+  readJson<T>(key: string): Promise<T | null>
+  writeJson<T>(key: string, value: T): Promise<void>
+  delete(key: string): Promise<void>
+  list(prefix: string): Promise<string[]>
 }
 
 export interface HostFileStat {

@@ -1,15 +1,13 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { BashEnvironment } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { createCodingCommandRegistry } from '../index'
 
 test('todo command supports add/list/update/done with raw and JSON output', async () => {
-  const env = new BashEnvironment({
-    host: new LocalHost(process.cwd()),
-    commands: createCodingCommandRegistry(),
-    shellIdFactory: () => 'todo-shell',
-    initialEnv: { PATH: process.env.PATH ?? '' },
-  })
+  const env = await createTodoEnvironment(() => 'todo-shell')
 
   const add = await env.exec({ agentSessionId: 'todo-agent', script: 'todo add "Run tests"' })
   expect(add.output.stdoutDelta).toBe('[ ] T1 Run tests\n')
@@ -49,12 +47,7 @@ test('todo command supports add/list/update/done with raw and JSON output', asyn
 
 test('todo command state is isolated by agent session id', async () => {
   let nextShell = 0
-  const env = new BashEnvironment({
-    host: new LocalHost(process.cwd()),
-    commands: createCodingCommandRegistry(),
-    shellIdFactory: () => `todo-shell-${++nextShell}`,
-    initialEnv: { PATH: process.env.PATH ?? '' },
-  })
+  const env = await createTodoEnvironment(() => `todo-shell-${++nextShell}`)
 
   const first = await env.exec({ agentSessionId: 'agent-a', script: 'todo add "First session"' })
   const second = await env.exec({ agentSessionId: 'agent-b', script: 'todo add "Second session"' })
@@ -65,12 +58,7 @@ test('todo command state is isolated by agent session id', async () => {
 
 test('todo command keeps agent-session storage across shell recreation', async () => {
   let nextShell = 0
-  const env = new BashEnvironment({
-    host: new LocalHost(process.cwd()),
-    commands: createCodingCommandRegistry(),
-    shellIdFactory: () => `todo-recreated-shell-${++nextShell}`,
-    initialEnv: { PATH: process.env.PATH ?? '' },
-  })
+  const env = await createTodoEnvironment(() => `todo-recreated-shell-${++nextShell}`)
 
   const firstShell = await env.exec({ agentSessionId: 'todo-agent', script: 'todo add "First shell" --json' })
   expect(firstShell.shellId).toBe('todo-recreated-shell-1')
@@ -92,3 +80,14 @@ test('todo command keeps agent-session storage across shell recreation', async (
     todos: [{ id: 'T1', text: 'Other agent', status: 'pending' }],
   })
 })
+
+async function createTodoEnvironment(shellIdFactory: () => string): Promise<BashEnvironment> {
+  const root = await mkdtemp(join(tmpdir(), 'demi-todo-'))
+  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+  return new BashEnvironment({
+    host,
+    commands: createCodingCommandRegistry(),
+    shellIdFactory,
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+}

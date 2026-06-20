@@ -1,7 +1,7 @@
 import type { Host } from '@demi/shell'
 import type { AgentReferenceResolveContext } from '@demi/agent'
 import type { UserContentBlock } from '@demi/core'
-import { decodeUtf8, isPathInside, resolvePath } from './platform'
+import { decodeUtf8 } from './platform'
 
 export function createFileReferenceResolver<State>(host: Host) {
   return async (
@@ -22,7 +22,7 @@ export function createFileReferenceResolver<State>(host: Host) {
 
 async function resolveFileReference(host: Host, cwd: string, reference: string): Promise<UserContentBlock> {
   const path = parseFileReference(reference)
-  const pathError = workspacePathError(host, cwd, path)
+  const pathError = pathValidationError(path)
   if (pathError) throw new Error(pathError)
   let stdout: string
   try {
@@ -53,11 +53,9 @@ function decodeFileReferencePath(path: string): string {
   }
 }
 
-function workspacePathError(host: Host, cwd: string, path: string): string | null {
+function pathValidationError(path: string): string | null {
   if (path.includes('\0')) return `File reference contains NUL byte: ${path}`
-  const target = resolvePath(cwd, path)
-  if (isPathInside(host.root, target)) return null
-  return `File reference escapes workspace: ${path}`
+  return null
 }
 
 function errorMessage(error: unknown): string {

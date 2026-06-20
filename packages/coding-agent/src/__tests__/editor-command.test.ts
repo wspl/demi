@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
@@ -10,6 +10,8 @@ import {
   type HostDirent,
   type HostFileStat,
   type HostFileSystem,
+  type HostProcess,
+  type HostStore,
 } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { createCodingCommandRegistry, createEditorCommand } from '../index'
@@ -36,11 +38,11 @@ test('editor create writes a new file from heredoc content', async () => {
   expect(read.output.stdoutDelta).toBe('hello\n')
 })
 
-test('editor rejects paths outside the workspace root', async () => {
+test('editor allows paths outside default cwd when Host.fs allows them', async () => {
   const parent = await mkdtemp(join(tmpdir(), 'demi-editor-boundary-'))
-  const root = join(parent, 'workspace')
-  await mkdir(root)
-  const host = new LocalHost(root)
+  const defaultCwd = join(parent, 'default-cwd')
+  await mkdir(defaultCwd)
+  const host = new LocalHost(defaultCwd)
   const env = new BashEnvironment({
     host,
     commands: createCodingCommandRegistry({ editorHost: host }),
@@ -54,9 +56,8 @@ test('editor rejects paths outside the workspace root', async () => {
   })
   expect(absolute.status).toBe('exited')
   if (absolute.status !== 'exited') throw new Error('expected exited result')
-  expect(absolute.exitCode).toBe(1)
-  expect(absolute.output.stderrDelta).toContain('Path escapes workspace')
-  await expect(access(absoluteOutside)).rejects.toThrow()
+  expect(absolute.exitCode).toBe(0)
+  await expect(readFile(absoluteOutside, 'utf8')).resolves.toBe('nope\n')
 
   const relative = await env.exec({
     shellId: absolute.shellId,
@@ -64,14 +65,13 @@ test('editor rejects paths outside the workspace root', async () => {
   })
   expect(relative.status).toBe('exited')
   if (relative.status !== 'exited') throw new Error('expected exited result')
-  expect(relative.exitCode).toBe(1)
-  expect(relative.output.stderrDelta).toContain('Path escapes workspace')
-  await expect(access(join(parent, 'relative-outside.txt'))).rejects.toThrow()
+  expect(relative.exitCode).toBe(0)
+  await expect(readFile(join(parent, 'relative-outside.txt'), 'utf8')).resolves.toBe('nope\n')
 })
 
-test('editor patch rejects escaped paths before modifying any files', async () => {
+test('editor patch can modify paths outside default cwd when Host.fs allows them', async () => {
   const parent = await mkdtemp(join(tmpdir(), 'demi-editor-patch-boundary-'))
-  const root = join(parent, 'workspace')
+  const root = join(parent, 'default-cwd')
   await mkdir(root)
   const outsidePath = join(parent, 'outside.txt')
   const host = new LocalHost(root)
@@ -85,19 +85,18 @@ test('editor patch rejects escaped paths before modifying any files', async () =
   const created = await env.exec({
     script: "editor create inside.txt <<'EOF'\ninside\nEOF",
   })
-  const failed = await env.exec({
+  const patched = await env.exec({
     shellId: created.shellId,
     script: `editor patch <<'PATCH'\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ ${outsidePath}\n@@ -0,0 +1 @@\n+outside\nPATCH`,
   })
 
-  expect(failed.status).toBe('exited')
-  if (failed.status !== 'exited') throw new Error('expected exited result')
-  expect(failed.exitCode).toBe(1)
-  expect(failed.output.stderrDelta).toContain('Path escapes workspace')
+  expect(patched.status).toBe('exited')
+  if (patched.status !== 'exited') throw new Error('expected exited result')
+  expect(patched.exitCode).toBe(0)
 
   const inside = await env.exec({ shellId: created.shellId, script: 'cat inside.txt' })
-  expect(inside.output.stdoutDelta).toBe('inside\n')
-  await expect(access(outsidePath)).rejects.toThrow()
+  expect(inside.output.stdoutDelta).toBe('changed\n')
+  await expect(readFile(outsidePath, 'utf8')).resolves.toBe('outside\n')
 })
 
 test('editor edit replaces exact text and fails on ambiguous matches', async () => {
@@ -385,22 +384,34 @@ function commandOutput(): { io: CommandIO; stdout: () => string; stderr: () => s
 }
 
 class FailingWriteHost implements Host {
+  readonly defaultCwd: string
   readonly fs: FailingWriteFileSystem
+  readonly store: HostStore = new MemoryHostStore()
+  readonly process: HostProcess = {
+    spawn: async (): Promise<never> => {
+      throw new Error('Host.process.spawn must not be used by editor file operations')
+    },
+  }
 
   constructor(
-    readonly root: string,
+    defaultCwd: string,
     files: Record<string, string>,
   ) {
-    this.fs = new FailingWriteFileSystem(root, files)
+    this.defaultCwd = defaultCwd
+    this.fs = new FailingWriteFileSystem(defaultCwd, files)
   }
 
   read(path: string): string | undefined {
     return this.fs.readText(path)
   }
 
-  async spawn(): Promise<never> {
-    throw new Error('Host.spawn must not be used by editor file operations')
-  }
+}
+
+class MemoryHostStore implements HostStore {
+  async readJson<T>(): Promise<T | null> { return null }
+  async writeJson<T>(): Promise<void> {}
+  async delete(): Promise<void> {}
+  async list(): Promise<string[]> { return [] }
 }
 
 class FailingWriteFileSystem implements HostFileSystem {

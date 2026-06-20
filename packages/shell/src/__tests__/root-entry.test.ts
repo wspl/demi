@@ -13,10 +13,15 @@ const forbiddenRuntimePatterns = [
 const moduleSpecifierPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g
 
 test('root entry exposes browser-safe Host contract and HostBackedFileSystem class', async () => {
-  const host: Pick<Host, 'root'> = { root: '/' }
-  expect(host.root).toBe('/')
+  const host: Pick<Host, 'defaultCwd'> = { defaultCwd: '/' }
+  expect(host.defaultCwd).toBe('/')
 
-  const fs = new HostBackedFileSystem({ root: '/tmp', fs: {} as Host['fs'], spawn: async () => { throw new Error('not used') } })
+  const fs = new HostBackedFileSystem({
+    defaultCwd: '/tmp',
+    fs: {} as Host['fs'],
+    process: { spawn: async () => { throw new Error('not used') } },
+    store: {} as Host['store'],
+  })
   expect(typeof fs.resolvePath).toBe('function')
   expect(fs.resolvePath('/a', 'b')).toBe('/a/b')
 })

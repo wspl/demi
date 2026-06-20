@@ -1323,7 +1323,7 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 - agent 的 transcript/queue/retry/resume/compaction/mutation guard/abort 收敛/tool error 局部化/extension state snapshot——均已落地。
 - AgentClient 的 action FIFO 收敛/abort Promise/shellInput 等待/transcript snapshot+patch/stdio+websocket transport/Uint8Array+bigint 安全编解码——均已落地。
 - claude-code provider 的 CLI spawn/stream-json/MCP bridge/event 映射/tool_use continuation/abort 清理/binary media 转换/config 白名单——均已落地。真实 CLI e2e 默认跳过，`DEMI_CLAUDE_CODE_E2E=1` 手动跑。
-- coding editor/todo/reference resolver 已改为使用 Host contract；editor patch 兼容 `diff -u`/git-style unified diff。当前实现仍残留 `Host.root` 式路径约束，这是与 §8 冲突的旧边界，后续必须删除；如果需要项目级路径限制，只能作为显式 policy 或 command-level guard 建模。
+- coding editor/todo/reference resolver 已改为使用 Host contract；editor patch 兼容 `diff -u`/git-style unified diff。editor/reference resolver 不再把 default cwd 当作 workspace/sandbox/权限边界；如果以后需要项目级路径限制，只能作为显式 policy 或 command-level guard 建模。
 
 **已修正 Step 3 的重大偏离**：
 
@@ -1333,7 +1333,7 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 
 **git 状态**：demi 根仓库已完成首次提交，`packages/just-bash` 已通过 `git submodule add` 正式登记为 submodule（`.gitmodules` 指向 `https://github.com/wspl/just-bash.git`）。fork 子模块 worktree 已干净，当前 HEAD 是 `cabfc0f`；根仓库 submodule pointer 已指向 `cabfc0f`。
 
-**Step 3.11 Host.fs / portable command 路由已完成，Host 维度仍需重构**：当前实现已把 `HostBackedFileSystem` 路由到 `Host.fs`，不再通过 spawn 执行 `cat`/`tee`/`test`/`ls` 等命令；`BashEnvironment` 每个 shell session 都注册 fork portable commands，并在名称冲突时让 demi registered commands 覆盖；portable/registered commands 在 host external command 前命中。对应测试已覆盖 fake `Host.fs` 记录、spawn 禁用、portable `cat | tee` 读写再读、reference read、patch rollback 和 `LocalHost.fs` 基础操作。当前代码里的 `Host.root`、顶层 `Host.spawn`、旁路 store 形态都属于待删除旧边界；后续必须按 §8 收敛为 `defaultCwd + fs + process + store`，其中 `defaultCwd` 只是 helper，不是 workspace/sandbox/权限边界。
+**Step 3.11 Host.fs / portable command 路由与 Host facet 收敛已完成**：`Host` contract 已收敛为 `defaultCwd + fs + process + store`。`HostBackedFileSystem` 路由到 `Host.fs`，不再通过 process spawn 执行 `cat`/`tee`/`test`/`ls` 等命令；真实外部命令统一经 `Host.process.spawn`；agent/session 命令状态统一经 `Host.store`。`BashEnvironment` 每个 shell session 都注册 fork portable commands，并在名称冲突时让 demi registered commands 覆盖；portable/registered commands 在 host external command 前命中。对应测试已覆盖 fake `Host.fs` 记录、process spawn 禁用、portable `cat | tee` 读写再读、reference read、patch rollback、`LocalHost.fs` 基础操作和 `LocalHost.store` 基础操作。editor/reference resolver 不再使用 default cwd 派生访问边界。
 
 **本轮已修正的其他偏离**：
 

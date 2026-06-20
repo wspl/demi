@@ -3,7 +3,6 @@ import { concatBytes, decodeUtf8, utf8ByteLength } from './bytes'
 import type { ExecAccumulator, ForegroundProcess, ForegroundSink, ShellSession } from './environment-state'
 import type { OutputSnapshot, ShellToolResult } from './environment'
 import type { HostBackedFileSystem } from './host-fs'
-import type { DemiStore } from './storage'
 
 const TAIL_SIZE = 4096
 
@@ -194,24 +193,6 @@ export async function pumpStream(stream: AsyncIterable<Uint8Array>, onChunk: (ch
     for await (const chunk of stream) onChunk(chunk)
   } catch {
     // stream errors surface in handle.wait()
-  }
-}
-
-export function memoryStorage(): DemiStore {
-  const map = new Map<string, unknown>()
-  return {
-    async readJson<T>(key: string): Promise<T | null> {
-      return (map.get(key) as T | undefined) ?? null
-    },
-    async writeJson<T>(key: string, value: T): Promise<void> {
-      map.set(key, value)
-    },
-    async delete(key: string): Promise<void> {
-      map.delete(key)
-    },
-    async list(prefix: string): Promise<string[]> {
-      return [...map.keys()].filter((key) => key.startsWith(prefix))
-    },
   }
 }
 

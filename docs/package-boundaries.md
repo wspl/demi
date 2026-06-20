@@ -40,7 +40,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demi/shell`
 
-- Status: implemented; Host facet shape (`defaultCwd`/`process`/`store`) is the next breaking refactor.
+- Status: implemented.
 - Production deps: `just-bash`.
 - Owns: Host contract (`defaultCwd`, `fs`, `process`, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
 - Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`.
@@ -55,7 +55,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demi/host-local`
 
-- Status: implemented; LocalHost facet shape (`defaultCwd`/`process`/`store`) is the next breaking refactor.
+- Status: implemented.
 - Production deps: `@demi/shell`.
 - Owns: local Node Host adapter, specifically `LocalHost.defaultCwd`, `LocalHost.fs`, `LocalHost.process`, and `LocalHost.store`.
 - Public boundary: one Node-only local Host implementation. Store is a Host facet, not a separate adapter family.

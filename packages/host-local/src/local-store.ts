@@ -1,9 +1,9 @@
 import type { Dirent } from 'node:fs'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
-import type { DemiStore } from '@demi/shell'
+import type { HostStore } from '@demi/shell'
 
-export class LocalDemiStore implements DemiStore {
+export class LocalHostStore implements HostStore {
   readonly root: string
 
   constructor(root: string) {
@@ -38,12 +38,12 @@ export class LocalDemiStore implements DemiStore {
   }
 
   private pathForKey(key: string): string {
-    validateDemiStoreKey(key)
+    validateHostStoreKey(key)
     const path = resolve(this.root, key)
     const rel = relative(this.root, path)
     if (rel.startsWith('..') || rel === '..' || path === this.root) {
       if (key === '' || key === '.') return this.root
-      throw new Error(`Invalid DemiStore key: ${key}`)
+      throw new Error(`Invalid HostStore key: ${key}`)
     }
     return path
   }
@@ -72,13 +72,13 @@ function isNotFound(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT'
 }
 
-function validateDemiStoreKey(key: string): void {
+function validateHostStoreKey(key: string): void {
   if (key === '' || key === '.') return
-  if (key.includes('\0')) throw new Error(`Invalid DemiStore key: ${key}`)
+  if (key.includes('\0')) throw new Error(`Invalid HostStore key: ${key}`)
   if (key.startsWith('/') || /^[A-Za-z]:[\\/]/.test(key)) {
-    throw new Error(`DemiStore keys must be relative: ${key}`)
+    throw new Error(`HostStore keys must be relative: ${key}`)
   }
   for (const segment of key.split(/[\\/]+/)) {
-    if (segment === '..') throw new Error(`DemiStore keys must not contain path traversal: ${key}`)
+    if (segment === '..') throw new Error(`HostStore keys must not contain path traversal: ${key}`)
   }
 }

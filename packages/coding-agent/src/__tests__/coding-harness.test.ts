@@ -13,6 +13,8 @@ import {
   type Host,
   type HostDirent,
   type HostFileSystem,
+  type HostProcess,
+  type HostStore,
 } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { createCodingAgentHarness } from '../index'
@@ -50,11 +52,11 @@ test('coding agent harness exposes shell session tools and registered command pr
     cwd: process.cwd(),
     transcript: {} as never,
   })
-  expect(prompt).toContain('editor: Create, edit, and patch workspace files.')
+  expect(prompt).toContain('editor: Create, edit, and patch files.')
   expect(prompt).toContain('Treat cwd as the task workspace')
   expect(prompt).toContain('do not create a separate project directory under /tmp')
   expect(prompt).toContain('editor create')
-  expect(prompt).toContain('Effects: modifies workspace files by creating a new file')
+  expect(prompt).toContain('Effects: modifies files by creating a new file')
   expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
   expect(prompt).toContain('Failure output: writes the reason to stderr and exits non-zero')
   expect(prompt).toContain('todo: Manage an agent-session-scoped task list')
@@ -72,11 +74,11 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(todo.output.stdoutDelta).toBe('[ ] T1 Verify default registration\n')
   const editorPrompt = await environment.exec({ shellId: todo.shellId, script: 'editor prompt' })
   expect(editorPrompt.output.stdoutDelta).toContain('editor create')
-  expect(editorPrompt.output.stdoutDelta).toContain('Effects: modifies workspace files by creating a new file')
+  expect(editorPrompt.output.stdoutDelta).toContain('Effects: modifies files by creating a new file')
   expect(editorPrompt.output.stdoutDelta).toContain('Success output: writes "Created <path>" to stdout')
 })
 
-test('coding agent resolves file references through the workspace host', async () => {
+test('coding agent resolves file references through Host.fs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-refs-'))
   await writeFile(join(root, 'note.txt'), 'hello from file\n', 'utf8')
   const spacedPath = join(root, 'space note.txt')
@@ -134,7 +136,7 @@ test('coding agent file references read through Host.fs', async () => {
 
   expect(resolved).toEqual([{ type: 'text', text: '<file path="note.txt">\nhello from fake host\n\n</file>' }])
   expect(host.fs.calls).toEqual([['readFile', 'note.txt', '/workspace']])
-  expect(host.spawnCalls).toBe(0)
+  expect(host.processSpawnCalls).toBe(0)
 })
 
 test('coding agent resolves file references before AgentSession sends the provider request', async () => {
@@ -170,7 +172,7 @@ test('coding agent resolves file references before AgentSession sends the provid
   })
 })
 
-test('coding agent rejects file references outside the workspace host root', async () => {
+test('coding agent resolves file references outside default cwd when Host.fs allows them', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-ref-root-'))
   const outside = await mkdtemp(join(tmpdir(), 'demi-coding-ref-outside-'))
   const outsidePath = join(outside, 'secret.txt')
@@ -178,18 +180,18 @@ test('coding agent rejects file references outside the workspace host root', asy
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
   if (!harness.resolveReferences) throw new Error('expected resolveReferences')
 
-  await expect(
-    harness.resolveReferences(
-      {
-        agentSessionId: 'coding-ref-agent',
-        state: harness.initialState(),
-        cwd: root,
-        transcript: {} as never,
-        signal: new AbortController().signal,
-      },
-      [{ type: 'reference', reference: outsidePath }],
-    ),
-  ).rejects.toThrow('File reference escapes workspace')
+  const resolved = await harness.resolveReferences(
+    {
+      agentSessionId: 'coding-ref-agent',
+      state: harness.initialState(),
+      cwd: root,
+      transcript: {} as never,
+      signal: new AbortController().signal,
+    },
+    [{ type: 'reference', reference: outsidePath }],
+  )
+
+  expect(resolved).toEqual([{ type: 'text', text: `<file path="${outsidePath}">\noutside\n\n</file>` }])
 })
 
 test('coding agent harness leaves shell lifecycle to host assembly', () => {
@@ -225,20 +227,31 @@ function createRuntimeFromHarness(
 }
 
 class RecordingHost implements Host {
+  readonly defaultCwd: string
   readonly fs: RecordingFileSystem
-  spawnCalls = 0
+  readonly store: HostStore = new MemoryHostStore()
+  processSpawnCalls = 0
+  readonly process: HostProcess = {
+    spawn: async (): Promise<never> => {
+      this.processSpawnCalls += 1
+      throw new Error('Host.process.spawn must not be used for file references')
+    },
+  }
 
   constructor(
-    readonly root: string,
+    defaultCwd: string,
     stdoutText: string,
   ) {
+    this.defaultCwd = defaultCwd
     this.fs = new RecordingFileSystem(stdoutText)
   }
+}
 
-  async spawn(): Promise<never> {
-    this.spawnCalls += 1
-    throw new Error('Host.spawn must not be used for file references')
-  }
+class MemoryHostStore implements HostStore {
+  async readJson<T>(): Promise<T | null> { return null }
+  async writeJson<T>(): Promise<void> {}
+  async delete(): Promise<void> {}
+  async list(): Promise<string[]> { return [] }
 }
 
 class RecordingFileSystem implements HostFileSystem {

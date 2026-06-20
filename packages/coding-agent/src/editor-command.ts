@@ -1,16 +1,16 @@
 import { z } from 'zod'
 import type { CommandSpec, Host } from '@demi/shell'
-import { decodeUtf8, dirnamePath, encodeUtf8, isPathInside, resolvePath } from './platform'
+import { decodeUtf8, dirnamePath, encodeUtf8 } from './platform'
 
 export function createEditorCommand(host: Host): CommandSpec {
   return {
     name: 'editor',
-    summary: 'Create, edit, and patch workspace files.',
+    summary: 'Create, edit, and patch files.',
     subcommands: [
       {
         name: 'create',
         summary: 'Create a new file. Fails if the file exists.',
-        effects: 'modifies workspace files by creating a new file; does not modify command storage',
+        effects: 'modifies files by creating a new file; does not modify command storage',
         successOutput: 'writes "Created <path>" to stdout',
         failureOutput: 'writes the reason to stderr and exits non-zero without overwriting existing files',
         input: {
@@ -26,7 +26,7 @@ export function createEditorCommand(host: Host): CommandSpec {
         run: async ({ parsed, cwd, io }) => {
           const path = String(parsed.values.path)
           const content = String(parsed.values.content)
-          const pathError = workspacePathError(host, cwd, path)
+          const pathError = pathValidationError(path)
           if (pathError) {
             await io.stderr(`${pathError}\n`)
             return { exitCode: 1 }
@@ -58,7 +58,7 @@ export function createEditorCommand(host: Host): CommandSpec {
       {
         name: 'edit',
         summary: 'Replace exact text in an existing file.',
-        effects: 'modifies one existing workspace file; does not modify command storage',
+        effects: 'modifies one existing file; does not modify command storage',
         successOutput: 'writes "Edited <path>" to stdout',
         failureOutput: 'writes no-match, ambiguous-match, or write errors to stderr and exits non-zero without partial writes',
         input: {
@@ -116,7 +116,7 @@ export function createEditorCommand(host: Host): CommandSpec {
       {
         name: 'patch',
         summary: 'Apply a unified diff patch to one or more files.',
-        effects: 'modifies workspace files described by the patch; validates all patch operations before writing',
+        effects: 'modifies files described by the patch; validates all patch operations before writing',
         successOutput: 'writes "Patched <n> file(s)" to stdout',
         failureOutput: 'writes parse, validation, or write errors to stderr and exits non-zero after rolling back partial writes when possible',
         input: {
@@ -161,12 +161,12 @@ interface ProcessResult {
 }
 
 async function exists(host: Host, cwd: string, path: string): Promise<boolean> {
-  if (workspacePathError(host, cwd, path)) return false
+  if (pathValidationError(path)) return false
   return host.fs.exists(path, { cwd })
 }
 
 async function readFile(host: Host, cwd: string, path: string): Promise<ProcessResult> {
-  const pathError = workspacePathError(host, cwd, path)
+  const pathError = pathValidationError(path)
   if (pathError) return { stdout: '', stderr: `${pathError}\n`, exitCode: 1 }
   try {
     return { stdout: decodeUtf8(await host.fs.readFile(path, { cwd })), stderr: '', exitCode: 0 }
@@ -176,7 +176,7 @@ async function readFile(host: Host, cwd: string, path: string): Promise<ProcessR
 }
 
 async function writeFile(host: Host, cwd: string, path: string, content: string): Promise<ProcessResult> {
-  const pathError = workspacePathError(host, cwd, path)
+  const pathError = pathValidationError(path)
   if (pathError) return { stdout: '', stderr: `${pathError}\n`, exitCode: 1 }
   try {
     await host.fs.writeFile(path, encodeUtf8(content), { cwd })
@@ -187,7 +187,7 @@ async function writeFile(host: Host, cwd: string, path: string, content: string)
 }
 
 async function deleteFile(host: Host, cwd: string, path: string): Promise<ProcessResult> {
-  const pathError = workspacePathError(host, cwd, path)
+  const pathError = pathValidationError(path)
   if (pathError) return { stdout: '', stderr: `${pathError}\n`, exitCode: 1 }
   try {
     await host.fs.rm(path, { cwd, force: true })
@@ -198,7 +198,7 @@ async function deleteFile(host: Host, cwd: string, path: string): Promise<Proces
 }
 
 async function mkdirPath(host: Host, cwd: string, path: string): Promise<ProcessResult> {
-  const pathError = workspacePathError(host, cwd, path)
+  const pathError = pathValidationError(path)
   if (pathError) return { stdout: '', stderr: `${pathError}\n`, exitCode: 1 }
   try {
     await host.fs.mkdir(path, { cwd, recursive: true })
@@ -405,7 +405,7 @@ async function planPatchOperations(host: Host, cwd: string, patches: FilePatch[]
   for (const patch of patches) {
     const targetPath = patch.newPath ?? patch.oldPath
     if (!targetPath) throw new Error('Invalid patch: missing target path')
-    assertWorkspacePath(host, cwd, targetPath)
+    assertValidPath(targetPath)
 
     const isCreate = patch.oldPath === null
     const isDelete = patch.newPath === null
@@ -416,13 +416,13 @@ async function planPatchOperations(host: Host, cwd: string, patches: FilePatch[]
     } else {
       const oldPath = patch.oldPath
       if (oldPath === null) throw new Error('Invalid patch: missing old path')
-      assertWorkspacePath(host, cwd, oldPath)
+      assertValidPath(oldPath)
       const read = await readFile(host, cwd, oldPath)
       if (read.exitCode !== 0) throw new Error(read.stderr.trim() || `Failed to read ${oldPath}`)
       original = read.stdout
     }
 
-    if (patch.newPath) assertWorkspacePath(host, cwd, patch.newPath)
+    if (patch.newPath) assertValidPath(patch.newPath)
     if (patch.oldPath && patch.newPath && patch.oldPath !== patch.newPath && (await exists(host, cwd, patch.newPath))) {
       throw new Error(`File already exists: ${patch.newPath}`)
     }
@@ -482,16 +482,14 @@ function parseDiffPath(rawPath: string): string | null {
   return path
 }
 
-function assertWorkspacePath(host: Host, cwd: string, path: string): void {
-  const error = workspacePathError(host, cwd, path)
+function assertValidPath(path: string): void {
+  const error = pathValidationError(path)
   if (error) throw new Error(error)
 }
 
-function workspacePathError(host: Host, cwd: string, path: string): string | null {
+function pathValidationError(path: string): string | null {
   if (path.includes('\0')) return `Path contains NUL byte: ${path}`
-  const target = resolvePath(cwd, path)
-  if (isPathInside(host.root, target)) return null
-  return `Path escapes workspace: ${path}`
+  return null
 }
 
 function stripDiffPathMetadata(rawPath: string): string {

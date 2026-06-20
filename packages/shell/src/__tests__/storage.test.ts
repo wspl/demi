@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
-import { AgentSessionCommandStorage, type DemiStore } from '../storage'
+import { AgentSessionCommandStorage, type HostStore } from '../index'
 
 test('AgentSessionCommandStorage prefixes keys by agent session id and exposes session-local keys', async () => {
-  const store = new MemoryDemiStore()
+  const store = new MemoryHostStore()
   const first = new AgentSessionCommandStorage(store, 'session-a')
   const second = new AgentSessionCommandStorage(store, 'session-b')
 
@@ -16,7 +16,7 @@ test('AgentSessionCommandStorage prefixes keys by agent session id and exposes s
 })
 
 test('AgentSessionCommandStorage rejects keys and agent session ids that escape the session prefix', async () => {
-  const store = new MemoryDemiStore()
+  const store = new MemoryHostStore()
   const first = new AgentSessionCommandStorage(store, 'session-a')
   const second = new AgentSessionCommandStorage(store, 'session-b')
 
@@ -34,7 +34,7 @@ test('AgentSessionCommandStorage rejects keys and agent session ids that escape 
   expect(await second.readJson<Array<{ text: string }>>('todos.json')).toEqual([{ text: 'b' }])
 })
 
-class MemoryDemiStore implements DemiStore {
+class MemoryHostStore implements HostStore {
   private readonly values = new Map<string, unknown>()
 
   async readJson<T>(key: string): Promise<T | null> {

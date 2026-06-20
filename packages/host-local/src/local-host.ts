@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process'
-import { dirname, isAbsolute, resolve } from 'node:path'
+import { createHash } from 'node:crypto'
+import { tmpdir } from 'node:os'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import {
   appendFile,
   chmod,
@@ -20,20 +22,42 @@ import {
 } from 'node:fs/promises'
 import type { Dirent, Stats } from 'node:fs'
 import type { Readable } from 'node:stream'
-import type { Host, HostDirent, HostFileStat, HostFileSystem, HostSpawnHandle, HostSpawnParams } from '@demi/shell'
+import type {
+  Host,
+  HostDirent,
+  HostFileStat,
+  HostFileSystem,
+  HostProcess,
+  HostSpawnHandle,
+  HostSpawnParams,
+  HostStore,
+} from '@demi/shell'
+import { LocalHostStore } from './local-store'
+
+export interface LocalHostOptions {
+  storeRoot?: string
+}
 
 export class LocalHost implements Host {
-  readonly root: string
+  readonly defaultCwd: string
   readonly fs: HostFileSystem
+  readonly process: HostProcess
+  readonly store: HostStore
 
-  constructor(root: string) {
-    this.root = resolve(root)
-    this.fs = new LocalHostFileSystem(this.root)
+  constructor(defaultCwd: string, options: LocalHostOptions = {}) {
+    this.defaultCwd = resolve(defaultCwd)
+    this.fs = new LocalHostFileSystem(this.defaultCwd)
+    this.process = new LocalHostProcess(this.defaultCwd)
+    this.store = new LocalHostStore(options.storeRoot ?? defaultStoreRoot(this.defaultCwd))
   }
+}
+
+class LocalHostProcess implements HostProcess {
+  constructor(private readonly defaultCwd: string) {}
 
   async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
     const child = spawn(params.command, params.args ?? [], {
-      cwd: params.cwd ?? this.root,
+      cwd: params.cwd ?? this.defaultCwd,
       env: { ...process.env, ...params.env },
       detached: params.killProcessGroup === true,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -87,7 +111,7 @@ export class LocalHost implements Host {
 }
 
 class LocalHostFileSystem implements HostFileSystem {
-  constructor(private readonly root: string) {}
+  constructor(private readonly defaultCwd: string) {}
 
   async readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array> {
     return readFile(this.resolvePath(path, options?.cwd))
@@ -175,8 +199,13 @@ class LocalHostFileSystem implements HostFileSystem {
 
   private resolvePath(path: string, cwd?: string): string {
     if (isAbsolute(path)) return resolve(path)
-    return resolve(cwd ?? this.root, path)
+    return resolve(cwd ?? this.defaultCwd, path)
   }
+}
+
+function defaultStoreRoot(defaultCwd: string): string {
+  const key = createHash('sha256').update(defaultCwd).digest('hex').slice(0, 16)
+  return join(tmpdir(), 'demi-host-local-store', key)
 }
 
 function toHostFileStat(value: Stats): HostFileStat {

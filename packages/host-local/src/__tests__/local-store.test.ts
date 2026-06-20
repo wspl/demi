@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { AgentSessionCommandStorage } from '@demi/shell'
-import { LocalDemiStore } from '../local-store'
+import { LocalHostStore } from '../local-store'
 
-test('LocalDemiStore reads, writes, lists, and deletes JSON files', async () => {
+test('LocalHostStore reads, writes, lists, and deletes JSON files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalDemiStore(root)
+  const store = new LocalHostStore(root)
 
   await store.writeJson('nested/todos.json', [{ text: 'a' }])
 
@@ -21,9 +21,9 @@ test('LocalDemiStore reads, writes, lists, and deletes JSON files', async () => 
   expect(await store.list('')).toEqual([])
 })
 
-test('LocalDemiStore works with agent-session-scoped command storage', async () => {
+test('LocalHostStore works with agent-session-scoped command storage', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalDemiStore(root)
+  const store = new LocalHostStore(root)
   const first = new AgentSessionCommandStorage(store, 'session-a')
   const second = new AgentSessionCommandStorage(store, 'session-b')
 
@@ -36,12 +36,12 @@ test('LocalDemiStore works with agent-session-scoped command storage', async () 
   expect(await store.list('')).toEqual(['session-a/todos.json', 'session-b/todos.json'])
 })
 
-test('LocalDemiStore rejects keys that are not relative store paths', async () => {
+test('LocalHostStore rejects keys that are not relative store paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalDemiStore(root)
+  const store = new LocalHostStore(root)
 
   await expect(store.writeJson('../outside.json', {})).rejects.toThrow('path traversal')
   await expect(store.writeJson('nested/../inside.json', {})).rejects.toThrow('path traversal')
-  await expect(store.writeJson(join(root, 'absolute-inside-root.json'), {})).rejects.toThrow('DemiStore keys must be relative')
-  await expect(store.writeJson('bad\0key.json', {})).rejects.toThrow('Invalid DemiStore key')
+  await expect(store.writeJson(join(root, 'absolute-inside-root.json'), {})).rejects.toThrow('HostStore keys must be relative')
+  await expect(store.writeJson('bad\0key.json', {})).rejects.toThrow('Invalid HostStore key')
 })

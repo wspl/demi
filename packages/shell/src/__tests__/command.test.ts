@@ -12,12 +12,12 @@ import {
 
 const editorSpec: CommandSpec = {
   name: 'editor',
-  summary: 'Create, edit, and patch workspace files.',
+  summary: 'Create, edit, and patch files.',
   subcommands: [
     {
       name: 'create',
       summary: 'Create a new file.',
-      effects: 'modifies workspace files',
+      effects: 'modifies files',
       successOutput: 'writes Created <path> to stdout',
       failureOutput: 'writes the error reason to stderr and exits non-zero',
       input: {
@@ -131,9 +131,9 @@ test('parseCommandInput rejects unknown options and invalid values', () => {
 test('renderCommandPrompt uses CommandSpec as the single source of command help', () => {
   const prompt = renderCommandPrompt(editorSpec)
 
-  expect(prompt).toContain('editor: Create, edit, and patch workspace files.')
+  expect(prompt).toContain('editor: Create, edit, and patch files.')
   expect(prompt).toContain('editor create')
-  expect(prompt).toContain('Effects: modifies workspace files')
+  expect(prompt).toContain('Effects: modifies files')
   expect(prompt).toContain('Success output: writes Created <path> to stdout')
   expect(prompt).toContain('Failure output: writes the error reason to stderr and exits non-zero')
   expect(prompt).toContain('<path> - Target file path')

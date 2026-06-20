@@ -5,6 +5,7 @@ import {
   createShellSessionTools,
   type BashAuditEvent,
   type BashEnvironmentOptions,
+  type HostStore,
 } from '@demi/shell'
 import type { Block, ToolResultContentBlock } from '@demi/core'
 import type { ProviderRegistry } from '@demi/provider'
@@ -12,7 +13,7 @@ import { AgentClient } from './client'
 import { cloneBlocks, diffTranscriptBlocks } from './patch'
 import type { ClientFrame, OutputSnapshotLike, ServerFrame } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
-import type { AgentHarness, AgentHarnessRuntime, SessionEvent } from './types'
+import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
 
 export interface AgentServerOptions {
   agent: AgentHarness<unknown>
@@ -167,9 +168,10 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const commands = agent.commands?.(harnessContext) ?? []
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
+    const host = agent.host(harnessContext)
     const environment = new BashEnvironment({
       ...this.shellOptions,
-      host: agent.host(harnessContext),
+      host,
       commands: commandRegistry,
     })
     const tools = createShellSessionTools(environment)
@@ -182,13 +184,20 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       lifecycle: (event) => agent.lifecycle?.(event),
       tools: () => tools,
     }
-    this.session = new AgentSession({
-      provider,
-      model: frame.provider.model,
-      cwd: frame.cwd,
-      runtime,
-      state,
-    })
+    const agentSessionId = globalThis.crypto.randomUUID()
+    this.session = new AgentSession(
+      {
+        provider,
+        model: frame.provider.model,
+        cwd: frame.cwd,
+        runtime,
+        state,
+      },
+      {
+        agentSessionId,
+        store: new HostAgentSessionStore(host.store, agentSessionId),
+      },
+    )
     this.currentAgent = agent
     this.currentEnvironment = environment
     this.currentCwd = frame.cwd
@@ -322,6 +331,17 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const normalized = error instanceof Error ? error : new Error(String(error))
     const code = errorCode(error)
     this.send(code ? { type: 'error', message: normalized.message, code } : { type: 'error', message: normalized.message })
+  }
+}
+
+class HostAgentSessionStore<State> implements AgentSessionStore<State> {
+  constructor(
+    private readonly store: HostStore,
+    private readonly agentSessionId: string,
+  ) {}
+
+  saveSnapshot(snapshot: AgentSessionSnapshot<State>): Promise<void> {
+    return this.store.writeJson(`agent-sessions/${this.agentSessionId}/snapshot.json`, snapshot)
   }
 }
 

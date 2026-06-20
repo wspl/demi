@@ -17,7 +17,6 @@ import {
   emptySnapshot,
   exitedResult,
   flushForegroundSinks,
-  memoryStorage,
   notifyForegroundWaiters,
   pumpStream,
   recordForegroundChunk,
@@ -28,13 +27,12 @@ import {
 import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } from './environment-state'
 import type { Host } from './host'
 import { HostBackedFileSystem } from './host-fs'
-import { AgentSessionCommandStorage, type DemiStore } from './storage'
+import { AgentSessionCommandStorage } from './storage'
 import { commandSpecToForkCommand } from './registered-command-adapter'
 
 export interface BashEnvironmentOptions {
   host: Host
   commands?: CommandRegistry
-  storage?: DemiStore
   shellIdFactory?: () => string
   initialEnv?: Record<string, string>
   yieldAfterMs?: number
@@ -174,7 +172,6 @@ const DEMI_PORTABLE_COMMANDS: CommandName[] = [
 export class BashEnvironment {
   private readonly host: Host
   private readonly commands: CommandRegistry
-  private readonly storage: DemiStore
   private readonly shellIdFactory: () => string
   private readonly initialEnv: Record<string, string>
   private readonly defaultYieldAfterMs: number
@@ -186,7 +183,6 @@ export class BashEnvironment {
   constructor(options: BashEnvironmentOptions) {
     this.host = options.host
     this.commands = options.commands ?? new CommandRegistry()
-    this.storage = options.storage ?? memoryStorage()
     this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}
     this.defaultYieldAfterMs = options.yieldAfterMs ?? DEFAULT_YIELD_AFTER_MS
@@ -196,10 +192,6 @@ export class BashEnvironment {
 
   getShell(shellId: string): ShellSession | null {
     return this.shells.get(shellId) ?? null
-  }
-
-  workspaceHost(): Host {
-    return this.host
   }
 
   registerCommand(spec: CommandSpec): void {
@@ -314,7 +306,7 @@ export class BashEnvironment {
   private createShell(agentSessionId: string | undefined): ShellSession {
     const id = this.shellIdFactory()
     const commandScopeId = agentSessionId ?? id
-    const cwd = this.host.root
+    const cwd = this.host.defaultCwd
     const fs = new HostBackedFileSystem(this.host)
     const env = new Map<string, string>()
     for (const [key, value] of Object.entries(this.initialEnv)) env.set(key, value)
@@ -410,7 +402,7 @@ export class BashEnvironment {
     for (const command of createPortableCommands(session)) {
       forkCommands.set(command.name, command)
     }
-    const storage = new AgentSessionCommandStorage(this.storage, commandScopeId)
+    const storage = new AgentSessionCommandStorage(this.host.store, commandScopeId)
     for (const spec of this.commands.list()) {
       forkCommands.set(spec.name, commandSpecToForkCommand(session, spec, storage))
     }
@@ -468,7 +460,7 @@ export class BashEnvironment {
     if (!backgroundCommand) return null
 
     const id = session.nextBackgroundJobId++
-    const handle = await this.host.spawn({
+    const handle = await this.host.process.spawn({
       command: backgroundCommand.command,
       args: backgroundCommand.args,
       cwd: session.state.cwd,
@@ -706,7 +698,7 @@ export class BashEnvironment {
     if (session.foreground) {
       throw new Error(`hostSpawn: session "${session.id}" already has a foreground process`)
     }
-    const handle = await this.host.spawn({
+    const handle = await this.host.process.spawn({
       command,
       args,
       cwd: opts.cwd,
