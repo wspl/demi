@@ -11,8 +11,8 @@ import {
   CommandRegistry,
   createShellSessionTools,
   type Host,
-  type HostSpawnHandle,
-  type HostSpawnParams,
+  type HostDirent,
+  type HostFileSystem,
 } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { createCodingAgentHarness } from '../index'
@@ -116,7 +116,7 @@ test('coding agent resolves file references through the workspace host', async (
   ])
 })
 
-test('coding agent file references read through Host.spawn', async () => {
+test('coding agent file references read through Host.fs', async () => {
   const host = new RecordingHost('/workspace', 'hello from fake host\n')
   const harness = createCodingAgentHarness({ host })
   if (!harness.resolveReferences) throw new Error('expected resolveReferences')
@@ -133,7 +133,8 @@ test('coding agent file references read through Host.spawn', async () => {
   )
 
   expect(resolved).toEqual([{ type: 'text', text: '<file path="note.txt">\nhello from fake host\n\n</file>' }])
-  expect(host.calls).toEqual([{ command: 'cat', args: ['note.txt'], cwd: '/workspace' }])
+  expect(host.fs.calls).toEqual([['readFile', 'note.txt', '/workspace']])
+  expect(host.spawnCalls).toBe(0)
 })
 
 test('coding agent resolves file references before AgentSession sends the provider request', async () => {
@@ -224,26 +225,48 @@ function createRuntimeFromHarness(
 }
 
 class RecordingHost implements Host {
-  readonly calls: HostSpawnParams[] = []
+  readonly fs: RecordingFileSystem
+  spawnCalls = 0
 
   constructor(
     readonly root: string,
-    private readonly stdoutText: string,
-  ) {}
+    stdoutText: string,
+  ) {
+    this.fs = new RecordingFileSystem(stdoutText)
+  }
 
-  async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
-    this.calls.push(params)
-    return {
-      stdout: bytes(this.stdoutText),
-      stderr: bytes(''),
-      writeStdin: async () => {},
-      closeStdin: async () => {},
-      kill: async () => {},
-      wait: async () => ({ exitCode: 0 }),
-    }
+  async spawn(): Promise<never> {
+    this.spawnCalls += 1
+    throw new Error('Host.spawn must not be used for file references')
   }
 }
 
-async function* bytes(text: string): AsyncIterable<Uint8Array> {
-  yield new TextEncoder().encode(text)
+class RecordingFileSystem implements HostFileSystem {
+  readonly calls: unknown[][] = []
+
+  constructor(private readonly text: string) {}
+
+  async readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array> {
+    this.calls.push(['readFile', path, options?.cwd])
+    return new TextEncoder().encode(this.text)
+  }
+
+  async writeFile(): Promise<void> { throw new Error('not implemented') }
+  async appendFile(): Promise<void> { throw new Error('not implemented') }
+  async exists(): Promise<boolean> { throw new Error('not implemented') }
+  async stat(): Promise<never> { throw new Error('not implemented') }
+  async lstat(): Promise<never> { throw new Error('not implemented') }
+  async readdir(path: string, options: { cwd?: string; withFileTypes: true }): Promise<HostDirent[]>
+  async readdir(path: string, options?: { cwd?: string; withFileTypes?: false }): Promise<string[]>
+  async readdir(): Promise<string[] | HostDirent[]> { throw new Error('not implemented') }
+  async mkdir(): Promise<void> { throw new Error('not implemented') }
+  async rm(): Promise<void> { throw new Error('not implemented') }
+  async cp(): Promise<void> { throw new Error('not implemented') }
+  async mv(): Promise<void> { throw new Error('not implemented') }
+  async chmod(): Promise<void> { throw new Error('not implemented') }
+  async symlink(): Promise<void> { throw new Error('not implemented') }
+  async link(): Promise<void> { throw new Error('not implemented') }
+  async readlink(): Promise<string> { throw new Error('not implemented') }
+  async realpath(): Promise<string> { throw new Error('not implemented') }
+  async utimes(): Promise<void> { throw new Error('not implemented') }
 }

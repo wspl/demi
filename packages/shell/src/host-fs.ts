@@ -10,181 +10,190 @@ import type {
   RmOptions,
   WriteFileOptions,
 } from 'just-bash/fs/interface'
-import { concatBytes, decodeUtf8, encodeUtf8 } from './bytes'
-import type { Host } from './host'
-
-const UNSUPPORTED = (op: string): Error => new Error(`HostBackedFileSystem: ${op} is not supported`)
+import { decodeUtf8, encodeUtf8 } from './bytes'
+import type { Host, HostDirent, HostFileStat } from './host'
 
 export class HostBackedFileSystem implements IFileSystem {
   constructor(private readonly host: Host) {}
 
-  async readFile(path: string, _options?: ReadFileOptions | BufferEncoding): Promise<string> {
-    const { stdout } = await this.run(['cat', '--', path], '')
-    return decodeUtf8(stdout)
+  async readFile(path: string, options?: ReadFileOptions | BufferEncoding): Promise<string> {
+    return decodeBytes(await this.host.fs.readFile(path, { cwd: this.host.root }), encodingFrom(options))
   }
 
   async readFileBuffer(path: string): Promise<Uint8Array> {
-    const { stdout } = await this.run(['cat', '--', path], '')
-    return stdout
+    return this.host.fs.readFile(path, { cwd: this.host.root })
   }
 
-  async writeFile(path: string, content: FileContent, _options?: WriteFileOptions | BufferEncoding): Promise<void> {
-    const bytes = typeof content === 'string' ? encodeUtf8(content) : content
-    await this.run(['tee', '--', path], bytes)
+  async writeFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
+    await this.host.fs.writeFile(path, encodeContent(content, encodingFrom(options)), { cwd: this.host.root })
   }
 
-  async appendFile(path: string, content: FileContent, _options?: WriteFileOptions | BufferEncoding): Promise<void> {
-    const bytes = typeof content === 'string' ? encodeUtf8(content) : content
-    await this.run(['tee', '-a', '--', path], bytes)
+  async appendFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
+    await this.host.fs.appendFile(path, encodeContent(content, encodingFrom(options)), { cwd: this.host.root })
   }
 
   async exists(path: string): Promise<boolean> {
-    const { exitCode } = await this.run(['test', '-e', path], '')
-    return exitCode === 0
+    return this.host.fs.exists(path, { cwd: this.host.root })
   }
 
   async stat(path: string): Promise<FsStat> {
-    const fileCheck = await this.run(['test', '-f', path], '')
-    if (fileCheck.exitCode === 0) {
-      return emptyStat({ isFile: true })
-    }
-    const dirCheck = await this.run(['test', '-d', path], '')
-    if (dirCheck.exitCode === 0) {
-      return emptyStat({ isDirectory: true })
-    }
-    const linkCheck = await this.run(['test', '-L', path], '')
-    if (linkCheck.exitCode === 0) {
-      return emptyStat({ isSymbolicLink: true })
-    }
-    throw new Error(`HostBackedFileSystem: stat: no such file or directory: '${path}'`)
+    return toFsStat(await this.host.fs.stat(path, { cwd: this.host.root }))
+  }
+
+  async lstat(path: string): Promise<FsStat> {
+    return toFsStat(await this.host.fs.lstat(path, { cwd: this.host.root }))
   }
 
   async readdir(path: string): Promise<string[]> {
-    const { stdout, exitCode } = await this.run(['ls', '-1', '-A', '--', path], '')
-    if (exitCode !== 0) {
-      throw new Error(`HostBackedFileSystem: readdir: cannot access '${path}'`)
-    }
-    const text = decodeUtf8(stdout)
-    return text.split('\n').filter((line) => line.length > 0)
+    return this.host.fs.readdir(path, { cwd: this.host.root })
   }
 
   async readdirWithFileTypes(path: string): Promise<DirentEntry[]> {
-    const names = await this.readdir(path)
-    const entries: DirentEntry[] = []
-    for (const name of names) {
-      const fullPath = joinPath(path, name)
-      const stat = await this.stat(fullPath)
-      entries.push({
-        name,
-        isFile: stat.isFile,
-        isDirectory: stat.isDirectory,
-        isSymbolicLink: stat.isSymbolicLink,
-      })
-    }
-    return entries
+    const entries = await this.host.fs.readdir(path, { cwd: this.host.root, withFileTypes: true })
+    return entries.map(toDirentEntry)
   }
 
   resolvePath(base: string, path: string): string {
-    if (path.startsWith('/')) return path
-    if (base.endsWith('/')) return `${base}${path}`
-    return `${base}/${path}`
+    if (isAbsolutePath(path)) return normalizePath(path)
+    return normalizePath(`${base.replace(/[\\/]+$/, '')}/${path}`)
   }
 
   getAllPaths(): string[] {
     return []
   }
 
-  async mkdir(_path: string, _options?: MkdirOptions): Promise<void> {
-    throw UNSUPPORTED('mkdir')
+  async mkdir(path: string, options?: MkdirOptions): Promise<void> {
+    await this.host.fs.mkdir(path, { cwd: this.host.root, recursive: options?.recursive })
   }
 
-  async rm(_path: string, _options?: RmOptions): Promise<void> {
-    throw UNSUPPORTED('rm')
+  async rm(path: string, options?: RmOptions): Promise<void> {
+    await this.host.fs.rm(path, { cwd: this.host.root, recursive: options?.recursive, force: options?.force })
   }
 
-  async cp(_src: string, _dest: string, _options?: CpOptions): Promise<void> {
-    throw UNSUPPORTED('cp')
+  async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
+    await this.host.fs.cp(src, dest, { cwd: this.host.root, recursive: options?.recursive })
   }
 
-  async mv(_src: string, _dest: string): Promise<void> {
-    throw UNSUPPORTED('mv')
+  async mv(src: string, dest: string): Promise<void> {
+    await this.host.fs.mv(src, dest, { cwd: this.host.root })
   }
 
-  async chmod(_path: string, _mode: number): Promise<void> {
-    throw UNSUPPORTED('chmod')
+  async chmod(path: string, mode: number): Promise<void> {
+    await this.host.fs.chmod(path, mode, { cwd: this.host.root })
   }
 
-  async symlink(_target: string, _linkPath: string): Promise<void> {
-    throw UNSUPPORTED('symlink')
+  async symlink(target: string, linkPath: string): Promise<void> {
+    await this.host.fs.symlink(target, linkPath, { cwd: this.host.root })
   }
 
-  async link(_existingPath: string, _newPath: string): Promise<void> {
-    throw UNSUPPORTED('link')
+  async link(existingPath: string, newPath: string): Promise<void> {
+    await this.host.fs.link(existingPath, newPath, { cwd: this.host.root })
   }
 
-  async readlink(_path: string): Promise<string> {
-    throw UNSUPPORTED('readlink')
-  }
-
-  async lstat(path: string): Promise<FsStat> {
-    const linkCheck = await this.run(['test', '-L', path], '')
-    if (linkCheck.exitCode === 0) {
-      return emptyStat({ isSymbolicLink: true })
-    }
-    return this.stat(path)
+  async readlink(path: string): Promise<string> {
+    return this.host.fs.readlink(path, { cwd: this.host.root })
   }
 
   async realpath(path: string): Promise<string> {
-    const { stdout, exitCode } = await this.run(['readlink', '-f', '--', path], '')
-    if (exitCode !== 0) {
-      throw new Error(`HostBackedFileSystem: realpath: cannot resolve '${path}'`)
-    }
-    return decodeUtf8(stdout).replace(/\n$/, '')
+    return this.host.fs.realpath(path, { cwd: this.host.root })
   }
 
-  async utimes(_path: string, _atime: Date, _mtime: Date): Promise<void> {
-    throw UNSUPPORTED('utimes')
-  }
-
-  private async run(args: string[], stdin: Uint8Array | string): Promise<{ stdout: Uint8Array; stderr: Uint8Array; exitCode: number | null }> {
-    const stdinBytes = typeof stdin === 'string' ? encodeUtf8(stdin) : stdin
-    const handle = await this.host.spawn({ command: args[0], args: args.slice(1), cwd: this.host.root })
-    if (stdinBytes.byteLength > 0) {
-      await handle.writeStdin(stdinBytes)
-    }
-    await handle.closeStdin()
-    const [stdoutChunks, stderrChunks, exit] = await Promise.all([
-      collectBytes(handle.stdout),
-      collectBytes(handle.stderr),
-      handle.wait(),
-    ])
-    return {
-      stdout: concatBytes(stdoutChunks),
-      stderr: concatBytes(stderrChunks),
-      exitCode: exit.exitCode,
-    }
+  async utimes(path: string, atime: Date, mtime: Date): Promise<void> {
+    await this.host.fs.utimes(path, atime, mtime, { cwd: this.host.root })
   }
 }
 
-function emptyStat(overrides: Partial<FsStat>): FsStat {
+function encodingFrom(options?: ReadFileOptions | WriteFileOptions | BufferEncoding): BufferEncoding | undefined {
+  if (!options) return undefined
+  if (typeof options === 'string') return options
+  return options.encoding ?? undefined
+}
+
+function encodeContent(content: FileContent, encoding?: BufferEncoding): Uint8Array {
+  if (content instanceof Uint8Array) return content
+  if (encoding === 'binary' || encoding === 'latin1') return latin1ToBytes(content)
+  if (encoding === 'base64') return base64ToBytes(content)
+  if (encoding === 'hex') return hexToBytes(content)
+  return encodeUtf8(content)
+}
+
+function decodeBytes(bytes: Uint8Array, encoding?: BufferEncoding | null): string {
+  if (encoding === 'binary' || encoding === 'latin1') return bytesToLatin1(bytes)
+  if (encoding === 'base64') return bytesToBase64(bytes)
+  if (encoding === 'hex') return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return decodeUtf8(bytes)
+}
+
+function latin1ToBytes(content: string): Uint8Array {
+  const bytes = new Uint8Array(content.length)
+  for (let index = 0; index < content.length; index += 1) bytes[index] = content.charCodeAt(index) & 0xff
+  return bytes
+}
+
+function bytesToLatin1(bytes: Uint8Array): string {
+  let result = ''
+  for (let index = 0; index < bytes.length; index += 8192) {
+    result += String.fromCharCode(...bytes.subarray(index, index + 8192))
+  }
+  return result
+}
+
+function base64ToBytes(content: string): Uint8Array {
+  return latin1ToBytes(atob(content))
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return btoa(bytesToLatin1(bytes))
+}
+
+function hexToBytes(content: string): Uint8Array {
+  const bytes = new Uint8Array(Math.floor(content.length / 2))
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(content.slice(index * 2, index * 2 + 2), 16)
+  }
+  return bytes
+}
+
+function toFsStat(value: HostFileStat): FsStat {
   return {
-    isFile: false,
-    isDirectory: false,
-    isSymbolicLink: false,
-    mode: 0o644,
-    size: 0,
-    mtime: new Date(0),
-    ...overrides,
+    isFile: value.isFile,
+    isDirectory: value.isDirectory,
+    isSymbolicLink: value.isSymbolicLink,
+    mode: value.mode,
+    size: value.size,
+    mtime: value.mtime,
   }
 }
 
-function joinPath(base: string, name: string): string {
-  if (base.endsWith('/')) return `${base}${name}`
-  return `${base}/${name}`
+function toDirentEntry(value: HostDirent): DirentEntry {
+  return {
+    name: value.name,
+    isFile: value.isFile,
+    isDirectory: value.isDirectory,
+    isSymbolicLink: value.isSymbolicLink,
+  }
 }
 
-async function collectBytes(stream: AsyncIterable<Uint8Array>): Promise<Uint8Array[]> {
-  const chunks: Uint8Array[] = []
-  for await (const chunk of stream) chunks.push(chunk)
-  return chunks
+function normalizePath(path: string): string {
+  const slashPath = path.replace(/\\/g, '/')
+  const drive = /^[A-Za-z]:/.exec(slashPath)?.[0].toUpperCase() ?? ''
+  const absolute = slashPath.startsWith('/') || drive.length > 0
+  const body = drive ? slashPath.slice(2) : slashPath
+  const parts: string[] = []
+  for (const segment of body.split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      if (parts.length > 0 && parts[parts.length - 1] !== '..') parts.pop()
+      else if (!absolute) parts.push(segment)
+      continue
+    }
+    parts.push(segment)
+  }
+  if (drive) return parts.length > 0 ? `${drive}/${parts.join('/')}` : `${drive}/`
+  if (absolute) return `/${parts.join('/')}`
+  return parts.join('/') || '.'
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 }

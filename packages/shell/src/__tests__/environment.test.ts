@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
-import { BashEnvironment, CommandRegistry, type CommandSpec } from '../index'
+import { BashEnvironment, CommandRegistry, type CommandSpec, type HostSpawnHandle } from '../index'
 import { LocalHost } from '@demi/host-local'
 
 test('BashEnvironment keeps cwd and env state across shell_exec calls', async () => {
@@ -1431,6 +1431,48 @@ test('BashEnvironment executes simple pipelines without handing scripts to a sys
   expect(stderr.output.stderrDelta).toBe('err')
 })
 
+test('BashEnvironment routes portable file commands through Host.fs before Host.spawn', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-portable-host-fs-'))
+  await writeFile(join(root, 'input.txt'), 'from host fs\n')
+  const host = new NoSpawnLocalHost(root)
+  const env = new BashEnvironment({
+    host,
+    shellIdFactory: () => 'shell-portable-host-fs',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const result = await env.exec({ script: 'cat input.txt | tee copied.txt\ncat copied.txt' })
+
+  expect(result.status).toBe('exited')
+  if (result.status !== 'exited') throw new Error('expected exited result')
+  expect(result.exitCode).toBe(0)
+  expect(result.output.stdoutDelta).toBe('from host fs\nfrom host fs\n')
+  expect(host.spawnCalls).toBe(0)
+  expect(result.audit).toEqual([
+    {
+      kind: 'portable-command',
+      name: 'cat',
+      args: ['input.txt'],
+      cwd: root,
+      exitCode: 0,
+    },
+    {
+      kind: 'portable-command',
+      name: 'tee',
+      args: ['copied.txt'],
+      cwd: root,
+      exitCode: 0,
+    },
+    {
+      kind: 'portable-command',
+      name: 'cat',
+      args: ['copied.txt'],
+      cwd: root,
+      exitCode: 0,
+    },
+  ])
+})
+
 test('BashEnvironment executes compound commands inside pipelines', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-compound-pipeline-'))
   const env = new BashEnvironment({
@@ -2441,6 +2483,15 @@ function stdinCommandSpec(): CommandSpec {
         },
       },
     ],
+  }
+}
+
+class NoSpawnLocalHost extends LocalHost {
+  spawnCalls = 0
+
+  async spawn(): Promise<HostSpawnHandle> {
+    this.spawnCalls += 1
+    throw new Error('Host.spawn must not be used')
   }
 }
 

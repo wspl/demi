@@ -7,8 +7,9 @@ import {
   type CommandIO,
   type CommandStorage,
   type Host,
-  type HostSpawnHandle,
-  type HostSpawnParams,
+  type HostDirent,
+  type HostFileStat,
+  type HostFileSystem,
 } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { createCodingCommandRegistry, createEditorCommand } from '../index'
@@ -384,10 +385,29 @@ function commandOutput(): { io: CommandIO; stdout: () => string; stderr: () => s
 }
 
 class FailingWriteHost implements Host {
-  private readonly files = new Map<string, string>()
+  readonly fs: FailingWriteFileSystem
 
   constructor(
     readonly root: string,
+    files: Record<string, string>,
+  ) {
+    this.fs = new FailingWriteFileSystem(root, files)
+  }
+
+  read(path: string): string | undefined {
+    return this.fs.readText(path)
+  }
+
+  async spawn(): Promise<never> {
+    throw new Error('Host.spawn must not be used by editor file operations')
+  }
+}
+
+class FailingWriteFileSystem implements HostFileSystem {
+  private readonly files = new Map<string, string>()
+
+  constructor(
+    private readonly root: string,
     files: Record<string, string>,
   ) {
     for (const [path, content] of Object.entries(files)) {
@@ -395,87 +415,69 @@ class FailingWriteHost implements Host {
     }
   }
 
-  read(path: string): string | undefined {
+  readText(path: string): string | undefined {
     return this.files.get(this.resolve(path))
   }
 
-  async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
-    let stdin = ''
-    let result: Promise<HostCommandResult> | null = null
-    const finish = async () => {
-      result ??= Promise.resolve(this.run(params, stdin))
-      return result
+  async readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array> {
+    const content = this.files.get(this.resolve(path, options?.cwd))
+    if (content === undefined) throw new Error(`ENOENT: ${path}`)
+    return new TextEncoder().encode(content)
+  }
+
+  async writeFile(path: string, data: Uint8Array, options?: { cwd?: string }): Promise<void> {
+    const target = this.resolve(path, options?.cwd)
+    const content = text(data)
+    this.files.set(target, content)
+    if (target === `${this.root}/second.txt` && content === 'changed\n') {
+      throw new Error('simulated write failure')
     }
+  }
+
+  async appendFile(path: string, data: Uint8Array, options?: { cwd?: string }): Promise<void> {
+    const target = this.resolve(path, options?.cwd)
+    this.files.set(target, `${this.files.get(target) ?? ''}${text(data)}`)
+  }
+
+  async exists(path: string, options?: { cwd?: string }): Promise<boolean> {
+    return this.files.has(this.resolve(path, options?.cwd))
+  }
+
+  async stat(path: string, options?: { cwd?: string }): Promise<HostFileStat> {
+    const content = this.files.get(this.resolve(path, options?.cwd))
+    if (content === undefined) throw new Error(`ENOENT: ${path}`)
     return {
-      stdout: deferredBytes(async () => (await finish()).stdout),
-      stderr: deferredBytes(async () => (await finish()).stderr),
-      writeStdin: async (data) => {
-        stdin += text(data)
-      },
-      closeStdin: async () => {},
-      kill: async () => {},
-      wait: async () => ({ exitCode: (await finish()).exitCode }),
+      isFile: true,
+      isDirectory: false,
+      isSymbolicLink: false,
+      mode: 0o644,
+      size: content.length,
+      mtime: new Date(0),
     }
   }
 
-  private run(params: HostSpawnParams, stdin: string): HostCommandResult {
-    const args = params.args ?? []
-    if (params.command === 'cat') {
-      const path = this.resolve(requiredArg(args, 0))
-      const content = this.files.get(path)
-      return content === undefined
-        ? { stdout: '', stderr: `cat: ${args[0]}: No such file or directory\n`, exitCode: 1 }
-        : { stdout: content, stderr: '', exitCode: 0 }
-    }
-
-    if (params.command === 'test' && args[0] === '-e') {
-      return { stdout: '', stderr: '', exitCode: this.files.has(this.resolve(requiredArg(args, 1))) ? 0 : 1 }
-    }
-
-    if (params.command === 'mkdir') {
-      return { stdout: '', stderr: '', exitCode: 0 }
-    }
-
-    if (params.command === 'rm') {
-      const path = this.resolve(requiredArg(args, args.length - 1))
-      this.files.delete(path)
-      return { stdout: '', stderr: '', exitCode: 0 }
-    }
-
-    if (params.command === 'tee') {
-      const pathArg = requiredArg(args, args.length - 1)
-      const path = this.resolve(pathArg)
-      this.files.set(path, stdin)
-      if (pathArg === 'second.txt') {
-        return { stdout: stdin, stderr: `tee: ${pathArg}: simulated write failure\n`, exitCode: 1 }
-      }
-      return { stdout: stdin, stderr: '', exitCode: 0 }
-    }
-
-    return { stdout: '', stderr: `unsupported command: ${params.command}\n`, exitCode: 127 }
+  async lstat(path: string, options?: { cwd?: string }): Promise<HostFileStat> {
+    return this.stat(path, options)
   }
 
-  private resolve(path: string): string {
+  async readdir(path: string, options: { cwd?: string; withFileTypes: true }): Promise<HostDirent[]>
+  async readdir(path: string, options?: { cwd?: string; withFileTypes?: false }): Promise<string[]>
+  async readdir(): Promise<string[] | HostDirent[]> { return [] }
+  async mkdir(): Promise<void> {}
+  async rm(path: string, options?: { cwd?: string }): Promise<void> { this.files.delete(this.resolve(path, options?.cwd)) }
+  async cp(): Promise<void> { throw new Error('not implemented') }
+  async mv(): Promise<void> { throw new Error('not implemented') }
+  async chmod(): Promise<void> {}
+  async symlink(): Promise<void> { throw new Error('not implemented') }
+  async link(): Promise<void> { throw new Error('not implemented') }
+  async readlink(): Promise<string> { throw new Error('not implemented') }
+  async realpath(path: string, options?: { cwd?: string }): Promise<string> { return this.resolve(path, options?.cwd) }
+  async utimes(): Promise<void> {}
+
+  private resolve(path: string, cwd?: string): string {
     if (path.startsWith('/')) return path
-    return `${this.root}/${path}`
+    return `${cwd ?? this.root}/${path}`
   }
-}
-
-interface HostCommandResult {
-  stdout: string
-  stderr: string
-  exitCode: number
-}
-
-function requiredArg(args: string[], index: number): string {
-  const value = args[index]
-  if (value === undefined) throw new Error(`missing argument ${index}`)
-  return value
-}
-
-async function* deferredBytes(read: () => Promise<string>): AsyncIterable<Uint8Array> {
-  const value = await read()
-  if (value.length > 0) yield new TextEncoder().encode(value)
 }
 
 function text(data: string | Uint8Array): string {

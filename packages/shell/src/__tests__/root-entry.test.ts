@@ -16,7 +16,7 @@ test('root entry exposes browser-safe Host contract and HostBackedFileSystem cla
   const host: Pick<Host, 'root'> = { root: '/' }
   expect(host.root).toBe('/')
 
-  const fs = new HostBackedFileSystem({ root: '/tmp', spawn: async () => { throw new Error('not used') } } as Host)
+  const fs = new HostBackedFileSystem({ root: '/tmp', fs: {} as Host['fs'], spawn: async () => { throw new Error('not used') } })
   expect(typeof fs.resolvePath).toBe('function')
   expect(fs.resolvePath('/a', 'b')).toBe('/a/b')
 })

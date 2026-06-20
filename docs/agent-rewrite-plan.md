@@ -154,6 +154,8 @@ runner 不提供由 idle timeout 触发的 shell 输入需求状态。`yieldAfte
 
 host external command 第一版完全自由，不做 allowlist 或安全护栏。
 
+实现证据与边界：fork 的 `src/commands/registry.ts` 已把 `cat` / `ls` / `mkdir` / `rm` / `grep` / `sed` / `awk` / `jq` / `find` / `tee` 等列为 portable command，具体命令通过 `CommandContext.fs` 读写文件。Demi 不重新实现 `cat file`，也不把它降级成 `Host.spawn("cat", ...)`；Demi 的职责是注册 fork portable command，并把 just-bash `IFileSystem` 适配到 `Host.fs`。
+
 `source` / `.` 是状态类 builtin，不走 host external command。它在当前 shell session 中执行脚本，能修改 cwd/env/positional parameters；slashless 文件名先按当前 cwd、再按 `PATH` 经 `Host.fs` 查找，source 脚本内部的 `read` 等命令继承外层 input redirection / heredoc / here-string。
 
 `set` 也是状态类 builtin，不允许落到 host external command。第一版至少维护 positional parameters（`set -- ...`）、`errexit`（`set -e/+e`、`set -o/+o errexit`）、`noglob`（`set -f/+f`、`set -o/+o noglob`）和 `noclobber`（`set -C/+C`、`set -o/+o noclobber`）；其他 shell option 不能伪装支持，必须明确报错。
@@ -1322,7 +1324,7 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 ### 14.10 当前进展
 
-Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-bash / shell / host-local / coding-agent / provider-claude-code / provider-codex。公开运行入口已调整为 `AgentServer` + `AgentClient`：本地调用使用 `server.client()`，跨进程/网络使用 `attachTransport()`；coding harness 只定义 Host、commands、prompt、reference resolver 和 lifecycle。当前门禁已通过：`bun run typecheck`、`bun run test`（344 pass / 10 skip）、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`./node_modules/.bin/vitest run src/interpreter/`。
+Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-bash / shell / host-local / coding-agent / provider-claude-code / provider-codex。公开运行入口已调整为 `AgentServer` + `AgentClient`：本地调用使用 `server.client()`，跨进程/网络使用 `attachTransport()`；coding harness 只定义 Host、commands、prompt、reference resolver 和 lifecycle。当前门禁已通过：`bun run typecheck`、`bun run test`（345 pass / 10 skip）、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`./node_modules/.bin/vitest run src/interpreter/`。
 
 **已完成的关键实现**（按 §3.1 架构守则覆盖）：
 
@@ -1341,18 +1343,18 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 
 `@demi/shell` 的 `environment.ts`（3340 行）+ `script-parser.ts`（1444 行）手写了一整套 bash interpreter（compound command / 状态 builtin / expansion / arithmetic / glob / pipeline / redirection），而 fork 只被当成 tokenizer 用（只导入 `parse` 和 IFS helpers）。这违背 §7"不在 `@demi/shell` 或其他包复制实现"、"不得重新创建内部 just-bash 副本"的核心约束。fork 实际已有完整可运行的 interpreter（7600+ 行，覆盖度远超 demi 手写版本）。
 
-**Step A 已完成**（fork commits `5e925b7`、`4e2ab29`、`c7f1be5`、`cabfc0f`）：fork 暴露 `./interpreter` 子路径（`Interpreter`/`InterpreterState`/`InterpreterContext`）；`InterpreterContext` 增加可选 `hostSpawn` 钩子，`executeExternalCommand` 在有 `hostSpawn` 且命令非注册命令时走钩子而不是 IFileSystem + PATH；`executeExternalCommand` 在 `hostSpawn` 检查之后增加直接 `ctx.commands.get` dispatch，让注册命令不走 PATH 查找；后续补齐 host-backed session hooks、bash 语义修正和 Node 25 fetch mock type compatibility。fork interpreter 完整 vitest 当前为 617 pass / 1 skip，demi 根测试当前为 344 pass / 10 skip。
+**Step A 已完成**（fork commits `5e925b7`、`4e2ab29`、`c7f1be5`、`cabfc0f`）：fork 暴露 `./interpreter` 子路径（`Interpreter`/`InterpreterState`/`InterpreterContext`）；`InterpreterContext` 增加可选 `hostSpawn` 钩子，`executeExternalCommand` 在有 `hostSpawn` 且命令非注册命令时走钩子而不是 IFileSystem + PATH；`executeExternalCommand` 在 `hostSpawn` 检查之后增加直接 `ctx.commands.get` dispatch，让注册命令不走 PATH 查找；后续补齐 host-backed session hooks、bash 语义修正和 Node 25 fetch mock type compatibility。fork interpreter 完整 vitest 当前为 617 pass / 1 skip，demi 根测试当前为 345 pass / 10 skip。
 
 **git 状态**：demi 根仓库已完成首次提交，`packages/just-bash` 已通过 `git submodule add` 正式登记为 submodule（`.gitmodules` 指向 `https://github.com/wspl/just-bash.git`）。fork 子模块 worktree 已干净，当前 HEAD 是 `cabfc0f`；根仓库 submodule pointer 已指向 `cabfc0f`。
 
-**Step 3.10 代码与测试收尾已完成，但 Host.fs / portable command 路由需要二次重构**：当前 `@demi/shell` 已改为使用 fork `Interpreter` + `hostSpawn` 挂起模型 + 边界点 race，并删除 `script-parser.ts`；`environment.ts` 已通过抽出 `environment-state.ts`、`environment-output.ts`、`registered-command-adapter.ts`、`background-command.ts` 降到 782 行，满足 Step 3.10 的 `< 800 行`目标。当前实现仍把 `HostBackedFileSystem` 的 IFileSystem 操作路由到 `Host.spawn`，且 fork `CommandRegistry` 只注册 demi commands，没有注册 fork portable commands。这是已确认的架构偏离。后续必须按 §7.1 和 §8 重构为 `Host.fs` + fork portable command registry：`cat`/`ls`/`grep`/redirection 等读写 `Host.fs`，只有 `git`/`npm`/`node` 等真实外部命令才进入 `Host.spawn`。fork 完整 interpreter vitest 和 demi 门禁均已通过，root submodule pointer 和根仓库首次提交已完成。
+**Step 3.11 Host.fs / portable command 路由已完成**：`Host` contract 已扩展为 `root + fs + spawn`，`LocalHost.fs` 用 Node fs/promises 实现本地 adapter；`HostBackedFileSystem` 不再通过 `Host.spawn` 执行 `cat`/`tee`/`test`/`ls` 等命令，而是完整委托到 `Host.fs`。`BashEnvironment` 每个 shell session 都注册 fork portable commands，并在名称冲突时让 demi registered commands 覆盖；portable/registered commands 在 `hostSpawn` 前命中，只有 `git`/`npm`/`node`/`bun` 等真实外部命令进入 `Host.spawn`。coding `editor` 和 reference resolver 也改为直接使用 `Host.fs`，不再 spawn `cat`/`tee`/`mkdir`/`rm`。对应测试已覆盖 fake `Host.fs` 记录、`Host.spawn` 禁用、portable `cat | tee` 读写再读、reference read、patch rollback 和 `LocalHost.fs` 基础操作。
 
 **本轮已修正的其他偏离**：
 
 1. 旧 agent definition API 已移除。公开装配入口统一为 `AgentHarness`；coding harness 通过 `commands()` 暴露 editor/todo，命令 prompt 仍由 `CommandRegistry.renderPrompt()` 同源渲染；public `BashEnvironment` 注入和 public `tools()` 替换点已移除。
 2. AgentServer `shell_input` 不再伪造 `toolCallId`；server 增加 `shell_input_result` 帧，用 `shellId` 作为完成确认与客户端 Promise 收敛的关联键。
 3. fork interpreter 的若干 bash 语义已按真实 bash 对齐：`break`/`continue` 外层与非法参数、`shift` 非数字/负数、`set` invalid option、`eval` 解析错误退出码；同时修正 group stdin consumption，避免非 stdin-consuming 注册命令误消费外层输入。
-4. fork 测试 mock 已兼容 Node 25 的 `fetch.preconnect` 类型变化，`pnpm typecheck` 当前通过；真实 DNS/network 集成测试仍受本机 DNS 策略影响，不作为 Step 3.10 验收证据。
+4. fork 测试 mock 已兼容 Node 25 的 `fetch.preconnect` 类型变化，`pnpm typecheck` 当前通过；真实 DNS/network 集成测试仍受本机 DNS 策略影响，不作为 Step 3.11 验收证据。
 
 ### 14.11 Codex Provider 最终态入口
 
@@ -1414,8 +1416,8 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 | claude-code provider 的 stream-json/MCP 机制复杂 | 对照 Rust `provider-claude-code` crate 的结构实现；Step 6 专门拆成 CLI 输入转换 / MCP / event-mapping 三块。 |
 | `InferenceRequest` 接口设计不当导致 Step 6 重做 | Step 1 接口对照 Rust `provider` crate，纯 items 模型；stream-json/MCP 不进接口，是 Step 6 内部细节。 |
 | `hostSpawn` 挂起时 `executeScript` 的 Promise 一直 pending | 保留在 `session.pendingExec`，`shell_wait` 续接 race；`disposeShell` 时 kill 进程后 Promise 自然 settle。 |
-| `HostBackedFileSystem` 缺失完整 Host.fs 后端 | `Host.fs` 是 Host contract 的核心能力；`HostBackedFileSystem implements IFileSystem` 必须完整覆盖 fork redirection、glob、source、file tests 和 portable commands 所需的 read/write/append/exists/stat/lstat/readdir/mkdir/rm/realpath 等操作，不能再用 `cat`/`tee`/`test`/`ls` 经 `Host.spawn` 模拟。 |
-| fork portable commands 未注册导致退回系统 coreutils | 每个 shell session 的 fork `CommandRegistry` 必须合并 fork portable commands 和 demi registered commands；调度路径必须在 `hostSpawn` 前命中 portable/registered commands。用 memfs/virtual Host 场景验证 `cat`/`ls`/`grep`/`tee`/redirection 不依赖本机 `/bin`。 |
+| `HostBackedFileSystem` 缺失完整 Host.fs 后端 | 已完成：`HostBackedFileSystem implements IFileSystem` 委托 `Host.fs` 覆盖 fork redirection、glob、source、file tests 和 portable commands 所需的 read/write/append/exists/stat/lstat/readdir/mkdir/rm/realpath 等操作；测试断言这些操作不调用 `Host.spawn`。 |
+| fork portable commands 未注册导致退回系统 coreutils | 已完成：每个 shell session 合并 fork portable commands 和 demi registered commands，调度路径在 `hostSpawn` 前命中 portable/registered commands；`NoSpawnLocalHost` 测试验证 `cat input.txt | tee copied.txt` 和后续 `cat copied.txt` 不依赖本机 `/bin/cat` / `/usr/bin/tee`。 |
 | fork 的注册命令调度顺序和 demi 预期不同 | fork 默认顺序不能让 shell function 遮蔽 demi registered command。后续 Host.fs 重构时同时验证 builtin、registered command、portable command、host external command 的优先级；必要时在 fork 稳定 API 中调整，而不是在 `@demi/shell` 复制 dispatch。 |
 | 输出重定向跨 yield/abort 的文件 sink 写入 | fork 的 redirection 语义必须通过 IFileSystem + output sink 保持；长命令 yield 时不能把本该写文件的 stdout/stderr 泄漏到 tool output。Host.fs 重构后用长命令 + redirection + abort 场景验证。 |
 

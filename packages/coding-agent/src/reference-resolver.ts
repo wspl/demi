@@ -1,7 +1,7 @@
 import type { Host } from '@demi/shell'
 import type { AgentReferenceResolveContext } from '@demi/agent'
 import type { UserContentBlock } from '@demi/core'
-import { concatBytes, decodeUtf8, isPathInside, resolvePath } from './platform'
+import { decodeUtf8, isPathInside, resolvePath } from './platform'
 
 export function createFileReferenceResolver<State>(host: Host) {
   return async (
@@ -24,14 +24,11 @@ async function resolveFileReference(host: Host, cwd: string, reference: string):
   const path = parseFileReference(reference)
   const pathError = workspacePathError(host, cwd, path)
   if (pathError) throw new Error(pathError)
-  const handle = await host.spawn({ command: 'cat', args: [path], cwd })
-  const [stdout, stderr, exit] = await Promise.all([
-    collectText(handle.stdout),
-    collectText(handle.stderr),
-    handle.wait(),
-  ])
-  if (exit.exitCode !== 0) {
-    throw new Error(`Failed to resolve file reference "${reference}": ${stderr.trim() || `exit ${exit.exitCode ?? 1}`}`)
+  let stdout: string
+  try {
+    stdout = decodeUtf8(await host.fs.readFile(path, { cwd }))
+  } catch (error) {
+    throw new Error(`Failed to resolve file reference "${reference}": ${errorMessage(error)}`)
   }
 
   return {
@@ -63,8 +60,6 @@ function workspacePathError(host: Host, cwd: string, path: string): string | nul
   return `File reference escapes workspace: ${path}`
 }
 
-async function collectText(iterable: AsyncIterable<Uint8Array>): Promise<string> {
-  const chunks: Uint8Array[] = []
-  for await (const chunk of iterable) chunks.push(chunk)
-  return decodeUtf8(concatBytes(chunks))
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message.length > 0 ? error.message : String(error)
 }

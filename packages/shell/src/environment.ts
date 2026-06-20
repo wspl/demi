@@ -1,10 +1,11 @@
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterContext, type InterpreterState } from 'just-bash/interpreter'
 import type { HostSpawnRedirection } from 'just-bash/interpreter'
 import type { ScriptNode } from 'just-bash/ast/types'
+import { createLazyCommands, type CommandName } from 'just-bash/commands'
 import { parse } from 'just-bash/parser'
 import { ParseException } from 'just-bash/parser/types'
 import { LexerError } from 'just-bash/parser/lexer'
-import type { CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from 'just-bash/types'
+import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from 'just-bash/types'
 import { resolveLimits } from 'just-bash/limits'
 import { CommandRegistry, type CommandSpec } from './command'
 import { decodeUtf8, encodeUtf8 } from './bytes'
@@ -83,6 +84,7 @@ export interface OutputSnapshot {
 
 export type BashAuditEvent =
   | { kind: 'registered-command'; name: string; args: string[]; exitCode: number }
+  | { kind: 'portable-command'; name: string; args: string[]; cwd: string; exitCode: number }
   | { kind: 'system-command'; name: string; args: string[]; cwd: string; exitCode: number | null }
 
 export interface CommandMetadataRecord {
@@ -115,6 +117,60 @@ export type ShellToolResult =
 const DEFAULT_YIELD_AFTER_MS = 10_000
 const DEFAULT_TIMEOUT_MS = 120_000
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
+const DEMI_PORTABLE_COMMANDS: CommandName[] = [
+  'cat',
+  'ls',
+  'mkdir',
+  'rmdir',
+  'touch',
+  'rm',
+  'cp',
+  'mv',
+  'ln',
+  'chmod',
+  'readlink',
+  'head',
+  'tail',
+  'wc',
+  'stat',
+  'grep',
+  'fgrep',
+  'egrep',
+  'rg',
+  'sed',
+  'awk',
+  'sort',
+  'uniq',
+  'comm',
+  'cut',
+  'paste',
+  'tr',
+  'rev',
+  'nl',
+  'fold',
+  'expand',
+  'unexpand',
+  'strings',
+  'column',
+  'join',
+  'tee',
+  'find',
+  'basename',
+  'dirname',
+  'tree',
+  'du',
+  'jq',
+  'base64',
+  'diff',
+  'seq',
+  'expr',
+  'md5sum',
+  'sha1sum',
+  'sha256sum',
+  'file',
+  'tac',
+  'od',
+]
 export class BashEnvironment {
   private readonly host: Host
   private readonly commands: CommandRegistry
@@ -350,6 +406,9 @@ export class BashEnvironment {
       backgroundJobs: new Map(),
       nextBackgroundJobId: 1,
       exited: false,
+    }
+    for (const command of createPortableCommands(session)) {
+      forkCommands.set(command.name, command)
     }
     const storage = new AgentSessionCommandStorage(this.storage, commandScopeId)
     for (const spec of this.commands.list()) {
@@ -778,6 +837,23 @@ export class BashEnvironment {
     session.pendingExec = undefined
     return { status: 'aborted', shellId: session.id, output: snapshotFromAccumulator(session, session.accumulator), runningMs: 0 }
   }
+}
+
+function createPortableCommands(session: ShellSession): ForkCommand[] {
+  return createLazyCommands(DEMI_PORTABLE_COMMANDS).map((command) => ({
+    ...command,
+    execute: async (args, ctx) => {
+      const result = await command.execute(args, ctx)
+      session.accumulator.audit.push({
+        kind: 'portable-command',
+        name: command.name,
+        args,
+        cwd: ctx.cwd,
+        exitCode: result.exitCode,
+      })
+      return result
+    },
+  }))
 }
 
 void (undefined as unknown as InterpreterContext)

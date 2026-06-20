@@ -1,12 +1,34 @@
 import { spawn } from 'node:child_process'
+import { dirname, isAbsolute, resolve } from 'node:path'
+import {
+  appendFile,
+  chmod,
+  cp,
+  link,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
+import type { Dirent, Stats } from 'node:fs'
 import type { Readable } from 'node:stream'
-import type { Host, HostSpawnHandle, HostSpawnParams } from '@demi/shell'
+import type { Host, HostDirent, HostFileStat, HostFileSystem, HostSpawnHandle, HostSpawnParams } from '@demi/shell'
 
 export class LocalHost implements Host {
   readonly root: string
+  readonly fs: HostFileSystem
 
   constructor(root: string) {
-    this.root = root
+    this.root = resolve(root)
+    this.fs = new LocalHostFileSystem(this.root)
   }
 
   async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
@@ -62,6 +84,123 @@ export class LocalHost implements Host {
       wait: () => waitPromise,
     }
   }
+}
+
+class LocalHostFileSystem implements HostFileSystem {
+  constructor(private readonly root: string) {}
+
+  async readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array> {
+    return readFile(this.resolvePath(path, options?.cwd))
+  }
+
+  async writeFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void> {
+    const target = this.resolvePath(path, options?.cwd)
+    if (options?.createParents) await mkdir(dirname(target), { recursive: true })
+    await writeFile(target, data)
+  }
+
+  async appendFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void> {
+    const target = this.resolvePath(path, options?.cwd)
+    if (options?.createParents) await mkdir(dirname(target), { recursive: true })
+    await appendFile(target, data)
+  }
+
+  async exists(path: string, options?: { cwd?: string }): Promise<boolean> {
+    try {
+      await lstat(this.resolvePath(path, options?.cwd))
+      return true
+    } catch (error) {
+      if (isNotFound(error)) return false
+      throw error
+    }
+  }
+
+  async stat(path: string, options?: { cwd?: string }): Promise<HostFileStat> {
+    return toHostFileStat(await stat(this.resolvePath(path, options?.cwd)))
+  }
+
+  async lstat(path: string, options?: { cwd?: string }): Promise<HostFileStat> {
+    return toHostFileStat(await lstat(this.resolvePath(path, options?.cwd)))
+  }
+
+  async readdir(path: string, options: { cwd?: string; withFileTypes: true }): Promise<HostDirent[]>
+  async readdir(path: string, options?: { cwd?: string; withFileTypes?: false }): Promise<string[]>
+  async readdir(path: string, options?: { cwd?: string; withFileTypes?: boolean }): Promise<string[] | HostDirent[]> {
+    const target = this.resolvePath(path, options?.cwd)
+    if (options?.withFileTypes) {
+      return (await readdir(target, { withFileTypes: true })).map(toHostDirent)
+    }
+    return readdir(target)
+  }
+
+  async mkdir(path: string, options?: { cwd?: string; recursive?: boolean }): Promise<void> {
+    await mkdir(this.resolvePath(path, options?.cwd), { recursive: options?.recursive })
+  }
+
+  async rm(path: string, options?: { cwd?: string; recursive?: boolean; force?: boolean }): Promise<void> {
+    await rm(this.resolvePath(path, options?.cwd), { recursive: options?.recursive, force: options?.force })
+  }
+
+  async cp(path: string, destination: string, options?: { cwd?: string; recursive?: boolean }): Promise<void> {
+    await cp(this.resolvePath(path, options?.cwd), this.resolvePath(destination, options?.cwd), { recursive: options?.recursive })
+  }
+
+  async mv(path: string, destination: string, options?: { cwd?: string }): Promise<void> {
+    await rename(this.resolvePath(path, options?.cwd), this.resolvePath(destination, options?.cwd))
+  }
+
+  async chmod(path: string, mode: number, options?: { cwd?: string }): Promise<void> {
+    await chmod(this.resolvePath(path, options?.cwd), mode)
+  }
+
+  async symlink(target: string, path: string, options?: { cwd?: string }): Promise<void> {
+    await symlink(target, this.resolvePath(path, options?.cwd))
+  }
+
+  async link(existingPath: string, path: string, options?: { cwd?: string }): Promise<void> {
+    await link(this.resolvePath(existingPath, options?.cwd), this.resolvePath(path, options?.cwd))
+  }
+
+  async readlink(path: string, options?: { cwd?: string }): Promise<string> {
+    return readlink(this.resolvePath(path, options?.cwd))
+  }
+
+  async realpath(path: string, options?: { cwd?: string }): Promise<string> {
+    return realpath(this.resolvePath(path, options?.cwd))
+  }
+
+  async utimes(path: string, atime: Date, mtime: Date, options?: { cwd?: string }): Promise<void> {
+    await utimes(this.resolvePath(path, options?.cwd), atime, mtime)
+  }
+
+  private resolvePath(path: string, cwd?: string): string {
+    if (isAbsolute(path)) return resolve(path)
+    return resolve(cwd ?? this.root, path)
+  }
+}
+
+function toHostFileStat(value: Stats): HostFileStat {
+  return {
+    isFile: value.isFile(),
+    isDirectory: value.isDirectory(),
+    isSymbolicLink: value.isSymbolicLink(),
+    mode: value.mode,
+    size: value.size,
+    mtime: value.mtime,
+  }
+}
+
+function toHostDirent(value: Dirent): HostDirent {
+  return {
+    name: value.name,
+    isFile: value.isFile(),
+    isDirectory: value.isDirectory(),
+    isSymbolicLink: value.isSymbolicLink(),
+  }
+}
+
+function isNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 'ENOENT'
 }
 
 async function* streamBytes(stream: Readable | null): AsyncIterable<Uint8Array> {

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { CommandSpec, Host } from '@demi/shell'
-import { concatBytes, decodeUtf8, dirnamePath, encodeUtf8, isPathInside, resolvePath } from './platform'
+import { decodeUtf8, dirnamePath, encodeUtf8, isPathInside, resolvePath } from './platform'
 
 export function createEditorCommand(host: Host): CommandSpec {
   return {
@@ -36,7 +36,13 @@ export function createEditorCommand(host: Host): CommandSpec {
             return { exitCode: 1 }
           }
           const parent = dirnamePath(path)
-          if (parent !== '.') await run(host, cwd, 'mkdir', ['-p', parent])
+          if (parent !== '.') {
+            const made = await mkdirPath(host, cwd, parent)
+            if (made.exitCode !== 0) {
+              await io.stderr(made.stderr)
+              return { exitCode: made.exitCode }
+            }
+          }
           const write = await writeFile(host, cwd, path, content)
           if (write.exitCode !== 0) {
             await io.stderr(write.stderr)
@@ -156,50 +162,50 @@ interface ProcessResult {
 
 async function exists(host: Host, cwd: string, path: string): Promise<boolean> {
   if (workspacePathError(host, cwd, path)) return false
-  const result = await run(host, cwd, 'test', ['-e', path])
-  return result.exitCode === 0
+  return host.fs.exists(path, { cwd })
 }
 
 async function readFile(host: Host, cwd: string, path: string): Promise<ProcessResult> {
   const pathError = workspacePathError(host, cwd, path)
   if (pathError) return { stdout: '', stderr: `${pathError}\n`, exitCode: 1 }
-  return run(host, cwd, 'cat', [path])
+  try {
+    return { stdout: decodeUtf8(await host.fs.readFile(path, { cwd })), stderr: '', exitCode: 0 }
+  } catch (error) {
+    return { stdout: '', stderr: `${errorMessage(error)}\n`, exitCode: 1 }
+  }
 }
 
 async function writeFile(host: Host, cwd: string, path: string, content: string): Promise<ProcessResult> {
   const pathError = workspacePathError(host, cwd, path)
   if (pathError) return { stdout: '', stderr: `${pathError}\n`, exitCode: 1 }
-  const handle = await host.spawn({ command: 'tee', args: [path], cwd })
-  await handle.writeStdin(encodeUtf8(content))
-  await handle.closeStdin()
-  const [stdout, stderr, exit] = await Promise.all([
-    collectText(handle.stdout),
-    collectText(handle.stderr),
-    handle.wait(),
-  ])
-  return { stdout, stderr, exitCode: exit.exitCode ?? 1 }
+  try {
+    await host.fs.writeFile(path, encodeUtf8(content), { cwd })
+    return { stdout: '', stderr: '', exitCode: 0 }
+  } catch (error) {
+    return { stdout: '', stderr: `${errorMessage(error)}\n`, exitCode: 1 }
+  }
 }
 
 async function deleteFile(host: Host, cwd: string, path: string): Promise<ProcessResult> {
   const pathError = workspacePathError(host, cwd, path)
   if (pathError) return { stdout: '', stderr: `${pathError}\n`, exitCode: 1 }
-  return run(host, cwd, 'rm', ['-f', path])
+  try {
+    await host.fs.rm(path, { cwd, force: true })
+    return { stdout: '', stderr: '', exitCode: 0 }
+  } catch (error) {
+    return { stdout: '', stderr: `${errorMessage(error)}\n`, exitCode: 1 }
+  }
 }
 
-async function run(host: Host, cwd: string, command: string, args: string[]): Promise<ProcessResult> {
-  const handle = await host.spawn({ command, args, cwd })
-  const [stdout, stderr, exit] = await Promise.all([
-    collectText(handle.stdout),
-    collectText(handle.stderr),
-    handle.wait(),
-  ])
-  return { stdout, stderr, exitCode: exit.exitCode ?? 1 }
-}
-
-async function collectText(iterable: AsyncIterable<Uint8Array>): Promise<string> {
-  const chunks: Uint8Array[] = []
-  for await (const chunk of iterable) chunks.push(chunk)
-  return decodeUtf8(concatBytes(chunks))
+async function mkdirPath(host: Host, cwd: string, path: string): Promise<ProcessResult> {
+  const pathError = workspacePathError(host, cwd, path)
+  if (pathError) return { stdout: '', stderr: `${pathError}\n`, exitCode: 1 }
+  try {
+    await host.fs.mkdir(path, { cwd, recursive: true })
+    return { stdout: '', stderr: '', exitCode: 0 }
+  } catch (error) {
+    return { stdout: '', stderr: `${errorMessage(error)}\n`, exitCode: 1 }
+  }
 }
 
 interface Match {
@@ -299,7 +305,7 @@ async function applyPatchOperations(host: Host, cwd: string, operations: PatchOp
 
     const parent = dirnamePath(operation.path)
     if (parent !== '.') {
-      const made = await run(host, cwd, 'mkdir', ['-p', parent])
+      const made = await mkdirPath(host, cwd, parent)
       if (made.exitCode !== 0) return fail(made)
     }
 
@@ -328,7 +334,7 @@ async function runRollbackAction(host: Host, cwd: string, action: RollbackAction
   if (action.type === 'delete') return deleteFile(host, cwd, action.path)
   const parent = dirnamePath(action.path)
   if (parent !== '.') {
-    const made = await run(host, cwd, 'mkdir', ['-p', parent])
+    const made = await mkdirPath(host, cwd, parent)
     if (made.exitCode !== 0) return made
   }
   return writeFile(host, cwd, action.path, action.content)
@@ -588,4 +594,8 @@ function diffRange(lineCount: number): string {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message.length > 0 ? error.message : String(error)
 }
