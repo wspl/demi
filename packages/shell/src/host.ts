@@ -16,7 +16,7 @@ export interface HostSpawnHandle {
   stderr: AsyncIterable<Uint8Array>
   writeStdin(data: Uint8Array): Promise<void>
   closeStdin(): Promise<void>
-  kill(signal?: NodeJS.Signals): Promise<void>
+  kill(signal?: string): Promise<void>
   wait(): Promise<HostSpawnExit>
 }
 

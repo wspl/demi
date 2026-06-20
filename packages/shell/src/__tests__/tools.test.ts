@@ -6,7 +6,7 @@ import type { ModelSelection } from '@demi/core'
 import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
 import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demi/provider'
 import { BashEnvironment, createShellSessionTools, toToolResult, type ShellToolResult } from '../index'
-import { LocalHost } from '../local-host'
+import { LocalHost } from '@demi/host-local'
 
 const model: ModelSelection = {
   providerId: 'stub',

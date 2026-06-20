@@ -1,7 +1,7 @@
 import { ProviderRegistry } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import type { AgentHarness } from '@demi/agent'
-import { LocalHost } from '@demi/shell/local-host'
+import { LocalHost } from '@demi/host-local'
 import { AgentServer } from '../index'
 import { createStdioServerTransport } from '../stdio-transport'
 

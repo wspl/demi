@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import type { Host, HostSpawnHandle, HostSpawnParams } from '../host'
 import { HostBackedFileSystem } from '../host-fs'
-import { LocalHost } from '../local-host'
+import { LocalHost } from '@demi/host-local'
 
 test('HostBackedFileSystem.readFile reads file content via Host.spawn cat', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-host-fs-read-'))

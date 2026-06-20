@@ -10,6 +10,7 @@
     "@demi/agent": "workspace:*",
     "@demi/coding-agent": "workspace:*",
     "@demi/core": "workspace:*",
+    "@demi/host-local": "workspace:*",
     "@demi/provider": "workspace:*",
     "@demi/provider-claude-code": "workspace:*",
     "@demi/provider-codex": "workspace:*",

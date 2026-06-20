@@ -16,6 +16,7 @@ const workspaceEntries = new Map<string, string>([
   ...platformNeutralEntries,
   ['@demi/provider-claude-code', 'packages/provider-claude-code/src/index.ts'],
   ['@demi/provider-codex', 'packages/provider-codex/src/index.ts'],
+  ['@demi/host-local', 'packages/host-local/src/index.ts'],
   ['@demi/tui', 'packages/tui/src/index.ts'],
 ])
 
@@ -23,6 +24,7 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demi/core', 'packages/core'],
   ['@demi/provider', 'packages/provider'],
   ['@demi/shell', 'packages/shell'],
+  ['@demi/host-local', 'packages/host-local'],
   ['@demi/agent', 'packages/agent'],
   ['@demi/coding-agent', 'packages/coding-agent'],
   ['@demi/provider-claude-code', 'packages/provider-claude-code'],
@@ -34,11 +36,24 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demi/core', []],
   ['@demi/provider', ['@demi/core']],
   ['@demi/shell', []],
+  ['@demi/host-local', ['@demi/shell']],
   ['@demi/agent', ['@demi/core', '@demi/provider', '@demi/shell']],
   ['@demi/coding-agent', ['@demi/agent', '@demi/core', '@demi/shell']],
   ['@demi/provider-claude-code', ['@demi/core', '@demi/provider']],
   ['@demi/provider-codex', ['@demi/core', '@demi/provider']],
-  ['@demi/tui', ['@demi/agent', '@demi/coding-agent', '@demi/core', '@demi/provider', '@demi/provider-claude-code', '@demi/provider-codex', '@demi/shell']],
+  [
+    '@demi/tui',
+    [
+      '@demi/agent',
+      '@demi/coding-agent',
+      '@demi/core',
+      '@demi/host-local',
+      '@demi/provider',
+      '@demi/provider-claude-code',
+      '@demi/provider-codex',
+      '@demi/shell',
+    ],
+  ],
 ])
 
 const allowedWorkspaceSubpaths = new Map<string, string>([
@@ -49,8 +64,6 @@ const allowedWorkspaceSubpaths = new Map<string, string>([
 ])
 
 const nodeOnlySubpaths = new Map<string, string>([
-  ['@demi/shell/local-host', 'packages/shell/src/local-host.ts'],
-  ['@demi/shell/store', 'packages/shell/src/store.ts'],
   ['@demi/agent/stdio', 'packages/agent/src/stdio-transport.ts'],
 ])
 
@@ -147,6 +160,7 @@ test('package manifests preserve layering boundaries', async () => {
     '@demi/coding-agent',
   ]
   for (const packageName of platformNeutralPackages) {
+    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/host-local')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-claude-code')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-codex')
   }

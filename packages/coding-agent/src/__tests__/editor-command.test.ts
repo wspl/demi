@@ -10,7 +10,7 @@ import {
   type HostSpawnHandle,
   type HostSpawnParams,
 } from '@demi/shell'
-import { LocalHost } from '@demi/shell/local-host'
+import { LocalHost } from '@demi/host-local'
 import { createCodingCommandRegistry, createEditorCommand } from '../index'
 
 test('editor create writes a new file from heredoc content', async () => {

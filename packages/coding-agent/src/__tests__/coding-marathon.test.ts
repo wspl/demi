@@ -10,7 +10,7 @@ import {
   createShellSessionTools,
   type BashEnvironmentOptions,
 } from '@demi/shell'
-import { LocalHost } from '@demi/shell/local-host'
+import { LocalHost } from '@demi/host-local'
 import type { InferenceRequest } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import { createCodingAgentHarness } from '../index'

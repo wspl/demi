@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { BashEnvironment } from '@demi/shell'
-import { LocalHost } from '@demi/shell/local-host'
+import { LocalHost } from '@demi/host-local'
 import { createCodingCommandRegistry } from '../index'
 
 test('todo command supports add/list/update/done with raw and JSON output', async () => {

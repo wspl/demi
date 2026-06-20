@@ -1,12 +1,8 @@
-import { mkdtemp } from 'node:fs/promises'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
-import { AgentSessionCommandStorage, LocalDemiStore } from '../store'
+import { AgentSessionCommandStorage, type DemiStore } from '../storage'
 
 test('AgentSessionCommandStorage prefixes keys by agent session id and exposes session-local keys', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalDemiStore(root)
+  const store = new MemoryDemiStore()
   const first = new AgentSessionCommandStorage(store, 'session-a')
   const second = new AgentSessionCommandStorage(store, 'session-b')
 
@@ -20,8 +16,7 @@ test('AgentSessionCommandStorage prefixes keys by agent session id and exposes s
 })
 
 test('AgentSessionCommandStorage rejects keys and agent session ids that escape the session prefix', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalDemiStore(root)
+  const store = new MemoryDemiStore()
   const first = new AgentSessionCommandStorage(store, 'session-a')
   const second = new AgentSessionCommandStorage(store, 'session-b')
 
@@ -39,12 +34,23 @@ test('AgentSessionCommandStorage rejects keys and agent session ids that escape 
   expect(await second.readJson<Array<{ text: string }>>('todos.json')).toEqual([{ text: 'b' }])
 })
 
-test('LocalDemiStore rejects keys that are not relative store paths', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalDemiStore(root)
+class MemoryDemiStore implements DemiStore {
+  private readonly values = new Map<string, unknown>()
 
-  await expect(store.writeJson('../outside.json', {})).rejects.toThrow('path traversal')
-  await expect(store.writeJson('nested/../inside.json', {})).rejects.toThrow('path traversal')
-  await expect(store.writeJson(join(root, 'absolute-inside-root.json'), {})).rejects.toThrow('DemiStore keys must be relative')
-  await expect(store.writeJson('bad\0key.json', {})).rejects.toThrow('Invalid DemiStore key')
-})
+  async readJson<T>(key: string): Promise<T | null> {
+    if (!this.values.has(key)) return null
+    return structuredClone(this.values.get(key)) as T
+  }
+
+  async writeJson<T>(key: string, value: T): Promise<void> {
+    this.values.set(key, structuredClone(value))
+  }
+
+  async delete(key: string): Promise<void> {
+    this.values.delete(key)
+  }
+
+  async list(prefix: string): Promise<string[]> {
+    return [...this.values.keys()].filter((key) => key.startsWith(prefix)).sort()
+  }
+}

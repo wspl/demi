@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import { BashEnvironment, CommandRegistry, type CommandSpec } from '../index'
-import { LocalHost } from '../local-host'
+import { LocalHost } from '@demi/host-local'
 
 test('BashEnvironment keeps cwd and env state across shell_exec calls', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-'))

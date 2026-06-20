@@ -5,8 +5,6 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./local-host": "./src/local-host.ts",
-    "./store": "./src/store.ts",
     "./storage": "./src/storage.ts",
     "./host-fs": "./src/host-fs.ts"
   },

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import type { Readable } from 'node:stream'
-import type { Host, HostSpawnHandle, HostSpawnParams } from './host'
+import type { Host, HostSpawnHandle, HostSpawnParams } from '@demi/shell'
 
 export class LocalHost implements Host {
   readonly root: string
@@ -51,14 +51,13 @@ export class LocalHost implements Host {
         if (!child.pid) return
         if (params.killProcessGroup === true) {
           try {
-            process.kill(-child.pid, signal)
+            process.kill(-child.pid, signal as NodeJS.Signals)
             return
           } catch {
-            // Fall through to killing the direct child when the platform or process state
-            // does not allow signaling the process group.
+            // Fall through to the direct child when process-group signaling is unavailable.
           }
         }
-        if (!child.killed) child.kill(signal)
+        if (!child.killed) child.kill(signal as NodeJS.Signals)
       },
       wait: () => waitPromise,
     }

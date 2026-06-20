@@ -4,7 +4,7 @@ import { ProviderRegistry } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import { AgentServer, type ProviderConfig } from '@demi/agent'
 import type { AgentHarness } from '@demi/agent'
-import { LocalHost } from '@demi/shell/local-host'
+import { LocalHost } from '@demi/host-local'
 import { attachRenderer, createRenderer, handleCommand, renderEvent, resolveTuiModel, runInputLoop, type TuiOutput } from '../index'
 
 const model: ModelSelection = {

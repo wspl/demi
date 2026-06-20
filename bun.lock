@@ -23,17 +23,24 @@
       "version": "0.0.0",
       "dependencies": {
         "@demi/agent": "workspace:*",
+        "@demi/core": "workspace:*",
         "@demi/shell": "workspace:*",
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
       },
     },
     "packages/core": {
       "name": "@demi/core",
       "version": "0.0.0",
+    },
+    "packages/host-local": {
+      "name": "@demi/host-local",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demi/shell": "workspace:*",
+      },
     },
     "packages/just-bash/packages/just-bash": {
       "name": "just-bash",
@@ -97,6 +104,18 @@
         "@demi/shell": "workspace:*",
       },
     },
+    "packages/provider-codex": {
+      "name": "@demi/provider-codex",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demi/core": "workspace:*",
+        "@demi/provider": "workspace:*",
+      },
+      "devDependencies": {
+        "@demi/agent": "workspace:*",
+        "@demi/shell": "workspace:*",
+      },
+    },
     "packages/shell": {
       "name": "@demi/shell",
       "version": "0.0.0",
@@ -112,8 +131,10 @@
         "@demi/agent": "workspace:*",
         "@demi/coding-agent": "workspace:*",
         "@demi/core": "workspace:*",
+        "@demi/host-local": "workspace:*",
         "@demi/provider": "workspace:*",
         "@demi/provider-claude-code": "workspace:*",
+        "@demi/provider-codex": "workspace:*",
         "@demi/shell": "workspace:*",
       },
     },
@@ -137,9 +158,13 @@
 
     "@demi/core": ["@demi/core@workspace:packages/core"],
 
+    "@demi/host-local": ["@demi/host-local@workspace:packages/host-local"],
+
     "@demi/provider": ["@demi/provider@workspace:packages/provider"],
 
     "@demi/provider-claude-code": ["@demi/provider-claude-code@workspace:packages/provider-claude-code"],
+
+    "@demi/provider-codex": ["@demi/provider-codex@workspace:packages/provider-codex"],
 
     "@demi/shell": ["@demi/shell@workspace:packages/shell"],
 

@@ -4,7 +4,7 @@ import type { ModelSelection, TokenUsage } from '@demi/core'
 import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
 import { BashEnvironment, createShellSessionTools } from '@demi/shell'
-import { LocalHost } from '@demi/shell/local-host'
+import { LocalHost } from '@demi/host-local'
 import { FileCodexAuthStore } from '../auth'
 import { CodexProvider } from '../provider'
 

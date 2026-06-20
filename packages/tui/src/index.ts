@@ -23,7 +23,7 @@ import {
   type ClientSessionEvent,
   type ProviderConfig,
 } from '@demi/agent'
-import { LocalHost } from '@demi/shell/local-host'
+import { LocalHost } from '@demi/host-local'
 
 export interface TuiOptions {
   provider: 'claude-code' | 'codex'

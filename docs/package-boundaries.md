@@ -2,7 +2,7 @@
 
 This document is the canonical package boundary contract and the highest architecture constraint for package work. When code and this document disagree, fix the code or update this document before continuing with feature work.
 
-## Core Rule
+## Dependency Direction
 
 Package direction is a core architecture invariant. Lower-level packages must not know higher-level products, adapters, UI shells, concrete providers, or local machine implementations.
 
@@ -40,25 +40,23 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demi/shell`
 
-- Status: implemented with one local-adapter extraction gap.
+- Status: implemented.
 - Production deps: `just-bash`.
 - Owns: Host contract, command specs, CommandRegistry, DemiStore contract, AgentSessionCommandStorage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
 - Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`.
-- Host boundary: Host is the only shell runtime interface for executing outside the interpreter.
-- HostBackedFileSystem stays here because it adapts just-bash filesystem operations to the Host contract and works for local, remote, or container hosts.
+- Runtime execution outside the interpreter goes through Host only.
+- HostBackedFileSystem adapts just-bash filesystem operations to the Host contract and works for local, remote, or container hosts.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
 - Must not: import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, `@demi/host-local`, `@demi/tui`, or own local Node adapters.
-- Temporary gap: `@demi/shell/local-host` and `@demi/shell/store` still contain local Node adapters. They must be removed when `@demi/host-local` is extracted; no compatibility shim should remain.
 
 ### `@demi/host-local`
 
-- Status: accepted target package, not yet extracted.
+- Status: implemented.
 - Production deps: `@demi/shell`.
 - Owns: local Node adapters, specifically LocalHost and LocalDemiStore.
 - Public boundary: Node-only local host and local store implementations.
 - May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, and process-group signaling.
 - Must not: depend on `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, or `@demi/tui`.
-- Extraction target: move LocalHost and LocalDemiStore here, delete `@demi/shell/local-host` and `@demi/shell/store`, move local adapter behavior tests under `packages/host-local`, and update boundary tests to reject production imports from the old shell subpaths.
 
 ### `@demi/agent`
 
@@ -105,7 +103,6 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: local application entry point and test/acceptance shell.
 - May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
 - Must not: be imported by any other production package.
-- Temporary gap: until `@demi/host-local` exists, TUI imports LocalHost from `@demi/shell/local-host`.
 
 ## Production Dependency Graph
 

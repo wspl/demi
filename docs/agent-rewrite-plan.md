@@ -711,14 +711,15 @@ packages/shell/src/
   index.ts              re-export
   command.ts            demi CommandSpec 协议（不变）
   host.ts               Host contract（不变）
-  local-host.ts         Node adapter（不变）
   tools.ts              四个 shell AgentTool（不变）
   storage.ts            CommandStorage（不变）
-  store.ts              DemiStore/LocalDemiStore（不变）
   bytes.ts              UTF-8 helpers（不变）
   environment.ts        重写：BashEnvironment + ShellSession + hostSpawn + 边界点
   host-fs.ts            新增：HostBackedFileSystem，IFileSystem 路由到 Host.spawn
   script-parser.ts      删除
+packages/host-local/src/
+  local-host.ts         Node LocalHost adapter
+  local-store.ts        Node LocalDemiStore adapter
 ```
 
 #### 接口兼容
@@ -766,7 +767,7 @@ Host 不暴露文件读写 API。文件操作全部走命令（`cat` / `tee` / `
 
 `LocalHost` 走 Node child_process。远程 / 容器以后换 `Host` 实现，`BashEnvironment` 不变。Agent Loop 不感知这些差异。
 
-默认运行时模块必须只依赖 `Host` 接口，不依赖 `LocalHost`。`LocalHost` 是 Node adapter，不从 `@demi/shell` 根入口导出；使用方需要本地进程能力时显式导入 adapter。这个隔离同样适用于 `LocalDemiStore`、stdio transport 和真实 Claude CLI provider。
+默认运行时模块必须只依赖 `Host` 接口，不依赖 `LocalHost`。`LocalHost` 是 `@demi/host-local` 的 Node adapter；使用方需要本地进程能力时显式依赖该包。这个隔离同样适用于 `LocalDemiStore`、stdio transport 和真实 Claude CLI provider。
 
 ```ts
 interface BashEnvironment {
@@ -1061,8 +1062,7 @@ packages/just-bash/       forked Bash Engine：parser/interpreter/builtin/expans
 packages/shell/            Host contract、BashEnvironment、shell session tools、
                           ShellSession、OutputSnapshot、command registry、command prompt、
                           audit、系统 command spawn、DemiStore/CommandStorage
-packages/host-local/       已接受的本机 Node adapter 目标包：LocalHost、LocalDemiStore；
-                          当前实现仍在 @demi/shell 子路径，下一步拆出且不保留 shim
+packages/host-local/       本机 Node adapter：LocalHost、LocalDemiStore
 packages/coding-agent/    Coding agent harness、prompt、coding commands、todo
 packages/provider-claude-code/  Claude Code provider：驱动系统 claude code CLI
 packages/provider-codex/  Codex provider：复用官方 Codex auth，驱动 Responses transport
@@ -1287,12 +1287,12 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 ### 14.10 当前进展
 
-Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-bash / shell / coding-agent / provider-claude-code / provider-codex。公开运行入口已调整为 `AgentServer` + `AgentClient`：本地调用使用 `server.client()`，跨进程/网络使用 `attachTransport()`；coding harness 只定义 Host、commands、prompt、reference resolver 和 lifecycle。当前门禁已通过：`bun run typecheck`、`bun run test`（323 pass / 10 skip）、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`./node_modules/.bin/vitest run src/interpreter/`。
+Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-bash / shell / host-local / coding-agent / provider-claude-code / provider-codex。公开运行入口已调整为 `AgentServer` + `AgentClient`：本地调用使用 `server.client()`，跨进程/网络使用 `attachTransport()`；coding harness 只定义 Host、commands、prompt、reference resolver 和 lifecycle。当前门禁已通过：`bun run typecheck`、`bun run test`（344 pass / 10 skip）、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`./node_modules/.bin/vitest run src/interpreter/`。
 
 **已完成的关键实现**（按 §3.1 架构守则覆盖）：
 
 - bash engine 边界已拆成 `just-bash` fork package 与 `@demi/shell`：`packages/just-bash` 是 submodule，暴露 parser/IFS 稳定导出。
-- `@demi/shell` 默认入口 browser-safe：根入口只导出平台无关实现；`LocalHost`/`LocalDemiStore` 走显式子路径。
+- `@demi/shell` 默认入口 browser-safe：根入口只导出平台无关实现；`LocalHost`/`LocalDemiStore` 由 `@demi/host-local` 提供。
 - `@demi/agent` 默认入口去除 Node-only 依赖：stdio transport 从根入口移出，JSON codec 和 transcript patch diff 改为纯 TS/Web 标准。
 - `@demi/coding-agent` 运行时入口去除 Node-only 依赖：editor/reference resolver 使用 Host contract、Web UTF-8、平台无关路径归一化。包名和主入口已迁移为 `@demi/coding-agent` + `createCodingAgentHarness`。
 - 平台默认入口静态闭包测试覆盖所有平台无关包；just-bash 边界静态扫描；AgentServer/transport 边界静态扫描；package manifest 分层扫描。
@@ -1306,7 +1306,7 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 
 `@demi/shell` 的 `environment.ts`（3340 行）+ `script-parser.ts`（1444 行）手写了一整套 bash interpreter（compound command / 状态 builtin / expansion / arithmetic / glob / pipeline / redirection），而 fork 只被当成 tokenizer 用（只导入 `parse` 和 IFS helpers）。这违背 §7"不在 `@demi/shell` 或其他包复制实现"、"不得重新创建内部 just-bash 副本"的核心约束。fork 实际已有完整可运行的 interpreter（7600+ 行，覆盖度远超 demi 手写版本）。
 
-**Step A 已完成**（fork commits `5e925b7`、`4e2ab29`、`c7f1be5`、`cabfc0f`）：fork 暴露 `./interpreter` 子路径（`Interpreter`/`InterpreterState`/`InterpreterContext`）；`InterpreterContext` 增加可选 `hostSpawn` 钩子，`executeExternalCommand` 在有 `hostSpawn` 且命令非注册命令时走钩子而不是 IFileSystem + PATH；`executeExternalCommand` 在 `hostSpawn` 检查之后增加直接 `ctx.commands.get` dispatch，让注册命令不走 PATH 查找；后续补齐 host-backed session hooks、bash 语义修正和 Node 25 fetch mock type compatibility。fork interpreter 完整 vitest 当前为 617 pass / 1 skip，demi 根测试当前为 323 pass / 10 skip。
+**Step A 已完成**（fork commits `5e925b7`、`4e2ab29`、`c7f1be5`、`cabfc0f`）：fork 暴露 `./interpreter` 子路径（`Interpreter`/`InterpreterState`/`InterpreterContext`）；`InterpreterContext` 增加可选 `hostSpawn` 钩子，`executeExternalCommand` 在有 `hostSpawn` 且命令非注册命令时走钩子而不是 IFileSystem + PATH；`executeExternalCommand` 在 `hostSpawn` 检查之后增加直接 `ctx.commands.get` dispatch，让注册命令不走 PATH 查找；后续补齐 host-backed session hooks、bash 语义修正和 Node 25 fetch mock type compatibility。fork interpreter 完整 vitest 当前为 617 pass / 1 skip，demi 根测试当前为 344 pass / 10 skip。
 
 **git 状态**：demi 根仓库已完成首次提交，`packages/just-bash` 已通过 `git submodule add` 正式登记为 submodule（`.gitmodules` 指向 `https://github.com/wspl/just-bash.git`）。fork 子模块 worktree 已干净，当前 HEAD 是 `cabfc0f`；根仓库 submodule pointer 已指向 `cabfc0f`。
 
