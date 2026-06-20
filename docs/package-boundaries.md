@@ -6,7 +6,100 @@ This document is the canonical package boundary contract and the highest archite
 
 Package direction is a core architecture invariant. Lower-level packages must not know higher-level products, adapters, UI shells, concrete providers, or local machine implementations.
 
-Package roots should expose stable package contracts. Node-only adapters, concrete providers, transport adapters, and test helpers must be explicit packages or explicit subpaths with narrow names.
+The package registry below is the single source of truth for per-package responsibilities and boundaries. Do not scatter package-specific rules across separate sections. When a package is added, removed, renamed, or split, update its registry entry and the dependency graph together.
+
+Test code may depend upward for integration coverage. Production code must not.
+
+## Package Registry
+
+### `just-bash`
+
+- Status: implemented.
+- Production deps: none.
+- Owns: forked Bash parser, interpreter, builtins, expansion, filesystem interface, host-spawn hook, registered command hook, output hooks, audit hooks, and core bash compatibility tests.
+- Public boundary: exposes the fork APIs consumed by `@demi/shell`; it is not a Demi agent runtime package.
+- Must not: import Demi runtime packages or know about AgentSession, providers, TUI, or local host adapters.
+
+### `@demi/core`
+
+- Status: implemented.
+- Production deps: none.
+- Owns: shared data types only: transcript blocks, content blocks, model selection, thinking config, usage, and session phase.
+- Public boundary: type/data contracts shared across packages.
+- Must not: contain concrete provider names, catalog source names, shell runtime details, local host details, UI concepts, transport URLs, or backend identifiers.
+
+### `@demi/provider`
+
+- Status: implemented.
+- Production deps: `@demi/core`.
+- Owns: abstract provider contract, inference request items, provider events, provider definition, provider registry, auth/runtime status, and model catalog shape.
+- Public boundary: provider contract and registry from root; provider test helpers only from `@demi/provider/testing`.
+- Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or TUI.
+
+### `@demi/shell`
+
+- Status: implemented with one local-adapter extraction gap.
+- Production deps: `just-bash`.
+- Owns: Host contract, command specs, CommandRegistry, DemiStore contract, AgentSessionCommandStorage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
+- Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`.
+- Must not: import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, `@demi/host-local`, `@demi/tui`, or own local Node adapters.
+- Temporary gap: `@demi/shell/local-host` and `@demi/shell/store` still contain local Node adapters. They must be removed when `@demi/host-local` is extracted; no compatibility shim should remain.
+
+### `@demi/host-local`
+
+- Status: accepted target package, not yet extracted.
+- Production deps: `@demi/shell`.
+- Owns: local Node adapters, specifically LocalHost and LocalDemiStore.
+- Public boundary: Node-only local host and local store implementations.
+- May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, and process-group signaling.
+- Must not: depend on `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, or `@demi/tui`.
+- Extraction target: move LocalHost and LocalDemiStore here, delete `@demi/shell/local-host` and `@demi/shell/store`, and move local adapter behavior tests under `packages/host-local`.
+
+### `@demi/agent`
+
+- Status: implemented.
+- Production deps: `@demi/core`, `@demi/provider`, `@demi/shell`.
+- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, and assembly of one harness with the standard shell tools.
+- Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only transports from explicit subpaths such as `@demi/agent/stdio`.
+- Must not: import concrete providers, `@demi/host-local`, or UI packages.
+- Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
+
+### `@demi/coding-agent`
+
+- Status: implemented.
+- Production deps: `@demi/agent`, `@demi/core`, `@demi/shell`.
+- Owns: coding harness, coding prompt, coding commands, todo command, and file reference resolution.
+- Public boundary: harness and coding command construction based on Host and CommandSpec contracts.
+- Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, LocalHost, or LocalDemiStore.
+- Runtime rule: defines Host and command usage through the harness; it must not replace the shell mechanism or provide an alternate tool runtime.
+
+### `@demi/provider-claude-code`
+
+- Status: implemented.
+- Production deps: `@demi/core`, `@demi/provider`.
+- Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, and provider-specific tests.
+- Public boundary: provider definition, config parser, model catalog function, and public option types from root.
+- Internal boundary: CLI, JSONL, output, transport, parser, and test cache helpers stay behind implementation files.
+- Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/tui` in production code.
+
+### `@demi/provider-codex`
+
+- Status: implemented.
+- Production deps: `@demi/core`, `@demi/provider`.
+- Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, and provider-specific tests.
+- Public boundary: provider definition, config parser, auth status helper, model catalog function, transport mode type, and public option types from root.
+- Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, and test cache helpers stay behind implementation files.
+- Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/tui` in production code.
+
+### `@demi/tui`
+
+- Status: implemented.
+- Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/shell`, `@demi/host-local`.
+- Owns: local TUI process, command-line parsing, renderer, input loop, real-provider smoke entry points, and local composition.
+- Public boundary: local application entry point and test/acceptance shell.
+- May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
+- Must not: be imported by any other production package.
+- Temporary gap: until `@demi/host-local` exists, TUI imports LocalHost from `@demi/shell/local-host`.
 
 ## Production Dependency Graph
 
@@ -25,76 +118,26 @@ provider-codex -> core, provider
 tui -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, shell, host-local
 ```
 
-All package responsibility sections and boundary tests must be interpreted against this complete graph. A package that is accepted by the graph but not yet implemented is still part of the design contract.
+The graph is a compact view of the `Production deps` fields in the package registry. A package accepted by the graph but not yet implemented is still part of the design contract.
 
-Test code may depend upward for integration coverage. Production code must not.
-
-`@demi/host-local` owns local Node implementations. `@demi/shell` owns only shell contracts and shell runtime. After the split, production imports of `@demi/shell/local-host` and `@demi/shell/store` must not exist.
-
-## Current Implementation Gap
-
-The graph already includes `@demi/host-local`, but the package has not been extracted yet.
-
-- `@demi/shell/local-host` and `@demi/shell/store` still contain local Node adapters. They are not final package boundaries.
-- `@demi/tui` currently imports `LocalHost` from `@demi/shell/local-host` because `@demi/host-local` has not been extracted yet.
-- The next package boundary checkpoint must remove those shell subpaths instead of keeping compatibility shims.
-
-## Package Responsibilities
-
-- `just-bash` owns the forked Bash parser, interpreter, builtins, expansion, filesystem interface, host-spawn hook, registered command hook, output hooks, audit hooks, and core bash compatibility tests.
-- `@demi/core` owns shared data types only: transcript blocks, content blocks, model selection, thinking config, usage, and session phase.
-- `@demi/provider` owns the abstract provider contract: inference request items, provider events, provider definition, provider registry, auth/runtime status, and model catalog shape.
-- `@demi/shell` owns the shell runtime boundary: Host contract, command specs, CommandRegistry, DemiStore contract, AgentSessionCommandStorage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
-- `@demi/host-local` owns local Node adapters: LocalHost and LocalDemiStore. It may depend on `@demi/shell` for Host and DemiStore contracts. It must not depend on `agent`, `provider`, `coding-agent`, concrete providers, or `tui`.
-- `@demi/agent` owns AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, and assembly of one harness with the standard shell tools.
-- `@demi/coding-agent` owns the coding harness, coding prompt, coding commands, todo command, and reference resolution. It defines Host and command usage; it does not replace the shell mechanism.
-- `@demi/provider-claude-code` owns Claude Code provider transport and event mapping. It may depend on `core` and `provider`, not `agent`, `shell`, `coding-agent`, `host-local`, or `tui` in production code.
-- `@demi/provider-codex` owns Codex auth reuse, Responses transport, model catalog mapping, and event mapping. It may depend on `core` and `provider`, not `agent`, `shell`, `coding-agent`, `host-local`, or `tui` in production code.
-- `@demi/tui` is a local composition root. It may assemble concrete providers, AgentServer, LocalHost, and the coding harness. Other packages must not depend on it.
-
-## Public Entry Rules
+## Global Boundary Rules
 
 - Platform-neutral package roots must not statically pull Node-only adapters, concrete providers, UI code, or test helpers into their import closure.
-- `@demi/shell` root exports the platform-neutral shell contract and runtime only.
-- `@demi/shell/host-fs` is allowed because HostBackedFileSystem is Host-driven shell runtime, not a local Node adapter.
-- `@demi/shell/storage` is allowed because it exports storage contracts and agent-session scoping, not a local filesystem implementation.
-- `@demi/agent/stdio` is an explicit Node-only transport subpath. It must not be re-exported from the `@demi/agent` root.
-- Concrete provider package roots expose only provider definitions, config parsers, public auth/status helpers, model catalog functions, and public option types.
-- Internal auth stores, parsers, protocol mappers, transports, stream helpers, and test cache reset helpers stay behind implementation files.
-- `StubProvider` and `events` are testing helpers and are exported only through `@demi/provider/testing`, not the `@demi/provider` root.
+- Public roots expose stable package contracts only; internal parser, transport, protocol, local adapter, auth-store, stream, and test helpers stay behind implementation files unless a package registry entry explicitly says otherwise.
+- Any workspace package imported by production source must be declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
+- Local Node adapters must live in adapter packages, not in platform-neutral runtime packages.
+- Do not keep compatibility shims when a package split moves an implementation to its final package.
 
 ## Host Boundary
 
-`Host` is the only shell runtime interface for executing outside the interpreter. `BashEnvironment`, coding commands, and reference resolution must depend on `Host`, not `LocalHost`.
+`Host` is the only shell runtime interface for executing outside the interpreter. BashEnvironment, coding commands, and reference resolution depend on `Host`, not LocalHost.
 
 Final Host contract requirements:
 
 - `Host` stays in `@demi/shell`.
+- `HostBackedFileSystem` stays in `@demi/shell`; it adapts just-bash filesystem operations to the Host contract and therefore works for local, remote, or container hosts.
 - `LocalHost` moves to `@demi/host-local`.
 - `HostSpawnHandle.kill` uses a platform-neutral signal type such as `string` or a Demi-defined union, not `NodeJS.Signals`.
-- Local process groups, `process.env`, Node streams, `Buffer`, and `node:child_process` belong only in `@demi/host-local`.
-
-`HostBackedFileSystem` remains in `@demi/shell`. It adapts just-bash filesystem operations to the Host contract and therefore works for local, remote, or container hosts.
-
-## Local Adapter Boundary
-
-`@demi/host-local` should export:
-
-```ts
-export { LocalHost } from './local-host'
-export { LocalDemiStore } from './local-store'
-```
-
-It should own tests for local process IO, stdin, process termination, local file store reads/writes, and path traversal rejection.
-
-The migration must delete:
-
-- `packages/shell/src/local-host.ts`;
-- local filesystem implementation from `packages/shell/src/store.ts`;
-- `@demi/shell/local-host`;
-- `@demi/shell/store`.
-
-No compatibility subpaths should remain after the extraction.
 
 ## Composition Boundary
 
@@ -123,22 +166,11 @@ Allowed common catalog fields:
 
 Provider-specific source labels such as `codex-backend` or `models.dev` belong inside provider implementation tests and provider-specific docs, not in `@demi/provider` public types.
 
-## Forbidden Boundary Leaks
-
-- `@demi/core` and `@demi/provider` must not contain concrete provider names, concrete catalog source names, product backend names, transport URLs, UI concepts, shell implementation details, or local machine implementation details.
-- Provider implementations must not import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/tui` in production code.
-- `@demi/shell` must not import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/host-local`, or UI packages.
-- `@demi/agent` must not import concrete providers, `@demi/host-local`, or UI packages.
-- `@demi/coding-agent` must not instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, LocalHost, or LocalDemiStore.
-- `@demi/host-local` must not import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, or `@demi/tui`.
-- Public root exports must not expose internal parser, transport, protocol, local adapter, or test helpers unless they are intentionally part of the package contract.
-
 ## Enforced Decisions
 
 - `ProviderModel` has no provider-specific `source`; common catalog state is limited to portable fields such as `stale`, `sourceFetchedAt`, and `warnings`.
 - Provider testing helpers are explicit test helpers and are not part of the provider root contract.
 - Concrete provider root exports are white-listed public API.
-- Any workspace package imported by production source must be declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
 - Local Node adapters must live in adapter packages, not in platform-neutral runtime packages.
 
 ## Verification
