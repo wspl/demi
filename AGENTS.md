@@ -1,5 +1,5 @@
 - Keep `AGENTS.md` limited to project-specific rules explicitly set by the user.
-- Treat package dependency boundaries in `docs/dependency-boundaries.md` as the highest architecture constraint.
+- Treat package boundaries in `docs/package-boundaries.md` as the highest architecture constraint.
 - Work toward final-state designs; avoid framing architecture decisions as MVP stages.
 - Do not preserve historical baggage or compatibility paths when they conflict with the intended final design.
 - Prefer direct final-state changes over transitional layers; remove obsolete code instead of keeping shims.
