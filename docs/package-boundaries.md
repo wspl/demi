@@ -40,22 +40,25 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demi/shell`
 
-- Status: implemented.
+- Status: implemented; Host facet shape (`defaultCwd`/`process`/`store`) is the next breaking refactor.
 - Production deps: `just-bash`.
-- Owns: Host contract (`root`, `fs`, `spawn`), command specs, CommandRegistry, DemiStore contract, AgentSessionCommandStorage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
+- Owns: Host contract (`defaultCwd`, `fs`, `process`, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
 - Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`.
-- Runtime file operations go through `Host.fs`; true external process execution goes through `Host.spawn`.
-- HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, or virtual hosts.
-- BashEnvironment must register fork portable commands before falling back to `Host.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
+- `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
+- Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
+- True external process execution goes through `Host.process.spawn`.
+- Runtime state such as command JSON state and agent session snapshots goes through `Host.store`; do not keep a separate top-level store adapter boundary.
+- HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, virtual, or policy-restricted hosts.
+- BashEnvironment must register fork portable commands before falling back to `Host.process.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
 - Must not: import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, `@demi/host-local`, `@demi/tui`, or own local Node adapters.
 
 ### `@demi/host-local`
 
-- Status: implemented.
+- Status: implemented; LocalHost facet shape (`defaultCwd`/`process`/`store`) is the next breaking refactor.
 - Production deps: `@demi/shell`.
-- Owns: local Node adapters, specifically `LocalHost.spawn`, `LocalHost.fs`, and `LocalDemiStore`.
-- Public boundary: Node-only local host and local store implementations.
+- Owns: local Node Host adapter, specifically `LocalHost.defaultCwd`, `LocalHost.fs`, `LocalHost.process`, and `LocalHost.store`.
+- Public boundary: one Node-only local Host implementation. Store is a Host facet, not a separate adapter family.
 - May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, and process-group signaling.
 - Must not: depend on `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, or `@demi/tui`.
 
@@ -75,7 +78,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demi/agent`, `@demi/core`, `@demi/shell`.
 - Owns: coding harness, coding prompt, coding commands, todo command, and file reference resolution.
 - Public boundary: harness and coding command construction based on Host and CommandSpec contracts.
-- Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, LocalHost, or LocalDemiStore.
+- Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, or LocalHost.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism or provide an alternate BashEnvironment or tool runtime.
 
 ### `@demi/provider-claude-code`
