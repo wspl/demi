@@ -17,7 +17,7 @@ const workspaceEntries = new Map<string, string>([
   ['@demi/provider-claude-code', 'packages/provider-claude-code/src/index.ts'],
   ['@demi/provider-codex', 'packages/provider-codex/src/index.ts'],
   ['@demi/host-local', 'packages/host-local/src/index.ts'],
-  ['@demi/tui', 'packages/tui/src/index.ts'],
+  ['@demi/repl', 'packages/repl/src/index.ts'],
 ])
 
 const productionPackageDirectories = new Map<string, string>([
@@ -29,7 +29,7 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demi/coding-agent', 'packages/coding-agent'],
   ['@demi/provider-claude-code', 'packages/provider-claude-code'],
   ['@demi/provider-codex', 'packages/provider-codex'],
-  ['@demi/tui', 'packages/tui'],
+  ['@demi/repl', 'packages/repl'],
 ])
 
 const productionDependencyGraph = new Map<string, readonly string[]>([
@@ -42,7 +42,7 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demi/provider-claude-code', ['@demi/core', '@demi/provider']],
   ['@demi/provider-codex', ['@demi/core', '@demi/provider']],
   [
-    '@demi/tui',
+    '@demi/repl',
     [
       '@demi/agent',
       '@demi/coding-agent',

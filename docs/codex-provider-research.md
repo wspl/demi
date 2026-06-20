@@ -368,7 +368,7 @@ Gated 真实验收：
 
 ## 13. 落地记录
 
-已新增 `packages/provider-codex`，并把 TUI provider 选择扩展为 `claude-code` / `codex`。当前实现按调研结论覆盖：
+已新增 `packages/provider-codex`，并把 REPL provider 选择扩展为 `claude-code` / `codex`。当前实现按调研结论覆盖：
 
 - 复用官方 `$CODEX_HOME/auth.json` / `~/.codex/auth.json`，支持 ChatGPT token、API key、PAT、可用的 agent identity 记录；Bedrock 明确 unsupported。
 - ChatGPT token near-expiry refresh、401 force refresh retry、原子写回、未知字段保留、`0600` 权限和 secret redaction。

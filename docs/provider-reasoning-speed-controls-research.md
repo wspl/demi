@@ -223,11 +223,11 @@ interface ModelSelection {
 serviceTierId?: string | null
 ```
 
-TUI / model resolver 只在 selected model catalog 包含该 service tier 时允许选择；Codex provider 对非空 `serviceTierId` 原样映射到 Responses `service_tier`。
+REPL / model resolver 只在 selected model catalog 包含该 service tier 时允许选择；Codex provider 对非空 `serviceTierId` 原样映射到 Responses `service_tier`。
 
 不支持的 service tier 不能被静默改写成另一个 tier。稳定 UI 路径应阻止无效选择；provider request building 对 `null` 应省略字段。如果 catalog metadata 不可用，Demi 不应暴露或发送 service tier 控制。
 
-### 4.4 TUI 行为
+### 4.4 REPL 行为
 
 - 不维护本地固定 thinking level 列表。
 - catalog 可用时，按 provider 返回顺序展示 effort options。
@@ -285,7 +285,7 @@ Request mapping：
   - 未知 future reasoning effort string
   - `service_tiers: [{ id: "priority", name: "Fast" }]`
   - `additional_speed_tiers: ["fast"]` 被忽略
-- TUI / model resolver tests：
+- REPL / model resolver tests：
   - 保留 provider effort order
   - 未显式选择 effort 时，model resolver 生成 `thinking: null`
   - catalog-backed selection 拒绝不在 catalog 内的 effort
@@ -308,4 +308,4 @@ Request mapping：
 - Claude Code catalog 已映射 `models.dev` 的 `reasoning_options[type="effort"].values[]`。
 - Codex catalog 已映射 `service_tiers[]`，并忽略 legacy `additional_speed_tiers` alias。
 - `ModelSelection` / `InferenceRequest` 已携带可选 `serviceTierId`；Codex request 只在选中时写入 Responses `service_tier`。
-- TUI 当前把 `--no-thinking` 表示为“不请求显式 effort”，banner 显示 `thinking: not requested`。
+- REPL 当前把 `--no-thinking` 表示为“不请求显式 effort”，banner 显示 `thinking: not requested`。

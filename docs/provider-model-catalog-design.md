@@ -4,16 +4,16 @@
 |---|---|
 | 日期 | 2026-06-20 |
 | 状态 | 方案 |
-| 范围 | Claude Code / Codex provider 的模型列表、模型过滤、模型元数据与 TUI 选择 |
+| 范围 | Claude Code / Codex provider 的模型列表、模型过滤、模型元数据与 REPL 选择 |
 
 ## 1. 目标
 
-模型列表是 provider 能力，不属于 TUI 硬编码逻辑。
+模型列表是 provider 能力，不属于 REPL 硬编码逻辑。
 
 目标：
 
 - 上层只使用 provider 支持的 full model id，不做 `opus`、`sonnet` 这类本地别名映射。
-- TUI / AgentClient 从 provider catalog 获取模型列表、默认选择和能力元数据。
+- REPL / AgentClient 从 provider catalog 获取模型列表、默认选择和能力元数据。
 - Codex 模型列表复用官方 Codex 鉴权材料直接请求 Codex backend，不走 Demi 登录流程。
 - Claude Code 模型列表使用 `models.dev` 的 Anthropic catalog，避免在仓库里维护 Claude 模型表。
 - catalog 拉取失败不能伪造模型；可以使用带 stale 标记的缓存，也可以要求用户显式传 full id。
@@ -166,7 +166,7 @@ exclude: claude-3-5-sonnet-20241022
 - `attachment` → `supportsAttachments`
 - `cost.input/output/cache_read/cache_write` → `cost`
 - thinking effort options 只有 catalog 明确提供时才填充；否则设为 `null`。
-- catalog 中的 provider default effort 不写入运行默认字段；TUI / agent 默认选择固定为不请求显式 effort。
+- catalog 中的 provider default effort 不写入运行默认字段；REPL / agent 默认选择固定为不请求显式 effort。
 
 缓存：
 
@@ -174,9 +174,9 @@ exclude: claude-3-5-sonnet-20241022
 - 网络失败时可以返回 stale cache，但必须设置 `stale: true` 和 warning。
 - 没有缓存且请求失败时返回错误；不要退回仓库内模型表。
 
-## 5. TUI 与上层行为
+## 5. REPL 与上层行为
 
-TUI 不再拥有 provider-specific model defaults。
+REPL 不再拥有 provider-specific model defaults。
 
 启动行为：
 
@@ -210,7 +210,7 @@ TUI 不再拥有 provider-specific model defaults。
 - 断言 stale cache 带 warning，网络失败且无 cache 不返回硬编码模型。
 - Codex fixture 覆盖默认静态 `client_version`、显式 override、ChatGPT auth headers、`slug` id 映射、401 refresh retry、cache key、server order 保留。
 - Codex fixture 覆盖 `service_tiers` 映射为 provider wire id，且不从 `additional_speed_tiers` 生成 legacy `fast` alias。
-- TUI / CLI 测试覆盖 alias 被拒绝、full id 透传、catalog default 或 first selection 不落回硬编码。
+- REPL / CLI 测试覆盖 alias 被拒绝、full id 透传、catalog default 或 first selection 不落回硬编码。
 
 Gated 真实验收：
 
@@ -360,9 +360,9 @@ NODE
 
 需要删除或迁移的现有行为：
 
-- TUI 中的 provider-specific 默认模型硬编码。
-- TUI 中的 `opus -> claude-opus-4-8` 映射。
-- TUI 中按 provider 写死的 context window 和 thinking efforts。
+- REPL 中的 provider-specific 默认模型硬编码。
+- REPL 中的 `opus -> claude-opus-4-8` 映射。
+- REPL 中按 provider 写死的 context window 和 thinking efforts。
 
 需要新增的边界：
 

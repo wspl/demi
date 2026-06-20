@@ -25,7 +25,7 @@ import {
 } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
 
-export interface TuiOptions {
+export interface ReplOptions {
   provider: 'claude-code' | 'codex'
   cwd: string
   modelId: string | null
@@ -40,13 +40,13 @@ export interface TuiOptions {
   timeoutMs: number
 }
 
-export interface TuiOutput {
+export interface ReplOutput {
   write(text: string): void
   isTTY?: boolean
 }
 
 export interface RenderState {
-  output: TuiOutput
+  output: ReplOutput
   phase: SessionPhase | null
   textLengths: Map<string, number>
   thinkingLengths: Map<string, number>
@@ -61,7 +61,7 @@ export interface RenderState {
   streamAtLineStart: boolean
 }
 
-interface TuiCommandClient {
+interface ReplCommandClient {
   abort(): Promise<boolean>
   retry(): Promise<void>
   resume(): Promise<void>
@@ -69,30 +69,29 @@ interface TuiCommandClient {
   shellInput(shellId: string, stdin: string): Promise<void>
 }
 
-interface TuiLoopClient extends TuiCommandClient {
+interface ReplLoopClient extends ReplCommandClient {
   send(content: UserContentBlock[]): Promise<void>
 }
 
-interface TuiEventSource {
+interface ReplEventSource {
   subscribe(listener: (event: ClientSessionEvent) => void): () => void
 }
 
-export interface TuiInputLoop {
+export interface ReplInputLoop {
   ask(): Promise<string>
-  client: TuiLoopClient
+  client: ReplLoopClient
   renderer: RenderState
-  output?: TuiOutput
+  output?: ReplOutput
 }
 
 const helpText = `Commands:
-  /help                 Show this help
-  /abort                Abort the active turn
-  /retry                Retry the latest user turn
-  /resume               Resume after an abort
-  /compact              Request transcript compaction
-  /input <shellId> <text>
-                       Send stdin to a foreground shell session
-  /exit                 Close the session
+  /help                      Show this help
+  /abort                     Abort the active turn
+  /retry                     Retry the latest user turn
+  /resume                    Resume after an abort
+  /compact                   Request transcript compaction
+  /input <shellId> <text>    Send stdin to a foreground shell session
+  /exit                      Close the session
 
 Tips:
   Start in a scratch directory for acceptance tests.
@@ -110,7 +109,7 @@ async function main(): Promise<void> {
   providerRegistry.register(createClaudeCodeProviderDefinition())
   providerRegistry.register(createCodexProviderDefinition())
   const providerConfigData = providerConfigForOptions(options)
-  const model = await resolveTuiModel(providerRegistry, options, providerConfigData)
+  const model = await resolveReplModel(providerRegistry, options, providerConfigData)
 
   printBanner(options, model)
   if (options.provider === 'codex') await printCodexAuthStatus(options)
@@ -135,25 +134,26 @@ async function main(): Promise<void> {
   }
 
   await client.open(providerConfig, options.cwd)
-  writeLine(color('Session opened. Type /help for commands, /exit to quit.', 'dim'))
+  writeEventLine(process.stdout, 'state', 'session opened; type /help for commands, /exit to quit', 'dim')
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   let closing = false
   process.on('SIGINT', () => {
     if (closing) return
     if (renderer.phase && renderer.phase !== 'idle') {
-      writeLine(`\n${color('Aborting active turn...', 'yellow')}`)
-      void client.abort().catch((error) => writeLine(color(`abort failed: ${messageOf(error)}`, 'red')))
+      writeEventLine(process.stdout, 'state', 'aborting active turn', 'yellow')
+      void client.abort().catch((error) => writeEventLine(process.stdout, 'error', `abort failed: ${messageOf(error)}`, 'red'))
       return
     }
     closing = true
-    writeLine(`\n${color('Closing...', 'dim')}`)
+    writeEventLine(process.stdout, 'state', 'closing', 'dim')
     void cleanup(rl, client, server).finally(() => process.exit(0))
   })
 
   try {
+    const prompt = process.stdin.isTTY ? '\ndemi> ' : ''
     await runInputLoop({
-      ask: () => rl.question(color('\nyou> ', 'bold')),
+      ask: () => rl.question(color(prompt, 'bold')),
       client,
       renderer,
       output: process.stdout,
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   }
 }
 
-export async function runInputLoop(options: TuiInputLoop & { shouldContinue?: () => boolean }): Promise<void> {
+export async function runInputLoop(options: ReplInputLoop & { shouldContinue?: () => boolean }): Promise<void> {
   const output = options.output ?? process.stdout
   while (options.shouldContinue?.() ?? true) {
     const input = (await options.ask()).trim()
@@ -178,15 +178,15 @@ export async function runInputLoop(options: TuiInputLoop & { shouldContinue?: ()
     const content: UserContentBlock[] = [{ type: 'text', text: input }]
     void options.client.send(content).catch((error) => {
       finishStream(options.renderer)
-      writeLineTo(output, color(`send failed: ${messageOf(error)}`, 'red', output))
+      writeEventLine(output, 'error', `send failed: ${messageOf(error)}`, 'red')
     })
   }
 }
 
 export async function handleCommand(
   input: string,
-  client: TuiCommandClient,
-  output: TuiOutput = process.stdout,
+  client: ReplCommandClient,
+  output: ReplOutput = process.stdout,
 ): Promise<boolean> {
   const [command, ...rest] = input.split(/\s+/)
   switch (command) {
@@ -194,34 +194,34 @@ export async function handleCommand(
       writeLineTo(output, helpText)
       return false
     case '/abort':
-      writeLineTo(output, color('abort requested', 'yellow', output))
-      void client.abort().catch((error) => writeLineTo(output, color(`abort failed: ${messageOf(error)}`, 'red', output)))
+      writeEventLine(output, 'state', 'abort requested', 'yellow')
+      void client.abort().catch((error) => writeEventLine(output, 'error', `abort failed: ${messageOf(error)}`, 'red'))
       return false
     case '/retry':
-      void client.retry().catch((error) => writeLineTo(output, color(`retry failed: ${messageOf(error)}`, 'red', output)))
+      void client.retry().catch((error) => writeEventLine(output, 'error', `retry failed: ${messageOf(error)}`, 'red'))
       return false
     case '/resume':
-      void client.resume().catch((error) => writeLineTo(output, color(`resume failed: ${messageOf(error)}`, 'red', output)))
+      void client.resume().catch((error) => writeEventLine(output, 'error', `resume failed: ${messageOf(error)}`, 'red'))
       return false
     case '/compact':
-      void client.compact().catch((error) => writeLineTo(output, color(`compact failed: ${messageOf(error)}`, 'red', output)))
+      void client.compact().catch((error) => writeEventLine(output, 'error', `compact failed: ${messageOf(error)}`, 'red'))
       return false
     case '/input': {
       const shellId = rest.shift()
       if (!shellId) {
-        writeLineTo(output, color('usage: /input <shellId> <text>', 'red', output))
+        writeEventLine(output, 'error', 'usage: /input <shellId> <text>', 'red')
         return false
       }
       void client
         .shellInput(shellId, `${rest.join(' ')}\n`)
-        .catch((error) => writeLineTo(output, color(`input failed: ${messageOf(error)}`, 'red', output)))
+        .catch((error) => writeEventLine(output, 'error', `input failed: ${messageOf(error)}`, 'red'))
       return false
     }
     case '/exit':
     case '/quit':
       return true
     default:
-      writeLineTo(output, color(`Unknown command: ${command}`, 'red', output))
+      writeEventLine(output, 'error', `unknown command: ${command}`, 'red')
       return false
   }
 }
@@ -247,13 +247,13 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
       if (event.phase !== state.phase) {
         finishStream(state)
         state.phase = event.phase
-        writeLineTo(state.output, color(`status: ${event.phase}`, event.phase === 'idle' ? 'green' : 'yellow', state.output))
+        writeEventLine(state.output, 'state', event.phase, event.phase === 'idle' ? 'green' : 'yellow')
       }
       return
     case 'queue':
       finishStream(state)
       if (event.queue.length > 0) {
-        writeLineTo(state.output, color(`queue: ${event.queue.length} message(s)`, 'dim', state.output))
+        writeEventLine(state.output, 'queue', `${event.queue.length} pending`, 'dim')
       }
       return
     case 'shell_output':
@@ -264,14 +264,13 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
       finishStream(state)
       for (const item of event.events) {
         if (item.kind === 'registered-command') {
-          writeLineTo(
-            state.output,
-            color(`audit: registered ${item.name} ${item.args.join(' ')} -> ${item.exitCode}`, 'dim', state.output),
-          )
+          writeEventLine(state.output, 'audit', `registered ${item.name} ${item.args.join(' ')} -> ${item.exitCode}`, 'dim')
         } else {
-          writeLineTo(
+          writeEventLine(
             state.output,
-            color(`audit: system ${item.name} ${item.args.join(' ')} -> ${item.exitCode ?? 'signal'}`, 'dim', state.output),
+            'audit',
+            `system ${item.name} ${item.args.join(' ')} -> ${item.exitCode ?? 'signal'}`,
+            'dim',
           )
         }
       }
@@ -284,15 +283,15 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
       return
     case 'error':
       finishStream(state)
-      writeLineTo(state.output, color(`error: ${event.message}`, 'red', state.output))
+      writeEventLine(state.output, 'error', event.message, 'red')
       return
     case 'rejected':
       finishStream(state)
-      writeLineTo(state.output, color(`rejected ${event.command}: ${event.reason}`, 'red', state.output))
+      writeEventLine(state.output, 'error', `${event.command} rejected: ${event.reason}`, 'red')
       return
     case 'closed':
       finishStream(state)
-      writeLineTo(state.output, color('closed', 'dim', state.output))
+      writeEventLine(state.output, 'state', 'closed', 'dim')
       return
     case 'transcript_snapshot':
       renderBlocks(state, event.blocks)
@@ -303,7 +302,7 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
   }
 }
 
-export function attachRenderer(source: TuiEventSource, state: RenderState): () => void {
+export function attachRenderer(source: ReplEventSource, state: RenderState): () => void {
   return source.subscribe((event) => renderEvent(state, event))
 }
 
@@ -347,7 +346,8 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
       if (state.toolStatuses.get(block.id) !== marker) {
         finishStream(state)
         state.toolStatuses.set(block.id, marker)
-        writeLineTo(state.output, color(`tool: ${block.toolName} ${block.status} ${formatToolInput(block)}`, 'cyan', state.output))
+        const input = formatToolInput(block)
+        writeEventLine(state.output, 'tool', `${block.toolName} ${block.status}${input ? ` -- ${input}` : ''}`, 'cyan')
       }
       renderToolCallOutput(state, block)
       continue
@@ -355,19 +355,19 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
     if (block.type === 'response' && !state.seenResponseIds.has(block.id)) {
       finishStream(state)
       state.seenResponseIds.add(block.id)
-      writeLineTo(state.output, color(`usage: ${formatUsage(block.usage)}`, 'dim', state.output))
+      writeEventLine(state.output, 'usage', formatUsage(block.usage), 'dim')
       continue
     }
     if (block.type === 'error' && !state.seenErrorIds.has(block.id)) {
       finishStream(state)
       state.seenErrorIds.add(block.id)
-      writeLineTo(state.output, color(`agent error: ${block.message}`, 'red', state.output))
+      writeEventLine(state.output, 'error', `agent ${block.message}`, 'red')
       continue
     }
     if (block.type === 'abort' && !state.seenAbortIds.has(block.id)) {
       finishStream(state)
       state.seenAbortIds.add(block.id)
-      writeLineTo(state.output, color('turn aborted', 'yellow', state.output))
+      writeEventLine(state.output, 'state', 'turn aborted', 'yellow')
       continue
     }
   }
@@ -381,7 +381,7 @@ function renderToolCallOutput(state: RenderState, block: Extract<Block, { type: 
   finishStream(state)
   state.toolOutputCounts.set(block.id, block.output.length)
   const text = next.map((item) => (item.type === 'text' ? item.text : `[image:${item.source.mediaType}]`)).join('\n')
-  writePrefixed(state.output, 'tool error', text, 'red')
+  writePrefixed(state.output, 'tool-error', text, 'red')
 }
 
 function renderShellOutput(state: RenderState, shellId: string, stdoutDelta: string, stderrDelta: string): void {
@@ -394,10 +394,7 @@ function renderToolProgress(state: RenderState, output: Extract<ClientSessionEve
   const shell = parseShellProgress(text)
   if (shell) {
     finishStream(state)
-    writeLineTo(
-      state.output,
-      color(`progress: shell[${shell.shellId}] ${shell.status}${shell.reason ? ` (${shell.reason})` : ''}`, 'dim', state.output),
-    )
+    writeEventLine(state.output, 'progress', `shell[${shell.shellId}] ${shell.status}${shell.reason ? ` (${shell.reason})` : ''}`, 'dim')
     return
   }
   if (text.trim()) {
@@ -443,9 +440,13 @@ function finishStream(state: RenderState): void {
   state.streamAtLineStart = true
 }
 
-function writePrefixed(output: TuiOutput, label: string, text: string, tone: Tone): void {
+function writePrefixed(output: ReplOutput, label: string, text: string, tone: Tone): void {
   const lines = text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n')
   for (const line of lines) writeLineTo(output, `${color(`${label}>`, tone, output)} ${line}`)
+}
+
+function writeEventLine(output: ReplOutput, label: string, text: string, tone: Tone): void {
+  writeLineTo(output, `${color(`${label}>`, tone, output)} ${text}`)
 }
 
 function formatUsage(usage: TokenUsage): string {
@@ -477,7 +478,7 @@ function trimOneLine(text: string): string {
   return compact.length > 100 ? `${compact.slice(0, 97)}...` : compact
 }
 
-export function createRenderer(output: TuiOutput = process.stdout): RenderState {
+export function createRenderer(output: ReplOutput = process.stdout): RenderState {
   return {
     output,
     phase: null,
@@ -495,8 +496,8 @@ export function createRenderer(output: TuiOutput = process.stdout): RenderState 
   }
 }
 
-function parseArgs(args: string[]): TuiOptions {
-  let provider: TuiOptions['provider'] = parseProvider(process.env.DEMI_PROVIDER ?? 'claude-code')
+function parseArgs(args: string[]): ReplOptions {
+  let provider: ReplOptions['provider'] = parseProvider(process.env.DEMI_PROVIDER ?? 'claude-code')
   let cwd = process.cwd()
   let modelId: string | null = null
   let thinkingEffort = parseThinkingEffort(envThinkingValue(provider), envThinkingSource(provider))
@@ -559,17 +560,17 @@ function parseArgs(args: string[]): TuiOptions {
   }
 }
 
-function envThinkingValue(provider: TuiOptions['provider']): string | null {
+function envThinkingValue(provider: ReplOptions['provider']): string | null {
   if (provider === 'codex') return process.env.DEMI_CODEX_THINKING ?? process.env.DEMI_CLAUDE_CODE_THINKING ?? null
   return process.env.DEMI_CLAUDE_CODE_THINKING ?? null
 }
 
-function envThinkingSource(provider: TuiOptions['provider']): string {
+function envThinkingSource(provider: ReplOptions['provider']): string {
   if (provider === 'codex' && process.env.DEMI_CODEX_THINKING !== undefined) return 'DEMI_CODEX_THINKING'
   return 'DEMI_CLAUDE_CODE_THINKING'
 }
 
-function parseProvider(value: string): TuiOptions['provider'] {
+function parseProvider(value: string): ReplOptions['provider'] {
   if (value === 'claude-code' || value === 'codex') return value
   throw new Error('--provider must be one of: claude-code, codex')
 }
@@ -593,17 +594,17 @@ function parseThinkingEffort(value: string | null, source: string): ThinkingEffo
   return effort
 }
 
-export interface ResolvedTuiModel {
+export interface ResolvedReplModel {
   selection: ModelSelection
   warnings: string[]
   catalog: ProviderModelList | null
 }
 
-export async function resolveTuiModel(
+export async function resolveReplModel(
   registry: ProviderRegistry,
-  options: TuiOptions,
+  options: ReplOptions,
   providerConfig: Record<string, unknown>,
-): Promise<ResolvedTuiModel> {
+): Promise<ResolvedReplModel> {
   if (options.modelId) {
     validateExplicitModelId(options.provider, options.modelId)
     if (options.serviceTierId) throw new Error('--service-tier requires catalog-backed model selection')
@@ -640,7 +641,7 @@ export async function resolveTuiModel(
   }
 }
 
-function validateExplicitModelId(provider: TuiOptions['provider'], modelId: string): void {
+function validateExplicitModelId(provider: ReplOptions['provider'], modelId: string): void {
   if (modelId === 'opus' || modelId === 'sonnet' || modelId === 'haiku' || modelId === 'default') {
     throw new Error(`--model must be a full ${provider} model id, not alias "${modelId}"`)
   }
@@ -675,7 +676,7 @@ function validateServiceTierForCatalogModel(serviceTierId: string | null, model:
 }
 
 function modelSelectionFromCatalogModel(
-  provider: TuiOptions['provider'],
+  provider: ReplOptions['provider'],
   modelId: string,
   thinkingEffort: ThinkingEffort | null,
   serviceTierId: string | null,
@@ -716,12 +717,17 @@ function acceptedAttachmentExtensions(): FileExtension[] {
   return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf']
 }
 
-async function printCodexAuthStatus(options: TuiOptions): Promise<void> {
+async function printCodexAuthStatus(options: ReplOptions): Promise<void> {
   const auth = await codexAuthStatus({ codexHome: options.codexHome })
-  writeLine(color(`codex auth: ${auth.status}${'accountLabel' in auth && auth.accountLabel ? ` (${auth.accountLabel})` : ''}${'message' in auth && auth.message ? ` (${auth.message})` : ''}`, auth.status === 'authenticated' ? 'green' : 'yellow'))
+  writeEventLine(
+    process.stdout,
+    'auth',
+    `codex ${auth.status}${'accountLabel' in auth && auth.accountLabel ? ` (${auth.accountLabel})` : ''}${'message' in auth && auth.message ? ` (${auth.message})` : ''}`,
+    auth.status === 'authenticated' ? 'green' : 'yellow',
+  )
 }
 
-function providerConfigForOptions(options: TuiOptions): Record<string, unknown> {
+function providerConfigForOptions(options: ReplOptions): Record<string, unknown> {
   if (options.provider === 'claude-code') {
     return {
       ...(options.claudePath ? { claudePath: options.claudePath } : {}),
@@ -735,29 +741,30 @@ function providerConfigForOptions(options: TuiOptions): Record<string, unknown> 
   }
 }
 
-function printBanner(options: TuiOptions, model: ResolvedTuiModel): void {
-  writeLine(color('Demi TUI acceptance shell', 'bold'))
-  writeLine(`provider: ${options.provider}`)
-  writeLine(`workspace: ${options.cwd}`)
-  writeLine(`model: ${model.selection.model.id}`)
-  writeLine(`thinking: ${options.thinkingEffort ?? 'not requested'}`)
-  if (options.serviceTierId) writeLine(`service tier: ${options.serviceTierId}`)
-  for (const warning of model.warnings) writeLine(color(`model warning: ${warning}`, 'yellow'))
-  if (options.provider === 'claude-code') writeLine(`budget: ${options.maxBudgetUsd ?? 'none'}`)
-  else writeLine(`transport: ${options.transport}`)
+function printBanner(options: ReplOptions, model: ResolvedReplModel): void {
+  writeLine(color('Demi REPL', 'bold'))
+  writeLine(color('interactive agent session', 'dim'))
+  writeMetaLine('provider', options.provider)
+  writeMetaLine('cwd', options.cwd)
+  writeMetaLine('model', model.selection.model.id)
+  writeMetaLine('thinking', options.thinkingEffort ?? 'not requested')
+  if (options.serviceTierId) writeMetaLine('tier', options.serviceTierId)
+  if (options.provider === 'claude-code') writeMetaLine('budget', options.maxBudgetUsd ?? 'none')
+  else writeMetaLine('transport', options.transport)
+  for (const warning of model.warnings) writeEventLine(process.stdout, 'warning', warning, 'yellow')
 }
 
 function printUsage(): void {
-  writeLine(`Usage: bun run tui -- [workspace] [options]
+  writeLine(`Usage: bun run repl -- [cwd] [options]
 
 Options:
-  --cwd <path>             Workspace root. Defaults to current directory.
+  --cwd <path>             Working directory. Defaults to current directory.
   --provider <id>          Provider: claude-code, codex. Defaults to claude-code.
   --model <id>             Full model id. Defaults to the provider model catalog selection.
   --thinking <effort>      Provider-supported thinking effort id.
   --no-thinking            Do not request an explicit thinking effort. This is the default.
   --service-tier <id>      Provider-supported service tier id.
-  --budget <usd>           Max budget passed to claude. Defaults to 0.25.
+  --budget <usd>           Max budget passed to Claude Code. Defaults to 0.25.
   --no-budget              Do not pass a max budget.
   --claude-path <path>     Path to claude CLI. Defaults to claude on PATH.
   --codex-home <path>      Codex home containing auth.json. Defaults to CODEX_HOME or ~/.codex.
@@ -773,13 +780,17 @@ function writeLine(text = ''): void {
   process.stdout.write(`${text}\n`)
 }
 
-function writeLineTo(output: TuiOutput, text = ''): void {
+function writeLineTo(output: ReplOutput, text = ''): void {
   output.write(`${text}\n`)
+}
+
+function writeMetaLine(label: string, value: string): void {
+  writeLine(`${label.padEnd(10)}${value}`)
 }
 
 type Tone = 'red' | 'green' | 'yellow' | 'blue' | 'cyan' | 'dim' | 'bold'
 
-function color(text: string, tone: Tone, output: TuiOutput = process.stdout): string {
+function color(text: string, tone: Tone, output: ReplOutput = process.stdout): string {
   if (!output.isTTY) return text
   const codes: Record<Tone, [number, number]> = {
     red: [31, 39],

@@ -40,10 +40,10 @@
 
 ## 3. 架构
 
-demi 是纯 library，不含任何 UI 实现。最外层是**协议层**：一组稳定的事件流与命令接口，供任何壳子（TUI / Electron / Web / 服务进程）接入。壳子不是 demi 的一部分。
+demi 是纯 library，不含任何 UI 实现。最外层是**协议层**：一组稳定的事件流与命令接口，供任何壳子（REPL / Electron / Web / 服务进程）接入。壳子不是 demi 的一部分。
 
 ```text
-壳子（TUI / Electron / Web / ...）   ← 不属于 demi
+壳子（REPL / Electron / Web / ...）   ← 不属于 demi
   ↕  协议层（事件流 + 命令接口）
 Agent Loop
   ↕
@@ -87,7 +87,7 @@ Host
 18. **Shell 控制面显式区分 wait 与 input**：模型面对的 shell 工具必须顺滑且不含隐式状态魔法：一次执行命令，命令未结束时返回可继续操作的 `shellId`；`shell_wait` 是唯一轮询/等待入口；`shell_input` 只写入非空 stdin；`yieldAfterMs` 表示本次调用最多等多久，不按进程启动时间累计；进程安静不等于需要输入，默认只能继续返回 `running`；主动终止前台命令是控制动作，不应默认当作任务失败污染模型上下文。
 19. **长进程优先走受控前台**：需要观测和停止的长进程（如 dev server、watch、preview）应作为 foreground command 运行，由 `yieldAfterMs` / `shell_wait` 观测、由 `shell_abort` 停止；不要用 `cmd &` 后再 `pkill` / `killall` 按进程名清理。后台 job 只用于明确需要在 shell session 生命周期内持续保留、且后续通过 jobs/wait 或 session dispose 管理的进程。
 20. **Bash Environment 不是 Harness 注入项**：Agent Harness 只能定义 `Host`、注册命令、prompt、引用解析和生命周期；不得让用户传入自定义 `BashEnvironment` 或替换 shell tool control surface。Demi 的差异化是统一、可审计、可长程运行的 shell session 机制，所有 agent 都走同一套 wait/input/abort、audit、tool result 和 compaction 语义。
-21. **模型目录属于 provider 能力**：TUI / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
+21. **模型目录属于 provider 能力**：REPL / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
 
 ### 3.2 Shell 控制面为什么要显式 wait/input
 
@@ -907,7 +907,7 @@ todo done
 
 ## 11. 协议层
 
-协议层是 demi 的对外边界，也是唯一通信方式。壳子（TUI / Electron / Web / 服务进程 / 本地 JS 调用方）只通过协议层与 agent 交互，不接触 Agent Loop / Bash Environment / Host 等内部实现。协议层不假设壳子是什么，也不含任何渲染逻辑。
+协议层是 demi 的对外边界，也是唯一通信方式。壳子（REPL / Electron / Web / 服务进程 / 本地 JS 调用方）只通过协议层与 agent 交互，不接触 Agent Loop / Bash Environment / Host 等内部实现。协议层不假设壳子是什么，也不含任何渲染逻辑。
 
 **AgentServer 是唯一运行入口。** 不存在“本地直连绕过 server”的另一套 API。本地 JS 调用方使用 `server.client()` 拿到本地 `AgentClient`，跨进程或网络场景使用 transport 连接同一套 frame handler。transport 仍然存在，但它是 AgentServer/AgentClient 的通信适配层，不是独立包或独立公共分层。
 
@@ -915,7 +915,7 @@ todo done
 
 ### 11.1 AgentServer 与 AgentClient
 
-`AgentServer` 绑定一个已选好的 `AgentHarness`。app/TUI 在创建 server 前选择 coding agent 或其他 agent；`open` 帧只携带 provider config 和 cwd，不携带 harness 名，也没有 host 侧 harness registry。
+`AgentServer` 绑定一个已选好的 `AgentHarness`。app/REPL 在创建 server 前选择 coding agent 或其他 agent；`open` 帧只携带 provider config 和 cwd，不携带 harness 名，也没有 host 侧 harness registry。
 
 ```ts
 const server = new AgentServer({
@@ -1089,7 +1089,7 @@ packages/host-local/       本机 Node adapter：LocalHost(defaultCwd/fs/process
 packages/coding-agent/    Coding agent harness、prompt、coding commands、todo
 packages/provider-claude-code/  Claude Code provider：驱动系统 claude code CLI
 packages/provider-codex/  Codex provider：复用官方 Codex auth，驱动 Responses transport
-packages/tui/             本地验收壳子和 composition root
+packages/repl/             本地验收壳子和 composition root
 ```
 
 `packages/core` 与 `packages/provider` 是底层依赖：core 放跨包共享类型，provider 定义 AgentSession 调用模型的标准接口。`InferenceRequest` 是纯 items 数组模型（`items: InferenceItem[]` + systemPrompt + cwd + tools + thinking + cancel），与 Rust 蓝本一致；provider 实现内部如何把 items 喂给模型（直连 API、stdin stream-json、或 provider 自己支持的 resume 机制）是 provider 自己的事，不进接口。
@@ -1348,7 +1348,7 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 
 已补齐 provider contract 的稳定 `sessionId` / `turnId` / `requestId`：AgentSession 负责生成并传入 provider，Codex provider 用它们设置 `session-id`、`thread-id`、`x-client-request-id` 和 `prompt_cache_key`。WebSocket/SSE、auth refresh、reasoning/tool replay 仍保持为 provider 内部机制，不进入 Agent Loop。
 
-当前实现包含 `packages/provider-codex`、TUI `--provider codex` 入口、platform boundary 检查、默认 deterministic provider tests，以及默认跳过的真实 Codex e2e。真实 e2e 已用本机官方 Codex auth 验证 text、medium thinking、cache usage 和 shell tool roundtrip；测试模块和 gated 验收入口见 `docs/testing.md#531-codex-provider`。
+当前实现包含 `packages/provider-codex`、REPL `--provider codex` 入口、platform boundary 检查、默认 deterministic provider tests，以及默认跳过的真实 Codex e2e。真实 e2e 已用本机官方 Codex auth 验证 text、medium thinking、cache usage 和 shell tool roundtrip；测试模块和 gated 验收入口见 `docs/testing.md#531-codex-provider`。
 
 ## 15. 优先级
 

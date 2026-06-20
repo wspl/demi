@@ -5,7 +5,7 @@ import { StubProvider, events } from '@demi/provider/testing'
 import { AgentServer, type ProviderConfig } from '@demi/agent'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
-import { attachRenderer, createRenderer, handleCommand, renderEvent, resolveTuiModel, runInputLoop, type TuiOutput } from '../index'
+import { attachRenderer, createRenderer, handleCommand, renderEvent, resolveReplModel, runInputLoop, type ReplOutput } from '../index'
 
 const model: ModelSelection = {
   providerId: 'claude-code',
@@ -20,7 +20,7 @@ const model: ModelSelection = {
   thinking: { type: 'effort', effort: 'medium', summary: null },
 }
 
-test('TUI renderer prints transcript deltas, tool state, and cache usage without duplicates', () => {
+test('REPL renderer prints transcript deltas, tool state, and cache usage without duplicates', () => {
   const output = new CaptureOutput()
   const renderer = createRenderer(output)
   const thinking = block({
@@ -91,12 +91,12 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
 
   expect(output.text()).toContain('thinking> plan')
   expect(output.text()).toContain('assistant> hello')
-  expect(output.text()).toContain('tool: shell_exec executing bun test')
-  expect(output.text()).toContain('tool: shell_exec error cat sentinel.txt')
-  expect(output.text()).toContain('tool error> Repeated identical shell_exec suppressed.')
-  expect(output.text()).toContain('usage: in=10 out=2 cache_read=3 cache_write=4')
-  expect(output.text()).toContain('agent error: provider warning')
-  expect(output.text()).toContain('turn aborted')
+  expect(output.text()).toContain('tool> shell_exec executing -- bun test')
+  expect(output.text()).toContain('tool> shell_exec error -- cat sentinel.txt')
+  expect(output.text()).toContain('tool-error> Repeated identical shell_exec suppressed.')
+  expect(output.text()).toContain('usage> in=10 out=2 cache_read=3 cache_write=4')
+  expect(output.text()).toContain('error> agent provider warning')
+  expect(output.text()).toContain('state> turn aborted')
 
   const offset = output.text().length
   renderEvent(renderer, {
@@ -116,15 +116,15 @@ test('TUI renderer prints transcript deltas, tool state, and cache usage without
 
   expect(delta).toContain(' more')
   expect(delta).toContain(' world')
-  expect(delta).toContain('tool: shell_exec completed bun test')
+  expect(delta).toContain('tool> shell_exec completed -- bun test')
   expect(delta).not.toContain('hello world')
   expect(delta).not.toContain('Repeated identical shell_exec suppressed.')
-  expect(delta).not.toContain('usage:')
-  expect(delta).not.toContain('agent error:')
-  expect(delta).not.toContain('turn aborted')
+  expect(delta).not.toContain('usage>')
+  expect(delta).not.toContain('error> agent')
+  expect(delta).not.toContain('state> turn aborted')
 })
 
-test('TUI renderer prints phase, queue, shell output, audit, and progress frames', () => {
+test('REPL renderer prints phase, queue, shell output, audit, and progress frames', () => {
   const output = new CaptureOutput()
   const renderer = createRenderer(output)
 
@@ -168,20 +168,20 @@ test('TUI renderer prints phase, queue, shell output, audit, and progress frames
   renderEvent(renderer, { type: 'closed' })
 
   const text = output.text()
-  expect(text).toContain('status: running')
-  expect(text).toContain('queue: 1 message(s)')
+  expect(text).toContain('state> running')
+  expect(text).toContain('queue> 1 pending')
   expect(text).toContain('shell[shell-1] stdout> out')
   expect(text).toContain('shell[shell-1] stderr> err')
-  expect(text).toContain('audit: registered editor list -> 0')
-  expect(text).toContain('audit: system bun test -> 1')
-  expect(text).toContain('progress: shell[shell-1] running (yield)')
+  expect(text).toContain('audit> registered editor list -> 0')
+  expect(text).toContain('audit> system bun test -> 1')
+  expect(text).toContain('progress> shell[shell-1] running (yield)')
   expect(text).toContain('progress> plain progress')
-  expect(text).toContain('error: provider failed')
-  expect(text).toContain('rejected retry: busy')
-  expect(text).toContain('closed')
+  expect(text).toContain('error> provider failed')
+  expect(text).toContain('error> retry rejected: busy')
+  expect(text).toContain('state> closed')
 })
 
-test('TUI renderer receives AgentClient subscription events end to end', async () => {
+test('REPL renderer receives AgentClient subscription events end to end', async () => {
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'stub',
@@ -205,20 +205,20 @@ test('TUI renderer receives AgentClient subscription events end to end', async (
 
   const provider: ProviderConfig = { type: 'stub', model: { ...model, providerId: 'stub' } }
 
-  await client.open(provider, '/tmp/demi-tui-test')
+  await client.open(provider, '/tmp/demi-repl-test')
   await client.send([{ type: 'text', text: 'hello' }])
   await client.close()
   await server.close()
 
   const text = output.text()
-  expect(text).toContain('status: idle')
-  expect(text).toContain('status: running')
+  expect(text).toContain('state> idle')
+  expect(text).toContain('state> running')
   expect(text).toContain('assistant> agent hello')
-  expect(text).toContain('usage: in=6 out=2 cache_read=1 cache_write=0')
-  expect(text).toContain('closed')
+  expect(text).toContain('usage> in=6 out=2 cache_read=1 cache_write=0')
+  expect(text).toContain('state> closed')
 })
 
-test('TUI model resolver selects from provider catalog when no full model id is provided', async () => {
+test('REPL model resolver selects from provider catalog when no full model id is provided', async () => {
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'claude-code',
@@ -263,7 +263,7 @@ test('TUI model resolver selects from provider catalog when no full model id is 
     createProvider: () => new StubProvider([]),
   })
 
-  const resolved = await resolveTuiModel(providerRegistry, {
+  const resolved = await resolveReplModel(providerRegistry, {
     provider: 'claude-code',
     cwd: '/tmp',
     modelId: null,
@@ -294,7 +294,7 @@ test('TUI model resolver selects from provider catalog when no full model id is 
   expect(resolved.warnings).toEqual(['catalog warning'])
 })
 
-test('TUI model resolver rejects explicit thinking efforts not advertised by catalog', async () => {
+test('REPL model resolver rejects explicit thinking efforts not advertised by catalog', async () => {
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'claude-code',
@@ -325,7 +325,7 @@ test('TUI model resolver rejects explicit thinking efforts not advertised by cat
     createProvider: () => new StubProvider([]),
   })
 
-  await expect(resolveTuiModel(providerRegistry, {
+  await expect(resolveReplModel(providerRegistry, {
     provider: 'claude-code',
     cwd: '/tmp',
     modelId: null,
@@ -338,7 +338,7 @@ test('TUI model resolver rejects explicit thinking efforts not advertised by cat
   }, {})).rejects.toThrow('does not support thinking effort "medium"')
 })
 
-test('TUI model resolver accepts provider-advertised future thinking effort ids', async () => {
+test('REPL model resolver accepts provider-advertised future thinking effort ids', async () => {
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'claude-code',
@@ -369,7 +369,7 @@ test('TUI model resolver accepts provider-advertised future thinking effort ids'
     createProvider: () => new StubProvider([]),
   })
 
-  const resolved = await resolveTuiModel(providerRegistry, {
+  const resolved = await resolveReplModel(providerRegistry, {
     provider: 'claude-code',
     cwd: '/tmp',
     modelId: null,
@@ -385,7 +385,7 @@ test('TUI model resolver accepts provider-advertised future thinking effort ids'
   expect(resolved.selection.thinking).toEqual({ type: 'effort', effort: 'ultra', summary: null })
 })
 
-test('TUI model resolver validates provider-advertised service tier ids', async () => {
+test('REPL model resolver validates provider-advertised service tier ids', async () => {
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
     type: 'codex',
@@ -418,7 +418,7 @@ test('TUI model resolver validates provider-advertised service tier ids', async 
     createProvider: () => new StubProvider([]),
   })
 
-  const resolved = await resolveTuiModel(providerRegistry, {
+  const resolved = await resolveReplModel(providerRegistry, {
     provider: 'codex',
     cwd: '/tmp',
     modelId: null,
@@ -431,7 +431,7 @@ test('TUI model resolver validates provider-advertised service tier ids', async 
   }, {})
 
   expect(resolved.selection.serviceTierId).toBe('priority')
-  await expect(resolveTuiModel(providerRegistry, {
+  await expect(resolveReplModel(providerRegistry, {
     provider: 'codex',
     cwd: '/tmp',
     modelId: null,
@@ -444,7 +444,7 @@ test('TUI model resolver validates provider-advertised service tier ids', async 
   }, {})).rejects.toThrow('does not support service tier "fast"')
 })
 
-test('TUI model resolver rejects aliases and does not call model catalog for explicit full ids', async () => {
+test('REPL model resolver rejects aliases and does not call model catalog for explicit full ids', async () => {
   let listCalls = 0
   const providerRegistry = new ProviderRegistry()
   providerRegistry.register({
@@ -467,15 +467,15 @@ test('TUI model resolver rejects aliases and does not call model catalog for exp
     timeoutMs: 100,
   }
 
-  await expect(resolveTuiModel(providerRegistry, { ...baseOptions, modelId: 'opus' }, {})).rejects.toThrow('not alias "opus"')
-  const resolved = await resolveTuiModel(providerRegistry, { ...baseOptions, modelId: 'claude-opus-4-8' }, {})
+  await expect(resolveReplModel(providerRegistry, { ...baseOptions, modelId: 'opus' }, {})).rejects.toThrow('not alias "opus"')
+  const resolved = await resolveReplModel(providerRegistry, { ...baseOptions, modelId: 'claude-opus-4-8' }, {})
 
   expect(listCalls).toBe(0)
   expect(resolved.selection.model.id).toBe('claude-opus-4-8')
   expect(resolved.selection.model.contextWindow).toBe(0)
 })
 
-test('TUI commands dispatch to the agent client and validate input usage', async () => {
+test('REPL commands dispatch to the agent client and validate input usage', async () => {
   const output = new CaptureOutput()
   const client = new FakeCommandClient()
 
@@ -497,12 +497,12 @@ test('TUI commands dispatch to the agent client and validate input usage', async
     ['shellInput', 'shell-1', 'typed words\n'],
   ])
   expect(output.text()).toContain('Commands:')
-  expect(output.text()).toContain('abort requested')
+  expect(output.text()).toContain('state> abort requested')
   expect(output.text()).toContain('usage: /input <shellId> <text>')
-  expect(output.text()).toContain('Unknown command: /bogus')
+  expect(output.text()).toContain('error> unknown command: /bogus')
 })
 
-test('TUI input loop sends messages asynchronously so commands remain responsive', async () => {
+test('REPL input loop sends messages asynchronously so commands remain responsive', async () => {
   const output = new CaptureOutput()
   const renderer = createRenderer(output)
   const client = new FakeLoopClient()
@@ -520,7 +520,7 @@ test('TUI input loop sends messages asynchronously so commands remain responsive
   sendGate.resolve()
 })
 
-test('TUI input loop prints asynchronous send failures', async () => {
+test('REPL input loop prints asynchronous send failures', async () => {
   const output = new CaptureOutput()
   const renderer = createRenderer(output)
   const client = new FakeLoopClient()
@@ -531,14 +531,14 @@ test('TUI input loop prints asynchronous send failures', async () => {
   await waitForMicrotasks()
 
   expect(client.calls).toEqual([['send', 'run task']])
-  expect(output.text()).toContain('send failed: provider failed')
+  expect(output.text()).toContain('error> send failed: provider failed')
 })
 
 function block<T extends Block>(value: T): T {
   return value
 }
 
-class CaptureOutput implements TuiOutput {
+class CaptureOutput implements ReplOutput {
   readonly isTTY = false
   private readonly chunks: string[] = []
 
@@ -586,7 +586,7 @@ class FakeLoopClient extends FakeCommandClient {
 }
 
 const testHarness: AgentHarness<Record<string, never>> = {
-  name: 'tui-test',
+  name: 'repl-test',
   initialState: () => ({}),
   host: (ctx) => new LocalHost(ctx.cwd),
   systemPrompt: () => 'system',

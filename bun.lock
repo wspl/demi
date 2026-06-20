@@ -116,16 +116,8 @@
         "@demi/shell": "workspace:*",
       },
     },
-    "packages/shell": {
-      "name": "@demi/shell",
-      "version": "0.0.0",
-      "dependencies": {
-        "just-bash": "workspace:*",
-        "zod": "^4.0.0",
-      },
-    },
-    "packages/tui": {
-      "name": "@demi/tui",
+    "packages/repl": {
+      "name": "@demi/repl",
       "version": "0.0.0",
       "dependencies": {
         "@demi/agent": "workspace:*",
@@ -136,6 +128,14 @@
         "@demi/provider-claude-code": "workspace:*",
         "@demi/provider-codex": "workspace:*",
         "@demi/shell": "workspace:*",
+      },
+    },
+    "packages/shell": {
+      "name": "@demi/shell",
+      "version": "0.0.0",
+      "dependencies": {
+        "just-bash": "workspace:*",
+        "zod": "^4.0.0",
       },
     },
   },
@@ -166,9 +166,9 @@
 
     "@demi/provider-codex": ["@demi/provider-codex@workspace:packages/provider-codex"],
 
-    "@demi/shell": ["@demi/shell@workspace:packages/shell"],
+    "@demi/repl": ["@demi/repl@workspace:packages/repl"],
 
-    "@demi/tui": ["@demi/tui@workspace:packages/tui"],
+    "@demi/shell": ["@demi/shell@workspace:packages/shell"],
 
     "@emnapi/core": ["@emnapi/core@1.11.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.2", "tslib": "^2.4.0" } }, "sha512-l9Oo58x0HOP5znGzVhYW9U3e5wVuA4LAZU2AGezTmkhO1CgQRFDhDg4nneHsu/t3WniXg9QrG2nIXL/ZS8ln8Q=="],
 

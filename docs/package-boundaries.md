@@ -18,7 +18,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: none.
 - Owns: forked Bash parser, interpreter, builtins, expansion, portable command registry, filesystem interface, host-spawn hook, registered command hook, output hooks, audit hooks, and core bash compatibility tests.
 - Public boundary: exposes the fork APIs consumed by `@demi/shell`; it is not a Demi agent runtime package.
-- Must not: import Demi runtime packages or know about AgentSession, providers, TUI, or local host adapters.
+- Must not: import Demi runtime packages or know about AgentSession, providers, REPL, or local host adapters.
 
 ### `@demi/core`
 
@@ -36,7 +36,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: provider contract and registry from root; provider test helpers only from `@demi/provider/testing`.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
-- Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or TUI.
+- Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or REPL.
 
 ### `@demi/shell`
 
@@ -51,7 +51,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, virtual, or policy-restricted hosts.
 - BashEnvironment must register fork portable commands before falling back to `Host.process.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
-- Must not: import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, `@demi/host-local`, `@demi/tui`, or own local Node adapters.
+- Must not: import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, `@demi/host-local`, `@demi/repl`, or own local Node adapters.
 
 ### `@demi/host-local`
 
@@ -60,7 +60,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: local Node Host adapter, specifically `LocalHost.defaultCwd`, `LocalHost.fs`, `LocalHost.process`, and `LocalHost.store`.
 - Public boundary: one Node-only local Host implementation. Store is a Host facet, not a separate adapter family.
 - May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, and process-group signaling.
-- Must not: depend on `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, or `@demi/tui`.
+- Must not: depend on `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, or `@demi/repl`.
 
 ### `@demi/agent`
 
@@ -88,7 +88,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, and provider-specific tests.
 - Public boundary: provider definition, config parser, model catalog function, and public option types from root.
 - Internal boundary: CLI, JSONL, output, transport, parser, and test cache helpers stay behind implementation files.
-- Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/tui` in production code.
+- Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/repl` in production code.
 
 ### `@demi/provider-codex`
 
@@ -97,13 +97,13 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, and provider-specific tests.
 - Public boundary: provider definition, config parser, auth status helper, model catalog function, transport mode type, and public option types from root.
 - Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, and test cache helpers stay behind implementation files.
-- Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/tui` in production code.
+- Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/repl` in production code.
 
-### `@demi/tui`
+### `@demi/repl`
 
 - Status: implemented.
 - Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/shell`, `@demi/host-local`.
-- Owns: local TUI process, command-line parsing, renderer, input loop, real-provider smoke entry points, and local composition.
+- Owns: local REPL process, command-line parsing, renderer, input loop, real-provider smoke entry points, and local composition.
 - Public boundary: local application entry point and test/acceptance shell.
 - May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
 - Must not: be imported by any other production package.
@@ -122,7 +122,7 @@ agent -> core, provider, shell
 coding-agent -> agent, core, shell
 provider-claude-code -> core, provider
 provider-codex -> core, provider
-tui -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, shell, host-local
+repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, shell, host-local
 ```
 
 The graph is a compact view of the `Production deps` fields in the package registry. A package accepted by the graph but not yet implemented is still part of the design contract.

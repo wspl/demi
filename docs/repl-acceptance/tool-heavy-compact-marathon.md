@@ -4,9 +4,9 @@
 |---|---|
 | Date | 2026-06-19 |
 | Status | Passed |
-| Scope | Real TUI + real Claude Code provider + shell tools + repeated compact |
+| Scope | Real REPL + real Claude Code provider + shell tools + repeated compact |
 | Primary model | `claude-haiku-4-5`, thinking off |
-| TUI command | `bun run packages/tui/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
+| REPL command | `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
 | Acceptance target | Trigger compact repeatedly while the model must keep using `shell_exec` after compact |
 
 ## Scenario Design
@@ -17,7 +17,7 @@ This test is specifically aimed at compacted replay with previous `tool_use` and
 
 ## Machine-Checkable Evidence
 
-- `status: compacting` appears at least 3 times.
+- `state> compacting` appears at least 3 times.
 - New `shell_exec` calls happen after compact.
 - Tool render count increases after each compact.
 - No post-compact message says tools are unavailable.
@@ -28,7 +28,7 @@ This test is specifically aimed at compacted replay with previous `tool_use` and
 
 - At least 3 compact phases.
 - At least 3 successful post-compact shell tool continuations.
-- The TUI returns to idle after the final cycle.
+- The REPL returns to idle after the final cycle.
 - No repeated MCP request-id corruption, orphaned tool result, or runaway same-command loop.
 
 ## Failure Signals
@@ -43,14 +43,14 @@ This test is specifically aimed at compacted replay with previous `tool_use` and
 ### Run 1
 
 - Date: 2026-06-19
-- Workspace: `/var/folders/bj/xcm3f3zx2z710fbv_jt6p3zr0000gn/T/demi-tui-compact-haiku-q7wWRJ`
-- Log path: `/var/folders/bj/xcm3f3zx2z710fbv_jt6p3zr0000gn/T/demi-tui-compact-haiku-q7wWRJ/tui-compact-haiku.log`
+- Workspace: `/var/folders/bj/xcm3f3zx2z710fbv_jt6p3zr0000gn/T/demi-repl-compact-haiku-q7wWRJ`
+- Log path: `/var/folders/bj/xcm3f3zx2z710fbv_jt6p3zr0000gn/T/demi-repl-compact-haiku-q7wWRJ/repl-compact-haiku.log`
 - Log size: 2,887,721 bytes.
 - Prompt shape: four finite local `shell_exec` pressure turns, each asking for one Python command that writes one marker line plus 720k repeated characters, followed by a no-tool continuation check.
 - Process result: exit code 0.
 - Compact phases: 4.
 - Post-compact tool calls: shell tool executed after compact in pressure turns 2, 3, and 4.
-- Final artifacts: pressure markers were observed through TUI shell output; continuation turn completed without shell tools.
+- Final artifacts: pressure markers were observed through REPL shell output; continuation turn completed without shell tools.
 - Final counters: `compacting=4`, `shellExec=8`, `usage=5`, `suppressed=0`, `toolUnavailable=0`, `idle=6`.
 - Verdict: Passed.
 
