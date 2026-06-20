@@ -8,33 +8,9 @@ Package direction is a core architecture invariant. Lower-level packages must no
 
 Package roots should expose stable package contracts. Node-only adapters, concrete providers, transport adapters, and test helpers must be explicit packages or explicit subpaths with narrow names.
 
-## Current Production Graph
+## Production Dependency Graph
 
-The implemented production source graph must stay acyclic and limited to these edges:
-
-```text
-just-bash -> none
-core -> none
-provider -> core
-shell -> just-bash
-agent -> core, provider, shell
-coding-agent -> agent, core, shell
-provider-claude-code -> core, provider
-provider-codex -> core, provider
-tui -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, shell
-```
-
-Current implementation note:
-
-- `@demi/shell/local-host` and `@demi/shell/store` still contain local Node adapters. They are not final package boundaries.
-- `@demi/tui` currently imports `LocalHost` from `@demi/shell/local-host` because `@demi/host-local` has not been extracted yet.
-- The next package boundary checkpoint must remove those shell subpaths instead of keeping compatibility shims.
-
-Test code may depend upward for integration coverage. Production code must not.
-
-## Accepted Target Graph
-
-The accepted final split for local machine adapters is:
+The canonical production source graph contains every Demi package and must stay acyclic:
 
 ```text
 just-bash -> none
@@ -49,7 +25,19 @@ provider-codex -> core, provider
 tui -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, shell, host-local
 ```
 
+All package responsibility sections and boundary tests must be interpreted against this complete graph. A package that is accepted by the graph but not yet implemented is still part of the design contract.
+
+Test code may depend upward for integration coverage. Production code must not.
+
 `@demi/host-local` owns local Node implementations. `@demi/shell` owns only shell contracts and shell runtime. After the split, production imports of `@demi/shell/local-host` and `@demi/shell/store` must not exist.
+
+## Current Implementation Gap
+
+The graph already includes `@demi/host-local`, but the package has not been extracted yet.
+
+- `@demi/shell/local-host` and `@demi/shell/store` still contain local Node adapters. They are not final package boundaries.
+- `@demi/tui` currently imports `LocalHost` from `@demi/shell/local-host` because `@demi/host-local` has not been extracted yet.
+- The next package boundary checkpoint must remove those shell subpaths instead of keeping compatibility shims.
 
 ## Package Responsibilities
 
@@ -169,7 +157,7 @@ Existing boundary coverage:
 
 Required verification when `@demi/host-local` is extracted:
 
-- Add `@demi/host-local -> @demi/shell` to the enforced production graph.
+- Sync `platform-entrypoints.test.ts` enforced production graph with this document's complete graph, including `@demi/host-local -> @demi/shell`.
 - Add `@demi/host-local` to package manifest boundary checks.
 - Assert platform-neutral production packages do not depend on `@demi/host-local`.
 - Assert production source has no imports from `@demi/shell/local-host` or `@demi/shell/store`.
