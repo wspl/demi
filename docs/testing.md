@@ -370,7 +370,7 @@ Owner：`packages/shell`、`packages/host-local`
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
-| `HostBackedFileSystem` 通过 `Host.spawn` 完成 read/exists/stat/write/append/readdir | 有效 | `host-fs.test.ts` 用 LocalHost 验证 read/exists/stat/write/append/readdir 的行为正确；另用 fake Host 记录 readFile、readFileBuffer、exists、stat、writeFile、appendFile、readdir 的 command/args/cwd/stdin，断言全部通过 `Host.spawn`。验证：5.11 targeted command，17 pass。 | `packages/shell/src/__tests__/host-fs.test.ts` | 防止 shell/coding 绕过 Host 直接读写本机 fs，破坏远程或容器后端边界。 |
+| `HostBackedFileSystem` 经 `Host.fs` 完成 read/exists/stat/write/append/readdir/mkdir/rm/realpath | 待重写 | 现有 `host-fs.test.ts` 验证的是旧实现：IFileSystem 操作通过 `Host.spawn` 执行 `cat`/`tee`/`test`/`ls` 等命令。该覆盖只能说明没有直接读写本机 fs，不能证明最终态。Host.fs 重构后测试必须改为 fake `Host.fs` 记录每个文件操作，并断言 portable command/redirection 不调用 `Host.spawn`。 | `packages/shell/src/__tests__/host-fs.test.ts` | 防止文件系统能力错误绑定到本机 coreutils，导致 remote/container/memfs/virtual Host 不可用，或 GNU/BSD 差异进入 agent 行为。 |
 | shell root entry 只暴露 browser-safe Host contract / FS class | 有效 | `root-entry.test.ts` 从 root entry 导入 Host contract 和 HostBackedFileSystem 并验证可构造/resolvePath；另扫描 shell root entry 的本地静态闭包，断言没有 `node:` import/require、`Buffer` 或 `process.env/cwd`。验证同上。 | `packages/shell/src/__tests__/root-entry.test.ts` | 防止 `@demi/shell` 根入口静态带入 Node-only adapter，破坏 browser/runtime-neutral 包边界。 |
 | readFileBuffer 返回 raw bytes | 有效 | `host-fs.test.ts` 写入 `[0x68,0x69,0x0a]` 二进制内容，`readFileBuffer` 断言返回同一 byte array；能发现文本解码损坏二进制。验证同上。 | `host-fs.test.ts` | 防止二进制文件被文本编码损坏。 |
 | `LocalHost` spawn capture stdout 和 stdin | 有效 | `local-host.test.ts` 断言 LocalHost spawn `printf` 可收集 stdout，spawn `sh` 后 `writeStdin/closeStdin` 可被子进程读取；能发现本地 adapter I/O 管道断裂。验证同上。 | `packages/host-local/src/__tests__/local-host.test.ts` | 防止本地 adapter 不能正确连接进程输入输出。 |
@@ -387,7 +387,7 @@ Owner：`packages/coding-agent`
 |---|---|---|---|---|
 | coding harness 暴露 Host/commands 并由组装层创建 shell tools | 有效 | 测试 `createCodingAgentHarness({ host })` 后断言默认 commands 为 `editor/todo`；测试局部按 AgentServer 的标准组装创建 `BashEnvironment + createShellSessionTools`，断言 runtime tools 为 `shell_exec/shell_wait/shell_input/shell_abort`，并通过环境执行默认 todo command；同时断言 harness 自身不暴露 `tools()`/`dispose`。验证：5.12 targeted command，6 pass。 | `packages/coding-agent/src/__tests__/coding-harness.test.ts` | 防止 coding harness 回退到 public `BashEnvironment` 注入或自定义 tool 替换，同时防止模型打开后缺少标准 shell 控制面或默认命令未注册。 |
 | registered command prompt 注入 system prompt | 有效 | 测试 systemPrompt 包含 editor/todo prompt、effects/success/failure output、todo example、workspace-cwd rule、foreground long-process rules、timeout hard-stop warning、auxiliary shell guidance、line-oriented stdin newline、avoid pkill/killall 和 no redundant restart 等文本，并断言 `editor prompt` 输出同源内容；能发现专属命令或 shell-control 说明未注入。验证同上。 | `coding-harness.test.ts` | 防止模型不知道 `editor`、`todo` 等专属命令的正确调用方式，也防止真实 TUI 里反复出现错误工作目录、误用 timeout 或重复启动已验证服务。 |
-| file reference 通过 workspace host 读取 | 有效 | 测试在 workspace root 下解析相对路径和 file URL，断言输出 `<file path=...>` 包含文件内容；另用 fake `RecordingHost` 断言 reference resolution 必须调用 `Host.spawn({ command: 'cat', args: ['note.txt'], cwd })`，能发现绕过 Host 的直接 fs 读取。验证同上。 | `coding-harness.test.ts` | 防止引用展开绕过 Host，或模型拿不到用户指定文件内容。 |
+| file reference 通过 workspace `Host.fs` 读取 | 待重写 | 现有 `coding-harness.test.ts` 用 fake `RecordingHost` 断言 reference resolution 调用 `Host.spawn({ command: 'cat', args: ['note.txt'], cwd })`。这是旧边界记录。Host.fs 重构后应改为断言 reference resolver 调用 `Host.fs.readFile`，并确认不会 spawn `cat`。 | `coding-harness.test.ts` | 防止引用展开绕过 Host，也防止引用读取依赖本机 `cat`，导致 virtual fs 或远端 fs 场景不可用。 |
 | file reference 拒绝 workspace root 外路径 | 有效 | 测试 workspace root 外的 absolute path reference reject `File reference escapes workspace`；能发现引用展开读取工作区外文件。验证同上。 | `coding-harness.test.ts` | 防止通过 reference 读取工作区外文件。 |
 | reference resolution 与 AgentSession send 顺序集成 | 有效 | 测试通过真实 `AgentSession.send` 发送 text+reference，provider callback 精确断言 request.items 已展开为 file content 且不含 `reference`，随后 transcript user block 也保存展开内容；能发现先写未展开引用。验证同上。 | `coding-harness.test.ts` 通过 `AgentSession` 断言 provider request 和 transcript 都保存展开后的 file content | 需要发现 coding reference 在真实 session 中是否会先写入未展开内容。 |
 
@@ -404,7 +404,7 @@ Owner：`packages/coding-agent`
 | context disambiguation 只在唯一最近匹配时生效 | 有效 | 测试 context line 2 与两个匹配等距时失败并列出 occurrence，断言文件未改；context line 3 时只替换最近唯一匹配。验证同上。 | `editor-command.test.ts` | 防止模型提供上下文后仍改到错误位置。 |
 | empty old text 拒绝且不修改文件 | 有效 | 测试 `--old ""` exit 1，stderr 为 `Old text must not be empty`，并断言原文件内容未变。验证同上。 | `editor-command.test.ts` | 防止空匹配导致在文件所有位置插入内容。 |
 | unified diff patch、timestamp headers、多文件创建/删除 | 有效 | 测试普通 unified diff、带 timestamp header、同时修改已有文件并创建新文件、`/dev/null` 删除文件，均断言 stdout/diff metadata/实际文件状态；能发现常见 patch 语义缺失。验证同上。 | `editor-command.test.ts` | 防止常见 patch 格式无法应用，或删除/新增文件语义错。 |
-| patch 全量校验后再写入，保证跨文件事务 | 有效 | 测试跨两个文件 patch 中第二个文件 context 不匹配时 exit 1，并断言第一个文件未被修改；另用 fake Host 让第二个 `tee` 在已写入内容后返回失败，断言第一、第二个文件都恢复原内容。该测试先在旧实现上失败，修复后通过。验证同上。 | `editor-command.test.ts` | 防止 patch 中后续文件失败时前面文件已经被部分修改，或失败中的文件留下半写入内容。 |
+| patch 全量校验后再写入，保证跨文件事务 | 待重写 | 现有测试覆盖事务语义，但 failure injection 仍通过 fake Host 的 `tee` spawn 失败表达。Host.fs 重构后应改为 fake `Host.fs.writeFile` 失败，断言第一、第二个文件都恢复原内容。 | `editor-command.test.ts` | 防止 patch 中后续文件失败时前面文件已经被部分修改，或失败中的文件留下半写入内容；同时防止 editor 继续依赖 shell command 做文件写入。 |
 
 ### 5.14 Todo Command
 

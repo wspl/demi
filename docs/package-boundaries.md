@@ -16,7 +16,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: none.
-- Owns: forked Bash parser, interpreter, builtins, expansion, filesystem interface, host-spawn hook, registered command hook, output hooks, audit hooks, and core bash compatibility tests.
+- Owns: forked Bash parser, interpreter, builtins, expansion, portable command registry, filesystem interface, host-spawn hook, registered command hook, output hooks, audit hooks, and core bash compatibility tests.
 - Public boundary: exposes the fork APIs consumed by `@demi/shell`; it is not a Demi agent runtime package.
 - Must not: import Demi runtime packages or know about AgentSession, providers, TUI, or local host adapters.
 
@@ -42,10 +42,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `just-bash`.
-- Owns: Host contract, command specs, CommandRegistry, DemiStore contract, AgentSessionCommandStorage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
+- Owns: Host contract (`root`, `fs`, `spawn`), command specs, CommandRegistry, DemiStore contract, AgentSessionCommandStorage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
 - Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`.
-- Runtime execution outside the interpreter goes through Host only.
-- HostBackedFileSystem adapts just-bash filesystem operations to the Host contract and works for local, remote, or container hosts.
+- Runtime file operations go through `Host.fs`; true external process execution goes through `Host.spawn`.
+- HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, or virtual hosts.
+- BashEnvironment must register fork portable commands before falling back to `Host.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
 - Must not: import `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, `@demi/host-local`, `@demi/tui`, or own local Node adapters.
 
@@ -53,7 +54,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demi/shell`.
-- Owns: local Node adapters, specifically LocalHost and LocalDemiStore.
+- Owns: local Node adapters, specifically `LocalHost.spawn`, `LocalHost.fs`, and `LocalDemiStore`.
 - Public boundary: Node-only local host and local store implementations.
 - May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, and process-group signaling.
 - Must not: depend on `@demi/agent`, `@demi/provider`, concrete providers, `@demi/coding-agent`, or `@demi/tui`.

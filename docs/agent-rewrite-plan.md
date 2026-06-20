@@ -32,10 +32,11 @@
 | Agent Loop | 通用 session runtime，不感知 coding / fs / git / 业务命令；只处理固定 shell tools 的调用结果和 transcript。 |
 | Agent Harness | 描述某类 agent 的 prompt、状态、命令、Host、引用解析和生命周期；不替换 shell runtime。 |
 | Bash Environment | Demi 固定的可审计 bash-like 执行环境，承载所有 agent 的 shell session 工具。 |
-| Host | Bash Environment 之下的执行后端抽象，只负责"在哪 spawn"。 |
+| Host | Bash Environment 之下的工作区后端抽象，提供 `root`、`fs` 和 `spawn`。 |
 | shell session | 一个长期存活的 shell 状态（cwd/env/进程表），跨多次 `shell_exec` 复用。 |
 | 注册命令 | agent 专属命令，TS 实现，经 command registry 调度。 |
-| 系统命令 | 非注册命令，一律 spawn 系统 command 执行。 |
+| portable command | fork 提供的常见 Unix 命令 TS 实现，经 command registry 调度并读写 `Host.fs`。 |
+| host external command | 真正依赖 host runtime 的外部命令，经 `Host.spawn` 执行。 |
 
 ## 3. 架构
 
@@ -59,8 +60,8 @@ Host
 - Agent Loop 是通用的，不感知 coding、文件系统、git 或具体业务命令；它只看到固定 shell tools 的工具调用结果，不解释 shell 进程细节。
 - Agent Harness 定义某类 agent 的 prompt、状态、Host、注册命令、引用解析和策略。
 - 每个 agent 对模型只暴露四个 shell session 工具：`shell_exec` / `shell_wait` / `shell_input` / `shell_abort`。
-- Bash Environment 是所有 agent 固定使用的核心机制，不是 coding agent 的可替换依赖；它执行注册命令，其余命令 spawn 系统 command。
-- Host 只提供 `root` 与 `spawn`，不暴露文件 API（见 §8）。
+- Bash Environment 是所有 agent 固定使用的核心机制，不是 coding agent 的可替换依赖；它执行注册命令和 just-bash portable commands，真实外部命令才 spawn 到 Host。
+- Host 提供 `root`、`fs` 与 `spawn`：文件系统访问走 `Host.fs`，真实外部进程走 `Host.spawn`（见 §8）。
 
 ### 3.1 不可回退的架构守则
 
@@ -68,12 +69,12 @@ Host
 
 1. **默认入口先天多平台**：`@demi/shell` 和 `@demi/coding-agent` 的默认入口必须保持 browser-safe / runtime-neutral。不得用"另开 browser 入口"来掩盖根入口静态依赖 `node:*`、`Buffer`、`process.env` 或 Node-only adapter 的问题。
 2. **Node 能力显式隔离**：`LocalHost`、`LocalDemiStore`、stdio transport、真实 Claude CLI provider 等 Node-only 能力只能从明确的 adapter / provider 子路径或包内导入；测试可以使用 Node API，但运行时根入口不能被测试便利性污染。
-3. **Host 是唯一执行与文件访问边界**：bash runner、coding editor、reference resolver 都只能通过 `Host.spawn` 访问工作区。除显式 Node adapter 外，不直接读写本机 fs，不把 `node:path` 当成运行时依赖。
+3. **Host 是唯一执行与文件访问边界**：bash runner、coding editor、reference resolver 都只能通过 `Host.fs` / `Host.spawn` 访问工作区。除显式 Host adapter 外，不直接读写本机 fs，不把 `node:path` 当成运行时依赖。
 4. **just-bash 是实现基线，不是零散复制来源**：`packages/just-bash` 是 `wspl/just-bash` fork 的 git submodule；demi 消费其中的 `just-bash` workspace package。fork 的改造边界是 bash engine 的可扩展性，不承载 Demi 的 AgentServer/provider 逻辑；demi 仓库内不得再维护第二套 just-bash 源码副本。
 5. **不整段回退系统 shell**：parser 或 runner 不支持的语法要明确拒绝，不能把整段 script 交给系统 shell 执行。否则 registered command、audit、session state、Host 抽象都会失效。
-6. **状态类 builtin 必须在 runner 内维护**：`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `pushd` / `popd` / `dirs` / `jobs` / `wait` / `exit` / loop control 等会改变 shell session 的行为不能 spawn 系统 command。
-7. **系统命令不要重造**：常见 Unix 命令名保留给系统命令。只有需要 agent 状态、审计、事务或协议层语义的能力才注册为 agent 专属命令。
-8. **注册命令不可被 shell function 遮蔽**：`editor` / `todo` 这类注册命令是 agent 能力边界，普通函数定义不能覆盖它们；`command` builtin 也不能把状态 builtin 强行改成系统命令。`command` 执行路径应跳过 shell function，但仍保留状态 builtin、注册命令和系统命令的正常边界。
+6. **状态类 builtin 必须在 runner 内维护**：`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `pushd` / `popd` / `dirs` / `jobs` / `wait` / `exit` / loop control 等会改变 shell session 的行为不能交给 host external command。
+7. **portable command 复用 fork，不在 Demi 重造**：`cat` / `ls` / `grep` / `sed` / `awk` / `jq` / `find` / `tee` / `cp` / `mv` / `touch` 等 fork 已实现的命令应通过 just-bash command registry 运行，并读写 `Host.fs`。Demi 不再复制实现，也不把这些命令退回本机 coreutils。只有真正依赖 host runtime 的命令才走 `Host.spawn`。
+8. **注册命令不可被 shell function 遮蔽**：`editor` / `todo` 这类注册命令是 agent 能力边界，普通函数定义不能覆盖它们；`command` builtin 也不能把状态 builtin 强行改成外部命令。`command` 执行路径应跳过 shell function，但仍保留状态 builtin、注册命令、portable command 和 host external command 的正常边界。
 9. **Provider config 是协议输入**：经 AgentClient 进入真实 provider 的 `config` 必须按 provider 自己的可序列化白名单解析；测试/内部注入能力（如 fake transport factory）不能通过协议 config 暴露。
 10. **Manifest 不虚增层依赖**：package manifest 必须反映真实源码依赖，不能让平台无关包通过声明依赖暗中耦合 provider、Node-only adapter 或真实 CLI provider。
 11. **命令说明单一来源**：注册命令的 prompt、`<command> prompt` 输出、system prompt 中的命令说明必须由同一份 `CommandSpec` 渲染，不手写多份说明。
@@ -135,7 +136,8 @@ runner 不提供由 idle timeout 触发的 shell 输入需求状态。`yieldAfte
   → 逐条执行命令
     → 注册命令：走 command registry 的 TS 实现
     → 状态类 builtin：由 engine 内部实现维护 session 状态（见 §7）
-    → 其余命令：spawn 系统 command
+    → just-bash portable commands：走 fork command registry + Host.fs
+    → 真实外部命令：走 Host.spawn
   → parser 不支持的语法：直接拒绝，不整段交给系统 shell
 ```
 
@@ -143,31 +145,32 @@ runner 不提供由 idle timeout 触发的 shell 输入需求状态。`yieldAfte
 
 1. Bash Engine 解析语法。
 2. 注册命令走 command registry（如 `editor` / `todo`）。
-3. 状态类 builtin（`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `exit` 等）由 engine 内部实现，维护 shell session 的 cwd / env / 函数——这些不能 spawn 系统 command，否则状态不连续（见 §4.7.1、§7）。
-4. 其余命令 `spawn(command, args)`（如 `cat` / `rg` / `git` / `npm`）。
-5. parser 不支持时返回错误。
+3. 状态类 builtin（`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `exit` 等）由 engine 内部实现，维护 shell session 的 cwd / env / 函数——这些不能交给 host external command，否则状态不连续（见 §4.7.1、§7）。
+4. just-bash portable commands（如 `cat` / `ls` / `grep` / `sed` / `awk` / `jq` / `find` / `tee` / `mkdir` / `rm` 等）走 fork 自己的 TS command 实现，文件读写通过 `Host.fs` 暴露的虚拟/远端/本机文件系统。
+5. 真实外部命令（如 `git` / `npm` / `node` / `bun` / `cargo` / `docker` 等）才走 `Host.spawn(command, args)`。
+6. parser 不支持时返回错误。
 
-非注册、非状态类命令没有"内置实现 vs 系统 fallback"两层——统一 spawn 系统 command。本地与远程行为一致（远程时 spawn 在远端跑），也不在 agent 进程里重写一遍 `cat` / `ls` / `rg`。
+非注册、非状态类命令必须区分"portable command"和"host external command"两层。portable command 不应依赖本机 `/bin` 或 GNU/BSD coreutils 差异；它们由 fork 实现并读写 `Host.fs`。host external command 才进入 Host policy，由本机、远端、容器或未来 virtual host 决定是否支持、如何执行。
 
-系统命令第一版完全自由，不做 allowlist 或安全护栏。
+host external command 第一版完全自由，不做 allowlist 或安全护栏。
 
-`source` / `.` 是状态类 builtin，不走系统 command。它在当前 shell session 中执行脚本，能修改 cwd/env/positional parameters；slashless 文件名先按当前 cwd、再按 `PATH` 经 Host 查找，source 脚本内部的 `read` 等命令继承外层 input redirection / heredoc / here-string。
+`source` / `.` 是状态类 builtin，不走 host external command。它在当前 shell session 中执行脚本，能修改 cwd/env/positional parameters；slashless 文件名先按当前 cwd、再按 `PATH` 经 `Host.fs` 查找，source 脚本内部的 `read` 等命令继承外层 input redirection / heredoc / here-string。
 
-`set` 也是状态类 builtin，不允许落到系统 command。第一版至少维护 positional parameters（`set -- ...`）、`errexit`（`set -e/+e`、`set -o/+o errexit`）、`noglob`（`set -f/+f`、`set -o/+o noglob`）和 `noclobber`（`set -C/+C`、`set -o/+o noclobber`）；其他 shell option 不能伪装支持，必须明确报错。
+`set` 也是状态类 builtin，不允许落到 host external command。第一版至少维护 positional parameters（`set -- ...`）、`errexit`（`set -e/+e`、`set -o/+o errexit`）、`noglob`（`set -f/+f`、`set -o/+o noglob`）和 `noclobber`（`set -C/+C`、`set -o/+o noclobber`）；其他 shell option 不能伪装支持，必须明确报错。
 
-`eval` 也是状态类 builtin，不允许落到系统 command。它把参数拼接后在当前 shell session 中重新解析执行，能保留 cwd/env/function 变化，并继承外层 input redirection；eval 内解析错误或 unsupported syntax 应返回非零结果，不能把内部异常冒泡成 agent runtime 错误。
+`eval` 也是状态类 builtin，不允许落到 host external command。它把参数拼接后在当前 shell session 中重新解析执行，能保留 cwd/env/function 变化，并继承外层 input redirection；eval 内解析错误或 unsupported syntax 应返回非零结果，不能把内部异常冒泡成 agent runtime 错误。
 
-`type` 是 introspection builtin，不允许落到系统 command。它必须按 runner 的真实调度顺序报告命令来源：shell builtin、注册命令、shell function、PATH 文件；`command type` 仍然走 builtin。
+`type` 是 introspection builtin，不允许落到 host external command。它必须按 runner 的真实调度顺序报告命令来源：shell builtin、注册命令、shell function、portable command、PATH 文件；`command type` 仍然走 builtin。
 
 ### 4.2 命名规则
 
-- Unix 命令名保留给系统命令。
+- Unix 命令名保留给 portable command 或 host external command。
 - agent 专属能力使用 command + subcommand，如 `editor create` / `editor edit` / `editor patch`。
-- 注册命令不能复用 Unix 命令名。
-- 注册命令优先于系统命令；命名要克制，只注册少数明确属于 agent 的命令。
+- 注册命令不能复用 shell builtin、portable command 或已知 host external command 名。
+- 注册命令优先于 host external fallback；命名要克制，只注册少数明确属于 agent 的命令。
 - 需要 agent 状态、审计、事务或协议层语义的能力才注册成专属命令。
 
-已有 Unix 命令能做的事不要注册成专属命令，直接用系统命令：
+已有 Unix 命令能做的事不要注册成专属命令，直接用 shell command；由 Bash Environment 决定它走 fork portable command 还是 host external command：
 
 | 用途 | 命令 |
 |---|---|
@@ -179,7 +182,7 @@ runner 不提供由 idle timeout 触发的 shell 输入需求状态。`yieldAfte
 | 文本处理 | `sed` / `awk` / `cut` / `sort` / `uniq` / `tr` / `xargs` |
 | 数据处理 | `jq` / `yq` / `sqlite3` / `xan` |
 
-`git` 不做 wrapper，与 `npm` / `cargo` / `docker` 一样是普通系统命令。
+`git` 不做 wrapper，与 `npm` / `cargo` / `docker` 一样是 host external command。
 
 ### 4.3 注册命令规格
 
@@ -290,7 +293,7 @@ const editor: CommandSpec = {
 - 不传 `--json`（默认）：输出 human-readable raw text。
 - 两种模式互斥，不允许混用。
 
-`--json` 是注册命令协议的一部分，由 Bash Engine 从 argv 识别并在 prompt 中说明。系统命令不强制遵守（它们有自己的 `--json`，如 `rg --json`、`git --json`）。
+`--json` 是注册命令协议的一部分，由 Bash Engine 从 argv 识别并在 prompt 中说明。普通 shell command 不强制遵守（它们有自己的 `--json`，如 `rg --json`、`git --json`）。
 
 ### 4.5 命令 prompt 渲染
 
@@ -531,7 +534,7 @@ Harness 的可变面必须克制：
 - `host()` 选择命令在哪个 workspace / backend 上执行，例如本地、远程或容器。
 - `commands()` 注册 agent 专属命令（如 `editor` / `todo`）。
 - `systemPrompt()` 生成基础行为说明；注册命令的调用说明由 command registry 自动注入，不在 prompt 里手写。
-- `resolveReferences()` 只负责把用户引用扩展成模型可见内容，文件读取仍必须经 `Host.spawn`。
+- `resolveReferences()` 只负责把用户引用扩展成模型可见内容，文件读取必须经 `Host.fs`。
 - `lifecycle()` 做 harness 自己的清理；Bash Environment 的 shell session 清理由 AgentServer 统一处理。
 
 Harness 不暴露这些可替换点：
@@ -559,9 +562,9 @@ Bash Engine 以 `vercel-labs/just-bash` 为基线。just-bash 是一个完整的
 
 fork 不是把上游源码当内部路径直接 import，也不是把 Demi runtime 塞进 just-bash。fork 的职责是让 bash engine 更容易被 Demi 使用：稳定 parser/AST 导出、长期 shell state、可插拔命令调度、Host IO 边界、输出 sink、审计和 job hooks。`@demi/shell` 是最终的 Demi shell runtime package，负责 Host contract、registered command、shell tools、OutputSnapshot、running/wait/input/abort 和 tool 集成；它只依赖 fork package 的稳定 API，不越过 package 边界 import fork 内部文件。
 
-需要明确的一点：just-bash 的状态类 builtin（`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `exit` 等）必须保留在 engine 内部，不能改成 spawn 系统 command。原因是 shell session 的状态连续性（§4.7.1）依赖它们：系统 `cd` 不会影响后续 `shell_exec`，只有 engine 内的 `cd` 改变 session 的 cwd。因此 §4.1 的"非注册命令一律 spawn 系统 command"对状态类 builtin 是例外——它们由 engine 内部实现维护 session 状态。
+需要明确的一点：just-bash 的状态类 builtin（`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `exit` 等）必须保留在 engine 内部，不能改成 host external command。原因是 shell session 的状态连续性（§4.7.1）依赖它们：系统 `cd` 不会影响后续 `shell_exec`，只有 engine 内的 `cd` 改变 session 的 cwd。即使这些名字不是 demi registered command，也必须由 engine 内部实现维护 session 状态。
 
-只读 / 副作用类命令（`cat` / `ls` / `rg` / `git` 等）不取 just-bash 的实现，走 spawn 系统 command。
+just-bash fork 不是只有 parser/interpreter。它的 `src/commands/` 已经包含大量 portable command（`cat` / `ls` / `grep` / `sed` / `awk` / `jq` / `find` / `tee` / `mkdir` / `rm` 等），这些 command 通过 `CommandContext.fs` 读写 `IFileSystem`。Demi 必须复用这部分实现，让 portable command 在本机 fs、remote fs、container fs、memfs/virtual fs 上保持一致。`git` / `npm` / `node` / `bun` / `cargo` / `docker` 这类真正依赖 host runtime 的命令才走 `Host.spawn`。
 
 fork 策略：
 
@@ -569,11 +572,11 @@ fork 策略：
 2. 把 `wspl/just-bash` 作为 git submodule 放在 `packages/just-bash`；demi 根 workspace 显式包含 `packages/just-bash/packages/just-bash`，并以包名 `just-bash` 依赖它。
 3. fork 包保留 parser / interpreter / builtin / expansion / upstream tests 的完整基线。demi 需要的 parser bugfix、builtin 行为、IFS/read/set 等 bash 语义修正直接改 fork，不在 `@demi/shell` 或其他包复制实现。
 4. fork 默认入口必须 browser-safe / runtime-neutral。Node-only filesystem、worker、CLI、真实进程或重型命令能力只能从显式 Node-only 子路径导出；用静态入口扫描和 browser bundle smoke test 兜住。
-5. fork 对 `@demi/shell` 暴露稳定 engine API：长期 shell state、Host spawn/filesystem boundary、registered command hook、output sink/redirection hook、audit hook、foreground/background job control、parser/AST exports。
+5. fork 对 `@demi/shell` 暴露稳定 engine API：长期 shell state、portable command registry、Host spawn/filesystem boundary、registered command hook、output sink/redirection hook、audit hook、foreground/background job control、parser/AST exports。
 6. `@demi/shell` 保留 Agent shell session tools、CommandRegistry、Host contract、OutputSnapshot、running/wait/input/abort 和 tool 集成；bash 语义下沉到 fork engine，Demi runtime concerns 不进入 fork。
 7. 上游关系在 `wspl/just-bash` fork 仓库内通过 git remote、commit、license 和 patch history 表达。demi 只保留 submodule 指针，不保留 `upstream/`、`vendor/` 或另一份 just-bash 源码。
 
-`just-bash` 只是实现来源，非对外概念。模型 / 协议层 / audit event / 文档里的运行时术语统一叫"注册命令"、"系统命令"，不暴露 `just-bash`。本方案不要求完全兼容真实系统 bash，但需具备 just-bash 已支持的能力；超过 parser 能力的语法直接拒绝，不整段交给系统 shell。
+`just-bash` 是实现来源，不是模型面对的工具名。模型 / 协议层 / audit event 不暴露 `just-bash` 作为概念；架构文档可以区分 portable command 与 host external command，以保证实现边界清楚。本方案不要求完全兼容真实系统 bash，但需具备 just-bash 已支持的能力；超过 parser 能力的语法直接拒绝，不整段交给系统 shell。
 
 验收标准：
 
@@ -581,7 +584,7 @@ fork 策略：
 - fork 默认入口 browser-safe，不能静态依赖 `node:*`、`Buffer`、`process.env`、Node-only adapter 或 worker-only chunk。
 - 已支持的 parser/interpreter/builtin 行为保持 parity，并通过 demi shell session 回归测试。
 - registered command 可接入同一执行模型。
-- 非注册、非状态类命令正确 spawn 系统 command 并收集 stdout/stderr/exit。
+- portable command 正确通过 `Host.fs` 读写文件；真实外部命令正确通过 `Host.spawn` 运行并收集 stdout/stderr/exit。
 - shell session 状态（cwd/env/函数）跨 `shell_exec` 连续。
 
 ### 7.1 fork engine 集成执行设计
@@ -590,26 +593,28 @@ fork 策略：
 
 #### fork 与 demi 的根本差异（4 个扩展点）
 
-fork 的设计目标是"纯 TS 模拟 bash + 虚拟 fs + 内置命令"，demi 的目标是"驱动真实 Host 的 agent shell session"。差异决定 fork 需要扩展的**唯一**地方：
+fork 的设计目标是"纯 TS 模拟 bash + 虚拟 fs + 内置命令"，demi 的目标是"驱动 Host 的 agent shell session"。Host 不是只有进程执行能力，也必须暴露 workspace 文件系统能力。差异决定 fork 需要扩展的地方：
 
-1. **执行后端是 `Host.spawn`，不是 `IFileSystem`**：fork 的外部命令走 `IFileSystem` + PATH 解析 + 内置命令实现；demi 的非注册、非状态类命令必须 `Host.spawn` 真实系统命令。**扩展点**：`InterpreterContext` 增加可选 `hostSpawn(command, args, { cwd, env, stdin })` 钩子，当命令不是 builtin/注册命令/function 时走钩子而不是 IFileSystem 解析。
-2. **长期 shell session，不是每次 exec 隔离**：fork 的 `Bash.exec()` 每次 copy state；demi 需要跨 exec 状态连续。**扩展点**：demi 绕过 `Bash` 类，直接用 `Interpreter` 类并自己持有 `InterpreterState`——`Interpreter` 原地修改传入的 state，demi 跨 exec 复用同一个 state 对象。
-3. **长命令可观测（yield/timeout/abort）**：fork 的 `exec` 同步 await 到结束；demi 需要跑到边界点返回 `running`。**不进 fork**——这是 demi runtime concern，通过 `hostSpawn` 的 Promise 挂起实现（见下方执行模型）。
-4. **OutputSnapshot + audit + DEMI_SESSION_ID / DEMI_SHELL_ID**：fork 的 `ExecResult` 只有 stdout/stderr/exitCode。**不进 fork**——audit、snapshot 和 `DEMI_*` env 注入是 demi runtime concern。
+1. **文件后端是 `Host.fs`**：fork portable commands、redirection、glob、`source`、`$(< file)`、file tests 都应通过 fork `IFileSystem`，而 `@demi/shell` 的 `IFileSystem` 适配器必须委托到 `Host.fs`，不能再用 `cat`/`tee`/`test` 等 host processes 模拟文件系统。
+2. **真实外部命令才走 `Host.spawn`**：fork 的 command registry 先处理 portable commands 和 registered commands；只有没有 portable/registered/function/builtin 命中的 host runtime command 才进入 `hostSpawn(command, args, { cwd, env, stdin })`。
+3. **长期 shell session，不是每次 exec 隔离**：fork 的 `Bash.exec()` 每次 copy state；demi 需要跨 exec 状态连续。**扩展点**：demi 绕过 `Bash` 类，直接用 `Interpreter` 类并自己持有 `InterpreterState`——`Interpreter` 原地修改传入的 state，demi 跨 exec 复用同一个 state 对象。
+4. **长命令可观测（yield/timeout/abort）**：fork 的 `exec` 同步 await 到结束；demi 需要跑到边界点返回 `running`。**不进 fork**——这是 demi runtime concern，通过 `hostSpawn` 的 Promise 挂起实现（见下方执行模型）。portable commands 通常同步完成，不参与 foreground 控制。
+5. **OutputSnapshot + audit + DEMI_SESSION_ID / DEMI_SHELL_ID**：fork 的 `ExecResult` 只有 stdout/stderr/exitCode。**不进 fork**——audit、snapshot 和 `DEMI_*` env 注入是 demi runtime concern。
 
 #### 执行模型
 
 ```text
 BashEnvironment.exec(script)
   ├── parse(script) → AST                          [fork parser]
-  ├── new Interpreter({ hostSpawn, fs, ... }, state) [fork interpreter, state 跨 exec 复用]
+  ├── new Interpreter({ hostSpawn, fs, commands, ... }, state) [fork interpreter, state 跨 exec 复用]
   ├── interpreter.executeScript(ast)               [fork 驱动 bash 语义]
   │     ├── builtin (cd/export/...)                [fork builtins/]
   │     ├── compound (if/for/while/case/...)       [fork control-flow.ts]
   │     ├── expansion ($VAR/$(...)/$((...))/glob)  [fork expansion/]
   │     ├── registered command (editor/todo)       [fork CommandRegistry → demi CommandSpec 适配]
-  │     └── external command (cat/git/npm)
-  │           └── hostSpawn(name, args, opts)      [demi 注入的钩子]
+  │     ├── portable command (cat/ls/grep/...)     [fork CommandRegistry → Host.fs]
+  │     └── host external command (git/npm/node/...)
+  │           └── hostSpawn(name, args, opts)      [demi 注入的真实进程钩子]
   │                 ├── Host.spawn(name, args)
   │                 ├── 启动 foreground 进程 + pump stdout/stderr 到 RingBuffer
   │                 └── waitForForeground()        [demi 的边界点逻辑]
@@ -656,11 +661,16 @@ async exec(input: ShellExecInput): Promise<ShellToolResult> {
 
 fork 的 `Command` 接口：`{ name, execute(args, ctx) }`，`ctx` 是 `CommandContext`。demi 的 `CommandSpec` 有 `subcommands`/`positionals`/`stdinField`/`--json`/`renderCommandPrompt`/`storage`。
 
-适配器 `commandSpecToForkCommand(shellSession, spec, storage)` 把 demi `CommandSpec` 转成 fork `Command`：把 fork `CommandContext`（`env` Map、`stdin` ByteString）适配成 demi `CommandRunContext`（`env` Record、`stdin.text`），注入 `CommandStorage`/`io`/`DEMI_SESSION_ID`/`DEMI_SHELL_ID`。每次创建 shell 时把 demi `CommandRegistry` 里的 spec 转成 fork `Command` 放进 fork `CommandRegistry`，调度由 fork `builtin-dispatch.ts` 完成（注册命令优先于 `hostSpawn`）。
+适配器 `commandSpecToForkCommand(shellSession, spec, storage)` 把 demi `CommandSpec` 转成 fork `Command`：把 fork `CommandContext`（`env` Map、`stdin` ByteString）适配成 demi `CommandRunContext`（`env` Record、`stdin.text`），注入 `CommandStorage`/`io`/`DEMI_SESSION_ID`/`DEMI_SHELL_ID`。每次创建 shell 时，fork `CommandRegistry` 必须同时包含：
 
-**注册命令调度路径的已知缺口**：fork 的 `executeExternalCommand` 在有 `hostSpawn` 且 `!ctx.commands.has(commandName)` 时走 `hostSpawn`；注册命令（`ctx.commands.has` 为 true）会跳过 `hostSpawn`，fall through 到 `resolveCommand`——而 `resolveCommand` 通过 `IFileSystem` PATH 查找命令文件。fork 的 `Bash.registerCommand` 会在虚拟 fs 的 `/bin/`、`/usr/bin/` 创建 stub 文件让 PATH 查找成功。但 demi 用 `HostBackedFileSystem`（真实系统没有 `/bin/editor`），注册命令会 resolve 失败。**修正**：fork 的 `executeExternalCommand` 在 `hostSpawn` 检查之后、`resolveCommand` 之前，增加直接 `ctx.commands.get(commandName)` dispatch——如果命中注册命令，直接调 `cmd.execute()`，不走 PATH。这是 Step C 需要的第二个 fork 改动。
+- fork portable commands：由 fork 稳定 API 创建，覆盖 `cat` / `ls` / `grep` / `sed` / `awk` / `jq` / `find` / `tee` / `mkdir` / `rm` 等 virtual-fs-aware command。
+- demi registered commands：由 `CommandSpec` 适配而来，如 `editor` / `todo`。
 
-**fork 内置命令必须排除**：fork 的 `src/commands/` 里有 `cat`/`ls`/`grep`/`sed`/`awk`/`jq` 等几十个内置命令实现，`Bash` 构造时通过 `createLazyCommands` 注册到 `CommandRegistry`。demi **不用 `Bash` 类**，直接构造 `Interpreter`，因此 demi 完全控制 `CommandRegistry` 的内容——**只放 demi 注册命令（editor/todo），不放 fork 内置命令**。这样 `cat`/`git`/`ls` 不在 `ctx.commands` 里，会走 `hostSpawn`（真实系统命令）。fork 的 shell builtin（`echo`/`true`/`false`/`test`/`[`/`:`/`cd`/`export`/...）在 `dispatchBuiltin` 里硬编码，不依赖 `CommandRegistry`，仍然可用。
+注册前必须拒绝 shell special builtin、portable command 和明确保留的 host external command 名，避免模型可见命令语义混乱。合并后的调度顺序只需要保证 portable/registered commands 都在 `hostSpawn` 前命中，不靠覆盖已有命令表达 agent 专属能力。
+
+**注册命令调度路径的已知缺口已修正，但语义要保留**：fork 的 `executeExternalCommand` 在有 `hostSpawn` 时先检查 `ctx.commands.get(commandName)`；如果命中，直接调 `cmd.execute()`，不走 PATH。这让 fork portable commands 和 demi registered commands 都能在 `hostSpawn` 之前运行。后续 Host.fs 重构不能回退到“有 hostSpawn 就把 `cat`/`ls` 交给真实系统”的旧路径。
+
+**fork portable commands 必须注册**：fork 的 `src/commands/` 里有 `cat`/`ls`/`grep`/`sed`/`awk`/`jq` 等几十个内置 command 实现，`Bash` 构造时通过 `createLazyCommands` 注册到 `CommandRegistry`。demi 仍然可以不用 `Bash` 类、直接构造 `Interpreter`，但必须通过 fork 的稳定 API 创建 portable command registry，并和 demi registered commands 合并。若当前 fork API 没有公开合适的 portable command factory，先在 fork 暴露稳定导出，再在 `@demi/shell` 使用；不得从 fork 内部路径临时 import registry 文件。
 
 #### CommandContext 字段映射
 
@@ -671,7 +681,7 @@ fork `CommandContext` 与 demi `CommandRunContext` 的字段差异：
 | `env: Map<string, string>` | `env: Record<string, string>` | `mapToRecord(ctx.env)` |
 | `stdin: ByteString`（opaque 字节） | `stdin: { text: string }` | `decodeBytesToUtf8(ctx.stdin)` |
 | `cwd: string` | `cwd: string` | 直传 |
-| `fs: IFileSystem` | 无 | demi 命令不走 fs |
+| `fs: IFileSystem` | `Host.fs` / command-scoped file helper | registered commands needing workspace files must use Host.fs, not shelling out to `cat`/`tee` |
 | `execute(args, ctx)` | `run(ctx)`（args 在 `ctx.argv`） | 适配器把 `args` 放进 `ctx.argv` |
 | 返回 `ExecResult { stdout, stderr, exitCode }` | 返回 `CommandRunResult { exitCode, metadata? }` | 适配器把 demi 命令的 `io.stdout`/`io.stderr` 输出收集成 `ExecResult.stdout`/`stderr` |
 
@@ -687,11 +697,13 @@ fork 用 **vitest**（不是 bun test），从 `packages/just-bash/packages/just
 
 demi **直接用 `Interpreter` 类**，不用 `Bash` 类。`Bash.exec()` 每次 copy state（`Bash.ts:634`），是"每次 exec 一个新 shell"模型；demi 需要跨 exec 状态连续，所以自己持有 `InterpreterState` 并传给 `new Interpreter(opts, state)`——`Interpreter` 原地修改传入的 state（`this.ctx.state.lastExitCode = exitCode` 等直接赋值）。
 
-#### 输出重定向：HostBackedFileSystem
+#### Host.fs 与 just-bash IFileSystem
 
-fork 的 redirection 走 `IFileSystem`（虚拟 fs 读写文件）。demi 的 redirection 走 `Host.spawn`（`tee`/`cat` 真实文件）。
+fork 的 redirection、portable command、glob、`source`、`$(< file)` 和 file tests 都走 `IFileSystem`。demi 的 `IFileSystem` 适配器必须委托到 `Host.fs`。
 
-**不手写 redirection**。`@demi/shell` 实现 `HostBackedFileSystem implements IFileSystem`，把 fork 的 fs 操作（readFile/writeFile/exists/stat/readdir）路由到 `Host.spawn` 的 `cat`/`tee`/`test`/`find`。这样 fork 的完整 redirection 逻辑（noclobber、fd duplicate、fd close、process substitution、here-doc、here-string）全部复用，demi 不需要重新实现。`HostBackedFileSystem` 是 Demi runtime concern，放在 `@demi/shell`，不进 fork。
+**不手写 redirection，不用 shell 命令模拟文件系统**。`@demi/shell` 实现 `HostBackedFileSystem implements IFileSystem`，把 fork 的 fs 操作（readFile/readFileBuffer/writeFile/appendFile/exists/stat/lstat/readdir/mkdir/rm/realpath 等）路由到 `Host.fs`。这样 fork 的完整 redirection 逻辑（noclobber、fd duplicate、fd close、process substitution、here-doc、here-string）和 portable command 逻辑全部复用，demi 不需要重新实现。`HostBackedFileSystem` 是 Demi runtime concern，放在 `@demi/shell`，不进 fork。
+
+`Host.fs` 是 Host 的核心能力，不是 `Host.spawn` 的语法糖。LocalHost 用 Node `fs/promises` 实现；RemoteHost 用远端文件 API 实现；ContainerHost 用容器 fs API 实现；MemHost 用内存 fs 实现。`Host.spawn` 对 virtual host 是另一项能力：可以不支持，可以只支持 fork portable command 以外的受控进程，也可以把真实进程和 Host.fs 挂载/同步后执行。
 
 #### audit 收集
 
@@ -710,15 +722,15 @@ audit 收集到 per-exec accumulator，附在 `ShellToolResult.exited` 分支。
 packages/shell/src/
   index.ts              re-export
   command.ts            demi CommandSpec 协议（不变）
-  host.ts               Host contract（不变）
+  host.ts               Host contract：root + fs + spawn
   tools.ts              四个 shell AgentTool（不变）
   storage.ts            CommandStorage（不变）
   bytes.ts              UTF-8 helpers（不变）
   environment.ts        重写：BashEnvironment + ShellSession + hostSpawn + 边界点
-  host-fs.ts            新增：HostBackedFileSystem，IFileSystem 路由到 Host.spawn
+  host-fs.ts            HostBackedFileSystem，IFileSystem 路由到 Host.fs
   script-parser.ts      删除
 packages/host-local/src/
-  local-host.ts         Node LocalHost adapter
+  local-host.ts         Node LocalHost adapter：child_process + fs/promises
   local-store.ts        Node LocalDemiStore adapter
 ```
 
@@ -733,7 +745,7 @@ packages/host-local/src/
 - just-bash（vercel-labs/just-bash）约 13 万行，含完整 parser/interpreter/builtin/expansion，**以 `wspl/just-bash` fork submodule 为实现基线；demi 只消费 fork 里的 `just-bash` package，不再新增零散复制片段**。
 - 方案原本漏了 provider 层——agent 强依赖 `AgentProvider.run`，必须先有 provider 包（哪怕只是 stub）。
 - Rust 蓝本的 `InferenceRequest` 是**纯 items 数组模型**（`items: InferenceItem[]` + systemPrompt + cwd + tools + thinking + cancel）。claude-code provider 内部把 items 转成 Claude CLI 的 stream-json stdin messages，并用 MCP control_request bridge 驱动工具；这些都是 provider 实现细节，不进 `InferenceRequest` 接口。
-- shell session 状态连续性要求状态类 builtin（cd/export/unset/read/local/return/source/shift/pushd/popd/dirs/jobs/wait/exit）、shell function 定义、`$?` 上一条命令状态和后台 job 句柄在 engine/session 内维护，不能 spawn 系统 command。
+- shell session 状态连续性要求状态类 builtin（cd/export/unset/read/local/return/source/shift/pushd/popd/dirs/jobs/wait/exit）、shell function 定义、`$?` 上一条命令状态和后台 job 句柄在 engine/session 内维护，不能交给 host external command。
 - AgentServer/AgentClient 是唯一运行入口：本地 JS 调用方使用 `server.client()`，跨进程或网络调用方使用 transport；不存在绕过 AgentServer 直连 AgentSession 的另一套 API。
 
 ### 7.3 Fork 可行性调研结论
@@ -751,7 +763,21 @@ packages/host-local/src/
 ```ts
 interface Host {
   root: string  // workspace 根，shell session 默认 cwd 的基准
+  fs: HostFileSystem
   spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
+}
+
+interface HostFileSystem {
+  readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array>
+  writeFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void>
+  appendFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void>
+  exists(path: string, options?: { cwd?: string }): Promise<boolean>
+  stat(path: string, options?: { cwd?: string }): Promise<HostFileStat>
+  lstat(path: string, options?: { cwd?: string }): Promise<HostFileStat>
+  readdir(path: string, options?: { cwd?: string }): Promise<HostDirEntry[]>
+  mkdir(path: string, options?: { cwd?: string; recursive?: boolean }): Promise<void>
+  rm(path: string, options?: { cwd?: string; recursive?: boolean; force?: boolean }): Promise<void>
+  realpath(path: string, options?: { cwd?: string }): Promise<string>
 }
 
 interface HostSpawnHandle {
@@ -763,9 +789,14 @@ interface HostSpawnHandle {
 }
 ```
 
-Host 不暴露文件读写 API。文件操作全部走命令（`cat` / `tee` / `rm` / `mkdir`）：本地 spawn 真命令、远程 spawn 远端命令，自动路由到对应 workspace。注册命令的文件访问同理——`editor` 读文件走 `cat file` 拿 stdout 字节、写文件走 `tee file` 从 stdin 喂字节（字节流，无 heredoc 转义问题，二进制与大文件均可；editor 低频，两次 spawn 开销可忽略）。Host 的唯一职责是"在哪 spawn"。
+Host 暴露两类核心能力：
 
-`LocalHost` 走 Node child_process。远程 / 容器以后换 `Host` 实现，`BashEnvironment` 不变。Agent Loop 不感知这些差异。
+- `Host.fs`：workspace 文件系统能力。editor、reference resolver、just-bash portable commands、redirection、glob、`source`、`$(< file)`、file tests 都必须走这里。它可以是真实 fs、remote fs、container fs、memfs 或其他 virtual fs。
+- `Host.spawn`：真实外部进程能力。`git` / `npm` / `node` / `bun` / `cargo` / `docker` 等 host runtime command 走这里，并受 Host policy 控制。
+
+文件操作不能再通过 `cat` / `tee` / `test` / `ls` 这类 shell command 间接模拟。那会把文件系统能力错误绑定到系统 coreutils，实现 memfs/virtual fs 时无法成立，也会引入 GNU/BSD 差异、`--` 参数安全、二进制编码等问题。
+
+`LocalHost` 的 `spawn` 走 Node child_process，`fs` 走 Node `fs/promises`。远程 / 容器 / memfs 以后换 `Host` 实现，`BashEnvironment` 不变。Agent Loop 不感知这些差异。
 
 默认运行时模块必须只依赖 `Host` 接口，不依赖 `LocalHost`。`LocalHost` 是 `@demi/host-local` 的 Node adapter；使用方需要本地进程能力时显式依赖该包。这个隔离同样适用于 `LocalDemiStore`、stdio transport 和真实 Claude CLI provider。
 
@@ -784,7 +815,7 @@ class BashEnvironment {
 }
 ```
 
-Bash Environment 内部自由决定：系统 command 如何经 Host.spawn 执行、cwd/root 处理、`DEMI_SESSION_ID` 注入、shell session 保存、stdout/stderr buffer 截断、audit 记录。这些都不进 Agent Loop 公共接口。
+Bash Environment 内部自由决定：portable command 如何经 `Host.fs` 执行、真实外部 command 如何经 `Host.spawn` 执行、cwd/root 处理、`DEMI_SESSION_ID` 注入、shell session 保存、stdout/stderr buffer 截断、audit 记录。这些都不进 Agent Loop 公共接口。
 
 shell session 内部结构：
 
@@ -804,7 +835,7 @@ type ShellSession = {
 }
 ```
 
-本地实现里 `foreground.spawn` 是 `LocalHost` 产生的真实子进程句柄；换 `RemoteHost` 后即远端句柄。Agent Loop 不关心。
+本地实现里 `foreground.spawn` 是 `LocalHost` 产生的真实子进程句柄；换 `RemoteHost` 后即远端句柄；换 `MemHost` 时可以选择不支持真实外部进程，或只支持受控 shim。Agent Loop 不关心。
 
 ### 8.2 持久化
 
@@ -840,7 +871,7 @@ type BashAuditEvent =
 | registered-command | 最高 | 可解释 agent 专属语义与状态变化。 |
 | system-command | 中 | 可审计 argv / cwd / stdout / stderr / exit code。 |
 
-shell session 工具不记录 fs diff。系统命令修改文件不提供通用自动撤销。第一版不设计通用编辑日志；如以后 `editor` 需要类似能力，只能作为 `editor` 自己的实现细节。
+shell session 工具不记录 fs diff。普通 shell command 修改文件不提供通用自动撤销。第一版不设计通用编辑日志；如以后 `editor` 需要类似能力，只能作为 `editor` 自己的实现细节。
 
 ## 10. Coding Agent
 
@@ -881,7 +912,10 @@ todo done
 - `editor edit`：对已有文件做精确替换，匹配不到或匹配多处时失败。匹配多处时可用 `--occurrence <n>`（1-based）或 `--context <line>`（锚定行号附近最近匹配）消歧；仍无法消歧则失败，返回所有匹配位置供模型调整。
 - `editor patch`：应用多文件 patch。格式用 unified diff（`diff -u` / `git apply` 风格）——模型训练数据多见、工具链成熟、可校验；不用 OpenAI `*** Begin Patch` 私有格式。
 
-直接使用系统命令（非模型工具，只是 Bash 环境里的命令）：`cat` `head` `tail` `ls` `tree` `find` `rg` `grep` `sed` `awk` `jq` `stat` `file` `wc` `mkdir` `rm` `cp` `mv` `touch` `git` `bun` `npm` `pnpm` `yarn` `node` `python` `cargo` `docker`。这些名字不被占用，一律 spawn 系统 command。
+直接使用 shell 命令时仍然只通过 Bash Environment 暴露给模型，不新增模型工具。命令按执行后端分两类：
+
+- just-bash portable commands：fork command registry 已实现的 `cat` / `head` / `tail` / `ls` / `tree` / `find` / `rg` / `grep` / `sed` / `awk` / `jq` / `stat` / `file` / `wc` / `mkdir` / `rm` / `cp` / `mv` / `touch` / `tee` / `diff` 等，必须走 fork command 实现和 `Host.fs`，保证本机、远端、容器、memfs/virtual fs 语义一致。
+- host external commands：`git` / `bun` / `npm` / `pnpm` / `yarn` / `node` / `python` / `cargo` / `docker` 等真正依赖 host runtime 的命令，才走 `Host.spawn`。这类能力由具体 Host adapter 决定是否支持。
 
 ## 11. 协议层
 
@@ -948,7 +982,7 @@ type SessionEvent =
 
 壳子可以：展示 transcript、展示 shell tool call 与流式输出、展示 running command session、消费 output snapshot / delta、展示 audit events、展示 file diff。
 
-壳子不应：直接读写 agent workspace；感知 Bash Environment 是 local / remote；感知系统命令如何 spawn；直接操作 Agent Loop 内部状态；绕过 AgentClient 直接持有 AgentSession。
+壳子不应：直接读写 agent workspace；感知 Bash Environment 是 local / remote；感知 host external command 如何 spawn；直接操作 Agent Loop 内部状态；绕过 AgentClient 直接持有 AgentSession。
 
 ## 12. AgentServer Transport
 
@@ -1061,7 +1095,8 @@ packages/just-bash/       forked Bash Engine：parser/interpreter/builtin/expans
                           fork core tests
 packages/shell/            Host contract、BashEnvironment、shell session tools、
                           ShellSession、OutputSnapshot、command registry、command prompt、
-                          audit、系统 command spawn、DemiStore/CommandStorage
+                          audit、portable command routing、host external spawn、
+                          DemiStore/CommandStorage
 packages/host-local/       本机 Node adapter：LocalHost、LocalDemiStore
 packages/coding-agent/    Coding agent harness、prompt、coding commands、todo
 packages/provider-claude-code/  Claude Code provider：驱动系统 claude code CLI
@@ -1218,11 +1253,11 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 **3.1 Fork just-bash**：fork `vercel-labs/just-bash`，记录 upstream repo/commit/license，保留 Apache-2.0；git submodule 接入 `packages/just-bash`；fork 包保留完整 parser/interpreter/builtin/expansion/upstream tests，demi 的 bash 语义改动直接在 fork 内维护；fork 默认入口 browser-safe；fork 暴露稳定 engine API（§7.1）；demi 只保留 submodule 指针。**验收**：fork core tests green；fork 默认入口 browser-safe；仓库内没有第二套 just-bash 源码树。
 
-**3.2 接入 command registry + 注册命令调度**：在 forked engine 的命令调度处插入 registered command hook；实现 `CommandSpec` 解析（扁平 argv → parsed.values）；`renderCommandPrompt(spec)` + `<command> prompt` 同源；`--json`/raw 双模式。**验收**：注册命令拦截 argv[0] 不落进系统 command；注册命令名不能复用 Unix/shell 命令名；prompt 与 renderer 一致。
+**3.2 接入 command registry + 注册命令调度**：在 forked engine 的命令调度处插入 registered command hook；实现 `CommandSpec` 解析（扁平 argv → parsed.values）；`renderCommandPrompt(spec)` + `<command> prompt` 同源；`--json`/raw 双模式。**验收**：注册命令拦截 argv[0] 不落进 host external command；注册命令名不能复用 shell builtin、portable command 或已知 host external command 名；prompt 与 renderer 一致。
 
-**3.3 Host + LocalHost**：定义 `Host`（`root` + `spawn`）；`LocalHost` 走 Node `child_process.spawn`。**验收**：LocalHost 跑通基本进程生命周期。
+**3.3 Host + LocalHost**：定义 `Host`（`root` + `fs` + `spawn`）；`LocalHost.spawn` 走 Node `child_process.spawn`，`LocalHost.fs` 走 Node `fs/promises`。**验收**：LocalHost 跑通基本进程生命周期和文件系统 read/write/append/list/stat/rm/mkdir。
 
-**3.4 Shell session + 状态连续性**：`ShellSession` 结构；engine 的 cwd/env/last status 读写指向 session；状态类 builtin 改 session 状态；非注册、非状态类命令通过 Host.spawn 执行；list operators + pipeline 由 engine 解释；文件重定向经 Host.spawn 的 cat/tee；prefix assignment；parameter/command/glob expansion；根入口平台无关。**验收**：§4.7.1 的连续性场景全部通过。
+**3.4 Shell session + 状态连续性**：`ShellSession` 结构；engine 的 cwd/env/last status 读写指向 session；状态类 builtin 改 session 状态；fork portable commands 通过 Host.fs 执行；真实外部命令通过 Host.spawn 执行；list operators + pipeline 由 engine 解释；文件重定向经 Host.fs；prefix assignment；parameter/command/glob expansion；根入口平台无关。**验收**：§4.7.1 的连续性场景全部通过，且 `cat`/`ls`/`grep`/redirection 可在 memfs/virtual Host 上不依赖系统 coreutils。
 
 **3.5 OutputSnapshot + 长命令 yield**：runner 实时收集 stdout/stderr 到 RingBuffer；`yieldAfterMs`（默认 10s）按每次工具调用单独计时；输出上限触发 `output_limit`；安静长命令默认仍返回 `running`，不由 idle timeout 推断输入需求；`ShellToolResult` 四种 status。**验收**：长命令可观测，连续 `shell_wait` poll 不会因为进程已超过首轮 yield 窗口而立即返回，§4.7.2 行为通过。
 
@@ -1230,7 +1265,7 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 **3.7 DEMI_SESSION_ID / DEMI_SHELL_ID + DemiStore + CommandStorage**：创建 shell 时注入 `DEMI_SESSION_ID`（agent session id）和 `DEMI_SHELL_ID`（shell 控制句柄）；`DemiStore` 接口 + `LocalDemiStore`；`CommandStorage` agent-session-scoped 视图，拒绝绝对路径/`..`穿越/非法 agent session id。**验收**：同一 agent session 的多次 shell_exec 共享 todo 状态，不同 agent session 读写互不干扰。
 
-**3.8 Audit**：`BashAuditEvent`（registered-command/system-command）；每次 shell_exec 收集 audit events 附在 `ShellToolResult.exited`。**验收**：注册命令和系统命令各产生对应 kind 的 event。
+**3.8 Audit**：`BashAuditEvent` 区分 registered command、portable command 和 host external command；每次 shell_exec 收集 audit events 附在 `ShellToolResult.exited`。**验收**：三类命令各产生对应 kind 的 event。
 
 **3.9 四个 shell session 工具封装**：把 BashEnvironment 的 exec/wait/input/abort 包装成 §3.2 的四个 AgentTool；zod schema；接入 agent 的 ToolContinuation；shell 命令实时输出经协议层 `shell_output` 事件流出。**验收**：主路径手测通过（cat/editor/git status）；长命令手测通过；shell session 状态跨 exec 连续。
 
@@ -1240,8 +1275,8 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 做什么：
 0. **fork 第二个改动**：`executeExternalCommand` 在 `hostSpawn` 检查之后、`resolveCommand` 之前，增加直接 `ctx.commands.get` dispatch（§7.1"注册命令调度路径的已知缺口"）。
-1. **新增 `host-fs.ts`**：`HostBackedFileSystem implements IFileSystem`，把 fork fs 操作路由到 Host.spawn（cat/tee/test/find/stat）。
-2. **重写 `environment.ts`**（目标 < 800 行）：`ShellSession` 持有 fork `InterpreterState`；**不用 fork 的 `Bash` 类**，直接用 `Interpreter`；fork `CommandRegistry` **只放 demi 注册命令**（§7.1"fork 内置命令必须排除"）；`BashEnvironment.exec` 用 `parse` + `new Interpreter` + race `executeScript` 和边界点（§7.1 执行模型）；`ExecutionLimits` 传高限值（§7.1）；`hostSpawn` 实现 Host.spawn + foreground + 边界点 + audit；`commandSpecToForkCommand` 适配器（§7.1 字段映射）；`wait`/`input`/`abort`/`dispose` 续接 `pendingExec` race。
+1. **重写 `host-fs.ts`**：`HostBackedFileSystem implements IFileSystem`，把 fork fs 操作路由到 Host.fs，不再路由到 Host.spawn 的 cat/tee/test/find/stat。
+2. **重写 `environment.ts`**（目标 < 800 行）：`ShellSession` 持有 fork `InterpreterState`；**不用 fork 的 `Bash` 类**，直接用 `Interpreter`；fork `CommandRegistry` 合并 fork portable commands 和 demi registered commands（§7.1"fork portable commands 必须注册"）；`BashEnvironment.exec` 用 `parse` + `new Interpreter` + race `executeScript` 和边界点（§7.1 执行模型）；`ExecutionLimits` 传高限值（§7.1）；`hostSpawn` 仅实现真实外部 Host.spawn + foreground + 边界点 + audit；`commandSpecToForkCommand` 适配器（§7.1 字段映射）；`wait`/`input`/`abort`/`dispose` 续接 `pendingExec` race。
 3. **删除 `script-parser.ts`**，AST 类型用 fork `./ast/types`。
 4. **更新 `@demi/shell` package.json**：从 fork `./interpreter`/`./ast/types`/`./parser` 导入；移除 `re2js`。
 5. **跑全部测试** + fork interpreter 用 vitest 验证（§7.1"fork 测试基础设施"）。
@@ -1251,9 +1286,9 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 ### 14.7 Step 4 — coding-agent 包
 
-**4.1 Coding agent harness**：`CodingState`（初版不放 todos）；`systemPrompt`（注册命令说明由 command registry 自动注入）；`host()` 返回执行后端；`commands()` 注册 editor/todo 和调用方扩展命令；`lifecycle`；`resolveReferences` 经 Host/cat 展开文件引用。公开入口为 `createCodingAgentHarness({ host, commands?, referenceHost? })`；不得接收 `BashEnvironment`。
+**4.1 Coding agent harness**：`CodingState`（初版不放 todos）；`systemPrompt`（注册命令说明由 command registry 自动注入）；`host()` 返回执行后端；`commands()` 注册 editor/todo 和调用方扩展命令；`lifecycle`；`resolveReferences` 经 Host.fs 展开文件引用。公开入口为 `createCodingAgentHarness({ host, commands?, referenceHost? })`；不得接收 `BashEnvironment`。
 
-**4.2 editor 命令**：`editor prompt`（renderCommandPrompt 同源）；`editor create`（cat 检查 → tee 写入）；`editor edit`（cat 读 → 精确替换 → tee 写回，`--occurrence`/`--context` 消歧）；`editor patch`（unified diff 解析 → 多文件应用）；文件访问全走命令（cat/tee）；editor/reference resolver 运行时不静态依赖 `node:*`/`Buffer`/`process.env`。
+**4.2 editor 命令**：`editor prompt`（renderCommandPrompt 同源）；`editor create`（Host.fs exists/mkdir/write）；`editor edit`（Host.fs read → 精确替换 → Host.fs write，`--occurrence`/`--context` 消歧）；`editor patch`（unified diff 解析 → 多文件应用）；文件访问全走 Host.fs；editor/reference resolver 运行时不静态依赖 `node:*`/`Buffer`/`process.env`。
 
 **4.3 todo 命令**：`todo prompt`/`list`/`add`/`update`/`done`；状态经 CommandStorage 按 `DEMI_SESSION_ID`（agent session id）隔离存 `todos.json`，支持 `pending` / `in_progress` / `done`；`--json` 模式。
 
@@ -1310,7 +1345,7 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 
 **git 状态**：demi 根仓库已完成首次提交，`packages/just-bash` 已通过 `git submodule add` 正式登记为 submodule（`.gitmodules` 指向 `https://github.com/wspl/just-bash.git`）。fork 子模块 worktree 已干净，当前 HEAD 是 `cabfc0f`；根仓库 submodule pointer 已指向 `cabfc0f`。
 
-**Step 3.10 代码与测试收尾已完成**：按 §7.1 的执行设计重写 `@demi/shell`——新增 `host-fs.ts`（`HostBackedFileSystem` 把 IFileSystem 路由到 Host.spawn），重写 `environment.ts`（用 fork `Interpreter` + `hostSpawn` 挂起模型 + 边界点 race），删除 `script-parser.ts`。`environment.ts` 已通过抽出 `environment-state.ts`、`environment-output.ts`、`registered-command-adapter.ts`、`background-command.ts` 降到 782 行，满足 Step 3.10 的 `< 800 行`目标。fork 完整 interpreter vitest 和 demi 门禁均已通过，root submodule pointer 和根仓库首次提交已完成。
+**Step 3.10 代码与测试收尾已完成，但 Host.fs / portable command 路由需要二次重构**：当前 `@demi/shell` 已改为使用 fork `Interpreter` + `hostSpawn` 挂起模型 + 边界点 race，并删除 `script-parser.ts`；`environment.ts` 已通过抽出 `environment-state.ts`、`environment-output.ts`、`registered-command-adapter.ts`、`background-command.ts` 降到 782 行，满足 Step 3.10 的 `< 800 行`目标。当前实现仍把 `HostBackedFileSystem` 的 IFileSystem 操作路由到 `Host.spawn`，且 fork `CommandRegistry` 只注册 demi commands，没有注册 fork portable commands。这是已确认的架构偏离。后续必须按 §7.1 和 §8 重构为 `Host.fs` + fork portable command registry：`cat`/`ls`/`grep`/redirection 等读写 `Host.fs`，只有 `git`/`npm`/`node` 等真实外部命令才进入 `Host.spawn`。fork 完整 interpreter vitest 和 demi 门禁均已通过，root submodule pointer 和根仓库首次提交已完成。
 
 **本轮已修正的其他偏离**：
 
@@ -1341,7 +1376,7 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 - shell running result + shellId
 - OutputSnapshot
 - BashEnvironment（基于 Host contract）+ 显式 LocalHost adapter
-- 完全自由的系统 command spawn
+- host external command spawn 不做 allowlist
 
 **P1**
 
@@ -1367,21 +1402,22 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 - RemoteHost / ContainerHost（换 Host 实现，BashEnvironment 不变）
 - 更完整 bash compatibility
 
-> 注：本方案不设计安全护栏 / 权限模型，第一版系统命令 spawn 完全自由。这是有意取舍，不在优先级列表里。
+> 注：本方案不设计安全护栏 / 权限模型，第一版 host external command spawn 完全自由。这是有意取舍，不在优先级列表里。
 
 ### 15.1 风险与应对
 
 | 风险 | 应对 |
 |---|---|
 | just-bash 体量大（13 万行），复制片段会无穷无尽 | 改为 fork-first：完整 fork 为实现基线，在 fork 内补 engine 扩展 API；`@demi/shell` 调稳定 fork API，不再新增零散复制，也不把 AgentServer/provider 逻辑塞进 fork。 |
-| 状态类 builtin 与系统 command 的边界模糊 | §4.1 调度优先级已明确：状态类 builtin engine 内实现，其余 spawn。Step 3.4 专门验证连续性。 |
+| 状态类 builtin、portable command 与 host external command 的边界模糊 | §4.1 调度优先级已明确：状态类 builtin engine 内实现；fork portable command 经 command registry + `Host.fs` 执行；真实外部命令才 `Host.spawn`。Step 3.4 专门验证连续性和 portable command 路由。 |
 | Step 2 持久化若硬编码 fs 会破坏纯净性 | agent 持久化走注入 store 接口，Step 2 测试用内存 store，DemiStore 实现在 Step 3.7。 |
 | claude-code provider 的 stream-json/MCP 机制复杂 | 对照 Rust `provider-claude-code` crate 的结构实现；Step 6 专门拆成 CLI 输入转换 / MCP / event-mapping 三块。 |
 | `InferenceRequest` 接口设计不当导致 Step 6 重做 | Step 1 接口对照 Rust `provider` crate，纯 items 模型；stream-json/MCP 不进接口，是 Step 6 内部细节。 |
 | `hostSpawn` 挂起时 `executeScript` 的 Promise 一直 pending | 保留在 `session.pendingExec`，`shell_wait` 续接 race；`disposeShell` 时 kill 进程后 Promise 自然 settle。 |
-| `HostBackedFileSystem` 的 IFileSystem 接口实现不完整 | 只实现 redirection 需要的方法，其他方法抛 unsupported；fork 的 redirection 只用 readFile/writeFile/exists/stat/readdir。 |
-| fork 的注册命令调度顺序和 demi 预期不同 | fork 顺序：builtin > function > registered command > hostSpawn。demi 方案要求注册命令不被 function 遮蔽——Step 3.10 验证时确认，必要时在适配层调整。 |
-| 输出重定向跨 yield/abort 的文件 sink 写入 | fork 的 redirection 在 `applyRedirections` 里同步完成（命令结束后）；长命令 yield 时 fork interpreter 还在 await hostSpawn，redirection 还没到 applyRedirections 阶段——demi 在 hostSpawn 里自己处理 yield 时的 sink 状态。 |
+| `HostBackedFileSystem` 缺失完整 Host.fs 后端 | `Host.fs` 是 Host contract 的核心能力；`HostBackedFileSystem implements IFileSystem` 必须完整覆盖 fork redirection、glob、source、file tests 和 portable commands 所需的 read/write/append/exists/stat/lstat/readdir/mkdir/rm/realpath 等操作，不能再用 `cat`/`tee`/`test`/`ls` 经 `Host.spawn` 模拟。 |
+| fork portable commands 未注册导致退回系统 coreutils | 每个 shell session 的 fork `CommandRegistry` 必须合并 fork portable commands 和 demi registered commands；调度路径必须在 `hostSpawn` 前命中 portable/registered commands。用 memfs/virtual Host 场景验证 `cat`/`ls`/`grep`/`tee`/redirection 不依赖本机 `/bin`。 |
+| fork 的注册命令调度顺序和 demi 预期不同 | fork 默认顺序不能让 shell function 遮蔽 demi registered command。后续 Host.fs 重构时同时验证 builtin、registered command、portable command、host external command 的优先级；必要时在 fork 稳定 API 中调整，而不是在 `@demi/shell` 复制 dispatch。 |
+| 输出重定向跨 yield/abort 的文件 sink 写入 | fork 的 redirection 语义必须通过 IFileSystem + output sink 保持；长命令 yield 时不能把本该写文件的 stdout/stderr 泄漏到 tool output。Host.fs 重构后用长命令 + redirection + abort 场景验证。 |
 
 ### 15.2 不做的事
 
