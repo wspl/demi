@@ -90,8 +90,9 @@ test('updateModel swaps the provider, disposes the old one, and the next turn us
   expect(providerA.runModelIds).toEqual(['model-a'])
   expect(providerA.disposed).toBe(false)
 
-  // Switch to a different provider/model (what a cross-provider model switch does).
-  await session.updateModel(providerB, modelB)
+  // Switch to a different provider/model (what a cross-provider model switch does). Recorded now,
+  // applied at the next turn.
+  session.updateModel(providerB, modelB)
   await session.send(text('again'))
 
   // The conversation keeps working: the old provider is released, the new one runs the new model,
@@ -102,7 +103,7 @@ test('updateModel swaps the provider, disposes the old one, and the next turn us
   expect(session.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(2)
 })
 
-test('switching to a smaller-window model compacts with the OLD model before handing over', async () => {
+test('switching to a smaller-window model defers compaction to the next turn, done by the OLD model', async () => {
   const big = new RecordingProvider('summary from the big model')
   const small = new RecordingProvider('small reply')
   const bigModel: ModelSelection = { ...model, model: { ...model.model, id: 'big', contextWindow: 100_000 } }
@@ -114,18 +115,37 @@ test('switching to a smaller-window model compacts with the OLD model before han
   await session.send(text('second turn with even more content to fill the transcript'))
   const bigRunsBeforeSwitch = big.runModelIds.length
 
-  await session.updateModel(small, smallModel)
-
-  // The compaction ran on the pre-switch (big) provider — extra runs, all on 'big' — and produced
-  // a summary boundary, BEFORE the small model is ever used.
-  expect(big.runModelIds.length).toBeGreaterThan(bigRunsBeforeSwitch)
-  expect(big.runModelIds.every((id) => id === 'big')).toBe(true)
-  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
+  // Recording the switch is lazy: nothing compacts, nothing swaps, no model is touched yet.
+  session.updateModel(small, smallModel)
+  expect(big.runModelIds.length).toBe(bigRunsBeforeSwitch)
   expect(small.runModelIds).toEqual([])
 
+  // The next turn's preflight compacts with the OLD (big) model — because the small model can't
+  // fit the history — produces a summary boundary, and only then runs the turn on the small model.
   await session.send(text('after switch'))
-  expect(small.runModelIds.length).toBeGreaterThan(0)
+  expect(big.runModelIds.length).toBeGreaterThan(bigRunsBeforeSwitch) // big did the compaction
+  expect(big.runModelIds.every((id) => id === 'big')).toBe(true)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
+  expect(small.runModelIds.length).toBeGreaterThan(0) // small ran the actual turn
   expect(small.runModelIds.every((id) => id === 'small')).toBe(true)
+})
+
+test('switching to a same-or-larger window model does NOT compact (no unnecessary compaction)', async () => {
+  const a = new RecordingProvider('a')
+  const b = new RecordingProvider('b')
+  const modelA: ModelSelection = { ...model, model: { ...model.model, id: 'a', contextWindow: 100_000 } }
+  const modelB: ModelSelection = { ...model, model: { ...model.model, id: 'b', contextWindow: 100_000 } }
+  const session = createSession(a, createRuntime(), undefined, modelA)
+
+  await session.send(text('turn one'))
+  await session.send(text('turn two'))
+
+  session.updateModel(b, modelB)
+  await session.send(text('after switch'))
+
+  // The new model fits the history, so no compaction boundary is created.
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
+  expect(b.runModelIds).toEqual(['b'])
 })
 
 test('AgentSession send writes user turn before provider request and records response', async () => {

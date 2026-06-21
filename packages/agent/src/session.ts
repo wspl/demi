@@ -34,17 +34,11 @@ type PendingAction =
   | { type: 'retry'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'resume'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'compact'; resolve: () => void; reject: (error: unknown) => void }
-  | {
-      type: 'set_model'
-      provider: AgentProvider | null
-      model: ModelSelection
-      resolve: () => void
-      reject: (error: unknown) => void
-    }
 
 export class AgentSession<State> {
   private provider: AgentProvider
   private model: ModelSelection
+  private pendingModelSwitch: { provider: AgentProvider | null; model: ModelSelection } | null = null
   private readonly cwd: string
   private readonly runtime: AgentHarnessRuntime<State>
   private readonly agentSessionId: string
@@ -141,8 +135,14 @@ export class AgentSession<State> {
    * A non-null `provider` replaces the current one (its predecessor is disposed); pass null to
    * keep the same provider instance and only change the model.
    */
-  updateModel(provider: AgentProvider | null, model: ModelSelection): Promise<void> {
-    return this.enqueue({ type: 'set_model', provider, model, resolve: noop, reject: noop })
+  /**
+   * Records a model/provider switch. It is applied at the next turn's preflight (see
+   * applyPendingModelSwitch): if the new model can't hold the history, compaction runs there
+   * with the current (pre-switch) model first, then the swap happens. Recording is cheap and
+   * non-blocking so it never holds up an in-flight turn or other frames.
+   */
+  updateModel(provider: AgentProvider | null, model: ModelSelection): void {
+    this.pendingModelSwitch = { provider, model }
   }
 
   async abort(): Promise<boolean> {
@@ -166,7 +166,10 @@ export class AgentSession<State> {
    */
   async dispose(): Promise<void> {
     await this.abort()
+    const pending = this.pendingModelSwitch?.provider ?? null
+    this.pendingModelSwitch = null
     await this.provider.dispose?.()
+    if (pending && pending !== this.provider) await pending.dispose?.()
   }
 
   transcript(): Transcript {
@@ -295,24 +298,28 @@ export class AgentSession<State> {
         this.setPhase('compacting')
         await this.executeCompaction()
         return
-      case 'set_model':
-        await this.applyModelChange(action.provider, action.model)
-        return
     }
   }
 
-  private async applyModelChange(provider: AgentProvider | null, model: ModelSelection): Promise<void> {
-    // Moving to a model with a smaller context window: compact with the CURRENT (pre-switch)
-    // model + provider first — it can still load the whole history to summarize it — then hand
-    // the now-smaller context to the new model. Doing it after the swap would ask the smaller
-    // model to summarize a history it may not even be able to load.
-    await this.compactToFitModel(model)
-    if (provider && provider !== this.provider) {
+  /**
+   * Applies a queued model/provider switch at a turn boundary (preflight). If the new model's
+   * context window can't hold the current history, compaction runs FIRST with the current
+   * (pre-switch) model + provider — which can still load it to summarize — and only then do we
+   * swap. Doing it the other way would ask the smaller model to summarize a history it may not
+   * be able to load.
+   */
+  private async applyPendingModelSwitch(): Promise<void> {
+    const pending = this.pendingModelSwitch
+    if (!pending) return
+    this.pendingModelSwitch = null
+
+    await this.compactToFitModel(pending.model)
+    if (pending.provider && pending.provider !== this.provider) {
       const previous = this.provider
-      this.provider = provider
+      this.provider = pending.provider
       await previous.dispose?.()
     }
-    this.model = model
+    this.model = pending.model
   }
 
   private async compactToFitModel(nextModel: ModelSelection): Promise<void> {
@@ -342,6 +349,7 @@ export class AgentSession<State> {
     })
 
     const resolvedContent = await this.resolveReferences(content)
+    await this.applyPendingModelSwitch()
     const promptContext = this.promptContext()
     const preamble = this.runtime.preamble?.(promptContext) ?? null
     this.transcriptLog.pushUserTurn(this.model, resolvedContent, preamble)
@@ -387,11 +395,13 @@ export class AgentSession<State> {
     })
     await this.commitTranscript()
 
+    await this.applyPendingModelSwitch()
     await this.executePreflightCompaction()
     await this.executeProviderTurn()
   }
 
   private async executeResume(): Promise<void> {
+    await this.applyPendingModelSwitch()
     this.transcriptLog.markLatestAbortResumed()
     this.transcriptLog.pushResumeTurn(this.model)
     await this.commitTranscript()
