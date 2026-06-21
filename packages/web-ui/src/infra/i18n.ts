@@ -25,6 +25,12 @@ const messages: Record<string, string> = {
   'agent.stats.cacheWrite': 'Cache write',
   'agent.stats.totalUsage': 'Total usage',
   'agent.stats.unavailable': 'N/A',
+  'providers.model.thinking': 'Thinking',
+  'providers.reasoning': 'Reasoning effort',
+  'agent.context.compacting': 'Compacting context…',
+  'agent.context.noUsage': 'No usage recorded yet',
+  'agent.context.unavailable': 'Context usage unavailable',
+  'agent.context.compactHint': 'Click to compact context',
 }
 
 export function t(key: string): string {

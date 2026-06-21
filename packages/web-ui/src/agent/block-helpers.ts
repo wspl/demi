@@ -1,6 +1,14 @@
-import type { Block } from '@demi/core'
+import type { Block, TokenUsage } from '@demi/core'
 
 type ToolCallBlock = Extract<Block, { type: 'tool_call' }>
+
+export function getLatestResponseUsage(blocks: readonly Block[]): TokenUsage | null {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]!
+    if (block.type === 'response') return block.usage
+  }
+  return null
+}
 
 export function getToolErrorText(block: ToolCallBlock): string | undefined {
   if (block.status !== 'error') return undefined
