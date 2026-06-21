@@ -82,6 +82,11 @@ export type ProviderEvent =
 
 export interface AgentProvider {
   run(request: InferenceRequest): AsyncIterable<ProviderEvent>
+  /**
+   * Releases any resources the provider holds open across turns — e.g. a long-lived CLI
+   * subprocess kept alive for a whole session. Called once when the owning session closes.
+   */
+  dispose?(): Promise<void> | void
 }
 
 // ── provider registry / auth shell ──────────────────────────────────

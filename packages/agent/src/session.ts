@@ -143,6 +143,15 @@ export class AgentSession<State> {
     })
   }
 
+  /**
+   * Tears the session down: aborts any in-flight turn and releases provider-held resources
+   * (e.g. a long-lived CLI subprocess). Called when the owning connection closes.
+   */
+  async dispose(): Promise<void> {
+    await this.abort()
+    await this.provider.dispose?.()
+  }
+
   transcript(): Transcript {
     return this.transcriptLog
   }

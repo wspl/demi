@@ -242,7 +242,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const cwd = this.currentCwd
 
     try {
-      if (session) await session.abort()
+      if (session) await session.dispose()
       if (environment) await environment.disposeAllShells()
       if (session && agent && cwd) {
         await agent.dispose?.({ agentSessionId: session.id(), state: session.state(), cwd, transcript: session.transcript() })

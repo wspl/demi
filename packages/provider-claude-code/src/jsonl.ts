@@ -56,6 +56,79 @@ export function requestToInputMessages(request: InferenceRequest): ClaudeInputMe
   return messages
 }
 
+/**
+ * Builds the input messages used to prime a *fresh* Claude CLI process with prior
+ * conversation history — i.e. on a cold start: the first turn, a resume after the process
+ * died, or a restart forced by compaction.
+ *
+ * Crucially, prior tool calls/results are rendered as plain TEXT rather than structured
+ * `tool_use` / `tool_result` blocks. Replaying a structured MCP `tool_use` into a
+ * freshly-initialized SDK-MCP session is exactly what makes Claude reject the request with
+ * `API Error: 400 ... tool use concurrency`. The live, in-process path never calls this:
+ * there the CLI keeps the structured tool history in its own native context, so no replay
+ * happens at all.
+ */
+export function coldStartInputMessages(items: InferenceItem[]): ClaudeInputMessage[] {
+  const messages: ClaudeInputMessage[] = []
+  let pending: { role: 'user' | 'assistant'; content: unknown[] } | null = null
+  const toolNames = new Map<string, string>()
+
+  const flush = (): void => {
+    if (pending && pending.content.length > 0) {
+      messages.push({ type: pending.role, message: { role: pending.role, content: pending.content } })
+    }
+    pending = null
+  }
+  const append = (role: 'user' | 'assistant', blocks: unknown[]): void => {
+    if (blocks.length === 0) return
+    if (!pending || pending.role !== role) {
+      flush()
+      pending = { role, content: [] }
+    }
+    pending.content.push(...blocks)
+  }
+
+  for (const item of items) {
+    switch (item.type) {
+      case 'user_message':
+        append('user', userContentToClaude(item.content))
+        break
+      case 'assistant_text':
+        append('assistant', item.text ? [{ type: 'text', text: item.text }] : [])
+        break
+      case 'tool_use':
+        toolNames.set(item.toolUseId, item.toolName)
+        append('assistant', [{ type: 'text', text: renderToolUseText(item.toolName, item.input) }])
+        break
+      case 'tool_result':
+        append('user', [{ type: 'text', text: renderToolResultText(toolNames.get(item.toolUseId), item) }])
+        break
+      // assistant_thinking / assistant_redacted_thinking are intentionally skipped: thinking is
+      // internal, and its signatures will not validate against a different (fresh) process.
+    }
+  }
+  flush()
+  return messages
+}
+
+function renderToolUseText(toolName: string, input: unknown): string {
+  return `[Earlier in this conversation I called the tool ${toolName} with input: ${safeJson(input)}]`
+}
+
+function renderToolResultText(toolName: string | undefined, item: Extract<InferenceItem, { type: 'tool_result' }>): string {
+  const label = toolName ? `tool ${toolName}` : 'the previous tool call'
+  const body = toolResultToText(item.output)
+  return item.isError ? `[Result of ${label} (error): ${body}]` : `[Result of ${label}: ${body}]`
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value)
+  } catch {
+    return String(value)
+  }
+}
+
 export function inferenceItemToClaudeMessage(item: InferenceItem): ClaudeInputMessage | null {
   switch (item.type) {
     case 'user_message':

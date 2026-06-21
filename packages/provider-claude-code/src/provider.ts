@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { ToolResultContentBlock } from '@demi/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderDefinition, ProviderEvent } from '@demi/provider'
-import { controlResponse, inferenceItemToClaudeMessage, requestToInputMessages, toolResultsToClaudeMessage } from './jsonl'
+import { coldStartInputMessages, controlResponse, inferenceItemToClaudeMessage, toolResultsToClaudeMessage } from './jsonl'
 import { listClaudeCodeModels } from './models'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
 import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
@@ -25,6 +25,12 @@ interface ActiveClaudeRun {
   bufferedMessages: unknown[]
   sdkMcpEnabled: boolean
   hasStreamed: boolean
+  /** Session this live process belongs to; a different session forces a cold restart. */
+  sessionId: string
+  /** How many `user_message` items have been delivered to this process so far. */
+  sentUserMessageCount: number
+  /** Signature of the first user message, used to detect a rewritten transcript (compaction). */
+  firstUserSig: string | null
 }
 
 export class ClaudeCodeProvider implements AgentProvider {
@@ -40,29 +46,32 @@ export class ClaudeCodeProvider implements AgentProvider {
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     let active: ActiveClaudeRun | null = null
     let keepActiveForContinuation = false
+    const signal = request.cancel
+    let abortListener: (() => void) | null = null
     try {
-      active = await this.ensureActive(request)
+      active = await this.ensureActiveForRequest(request)
       const run = active
-      const abort = abortPromise(request.cancel, async () => {
+      const onAbort = async (): Promise<void> => {
         await run.transport.kill()
-        this.active = null
+        if (this.active === run) this.active = null
+      }
+      const abort = new Promise<{ done: true; value: undefined }>((resolve) => {
+        if (signal.aborted) {
+          void onAbort().then(() => resolve({ done: true, value: undefined }))
+          return
+        }
+        abortListener = () => {
+          void onAbort().finally(() => resolve({ done: true, value: undefined }))
+        }
+        signal.addEventListener('abort', abortListener, { once: true })
       })
-
-      if (active.pendingControlRequest) {
-        await this.writeToolResults(request, active.pendingControlRequest)
-        active.pendingControlRequest = null
-      }
-      if (active.pendingToolUseIds.length > 0) {
-        await this.writeToolResultMessages(request, active.pendingToolUseIds)
-        active.pendingToolUseIds = []
-      }
 
       while (true) {
         const next = await Promise.race([this.nextMessage(run), abort])
         if (next.done) {
-          const wasAborted = request.cancel.aborted
+          const wasAborted = signal.aborted
           const exit = await active.transport.wait()
-          this.active = null
+          if (this.active === active) this.active = null
           if (!wasAborted && exit.exitCode !== 0) {
             yield {
               type: 'error',
@@ -102,9 +111,10 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (toolUseIds.length > 0) return
 
         if (mapped.terminal) {
-          this.active = null
-          await active.transport.kill()
-          await active.transport.wait()
+          // End of a model turn. The CLI process stays alive in streaming-input mode, keeping
+          // the full conversation (and the live SDK-MCP session) in its own native context, so
+          // the next turn only needs to send the new user message — no restart, no replay.
+          keepActiveForContinuation = true
           return
         }
       }
@@ -117,6 +127,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       }
       throw error
     } finally {
+      if (abortListener) signal.removeEventListener('abort', abortListener)
       if (!keepActiveForContinuation && active && this.active === active) {
         this.active = null
         await active.transport.kill()
@@ -125,12 +136,37 @@ export class ClaudeCodeProvider implements AgentProvider {
     }
   }
 
-  private async ensureActive(request: InferenceRequest): Promise<ActiveClaudeRun> {
-    if (this.active) return this.active
+  async dispose(): Promise<void> {
+    const active = this.active
+    if (!active) return
+    this.active = null
+    await active.transport.kill()
+    await active.transport.wait()
+  }
 
+  /**
+   * Returns the live process for this request, reusing the one kept alive from the previous
+   * turn whenever possible. Reuse delivers only the *new* input (a pending tool result and/or
+   * a freshly appended user message); a cold start is taken only when there is no live process,
+   * the session changed, or the transcript was rewritten underneath us (compaction).
+   */
+  private async ensureActiveForRequest(request: InferenceRequest): Promise<ActiveClaudeRun> {
+    const existing = this.active
+    if (existing && existing.sessionId === request.sessionId) {
+      const hasPendingToolCall =
+        existing.pendingControlRequest !== null || existing.pendingToolUseIds.length > 0
+      if (hasPendingToolCall || !itemsDiverged(existing, request.items)) {
+        await this.sendContinuation(existing, request)
+        return existing
+      }
+    }
+    if (existing) await this.disposeActive(existing)
+    return this.coldStart(request)
+  }
+
+  private async coldStart(request: InferenceRequest): Promise<ActiveClaudeRun> {
     const transport = await this.transportFactory.start(request)
-    const iterable = transport.messages()
-    const iterator = iterable[Symbol.asyncIterator]()
+    const iterator = transport.messages()[Symbol.asyncIterator]()
     const active: ActiveClaudeRun = {
       transport,
       iterator,
@@ -139,6 +175,9 @@ export class ClaudeCodeProvider implements AgentProvider {
       bufferedMessages: [],
       sdkMcpEnabled: request.tools.length > 0,
       hasStreamed: false,
+      sessionId: request.sessionId,
+      sentUserMessageCount: 0,
+      firstUserSig: null,
     }
     this.active = active
 
@@ -146,11 +185,44 @@ export class ClaudeCodeProvider implements AgentProvider {
       await this.initializeSdkMcp(active, request.systemPrompt)
     }
 
-    for (const message of requestToInputMessages(request)) {
+    for (const message of coldStartInputMessages(request.items)) {
       await transport.writeJson(message)
     }
+    active.sentUserMessageCount = countUserMessages(request.items)
+    active.firstUserSig = firstUserSignature(request.items)
 
     return active
+  }
+
+  /** Feeds a reused process only the input it has not seen: pending tool results, then any new user turns. */
+  private async sendContinuation(active: ActiveClaudeRun, request: InferenceRequest): Promise<void> {
+    if (active.pendingControlRequest) {
+      await this.writeToolResults(request, active.pendingControlRequest)
+      active.pendingControlRequest = null
+    }
+    if (active.pendingToolUseIds.length > 0) {
+      await this.writeToolResultMessages(request, active.pendingToolUseIds)
+      active.pendingToolUseIds = []
+    }
+
+    const userCount = countUserMessages(request.items)
+    if (userCount > active.sentUserMessageCount) {
+      const userItems = request.items.filter(
+        (item): item is Extract<InferenceItem, { type: 'user_message' }> => item.type === 'user_message',
+      )
+      for (const item of userItems.slice(active.sentUserMessageCount)) {
+        const message = inferenceItemToClaudeMessage(item)
+        if (message) await active.transport.writeJson(message)
+      }
+      active.sentUserMessageCount = userCount
+      if (active.firstUserSig === null) active.firstUserSig = firstUserSignature(request.items)
+    }
+  }
+
+  private async disposeActive(active: ActiveClaudeRun): Promise<void> {
+    if (this.active === active) this.active = null
+    await active.transport.kill()
+    await active.transport.wait()
   }
 
   private async handleControlRequest(
@@ -376,20 +448,26 @@ function isMessageType(value: unknown, type: string): boolean {
   return isRecord(value) && value.type === type
 }
 
-function abortPromise(
-  signal: AbortSignal,
-  onAbort: () => Promise<void>,
-): Promise<{ done: true; value: undefined }> {
-  if (signal.aborted) {
-    return onAbort().then(() => ({ done: true, value: undefined }))
-  }
-  return new Promise((resolve) => {
-    signal.addEventListener(
-      'abort',
-      () => {
-        void onAbort().finally(() => resolve({ done: true, value: undefined }))
-      },
-      { once: true },
-    )
-  })
+function countUserMessages(items: InferenceItem[]): number {
+  let count = 0
+  for (const item of items) if (item.type === 'user_message') count += 1
+  return count
+}
+
+function firstUserSignature(items: InferenceItem[]): string | null {
+  const first = items.find((item) => item.type === 'user_message')
+  if (!first || first.type !== 'user_message') return null
+  // Cheap content fingerprint that avoids hashing large base64 image/document payloads.
+  return first.content.map((block) => (block.type === 'text' ? `t:${block.text}` : block.type)).join('|')
+}
+
+/**
+ * True when the transcript no longer extends what the live process has already consumed —
+ * i.e. user turns were removed or the leading user message changed (compaction rewrote the
+ * history). In that case the process must be cold-restarted from the rewritten transcript.
+ */
+function itemsDiverged(active: ActiveClaudeRun, items: InferenceItem[]): boolean {
+  if (countUserMessages(items) < active.sentUserMessageCount) return true
+  if (active.firstUserSig !== null && firstUserSignature(items) !== active.firstUserSig) return true
+  return false
 }

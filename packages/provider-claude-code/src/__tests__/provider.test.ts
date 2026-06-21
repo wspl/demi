@@ -104,7 +104,9 @@ test('ClaudeCodeProvider streams text and response events from transport message
     { type: 'response', usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 } },
   ])
   expect(transport.writes.find((write) => isRecord(write) && write.type === 'user')).toMatchObject({ type: 'user' })
-  expect(transport.waitCalls).toBe(1)
+  // The process is kept alive after a result (streaming-input mode), not torn down per turn.
+  expect(transport.waitCalls).toBe(0)
+  expect(transport.killed).toBe(false)
 })
 
 test('ClaudeCodeProvider preserves cache usage fields from result messages', async () => {
@@ -290,7 +292,7 @@ test('ClaudeCodeProvider handles SDK MCP control_request tool calls across run c
   ])
 })
 
-test('ClaudeCodeProvider replays internal tool names with MCP names on fresh runs', async () => {
+test('ClaudeCodeProvider renders prior tool calls as text on a cold start, never as structured tool_use', async () => {
   const transport = new FakeClaudeTransport([
     { type: 'assistant', message: { content: [{ type: 'text', text: 'ready' }] } },
     { type: 'result', usage: { input_tokens: 3, output_tokens: 1 } },
@@ -320,19 +322,94 @@ test('ClaudeCodeProvider replays internal tool names with MCP names on fresh run
     events.push(event)
   }
 
+  // No structured tool_use block is ever replayed — that is precisely what triggers Claude's
+  // "tool use concurrency" 400 against a freshly-initialized SDK-MCP session.
+  const structuredToolUse = transport.writes.some((write) => {
+    return (
+      isRecord(write) &&
+      write.type === 'assistant' &&
+      isRecord(write.message) &&
+      Array.isArray(write.message.content) &&
+      write.message.content.some((block) => isRecord(block) && block.type === 'tool_use')
+    )
+  })
+  expect(structuredToolUse).toBe(false)
+
+  // The prior call survives as plain text so the model still has continuity.
   const assistantWrite = transport.writes.find((write): write is { type: 'assistant'; message: { content: unknown[] } } => {
     return isRecord(write) && write.type === 'assistant' && isRecord(write.message) && Array.isArray(write.message.content)
   })
-  expect(assistantWrite?.message.content).toContainEqual({
-    type: 'tool_use',
-    id: 'tool-1',
-    name: 'mcp__main__shell_exec',
-    input: { script: 'pwd' },
-  })
+  expect(JSON.stringify(assistantWrite?.message.content)).toContain('shell_exec')
+
   expect(events).toEqual([
     { type: 'text_delta', text: 'ready' },
     { type: 'response', usage: { inputTokens: 3, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } },
   ])
+})
+
+test('ClaudeCodeProvider keeps one process alive across turns and sends only the new user message', async () => {
+  // Scripts two full turns over ONE transport: turn 1 makes a tool call; turn 2 is a fresh
+  // user message. This is the regression guard for the "tool use concurrency" 400 — the bug
+  // came from restarting the CLI every turn and replaying the prior MCP tool call as a
+  // structured tool_use. With a persistent process there is no restart and no replay.
+  const transport = new FakeClaudeTransport([
+    sdkMcpRequest('list-sdk', 'list-1', 'tools/list'),
+    sdkMcpRequest('call-sdk', 'call-1', 'tools/call', { name: 'shell_exec', arguments: { script: 'pwd' } }),
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'turn one done' }] } },
+    { type: 'result', usage: { input_tokens: 1 } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'turn two done' }] } },
+    { type: 'result', usage: { input_tokens: 1 } },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+
+  const turn1Start = [
+    { type: 'user_message', content: [{ type: 'text', text: 'do work' }] },
+  ] as InferenceRequest['items']
+  const firstEvents = []
+  for await (const event of provider.run(makeRequest(turn1Start))) firstEvents.push(event)
+  expect(firstEvents).toMatchObject([{ type: 'tool_call_requested', toolName: 'shell_exec' }])
+  const toolUseId = firstEvents[0]?.type === 'tool_call_requested' ? firstEvents[0].toolUseId : ''
+
+  // Turn 1 continuation: the cumulative transcript now carries the tool_use + tool_result.
+  const turn1Full = [
+    ...turn1Start,
+    { type: 'tool_use', modelId: 'claude-test', toolUseId, toolName: 'shell_exec', input: { script: 'pwd' } },
+    { type: 'tool_result', toolUseId, output: [{ type: 'text', text: '/tmp' }], isError: false },
+  ] as InferenceRequest['items']
+  const contEvents = []
+  for await (const event of provider.run(makeRequest(turn1Full))) contEvents.push(event)
+  expect(contEvents).toMatchObject([{ type: 'text_delta', text: 'turn one done' }, { type: 'response' }])
+
+  const writesBeforeTurn2 = transport.writes.length
+
+  // Turn 2: a brand-new user message appended to the same cumulative transcript.
+  const turn2Full = [
+    ...turn1Full,
+    { type: 'assistant_text', modelId: 'claude-test', text: 'turn one done' },
+    { type: 'user_message', content: [{ type: 'text', text: 'second question' }] },
+  ] as InferenceRequest['items']
+  const secondEvents = []
+  for await (const event of provider.run(makeRequest(turn2Full))) secondEvents.push(event)
+  expect(secondEvents).toMatchObject([{ type: 'text_delta', text: 'turn two done' }, { type: 'response' }])
+
+  // Same process throughout: never killed, SDK-MCP initialized exactly once.
+  expect(transport.killed).toBe(false)
+  expect(transport.writes.filter((write) => isSdkInitializeRequest(write))).toHaveLength(1)
+
+  // Turn 2 wrote exactly one thing: the new user message. No replayed history, no tool_use.
+  expect(transport.writes.slice(writesBeforeTurn2)).toEqual([
+    { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'second question' }] } },
+  ])
+  const replayedToolUse = transport.writes.some((write) => {
+    return (
+      isRecord(write) &&
+      write.type === 'assistant' &&
+      isRecord(write.message) &&
+      Array.isArray(write.message.content) &&
+      write.message.content.some((block) => isRecord(block) && block.type === 'tool_use')
+    )
+  })
+  expect(replayedToolUse).toBe(false)
 })
 
 test('ClaudeCodeProvider rejects malformed SDK MCP tools/call without entering pending state', async () => {
