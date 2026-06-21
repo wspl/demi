@@ -65,6 +65,43 @@ function createSession(
   )
 }
 
+class RecordingProvider implements AgentProvider {
+  readonly runModelIds: string[] = []
+  disposed = false
+  constructor(private readonly reply: string) {}
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    this.runModelIds.push(request.modelId)
+    yield { type: 'text_delta', text: this.reply }
+    yield { type: 'response', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } }
+  }
+  async dispose(): Promise<void> {
+    this.disposed = true
+  }
+}
+
+test('updateModel swaps the provider, disposes the old one, and the next turn uses the new model', async () => {
+  const providerA = new RecordingProvider('from A')
+  const providerB = new RecordingProvider('from B')
+  const modelA: ModelSelection = { ...model, model: { ...model.model, id: 'model-a' } }
+  const modelB: ModelSelection = { ...model, model: { ...model.model, id: 'model-b' } }
+  const session = createSession(providerA, createRuntime(), undefined, modelA)
+
+  await session.send(text('hi'))
+  expect(providerA.runModelIds).toEqual(['model-a'])
+  expect(providerA.disposed).toBe(false)
+
+  // Switch to a different provider/model (what a cross-provider model switch does).
+  await session.updateModel(providerB, modelB)
+  await session.send(text('again'))
+
+  // The conversation keeps working: the old provider is released, the new one runs the new model,
+  // and the old provider is never touched after the swap.
+  expect(providerA.disposed).toBe(true)
+  expect(providerA.runModelIds).toEqual(['model-a'])
+  expect(providerB.runModelIds).toEqual(['model-b'])
+  expect(session.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(2)
+})
+
 test('AgentSession send writes user turn before provider request and records response', async () => {
   const requests: InferenceRequest[] = []
   const provider = new StubProvider([

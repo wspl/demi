@@ -766,6 +766,51 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
   expect(String(responses[1].response.content)).toContain('second-tool')
 })
 
+test('ClaudeCodeProvider cold-restarts with a new process when the model changes mid-session', async () => {
+  // `--model` is fixed per CLI process, so switching models (e.g. after the user picks a
+  // different provider/model) must dispose the old process and cold-start a new one — this is
+  // what lets "switch model, keep working" continue rather than silently using the old model.
+  const onModelA = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'answered on model A' }] } },
+    { type: 'result', usage: { input_tokens: 1 } },
+  ])
+  const onModelB = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'answered on model B' }] } },
+    { type: 'result', usage: { input_tokens: 1 } },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: sequenceFactory([onModelA, onModelB]) })
+
+  const turn1 = []
+  for await (const event of provider.run({
+    ...makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]),
+    modelId: 'model-a',
+  })) {
+    turn1.push(event)
+  }
+  expect(turn1).toMatchObject([{ type: 'text_delta', text: 'answered on model A' }, { type: 'response' }])
+  expect(onModelA.killed).toBe(false) // kept alive after its turn
+
+  // Turn 2 with a different model id must NOT reuse the model-A process.
+  const turn2 = []
+  for await (const event of provider.run({
+    ...makeRequest([
+      { type: 'user_message', content: [{ type: 'text', text: 'hi' }] },
+      { type: 'assistant_text', modelId: 'model-a', text: 'answered on model A' },
+      { type: 'user_message', content: [{ type: 'text', text: 'again' }] },
+    ]),
+    modelId: 'model-b',
+  })) {
+    turn2.push(event)
+  }
+  expect(turn2).toMatchObject([{ type: 'text_delta', text: 'answered on model B' }, { type: 'response' }])
+
+  // The model-A process was disposed; the model-B process served turn 2 (which replayed history).
+  expect(onModelA.killed).toBe(true)
+  expect(onModelA.waitCalls).toBe(1)
+  expect(onModelB.killed).toBe(false)
+  expect(onModelB.writes.some((write) => isRecord(write) && write.type === 'user')).toBe(true)
+})
+
 function fakeFactory(transport: FakeClaudeTransport): ClaudeTransportFactory {
   return { start: async () => transport }
 }
