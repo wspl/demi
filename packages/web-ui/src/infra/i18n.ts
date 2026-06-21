@@ -12,6 +12,19 @@ const messages: Record<string, string> = {
   'agent.tab.closeToRight': 'Close tabs to the right',
   'agent.tab.closeAll': 'Close all tabs',
   'agent.tab.copyConversationId': 'Copy conversation ID',
+  'common.continue': 'Continue',
+  'agent.block.thinking': 'Thinking',
+  'agent.block.error': 'Error',
+  'agent.block.stackTrace': 'Stack trace',
+  'agent.block.aborted': 'Aborted',
+  'agent.block.responseStats': 'Response',
+  'agent.stats.contextWindow': 'Context window',
+  'agent.stats.cacheRead': 'Cache read',
+  'agent.stats.input': 'Input',
+  'agent.stats.output': 'Output',
+  'agent.stats.cacheWrite': 'Cache write',
+  'agent.stats.totalUsage': 'Total usage',
+  'agent.stats.unavailable': 'N/A',
 }
 
 export function t(key: string): string {

@@ -34,7 +34,15 @@ export function createStubProviderDefinition(): ProviderDefinition {
     }),
     createProvider: () =>
       new StubProvider([
-        [events.text('Hello from the stub provider.'), events.response({ inputTokens: 5, outputTokens: 6 })],
+        [
+          { type: 'thinking_delta', text: 'Let me inspect the workspace before answering.' },
+          { type: 'thinking_signature', signature: 'stub-signature' },
+          events.toolCall('tool-1', 'shell_exec', { script: 'echo "hello from demi" && ls -a' }),
+        ],
+        [
+          events.text('Hello from the stub provider. The shell command ran and its output is shown above.'),
+          events.response({ inputTokens: 1280, outputTokens: 48, cacheReadTokens: 920 }),
+        ],
       ]),
   }
 }
