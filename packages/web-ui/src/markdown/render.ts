@@ -1,7 +1,13 @@
 import { Marked } from 'marked'
+import markedKatex from 'marked-katex-extension'
 import type { MarkdownRenderOptions } from './types'
 import { codeToHtml } from './highlight'
 import { isHttpUrl, isLikelyFilePath, normalizeFilePath, resolveAbsolutePath, toLocalFileUrl } from './filePath'
+
+// `$...$` inline / `$$...$$` block LaTeX, rendered to self-contained HTML (KaTeX CSS is loaded
+// by the app). `nonStandard` lets inline math sit flush against CJK text the model writes;
+// `throwOnError` keeps malformed math from blowing up the whole message.
+const katexExtension = markedKatex({ throwOnError: false, nonStandard: true, output: 'html' })
 
 const INLINE_CODE_RE = /`([^`\n]+)`/g
 const MARKDOWN_LINK_RE = /\[[^\]]*]\(([^)]+)\)/g
@@ -60,7 +66,7 @@ function createMarked(options?: MarkdownRenderOptions) {
   const knownPaths = options?.knownPaths
   const basePath = options?.basePath
 
-  return new Marked({
+  const marked = new Marked({
     gfm: true,
     breaks: true,
     renderer: {
@@ -102,6 +108,8 @@ function createMarked(options?: MarkdownRenderOptions) {
       },
     },
   })
+  marked.use(katexExtension)
+  return marked
 }
 
 export function renderMarkdown(src: string, options?: MarkdownRenderOptions): string {

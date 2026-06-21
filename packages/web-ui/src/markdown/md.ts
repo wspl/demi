@@ -36,6 +36,9 @@ const userMarked = new Marked({
     },
   },
 })
+// Deliberately no KaTeX on user content: people type `$` for shell vars ($PATH), prices,
+// and when discussing LaTeX itself, so rendering math here causes far more false positives
+// than it's worth. Math rendering applies to assistant output only (see render.ts).
 
 function escapeBlockSyntax(src: string): string {
   return src
