@@ -13,9 +13,5 @@ export default defineConfig(() => ({
   },
   server: {
     port: Number(process.env.PORT) || 5173,
-    proxy: {
-      '/agent': { target: 'ws://localhost:8787', ws: true },
-      '/control': { target: 'ws://localhost:8787', ws: true },
-    },
   },
 }))

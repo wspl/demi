@@ -1,4 +1,4 @@
-import { AgentClient, createWebSocketClientTransport, type JsonWebSocket } from '@demi/agent'
+import { AgentClient, createWebSocketClientTransport, type JsonWebSocket } from '@demi/agent/client'
 
 export function agentSocketUrl(baseUrl: string, cwd: string): string {
   const url = new URL('/agent', baseUrl)

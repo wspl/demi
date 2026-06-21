@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '@demi/agent'
+import type { ProviderConfig } from '@demi/agent/client'
 
 // Control-plane protocol. Decoupled from @demi/provider so the component library stays
 // portable: hosts map their own catalogs onto these DTOs.

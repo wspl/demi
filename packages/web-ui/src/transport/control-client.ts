@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '@demi/agent'
+import type { ProviderConfig } from '@demi/agent/client'
 import type {
   ControlApi,
   ControlMethod,
