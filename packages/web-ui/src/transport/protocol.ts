@@ -1,0 +1,54 @@
+import type { ProviderConfig } from '@demi/agent'
+
+// Control-plane protocol. Decoupled from @demi/provider so the component library stays
+// portable: hosts map their own catalogs onto these DTOs.
+
+export interface ProviderInfo {
+  type: string
+  label: string
+  isAvailable: boolean
+}
+
+export interface ModelReasoning {
+  efforts: string[]
+  defaultEffort: string | null
+}
+
+export interface ModelInfo {
+  id: string
+  name: string
+  contextWindow: number | null
+  inputLimit: number | null
+  acceptedExtensions: string[]
+  reasoning: ModelReasoning | null
+}
+
+export interface PrepareSessionParams {
+  providerType: string
+  modelId: string
+  thinkingEffort?: string | null
+  serviceTierId?: string | null
+}
+
+export interface WorkspaceInfo {
+  cwd: string
+}
+
+export interface ControlApi {
+  listProviders(): Promise<ProviderInfo[]>
+  listModels(params: { providerType: string }): Promise<ModelInfo[]>
+  prepareSession(params: PrepareSessionParams): Promise<ProviderConfig>
+  defaultWorkspace(): Promise<WorkspaceInfo>
+}
+
+export type ControlMethod = keyof ControlApi
+
+export interface ControlRequest {
+  id: number
+  method: ControlMethod
+  params: unknown
+}
+
+export type ControlResponse =
+  | { id: number; ok: true; result: unknown }
+  | { id: number; ok: false; error: string }

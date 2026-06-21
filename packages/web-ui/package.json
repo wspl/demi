@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./*": "./src/*"
+    "./*.vue": "./src/*.vue",
+    "./*.css": "./src/*.css",
+    "./*": "./src/*.ts"
   },
   "scripts": {
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
