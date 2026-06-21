@@ -12,11 +12,16 @@
     "packages/provider-claude-code",
     "packages/shell",
     "packages/repl",
+    "packages/web-ui",
+    "packages/web",
     "packages/just-bash/packages/just-bash"
   ],
   "scripts": {
     "check:registry": "bun run scripts/check-public-registry.ts",
     "typecheck": "node node_modules/.bin/tsgo --noEmit",
+    "typecheck:web": "bun --filter @demi/web-ui typecheck && bun --filter @demi/web typecheck",
+    "web:dev": "bun --filter @demi/web dev",
+    "web:server": "bun run packages/web/src/server/index.ts",
     "test": "bun test packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/host-local/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/repl/src",
     "test:just-bash-core": "bun test packages/just-bash/packages/just-bash/src/syntax/parser-protection.test.ts packages/just-bash/packages/just-bash/src/syntax/parser-edge-cases.test.ts packages/just-bash/packages/just-bash/src/syntax/parse-errors.test.ts",
     "repl": "bun run packages/repl/src/index.ts"

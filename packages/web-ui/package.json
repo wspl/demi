@@ -1,0 +1,35 @@
+{
+  "name": "@demi/web-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@demi/agent": "workspace:*",
+    "@demi/core": "workspace:*",
+    "@floating-ui/vue": "^2.0.0",
+    "@mingcute/vue": "^1.4.1",
+    "@tanstack/vue-virtual": "^3.13.29",
+    "@tiptap/extension-placeholder": "^3.27.1",
+    "@tiptap/pm": "^3.27.1",
+    "@tiptap/starter-kit": "^3.27.1",
+    "@tiptap/vue-3": "^3.27.1",
+    "@vueuse/core": "^14.3.0",
+    "ansi-to-html": "^0.7.2",
+    "marked": "^18.0.5",
+    "partial-json": "^0.1.7",
+    "pathe": "^2.0.3",
+    "shiki": "^4.2.0",
+    "vue": "^3.5.38"
+  },
+  "devDependencies": {
+    "@vue/tsconfig": "^0.9.1",
+    "typescript": "^6.0.3",
+    "vue-tsc": "^3.3.5"
+  }
+}

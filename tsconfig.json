@@ -24,5 +24,6 @@
       "@demi/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src"]
+  "include": ["packages/*/src"],
+  "exclude": ["packages/web-ui", "packages/web"]
 }

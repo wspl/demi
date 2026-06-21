@@ -167,6 +167,19 @@ test('package manifests preserve layering boundaries', async () => {
 
   const claudeProviderDependencies = packageDependencyNames(manifests.get('@demi/provider-claude-code'))
   expect(claudeProviderDependencies.some((name) => name === '@anthropic-ai/claude-agent-sdk' || name.includes('claude-agent-sdk'))).toBe(false)
+
+  const webUiDependencies = packageDependencyNames(manifests.get('@demi/web-ui'))
+  for (const forbidden of [
+    '@demi/host-local',
+    '@demi/shell',
+    '@demi/coding-agent',
+    '@demi/provider-claude-code',
+    '@demi/provider-codex',
+    '@demi/repl',
+    '@demi/web',
+  ]) {
+    expect(webUiDependencies).not.toContain(forbidden)
+  }
 })
 
 test('@demi/core and @demi/provider contain no concrete provider product details', async () => {

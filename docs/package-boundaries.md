@@ -108,6 +108,36 @@ Test code may depend upward for integration coverage. Production code must not.
 - May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
 - Must not: be imported by any other production package.
 
+### `@demi/web-ui`
+
+- Status: planned (see `docs/web-plan.md`).
+- Production deps: `@demi/core`, `@demi/agent`.
+- Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
+  Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, and a
+  transport-agnostic control-client interface. Consumes an injected `AgentClient`.
+- Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
+  by supplying an `AgentClient` and a control client.
+- Must not: import Node, `@demi/host-local`, `@demi/shell`, `@demi/coding-agent`, concrete
+  providers, `@demi/web`, or `@demi/repl`. It may import the `@demi/agent` client surface
+  only (`AgentClient`, WebSocket client transport, frame/event/block types).
+- Enforcement: because the components are `.vue` (not scanned by the `.ts` boundary test),
+  the web-ui boundary is enforced at the package-manifest level (no Node/adapter/provider
+  dependencies declared), not by the production import-graph scan.
+
+### `@demi/web`
+
+- Status: planned (see `docs/web-plan.md`).
+- Production deps: `@demi/web-ui`, `@demi/agent`, `@demi/host-local`, `@demi/coding-agent`,
+  `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`,
+  `@demi/shell`.
+- Owns: the Demi web product — the Vite browser app plus its embedded Node/Bun server. The
+  server serves the built assets and the WebSocket endpoints (per-session `/agent` + a
+  `/control` RPC), assembling a shared `ProviderRegistry` and a per-cwd `AgentServer` over
+  `LocalHost` and the coding harness. The server is not split into its own package.
+- Public boundary: top-level product application entry points (browser `main.ts`, server
+  `index.ts`).
+- Must not: be imported by any other production package.
+
 ## Production Dependency Graph
 
 The canonical production source graph contains every Demi package and must stay acyclic:
@@ -123,7 +153,14 @@ coding-agent -> agent, core, shell
 provider-claude-code -> core, provider
 provider-codex -> core, provider
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, shell, host-local
+web-ui -> agent, core
+web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, shell
 ```
+
+`web-ui` and `web` are browser/product packages built with Vite/Vue; their internal source
+is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not scan them as
+production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
+enforced at the manifest level by that test; `web` is a product leaf like `repl`.
 
 The graph is a compact view of the `Production deps` fields in the package registry. A package accepted by the graph but not yet implemented is still part of the design contract.
 
