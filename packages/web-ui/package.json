@@ -23,6 +23,7 @@
     "@tiptap/vue-3": "^3.27.1",
     "@vueuse/core": "^14.3.0",
     "ansi-to-html": "^0.7.2",
+    "dompurify": "^3.4.11",
     "marked": "^18.0.5",
     "partial-json": "^0.1.7",
     "pathe": "^2.0.3",
