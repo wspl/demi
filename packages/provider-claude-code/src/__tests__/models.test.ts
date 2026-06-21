@@ -130,6 +130,21 @@ function modelsDevFixture(): unknown {
   return {
     anthropic: {
       models: {
+        // Intentionally unsorted (mimics models.dev's arbitrary key order) to exercise catalog ordering.
+        'claude-fable-5': {
+          name: 'Claude Fable 5',
+          limit: { context: 1_000_000, output: 128_000 },
+          reasoning: true,
+          reasoning_options: [
+            { type: 'budget_tokens', min: 1024 },
+          ],
+        },
+        'claude-haiku-4-5': {
+          name: 'Claude Haiku 4.5',
+          limit: { context: 200_000, output: 64_000 },
+          reasoning: true,
+          attachment: true,
+        },
         'claude-opus-4-8': {
           name: 'Claude Opus 4.8',
           limit: { context: 1_000_000, output: 128_000 },
@@ -141,11 +156,12 @@ function modelsDevFixture(): unknown {
           tool_call: true,
           cost: { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 },
         },
-        'claude-haiku-4-5': {
-          name: 'Claude Haiku 4.5',
-          limit: { context: 200_000, output: 64_000 },
-          reasoning: true,
-          attachment: true,
+        'claude-newfamily-5': {
+          name: 'Claude Newfamily 5',
+        },
+        'claude-3-5-sonnet-20241022': {
+          name: 'Claude Sonnet 3.5',
+          limit: { context: 200_000, output: 8_192 },
         },
         'claude-sonnet-4-6': {
           name: 'Claude Sonnet 4.6',
@@ -155,21 +171,6 @@ function modelsDevFixture(): unknown {
           reasoning_options: [
             { type: 'effort', values: ['low', 'medium', 'high', 'max'] },
           ],
-        },
-        'claude-3-5-sonnet-20241022': {
-          name: 'Claude Sonnet 3.5',
-          limit: { context: 200_000, output: 8_192 },
-        },
-        'claude-fable-5': {
-          name: 'Claude Fable 5',
-          limit: { context: 1_000_000, output: 128_000 },
-          reasoning: true,
-          reasoning_options: [
-            { type: 'budget_tokens', min: 1024 },
-          ],
-        },
-        'claude-newfamily-5': {
-          name: 'Claude Newfamily 5',
         },
         'not-claude-9': {
           name: 'Other provider model',

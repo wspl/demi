@@ -111,6 +111,8 @@ export function modelsDevAnthropicCatalogToModelList(
     models.push(modelFromModelsDevEntry(id, rawModel, sourceFetchedAt, options.stale === true))
   }
 
+  models.sort(compareClaudeModels)
+
   return {
     providerId: 'claude-code',
     models,
@@ -119,6 +121,26 @@ export function modelsDevAnthropicCatalogToModelList(
     sourceFetchedAt,
     stale: options.stale === true,
   }
+}
+
+const CLAUDE_FAMILY_RANK: Record<string, number> = { opus: 0, sonnet: 1, haiku: 2 }
+
+function claudeFamilyRank(id: string): number {
+  const family = id.slice('claude-'.length).split('-')[0] ?? ''
+  return CLAUDE_FAMILY_RANK[family] ?? 3
+}
+
+/** Canonical catalog order: flagship family first (Opus > Sonnet > Haiku > others), newest version first. */
+function compareClaudeModels(a: ProviderModel, b: ProviderModel): number {
+  const familyDelta = claudeFamilyRank(a.id) - claudeFamilyRank(b.id)
+  if (familyDelta !== 0) return familyDelta
+  const versionA = parseClaudeModelVersion(a.id)
+  const versionB = parseClaudeModelVersion(b.id)
+  if (versionA && versionB) {
+    if (versionA.major !== versionB.major) return versionB.major - versionA.major
+    if (versionA.minor !== versionB.minor) return versionB.minor - versionA.minor
+  }
+  return a.id.localeCompare(b.id)
 }
 
 export function parseClaudeModelVersion(id: string): ClaudeVersion | null {
