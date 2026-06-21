@@ -44,7 +44,7 @@ watch(() => props.thinking, () => {
         <div class="flex size-4 shrink-0 items-center justify-center">
           <BrainLine :size="16" />
         </div>
-        <span class="min-w-0 flex-1">{{ t('agent.block.thinking') }}</span>
+        <span class="min-w-0 flex-1" :class="!hasContent && isStreaming ? 'thinking-shimmer' : ''">{{ t('agent.block.thinking') }}</span>
         <div class="flex h-5 shrink-0 items-center justify-center text-xs">
           <ArrowIcon
             v-if="showToggle"
@@ -80,5 +80,30 @@ watch(() => props.thinking, () => {
 
 .thinking-inner {
   overflow: hidden;
+}
+
+/* Claude Code redacts extended-thinking text (it only returns a signature + token
+   estimate), so these blocks have no prose to show. While the model is actively
+   thinking (this block is the last one and the turn is running) we shimmer the label
+   so it reads as a live "thinking" indicator; once thinking ends it goes static. */
+.thinking-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(163, 163, 163, 0.45) 0%,
+    rgba(200, 200, 200, 0.7) 40%,
+    rgba(225, 225, 225, 0.85) 50%,
+    rgba(200, 200, 200, 0.7) 60%,
+    rgba(163, 163, 163, 0.45) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinking-shimmer 2s ease-in-out infinite;
+}
+
+@keyframes thinking-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 </style>
