@@ -20,6 +20,7 @@ export interface ConversationState {
   id: string
   cwd: string
   title: string
+  createdAt: string
   blocks: Block[]
   phase: SessionPhase
   queue: QueuedMessage[]

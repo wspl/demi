@@ -70,6 +70,7 @@ export class AgentWorkspace {
       id,
       cwd: this.cwd,
       title: options.title ?? this.nextTitle(),
+      createdAt: new Date().toISOString(),
       blocks: [],
       phase: 'idle',
       queue: [],

@@ -31,6 +31,8 @@ const messages: Record<string, string> = {
   'agent.context.noUsage': 'No usage recorded yet',
   'agent.context.unavailable': 'Context usage unavailable',
   'agent.context.compactHint': 'Click to compact context',
+  'agent.conversationList.placeholder': 'Search conversations…',
+  'agent.conversationList.empty': 'No conversations',
 }
 
 export function t(key: string): string {
