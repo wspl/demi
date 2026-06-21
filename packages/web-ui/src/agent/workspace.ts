@@ -116,6 +116,8 @@ export class AgentWorkspace {
   setModel(id: string, model: ModelIntent): void {
     const state = this.sessions[id]
     if (state) state.model = model
+    // Push to an open session so the next turn uses the new model; no-op until it opens.
+    void this.runtimes.get(id)?.setModel()
   }
 
   send(id: string, content: UserContentBlock[]): Promise<void> {

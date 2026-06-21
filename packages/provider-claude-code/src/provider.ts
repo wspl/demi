@@ -25,6 +25,10 @@ interface ActiveClaudeRun {
   hasStreamed: boolean
   /** Session this live process belongs to; a different session forces a cold restart. */
   sessionId: string
+  /** Model + thinking effort this process was spawned with; switching either forces a cold restart
+   *  (both `--model` and `--effort` are fixed per process). */
+  modelId: string
+  thinkingSig: string
   /** How many `user_message` items have been delivered to this process so far. */
   sentUserMessageCount: number
   /** Signature of the first user message, used to detect a rewritten transcript (compaction). */
@@ -149,7 +153,12 @@ export class ClaudeCodeProvider implements AgentProvider {
    */
   private async ensureActiveForRequest(request: InferenceRequest): Promise<ActiveClaudeRun> {
     const existing = this.active
-    if (existing && existing.sessionId === request.sessionId) {
+    if (
+      existing &&
+      existing.sessionId === request.sessionId &&
+      existing.modelId === request.modelId &&
+      existing.thinkingSig === thinkingSignature(request)
+    ) {
       const hasPendingToolCall =
         existing.pendingControlRequest !== null || existing.pendingToolUseIds.length > 0
       if (hasPendingToolCall || !itemsDiverged(existing, request.items)) {
@@ -173,6 +182,8 @@ export class ClaudeCodeProvider implements AgentProvider {
       sdkMcpEnabled: request.tools.length > 0,
       hasStreamed: false,
       sessionId: request.sessionId,
+      modelId: request.modelId,
+      thinkingSig: thinkingSignature(request),
       sentUserMessageCount: 0,
       firstUserSig: null,
     }
@@ -437,6 +448,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isMessageType(value: unknown, type: string): boolean {
   return isRecord(value) && value.type === type
+}
+
+function thinkingSignature(request: InferenceRequest): string {
+  return JSON.stringify(request.thinking ?? null)
 }
 
 function countUserMessages(items: InferenceItem[]): number {

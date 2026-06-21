@@ -5,7 +5,7 @@ import type {
   TokenUsage,
   UserContentBlock,
 } from '@demi/core'
-import type { InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
+import type { AgentProvider, InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
 import { Transcript, type TranscriptOptions } from './transcript'
 import type {
   AgentHarnessRuntime,
@@ -34,10 +34,17 @@ type PendingAction =
   | { type: 'retry'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'resume'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'compact'; resolve: () => void; reject: (error: unknown) => void }
+  | {
+      type: 'set_model'
+      provider: AgentProvider | null
+      model: ModelSelection
+      resolve: () => void
+      reject: (error: unknown) => void
+    }
 
 export class AgentSession<State> {
-  private readonly provider
-  private readonly model: ModelSelection
+  private provider: AgentProvider
+  private model: ModelSelection
   private readonly cwd: string
   private readonly runtime: AgentHarnessRuntime<State>
   private readonly agentSessionId: string
@@ -126,6 +133,16 @@ export class AgentSession<State> {
 
   compact(): Promise<void> {
     return this.enqueue({ type: 'compact', resolve: noop, reject: noop })
+  }
+
+  /**
+   * Switches the model (and optionally the provider) for the rest of the session. Queued as an
+   * action so it lands at a turn boundary, never mid-tool-continuation; the next turn uses it.
+   * A non-null `provider` replaces the current one (its predecessor is disposed); pass null to
+   * keep the same provider instance and only change the model.
+   */
+  updateModel(provider: AgentProvider | null, model: ModelSelection): Promise<void> {
+    return this.enqueue({ type: 'set_model', provider, model, resolve: noop, reject: noop })
   }
 
   async abort(): Promise<boolean> {
@@ -278,7 +295,19 @@ export class AgentSession<State> {
         this.setPhase('compacting')
         await this.executeCompaction()
         return
+      case 'set_model':
+        await this.applyModelChange(action.provider, action.model)
+        return
     }
+  }
+
+  private async applyModelChange(provider: AgentProvider | null, model: ModelSelection): Promise<void> {
+    if (provider && provider !== this.provider) {
+      const previous = this.provider
+      this.provider = provider
+      await previous.dispose?.()
+    }
+    this.model = model
   }
 
   private async executeSend(content: UserContentBlock[]): Promise<void> {

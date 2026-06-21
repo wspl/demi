@@ -17,6 +17,7 @@ export interface ProviderConfig {
 export type ClientFrame =
   | { type: 'open'; provider: ProviderConfig; cwd: string }
   | { type: 'send'; content: UserContentBlock[] }
+  | { type: 'set_provider'; provider: ProviderConfig }
   | { type: 'abort' }
   | { type: 'retry' }
   | { type: 'resume' }

@@ -26,6 +26,22 @@ export class ConversationRuntime {
     await client.send(content)
   }
 
+  /**
+   * Pushes a model/provider switch to an already-open session so the next turn uses it. If the
+   * session has not been opened yet, this is a no-op: openSession reads the latest state.model.
+   */
+  async setModel(): Promise<void> {
+    if (!this.client) return
+    const intent = this.state.model
+    const providerConfig = await this.control.prepareSession({
+      providerType: intent.providerType,
+      modelId: intent.modelId,
+      thinkingEffort: intent.thinkingEffort,
+      serviceTierId: intent.serviceTierId,
+    })
+    this.client.setProvider(providerConfig)
+  }
+
   async abort(): Promise<void> {
     await this.client?.abort()
   }

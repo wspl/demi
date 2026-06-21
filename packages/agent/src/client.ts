@@ -43,6 +43,14 @@ export class AgentClient {
     return this.sendMessage(content)
   }
 
+  /**
+   * Switches the provider/model for an open session. The change takes effect on the next
+   * turn (the server applies it at a turn boundary), so this is fire-and-forget.
+   */
+  setProvider(provider: ProviderConfig): void {
+    this.sendFrame({ type: 'set_provider', provider })
+  }
+
   retry(): Promise<void> {
     const wait = this.waitForAction('retry')
     this.sendFrame({ type: 'retry' })

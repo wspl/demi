@@ -11,7 +11,7 @@ import type { Block, ToolResultContentBlock } from '@demi/core'
 import type { ProviderRegistry } from '@demi/provider'
 import { AgentClient } from './client'
 import { cloneBlocks, diffTranscriptBlocks } from './patch'
-import type { ClientFrame, OutputSnapshotLike, ServerFrame } from './frames'
+import type { ClientFrame, OutputSnapshotLike, ProviderConfig, ServerFrame } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
 import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
 
@@ -77,6 +77,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private currentAgent: AgentHarness<unknown> | null = null
   private currentEnvironment: BashEnvironment | null = null
   private currentCwd: string | null = null
+  private currentProviderType: string | null = null
   private unsubscribeSession: (() => void) | null = null
   private lastTranscriptBlocks: Block[] = []
   private unsubscribeTransport: (() => void) | null = null
@@ -118,6 +119,9 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           this.observeSessionAction(session.send(frame.content))
           return
         }
+        case 'set_provider':
+          await this.setProvider(frame.provider)
+          return
         case 'retry': {
           const session = this.sessionFor('retry')
           if (!session || this.rejectIfBusy(session, 'retry')) return
@@ -201,6 +205,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.currentAgent = agent
     this.currentEnvironment = environment
     this.currentCwd = frame.cwd
+    this.currentProviderType = frame.provider.type
     this.lastTranscriptBlocks = []
     this.unsubscribeSession = this.session.subscribe((event) => this.handleSessionEvent(event))
 
@@ -235,6 +240,23 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     }
   }
 
+  private async setProvider(provider: ProviderConfig): Promise<void> {
+    const session = this.session
+    if (!session) {
+      this.send({ type: 'rejected', command: 'set_provider', reason: 'No session is open on this connection' })
+      return
+    }
+    if (provider.type === this.currentProviderType) {
+      // Same provider type: keep the instance and only swap the model (the provider itself
+      // restarts whatever it needs to when the model id changes on the next request).
+      await session.updateModel(null, provider.model)
+      return
+    }
+    const next = await this.providerRegistry.createProvider(provider.type, provider.config)
+    await session.updateModel(next, provider.model)
+    this.currentProviderType = provider.type
+  }
+
   private async closeSession(): Promise<void> {
     const session = this.session
     const agent = this.currentAgent
@@ -254,6 +276,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       this.currentAgent = null
       this.currentEnvironment = null
       this.currentCwd = null
+      this.currentProviderType = null
       this.lastTranscriptBlocks = []
     }
   }
