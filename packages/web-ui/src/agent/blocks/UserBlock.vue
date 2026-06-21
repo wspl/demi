@@ -45,10 +45,10 @@ useResizeObserver(contentRef, () => {
 
 <template>
   <div
-    class="relative z-10 flex flex-col bg-surface px-8 pb-2 pt-1.5"
+    class="relative z-10 flex flex-col items-end bg-surface px-8 pb-2 pt-1.5"
     :class="forceStuck ? 'user-sticky' : ''"
   >
-    <div class="group/user relative rounded-xl bg-surface-raised p-3">
+    <div class="group/user relative max-w-[80%] rounded-xl bg-surface-raised p-3">
       <div v-if="imageBlocks.length > 0 || documentBlocks.length > 0" class="mb-2 flex flex-wrap gap-1.5">
         <img
           v-for="(block, i) in imageBlocks"
