@@ -61,12 +61,19 @@ export function requestToInputMessages(request: InferenceRequest): ClaudeInputMe
  * conversation history — i.e. on a cold start: the first turn, a resume after the process
  * died, or a restart forced by compaction.
  *
- * Crucially, prior tool calls/results are rendered as plain TEXT rather than structured
- * `tool_use` / `tool_result` blocks. Replaying a structured MCP `tool_use` into a
- * freshly-initialized SDK-MCP session is exactly what makes Claude reject the request with
- * `API Error: 400 ... tool use concurrency`. The live, in-process path never calls this:
- * there the CLI keeps the structured tool history in its own native context, so no replay
- * happens at all.
+ * Two invariants:
+ *
+ * 1. Prior tool calls/results are rendered as plain TEXT, never structured `tool_use` /
+ *    `tool_result` blocks. Replaying a structured MCP `tool_use` into a freshly-initialized
+ *    SDK-MCP session is exactly what makes Claude reject the request with
+ *    `API Error: 400 ... tool use concurrency`.
+ * 2. A `user` message contains ONLY real user input. Both the tool call and its result are
+ *    folded into the *assistant* narrative ("I ran X, it returned Y"), so we never synthesize
+ *    a user turn the human did not type, and never merge a tool result into the next real
+ *    prompt. This keeps the conversation cleanly alternating without fabricated user messages.
+ *
+ * The live, in-process path never calls this: there the CLI keeps the structured tool history
+ * in its own native context, so no replay happens at all.
  */
 export function coldStartInputMessages(items: InferenceItem[]): ClaudeInputMessage[] {
   const messages: ClaudeInputMessage[] = []
@@ -101,7 +108,8 @@ export function coldStartInputMessages(items: InferenceItem[]): ClaudeInputMessa
         append('assistant', [{ type: 'text', text: renderToolUseText(item.toolName, item.input) }])
         break
       case 'tool_result':
-        append('user', [{ type: 'text', text: renderToolResultText(toolNames.get(item.toolUseId), item) }])
+        // Folded into the assistant narrative, never a user turn — see invariant 2 above.
+        append('assistant', [{ type: 'text', text: renderToolResultText(toolNames.get(item.toolUseId), item) }])
         break
       // assistant_thinking / assistant_redacted_thinking are intentionally skipped: thinking is
       // internal, and its signatures will not validate against a different (fresh) process.
@@ -112,13 +120,13 @@ export function coldStartInputMessages(items: InferenceItem[]): ClaudeInputMessa
 }
 
 function renderToolUseText(toolName: string, input: unknown): string {
-  return `[Earlier in this conversation I called the tool ${toolName} with input: ${safeJson(input)}]`
+  return `[Earlier in this conversation I called the tool ${toolName} with input: ${safeJson(input)}.`
 }
 
 function renderToolResultText(toolName: string | undefined, item: Extract<InferenceItem, { type: 'tool_result' }>): string {
-  const label = toolName ? `tool ${toolName}` : 'the previous tool call'
   const body = toolResultToText(item.output)
-  return item.isError ? `[Result of ${label} (error): ${body}]` : `[Result of ${label}: ${body}]`
+  const suffix = toolName ? ` from ${toolName}` : ''
+  return item.isError ? `It returned an error${suffix}: ${body}]` : `It returned${suffix}: ${body}]`
 }
 
 function safeJson(value: unknown): string {

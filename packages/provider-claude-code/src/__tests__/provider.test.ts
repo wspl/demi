@@ -341,6 +341,17 @@ test('ClaudeCodeProvider renders prior tool calls as text on a cold start, never
   })
   expect(JSON.stringify(assistantWrite?.message.content)).toContain('shell_exec')
 
+  // Invariant: a user message only ever carries real user input — never a tool result or a
+  // tool-call narrative. The replayed tool history is folded entirely into assistant turns.
+  const userWrites = transport.writes.filter((write): write is { type: 'user'; message: { content: unknown[] } } => {
+    return isRecord(write) && write.type === 'user' && isRecord(write.message) && Array.isArray(write.message.content)
+  })
+  const userTexts = userWrites.flatMap((write) => write.message.content)
+  expect(userTexts).toEqual([
+    { type: 'text', text: 'previous work' },
+    { type: 'text', text: 'continue' },
+  ])
+
   expect(events).toEqual([
     { type: 'text_delta', text: 'ready' },
     { type: 'response', usage: { inputTokens: 3, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } },

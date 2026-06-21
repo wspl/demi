@@ -80,6 +80,36 @@ and **one** user message written per turn (no replayed history, no structured `t
 
 Full suite: `bun run test` → 349 pass / 0 fail; `bun run typecheck` clean.
 
+### Context cache is preserved (and improved)
+
+Per-turn usage from the in-browser session (Claude Opus 4.8):
+
+| turn | input | cache_read | cache_creation |
+|---|---|---|---|
+| 1 | 58 | 3626 | 3797 |
+| 2 | 63 | 7688 | 259 |
+| 3 | 66 | 8200 | 257 |
+
+`cache_read` grows every turn while `cache_creation` collapses to ~250 after turn 1 — each turn
+reads the entire prior conversation (tool exchanges included) from cache and pays only to cache the
+new increment. This is the CLI's native incremental caching, which the old restart-per-turn path
+defeated by re-deriving cache breakpoints from scratch. The only cache miss is the unavoidable
+first request after a cold restart (process death / compaction), which then re-caches.
+
+### User messages stay clean
+
+A `user` message is only ever real user input:
+
+- **Live path:** each turn writes exactly one `user[text]` (the prompt). Tool results travel back as
+  MCP `control_response` (`mcp_response`), not user messages, and the structured tool history lives in
+  the CLI's native context.
+- **Cold start:** both the tool call and its result are folded into the *assistant* narrative
+  ("I ran X, it returned Y"); no user turn is fabricated and no tool result is merged into the next
+  real prompt. Verified against the real CLI by killing the process mid-session: the forced restart
+  replayed only the two real prompts as user turns (zero fabricated user messages), and the model
+  still recalled the prior command from the assistant narrative. Locked by a deterministic assertion
+  in `provider.test.ts`.
+
 ## Known edges / follow-ups
 
 - **demi compaction vs CLI context.** The live CLI keeps the full conversation in its own context;
