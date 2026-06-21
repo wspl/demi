@@ -23,6 +23,11 @@ Implemented and verified (against a scripted stub provider that emits thinking +
   `shell_exec`); the **Input** (tiptap composer, model + reasoning selectors, context-usage
   ring, send/stop); the **Tab** bar (drag-reorder, animations, context menu, rename,
   multi-conversation).
+- Verified against the **real** Claude Code provider in-browser: multi-turn tool use no longer
+  triggers `400 ... tool use concurrency`, and the `claude` CLI is no longer restarted per turn.
+  See `docs/claude-code-persistent-session.md` for the root cause, the persistent-session design,
+  and the acceptance evidence (one process spawn per session, zero concurrency errors). The
+  durable wire log (`packages/provider-claude-code/src/wire-log.ts`) is the diagnostic seam.
 
 Deferred (out of the tab/list/input core, or needs demi backend support that does not exist
 yet):
