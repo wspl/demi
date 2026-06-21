@@ -4,6 +4,40 @@ Status: design. Do not implement before this plan is accepted. This document is 
 canonical design record for the Demi web product and its reusable component library.
 When code and this document disagree, fix the code or update this document first.
 
+## Implementation Status
+
+Implemented and verified (against a scripted stub provider that emits thinking + a real
+`shell_exec` + text, exercised end-to-end in a browser):
+
+- `@demi/web-ui` + `@demi/web` packages on the latest Vite 8 / Vue 3.5 / Tailwind 4 / vue-tsc
+  toolchain; design tokens (`base.css`) copied verbatim.
+- Transport: per-session `/agent` WebSocket reusing `@demi/agent`'s WS transport, plus a
+  `/control` WebSocket RPC (providers/models/prepareSession/workspace). Browser-safe
+  `@demi/agent/client` subpath keeps the bundle free of `AgentServer`/`@demi/shell`.
+- Server: Bun.serve serving the built app + the two WS endpoints; per-cwd `AgentServer` over
+  `LocalHost` + the coding harness.
+- Store: `AgentWorkspace` + `ConversationRuntime` (one `AgentClient` per conversation),
+  provide/inject, control-backed catalog.
+- UI ported from agent-gui (copy → surgical adapt): app-basic primitives, markdown (marked +
+  shiki), theme; the **List** (virtualizer + all core blocks, tool dispatch rewired to demi
+  `shell_exec`); the **Input** (tiptap composer, model + reasoning selectors, context-usage
+  ring, send/stop); the **Tab** bar (drag-reorder, animations, context menu, rename,
+  multi-conversation).
+
+Deferred (out of the tab/list/input core, or needs demi backend support that does not exist
+yet):
+
+- Attachments (image/document upload) — browser File handling diverges from agent-gui's
+  Electron file paths; the composer is text-only for now.
+- Sticky user-block overlay, inline user-turn edit, revert/rollback/replay — demi has no
+  checkpoint rollback; `continue`/`retry` map to `resume`/`retry`.
+- Message-queue item management, plan/agent mode toggle, `@`/`/` mentions (removed), MCP/skills.
+- Keyboard command registry / tab shortcuts, conversation persistence + reopen-closed,
+  light/dark toggle UI (the token system supports both; default is dark).
+- Real-provider (claude-code/codex) acceptance is available via the `@demi/web` server
+  (`bun run packages/web/src/server/index.ts`); the stub path validates the full mechanism
+  without API cost.
+
 ## 1. Goal and Scope
 
 Build a browser front end for the Demi agent that:
