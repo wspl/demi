@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import type { InferenceRequest } from '@demi/provider'
 import { buildClaudeArgs, buildClaudeEnv } from './cli'
+import { createClaudeWireLog, type ClaudeWireLog } from './wire-log'
 
 export interface ClaudeTransport {
   writeJson(value: unknown): Promise<void>
@@ -35,17 +36,22 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   }
 
   async start(request: InferenceRequest): Promise<ClaudeTransport> {
-    const child = spawn(
-      this.claudePath,
-      buildClaudeArgsForRequest(request, { maxBudgetUsd: this.maxBudgetUsd }),
-      {
-        cwd: request.cwd,
-        env: buildClaudeEnv(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-      },
-    ) as ChildProcessWithoutNullStreams
+    const args = buildClaudeArgsForRequest(request, { maxBudgetUsd: this.maxBudgetUsd })
+    const wireLog = createClaudeWireLog(request.sessionId)
+    wireLog.record('spawn', {
+      requestId: request.requestId,
+      turnId: request.turnId,
+      model: request.modelId,
+      cwd: request.cwd,
+      args,
+    })
+    const child = spawn(this.claudePath, args, {
+      cwd: request.cwd,
+      env: buildClaudeEnv(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }) as ChildProcessWithoutNullStreams
 
-    return new ChildProcessClaudeTransport(child)
+    return new ChildProcessClaudeTransport(child, wireLog)
   }
 }
 
@@ -65,15 +71,25 @@ class ChildProcessClaudeTransport implements ClaudeTransport {
   private stderr = ''
   private readonly waitPromise: Promise<{ exitCode: number | null; signal?: string }>
 
-  constructor(private readonly child: ChildProcessWithoutNullStreams) {
+  constructor(
+    private readonly child: ChildProcessWithoutNullStreams,
+    private readonly wireLog: ClaudeWireLog,
+  ) {
     this.waitPromise = new Promise((resolve) => {
-      child.once('close', (exitCode, signal) => resolve({ exitCode, signal: signal ?? undefined }))
-      child.once('error', () => resolve({ exitCode: null }))
+      child.once('close', (exitCode, signal) => {
+        this.wireLog.record('exit', { exitCode, signal: signal ?? null })
+        resolve({ exitCode, signal: signal ?? undefined })
+      })
+      child.once('error', (error) => {
+        this.wireLog.record('exit', { error: error.message })
+        resolve({ exitCode: null })
+      })
     })
     void this.collectStderr()
   }
 
   async writeJson(value: unknown): Promise<void> {
+    this.wireLog.record('in', value)
     const line = `${JSON.stringify(value)}\n`
     await new Promise<void>((resolve, reject) => {
       this.child.stdin.write(line, (error) => {
@@ -87,7 +103,9 @@ class ChildProcessClaudeTransport implements ClaudeTransport {
     const rl = createInterface({ input: this.child.stdout })
     for await (const line of rl) {
       if (String(line).trim() === '') continue
-      yield JSON.parse(String(line))
+      const parsed = JSON.parse(String(line))
+      this.wireLog.record('out', parsed)
+      yield parsed
     }
   }
 
@@ -104,7 +122,11 @@ class ChildProcessClaudeTransport implements ClaudeTransport {
   }
 
   private async collectStderr(): Promise<void> {
-    for await (const chunk of this.child.stderr) this.stderr += Buffer.from(chunk).toString('utf8')
+    for await (const chunk of this.child.stderr) {
+      const text = Buffer.from(chunk).toString('utf8')
+      this.stderr += text
+      this.wireLog.record('err', text)
+    }
   }
 }
 

@@ -4,3 +4,4 @@ export {
   parseClaudeCodeProviderConfig,
   type ClaudeCodeProviderConfig,
 } from './provider'
+export { resolveWireLogDir } from './wire-log'
