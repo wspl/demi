@@ -14,6 +14,7 @@ const props = defineProps<{
 const command = computed(() => (props.input['script'] as string) ?? '')
 const description = computed(() => (props.input['description'] as string) ?? '')
 const hasCommand = computed(() => !!command.value)
+const isMultiline = computed(() => command.value.includes('\n'))
 
 const outputText = computed(() => {
   const source =
@@ -38,10 +39,10 @@ const outputText = computed(() => {
     </template>
 
     <template #header>
-      <span class="truncate text-[13px] text-fg-muted">{{ description || command }}</span>
+      <span class="truncate font-mono text-xs text-fg-muted">{{ description || (isMultiline ? '' : command) }}</span>
     </template>
 
-    <template #body-top>
+    <template v-if="description || isMultiline" #body-top>
       <div class="border-b border-line bg-overlay/2 px-3 py-1.5 font-mono text-xs">
         <span class="select-none text-fg-faint">$ </span><span class="line-clamp-5 select-all text-fg-muted">{{ command }}</span>
       </div>
