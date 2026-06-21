@@ -176,6 +176,15 @@ function codexModelsFixture(): unknown {
         input_modalities: ['text'],
         supported_reasoning_levels: [],
       },
+      {
+        slug: 'codex-auto-review',
+        display_name: 'Codex Auto Review',
+        description: 'Automatic approval review model for Codex.',
+        context_window: 272_000,
+        visibility: 'hide',
+        input_modalities: ['text', 'image'],
+        supported_reasoning_levels: [{ effort: 'medium' }],
+      },
     ],
   }
 }

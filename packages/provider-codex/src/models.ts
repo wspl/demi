@@ -110,6 +110,7 @@ export function codexBackendModelsToModelList(
       warnings.push('Skipped Codex model without slug')
       continue
     }
+    if (stringOr(raw.visibility) === 'hide') continue
     models.push(codexModelFromBackendEntry(id, raw, sourceFetchedAt, options.stale === true))
   }
   return {
