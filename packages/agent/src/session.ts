@@ -302,12 +302,34 @@ export class AgentSession<State> {
   }
 
   private async applyModelChange(provider: AgentProvider | null, model: ModelSelection): Promise<void> {
+    // Moving to a model with a smaller context window: compact with the CURRENT (pre-switch)
+    // model + provider first — it can still load the whole history to summarize it — then hand
+    // the now-smaller context to the new model. Doing it after the swap would ask the smaller
+    // model to summarize a history it may not even be able to load.
+    await this.compactToFitModel(model)
     if (provider && provider !== this.provider) {
       const previous = this.provider
       this.provider = provider
       await previous.dispose?.()
     }
     this.model = model
+  }
+
+  private async compactToFitModel(nextModel: ModelSelection): Promise<void> {
+    const contextWindow = nextModel.model.contextWindow
+    if (contextWindow <= 0) return
+    const threshold = Math.floor(contextWindow * this.compactionThresholdRatio)
+    if (this.transcriptLog.estimateContextTokens() < threshold) return
+
+    const previousPhase = this.currentPhase
+    this.setPhase('compacting')
+    try {
+      for (let attempt = 0; attempt < 8 && this.transcriptLog.estimateContextTokens() >= threshold; attempt += 1) {
+        if (!(await this.executeCompaction())) break
+      }
+    } finally {
+      this.setPhase(previousPhase)
+    }
   }
 
   private async executeSend(content: UserContentBlock[]): Promise<void> {

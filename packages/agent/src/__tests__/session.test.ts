@@ -102,6 +102,32 @@ test('updateModel swaps the provider, disposes the old one, and the next turn us
   expect(session.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(2)
 })
 
+test('switching to a smaller-window model compacts with the OLD model before handing over', async () => {
+  const big = new RecordingProvider('summary from the big model')
+  const small = new RecordingProvider('small reply')
+  const bigModel: ModelSelection = { ...model, model: { ...model.model, id: 'big', contextWindow: 100_000 } }
+  // Tiny window so the accumulated history is over threshold for the target model.
+  const smallModel: ModelSelection = { ...model, model: { ...model.model, id: 'small', contextWindow: 8 } }
+  const session = createSession(big, createRuntime(), undefined, bigModel)
+
+  await session.send(text('first turn with some content to fill the transcript'))
+  await session.send(text('second turn with even more content to fill the transcript'))
+  const bigRunsBeforeSwitch = big.runModelIds.length
+
+  await session.updateModel(small, smallModel)
+
+  // The compaction ran on the pre-switch (big) provider — extra runs, all on 'big' — and produced
+  // a summary boundary, BEFORE the small model is ever used.
+  expect(big.runModelIds.length).toBeGreaterThan(bigRunsBeforeSwitch)
+  expect(big.runModelIds.every((id) => id === 'big')).toBe(true)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
+  expect(small.runModelIds).toEqual([])
+
+  await session.send(text('after switch'))
+  expect(small.runModelIds.length).toBeGreaterThan(0)
+  expect(small.runModelIds.every((id) => id === 'small')).toBe(true)
+})
+
 test('AgentSession send writes user turn before provider request and records response', async () => {
   const requests: InferenceRequest[] = []
   const provider = new StubProvider([
