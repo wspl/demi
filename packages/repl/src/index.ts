@@ -31,7 +31,6 @@ export interface ReplOptions {
   modelId: string | null
   thinkingEffort: ThinkingEffort | null
   serviceTierId: string | null
-  maxBudgetUsd: string | null
   claudePath?: string
   codexHome?: string
   baseUrl?: string
@@ -503,7 +502,6 @@ function parseArgs(args: string[]): ReplOptions {
   let thinkingEffort = parseThinkingEffort(envThinkingValue(provider), envThinkingSource(provider))
   let thinkingProvided = false
   let serviceTierId: string | null = null
-  let maxBudgetUsd: string | null = process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.25'
   let claudePath: string | undefined
   let codexHome: string | undefined = process.env.CODEX_HOME
   let baseUrl: string | undefined
@@ -529,8 +527,6 @@ function parseArgs(args: string[]): ReplOptions {
       thinkingEffort = null
       thinkingProvided = true
     }
-    else if (arg === '--budget') maxBudgetUsd = requiredValue(args, ++index, '--budget')
-    else if (arg === '--no-budget') maxBudgetUsd = null
     else if (arg === '--service-tier') serviceTierId = requiredValue(args, ++index, '--service-tier')
     else if (arg === '--claude-path') claudePath = requiredValue(args, ++index, '--claude-path')
     else if (arg === '--codex-home') codexHome = requiredValue(args, ++index, '--codex-home')
@@ -550,7 +546,6 @@ function parseArgs(args: string[]): ReplOptions {
     modelId,
     thinkingEffort,
     serviceTierId,
-    maxBudgetUsd,
     claudePath,
     codexHome,
     baseUrl,
@@ -731,7 +726,6 @@ function providerConfigForOptions(options: ReplOptions): Record<string, unknown>
   if (options.provider === 'claude-code') {
     return {
       ...(options.claudePath ? { claudePath: options.claudePath } : {}),
-      ...(options.maxBudgetUsd === null ? {} : { maxBudgetUsd: options.maxBudgetUsd }),
     }
   }
   return {
@@ -749,8 +743,7 @@ function printBanner(options: ReplOptions, model: ResolvedReplModel): void {
   writeMetaLine('model', model.selection.model.id)
   writeMetaLine('thinking', options.thinkingEffort ?? 'not requested')
   if (options.serviceTierId) writeMetaLine('tier', options.serviceTierId)
-  if (options.provider === 'claude-code') writeMetaLine('budget', options.maxBudgetUsd ?? 'none')
-  else writeMetaLine('transport', options.transport)
+  if (options.provider === 'codex') writeMetaLine('transport', options.transport)
   for (const warning of model.warnings) writeEventLine(process.stdout, 'warning', warning, 'yellow')
 }
 
@@ -764,8 +757,6 @@ Options:
   --thinking <effort>      Provider-supported thinking effort id.
   --no-thinking            Do not request an explicit thinking effort. This is the default.
   --service-tier <id>      Provider-supported service tier id.
-  --budget <usd>           Max budget passed to Claude Code. Defaults to 0.25.
-  --no-budget              Do not pass a max budget.
   --claude-path <path>     Path to claude CLI. Defaults to claude on PATH.
   --codex-home <path>      Codex home containing auth.json. Defaults to CODEX_HOME or ~/.codex.
   --base-url <url>         Override Codex/OpenAI base URL.

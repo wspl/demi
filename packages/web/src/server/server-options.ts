@@ -11,7 +11,6 @@ export interface ServerOptions {
   modelId: string | null
   thinkingEffort: string | null
   serviceTierId: string | null
-  maxBudgetUsd: string | null
   claudePath?: string
   codexHome?: string
   baseUrl?: string
@@ -28,7 +27,6 @@ export function parseServerOptions(args: string[]): ServerOptions {
     modelId: null,
     thinkingEffort: null,
     serviceTierId: null,
-    maxBudgetUsd: process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.25',
     codexHome: process.env.CODEX_HOME,
     transport: 'auto',
     yieldAfterMs: 10_000,
@@ -43,8 +41,6 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else if (arg === '--model') options.modelId = required(args, ++index, '--model')
     else if (arg === '--thinking') options.thinkingEffort = required(args, ++index, '--thinking')
     else if (arg === '--no-thinking') options.thinkingEffort = null
-    else if (arg === '--budget') options.maxBudgetUsd = required(args, ++index, '--budget')
-    else if (arg === '--no-budget') options.maxBudgetUsd = null
     else if (arg === '--service-tier') options.serviceTierId = required(args, ++index, '--service-tier')
     else if (arg === '--claude-path') options.claudePath = required(args, ++index, '--claude-path')
     else if (arg === '--codex-home') options.codexHome = required(args, ++index, '--codex-home')
@@ -63,7 +59,6 @@ export function providerConfigFor(provider: string, options: ServerOptions): Rec
   if (provider === 'claude-code') {
     return {
       ...(options.claudePath ? { claudePath: options.claudePath } : {}),
-      ...(options.maxBudgetUsd === null ? {} : { maxBudgetUsd: options.maxBudgetUsd }),
     }
   }
   return {

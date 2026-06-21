@@ -6,7 +6,7 @@
 | Status | Passed |
 | Scope | Real REPL + real Claude Code provider + foreground shell control |
 | Primary model | `claude-haiku-4-5`, thinking off |
-| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 500 --timeout-ms 120000` |
+| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 500 --timeout-ms 120000` |
 | Acceptance target | Verify the model can handle commands that wait, ask for input, or run until intentionally aborted |
 
 ## Scenario Design

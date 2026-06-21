@@ -6,7 +6,7 @@
 | Status | Passed |
 | Scope | Real REPL + AgentClient queue + active long provider turn |
 | Primary model | `claude-haiku-4-5`, thinking off |
-| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
+| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 1000 --timeout-ms 180000` |
 | Acceptance target | Send multiple user inputs while a turn is active and verify ordering, queue display, and drain behavior |
 
 ## Scenario Design

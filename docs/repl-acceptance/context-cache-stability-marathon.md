@@ -6,7 +6,7 @@
 | Status | Passed |
 | Scope | Real REPL + real Claude Code provider + repeated stable-prefix turns |
 | Primary model | `claude-haiku-4-5`, thinking off |
-| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
+| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 1000 --timeout-ms 180000` |
 | Acceptance target | Verify cache usage fields survive REPL rendering, real cache hits appear on provider continuation paths, compact reduces the next request shape, and cache-backed operation resumes after compact |
 
 ## Scenario Design

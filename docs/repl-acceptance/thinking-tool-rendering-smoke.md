@@ -6,7 +6,7 @@
 | Status | Passed |
 | Scope | Real REPL + real Claude Code provider + thinking + tool output |
 | Primary model | `claude-opus-4-8`, medium thinking |
-| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-opus-4-8 --thinking medium --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
+| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-opus-4-8 --thinking medium --yield-after-ms 1000 --timeout-ms 180000` |
 | Acceptance target | Confirm the REPL shows real model text, thinking output, tool output, and usage without duplicates |
 
 ## Scenario Design

@@ -2,7 +2,6 @@ export function buildClaudeArgs(params: {
   modelId: string
   systemPrompt: string
   thinkingEffort?: string | null
-  maxBudgetUsd?: number | string | null
 }): string[] {
   const args = [
     '--print',
@@ -26,9 +25,6 @@ export function buildClaudeArgs(params: {
     params.systemPrompt,
   ]
   if (params.thinkingEffort) args.push('--effort', params.thinkingEffort)
-  if (params.maxBudgetUsd !== undefined && params.maxBudgetUsd !== null) {
-    args.push('--max-budget-usd', String(params.maxBudgetUsd))
-  }
   return args
 }
 

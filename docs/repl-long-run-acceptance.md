@@ -8,7 +8,7 @@ The purpose is to catch failures that deterministic unit tests usually miss: mod
 
 - Treat these as gated acceptance tests, not default unit tests.
 - Use a fresh temporary workspace for every run.
-- Record the exact REPL command, model, budget, prompt shape, workspace, log path, and final verdict.
+- Record the exact REPL command, model, prompt shape, workspace, log path, and final verdict.
 - Prefer machine-checkable signals over model self-report: phase sequence, `usage>` lines, compact count, tool render count, output sentinels, real files, build/test exit code, and known error keywords.
 - When a run exposes a product bug, add a deterministic regression test for the fixed contract before closing the acceptance record.
 - Do not rewrite the prompt to reveal the intended solution. The prompt should exercise fuzzy, realistic model behavior.

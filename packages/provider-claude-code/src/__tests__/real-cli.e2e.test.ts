@@ -12,9 +12,7 @@ const thinkingAttempts = Math.max(1, Number.parseInt(process.env.DEMI_CLAUDE_COD
 e2e('ClaudeCodeProvider can stream a minimal response from the real claude CLI', async () => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 60_000)
-  const provider = new ClaudeCodeProvider({
-    maxBudgetUsd: process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.01',
-  })
+  const provider = new ClaudeCodeProvider({})
   const request: InferenceRequest = {
     sessionId: 'claude-real-e2e-session',
     turnId: 'claude-real-e2e-turn',
@@ -56,10 +54,10 @@ cacheE2e('ClaudeCodeProvider reports a real provider cache hit on repeated tool-
 })
 
 thinkingE2e(
-  'ClaudeCodeProvider streams real medium thinking for a budgeted summary request on claude-opus-4-8',
+  'ClaudeCodeProvider streams real medium thinking for a summary request on claude-opus-4-8',
   async () => {
     const runs: ProviderEvent[][] = []
-    for (let attempt = 0; attempt < thinkingAttempts; attempt++) runs.push(await runThinkingBudgetRequest())
+    for (let attempt = 0; attempt < thinkingAttempts; attempt++) runs.push(await runThinkingRequest())
 
     expect(runs.some((events) => events.some(isVisibleThinkingEvent))).toBe(true)
   },
@@ -69,9 +67,7 @@ thinkingE2e(
 async function runCacheRequest(systemPrompt: string): Promise<TokenUsage> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 90_000)
-  const provider = new ClaudeCodeProvider({
-    maxBudgetUsd: process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.15',
-  })
+  const provider = new ClaudeCodeProvider({})
   const request: InferenceRequest = {
     sessionId: 'claude-cache-e2e-session',
     turnId: 'claude-cache-e2e-turn',
@@ -117,12 +113,10 @@ async function runCacheRequest(systemPrompt: string): Promise<TokenUsage> {
   return response!.usage
 }
 
-async function runThinkingBudgetRequest(): Promise<ProviderEvent[]> {
+async function runThinkingRequest(): Promise<ProviderEvent[]> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 90_000)
-  const provider = new ClaudeCodeProvider({
-    maxBudgetUsd: process.env.DEMI_CLAUDE_CODE_MAX_BUDGET_USD ?? '0.25',
-  })
+  const provider = new ClaudeCodeProvider({})
   const request: InferenceRequest = {
     sessionId: 'claude-thinking-e2e-session',
     turnId: 'claude-thinking-e2e-turn',

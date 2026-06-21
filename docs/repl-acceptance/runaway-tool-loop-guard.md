@@ -6,7 +6,7 @@
 | Status | Passed |
 | Scope | Real REPL + real Claude Code provider + repeated tool behavior |
 | Primary model | `claude-haiku-4-5`, thinking off |
-| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
+| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 1000 --timeout-ms 180000` |
 | Acceptance target | Verify repeated identical shell commands are bounded, visible in REPL, and do not make the session unusable afterward |
 
 ## Scenario Design

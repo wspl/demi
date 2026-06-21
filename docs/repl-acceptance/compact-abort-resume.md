@@ -6,7 +6,7 @@
 | Status | Passed |
 | Scope | Real REPL + real Claude Code provider + abort/resume/auto compact/manual compact interleaving |
 | Primary model | `claude-haiku-4-5`, thinking off |
-| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
+| REPL command | `/usr/bin/script -q <log> bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 1000 --timeout-ms 180000` |
 | Acceptance target | Abort a long tool turn, resume from the transcript, compact, and keep using tools without provider replay or REPL rendering corruption |
 
 ## Scenario Design

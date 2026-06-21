@@ -6,7 +6,7 @@
 | Status | Passed |
 | Scope | Real REPL + real Claude Code provider + real frontend project |
 | Primary model | `claude-haiku-4-5` for cost runs; optionally `claude-opus-4-8` medium thinking for higher-fidelity runs |
-| REPL command | `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 2.00 --yield-after-ms 1000 --timeout-ms 180000` |
+| REPL command | `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 1000 --timeout-ms 180000` |
 | Acceptance target | Complete a fuzzy Vue + Pinia todo list task end to end and verify real project commands pass |
 
 ## Scenario Design

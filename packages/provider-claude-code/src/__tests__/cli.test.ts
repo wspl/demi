@@ -26,11 +26,6 @@ test('buildClaudeArgs and env match the planned CLI contract', () => {
     '--effort',
     'high',
   ])
-  expect(buildClaudeArgs({ modelId: 'claude-test', systemPrompt: 'system', maxBudgetUsd: '0.01' })).toContain('--max-budget-usd')
-  expect(buildClaudeArgs({ modelId: 'claude-test', systemPrompt: 'system', maxBudgetUsd: '0.01' }).slice(-2)).toEqual([
-    '--max-budget-usd',
-    '0.01',
-  ])
 
   const env = buildClaudeEnv({ CLAUDECODE: '1', PATH: '/bin' })
   expect(env.DISABLE_AUTO_COMPACT).toBe('1')
@@ -38,28 +33,20 @@ test('buildClaudeArgs and env match the planned CLI contract', () => {
   expect(env.CLAUDECODE).toBeUndefined()
 })
 
-test('buildClaudeArgsForRequest maps summary thinking effort and provider budget to CLI args', () => {
-  const args = buildClaudeArgsForRequest(
-    {
-      sessionId: 'test-session',
-      turnId: 'test-turn',
-      requestId: 'test-request',
-      modelId: 'claude-opus-4-8',
-      systemPrompt: 'Summarize the previous conversation for continuation.',
-      cwd: '/workspace',
-      items: [],
-      tools: [],
-      thinking: { type: 'effort', effort: 'medium', summary: null },
-      cancel: new AbortController().signal,
-    },
-    { maxBudgetUsd: '0.25' },
-  )
+test('buildClaudeArgsForRequest maps summary thinking effort to CLI args', () => {
+  const args = buildClaudeArgsForRequest({
+    sessionId: 'test-session',
+    turnId: 'test-turn',
+    requestId: 'test-request',
+    modelId: 'claude-opus-4-8',
+    systemPrompt: 'Summarize the previous conversation for continuation.',
+    cwd: '/workspace',
+    items: [],
+    tools: [],
+    thinking: { type: 'effort', effort: 'medium', summary: null },
+    cancel: new AbortController().signal,
+  })
 
   expect(args).toContain('--effort')
   expect(args.slice(args.indexOf('--effort'), args.indexOf('--effort') + 2)).toEqual(['--effort', 'medium'])
-  expect(args).toContain('--max-budget-usd')
-  expect(args.slice(args.indexOf('--max-budget-usd'), args.indexOf('--max-budget-usd') + 2)).toEqual([
-    '--max-budget-usd',
-    '0.25',
-  ])
 })

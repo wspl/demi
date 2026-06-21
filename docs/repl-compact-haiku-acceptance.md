@@ -4,7 +4,7 @@
 |---|---|
 | Date | 2026-06-19 |
 | Scope | Real REPL + real Claude Code provider + `claude-haiku-4-5` |
-| REPL command | `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000` |
+| REPL command | `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 1000 --timeout-ms 180000` |
 | REPL model context | `packages/repl/src/index.ts` sets `contextWindow: 200_000` for the selected model |
 | Compaction threshold | `packages/agent/src/session.ts` uses `0.8 * contextWindow`, so this run should compact near 160k estimated or provider-reported context tokens |
 | Acceptance target | Drive the REPL past context pressure at least 3 times and verify compact lets the agent continue working |
@@ -66,7 +66,7 @@
 
 ### 8. Passing real REPL acceptance
 
-- Command shape: `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000`.
+- Command shape: `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 1000 --timeout-ms 180000`.
 - Pressure shape: four finite local `shell_exec` pressure turns, each asking for one Python command that writes one marker line plus 720k repeated characters, followed by a no-tool continuation check.
 - Log size: 2,887,721 bytes.
 - Process result: exit code 0.
@@ -83,7 +83,7 @@ Final counters: `compacting=4`, `shellExec=8`, `usage=5`, `suppressed=0`, `toolU
 
 ### 9. Passing real REPL auto compact acceptance
 
-- Command shape: `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --budget 1.00 --yield-after-ms 1000 --timeout-ms 180000`.
+- Command shape: `bun run packages/repl/src/index.ts --cwd <tmp> --model claude-haiku-4-5 --no-thinking --yield-after-ms 1000 --timeout-ms 180000`.
 - Pressure shape: 37 sequential user turns, each below the 16k provider-visible text truncation threshold, each containing about 15k high-entropy ASCII fixture characters. This avoids one-block truncation and keeps local preflight estimate below the 160k threshold while real provider usage accumulates.
 - Process result: exit code 0.
 - Log path: `/var/folders/bj/xcm3f3zx2z710fbv_jt6p3zr0000gn/T/demi-repl-auto-compact-3x-CV5E5q/repl-auto-compact-3x-haiku.log`.

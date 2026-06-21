@@ -18,25 +18,21 @@ export interface ClaudeTransportFactory {
 
 export interface ClaudeCliTransportFactoryOptions {
   claudePath?: string
-  maxBudgetUsd?: number | string | null
 }
 
 export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   private readonly claudePath: string
-  private readonly maxBudgetUsd: number | string | null
 
   constructor(options: ClaudeCliTransportFactoryOptions | string = {}) {
     if (typeof options === 'string') {
       this.claudePath = options
-      this.maxBudgetUsd = null
     } else {
       this.claudePath = options.claudePath ?? 'claude'
-      this.maxBudgetUsd = options.maxBudgetUsd ?? null
     }
   }
 
   async start(request: InferenceRequest): Promise<ClaudeTransport> {
-    const args = buildClaudeArgsForRequest(request, { maxBudgetUsd: this.maxBudgetUsd })
+    const args = buildClaudeArgsForRequest(request)
     const wireLog = createClaudeWireLog(request.sessionId)
     wireLog.record('spawn', {
       requestId: request.requestId,
@@ -55,15 +51,11 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   }
 }
 
-export function buildClaudeArgsForRequest(
-  request: InferenceRequest,
-  options: { maxBudgetUsd?: number | string | null } = {},
-): string[] {
+export function buildClaudeArgsForRequest(request: InferenceRequest): string[] {
   return buildClaudeArgs({
     modelId: request.modelId,
     systemPrompt: request.systemPrompt,
     thinkingEffort: thinkingEffort(request.thinking),
-    maxBudgetUsd: options.maxBudgetUsd,
   })
 }
 

@@ -13,10 +13,10 @@ bun run repl -- /tmp/demi-acceptance
 ```
 
 The REPL uses the Claude Code provider, so sending a prompt may call the real
-model. By default it passes a small max budget:
+model:
 
 ```sh
-bun run repl -- --cwd /tmp/demi-acceptance --budget 0.25
+bun run repl -- --cwd /tmp/demi-acceptance
 ```
 
 Useful options:

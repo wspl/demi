@@ -9,12 +9,10 @@ import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFa
 export interface ClaudeCodeProviderOptions {
   transportFactory?: ClaudeTransportFactory
   claudePath?: string
-  maxBudgetUsd?: number | string | null
 }
 
 export interface ClaudeCodeProviderConfig {
   claudePath?: string
-  maxBudgetUsd?: number | string | null
 }
 
 interface ActiveClaudeRun {
@@ -39,8 +37,7 @@ export class ClaudeCodeProvider implements AgentProvider {
 
   constructor(options: ClaudeCodeProviderOptions = {}) {
     this.transportFactory =
-      options.transportFactory ??
-      new ClaudeCliTransportFactory({ claudePath: options.claudePath, maxBudgetUsd: options.maxBudgetUsd })
+      options.transportFactory ?? new ClaudeCliTransportFactory({ claudePath: options.claudePath })
   }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
@@ -406,12 +403,6 @@ export function parseClaudeCodeProviderConfig(config: unknown): ClaudeCodeProvid
   if (config.claudePath !== undefined) {
     if (typeof config.claudePath !== 'string') throw new Error('Claude Code provider config field "claudePath" must be a string')
     parsed.claudePath = config.claudePath
-  }
-  if (config.maxBudgetUsd !== undefined) {
-    if (config.maxBudgetUsd !== null && typeof config.maxBudgetUsd !== 'string' && typeof config.maxBudgetUsd !== 'number') {
-      throw new Error('Claude Code provider config field "maxBudgetUsd" must be a string, number, or null')
-    }
-    parsed.maxBudgetUsd = config.maxBudgetUsd
   }
   return parsed
 }

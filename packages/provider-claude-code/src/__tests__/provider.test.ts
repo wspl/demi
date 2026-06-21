@@ -57,15 +57,13 @@ test('Claude Code provider definition only accepts serializable config fields', 
   expect(
     parseClaudeCodeProviderConfig({
       claudePath: '/usr/local/bin/claude',
-      maxBudgetUsd: '0.01',
       transportFactory: injectedFactory,
     }),
-  ).toEqual({ claudePath: '/usr/local/bin/claude', maxBudgetUsd: '0.01' })
+  ).toEqual({ claudePath: '/usr/local/bin/claude' })
   expect(parseClaudeCodeProviderConfig(undefined)).toEqual({})
   expect(parseClaudeCodeProviderConfig(null)).toEqual({})
   expect(() => parseClaudeCodeProviderConfig(1)).toThrow('must be an object')
   expect(() => parseClaudeCodeProviderConfig({ claudePath: 1 })).toThrow('claudePath')
-  expect(() => parseClaudeCodeProviderConfig({ maxBudgetUsd: {} })).toThrow('maxBudgetUsd')
 
   const provider = await createClaudeCodeProviderDefinition().createProvider({
     transportFactory: injectedFactory,
