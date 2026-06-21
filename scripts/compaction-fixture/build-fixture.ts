@@ -8,7 +8,7 @@
  *
  * Calls the real Claude Code provider — needs `claude` auth and costs a little.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ClaudeCodeProvider } from '../../packages/provider-claude-code/src/provider'
 import { AgentSession } from '../../packages/agent/src/index'
@@ -16,7 +16,7 @@ import { BashEnvironment, createShellSessionTools } from '../../packages/shell/s
 import { LocalHost } from '../../packages/host-local/src/index'
 
 const REPO = join(import.meta.dir, '../..')
-const FIXTURE = join(REPO, '.test-cache/large-context-fixture.json')
+const FIXTURE = join(import.meta.dir, 'large-context-fixture.json')
 process.env.DEMI_CLAUDE_WIRE_LOG = '0'
 
 const model = {
@@ -57,8 +57,7 @@ for (let i = 0; i < reads.length && tokens() < 16000; i += 1) {
 }
 
 const blocks = session.transcript().blocks
-mkdirSync(join(REPO, '.test-cache'), { recursive: true })
-writeFileSync(FIXTURE, JSON.stringify({ harnessName: 'fixture', cwd: REPO, model, blocks, builtTokens: tokens() }))
+writeFileSync(FIXTURE, `${JSON.stringify({ harnessName: 'fixture', cwd: REPO, model, blocks, builtTokens: tokens() }, null, 2)}\n`)
 await session.dispose()
 
 log(`\n✅ fixture saved: ${FIXTURE}`)

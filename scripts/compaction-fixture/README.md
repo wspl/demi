@@ -16,7 +16,11 @@ bun run scripts/compaction-fixture/build-fixture.ts
 
 Runs a real conversation that plants three secret codes and then reads/explains several source
 files until the context is large, then writes the transcript to
-`.test-cache/large-context-fixture.json` (gitignored).
+`large-context-fixture.json` next to this README.
+
+A pre-built fixture (~8.7k tokens; user/text/thinking/tool_call blocks; three planted secrets) is
+**committed** alongside these scripts, so you can run the verifier immediately without rebuilding.
+Re-run the builder to refresh it.
 
 ## Verify compaction against the cached fixture (repeatable)
 

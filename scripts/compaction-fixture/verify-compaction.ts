@@ -15,8 +15,7 @@ import { AgentSession } from '../../packages/agent/src/index'
 import { BashEnvironment, createShellSessionTools } from '../../packages/shell/src/index'
 import { LocalHost } from '../../packages/host-local/src/index'
 
-const REPO = join(import.meta.dir, '../..')
-const FIXTURE = join(REPO, '.test-cache/large-context-fixture.json')
+const FIXTURE = join(import.meta.dir, 'large-context-fixture.json')
 process.env.DEMI_CLAUDE_WIRE_LOG = '0'
 
 const fx = JSON.parse(readFileSync(FIXTURE, 'utf8')) as {
