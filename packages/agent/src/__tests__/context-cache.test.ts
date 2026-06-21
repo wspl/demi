@@ -145,12 +145,13 @@ test('provider request prefix restabilizes after compaction replaces old history
   transcript.applyProviderEvent(model, events.response())
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.items.map((item) => item.type)).toEqual([
-        'user_message',
-        'assistant_text',
-        'user_message',
-        'assistant_text',
-      ])
+      // The summary request is a single user turn holding the to-compact history as inert material.
+      expect(request.items).toHaveLength(1)
+      const item = request.items[0]
+      expect(item?.type).toBe('user_message')
+      const summary = item?.type === 'user_message' ? item.content.map((b) => (b.type === 'text' ? b.text : '')).join('') : ''
+      expect(summary).toContain('old question')
+      expect(summary).toContain('old answer')
       return [events.text('compacted summary'), events.response()]
     },
     [events.text('after compact one'), events.response()],

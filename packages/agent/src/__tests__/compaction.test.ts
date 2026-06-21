@@ -15,6 +15,20 @@ import {
   text,
 } from './helpers'
 
+// The compaction summary request is a single user turn containing the to-compact transcript as
+// inert, delimited material (not a replayed conversation), with no thinking. This asserts that
+// shape and returns the rendered transcript text so tests can check it carries the right material.
+function summaryText(request: InferenceRequest): string {
+  expect(request.tools).toEqual([])
+  expect(request.thinking).toBeNull()
+  expect(request.items).toHaveLength(1)
+  const item = request.items[0]
+  expect(item?.type).toBe('user_message')
+  const rendered = item?.type === 'user_message' ? item.content.map((b) => (b.type === 'text' ? b.text : '')).join('') : ''
+  expect(rendered).toContain('BEGIN TRANSCRIPT')
+  return rendered
+}
+
 test('preflight compaction summarizes before the model request and keeps the incoming user once', async () => {
   const thinkingModel: ModelSelection = {
     ...model,
@@ -30,10 +44,10 @@ test('preflight compaction summarizes before the model request and keeps the inc
     (request) => {
       expect(request.modelId).toBe('test-model')
       expect(request.cwd).toBe('/workspace')
-      expect(request.thinking).toEqual({ type: 'effort', effort: 'medium', summary: null })
-      expect(request.tools).toEqual([])
       expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      expect(request.items.map((item) => item.type)).toEqual(['user_message', 'assistant_text'])
+      const summary = summaryText(request)
+      expect(summary).toContain('old question')
+      expect(summary).toContain('old answer')
       return [events.text('old summary'), events.response()]
     },
     (request) => {
@@ -105,10 +119,9 @@ test('retry triggers preflight compaction before rerunning the latest user', asy
   const provider = new RecordingProvider([
     (request) => {
       expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: `old question ${'x'.repeat(200)}` }] },
-        { type: 'assistant_text', modelId: 'test-model', text: `old answer ${'y'.repeat(300)}` },
-      ])
+      const summary = summaryText(request)
+      expect(summary).toContain(`old question ${'x'.repeat(200)}`)
+      expect(summary).toContain(`old answer ${'y'.repeat(300)}`)
       return [events.text('retry summary'), events.response()]
     },
     (request) => {
@@ -147,10 +160,9 @@ test('resume triggers preflight compaction before continuing an aborted long con
   const provider = new RecordingProvider([
     (request) => {
       expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: `old question ${'x'.repeat(200)}` }] },
-        { type: 'assistant_text', modelId: 'test-model', text: `partial answer ${'y'.repeat(300)}` },
-      ])
+      const summary = summaryText(request)
+      expect(summary).toContain(`old question ${'x'.repeat(200)}`)
+      expect(summary).toContain(`partial answer ${'y'.repeat(300)}`)
       return [events.text('resume summary'), events.response()]
     },
     (request) => {
@@ -239,8 +251,8 @@ test('compaction summary input keeps completed tool_use and tool_result paired',
 
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.items.map((item) => item.type)).toEqual(['user_message', 'tool_use', 'tool_result'])
-      assertNoOrphanToolItems(request.items)
+      const summary = summaryText(request)
+      expect(summary).toContain('file content') // the tool result is carried into the summary input
       return [events.text('tool summary'), events.response()]
     },
   ])
@@ -266,10 +278,9 @@ test('compaction summary input keeps aborted text progress', async () => {
 
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: 'long task' }] },
-        { type: 'assistant_text', modelId: 'test-model', text: 'partial progress before abort' },
-      ])
+      const summary = summaryText(request)
+      expect(summary).toContain('long task')
+      expect(summary).toContain('partial progress before abort')
       return [events.text('aborted progress summary'), events.response()]
     },
   ])
@@ -335,20 +346,16 @@ test('compaction summary context overflow retries with a smaller summary slice',
   const provider = new RecordingProvider([
     (request) => {
       expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
-        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
-        { type: 'user_message', content: [{ type: 'text', text: 'middle question' }] },
-        { type: 'assistant_text', modelId: 'test-model', text: 'middle answer' },
-      ])
+      const summary = summaryText(request)
+      expect(summary).toContain('old question')
+      expect(summary).toContain('middle answer')
       return [events.error('summary context overflow', 'context_length_exceeded')]
     },
     (request) => {
       expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
-        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
-      ])
+      const summary = summaryText(request)
+      expect(summary).toContain('old question')
+      expect(summary).not.toContain('middle question') // retried with a smaller slice
       return [events.text('trimmed summary'), events.response()]
     },
     (request) => {
@@ -393,20 +400,16 @@ test('compaction summary iterator context overflow retries with a smaller summar
   const provider = new RecordingProvider([
     (request) => {
       expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      expect(request.items.map((item) => item.type)).toEqual([
-        'user_message',
-        'assistant_text',
-        'user_message',
-        'assistant_text',
-      ])
+      const summary = summaryText(request)
+      expect(summary).toContain('old question')
+      expect(summary).toContain('middle answer')
       return throwingProviderError('iterator summary context overflow', 'context_length_exceeded')
     },
     (request) => {
       expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
-        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
-      ])
+      const summary = summaryText(request)
+      expect(summary).toContain('old question')
+      expect(summary).not.toContain('middle question') // retried with a smaller slice
       return [events.text('iterator trimmed summary'), events.response()]
     },
     (request) => {
@@ -428,7 +431,7 @@ test('compaction summary iterator context overflow retries with a smaller summar
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
-test('compaction summary input preserves thinking, redacted thinking, and tool metadata boundaries', async () => {
+test('compaction summary input carries tools and visible text but omits thinking and internal state', async () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn(model, text('inspect deeply'))
   transcript.applyProviderEvent(model, { type: 'thinking_start' })
@@ -442,16 +445,13 @@ test('compaction summary input preserves thinking, redacted thinking, and tool m
 
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.items.map((item) => item.type)).toEqual([
-        'user_message',
-        'assistant_thinking',
-        'assistant_redacted_thinking',
-        'tool_use',
-        'tool_result',
-      ])
-      expect(request.items[1]).toMatchObject({ type: 'assistant_thinking', signature: 'sig-1' })
-      assertNoOrphanToolItems(request.items)
-      expect(JSON.stringify(request.items)).not.toContain('internal')
+      const summary = summaryText(request)
+      expect(summary).toContain('inspect deeply') // user message
+      expect(summary).toContain('read_file') // tool call
+      expect(summary).toContain('file content') // tool result
+      // private reasoning and internal extension state never enter the summary input
+      expect(summary).not.toContain('private chain')
+      expect(summary).not.toContain('internal')
       return [events.text('complex summary'), events.response()]
     },
   ])
@@ -542,8 +542,8 @@ test('single oversized turn can be compacted at a block boundary without orphani
 
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.items.map((item) => item.type)).toEqual(['user_message', 'tool_use', 'tool_result'])
-      assertNoOrphanToolItems(request.items)
+      const summary = summaryText(request)
+      expect(summary).toContain('large output') // the oversized tool result is carried into the summary
       return [events.text('single turn summary'), events.response()]
     },
   ])
@@ -975,8 +975,8 @@ test('auto compaction after a tool result resumes without re-executing the tool'
   const provider = new RecordingProvider([
     [events.toolCall('tool-1', 'count_tool', { value: 1 }), events.response({ inputTokens: 9 })],
     (request) => {
-      expect(request.items.map((item) => item.type)).toEqual(['user_message', 'tool_use', 'tool_result'])
-      assertNoOrphanToolItems(request.items)
+      const summary = summaryText(request)
+      expect(summary).toContain('counted') // the tool result is carried into the summary input
       return [events.text('tool summary'), events.response()]
     },
     (request) => {
@@ -1021,11 +1021,9 @@ test('auto compaction counts cache usage as context pressure', async () => {
     [events.text('cached answer'), events.response({ inputTokens: 1, outputTokens: 1, cacheWriteTokens: 9 })],
     (request) => {
       expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      expect(request.tools).toEqual([])
-      expect(request.items).toEqual([
-        { type: 'user_message', content: [{ type: 'text', text: 'cache-heavy question' }] },
-        { type: 'assistant_text', modelId: 'test-model', text: 'cached answer' },
-      ])
+      const summary = summaryText(request)
+      expect(summary).toContain('cache-heavy question')
+      expect(summary).toContain('cached answer')
       return [events.text('cache pressure summary'), events.response()]
     },
     (request) => {
@@ -1188,3 +1186,41 @@ function withTimeout<T>(promise: Promise<T>, ms = 1_000): Promise<T> {
     )
   })
 }
+
+// A provider that always reports usage far over the limit (and returns a tiny summary for summary
+// requests). With a misconfigured/too-low threshold the recent window stays "over limit" no matter
+// what, which without a guard makes the turn compact forever.
+class AlwaysOverLimitProvider implements AgentProvider {
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+      yield events.text('summary')
+      yield events.response()
+      return
+    }
+    yield events.text('answer')
+    yield events.response({ inputTokens: 1_000_000 })
+  }
+}
+
+test('auto compaction is bounded per turn — no storm when usage stays over a too-low threshold', async () => {
+  const smallModel: ModelSelection = { ...model, model: { ...model.model, contextWindow: 10 } }
+  const transcript = makeTranscript()
+  for (let i = 0; i < 6; i += 1) {
+    transcript.pushUserTurn(model, text(`question ${i} ${'x'.repeat(120)}`))
+    transcript.applyProviderEvent(model, events.text(`answer ${i} ${'y'.repeat(120)}`))
+    transcript.applyProviderEvent(model, events.response())
+  }
+  const session = createSession(new AlwaysOverLimitProvider(), createRuntime(), transcript, smallModel, {
+    compaction: { keepRecentTokens: 1 },
+  })
+
+  // Without the guard this never returns (it compacts its own summaries forever).
+  await session.send(text('trigger'))
+
+  // Bounded, not a storm: at most one preflight compaction plus the auto-recover cap of 3.
+  // (Before the guard this looped ~40 times until the model rejected the fabricated history.)
+  const boundaries = session.transcript().blocks.filter((block) => block.type === 'compaction_boundary')
+  expect(boundaries.length).toBeGreaterThan(0)
+  expect(boundaries.length).toBeLessThanOrEqual(4)
+  assertTranscriptInvariants(session.transcript().blocks)
+})
