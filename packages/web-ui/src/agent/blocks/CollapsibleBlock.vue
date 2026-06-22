@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useSlots, watch } from 'vue'
+import { computed, onUpdated, ref, useSlots, watch } from 'vue'
 import { RightSmallLine } from '@mingcute/vue/right-small'
 import ToolStatusBadge from './ToolStatusBadge.vue'
 import IndeterminateSpinner from '@demi/web-ui/ui/IndeterminateSpinner.vue'
@@ -12,16 +12,27 @@ const props = defineProps<{
   loading?: boolean
   error?: boolean
   errorText?: string
+  /** Keep the body scrolled to the latest line while content streams in (e.g. live thinking). */
+  stickBottom?: boolean
+  /** Force expandability instead of inferring it from the body slot (slot presence isn't reactive). */
+  expandable?: boolean
 }>()
 
 const slots = useSlots()
 const isOpen = defineModel<boolean>('open', { default: false })
 const hasBodySlot = () => !!slots['body']
-const isExpandable = computed(() => hasBodySlot() || !!props.errorText)
+const isExpandable = computed(() => props.expandable || hasBodySlot() || !!props.errorText)
 const isHovered = ref(false)
+const bodyScroll = ref<HTMLElement>()
 
 watch(() => props.errorText, (text) => {
   if (text) isOpen.value = true
+})
+
+onUpdated(() => {
+  if (props.stickBottom && isOpen.value && bodyScroll.value) {
+    bodyScroll.value.scrollTop = bodyScroll.value.scrollHeight
+  }
 })
 </script>
 
@@ -58,7 +69,7 @@ watch(() => props.errorText, (text) => {
     <div v-if="isExpandable" class="collapsible-body" :class="isOpen ? 'is-open' : ''">
       <div class="overflow-hidden">
         <div class="mb-1 ml-6 overflow-hidden rounded-md bg-overlay/6">
-          <div class="max-h-80 overflow-y-auto py-0.5">
+          <div ref="bodyScroll" class="max-h-80 overflow-y-auto py-0.5">
             <pre v-if="errorText" class="whitespace-pre-wrap px-3 py-1.5 font-mono text-xs text-on-danger-muted">{{ errorText }}</pre>
             <slot v-if="hasBodySlot()" name="body" />
           </div>

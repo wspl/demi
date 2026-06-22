@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { FlashLine } from '@mingcute/vue/flash'
-import InlineToolRow from './InlineToolRow.vue'
+import CollapsibleBlock from './CollapsibleBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
 
@@ -25,7 +25,7 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <InlineToolRow
+  <CollapsibleBlock
     :label="block.toolName"
     :detail="summary"
     :loading="block.status === 'executing'"
@@ -35,5 +35,5 @@ const summary = computed(() => {
     <template #icon>
       <FlashLine :size="16" />
     </template>
-  </InlineToolRow>
+  </CollapsibleBlock>
 </template>

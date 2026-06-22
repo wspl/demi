@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { TerminalBoxLine } from '@mingcute/vue/terminal-box'
 import AnsiText from './AnsiText.vue'
-import InlineToolRow from './InlineToolRow.vue'
+import CollapsibleBlock from './CollapsibleBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
 
@@ -31,7 +31,7 @@ const outputText = computed(() => {
 </script>
 
 <template>
-  <InlineToolRow
+  <CollapsibleBlock
     :loading="block.status === 'executing'"
     :error="block.status === 'error'"
     :error-text="errorText"
@@ -48,5 +48,5 @@ const outputText = computed(() => {
       </div>
       <AnsiText v-if="outputText" :content="outputText" class="px-3 pb-1" />
     </template>
-  </InlineToolRow>
+  </CollapsibleBlock>
 </template>
