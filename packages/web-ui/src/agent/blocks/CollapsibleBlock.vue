@@ -38,7 +38,7 @@ onUpdated(() => {
 <template>
   <div class="overflow-hidden">
     <div
-      class="flex items-center gap-2 py-1 text-[13px] text-fg-muted"
+      class="flex select-none items-center gap-2 py-1 text-[13px] text-fg-muted"
       :class="isExpandable ? 'cursor-pointer' : ''"
       @click="isExpandable && (isOpen = !isOpen)"
     >
