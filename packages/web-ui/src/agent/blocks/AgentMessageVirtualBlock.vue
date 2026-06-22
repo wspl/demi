@@ -16,6 +16,7 @@ const props = defineProps<{
   block: Block
   conversationId: string
   isThinkingStreaming: boolean
+  thinkingEndedAt?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -37,6 +38,8 @@ const attrs = useAttrs()
       v-if="block.type === 'thinking'"
       :thinking="block.text"
       :is-streaming="isThinkingStreaming"
+      :created-at="block.createdAt"
+      :ended-at="thinkingEndedAt"
     />
     <AssistantTextBlock
       v-else-if="block.type === 'text'"

@@ -39,6 +39,13 @@ function isStreamingThinkingAt(index: number): boolean {
   return isThinkingBlockStreaming(renderBlocks.value, props.phase, index)
 }
 
+// The next block's createdAt marks when a thinking block stopped (null while it's still the last,
+// i.e. actively thinking). Lets ThinkingBlock show a frozen "thought for Xs" that survives reload.
+function thinkingEndedAt(index: number): string | null {
+  const next = renderBlocks.value[index + 1]
+  return next && 'createdAt' in next ? next.createdAt : null
+}
+
 const scrollContainer = ref<HTMLDivElement>()
 
 const { virtualItems, totalSize, measureElement, scrollOffset, isAtBottom, scrollToBottom, onScroll, getPersistedState } =
@@ -91,6 +98,7 @@ watch(
               :block="renderBlocks[item.index]!"
               :conversation-id="props.conversationId"
               :is-thinking-streaming="isStreamingThinkingAt(item.index)"
+              :thinking-ended-at="thinkingEndedAt(item.index)"
               @continue="emit('continue')"
               @retry="emit('retry')"
             />

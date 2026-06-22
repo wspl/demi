@@ -14,6 +14,8 @@ const messages: Record<string, string> = {
   'agent.tab.copyConversationId': 'Copy conversation ID',
   'common.continue': 'Continue',
   'agent.block.thinking': 'Thinking',
+  'agent.block.thinkingFor': 'Thinking for',
+  'agent.block.thoughtFor': 'Thought for',
   'agent.block.error': 'Error',
   'agent.block.stackTrace': 'Stack trace',
   'agent.block.aborted': 'Aborted',
