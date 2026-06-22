@@ -59,5 +59,29 @@ This harness is what surfaced two real compaction bugs (summary hijack by instru
 the history → empty summaries; and an unbounded auto-compaction storm), both fixed in
 `packages/agent/src/session.ts` and locked by tests in `compaction.test.ts`.
 
-To exercise other scenarios (e.g. switching to a smaller-window model), load the same fixture and
-call `session.updateModel(...)` before sending.
+## Verify cross-provider switch + compaction-on-switch (repeatable)
+
+```sh
+bun run scripts/compaction-fixture/verify-cross-provider-switch.ts
+```
+
+The hardest real scenario, on the same fixture, across a real provider boundary (`claude-code ↔
+codex`) — needs both `claude` and `~/.codex` auth, costs a few dollars:
+
+1. **claude-code/sonnet (200k) → codex/gpt-5.5 (272k)** — switching to a *larger* window must **not**
+   compact (no unnecessary compaction), and codex must consume the claude-originated thinking +
+   tool-call history.
+2. **grow** the replayable context on codex to ~170–190k (codex holds it; its threshold is ~217k).
+3. **codex (272k) → claude-code/sonnet (200k)** — switching to a *smaller* window must **force a
+   compaction run by the pre-switch codex model** (it can still load the context to summarize)
+   before claude continues. The secrets must still recall.
+4. **switch back to codex** — the session must keep working.
+
+Passes only when: step 1 does not compact, step 3 forces a new compaction generation *and* recalls
+all three secrets, step 4 still recalls, and no error blocks appear — all at real default
+thresholds. Last verified: secrets planted before the first compaction survived **5 generations
+across two providers** (the 5th summary written by codex over claude's history), 3/3 recall both
+directions, 0 errors.
+
+To exercise yet other scenarios, load the same fixture and call `session.updateModel(...)` before
+sending.
