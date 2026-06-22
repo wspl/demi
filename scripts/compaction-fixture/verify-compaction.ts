@@ -1,7 +1,8 @@
 /**
- * Loads the cached large-context fixture (see build-fixture.ts) and triggers ONE real compaction
- * with a realistic threshold, then asks the model to recall the planted secrets. Verifies the
- * compaction produced a real, non-empty summary and that recall still works afterward.
+ * Loads the cached large long-session fixture (see build-fixture.ts) and verifies the session is
+ * still usable after its many compaction generations: the secrets planted at the very start must
+ * have survived being re-summarized each time, and the model must recall them — using the REAL
+ * default compaction thresholds, no faking.
  *
  *   bun run scripts/compaction-fixture/verify-compaction.ts
  *
@@ -9,16 +10,17 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 import type { Block, ModelSelection } from '../../packages/core/src/index'
 import { ClaudeCodeProvider } from '../../packages/provider-claude-code/src/provider'
 import { AgentSession } from '../../packages/agent/src/index'
 import { BashEnvironment, createShellSessionTools } from '../../packages/shell/src/index'
 import { LocalHost } from '../../packages/host-local/src/index'
 
-const FIXTURE = join(import.meta.dir, 'large-context-fixture.json')
+const FIXTURE = join(import.meta.dir, 'large-context-fixture.json.gz')
 process.env.DEMI_CLAUDE_WIRE_LOG = '0'
 
-const fx = JSON.parse(readFileSync(FIXTURE, 'utf8')) as {
+const fx = JSON.parse(gunzipSync(readFileSync(FIXTURE)).toString('utf8')) as {
   harnessName: string
   cwd: string
   model: ModelSelection
@@ -26,7 +28,8 @@ const fx = JSON.parse(readFileSync(FIXTURE, 'utf8')) as {
   builtTokens: number
 }
 const log = (m: string): void => process.stdout.write(`${m}\n`)
-log(`loaded fixture: tokens≈${fx.builtTokens} blocks=${fx.blocks.length}`)
+const generations = fx.blocks.filter((b) => b.type === 'compaction_boundary').length
+log(`loaded long session: total≈${fx.builtTokens} tokens, ${fx.blocks.length} blocks, ${generations} compaction generations`)
 
 const provider = new ClaudeCodeProvider({})
 const environment = new BashEnvironment({ host: new LocalHost(fx.cwd), shellIdFactory: () => 'cmp-shell', initialEnv: { PATH: process.env.PATH ?? '' } })
@@ -36,32 +39,24 @@ const runtime = {
   systemPrompt: () => 'You are a careful coding assistant. Remember any secrets the user told you verbatim.',
   tools: () => createShellSessionTools(environment),
 }
-
 const snapshot = { transcript: { blocks: fx.blocks }, state: {}, phase: 'idle' as const, queue: [], cwd: fx.cwd, model: fx.model, harnessName: fx.harnessName }
-// Trigger at ~60% of the fixture, keep ~8% recent: one clean compaction, no storm.
-const ratio = (fx.builtTokens * 0.6) / fx.model.model.contextWindow
-const keepRecentTokens = Math.max(500, Math.floor(fx.builtTokens * 0.08))
-const session = AgentSession.fromSnapshot({ provider, snapshot, runtime }, { compaction: { preflightThresholdRatio: ratio, keepRecentTokens } })
+// Real default compaction thresholds — no override, no faking.
+const session = AgentSession.fromSnapshot({ provider, snapshot, runtime })
 
-log('>>> recall question (forces preflight compaction on the loaded context, then answers)')
-await session.send([{ type: 'text', text: '只回答暗号值,用「ALPHA=…, BETA=…, GAMMA=…」格式:三个暗号分别是什么?' }])
+log('>>> recall question (the secrets must have survived every compaction generation)')
+await session.send([{ type: 'text', text: '只回答暗号值,用「ALPHA=…, BETA=…, GAMMA=…」格式:我最早让你记住的三个暗号分别是什么?' }])
 
 const blocks = session.transcript().blocks
-const boundaries = blocks.filter((b): b is Extract<Block, { type: 'compaction_boundary' }> => b.type === 'compaction_boundary')
 const answer = blocks.filter((b): b is Extract<Block, { type: 'text' }> => b.type === 'text').map((b) => b.text).join(' ')
 const errs = blocks.filter((b) => b.type === 'error')
+const newGenerations = blocks.filter((b) => b.type === 'compaction_boundary').length - generations
 await session.dispose()
 
-log('\n===== REAL COMPACTION (from cached fixture) =====')
-log(`compaction boundaries created: ${boundaries.length}   (1-2 = clean; many = storm)`)
-boundaries.forEach((b, i) => {
-  const s = b.summary || ''
-  const secrets = [/ZEBRA-7/.test(s) && 'ALPHA', /QUARTZ-9/.test(s) && 'BETA', /NIMBUS-3/.test(s) && 'GAMMA'].filter(Boolean).join(' ')
-  log(`  boundary #${i + 1}: summary length=${s.length}  secrets=[${secrets}]`)
-})
 const recalled = ['ZEBRA-?7', 'QUARTZ-?9', 'NIMBUS-?3'].filter((re) => new RegExp(re, 'i').test(answer))
-const pass = boundaries.length >= 1 && boundaries.length <= 4 && boundaries.every((b) => (b.summary || '').length > 50) && recalled.length === 3 && errs.length === 0
-log(`recall after compaction: ${recalled.length}/3 secrets`)
+log('\n===== LONG-SESSION COMPACTION VERIFY =====')
+log(`compaction generations the secrets survived: ${generations}${newGenerations > 0 ? ` (+${newGenerations} more this turn)` : ''}`)
+log(`recall: ${recalled.length}/3 secrets`)
 log(`error blocks: ${errs.length}`)
-log(pass ? '\n✅ PASSED: clean compaction, real summary, full recall' : `\n❌ FAILED  answer tail: ${answer.slice(-160)}`)
+const pass = generations >= 2 && recalled.length === 3 && errs.length === 0
+log(pass ? '\n✅ PASSED: secrets survived a many-generation compacted session, full recall' : `\n❌ FAILED  answer tail: ${answer.slice(-160)}`)
 process.exit(pass ? 0 : 1)
