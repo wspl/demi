@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUpdated, ref, useSlots, watch } from 'vue'
-import { RightSmallLine } from '@mingcute/vue/right-small'
+import { RightLine } from '@mingcute/vue/right'
 import ToolStatusBadge from './ToolStatusBadge.vue'
 import IndeterminateSpinner from '@demi/web-ui/ui/IndeterminateSpinner.vue'
 
@@ -22,7 +22,6 @@ const slots = useSlots()
 const isOpen = defineModel<boolean>('open', { default: false })
 const hasBodySlot = () => !!slots['body']
 const isExpandable = computed(() => props.expandable || hasBodySlot() || !!props.errorText)
-const isHovered = ref(false)
 const bodyScroll = ref<HTMLElement>()
 
 watch(() => props.errorText, (text) => {
@@ -42,8 +41,6 @@ onUpdated(() => {
       class="flex items-center gap-2 py-1 text-[13px] text-fg-muted"
       :class="isExpandable ? 'cursor-pointer' : ''"
       @click="isExpandable && (isOpen = !isOpen)"
-      @mouseenter="isHovered = true"
-      @mouseleave="isHovered = false"
     >
       <div class="flex size-4 shrink-0 items-center justify-center">
         <slot name="icon" />
@@ -54,15 +51,11 @@ onUpdated(() => {
         <span v-else-if="detail" class="min-w-0 truncate font-mono text-fg-body">{{ detail }}</span>
         <span v-if="suffix" class="shrink-0 text-fg-subtle">{{ suffix }}</span>
       </div>
-      <span class="-ml-1.5 shrink-0 text-xs">
-        <template v-if="isExpandable && (isHovered || isOpen)">
-          <RightSmallLine :size="22" class="text-fg-faint" :class="isOpen ? 'rotate-90' : ''" />
-        </template>
-        <template v-else>
-          <ToolStatusBadge v-if="error" status="error" />
-          <IndeterminateSpinner v-else-if="loading" :size="12" :stroke-width="2" arc-class="text-on-warning" track-class="text-tint-warning" />
-          <span v-else-if="trailing" class="text-fg-subtle">{{ trailing }}</span>
-        </template>
+      <span class="-ml-1 shrink-0 text-xs">
+        <ToolStatusBadge v-if="error" status="error" />
+        <IndeterminateSpinner v-else-if="loading" :size="12" :stroke-width="2" arc-class="text-on-warning" track-class="text-tint-warning" />
+        <RightLine v-else-if="isExpandable" :size="18" class="text-fg-faint" :class="isOpen ? 'rotate-90' : ''" />
+        <span v-else-if="trailing" class="text-fg-subtle">{{ trailing }}</span>
       </span>
       <div class="flex-1"></div>
     </div>
