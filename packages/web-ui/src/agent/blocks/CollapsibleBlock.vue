@@ -39,7 +39,6 @@ onUpdated(() => {
   <div class="overflow-hidden">
     <div
       class="flex select-none items-center gap-2 py-1 text-[13px] text-fg-muted"
-      :class="isExpandable ? 'cursor-pointer' : ''"
       @click="isExpandable && (isOpen = !isOpen)"
     >
       <div class="flex size-4 shrink-0 items-center justify-center">
