@@ -54,9 +54,9 @@ onUpdated(() => {
         <span v-else-if="detail" class="min-w-0 truncate font-mono text-fg-body">{{ detail }}</span>
         <span v-if="suffix" class="shrink-0 text-fg-subtle">{{ suffix }}</span>
       </div>
-      <span class="shrink-0 text-xs">
+      <span class="-ml-1.5 shrink-0 text-xs">
         <template v-if="isExpandable && (isHovered || isOpen)">
-          <RightSmallLine :size="18" class="text-fg-faint" :class="isOpen ? 'rotate-90' : ''" />
+          <RightSmallLine :size="22" class="text-fg-faint" :class="isOpen ? 'rotate-90' : ''" />
         </template>
         <template v-else>
           <ToolStatusBadge v-if="error" status="error" />
