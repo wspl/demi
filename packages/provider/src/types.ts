@@ -134,6 +134,10 @@ export interface ProviderModel {
   supportsReasoning: boolean | null
   supportedThinkingEfforts: ThinkingEffort[] | null
   defaultThinkingEffort: ThinkingEffort | null
+  /** Whether thinking can be turned off entirely. Some transports (e.g. the Claude Code CLI, whose
+   *  `--effort` flag only accepts low|medium|high|xhigh|max) can level thinking but never disable it,
+   *  so the UI must not offer a "no reasoning" option. Defaults to true (optional) when unset. */
+  canDisableThinking?: boolean | null
   serviceTiers?: ProviderServiceTier[] | null
   defaultServiceTierId?: string | null
   cost?: ProviderModelCost

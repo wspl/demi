@@ -12,6 +12,9 @@ export interface ProviderInfo {
 export interface ModelReasoning {
   efforts: string[]
   defaultEffort: string | null
+  /** Whether thinking can be turned off entirely. When false, the UI offers only effort levels and
+   *  no "No reasoning" option (e.g. Claude Code, which can level thinking but never disable it). */
+  canDisable: boolean
 }
 
 export interface ModelInfo {

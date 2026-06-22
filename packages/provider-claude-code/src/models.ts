@@ -181,6 +181,9 @@ function modelFromModelsDevEntry(id: string, raw: Record<string, unknown>, sourc
     supportsReasoning: booleanOrNull(raw.reasoning),
     supportedThinkingEfforts: reasoningEfforts(raw.reasoning_options),
     defaultThinkingEffort: null,
+    // The `claude` CLI's --effort flag only levels thinking (low|medium|high|xhigh|max); it can't
+    // turn it off, so thinking is never fully disableable for Claude Code models.
+    canDisableThinking: false,
     ...(cost
       ? {
           cost: {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import type { ThinkingConfig } from '@demi/core'
 import type { ReasoningState } from './reasoning'
 import { BrainLine } from '@mingcute/vue/brain'
@@ -21,7 +21,20 @@ const emit = defineEmits<{
   change: [config: ThinkingConfig]
 }>()
 
-const resolvedConfig = computed(() => props.config ?? props.reasoningState.defaultConfig)
+const resolvedConfig = computed(() => {
+  const cfg = props.config ?? props.reasoningState.defaultConfig
+  // Models that can't disable thinking (e.g. Claude Code) have no "disabled" state — a stale or
+  // carried-over disabled config resolves to the default effort so the label and the request match.
+  if (!props.reasoningState.canDisable && cfg.type === 'disabled') return props.reasoningState.defaultConfig
+  return cfg
+})
+
+// Persist that coercion upward so the next request actually sends an effort, not a no-op "disabled".
+watchEffect(() => {
+  if (!props.reasoningState.canDisable && props.config?.type === 'disabled') {
+    emit('change', props.reasoningState.defaultConfig)
+  }
+})
 
 const isThinkingEnabled = computed(() => resolvedConfig.value.type !== 'disabled')
 

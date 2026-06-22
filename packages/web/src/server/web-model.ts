@@ -13,7 +13,11 @@ export function toModelInfo(model: ProviderModel): ModelInfo {
     acceptedExtensions: model.supportsAttachments ? [...ATTACHMENT_EXTENSIONS] : [],
     reasoning:
       model.supportedThinkingEfforts && model.supportedThinkingEfforts.length > 0
-        ? { efforts: [...model.supportedThinkingEfforts], defaultEffort: model.defaultThinkingEffort ?? null }
+        ? {
+            efforts: [...model.supportedThinkingEfforts],
+            defaultEffort: model.defaultThinkingEffort ?? null,
+            canDisable: model.canDisableThinking ?? true,
+          }
         : null,
   }
 }
