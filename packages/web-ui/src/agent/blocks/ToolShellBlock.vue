@@ -43,10 +43,10 @@ const outputText = computed(() => {
     <span class="min-w-0 flex-1 truncate">{{ title }}</span>
 
     <template #body>
-      <div class="flex px-6 py-1 font-mono text-xs">
+      <div class="flex px-3 py-1 font-mono text-xs">
         <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span class="min-w-0 select-all whitespace-pre-wrap break-words text-fg-muted">{{ command }}</span>
       </div>
-      <AnsiText v-if="outputText" :content="outputText" class="px-6 pb-1.5" />
+      <AnsiText v-if="outputText" :content="outputText" class="px-3 pb-1" />
     </template>
   </InlineToolRow>
 </template>
