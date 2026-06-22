@@ -105,6 +105,11 @@ test('createShellSessionTools integrates shell_exec and shell_wait with AgentSes
   const shellExec = runtime.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_exec')
   expect(shellExec?.description).toContain('foreground with yieldAfterMs')
   expect(shellExec?.description).toContain('instead of backgrounding and pkill/killall')
+  // shell_exec exposes an optional "description" the model fills in; the UI shows it as the
+  // command's title with the script underneath.
+  const execProps = (shellExec?.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}
+  expect(execProps.description).toBeDefined()
+  expect(execProps.script).toBeDefined()
   const shellWait = runtime.tools({ agentSessionId: 'tool-agent', state: {}, cwd: process.cwd() }).find((tool) => tool.name === 'shell_wait')
   expect(shellWait?.description).toContain('Use yieldAfterMs for short status polls')
   expect(shellWait?.description).toContain('timeoutMs is a hard stop')

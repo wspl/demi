@@ -51,13 +51,18 @@ export function createShellSessionTools<State = unknown>(environment: BashEnviro
     {
       name: 'shell_exec',
       description:
-        'Execute a command in a long-lived shell session. Returns exited or running with a shellId for continuation. Run observable long-lived commands in the foreground with yieldAfterMs, then use shell_wait or shell_abort instead of backgrounding and pkill/killall. If the default shell already has a foreground process and you omit shellId, shell_exec runs the new command in an auxiliary shell; keep using the original shellId to wait/input/abort the foreground process.',
+        'Execute a command in a long-lived shell session. Returns exited or running with a shellId for continuation. Run observable long-lived commands in the foreground with yieldAfterMs, then use shell_wait or shell_abort instead of backgrounding and pkill/killall. If the default shell already has a foreground process and you omit shellId, shell_exec runs the new command in an auxiliary shell; keep using the original shellId to wait/input/abort the foreground process. Always set "description" to a short, clear summary of what the command does — it is shown as the command\'s title in the UI.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         required: ['script'],
         properties: {
           script: { type: 'string' },
+          description: {
+            type: 'string',
+            description:
+              'A clear, concise description of what this command does, in 5-10 words (e.g. "List files in the current directory"). Shown as the command\'s title in the UI, with the script itself shown below it.',
+          },
           shellId: { type: 'string' },
           yieldAfterMs: { type: 'number' },
           timeoutMs: { type: 'number' },
