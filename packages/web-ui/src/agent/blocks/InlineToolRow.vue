@@ -5,7 +5,7 @@ import ToolStatusBadge from './ToolStatusBadge.vue'
 import IndeterminateSpinner from '@demi/web-ui/ui/IndeterminateSpinner.vue'
 
 const props = defineProps<{
-  label: string
+  label?: string
   detail?: string
   suffix?: string
   trailing?: string
@@ -38,7 +38,7 @@ watch(() => props.errorText, (text) => {
         <slot name="icon" />
       </div>
       <div class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-        <span class="shrink-0">{{ label }}</span>
+        <span v-if="label" class="shrink-0">{{ label }}</span>
         <slot v-if="slots['default']" />
         <span v-else-if="detail" class="truncate font-mono text-fg-body">{{ detail }}</span>
         <span v-if="suffix" class="shrink-0 text-fg-subtle">{{ suffix }}</span>

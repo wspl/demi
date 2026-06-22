@@ -2,8 +2,9 @@
 import { computed } from 'vue'
 import { TerminalBoxLine } from '@mingcute/vue/terminal-box'
 import AnsiText from './AnsiText.vue'
-import ToolCard from './ToolCard.vue'
+import InlineToolRow from './InlineToolRow.vue'
 import type { ToolCallBlock } from '../block-types'
+import { getToolErrorText } from '../block-helpers'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -13,8 +14,10 @@ const props = defineProps<{
 
 const command = computed(() => (props.input['script'] as string) ?? '')
 const description = computed(() => (props.input['description'] as string) ?? '')
-const hasCommand = computed(() => !!command.value)
-const isMultiline = computed(() => command.value.includes('\n'))
+// Collapsed, the row exposes only the terminal icon + this title (the model's description, or the
+// command itself when none was given). Expanding reveals the actual command and its output.
+const title = computed(() => description.value || command.value)
+const errorText = computed(() => getToolErrorText(props.block))
 
 const outputText = computed(() => {
   const source =
@@ -28,28 +31,22 @@ const outputText = computed(() => {
 </script>
 
 <template>
-  <ToolCard
+  <InlineToolRow
     :loading="block.status === 'executing'"
     :error="block.status === 'error'"
-    :show-body="hasCommand"
-    collapsed-height="100px"
+    :error-text="errorText"
   >
     <template #icon>
       <TerminalBoxLine :size="16" />
     </template>
 
-    <template #header>
-      <span class="truncate font-mono text-xs text-fg-muted">{{ description || (isMultiline ? '' : command) }}</span>
-    </template>
-
-    <template v-if="description || isMultiline" #body-top>
-      <div class="flex border-b border-line bg-overlay/2 px-3 py-1.5 font-mono text-xs">
-        <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span class="min-w-0 line-clamp-5 select-all whitespace-pre-wrap break-words text-fg-muted">{{ command }}</span>
-      </div>
-    </template>
+    <span class="min-w-0 flex-1 truncate">{{ title }}</span>
 
     <template #body>
-      <AnsiText :content="outputText" class="px-3 py-1.5" />
+      <div class="flex px-6 py-1 font-mono text-xs">
+        <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span class="min-w-0 select-all whitespace-pre-wrap break-words text-fg-muted">{{ command }}</span>
+      </div>
+      <AnsiText v-if="outputText" :content="outputText" class="px-6 pb-1.5" />
     </template>
-  </ToolCard>
+  </InlineToolRow>
 </template>
