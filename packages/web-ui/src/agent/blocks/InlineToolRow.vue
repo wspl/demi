@@ -37,10 +37,10 @@ watch(() => props.errorText, (text) => {
       <div class="flex size-4 shrink-0 items-center justify-center">
         <slot name="icon" />
       </div>
-      <div class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+      <div class="flex min-w-0 items-center gap-2 overflow-hidden">
         <span v-if="label" class="shrink-0">{{ label }}</span>
         <slot v-if="slots['default']" />
-        <span v-else-if="detail" class="truncate font-mono text-fg-body">{{ detail }}</span>
+        <span v-else-if="detail" class="min-w-0 truncate font-mono text-fg-body">{{ detail }}</span>
         <span v-if="suffix" class="shrink-0 text-fg-subtle">{{ suffix }}</span>
       </div>
       <span class="shrink-0 text-xs">
@@ -53,6 +53,7 @@ watch(() => props.errorText, (text) => {
           <span v-else-if="trailing" class="text-fg-subtle">{{ trailing }}</span>
         </template>
       </span>
+      <div class="flex-1"></div>
     </div>
     <div v-if="isExpandable" class="collapsible-body" :class="isOpen ? 'is-open' : ''">
       <div class="overflow-hidden">

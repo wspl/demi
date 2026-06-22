@@ -44,7 +44,7 @@ watch(() => props.thinking, () => {
         <div class="flex size-4 shrink-0 items-center justify-center">
           <BrainLine :size="16" />
         </div>
-        <span class="min-w-0 flex-1" :class="isStreaming ? 'thinking-shimmer' : ''">{{ t('agent.block.thinking') }}</span>
+        <span class="min-w-0 truncate" :class="isStreaming ? 'thinking-shimmer' : ''">{{ t('agent.block.thinking') }}</span>
         <div class="flex h-5 shrink-0 items-center justify-center text-xs">
           <ArrowIcon
             v-if="showToggle"
@@ -52,6 +52,7 @@ watch(() => props.thinking, () => {
             :class="isOpen ? 'rotate-90' : ''"
           />
         </div>
+        <div class="flex-1"></div>
       </div>
       <div v-if="hasContent" class="thinking-content" :class="isOpen ? 'is-open' : ''">
         <div class="thinking-inner">
