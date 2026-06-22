@@ -43,8 +43,8 @@ const outputText = computed(() => {
     </template>
 
     <template v-if="description || isMultiline" #body-top>
-      <div class="border-b border-line bg-overlay/2 px-3 py-1.5 font-mono text-xs">
-        <span class="select-none text-fg-faint">$ </span><span class="line-clamp-5 select-all text-fg-muted">{{ command }}</span>
+      <div class="flex border-b border-line bg-overlay/2 px-3 py-1.5 font-mono text-xs">
+        <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span class="min-w-0 line-clamp-5 select-all whitespace-pre-wrap break-words text-fg-muted">{{ command }}</span>
       </div>
     </template>
 
