@@ -54,7 +54,7 @@ onUpdated(() => {
       <span class="-ml-1 shrink-0 text-xs">
         <ToolStatusBadge v-if="error" status="error" />
         <IndeterminateSpinner v-else-if="loading" :size="12" :stroke-width="2" arc-class="text-on-warning" track-class="text-tint-warning" />
-        <RightLine v-else-if="isExpandable" :size="18" class="text-fg-faint" :class="isOpen ? 'rotate-90' : ''" />
+        <RightLine v-else-if="isExpandable" :size="14" class="text-fg-faint" :class="isOpen ? 'rotate-90' : ''" />
         <span v-else-if="trailing" class="text-fg-subtle">{{ trailing }}</span>
       </span>
       <div class="flex-1"></div>
