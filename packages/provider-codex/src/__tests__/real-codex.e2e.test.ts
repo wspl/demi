@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
-import type { ModelSelection, TokenUsage } from '@demi/core'
-import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
+import type { Block, ModelSelection, TokenUsage } from '@demi/core'
+import { AgentSession, type AgentHarnessRuntime, type AgentTool, type AgentToolInvokeResult } from '@demi/agent'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
 import { BashEnvironment, createShellSessionTools } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
@@ -12,6 +12,7 @@ const e2e = process.env.DEMI_CODEX_E2E === '1' ? test : test.skip
 const cacheE2e = process.env.DEMI_CODEX_CACHE_E2E === '1' ? test : test.skip
 const thinkingE2e = process.env.DEMI_CODEX_THINKING_E2E === '1' ? test : test.skip
 const toolE2e = process.env.DEMI_CODEX_TOOL_E2E === '1' ? test : test.skip
+const steerE2e = process.env.DEMI_CODEX_STEER_E2E === '1' ? test : test.skip
 const modelId = process.env.DEMI_CODEX_E2E_MODEL ?? 'gpt-5.4'
 const transport = parseTransport(process.env.DEMI_CODEX_TRANSPORT)
 
@@ -138,6 +139,122 @@ toolE2e('CodexProvider drives a real AgentSession shell tool roundtrip', async (
   expect(transcriptText).toContain('DEMI_CODEX_TOOL_DONE')
 })
 
+steerE2e(
+  'CodexProvider keeps a steered active turn ahead of a queued send in real AgentSession',
+  async () => {
+    await expectCodexAuthAvailable()
+    const provider = new CodexProvider({ transport, maxRetries: 1, streamIdleTimeoutMs: 180_000 })
+    const toolStarted = deferred<void>()
+    const releaseTool = deferred<void>()
+    let waitGateCalls = 0
+    const queuedPrompt = 'This is the queued next turn. Reply with exactly QUEUED_DONE and nothing else.'
+    const waitGate: AgentTool<Record<string, never>> = {
+      name: 'wait_gate',
+      description: 'Blocks until the test harness releases it, then returns WAIT_GATE_DONE.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {},
+      },
+      invoke: async (): Promise<AgentToolInvokeResult> => {
+        waitGateCalls += 1
+        toolStarted.resolve(undefined)
+        if (waitGateCalls > 1) {
+          return { output: [{ type: 'text', text: 'WAIT_GATE_REPEATED' }], isError: true }
+        }
+        await releaseTool.promise
+        return { output: [{ type: 'text', text: 'WAIT_GATE_DONE' }] }
+      },
+    }
+    const runtime: AgentHarnessRuntime<Record<string, never>> = {
+      harnessName: 'codex-real-steer-e2e',
+      initialState: () => ({}),
+      systemPrompt: () => [
+        'You are running a controlled acceptance test.',
+        'You have one relevant tool: wait_gate.',
+        'For the active turn, call wait_gate exactly once before writing any final answer.',
+        'After wait_gate returns, answer with a short line containing ACTIVE_DONE.',
+        'If same-turn guidance arrives before the final answer, include its exact marker in that same active answer.',
+      ].join('\n'),
+      tools: () => [waitGate],
+    }
+    const model: ModelSelection = {
+      providerId: 'codex',
+      model: {
+        id: modelId,
+        name: modelId,
+        contextWindow: 200_000,
+        inputLimit: null,
+        thinking: [],
+        acceptedExtensions: [],
+      },
+      thinking: { type: 'effort', effort: 'medium', summary: null },
+    }
+    const session = new AgentSession(
+      { provider, model, cwd: process.cwd(), runtime },
+      { agentSessionId: `codex-steer-e2e-${randomUUID()}` },
+    )
+    let activeTurn: Promise<void> | null = null
+    let queuedTurn: Promise<void> | null = null
+
+    try {
+      activeTurn = session.send([
+        {
+          type: 'text',
+          text: [
+            'Start the controlled active turn now.',
+            'Call wait_gate exactly once and wait for its result.',
+            'After the tool result, answer with ACTIVE_DONE and any marker supplied by same-turn guidance.',
+          ].join('\n'),
+        },
+      ])
+      const firstMilestone = await withTimeout(
+        Promise.race([
+          toolStarted.promise.then(() => 'tool-started' as const),
+          activeTurn.then(() => 'active-turn-finished' as const),
+        ]),
+        120_000,
+        'Timed out waiting for Codex to enter wait_gate',
+      )
+      expect(firstMilestone).toBe('tool-started')
+
+      queuedTurn = session.send([{ type: 'text', text: queuedPrompt }])
+      await session.steer([
+        {
+          type: 'text',
+          text: 'Same-turn guidance: include STEER_INCLUDED in the active turn final answer.',
+        },
+      ])
+      expect(session.queuedMessages()).toMatchObject([{ text: queuedPrompt }])
+
+      releaseTool.resolve(undefined)
+      await withTimeout(activeTurn, 180_000, 'Timed out waiting for active steered Codex turn to finish')
+      await withTimeout(queuedTurn, 180_000, 'Timed out waiting for queued Codex turn to finish')
+    } finally {
+      releaseTool.resolve(undefined)
+      if (session.phase() !== 'idle') await session.abort().catch(() => undefined)
+      await activeTurn?.catch(() => undefined)
+      await queuedTurn?.catch(() => undefined)
+    }
+
+    expect(waitGateCalls).toBe(1)
+    const blocks = session.transcript().blocks
+    const firstUserIndex = blocks.findIndex((block) => block.type === 'user')
+    const toolIndex = blocks.findIndex((block) => block.type === 'tool_call' && block.toolName === 'wait_gate')
+    const steerIndex = blocks.findIndex((block) => block.type === 'steer')
+    const queuedUserIndex = blocks.findIndex((block, index) => block.type === 'user' && index > firstUserIndex)
+
+    expect(firstUserIndex).toBeGreaterThanOrEqual(0)
+    expect(toolIndex).toBeGreaterThan(firstUserIndex)
+    expect(steerIndex).toBeGreaterThan(toolIndex)
+    expect(queuedUserIndex).toBeGreaterThan(steerIndex)
+    expect(textBetween(blocks, steerIndex, queuedUserIndex)).toContain('ACTIVE_DONE')
+    expect(textBetween(blocks, steerIndex, queuedUserIndex)).toContain('STEER_INCLUDED')
+    expect(textBetween(blocks, queuedUserIndex, blocks.length)).toContain('QUEUED_DONE')
+  },
+  360_000,
+)
+
 async function runCodexRequest(options: {
   sessionId: string
   systemPrompt: string
@@ -204,4 +321,51 @@ function isVisibleThinkingEvent(event: ProviderEvent): boolean {
 function parseTransport(value: string | undefined): 'auto' | 'sse' | 'websocket' {
   if (value === 'sse' || value === 'websocket' || value === 'auto') return value
   return 'sse'
+}
+
+function textBetween(blocks: Block[], startInclusive: number, endExclusive: number): string {
+  return blocks
+    .slice(Math.max(0, startInclusive), Math.max(0, endExclusive))
+    .filter((block) => block.type === 'text')
+    .map((block) => (block.type === 'text' ? block.text : ''))
+    .join('')
+}
+
+interface Deferred<T> {
+  promise: Promise<T>
+  resolve(value: T): void
+  reject(error: unknown): void
+}
+
+function deferred<T>(): Deferred<T> {
+  let settled = false
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = (value) => {
+      if (settled) return
+      settled = true
+      innerResolve(value)
+    }
+    reject = (error) => {
+      if (settled) return
+      settled = true
+      innerReject(error)
+    }
+  })
+  return { promise, resolve, reject }
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), ms)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
 }

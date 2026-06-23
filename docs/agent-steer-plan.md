@@ -518,17 +518,17 @@ Current checkpoint: Web running input now exposes explicit steer and queue comma
 - [x] `@demi/provider-codex`: map replayed `user_steer` items into Responses input while preserving order.
 - [x] `@demi/provider-claude-code`: map replayed `user_steer` items into stream-json user messages while preserving order.
 - [x] `@demi/provider-codex`: add an agent-level same-turn continuation test proving provider-stream steer is replayed before queued sends drain.
-- [ ] `@demi/provider-claude-code`: keep provider-native active steering absent unless a true in-flight CLI input channel is proven.
+- [x] `@demi/provider-claude-code`: keep provider-native active steering absent unless a true in-flight CLI input channel is proven.
 - [x] Verification: `bun test packages/provider-codex/src/__tests__/provider.test.ts`.
-- [ ] Real-provider acceptance document under `docs/repl-acceptance/` remains gated until a runnable provider scenario is exercised.
+- [x] Real-provider acceptance document under `docs/repl-acceptance/` remains gated until a runnable provider scenario is exercised.
 
-Current checkpoint: `user_steer` replay conversion is covered for Codex Responses and Claude Code JSONL. Native provider control hooks are optional and remain unimplemented; Demi will use transcript-backed same-turn continuation.
+Current checkpoint: `user_steer` replay conversion is covered for Codex Responses and Claude Code JSONL. Native provider control hooks are optional and remain unimplemented; Demi uses transcript-backed same-turn continuation. The real Codex acceptance record is `docs/repl-acceptance/codex-steer-queue-interleaving.md`.
 
 ### 13.8 Full Gate
 
 - [x] Run `bun run typecheck`.
 - [x] Run `bun run test`.
-- [ ] Run targeted long-session or real-provider acceptance for queue + steer interleaving with transcript-backed same-turn continuation.
+- [x] Run targeted long-session or real-provider acceptance for queue + steer interleaving with transcript-backed same-turn continuation.
 - [x] Confirm `docs/package-boundaries.md` still matches any new public types or package edges.
 
 ## 14. Acceptance Criteria
