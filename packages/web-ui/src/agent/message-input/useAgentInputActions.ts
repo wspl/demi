@@ -16,13 +16,31 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
     if (!content) return
     params.clearInput()
     try {
-      if (params.workspace.sessions[params.conversationId]?.phase === 'running') {
-        await params.workspace.steer(params.conversationId, content)
-      } else {
-        await params.workspace.send(params.conversationId, content)
-      }
+      await params.workspace.send(params.conversationId, content)
     } catch (error) {
       reportError('Failed to send message', error, { userVisible: true })
+    }
+  }
+
+  async function handleSteerSubmit(): Promise<void> {
+    const content = params.buildSubmitPayload()
+    if (!content) return
+    params.clearInput()
+    try {
+      await params.workspace.steer(params.conversationId, content)
+    } catch (error) {
+      reportError('Failed to steer turn', error, { userVisible: true })
+    }
+  }
+
+  async function handleQueueSubmit(): Promise<void> {
+    const content = params.buildSubmitPayload()
+    if (!content) return
+    params.clearInput()
+    try {
+      await params.workspace.send(params.conversationId, content)
+    } catch (error) {
+      reportError('Failed to queue message', error, { userVisible: true })
     }
   }
 
@@ -54,5 +72,5 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
     })
   }
 
-  return { handleSubmit, handleSelectModel, handleChangeThinking, handleAbort, handleCompact }
+  return { handleSubmit, handleSteerSubmit, handleQueueSubmit, handleSelectModel, handleChangeThinking, handleAbort, handleCompact }
 }

@@ -18,7 +18,22 @@ test('input submit sends a new turn while idle', async () => {
   expect(calls).toEqual(['clear', 'send:new turn'])
 })
 
-test('input submit steers the active turn while running', async () => {
+test('input submit queues a new turn while running', async () => {
+  const calls: string[] = []
+  const workspace = fakeWorkspace('running', calls)
+  const actions = useAgentInputActions({
+    workspace,
+    conversationId: 'conversation-1',
+    buildSubmitPayload: () => [{ type: 'text', text: 'run after this' }],
+    clearInput: () => calls.push('clear'),
+  })
+
+  await actions.handleSubmit()
+
+  expect(calls).toEqual(['clear', 'send:run after this'])
+})
+
+test('input steer action steers the active turn while running', async () => {
   const calls: string[] = []
   const workspace = fakeWorkspace('running', calls)
   const actions = useAgentInputActions({
@@ -28,9 +43,24 @@ test('input submit steers the active turn while running', async () => {
     clearInput: () => calls.push('clear'),
   })
 
-  await actions.handleSubmit()
+  await actions.handleSteerSubmit()
 
   expect(calls).toEqual(['clear', 'steer:refine this turn'])
+})
+
+test('input queue action sends a new turn while running', async () => {
+  const calls: string[] = []
+  const workspace = fakeWorkspace('running', calls)
+  const actions = useAgentInputActions({
+    workspace,
+    conversationId: 'conversation-1',
+    buildSubmitPayload: () => [{ type: 'text', text: 'run after this' }],
+    clearInput: () => calls.push('clear'),
+  })
+
+  await actions.handleQueueSubmit()
+
+  expect(calls).toEqual(['clear', 'send:run after this'])
 })
 
 function fakeWorkspace(phase: 'idle' | 'running' | 'compacting', calls: string[]): AgentWorkspace {

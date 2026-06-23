@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick } from 'vue'
 import type { UserContentBlock } from '@demi/core'
+import { AddLine } from '@mingcute/vue/add'
 import { SendLine } from '@mingcute/vue/send'
 import { StopFill } from '@mingcute/vue/stop'
 import { EditorContent } from '@tiptap/vue-3'
 import { useAgentWorkspace } from './workspace'
 import ModelSelector from './ModelSelector.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import { useAgentInputActions } from './message-input/useAgentInputActions'
 import { useAgentInputEditor } from './message-input/useAgentInputEditor'
 import { useAgentInputSessionState } from './message-input/useAgentInputSessionState'
@@ -41,7 +43,7 @@ function clearInput(): void {
   editor.value?.commands.clearContent()
 }
 
-const { handleSubmit, handleSelectModel, handleChangeThinking, handleAbort, handleCompact } = useAgentInputActions({
+const { handleSubmit, handleSteerSubmit, handleQueueSubmit, handleSelectModel, handleChangeThinking, handleAbort, handleCompact } = useAgentInputActions({
   workspace,
   conversationId: props.conversationId,
   buildSubmitPayload,
@@ -98,13 +100,34 @@ defineExpose({
             :is-clickable="!isRunning && canCompact"
             @compact="handleCompact"
           />
-          <span
-            v-if="hasContent"
-            class="flex size-7 cursor-pointer items-center justify-center rounded-lg bg-overlay/10 text-fg transition-colors hover:bg-active"
-            @click="handleSubmit"
-          >
-            <SendLine :size="15" />
-          </span>
+          <template v-if="hasContent">
+            <template v-if="isRunning">
+              <Tooltip content="Steer current turn">
+                <span
+                  class="flex size-7 cursor-pointer items-center justify-center rounded-lg bg-overlay/10 text-fg transition-colors hover:bg-active"
+                  @click="handleSteerSubmit"
+                >
+                  <SendLine :size="15" />
+                </span>
+              </Tooltip>
+              <Tooltip content="Queue next turn">
+                <span
+                  class="flex size-7 cursor-pointer items-center justify-center rounded-lg bg-overlay/10 text-fg transition-colors hover:bg-active"
+                  @click="handleQueueSubmit"
+                >
+                  <AddLine :size="15" />
+                </span>
+              </Tooltip>
+            </template>
+            <Tooltip v-else content="Send message">
+              <span
+                class="flex size-7 cursor-pointer items-center justify-center rounded-lg bg-overlay/10 text-fg transition-colors hover:bg-active"
+                @click="handleSubmit"
+              >
+                <SendLine :size="15" />
+              </span>
+            </Tooltip>
+          </template>
           <span
             v-else-if="isRunning || isCompacting"
             class="flex size-7 cursor-pointer items-center justify-center rounded-lg bg-overlay/10 text-fg transition-colors hover:bg-active"

@@ -503,13 +503,13 @@ Each item is intended to be implementable as a small checkpoint. Do not enable U
 
 - [x] Add `steer()` to `ConversationRuntime` and `AgentWorkspace`.
 - [x] Update `ConversationState`/block rendering to display `steer` blocks.
-- [ ] In `AgentMessageInput`, when running and editor has content, expose distinct actions for "steer current turn" and "queue next turn".
-- [x] Keep idle submit behavior unchanged.
+- [x] In `AgentMessageInput`, when running and editor has content, expose distinct actions for "steer current turn" and "queue next turn".
+- [x] Keep generic submit behavior as `send()` so idle submit starts a turn and running submit queues the next turn.
 - [x] Report steer rejection as a visible error; do not fallback to queue.
 - [x] Add web-ui tests for running-state controls and action dispatch.
-- [x] Verification: `bun test packages/web-ui/src/agent/__tests__/reasoning.test.ts packages/web/src/server/__tests__/transport.e2e.test.ts packages/web/src/server/__tests__/workspace.e2e.test.ts`.
+- [x] Verification: `bun test packages/web-ui/src/agent/__tests__/input-actions.test.ts packages/web-ui/src/agent/__tests__/reasoning.test.ts`.
 
-Current checkpoint: Web running submit dispatches to `steer()` and preserves idle `send()` behavior. A separate running-state queue button remains pending.
+Current checkpoint: Web running input now exposes explicit steer and queue commands. Generic submit remains `send()` and therefore preserves existing running-state queue behavior.
 
 ### 13.7 Provider Implementations
 
