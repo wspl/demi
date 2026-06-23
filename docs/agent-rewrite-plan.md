@@ -8,11 +8,12 @@
 
 ## 1. 背景与目标
 
-在 TypeScript 里重写整套 agent 架构，覆盖通用 agent 壳与 coding agent。以 Rust `agent-session` / `coding-agent` 为实现蓝本：已验证的 session lifecycle、turn queue、retry/resume、compaction、mutation guard 等逻辑直接照搬，只在语言、包边界和 Shell/Bash 核心机制上调整。
+在 TypeScript 里重写整套 agent 架构，覆盖通用 agent 壳与 coding agent。以 Rust `agent-session` / `coding-agent` 为实现蓝本：已验证的 session lifecycle、turn queue、retry/resume、compaction、mutation guard 等逻辑直接照搬，只在语言、包边界和 Shell/Bash 核心机制上调整。当前最终态还需要补齐 active turn steer；详细设计见 `docs/agent-steer-plan.md`。
 
 参考实现：
 
 - Rust `agent-session`：session runtime、transcript、生命周期、compaction、queue、retry/resume、mutation guard。
+- Codex active turn steer：queue 与 steer 是 busy session 的两种不同输入策略，不能互相伪装或自动降级。
 - Rust `coding-agent`：todo、ref expansion、shell。
 - `vercel-labs/just-bash`：Bash Engine 实现基线（维护完整 fork，见 §7）。
 
@@ -422,7 +423,7 @@ type ShellToolResult =
 
 Agent Loop 是纯通用 runtime。
 
-**职责：** transcript、queue、send / retry / resume、abort / cancellation、provider turn、tool invocation、tool continuation 状态、compaction、extension state snapshot、mutation guard、事件产出（供 AgentServer 消费）。
+**职责：** transcript、queue、steer、send / retry / resume、abort / cancellation、provider turn、tool invocation、tool continuation 状态、compaction、extension state snapshot、mutation guard、事件产出（供 AgentServer 消费）。
 
 **不负责：** fs 语义、git 语义、业务领域能力、terminal、process session 内部状态、file explorer、project/worktree 管理。Shell/Bash 是统一执行基座，但进程、cwd/env、stdin/stdout、audit 和 wait/input/abort 的细节由 Bash Environment 负责，Agent Loop 只处理工具调用和 transcript。
 
@@ -465,6 +466,7 @@ interface AgentHarnessRuntime<State> {
 
 interface AgentSession<State> {
   send(content: UserContentBlock[]): Promise<void>
+  steer(content: UserContentBlock[]): Promise<void>
   retry(): Promise<void>
   resume(): Promise<void>
   compact(): Promise<void>
@@ -480,6 +482,8 @@ interface AgentSession<State> {
 ```
 
 相对 Rust 蓝本删除 `replayFrom`。mutation guard 保留，用于外部 transcript 编辑（`reserve_mutation`）与 compact 期间的并发保护。
+
+`send` 在 busy 时仍表示下一 turn 队列；`steer` 表示追加到当前 active turn。两者是显式调用方选择，runtime 不允许把 rejected steer 自动转成 queued send，也不允许用 abort/resume 模拟 steer。
 
 ### 5.2 Transcript 与 Compaction
 
@@ -943,6 +947,7 @@ const client = new AgentClient(createStdioClientTransport(stdout, stdin))
 interface AgentClient {
   open(provider: ProviderConfig, cwd: string): Promise<void>
   send(content: UserContentBlock[]): Promise<void>
+  steer(content: UserContentBlock[]): Promise<void>
   retry(): Promise<void>
   resume(): Promise<void>
   compact(): Promise<void>
@@ -957,6 +962,7 @@ type SessionEvent =
   | { type: 'transcript_patch'; patches: Patch[] }
   | { type: 'phase'; phase: SessionPhase }
   | { type: 'queue'; queue: QueuedMessage[] }
+  | { type: 'steer_result'; steerId: string; status: 'accepted' | 'rejected'; reason?: string }
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
   | { type: 'shell_output'; shellId: string; snapshot: OutputSnapshot }
   | { type: 'shell_input_result'; shellId: string; output: ToolResultContentBlock[] }
@@ -978,9 +984,11 @@ Transport 是 AgentServer 的通信适配层：定义 `ClientFrame` / `ServerFra
 
 ### 12.1 设计原则
 
-**动作帧 + 状态帧，不做 per-command id 编排。** demi 是单 worker 串行：同一时刻只有一轮工作在跑，客户端发 `send` 时如果已有 run 正在执行，则进入 AgentSession queue；`queue` 帧公开等待中的 user turn。`retry` / `resume` / `compact` 这类会重写 transcript 或改变当前控制流的动作在 busy 时回 `rejected` 帧带命令名，客户端据此确认。
+**动作帧 + 状态帧，普通 turn 动作不做 per-command id 编排。** demi 是单 worker 串行：同一时刻只有一轮工作在跑，客户端发 `send` 时如果已有 run 正在执行，则进入 AgentSession queue；`queue` 帧公开等待中的 user turn。`retry` / `resume` / `compact` 这类会重写 transcript 或改变当前控制流的动作在 busy 时回 `rejected` 帧带命令名，客户端据此确认。
 
 由于没有 per-command id，AgentClient 不能让每个 `send` / `retry` / `resume` / `compact` Promise 各自独立监听同一组 `phase` 广播后自行判断完成。client 必须维护本地 action FIFO：每次从 idle 进入 active phase 只认领一个等待中的 action，回到 idle 时只 resolve 这个 action；`rejected` 只 reject 尚未进入 active phase 的同名动作；`error` 优先 reject 当前 active action，无法关联到 active action 时再 reject 全部等待动作；`closed` 让全部等待动作收敛。
+
+`steer` 是例外：它不是启动下一轮 phase 的普通 turn 动作，而是在 active turn 内即时接受或拒绝的控制动作。客户端必须给 `steer` 帧携带 `steerId`，服务端用 `steer_result` 按 id ack；多个 steer 不能共用 phase FIFO，也不能通过 `queue` 帧表示。
 
 **shellId 是唯一的关联标识。** 它关联的不是“命令”，而是 shell session 这个持续存在的对象——`shell_input` 和 `shell_output` 通过 shellId 对上。除此之外帧与帧之间不需要 id 配对。
 
