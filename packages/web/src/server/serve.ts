@@ -1,17 +1,16 @@
 import process from 'node:process'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { AgentTransportBinding } from '@demi/agent'
 import type { ProviderRegistry } from '@demi/provider'
 import type { ControlMethod } from '@demi/web-ui/transport/protocol'
 import { AgentHub } from './agent-hub'
 import { BunServerSocket } from './bun-socket'
 import { ControlServer } from './control-server'
-import { createStaticHandler } from './static'
 import type { ServerOptions } from './server-options'
 
 type AgentConn = { kind: 'agent'; cwd: string; socket?: BunServerSocket; binding?: AgentTransportBinding }
 type ConnData = AgentConn | { kind: 'control' }
+
+const BACKEND_ONLY_MESSAGE = 'Demi web backend only exposes /control and /agent. Open the Vite dev server for the browser UI.'
 
 export interface WebServerHandle {
   port: number
@@ -26,8 +25,6 @@ export function startWebServer(registry: ProviderRegistry, options: ServerOption
     timeoutMs: options.timeoutMs,
   })
   const control = new ControlServer(registry, options)
-  const distDir = join(dirname(fileURLToPath(import.meta.url)), '../../dist')
-  const serveStatic = createStaticHandler(distDir)
 
   const server = Bun.serve<ConnData>({
     port: options.port,
@@ -42,7 +39,10 @@ export function startWebServer(registry: ProviderRegistry, options: ServerOption
         if (srv.upgrade(req, { data: { kind: 'control' } })) return undefined
         return new Response('Upgrade failed', { status: 426 })
       }
-      return serveStatic(url.pathname)
+      return new Response(BACKEND_ONLY_MESSAGE, {
+        status: 404,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      })
     },
     websocket: {
       open(ws) {

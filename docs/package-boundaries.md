@@ -130,10 +130,11 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demi/web-ui`, `@demi/agent`, `@demi/host-local`, `@demi/coding-agent`,
   `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`,
   `@demi/shell`.
-- Owns: the Demi web product — the Vite browser app plus its embedded Node/Bun server. The
-  server serves the built assets and the WebSocket endpoints (per-session `/agent` + a
+- Owns: the Demi web product — the Vite-dev-only browser app plus its embedded Node/Bun
+  backend. The server serves only the WebSocket/API endpoints (per-session `/agent` + a
   `/control` RPC), assembling a shared `ProviderRegistry` and a per-cwd `AgentServer` over
-  `LocalHost` and the coding harness. The server is not split into its own package.
+  `LocalHost` and the coding harness. It must not serve built browser assets, preview pages,
+  or production fallback HTML. The server is not split into its own package.
 - Public boundary: top-level product application entry points (browser `main.ts`, server
   `index.ts`).
 - Must not: be imported by any other production package.

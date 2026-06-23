@@ -391,6 +391,10 @@ Agent Loop 只在边界点恢复：exit / timeout / abort / yieldAfterMs / outpu
 
 dev server / watch / preview 这类命令如果只是为了冒烟验证，应作为 foreground command 启动，并设置较短 `yieldAfterMs` 观察启动日志；验证完成后调用 `shell_abort(shellId)`。不要把这类命令放到后台再用 `pkill -f`、`killall` 或类似进程名匹配方式回收，因为这绕过 shell 控制面，可能误杀同名进程，也让审计链路变差。
 
+Demi Web 的浏览器 GUI 只能通过动态 dev server 验收。`@demi/web` 的 Bun server 是
+WebSocket/API 后端，不得服务 Vite `dist`、静态 bundle、preview 页面或 production fallback；
+日常开发和验收必须打开 Vite dev server 页面，并让它连接后端 `/control` 与 `/agent`。
+
 `running`、`timeout`、`abort` 都是观测边界，不是 shell 语义边界。若前台命令带输出重定向，runner 必须按 sink 映射过滤可见 stdout/stderr，并在后续 `shell_wait`、timeout 或 abort 收敛时通过 Host 完成已捕获内容的文件 sink 写入；不能把被重定向的内容暴露给模型，也不能绕过 Host 直接使用本机 fs。
 
 ```ts

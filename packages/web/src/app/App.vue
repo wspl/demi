@@ -7,8 +7,7 @@ import AgentRoot from '@demi/web-ui/agent/AgentRoot.vue'
 
 applyThemeToDocument()
 
-// In dev the app talks directly to the standalone server; in production the server serves this app same-origin.
-const serverBase = import.meta.env.DEV ? 'http://localhost:4280' : location.origin
+const serverBase = import.meta.env.VITE_DEMI_SERVER_BASE ?? 'http://localhost:4280'
 
 const workspace = shallowRef<AgentWorkspace | null>(null)
 const status = ref('connecting…')

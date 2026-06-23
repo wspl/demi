@@ -260,10 +260,11 @@ bundler tree-shakes the server surface. (Action item at implementation start.)
 
 The concrete Demi web app. The server is **not** split into its own package. Two halves:
 
-- **Browser app** (Vite build): mounts `@demi/web-ui`, wires the WS transports
+- **Browser app** (Vite dev only): mounts `@demi/web-ui`, wires the WS transports
   (`createWebSocketClientTransport` → `AgentClient`; control WS → control client), theme,
-  and commands. Entry `src/app/main.ts`.
-- **Node/Bun server**: serves the built assets and the WebSocket endpoints; assembles a
+  and commands. Entry `src/app/main.ts`. It is served only by Vite during development and
+  acceptance; Demi does not build, preview, or serve a static browser bundle.
+- **Node/Bun server**: serves only the WebSocket/API endpoints; assembles a
   shared `ProviderRegistry` and a per-`cwd` `AgentServer` over `LocalHost` +
   `createCodingAgentHarness`; implements the control RPC. Entry `src/server/index.ts`.
 
@@ -360,9 +361,11 @@ features dropped — §10).
   sessions). (Alternative: a cwd-dynamic harness whose `host(ctx)` derives from `ctx.cwd`,
   letting one `AgentServer` serve all cwds; requires a small `@demi/coding-agent` option.
   The cached-per-cwd approach needs no `coding-agent` change and is preferred.)
-- HTTP: serve the Vite `dist/` (index + assets). Bun: `Bun.serve` with `fetch` for assets
-  and `websocket` handlers; adapt Bun's server WebSocket to the `JsonWebSocket` interface
-  (a ~20-line adapter mapping `message`/`close`).
+- HTTP: no browser assets. The Bun server is an API/WebSocket backend only; ordinary HTTP
+  requests return an explicit "use Vite dev server" response. Browser GUI development and
+  acceptance must open the Vite dev server, which connects to `/control` and `/agent`.
+- `Bun.serve` owns the websocket handlers; adapt Bun's server WebSocket to the
+  `JsonWebSocket` interface (a ~20-line adapter mapping `message`/`close`).
 - `WS /agent?cwd=…` and `WS /control` as in §4.
 
 The `open` frame still carries `{ provider:{type,config,model}, cwd }`; the browser obtains
@@ -468,15 +471,15 @@ collapse to an auto-grow `<textarea>` stays possible but is not planned.
   can drive a future per-command breakdown inside a `shell_exec` card; the `shell_output`
   event already carries live stdout/stderr deltas for foreground shells.
 
-## 9. Build and Toolchain
+## 9. Dev Runtime and Toolchain
 
 - The web packages use **Vite + Vue + Tailwind 4 + vue-tsc** (like agent-gui). The existing
   root `typecheck` (`tsgo --noEmit` over `packages/*/src`) cannot parse `.vue`; scope the
   web packages out of the tsgo pass and add a `vue-tsc -b` typecheck for `@demi/web-ui` /
   `@demi/web` (each with its own `tsconfig`). Wire both into the root `typecheck` script.
-- `@demi/web` build: `vue-tsc -b && vite build` for the browser, plus a Bun entry for the
-  server (`bun run packages/web/src/server/index.ts`). Add a root `web` script mirroring
-  `repl`.
+- `@demi/web` has no browser build or preview script. The browser app runs through Vite dev
+  server only; the Bun entry (`bun run packages/web/src/server/index.ts`) is the backend
+  for `/control` and `/agent`, not a static asset server.
 - `bun test` stays for logic; component tests (if any) run under Vitest + jsdom (already a
   dev dep pattern in agent-gui).
 - Tailwind 4 `@source` must include `@demi/web-ui` sources so classes used there are

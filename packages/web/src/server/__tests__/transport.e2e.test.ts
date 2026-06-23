@@ -46,3 +46,19 @@ test('web transport round-trips open/send/stream over websocket', async () => {
     await handle.stop()
   }
 })
+
+test('web backend rejects ordinary HTTP so UI must come from Vite dev server', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-web-backend-only-'))
+  const registry = new ProviderRegistry()
+  registry.register(createStubProviderDefinition())
+  const handle = startWebServer(registry, parseServerOptions(['--port', '0', '--cwd', cwd]))
+
+  try {
+    const response = await fetch(`${handle.url}/`)
+
+    expect(response.status).toBe(404)
+    expect(await response.text()).toContain('Open the Vite dev server')
+  } finally {
+    await handle.stop()
+  }
+})
