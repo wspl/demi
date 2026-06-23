@@ -83,29 +83,3 @@ function formatDuration(ms: number): string {
     </CollapsibleBlock>
   </div>
 </template>
-
-<style scoped>
-/* While the model is actively thinking (this block is the last one and the turn is running) we
-   shimmer the label so it reads as a live "thinking" indicator — whether or not prose has streamed
-   in yet — and once thinking ends it goes static. */
-.thinking-shimmer {
-  background: linear-gradient(
-    100deg,
-    rgb(105 105 105) 0%,
-    rgb(105 105 105) 38%,
-    rgb(250 250 250) 50%,
-    rgb(105 105 105) 62%,
-    rgb(105 105 105) 100%
-  );
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: thinking-shimmer 1.6s ease-in-out infinite;
-}
-
-@keyframes thinking-shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
-</style>

@@ -2,7 +2,6 @@
 import { computed, onUpdated, ref, useSlots, watch } from 'vue'
 import { RightLine } from '@mingcute/vue/right'
 import ToolStatusBadge from './ToolStatusBadge.vue'
-import IndeterminateSpinner from '@demi/web-ui/ui/IndeterminateSpinner.vue'
 
 const props = defineProps<{
   label?: string
@@ -45,16 +44,15 @@ onUpdated(() => {
         <slot name="icon" />
       </div>
       <div class="flex min-w-0 items-center gap-2 overflow-hidden">
-        <span v-if="label" class="shrink-0">{{ label }}</span>
-        <slot v-if="slots['default']" />
-        <span v-else-if="detail" class="min-w-0 truncate font-mono text-fg-body">{{ detail }}</span>
-        <span v-if="suffix" class="shrink-0 text-fg-subtle">{{ suffix }}</span>
+        <span v-if="label" class="shrink-0" :class="loading ? 'thinking-shimmer' : ''">{{ label }}</span>
+        <slot v-if="slots['default']" :loading="loading" />
+        <span v-else-if="detail" class="min-w-0 truncate font-mono text-fg-body" :class="loading ? 'thinking-shimmer' : ''">{{ detail }}</span>
+        <span v-if="suffix" class="shrink-0 text-fg-subtle" :class="loading ? 'thinking-shimmer' : ''">{{ suffix }}</span>
       </div>
       <span class="-ml-1 shrink-0 text-xs">
         <ToolStatusBadge v-if="error" status="error" />
-        <IndeterminateSpinner v-else-if="loading" :size="12" :stroke-width="2" arc-class="text-on-warning" track-class="text-tint-warning" />
-        <RightLine v-else-if="isExpandable" :size="14" class="text-fg-faint transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''" />
-        <span v-else-if="trailing" class="text-fg-subtle">{{ trailing }}</span>
+        <RightLine v-else-if="!loading && isExpandable" :size="14" class="text-fg-faint transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''" />
+        <span v-else-if="!loading && trailing" class="text-fg-subtle">{{ trailing }}</span>
       </span>
       <div class="flex-1"></div>
     </div>

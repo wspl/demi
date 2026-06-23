@@ -40,7 +40,9 @@ const outputText = computed(() => {
       <TerminalBoxLine :size="16" />
     </template>
 
-    <span class="min-w-0 truncate">{{ title }}</span>
+    <template #default="{ loading }">
+      <span class="min-w-0 truncate" :class="loading ? 'thinking-shimmer' : ''">{{ title }}</span>
+    </template>
 
     <template #body>
       <div class="flex px-3 py-1 font-mono text-xs">

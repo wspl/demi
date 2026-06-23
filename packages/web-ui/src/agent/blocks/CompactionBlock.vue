@@ -25,7 +25,7 @@ const label = computed(() => {
     <div class="h-px flex-1 bg-overlay/6" />
     <span
       v-if="isCompacting"
-      class="compaction-shimmer text-[11px] font-medium tracking-wide text-fg-subtle"
+      class="thinking-shimmer text-[11px] font-medium tracking-wide text-fg-subtle"
     >{{ label }}</span>
     <span
       v-else
@@ -34,26 +34,3 @@ const label = computed(() => {
     <div class="h-px flex-1 bg-overlay/6" />
   </div>
 </template>
-
-<style scoped>
-.compaction-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(163, 163, 163, 0.5) 0%,
-    rgba(200, 200, 200, 0.7) 40%,
-    rgba(220, 220, 220, 0.8) 50%,
-    rgba(200, 200, 200, 0.7) 60%,
-    rgba(163, 163, 163, 0.5) 100%
-  );
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmer 2s ease-in-out infinite;
-}
-
-@keyframes shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
-</style>
