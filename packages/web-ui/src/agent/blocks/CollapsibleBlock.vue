@@ -51,7 +51,7 @@ onUpdated(() => {
       </div>
       <span class="-ml-1 shrink-0 text-xs">
         <ToolStatusBadge v-if="error" status="error" />
-        <RightLine v-else-if="!loading && isExpandable" :size="14" class="text-fg-faint transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''" />
+        <RightLine v-else-if="isExpandable" :size="14" class="text-fg-faint transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''" />
         <span v-else-if="!loading && trailing" class="text-fg-subtle">{{ trailing }}</span>
       </span>
       <div class="flex-1"></div>
