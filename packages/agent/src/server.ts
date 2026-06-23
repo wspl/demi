@@ -144,12 +144,16 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
             return
           }
           try {
-            await session.steer(frame.content)
+            await session.steer(frame.content, { id: frame.steerId })
             this.send({ type: 'steer_result', steerId: frame.steerId, status: 'accepted' })
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
             this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: message })
           }
+          return
+        }
+        case 'cancel_pending_steer': {
+          this.session?.cancelPendingSteer(frame.steerId)
           return
         }
         case 'set_provider':

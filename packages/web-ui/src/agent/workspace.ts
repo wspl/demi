@@ -142,6 +142,10 @@ export class AgentWorkspace {
     return this.runtime(id).steer(content)
   }
 
+  deletePendingSteer(id: string, steerId: string): void {
+    this.runtimes.get(id)?.deletePendingSteer(steerId)
+  }
+
   abort(id: string): Promise<void> {
     return this.runtime(id).abort()
   }

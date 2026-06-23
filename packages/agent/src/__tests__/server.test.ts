@@ -478,6 +478,65 @@ test('AgentClient.steer accepts active provider without native steer and materia
   expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response', 'steer', 'text', 'response'])
 })
 
+test('AgentClient.cancelPendingSteer removes an accepted steer before transcript materialization', async () => {
+  const registry = new ProviderRegistry()
+  const provider = new ServerGateProvider({ supportsSteer: false })
+  registry.register({
+    type: 'server-cancel-pending-steer',
+    displayName: 'Server Cancel Pending Steer',
+    createProvider: () => provider,
+  })
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providerRegistry: registry,
+  })
+  const client = server.client()
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open({ type: 'server-cancel-pending-steer', model }, '/workspace')
+  const sending = client.send([{ type: 'text', text: 'start' }])
+  await provider.waitForRun(0)
+  seen.length = 0
+
+  await client.steer([{ type: 'text', text: 'delete before materialized' }], { steerId: 'steer-cancel-frame' })
+  client.cancelPendingSteer('steer-cancel-frame')
+
+  provider.release(0)
+  await sending
+
+  expect(provider.requests).toHaveLength(1)
+  expect(seen).toContainEqual({
+    type: 'steer_result',
+    steerId: 'steer-cancel-frame',
+    status: 'accepted',
+  })
+  expect(
+    seen
+      .filter((event) => event.type === 'transcript_patch')
+      .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
+      .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
+  ).toBe(false)
+  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+})
+
+test('AgentClient.cancelPendingSteer is silent without an open session', async () => {
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providerRegistry: new ProviderRegistry(),
+  })
+  const client = server.client()
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  client.cancelPendingSteer('missing-steer')
+  await Promise.resolve()
+  await Promise.resolve()
+
+  expect(seen).toEqual([])
+  await server.close()
+})
+
 test('AgentServer rejects retry, resume, and compact frames while the session is busy', async () => {
   const registry = new ProviderRegistry()
   const gate = deferred<void>()

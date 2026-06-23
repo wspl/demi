@@ -82,6 +82,7 @@ export class AgentSession<State> {
   private activeTurnPhase: ActiveTurnPhase | null = null
   private activeProviderRun: ProviderRun | null = null
   private readonly pendingSteers: PendingSteer[] = []
+  private readonly canceledPendingSteerIds = new Set<string>()
   private pendingSteerContinuationCount = 0
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
@@ -155,12 +156,13 @@ export class AgentSession<State> {
     return this.enqueue({ type: 'compact', resolve: noop, reject: noop })
   }
 
-  async steer(content: UserContentBlock[]): Promise<void> {
+  async steer(content: UserContentBlock[], options: { id?: string } = {}): Promise<void> {
     if (this.externalMutationReserved) {
       throw new Error('AgentSession: cannot steer while external mutation is reserved')
     }
 
     this.steerDelivery()
+    const steerId = options.id ?? this.idFactory()
     const turnId = this.currentTurnId()
     const signal = this.currentSignal()
     const resolvedContent = await this.resolveReferences(content)
@@ -171,7 +173,8 @@ export class AgentSession<State> {
 
     let blockId: string | undefined
     if (deliveryAfterResolve.type === 'provider') {
-      blockId = this.idFactory()
+      if (this.canceledPendingSteerIds.delete(steerId)) return
+      blockId = steerId
       try {
         await deliveryAfterResolve.run.steer({
           id: blockId,
@@ -192,8 +195,9 @@ export class AgentSession<State> {
       return
     }
 
+    if (this.canceledPendingSteerIds.delete(steerId)) return
     this.pendingSteers.push({
-      id: this.idFactory(),
+      id: steerId,
       turnId,
       model: this.model,
       content: resolvedContent,
@@ -201,6 +205,20 @@ export class AgentSession<State> {
     this.pendingSteerContinuationCount += 1
     // Transcript-backed steering is materialized after the current sampling/tool boundary,
     // matching Codex pending input semantics.
+  }
+
+  cancelPendingSteer(id: string): boolean {
+    const index = this.pendingSteers.findIndex((steer) => steer.id === id)
+    if (index !== -1) {
+      this.pendingSteers.splice(index, 1)
+      this.pendingSteerContinuationCount = Math.max(0, this.pendingSteerContinuationCount - 1)
+      return true
+    }
+    if (this.activeTurnId && this.currentAbortController && this.activeTurnPhase !== 'finalizing') {
+      this.canceledPendingSteerIds.add(id)
+      return true
+    }
+    return false
   }
 
   /**
@@ -429,6 +447,7 @@ export class AgentSession<State> {
           this.currentAbortController = null
           this.activeTurnId = null
           this.activeTurnPhase = null
+          this.canceledPendingSteerIds.clear()
           this.abortRecorded = false
           this.setPhase('idle')
         }

@@ -14,6 +14,8 @@ export class ConversationRuntime {
   private client: AgentClient | null = null
   private opening: Promise<AgentClient> | null = null
   private unsubscribe: (() => void) | null = null
+  private readonly canceledPendingSteers = new Set<string>()
+  private readonly activePendingSteerRequests = new Set<string>()
 
   constructor(
     private readonly state: ConversationState,
@@ -40,16 +42,33 @@ export class ConversationRuntime {
   }
 
   async steer(content: UserContentBlock[]): Promise<void> {
-    const pending = createPendingSteerMessage(globalThis.crypto.randomUUID(), content, this.state.blocks)
+    const steerId = globalThis.crypto.randomUUID()
+    const pending = createPendingSteerMessage(steerId, content, this.state.blocks)
+    this.activePendingSteerRequests.add(steerId)
     this.state.pendingSteers = [...this.state.pendingSteers, pending]
     try {
       const client = await this.ensureOpen()
+      if (this.canceledPendingSteers.has(steerId)) return
       this.state.isResultSeen = true
-      await client.steer(content)
+      await client.steer(content, { steerId })
+      if (this.canceledPendingSteers.has(steerId)) client.cancelPendingSteer(steerId)
     } catch (error) {
       this.removePendingSteer(pending.id)
+      if (this.canceledPendingSteers.has(steerId)) return
       throw error
+    } finally {
+      this.activePendingSteerRequests.delete(steerId)
+      if (!this.state.pendingSteers.some((candidate) => candidate.id === steerId)) {
+        this.canceledPendingSteers.delete(steerId)
+      }
     }
+  }
+
+  deletePendingSteer(id: string): void {
+    this.canceledPendingSteers.add(id)
+    this.removePendingSteer(id)
+    this.client?.cancelPendingSteer(id)
+    if (!this.activePendingSteerRequests.has(id)) this.canceledPendingSteers.delete(id)
   }
 
   /**

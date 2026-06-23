@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
+import { CloseLine } from '@mingcute/vue/close'
 import { FileLine } from '@mingcute/vue/file'
 import type { UserContentBlock } from '@demi/core'
 import { md } from '@demi/web-ui/markdown/md'
@@ -12,6 +13,11 @@ const props = defineProps<{
   forceStuck?: boolean
   variant?: 'user' | 'steer'
   pending?: boolean
+  deletable?: boolean
+}>()
+
+const emit = defineEmits<{
+  delete: []
 }>()
 
 const userText = computed(() => {
@@ -48,34 +54,45 @@ useResizeObserver(contentRef, () => {
 <template>
   <div
     class="relative z-10 flex flex-col items-end bg-surface px-8 pb-2 pt-1.5"
-    :class="[forceStuck ? 'user-sticky' : '', pending ? 'opacity-50' : '']"
+    :class="forceStuck ? 'user-sticky' : ''"
   >
     <div
       class="group/user relative max-w-[80%] rounded-xl p-3"
       :class="props.variant === 'steer' ? 'bg-surface ring-1 ring-line-focus' : 'bg-surface-raised'"
     >
-      <div v-if="imageBlocks.length > 0 || documentBlocks.length > 0" class="mb-2 flex flex-wrap gap-1.5">
-        <img
-          v-for="(block, i) in imageBlocks"
-          :key="`img-${i}`"
-          :src="imageSrc(block.source)"
-          class="size-12 rounded-lg object-cover ring-1 ring-line"
-        />
-        <span
-          v-for="(block, i) in documentBlocks"
-          :key="`doc-${i}`"
-          class="flex size-12 items-center justify-center rounded-lg bg-fg-ghost/60 text-fg-muted ring-1 ring-line"
-          :title="block.source.fileName"
-        >
-          <FileLine :size="18" />
-        </span>
-      </div>
-      <div
-        ref="contentRef"
-        class="max-h-48 overflow-hidden"
-        :style="isOverflowing ? { maskImage: 'linear-gradient(to bottom, black calc(100% - 3rem), transparent)' } : undefined"
+      <button
+        v-if="deletable"
+        type="button"
+        aria-label="Delete pending steer"
+        class="absolute left-0 top-1/2 flex size-5 -translate-x-[calc(100%+6px)] -translate-y-1/2 cursor-pointer items-center justify-center rounded text-fg-ghost transition-colors hover:bg-active hover:text-fg-muted group-hover/user:text-fg-subtle"
+        @click.stop="emit('delete')"
       >
-        <div v-if="userText" class="markdown-body select-text text-sm leading-relaxed text-fg-body" v-html="renderedMarkdown" />
+        <CloseLine :size="13" />
+      </button>
+      <div :class="pending ? 'opacity-50' : ''">
+        <div v-if="imageBlocks.length > 0 || documentBlocks.length > 0" class="mb-2 flex flex-wrap gap-1.5">
+          <img
+            v-for="(block, i) in imageBlocks"
+            :key="`img-${i}`"
+            :src="imageSrc(block.source)"
+            class="size-12 rounded-lg object-cover ring-1 ring-line"
+          />
+          <span
+            v-for="(block, i) in documentBlocks"
+            :key="`doc-${i}`"
+            class="flex size-12 items-center justify-center rounded-lg bg-fg-ghost/60 text-fg-muted ring-1 ring-line"
+            :title="block.source.fileName"
+          >
+            <FileLine :size="18" />
+          </span>
+        </div>
+        <div
+          ref="contentRef"
+          class="max-h-48 overflow-hidden"
+          :style="isOverflowing ? { maskImage: 'linear-gradient(to bottom, black calc(100% - 3rem), transparent)' } : undefined"
+        >
+          <div v-if="userText" class="markdown-body select-text text-sm leading-relaxed text-fg-body" v-html="renderedMarkdown" />
+        </div>
       </div>
     </div>
   </div>

@@ -125,7 +125,8 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 - `bun run check:registry`：public registry / package boundary 检查。
 - `packages/web-ui/src/agent/__tests__/pending-steers.test.ts`：覆盖 web 壳子的 pending steer
   呈现/回收规则，确保 `steer_result accepted` 与真实 transcript materialization 之间不会丢失
-  半透明本地消息，也不会被历史同内容 steer block 误清理。
+  半透明本地消息，也不会被历史同内容 steer block 误清理；render block 保留原始 pending
+  steer id，供 hover X 删除精确取消对应 pending steer。
 
 ## 5. 模块测试点
 
@@ -223,6 +224,7 @@ Owner：`packages/agent`
 | tool progress event 发出 | 有效 | 测试 tool invoke 调用 `ctx.emitProgress`，订阅 session events 并断言收到 tool_progress 的 id/name/payload；能发现工具进度只停留在内部。验证同上。 | `session.test.ts` | 防止 shell output/audit 等进度事件只留在内部，UI 无法实时显示。 |
 | queued send 排队并按顺序 drain | 有效 | `GateProvider` 阻塞第一轮时发送第二条消息，断言 queuedMessages 先出现再清空，两轮 release 后 transcript user 文本顺序为 first/second；能发现 active run 期间输入乱序或丢失。验证同上。 | `session.test.ts` | 防止用户连续发送消息时顺序错乱，或后一条消息覆盖前一条运行状态。 |
 | provider-stream steer 不需要 native provider hook | 有效 | `session.test.ts` 用无 `ProviderRun.steer` 的 gated provider，在 active provider stream 期间提交 queued send 与 steer，断言 accepted ack 后 steer 先保持 pending，当前 provider output 先进入 transcript，随后 steer block 在 continuation boundary materialize 并触发同 turn provider continuation，queued send 保持等待；另用 slow snapshot store 证明 materialization 发生在当前 output 之后、下一次 request 之前；`server.test.ts` 断言同一路径经 AgentClient 先收到 accepted `steer_result`，再在当前 stream 结束后收到 steer transcript patch。验证：`bun test packages/agent/src/__tests__/session.test.ts packages/agent/src/__tests__/server.test.ts`，56 pass。 | `session.test.ts`、`server.test.ts` | 防止 active steer 被误拒、被自动转成 queue、抢到当前 sampling output 前面、accepted ack 后没有 same-turn provider continuation，或慢持久化导致 continuation race。 |
+| pending steer 删除/取消 | 有效 | `session.test.ts` 覆盖 accepted pending steer 在 materialization 前取消后不触发同 turn continuation、reference resolution 未完成时先收到 cancel 也不会随后 materialize；`server.test.ts` 覆盖 `AgentClient.cancelPendingSteer` 帧阻止 transcript steer patch 和额外 provider request。验证同上。 | `session.test.ts`、`server.test.ts` | 防止 web hover X 只删本地气泡但 runtime 仍把 steer 写进 transcript，或取消竞态导致已经删除的 steer 之后又出现。 |
 | retry 截断最后 assistant response 并 rerun latest user turn | 有效 | 测试先产生 old response，再 retry；第二轮 provider 断言 request 只包含 latest user message，最终 transcript 为 user/new text/response 且旧 assistant 输出不存在。验证同上。 | `session.test.ts` | 防止 retry 把旧错误输出和新输出混在一起，或重跑了错误的用户 turn。 |
 | resume 标记 abort 为 resumed，并追加 resume turn | 有效 | 测试手工构造 user+abort transcript，resume 后断言 abort `isResumed=true`，并追加 resume/text/response；能发现恢复历史无法区分已处理 abort。验证同上。 | `session.test.ts` | 防止恢复后 transcript 无法区分已中止内容和继续执行内容。 |
 | abort 后 resume 前清理 pending tool calls | 有效 | 测试慢 tool pending 后 abort，断言 pending tool_call 被转成 error output 且 pending 清零；resume 的 provider request 必须包含 user/tool_use/error tool_result/resume user message，避免重复等待旧 tool。验证同上。 | `session.test.ts` | 防止恢复时模型看到仍在执行的旧 tool_call，重复等待或重复执行工具。 |

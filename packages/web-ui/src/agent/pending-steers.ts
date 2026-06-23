@@ -4,6 +4,7 @@ import type { PendingSteerMessage } from './types'
 export interface PendingSteerRenderBlock {
   type: 'pending_steer'
   id: string
+  pendingSteerId: string
   content: UserContentBlock[]
 }
 
@@ -52,6 +53,7 @@ export function pendingSteersToRenderBlocks(pendingSteers: readonly PendingSteer
   return pendingSteers.map((pending) => ({
     type: 'pending_steer',
     id: `pending-steer:${pending.id}`,
+    pendingSteerId: pending.id,
     content: pending.content,
   }))
 }

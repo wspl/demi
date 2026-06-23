@@ -25,7 +25,8 @@ Implemented and verified (against a scripted stub provider that emits thinking +
   multi-conversation).
 - Active-turn steer UI follows agent-gui semantics: an accepted-but-not-yet-materialized steer
   is rendered as a translucent local user bubble at the list tail, then disappears when the real
-  `steer` transcript block arrives at its protocol-defined insertion point.
+  `steer` transcript block arrives at its protocol-defined insertion point. While still pending,
+  that translucent bubble exposes a left-side hover X that deletes/cancels only the pending steer.
 - The web conversation view renders the server `queue` event through the agent-gui
   `MessageQueueBar` copied/adapted above the composer. Its original remove, send-now, and
   clear-all actions are wired to Demi queue item protocol operations.

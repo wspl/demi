@@ -71,11 +71,15 @@ export class AgentClient {
     }
   }
 
-  steer(content: UserContentBlock[]): Promise<void> {
-    const steerId = globalThis.crypto.randomUUID()
+  steer(content: UserContentBlock[], options: { steerId?: string } = {}): Promise<void> {
+    const steerId = options.steerId ?? globalThis.crypto.randomUUID()
     const wait = this.waitForSteer(steerId)
     this.sendFrame({ type: 'steer', steerId, content })
     return wait
+  }
+
+  cancelPendingSteer(steerId: string): void {
+    this.sendFrame({ type: 'cancel_pending_steer', steerId })
   }
 
   /**

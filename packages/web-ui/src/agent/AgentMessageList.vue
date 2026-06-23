@@ -26,6 +26,7 @@ const emit = defineEmits<{
   saveScrollState: [conversationId: string, state: PersistedScrollState | undefined]
   continue: []
   retry: []
+  deletePendingSteer: [id: string]
 }>()
 
 const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
@@ -121,6 +122,7 @@ watch(
               :thinking-ended-at="thinkingEndedAt(item.index)"
               @continue="emit('continue')"
               @retry="emit('retry')"
+              @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
             />
           </div>
         </div>

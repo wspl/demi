@@ -22,6 +22,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   continue: []
   retry: []
+  deletePendingSteer: [id: string]
 }>()
 
 const attrs = useAttrs()
@@ -45,6 +46,8 @@ const attrs = useAttrs()
     :content="block.content"
     variant="steer"
     pending
+    deletable
+    @delete="emit('deletePendingSteer', block.pendingSteerId)"
   />
   <div v-else v-bind="attrs">
     <ThinkingBlock

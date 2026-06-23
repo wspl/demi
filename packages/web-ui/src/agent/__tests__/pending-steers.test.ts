@@ -16,6 +16,7 @@ test('pending steer renders as a tail block without mutating transcript blocks',
     {
       type: 'pending_steer',
       id: 'pending-steer:local-1',
+      pendingSteerId: 'local-1',
       content,
     },
   ])

@@ -817,6 +817,58 @@ test('AgentSession accepts provider-stream steer without native support and cont
   ])
 })
 
+test('AgentSession can cancel a pending provider-stream steer before materialization', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('continued'), events.response()],
+  ])
+  const session = createSession(provider)
+
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+
+  await session.steer(text('delete before materialized'), { id: 'steer-cancel-1' })
+  expect(session.cancelPendingSteer('steer-cancel-1')).toBe(true)
+
+  provider.release(0)
+  await sending
+
+  expect(provider.requests).toHaveLength(1)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+})
+
+test('AgentSession remembers a pending steer cancellation while references are resolving', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('continued'), events.response()],
+  ])
+  const referenceGate = deferred<UserContentBlock[]>()
+  const session = createSession(
+    provider,
+    createRuntime({
+      resolveReferences: (_ctx, content) => {
+        const first = content[0]
+        if (first?.type === 'text' && first.text.includes('delete while resolving')) return referenceGate.promise
+        return content
+      },
+    }),
+  )
+
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+
+  const steering = session.steer(text('delete while resolving'), { id: 'steer-cancel-2' })
+  expect(session.cancelPendingSteer('steer-cancel-2')).toBe(true)
+  referenceGate.resolve(text('resolved steer'))
+  await steering
+
+  provider.release(0)
+  await sending
+
+  expect(provider.requests).toHaveLength(1)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+})
+
 test('AgentSession materializes provider-stream steer after current output before continuation', async () => {
   const provider = new GateProvider([
     [events.text('first'), events.response()],

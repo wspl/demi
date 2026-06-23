@@ -37,6 +37,7 @@ Codex 的工作模型里 `queue` 和 `steer` 是两种不同的 active session i
 6. Steer accepted during tool execution is delivered before the next provider continuation in the same turn.
 7. Steer accepted during provider streaming is same-turn pending input. If a provider run exposes native active-run steering, use it; otherwise store the steer as pending active-turn input, materialize it only after the current stream/tool/required resume boundary, and force a provider continuation. Do not claim it changed tokens already emitted by the current provider response.
 8. Compaction and retry must treat a base user input and its accepted steers as one logical turn group.
+9. A transcript-backed steer may be deleted only while it is still pending materialization. This is a cancellation of pending active-turn input, keyed by the client `steerId`; once a steer block is materialized into transcript, deletion requires a separate transcript edit/rollback workflow and is not this hover affordance.
 
 ## 3. Package Boundary Placement
 
@@ -135,8 +136,10 @@ Current facts:
 Feasibility:
 
 - Add `ClientFrame { type: 'steer'; steerId: string; content: UserContentBlock[] }`.
+- Add `ClientFrame { type: 'cancel_pending_steer'; steerId: string }` for local pending-steer deletion before transcript materialization.
 - Add `ServerFrame { type: 'steer_result'; steerId: string; status: 'accepted' | 'rejected'; reason?: string }`.
 - Add `AgentClient.steer()` with a waiter map keyed by `steerId`.
+- Add `AgentClient.cancelPendingSteer(steerId)` as a fire-and-forget control frame; it does not reject if the steer already materialized because the transcript patch is the source of truth.
 - `closed` and `error` must settle pending steer waiters as well as normal action waiters.
 - Server should handle steer separately from `observeSessionAction()`: call `session.steer(frame.content)`, then send `steer_result` for the frame's `steerId`.
 
@@ -373,7 +376,7 @@ Web UI:
 - While idle, the primary submit starts a turn.
 - While running, the input surface must expose two distinct commands: steer current turn and queue next turn.
 - Queue state continues to render pending next-turn messages.
-- Accepted steer appears inline in the transcript as a user steering block attached to the active turn, not inside the queue bar.
+- Accepted-but-not-yet-materialized steer appears as a translucent tail user bubble. On hover, it exposes a left-side X that deletes/cancels only that pending steer. Materialized steer appears inline in the transcript as a user steering block attached to the active turn, not inside the queue bar.
 - If steering is temporarily unavailable, the steer command is disabled or rejects with a clear reason; it must not silently queue.
 
 REPL:
@@ -514,6 +517,7 @@ Each item is intended to be implementable as a small checkpoint. Do not enable U
 - [x] In `AgentMessageInput`, when running and editor has content, expose distinct actions for "steer current turn" and "queue next turn".
 - [x] Keep generic submit behavior as `send()` so idle submit starts a turn and running submit queues the next turn.
 - [x] Report steer rejection as a visible error; do not fallback to queue.
+- [x] Pending steer tail bubbles expose hover delete and cancel the matching pending steer before transcript materialization.
 - [x] Add web-ui tests for running-state controls and action dispatch.
 - [x] Verification: `bun test packages/web-ui/src/agent/__tests__/input-actions.test.ts packages/web-ui/src/agent/__tests__/reasoning.test.ts`.
 

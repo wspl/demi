@@ -21,6 +21,7 @@ export type ClientFrame =
   | { type: 'send_queued_message'; messageId: string }
   | { type: 'clear_message_queue' }
   | { type: 'steer'; steerId: string; content: UserContentBlock[] }
+  | { type: 'cancel_pending_steer'; steerId: string }
   | { type: 'set_provider'; provider: ProviderConfig }
   | { type: 'abort' }
   | { type: 'retry' }
