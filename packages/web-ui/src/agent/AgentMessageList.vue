@@ -6,6 +6,7 @@ import { useBlockVirtualizer, type PersistedScrollState } from '@demi/web-ui/com
 import { getVisibleBlocks } from './visible-blocks'
 import { isThinkingBlockStreaming } from './thinking-streaming'
 import { pendingSteersToRenderBlocks, type MessageListBlock } from './pending-steers'
+import { shouldShowTailLoading } from './tail-loading'
 import type { PendingSteerMessage } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import LoadingBlock from './blocks/LoadingBlock.vue'
@@ -35,19 +36,7 @@ const renderBlocks = computed<MessageListBlock[]>(() => [
   ...pendingSteersToRenderBlocks(props.pendingSteers),
 ])
 
-const shouldShowLoading = computed(() => {
-  if (props.phase !== 'running') return false
-  const blocks = renderBlocks.value
-  if (blocks.length === 0) return true
-  const last = blocks[blocks.length - 1]!
-  return (
-    last.type === 'user'
-    || last.type === 'pending_steer'
-    || last.type === 'resume'
-    || last.type === 'response'
-    || last.type === 'compaction_boundary'
-  )
-})
+const shouldShowLoading = computed(() => shouldShowTailLoading(props.phase, renderBlocks.value))
 
 function isStreamingThinkingAt(index: number): boolean {
   const block = renderBlocks.value[index]
