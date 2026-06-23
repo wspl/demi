@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
+import { parseSync } from 'oxc-parser'
 
 const repoRoot = resolve(import.meta.dir, '../../../..')
 
@@ -193,8 +194,9 @@ test('@demi/core and @demi/provider contain no concrete provider product details
     const files = await listSourceFiles(resolveRepoPath(directory))
     for (const file of files) {
       const source = await readFile(file, 'utf8')
+      const semanticSource = sourceSemanticText(file, source)
       for (const [label, pattern] of neutralPackageLeakPatterns) {
-        if (pattern.test(source)) violations.push(`${packageName}: ${formatPath(file)} contains ${label}`)
+        if (pattern.test(semanticSource)) violations.push(`${packageName}: ${formatPath(file)} contains ${label}`)
       }
     }
   }
@@ -313,6 +315,35 @@ function findModuleSpecifiers(source: string): string[] {
     }
   }
   return [...specifiers]
+}
+
+function sourceSemanticText(file: string, source: string): string {
+  const parsed = parseSync(formatPath(file), source, { sourceType: 'module' })
+  if (parsed.errors.length > 0) {
+    const messages = parsed.errors.map((error) => error.message).join('; ')
+    throw new Error(`Unable to parse ${formatPath(file)} for boundary checks: ${messages}`)
+  }
+
+  const strings: string[] = []
+  collectAstStrings(parsed.program, strings)
+  return strings.join('\n')
+}
+
+function collectAstStrings(value: unknown, output: string[]): void {
+  if (typeof value === 'string') {
+    output.push(value)
+    return
+  }
+  if (value === null || typeof value !== 'object') return
+  if (Array.isArray(value)) {
+    for (const item of value) collectAstStrings(item, output)
+    return
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'type' || key === 'start' || key === 'end') continue
+    collectAstStrings(child, output)
+  }
 }
 
 async function resolveImport(fromFile: string, specifier: string): Promise<string | null> {
