@@ -8,12 +8,13 @@
 
 ## 1. 背景与目标
 
-在 TypeScript 里重写整套 agent 架构，覆盖通用 agent 壳与 coding agent。以 Rust `agent-session` / `coding-agent` 为实现蓝本：已验证的 session lifecycle、turn queue、retry/resume、compaction、mutation guard 等逻辑直接照搬，只在语言、包边界和 Shell/Bash 核心机制上调整。当前最终态还需要补齐 active turn steer；详细设计见 `docs/agent-steer-plan.md`。
+在 TypeScript 里重写整套 agent 架构，覆盖通用 agent 壳与 coding agent。以 Rust `agent-session` / `coding-agent` 为实现蓝本：已验证的 session lifecycle、turn queue、retry/resume、compaction、mutation guard 等逻辑直接照搬，只在语言、包边界和 Shell/Bash 核心机制上调整。Active turn steer 的详细设计见 `docs/agent-steer-plan.md`；agent 性能评估体系见 `docs/agent-evaluation-plan.md`。
 
 参考实现：
 
 - Rust `agent-session`：session runtime、transcript、生命周期、compaction、queue、retry/resume、mutation guard。
 - Codex active turn steer：queue 与 steer 是 busy session 的两种不同输入策略，不能互相伪装或自动降级。Codex core 的 steer 是 session-level same-turn pending input：接受后进入当前 turn，并在当前 provider stream / tool boundary 后的同一 turn continuation 中送达；不是 Responses WebSocket 专属控制事件。
+- Agent evaluation：性能评估必须模拟真实监督验收循环。Evaluator 同时负责裁判和监督，基于 oracle evidence 判断是否完成；未完成时给 Worker 发送结构化 intervention，并把 intervention 类型、通道和 assistance score 计入评分。
 - Rust `coding-agent`：todo、ref expansion、shell。
 - `vercel-labs/just-bash`：Bash Engine 实现基线（维护完整 fork，见 §7）。
 

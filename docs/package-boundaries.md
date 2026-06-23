@@ -138,6 +138,20 @@ Test code may depend upward for integration coverage. Production code must not.
   `index.ts`).
 - Must not: be imported by any other production package.
 
+### `@demi/agent-eval`
+
+- Status: planned (see `docs/agent-evaluation-plan.md`).
+- Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/host-local`,
+  `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/shell`.
+- Owns: agent benchmark case loading, fixture setup, Evaluator supervision/judging loop,
+  oracle execution, metrics aggregation, run artifacts, reports, and gated real-provider
+  evaluation entry points.
+- Public boundary: local evaluation CLI and artifact schema. This package is a product leaf
+  like `@demi/repl` and `@demi/web`.
+- Must not: be imported by any other production package, place benchmark-specific behavior in
+  runtime/provider packages, bypass provider config parsers, directly instantiate
+  `AgentSession`, or mutate Worker workspaces outside declared oracle side effects.
+
 ## Production Dependency Graph
 
 The canonical production source graph contains every Demi package and must stay acyclic:
@@ -155,6 +169,7 @@ provider-codex -> core, provider
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, shell, host-local
 web-ui -> agent, core
 web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, shell
+agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, shell
 ```
 
 `web-ui` and `web` are browser/product packages built with Vite/Vue; their internal source
