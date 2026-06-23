@@ -938,6 +938,70 @@ test('AgentSession materializes provider-stream steer after current output befor
   await sending
 })
 
+test('AgentSession materializes provider-stream steer before executing pending tools', async () => {
+  const toolStarted = deferred<void>()
+  const releaseTool = deferred<void>()
+  const provider = new GateProvider([
+    [events.toolCall('tool-1', 'slow_tool', {}), events.response()],
+    [events.text('continued'), events.response()],
+  ])
+  const runtime = createRuntime({
+    tools: () => [
+      {
+        name: 'slow_tool',
+        description: 'Waits for the test to release it.',
+        inputSchema: {},
+        invoke: async (): Promise<AgentToolInvokeResult> => {
+          toolStarted.resolve(undefined)
+          await releaseTool.promise
+          return { output: [{ type: 'text', text: 'tool done' }] }
+        },
+      },
+    ],
+  })
+  const session = createSession(provider, runtime)
+
+  const sending = session.send(text('use tool'))
+  await provider.waitForRun(0)
+  await session.steer(text('arrived during stream'))
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user'])
+
+  provider.release(0)
+  await toolStarted.promise
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'tool_call',
+    'response',
+    'steer',
+  ])
+
+  releaseTool.resolve(undefined)
+  await withTimeout(provider.waitForRun(1))
+  expect(provider.requests[1]?.turnId).toBe('id-1')
+  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual([
+    'user_message',
+    'tool_use',
+    'tool_result',
+    'user_steer',
+  ])
+  expect(provider.requests[1]?.items[3]).toEqual({
+    type: 'user_steer',
+    turnId: 'id-1',
+    content: text('arrived during stream'),
+  })
+
+  provider.release(1)
+  await sending
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'tool_call',
+    'response',
+    'steer',
+    'text',
+    'response',
+  ])
+})
+
 test('AgentSession does not append steer blocks when native provider steer rejects', async () => {
   const provider = new SteerableGateProvider([[events.text('done'), events.response()]], () => {
     throw new Error('steer rejected')

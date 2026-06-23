@@ -650,7 +650,12 @@ export class AgentSession<State> {
       const shouldAutoRecover = await this.streamProviderOnce()
       throwIfAborted(this.currentSignal())
 
-      const toolExecution = await this.executePendingTools()
+      if (!shouldAutoRecover) {
+        await this.materializePendingSteersArrivedSince(steerContinuationBeforeStream)
+      }
+      const toolExecution = await this.executePendingTools({
+        deferSteerMaterialization: shouldAutoRecover,
+      })
       if (shouldAutoRecover && autoCompactions < MAX_AUTO_COMPACTIONS_PER_TURN) {
         const tokensBefore = this.transcriptLog.estimateContextTokens()
         const previousPhase = this.currentPhase
@@ -675,7 +680,7 @@ export class AgentSession<State> {
       }
       if (toolExecution.stopAfterToolResult) return
       if (this.pendingSteerContinuationCount > steerContinuationBeforeStream) {
-        await this.materializePendingSteersForCurrentTurn()
+        await this.materializePendingSteersArrivedSince(steerContinuationBeforeStream)
         continue
       }
       if (!toolExecution.executed) return
@@ -705,7 +710,9 @@ export class AgentSession<State> {
     return shouldAutoRecover
   }
 
-  private async executePendingTools(): Promise<{ executed: boolean; stopAfterToolResult: boolean }> {
+  private async executePendingTools(
+    options: { deferSteerMaterialization?: boolean } = {},
+  ): Promise<{ executed: boolean; stopAfterToolResult: boolean }> {
     const pending = this.transcriptLog.pendingToolCalls()
     if (pending.length === 0) return { executed: false, stopAfterToolResult: false }
 
@@ -718,6 +725,7 @@ export class AgentSession<State> {
     try {
       for (const toolCall of pending) {
         throwIfAborted(this.currentSignal())
+        const steerContinuationBeforeTool = this.pendingSteerContinuationCount
 
         const tool = toolsByName.get(toolCall.toolName)
         if (!tool) {
@@ -727,6 +735,9 @@ export class AgentSession<State> {
             true,
           )
           await this.commitTranscript()
+          if (!options.deferSteerMaterialization) {
+            await this.materializePendingSteersArrivedSince(steerContinuationBeforeTool)
+          }
           continue
         }
 
@@ -748,6 +759,9 @@ export class AgentSession<State> {
           result,
         })
         await this.commitTranscript()
+        if (!options.deferSteerMaterialization) {
+          await this.materializePendingSteersArrivedSince(steerContinuationBeforeTool)
+        }
         stopAfterToolResult ||= result.stopAfterToolResult === true
       }
     } finally {
@@ -984,6 +998,11 @@ export class AgentSession<State> {
     }
     await this.commitTranscript()
     return true
+  }
+
+  private async materializePendingSteersArrivedSince(continuationCount: number): Promise<boolean> {
+    if (this.pendingSteerContinuationCount <= continuationCount) return false
+    return this.materializePendingSteersForCurrentTurn()
   }
 
   private takePendingSteersForTurn(turnId: string): PendingSteer[] {
