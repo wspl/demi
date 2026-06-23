@@ -6,8 +6,13 @@ import type { InputModel } from './input-model'
 
 interface UseAgentInputEditorParams {
   initialValue?: InputModel | undefined
+  handleSubmit: () => Promise<void> | void
   handleCancel: () => void
   handlePasteAttachments?: (clipboardData: DataTransfer, text: string) => boolean
+}
+
+export function shouldSubmitFromEditorKeydown(event: Pick<KeyboardEvent, 'isComposing' | 'key' | 'shiftKey'>): boolean {
+  return !event.isComposing && event.key === 'Enter' && !event.shiftKey
 }
 
 export function useAgentInputEditor(params: UseAgentInputEditorParams) {
@@ -40,6 +45,12 @@ export function useAgentInputEditor(params: UseAgentInputEditorParams) {
 
         if (event.key === 'Escape') {
           params.handleCancel()
+          return true
+        }
+
+        if (shouldSubmitFromEditorKeydown(event)) {
+          event.preventDefault()
+          void params.handleSubmit()
           return true
         }
 

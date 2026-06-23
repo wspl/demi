@@ -129,6 +129,8 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
   steer id，供 hover X 删除精确取消对应 pending steer。
 - `packages/web-ui/src/agent/__tests__/queue-submit.test.ts`：覆盖空 composer 提交时的 queued
   message 选择规则，确保 Enter 快捷发送队列最后一条，而不是队首或本地伪 queue。
+- `packages/web-ui/src/agent/__tests__/input-editor.test.ts`：覆盖 composer editor 自身的
+  keydown 判定，确保 bare Enter 才触发提交，Shift+Enter 和 IME composition 不会提交。
 - `packages/web/src/server/__tests__/transport.e2e.test.ts`：覆盖 web 后端只暴露 `/control`
   和 `/agent` WebSocket 能力，普通 HTTP 请求必须拒绝并指向 Vite dev server，防止静态
   `dist` / preview / production bundle 路径重新进入验收流程。

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { computed, nextTick } from 'vue'
 import type { UserContentBlock } from '@demi/core'
 import { AddLine } from '@mingcute/vue/add'
 import { SendLine } from '@mingcute/vue/send'
@@ -58,36 +58,13 @@ const { handleSubmit, handleSteerSubmit, handleQueueSubmit, handleSelectModel, h
 })
 
 const { editor, isFocused } = useAgentInputEditor({
+  handleSubmit,
   handleCancel() {},
 })
 
 const hasContent = computed(() => {
   const currentEditor = editor.value
   return currentEditor ? !currentEditor.isEmpty : false
-})
-
-const handledEnterEvents = new WeakSet<KeyboardEvent>()
-
-function handleEditorKeydown(event: KeyboardEvent): void {
-  if (handledEnterEvents.has(event)) return
-  const editorElement = editor.value?.view.dom
-  const activeElement = document.activeElement
-  if (!editorElement || !activeElement || (activeElement !== editorElement && !editorElement.contains(activeElement))) return
-  if (event.isComposing || event.key !== 'Enter' || event.shiftKey) return
-  handledEnterEvents.add(event)
-  event.preventDefault()
-  event.stopPropagation()
-  void handleSubmit()
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', handleEditorKeydown, true)
-  document.addEventListener('keydown', handleEditorKeydown, true)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleEditorKeydown, true)
-  document.removeEventListener('keydown', handleEditorKeydown, true)
 })
 
 defineExpose({

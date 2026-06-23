@@ -442,10 +442,10 @@ change data model / RPC calls. **Defer** = copy into the library but leave unwir
 
 - Rewire (mentions/slash removed): `AgentMessageInput.vue` (strip the two `Mention`
   extensions + popups + mode toggle; keep editor shell, attachments, ModelSelector,
-  ReasoningSelector, ContextUsageIndicator, send/stop, Enter submit capture),
+  ReasoningSelector, ContextUsageIndicator, send/stop),
   `useAgentInputEditor.ts` (plain paragraph tiptap: StarterKit-minimal + Placeholder +
-  paste-attachments + Escape cancel; no Mention), `useAgentInputActions.ts` (`send → client.send`;
-  `setModel/setThinking → store`),
+  paste-attachments + Escape cancel + editor-level Enter submit; no Mention),
+  `useAgentInputActions.ts` (`send → client.send`; `setModel/setThinking → store`),
   `useAgentInputAttachments.ts` (image/document → Demi `UserContentBlock`), `useAgentInputDraftSync.ts`,
   `useAgentInputSessionState.ts` (model/thinking/usage/contextWindow from store + control
   catalog), `input-utils.ts`, `AttachmentPreview.vue`, `ModelSelector.vue`/`ReasoningSelector.vue`/
