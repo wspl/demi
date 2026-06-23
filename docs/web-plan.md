@@ -23,6 +23,12 @@ Implemented and verified (against a scripted stub provider that emits thinking +
   `shell_exec`); the **Input** (tiptap composer, model + reasoning selectors, context-usage
   ring, send/stop); the **Tab** bar (drag-reorder, animations, context menu, rename,
   multi-conversation).
+- Active-turn steer UI follows agent-gui semantics: an accepted-but-not-yet-materialized steer
+  is rendered as a translucent local user bubble at the list tail, then disappears when the real
+  `steer` transcript block arrives at its protocol-defined insertion point.
+- The web conversation view must render the server `queue` event through a read-only
+  `MessageQueueBar` above the composer. Queue item mutation remains out of scope until the
+  client protocol exposes per-item operations.
 - Verified against the **real** Claude Code provider in-browser: multi-turn tool use no longer
   triggers `400 ... tool use concurrency`, and the `claude` CLI is no longer restarted per turn.
   See `docs/claude-code-persistent-session.md` for the root cause, the persistent-session design,
@@ -480,8 +486,8 @@ collapse to an auto-grow `<textarea>` stays possible but is not planned.
   Demi's `AgentClient` exposes `retry`/`resume` but no arbitrary checkpoint rollback. User
   blocks are non-editable initially; `continue/retry` map to `resume/retry`.
 - **Message-queue item management** (remove/send-now/clear) — deferred; Demi surfaces the
-  queue (`queue` event) but the client has no per-item mutation. `MessageQueueBar` is
-  read-only initially.
+  queue (`queue` event), and web must display it with a read-only `MessageQueueBar`, but the
+  client has no per-item mutation.
 - **Terminal navigation from tool cards, file links to an editor, project/git branch model,
   conversation import/export** — dropped (out of scope: terminal/editor/git/explorer).
 

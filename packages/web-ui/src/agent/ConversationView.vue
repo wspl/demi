@@ -4,6 +4,7 @@ import { useElementSize } from '@vueuse/core'
 import { useAgentWorkspace } from './workspace'
 import AgentMessageList from './AgentMessageList.vue'
 import AgentMessageInput from './AgentMessageInput.vue'
+import MessageQueueBar from './MessageQueueBar.vue'
 
 const props = defineProps<{
   conversationId: string
@@ -12,6 +13,8 @@ const props = defineProps<{
 const workspace = useAgentWorkspace()
 const session = computed(() => workspace.sessions[props.conversationId])
 const blocks = computed(() => session.value?.blocks ?? [])
+const queue = computed(() => session.value?.queue ?? [])
+const pendingSteers = computed(() => session.value?.pendingSteers ?? [])
 const phase = computed(() => session.value?.phase ?? 'idle')
 
 const bottomAreaRef = ref<HTMLDivElement>()
@@ -31,6 +34,7 @@ function onRetry() {
     <AgentMessageList
       :conversation-id="conversationId"
       :blocks="blocks"
+      :pending-steers="pendingSteers"
       :phase="phase"
       :bottom-offset="bottomAreaHeight"
       :persisted-scroll-state="undefined"
@@ -39,6 +43,7 @@ function onRetry() {
     />
     <div class="absolute bottom-0 left-0 right-0 z-10 px-5 pb-4">
       <div ref="bottomAreaRef" class="relative">
+        <MessageQueueBar :queue="queue" />
         <AgentMessageInput :conversation-id="conversationId" />
       </div>
     </div>

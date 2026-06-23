@@ -1,16 +1,20 @@
 import { computed, nextTick, ref, type Ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import type { Block } from '@demi/core'
 
 type ScrollIntent = 'up' | 'down' | null
+interface VirtualizedBlock {
+  id: string
+  type: string
+}
 
 const OVERSCAN = 8
 const BOTTOM_THRESHOLD = 100
 const AUTO_SCROLL_REENGAGE_THRESHOLD = 1
 
-const BLOCK_HEIGHT_ESTIMATES: Record<Block['type'], number> = {
+const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   user: 40,
   steer: 40,
+  pending_steer: 40,
   resume: 0,
   thinking: 20,
   redacted_thinking: 0,
@@ -38,7 +42,7 @@ export interface PersistedScrollState {
 
 export function useBlockVirtualizer(
   scrollContainer: Ref<HTMLDivElement | undefined>,
-  blocks: Ref<Block[]>,
+  blocks: Ref<VirtualizedBlock[]>,
   persistedState: PersistedScrollState | undefined,
 ) {
   const heightCache = new Map<string, number>(persistedState?.heightCache ?? [])

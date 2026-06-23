@@ -123,6 +123,9 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 - `bun run test`：主仓库默认自动化测试。
 - `bun run test:just-bash-core`：demi 依赖的 just-bash 核心解析保护测试。
 - `bun run check:registry`：public registry / package boundary 检查。
+- `packages/web-ui/src/agent/__tests__/pending-steers.test.ts`：覆盖 web 壳子的 pending steer
+  呈现/回收规则，确保 `steer_result accepted` 与真实 transcript materialization 之间不会丢失
+  半透明本地消息，也不会被历史同内容 steer block 误清理。
 
 ## 5. 模块测试点
 

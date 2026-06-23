@@ -5,6 +5,8 @@ import type { Block, SessionPhase } from '@demi/core'
 import { useBlockVirtualizer, type PersistedScrollState } from '@demi/web-ui/composables/useBlockVirtualizer'
 import { getVisibleBlocks } from './visible-blocks'
 import { isThinkingBlockStreaming } from './thinking-streaming'
+import { pendingSteersToRenderBlocks, type MessageListBlock } from './pending-steers'
+import type { PendingSteerMessage } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import LoadingBlock from './blocks/LoadingBlock.vue'
 import ScrollToBottomButton from '@demi/web-ui/ui/ScrollToBottomButton.vue'
@@ -14,6 +16,7 @@ const INPUT_AREA_PADDING = 48
 const props = defineProps<{
   conversationId: string
   blocks: Block[]
+  pendingSteers: PendingSteerMessage[]
   phase: SessionPhase
   bottomOffset: number
   persistedScrollState: PersistedScrollState | undefined
@@ -25,24 +28,41 @@ const emit = defineEmits<{
   retry: []
 }>()
 
-const renderBlocks = computed(() => getVisibleBlocks(props.blocks))
+const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
+const renderBlocks = computed<MessageListBlock[]>(() => [
+  ...visibleTranscriptBlocks.value,
+  ...pendingSteersToRenderBlocks(props.pendingSteers),
+])
 
 const shouldShowLoading = computed(() => {
   if (props.phase !== 'running') return false
   const blocks = renderBlocks.value
   if (blocks.length === 0) return true
   const last = blocks[blocks.length - 1]!
-  return last.type === 'user' || last.type === 'resume' || last.type === 'response' || last.type === 'compaction_boundary'
+  return (
+    last.type === 'user'
+    || last.type === 'pending_steer'
+    || last.type === 'resume'
+    || last.type === 'response'
+    || last.type === 'compaction_boundary'
+  )
 })
 
 function isStreamingThinkingAt(index: number): boolean {
-  return isThinkingBlockStreaming(renderBlocks.value, props.phase, index)
+  const block = renderBlocks.value[index]
+  if (!block || block.type !== 'thinking') return false
+  const transcriptIndex = visibleTranscriptBlocks.value.findIndex((candidate) => candidate.id === block.id)
+  return isThinkingBlockStreaming(visibleTranscriptBlocks.value, props.phase, transcriptIndex)
 }
 
 // The next block's createdAt marks when a thinking block stopped (null while it's still the last,
 // i.e. actively thinking). Lets ThinkingBlock show a frozen "thought for Xs" that survives reload.
 function thinkingEndedAt(index: number): string | null {
-  const next = renderBlocks.value[index + 1]
+  const block = renderBlocks.value[index]
+  if (!block || !('createdAt' in block)) return null
+  const transcriptIndex = visibleTranscriptBlocks.value.findIndex((candidate) => candidate.id === block.id)
+  if (transcriptIndex < 0) return null
+  const next = visibleTranscriptBlocks.value[transcriptIndex + 1]
   return next && 'createdAt' in next ? next.createdAt : null
 }
 
@@ -77,7 +97,7 @@ watch(
       style="overflow-anchor: none;"
       @scroll="onScroll"
     >
-      <div v-if="props.blocks.length === 0" class="grid h-full place-items-center">
+      <div v-if="renderBlocks.length === 0" class="grid h-full place-items-center">
         <p class="text-sm text-fg-faint">No messages yet. Start a conversation.</p>
       </div>
       <div

@@ -74,6 +74,7 @@ export class AgentWorkspace {
       blocks: [],
       phase: 'idle',
       queue: [],
+      pendingSteers: [],
       model: this.defaultModel ?? this.fallbackModel(),
       draft: null,
       isResultSeen: true,

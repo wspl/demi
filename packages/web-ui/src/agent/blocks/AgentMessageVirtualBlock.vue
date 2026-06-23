@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAttrs } from 'vue'
-import type { Block } from '@demi/core'
+import type { MessageListBlock } from '../pending-steers'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
 import AssistantTextBlock from './AssistantTextBlock.vue'
@@ -13,7 +13,7 @@ import CompactionBlock from './CompactionBlock.vue'
 defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
-  block: Block
+  block: MessageListBlock
   conversationId: string
   isThinkingStreaming: boolean
   thinkingEndedAt?: string | null
@@ -38,6 +38,13 @@ const attrs = useAttrs()
     v-bind="attrs"
     :content="block.content"
     variant="steer"
+  />
+  <UserBlock
+    v-else-if="block.type === 'pending_steer'"
+    v-bind="attrs"
+    :content="block.content"
+    variant="steer"
+    pending
   />
   <div v-else v-bind="attrs">
     <ThinkingBlock

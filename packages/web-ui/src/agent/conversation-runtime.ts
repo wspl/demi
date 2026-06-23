@@ -1,8 +1,9 @@
 import type { AgentClient, ClientSessionEvent } from '@demi/agent/client'
-import type { UserContentBlock } from '@demi/core'
+import type { Block, UserContentBlock } from '@demi/core'
 import { agentSocketUrl, connectAgentClient } from '../transport/agent-socket'
 import type { ControlApi } from '../transport/protocol'
 import type { ConversationState } from './types'
+import { createPendingSteerMessage, reconcilePendingSteers } from './pending-steers'
 
 /**
  * Non-reactive owner of one conversation's AgentClient. Lazily connects the
@@ -27,9 +28,16 @@ export class ConversationRuntime {
   }
 
   async steer(content: UserContentBlock[]): Promise<void> {
-    const client = await this.ensureOpen()
-    this.state.isResultSeen = true
-    await client.steer(content)
+    const pending = createPendingSteerMessage(globalThis.crypto.randomUUID(), content, this.state.blocks)
+    this.state.pendingSteers = [...this.state.pendingSteers, pending]
+    try {
+      const client = await this.ensureOpen()
+      this.state.isResultSeen = true
+      await client.steer(content)
+    } catch (error) {
+      this.removePendingSteer(pending.id)
+      throw error
+    }
   }
 
   /**
@@ -98,11 +106,14 @@ export class ConversationRuntime {
     switch (event.type) {
       case 'transcript_snapshot':
       case 'transcript_patch':
-        this.state.blocks = event.blocks
-        this.state.hasContent = event.blocks.length > 0
+        this.applyTranscriptBlocks(event.blocks)
         return
       case 'phase':
         this.state.phase = event.phase
+        if (event.phase === 'idle' && this.state.pendingSteers.length > 0) {
+          this.state.pendingSteers = reconcilePendingSteers(this.state.blocks, this.state.pendingSteers)
+          if (this.state.pendingSteers.length > 0) this.state.pendingSteers = []
+        }
         return
       case 'queue':
         this.state.queue = event.queue
@@ -115,5 +126,15 @@ export class ConversationRuntime {
         this.opening = null
         return
     }
+  }
+
+  private applyTranscriptBlocks(blocks: Block[]): void {
+    this.state.blocks = blocks
+    this.state.hasContent = blocks.length > 0
+    this.state.pendingSteers = reconcilePendingSteers(blocks, this.state.pendingSteers)
+  }
+
+  private removePendingSteer(id: string): void {
+    this.state.pendingSteers = this.state.pendingSteers.filter((pending) => pending.id !== id)
   }
 }

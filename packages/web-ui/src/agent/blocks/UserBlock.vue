@@ -11,6 +11,7 @@ const props = defineProps<{
   content: UserContentBlock[]
   forceStuck?: boolean
   variant?: 'user' | 'steer'
+  pending?: boolean
 }>()
 
 const userText = computed(() => {
@@ -47,7 +48,7 @@ useResizeObserver(contentRef, () => {
 <template>
   <div
     class="relative z-10 flex flex-col items-end bg-surface px-8 pb-2 pt-1.5"
-    :class="forceStuck ? 'user-sticky' : ''"
+    :class="[forceStuck ? 'user-sticky' : '', pending ? 'opacity-50' : '']"
   >
     <div
       class="group/user relative max-w-[80%] rounded-xl p-3"

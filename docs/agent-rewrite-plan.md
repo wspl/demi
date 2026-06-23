@@ -990,6 +990,7 @@ Transport 是 AgentServer 的通信适配层：定义 `ClientFrame` / `ServerFra
 由于没有 per-command id，AgentClient 不能让每个 `send` / `retry` / `resume` / `compact` Promise 各自独立监听同一组 `phase` 广播后自行判断完成。client 必须维护本地 action FIFO：每次从 idle 进入 active phase 只认领一个等待中的 action，回到 idle 时只 resolve 这个 action；`rejected` 只 reject 尚未进入 active phase 的同名动作；`error` 优先 reject 当前 active action，无法关联到 active action 时再 reject 全部等待动作；`closed` 让全部等待动作收敛。
 
 `steer` 是例外：它不是启动下一轮 phase 的普通 turn 动作，而是在 active turn 内即时接受或拒绝的控制动作。客户端必须给 `steer` 帧携带 `steerId`，服务端用 `steer_result` 按 id ack；多个 steer 不能共用 phase FIFO，也不能通过 `queue` 帧表示。
+`steer_result: accepted` 只表示 session 已接收该 same-turn input；如果当前 delivery 点是下一次 provider continuation，真实 `steer` block 会等到 provider/tool 边界后才写入 transcript。GUI 壳子在 ack 和 transcript materialization 之间应保留本地 pending steer 呈现，直到收到对应 `steer` block 或当前 turn 结束。
 
 **shellId 是唯一的关联标识。** 它关联的不是“命令”，而是 shell session 这个持续存在的对象——`shell_input` 和 `shell_output` 通过 shellId 对上。除此之外帧与帧之间不需要 id 配对。
 

@@ -12,6 +12,12 @@ export interface ConversationDraft {
   attachments: UserContentBlock[]
 }
 
+export interface PendingSteerMessage {
+  id: string
+  content: UserContentBlock[]
+  baselineSteerBlockIds: string[]
+}
+
 /**
  * Reactive per-conversation state. Mirrors the shape agent-gui exposed via
  * `rpc.agent.$state.sessions[id]` so ported components read it the same way.
@@ -24,6 +30,7 @@ export interface ConversationState {
   blocks: Block[]
   phase: SessionPhase
   queue: QueuedMessage[]
+  pendingSteers: PendingSteerMessage[]
   model: ModelIntent
   draft: ConversationDraft | null
   isResultSeen: boolean
