@@ -733,6 +733,62 @@ test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle'
   expect(userTexts).toEqual(['first', 'third', 'second'])
 })
 
+test('AgentClient.steerQueuedMessage converts a queued send into an active steer', async () => {
+  const registry = new ProviderRegistry()
+  const gates = [deferred<void>(), deferred<void>()]
+  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+  registry.register({
+    type: 'sequenced-delayed',
+    displayName: 'Sequenced Delayed',
+    createProvider: () => provider,
+  })
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providerRegistry: registry,
+  })
+  const client = server.client()
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  const settlements: string[] = []
+  const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
+    settlements.push('first')
+  })
+  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
+
+  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
+    settlements.push('second')
+  })
+  await waitFor(() => queuedMessageId(seen, 'second') !== null)
+  const secondId = queuedMessageId(seen, 'second')!
+
+  await client.steerQueuedMessage(secondId, { steerId: 'steer-queued' })
+  await secondSend
+  expect(settlements).toEqual(['second'])
+  expect(latestQueueTexts(seen)).toEqual([])
+
+  gates[0].resolve(undefined)
+  await waitFor(() => provider.calls === 2)
+  expect(provider.requests[1]!.items.map((item) => item.type)).toEqual([
+    'user_message',
+    'assistant_text',
+    'user_steer',
+  ])
+  expect(provider.requests[1]!.items[2]).toEqual({
+    type: 'user_steer',
+    turnId: expect.any(String),
+    content: [{ type: 'text', text: 'second' }],
+  })
+
+  gates[1].resolve(undefined)
+  await firstSend
+  expect(settlements).toEqual(['second', 'first'])
+
+  const blockTypes = client.transcript().blocks.map((block) => block.type)
+  expect(blockTypes).toEqual(['user', 'text', 'response', 'steer', 'text', 'response'])
+})
+
 test('AgentClient.clearMessageQueue resolves queued sends without canceling the active send', async () => {
   const registry = new ProviderRegistry()
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
@@ -1023,10 +1079,12 @@ class ServerGateProvider implements AgentProvider {
 
 class SequencedDelayedProvider implements AgentProvider {
   calls = 0
+  readonly requests: InferenceRequest[] = []
 
   constructor(private readonly releases: Promise<void>[]) {}
 
-  async *run(): AsyncIterable<ProviderEvent> {
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    this.requests.push(request)
     const call = this.calls
     this.calls += 1
     await (this.releases[call] ?? Promise.resolve())

@@ -126,11 +126,13 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 - `packages/web-ui/src/agent/__tests__/pending-steers.test.ts`：覆盖 web 壳子的 pending steer
   呈现/回收规则，确保 `steer_result accepted` 与真实 transcript materialization 之间不会丢失
   半透明本地消息，也不会被历史同内容 steer block 误清理；render block 保留原始 pending
-  steer id，供 hover X 删除精确取消对应 pending steer。
+  steer id，供 hover X 删除精确取消对应 pending steer；queued message 来自 Vue reactive
+  state 时也能安全 clone 成 pending steer 内容。
 - `packages/web-ui/src/agent/__tests__/queue-submit.test.ts`：覆盖空 composer 提交时的 queued
-  message 选择规则，确保 Enter 快捷发送队列最后一条，而不是队首或本地伪 queue。
+  message 选择规则，确保 Enter 快捷选择队列最后一条，而不是队首或本地伪 queue。
 - `packages/web-ui/src/agent/__tests__/input-editor.test.ts`：覆盖 composer editor 自身的
-  keydown 判定，确保 bare Enter 才触发提交，Shift+Enter 和 IME composition 不会提交。
+  keydown 判定和内容状态投影，确保 bare Enter 才触发提交，Shift+Enter / IME composition
+  不会提交，且 steer/queue 按钮由 editor update 后的内容状态驱动。
 - `packages/web/src/server/__tests__/transport.e2e.test.ts`：覆盖 web 后端只暴露 `/control`
   和 `/agent` WebSocket 能力，普通 HTTP 请求必须拒绝并指向 Vite dev server，防止静态
   `dist` / preview / production bundle 路径重新进入验收流程。
@@ -468,8 +470,8 @@ Owner：`packages/agent`
 | AgentServer queued send while busy 并按序 drain | 有效 | 测试第一条 send running 时第二条进入 queue 而非 rejected，释放后 provider calls 为 2，transcript user 顺序为 first、second，queue 最终清空；能发现排队顺序错乱。验证同上。 | `server.test.ts` | 防止外部壳子连续发送时 action 顺序与 session 执行顺序不一致。 |
 | busy 时 AgentServer 拒绝 retry/resume/compact | 有效 | 测试 running phase 下 retry/resume/compact 都 reject `Session is busy`，并收到对应 rejected frame，provider calls 仍为 1；能发现 active run 中破坏性 mutation 被放行。验证同上。 | `server.test.ts` | 防止外部壳子在 active run 中触发破坏性 mutation。 |
 | client queued send promise 按各自 phase cycle resolve | 有效 | 测试三个 sequenced gates 下 first、second、third promise 只在各自 phase cycle 后依次 settle；能发现多个 queued send 被同一个 idle 一起 resolve。验证同上。 | `server.test.ts` | 防止多个 queued send 因同一个 idle 事件一起 resolve。 |
-| AgentSession queue item management | 有效 | 测试 `dequeueMessage` 删除 queued send 且不执行、`sendQueuedMessage` 把第三条移到第二条前执行、`clearMessageQueue` 清空 queued sends 且不取消 active turn；能发现 queue mutation 误碰 active action 或 transcript 顺序错乱。验证同上。 | `session.test.ts` | 防止 GUI 队列按钮只是改 UI，本体 session 没有真实队列语义。 |
-| AgentClient queue item management frames | 有效 | 测试 `dequeueMessage` resolve 被删除的 queued send promise 且 provider 不运行它、`sendQueuedMessage` 重排本地 pending waiter 和服务端 queue、`clearMessageQueue` resolve 所有 queued send 且 active send 继续；能发现 message id 关联、queue frame、phase FIFO 收敛错位。验证同上。 | `server.test.ts` | 防止删除/清空 queued input 后提交 Promise 悬挂，或 send-now 后 promise/执行顺序和 UI 顺序不一致。 |
+| AgentSession queue item management | 有效 | 测试 `dequeueMessage` 删除 queued send 且不执行、`sendQueuedMessage` 把第三条移到第二条前执行、`steerQueuedMessage` 把 queued send 原子转换成 active turn `user_steer` 且不生成新 user turn、`clearMessageQueue` 清空 queued sends 且不取消 active turn；能发现 queue mutation 误碰 active action 或 transcript 顺序错乱。验证同上。 | `session.test.ts` | 防止 GUI 队列按钮只是改 UI，本体 session 没有真实队列语义。 |
+| AgentClient queue item management frames | 有效 | 测试 `dequeueMessage` resolve 被删除的 queued send promise 且 provider 不运行它、`sendQueuedMessage` 重排本地 pending waiter 和服务端 queue、`steerQueuedMessage` resolve 被转换的 queued send promise 并让下一次 provider request 看到 `user_steer`、`clearMessageQueue` resolve 所有 queued send 且 active send 继续；能发现 message id 关联、queue frame、phase FIFO 收敛错位。验证同上。 | `server.test.ts` | 防止删除/清空 queued input 后提交 Promise 悬挂，或 send-now 后 promise/执行顺序和 UI 顺序不一致。 |
 | error 后只 reject active action，queued send 继续 | 有效 | 测试第一条 active send provider error 后仅 first reject，second queued send 继续进入第二次 provider call 并等待自身 gate 后 resolve；能发现错误误杀整条队列。验证同上。 | `server.test.ts` | 防止一次 provider error 把后续排队用户消息全部错误取消。 |
 | abort idle 返回 false，active 返回 true | 有效 | 测试 idle `abort()` resolve false；active send 中 abort resolve true，provider cancel signal 被触发且 send 收敛；能发现 stop 按钮状态语义错误。验证同上。 | `server.test.ts` | 防止 UI stop 按钮在 idle/active 状态下显示错误结果。 |
 | close frame abort active session 并 dispose definition resources | 有效 | 测试 close active run 时 provider cancel 被触发并收到 closed；另测 definition.dispose 清理 shell environment，延迟写文件不会落盘；能发现关闭后后台 run 或 shell 泄漏。验证同上。 | `server.test.ts` | 防止关闭壳子后后台 run 或 shell environment 泄漏。 |

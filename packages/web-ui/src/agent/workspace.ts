@@ -133,6 +133,10 @@ export class AgentWorkspace {
     this.runtimes.get(id)?.sendQueuedMessage(messageId)
   }
 
+  steerQueuedMessage(id: string, messageId: string): Promise<void> {
+    return this.runtime(id).steerQueuedMessage(messageId)
+  }
+
   clearMessageQueue(id: string): void {
     const messageIds = this.sessions[id]?.queue.map((message) => message.id) ?? []
     this.runtimes.get(id)?.clearMessageQueue(messageIds)

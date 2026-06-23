@@ -16,10 +16,19 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
   async function handleSubmit(): Promise<void> {
     const content = params.buildSubmitPayload()
     if (!content) {
-      const queue = params.workspace.sessions[params.conversationId]?.queue ?? []
+      const session = params.workspace.sessions[params.conversationId]
+      const queue = session?.queue ?? []
       const messageId = queuedMessageIdForEmptySubmit(queue)
       if (messageId) {
-        params.workspace.sendQueuedMessage(params.conversationId, messageId)
+        if (session?.phase === 'running') {
+          try {
+            await params.workspace.steerQueuedMessage(params.conversationId, messageId)
+          } catch (error) {
+            reportError('Failed to steer queued message', error, { userVisible: true })
+          }
+        } else {
+          params.workspace.sendQueuedMessage(params.conversationId, messageId)
+        }
         return
       }
       params.emitEmptySubmit?.()

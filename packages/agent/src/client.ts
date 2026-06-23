@@ -63,6 +63,16 @@ export class AgentClient {
     this.sendFrame({ type: 'send_queued_message', messageId })
   }
 
+  steerQueuedMessage(messageId: string, options: { steerId?: string } = {}): Promise<void> {
+    const steerId = options.steerId ?? globalThis.crypto.randomUUID()
+    const wait = this.waitForSteer(steerId)
+    this.sendFrame({ type: 'steer_queued_message', messageId, steerId })
+    return wait.then(() => {
+      this.resolveQueuedSendWaiter(messageId)
+      this.queuedMessageIds.delete(messageId)
+    })
+  }
+
   clearMessageQueue(messageIds: string[] = [...this.queuedMessageIds]): void {
     this.sendFrame({ type: 'clear_message_queue' })
     for (const messageId of messageIds) {

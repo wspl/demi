@@ -701,6 +701,49 @@ test('AgentSession sends a queued message next when requested', async () => {
   expect(userTexts).toEqual(['first', 'third', 'second'])
 })
 
+test('AgentSession converts a queued message into an active steer', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('continued'), events.response()],
+  ])
+  const session = createSession(provider)
+
+  const first = session.send(text('first'))
+  await provider.waitForRun(0)
+
+  const second = session.send(text('second'))
+  const queuedId = session.queuedMessages()[0]!.id
+
+  await expect(session.steerQueuedMessage(queuedId, { id: 'steer-queued' })).resolves.toBe(true)
+  await second
+  expect(session.queuedMessages()).toEqual([])
+
+  provider.release(0)
+  await provider.waitForRun(1)
+  expect(provider.requests[1]!.items.map((item) => item.type)).toEqual([
+    'user_message',
+    'assistant_text',
+    'user_steer',
+  ])
+  expect(provider.requests[1]!.items[2]).toEqual({
+    type: 'user_steer',
+    turnId: 'id-1',
+    content: text('second'),
+  })
+
+  provider.release(1)
+  await first
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'text',
+    'response',
+    'steer',
+    'text',
+    'response',
+  ])
+})
+
 test('AgentSession clears queued sends without canceling the active turn', async () => {
   const provider = new GateProvider([
     [events.text('first'), events.response()],

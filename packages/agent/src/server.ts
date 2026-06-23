@@ -131,6 +131,29 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           session.sendQueuedMessage(frame.messageId)
           return
         }
+        case 'steer_queued_message': {
+          const session = this.session
+          if (!session) {
+            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: 'No session is open on this connection' })
+            return
+          }
+          try {
+            const accepted = await session.steerQueuedMessage(frame.messageId, { id: frame.steerId })
+            if (accepted) this.send({ type: 'steer_result', steerId: frame.steerId, status: 'accepted' })
+            else {
+              this.send({
+                type: 'steer_result',
+                steerId: frame.steerId,
+                status: 'rejected',
+                reason: 'Queued message not found',
+              })
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: message })
+          }
+          return
+        }
         case 'clear_message_queue': {
           const session = this.sessionFor('clear_message_queue')
           if (!session) return

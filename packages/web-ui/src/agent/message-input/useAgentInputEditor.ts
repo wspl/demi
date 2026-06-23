@@ -15,8 +15,13 @@ export function shouldSubmitFromEditorKeydown(event: Pick<KeyboardEvent, 'isComp
   return !event.isComposing && event.key === 'Enter' && !event.shiftKey
 }
 
+export function editorHasContent(editor: { isEmpty: boolean } | null | undefined): boolean {
+  return editor ? !editor.isEmpty : false
+}
+
 export function useAgentInputEditor(params: UseAgentInputEditorParams) {
   const isFocused = ref(false)
+  const hasContent = ref(false)
 
   const editor = useEditor({
     content: params.initialValue ?? null,
@@ -73,7 +78,13 @@ export function useAgentInputEditor(params: UseAgentInputEditorParams) {
     onBlur() {
       isFocused.value = false
     },
+    onCreate({ editor }) {
+      hasContent.value = editorHasContent(editor)
+    },
+    onUpdate({ editor }) {
+      hasContent.value = editorHasContent(editor)
+    },
   })
 
-  return { editor, isFocused }
+  return { editor, isFocused, hasContent }
 }

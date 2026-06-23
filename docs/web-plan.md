@@ -29,7 +29,8 @@ Implemented and verified (against a scripted stub provider that emits thinking +
   that translucent bubble exposes a left-side hover X that deletes/cancels only the pending steer.
 - The web conversation view renders the server `queue` event through the agent-gui
   `MessageQueueBar` copied/adapted above the composer. Its original remove, send-now, and
-  clear-all actions are wired to Demi queue item protocol operations.
+  clear-all actions are wired to Demi queue item protocol operations; while running, send-now
+  converts that queued item into an active-turn steer through `steerQueuedMessage`.
 - Verified against the **real** Claude Code provider in-browser: multi-turn tool use no longer
   triggers `400 ... tool use concurrency`, and the `claude` CLI is no longer restarted per turn.
   See `docs/claude-code-persistent-session.md` for the root cause, the persistent-session design,
@@ -444,14 +445,16 @@ change data model / RPC calls. **Defer** = copy into the library but leave unwir
   extensions + popups + mode toggle; keep editor shell, attachments, ModelSelector,
   ReasoningSelector, ContextUsageIndicator, send/stop),
   `useAgentInputEditor.ts` (plain paragraph tiptap: StarterKit-minimal + Placeholder +
-  paste-attachments + Escape cancel + editor-level Enter submit; no Mention),
+  paste-attachments + Escape cancel + editor-level Enter submit; content state from editor
+  create/update events; no Mention),
   `useAgentInputActions.ts` (`send → client.send`; `setModel/setThinking → store`),
   `useAgentInputAttachments.ts` (image/document → Demi `UserContentBlock`), `useAgentInputDraftSync.ts`,
   `useAgentInputSessionState.ts` (model/thinking/usage/contextWindow from store + control
   catalog), `input-utils.ts`, `AttachmentPreview.vue`, `ModelSelector.vue`/`ReasoningSelector.vue`/
   `InputModelContent.vue`/`SelectorTrigger.vue`.
 - Empty Enter in the composer is a queue shortcut: if the server queue has visible messages,
-  send the last queued message via `sendQueuedMessage`; otherwise keep the existing empty-submit no-op.
+  convert the last queued message into active-turn steer while running; otherwise submit it through
+  `sendQueuedMessage`. Keep the existing empty-submit no-op when the queue is empty.
 - Drop: `MentionPopup.vue`, `InlineChip.vue`, `InlineChipNodeView.vue`,
   `useMentionSuggestion`, `useSlashSuggestion`, the mention/slash floating-ui wiring, and the
   plan/agent `ToggleSwitch` mode control.

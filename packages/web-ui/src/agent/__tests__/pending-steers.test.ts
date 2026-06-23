@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { reactive } from 'vue'
 import type { Block, UserContentBlock } from '@demi/core'
 import {
   createPendingSteerMessage,
@@ -20,6 +21,14 @@ test('pending steer renders as a tail block without mutating transcript blocks',
       content,
     },
   ])
+})
+
+test('pending steer accepts queued content from reactive state', () => {
+  const content = reactive(text('queued as steer')) as UserContentBlock[]
+  const pending = createPendingSteerMessage('local-1', content, [])
+
+  expect(pending.content).toEqual(text('queued as steer'))
+  expect(pending.content).not.toBe(content)
 })
 
 test('reconcile keeps pending steer when only baseline steer blocks exist', () => {

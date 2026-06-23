@@ -17,7 +17,7 @@ export function createPendingSteerMessage(
 ): PendingSteerMessage {
   return {
     id,
-    content: structuredClone(content),
+    content: cloneUserContent(content),
     baselineSteerBlockIds: blocks.flatMap((block) => (block.type === 'steer' ? [block.id] : [])),
   }
 }
@@ -90,4 +90,36 @@ function normalizeContentBlock(block: UserContentBlock): unknown {
 
 function normalizeBinary(data: Uint8Array): number[] {
   return Array.from(data)
+}
+
+function cloneUserContent(content: readonly UserContentBlock[]): UserContentBlock[] {
+  return content.map((block) => {
+    switch (block.type) {
+      case 'text':
+        return { type: 'text', text: block.text }
+      case 'reference':
+        return { type: 'reference', reference: block.reference }
+      case 'image':
+        return {
+          type: 'image',
+          source:
+            block.source.type === 'url'
+              ? { type: 'url', url: block.source.url }
+              : {
+                  type: 'binary',
+                  mediaType: block.source.mediaType,
+                  data: new Uint8Array(Array.from(block.source.data)),
+                },
+        }
+      case 'document':
+        return {
+          type: 'document',
+          source: {
+            fileName: block.source.fileName,
+            mediaType: block.source.mediaType,
+            data: new Uint8Array(Array.from(block.source.data)),
+          },
+        }
+    }
+  })
 }

@@ -6,6 +6,7 @@ import AgentMessageList from './AgentMessageList.vue'
 import AgentMessageInput from './AgentMessageInput.vue'
 import MessageQueueBar from './MessageQueueBar.vue'
 import { queuedMessageIdForEmptySubmit } from './queue-submit'
+import { reportError } from '@demi/web-ui/infra/errors'
 
 const props = defineProps<{
   conversationId: string
@@ -25,6 +26,16 @@ const { height: bottomAreaHeight } = useElementSize(bottomAreaRef)
 function handleEmptySubmit() {
   const messageId = queuedMessageIdForEmptySubmit(queuedMessages.value)
   if (!messageId) return
+  handleQueuedSendNow(messageId)
+}
+
+function handleQueuedSendNow(messageId: string) {
+  if (phase.value === 'running') {
+    void workspace.steerQueuedMessage(props.conversationId, messageId).catch((error) => {
+      reportError('Failed to steer queued message', error, { userVisible: true })
+    })
+    return
+  }
   workspace.sendQueuedMessage(props.conversationId, messageId)
 }
 
@@ -56,7 +67,7 @@ function onRetry() {
           v-if="queuedMessages.length"
           :messages="queuedMessages"
           @remove="(messageId) => workspace.dequeueMessage(conversationId, messageId)"
-          @send-now="(messageId) => workspace.sendQueuedMessage(conversationId, messageId)"
+          @send-now="handleQueuedSendNow"
           @clear-all="workspace.clearMessageQueue(conversationId)"
         />
         <AgentMessageInput

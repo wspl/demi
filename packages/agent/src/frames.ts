@@ -19,6 +19,7 @@ export type ClientFrame =
   | { type: 'send'; messageId: string; content: UserContentBlock[] }
   | { type: 'dequeue_message'; messageId: string }
   | { type: 'send_queued_message'; messageId: string }
+  | { type: 'steer_queued_message'; messageId: string; steerId: string }
   | { type: 'clear_message_queue' }
   | { type: 'steer'; steerId: string; content: UserContentBlock[] }
   | { type: 'cancel_pending_steer'; steerId: string }

@@ -473,6 +473,7 @@ interface AgentSession<State> {
   send(content: UserContentBlock[], options?: { id?: string }): Promise<void>
   dequeueMessage(id: string): boolean
   sendQueuedMessage(id: string): boolean
+  steerQueuedMessage(id: string): Promise<boolean>
   clearMessageQueue(): number
   steer(content: UserContentBlock[]): Promise<void>
   retry(): Promise<void>
@@ -495,11 +496,13 @@ interface AgentSession<State> {
 
 Queue item management 是最终 runtime 契约的一部分，不是 UI 本地状态。
 `dequeueMessage` 只删除仍在队列里的 send，并 resolve 对应 pending action，但不执行；
-`sendQueuedMessage` 把仍在队列里的 send 移到下一 turn 队首；`clearMessageQueue` 删除所有仍
-在队列里的 send，且不影响当前 active turn。`AgentClient` 以 `dequeueMessage`、
-`sendQueuedMessage`、`clearMessageQueue` 暴露同名能力；浏览器 UI 必须直接调用这些方法，
-不能自己发明本地 queue 状态。浏览器 UI 的空输入提交是 queue 快捷操作：当 composer 为空且
-queue 非空时，提交最后一个可见 queued message。
+`sendQueuedMessage` 把仍在队列里的 send 移到下一 turn 队首；`steerQueuedMessage` 原子地把
+仍在队列里的 send 取出并转成当前 active turn 的 steer，失败时恢复原队列位置，不能在 UI 里用
+“先 dequeue 再 steer”拼出来；`clearMessageQueue` 删除所有仍在队列里的 send，且不影响当前
+active turn。`AgentClient` 以 `dequeueMessage`、`sendQueuedMessage`、`steerQueuedMessage`、
+`clearMessageQueue` 暴露同名能力；浏览器 UI 必须直接调用这些方法，不能自己发明本地 queue
+状态。浏览器 UI 的空输入提交是 queue 快捷操作：当 composer 为空且 queue 非空时，running
+状态把最后一个可见 queued message 转成 active steer；非 running 状态提交该 queued message。
 
 ### 5.2 Transcript 与 Compaction
 

@@ -48,6 +48,8 @@ type PendingAction =
   | { type: 'resume'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'compact'; resolve: () => void; reject: (error: unknown) => void }
 
+type PendingSendAction = Extract<PendingAction, { type: 'send' }>
+
 type ActiveTurnPhase = 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing'
 
 interface PendingSteer {
@@ -55,6 +57,13 @@ interface PendingSteer {
   turnId: string
   model: ModelSelection
   content: UserContentBlock[]
+}
+
+interface TakenQueuedSend {
+  message: QueuedMessage
+  messageIndex: number
+  action: PendingSendAction | null
+  actionIndex: number
 }
 
 export class AgentSession<State> {
@@ -316,6 +325,21 @@ export class AgentSession<State> {
 
     this.emitQueue()
     this.kickWorker()
+    return true
+  }
+
+  async steerQueuedMessage(id: string, options: { id?: string } = {}): Promise<boolean> {
+    const queued = this.takeQueuedSend(id)
+    if (!queued) return false
+
+    try {
+      await this.steer(queued.message.content, options)
+    } catch (error) {
+      this.restoreQueuedSend(queued)
+      throw error
+    }
+
+    queued.action?.resolve()
     return true
   }
 
@@ -985,6 +1009,34 @@ export class AgentSession<State> {
     if (index === -1) return
     this.queued.splice(index, 1)
     this.emitQueue()
+  }
+
+  private takeQueuedSend(id: string): TakenQueuedSend | null {
+    const messageIndex = this.queued.findIndex((message) => message.id === id)
+    if (messageIndex === -1) return null
+
+    const [message] = this.queued.splice(messageIndex, 1)
+    if (!message) return null
+
+    const actionIndex = this.pendingActions.findIndex((action) => action.type === 'send' && action.id === id)
+    const [action] = actionIndex === -1 ? [] : this.pendingActions.splice(actionIndex, 1)
+    this.emitQueue()
+    return {
+      message,
+      messageIndex,
+      action: action && action.type === 'send' ? action : null,
+      actionIndex,
+    }
+  }
+
+  private restoreQueuedSend(queued: TakenQueuedSend): void {
+    this.queued.splice(Math.min(queued.messageIndex, this.queued.length), 0, queued.message)
+    if (queued.action) {
+      const actionIndex = queued.actionIndex === -1 ? this.pendingActions.length : queued.actionIndex
+      this.pendingActions.splice(Math.min(actionIndex, this.pendingActions.length), 0, queued.action)
+    }
+    this.emitQueue()
+    this.kickWorker()
   }
 
   private removePendingSend(id: string): Extract<PendingAction, { type: 'send' }> | null {

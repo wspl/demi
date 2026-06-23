@@ -79,7 +79,7 @@ test('input submit emits empty-submit when there is no payload', async () => {
   expect(calls).toEqual(['empty-submit'])
 })
 
-test('empty input submit sends the last queued message when queue exists', async () => {
+test('empty input submit steers the last queued message while running', async () => {
   const calls: string[] = []
   const workspace = fakeWorkspace('running', calls, [
     { id: 'queued-first' },
@@ -95,7 +95,7 @@ test('empty input submit sends the last queued message when queue exists', async
 
   await actions.handleSubmit()
 
-  expect(calls).toEqual(['send-queued:queued-last'])
+  expect(calls).toEqual(['steer-queued:queued-last'])
 })
 
 function fakeWorkspace(
@@ -112,6 +112,9 @@ function fakeWorkspace(
     },
     sendQueuedMessage: (_id: string, messageId: string) => {
       calls.push(`send-queued:${messageId}`)
+    },
+    steerQueuedMessage: async (_id: string, messageId: string) => {
+      calls.push(`steer-queued:${messageId}`)
     },
     steer: async (_id: string, content: UserContentBlock[]) => {
       calls.push(`steer:${textContent(content)}`)

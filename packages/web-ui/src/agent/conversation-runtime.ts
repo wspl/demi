@@ -37,6 +37,32 @@ export class ConversationRuntime {
     this.client?.sendQueuedMessage(messageId)
   }
 
+  async steerQueuedMessage(messageId: string): Promise<void> {
+    const queued = this.state.queue.find((message) => message.id === messageId)
+    if (!queued) return
+
+    const steerId = globalThis.crypto.randomUUID()
+    const pending = createPendingSteerMessage(steerId, queued.content, this.state.blocks)
+    this.activePendingSteerRequests.add(steerId)
+    this.state.pendingSteers = [...this.state.pendingSteers, pending]
+    try {
+      const client = await this.ensureOpen()
+      if (this.canceledPendingSteers.has(steerId)) return
+      this.state.isResultSeen = true
+      await client.steerQueuedMessage(messageId, { steerId })
+      if (this.canceledPendingSteers.has(steerId)) client.cancelPendingSteer(steerId)
+    } catch (error) {
+      this.removePendingSteer(pending.id)
+      if (this.canceledPendingSteers.has(steerId)) return
+      throw error
+    } finally {
+      this.activePendingSteerRequests.delete(steerId)
+      if (!this.state.pendingSteers.some((candidate) => candidate.id === steerId)) {
+        this.canceledPendingSteers.delete(steerId)
+      }
+    }
+  }
+
   clearMessageQueue(messageIds: string[]): void {
     this.client?.clearMessageQueue(messageIds)
   }

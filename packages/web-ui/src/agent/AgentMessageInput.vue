@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick } from 'vue'
+import { nextTick } from 'vue'
 import type { UserContentBlock } from '@demi/core'
 import { AddLine } from '@mingcute/vue/add'
 import { SendLine } from '@mingcute/vue/send'
@@ -57,14 +57,9 @@ const { handleSubmit, handleSteerSubmit, handleQueueSubmit, handleSelectModel, h
   },
 })
 
-const { editor, isFocused } = useAgentInputEditor({
+const { editor, isFocused, hasContent } = useAgentInputEditor({
   handleSubmit,
   handleCancel() {},
-})
-
-const hasContent = computed(() => {
-  const currentEditor = editor.value
-  return currentEditor ? !currentEditor.isEmpty : false
 })
 
 defineExpose({
