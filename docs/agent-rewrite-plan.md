@@ -13,7 +13,7 @@
 参考实现：
 
 - Rust `agent-session`：session runtime、transcript、生命周期、compaction、queue、retry/resume、mutation guard。
-- Codex active turn steer：queue 与 steer 是 busy session 的两种不同输入策略，不能互相伪装或自动降级。
+- Codex active turn steer：queue 与 steer 是 busy session 的两种不同输入策略，不能互相伪装或自动降级。Codex core 的 steer 是 session-level same-turn pending input：接受后进入当前 turn，并在当前 provider stream / tool boundary 后的同一 turn continuation 中送达；不是 Responses WebSocket 专属控制事件。
 - Rust `coding-agent`：todo、ref expansion、shell。
 - `vercel-labs/just-bash`：Bash Engine 实现基线（维护完整 fork，见 §7）。
 

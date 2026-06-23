@@ -74,6 +74,7 @@ export class AgentSession<State> {
   private activeTurnId: string | null = null
   private activeTurnPhase: ActiveTurnPhase | null = null
   private activeProviderRun: ProviderRun | null = null
+  private pendingSteerContinuationCount = 0
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
 
@@ -178,9 +179,9 @@ export class AgentSession<State> {
     }
     if (this.activeTurnId !== turnId) throw new Error('AgentSession: active turn changed before steer could be accepted')
     this.transcriptLog.pushSteer(turnId, this.model, resolvedContent, blockId)
+    if (deliveryAfterResolve.type === 'next_provider_continuation') this.pendingSteerContinuationCount += 1
     await this.commitTranscript()
-    // Tool execution delivery is transcript-backed: the next provider continuation reads the
-    // committed steer block through collectInferenceItems().
+    // Transcript-backed delivery is read by the next provider continuation through collectInferenceItems().
   }
 
   /**
@@ -278,13 +279,14 @@ export class AgentSession<State> {
     if (this.activeTurnPhase === 'compacting' || this.activeTurnPhase === 'finalizing') {
       throw new Error(`AgentSession: active turn cannot accept steering while ${this.activeTurnPhase}`)
     }
-    if (this.activeTurnPhase === 'tool_executing') return { type: 'next_provider_continuation' }
-
     const run = this.activeProviderRun
     if (run?.steer) {
       return { type: 'provider', run: run as ProviderRun & { steer: NonNullable<ProviderRun['steer']> } }
     }
-    throw new Error('AgentSession: active provider run does not support steering')
+    if (this.activeTurnPhase === 'tool_executing' || this.activeTurnPhase === 'provider_streaming') {
+      return { type: 'next_provider_continuation' }
+    }
+    throw new Error('AgentSession: active turn cannot accept steering now')
   }
 
   private enqueue(action: PendingAction): Promise<void> {
@@ -520,6 +522,7 @@ export class AgentSession<State> {
     let autoCompactions = 0
     while (true) {
       throwIfAborted(this.currentSignal())
+      const steerContinuationBeforeStream = this.pendingSteerContinuationCount
       const shouldAutoRecover = await this.streamProviderOnce()
       throwIfAborted(this.currentSignal())
 
@@ -547,6 +550,7 @@ export class AgentSession<State> {
         }
       }
       if (toolExecution.stopAfterToolResult) return
+      if (this.pendingSteerContinuationCount > steerContinuationBeforeStream) continue
       if (!toolExecution.executed) return
     }
   }

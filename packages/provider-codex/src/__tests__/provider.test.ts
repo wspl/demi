@@ -259,6 +259,66 @@ test('CodexProvider integrates with AgentSession and shell tools for function ca
   expect(JSON.stringify(transport.requests[1]?.body)).toContain('demi-codex')
 })
 
+test('CodexProvider replays provider-stream steers in a same-turn follow-up before queued sends drain', async () => {
+  const transport = new GateCodexTransport([
+    [
+      { type: 'response.output_text.delta', delta: 'first' },
+      { type: 'response.completed', response: { usage: { input_tokens: 4, output_tokens: 2 } } },
+    ],
+    [
+      { type: 'response.output_text.delta', delta: 'continued' },
+      { type: 'response.completed', response: { usage: { input_tokens: 8, output_tokens: 2 } } },
+    ],
+    [
+      { type: 'response.output_text.delta', delta: 'queued' },
+      { type: 'response.completed', response: { usage: { input_tokens: 12, output_tokens: 2 } } },
+    ],
+  ])
+  const provider = new CodexProvider({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    transportImpl: transport,
+    transport: 'sse',
+  })
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'codex-steer-test',
+    initialState: () => ({}),
+    systemPrompt: () => 'system',
+    tools: () => [],
+  }
+  const session = new AgentSession({ provider, model, cwd: process.cwd(), runtime }, { agentSessionId: 'agent-session-1' })
+
+  const activeTurn = session.send([{ type: 'text', text: 'start' }])
+  await transport.waitForRequest(0)
+  const queuedTurn = session.send([{ type: 'text', text: 'queued next' }])
+  await session.steer([{ type: 'text', text: 'steer current' }])
+
+  transport.release(0)
+  await transport.waitForRequest(1)
+
+  expect(session.queuedMessages()).toMatchObject([{ text: 'queued next' }])
+  expect(JSON.stringify(transport.requests[1]?.body)).toContain('steer current')
+  expect(JSON.stringify(transport.requests[1]?.body)).not.toContain('queued next')
+
+  transport.release(1)
+  await activeTurn
+  await transport.waitForRequest(2)
+  expect(JSON.stringify(transport.requests[2]?.body)).toContain('queued next')
+
+  transport.release(2)
+  await queuedTurn
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'steer',
+    'text',
+    'response',
+    'text',
+    'response',
+    'user',
+    'text',
+    'response',
+  ])
+})
+
 function makeRequest(items: InferenceRequest['items'] = []): InferenceRequest {
   return {
     sessionId: 'session-1',
@@ -299,6 +359,37 @@ class FakeCodexTransport implements CodexResponsesTransport {
       for (const event of script) yield event
       if (script.length > 0) return
     }
+  }
+}
+
+class GateCodexTransport implements CodexResponsesTransport {
+  readonly requests: CodexTransportRequest[] = []
+  private readonly gates: Array<Deferred<void>>
+  private readonly started = new Map<number, Deferred<void>>()
+
+  constructor(private readonly scripts: CodexResponseStreamEvent[][]) {
+    this.gates = scripts.map(() => deferred<void>())
+  }
+
+  async *stream(request: CodexTransportRequest): AsyncIterable<CodexResponseStreamEvent> {
+    const index = this.requests.length
+    this.requests.push(request)
+    this.started.get(index)?.resolve(undefined)
+    await this.gates[index]?.promise
+    for (const event of this.scripts[index] ?? []) yield event
+  }
+
+  waitForRequest(index: number): Promise<void> {
+    if (this.requests.length > index) return Promise.resolve()
+    const existing = this.started.get(index)
+    if (existing) return existing.promise
+    const next = deferred<void>()
+    this.started.set(index, next)
+    return next.promise
+  }
+
+  release(index: number): void {
+    this.gates[index]?.resolve(undefined)
   }
 }
 
@@ -412,4 +503,17 @@ class NonClosingCompletedWebSocket {
   private emit(type: string, event: unknown): void {
     for (const listener of this.listeners[type] ?? []) listener(event)
   }
+}
+
+interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve
+  })
+  return { promise, resolve }
 }

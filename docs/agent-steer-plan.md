@@ -35,7 +35,7 @@ Codex 的工作模型里 `queue` 和 `steer` 是两种不同的 active session i
 4. Steer must not reorder queued turns. Queued turns drain only after the active turn finishes.
 5. Steer must not interrupt or rewrite tool results by itself. If the user wants cancellation, that remains `abort`; if the user wants shell stdin, that remains `shell_input`.
 6. Steer accepted during tool execution is delivered before the next provider continuation in the same turn.
-7. Steer accepted during provider streaming requires provider-level active-run support. If the provider cannot receive in-flight input, the session rejects the steer instead of pretending it was applied.
+7. Steer accepted during provider streaming is same-turn pending input. If a provider run exposes native active-run steering, use it; otherwise accept the steer into transcript and force a provider continuation after the current stream boundary. Do not claim it changed tokens already emitted by the current provider response.
 8. Compaction and retry must treat a base user input and its accepted steers as one logical turn group.
 
 ## 3. Package Boundary Placement
@@ -43,12 +43,12 @@ Codex 的工作模型里 `queue` 和 `steer` 是两种不同的 active session i
 The package boundary remains the highest constraint:
 
 - `@demi/core` owns shared data types only: add portable transcript and content types needed to represent steer.
-- `@demi/provider` owns the abstract inference contract: add provider-neutral active-run steering types and capability shape.
-- `@demi/agent` owns session state, turn grouping, steer acceptance rules, transport frames, and `AgentClient` APIs.
+- `@demi/provider` owns the abstract inference contract and optional native active-run steering hook.
+- `@demi/agent` owns session state, turn grouping, steer acceptance rules, transcript-backed same-turn continuation, transport frames, and `AgentClient` APIs.
 - `@demi/shell` remains unaware of steer. `shell_input` stays shell-process stdin, not agent steering.
 - `@demi/coding-agent` may adjust prompt wording for steered turns, but must not instantiate sessions or replace runtime behavior.
 - `@demi/repl`, `@demi/web-ui`, and `@demi/web` expose explicit input affordances and call `AgentClient.steer` or queue/send APIs.
-- Concrete provider packages implement native steering only inside their own transport boundaries.
+- Concrete provider packages may implement native steering only inside their own transport boundaries, but normal `user_steer` replay remains provider input like any other inference item.
 
 ## 4. Current Code Feasibility Audit
 
@@ -100,12 +100,13 @@ Current facts:
 Feasibility:
 
 - Keep the existing worker FIFO for `send/retry/resume/compact`. Add `steer()` outside `pendingActions`.
-- Add private active-turn details without changing public `SessionPhase`: `activeTurnPhase: 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing' | null` and `activeProviderRun: ProviderRun | null`.
+- Add private active-turn details without changing public `SessionPhase`: `activeTurnPhase: 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing' | null`, `activeProviderRun: ProviderRun | null`, and a monotonic same-turn steer continuation counter.
 - Set `activeTurnPhase` around `streamProviderOnce()`, `executePendingTools()`, compaction, and final cleanup.
-- Store the result of `this.provider.run(request)` in `activeProviderRun` while streaming so `steer()` can call `activeProviderRun.steer`.
+- Store the result of `this.provider.run(request)` in `activeProviderRun` while streaming so `steer()` can call `activeProviderRun.steer` when present.
+- When provider streaming has no native `steer`, accept the steer transcript block and increment the same-turn continuation counter; after the current provider stream ends, loop `executeProviderTurn()` so the next `InferenceRequest.items` contains the new `user_steer`.
 - For retry, use the retried user block's `turnId` as the request `turnId`; do not invent a new logical turn id.
 - For resume, generate a new turn id and pass it to `pushResumeTurn()`.
-- Reject `steer()` if `externalMutationReserved` is true, no active turn exists, the active turn is compacting/finalizing, reference resolution fails, or no delivery path exists.
+- Reject `steer()` if `externalMutationReserved` is true, no active turn exists, the active turn is compacting/finalizing, reference resolution fails, or the session closes/aborts before acceptance.
 
 ### 4.4 Provider Contract
 
@@ -224,11 +225,11 @@ type InferenceItem =
   // existing assistant/tool items
 ```
 
-Provider adapters decide how to map historical `user_steer` to their protocol. A provider without historical steer metadata can map it to a normal user input item while preserving order, but active in-flight steer still requires native active-run support.
+Provider adapters decide how to map historical `user_steer` to their protocol. A provider without historical steer metadata can map it to a normal user input item while preserving order. Active turn steering does not require a provider-native socket write: `AgentSession` can accept the steer as same-turn pending input and send it in the next provider continuation.
 
 ## 6. Provider Contract
 
-The current provider contract returns an `AsyncIterable<ProviderEvent>`. Steer requires a control surface on the active run, not a separate provider call that races the stream.
+The current provider contract returns an `AsyncIterable<ProviderEvent>`. Native active-run steer remains useful when a provider has a verified control surface, but transcript-backed same-turn continuation is the default portable path.
 
 Final shape:
 
@@ -252,21 +253,21 @@ export interface AgentProvider {
 
 Provider semantics:
 
-- `ProviderRun.steer` means native active-run delivery. It is not a queue hook.
-- If `steer` is absent for the active provider run, `AgentSession` must reject active provider-stream steering.
-- Providers may still receive historical `user_steer` replay items in later requests.
+- `ProviderRun.steer` means native active-run delivery. It is not a queue hook and not required for same-turn continuation.
+- If `steer` is absent for the active provider run, `AgentSession` accepts provider-stream steering as transcript-backed same-turn pending input and sends it on the next provider continuation.
+- Providers receive `user_steer` replay items in later requests and must preserve order when converting them to their wire protocol.
 - Provider transport implementations are responsible for preserving provider-specific pairing data, such as Responses item ids and encrypted reasoning signatures.
 - Provider packages must not import `@demi/agent` to implement steer.
 
 Codex provider target:
 
-- Native steering should use the same class of provider-side control channel as Codex `turn/steer`, where verified available for Demi's Codex transport.
-- If a transport mode only supports one-way SSE with no active control channel, that mode must not advertise native active-run steer.
-- WebSocket fallback logic must not replay partial output or duplicate tool calls when a steer delivery fails.
+- Official Codex `turn/steer` is an app-server/session method. Codex core accepts active-turn input, records it as pending same-turn input, and includes it in a follow-up Responses request after the current stream/tool boundary.
+- Demi's Codex provider does not need to invent a Responses WebSocket steer event. SSE and WebSocket both rely on `user_steer` replay in the next provider continuation unless a verified provider-native hook is added later.
+- Codex provider tests should verify `user_steer` request conversion and that same-turn continuation does not duplicate output or tool call/result pairing.
 
 Claude Code provider target:
 
-- It should remain unsupported for active provider-stream steering unless the CLI transport exposes a true in-flight user input channel with matching semantics.
+- It can receive transcript-backed `user_steer` replay in same-turn continuations. A provider-native CLI control hook remains unsupported unless the CLI exposes a true in-flight input channel with matching semantics.
 - It must not emulate steer by interrupting and resuming, because that changes the turn boundary and tool replay semantics.
 
 ## 7. AgentSession State Machine
@@ -295,17 +296,17 @@ async function steer(content: UserContentBlock[]): Promise<void> {
   if (!activeTurn) reject('Turn completed before steer could be accepted')
 
   const delivery =
-    activeTurn.phase === 'tool_executing'
+    activeTurn.providerRun?.steer
+      ? 'native_provider_run'
+      : activeTurn.phase === 'tool_executing' || activeTurn.phase === 'provider_streaming'
       ? 'next_provider_continuation'
-      : activeTurn.providerRun?.steer
-        ? 'native_provider_run'
-        : reject('Provider does not support active steering')
+      : reject('Active turn cannot accept steering now')
 
   const steer = makeSteer(activeTurn.turnId, resolved)
+  if (delivery === 'native_provider_run') await activeTurn.providerRun.steer(steer)
   appendSteerBlock(steer)
   await commitTranscript()
-
-  if (delivery === 'native_provider_run') await activeTurn.providerRun.steer(steer)
+  if (delivery === 'next_provider_continuation') markSameTurnContinuationNeeded()
 }
 ```
 
@@ -313,7 +314,8 @@ Delivery rule:
 
 - Transcript is the source of truth. Once a steer block is committed, later provider continuations see it through `Transcript.collectInferenceItems()`.
 - No separate `pendingSteers` list is needed for replay. If steer is accepted while a tool is executing, the steer block is appended after the existing `tool_call` block. When the tool completes, `collectInferenceItems()` emits that tool's result before the steer because the result is stored on the earlier tool block.
-- `ProviderRun.steer` should be implemented as a local active-run enqueue/send operation. If it throws after transcript commit, the session should surface an active turn error and keep the steer in transcript for retry/resume; it should not pretend the steer was never submitted.
+- A small monotonic continuation counter is still needed to tell `executeProviderTurn()` that a provider-stream steer arrived while no tool call was produced; it loops one more provider request for the same `turnId`.
+- `ProviderRun.steer` should be implemented only for verified native active-run delivery. If it throws before transcript commit, the session rejects the steer without writing a transcript block.
 
 Interaction with existing actions:
 
@@ -411,7 +413,6 @@ Reject steer when:
 - no turn is active;
 - the active turn is compacting or finalizing;
 - reference resolution fails;
-- the active provider run cannot accept in-flight steering;
 - the session closes or aborts before steer acceptance.
 
 Do not reject steer merely because there are queued messages. Queue and steer operate on different turn targets.
@@ -425,7 +426,7 @@ Add or update deterministic tests under `packages/agent/src/__tests__`:
 - `session.test.ts`: steer rejects while idle; accepts during active provider run; does not emit queue events; appends `steer` transcript block with the active `turnId`.
 - `session.test.ts`: multiple steers preserve order and share the same active `turnId`.
 - `session.test.ts`: steer during tool execution is included before the next provider continuation, without draining queued sends early.
-- `session.test.ts`: provider-stream steer rejects when `ProviderRun.steer` is absent.
+- `session.test.ts`: provider-stream steer without `ProviderRun.steer` is accepted, appends a steer block, and triggers one same-turn provider continuation before queued sends drain.
 - `session.test.ts`: abort after accepted steer records abort and preserves steer history.
 - `compaction.test.ts`: compaction does not split base user and steer blocks except through documented split-turn summary behavior.
 - `server.test.ts`: `steer` frame produces `steer_result` ack and transcript patch; multiple acks correlate by `steerId`.
@@ -439,10 +440,10 @@ Add or update surface tests:
 
 Provider tests:
 
-- `@demi/provider-codex`: fake native control-channel test proves steer delivery does not duplicate output or tool calls.
-- `@demi/provider-claude-code`: unsupported active steering is explicit and does not fallback to abort/resume.
+- `@demi/provider-codex`: `user_steer` replay conversion and same-turn continuation tests prove steer delivery does not duplicate output or tool calls.
+- `@demi/provider-claude-code`: `user_steer` replay conversion is explicit and does not fallback to abort/resume.
 
-Document real-provider acceptance under `docs/repl-acceptance/` once a concrete provider supports native active steering.
+Document real-provider acceptance under `docs/repl-acceptance/` once queue + steer interleaving is exercised with a concrete provider.
 
 ## 13. Executable Implementation Checklist
 
@@ -476,9 +477,10 @@ Each item is intended to be implementable as a small checkpoint. Do not enable U
 - [x] In `executeResume()`, use the current active turn id for `pushResumeTurn()`.
 - [x] In `streamProviderOnce()`, store the returned `ProviderRun` in `activeProviderRun` while streaming and clear it in `finally`.
 - [x] In `executePendingTools()`, set internal active phase to `tool_executing` while tool invocations are awaited.
-- [x] Reject steer during idle, compaction, finalizing, external mutation reservation, reference-resolution failure, unsupported provider-stream delivery, closed session, or abort race.
+- [x] Add transcript-backed same-turn continuation for provider-stream steers when `ProviderRun.steer` is absent.
+- [x] Reject steer during idle, compaction, finalizing, external mutation reservation, reference-resolution failure, closed session, or abort race.
 - [x] Commit accepted steer through `commitTranscript()` only; never mutate transcript silently.
-- [x] Verification: targeted `session.test.ts` cases for idle rejection, provider-stream native steer, unsupported provider-stream rejection, tool-execution steer, queue interleaving, abort preservation, retry preservation, and resume replay.
+- [x] Verification: `bun test packages/agent/src/__tests__/session.test.ts packages/agent/src/__tests__/server.test.ts`.
 
 ### 13.4 Transport, Server, And Client
 
@@ -513,20 +515,20 @@ Current checkpoint: Web running input now exposes explicit steer and queue comma
 
 ### 13.7 Provider Implementations
 
-- [ ] `@demi/provider-claude-code`: leave provider-stream steer unsupported unless a true in-flight CLI input channel is proven. Add tests that unsupported provider-stream steer rejects without abort/resume fallback.
-- [ ] `@demi/provider-codex`: refactor WebSocket transport into a run object that keeps socket ownership and exposes local `steer()`.
-- [ ] `@demi/provider-codex`: do not expose `steer` for SSE runs.
-- [ ] `@demi/provider-codex`: in auto mode, expose `steer` only after WebSocket is the active transport; if auto falls back to SSE, active provider-stream steer rejects.
-- [ ] `@demi/provider-codex`: verify steer delivery does not duplicate output, replay partial streams, or break tool call/result pairing.
-- [ ] Verification: provider unit tests with fake WebSocket, plus a real-provider acceptance document under `docs/repl-acceptance/` before enabling the UI as supported for Codex.
+- [x] `@demi/provider-codex`: map replayed `user_steer` items into Responses input while preserving order.
+- [x] `@demi/provider-claude-code`: map replayed `user_steer` items into stream-json user messages while preserving order.
+- [x] `@demi/provider-codex`: add an agent-level same-turn continuation test proving provider-stream steer is replayed before queued sends drain.
+- [ ] `@demi/provider-claude-code`: keep provider-native active steering absent unless a true in-flight CLI input channel is proven.
+- [x] Verification: `bun test packages/provider-codex/src/__tests__/provider.test.ts`.
+- [ ] Real-provider acceptance document under `docs/repl-acceptance/` remains gated until a runnable provider scenario is exercised.
 
-Current checkpoint: `user_steer` replay conversion is covered for Codex Responses and Claude Code JSONL. Native Codex in-flight delivery remains pending and must stay gated until fake WebSocket and real-provider acceptance pass.
+Current checkpoint: `user_steer` replay conversion is covered for Codex Responses and Claude Code JSONL. Native provider control hooks are optional and remain unimplemented; Demi will use transcript-backed same-turn continuation.
 
 ### 13.8 Full Gate
 
 - [x] Run `bun run typecheck`.
 - [x] Run `bun run test`.
-- [ ] Run targeted long-session or real-provider acceptance for queue + steer interleaving once a native provider supports steer.
+- [ ] Run targeted long-session or real-provider acceptance for queue + steer interleaving with transcript-backed same-turn continuation.
 - [x] Confirm `docs/package-boundaries.md` still matches any new public types or package edges.
 
 ## 14. Acceptance Criteria
@@ -537,6 +539,6 @@ The feature is complete when:
 - accepted steer affects the current turn without creating a new queued turn;
 - rejected steer is explicit and leaves no hidden queue or transcript side effect;
 - transcript replay, retry, resume, and compaction preserve accepted steers;
-- provider packages implement or reject active steering within their own boundaries;
+- provider packages preserve `user_steer` replay order, and native active-run hooks are used only when verified;
 - deterministic tests cover the runtime, transport, client, and rendering behavior;
-- at least one real-provider acceptance path proves native active steering before UI enables it by default for that provider.
+- at least one real-provider acceptance path proves queue + steer interleaving before marking provider-specific support complete.

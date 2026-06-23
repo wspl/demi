@@ -420,12 +420,12 @@ test('AgentClient.steer rejects when no session is open and does not create tran
   expect(client.transcript().blocks).toEqual([])
 })
 
-test('AgentClient.steer rejection from unsupported active provider does not append a steer block', async () => {
+test('AgentClient.steer accepts active provider without native steer and continues the same turn', async () => {
   const registry = new ProviderRegistry()
   const provider = new ServerGateProvider({ supportsSteer: false })
   registry.register({
-    type: 'server-unsteerable',
-    displayName: 'Server Unsteerable',
+    type: 'server-no-native-steer',
+    displayName: 'Server No Native Steer',
     createProvider: () => provider,
   })
   const server = new AgentServer({
@@ -436,24 +436,40 @@ test('AgentClient.steer rejection from unsupported active provider does not appe
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'server-unsteerable', model }, '/workspace')
+  await client.open({ type: 'server-no-native-steer', model }, '/workspace')
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.waitForRun(0)
   seen.length = 0
 
-  await expect(client.steer([{ type: 'text', text: 'unsupported' }])).rejects.toThrow('does not support steering')
+  await client.steer([{ type: 'text', text: 'same turn guidance' }])
 
-  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user'])
+  expect(seen).toContainEqual({
+    type: 'steer_result',
+    steerId: expect.any(String),
+    status: 'accepted',
+  })
+  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer'])
   expect(seen.some((event) => event.type === 'queue')).toBe(false)
   expect(
     seen
       .filter((event) => event.type === 'transcript_patch')
       .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
       .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
-  ).toBe(false)
+  ).toBe(true)
 
   provider.release(0)
+  await provider.waitForRun(1)
+  expect(provider.requests[1]?.turnId).toBe(provider.requests[0]?.turnId)
+  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual(['user_message', 'user_steer', 'assistant_text'])
+  expect(provider.requests[1]?.items[1]).toEqual({
+    type: 'user_steer',
+    turnId: provider.requests[0]?.turnId,
+    content: [{ type: 'text', text: 'same turn guidance' }],
+  })
+
+  provider.release(1)
   await sending
+  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'text', 'response', 'text', 'response'])
 })
 
 test('AgentServer rejects retry, resume, and compact frames while the session is busy', async () => {

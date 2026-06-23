@@ -7,6 +7,7 @@ import {
   Transcript,
   type AgentHarnessRuntime,
   type AgentSessionOptions,
+  type AgentSessionStore,
   type AgentSessionSnapshot,
   type AgentToolInvokeResult,
   type SessionEvent,
@@ -680,17 +681,76 @@ test('AgentSession delivers multiple steers to an active steerable provider run 
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'steer', 'text', 'response'])
 })
 
-test('AgentSession rejects provider-stream steer when the active run lacks steer support', async () => {
-  const provider = new GateProvider([[events.text('done'), events.response()]])
+test('AgentSession accepts provider-stream steer without native support and continues the same turn', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('continued'), events.response()],
+    [events.text('queued'), events.response()],
+  ])
   const session = createSession(provider)
 
   const sending = session.send(text('start'))
   await provider.waitForRun(0)
+  const queued = session.send(text('queued next turn'))
+  expect(session.queuedMessages()).toMatchObject([{ text: 'queued next turn' }])
 
-  await expect(session.steer(text('unsupported'))).rejects.toThrow('does not support steering')
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user'])
+  await session.steer(text('same turn guidance'))
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer'])
+  expect(session.queuedMessages()).toMatchObject([{ text: 'queued next turn' }])
 
   provider.release(0)
+  await provider.waitForRun(1)
+  expect(provider.requests[1]?.turnId).toBe('id-1')
+  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual(['user_message', 'user_steer', 'assistant_text'])
+  expect(provider.requests[1]?.items[1]).toEqual({
+    type: 'user_steer',
+    turnId: 'id-1',
+    content: text('same turn guidance'),
+  })
+  expect(session.queuedMessages()).toMatchObject([{ text: 'queued next turn' }])
+
+  provider.release(1)
+  await sending
+  await provider.waitForRun(2)
+  expect(provider.requests[2]?.turnId).not.toBe('id-1')
+
+  provider.release(2)
+  await queued
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'steer',
+    'text',
+    'response',
+    'text',
+    'response',
+    'user',
+    'text',
+    'response',
+  ])
+})
+
+test('AgentSession schedules provider-stream steer continuation before slow snapshot persistence finishes', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('continued'), events.response()],
+  ])
+  const store = new BlockingSteerStore()
+  const session = createSession(provider, createRuntime(), undefined, model, { store })
+
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+  const steering = session.steer(text('persist slowly'))
+  await store.waitForSteerSnapshot()
+
+  provider.release(0)
+  await withTimeout(provider.waitForRun(1))
+  expect(provider.requests[1]?.turnId).toBe('id-1')
+  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual(['user_message', 'user_steer', 'assistant_text'])
+
+  store.release()
+  await steering
+  provider.release(1)
   await sending
 })
 
@@ -1151,6 +1211,28 @@ class SteerableGateProvider implements AgentProvider {
 
   release(index: number): void {
     this.gates[index].resolve(undefined)
+  }
+}
+
+class BlockingSteerStore implements AgentSessionStore<{ toolCalls: number }> {
+  private readonly started = deferred<void>()
+  private readonly releaseSave = deferred<void>()
+  private blocked = false
+
+  async saveSnapshot(snapshot: AgentSessionSnapshot<{ toolCalls: number }>): Promise<void> {
+    if (!this.blocked && snapshot.transcript.blocks.some((block) => block.type === 'steer')) {
+      this.blocked = true
+      this.started.resolve(undefined)
+      await this.releaseSave.promise
+    }
+  }
+
+  waitForSteerSnapshot(): Promise<void> {
+    return this.started.promise
+  }
+
+  release(): void {
+    this.releaseSave.resolve(undefined)
   }
 }
 
