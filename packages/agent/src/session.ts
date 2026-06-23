@@ -50,6 +50,13 @@ type PendingAction =
 
 type ActiveTurnPhase = 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing'
 
+interface PendingSteer {
+  id: string
+  turnId: string
+  model: ModelSelection
+  content: UserContentBlock[]
+}
+
 export class AgentSession<State> {
   private provider: AgentProvider
   private model: ModelSelection
@@ -74,6 +81,7 @@ export class AgentSession<State> {
   private activeTurnId: string | null = null
   private activeTurnPhase: ActiveTurnPhase | null = null
   private activeProviderRun: ProviderRun | null = null
+  private readonly pendingSteers: PendingSteer[] = []
   private pendingSteerContinuationCount = 0
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
@@ -178,10 +186,21 @@ export class AgentSession<State> {
       }
     }
     if (this.activeTurnId !== turnId) throw new Error('AgentSession: active turn changed before steer could be accepted')
-    this.transcriptLog.pushSteer(turnId, this.model, resolvedContent, blockId)
-    if (deliveryAfterResolve.type === 'next_provider_continuation') this.pendingSteerContinuationCount += 1
-    await this.commitTranscript()
-    // Transcript-backed delivery is read by the next provider continuation through collectInferenceItems().
+    if (deliveryAfterResolve.type === 'provider') {
+      this.transcriptLog.pushSteer(turnId, this.model, resolvedContent, blockId)
+      await this.commitTranscript()
+      return
+    }
+
+    this.pendingSteers.push({
+      id: this.idFactory(),
+      turnId,
+      model: this.model,
+      content: resolvedContent,
+    })
+    this.pendingSteerContinuationCount += 1
+    // Transcript-backed steering is materialized after the current sampling/tool boundary,
+    // matching Codex pending input semantics.
   }
 
   /**
@@ -339,10 +358,16 @@ export class AgentSession<State> {
             action.resolve()
           } else {
             const normalized = asError(error)
+            try {
+              await this.materializePendingSteersForCurrentTurn()
+            } catch (materializeError) {
+              this.emit({ type: 'error', error: asError(materializeError) })
+            }
             this.emit({ type: 'error', error: normalized })
             action.reject(normalized)
           }
         } finally {
+          this.discardPendingSteersForCurrentTurn()
           this.activeTurnPhase = 'finalizing'
           this.activeProviderRun = null
           this.currentAbortController = null
@@ -550,7 +575,10 @@ export class AgentSession<State> {
         }
       }
       if (toolExecution.stopAfterToolResult) return
-      if (this.pendingSteerContinuationCount > steerContinuationBeforeStream) continue
+      if (this.pendingSteerContinuationCount > steerContinuationBeforeStream) {
+        await this.materializePendingSteersForCurrentTurn()
+        continue
+      }
       if (!toolExecution.executed) return
     }
   }
@@ -836,6 +864,7 @@ export class AgentSession<State> {
   private async recordAbort(): Promise<void> {
     if (this.abortRecorded) return
     this.abortRecorded = true
+    await this.materializePendingSteersForCurrentTurn()
     for (const toolCall of this.transcriptLog.pendingToolCalls()) {
       this.transcriptLog.completeToolCall(
         toolCall.toolUseId,
@@ -845,6 +874,35 @@ export class AgentSession<State> {
     }
     this.transcriptLog.pushAbort(this.model)
     await this.commitTranscript()
+  }
+
+  private async materializePendingSteersForCurrentTurn(): Promise<boolean> {
+    if (!this.activeTurnId) return false
+    const steers = this.takePendingSteersForTurn(this.activeTurnId)
+    if (steers.length === 0) return false
+    for (const steer of steers) {
+      this.transcriptLog.pushSteer(steer.turnId, steer.model, steer.content, steer.id)
+    }
+    await this.commitTranscript()
+    return true
+  }
+
+  private takePendingSteersForTurn(turnId: string): PendingSteer[] {
+    const steers: PendingSteer[] = []
+    for (let index = 0; index < this.pendingSteers.length; ) {
+      const steer = this.pendingSteers[index]
+      if (steer.turnId !== turnId) {
+        index += 1
+        continue
+      }
+      steers.push(steer)
+      this.pendingSteers.splice(index, 1)
+    }
+    return steers
+  }
+
+  private discardPendingSteersForCurrentTurn(): void {
+    if (this.activeTurnId) this.takePendingSteersForTurn(this.activeTurnId)
   }
 
   private removeQueuedMessage(id: string): void {

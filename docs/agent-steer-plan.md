@@ -31,11 +31,11 @@ Codex 的工作模型里 `queue` 和 `steer` 是两种不同的 active session i
 
 1. `queue` and `steer` are explicit caller choices. The runtime must not silently convert one into the other.
 2. A rejected steer is not written to transcript and is not queued automatically.
-3. An accepted steer is durable transcript data and belongs to the active `turnId`.
+3. An accepted steer is active-turn input and belongs to the active `turnId`; transcript-backed steers become durable transcript data when materialized at the Codex-equivalent continuation boundary.
 4. Steer must not reorder queued turns. Queued turns drain only after the active turn finishes.
 5. Steer must not interrupt or rewrite tool results by itself. If the user wants cancellation, that remains `abort`; if the user wants shell stdin, that remains `shell_input`.
 6. Steer accepted during tool execution is delivered before the next provider continuation in the same turn.
-7. Steer accepted during provider streaming is same-turn pending input. If a provider run exposes native active-run steering, use it; otherwise accept the steer into transcript and force a provider continuation after the current stream boundary. Do not claim it changed tokens already emitted by the current provider response.
+7. Steer accepted during provider streaming is same-turn pending input. If a provider run exposes native active-run steering, use it; otherwise store the steer as pending active-turn input, materialize it only after the current stream/tool/required resume boundary, and force a provider continuation. Do not claim it changed tokens already emitted by the current provider response.
 8. Compaction and retry must treat a base user input and its accepted steers as one logical turn group.
 
 ## 3. Package Boundary Placement
@@ -83,7 +83,7 @@ Feasibility:
 - Make `pushUserTurn(model, turnId, content, preamble)` and `pushResumeTurn(model, turnId)` explicit.
 - Add `pushSteer(turnId, model, content)`.
 - Add `InferenceItem` variant `{ type: 'user_steer'; turnId: string; content: UserContentBlock[] }`.
-- `collectInferenceItems()` should emit `user_steer` at the steer block's actual transcript position. That preserves ordering relative to assistant text and tool calls. For a tool currently executing, the existing `tool_call` block is already before the steer block; when the tool completes, `collectInferenceItems()` emits tool result before the steer because output lives inside that earlier tool block.
+- `collectInferenceItems()` should emit `user_steer` at the steer block's actual transcript position. For transcript-backed provider-stream steer, the block is not appended at receive time; it is appended after the current provider output, tool results, and any required mid-turn compact/resume continuation. That preserves Codex's no-preempt ordering.
 - Retry must be changed from "splice after latest user" to "preserve accepted steers for the retried logical turn". The direct implementation is: find the latest user block, capture later steer blocks with the same `turnId`, splice generated assistant/tool/result blocks, then reinsert those steer blocks immediately after the base user for the retry request.
 
 ### 4.3 AgentSession
@@ -103,7 +103,7 @@ Feasibility:
 - Add private active-turn details without changing public `SessionPhase`: `activeTurnPhase: 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing' | null`, `activeProviderRun: ProviderRun | null`, and a monotonic same-turn steer continuation counter.
 - Set `activeTurnPhase` around `streamProviderOnce()`, `executePendingTools()`, compaction, and final cleanup.
 - Store the result of `this.provider.run(request)` in `activeProviderRun` while streaming so `steer()` can call `activeProviderRun.steer` when present.
-- When provider streaming has no native `steer`, accept the steer transcript block and increment the same-turn continuation counter; after the current provider stream ends, loop `executeProviderTurn()` so the next `InferenceRequest.items` contains the new `user_steer`.
+- When provider streaming has no native `steer`, accept the steer into active-turn pending input and increment the same-turn continuation counter. Do not append the steer transcript block at receive time. After the current provider stream, tool execution, and any required mid-turn compact/resume continuation complete, materialize the pending steer block and loop `executeProviderTurn()` so the next `InferenceRequest.items` contains the new `user_steer`.
 - For retry, use the retried user block's `turnId` as the request `turnId`; do not invent a new logical turn id.
 - For resume, generate a new turn id and pass it to `pushResumeTurn()`.
 - Reject `steer()` if `externalMutationReserved` is true, no active turn exists, the active turn is compacting/finalizing, reference resolution fails, or the session closes/aborts before acceptance.
@@ -303,18 +303,24 @@ async function steer(content: UserContentBlock[]): Promise<void> {
       : reject('Active turn cannot accept steering now')
 
   const steer = makeSteer(activeTurn.turnId, resolved)
-  if (delivery === 'native_provider_run') await activeTurn.providerRun.steer(steer)
-  appendSteerBlock(steer)
-  await commitTranscript()
-  if (delivery === 'next_provider_continuation') markSameTurnContinuationNeeded()
+  if (delivery === 'native_provider_run') {
+    await activeTurn.providerRun.steer(steer)
+    appendSteerBlock(steer)
+    await commitTranscript()
+  } else {
+    appendPendingSteer(steer)
+    markSameTurnContinuationNeeded()
+  }
 }
 ```
 
 Delivery rule:
 
-- Transcript is the source of truth. Once a steer block is committed, later provider continuations see it through `Transcript.collectInferenceItems()`.
-- No separate `pendingSteers` list is needed for replay. If steer is accepted while a tool is executing, the steer block is appended after the existing `tool_call` block. When the tool completes, `collectInferenceItems()` emits that tool's result before the steer because the result is stored on the earlier tool block.
-- A small monotonic continuation counter is still needed to tell `executeProviderTurn()` that a provider-stream steer arrived while no tool call was produced; it loops one more provider request for the same `turnId`.
+- Transcript is the source of truth for model replay, but transcript-backed same-turn steering first lives in active-turn pending input. The steer block is materialized only at the Codex-equivalent continuation boundary.
+- If steer is accepted while a provider stream is in progress, the current stream's reasoning/text/tool call/response blocks remain before the steer. This matches Codex's "no preempt" behavior: a steer does not rewrite or jump ahead of already-started sampling output.
+- If steer is accepted while a tool is executing, materialization waits until the tool result is recorded. `collectInferenceItems()` then emits `tool_use`, `tool_result`, and `user_steer` in that order.
+- If mid-turn compaction or post-compaction resume is required before the model should see new user guidance, materialization waits until that continuation is complete.
+- A small monotonic continuation counter is still needed to tell `executeProviderTurn()` that transcript-backed steer arrived while no tool call was produced; after materializing pending steers it loops one more provider request for the same `turnId`.
 - `ProviderRun.steer` should be implemented only for verified native active-run delivery. If it throws before transcript commit, the session rejects the steer without writing a transcript block.
 
 Interaction with existing actions:
@@ -417,16 +423,16 @@ Reject steer when:
 
 Do not reject steer merely because there are queued messages. Queue and steer operate on different turn targets.
 
-If a provider accepts steer and then later fails the active run, the accepted steer remains in transcript as part of the failed or aborted turn. The user can retry/resume with that history intact.
+If a provider accepts steer and then later fails the active run before the steer is materialized for model replay, the pending steer is materialized during error/abort handling so it remains part of the failed or aborted turn. The user can retry/resume with that history intact.
 
 ## 12. Test Coverage Map
 
 Add or update deterministic tests under `packages/agent/src/__tests__`:
 
-- `session.test.ts`: steer rejects while idle; accepts during active provider run; does not emit queue events; appends `steer` transcript block with the active `turnId`.
+- `session.test.ts`: steer rejects while idle; accepts during active provider run; does not emit queue events; native active-run steer appends `steer` transcript blocks with the active `turnId`.
 - `session.test.ts`: multiple steers preserve order and share the same active `turnId`.
 - `session.test.ts`: steer during tool execution is included before the next provider continuation, without draining queued sends early.
-- `session.test.ts`: provider-stream steer without `ProviderRun.steer` is accepted, appends a steer block, and triggers one same-turn provider continuation before queued sends drain.
+- `session.test.ts`: provider-stream steer without `ProviderRun.steer` is accepted as pending active-turn input, materializes after current provider output/tool results, and triggers one same-turn provider continuation before queued sends drain.
 - `session.test.ts`: abort after accepted steer records abort and preserves steer history.
 - `compaction.test.ts`: compaction does not split base user and steer blocks except through documented split-turn summary behavior.
 - `server.test.ts`: `steer` frame produces `steer_result` ack and transcript patch; multiple acks correlate by `steerId`.
@@ -479,7 +485,7 @@ Each item is intended to be implementable as a small checkpoint. Do not enable U
 - [x] In `executePendingTools()`, set internal active phase to `tool_executing` while tool invocations are awaited.
 - [x] Add transcript-backed same-turn continuation for provider-stream steers when `ProviderRun.steer` is absent.
 - [x] Reject steer during idle, compaction, finalizing, external mutation reservation, reference-resolution failure, closed session, or abort race.
-- [x] Commit accepted steer through `commitTranscript()` only; never mutate transcript silently.
+- [x] Commit native accepted steer through `commitTranscript()` only; materialize transcript-backed accepted steer through `commitTranscript()` at the continuation boundary; never mutate transcript silently.
 - [x] Verification: `bun test packages/agent/src/__tests__/session.test.ts packages/agent/src/__tests__/server.test.ts`.
 
 ### 13.4 Transport, Server, And Client

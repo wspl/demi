@@ -695,14 +695,14 @@ test('AgentSession accepts provider-stream steer without native support and cont
   expect(session.queuedMessages()).toMatchObject([{ text: 'queued next turn' }])
 
   await session.steer(text('same turn guidance'))
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer'])
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user'])
   expect(session.queuedMessages()).toMatchObject([{ text: 'queued next turn' }])
 
   provider.release(0)
   await provider.waitForRun(1)
   expect(provider.requests[1]?.turnId).toBe('id-1')
-  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual(['user_message', 'user_steer', 'assistant_text'])
-  expect(provider.requests[1]?.items[1]).toEqual({
+  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual(['user_message', 'assistant_text', 'user_steer'])
+  expect(provider.requests[1]?.items[2]).toEqual({
     type: 'user_steer',
     turnId: 'id-1',
     content: text('same turn guidance'),
@@ -719,9 +719,9 @@ test('AgentSession accepts provider-stream steer without native support and cont
 
   expect(session.transcript().blocks.map((block) => block.type)).toEqual([
     'user',
-    'steer',
     'text',
     'response',
+    'steer',
     'text',
     'response',
     'user',
@@ -730,7 +730,7 @@ test('AgentSession accepts provider-stream steer without native support and cont
   ])
 })
 
-test('AgentSession schedules provider-stream steer continuation before slow snapshot persistence finishes', async () => {
+test('AgentSession materializes provider-stream steer after current output before continuation', async () => {
   const provider = new GateProvider([
     [events.text('first'), events.response()],
     [events.text('continued'), events.response()],
@@ -740,16 +740,18 @@ test('AgentSession schedules provider-stream steer continuation before slow snap
 
   const sending = session.send(text('start'))
   await provider.waitForRun(0)
-  const steering = session.steer(text('persist slowly'))
-  await store.waitForSteerSnapshot()
+  await session.steer(text('persist slowly'))
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user'])
 
   provider.release(0)
-  await withTimeout(provider.waitForRun(1))
-  expect(provider.requests[1]?.turnId).toBe('id-1')
-  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual(['user_message', 'user_steer', 'assistant_text'])
+  await store.waitForSteerSnapshot()
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response', 'steer'])
 
   store.release()
-  await steering
+  await withTimeout(provider.waitForRun(1))
+  expect(provider.requests[1]?.turnId).toBe('id-1')
+  expect(provider.requests[1]?.items.map((item) => item.type)).toEqual(['user_message', 'assistant_text', 'user_steer'])
+
   provider.release(1)
   await sending
 })

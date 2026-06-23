@@ -296,8 +296,11 @@ test('CodexProvider replays provider-stream steers in a same-turn follow-up befo
   await transport.waitForRequest(1)
 
   expect(session.queuedMessages()).toMatchObject([{ text: 'queued next' }])
-  expect(JSON.stringify(transport.requests[1]?.body)).toContain('steer current')
-  expect(JSON.stringify(transport.requests[1]?.body)).not.toContain('queued next')
+  const secondBody = JSON.stringify(transport.requests[1]?.body)
+  expect(secondBody).toContain('first')
+  expect(secondBody).toContain('steer current')
+  expect(secondBody.indexOf('first')).toBeLessThan(secondBody.indexOf('steer current'))
+  expect(secondBody).not.toContain('queued next')
 
   transport.release(1)
   await activeTurn
@@ -308,9 +311,9 @@ test('CodexProvider replays provider-stream steers in a same-turn follow-up befo
   await queuedTurn
   expect(session.transcript().blocks.map((block) => block.type)).toEqual([
     'user',
-    'steer',
     'text',
     'response',
+    'steer',
     'text',
     'response',
     'user',
