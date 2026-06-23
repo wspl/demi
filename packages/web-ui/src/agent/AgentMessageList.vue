@@ -36,7 +36,7 @@ const renderBlocks = computed<MessageListBlock[]>(() => [
   ...pendingSteersToRenderBlocks(props.pendingSteers),
 ])
 
-const shouldShowLoading = computed(() => shouldShowTailLoading(props.phase, renderBlocks.value))
+const shouldShowLoading = computed(() => shouldShowTailLoading(props.phase, visibleTranscriptBlocks.value, renderBlocks.value))
 
 function isStreamingThinkingAt(index: number): boolean {
   const block = renderBlocks.value[index]

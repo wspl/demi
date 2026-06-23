@@ -9,6 +9,7 @@ test('tail loading appears while a running turn waits for the first model output
 
 test('tail loading appears after user-like blocks while the turn is running', () => {
   expect(shouldShowTailLoading('running', [userBlock()])).toBe(true)
+  expect(shouldShowTailLoading('running', [steerBlock()])).toBe(true)
   expect(shouldShowTailLoading('running', [pendingSteerBlock()])).toBe(true)
   expect(shouldShowTailLoading('running', [resumeBlock()])).toBe(true)
   expect(shouldShowTailLoading('running', [responseBlock()])).toBe(true)
@@ -35,6 +36,17 @@ test('tail loading stays hidden while assistant content is the latest visible bl
   expect(shouldShowTailLoading('running', [textBlock()])).toBe(false)
 })
 
+test('pending steer does not add tail loading while active thinking is already loading', () => {
+  const transcriptBlocks = [thinkingBlock()]
+  const renderBlocks = [...transcriptBlocks, pendingSteerBlock()]
+
+  expect(shouldShowTailLoading('running', transcriptBlocks, renderBlocks)).toBe(false)
+})
+
+test('tail loading appears after a materialized steer before the model continues', () => {
+  expect(shouldShowTailLoading('running', [thinkingBlock(), steerBlock()])).toBe(true)
+})
+
 const createdAt = '2026-06-24T00:00:00.000Z'
 const model = null as unknown as BlockWithModel['model']
 
@@ -57,6 +69,17 @@ function pendingSteerBlock(): MessageListBlock {
     type: 'pending_steer',
     id: 'pending-steer-1',
     pendingSteerId: 'pending-1',
+    content: [{ type: 'text', text: 'steer' }],
+  }
+}
+
+function steerBlock(): MessageListBlock {
+  return {
+    type: 'steer',
+    id: 'steer-1',
+    turnId: 'turn-1',
+    createdAt,
+    model,
     content: [{ type: 'text', text: 'steer' }],
   }
 }
