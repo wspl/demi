@@ -13,6 +13,7 @@ test('buildCodexResponsesRequestBody converts inference items, tools, thinking, 
   const body = buildCodexResponsesRequestBody(
     makeRequest([
       { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+      { type: 'user_steer', turnId: 'turn-1', content: [{ type: 'text', text: 'steer this turn' }] },
       { type: 'assistant_thinking', modelId: 'gpt-5.4', text: 'private', signature: JSON.stringify(reasoningItem) },
       { type: 'assistant_text', modelId: 'gpt-5.4', text: 'visible' },
       { type: 'tool_use', modelId: 'gpt-5.4', toolUseId: 'call_1|fc_1', toolName: 'shell_exec', input: { script: 'pwd' } },
@@ -42,6 +43,7 @@ test('buildCodexResponsesRequestBody converts inference items, tools, thinking, 
   ])
   expect(body.input).toEqual([
     { role: 'user', content: [{ type: 'input_text', text: 'hello' }] },
+    { role: 'user', content: [{ type: 'input_text', text: 'steer this turn' }] },
     reasoningItem,
     expect.objectContaining({
       type: 'message',

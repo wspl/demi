@@ -26,6 +26,7 @@ export function requestToInputMessages(request: InferenceRequest): ClaudeInputMe
   for (const item of request.items) {
     switch (item.type) {
       case 'user_message':
+      case 'user_steer':
         flush()
         messages.push({ type: 'user', message: { role: 'user', content: userContentToClaude(item.content) } })
         break
@@ -98,6 +99,7 @@ export function coldStartInputMessages(items: InferenceItem[]): ClaudeInputMessa
   for (const item of items) {
     switch (item.type) {
       case 'user_message':
+      case 'user_steer':
         append('user', userContentToClaude(item.content))
         break
       case 'assistant_text':
@@ -140,6 +142,7 @@ function safeJson(value: unknown): string {
 export function inferenceItemToClaudeMessage(item: InferenceItem): ClaudeInputMessage | null {
   switch (item.type) {
     case 'user_message':
+    case 'user_steer':
       return { type: 'user', message: { role: 'user', content: userContentToClaude(item.content) } }
     case 'assistant_text':
     case 'assistant_thinking':

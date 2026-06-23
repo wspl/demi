@@ -17,6 +17,7 @@ export interface ProviderConfig {
 export type ClientFrame =
   | { type: 'open'; provider: ProviderConfig; cwd: string }
   | { type: 'send'; content: UserContentBlock[] }
+  | { type: 'steer'; steerId: string; content: UserContentBlock[] }
   | { type: 'set_provider'; provider: ProviderConfig }
   | { type: 'abort' }
   | { type: 'retry' }
@@ -32,6 +33,8 @@ export type ServerFrame =
   | { type: 'transcript_patch'; patches: TranscriptPatch[] }
   | { type: 'phase'; phase: SessionPhase }
   | { type: 'queue'; queue: QueuedMessage[] }
+  | { type: 'steer_result'; steerId: string; status: 'accepted' }
+  | { type: 'steer_result'; steerId: string; status: 'rejected'; reason: string }
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
   | { type: 'shell_output'; shellId: string; snapshot: OutputSnapshotLike }
   | { type: 'shell_input_result'; shellId: string; output: ToolResultContentBlock[] }
@@ -51,6 +54,8 @@ export type ClientSessionEvent =
   | { type: 'transcript_patch'; patches: TranscriptPatch[]; blocks: Block[] }
   | { type: 'phase'; phase: SessionPhase }
   | { type: 'queue'; queue: QueuedMessage[] }
+  | { type: 'steer_result'; steerId: string; status: 'accepted' }
+  | { type: 'steer_result'; steerId: string; status: 'rejected'; reason: string }
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
   | { type: 'shell_output'; shellId: string; snapshot: OutputSnapshotLike }
   | { type: 'shell_input_result'; shellId: string; output: ToolResultContentBlock[] }

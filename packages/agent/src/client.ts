@@ -14,10 +14,16 @@ interface ActionWaiter {
   reject: (error: Error) => void
 }
 
+interface SteerWaiter {
+  resolve: () => void
+  reject: (error: Error) => void
+}
+
 export class AgentClient {
   private readonly transport: AgentClientTransport
   private readonly listeners = new Set<AgentClientListener>()
   private readonly pendingActionWaiters: ActionWaiter[] = []
+  private readonly pendingSteerWaiters = new Map<string, SteerWaiter>()
   private blocks: Block[] = []
   private phase: SessionPhase | null = null
   private unsubscribeTransport: () => void
@@ -41,6 +47,13 @@ export class AgentClient {
 
   send(content: UserContentBlock[]): Promise<void> {
     return this.sendMessage(content)
+  }
+
+  steer(content: UserContentBlock[]): Promise<void> {
+    const steerId = globalThis.crypto.randomUUID()
+    const wait = this.waitForSteer(steerId)
+    this.sendFrame({ type: 'steer', steerId, content })
+    return wait
   }
 
   /**
@@ -121,6 +134,7 @@ export class AgentClient {
         this.phase = null
         this.emit(frame)
         this.resolveAllActionWaiters()
+        this.rejectAllSteerWaiters(new Error('Session closed'))
         return
       case 'opened':
         this.emit(frame)
@@ -133,6 +147,12 @@ export class AgentClient {
         return
       }
       case 'queue':
+        this.emit(frame)
+        return
+      case 'steer_result':
+        this.emit(frame)
+        this.handleSteerResult(frame)
+        return
       case 'tool_progress':
       case 'shell_output':
       case 'shell_input_result':
@@ -146,6 +166,7 @@ export class AgentClient {
       case 'error':
         this.emit(frame)
         this.rejectErroredAction(new Error(frame.message))
+        this.rejectAllSteerWaiters(new Error(frame.message))
         return
     }
   }
@@ -176,6 +197,20 @@ export class AgentClient {
         reject,
       })
     })
+  }
+
+  private waitForSteer(steerId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.pendingSteerWaiters.set(steerId, { resolve, reject })
+    })
+  }
+
+  private handleSteerResult(frame: Extract<ServerFrame, { type: 'steer_result' }>): void {
+    const waiter = this.pendingSteerWaiters.get(frame.steerId)
+    if (!waiter) return
+    this.pendingSteerWaiters.delete(frame.steerId)
+    if (frame.status === 'accepted') waiter.resolve()
+    else waiter.reject(new Error(frame.reason))
   }
 
   private handleActionPhase(previousPhase: SessionPhase | null, phase: SessionPhase): void {
@@ -221,6 +256,12 @@ export class AgentClient {
 
   private rejectAllActionWaiters(error: Error): void {
     const waiters = this.pendingActionWaiters.splice(0)
+    for (const waiter of waiters) waiter.reject(error)
+  }
+
+  private rejectAllSteerWaiters(error: Error): void {
+    const waiters = [...this.pendingSteerWaiters.values()]
+    this.pendingSteerWaiters.clear()
     for (const waiter of waiters) waiter.reject(error)
   }
 

@@ -15,6 +15,7 @@ test('requestToInputMessages converts inference items to stream-json input messa
     cancel: new AbortController().signal,
     items: [
       { type: 'user_message', content: [{ type: 'text', text: 'hi' }] },
+      { type: 'user_steer', turnId: 'test-turn', content: [{ type: 'text', text: 'steer this turn' }] },
       { type: 'assistant_text', modelId: 'model', text: 'hello' },
       {
         type: 'tool_result',
@@ -25,9 +26,13 @@ test('requestToInputMessages converts inference items to stream-json input messa
     ],
   })
 
-  expect(messages).toHaveLength(3)
-  expect(inputMessagesToJsonl(messages).split('\n')).toHaveLength(3)
-  expect(messages[2]).toEqual({
+  expect(messages).toHaveLength(4)
+  expect(inputMessagesToJsonl(messages).split('\n')).toHaveLength(4)
+  expect(messages[1]).toEqual({
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'text', text: 'steer this turn' }] },
+  })
+  expect(messages[3]).toEqual({
     type: 'user',
     message: {
       role: 'user',

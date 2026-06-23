@@ -70,6 +70,7 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
       {
         type: 'user',
         id: 'user-1',
+        turnId: 'turn-1',
         createdAt: '2026-06-17T00:00:00.000Z',
         model,
         content: [

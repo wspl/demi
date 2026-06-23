@@ -10,6 +10,7 @@ type ImageBlock = Extract<UserContentBlock, { type: 'image' }>
 const props = defineProps<{
   content: UserContentBlock[]
   forceStuck?: boolean
+  variant?: 'user' | 'steer'
 }>()
 
 const userText = computed(() => {
@@ -48,7 +49,10 @@ useResizeObserver(contentRef, () => {
     class="relative z-10 flex flex-col items-end bg-surface px-8 pb-2 pt-1.5"
     :class="forceStuck ? 'user-sticky' : ''"
   >
-    <div class="group/user relative max-w-[80%] rounded-xl bg-surface-raised p-3">
+    <div
+      class="group/user relative max-w-[80%] rounded-xl p-3"
+      :class="props.variant === 'steer' ? 'bg-surface ring-1 ring-line-focus' : 'bg-surface-raised'"
+    >
       <div v-if="imageBlocks.length > 0 || documentBlocks.length > 0" class="mb-2 flex flex-wrap gap-1.5">
         <img
           v-for="(block, i) in imageBlocks"

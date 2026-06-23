@@ -6,8 +6,8 @@ import type { ModelSelection } from '@demi/core'
 import type { AgentHarness, AgentSessionSnapshot } from '@demi/agent'
 import type { BashEnvironmentOptions } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
-import { ProviderRegistry, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
-import { StubProvider, events } from '@demi/provider/testing'
+import { ProviderRegistry, type AgentProvider, type InferenceRequest, type InferenceSteer, type ProviderEvent, type ProviderRun } from '@demi/provider'
+import { StubProvider, createProviderRun, events } from '@demi/provider/testing'
 import {
   AgentClient,
   AgentServer,
@@ -362,6 +362,100 @@ test('AgentServer queues send frames while the session is busy and drains them i
   expect(seen.some((event) => event.type === 'queue' && event.queue.length === 0)).toBe(true)
 })
 
+test('AgentClient.steer resolves correlated accepted acks and receives transcript patches without queueing', async () => {
+  const registry = new ProviderRegistry()
+  const provider = new ServerGateProvider({ supportsSteer: true })
+  registry.register({
+    type: 'server-steerable',
+    displayName: 'Server Steerable',
+    createProvider: () => provider,
+  })
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providerRegistry: registry,
+  })
+  const client = server.client()
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open({ type: 'server-steerable', model }, '/workspace')
+  const sending = client.send([{ type: 'text', text: 'start' }])
+  await provider.waitForRun(0)
+  seen.length = 0
+
+  await Promise.all([
+    client.steer([{ type: 'text', text: 'first steer' }]),
+    client.steer([{ type: 'text', text: 'second steer' }]),
+  ])
+
+  const steerResults = seen.filter((event) => event.type === 'steer_result')
+  expect(steerResults).toHaveLength(2)
+  expect(steerResults.every((event) => event.type === 'steer_result' && event.status === 'accepted')).toBe(true)
+  expect(new Set(steerResults.map((event) => (event.type === 'steer_result' ? event.steerId : ''))).size).toBe(2)
+  expect(provider.steers.map((steer) => steer.content)).toEqual([
+    [{ type: 'text', text: 'first steer' }],
+    [{ type: 'text', text: 'second steer' }],
+  ])
+  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'steer'])
+  expect(seen.some((event) => event.type === 'queue')).toBe(false)
+
+  provider.release(0)
+  await sending
+  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'steer', 'text', 'response'])
+})
+
+test('AgentClient.steer rejects when no session is open and does not create transcript state', async () => {
+  const { client } = createAgentClientHarness({ providerTurns: [] })
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await expect(client.steer([{ type: 'text', text: 'orphan steer' }])).rejects.toThrow('No session is open')
+
+  expect(seen).toContainEqual({
+    type: 'steer_result',
+    steerId: expect.any(String),
+    status: 'rejected',
+    reason: 'No session is open on this connection',
+  })
+  expect(client.transcript().blocks).toEqual([])
+})
+
+test('AgentClient.steer rejection from unsupported active provider does not append a steer block', async () => {
+  const registry = new ProviderRegistry()
+  const provider = new ServerGateProvider({ supportsSteer: false })
+  registry.register({
+    type: 'server-unsteerable',
+    displayName: 'Server Unsteerable',
+    createProvider: () => provider,
+  })
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providerRegistry: registry,
+  })
+  const client = server.client()
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open({ type: 'server-unsteerable', model }, '/workspace')
+  const sending = client.send([{ type: 'text', text: 'start' }])
+  await provider.waitForRun(0)
+  seen.length = 0
+
+  await expect(client.steer([{ type: 'text', text: 'unsupported' }])).rejects.toThrow('does not support steering')
+
+  expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user'])
+  expect(seen.some((event) => event.type === 'queue')).toBe(false)
+  expect(
+    seen
+      .filter((event) => event.type === 'transcript_patch')
+      .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
+      .some((patch) => patch.op === 'add' && patch.value.type === 'steer'),
+  ).toBe(false)
+
+  provider.release(0)
+  await sending
+})
+
 test('AgentServer rejects retry, resume, and compact frames while the session is busy', async () => {
   const registry = new ProviderRegistry()
   const gate = deferred<void>()
@@ -645,6 +739,53 @@ class DelayedProvider implements AgentProvider {
     await this.release
     yield events.text('done')
     yield events.response()
+  }
+}
+
+class ServerGateProvider implements AgentProvider {
+  calls = 0
+  readonly requests: InferenceRequest[] = []
+  readonly steers: InferenceSteer[] = []
+  private readonly gates: Array<{ promise: Promise<void>; resolve: (value: void) => void }> = []
+  private readonly started = new Map<number, { promise: Promise<void>; resolve: (value: void) => void }>()
+
+  constructor(private readonly options: { supportsSteer: boolean }) {}
+
+  run(request: InferenceRequest): ProviderRun {
+    const index = this.calls
+    this.calls += 1
+    this.requests.push(request)
+    const gate = deferred<void>()
+    this.gates[index] = gate
+    const output = async function* (): AsyncIterable<ProviderEvent> {
+      await gate.promise
+      yield events.text('done')
+      yield events.response()
+    }
+    this.started.get(index)?.resolve(undefined)
+    return createProviderRun(
+      output(),
+      this.options.supportsSteer
+        ? {
+            steer: (input) => {
+              this.steers.push(input)
+            },
+          }
+        : {},
+    )
+  }
+
+  waitForRun(index: number): Promise<void> {
+    if (this.requests.length > index) return Promise.resolve()
+    const existing = this.started.get(index)
+    if (existing) return existing.promise
+    const next = deferred<void>()
+    this.started.set(index, next)
+    return next.promise
+  }
+
+  release(index: number): void {
+    this.gates[index].resolve(undefined)
   }
 }
 

@@ -16,7 +16,11 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
     if (!content) return
     params.clearInput()
     try {
-      await params.workspace.send(params.conversationId, content)
+      if (params.workspace.sessions[params.conversationId]?.phase === 'running') {
+        await params.workspace.steer(params.conversationId, content)
+      } else {
+        await params.workspace.send(params.conversationId, content)
+      }
     } catch (error) {
       reportError('Failed to send message', error, { userVisible: true })
     }

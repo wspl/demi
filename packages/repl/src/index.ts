@@ -53,6 +53,7 @@ export interface RenderState {
   toolStatuses: Map<string, string>
   seenResponseIds: Set<string>
   seenUserIds: Set<string>
+  seenSteerIds: Set<string>
   seenErrorIds: Set<string>
   seenAbortIds: Set<string>
   toolOutputCounts: Map<string, number>
@@ -62,6 +63,7 @@ export interface RenderState {
 
 interface ReplCommandClient {
   abort(): Promise<boolean>
+  steer(content: UserContentBlock[]): Promise<void>
   retry(): Promise<void>
   resume(): Promise<void>
   compact(): Promise<void>
@@ -86,6 +88,7 @@ export interface ReplInputLoop {
 const helpText = `Commands:
   /help                      Show this help
   /abort                     Abort the active turn
+  /steer <message>           Steer the active turn without queueing a new turn
   /retry                     Retry the latest user turn
   /resume                    Resume after an abort
   /compact                   Request transcript compaction
@@ -196,6 +199,17 @@ export async function handleCommand(
       writeEventLine(output, 'state', 'abort requested', 'yellow')
       void client.abort().catch((error) => writeEventLine(output, 'error', `abort failed: ${messageOf(error)}`, 'red'))
       return false
+    case '/steer': {
+      const message = rest.join(' ').trim()
+      if (!message) {
+        writeEventLine(output, 'error', 'usage: /steer <message>', 'red')
+        return false
+      }
+      void client
+        .steer([{ type: 'text', text: message }])
+        .catch((error) => writeEventLine(output, 'error', `steer failed: ${messageOf(error)}`, 'red'))
+      return false
+    }
     case '/retry':
       void client.retry().catch((error) => writeEventLine(output, 'error', `retry failed: ${messageOf(error)}`, 'red'))
       return false
@@ -309,6 +323,14 @@ function renderBlocks(state: RenderState, blocks: Block[]): void {
   for (const block of blocks) {
     if (block.type === 'user') {
       if (!state.seenUserIds.has(block.id)) state.seenUserIds.add(block.id)
+      continue
+    }
+    if (block.type === 'steer') {
+      if (!state.seenSteerIds.has(block.id)) {
+        finishStream(state)
+        state.seenSteerIds.add(block.id)
+        writeEventLine(state.output, 'steer', formatUserContent(block.content), 'yellow')
+      }
       continue
     }
     if (block.type === 'text') {
@@ -477,6 +499,10 @@ function trimOneLine(text: string): string {
   return compact.length > 100 ? `${compact.slice(0, 97)}...` : compact
 }
 
+function formatUserContent(content: UserContentBlock[]): string {
+  return trimOneLine(content.map((block) => (block.type === 'text' ? block.text : `[${block.type}]`)).join(' '))
+}
+
 export function createRenderer(output: ReplOutput = process.stdout): RenderState {
   return {
     output,
@@ -487,6 +513,7 @@ export function createRenderer(output: ReplOutput = process.stdout): RenderState
     toolStatuses: new Map(),
     seenResponseIds: new Set(),
     seenUserIds: new Set(),
+    seenSteerIds: new Set(),
     seenErrorIds: new Set(),
     seenAbortIds: new Set(),
     toolOutputCounts: new Map(),

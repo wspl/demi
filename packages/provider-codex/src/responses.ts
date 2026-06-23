@@ -247,6 +247,7 @@ export function usageFromResponse(response: unknown): TokenUsage {
 function inferenceItemToResponsesInput(item: InferenceItem, index: number): CodexResponseInputItem[] {
   switch (item.type) {
     case 'user_message':
+    case 'user_steer':
       return [{ role: 'user', content: userContentToResponses(item.content) }]
     case 'assistant_text':
       return [

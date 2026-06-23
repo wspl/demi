@@ -33,6 +33,12 @@ const attrs = useAttrs()
     v-bind="attrs"
     :content="block.content"
   />
+  <UserBlock
+    v-else-if="block.type === 'steer'"
+    v-bind="attrs"
+    :content="block.content"
+    variant="steer"
+  />
   <div v-else v-bind="attrs">
     <ThinkingBlock
       v-if="block.type === 'thinking'"

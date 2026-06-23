@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection, UserContentBlock } from '@demi/core'
-import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demi/provider'
-import { StubProvider, events } from '@demi/provider/testing'
+import type { AgentProvider, InferenceRequest, InferenceSteer, ProviderEvent, ProviderRun } from '@demi/provider'
+import { StubProvider, createProviderRun, events } from '@demi/provider/testing'
 import {
   AgentSession,
   Transcript,
@@ -314,10 +314,10 @@ test('AgentSession abort is not blocked by a hanging compaction summary provider
     })(),
     now: () => '2026-06-17T00:00:00.000Z',
   })
-  transcript.pushUserTurn(model, text('old'))
+  transcript.pushUserTurn('test-turn', model, text('old'))
   transcript.applyProviderEvent(model, events.text('answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('recent'))
+  transcript.pushUserTurn('test-turn', model, text('recent'))
   const session = createSession(provider, createRuntime(), transcript)
 
   const compacting = session.compact()
@@ -641,6 +641,148 @@ test('AgentSession queues sends while a run is active and drains them in order',
   expect(userTexts).toEqual(['first', 'second'])
 })
 
+test('AgentSession rejects steer while idle without changing the transcript', async () => {
+  const session = createSession(new StubProvider([]))
+
+  await expect(session.steer(text('too late'))).rejects.toThrow('no active turn to steer')
+
+  expect(session.transcript().blocks).toEqual([])
+  expect(session.queuedMessages()).toEqual([])
+})
+
+test('AgentSession delivers multiple steers to an active steerable provider run without queueing', async () => {
+  const provider = new SteerableGateProvider([[events.text('done'), events.response()]])
+  const session = createSession(provider)
+  const emitted: SessionEvent[] = []
+  session.subscribe((event) => emitted.push(event))
+
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+
+  await session.steer(text('first steer'))
+  await session.steer(text('second steer'))
+
+  expect(provider.steers.map((steer) => steer.content)).toEqual([text('first steer'), text('second steer')])
+  expect(provider.steers.map((steer) => steer.turnId)).toEqual(['id-1', 'id-1'])
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'steer'])
+  expect(
+    session
+      .transcript()
+      .blocks.filter((block) => block.type === 'steer')
+      .map((block) => (block.type === 'steer' ? block.turnId : '')),
+  ).toEqual(['id-1', 'id-1'])
+  expect(session.queuedMessages()).toEqual([])
+  expect(emitted.some((event) => event.type === 'queue_changed')).toBe(false)
+
+  provider.release(0)
+  await sending
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'steer', 'text', 'response'])
+})
+
+test('AgentSession rejects provider-stream steer when the active run lacks steer support', async () => {
+  const provider = new GateProvider([[events.text('done'), events.response()]])
+  const session = createSession(provider)
+
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+
+  await expect(session.steer(text('unsupported'))).rejects.toThrow('does not support steering')
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user'])
+
+  provider.release(0)
+  await sending
+})
+
+test('AgentSession does not append steer blocks when native provider steer rejects', async () => {
+  const provider = new SteerableGateProvider([[events.text('done'), events.response()]], () => {
+    throw new Error('steer rejected')
+  })
+  const session = createSession(provider)
+
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+
+  await expect(session.steer(text('rejected'))).rejects.toThrow('steer rejected')
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user'])
+
+  provider.release(0)
+  await sending
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+})
+
+test('AgentSession abort after an accepted steer preserves steer history', async () => {
+  const provider = new SteerableGateProvider([[events.text('unreachable'), events.response()]])
+  const session = createSession(provider)
+
+  const sending = session.send(text('start'))
+  await provider.waitForRun(0)
+  await session.steer(text('accepted before abort'))
+
+  await session.abort()
+  await sending
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'abort'])
+  expect(session.transcript().collectInferenceItems()).toEqual([
+    { type: 'user_message', content: [{ type: 'text', text: 'preamble' }, ...text('start')] },
+    { type: 'user_steer', turnId: 'id-1', content: text('accepted before abort') },
+  ])
+})
+
+test('AgentSession records tool-execution steer for the next provider continuation without queueing', async () => {
+  const toolStarted = deferred<void>()
+  const releaseTool = deferred<void>()
+  const provider = new StubProvider([
+    [events.toolCall('tool-1', 'slow_tool', {}), events.response()],
+    (request) => {
+      expect(request.items.map((item) => item.type)).toEqual(['user_message', 'tool_use', 'tool_result', 'user_steer'])
+      expect(request.items[3]).toEqual({
+        type: 'user_steer',
+        turnId: 'id-1',
+        content: text('while tool runs'),
+      })
+      return [events.text('continued'), events.response()]
+    },
+  ])
+  const runtime = createRuntime({
+    tools: () => [
+      {
+        name: 'slow_tool',
+        description: 'Waits for the test to release it.',
+        inputSchema: {},
+        invoke: async (): Promise<AgentToolInvokeResult> => {
+          toolStarted.resolve(undefined)
+          await releaseTool.promise
+          return { output: [{ type: 'text', text: 'tool done' }] }
+        },
+      },
+    ],
+  })
+  const session = createSession(provider, runtime)
+  const emitted: SessionEvent[] = []
+  session.subscribe((event) => emitted.push(event))
+
+  const sending = session.send(text('use tool'))
+  await toolStarted.promise
+
+  await session.steer(text('while tool runs'))
+  expect(session.queuedMessages()).toEqual([])
+  expect(emitted.some((event) => event.type === 'queue_changed')).toBe(false)
+
+  releaseTool.resolve(undefined)
+  await sending
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'tool_call',
+    'response',
+    'steer',
+    'text',
+    'response',
+  ])
+})
+
 test('AgentSession retry truncates the last assistant response and reruns the latest user turn', async () => {
   const provider = new StubProvider([
     [events.text('old'), events.response()],
@@ -660,13 +802,48 @@ test('AgentSession retry truncates the last assistant response and reruns the la
   expect(session.transcript().blocks[1]).toMatchObject({ type: 'text', text: 'new' })
 })
 
+test('AgentSession retry preserves accepted steers for the retried turn', async () => {
+  const transcript = new Transcript([], {
+    idFactory: (() => {
+      let id = 0
+      return () => `seed-${++id}`
+    })(),
+    now: () => '2026-06-17T00:00:00.000Z',
+  })
+  transcript.pushUserTurn('turn-a', model, text('question'), 'preamble')
+  transcript.pushSteer('turn-a', model, text('extra constraint'))
+  transcript.applyProviderEvent(model, events.text('old'))
+  transcript.applyProviderEvent(model, events.response())
+  const provider = new StubProvider([
+    (request) => {
+      expect(request.turnId).toBe('turn-a')
+      expect(request.items).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'preamble' }, ...text('question')] },
+        { type: 'user_steer', turnId: 'turn-a', content: text('extra constraint') },
+      ])
+      return [events.text('new'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createRuntime(), transcript)
+
+  await session.retry()
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'steer', 'text', 'response'])
+  expect(session.transcript().blocks[1]).toMatchObject({
+    type: 'steer',
+    turnId: 'turn-a',
+    content: text('extra constraint'),
+  })
+  expect(session.transcript().blocks[2]).toMatchObject({ type: 'text', text: 'new' })
+})
+
 test('AgentSession resume marks abort as resumed and adds a resume turn', async () => {
   const provider = new StubProvider([[events.text('continued'), events.response()]])
   const transcript = new Transcript([], {
     idFactory: () => 'seed-id',
     now: () => '2026-06-17T00:00:00.000Z',
   })
-  transcript.pushUserTurn(model, text('question'))
+  transcript.pushUserTurn('test-turn', model, text('question'))
   transcript.pushAbort(model)
   const session = createSession(provider, createRuntime(), transcript)
 
@@ -674,6 +851,38 @@ test('AgentSession resume marks abort as resumed and adds a resume turn', async 
 
   expect(session.transcript().blocks[1]).toMatchObject({ type: 'abort', isResumed: true })
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'abort', 'resume', 'text', 'response'])
+})
+
+test('AgentSession resume replays accepted steers from the aborted turn', async () => {
+  const provider = new StubProvider([
+    (request) => {
+      expect(request.items).toEqual([
+        { type: 'user_message', content: text('question') },
+        { type: 'user_steer', turnId: 'turn-a', content: text('extra constraint') },
+        { type: 'user_message', content: [{ type: 'text', text: 'Continue from where you left off.' }] },
+      ])
+      return [events.text('continued'), events.response()]
+    },
+  ])
+  const transcript = new Transcript([], {
+    idFactory: () => 'seed-id',
+    now: () => '2026-06-17T00:00:00.000Z',
+  })
+  transcript.pushUserTurn('turn-a', model, text('question'))
+  transcript.pushSteer('turn-a', model, text('extra constraint'))
+  transcript.pushAbort(model)
+  const session = createSession(provider, createRuntime(), transcript)
+
+  await session.resume()
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'steer',
+    'abort',
+    'resume',
+    'text',
+    'response',
+  ])
 })
 
 test('AgentSession abort is not blocked by a long-running tool invocation', async () => {
@@ -770,10 +979,10 @@ test('AgentSession compact inserts boundary and marker without deleting old bloc
     })(),
     now: () => '2026-06-17T00:00:00.000Z',
   })
-  transcript.pushUserTurn(model, text('old'))
+  transcript.pushUserTurn('test-turn', model, text('old'))
   transcript.applyProviderEvent(model, events.text('answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('recent'))
+  transcript.pushUserTurn('test-turn', model, text('recent'))
   const session = createSession(provider, createRuntime(), transcript)
 
   await session.compact()
@@ -895,6 +1104,53 @@ class GateProvider implements AgentProvider {
 
   release(index: number): void {
     this.gates[index].resolve()
+  }
+}
+
+class SteerableGateProvider implements AgentProvider {
+  private readonly turns: ProviderEvent[][]
+  private readonly gates: Array<Deferred<void>>
+  private readonly started = new Map<number, Deferred<void>>()
+  readonly requests: InferenceRequest[] = []
+  readonly steers: InferenceSteer[] = []
+
+  constructor(
+    turns: ProviderEvent[][],
+    private readonly steerImpl?: (input: InferenceSteer) => Promise<void> | void,
+  ) {
+    this.turns = turns
+    this.gates = turns.map(() => deferred<void>())
+  }
+
+  run(request: InferenceRequest): ProviderRun {
+    const index = this.requests.length
+    this.requests.push(request)
+    const gate = this.gates[index]
+    const turn = this.turns[index] ?? []
+    const output = async function* (): AsyncIterable<ProviderEvent> {
+      await gate.promise
+      for (const event of turn) yield event
+    }
+    this.started.get(index)?.resolve(undefined)
+    return createProviderRun(output(), {
+      steer: (input) => {
+        if (this.steerImpl) return this.steerImpl(input)
+        this.steers.push(input)
+      },
+    })
+  }
+
+  waitForRun(index: number): Promise<void> {
+    if (this.requests.length > index) return Promise.resolve()
+    const existing = this.started.get(index)
+    if (existing) return existing.promise
+    const next = deferred<void>()
+    this.started.set(index, next)
+    return next.promise
+  }
+
+  release(index: number): void {
+    this.gates[index].resolve(undefined)
   }
 }
 

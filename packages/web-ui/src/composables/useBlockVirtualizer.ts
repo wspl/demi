@@ -10,6 +10,7 @@ const AUTO_SCROLL_REENGAGE_THRESHOLD = 1
 
 const BLOCK_HEIGHT_ESTIMATES: Record<Block['type'], number> = {
   user: 40,
+  steer: 40,
   resume: 0,
   thinking: 20,
   redacted_thinking: 0,

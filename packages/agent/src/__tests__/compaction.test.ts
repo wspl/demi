@@ -36,7 +36,7 @@ test('preflight compaction summarizes before the model request and keeps the inc
     thinking: { type: 'effort', effort: 'medium', summary: null },
   }
   const transcript = makeTranscript()
-  transcript.pushUserTurn(thinkingModel, text('old question'))
+  transcript.pushUserTurn('test-turn', thinkingModel, text('old question'))
   transcript.applyProviderEvent(thinkingModel, events.text('old answer'))
   transcript.applyProviderEvent(thinkingModel, events.response())
 
@@ -109,10 +109,10 @@ test('retry triggers preflight compaction before rerunning the latest user', asy
     model: { ...model.model, contextWindow: 100 },
   }
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
   transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('retry this'))
+  transcript.pushUserTurn('test-turn', model, text('retry this'))
   transcript.applyProviderEvent(model, events.text('bad answer'))
   transcript.applyProviderEvent(model, events.response())
 
@@ -153,7 +153,7 @@ test('resume triggers preflight compaction before continuing an aborted long con
     model: { ...model.model, contextWindow: 100 },
   }
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
   transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
   transcript.pushAbort(model)
 
@@ -243,11 +243,11 @@ test('empty compaction summaries are no-op and keep the session usable', async (
 
 test('compaction summary input keeps completed tool_use and tool_result paired', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('inspect with tool'))
+  transcript.pushUserTurn('test-turn', model, text('inspect with tool'))
   transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'a.txt' }))
   transcript.completeToolCall('tool-1', [{ type: 'text', text: 'file content' }])
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
 
   const provider = new RecordingProvider([
     (request) => {
@@ -271,10 +271,10 @@ test('compaction summary input keeps completed tool_use and tool_result paired',
 
 test('compaction summary input keeps aborted text progress', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('long task'))
+  transcript.pushUserTurn('test-turn', model, text('long task'))
   transcript.applyProviderEvent(model, events.text('partial progress before abort'))
   transcript.pushAbort(model)
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
 
   const provider = new RecordingProvider([
     (request) => {
@@ -296,8 +296,8 @@ test('compaction summary input keeps aborted text progress', async () => {
 
 test('compaction summary context overflow errors are atomic and classified when no smaller slice is available', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
   const before = transcript.snapshot()
   const provider = new RecordingProvider([
     [events.error('summary context overflow', 'context_length_exceeded')],
@@ -335,13 +335,13 @@ test('compaction summary context overflow errors are atomic and classified when 
 
 test('compaction summary context overflow retries with a smaller summary slice', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('old question'))
+  transcript.pushUserTurn('test-turn', model, text('old question'))
   transcript.applyProviderEvent(model, events.text('old answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('middle question'))
+  transcript.pushUserTurn('test-turn', model, text('middle question'))
   transcript.applyProviderEvent(model, events.text('middle answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
 
   const provider = new RecordingProvider([
     (request) => {
@@ -389,13 +389,13 @@ test('compaction summary context overflow retries with a smaller summary slice',
 
 test('compaction summary iterator context overflow retries with a smaller summary slice', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('old question'))
+  transcript.pushUserTurn('test-turn', model, text('old question'))
   transcript.applyProviderEvent(model, events.text('old answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('middle question'))
+  transcript.pushUserTurn('test-turn', model, text('middle question'))
   transcript.applyProviderEvent(model, events.text('middle answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
 
   const provider = new RecordingProvider([
     (request) => {
@@ -433,7 +433,7 @@ test('compaction summary iterator context overflow retries with a smaller summar
 
 test('compaction summary input carries tools and visible text but omits thinking and internal state', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('inspect deeply'))
+  transcript.pushUserTurn('test-turn', model, text('inspect deeply'))
   transcript.applyProviderEvent(model, { type: 'thinking_start' })
   transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'private chain' })
   transcript.applyProviderEvent(model, { type: 'thinking_signature', signature: 'sig-1' })
@@ -472,17 +472,17 @@ test('compaction summary input carries tools and visible text but omits thinking
 
 test('multiple compactions replay only the latest boundary summary', () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('first question'))
+  transcript.pushUserTurn('test-turn', model, text('first question'))
   transcript.applyProviderEvent(model, events.text('first answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('second question'))
+  transcript.pushUserTurn('test-turn', model, text('second question'))
   transcript.applyProviderEvent(model, events.text('second answer'))
   transcript.applyProviderEvent(model, events.response())
 
   const firstBoundary = transcript.insertCompactionBoundary(3, model, 'first summary', 3)
   transcript.appendCompactionMarker(model, firstBoundary.id, 30)
 
-  transcript.pushUserTurn(model, text('third question'))
+  transcript.pushUserTurn('test-turn', model, text('third question'))
   transcript.applyProviderEvent(model, events.text('third answer'))
   transcript.applyProviderEvent(model, events.response())
   const thirdQuestionIndex = transcript.blocks.findIndex((block) => {
@@ -535,7 +535,7 @@ test('manual compaction after an existing boundary summarizes only the latest re
 
 test('single oversized turn can be compacted at a block boundary without orphaning tool history', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('single turn'))
+  transcript.pushUserTurn('test-turn', model, text('single turn'))
   transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'large.txt' }))
   transcript.completeToolCall('tool-1', [{ type: 'text', text: 'large output '.repeat(200) }])
   transcript.applyProviderEvent(model, events.text('recent assistant text'))
@@ -564,7 +564,7 @@ test('single oversized turn can be compacted at a block boundary without orphani
 
 test('compaction is a no-op while a tool call is still pending', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('start tool'))
+  transcript.pushUserTurn('test-turn', model, text('start tool'))
   transcript.applyProviderEvent(model, events.toolCall('tool-1', 'slow_tool', {}))
   const provider = new RecordingProvider([])
   const session = createSession(provider, createRuntime(), transcript)
@@ -627,10 +627,10 @@ test('aborting during retry preflight compaction stops before rerunning the mode
     model: { ...model.model, contextWindow: 100 },
   }
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
   transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('retry this'))
+  transcript.pushUserTurn('test-turn', model, text('retry this'))
   transcript.applyProviderEvent(model, events.text('bad answer'))
   transcript.applyProviderEvent(model, events.response())
   const provider = new HangingSummaryProvider()
@@ -660,7 +660,7 @@ test('aborting during resume preflight compaction stops before continuing the mo
     model: { ...model.model, contextWindow: 100 },
   }
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
   transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
   transcript.pushAbort(model)
   const provider = new HangingSummaryProvider()
@@ -691,10 +691,10 @@ test('queued send during preflight compaction drains after the original send', a
     model: { ...model.model, contextWindow: 100 },
   }
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
   transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
 
   const provider = new CompactGateProvider([
     (request) => {
@@ -759,7 +759,7 @@ test('retry queued during preflight compaction reruns the original send after it
     model: { ...model.model, contextWindow: 100 },
   }
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
   transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
   transcript.applyProviderEvent(model, events.response())
 
@@ -818,7 +818,7 @@ test('resume queued during preflight compaction continues after the original sen
     model: { ...model.model, contextWindow: 100 },
   }
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text(`old question ${'x'.repeat(200)}`))
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
   transcript.applyProviderEvent(model, events.text(`partial answer ${'y'.repeat(300)}`))
   transcript.pushAbort(model)
 
@@ -938,7 +938,7 @@ test('retry queued during compaction reruns the latest user after the summary co
 
 test('resume queued during compaction continues from the compacted abort point', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('old question'))
+  transcript.pushUserTurn('test-turn', model, text('old question'))
   transcript.applyProviderEvent(model, events.text('old answer'))
   transcript.applyProviderEvent(model, events.response())
   transcript.pushAbort(model)
@@ -1096,10 +1096,10 @@ test('compaction boundary and marker survive snapshot reconstruction', async () 
 
 function oldAndRecentTranscript(): Transcript {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('old question'))
+  transcript.pushUserTurn('test-turn', model, text('old question'))
   transcript.applyProviderEvent(model, events.text('old answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
   return transcript
 }
 
@@ -1206,7 +1206,7 @@ test('auto compaction is bounded per turn — no storm when usage stays over a t
   const smallModel: ModelSelection = { ...model, model: { ...model.model, contextWindow: 10 } }
   const transcript = makeTranscript()
   for (let i = 0; i < 6; i += 1) {
-    transcript.pushUserTurn(model, text(`question ${i} ${'x'.repeat(120)}`))
+    transcript.pushUserTurn('test-turn', model, text(`question ${i} ${'x'.repeat(120)}`))
     transcript.applyProviderEvent(model, events.text(`answer ${i} ${'y'.repeat(120)}`))
     transcript.applyProviderEvent(model, events.response())
   }

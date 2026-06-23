@@ -216,7 +216,8 @@ export class ClaudeCodeProvider implements AgentProvider {
     const userCount = countUserMessages(request.items)
     if (userCount > active.sentUserMessageCount) {
       const userItems = request.items.filter(
-        (item): item is Extract<InferenceItem, { type: 'user_message' }> => item.type === 'user_message',
+        (item): item is Extract<InferenceItem, { type: 'user_message' | 'user_steer' }> =>
+          item.type === 'user_message' || item.type === 'user_steer',
       )
       for (const item of userItems.slice(active.sentUserMessageCount)) {
         const message = inferenceItemToClaudeMessage(item)
@@ -456,7 +457,7 @@ function thinkingSignature(request: InferenceRequest): string {
 
 function countUserMessages(items: InferenceItem[]): number {
   let count = 0
-  for (const item of items) if (item.type === 'user_message') count += 1
+  for (const item of items) if (item.type === 'user_message' || item.type === 'user_steer') count += 1
   return count
 }
 

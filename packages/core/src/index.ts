@@ -96,12 +96,21 @@ export type Block =
   | {
       type: 'user'
       id: string
+      turnId: string
       createdAt: string
       model: ModelSelection
       content: UserContentBlock[]
       preamble: string | null
     }
-  | { type: 'resume'; id: string; createdAt: string; model: ModelSelection }
+  | { type: 'resume'; id: string; turnId: string; createdAt: string; model: ModelSelection }
+  | {
+      type: 'steer'
+      id: string
+      turnId: string
+      createdAt: string
+      model: ModelSelection
+      content: UserContentBlock[]
+    }
   | {
       type: 'thinking'
       id: string

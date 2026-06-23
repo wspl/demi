@@ -38,6 +38,14 @@ test('REPL renderer prints transcript deltas, tool state, and cache usage withou
     model,
     text: 'hello',
   })
+  const steer = block({
+    type: 'steer',
+    id: 'steer-1',
+    turnId: 'turn-1',
+    createdAt: '2026-06-19T00:00:00.000Z',
+    model,
+    content: [{ type: 'text', text: 'keep it concise' }],
+  })
   const tool = block({
     type: 'tool_call',
     id: 'tool-1',
@@ -87,9 +95,10 @@ test('REPL renderer prints transcript deltas, tool state, and cache usage withou
     isResumed: false,
   })
 
-  renderEvent(renderer, { type: 'transcript_snapshot', blocks: [thinking, text, tool, toolError, response, error, abort] })
+  renderEvent(renderer, { type: 'transcript_snapshot', blocks: [thinking, steer, text, tool, toolError, response, error, abort] })
 
   expect(output.text()).toContain('thinking> plan')
+  expect(output.text()).toContain('steer> keep it concise')
   expect(output.text()).toContain('assistant> hello')
   expect(output.text()).toContain('tool> shell_exec executing -- bun test')
   expect(output.text()).toContain('tool> shell_exec error -- cat sentinel.txt')
@@ -104,6 +113,7 @@ test('REPL renderer prints transcript deltas, tool state, and cache usage withou
     patches: [],
     blocks: [
       { ...thinking, text: 'plan more' },
+      steer,
       { ...text, text: 'hello world' },
       { ...tool, status: 'completed', output: [{ type: 'text', text: 'ok' }] },
       toolError,
@@ -475,6 +485,8 @@ test('REPL commands dispatch to the agent client and validate input usage', asyn
 
   await expect(handleCommand('/help', client, output)).resolves.toBe(false)
   await expect(handleCommand('/abort', client, output)).resolves.toBe(false)
+  await expect(handleCommand('/steer refine the current turn', client, output)).resolves.toBe(false)
+  await expect(handleCommand('/steer', client, output)).resolves.toBe(false)
   await expect(handleCommand('/retry', client, output)).resolves.toBe(false)
   await expect(handleCommand('/resume', client, output)).resolves.toBe(false)
   await expect(handleCommand('/compact', client, output)).resolves.toBe(false)
@@ -485,6 +497,7 @@ test('REPL commands dispatch to the agent client and validate input usage', asyn
 
   expect(client.calls).toEqual([
     ['abort'],
+    ['steer', 'refine the current turn'],
     ['retry'],
     ['resume'],
     ['compact'],
@@ -492,8 +505,21 @@ test('REPL commands dispatch to the agent client and validate input usage', asyn
   ])
   expect(output.text()).toContain('Commands:')
   expect(output.text()).toContain('state> abort requested')
+  expect(output.text()).toContain('usage: /steer <message>')
   expect(output.text()).toContain('usage: /input <shellId> <text>')
   expect(output.text()).toContain('error> unknown command: /bogus')
+})
+
+test('REPL /steer prints asynchronous steer failures', async () => {
+  const output = new CaptureOutput()
+  const client = new FakeCommandClient()
+  client.onSteer = () => Promise.reject(new Error('no active turn'))
+
+  await expect(handleCommand('/steer refine current turn', client, output)).resolves.toBe(false)
+  await waitForMicrotasks()
+
+  expect(client.calls).toEqual([['steer', 'refine current turn']])
+  expect(output.text()).toContain('error> steer failed: no active turn')
 })
 
 test('REPL input loop sends messages asynchronously so commands remain responsive', async () => {
@@ -547,10 +573,16 @@ class CaptureOutput implements ReplOutput {
 
 class FakeCommandClient {
   readonly calls: Array<[string] | [string, string] | [string, string, string]> = []
+  onSteer: () => Promise<void> = () => Promise.resolve()
 
   async abort(): Promise<boolean> {
     this.calls.push(['abort'])
     return true
+  }
+
+  async steer(content: UserContentBlock[]): Promise<void> {
+    this.calls.push(['steer', content.map((block) => (block.type === 'text' ? block.text : `[${block.type}]`)).join('\n')])
+    return this.onSteer()
   }
 
   async retry(): Promise<void> {

@@ -4,6 +4,7 @@ import type { Block } from '@demi/core'
 // union, so we recover the named variants here for the ported components.
 
 export type UserBlock = Extract<Block, { type: 'user' }>
+export type SteerBlock = Extract<Block, { type: 'steer' }>
 export type TextBlock = Extract<Block, { type: 'text' }>
 export type ThinkingBlock = Extract<Block, { type: 'thinking' }>
 export type ToolCallBlock = Extract<Block, { type: 'tool_call' }>

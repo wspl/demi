@@ -50,7 +50,7 @@ test('provider request text content is bounded without mutating the transcript a
   const longToolOutput = `tool-head-${'t'.repeat(20_000)}-tool-tail`
   const longAssistant = `assistant-head-${'a'.repeat(20_000)}-assistant-tail`
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, [{ type: 'text', text: longReference }], longPreamble)
+  transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: longReference }], longPreamble)
   transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'big.txt' }))
   transcript.completeToolCall('tool-1', [{ type: 'text', text: longToolOutput }])
   transcript.applyProviderEvent(model, events.text(longAssistant))
@@ -137,10 +137,10 @@ test('stable prompt prefix is byte-identical for equivalent histories and change
 
 test('provider request prefix restabilizes after compaction replaces old history', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('old question'))
+  transcript.pushUserTurn('test-turn', model, text('old question'))
   transcript.applyProviderEvent(model, events.text('old answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
   transcript.applyProviderEvent(model, events.text('recent answer'))
   transcript.applyProviderEvent(model, events.response())
   const provider = new RecordingProvider([
@@ -180,11 +180,11 @@ test('provider request prefix restabilizes after compaction replaces old history
 
 test('provider request is built from effective transcript without internal blocks', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('old question'))
+  transcript.pushUserTurn('test-turn', model, text('old question'))
   transcript.applyProviderEvent(model, events.text('old answer'))
   transcript.applyProviderEvent(model, events.response())
   const boundary = transcript.insertCompactionBoundary(3, model, 'summary', 2)
-  transcript.pushUserTurn(model, text('recent question'))
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
   transcript.applyProviderEvent(model, events.response({ inputTokens: 9, outputTokens: 4, cacheReadTokens: 3 }))
   transcript.applyProviderEvent(model, events.error('provider internal failure', 'context_length_exceeded'))
   transcript.pushAbort(model, true)
@@ -306,11 +306,11 @@ test('context overflow provider errors are explicit and keep the session recover
 
 test('snapshot reconstruction preserves model-visible context exactly', async () => {
   const transcript = makeTranscript()
-  transcript.pushUserTurn(model, text('old'))
+  transcript.pushUserTurn('test-turn', model, text('old'))
   transcript.applyProviderEvent(model, events.text('old answer'))
   transcript.applyProviderEvent(model, events.response())
   const boundary = transcript.insertCompactionBoundary(3, model, 'restored summary', 4)
-  transcript.pushUserTurn(model, text('recent'))
+  transcript.pushUserTurn('test-turn', model, text('recent'))
   transcript.appendCompactionMarker(model, boundary.id, 12)
 
   const restored = new Transcript(transcript.snapshot().blocks)

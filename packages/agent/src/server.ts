@@ -119,6 +119,21 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           this.observeSessionAction(session.send(frame.content))
           return
         }
+        case 'steer': {
+          const session = this.session
+          if (!session) {
+            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: 'No session is open on this connection' })
+            return
+          }
+          try {
+            await session.steer(frame.content)
+            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'accepted' })
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: message })
+          }
+          return
+        }
         case 'set_provider':
           await this.setProvider(frame.provider)
           return

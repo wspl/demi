@@ -1,11 +1,19 @@
 import type {
+  Block,
   ModelSelection,
   QueuedMessage,
   SessionPhase,
   TokenUsage,
   UserContentBlock,
 } from '@demi/core'
-import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
+import type {
+  AgentProvider,
+  InferenceItem,
+  InferenceRequest,
+  ProviderEvent,
+  ProviderRun,
+  ToolDefinition,
+} from '@demi/provider'
 import { Transcript, type TranscriptOptions } from './transcript'
 import type {
   AgentHarnessRuntime,
@@ -40,6 +48,8 @@ type PendingAction =
   | { type: 'resume'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'compact'; resolve: () => void; reject: (error: unknown) => void }
 
+type ActiveTurnPhase = 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing'
+
 export class AgentSession<State> {
   private provider: AgentProvider
   private model: ModelSelection
@@ -62,6 +72,8 @@ export class AgentSession<State> {
   private externalMutationReserved = false
   private currentAbortController: AbortController | null = null
   private activeTurnId: string | null = null
+  private activeTurnPhase: ActiveTurnPhase | null = null
+  private activeProviderRun: ProviderRun | null = null
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
 
@@ -132,6 +144,43 @@ export class AgentSession<State> {
 
   compact(): Promise<void> {
     return this.enqueue({ type: 'compact', resolve: noop, reject: noop })
+  }
+
+  async steer(content: UserContentBlock[]): Promise<void> {
+    if (this.externalMutationReserved) {
+      throw new Error('AgentSession: cannot steer while external mutation is reserved')
+    }
+
+    this.steerDelivery()
+    const turnId = this.currentTurnId()
+    const signal = this.currentSignal()
+    const resolvedContent = await this.resolveReferences(content)
+    throwIfAborted(signal)
+
+    const deliveryAfterResolve = this.steerDelivery()
+    if (this.activeTurnId !== turnId) throw new Error('AgentSession: active turn changed before steer could be accepted')
+
+    let blockId: string | undefined
+    if (deliveryAfterResolve.type === 'provider') {
+      blockId = this.idFactory()
+      try {
+        await deliveryAfterResolve.run.steer({
+          id: blockId,
+          sessionId: this.agentSessionId,
+          turnId,
+          content: resolvedContent,
+        })
+      } catch (error) {
+        const normalized = asError(error)
+        this.emit({ type: 'error', error: normalized })
+        throw normalized
+      }
+    }
+    if (this.activeTurnId !== turnId) throw new Error('AgentSession: active turn changed before steer could be accepted')
+    this.transcriptLog.pushSteer(turnId, this.model, resolvedContent, blockId)
+    await this.commitTranscript()
+    // Tool execution delivery is transcript-backed: the next provider continuation reads the
+    // committed steer block through collectInferenceItems().
   }
 
   /**
@@ -219,6 +268,25 @@ export class AgentSession<State> {
     }
   }
 
+  private steerDelivery():
+    | { type: 'provider'; run: ProviderRun & { steer: NonNullable<ProviderRun['steer']> } }
+    | { type: 'next_provider_continuation' } {
+    if (!this.activeTurnId || !this.currentAbortController || !this.activeTurnPhase) {
+      throw new Error('AgentSession: no active turn to steer')
+    }
+    if (this.currentAbortController.signal.aborted) throw new Error('AgentSession: active turn is aborted')
+    if (this.activeTurnPhase === 'compacting' || this.activeTurnPhase === 'finalizing') {
+      throw new Error(`AgentSession: active turn cannot accept steering while ${this.activeTurnPhase}`)
+    }
+    if (this.activeTurnPhase === 'tool_executing') return { type: 'next_provider_continuation' }
+
+    const run = this.activeProviderRun
+    if (run?.steer) {
+      return { type: 'provider', run: run as ProviderRun & { steer: NonNullable<ProviderRun['steer']> } }
+    }
+    throw new Error('AgentSession: active provider run does not support steering')
+  }
+
   private enqueue(action: PendingAction): Promise<void> {
     if (this.externalMutationReserved) {
       return Promise.reject(new Error('AgentSession: cannot enqueue action while external mutation is reserved'))
@@ -273,8 +341,11 @@ export class AgentSession<State> {
             action.reject(normalized)
           }
         } finally {
+          this.activeTurnPhase = 'finalizing'
+          this.activeProviderRun = null
           this.currentAbortController = null
           this.activeTurnId = null
+          this.activeTurnPhase = null
           this.abortRecorded = false
           this.setPhase('idle')
         }
@@ -301,6 +372,7 @@ export class AgentSession<State> {
         return
       case 'compact':
         this.setPhase('compacting')
+        this.activeTurnPhase = 'compacting'
         await this.executeCompaction()
         return
     }
@@ -334,12 +406,15 @@ export class AgentSession<State> {
     if (this.transcriptLog.estimateContextTokens() < threshold) return
 
     const previousPhase = this.currentPhase
+    const previousActivePhase = this.activeTurnPhase
     this.setPhase('compacting')
+    this.activeTurnPhase = 'compacting'
     try {
       for (let attempt = 0; attempt < 8 && this.transcriptLog.estimateContextTokens() >= threshold; attempt += 1) {
         if (!(await this.executeCompaction())) break
       }
     } finally {
+      this.activeTurnPhase = previousActivePhase
       this.setPhase(previousPhase)
     }
   }
@@ -357,7 +432,7 @@ export class AgentSession<State> {
     await this.applyPendingModelSwitch()
     const promptContext = this.promptContext()
     const preamble = this.runtime.preamble?.(promptContext) ?? null
-    this.transcriptLog.pushUserTurn(this.model, resolvedContent, preamble)
+    this.transcriptLog.pushUserTurn(this.currentTurnId(), this.model, resolvedContent, preamble)
     await this.commitTranscript()
 
     await this.executePreflightCompaction()
@@ -390,7 +465,16 @@ export class AgentSession<State> {
     const lastUserIndex = findLastUserTurnIndex(this.transcriptLog.blocks)
     if (lastUserIndex === null) throw new Error('AgentSession: cannot retry without a user turn')
 
+    const userBlock = this.transcriptLog.blocks[lastUserIndex]
+    if (userBlock.type !== 'user') throw new Error('AgentSession: latest user turn is malformed')
+    this.activeTurnId = userBlock.turnId
+    const preservedSteers = this.transcriptLog.blocks
+      .slice(lastUserIndex + 1)
+      .filter((block): block is Extract<Block, { type: 'steer' }> => {
+        return block.type === 'steer' && block.turnId === userBlock.turnId
+      })
     this.transcriptLog.blocks.splice(lastUserIndex + 1)
+    this.transcriptLog.blocks.splice(lastUserIndex + 1, 0, ...preservedSteers)
     await this.runtime.lifecycle?.({
       type: 'after_transcript_rewrite',
       agentSessionId: this.agentSessionId,
@@ -408,7 +492,7 @@ export class AgentSession<State> {
   private async executeResume(): Promise<void> {
     await this.applyPendingModelSwitch()
     this.transcriptLog.markLatestAbortResumed()
-    this.transcriptLog.pushResumeTurn(this.model)
+    this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
     await this.commitTranscript()
     await this.executePreflightCompaction()
     await this.executeProviderTurn()
@@ -421,9 +505,15 @@ export class AgentSession<State> {
     if (this.transcriptLog.estimateContextTokens() < threshold) return
 
     const previousPhase = this.currentPhase
+    const previousActivePhase = this.activeTurnPhase
     this.setPhase('compacting')
-    await this.executeCompaction()
-    this.setPhase(previousPhase)
+    this.activeTurnPhase = 'compacting'
+    try {
+      await this.executeCompaction()
+    } finally {
+      this.activeTurnPhase = previousActivePhase
+      this.setPhase(previousPhase)
+    }
   }
 
   private async executeProviderTurn(): Promise<void> {
@@ -437,14 +527,21 @@ export class AgentSession<State> {
       if (shouldAutoRecover && autoCompactions < MAX_AUTO_COMPACTIONS_PER_TURN) {
         const tokensBefore = this.transcriptLog.estimateContextTokens()
         const previousPhase = this.currentPhase
+        const previousActivePhase = this.activeTurnPhase
         this.setPhase('compacting')
-        const compacted = await this.executeCompaction()
-        this.setPhase(previousPhase)
+        this.activeTurnPhase = 'compacting'
+        let compacted = false
+        try {
+          compacted = await this.executeCompaction()
+        } finally {
+          this.activeTurnPhase = previousActivePhase
+          this.setPhase(previousPhase)
+        }
         // Only loop if compaction actually shrank the transcript. Otherwise we'd keep compacting
         // our own summaries and pile up resume turns (a storm) until the model rejects the history.
         if (compacted && this.transcriptLog.estimateContextTokens() < tokensBefore) {
           autoCompactions += 1
-          this.transcriptLog.pushResumeTurn(this.model)
+          this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
           await this.commitTranscript()
           continue
         }
@@ -456,15 +553,23 @@ export class AgentSession<State> {
 
   private async streamProviderOnce(): Promise<boolean> {
     const request = this.buildInferenceRequest()
+    const run = this.provider.run(request)
     let shouldAutoRecover = false
-    for await (const event of this.providerEvents(request)) {
-      throwIfAborted(request.cancel)
-      if (event.type === 'abort') throw new AbortError()
-      await this.applyProviderEvent(event)
-      if (event.type === 'error') throw new ProviderStreamError(event.message, event.code)
-      if (event.type === 'response' && this.isUsageNearLimit(event.usage)) {
-        shouldAutoRecover = true
+    this.activeProviderRun = run
+    this.activeTurnPhase = 'provider_streaming'
+    try {
+      for await (const event of this.providerEvents(request, run)) {
+        throwIfAborted(request.cancel)
+        if (event.type === 'abort') throw new AbortError()
+        await this.applyProviderEvent(event)
+        if (event.type === 'error') throw new ProviderStreamError(event.message, event.code)
+        if (event.type === 'response' && this.isUsageNearLimit(event.usage)) {
+          shouldAutoRecover = true
+        }
       }
+    } finally {
+      if (this.activeProviderRun === run) this.activeProviderRun = null
+      if (this.activeTurnPhase === 'provider_streaming') this.activeTurnPhase = null
     }
     return shouldAutoRecover
   }
@@ -476,40 +581,46 @@ export class AgentSession<State> {
     const tools = this.currentTools()
     const toolsByName = new Map(tools.map((tool) => [tool.name, tool]))
     let stopAfterToolResult = false
+    const previousActivePhase = this.activeTurnPhase
+    this.activeTurnPhase = 'tool_executing'
 
-    for (const toolCall of pending) {
-      throwIfAborted(this.currentSignal())
+    try {
+      for (const toolCall of pending) {
+        throwIfAborted(this.currentSignal())
 
-      const tool = toolsByName.get(toolCall.toolName)
-      if (!tool) {
+        const tool = toolsByName.get(toolCall.toolName)
+        if (!tool) {
+          this.transcriptLog.completeToolCall(
+            toolCall.toolUseId,
+            [{ type: 'text', text: `Tool not found: ${toolCall.toolName}` }],
+            true,
+          )
+          await this.commitTranscript()
+          continue
+        }
+
+        const input = parseToolInput(toolCall.input)
+        const result = await this.invokeToolAsResult(tool, toolCall.toolUseId, input)
         this.transcriptLog.completeToolCall(
           toolCall.toolUseId,
-          [{ type: 'text', text: `Tool not found: ${toolCall.toolName}` }],
-          true,
+          result.output,
+          result.isError ?? false,
+          result.metadata ?? result.continuation ?? null,
         )
+        await this.runtime.lifecycle?.({
+          type: 'after_tool_call',
+          agentSessionId: this.agentSessionId,
+          state: this.agentState,
+          transcript: this.transcriptLog,
+          toolCallId: toolCall.toolUseId,
+          toolName: toolCall.toolName,
+          result,
+        })
         await this.commitTranscript()
-        continue
+        stopAfterToolResult ||= result.stopAfterToolResult === true
       }
-
-      const input = parseToolInput(toolCall.input)
-      const result = await this.invokeToolAsResult(tool, toolCall.toolUseId, input)
-      this.transcriptLog.completeToolCall(
-        toolCall.toolUseId,
-        result.output,
-        result.isError ?? false,
-        result.metadata ?? result.continuation ?? null,
-      )
-      await this.runtime.lifecycle?.({
-        type: 'after_tool_call',
-        agentSessionId: this.agentSessionId,
-        state: this.agentState,
-        transcript: this.transcriptLog,
-        toolCallId: toolCall.toolUseId,
-        toolName: toolCall.toolName,
-        result,
-      })
-      await this.commitTranscript()
-      stopAfterToolResult ||= result.stopAfterToolResult === true
+    } finally {
+      this.activeTurnPhase = previousActivePhase
     }
 
     return { executed: true, stopAfterToolResult }
@@ -635,7 +746,7 @@ export class AgentSession<State> {
     }
 
     let summary = ''
-    for await (const event of this.providerEvents(request)) {
+    for await (const event of this.providerEvents(request, this.provider.run(request))) {
       throwIfAborted(request.cancel)
       if (event.type === 'text_delta') summary += event.text
       if (event.type === 'abort') throw new AbortError()
@@ -644,8 +755,8 @@ export class AgentSession<State> {
     return summary.trim()
   }
 
-  private async *providerEvents(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-    const iterator = this.provider.run(request)[Symbol.asyncIterator]()
+  private async *providerEvents(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent> {
+    const iterator = run[Symbol.asyncIterator]()
     let completed = false
     try {
       while (true) {
@@ -829,6 +940,11 @@ function renderItemsForSummary(items: InferenceItem[]): string {
       case 'user_message': {
         const text = item.content.map((block) => (block.type === 'text' ? block.text : `[${block.type}]`)).join(' ')
         lines.push(`User: ${text}`)
+        break
+      }
+      case 'user_steer': {
+        const text = item.content.map((block) => (block.type === 'text' ? block.text : `[${block.type}]`)).join(' ')
+        lines.push(`User steer: ${text}`)
         break
       }
       case 'assistant_text':

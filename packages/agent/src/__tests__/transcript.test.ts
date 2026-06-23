@@ -27,7 +27,7 @@ function makeTranscript(): Transcript {
 test('Transcript appends user turns and provider text/response events', () => {
   const transcript = makeTranscript()
 
-  transcript.pushUserTurn(model, [{ type: 'text', text: 'hello' }], 'preamble')
+  transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'hello' }], 'preamble')
   transcript.applyProviderEvent(model, events.text('hi '))
   transcript.applyProviderEvent(model, events.text('there'))
   transcript.applyProviderEvent(model, events.response({ inputTokens: 2, outputTokens: 3 }))
@@ -42,6 +42,34 @@ test('Transcript appends user turns and provider text/response events', () => {
       content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'hello' }],
     },
     { type: 'assistant_text', modelId: 'test-model', text: 'hi there' },
+  ])
+})
+
+test('Transcript appends steer blocks and replays them in turn order', () => {
+  const transcript = makeTranscript()
+
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'start' }], 'preamble')
+  const steer = transcript.pushSteer('turn-1', model, [{ type: 'text', text: 'prefer concise output' }])
+  transcript.applyProviderEvent(model, events.text('ok'))
+
+  expect(steer).toMatchObject({
+    type: 'steer',
+    id: 'b2',
+    turnId: 'turn-1',
+    content: [{ type: 'text', text: 'prefer concise output' }],
+  })
+  expect(transcript.blocks.map((block) => block.type)).toEqual(['user', 'steer', 'text'])
+  expect(transcript.collectInferenceItems()).toEqual([
+    {
+      type: 'user_message',
+      content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'start' }],
+    },
+    {
+      type: 'user_steer',
+      turnId: 'turn-1',
+      content: [{ type: 'text', text: 'prefer concise output' }],
+    },
+    { type: 'assistant_text', modelId: 'test-model', text: 'ok' },
   ])
 })
 
@@ -115,7 +143,7 @@ test('Transcript completes the pending tool call when tool ids repeat', () => {
 test('Transcript replays thinking signatures and redacted thinking in provider order', () => {
   const transcript = makeTranscript()
 
-  transcript.pushUserTurn(model, [{ type: 'text', text: 'think through this' }])
+  transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'think through this' }])
   transcript.applyProviderEvent(model, { type: 'thinking_start' })
   transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'private ' })
   transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'notes' })
@@ -164,10 +192,10 @@ test('Transcript removes dangling executing tool calls', () => {
 test('Transcript inserts compaction boundary and replays from the latest boundary', () => {
   const transcript = makeTranscript()
 
-  transcript.pushUserTurn(model, [{ type: 'text', text: 'old question' }])
+  transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'old question' }])
   transcript.applyProviderEvent(model, events.text('old answer'))
   transcript.applyProviderEvent(model, events.response())
-  transcript.pushUserTurn(model, [{ type: 'text', text: 'recent question' }])
+  transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'recent question' }])
   transcript.applyProviderEvent(model, events.text('recent answer'))
 
   const cutPoint = transcript.findCompactionCutPoint(1)
@@ -194,7 +222,7 @@ test('Transcript inserts compaction boundary and replays from the latest boundar
 test('Transcript snapshot survives JSON roundtrip without changing replay or metadata', () => {
   const transcript = makeTranscript()
 
-  transcript.pushUserTurn(model, [{ type: 'text', text: 'old question' }], 'preamble')
+  transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'old question' }], 'preamble')
   transcript.applyProviderEvent(model, { type: 'thinking_start' })
   transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'private notes' })
   transcript.applyProviderEvent(model, { type: 'thinking_signature', signature: 'sig-json' })
@@ -213,10 +241,11 @@ test('Transcript snapshot survives JSON roundtrip without changing replay or met
   transcript.applyProviderEvent(model, events.response({ inputTokens: 10, outputTokens: 2, cacheReadTokens: 3 }))
   transcript.pushAbort(model, true)
   const boundary = transcript.insertCompactionBoundary(transcript.blocks.length, model, 'json summary', 3)
-  transcript.pushUserTurn(model, [{ type: 'text', text: 'recent question' }])
+  transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'recent question' }])
+  transcript.pushSteer('test-turn', model, [{ type: 'text', text: 'with extra constraint' }])
   transcript.appendExtensionStateSnapshot('todo', { items: [{ id: 'T1', text: 'persist me' }] })
   transcript.appendCompactionMarker(model, boundary.id, 123)
-  transcript.pushResumeTurn(model)
+  transcript.pushResumeTurn('test-turn', model)
 
   const snapshot = transcript.snapshot()
   const parsed = JSON.parse(JSON.stringify(snapshot)) as typeof snapshot

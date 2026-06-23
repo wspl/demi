@@ -37,10 +37,11 @@ export class Transcript implements CoreTranscript {
     return { blocks: structuredClone(this.blocks) }
   }
 
-  pushUserTurn(model: ModelSelection, content: UserContentBlock[], preamble: string | null = null): Block {
+  pushUserTurn(turnId: string, model: ModelSelection, content: UserContentBlock[], preamble: string | null = null): Block {
     const block: Block = {
       type: 'user',
       id: this.idFactory(),
+      turnId,
       createdAt: this.now(),
       model,
       content,
@@ -50,12 +51,26 @@ export class Transcript implements CoreTranscript {
     return block
   }
 
-  pushResumeTurn(model: ModelSelection): Block {
+  pushResumeTurn(turnId: string, model: ModelSelection): Block {
     const block: Block = {
       type: 'resume',
       id: this.idFactory(),
+      turnId,
       createdAt: this.now(),
       model,
+    }
+    this.blocks.push(block)
+    return block
+  }
+
+  pushSteer(turnId: string, model: ModelSelection, content: UserContentBlock[], id = this.idFactory()): Block {
+    const block: Block = {
+      type: 'steer',
+      id,
+      turnId,
+      createdAt: this.now(),
+      model,
+      content,
     }
     this.blocks.push(block)
     return block
@@ -273,6 +288,13 @@ export class Transcript implements CoreTranscript {
             content: [{ type: 'text', text: 'Continue from where you left off.' }],
           })
           break
+        case 'steer':
+          items.push({
+            type: 'user_steer',
+            turnId: block.turnId,
+            content: boundUserContent(block.content),
+          })
+          break
         case 'thinking':
           items.push({
             type: 'assistant_thinking',
@@ -410,6 +432,8 @@ function estimateBlockText(block: Block): string {
       return block.content.map(stringifyUserContent).join('\n')
     case 'resume':
       return 'Continue from where you left off.'
+    case 'steer':
+      return block.content.map(stringifyUserContent).join('\n')
     case 'thinking':
       return block.text
     case 'redacted_thinking':

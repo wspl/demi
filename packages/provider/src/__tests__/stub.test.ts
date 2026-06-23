@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { InferenceRequest, ProviderEvent } from '../index'
-import { StubProvider, events } from '../testing'
+import { StubProvider, createProviderRun, events } from '../testing'
 
 function makeRequest(items: InferenceRequest['items']): InferenceRequest {
   return {
@@ -76,4 +76,33 @@ test('StubProvider throws when turns run out', async () => {
   await expect(async () => {
     for await (const _ of provider.run(makeRequest([]))) void _
   }).toThrow('ran out of turns')
+})
+
+test('createProviderRun exposes optional steer control without changing stream iteration', async () => {
+  const steers: unknown[] = []
+  const run = createProviderRun([events.text('hello'), events.response()], {
+    steer: (input) => {
+      steers.push(input)
+    },
+  })
+
+  await run.steer?.({
+    id: 'steer-1',
+    sessionId: 'session-1',
+    turnId: 'turn-1',
+    content: [{ type: 'text', text: 'clarify' }],
+  })
+
+  const out: ProviderEvent[] = []
+  for await (const event of run) out.push(event)
+
+  expect(steers).toEqual([
+    {
+      id: 'steer-1',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      content: [{ type: 'text', text: 'clarify' }],
+    },
+  ])
+  expect(out).toEqual([events.text('hello'), events.response()])
 })

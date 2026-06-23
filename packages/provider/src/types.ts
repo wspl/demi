@@ -19,6 +19,7 @@ export interface ToolDefinition {
 
 export type InferenceItem =
   | { type: 'user_message'; content: UserContentBlock[] }
+  | { type: 'user_steer'; turnId: string; content: UserContentBlock[] }
   | { type: 'assistant_text'; modelId: string; text: string }
   | {
       type: 'assistant_thinking'
@@ -80,8 +81,19 @@ export type ProviderEvent =
 
 // ── provider ────────────────────────────────────────────────────────
 
+export interface InferenceSteer {
+  id: string
+  sessionId: string
+  turnId: string
+  content: UserContentBlock[]
+}
+
+export interface ProviderRun extends AsyncIterable<ProviderEvent> {
+  steer?(input: InferenceSteer): Promise<void> | void
+}
+
 export interface AgentProvider {
-  run(request: InferenceRequest): AsyncIterable<ProviderEvent>
+  run(request: InferenceRequest): ProviderRun
   /**
    * Releases any resources the provider holds open across turns — e.g. a long-lived CLI
    * subprocess kept alive for a whole session. Called once when the owning session closes.

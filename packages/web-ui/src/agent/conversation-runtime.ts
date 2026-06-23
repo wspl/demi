@@ -26,6 +26,12 @@ export class ConversationRuntime {
     await client.send(content)
   }
 
+  async steer(content: UserContentBlock[]): Promise<void> {
+    const client = await this.ensureOpen()
+    this.state.isResultSeen = true
+    await client.steer(content)
+  }
+
   /**
    * Pushes a model/provider switch to an already-open session so the next turn uses it. If the
    * session has not been opened yet, this is a no-op: openSession reads the latest state.model.

@@ -1,4 +1,4 @@
-import type { AgentProvider, InferenceRequest, ProviderEvent } from './types'
+import type { AgentProvider, InferenceRequest, InferenceSteer, ProviderEvent, ProviderRun } from './types'
 
 /**
  * Scripted provider for testing. Each "turn" is a list of events to yield.
@@ -43,6 +43,17 @@ export class StubProvider implements AgentProvider {
 
 type TurnScript = ProviderEvent[] | ((request: InferenceRequest) => ProviderEvent[])
 
+export function createProviderRun(
+  output: Iterable<ProviderEvent> | AsyncIterable<ProviderEvent>,
+  options: { steer?: (input: InferenceSteer) => Promise<void> | void } = {},
+): ProviderRun {
+  const run: ProviderRun = {
+    [Symbol.asyncIterator]: () => toAsyncIterator(output),
+  }
+  if (options.steer) run.steer = options.steer
+  return run
+}
+
 export const events = {
   text: (text: string): ProviderEvent => ({ type: 'text_delta', text }),
   response: (usage?: Partial<UsageLike>): ProviderEvent => ({
@@ -73,4 +84,11 @@ interface UsageLike {
   outputTokens: number
   cacheReadTokens: number
   cacheWriteTokens: number
+}
+
+function toAsyncIterator(output: Iterable<ProviderEvent> | AsyncIterable<ProviderEvent>): AsyncIterator<ProviderEvent> {
+  if (Symbol.asyncIterator in output) return output[Symbol.asyncIterator]()
+  return (async function* () {
+    for (const event of output) yield event
+  })()
 }

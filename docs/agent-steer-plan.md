@@ -450,64 +450,66 @@ Each item is intended to be implementable as a small checkpoint. Do not enable U
 
 ### 13.1 Type And Transcript Groundwork
 
-- [ ] Update `packages/provider/src/types.ts`: add `InferenceSteer`, `ProviderRun`, and `InferenceItem` variant `user_steer`.
-- [ ] Update `AgentProvider.run()` to return `ProviderRun`. Keep `steer` optional so existing async generators remain structurally valid.
-- [ ] Update `packages/core/src/index.ts`: add `turnId` to `user` and `resume`; add `steer` block with `turnId`, `model`, and `content`.
-- [ ] Update `packages/agent/src/transcript.ts`: change `pushUserTurn()` and `pushResumeTurn()` to accept `turnId`.
-- [ ] Add `Transcript.pushSteer(turnId, model, content)`.
-- [ ] Update `collectInferenceItems()` to emit `user_steer` in transcript order.
-- [ ] Update `estimateBlockText()` and `renderItemsForSummary()` to include steer content.
-- [ ] Update transcript tests for user/resume `turnId`, steer block append, replay order, summary rendering, and token estimation.
-- [ ] Verification: `bun test packages/agent/src/__tests__/transcript.test.ts packages/agent/src/__tests__/context-cache.test.ts`.
+- [x] Update `packages/provider/src/types.ts`: add `InferenceSteer`, `ProviderRun`, and `InferenceItem` variant `user_steer`.
+- [x] Update `AgentProvider.run()` to return `ProviderRun`. Keep `steer` optional so existing async generators remain structurally valid.
+- [x] Update `packages/core/src/index.ts`: add `turnId` to `user` and `resume`; add `steer` block with `turnId`, `model`, and `content`.
+- [x] Update `packages/agent/src/transcript.ts`: change `pushUserTurn()` and `pushResumeTurn()` to accept `turnId`.
+- [x] Add `Transcript.pushSteer(turnId, model, content)`.
+- [x] Update `collectInferenceItems()` to emit `user_steer` in transcript order.
+- [x] Update `estimateBlockText()` and `renderItemsForSummary()` to include steer content.
+- [x] Update transcript tests for user/resume `turnId`, steer block append, replay order, summary rendering, and token estimation.
+- [x] Verification: `bun test packages/agent/src/__tests__/transcript.test.ts packages/agent/src/__tests__/context-cache.test.ts`.
 
 ### 13.2 ProviderRun Compatibility
 
-- [ ] Add a small helper in `@demi/provider` testing utilities for steerable runs, for example `createProviderRun(events, { steer })`.
-- [ ] Update provider and test annotations that explicitly return `AsyncIterable<ProviderEvent>` only where TypeScript requires it.
-- [ ] Update `packages/provider/src/__tests__/stub.test.ts` so existing non-steer providers still work unchanged.
-- [ ] Verification: `bun test packages/provider/src/__tests__/stub.test.ts packages/provider-codex/src/__tests__/provider.test.ts packages/provider-claude-code/src/__tests__/provider.test.ts packages/provider-claude-code/src/__tests__/jsonl-output.test.ts`.
+- [x] Add a small helper in `@demi/provider` testing utilities for steerable runs, for example `createProviderRun(events, { steer })`.
+- [x] Update provider and test annotations that explicitly return `AsyncIterable<ProviderEvent>` only where TypeScript requires it.
+- [x] Update `packages/provider/src/__tests__/stub.test.ts` so existing non-steer providers still work unchanged.
+- [x] Verification: `bun test packages/provider/src/__tests__/stub.test.ts packages/provider-codex/src/__tests__/provider.test.ts packages/provider-claude-code/src/__tests__/provider.test.ts packages/provider-claude-code/src/__tests__/jsonl-output.test.ts`.
 
 ### 13.3 AgentSession Runtime
 
-- [ ] Add `AgentSession.steer(content)` outside `pendingActions`.
-- [ ] Add private active-turn fields: active phase and active provider run. Reuse existing `activeTurnId` and `currentAbortController` instead of introducing a parallel turn identity.
-- [ ] In `runWorker()`, set send `activeTurnId` from the send action id and pass it to `pushUserTurn()`.
-- [ ] In `executeRetry()`, set the active turn id to the retried user block's `turnId`, preserve accepted steer blocks for that turn, and rerun with those steers included.
-- [ ] In `executeResume()`, use the current active turn id for `pushResumeTurn()`.
-- [ ] In `streamProviderOnce()`, store the returned `ProviderRun` in `activeProviderRun` while streaming and clear it in `finally`.
-- [ ] In `executePendingTools()`, set internal active phase to `tool_executing` while tool invocations are awaited.
-- [ ] Reject steer during idle, compaction, finalizing, external mutation reservation, reference-resolution failure, unsupported provider-stream delivery, closed session, or abort race.
-- [ ] Commit accepted steer through `commitTranscript()` only; never mutate transcript silently.
-- [ ] Verification: targeted `session.test.ts` cases for idle rejection, provider-stream native steer, unsupported provider-stream rejection, tool-execution steer, queue interleaving, abort preservation, retry preservation, and resume replay.
+- [x] Add `AgentSession.steer(content)` outside `pendingActions`.
+- [x] Add private active-turn fields: active phase and active provider run. Reuse existing `activeTurnId` and `currentAbortController` instead of introducing a parallel turn identity.
+- [x] In `runWorker()`, set send `activeTurnId` from the send action id and pass it to `pushUserTurn()`.
+- [x] In `executeRetry()`, set the active turn id to the retried user block's `turnId`, preserve accepted steer blocks for that turn, and rerun with those steers included.
+- [x] In `executeResume()`, use the current active turn id for `pushResumeTurn()`.
+- [x] In `streamProviderOnce()`, store the returned `ProviderRun` in `activeProviderRun` while streaming and clear it in `finally`.
+- [x] In `executePendingTools()`, set internal active phase to `tool_executing` while tool invocations are awaited.
+- [x] Reject steer during idle, compaction, finalizing, external mutation reservation, reference-resolution failure, unsupported provider-stream delivery, closed session, or abort race.
+- [x] Commit accepted steer through `commitTranscript()` only; never mutate transcript silently.
+- [x] Verification: targeted `session.test.ts` cases for idle rejection, provider-stream native steer, unsupported provider-stream rejection, tool-execution steer, queue interleaving, abort preservation, retry preservation, and resume replay.
 
 ### 13.4 Transport, Server, And Client
 
-- [ ] Update `packages/agent/src/frames.ts`: add `steer` client frame and `steer_result` server/client event.
-- [ ] Update JSON codec tests if frame shape coverage is explicit.
-- [ ] Add `AgentClient.steer(content)` with generated `steerId` and a waiter map keyed by id.
-- [ ] Ensure `closed` and `error` settle all pending steer waiters.
-- [ ] Update `AgentServer.handleFrame()` with a steer branch that sends `steer_result` instead of using phase FIFO.
-- [ ] Add server tests for accepted ack, rejected ack, id correlation, no queue event on accepted steer, and no transcript patch on rejected steer.
-- [ ] Verification: `bun test packages/agent/src/__tests__/server.test.ts packages/agent/src/__tests__/json-codec.test.ts packages/agent/src/__tests__/websocket-transport.test.ts packages/agent/src/__tests__/stdio-transport.test.ts`.
+- [x] Update `packages/agent/src/frames.ts`: add `steer` client frame and `steer_result` server/client event.
+- [x] Update JSON codec tests if frame shape coverage is explicit.
+- [x] Add `AgentClient.steer(content)` with generated `steerId` and a waiter map keyed by id.
+- [x] Ensure `closed` and `error` settle all pending steer waiters.
+- [x] Update `AgentServer.handleFrame()` with a steer branch that sends `steer_result` instead of using phase FIFO.
+- [x] Add server tests for accepted ack, rejected ack, id correlation, no queue event on accepted steer, and no transcript patch on rejected steer.
+- [x] Verification: `bun test packages/agent/src/__tests__/server.test.ts packages/agent/src/__tests__/json-codec.test.ts packages/agent/src/__tests__/websocket-transport.test.ts packages/agent/src/__tests__/stdio-transport.test.ts`.
 
 ### 13.5 REPL Surface
 
-- [ ] Extend `ReplCommandClient` and `ReplLoopClient` with `steer(content)`.
-- [ ] Add `/steer <text>` to REPL help and `handleCommand()`.
-- [ ] Keep plain non-command input as `send()` so busy-session plain input continues to queue.
-- [ ] Render accepted `steer` transcript blocks distinctly from queued input.
-- [ ] Add renderer and command tests for `/steer`, steer failure, and visible steer block rendering.
-- [ ] Verification: `bun test packages/repl/src/__tests__/renderer.test.ts packages/repl/src/__tests__/process.test.ts`.
+- [x] Extend `ReplCommandClient` and `ReplLoopClient` with `steer(content)`.
+- [x] Add `/steer <text>` to REPL help and `handleCommand()`.
+- [x] Keep plain non-command input as `send()` so busy-session plain input continues to queue.
+- [x] Render accepted `steer` transcript blocks distinctly from queued input.
+- [x] Add renderer and command tests for `/steer`, steer failure, and visible steer block rendering.
+- [x] Verification: `bun test packages/repl/src/__tests__/renderer.test.ts packages/repl/src/__tests__/process.test.ts`.
 
 ### 13.6 Web UI Surface
 
-- [ ] Add `steer()` to `ConversationRuntime` and `AgentWorkspace`.
-- [ ] Update `ConversationState`/block rendering to display `steer` blocks.
+- [x] Add `steer()` to `ConversationRuntime` and `AgentWorkspace`.
+- [x] Update `ConversationState`/block rendering to display `steer` blocks.
 - [ ] In `AgentMessageInput`, when running and editor has content, expose distinct actions for "steer current turn" and "queue next turn".
-- [ ] Keep idle submit behavior unchanged.
-- [ ] Report steer rejection as a visible error; do not fallback to queue.
-- [ ] Add web-ui tests for running-state controls and action dispatch.
-- [ ] Verification: `bun test packages/web-ui/src/agent/__tests__/reasoning.test.ts packages/web/src/server/__tests__/transport.e2e.test.ts packages/web/src/server/__tests__/workspace.e2e.test.ts`.
+- [x] Keep idle submit behavior unchanged.
+- [x] Report steer rejection as a visible error; do not fallback to queue.
+- [x] Add web-ui tests for running-state controls and action dispatch.
+- [x] Verification: `bun test packages/web-ui/src/agent/__tests__/reasoning.test.ts packages/web/src/server/__tests__/transport.e2e.test.ts packages/web/src/server/__tests__/workspace.e2e.test.ts`.
+
+Current checkpoint: Web running submit dispatches to `steer()` and preserves idle `send()` behavior. A separate running-state queue button remains pending.
 
 ### 13.7 Provider Implementations
 
@@ -518,12 +520,14 @@ Each item is intended to be implementable as a small checkpoint. Do not enable U
 - [ ] `@demi/provider-codex`: verify steer delivery does not duplicate output, replay partial streams, or break tool call/result pairing.
 - [ ] Verification: provider unit tests with fake WebSocket, plus a real-provider acceptance document under `docs/repl-acceptance/` before enabling the UI as supported for Codex.
 
+Current checkpoint: `user_steer` replay conversion is covered for Codex Responses and Claude Code JSONL. Native Codex in-flight delivery remains pending and must stay gated until fake WebSocket and real-provider acceptance pass.
+
 ### 13.8 Full Gate
 
-- [ ] Run `bun run typecheck`.
-- [ ] Run `bun run test`.
+- [x] Run `bun run typecheck`.
+- [x] Run `bun run test`.
 - [ ] Run targeted long-session or real-provider acceptance for queue + steer interleaving once a native provider supports steer.
-- [ ] Confirm `docs/package-boundaries.md` still matches any new public types or package edges.
+- [x] Confirm `docs/package-boundaries.md` still matches any new public types or package edges.
 
 ## 14. Acceptance Criteria
 

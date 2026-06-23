@@ -124,6 +124,10 @@ export class AgentWorkspace {
     return this.runtime(id).send(content)
   }
 
+  steer(id: string, content: UserContentBlock[]): Promise<void> {
+    return this.runtime(id).steer(content)
+  }
+
   abort(id: string): Promise<void> {
     return this.runtime(id).abort()
   }
