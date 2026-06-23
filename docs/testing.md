@@ -127,6 +127,8 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
   呈现/回收规则，确保 `steer_result accepted` 与真实 transcript materialization 之间不会丢失
   半透明本地消息，也不会被历史同内容 steer block 误清理；render block 保留原始 pending
   steer id，供 hover X 删除精确取消对应 pending steer。
+- `packages/web-ui/src/agent/__tests__/queue-submit.test.ts`：覆盖空 composer 提交时的 queued
+  message 选择规则，确保 Enter 快捷发送队列最后一条，而不是队首或本地伪 queue。
 
 ## 5. 模块测试点
 

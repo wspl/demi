@@ -5,6 +5,7 @@ import { useAgentWorkspace } from './workspace'
 import AgentMessageList from './AgentMessageList.vue'
 import AgentMessageInput from './AgentMessageInput.vue'
 import MessageQueueBar from './MessageQueueBar.vue'
+import { queuedMessageIdForEmptySubmit } from './queue-submit'
 
 const props = defineProps<{
   conversationId: string
@@ -22,9 +23,9 @@ const messageInputRef = ref<InstanceType<typeof AgentMessageInput>>()
 const { height: bottomAreaHeight } = useElementSize(bottomAreaRef)
 
 function handleEmptySubmit() {
-  const queue = queuedMessages.value
-  if (queue.length === 0) return
-  workspace.sendQueuedMessage(props.conversationId, queue[0]!.id)
+  const messageId = queuedMessageIdForEmptySubmit(queuedMessages.value)
+  if (!messageId) return
+  workspace.sendQueuedMessage(props.conversationId, messageId)
 }
 
 function onContinue() {

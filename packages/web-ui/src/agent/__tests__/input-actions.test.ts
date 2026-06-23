@@ -79,13 +79,39 @@ test('input submit emits empty-submit when there is no payload', async () => {
   expect(calls).toEqual(['empty-submit'])
 })
 
-function fakeWorkspace(phase: 'idle' | 'running' | 'compacting', calls: string[]): AgentWorkspace {
+test('empty input submit sends the last queued message when queue exists', async () => {
+  const calls: string[] = []
+  const workspace = fakeWorkspace('running', calls, [
+    { id: 'queued-first' },
+    { id: 'queued-last' },
+  ])
+  const actions = useAgentInputActions({
+    workspace,
+    conversationId: 'conversation-1',
+    buildSubmitPayload: () => null,
+    clearInput: () => calls.push('clear'),
+    emitEmptySubmit: () => calls.push('empty-submit'),
+  })
+
+  await actions.handleSubmit()
+
+  expect(calls).toEqual(['send-queued:queued-last'])
+})
+
+function fakeWorkspace(
+  phase: 'idle' | 'running' | 'compacting',
+  calls: string[],
+  queue: Array<{ id: string }> = [],
+): AgentWorkspace {
   return {
     sessions: {
-      'conversation-1': { phase },
+      'conversation-1': { phase, queue },
     },
     send: async (_id: string, content: UserContentBlock[]) => {
       calls.push(`send:${textContent(content)}`)
+    },
+    sendQueuedMessage: (_id: string, messageId: string) => {
+      calls.push(`send-queued:${messageId}`)
     },
     steer: async (_id: string, content: UserContentBlock[]) => {
       calls.push(`steer:${textContent(content)}`)

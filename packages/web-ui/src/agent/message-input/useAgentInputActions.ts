@@ -2,6 +2,7 @@ import type { ThinkingConfig, UserContentBlock } from '@demi/core'
 import { reportError } from '@demi/web-ui/infra/errors'
 import type { AgentWorkspace } from '../workspace'
 import { thinkingConfigToEffort } from '../reasoning'
+import { queuedMessageIdForEmptySubmit } from '../queue-submit'
 
 interface UseAgentInputActionsParams {
   workspace: AgentWorkspace
@@ -15,6 +16,12 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
   async function handleSubmit(): Promise<void> {
     const content = params.buildSubmitPayload()
     if (!content) {
+      const queue = params.workspace.sessions[params.conversationId]?.queue ?? []
+      const messageId = queuedMessageIdForEmptySubmit(queue)
+      if (messageId) {
+        params.workspace.sendQueuedMessage(params.conversationId, messageId)
+        return
+      }
       params.emitEmptySubmit?.()
       return
     }

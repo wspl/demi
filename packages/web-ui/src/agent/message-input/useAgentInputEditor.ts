@@ -6,7 +6,6 @@ import type { InputModel } from './input-model'
 
 interface UseAgentInputEditorParams {
   initialValue?: InputModel | undefined
-  handleSubmit: () => Promise<void> | void
   handleCancel: () => void
   handlePasteAttachments?: (clipboardData: DataTransfer, text: string) => boolean
 }
@@ -41,13 +40,6 @@ export function useAgentInputEditor(params: UseAgentInputEditorParams) {
 
         if (event.key === 'Escape') {
           params.handleCancel()
-          return true
-        }
-
-        const shouldSubmit = event.key === 'Enter' && !event.shiftKey
-        if (shouldSubmit) {
-          event.preventDefault()
-          void params.handleSubmit()
           return true
         }
 

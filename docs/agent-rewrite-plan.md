@@ -494,7 +494,8 @@ Queue item management 是最终 runtime 契约的一部分，不是 UI 本地状
 `sendQueuedMessage` 把仍在队列里的 send 移到下一 turn 队首；`clearMessageQueue` 删除所有仍
 在队列里的 send，且不影响当前 active turn。`AgentClient` 以 `dequeueMessage`、
 `sendQueuedMessage`、`clearMessageQueue` 暴露同名能力；浏览器 UI 必须直接调用这些方法，
-不能自己发明本地 queue 状态。
+不能自己发明本地 queue 状态。浏览器 UI 的空输入提交是 queue 快捷操作：当 composer 为空且
+queue 非空时，提交最后一个可见 queued message。
 
 ### 5.2 Transcript 与 Compaction
 

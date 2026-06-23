@@ -439,13 +439,16 @@ change data model / RPC calls. **Defer** = copy into the library but leave unwir
 
 - Rewire (mentions/slash removed): `AgentMessageInput.vue` (strip the two `Mention`
   extensions + popups + mode toggle; keep editor shell, attachments, ModelSelector,
-  ReasoningSelector, ContextUsageIndicator, send/stop), `useAgentInputEditor.ts` (plain
-  paragraph tiptap: StarterKit-minimal + Placeholder + paste-attachments + Enter/Shift+Enter;
-  no Mention), `useAgentInputActions.ts` (`send → client.send`; `setModel/setThinking → store`),
+  ReasoningSelector, ContextUsageIndicator, send/stop, Enter submit capture),
+  `useAgentInputEditor.ts` (plain paragraph tiptap: StarterKit-minimal + Placeholder +
+  paste-attachments + Escape cancel; no Mention), `useAgentInputActions.ts` (`send → client.send`;
+  `setModel/setThinking → store`),
   `useAgentInputAttachments.ts` (image/document → Demi `UserContentBlock`), `useAgentInputDraftSync.ts`,
   `useAgentInputSessionState.ts` (model/thinking/usage/contextWindow from store + control
   catalog), `input-utils.ts`, `AttachmentPreview.vue`, `ModelSelector.vue`/`ReasoningSelector.vue`/
   `InputModelContent.vue`/`SelectorTrigger.vue`.
+- Empty Enter in the composer is a queue shortcut: if the server queue has visible messages,
+  send the last queued message via `sendQueuedMessage`; otherwise keep the existing empty-submit no-op.
 - Drop: `MentionPopup.vue`, `InlineChip.vue`, `InlineChipNodeView.vue`,
   `useMentionSuggestion`, `useSlashSuggestion`, the mention/slash floating-ui wiring, and the
   plan/agent `ToggleSwitch` mode control.
