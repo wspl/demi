@@ -116,7 +116,25 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         case 'send': {
           const session = this.sessionFor('send')
           if (!session) return
-          this.observeSessionAction(session.send(frame.content))
+          this.observeSessionAction(session.send(frame.content, { id: frame.messageId }))
+          return
+        }
+        case 'dequeue_message': {
+          const session = this.sessionFor('dequeue_message')
+          if (!session) return
+          session.dequeueMessage(frame.messageId)
+          return
+        }
+        case 'send_queued_message': {
+          const session = this.sessionFor('send_queued_message')
+          if (!session) return
+          session.sendQueuedMessage(frame.messageId)
+          return
+        }
+        case 'clear_message_queue': {
+          const session = this.sessionFor('clear_message_queue')
+          if (!session) return
+          session.clearMessageQueue()
           return
         }
         case 'steer': {

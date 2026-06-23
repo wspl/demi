@@ -13,12 +13,19 @@ const props = defineProps<{
 const workspace = useAgentWorkspace()
 const session = computed(() => workspace.sessions[props.conversationId])
 const blocks = computed(() => session.value?.blocks ?? [])
-const queue = computed(() => session.value?.queue ?? [])
+const queuedMessages = computed(() => session.value?.queue ?? [])
 const pendingSteers = computed(() => session.value?.pendingSteers ?? [])
 const phase = computed(() => session.value?.phase ?? 'idle')
 
 const bottomAreaRef = ref<HTMLDivElement>()
+const messageInputRef = ref<InstanceType<typeof AgentMessageInput>>()
 const { height: bottomAreaHeight } = useElementSize(bottomAreaRef)
+
+function handleEmptySubmit() {
+  const queue = queuedMessages.value
+  if (queue.length === 0) return
+  workspace.sendQueuedMessage(props.conversationId, queue[0]!.id)
+}
 
 function onContinue() {
   void workspace.resume(props.conversationId)
@@ -43,8 +50,19 @@ function onRetry() {
     />
     <div class="absolute bottom-0 left-0 right-0 z-10 px-5 pb-4">
       <div ref="bottomAreaRef" class="relative">
-        <MessageQueueBar :queue="queue" />
-        <AgentMessageInput :conversation-id="conversationId" />
+        <MessageQueueBar
+          v-if="queuedMessages.length"
+          :messages="queuedMessages"
+          @remove="(messageId) => workspace.dequeueMessage(conversationId, messageId)"
+          @send-now="(messageId) => workspace.sendQueuedMessage(conversationId, messageId)"
+          @clear-all="workspace.clearMessageQueue(conversationId)"
+        />
+        <AgentMessageInput
+          ref="messageInputRef"
+          class="relative z-10"
+          :conversation-id="conversationId"
+          @empty-submit="handleEmptySubmit"
+        />
       </div>
     </div>
   </div>

@@ -63,6 +63,22 @@ test('input queue action sends a new turn while running', async () => {
   expect(calls).toEqual(['clear', 'send:run after this'])
 })
 
+test('input submit emits empty-submit when there is no payload', async () => {
+  const calls: string[] = []
+  const workspace = fakeWorkspace('running', calls)
+  const actions = useAgentInputActions({
+    workspace,
+    conversationId: 'conversation-1',
+    buildSubmitPayload: () => null,
+    clearInput: () => calls.push('clear'),
+    emitEmptySubmit: () => calls.push('empty-submit'),
+  })
+
+  await actions.handleSubmit()
+
+  expect(calls).toEqual(['empty-submit'])
+})
+
 function fakeWorkspace(phase: 'idle' | 'running' | 'compacting', calls: string[]): AgentWorkspace {
   return {
     sessions: {

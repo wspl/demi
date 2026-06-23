@@ -41,6 +41,7 @@ test('StdioTransport preserves Uint8Array fields through JSON frames', async () 
 
   client.send({
     type: 'send',
+    messageId: 'stdio-send-1',
     content: [
       {
         type: 'image',

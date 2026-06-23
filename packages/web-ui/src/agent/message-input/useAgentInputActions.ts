@@ -8,12 +8,16 @@ interface UseAgentInputActionsParams {
   conversationId: string
   buildSubmitPayload: () => UserContentBlock[] | null
   clearInput: () => void
+  emitEmptySubmit?: () => void
 }
 
 export function useAgentInputActions(params: UseAgentInputActionsParams) {
   async function handleSubmit(): Promise<void> {
     const content = params.buildSubmitPayload()
-    if (!content) return
+    if (!content) {
+      params.emitEmptySubmit?.()
+      return
+    }
     params.clearInput()
     try {
       await params.workspace.send(params.conversationId, content)

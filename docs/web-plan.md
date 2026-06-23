@@ -26,9 +26,9 @@ Implemented and verified (against a scripted stub provider that emits thinking +
 - Active-turn steer UI follows agent-gui semantics: an accepted-but-not-yet-materialized steer
   is rendered as a translucent local user bubble at the list tail, then disappears when the real
   `steer` transcript block arrives at its protocol-defined insertion point.
-- The web conversation view must render the server `queue` event through a read-only
-  `MessageQueueBar` above the composer. Queue item mutation remains out of scope until the
-  client protocol exposes per-item operations.
+- The web conversation view renders the server `queue` event through the agent-gui
+  `MessageQueueBar` copied/adapted above the composer. Its original remove, send-now, and
+  clear-all actions are wired to Demi queue item protocol operations.
 - Verified against the **real** Claude Code provider in-browser: multi-turn tool use no longer
   triggers `400 ... tool use concurrency`, and the `claude` CLI is no longer restarted per turn.
   See `docs/claude-code-persistent-session.md` for the root cause, the persistent-session design,
@@ -42,7 +42,7 @@ yet):
   Electron file paths; the composer is text-only for now.
 - Sticky user-block overlay, inline user-turn edit, revert/rollback/replay — demi has no
   checkpoint rollback; `continue`/`retry` map to `resume`/`retry`.
-- Message-queue item management, plan/agent mode toggle, `@`/`/` mentions (removed), MCP/skills.
+- Plan/agent mode toggle, `@`/`/` mentions (removed), MCP/skills.
 - Keyboard command registry / tab shortcuts, conversation persistence + reopen-closed,
   light/dark toggle UI (the token system supports both; default is dark).
 - Real-provider (claude-code/codex) acceptance is available via the `@demi/web` server
@@ -422,7 +422,8 @@ change data model / RPC calls. **Defer** = copy into the library but leave unwir
   Demi supports rollback), `AssistantTextBlock.vue` (markdown; `knownPaths` → empty),
   `ThinkingBlock.vue`, `ResponseStatsBlock.vue`/`ContextUsageIndicator.vue` (usage from
   `getLatestResponseUsage`-equivalent over Demi blocks), `ErrorBlock.vue`, `AbortedBlock.vue`,
-  `CompactionBlock.vue`, `MessageQueueBar.vue` (read-only unless queue mgmt added),
+  `CompactionBlock.vue`, `MessageQueueBar.vue` (copy from agent-gui; props/emits adapted to
+  Demi queue frames),
   `StickyUserBlockOverlay.vue`, `LoadingBlock.vue`, `AnsiText.vue`.
 - Tool subtree — Rewire dispatch + core: `ToolCallBlock.vue` (dispatch on Demi tool names:
   `shell_exec → ToolShellBlock`, `shell_wait/shell_input/shell_abort → small status rows`,
@@ -485,9 +486,6 @@ collapse to an auto-grow `<textarea>` stays possible but is not planned.
 - **Inline user-turn edit, revert, rollback, replay, file-rollback preview** — deferred;
   Demi's `AgentClient` exposes `retry`/`resume` but no arbitrary checkpoint rollback. User
   blocks are non-editable initially; `continue/retry` map to `resume/retry`.
-- **Message-queue item management** (remove/send-now/clear) — deferred; Demi surfaces the
-  queue (`queue` event), and web must display it with a read-only `MessageQueueBar`, but the
-  client has no per-item mutation.
 - **Terminal navigation from tool cards, file links to an editor, project/git branch model,
   conversation import/export** — dropped (out of scope: terminal/editor/git/explorer).
 

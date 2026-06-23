@@ -16,7 +16,10 @@ export interface ProviderConfig {
 
 export type ClientFrame =
   | { type: 'open'; provider: ProviderConfig; cwd: string }
-  | { type: 'send'; content: UserContentBlock[] }
+  | { type: 'send'; messageId: string; content: UserContentBlock[] }
+  | { type: 'dequeue_message'; messageId: string }
+  | { type: 'send_queued_message'; messageId: string }
+  | { type: 'clear_message_queue' }
   | { type: 'steer'; steerId: string; content: UserContentBlock[] }
   | { type: 'set_provider'; provider: ProviderConfig }
   | { type: 'abort' }

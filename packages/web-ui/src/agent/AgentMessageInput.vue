@@ -18,6 +18,10 @@ const props = defineProps<{
   conversationId: string
 }>()
 
+const emit = defineEmits<{
+  'empty-submit': []
+}>()
+
 const workspace = useAgentWorkspace()
 
 const {
@@ -48,6 +52,9 @@ const { handleSubmit, handleSteerSubmit, handleQueueSubmit, handleSelectModel, h
   conversationId: props.conversationId,
   buildSubmitPayload,
   clearInput,
+  emitEmptySubmit() {
+    emit('empty-submit')
+  },
 })
 
 const { editor, isFocused } = useAgentInputEditor({

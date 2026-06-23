@@ -132,8 +132,8 @@ export class AgentSession<State> {
         : new Transcript(params.transcript?.blocks ?? [], transcriptOptions)
   }
 
-  send(content: UserContentBlock[]): Promise<void> {
-    const id = this.idFactory()
+  send(content: UserContentBlock[], options: { id?: string } = {}): Promise<void> {
+    const id = options.id ?? this.idFactory()
     return this.enqueue({
       type: 'send',
       id,
@@ -264,6 +264,62 @@ export class AgentSession<State> {
 
   queuedMessages(): QueuedMessage[] {
     return this.queued.map((message) => ({ ...message, content: [...message.content] }))
+  }
+
+  dequeueMessage(id: string): boolean {
+    const queuedIndex = this.queued.findIndex((message) => message.id === id)
+    if (queuedIndex === -1) return false
+
+    this.queued.splice(queuedIndex, 1)
+    const action = this.removePendingSend(id)
+    action?.resolve()
+    this.emitQueue()
+    return true
+  }
+
+  sendQueuedMessage(id: string): boolean {
+    const queuedIndex = this.queued.findIndex((message) => message.id === id)
+    if (queuedIndex === -1) return false
+
+    if (queuedIndex > 0) {
+      const [message] = this.queued.splice(queuedIndex, 1)
+      if (message) this.queued.unshift(message)
+    }
+
+    const actionIndex = this.pendingActions.findIndex((action) => action.type === 'send' && action.id === id)
+    if (actionIndex !== -1) {
+      const [action] = this.pendingActions.splice(actionIndex, 1)
+      if (action) {
+        const insertionIndex = this.pendingActions.findIndex((candidate) => candidate.type === 'send')
+        if (insertionIndex === -1) this.pendingActions.push(action)
+        else this.pendingActions.splice(insertionIndex, 0, action)
+      }
+    }
+
+    this.emitQueue()
+    this.kickWorker()
+    return true
+  }
+
+  clearMessageQueue(): number {
+    if (this.queued.length === 0) return 0
+
+    const queuedIds = new Set(this.queued.map((message) => message.id))
+    const clearedCount = queuedIds.size
+    this.queued.splice(0)
+
+    for (let index = 0; index < this.pendingActions.length; ) {
+      const action = this.pendingActions[index]
+      if (action?.type === 'send' && queuedIds.has(action.id)) {
+        this.pendingActions.splice(index, 1)
+        action.resolve()
+        continue
+      }
+      index += 1
+    }
+
+    this.emitQueue()
+    return clearedCount
   }
 
   subscribe(listener: SessionEventListener): () => void {
@@ -910,6 +966,13 @@ export class AgentSession<State> {
     if (index === -1) return
     this.queued.splice(index, 1)
     this.emitQueue()
+  }
+
+  private removePendingSend(id: string): Extract<PendingAction, { type: 'send' }> | null {
+    const actionIndex = this.pendingActions.findIndex((action) => action.type === 'send' && action.id === id)
+    if (actionIndex === -1) return null
+    const [action] = this.pendingActions.splice(actionIndex, 1)
+    return action && action.type === 'send' ? action : null
   }
 
   private setPhase(phase: SessionPhase): void {

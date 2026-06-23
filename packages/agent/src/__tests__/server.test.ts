@@ -572,6 +572,157 @@ test('AgentClient resolves each queued send promise on its own phase cycle', asy
   expect(settlements).toEqual(['first', 'second', 'third'])
 })
 
+test('AgentClient.dequeueMessage resolves the removed queued send without running it', async () => {
+  const registry = new ProviderRegistry()
+  const gates = [deferred<void>(), deferred<void>()]
+  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+  registry.register({
+    type: 'sequenced-delayed',
+    displayName: 'Sequenced Delayed',
+    createProvider: () => provider,
+  })
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providerRegistry: registry,
+  })
+  const client = server.client()
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  const firstSend = client.send([{ type: 'text', text: 'first' }])
+  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
+
+  let secondSettled = false
+  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
+    secondSettled = true
+  })
+  await waitFor(() => queuedMessageId(seen, 'second') !== null)
+  const secondId = queuedMessageId(seen, 'second')!
+
+  client.dequeueMessage(secondId)
+  await secondSend
+  expect(secondSettled).toBe(true)
+  await waitFor(() => seen.some((event) => event.type === 'queue' && event.queue.length === 0))
+
+  gates[0].resolve(undefined)
+  await firstSend
+  await delay(5)
+
+  expect(provider.calls).toBe(1)
+  const userTexts = client
+    .transcript()
+    .blocks.filter((block) => block.type === 'user')
+    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
+  expect(userTexts).toEqual(['first'])
+})
+
+test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle', async () => {
+  const registry = new ProviderRegistry()
+  const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
+  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+  registry.register({
+    type: 'sequenced-delayed',
+    displayName: 'Sequenced Delayed',
+    createProvider: () => provider,
+  })
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providerRegistry: registry,
+  })
+  const client = server.client()
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  const settlements: string[] = []
+  const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
+    settlements.push('first')
+  })
+  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
+
+  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
+    settlements.push('second')
+  })
+  const thirdSend = client.send([{ type: 'text', text: 'third' }]).then(() => {
+    settlements.push('third')
+  })
+  await waitFor(() => queuedMessageId(seen, 'second') !== null && queuedMessageId(seen, 'third') !== null)
+  const thirdId = queuedMessageId(seen, 'third')!
+
+  client.sendQueuedMessage(thirdId)
+  await waitFor(() => latestQueueTexts(seen).join(',') === 'third,second')
+
+  gates[0].resolve(undefined)
+  await firstSend
+  await waitFor(() => provider.calls === 2)
+  expect(settlements).toEqual(['first'])
+
+  gates[1].resolve(undefined)
+  await thirdSend
+  await waitFor(() => provider.calls === 3)
+  expect(settlements).toEqual(['first', 'third'])
+
+  gates[2].resolve(undefined)
+  await secondSend
+  expect(settlements).toEqual(['first', 'third', 'second'])
+
+  const userTexts = client
+    .transcript()
+    .blocks.filter((block) => block.type === 'user')
+    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
+  expect(userTexts).toEqual(['first', 'third', 'second'])
+})
+
+test('AgentClient.clearMessageQueue resolves queued sends without canceling the active send', async () => {
+  const registry = new ProviderRegistry()
+  const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
+  const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
+  registry.register({
+    type: 'sequenced-delayed',
+    displayName: 'Sequenced Delayed',
+    createProvider: () => provider,
+  })
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providerRegistry: registry,
+  })
+  const client = server.client()
+  const seen: ClientSessionEvent[] = []
+  client.subscribe((event) => seen.push(event))
+
+  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  const firstSend = client.send([{ type: 'text', text: 'first' }])
+  await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
+
+  let secondSettled = false
+  let thirdSettled = false
+  const secondSend = client.send([{ type: 'text', text: 'second' }]).then(() => {
+    secondSettled = true
+  })
+  const thirdSend = client.send([{ type: 'text', text: 'third' }]).then(() => {
+    thirdSettled = true
+  })
+  await waitFor(() => queuedMessageId(seen, 'second') !== null && queuedMessageId(seen, 'third') !== null)
+
+  client.clearMessageQueue()
+  await Promise.all([secondSend, thirdSend])
+  expect(secondSettled).toBe(true)
+  expect(thirdSettled).toBe(true)
+  await waitFor(() => seen.some((event) => event.type === 'queue' && event.queue.length === 0))
+
+  gates[0].resolve(undefined)
+  await firstSend
+  await delay(5)
+
+  expect(provider.calls).toBe(1)
+  const userTexts = client
+    .transcript()
+    .blocks.filter((block) => block.type === 'user')
+    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
+  expect(userTexts).toEqual(['first'])
+})
+
 test('AgentClient rejects only the active action when queued sends continue after an error', async () => {
   const registry = new ProviderRegistry()
   const errorGate = deferred<void>()
@@ -883,6 +1034,24 @@ function providerConfig(turns: ConstructorParameters<typeof StubProvider>[0]): P
     config: { turns },
     model,
   }
+}
+
+function queuedMessageId(events: ClientSessionEvent[], text: string): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'queue') continue
+    const message = event.queue.find((candidate) => candidate.text === text)
+    if (message) return message.id
+  }
+  return null
+}
+
+function latestQueueTexts(events: ClientSessionEvent[]): string[] {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type === 'queue') return event.queue.map((message) => message.text)
+  }
+  return []
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

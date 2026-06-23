@@ -125,6 +125,19 @@ export class AgentWorkspace {
     return this.runtime(id).send(content)
   }
 
+  dequeueMessage(id: string, messageId: string): void {
+    this.runtimes.get(id)?.dequeueMessage(messageId)
+  }
+
+  sendQueuedMessage(id: string, messageId: string): void {
+    this.runtimes.get(id)?.sendQueuedMessage(messageId)
+  }
+
+  clearMessageQueue(id: string): void {
+    const messageIds = this.sessions[id]?.queue.map((message) => message.id) ?? []
+    this.runtimes.get(id)?.clearMessageQueue(messageIds)
+  }
+
   steer(id: string, content: UserContentBlock[]): Promise<void> {
     return this.runtime(id).steer(content)
   }

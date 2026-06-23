@@ -642,6 +642,93 @@ test('AgentSession queues sends while a run is active and drains them in order',
   expect(userTexts).toEqual(['first', 'second'])
 })
 
+test('AgentSession dequeues a queued send without running it', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('second'), events.response()],
+  ])
+  const session = createSession(provider)
+
+  const first = session.send(text('first'))
+  await provider.waitForRun(0)
+
+  const second = session.send(text('second'))
+  const queuedId = session.queuedMessages()[0]!.id
+  expect(session.dequeueMessage(queuedId)).toBe(true)
+  expect(session.queuedMessages()).toEqual([])
+  expect(session.dequeueMessage(queuedId)).toBe(false)
+
+  provider.release(0)
+  await Promise.all([first, second])
+
+  expect(provider.requests).toHaveLength(1)
+  const userTexts = session
+    .transcript()
+    .blocks.filter((block) => block.type === 'user')
+    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
+  expect(userTexts).toEqual(['first'])
+})
+
+test('AgentSession sends a queued message next when requested', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('third'), events.response()],
+    [events.text('second'), events.response()],
+  ])
+  const session = createSession(provider)
+
+  const first = session.send(text('first'))
+  await provider.waitForRun(0)
+
+  const second = session.send(text('second'))
+  const third = session.send(text('third'))
+  const queued = session.queuedMessages()
+  const thirdId = queued.find((message) => message.text === 'third')!.id
+  expect(session.sendQueuedMessage(thirdId)).toBe(true)
+  expect(session.queuedMessages().map((message) => message.text)).toEqual(['third', 'second'])
+
+  provider.release(0)
+  await provider.waitForRun(1)
+  provider.release(1)
+  await provider.waitForRun(2)
+  provider.release(2)
+  await Promise.all([first, second, third])
+
+  const userTexts = session
+    .transcript()
+    .blocks.filter((block) => block.type === 'user')
+    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
+  expect(userTexts).toEqual(['first', 'third', 'second'])
+})
+
+test('AgentSession clears queued sends without canceling the active turn', async () => {
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('second'), events.response()],
+    [events.text('third'), events.response()],
+  ])
+  const session = createSession(provider)
+
+  const first = session.send(text('first'))
+  await provider.waitForRun(0)
+
+  const second = session.send(text('second'))
+  const third = session.send(text('third'))
+  expect(session.queuedMessages().map((message) => message.text)).toEqual(['second', 'third'])
+  expect(session.clearMessageQueue()).toBe(2)
+  expect(session.queuedMessages()).toEqual([])
+
+  provider.release(0)
+  await Promise.all([first, second, third])
+
+  expect(provider.requests).toHaveLength(1)
+  const userTexts = session
+    .transcript()
+    .blocks.filter((block) => block.type === 'user')
+    .map((block) => (block.type === 'user' && block.content[0]?.type === 'text' ? block.content[0].text : ''))
+  expect(userTexts).toEqual(['first'])
+})
+
 test('AgentSession rejects steer while idle without changing the transcript', async () => {
   const session = createSession(new StubProvider([]))
 

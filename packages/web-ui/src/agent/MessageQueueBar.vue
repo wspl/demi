@@ -1,51 +1,67 @@
 <script setup lang="ts">
-import type { QueuedMessage, UserContentBlock } from '@demi/core'
+import { DeleteLine } from '@mingcute/vue/delete'
+import { ListCheckLine } from '@mingcute/vue/list-check'
+import { SendLine } from '@mingcute/vue/send'
 
-const props = defineProps<{
-  queue: QueuedMessage[]
+defineProps<{
+  messages: { id: string; text: string }[]
 }>()
 
-function messageText(message: QueuedMessage): string {
-  return message.text || contentText(message.content)
-}
-
-function contentText(content: UserContentBlock[]): string {
-  return content.map((block) => {
-    if (block.type === 'text') return block.text
-    if (block.type === 'reference') return block.reference
-    if (block.type === 'document') return block.source.fileName
-    return '[image]'
-  }).join('\n')
-}
+const emit = defineEmits<{
+  remove: [id: string]
+  sendNow: [id: string]
+  clearAll: []
+}>()
 </script>
 
 <template>
-  <div
-    v-if="props.queue.length > 0"
-    class="message-queue-bar mb-2 rounded-xl border border-line bg-surface-raised/95 px-3 py-2 backdrop-blur"
-  >
-    <div class="flex items-start gap-2">
-      <div
-        class="mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-fg-ghost px-1.5 text-[11px] font-medium tabular-nums text-fg-muted"
-      >
-        {{ props.queue.length }}
-      </div>
-      <div class="min-w-0 flex-1 space-y-1">
-        <div
-          v-for="(message, index) in props.queue"
-          :key="message.id"
-          class="flex min-w-0 items-center gap-2 text-sm leading-5"
-        >
-          <span class="shrink-0 text-[11px] tabular-nums text-fg-faint">{{ index + 1 }}</span>
-          <span class="min-w-0 truncate text-fg-body">{{ messageText(message) }}</span>
+  <div class="relative mx-3 -mb-3">
+    <div class="rounded-t-lg bg-surface-raised border border-line-subtle border-b-0 pb-4.5">
+      <div class="flex flex-col px-1 pt-1.5">
+        <div class="flex items-center gap-2 px-1.5 pb-1">
+          <div class="flex flex-1 items-center gap-1.5 text-[12px] text-fg-subtle">
+            <ListCheckLine :size="14" />
+            <span>{{ messages.length }} Queued</span>
+          </div>
+          <div class="shrink-0 flex items-center gap-0.5">
+            <span
+              class="flex size-6 cursor-pointer items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-active hover:text-fg-body"
+              @click="emit('clearAll')"
+            >
+              <DeleteLine :size="14" />
+            </span>
+          </div>
+        </div>
+        <div class="flex flex-col">
+          <div
+            v-for="(message, index) in messages"
+            :key="message.id"
+            class="flex items-center gap-2 px-1.5"
+          >
+            <span class="shrink-0 text-[12px] tabular-nums text-fg-faint">{{ index + 1 }}</span>
+            <div
+              class="flex min-w-0 flex-1 items-center gap-2 py-1"
+              :class="index < messages.length - 1 ? 'border-b border-line-subtle' : ''"
+            >
+              <span class="min-w-0 flex-1 truncate text-[13px] text-fg-muted">{{ message.text }}</span>
+              <div class="shrink-0 flex items-center gap-0.5">
+                <span
+                  class="flex size-6 cursor-pointer items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-active hover:text-fg-body"
+                  @click="emit('sendNow', message.id)"
+                >
+                  <SendLine :size="14" />
+                </span>
+                <span
+                  class="flex size-6 cursor-pointer items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-active hover:text-fg-body"
+                  @click="emit('remove', message.id)"
+                >
+                  <DeleteLine :size="14" />
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.message-queue-bar {
-  box-shadow: var(--shadow-float);
-}
-</style>

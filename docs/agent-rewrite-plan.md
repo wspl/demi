@@ -81,7 +81,7 @@ Host
 10. **Provider config 是协议输入**：经 AgentClient 进入真实 provider 的 `config` 必须按 provider 自己的可序列化白名单解析；测试/内部注入能力（如 fake transport factory）不能通过协议 config 暴露。
 11. **Manifest 不虚增层依赖**：package manifest 必须反映真实源码依赖，不能让平台无关包通过声明依赖暗中耦合 provider、Node-only adapter 或真实 CLI provider。
 12. **命令说明单一来源**：注册命令的 prompt、`<command> prompt` 输出、system prompt 中的命令说明必须由同一份 `CommandSpec` 渲染，不手写多份说明。
-13. **AgentClient action Promise 按 action 收敛**：`phase` 是 session 级广播，不是 per-command ack。客户端在没有 commandId 的前提下，必须按本地发出的 action 顺序把每个 active→idle phase 周期分配给一个已接受 action；多个 queued `send` 不能因为监听到同一个 phase 周期而一起 resolve。
+13. **AgentClient action Promise 按 action 收敛**：`phase` 是 session 级广播，不是 per-command ack。非 send action 必须按本地发出的 action 顺序把每个 active→idle phase 周期分配给一个已接受 action；`send` 帧必须携带 client-generated `messageId`，queued item mutation 用同一个 id 解析、重排或清空对应的 pending send。多个 queued `send` 不能因为监听到同一个 phase 周期而一起 resolve。
 14. **测试与文档跟着约束走**：新增架构约束时先写进方案文档，再用测试、扫描或门禁覆盖；不能只靠聊天上下文或临时记忆。
 15. **观测边界不改变 shell 可见语义**：长命令跨 `running` / `shell_wait` / `timeout` / `abort` 收敛时，重定向、fd duplicate、fd close、`!` 等 shell 语义必须保持一致；本该写入文件的 stdout/stderr 不能因为中途 yield 或中断泄漏到 tool output。
 16. **AgentSession 只被 AgentServer 消费**：非测试运行时代码只有 `AgentServer` 可以直接实例化 `AgentSession`；壳子、provider 和业务 harness 只能经 `AgentClient` 或类型契约交互。
@@ -466,7 +466,10 @@ interface AgentHarnessRuntime<State> {
 }
 
 interface AgentSession<State> {
-  send(content: UserContentBlock[]): Promise<void>
+  send(content: UserContentBlock[], options?: { id?: string }): Promise<void>
+  dequeueMessage(id: string): boolean
+  sendQueuedMessage(id: string): boolean
+  clearMessageQueue(): number
   steer(content: UserContentBlock[]): Promise<void>
   retry(): Promise<void>
   resume(): Promise<void>
@@ -485,6 +488,13 @@ interface AgentSession<State> {
 相对 Rust 蓝本删除 `replayFrom`。mutation guard 保留，用于外部 transcript 编辑（`reserve_mutation`）与 compact 期间的并发保护。
 
 `send` 在 busy 时仍表示下一 turn 队列；`steer` 表示追加到当前 active turn。两者是显式调用方选择，runtime 不允许把 rejected steer 自动转成 queued send，也不允许用 abort/resume 模拟 steer。
+
+Queue item management 是最终 runtime 契约的一部分，不是 UI 本地状态。
+`dequeueMessage` 只删除仍在队列里的 send，并 resolve 对应 pending action，但不执行；
+`sendQueuedMessage` 把仍在队列里的 send 移到下一 turn 队首；`clearMessageQueue` 删除所有仍
+在队列里的 send，且不影响当前 active turn。`AgentClient` 以 `dequeueMessage`、
+`sendQueuedMessage`、`clearMessageQueue` 暴露同名能力；浏览器 UI 必须直接调用这些方法，
+不能自己发明本地 queue 状态。
 
 ### 5.2 Transcript 与 Compaction
 

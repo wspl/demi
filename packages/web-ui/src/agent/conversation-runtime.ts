@@ -27,6 +27,18 @@ export class ConversationRuntime {
     await client.send(content)
   }
 
+  dequeueMessage(messageId: string): void {
+    this.client?.dequeueMessage(messageId)
+  }
+
+  sendQueuedMessage(messageId: string): void {
+    this.client?.sendQueuedMessage(messageId)
+  }
+
+  clearMessageQueue(messageIds: string[]): void {
+    this.client?.clearMessageQueue(messageIds)
+  }
+
   async steer(content: UserContentBlock[]): Promise<void> {
     const pending = createPendingSteerMessage(globalThis.crypto.randomUUID(), content, this.state.blocks)
     this.state.pendingSteers = [...this.state.pendingSteers, pending]

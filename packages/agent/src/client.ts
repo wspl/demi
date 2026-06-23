@@ -9,6 +9,7 @@ type ActionCommand = 'send' | 'retry' | 'resume' | 'compact'
 
 interface ActionWaiter {
   command: ActionCommand
+  messageId?: string
   sawActivePhase: boolean
   resolve: () => void
   reject: (error: Error) => void
@@ -24,6 +25,7 @@ export class AgentClient {
   private readonly listeners = new Set<AgentClientListener>()
   private readonly pendingActionWaiters: ActionWaiter[] = []
   private readonly pendingSteerWaiters = new Map<string, SteerWaiter>()
+  private readonly queuedMessageIds = new Set<string>()
   private blocks: Block[] = []
   private phase: SessionPhase | null = null
   private unsubscribeTransport: () => void
@@ -40,13 +42,33 @@ export class AgentClient {
   }
 
   sendMessage(content: UserContentBlock[]): Promise<void> {
-    const wait = this.waitForAction('send')
-    this.sendFrame({ type: 'send', content })
+    const messageId = globalThis.crypto.randomUUID()
+    const wait = this.waitForAction('send', messageId)
+    this.sendFrame({ type: 'send', messageId, content })
     return wait
   }
 
   send(content: UserContentBlock[]): Promise<void> {
     return this.sendMessage(content)
+  }
+
+  dequeueMessage(messageId: string): void {
+    this.sendFrame({ type: 'dequeue_message', messageId })
+    this.resolveQueuedSendWaiter(messageId)
+    this.queuedMessageIds.delete(messageId)
+  }
+
+  sendQueuedMessage(messageId: string): void {
+    this.moveQueuedSendWaiterToFront(messageId)
+    this.sendFrame({ type: 'send_queued_message', messageId })
+  }
+
+  clearMessageQueue(messageIds: string[] = [...this.queuedMessageIds]): void {
+    this.sendFrame({ type: 'clear_message_queue' })
+    for (const messageId of messageIds) {
+      this.resolveQueuedSendWaiter(messageId)
+      this.queuedMessageIds.delete(messageId)
+    }
   }
 
   steer(content: UserContentBlock[]): Promise<void> {
@@ -132,6 +154,7 @@ export class AgentClient {
       case 'closed':
         this.blocks = []
         this.phase = null
+        this.queuedMessageIds.clear()
         this.emit(frame)
         this.resolveAllActionWaiters()
         this.rejectAllSteerWaiters(new Error('Session closed'))
@@ -147,6 +170,8 @@ export class AgentClient {
         return
       }
       case 'queue':
+        this.queuedMessageIds.clear()
+        for (const message of frame.queue) this.queuedMessageIds.add(message.id)
         this.emit(frame)
         return
       case 'steer_result':
@@ -188,10 +213,11 @@ export class AgentClient {
     })
   }
 
-  private waitForAction(command: ActionCommand): Promise<void> {
+  private waitForAction(command: ActionCommand, messageId?: string): Promise<void> {
     return new Promise((resolve, reject) => {
       this.pendingActionWaiters.push({
         command,
+        messageId,
         sawActivePhase: false,
         resolve,
         reject,
@@ -230,6 +256,30 @@ export class AgentClient {
     const waiter = this.pendingActionWaiters.find((candidate) => candidate.sawActivePhase)
     if (!waiter) return
     this.settleActionWaiter(waiter, () => waiter.resolve())
+  }
+
+  private resolveQueuedSendWaiter(messageId: string): void {
+    const waiter = this.pendingActionWaiters.find(
+      (candidate) => candidate.command === 'send' && candidate.messageId === messageId && !candidate.sawActivePhase,
+    )
+    if (!waiter) return
+    this.settleActionWaiter(waiter, () => waiter.resolve())
+  }
+
+  private moveQueuedSendWaiterToFront(messageId: string): void {
+    const waiter = this.pendingActionWaiters.find(
+      (candidate) => candidate.command === 'send' && candidate.messageId === messageId && !candidate.sawActivePhase,
+    )
+    if (!waiter) return
+    const currentIndex = this.pendingActionWaiters.indexOf(waiter)
+    if (currentIndex === -1) return
+    this.pendingActionWaiters.splice(currentIndex, 1)
+
+    const insertionIndex = this.pendingActionWaiters.findIndex(
+      (candidate) => candidate.command === 'send' && !candidate.sawActivePhase,
+    )
+    if (insertionIndex === -1) this.pendingActionWaiters.push(waiter)
+    else this.pendingActionWaiters.splice(insertionIndex, 0, waiter)
   }
 
   private rejectPendingAction(command: string, error: Error): void {
