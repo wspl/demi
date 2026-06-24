@@ -8,14 +8,13 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
-import { ProviderRegistry, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
+import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import {
   AgentClient,
   AgentServer,
   type ClientSessionEvent,
   type ClientFrame,
-  type ProviderConfig,
 } from '../index'
 import { createStdioClientTransport, createStdioServerTransport } from '../stdio-transport'
 
@@ -68,24 +67,15 @@ test('StdioTransport preserves Uint8Array fields through JSON frames', async () 
 test('StdioTransport carries the same AgentClient/AgentServer frames over NDJSON', async () => {
   const clientToServer = new PassThrough()
   const serverToClient = new PassThrough()
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'echo-stub',
-    displayName: 'Echo Stub',
-    createProvider: (config: unknown) => {
-      const text = (config as { text: string }).text
-      return new StubProvider([[events.text(text), events.response()]])
-    },
-  })
 
   const server = new AgentServer({
     agent: createHarness(),
-    providerRegistry,
+    providers: [runtimeProvider('echo-stub', () => new StubProvider([[events.text('over stdio'), events.response()]]))],
   })
   server.attachTransport(createStdioServerTransport(clientToServer, serverToClient))
   const client = new AgentClient(createStdioClientTransport(serverToClient, clientToServer))
 
-  await client.open(providerConfig('over stdio'), '/workspace')
+  await client.open(providerSelectionForText('over stdio'), '/workspace')
   await client.send([{ type: 'text', text: 'hello' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -98,23 +88,17 @@ test('StdioTransport preserves complex AgentClient action convergence over NDJSO
   const clientToServer = new PassThrough()
   const serverToClient = new PassThrough()
   const provider = new StdioScenarioProvider()
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'stdio-scenario',
-    displayName: 'Stdio Scenario',
-    createProvider: () => provider,
-  })
 
   const server = new AgentServer({
     agent: createHarness(),
-    providerRegistry,
+    providers: [runtimeProvider('stdio-scenario', provider)],
   })
   server.attachTransport(createStdioServerTransport(clientToServer, serverToClient))
   const client = new AgentClient(createStdioClientTransport(serverToClient, clientToServer))
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'stdio-scenario', model }, '/workspace')
+  await client.open(providerSelection('stdio-scenario'), '/workspace')
   const first = client.send([{ type: 'text', text: 'first ' + 'x'.repeat(20_000) }])
   await provider.firstStarted.promise
   const second = client.send([{ type: 'text', text: 'second' }])
@@ -154,11 +138,9 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
   const leakedPath = join(root, 'stdio-leaked.txt')
   const clientToServer = new PassThrough()
   const serverToClient = new PassThrough()
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'stdio-shell',
-    displayName: 'Stdio Shell',
-    createProvider: () =>
+  const provider = runtimeProvider(
+    'stdio-shell',
+    () =>
       new StubProvider([
         [
           events.toolCall('tool-1', 'shell_exec', {
@@ -168,10 +150,10 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
         ],
         [events.text('running'), events.response()],
       ]),
-  })
+  )
   const server = new AgentServer({
     agent: createHarness(),
-    providerRegistry,
+    providers: [provider],
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       shellIdFactory: () => 'stdio-close-shell',
@@ -180,7 +162,7 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
   server.attachTransport(createStdioServerTransport(clientToServer, serverToClient))
   const client = new AgentClient(createStdioClientTransport(serverToClient, clientToServer))
 
-  await client.open({ type: 'stdio-shell', model }, root)
+  await client.open(providerSelection('stdio-shell'), root)
   await client.send([{ type: 'text', text: 'start long command' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -203,7 +185,7 @@ test('StdioTransport carries AgentClient frames to a child-process AgentServer',
 
   const client = new AgentClient(createStdioClientTransport(child.stdout, child.stdin))
   try {
-    await withTimeout(client.open(childProviderConfig('from child'), '/workspace'), 'open child session', () => stderr)
+    await withTimeout(client.open(childProviderSelection('from child'), '/workspace'), 'open child session', () => stderr)
     await client.send([{ type: 'text', text: 'hello child' }])
     await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'), () => stderr)
 
@@ -226,20 +208,27 @@ function createHarness(): AgentHarness<Record<string, never>> {
   }
 }
 
-function providerConfig(text: string): ProviderConfig {
+function providerSelectionForText(_text: string): ProviderSelection {
+  return providerSelection('echo-stub')
+}
+
+function childProviderSelection(_text: string): ProviderSelection {
+  return providerSelection('child-stub')
+}
+
+function providerSelection(providerId: string): ProviderSelection {
   return {
-    type: 'echo-stub',
-    config: { text },
-    model,
+    providerId,
+    model: { ...model, providerId },
   }
 }
 
-function childProviderConfig(text: string): ProviderConfig {
-  return {
-    type: 'child-stub',
-    config: { text },
-    model,
-  }
+function runtimeProvider(id: string, provider: AgentProvider | (() => AgentProvider)): Provider {
+  return defineProvider({
+    id,
+    displayName: id,
+    createRuntime: () => (typeof provider === 'function' ? provider() : provider),
+  })
 }
 
 function nextFrame<T>(transport: { onFrame(handler: (frame: T) => void): () => void }): Promise<T> {

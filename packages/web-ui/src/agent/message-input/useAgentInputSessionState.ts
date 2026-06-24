@@ -7,14 +7,14 @@ import { effortToThinkingConfig } from '../reasoning'
 export function useAgentInputSessionState(workspace: AgentWorkspace, conversationId: string) {
   const session = computed(() => workspace.sessions[conversationId])
 
-  const selectedProviderType = computed<string | null>(() => session.value?.model.providerType ?? null)
+  const selectedProviderId = computed<string | null>(() => session.value?.model.providerId ?? null)
   const selectedModelId = computed<string | null>(() => session.value?.model.modelId ?? null)
 
   const selectedModel = computed(() => {
-    const providerType = selectedProviderType.value
+    const providerId = selectedProviderId.value
     const modelId = selectedModelId.value
-    if (!providerType || !modelId) return null
-    return (workspace.models[providerType] ?? []).find((model) => model.id === modelId) ?? null
+    if (!providerId || !modelId) return null
+    return (workspace.models[providerId] ?? []).find((model) => model.id === modelId) ?? null
   })
 
   const thinkingConfig = computed<ThinkingConfig>(() => effortToThinkingConfig(session.value?.model.thinkingEffort ?? null))
@@ -33,7 +33,7 @@ export function useAgentInputSessionState(workspace: AgentWorkspace, conversatio
   })
 
   return {
-    selectedProviderType,
+    selectedProviderId,
     selectedModelId,
     selectedModel,
     thinkingConfig,

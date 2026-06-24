@@ -1,7 +1,6 @@
 export { listClaudeCodeModels, type ClaudeCodeModelCatalogOptions } from './models'
 export {
-  createClaudeCodeProviderDefinition,
-  parseClaudeCodeProviderConfig,
-  type ClaudeCodeProviderConfig,
+  createClaudeCodeProvider,
+  type ClaudeCodeProviderOptions,
 } from './provider'
 export { resolveWireLogDir } from './wire-log'

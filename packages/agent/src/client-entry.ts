@@ -8,7 +8,7 @@ export type {
   ClientFrame,
   ServerFrame,
   ClientSessionEvent,
-  ProviderConfig,
   TranscriptPatch,
   OutputSnapshotLike,
 } from './frames'
+export type { ProviderSelection } from '@demi/provider'

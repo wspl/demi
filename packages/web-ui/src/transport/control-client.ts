@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '@demi/agent/client'
+import type { ProviderSelection } from '@demi/agent/client'
 import type {
   ControlApi,
   ControlMethod,
@@ -53,7 +53,7 @@ export function connectControlClient(url: string): Promise<ControlApi> {
         const api: ControlApi = {
           listProviders: () => call('listProviders', undefined) as Promise<ProviderInfo[]>,
           listModels: (params) => call('listModels', params) as Promise<ModelInfo[]>,
-          prepareSession: (params: PrepareSessionParams) => call('prepareSession', params) as Promise<ProviderConfig>,
+          prepareSession: (params: PrepareSessionParams) => call('prepareSession', params) as Promise<ProviderSelection>,
           defaultWorkspace: () => call('defaultWorkspace', undefined) as Promise<WorkspaceInfo>,
         }
         resolve(api)

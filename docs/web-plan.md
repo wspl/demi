@@ -84,7 +84,7 @@ terminal, editor (CodeMirror), LSP, MCP panels, settings.
 - **The JSON codec handles `Uint8Array` (base64) and `BigInt`**
   (`packages/agent/src/json-codec.ts`), so image/document bytes survive JSON-over-WS.
 - **The protocol is fully defined** (`packages/agent/src/frames.ts`):
-  - `ClientFrame`: `open` (carries `ProviderConfig {type, config, model}` + `cwd`), `send`,
+  - `ClientFrame`: `open` (carries `ProviderSelection {providerId, model}` + `cwd`), `send`,
     `abort`, `retry`, `resume`, `compact`, `shell_input`, `close`.
   - `ServerFrame`: `opened`, `rejected`, `transcript_snapshot`, `transcript_patch`,
     `phase`, `queue`, `tool_progress`, `shell_output`, `shell_input_result`, `audit`,
@@ -95,8 +95,8 @@ terminal, editor (CodeMirror), LSP, MCP panels, settings.
   maintains `blocks` internally by applying patches. Its import closure is **browser-safe**
   (only `@demi/core` types + `patch`/`frames`/`transport`).
 - **`AgentServer`** (`packages/agent/src/server.ts`): `attachTransport(serverTransport)`
-  binds one transport to one session lifecycle. On `open` it builds the provider via
-  `ProviderRegistry.createProvider`, calls `agent.host({state, cwd})`, constructs a
+  binds one transport to one session lifecycle. On `open` it resolves `providerId` against the
+  server-held `Provider[]`, creates the live provider runtime, calls `agent.host({state, cwd})`, constructs a
   `BashEnvironment` + shell tools + `AgentSession`, then streams snapshot/phase/queue.
 
 **Critical protocol property**: the agent protocol is **single-session-per-transport** —
@@ -110,12 +110,10 @@ This directly shapes the web transport (see §4).
 ```
 const host = new LocalHost(cwd)
 const harness = createCodingAgentHarness({ host })
-const providerRegistry = new ProviderRegistry()
-providerRegistry.register(createClaudeCodeProviderDefinition())
-providerRegistry.register(createCodexProviderDefinition())
-const server = new AgentServer({ agent: harness, providerRegistry, shell: {...} })
+const providers = [createClaudeCodeProvider(...), createCodexProvider(...)]
+const server = new AgentServer({ agent: harness, providers, shell: {...} })
 const client = server.client()          // in-process pair
-await client.open({ type, config, model }, cwd)
+await client.open({ providerId, model }, cwd)
 ```
 
 For the web we swap the **in-process** `server.client()` for a **WebSocket** transport:
@@ -265,8 +263,8 @@ The concrete Demi web app. The server is **not** split into its own package. Two
   (`createWebSocketClientTransport` → `AgentClient`; control WS → control client), theme,
   and commands. Entry `src/app/main.ts`. It is served only by Vite during development and
   acceptance; Demi does not build, preview, or serve a static browser bundle.
-- **Node/Bun server**: serves only the WebSocket/API endpoints; assembles a
-  shared `ProviderRegistry` and a per-`cwd` `AgentServer` over `LocalHost` +
+- **Node/Bun server**: serves only the WebSocket/API endpoints; assembles
+  shared public providers and a per-`cwd` `AgentServer` over `LocalHost` +
   `createCodingAgentHarness`; implements the control RPC. Entry `src/server/index.ts`.
 
 Production deps: `@demi/web-ui`, `@demi/agent`, `@demi/host-local`, `@demi/coding-agent`,
@@ -337,9 +335,9 @@ connection later becomes a hard requirement (e.g., strict proxy/auth constraints
 
 ### 4.3 Control RPC surface (minimum)
 
-- `listProviders() → {type, label, isAvailable}[]` (from `ProviderRegistry.list()` +
+- `listProviders() → {id, label, isAvailable}[]` (from server-held public providers +
   `state()`).
-- `listModels(type) → ProviderModelList` (from `ProviderRegistry.listModels`).
+- `listModels(providerId) → ProviderModelList` (from the selected provider's `listModels()`).
 - `getAuthState(type) → ProviderAuthState`.
 - `listWorkspaces()` / `pickWorkspace()` / recent-cwds, and `validateCwd(path)`.
 - Conversation persistence (optional, can be local-only first): `listConversations`,
@@ -354,10 +352,10 @@ features dropped — §10).
 
 `src/server/index.ts`:
 
-- One shared `ProviderRegistry` (claude-code + codex registered once).
+- One shared `Provider[]` (claude-code + codex created once).
 - `getOrCreateAgentServer(cwd)`: cached `Map<cwd, AgentServer>`; each builds
   `new LocalHost(cwd)` + `createCodingAgentHarness({ host })` +
-  `new AgentServer({ agent, providerRegistry, shell:{ initialEnv:{PATH}, yieldAfterMs, timeoutMs } })`.
+  `new AgentServer({ agent, providers, shell:{ initialEnv:{PATH}, yieldAfterMs, timeoutMs } })`.
   Conversations sharing a cwd share an `AgentServer` (multiple transports, independent
   sessions). (Alternative: a cwd-dynamic harness whose `host(ctx)` derives from `ctx.cwd`,
   letting one `AgentServer` serve all cwds; requires a small `@demi/coding-agent` option.

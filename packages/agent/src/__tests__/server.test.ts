@@ -6,13 +6,21 @@ import type { ModelSelection } from '@demi/core'
 import type { AgentHarness, AgentSessionSnapshot } from '@demi/agent'
 import type { BashEnvironmentOptions } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
-import { ProviderRegistry, type AgentProvider, type InferenceRequest, type InferenceSteer, type ProviderEvent, type ProviderRun } from '@demi/provider'
+import {
+  defineProvider,
+  type AgentProvider,
+  type InferenceRequest,
+  type InferenceSteer,
+  type Provider,
+  type ProviderEvent,
+  type ProviderRun,
+  type ProviderSelection,
+} from '@demi/provider'
 import { StubProvider, createProviderRun, events } from '@demi/provider/testing'
 import {
   AgentClient,
   AgentServer,
   type ClientSessionEvent,
-  type ProviderConfig,
 } from '../index'
 
 const model: ModelSelection = {
@@ -315,23 +323,17 @@ test('AgentServer emits transcript patches with removals on retry', async () => 
 })
 
 test('AgentServer queues send frames while the session is busy and drains them in order', async () => {
-  const registry = new ProviderRegistry()
   const gate = deferred<void>()
   const provider = new DelayedProvider(gate.promise)
-  registry.register({
-    type: 'delayed',
-    displayName: 'Delayed',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('delayed', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'delayed', model }, '/workspace')
+  await client.open(providerSelection('delayed'), '/workspace')
   let firstSettled = false
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     firstSettled = true
@@ -363,22 +365,16 @@ test('AgentServer queues send frames while the session is busy and drains them i
 })
 
 test('AgentClient.steer resolves correlated accepted acks and receives transcript patches without queueing', async () => {
-  const registry = new ProviderRegistry()
   const provider = new ServerGateProvider({ supportsSteer: true })
-  registry.register({
-    type: 'server-steerable',
-    displayName: 'Server Steerable',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('server-steerable', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'server-steerable', model }, '/workspace')
+  await client.open(providerSelection('server-steerable'), '/workspace')
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.waitForRun(0)
   seen.length = 0
@@ -421,22 +417,16 @@ test('AgentClient.steer rejects when no session is open and does not create tran
 })
 
 test('AgentClient.steer accepts active provider without native steer and materializes at the continuation boundary', async () => {
-  const registry = new ProviderRegistry()
   const provider = new ServerGateProvider({ supportsSteer: false })
-  registry.register({
-    type: 'server-no-native-steer',
-    displayName: 'Server No Native Steer',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('server-no-native-steer', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'server-no-native-steer', model }, '/workspace')
+  await client.open(providerSelection('server-no-native-steer'), '/workspace')
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.waitForRun(0)
   seen.length = 0
@@ -479,22 +469,16 @@ test('AgentClient.steer accepts active provider without native steer and materia
 })
 
 test('AgentClient.cancelPendingSteer removes an accepted steer before transcript materialization', async () => {
-  const registry = new ProviderRegistry()
   const provider = new ServerGateProvider({ supportsSteer: false })
-  registry.register({
-    type: 'server-cancel-pending-steer',
-    displayName: 'Server Cancel Pending Steer',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('server-cancel-pending-steer', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'server-cancel-pending-steer', model }, '/workspace')
+  await client.open(providerSelection('server-cancel-pending-steer'), '/workspace')
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.waitForRun(0)
   seen.length = 0
@@ -523,7 +507,7 @@ test('AgentClient.cancelPendingSteer removes an accepted steer before transcript
 test('AgentClient.cancelPendingSteer is silent without an open session', async () => {
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: new ProviderRegistry(),
+    providers: [],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
@@ -538,23 +522,17 @@ test('AgentClient.cancelPendingSteer is silent without an open session', async (
 })
 
 test('AgentServer rejects retry, resume, and compact frames while the session is busy', async () => {
-  const registry = new ProviderRegistry()
   const gate = deferred<void>()
   const provider = new DelayedProvider(gate.promise)
-  registry.register({
-    type: 'delayed-rejects',
-    displayName: 'Delayed Rejects',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('delayed-rejects', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'delayed-rejects', model }, '/workspace')
+  await client.open(providerSelection('delayed-rejects'), '/workspace')
   const sending = client.send([{ type: 'text', text: 'first' }])
   await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
 
@@ -574,23 +552,17 @@ test('AgentServer rejects retry, resume, and compact frames while the session is
 })
 
 test('AgentClient resolves each queued send promise on its own phase cycle', async () => {
-  const registry = new ProviderRegistry()
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  registry.register({
-    type: 'sequenced-delayed',
-    displayName: 'Sequenced Delayed',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('sequenced-delayed', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace')
   const settlements: string[] = []
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     settlements.push('first')
@@ -632,23 +604,17 @@ test('AgentClient resolves each queued send promise on its own phase cycle', asy
 })
 
 test('AgentClient.dequeueMessage resolves the removed queued send without running it', async () => {
-  const registry = new ProviderRegistry()
   const gates = [deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  registry.register({
-    type: 'sequenced-delayed',
-    displayName: 'Sequenced Delayed',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('sequenced-delayed', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace')
   const firstSend = client.send([{ type: 'text', text: 'first' }])
   await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
 
@@ -677,23 +643,17 @@ test('AgentClient.dequeueMessage resolves the removed queued send without runnin
 })
 
 test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle', async () => {
-  const registry = new ProviderRegistry()
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  registry.register({
-    type: 'sequenced-delayed',
-    displayName: 'Sequenced Delayed',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('sequenced-delayed', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace')
   const settlements: string[] = []
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     settlements.push('first')
@@ -734,23 +694,17 @@ test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle'
 })
 
 test('AgentClient.steerQueuedMessage converts a queued send into an active steer', async () => {
-  const registry = new ProviderRegistry()
   const gates = [deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  registry.register({
-    type: 'sequenced-delayed',
-    displayName: 'Sequenced Delayed',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('sequenced-delayed', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace')
   const settlements: string[] = []
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     settlements.push('first')
@@ -790,23 +744,17 @@ test('AgentClient.steerQueuedMessage converts a queued send into an active steer
 })
 
 test('AgentClient.clearMessageQueue resolves queued sends without canceling the active send', async () => {
-  const registry = new ProviderRegistry()
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
-  registry.register({
-    type: 'sequenced-delayed',
-    displayName: 'Sequenced Delayed',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('sequenced-delayed', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'sequenced-delayed', model }, '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace')
   const firstSend = client.send([{ type: 'text', text: 'first' }])
   await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
 
@@ -839,24 +787,18 @@ test('AgentClient.clearMessageQueue resolves queued sends without canceling the 
 })
 
 test('AgentClient rejects only the active action when queued sends continue after an error', async () => {
-  const registry = new ProviderRegistry()
   const errorGate = deferred<void>()
   const successGate = deferred<void>()
   const provider = new ErrorThenDelayedProvider(errorGate.promise, successGate.promise)
-  registry.register({
-    type: 'error-then-delayed',
-    displayName: 'Error Then Delayed',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('error-then-delayed', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'error-then-delayed', model }, '/workspace')
+  await client.open(providerSelection('error-then-delayed'), '/workspace')
   let firstError = ''
   const firstSend = client.send([{ type: 'text', text: 'first' }]).catch((error) => {
     firstError = error instanceof Error ? error.message : String(error)
@@ -882,20 +824,14 @@ test('AgentClient rejects only the active action when queued sends continue afte
 })
 
 test('AgentClient.abort returns false while idle and true after aborting active work', async () => {
-  const registry = new ProviderRegistry()
   const provider = new AbortAwareProvider()
-  registry.register({
-    type: 'abort-aware',
-    displayName: 'Abort Aware',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('abort-aware', provider)],
   })
   const client = server.client()
 
-  await client.open({ type: 'abort-aware', model }, '/workspace')
+  await client.open(providerSelection('abort-aware'), '/workspace')
   expect(await client.abort()).toBe(false)
 
   const sending = client.send([{ type: 'text', text: 'start' }])
@@ -906,22 +842,16 @@ test('AgentClient.abort returns false while idle and true after aborting active 
 })
 
 test('AgentServer aborts the active session when a close frame is received', async () => {
-  const registry = new ProviderRegistry()
   const provider = new AbortAwareProvider()
-  registry.register({
-    type: 'abort-aware',
-    displayName: 'Abort Aware',
-    createProvider: () => provider,
-  })
   const server = new AgentServer({
     agent: createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('abort-aware', provider)],
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'abort-aware', model }, '/workspace')
+  await client.open(providerSelection('abort-aware'), '/workspace')
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.started.promise
 
@@ -999,18 +929,9 @@ function createAgentClientHarness(options: {
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   providerTurns: ConstructorParameters<typeof StubProvider>[0]
 }): { client: AgentClient; server: AgentServer } {
-  const registry = new ProviderRegistry()
-  registry.register({
-    type: 'stub',
-    displayName: 'Stub',
-    createProvider: (config: unknown) => {
-      const turns = (config as { turns: ConstructorParameters<typeof StubProvider>[0] }).turns
-      return new StubProvider(turns)
-    },
-  })
   const server = new AgentServer({
     agent: options.harness ?? createTextHarness(),
-    providerRegistry: registry,
+    providers: [runtimeProvider('stub', () => new StubProvider(options.providerTurns))],
     shell: options.shell,
   })
   const client = server.client()
@@ -1145,12 +1066,23 @@ function createTextHarness(): AgentHarness<Record<string, never>> {
   }
 }
 
-function providerConfig(turns: ConstructorParameters<typeof StubProvider>[0]): ProviderConfig {
+function providerConfig(_turns: ConstructorParameters<typeof StubProvider>[0]): ProviderSelection {
+  return providerSelection('stub')
+}
+
+function providerSelection(providerId: string): ProviderSelection {
   return {
-    type: 'stub',
-    config: { turns },
-    model,
+    providerId,
+    model: { ...model, providerId },
   }
+}
+
+function runtimeProvider(id: string, provider: AgentProvider | (() => AgentProvider)): Provider {
+  return defineProvider({
+    id,
+    displayName: id,
+    createRuntime: () => (typeof provider === 'function' ? provider() : provider),
+  })
 }
 
 function queuedMessageId(events: ClientSessionEvent[], text: string): string | null {

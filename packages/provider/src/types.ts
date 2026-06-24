@@ -1,4 +1,5 @@
 import type {
+  ModelSelection,
   ThinkingConfig,
   ThinkingEffort,
   TokenUsage,
@@ -101,7 +102,12 @@ export interface AgentProvider {
   dispose?(): Promise<void> | void
 }
 
-// ── provider registry / auth shell ──────────────────────────────────
+// ── public provider shell ───────────────────────────────────────────
+
+export interface ProviderSelection {
+  providerId: string
+  model: ModelSelection
+}
 
 export type ProviderAuthState =
   | { status: 'unknown'; message?: string }
@@ -118,6 +124,22 @@ export type ProviderRuntimeState =
   | { status: 'ready'; message?: string }
   | { status: 'unavailable'; message: string }
   | { status: 'error'; message: string }
+
+export interface Provider {
+  id: string
+  displayName: string
+  auth?: ProviderAuth
+  state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
+  listModels?(): Promise<ProviderModelList> | ProviderModelList
+}
+
+export interface ProviderRuntimeFactory {
+  createRuntime(selection: ProviderSelection): Promise<AgentProvider> | AgentProvider
+}
+
+export interface ProviderFactoryDefinition extends Provider {
+  createRuntime(selection: ProviderSelection): Promise<AgentProvider> | AgentProvider
+}
 
 // Provider model catalog.
 
@@ -166,11 +188,8 @@ export interface ProviderModelList {
   stale: boolean
 }
 
-export interface ProviderDefinition<Config = unknown> {
-  type: string
-  displayName: string
-  auth?: ProviderAuth
-  state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
-  listModels?(config: Config): Promise<ProviderModelList> | ProviderModelList
-  createProvider(config: Config): Promise<AgentProvider> | AgentProvider
+export type ModelPolicy = {
+  include?: string[]
+  exclude?: string[]
+  default?: string
 }

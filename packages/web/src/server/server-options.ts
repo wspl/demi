@@ -55,19 +55,6 @@ export function parseServerOptions(args: string[]): ServerOptions {
   return options
 }
 
-export function providerConfigFor(provider: string, options: ServerOptions): Record<string, unknown> {
-  if (provider === 'claude-code') {
-    return {
-      ...(options.claudePath ? { claudePath: options.claudePath } : {}),
-    }
-  }
-  return {
-    ...(options.codexHome ? { codexHome: options.codexHome } : {}),
-    ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
-    transport: options.transport,
-  }
-}
-
 function parseProvider(value: string): ProviderId {
   if (value === 'claude-code' || value === 'codex') return value
   throw new Error('--provider must be one of: claude-code, codex')

@@ -378,24 +378,22 @@ must not carry `apiKey`, `headers`, raw `baseUrl` values, `envPrefix`, or arbitr
 provider config.
 
 For Web, this means replacing `prepareSession -> ProviderConfig` with a server-side session
-preparation step that returns a public selection object or opens the server session directly using
+preparation step that returns a public `ProviderSelection` object and opens server sessions using
 server-held providers.
 
 ## Migration
 
 1. Introduce public `Provider` and `ProviderSelection` types in `@demi/provider`.
-2. Add `createClaudeCodeProvider` and `createCodexProvider` as the new public creation functions.
-   Keep `create*ProviderDefinition` temporarily as deprecated internal compatibility exports.
+2. Add `createClaudeCodeProvider` and `createCodexProvider` as the public creation functions.
 3. Change `AgentServerOptions` from `providerRegistry` to `providers`.
-4. Move registry/map construction inside `AgentServer` or replace it with a private provider map.
+4. Move provider id lookup into `AgentServer` as a private map.
 5. Change `AgentClient.open` / Web control flow to avoid browser-visible provider config.
 6. Update Web and REPL composition roots to pass `providers: [...]`.
 7. Add `@demi/provider-openai-api`.
 8. Add `@demi/provider-anthropic-api`.
-9. Remove public registry/definition usage from product packages once all call sites migrate.
 
-No compatibility shim should remain in the final state. Deprecated exports are only a short-lived
-implementation aid inside the migration checkpoint.
+No compatibility shim should remain in the final state. `ProviderDefinition`, `ProviderRegistry`,
+and `create*ProviderDefinition` are not public assembly concepts.
 
 ## Tests And Acceptance
 

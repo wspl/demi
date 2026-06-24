@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
-import { ProviderRegistry, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demi/provider'
+import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import {
   AgentClient,
@@ -12,7 +12,6 @@ import {
   type ClientSessionEvent,
   type ClientFrame,
   type JsonWebSocket,
-  type ProviderConfig,
   type ServerFrame,
 } from '../index'
 
@@ -100,24 +99,15 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
 
 test('WebSocket transports carry AgentClient and AgentServer traffic end to end', async () => {
   const [clientSocket, serverSocket] = createSocketPair()
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'ws-stub',
-    displayName: 'WebSocket Stub',
-    createProvider: (config: unknown) => {
-      const text = (config as { text: string }).text
-      return new StubProvider([[events.text(text), events.response()]])
-    },
-  })
 
   const server = new AgentServer({
     agent: createHarness(),
-    providerRegistry,
+    providers: [runtimeProvider('ws-stub', () => new StubProvider([[events.text('over websocket'), events.response()]]))],
   })
   server.attachTransport(createWebSocketServerTransport(serverSocket))
   const client = new AgentClient(createWebSocketClientTransport(clientSocket))
 
-  await client.open(providerConfig('over websocket'), '/workspace')
+  await client.open(providerSelectionForText('over websocket'), '/workspace')
   await client.send([{ type: 'text', text: 'hello' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -131,23 +121,17 @@ test('WebSocket transports carry AgentClient and AgentServer traffic end to end'
 test('WebSocket transports preserve complex AgentClient action convergence', async () => {
   const [clientSocket, serverSocket] = createSocketPair()
   const provider = new WebSocketScenarioProvider()
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'ws-scenario',
-    displayName: 'WebSocket Scenario',
-    createProvider: () => provider,
-  })
 
   const server = new AgentServer({
     agent: createHarness(),
-    providerRegistry,
+    providers: [runtimeProvider('ws-scenario', provider)],
   })
   server.attachTransport(createWebSocketServerTransport(serverSocket))
   const client = new AgentClient(createWebSocketClientTransport(clientSocket))
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open({ type: 'ws-scenario', model }, '/workspace')
+  await client.open(providerSelection('ws-scenario'), '/workspace')
   const first = client.send([{ type: 'text', text: 'first' }])
   await provider.firstStarted.promise
   const second = client.send([{ type: 'text', text: 'second ' + 'x'.repeat(20_000) }])
@@ -195,12 +179,23 @@ function createHarness(): AgentHarness<Record<string, never>> {
   }
 }
 
-function providerConfig(text: string): ProviderConfig {
+function providerSelectionForText(_text: string): ProviderSelection {
+  return providerSelection('ws-stub')
+}
+
+function providerSelection(providerId: string): ProviderSelection {
   return {
-    type: 'ws-stub',
-    config: { text },
-    model,
+    providerId,
+    model: { ...model, providerId },
   }
+}
+
+function runtimeProvider(id: string, provider: AgentProvider | (() => AgentProvider)): Provider {
+  return defineProvider({
+    id,
+    displayName: id,
+    createRuntime: () => (typeof provider === 'function' ? provider() : provider),
+  })
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

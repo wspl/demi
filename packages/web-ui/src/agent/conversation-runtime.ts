@@ -105,7 +105,7 @@ export class ConversationRuntime {
     if (!this.client) return
     const intent = this.state.model
     const providerConfig = await this.control.prepareSession({
-      providerType: intent.providerType,
+      providerId: intent.providerId,
       modelId: intent.modelId,
       thinkingEffort: intent.thinkingEffort,
       serviceTierId: intent.serviceTierId,
@@ -149,7 +149,7 @@ export class ConversationRuntime {
     this.unsubscribe = client.subscribe((event) => this.applyEvent(event))
     const intent = this.state.model
     const providerConfig = await this.control.prepareSession({
-      providerType: intent.providerType,
+      providerId: intent.providerId,
       modelId: intent.modelId,
       thinkingEffort: intent.thinkingEffort,
       serviceTierId: intent.serviceTierId,

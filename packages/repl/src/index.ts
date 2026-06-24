@@ -14,14 +14,13 @@ import type {
   UserContentBlock,
 } from '@demi/core'
 import { createCodingAgentHarness } from '@demi/coding-agent'
-import { ProviderRegistry, type ProviderModel, type ProviderModelList } from '@demi/provider'
-import { createClaudeCodeProviderDefinition } from '@demi/provider-claude-code'
-import { codexAuthStatus, createCodexProviderDefinition, type CodexTransportMode } from '@demi/provider-codex'
+import type { Provider, ProviderModel, ProviderModelList, ProviderSelection } from '@demi/provider'
+import { createClaudeCodeProvider } from '@demi/provider-claude-code'
+import { codexAuthStatus, createCodexProvider, type CodexTransportMode } from '@demi/provider-codex'
 import {
   AgentClient,
   AgentServer,
   type ClientSessionEvent,
-  type ProviderConfig,
 } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
 
@@ -107,18 +106,16 @@ async function main(): Promise<void> {
   const host = new LocalHost(options.cwd)
   const harness = createCodingAgentHarness({ host })
 
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register(createClaudeCodeProviderDefinition())
-  providerRegistry.register(createCodexProviderDefinition())
-  const providerConfigData = providerConfigForOptions(options)
-  const model = await resolveReplModel(providerRegistry, options, providerConfigData)
+  const providers = createReplProviders(options)
+  const activeProvider = providerFor(providers, options.provider)
+  const model = await resolveReplModel(activeProvider, options)
 
   printBanner(options, model)
   if (options.provider === 'codex') await printCodexAuthStatus(options)
 
   const server = new AgentServer({
     agent: harness,
-    providerRegistry,
+    providers,
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       yieldAfterMs: options.yieldAfterMs,
@@ -129,13 +126,12 @@ async function main(): Promise<void> {
   const renderer = createRenderer()
   attachRenderer(client, renderer)
 
-  const providerConfig: ProviderConfig = {
-    type: options.provider,
-    config: providerConfigData,
+  const providerSelection: ProviderSelection = {
+    providerId: options.provider,
     model: model.selection,
   }
 
-  await client.open(providerConfig, options.cwd)
+  await client.open(providerSelection, options.cwd)
   writeEventLine(process.stdout, 'state', 'session opened; type /help for commands, /exit to quit', 'dim')
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })
@@ -623,9 +619,8 @@ export interface ResolvedReplModel {
 }
 
 export async function resolveReplModel(
-  registry: ProviderRegistry,
+  provider: Provider,
   options: ReplOptions,
-  providerConfig: Record<string, unknown>,
 ): Promise<ResolvedReplModel> {
   if (options.modelId) {
     validateExplicitModelId(options.provider, options.modelId)
@@ -640,7 +635,8 @@ export async function resolveReplModel(
   let catalog: ProviderModelList | null = null
   let catalogError: unknown = null
   try {
-    catalog = await registry.listModels(options.provider, providerConfig)
+    if (!provider.listModels) throw new Error(`Provider ${options.provider} does not expose a model catalog`)
+    catalog = await provider.listModels()
   } catch (error) {
     catalogError = error
   }
@@ -739,6 +735,25 @@ function acceptedAttachmentExtensions(): FileExtension[] {
   return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf']
 }
 
+function createReplProviders(options: ReplOptions): Provider[] {
+  const claudeCodeProvider = createClaudeCodeProvider({ claudePath: options.claudePath })
+  const codexProvider = createCodexProvider({
+    codexHome: options.codexHome,
+    baseUrl: options.baseUrl,
+    transport: options.transport,
+  })
+
+  return options.provider === 'codex'
+    ? [codexProvider, claudeCodeProvider]
+    : [claudeCodeProvider, codexProvider]
+}
+
+function providerFor(providers: Provider[], id: string): Provider {
+  const provider = providers.find((candidate) => candidate.id === id)
+  if (!provider) throw new Error(`Provider ${id} is not configured`)
+  return provider
+}
+
 async function printCodexAuthStatus(options: ReplOptions): Promise<void> {
   const auth = await codexAuthStatus({ codexHome: options.codexHome })
   writeEventLine(
@@ -747,19 +762,6 @@ async function printCodexAuthStatus(options: ReplOptions): Promise<void> {
     `codex ${auth.status}${'accountLabel' in auth && auth.accountLabel ? ` (${auth.accountLabel})` : ''}${'message' in auth && auth.message ? ` (${auth.message})` : ''}`,
     auth.status === 'authenticated' ? 'green' : 'yellow',
   )
-}
-
-function providerConfigForOptions(options: ReplOptions): Record<string, unknown> {
-  if (options.provider === 'claude-code') {
-    return {
-      ...(options.claudePath ? { claudePath: options.claudePath } : {}),
-    }
-  }
-  return {
-    ...(options.codexHome ? { codexHome: options.codexHome } : {}),
-    ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
-    transport: options.transport,
-  }
 }
 
 function printBanner(options: ReplOptions, model: ResolvedReplModel): void {

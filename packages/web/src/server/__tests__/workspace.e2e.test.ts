@@ -3,19 +3,17 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { UserContentBlock } from '@demi/core'
-import { ProviderRegistry, type AgentProvider, type InferenceRequest, type ProviderDefinition, type ProviderEvent } from '@demi/provider'
+import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent } from '@demi/provider'
 import { events } from '@demi/provider/testing'
 import { AgentWorkspace } from '@demi/web-ui/agent/workspace'
 import { connectControlClient } from '@demi/web-ui/transport/control-client'
 import { parseServerOptions } from '../server-options'
 import { startWebServer } from '../serve'
-import { createStubProviderDefinition } from '../stub-provider'
+import { createStubProvider } from '../stub-provider'
 
 test('AgentWorkspace drives a conversation through the websocket stack', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-workspace-'))
-  const registry = new ProviderRegistry()
-  registry.register(createStubProviderDefinition())
-  const handle = startWebServer(registry, parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([createStubProvider()], parseServerOptions(['--port', '0', '--cwd', cwd]))
 
   try {
     const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
@@ -47,9 +45,7 @@ test('AgentWorkspace steers a queued message through the websocket stack', async
     [events.text('active output'), events.response()],
     [events.text('continued output'), events.response()],
   ])
-  const registry = new ProviderRegistry()
-  registry.register(createGateProviderDefinition(provider))
-  const handle = startWebServer(registry, parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([createGateProvider(provider)], parseServerOptions(['--port', '0', '--cwd', cwd]))
 
   try {
     const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
@@ -101,9 +97,9 @@ test('AgentWorkspace steers a queued message through the websocket stack', async
 
 const EPOCH = '1970-01-01T00:00:00.000Z'
 
-function createGateProviderDefinition(provider: AgentProvider): ProviderDefinition {
-  return {
-    type: 'claude-code',
+function createGateProvider(provider: AgentProvider): Provider {
+  return defineProvider({
+    id: 'claude-code',
     displayName: 'Gate Provider',
     state: () => ({ status: 'ready' }),
     listModels: () => ({
@@ -129,8 +125,8 @@ function createGateProviderDefinition(provider: AgentProvider): ProviderDefiniti
       sourceFetchedAt: EPOCH,
       stale: false,
     }),
-    createProvider: () => provider,
-  }
+    createRuntime: () => provider,
+  })
 }
 
 class GateProvider implements AgentProvider {

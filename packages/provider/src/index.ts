@@ -1,2 +1,2 @@
 export * from './types'
-export * from './registry'
+export { applyModelPolicy, defineProvider, providerRuntime } from './provider'

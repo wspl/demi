@@ -4,8 +4,7 @@ export {
   type FileCodexAuthStoreOptions,
 } from './auth'
 export {
-  createCodexProviderDefinition,
-  parseCodexProviderConfig,
-  type CodexProviderConfig,
+  createCodexProvider,
+  type CodexProviderOptions,
 } from './provider'
 export type { CodexTransportMode } from './types'

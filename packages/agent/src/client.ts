@@ -1,6 +1,7 @@
 import type { Block, SessionPhase, UserContentBlock } from '@demi/core'
 import { applyTranscriptPatches } from './patch'
-import type { ClientFrame, ClientSessionEvent, ProviderConfig, ServerFrame } from './frames'
+import type { ProviderSelection } from '@demi/provider'
+import type { ClientFrame, ClientSessionEvent, ServerFrame } from './frames'
 import type { AgentClientTransport } from './transport'
 
 export type AgentClientListener = (event: ClientSessionEvent) => void
@@ -35,7 +36,7 @@ export class AgentClient {
     this.unsubscribeTransport = transport.onFrame((frame) => this.handleServerFrame(frame))
   }
 
-  open(provider: ProviderConfig, cwd: string): Promise<void> {
+  open(provider: ProviderSelection, cwd: string): Promise<void> {
     const wait = this.waitForFrame('opened')
     this.sendFrame({ type: 'open', provider, cwd })
     return wait
@@ -96,7 +97,7 @@ export class AgentClient {
    * Switches the provider/model for an open session. The change takes effect on the next
    * turn (the server applies it at a turn boundary), so this is fire-and-forget.
    */
-  setProvider(provider: ProviderConfig): void {
+  setProvider(provider: ProviderSelection): void {
     this.sendFrame({ type: 'set_provider', provider })
   }
 

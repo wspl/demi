@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
 import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
-import type { InferenceRequest } from '@demi/provider'
+import { providerRuntime, type InferenceRequest, type ProviderSelection } from '@demi/provider'
 import { BashEnvironment, createShellSessionTools } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { StaticCodexAuthStore, type CodexResolvedAuth } from '../auth'
-import { CodexProvider, buildCodexHeaders, createCodexProviderDefinition, parseCodexProviderConfig, responsesUrlForAuth } from '../provider'
+import { CodexProvider, buildCodexHeaders, createCodexProvider, parseCodexProviderConfig, responsesUrlForAuth } from '../provider'
 import type { CodexResponseStreamEvent } from '../responses'
 import {
   AutoCodexResponsesTransport,
@@ -40,7 +40,11 @@ const model: ModelSelection = {
   thinking: { type: 'effort', effort: 'medium', summary: null },
 }
 
-test('Codex provider definition only accepts serializable config fields', async () => {
+function providerSelection(): ProviderSelection {
+  return { providerId: 'codex', model }
+}
+
+test('Codex public provider only accepts serializable config fields', async () => {
   const injectedTransport = new FakeCodexTransport([])
   expect(
     parseCodexProviderConfig({
@@ -61,10 +65,10 @@ test('Codex provider definition only accepts serializable config fields', async 
   expect(() => parseCodexProviderConfig({ transport: 'stdio' })).toThrow('transport')
   expect(() => parseCodexProviderConfig({ headers: { ok: 1 } })).toThrow('headers.ok')
 
-  const provider = await createCodexProviderDefinition().createProvider({
+  const provider = await providerRuntime(createCodexProvider({
     authStore: new StaticCodexAuthStore(chatgptAuth),
     transportImpl: injectedTransport,
-  })
+  } as never), providerSelection())
   expect((provider as unknown as { transport?: unknown }).transport).not.toBe(injectedTransport)
 })
 

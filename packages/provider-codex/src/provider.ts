@@ -1,4 +1,12 @@
-import type { AgentProvider, InferenceRequest, ProviderDefinition, ProviderEvent } from '@demi/provider'
+import {
+  applyModelPolicy,
+  defineProvider,
+  type AgentProvider,
+  type InferenceRequest,
+  type ModelPolicy,
+  type Provider,
+  type ProviderEvent,
+} from '@demi/provider'
 import {
   CodexAuthError,
   FileCodexAuthStore,
@@ -32,6 +40,12 @@ export interface CodexProviderConfig {
 }
 
 export interface CodexProviderOptions extends CodexProviderConfig {
+  id?: string
+  displayName?: string
+  models?: ModelPolicy
+}
+
+export interface CodexRuntimeOptions extends CodexProviderConfig {
   authStore?: CodexAuthStore
   transportImpl?: CodexResponsesTransport
 }
@@ -49,7 +63,7 @@ export class CodexProvider implements AgentProvider {
   private readonly authStore: CodexAuthStore
   private readonly transport: CodexResponsesTransport
 
-  constructor(options: CodexProviderOptions = {}) {
+  constructor(options: CodexRuntimeOptions = {}) {
     this.config = {
       codexHome: options.codexHome,
       baseUrl: options.baseUrl,
@@ -110,15 +124,34 @@ export class CodexProvider implements AgentProvider {
   }
 }
 
-export function createCodexProviderDefinition(): ProviderDefinition<unknown> {
-  return {
-    type: 'codex',
-    displayName: 'Codex',
-    auth: { status: () => new FileCodexAuthStore().status() },
-    state: () => ({ status: 'ready', message: 'Uses official Codex auth storage' }),
-    listModels: (config) => listCodexModels(parseCodexProviderConfig(config)),
-    createProvider: (config) => new CodexProvider(parseCodexProviderConfig(config)),
+export function createCodexProvider(options: CodexProviderOptions = {}): Provider {
+  const id = options.id ?? 'codex'
+  const displayName = options.displayName ?? 'Codex'
+  const runtimeOptions: CodexRuntimeOptions = {
+    codexHome: options.codexHome,
+    baseUrl: options.baseUrl,
+    transport: options.transport,
+    headers: options.headers,
+    userAgent: options.userAgent,
+    maxRetries: options.maxRetries,
+    retryBaseDelayMs: options.retryBaseDelayMs,
+    headerTimeoutMs: options.headerTimeoutMs,
+    websocketConnectTimeoutMs: options.websocketConnectTimeoutMs,
+    streamIdleTimeoutMs: options.streamIdleTimeoutMs,
+    clientVersion: options.clientVersion,
   }
+
+  return defineProvider({
+    id,
+    displayName,
+    auth: { status: () => new FileCodexAuthStore({ codexHome: options.codexHome }).status() },
+    state: () => ({ status: 'ready', message: 'Uses official Codex auth storage' }),
+    listModels: async () => {
+      const catalog = await listCodexModels(runtimeOptions)
+      return applyModelPolicy(catalog, id, options.models)
+    },
+    createRuntime: () => new CodexProvider(runtimeOptions),
+  })
 }
 
 export function parseCodexProviderConfig(config: unknown): CodexProviderConfig {

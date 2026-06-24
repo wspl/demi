@@ -2,30 +2,28 @@ import { expect, test } from 'bun:test'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ProviderRegistry } from '@demi/provider'
 import { agentSocketUrl, connectAgentClient } from '@demi/web-ui/transport/agent-socket'
 import { connectControlClient } from '@demi/web-ui/transport/control-client'
 import { parseServerOptions } from '../server-options'
 import { startWebServer } from '../serve'
-import { createStubProviderDefinition } from '../stub-provider'
+import { createStubProvider } from '../stub-provider'
 
 test('web transport round-trips open/send/stream over websocket', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-transport-'))
-  const registry = new ProviderRegistry()
-  registry.register(createStubProviderDefinition())
-  const handle = startWebServer(registry, parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([createStubProvider()], parseServerOptions(['--port', '0', '--cwd', cwd]))
 
   try {
     const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
 
     const providers = await control.listProviders()
-    expect(providers.map((provider) => provider.type)).toContain('claude-code')
+    expect(providers.map((provider) => provider.id)).toContain('claude-code')
 
-    const models = await control.listModels({ providerType: 'claude-code' })
+    const models = await control.listModels({ providerId: 'claude-code' })
     expect(models[0]?.id).toBe('stub-model')
 
-    const providerConfig = await control.prepareSession({ providerType: 'claude-code', modelId: 'stub-model' })
-    expect(providerConfig.model.model.id).toBe('stub-model')
+    const providerSelection = await control.prepareSession({ providerId: 'claude-code', modelId: 'stub-model' })
+    expect(providerSelection).not.toHaveProperty('config')
+    expect(providerSelection.model.model.id).toBe('stub-model')
 
     const client = await connectAgentClient(agentSocketUrl(`http://localhost:${handle.port}`, cwd))
     const seenText: string[] = []
@@ -36,7 +34,7 @@ test('web transport round-trips open/send/stream over websocket', async () => {
       }
     })
 
-    await client.open(providerConfig, cwd)
+    await client.open(providerSelection, cwd)
     await client.send([{ type: 'text', text: 'hi' }])
 
     expect(seenText.some((text) => text.includes('Hello from the stub provider.'))).toBe(true)
@@ -49,9 +47,7 @@ test('web transport round-trips open/send/stream over websocket', async () => {
 
 test('web backend rejects ordinary HTTP so UI must come from Vite dev server', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-backend-only-'))
-  const registry = new ProviderRegistry()
-  registry.register(createStubProviderDefinition())
-  const handle = startWebServer(registry, parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([createStubProvider()], parseServerOptions(['--port', '0', '--cwd', cwd]))
 
   try {
     const response = await fetch(`${handle.url}/`)

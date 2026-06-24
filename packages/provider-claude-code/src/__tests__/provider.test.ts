@@ -3,10 +3,10 @@ import type { ModelSelection } from '@demi/core'
 import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
 import { BashEnvironment, createShellSessionTools } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
-import type { InferenceRequest } from '@demi/provider'
+import { providerRuntime, type InferenceRequest, type ProviderSelection } from '@demi/provider'
 import {
   ClaudeCodeProvider,
-  createClaudeCodeProviderDefinition,
+  createClaudeCodeProvider,
   parseClaudeCodeProviderConfig,
 } from '../provider'
 import type {
@@ -52,7 +52,11 @@ function makeRequestWithoutTools(items: InferenceRequest['items'] = []): Inferen
   return { ...makeRequest(items), tools: [] }
 }
 
-test('Claude Code provider definition only accepts serializable config fields', async () => {
+function providerSelection(): ProviderSelection {
+  return { providerId: 'claude-code', model }
+}
+
+test('Claude Code public provider only accepts serializable config fields', async () => {
   const injectedFactory = fakeFactory(new FakeClaudeTransport([]))
   expect(
     parseClaudeCodeProviderConfig({
@@ -65,21 +69,21 @@ test('Claude Code provider definition only accepts serializable config fields', 
   expect(() => parseClaudeCodeProviderConfig(1)).toThrow('must be an object')
   expect(() => parseClaudeCodeProviderConfig({ claudePath: 1 })).toThrow('claudePath')
 
-  const provider = await createClaudeCodeProviderDefinition().createProvider({
+  const provider = await providerRuntime(createClaudeCodeProvider({
     transportFactory: injectedFactory,
     claudePath: '/usr/local/bin/claude',
-  })
+  } as never), providerSelection())
   expect((provider as unknown as { transportFactory?: unknown }).transportFactory).not.toBe(injectedFactory)
 })
 
-test('Claude Code provider definition does not preflight external CLI state', async () => {
-  const definition = createClaudeCodeProviderDefinition()
+test('Claude Code public provider does not preflight external CLI state', async () => {
+  const provider = createClaudeCodeProvider()
 
-  expect(await definition.auth?.status()).toEqual({
+  expect(await provider.auth?.status()).toEqual({
     status: 'unknown',
     message: 'Auth is checked when a Claude Code request runs',
   })
-  expect(await definition.state?.()).toEqual({
+  expect(await provider.state?.()).toEqual({
     status: 'unknown',
     message: 'Runtime is checked when a Claude Code request runs',
   })

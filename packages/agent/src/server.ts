@@ -8,16 +8,16 @@ import {
   type HostStore,
 } from '@demi/shell'
 import type { Block, ToolResultContentBlock } from '@demi/core'
-import type { ProviderRegistry } from '@demi/provider'
+import { providerRuntime, type Provider, type ProviderSelection } from '@demi/provider'
 import { AgentClient } from './client'
 import { cloneBlocks, diffTranscriptBlocks } from './patch'
-import type { ClientFrame, OutputSnapshotLike, ProviderConfig, ServerFrame } from './frames'
+import type { ClientFrame, OutputSnapshotLike, ServerFrame } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
 import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
 
 export interface AgentServerOptions {
   agent: AgentHarness<unknown>
-  providerRegistry: ProviderRegistry
+  providers: Provider[]
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
 }
 
@@ -27,13 +27,13 @@ export interface AgentTransportBinding {
 
 export class AgentServer {
   private readonly agent: AgentHarness<unknown>
-  private readonly providerRegistry: ProviderRegistry
+  private readonly providers: Map<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly bindings = new Set<AgentTransportBindingImpl>()
 
   constructor(options: AgentServerOptions) {
     this.agent = options.agent
-    this.providerRegistry = options.providerRegistry
+    this.providers = createProviderMap(options.providers)
     this.shellOptions = options.shell ?? {}
   }
 
@@ -47,7 +47,7 @@ export class AgentServer {
     const binding = new AgentTransportBindingImpl({
       transport,
       agent: this.agent,
-      providerRegistry: this.providerRegistry,
+      providers: this.providers,
       shell: this.shellOptions,
     })
     this.bindings.add(binding)
@@ -64,20 +64,20 @@ export class AgentServer {
 interface AgentTransportBindingOptions {
   transport: AgentServerTransport
   agent: AgentHarness<unknown>
-  providerRegistry: ProviderRegistry
+  providers: ReadonlyMap<string, Provider>
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
 }
 
 class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly transport: AgentServerTransport
   private readonly agent: AgentHarness<unknown>
-  private readonly providerRegistry: ProviderRegistry
+  private readonly providers: ReadonlyMap<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
   private currentEnvironment: BashEnvironment | null = null
   private currentCwd: string | null = null
-  private currentProviderType: string | null = null
+  private currentProviderId: string | null = null
   private unsubscribeSession: (() => void) | null = null
   private lastTranscriptBlocks: Block[] = []
   private unsubscribeTransport: (() => void) | null = null
@@ -86,7 +86,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   constructor(options: AgentTransportBindingOptions) {
     this.transport = options.transport
     this.agent = options.agent
-    this.providerRegistry = options.providerRegistry
+    this.providers = options.providers
     this.shellOptions = options.shell ?? {}
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
@@ -226,7 +226,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     }
 
     const agent = this.agent
-    const provider = await this.providerRegistry.createProvider(frame.provider.type, frame.provider.config)
+    const provider = await this.createRuntime(frame.provider)
     const state = agent.initialState()
     const harnessContext = { state, cwd: frame.cwd }
     const commands = agent.commands?.(harnessContext) ?? []
@@ -265,7 +265,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.currentAgent = agent
     this.currentEnvironment = environment
     this.currentCwd = frame.cwd
-    this.currentProviderType = frame.provider.type
+    this.currentProviderId = frame.provider.providerId
     this.lastTranscriptBlocks = []
     this.unsubscribeSession = this.session.subscribe((event) => this.handleSessionEvent(event))
 
@@ -300,21 +300,32 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     }
   }
 
-  private async setProvider(provider: ProviderConfig): Promise<void> {
+  private async setProvider(provider: ProviderSelection): Promise<void> {
     const session = this.session
     if (!session) {
       this.send({ type: 'rejected', command: 'set_provider', reason: 'No session is open on this connection' })
       return
     }
-    if (provider.type === this.currentProviderType) {
-      // Same provider type: keep the instance and only swap the model (the provider itself
+    if (provider.providerId === this.currentProviderId) {
+      // Same provider id: keep the instance and only swap the model (the provider itself
       // restarts whatever it needs to when the model id changes on the next request).
       await session.updateModel(null, provider.model)
       return
     }
-    const next = await this.providerRegistry.createProvider(provider.type, provider.config)
+    const next = await this.createRuntime(provider)
     await session.updateModel(next, provider.model)
-    this.currentProviderType = provider.type
+    this.currentProviderId = provider.providerId
+  }
+
+  private async createRuntime(selection: ProviderSelection) {
+    if (selection.model.providerId !== selection.providerId) {
+      throw new Error(
+        `Provider selection mismatch: providerId "${selection.providerId}" does not match model providerId "${selection.model.providerId}"`,
+      )
+    }
+    const provider = this.providers.get(selection.providerId)
+    if (!provider) throw new Error(`Provider "${selection.providerId}" is not available`)
+    return providerRuntime(provider, selection)
   }
 
   private async closeSession(): Promise<void> {
@@ -336,7 +347,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       this.currentAgent = null
       this.currentEnvironment = null
       this.currentCwd = null
-      this.currentProviderType = null
+      this.currentProviderId = null
       this.lastTranscriptBlocks = []
     }
   }
@@ -511,3 +522,12 @@ function errorCode(error: unknown): string | undefined {
 }
 
 function noop(): void {}
+
+function createProviderMap(providers: Provider[]): Map<string, Provider> {
+  const map = new Map<string, Provider>()
+  for (const provider of providers) {
+    if (map.has(provider.id)) throw new Error(`AgentServer: provider "${provider.id}" is already configured`)
+    map.set(provider.id, provider)
+  }
+  return map
+}

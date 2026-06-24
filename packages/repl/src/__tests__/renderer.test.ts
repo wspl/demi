@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection, UserContentBlock } from '@demi/core'
-import { ProviderRegistry } from '@demi/provider'
+import { defineProvider, type AgentProvider, type Provider, type ProviderModelList, type ProviderSelection } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
-import { AgentServer, type ProviderConfig } from '@demi/agent'
+import { AgentServer } from '@demi/agent'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
 import { attachRenderer, createRenderer, handleCommand, renderEvent, resolveReplModel, runInputLoop, type ReplOutput } from '../index'
@@ -192,11 +192,10 @@ test('REPL renderer prints phase, queue, shell output, audit, and progress frame
 })
 
 test('REPL renderer receives AgentClient subscription events end to end', async () => {
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'stub',
+  const provider = defineProvider({
+    id: 'stub',
     displayName: 'Stub',
-    createProvider: () =>
+    createRuntime: () =>
       new StubProvider([
         [
           events.text('agent hello'),
@@ -206,16 +205,16 @@ test('REPL renderer receives AgentClient subscription events end to end', async 
   })
   const server = new AgentServer({
     agent: testHarness,
-    providerRegistry,
+    providers: [provider],
   })
   const client = server.client()
   const output = new CaptureOutput()
   const renderer = createRenderer(output)
   attachRenderer(client, renderer)
 
-  const provider: ProviderConfig = { type: 'stub', model: { ...model, providerId: 'stub' } }
+  const selection: ProviderSelection = { providerId: 'stub', model: { ...model, providerId: 'stub' } }
 
-  await client.open(provider, '/tmp/demi-repl-test')
+  await client.open(selection, '/tmp/demi-repl-test')
   await client.send([{ type: 'text', text: 'hello' }])
   await client.close()
   await server.close()
@@ -229,11 +228,7 @@ test('REPL renderer receives AgentClient subscription events end to end', async 
 })
 
 test('REPL model resolver selects from provider catalog when no full model id is provided', async () => {
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'claude-code',
-    displayName: 'Claude Code',
-    listModels: () => ({
+  const provider = catalogProvider('claude-code', () => ({
       providerId: 'claude-code',
       defaultModelId: 'claude-sonnet-4-6',
       sourceFetchedAt: '2026-06-20T00:00:00.000Z',
@@ -269,11 +264,9 @@ test('REPL model resolver selects from provider catalog when no full model id is
           stale: false,
         },
       ],
-    }),
-    createProvider: () => new StubProvider([]),
-  })
+    }))
 
-  const resolved = await resolveReplModel(providerRegistry, {
+  const resolved = await resolveReplModel(provider, {
     provider: 'claude-code',
     cwd: '/tmp',
     modelId: null,
@@ -282,7 +275,7 @@ test('REPL model resolver selects from provider catalog when no full model id is
     transport: 'auto',
     yieldAfterMs: 10,
     timeoutMs: 100,
-  }, {})
+  })
 
   expect(resolved.selection.model).toMatchObject({
     id: 'claude-sonnet-4-6',
@@ -304,11 +297,7 @@ test('REPL model resolver selects from provider catalog when no full model id is
 })
 
 test('REPL model resolver rejects explicit thinking efforts not advertised by catalog', async () => {
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'claude-code',
-    displayName: 'Claude Code',
-    listModels: () => ({
+  const provider = catalogProvider('claude-code', () => ({
       providerId: 'claude-code',
       defaultModelId: 'claude-sonnet-4-6',
       sourceFetchedAt: '2026-06-20T00:00:00.000Z',
@@ -330,11 +319,9 @@ test('REPL model resolver rejects explicit thinking efforts not advertised by ca
           stale: false,
         },
       ],
-    }),
-    createProvider: () => new StubProvider([]),
-  })
+    }))
 
-  await expect(resolveReplModel(providerRegistry, {
+  await expect(resolveReplModel(provider, {
     provider: 'claude-code',
     cwd: '/tmp',
     modelId: null,
@@ -343,15 +330,11 @@ test('REPL model resolver rejects explicit thinking efforts not advertised by ca
     transport: 'auto',
     yieldAfterMs: 10,
     timeoutMs: 100,
-  }, {})).rejects.toThrow('does not support thinking effort "medium"')
+  })).rejects.toThrow('does not support thinking effort "medium"')
 })
 
 test('REPL model resolver accepts provider-advertised future thinking effort ids', async () => {
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'claude-code',
-    displayName: 'Claude Code',
-    listModels: () => ({
+  const provider = catalogProvider('claude-code', () => ({
       providerId: 'claude-code',
       defaultModelId: 'claude-opus-4-8',
       sourceFetchedAt: '2026-06-20T00:00:00.000Z',
@@ -373,11 +356,9 @@ test('REPL model resolver accepts provider-advertised future thinking effort ids
           stale: false,
         },
       ],
-    }),
-    createProvider: () => new StubProvider([]),
-  })
+    }))
 
-  const resolved = await resolveReplModel(providerRegistry, {
+  const resolved = await resolveReplModel(provider, {
     provider: 'claude-code',
     cwd: '/tmp',
     modelId: null,
@@ -386,18 +367,14 @@ test('REPL model resolver accepts provider-advertised future thinking effort ids
     transport: 'auto',
     yieldAfterMs: 10,
     timeoutMs: 100,
-  }, {})
+  })
 
   expect(resolved.selection.model.thinking).toMatchObject([{ type: 'effort', efforts: ['ultra'], defaultEffort: null }])
   expect(resolved.selection.thinking).toEqual({ type: 'effort', effort: 'ultra', summary: null })
 })
 
 test('REPL model resolver validates provider-advertised service tier ids', async () => {
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'codex',
-    displayName: 'Codex',
-    listModels: () => ({
+  const provider = catalogProvider('codex', () => ({
       providerId: 'codex',
       defaultModelId: 'gpt-5.5',
       sourceFetchedAt: '2026-06-20T00:00:00.000Z',
@@ -421,11 +398,9 @@ test('REPL model resolver validates provider-advertised service tier ids', async
           stale: false,
         },
       ],
-    }),
-    createProvider: () => new StubProvider([]),
-  })
+    }))
 
-  const resolved = await resolveReplModel(providerRegistry, {
+  const resolved = await resolveReplModel(provider, {
     provider: 'codex',
     cwd: '/tmp',
     modelId: null,
@@ -434,10 +409,10 @@ test('REPL model resolver validates provider-advertised service tier ids', async
     transport: 'auto',
     yieldAfterMs: 10,
     timeoutMs: 100,
-  }, {})
+  })
 
   expect(resolved.selection.serviceTierId).toBe('priority')
-  await expect(resolveReplModel(providerRegistry, {
+  await expect(resolveReplModel(provider, {
     provider: 'codex',
     cwd: '/tmp',
     modelId: null,
@@ -446,20 +421,14 @@ test('REPL model resolver validates provider-advertised service tier ids', async
     transport: 'auto',
     yieldAfterMs: 10,
     timeoutMs: 100,
-  }, {})).rejects.toThrow('does not support service tier "fast"')
+  })).rejects.toThrow('does not support service tier "fast"')
 })
 
 test('REPL model resolver rejects aliases and does not call model catalog for explicit full ids', async () => {
   let listCalls = 0
-  const providerRegistry = new ProviderRegistry()
-  providerRegistry.register({
-    type: 'claude-code',
-    displayName: 'Claude Code',
-    listModels: () => {
+  const provider = catalogProvider('claude-code', () => {
       listCalls += 1
       throw new Error('catalog should not be called for explicit model ids')
-    },
-    createProvider: () => new StubProvider([]),
   })
   const baseOptions = {
     provider: 'claude-code' as const,
@@ -471,8 +440,8 @@ test('REPL model resolver rejects aliases and does not call model catalog for ex
     timeoutMs: 100,
   }
 
-  await expect(resolveReplModel(providerRegistry, { ...baseOptions, modelId: 'opus' }, {})).rejects.toThrow('not alias "opus"')
-  const resolved = await resolveReplModel(providerRegistry, { ...baseOptions, modelId: 'claude-opus-4-8' }, {})
+  await expect(resolveReplModel(provider, { ...baseOptions, modelId: 'opus' })).rejects.toThrow('not alias "opus"')
+  const resolved = await resolveReplModel(provider, { ...baseOptions, modelId: 'claude-opus-4-8' })
 
   expect(listCalls).toBe(0)
   expect(resolved.selection.model.id).toBe('claude-opus-4-8')
@@ -556,6 +525,15 @@ test('REPL input loop prints asynchronous send failures', async () => {
 
 function block<T extends Block>(value: T): T {
   return value
+}
+
+function catalogProvider(id: string, listModels: () => ProviderModelList): Provider {
+  return defineProvider({
+    id,
+    displayName: id,
+    listModels,
+    createRuntime: () => new StubProvider([]),
+  })
 }
 
 class CaptureOutput implements ReplOutput {

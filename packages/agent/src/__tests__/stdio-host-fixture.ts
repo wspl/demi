@@ -1,23 +1,19 @@
-import { ProviderRegistry } from '@demi/provider'
+import { defineProvider } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
 import { AgentServer } from '../index'
 import { createStdioServerTransport } from '../stdio-transport'
 
-const providerRegistry = new ProviderRegistry()
-providerRegistry.register({
-  type: 'child-stub',
+const childProvider = defineProvider({
+  id: 'child-stub',
   displayName: 'Child Stub',
-  createProvider: (config: unknown) => {
-    const text = (config as { text: string }).text
-    return new StubProvider([[events.text(text), events.response()]])
-  },
+  createRuntime: () => new StubProvider([[events.text('from child'), events.response()]]),
 })
 
 const server = new AgentServer({
   agent: createHarness(),
-  providerRegistry,
+  providers: [childProvider],
 })
 server.attachTransport(createStdioServerTransport(process.stdin, process.stdout))
 

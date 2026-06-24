@@ -1,6 +1,6 @@
 import process from 'node:process'
 import type { AgentTransportBinding } from '@demi/agent'
-import type { ProviderRegistry } from '@demi/provider'
+import type { Provider } from '@demi/provider'
 import type { ControlMethod } from '@demi/web-ui/transport/protocol'
 import { AgentHub } from './agent-hub'
 import { BunServerSocket } from './bun-socket'
@@ -18,13 +18,13 @@ export interface WebServerHandle {
   stop(): Promise<void>
 }
 
-export function startWebServer(registry: ProviderRegistry, options: ServerOptions): WebServerHandle {
-  const hub = new AgentHub(registry, {
+export function startWebServer(providers: Provider[], options: ServerOptions): WebServerHandle {
+  const hub = new AgentHub(providers, {
     initialEnv: { PATH: process.env.PATH ?? '' },
     yieldAfterMs: options.yieldAfterMs,
     timeoutMs: options.timeoutMs,
   })
-  const control = new ControlServer(registry, options)
+  const control = new ControlServer(providers, options)
 
   const server = Bun.serve<ConnData>({
     port: options.port,

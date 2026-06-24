@@ -70,7 +70,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only transports from explicit subpaths such as `@demi/agent/stdio`.
 - Must not: import concrete providers, `@demi/host-local`, or UI packages.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
-- Assembly rule: AgentServer receives one AgentHarness, one ProviderRegistry, and shell runtime options that do not replace the shell mechanism.
+- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, and shell runtime options that do not replace the shell mechanism.
 
 ### `@demi/coding-agent`
 
@@ -86,7 +86,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented.
 - Production deps: `@demi/core`, `@demi/provider`.
 - Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, and provider-specific tests.
-- Public boundary: provider definition, config parser, model catalog function, and public option types from root.
+- Public boundary: `createClaudeCodeProvider`, model catalog function, and public option types from root.
 - Internal boundary: CLI, JSONL, output, transport, parser, and test cache helpers stay behind implementation files.
 - Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/repl` in production code.
 
@@ -95,7 +95,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented.
 - Production deps: `@demi/core`, `@demi/provider`.
 - Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, and provider-specific tests.
-- Public boundary: provider definition, config parser, auth status helper, model catalog function, transport mode type, and public option types from root.
+- Public boundary: `createCodexProvider`, auth status helper, model catalog function, transport mode type, and public option types from root.
 - Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, and test cache helpers stay behind implementation files.
 - Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/repl` in production code.
 
@@ -132,7 +132,7 @@ Test code may depend upward for integration coverage. Production code must not.
   `@demi/shell`.
 - Owns: the Demi web product — the Vite-dev-only browser app plus its embedded Node/Bun
   backend. The server serves only the WebSocket/API endpoints (per-session `/agent` + a
-  `/control` RPC), assembling a shared `ProviderRegistry` and a per-cwd `AgentServer` over
+  `/control` RPC), assembling shared public providers and a per-cwd `AgentServer` over
   `LocalHost` and the coding harness. It must not serve built browser assets, preview pages,
   or production fallback HTML. The server is not split into its own package.
 - Public boundary: top-level product application entry points (browser `main.ts`, server

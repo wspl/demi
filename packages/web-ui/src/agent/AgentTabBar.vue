@@ -352,7 +352,7 @@ function finishSettle() {
         :tab="tab"
         :is-active="tab.id === activeTabId"
         :status="conversationStatus(tab)"
-        :provider-icon-id="tab.model.providerType"
+        :provider-icon-id="tab.model.providerId"
         :is-closing="closingTabIds.has(tab.id)"
         :is-entering="enteringTabIds.has(tab.id)"
         :is-dragging="isDragging"

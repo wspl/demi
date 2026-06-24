@@ -1,5 +1,4 @@
-import type { ProviderConfig } from '@demi/agent'
-import type { ProviderRegistry } from '@demi/provider'
+import type { Provider, ProviderSelection } from '@demi/provider'
 import type {
   ControlMethod,
   ModelInfo,
@@ -7,21 +6,25 @@ import type {
   ProviderInfo,
   WorkspaceInfo,
 } from '@demi/web-ui/transport/protocol'
-import { providerConfigFor, type ServerOptions } from './server-options'
+import type { ServerOptions } from './server-options'
 import { buildModelSelection, toModelInfo } from './web-model'
 
 export class ControlServer {
+  private readonly providers: Map<string, Provider>
+
   constructor(
-    private readonly registry: ProviderRegistry,
+    providers: readonly Provider[],
     private readonly options: ServerOptions,
-  ) {}
+  ) {
+    this.providers = new Map(providers.map((provider) => [provider.id, provider]))
+  }
 
   handle(method: ControlMethod, params: unknown): Promise<unknown> {
     switch (method) {
       case 'listProviders':
         return this.listProviders()
       case 'listModels':
-        return this.listModels(params as { providerType: string })
+        return this.listModels(params as { providerId: string })
       case 'prepareSession':
         return this.prepareSession(params as PrepareSessionParams)
       case 'defaultWorkspace':
@@ -31,43 +34,51 @@ export class ControlServer {
 
   private async listProviders(): Promise<ProviderInfo[]> {
     const providers: ProviderInfo[] = []
-    for (const definition of this.registry.list()) {
-      const state = await this.registry.state(definition.type)
+    for (const provider of this.providers.values()) {
+      const state = await provider.state?.() ?? { status: 'unknown' }
       providers.push({
-        type: definition.type,
-        label: definition.displayName,
+        id: provider.id,
+        label: provider.displayName,
         isAvailable: state.status === 'ready' || state.status === 'unknown',
       })
     }
     return providers
   }
 
-  private async listModels(params: { providerType: string }): Promise<ModelInfo[]> {
-    const config = providerConfigFor(params.providerType, this.options)
-    const catalog = await this.registry.listModels(params.providerType, config)
+  private async listModels(params: { providerId: string }): Promise<ModelInfo[]> {
+    const provider = this.providerFor(params.providerId)
+    if (!provider.listModels) throw new Error(`Provider "${params.providerId}" does not expose a model catalog`)
+    const catalog = await provider.listModels()
     return catalog.models.map(toModelInfo)
   }
 
-  private async prepareSession(params: PrepareSessionParams): Promise<ProviderConfig> {
-    const config = providerConfigFor(params.providerType, this.options)
-    const catalogModel = await this.findCatalogModel(params.providerType, params.modelId, config)
+  private async prepareSession(params: PrepareSessionParams): Promise<ProviderSelection> {
+    const catalogModel = await this.findCatalogModel(params.providerId, params.modelId)
     const model = buildModelSelection(
-      params.providerType,
+      params.providerId,
       params.modelId,
       params.thinkingEffort ?? null,
       params.serviceTierId ?? null,
       catalogModel,
     )
-    return { type: params.providerType, config, model }
+    return { providerId: params.providerId, model }
   }
 
-  private async findCatalogModel(providerType: string, modelId: string, config: Record<string, unknown>) {
+  private async findCatalogModel(providerId: string, modelId: string) {
     try {
-      const catalog = await this.registry.listModels(providerType, config)
+      const provider = this.providerFor(providerId)
+      if (!provider.listModels) return null
+      const catalog = await provider.listModels()
       return catalog.models.find((model) => model.id === modelId) ?? null
     } catch {
       return null
     }
+  }
+
+  private providerFor(providerId: string): Provider {
+    const provider = this.providers.get(providerId)
+    if (!provider) throw new Error(`Provider "${providerId}" is not available`)
+    return provider
   }
 
   private defaultWorkspace(): WorkspaceInfo {

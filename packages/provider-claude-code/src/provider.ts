@@ -1,12 +1,28 @@
 import { randomUUID } from 'node:crypto'
 import type { ToolResultContentBlock } from '@demi/core'
-import type { AgentProvider, InferenceItem, InferenceRequest, ProviderDefinition, ProviderEvent } from '@demi/provider'
+import {
+  applyModelPolicy,
+  defineProvider,
+  type AgentProvider,
+  type InferenceItem,
+  type InferenceRequest,
+  type ModelPolicy,
+  type Provider,
+  type ProviderEvent,
+} from '@demi/provider'
 import { coldStartInputMessages, controlResponse, inferenceItemToClaudeMessage, toolResultsToClaudeMessage } from './jsonl'
 import { listClaudeCodeModels } from './models'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
 import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
 
 export interface ClaudeCodeProviderOptions {
+  id?: string
+  displayName?: string
+  claudePath?: string
+  models?: ModelPolicy
+}
+
+export interface ClaudeCodeRuntimeOptions {
   transportFactory?: ClaudeTransportFactory
   claudePath?: string
 }
@@ -39,7 +55,7 @@ export class ClaudeCodeProvider implements AgentProvider {
   private readonly transportFactory: ClaudeTransportFactory
   private active: ActiveClaudeRun | null = null
 
-  constructor(options: ClaudeCodeProviderOptions = {}) {
+  constructor(options: ClaudeCodeRuntimeOptions = {}) {
     this.transportFactory =
       options.transportFactory ?? new ClaudeCliTransportFactory({ claudePath: options.claudePath })
   }
@@ -393,18 +409,24 @@ export class ClaudeCodeProvider implements AgentProvider {
   }
 }
 
-export function createClaudeCodeProviderDefinition(): ProviderDefinition<unknown> {
-  return {
-    type: 'claude-code',
-    displayName: 'Claude Code',
+export function createClaudeCodeProvider(options: ClaudeCodeProviderOptions = {}): Provider {
+  const id = options.id ?? 'claude-code'
+  const displayName = options.displayName ?? 'Claude Code'
+  const runtimeOptions: ClaudeCodeRuntimeOptions = {
+    claudePath: options.claudePath,
+  }
+
+  return defineProvider({
+    id,
+    displayName,
     auth: { status: () => ({ status: 'unknown', message: 'Auth is checked when a Claude Code request runs' }) },
     state: () => ({ status: 'unknown', message: 'Runtime is checked when a Claude Code request runs' }),
-    listModels: (config) => {
-      parseClaudeCodeProviderConfig(config)
-      return listClaudeCodeModels()
+    listModels: async () => {
+      const catalog = await listClaudeCodeModels()
+      return applyModelPolicy(catalog, id, options.models)
     },
-    createProvider: (config) => new ClaudeCodeProvider(parseClaudeCodeProviderConfig(config)),
-  }
+    createRuntime: () => new ClaudeCodeProvider(runtimeOptions),
+  })
 }
 
 export function parseClaudeCodeProviderConfig(config: unknown): ClaudeCodeProviderConfig {

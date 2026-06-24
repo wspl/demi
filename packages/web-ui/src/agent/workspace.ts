@@ -56,9 +56,9 @@ export class AgentWorkspace {
     for (const provider of providers) {
       if (!provider.isAvailable) continue
       try {
-        this.models[provider.type] = await this.control.listModels({ providerType: provider.type })
+        this.models[provider.id] = await this.control.listModels({ providerId: provider.id })
       } catch {
-        this.models[provider.type] = []
+        this.models[provider.id] = []
       }
     }
     this.defaultModel = this.resolveDefaultModel()
@@ -180,10 +180,10 @@ export class AgentWorkspace {
 
   private resolveDefaultModel(): ModelIntent | null {
     for (const provider of this.providers.value) {
-      const model = this.models[provider.type]?.[0]
+      const model = this.models[provider.id]?.[0]
       if (model) {
         return {
-          providerType: provider.type,
+          providerId: provider.id,
           modelId: model.id,
           thinkingEffort: model.reasoning?.defaultEffort ?? null,
           serviceTierId: null,
@@ -194,7 +194,7 @@ export class AgentWorkspace {
   }
 
   private fallbackModel(): ModelIntent {
-    return { providerType: 'claude-code', modelId: 'default', thinkingEffort: null, serviceTierId: null }
+    return { providerId: 'claude-code', modelId: 'default', thinkingEffort: null, serviceTierId: null }
   }
 
   private nextTitle(): string {

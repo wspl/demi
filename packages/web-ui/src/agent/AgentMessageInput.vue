@@ -25,7 +25,7 @@ const emit = defineEmits<{
 const workspace = useAgentWorkspace()
 
 const {
-  selectedProviderType,
+  selectedProviderId,
   selectedModelId,
   thinkingConfig,
   contextWindow,
@@ -85,7 +85,7 @@ defineExpose({
           <ModelSelector
             :providers="workspace.providers.value"
             :models="workspace.models"
-            :selected-provider-type="selectedProviderType"
+            :selected-provider-id="selectedProviderId"
             :selected-model-id="selectedModelId"
             v-bind="thinkingConfig ? { thinkingConfig } : {}"
             @select-model="handleSelectModel"

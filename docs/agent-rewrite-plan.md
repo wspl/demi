@@ -940,17 +940,17 @@ todo done
 
 ### 11.1 AgentServer 与 AgentClient
 
-`AgentServer` 绑定一个已选好的 `AgentHarness`。app/REPL 在创建 server 前选择 coding agent 或其他 agent；`open` 帧只携带 provider config 和 cwd，不携带 harness 名，也没有 host 侧 harness registry。
+`AgentServer` 绑定一个已选好的 `AgentHarness`。app/REPL 在创建 server 前选择 coding agent 或其他 agent；`open` 帧只携带 `ProviderSelection` 和 cwd，不携带 harness 名，也没有 host 侧 harness registry。
 
 ```ts
 const server = new AgentServer({
   agent: createCodingAgentHarness({ host }),
-  providerRegistry,
+  providers: [createClaudeCodeProvider(...), createCodexProvider(...)],
   shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
 })
 
 const client = server.client()
-await client.open(providerConfig, cwd)
+await client.open(providerSelection, cwd)
 ```
 
 `server.client()` 表示同进程本地 client 视图，不是建立网络连接。需要跨进程或网络时，用 transport：
@@ -966,7 +966,7 @@ const client = new AgentClient(createStdioClientTransport(stdout, stdin))
 
 ```ts
 interface AgentClient {
-  open(provider: ProviderConfig, cwd: string): Promise<void>
+  open(provider: ProviderSelection, cwd: string): Promise<void>
   send(content: UserContentBlock[]): Promise<void>
   steer(content: UserContentBlock[]): Promise<void>
   retry(): Promise<void>
@@ -1025,7 +1025,7 @@ Transport 是 AgentServer 的通信适配层：定义 `ClientFrame` / `ServerFra
 ```ts
 // client → server：对 session 做动作，不带 id
 type ClientFrame =
-  | { type: 'open'; provider: ProviderConfig; cwd: string }
+  | { type: 'open'; provider: ProviderSelection; cwd: string }
   | { type: 'send'; content: UserContentBlock[] }
   | { type: 'abort' }
   | { type: 'retry' }
@@ -1104,7 +1104,7 @@ demi 是纯 agent 库，不含 frontend 实现 / module 层。Agent runtime 和 
 packages/core/            基础类型：Block、Transcript、UserContentBlock、ModelSelection、
                           TokenUsage 等跨包共享类型（agent 与 provider 都依赖）
 packages/provider/        AgentProvider 接口、InferenceRequest/InferenceItem、
-                          ProviderEvent、ProviderRegistry、auth 能力
+                          ProviderEvent、public Provider、auth 能力
 packages/agent/           通用 AgentSession（Agent Loop）、AgentServer、AgentClient、
                           ClientFrame/ServerFrame、AgentTransport、in-process + WebSocket
                           transport、显式 stdio adapter、transcript snapshot/patch
@@ -1124,7 +1124,7 @@ packages/repl/             本地验收壳子和 composition root
 
 `packages/core` 与 `packages/provider` 是底层依赖：core 放跨包共享类型，provider 定义 AgentSession 调用模型的标准接口。`InferenceRequest` 是纯 items 数组模型（`items: InferenceItem[]` + systemPrompt + cwd + tools + thinking + cancel），与 Rust 蓝本一致；provider 实现内部如何把 items 喂给模型（直连 API、stdin stream-json、或 provider 自己支持的 resume 机制）是 provider 自己的事，不进接口。
 
-`packages/agent` 依赖 core、provider 和 shell。AgentSession 是内部运行时；AgentServer 是唯一运行时消费者，负责把 AgentHarness + providerRegistry + shell options 组装成 session。AgentClient 和 transport frame handler 也在同一包内，避免额外的公共通信分层。
+`packages/agent` 依赖 core、provider 和 shell。AgentSession 是内部运行时；AgentServer 是唯一运行时消费者，负责把 AgentHarness + `Provider[]` + shell options 组装成 session。AgentClient 和 transport frame handler 也在同一包内，避免额外的公共通信分层。
 
 `packages/provider-claude-code` 的实现机制：直接 spawn 系统 `claude` CLI（`--print --output-format stream-json --input-format stream-json`），stdin/stdout JSON 行通信，手写 MCP JSON-RPC bridge 处理 tool 调用，`DISABLE_AUTO_COMPACT: 1`（用 demi 自己的 compaction）。**不依赖 `@anthropic-ai/claude-agent-sdk`**——Rust 蓝本完全自实现，demi 照搬。CLI 的 stream event 映射成 `ProviderEvent`。这套机制照搬 Rust `provider-claude-code` crate。
 
@@ -1235,7 +1235,7 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
    ```
    - `InferenceItem`：UserMessage / AssistantText / AssistantThinking / AssistantRedactedThinking / ToolUse / ToolResult。
 2. `ProviderEvent`（对照 Rust `runtime.rs`）：ThinkingStart / ThinkingDelta / ThinkingSignature / RedactedThinking / TextDelta / ToolCallRequested / Response(usage) / Error / Abort。
-3. `AgentProvider` 接口 + `ProviderDefinition` / `ProviderRegistry`（注册、按 type 取、createProvider、state 观察）。
+3. `AgentProvider` 接口 + public `Provider` / `ProviderSelection`（按 provider id 选择、server-held runtime factory、state/model catalog 观察）。
 4. `StubProvider`：可脚本化的事件流——测试时传入一组 `ProviderEvent` 序列，`run()` 按序 yield。支持 tool call 请求 + 第二轮续接。
 5. auth 能力先留接口空壳，不实现。
 

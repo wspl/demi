@@ -1,21 +1,15 @@
 import type {
   Block,
-  ModelSelection,
   QueuedMessage,
   SessionPhase,
   ToolResultContentBlock,
   UserContentBlock,
 } from '@demi/core'
+import type { ProviderSelection } from '@demi/provider'
 import type { BashAuditEvent, OutputSnapshot } from '@demi/shell'
 
-export interface ProviderConfig {
-  type: string
-  config?: unknown
-  model: ModelSelection
-}
-
 export type ClientFrame =
-  | { type: 'open'; provider: ProviderConfig; cwd: string }
+  | { type: 'open'; provider: ProviderSelection; cwd: string }
   | { type: 'send'; messageId: string; content: UserContentBlock[] }
   | { type: 'dequeue_message'; messageId: string }
   | { type: 'send_queued_message'; messageId: string }
@@ -23,7 +17,7 @@ export type ClientFrame =
   | { type: 'clear_message_queue' }
   | { type: 'steer'; steerId: string; content: UserContentBlock[] }
   | { type: 'cancel_pending_steer'; steerId: string }
-  | { type: 'set_provider'; provider: ProviderConfig }
+  | { type: 'set_provider'; provider: ProviderSelection }
   | { type: 'abort' }
   | { type: 'retry' }
   | { type: 'resume' }

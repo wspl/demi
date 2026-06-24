@@ -64,10 +64,10 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
     }
   }
 
-  function handleSelectModel(providerType: string, modelId: string): void {
+  function handleSelectModel(providerId: string, modelId: string): void {
     const current = params.workspace.sessions[params.conversationId]?.model
     params.workspace.setModel(params.conversationId, {
-      providerType,
+      providerId,
       modelId,
       thinkingEffort: current?.thinkingEffort ?? null,
       serviceTierId: null,

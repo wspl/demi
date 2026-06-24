@@ -14,18 +14,18 @@ import OptionMenuItem from '@demi/web-ui/ui/OptionMenuItem.vue'
 const props = defineProps<{
   providers: ProviderInfo[]
   models: Record<string, ModelInfo[]>
-  selectedProviderType?: string | null
+  selectedProviderId?: string | null
   selectedModelId?: string | null
   thinkingConfig?: ThinkingConfig
 }>()
 
 const emit = defineEmits<{
-  selectModel: [providerType: string, modelId: string]
+  selectModel: [providerId: string, modelId: string]
   changeThinking: [config: ThinkingConfig]
 }>()
 
 interface SelectedModel {
-  providerType: string
+  providerId: string
   modelId: string
 }
 
@@ -34,51 +34,51 @@ const selectedModel = ref<SelectedModel | null>(null)
 const providerModels = computed(() => props.models)
 
 const availableProviders = computed(() =>
-  props.providers.filter(p => p.isAvailable && (providerModels.value[p.type]?.length ?? 0) > 0),
+  props.providers.filter(p => p.isAvailable && (providerModels.value[p.id]?.length ?? 0) > 0),
 )
 
 const hasModels = computed(() =>
-  availableProviders.value.some(p => (providerModels.value[p.type] ?? []).length > 0),
+  availableProviders.value.some(p => (providerModels.value[p.id] ?? []).length > 0),
 )
 
 const selectedModelPreset = computed(() => {
   const selected = selectedModel.value
   if (!selected) return null
-  return (providerModels.value[selected.providerType] ?? []).find(m => m.id === selected.modelId) ?? null
+  return (providerModels.value[selected.providerId] ?? []).find(m => m.id === selected.modelId) ?? null
 })
 
 const selectedModelLabel = computed(() => selectedModelPreset.value?.name ?? '')
 
 const reasoningState = computed(() => buildReasoningState(selectedModelPreset.value))
 
-function isSelectedModel(providerType: string, modelId: string): boolean {
-  return selectedModel.value?.providerType === providerType
+function isSelectedModel(providerId: string, modelId: string): boolean {
+  return selectedModel.value?.providerId === providerId
     && selectedModel.value?.modelId === modelId
 }
 
-function selectModel(providerType: string, modelId: string) {
-  selectedModel.value = { providerType, modelId }
-  emit('selectModel', providerType, modelId)
+function selectModel(providerId: string, modelId: string) {
+  selectedModel.value = { providerId, modelId }
+  emit('selectModel', providerId, modelId)
 }
 
 function resolveFallbackSelection(): SelectedModel | null {
   for (const provider of availableProviders.value) {
-    const firstModel = providerModels.value[provider.type]?.[0]
-    if (firstModel) return { providerType: provider.type, modelId: firstModel.id }
+    const firstModel = providerModels.value[provider.id]?.[0]
+    if (firstModel) return { providerId: provider.id, modelId: firstModel.id }
   }
   return null
 }
 
 watch(
   [
-    () => props.selectedProviderType,
+    () => props.selectedProviderId,
     () => props.selectedModelId,
     providerModels,
     availableProviders,
   ],
   () => {
-    if (props.selectedProviderType && props.selectedModelId) {
-      selectedModel.value = { providerType: props.selectedProviderType, modelId: props.selectedModelId }
+    if (props.selectedProviderId && props.selectedModelId) {
+      selectedModel.value = { providerId: props.selectedProviderId, modelId: props.selectedModelId }
       return
     }
     selectedModel.value = resolveFallbackSelection()
@@ -99,15 +99,15 @@ watch(
         <OptionMenu>
           <OptionMenuGroup
             v-for="provider in availableProviders"
-            :key="provider.type"
+            :key="provider.id"
             :label="provider.label"
           >
             <OptionMenuItem
-              v-for="model in providerModels[provider.type] ?? []"
-              :key="`${provider.type}:${model.id}`"
+              v-for="model in providerModels[provider.id] ?? []"
+              :key="`${provider.id}:${model.id}`"
               :label="model.name"
-              :is-selected="isSelectedModel(provider.type, model.id)"
-              @select="selectModel(provider.type, model.id); close()"
+              :is-selected="isSelectedModel(provider.id, model.id)"
+              @select="selectModel(provider.id, model.id); close()"
             />
           </OptionMenuGroup>
         </OptionMenu>

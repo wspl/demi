@@ -1,12 +1,12 @@
-import type { ProviderDefinition } from '@demi/provider'
+import { defineProvider, type Provider } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 
 const EPOCH = '1970-01-01T00:00:00.000Z'
 
-/** A scripted provider definition for deterministic transport/dev testing without real API calls. */
-export function createStubProviderDefinition(): ProviderDefinition {
-  return {
-    type: 'claude-code',
+/** A scripted provider for deterministic transport/dev testing without real API calls. */
+export function createStubProvider(): Provider {
+  return defineProvider({
+    id: 'claude-code',
     displayName: 'Stub',
     state: () => ({ status: 'ready' }),
     listModels: () => ({
@@ -32,7 +32,7 @@ export function createStubProviderDefinition(): ProviderDefinition {
       sourceFetchedAt: EPOCH,
       stale: false,
     }),
-    createProvider: () =>
+    createRuntime: () =>
       new StubProvider([
         [
           { type: 'thinking_delta', text: 'Let me inspect the workspace before answering.' },
@@ -44,5 +44,5 @@ export function createStubProviderDefinition(): ProviderDefinition {
           events.response({ inputTokens: 1280, outputTokens: 48, cacheReadTokens: 920 }),
         ],
       ]),
-  }
+  })
 }

@@ -1,7 +1,7 @@
 import type { Block, QueuedMessage, SessionPhase, UserContentBlock } from '@demi/core'
 
 export interface ModelIntent {
-  providerType: string
+  providerId: string
   modelId: string
   thinkingEffort: string | null
   serviceTierId: string | null
