@@ -406,9 +406,9 @@ createOpenAIApiProvider({
 
 The default OpenAI and Anthropic providers resolve official API keys from `OPENAI_API_KEY` and
 `ANTHROPIC_API_KEY` respectively, and endpoints from `OPENAI_BASE_URL` and `ANTHROPIC_BASE_URL`.
-The browser-visible protocol may carry `providerId`, `modelId`, thinking, and service tier only. It
-must not carry `apiKey`, `headers`, raw `baseUrl` values, `envPrefix`, or arbitrary serializable
-provider config.
+The browser-visible protocol may carry `providerId`, `modelId`, model display metadata, thinking,
+and service tier only. It must not carry `apiKey`, `headers`, raw `baseUrl` values, `envPrefix`, or
+arbitrary serializable provider config.
 
 For Web, this means replacing `prepareSession -> ProviderConfig` with a server-side session
 preparation step that returns a public `ProviderSelection` object and opens server sessions using

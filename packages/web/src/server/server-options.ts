@@ -10,6 +10,7 @@ export interface ServerOptions {
   cwd: string
   provider: ProviderId
   modelId: string | null
+  modelDisplayName: string | null
   thinkingEffort: string | null
   serviceTierId: string | null
   openAIWireApi: OpenAIApiWireApi
@@ -27,6 +28,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
     cwd: process.cwd(),
     provider: parseProvider(process.env.DEMI_PROVIDER ?? 'claude-code'),
     modelId: null,
+    modelDisplayName: process.env.DEMI_MODEL_DISPLAY_NAME ?? null,
     thinkingEffort: null,
     serviceTierId: null,
     openAIWireApi: parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses'),
@@ -42,6 +44,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else if (arg === '--cwd') options.cwd = required(args, ++index, '--cwd')
     else if (arg === '--provider') options.provider = parseProvider(required(args, ++index, '--provider'))
     else if (arg === '--model') options.modelId = required(args, ++index, '--model')
+    else if (arg === '--model-display-name') options.modelDisplayName = required(args, ++index, '--model-display-name')
     else if (arg === '--thinking') options.thinkingEffort = required(args, ++index, '--thinking')
     else if (arg === '--no-thinking') options.thinkingEffort = null
     else if (arg === '--service-tier') options.serviceTierId = required(args, ++index, '--service-tier')
@@ -55,6 +58,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else throw new Error(`Unknown option: ${arg}`)
   }
 
+  if (options.modelDisplayName && !options.modelId) throw new Error('--model-display-name requires --model')
   options.cwd = resolve(options.cwd)
   return options
 }

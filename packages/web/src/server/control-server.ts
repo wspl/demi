@@ -47,10 +47,10 @@ export class ControlServer {
 
   private async listModels(params: { providerId: string }): Promise<ModelInfo[]> {
     const provider = this.providerFor(params.providerId)
-    const explicitModelId = this.explicitModelIdFor(params.providerId)
-    if (explicitModelId) {
-      const model = await this.findProviderCatalogModel(provider, explicitModelId)
-      return [model ? toModelInfo(model) : explicitModelInfo(explicitModelId)]
+    const explicitModel = this.explicitModelFor(params.providerId)
+    if (explicitModel) {
+      const model = await this.findProviderCatalogModel(provider, explicitModel.id)
+      return [model ? withModelInfoDisplayName(toModelInfo(model), explicitModel.displayName) : explicitModelInfo(explicitModel)]
     }
     if (!provider.listModels) throw new Error(`Provider "${params.providerId}" does not expose a model catalog`)
     const catalog = await provider.listModels()
@@ -72,12 +72,16 @@ export class ControlServer {
   private async findCatalogModel(providerId: string, modelId: string) {
     try {
       const provider = this.providerFor(providerId)
-      const explicitModelId = this.explicitModelIdFor(providerId)
-      if (explicitModelId && modelId !== explicitModelId) return null
+      const explicitModel = this.explicitModelFor(providerId)
+      if (explicitModel && modelId !== explicitModel.id) return null
       const model = await this.findProviderCatalogModel(provider, modelId)
-      return model ?? (explicitModelId ? explicitProviderModel(providerId, modelId) : null)
+      if (!explicitModel) return model
+      return model
+        ? withProviderModelDisplayName(model, explicitModel.displayName)
+        : explicitProviderModel(providerId, explicitModel)
     } catch {
-      return this.explicitModelIdFor(providerId) === modelId ? explicitProviderModel(providerId, modelId) : null
+      const explicitModel = this.explicitModelFor(providerId)
+      return explicitModel?.id === modelId ? explicitProviderModel(providerId, explicitModel) : null
     }
   }
 
@@ -87,8 +91,9 @@ export class ControlServer {
     return provider
   }
 
-  private explicitModelIdFor(providerId: string): string | null {
-    return this.options.provider === providerId ? this.options.modelId : null
+  private explicitModelFor(providerId: string): ExplicitModelOverride | null {
+    if (this.options.provider !== providerId || !this.options.modelId) return null
+    return { id: this.options.modelId, displayName: this.options.modelDisplayName }
   }
 
   private async findProviderCatalogModel(provider: Provider, modelId: string): Promise<ProviderModel | null> {
@@ -106,10 +111,15 @@ export class ControlServer {
   }
 }
 
-function explicitModelInfo(modelId: string): ModelInfo {
+interface ExplicitModelOverride {
+  id: string
+  displayName: string | null
+}
+
+function explicitModelInfo(model: ExplicitModelOverride): ModelInfo {
   return {
-    id: modelId,
-    name: modelId,
+    id: model.id,
+    name: model.displayName ?? model.id,
     contextWindow: null,
     inputLimit: null,
     acceptedExtensions: [],
@@ -117,11 +127,11 @@ function explicitModelInfo(modelId: string): ModelInfo {
   }
 }
 
-function explicitProviderModel(providerId: string, modelId: string): ProviderModel {
+function explicitProviderModel(providerId: string, model: ExplicitModelOverride): ProviderModel {
   return {
     providerId,
-    id: modelId,
-    displayName: modelId,
+    id: model.id,
+    displayName: model.displayName ?? model.id,
     contextWindow: null,
     outputLimit: null,
     supportsTools: null,
@@ -132,4 +142,12 @@ function explicitProviderModel(providerId: string, modelId: string): ProviderMod
     sourceFetchedAt: '1970-01-01T00:00:00.000Z',
     stale: false,
   }
+}
+
+function withModelInfoDisplayName(model: ModelInfo, displayName: string | null): ModelInfo {
+  return displayName ? { ...model, name: displayName } : model
+}
+
+function withProviderModelDisplayName(model: ProviderModel, displayName: string | null): ProviderModel {
+  return displayName ? { ...model, displayName } : model
 }

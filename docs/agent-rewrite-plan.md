@@ -1395,7 +1395,7 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 - Endpoint/env 规则一致：显式 `baseUrl` 优先，其次 `${envPrefix}_BASE_URL`，最后官方默认 endpoint；显式 `apiKey` 优先，其次 `${envPrefix}_API_KEY`。默认 prefix 分别为 `OPENAI` 和 `ANTHROPIC`。
 - Secret boundary 一致：API key、自定义 headers、raw baseUrl、envPrefix 和 raw provider options 只留在 provider creator closure，Web `listProviders` / `listModels` / `prepareSession` 和 AgentClient frames 不携带这些值。
 
-REPL/Web 当前 composition root 默认装配 `createClaudeCodeProvider()`、`createCodexProvider()`、`createOpenAIApiProvider()`、`createAnthropicApiProvider()`；`--provider openai|anthropic` 选择对应 provider，`--base-url` 只覆盖当前选中的 HTTP provider；`--openai-wire-api responses|chat-completions` 只控制 OpenAI provider 的 wire API。Web 启动时传入的 `--model` 必须全量替换选中 provider 的 control catalog，保证 DeepSeek、OpenRouter 等 compatible endpoint 不会因为默认 catalog 的任何模型而请求错误模型；这个过程仍只暴露 `providerId`、`modelId` 和便携模型元数据，不把 raw endpoint 或 secret-bearing options 发给浏览器。
+REPL/Web 当前 composition root 默认装配 `createClaudeCodeProvider()`、`createCodexProvider()`、`createOpenAIApiProvider()`、`createAnthropicApiProvider()`；`--provider openai|anthropic` 选择对应 provider，`--base-url` 只覆盖当前选中的 HTTP provider；`--openai-wire-api responses|chat-completions` 只控制 OpenAI provider 的 wire API。Web 启动时传入的 `--model` 必须全量替换选中 provider 的 control catalog，保证 DeepSeek、OpenRouter 等 compatible endpoint 不会因为默认 catalog 的任何模型而请求错误模型；`--model-display-name` 只覆盖 UI 展示名，不改变 provider request 使用的真实 model id；这个过程仍只暴露 `providerId`、`modelId` 和便携模型元数据，不把 raw endpoint 或 secret-bearing options 发给浏览器。
 
 ## 15. 优先级
 

@@ -79,7 +79,18 @@ test('web control protocol replaces selected provider catalog with explicit star
   const provider = createCatalogProvider('openai', 'catalog-model')
   const handle = startWebServer(
     [provider],
-    parseServerOptions(['--port', '0', '--cwd', cwd, '--provider', 'openai', '--model', 'deepseek-v4-pro']),
+    parseServerOptions([
+      '--port',
+      '0',
+      '--cwd',
+      cwd,
+      '--provider',
+      'openai',
+      '--model',
+      'deepseek-v4-pro',
+      '--model-display-name',
+      'DeepSeek V4 Pro',
+    ]),
   )
 
   try {
@@ -87,10 +98,11 @@ test('web control protocol replaces selected provider catalog with explicit star
 
     const models = await control.listModels({ providerId: 'openai' })
     expect(models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
+    expect(models.map((model) => model.name)).toEqual(['DeepSeek V4 Pro'])
 
     const providerSelection = await control.prepareSession({ providerId: 'openai', modelId: 'deepseek-v4-pro' })
     expect(providerSelection.model.model.id).toBe('deepseek-v4-pro')
-    expect(providerSelection.model.model.name).toBe('deepseek-v4-pro')
+    expect(providerSelection.model.model.name).toBe('DeepSeek V4 Pro')
   } finally {
     await handle.stop()
   }

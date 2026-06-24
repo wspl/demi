@@ -137,7 +137,8 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
   和 `/agent` WebSocket 能力，普通 HTTP 请求必须拒绝并指向 Vite dev server，防止静态
   `dist` / preview / production bundle 路径重新进入验收流程；同时覆盖启动时显式
   `--model` 会全量替换选中 provider 的 control catalog，避免 compatible endpoint 被
-  默认 catalog 的任何模型误选。
+  默认 catalog 的任何模型误选；`--model-display-name` 只改变 UI 展示名，不改变真实
+  `modelId`。
 
 ## 5. 模块测试点
 
