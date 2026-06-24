@@ -1,6 +1,7 @@
 import process from 'node:process'
 import { resolve } from 'node:path'
 import type { CodexTransportMode } from '@demi/provider-codex'
+import type { OpenAIApiWireApi } from '@demi/provider-openai-api'
 
 export type ProviderId = 'claude-code' | 'codex' | 'openai' | 'anthropic'
 
@@ -11,6 +12,7 @@ export interface ServerOptions {
   modelId: string | null
   thinkingEffort: string | null
   serviceTierId: string | null
+  openAIWireApi: OpenAIApiWireApi
   claudePath?: string
   codexHome?: string
   baseUrl?: string
@@ -27,6 +29,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
     modelId: null,
     thinkingEffort: null,
     serviceTierId: null,
+    openAIWireApi: parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses'),
     codexHome: process.env.CODEX_HOME,
     transport: 'auto',
     yieldAfterMs: 10_000,
@@ -42,6 +45,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else if (arg === '--thinking') options.thinkingEffort = required(args, ++index, '--thinking')
     else if (arg === '--no-thinking') options.thinkingEffort = null
     else if (arg === '--service-tier') options.serviceTierId = required(args, ++index, '--service-tier')
+    else if (arg === '--openai-wire-api') options.openAIWireApi = parseOpenAIWireApi(required(args, ++index, '--openai-wire-api'))
     else if (arg === '--claude-path') options.claudePath = required(args, ++index, '--claude-path')
     else if (arg === '--codex-home') options.codexHome = required(args, ++index, '--codex-home')
     else if (arg === '--base-url') options.baseUrl = required(args, ++index, '--base-url')
@@ -58,6 +62,11 @@ export function parseServerOptions(args: string[]): ServerOptions {
 function parseProvider(value: string): ProviderId {
   if (value === 'claude-code' || value === 'codex' || value === 'openai' || value === 'anthropic') return value
   throw new Error('--provider must be one of: claude-code, codex, openai, anthropic')
+}
+
+function parseOpenAIWireApi(value: string): OpenAIApiWireApi {
+  if (value === 'responses' || value === 'chat-completions') return value
+  throw new Error('--openai-wire-api must be one of: responses, chat-completions')
 }
 
 function parseTransport(value: string): CodexTransportMode {

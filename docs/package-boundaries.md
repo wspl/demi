@@ -103,11 +103,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demi/core`, `@demi/provider`.
-- Owns: OpenAI Chat Completions API request mapping, SSE event mapping, official OpenAI API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping, and provider-specific tests.
+- Owns: official OpenAI Responses API request mapping, explicit Chat Completions wire option for OpenAI-compatible endpoints, SSE event mapping, official OpenAI API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping, and provider-specific tests.
 - Public boundary: `createOpenAIApiProvider`, default model catalog function, and public option/model types from root.
-- Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`.
+- Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`. `wireApi` defaults to `responses`; compatible endpoints can pass `wireApi: 'chat-completions'`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
-- Internal boundary: Chat Completions body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Internal boundary: Responses body builders, Chat Completions body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/repl` in production code.
 
 ### `@demi/provider-anthropic-api`

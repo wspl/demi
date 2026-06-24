@@ -1119,7 +1119,8 @@ packages/host-local/       本机 Node adapter：LocalHost(defaultCwd/fs/process
 packages/coding-agent/    Coding agent harness、prompt、coding commands、todo
 packages/provider-claude-code/  Claude Code provider：驱动系统 claude code CLI
 packages/provider-codex/  Codex provider：复用官方 Codex auth，驱动 Responses transport
-packages/provider-openai-api/  OpenAI API provider：Chat Completions endpoint/env 映射
+packages/provider-openai-api/  OpenAI API provider：官方 Responses endpoint/env 映射；
+                          显式 wireApi 选项支持 Chat Completions 兼容 endpoint
 packages/provider-anthropic-api/  Anthropic API provider：Messages endpoint/env 映射
 packages/repl/             本地验收壳子和 composition root
 ```
@@ -1356,7 +1357,7 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 - AgentClient 的 action FIFO 收敛/abort Promise/shellInput 等待/transcript snapshot+patch/stdio+websocket transport/Uint8Array+bigint 安全编解码——均已落地。
 - claude-code provider 的 CLI spawn/stream-json/MCP bridge/event 映射/tool_use continuation/abort 清理/binary media 转换/config 白名单——均已落地。真实 CLI e2e 默认跳过，`DEMI_CLAUDE_CODE_E2E=1` 手动跑。
 - provider public API 已收敛为用户侧 direct provider creation：`createClaudeCodeProvider` / `createCodexProvider` / `createOpenAIApiProvider` / `createAnthropicApiProvider` 返回 public `Provider`；AgentServer 接收 `providers: Provider[]`，协议只携带 `ProviderSelection`，不再让 secret-bearing config 往返浏览器。
-- OpenAI API provider 已落地：默认 `OPENAI_BASE_URL ?? https://api.openai.com/v1` 和 `OPENAI_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先、Chat Completions request/body/tool/result 映射和 SSE text/tool/usage 映射。
+- OpenAI API provider 已落地：默认 `OPENAI_BASE_URL ?? https://api.openai.com/v1` 和 `OPENAI_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先；默认 `wireApi: "responses"` 走 Responses request/body/tool/result 映射和 SSE text/tool/usage 映射，兼容 endpoint 可显式传 `wireApi: "chat-completions"` 走 Chat Completions 映射。
 - Anthropic API provider 已落地：默认 `ANTHROPIC_BASE_URL ?? https://api.anthropic.com/v1` 和 `ANTHROPIC_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先、Messages request/body/tool/result 映射和 event-stream thinking/text/tool/usage 映射。
 - coding editor/todo/reference resolver 已改为使用 Host contract；editor patch 兼容 `diff -u`/git-style unified diff。editor/reference resolver 不再把 default cwd 当作 workspace/sandbox/权限边界；如果以后需要项目级路径限制，只能作为显式 policy 或 command-level guard 建模。
 
@@ -1389,12 +1390,12 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 
 `packages/provider-openai-api` 和 `packages/provider-anthropic-api` 是 concrete provider leaf packages。它们不复用 Codex Responses 或 Claude Code JSONL/CLI mapper，而是分别实现官方 HTTP API wire contract：
 
-- OpenAI API：`POST {baseUrl}/chat/completions`，SSE `choices[].delta.content` 映射为 `text_delta`，split `tool_calls[].function.arguments` 聚合为 `tool_call_requested`，usage 映射为 Demi `TokenUsage`。
+- OpenAI API：默认 `wireApi: "responses"`，`POST {baseUrl}/responses`，Responses stream 的 `response.output_text.delta` 映射为 `text_delta`，`response.function_call_arguments.*` 与最终 `function_call` item 聚合为 `tool_call_requested`，usage 映射为 Demi `TokenUsage`。兼容 endpoint 可显式传 `wireApi: "chat-completions"`，走 `POST {baseUrl}/chat/completions` 和 `choices[].delta.*` 映射。
 - Anthropic API：`POST {baseUrl}/messages`，event stream 的 thinking/text/tool_use/message_delta/message_stop 映射为 Demi `ProviderEvent`，tool result 以 Anthropic user content block replay。
 - Endpoint/env 规则一致：显式 `baseUrl` 优先，其次 `${envPrefix}_BASE_URL`，最后官方默认 endpoint；显式 `apiKey` 优先，其次 `${envPrefix}_API_KEY`。默认 prefix 分别为 `OPENAI` 和 `ANTHROPIC`。
 - Secret boundary 一致：API key、自定义 headers、raw baseUrl、envPrefix 和 raw provider options 只留在 provider creator closure，Web `listProviders` / `listModels` / `prepareSession` 和 AgentClient frames 不携带这些值。
 
-REPL/Web 当前 composition root 默认装配 `createClaudeCodeProvider()`、`createCodexProvider()`、`createOpenAIApiProvider()`、`createAnthropicApiProvider()`；`--provider openai|anthropic` 选择对应 provider，`--base-url` 只覆盖当前选中的 HTTP provider。
+REPL/Web 当前 composition root 默认装配 `createClaudeCodeProvider()`、`createCodexProvider()`、`createOpenAIApiProvider()`、`createAnthropicApiProvider()`；`--provider openai|anthropic` 选择对应 provider，`--base-url` 只覆盖当前选中的 HTTP provider；`--openai-wire-api responses|chat-completions` 只控制 OpenAI provider 的 wire API。
 
 ## 15. 优先级
 

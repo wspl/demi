@@ -2,12 +2,14 @@ import { expect, test } from 'bun:test'
 import { providerRuntime, type InferenceRequest, type ProviderEvent, type ProviderSelection } from '@demi/provider'
 import {
   buildOpenAIChatCompletionsBody,
+  buildOpenAIResponsesBody,
   createOpenAIApiProvider,
   mapOpenAIChatCompletionStream,
+  mapOpenAIResponseStream,
   type ServerSentEvent,
 } from '../provider'
 
-test('OpenAI API provider resolves endpoint and API key from env vars', async () => {
+test('OpenAI API provider resolves Responses endpoint and API key from env vars', async () => {
   await withEnv(
     {
       OPENAI_BASE_URL: 'https://openai-gateway.example/v1/',
@@ -21,13 +23,13 @@ test('OpenAI API provider resolves endpoint and API key from env vars', async ()
       const events = await collect(runtime.run(request({ modelId: 'gpt-test' })))
 
       expect(events).toEqual([{ type: 'response', usage: zeroUsage() }])
-      expect(requests[0]?.url).toBe('https://openai-gateway.example/v1/chat/completions')
+      expect(requests[0]?.url).toBe('https://openai-gateway.example/v1/responses')
       expect(requests[0]?.headers.get('authorization')).toBe('Bearer env-openai-key')
     },
   )
 })
 
-test('OpenAI API provider explicit baseUrl and apiKey take precedence over env vars', async () => {
+test('OpenAI API provider can use Chat Completions wire API with explicit endpoint options', async () => {
   await withEnv(
     {
       ROUTER_BASE_URL: 'https://env-router.example/api/v1',
@@ -37,6 +39,7 @@ test('OpenAI API provider explicit baseUrl and apiKey take precedence over env v
       const requests: CapturedRequest[] = []
       const provider = createOpenAIApiProvider({
         id: 'router',
+        wireApi: 'chat-completions',
         envPrefix: 'ROUTER',
         baseUrl: 'https://explicit-router.example/openai/v1',
         apiKey: () => 'explicit-key',
@@ -54,7 +57,103 @@ test('OpenAI API provider explicit baseUrl and apiKey take precedence over env v
   )
 })
 
-test('OpenAI API request body maps text, tools, tool replay, service tier, and reasoning effort', () => {
+test('OpenAI Responses request body maps text, tools, tool replay, service tier, and reasoning', () => {
+  const body = buildOpenAIResponsesBody(
+    request({
+      systemPrompt: 'system instructions',
+      serviceTierId: 'priority',
+      thinking: { type: 'effort', effort: 'high', summary: null },
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+        { type: 'assistant_text', modelId: 'gpt-test', text: 'Use tool' },
+        { type: 'tool_use', modelId: 'gpt-test', toolUseId: 'call-1|fc-1', toolName: 'read_file', input: { path: 'a.ts' } },
+        { type: 'tool_result', toolUseId: 'call-1|fc-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+      ],
+      tools: [
+        {
+          name: 'read_file',
+          description: 'Read a file',
+          inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+        },
+      ],
+    }),
+    undefined,
+  )
+
+  expect(body).toMatchObject({
+    model: 'gpt-test',
+    instructions: 'system instructions',
+    stream: true,
+    store: false,
+    tool_choice: 'auto',
+    parallel_tool_calls: true,
+    service_tier: 'priority',
+    reasoning: { effort: 'high', summary: 'auto' },
+    include: ['reasoning.encrypted_content'],
+    prompt_cache_key: 'session-1',
+  })
+  expect(body.input[0]).toEqual({ role: 'user', content: [{ type: 'input_text', text: 'hello' }] })
+  expect(body.input[1]).toMatchObject({
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'output_text', text: 'Use tool', annotations: [] }],
+    status: 'completed',
+  })
+  expect(body.input[2]).toEqual({
+    type: 'function_call',
+    id: 'fc-1',
+    call_id: 'call-1',
+    name: 'read_file',
+    arguments: '{"path":"a.ts"}',
+  })
+  expect(body.input[3]).toEqual({ type: 'function_call_output', call_id: 'call-1', output: 'contents' })
+  expect(body.tools).toEqual([
+    {
+      type: 'function',
+      name: 'read_file',
+      description: 'Read a file',
+      parameters: { type: 'object', properties: { path: { type: 'string' } } },
+    },
+  ])
+  expect(body.stream_options).toBeUndefined()
+})
+
+test('OpenAI Responses stream maps thinking, split text, tool call arguments, and usage', async () => {
+  const reasoning = { type: 'reasoning' as const, id: 'rs-1', encrypted_content: 'enc' }
+  const events = await collect(mapOpenAIResponseStream(eventsFromData([
+    { type: 'response.output_item.added', item: { type: 'reasoning', id: 'rs-1' } },
+    { type: 'response.reasoning_text.delta', delta: 'think' },
+    { type: 'response.output_item.done', item: reasoning },
+    { type: 'response.output_text.delta', delta: 'hi ' },
+    { type: 'response.output_text.delta', delta: 'there' },
+    { type: 'response.output_item.added', item: { type: 'function_call', id: 'fc-1', call_id: 'call-1', name: 'read_file', arguments: '' } },
+    { type: 'response.function_call_arguments.delta', item_id: 'fc-1', delta: '{"path"' },
+    { type: 'response.function_call_arguments.done', item_id: 'fc-1', arguments: '{"path":"a.ts"}' },
+    { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc-1', call_id: 'call-1', name: 'read_file' } },
+    {
+      type: 'response.completed',
+      response: {
+        usage: {
+          input_tokens: 12,
+          output_tokens: 5,
+          input_tokens_details: { cached_tokens: 2 },
+        },
+      },
+    },
+  ])))
+
+  expect(events).toEqual([
+    { type: 'thinking_start' },
+    { type: 'thinking_delta', text: 'think' },
+    { type: 'thinking_signature', signature: JSON.stringify(reasoning) },
+    { type: 'text_delta', text: 'hi ' },
+    { type: 'text_delta', text: 'there' },
+    { type: 'tool_call_requested', toolUseId: 'call-1|fc-1', toolName: 'read_file', input: { path: 'a.ts' } },
+    { type: 'response', usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 } },
+  ])
+})
+
+test('OpenAI Chat Completions request body maps text, tools, tool replay, service tier, and reasoning effort', () => {
   const body = buildOpenAIChatCompletionsBody(
     request({
       systemPrompt: 'system instructions',
@@ -113,7 +212,7 @@ test('OpenAI API request body maps text, tools, tool replay, service tier, and r
   expect(body.stream_options).toEqual({ include_usage: true })
 })
 
-test('OpenAI API stream maps split text, tool call arguments, and usage', async () => {
+test('OpenAI Chat Completions stream maps split text, tool call arguments, and usage', async () => {
   const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
     {
       choices: [
@@ -148,7 +247,7 @@ test('OpenAI API stream maps split text, tool call arguments, and usage', async 
   ])
 })
 
-test('OpenAI API stream preserves malformed tool arguments as a string', async () => {
+test('OpenAI Chat Completions stream preserves malformed tool arguments as a string', async () => {
   const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
     { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', function: { name: 'bad', arguments: '{' } }] } }] },
     { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },

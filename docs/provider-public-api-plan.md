@@ -21,6 +21,7 @@ const agent = createCodingAgent({
     createOpenAIApiProvider({
       id: 'openrouter',
       displayName: 'OpenRouter',
+      wireApi: 'chat-completions',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: () => process.env.OPENROUTER_API_KEY,
       models: [{ id: 'openai/gpt-5.1', displayName: 'GPT 5.1' }],
@@ -125,7 +126,7 @@ const providers = [
   createCodexProvider({ codexHome: options.codexHome }),
   createOpenAIApiProvider(),
   createAnthropicApiProvider(),
-  ...configuredApiProviders(options),
+  ...configuredOpenAIProviders(options),
 ]
 
 startWebServer({ providers, cwd: options.cwd, ... })
@@ -198,6 +199,7 @@ the old config parser from normal users.
 createOpenAIApiProvider({
   id?: string
   displayName?: string
+  wireApi?: 'responses' | 'chat-completions'
   envPrefix?: string
   baseUrl?: string
   apiKey?: () => string | Promise<string> | null | undefined
@@ -212,17 +214,45 @@ With no options, this provider targets the official OpenAI API:
 
 - `id: 'openai'`
 - `displayName: 'OpenAI API'`
+- `wireApi: 'responses'`
 - `envPrefix: 'OPENAI'`
 - `baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'`
 - `apiKey: () => process.env.OPENAI_API_KEY`
 - built-in official OpenAI model catalog metadata
 
-Passing `baseUrl`, or setting the endpoint env var resolved by `envPrefix`, turns the same provider
-into an OpenAI-compatible endpoint adapter, such as OpenRouter, LiteLLM, vLLM, or an internal
-gateway. Non-official endpoints should pass explicit `models` metadata unless Demi ships a
-first-class profile for that endpoint.
+The default wire contract is OpenAI Responses:
 
-The wire contract is OpenAI Chat Completions:
+- `POST {baseUrl}/responses`
+- `instructions` carries the system prompt
+- `input` carries replay items as Responses message/function/reasoning items
+- `tools: [{ type: 'function', name, description, parameters }]`
+- `response.output_text.delta` -> `text_delta`
+- `response.function_call_arguments.*` plus final `function_call` item -> `tool_call_requested`
+- `response.completed.response.usage` -> Demi token usage
+- `response.failed` / `response.incomplete` -> provider errors
+
+Passing `baseUrl`, or setting the endpoint env var resolved by `envPrefix`, still overrides the
+official endpoint for OpenAI-compatible gateways that fully implement the Responses API. It does
+not switch the provider to Chat Completions.
+
+For OpenAI-compatible endpoints such as OpenRouter, LiteLLM, vLLM, or internal gateways whose
+broadest common protocol is Chat Completions, use the same creator with
+`wireApi: 'chat-completions'`. Such providers should usually also pass a custom `id`,
+`displayName`, `envPrefix`, `baseUrl`, and explicit `models` metadata:
+
+```ts
+createOpenAIApiProvider({
+  id: 'openrouter',
+  displayName: 'OpenRouter',
+  wireApi: 'chat-completions',
+  envPrefix: 'OPENROUTER',
+  baseUrl: 'https://openrouter.ai/api/v1',
+  apiKey: () => process.env.OPENROUTER_API_KEY,
+  models: [{ id: 'openai/gpt-5.1', displayName: 'GPT 5.1' }],
+})
+```
+
+The `chat-completions` wire contract is:
 
 - `POST {baseUrl}/chat/completions`
 - streaming SSE chunks
@@ -231,8 +261,8 @@ The wire contract is OpenAI Chat Completions:
 - `choices[].delta.tool_calls[].function.arguments` accumulated into `tool_call_requested`
 - optional `stream_options: { include_usage: true }`
 
-It should not reuse the Codex Responses mapper. Codex and OpenAI API are different wire
-contracts.
+It should not be the default official OpenAI path. Official OpenAI remains
+`createOpenAIApiProvider()` with the default Responses API.
 
 ### Anthropic API
 
@@ -476,8 +506,8 @@ The implementation checkpoint must update `docs/package-boundaries.md` to reflec
 
 - `@demi/provider` owns public `Provider` / `ProviderSelection` contracts and internal provider
   lookup helpers, not a user-facing registry assembly API.
-- `@demi/provider-openai-api` owns OpenAI Chat Completions API mapping, including official
-  OpenAI defaults and configurable compatible endpoints.
+- `@demi/provider-openai-api` owns OpenAI Responses API mapping and the explicit
+  `wireApi: 'chat-completions'` option for configurable compatible endpoints.
 - `@demi/provider-anthropic-api` owns Anthropic Messages API mapping, including official Anthropic
   defaults and configurable compatible endpoints.
 - `@demi/web`, `@demi/repl`, and future product packages assemble providers by passing

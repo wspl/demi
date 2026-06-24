@@ -18,7 +18,7 @@ import type { Provider, ProviderModel, ProviderModelList, ProviderSelection } fr
 import { createAnthropicApiProvider } from '@demi/provider-anthropic-api'
 import { createClaudeCodeProvider } from '@demi/provider-claude-code'
 import { codexAuthStatus, createCodexProvider, type CodexTransportMode } from '@demi/provider-codex'
-import { createOpenAIApiProvider } from '@demi/provider-openai-api'
+import { createOpenAIApiProvider, type OpenAIApiWireApi } from '@demi/provider-openai-api'
 import {
   AgentClient,
   AgentServer,
@@ -32,6 +32,7 @@ export interface ReplOptions {
   modelId: string | null
   thinkingEffort: ThinkingEffort | null
   serviceTierId: string | null
+  openAIWireApi: OpenAIApiWireApi
   claudePath?: string
   codexHome?: string
   baseUrl?: string
@@ -530,6 +531,7 @@ function parseArgs(args: string[]): ReplOptions {
   let claudePath: string | undefined
   let codexHome: string | undefined = process.env.CODEX_HOME
   let baseUrl: string | undefined
+  let openAIWireApi = parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses')
   let transport: CodexTransportMode = 'auto'
   let yieldAfterMs = 10_000
   let timeoutMs = 120_000
@@ -556,6 +558,7 @@ function parseArgs(args: string[]): ReplOptions {
     else if (arg === '--claude-path') claudePath = requiredValue(args, ++index, '--claude-path')
     else if (arg === '--codex-home') codexHome = requiredValue(args, ++index, '--codex-home')
     else if (arg === '--base-url') baseUrl = requiredValue(args, ++index, '--base-url')
+    else if (arg === '--openai-wire-api') openAIWireApi = parseOpenAIWireApi(requiredValue(args, ++index, '--openai-wire-api'))
     else if (arg === '--transport') transport = parseCodexTransport(requiredValue(args, ++index, '--transport'))
     else if (arg === '--yield-after-ms') yieldAfterMs = Number(requiredValue(args, ++index, '--yield-after-ms'))
     else if (arg === '--timeout-ms') timeoutMs = Number(requiredValue(args, ++index, '--timeout-ms'))
@@ -571,6 +574,7 @@ function parseArgs(args: string[]): ReplOptions {
     modelId,
     thinkingEffort,
     serviceTierId,
+    openAIWireApi,
     claudePath,
     codexHome,
     baseUrl,
@@ -597,6 +601,11 @@ function envThinkingSource(provider: ReplOptions['provider']): string {
 function parseProvider(value: string): ReplOptions['provider'] {
   if (value === 'claude-code' || value === 'codex' || value === 'openai' || value === 'anthropic') return value
   throw new Error('--provider must be one of: claude-code, codex, openai, anthropic')
+}
+
+function parseOpenAIWireApi(value: string): OpenAIApiWireApi {
+  if (value === 'responses' || value === 'chat-completions') return value
+  throw new Error('--openai-wire-api must be one of: responses, chat-completions')
 }
 
 function parseCodexTransport(value: string): CodexTransportMode {
@@ -753,6 +762,7 @@ function createReplProviders(options: ReplOptions): Provider[] {
   })
   const openAIProvider = createOpenAIApiProvider({
     baseUrl: options.provider === 'openai' ? options.baseUrl : undefined,
+    wireApi: options.openAIWireApi,
   })
   const anthropicProvider = createAnthropicApiProvider({
     baseUrl: options.provider === 'anthropic' ? options.baseUrl : undefined,
@@ -785,6 +795,7 @@ function printBanner(options: ReplOptions, model: ResolvedReplModel): void {
   writeMetaLine('model', model.selection.model.id)
   writeMetaLine('thinking', options.thinkingEffort ?? 'not requested')
   if (options.serviceTierId) writeMetaLine('tier', options.serviceTierId)
+  if (options.provider === 'openai') writeMetaLine('openai wire api', options.openAIWireApi)
   if (options.provider === 'codex') writeMetaLine('transport', options.transport)
   for (const warning of model.warnings) writeEventLine(process.stdout, 'warning', warning, 'yellow')
 }
@@ -802,6 +813,7 @@ Options:
   --claude-path <path>     Path to claude CLI. Defaults to claude on PATH.
   --codex-home <path>      Codex home containing auth.json. Defaults to CODEX_HOME or ~/.codex.
   --base-url <url>         Override the selected HTTP provider base URL.
+  --openai-wire-api <api>  OpenAI wire API: responses, chat-completions. Defaults to responses.
   --transport <mode>       Codex transport: auto, sse, websocket. Defaults to auto.
   --yield-after-ms <n>     Shell yield interval. Defaults to 10000.
   --timeout-ms <n>         Shell command timeout. Defaults to 120000.

@@ -16,6 +16,7 @@ const codexProvider = createCodexProvider({
 })
 const openAIProvider = createOpenAIApiProvider({
   baseUrl: options.provider === 'openai' ? options.baseUrl : undefined,
+  wireApi: options.openAIWireApi,
 })
 const anthropicProvider = createAnthropicApiProvider({
   baseUrl: options.provider === 'anthropic' ? options.baseUrl : undefined,
