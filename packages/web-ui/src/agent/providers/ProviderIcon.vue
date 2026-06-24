@@ -5,7 +5,9 @@ import openaiIconRaw from './icons/openai.svg?raw'
 
 const BUILTIN_SVGS: Record<string, string> = {
   'claude-code': claudeIconRaw,
+  anthropic: claudeIconRaw,
   codex: openaiIconRaw,
+  openai: openaiIconRaw,
 }
 
 const props = defineProps<{

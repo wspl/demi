@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-06-25 |
-| Status | Design |
+| Status | Implemented |
 | Scope | Provider construction API, AgentServer composition, Web/REPL provider selection, OpenAI/Anthropic API providers |
 
 ## Goal
@@ -35,23 +35,24 @@ implementation details of transport and session management.
 
 ## Current Shape
 
-Today the public assembly path is registry-first:
+The public assembly path is direct provider composition:
 
 ```ts
-const registry = new ProviderRegistry()
-registry.register(createClaudeCodeProviderDefinition())
-registry.register(createCodexProviderDefinition())
+const providers = [
+  createClaudeCodeProvider(),
+  createCodexProvider(),
+  createOpenAIApiProvider(),
+  createAnthropicApiProvider(),
+]
 
 const server = new AgentServer({
   agent: harness,
-  providerRegistry: registry,
+  providers,
 })
 ```
 
-The Web control path also materializes a serializable `ProviderConfig` and sends it to the
-browser. The browser later sends it back on `AgentClient.open`. That is acceptable for the current
-Claude Code and Codex configs, but it is the wrong boundary for API-key based providers: secrets
-must stay on the user/server side.
+`AgentClient.open` and Web `prepareSession` carry only `ProviderSelection` (`providerId` +
+model selection). Serializable provider config is no longer a browser-visible protocol concept.
 
 ## Final Public API
 
@@ -383,14 +384,14 @@ server-held providers.
 
 ## Migration
 
-1. Introduce public `Provider` and `ProviderSelection` types in `@demi/provider`.
-2. Add `createClaudeCodeProvider` and `createCodexProvider` as the public creation functions.
-3. Change `AgentServerOptions` from `providerRegistry` to `providers`.
-4. Move provider id lookup into `AgentServer` as a private map.
-5. Change `AgentClient.open` / Web control flow to avoid browser-visible provider config.
-6. Update Web and REPL composition roots to pass `providers: [...]`.
-7. Add `@demi/provider-openai-api`.
-8. Add `@demi/provider-anthropic-api`.
+1. Introduce public `Provider` and `ProviderSelection` types in `@demi/provider`. Implemented.
+2. Add `createClaudeCodeProvider` and `createCodexProvider` as the public creation functions. Implemented.
+3. Change `AgentServerOptions` from `providerRegistry` to `providers`. Implemented.
+4. Move provider id lookup into `AgentServer` as a private map. Implemented.
+5. Change `AgentClient.open` / Web control flow to avoid browser-visible provider config. Implemented.
+6. Update Web and REPL composition roots to pass `providers: [...]`. Implemented.
+7. Add `@demi/provider-openai-api`. Implemented.
+8. Add `@demi/provider-anthropic-api`. Implemented.
 
 No compatibility shim should remain in the final state. `ProviderDefinition`, `ProviderRegistry`,
 and `create*ProviderDefinition` are not public assembly concepts.

@@ -15,8 +15,10 @@ import type {
 } from '@demi/core'
 import { createCodingAgentHarness } from '@demi/coding-agent'
 import type { Provider, ProviderModel, ProviderModelList, ProviderSelection } from '@demi/provider'
+import { createAnthropicApiProvider } from '@demi/provider-anthropic-api'
 import { createClaudeCodeProvider } from '@demi/provider-claude-code'
 import { codexAuthStatus, createCodexProvider, type CodexTransportMode } from '@demi/provider-codex'
+import { createOpenAIApiProvider } from '@demi/provider-openai-api'
 import {
   AgentClient,
   AgentServer,
@@ -25,7 +27,7 @@ import {
 import { LocalHost } from '@demi/host-local'
 
 export interface ReplOptions {
-  provider: 'claude-code' | 'codex'
+  provider: 'claude-code' | 'codex' | 'openai' | 'anthropic'
   cwd: string
   modelId: string | null
   thinkingEffort: ThinkingEffort | null
@@ -580,17 +582,21 @@ function parseArgs(args: string[]): ReplOptions {
 
 function envThinkingValue(provider: ReplOptions['provider']): string | null {
   if (provider === 'codex') return process.env.DEMI_CODEX_THINKING ?? process.env.DEMI_CLAUDE_CODE_THINKING ?? null
+  if (provider === 'openai') return process.env.DEMI_OPENAI_THINKING ?? null
+  if (provider === 'anthropic') return process.env.DEMI_ANTHROPIC_THINKING ?? null
   return process.env.DEMI_CLAUDE_CODE_THINKING ?? null
 }
 
 function envThinkingSource(provider: ReplOptions['provider']): string {
   if (provider === 'codex' && process.env.DEMI_CODEX_THINKING !== undefined) return 'DEMI_CODEX_THINKING'
+  if (provider === 'openai') return 'DEMI_OPENAI_THINKING'
+  if (provider === 'anthropic') return 'DEMI_ANTHROPIC_THINKING'
   return 'DEMI_CLAUDE_CODE_THINKING'
 }
 
 function parseProvider(value: string): ReplOptions['provider'] {
-  if (value === 'claude-code' || value === 'codex') return value
-  throw new Error('--provider must be one of: claude-code, codex')
+  if (value === 'claude-code' || value === 'codex' || value === 'openai' || value === 'anthropic') return value
+  throw new Error('--provider must be one of: claude-code, codex, openai, anthropic')
 }
 
 function parseCodexTransport(value: string): CodexTransportMode {
@@ -669,6 +675,9 @@ function validateExplicitModelId(provider: ReplOptions['provider'], modelId: str
   if (provider === 'codex' && !modelId.startsWith('gpt-') && !modelId.startsWith('codex-')) {
     throw new Error('--model for codex must be a full Codex model id such as gpt-5.5')
   }
+  if (provider === 'anthropic' && !modelId.startsWith('claude-')) {
+    throw new Error('--model for anthropic must be a full Anthropic model id such as claude-sonnet-4-8')
+  }
 }
 
 function validateThinkingEffortForCatalogModel(thinkingEffort: ThinkingEffort | null, model: ProviderModel): void {
@@ -704,7 +713,7 @@ function modelSelectionFromCatalogModel(
     providerId: provider,
     model: {
       id: modelId,
-      name: model?.displayName ?? `${provider === 'codex' ? 'Codex' : 'Claude Code'} ${modelId}`,
+      name: model?.displayName ?? `${providerDisplayName(provider)} ${modelId}`,
       contextWindow: model?.contextWindow ?? 0,
       inputLimit: null,
       thinking: thinkingCapabilitiesFromProviderModel(model),
@@ -739,13 +748,17 @@ function createReplProviders(options: ReplOptions): Provider[] {
   const claudeCodeProvider = createClaudeCodeProvider({ claudePath: options.claudePath })
   const codexProvider = createCodexProvider({
     codexHome: options.codexHome,
-    baseUrl: options.baseUrl,
+    baseUrl: options.provider === 'codex' ? options.baseUrl : undefined,
     transport: options.transport,
   })
+  const openAIProvider = createOpenAIApiProvider({
+    baseUrl: options.provider === 'openai' ? options.baseUrl : undefined,
+  })
+  const anthropicProvider = createAnthropicApiProvider({
+    baseUrl: options.provider === 'anthropic' ? options.baseUrl : undefined,
+  })
 
-  return options.provider === 'codex'
-    ? [codexProvider, claudeCodeProvider]
-    : [claudeCodeProvider, codexProvider]
+  return orderProviders([claudeCodeProvider, codexProvider, openAIProvider, anthropicProvider], options.provider)
 }
 
 function providerFor(providers: Provider[], id: string): Provider {
@@ -781,19 +794,31 @@ function printUsage(): void {
 
 Options:
   --cwd <path>             Working directory. Defaults to current directory.
-  --provider <id>          Provider: claude-code, codex. Defaults to claude-code.
+  --provider <id>          Provider: claude-code, codex, openai, anthropic. Defaults to claude-code.
   --model <id>             Full model id. Defaults to the provider model catalog selection.
   --thinking <effort>      Provider-supported thinking effort id.
   --no-thinking            Do not request an explicit thinking effort. This is the default.
   --service-tier <id>      Provider-supported service tier id.
   --claude-path <path>     Path to claude CLI. Defaults to claude on PATH.
   --codex-home <path>      Codex home containing auth.json. Defaults to CODEX_HOME or ~/.codex.
-  --base-url <url>         Override Codex/OpenAI base URL.
+  --base-url <url>         Override the selected HTTP provider base URL.
   --transport <mode>       Codex transport: auto, sse, websocket. Defaults to auto.
   --yield-after-ms <n>     Shell yield interval. Defaults to 10000.
   --timeout-ms <n>         Shell command timeout. Defaults to 120000.
 
 ${helpText}`)
+}
+
+function orderProviders(providers: Provider[], selectedProviderId: string): Provider[] {
+  const selected = providers.find((provider) => provider.id === selectedProviderId)
+  return selected ? [selected, ...providers.filter((provider) => provider.id !== selectedProviderId)] : providers
+}
+
+function providerDisplayName(provider: ReplOptions['provider']): string {
+  if (provider === 'codex') return 'Codex'
+  if (provider === 'openai') return 'OpenAI API'
+  if (provider === 'anthropic') return 'Anthropic API'
+  return 'Claude Code'
 }
 
 function writeLine(text = ''): void {

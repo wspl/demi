@@ -93,6 +93,14 @@
         "@demi/core": "workspace:*",
       },
     },
+    "packages/provider-anthropic-api": {
+      "name": "@demi/provider-anthropic-api",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demi/core": "workspace:*",
+        "@demi/provider": "workspace:*",
+      },
+    },
     "packages/provider-claude-code": {
       "name": "@demi/provider-claude-code",
       "version": "0.0.0",
@@ -117,6 +125,14 @@
         "@demi/shell": "workspace:*",
       },
     },
+    "packages/provider-openai-api": {
+      "name": "@demi/provider-openai-api",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demi/core": "workspace:*",
+        "@demi/provider": "workspace:*",
+      },
+    },
     "packages/repl": {
       "name": "@demi/repl",
       "version": "0.0.0",
@@ -126,8 +142,10 @@
         "@demi/core": "workspace:*",
         "@demi/host-local": "workspace:*",
         "@demi/provider": "workspace:*",
+        "@demi/provider-anthropic-api": "workspace:*",
         "@demi/provider-claude-code": "workspace:*",
         "@demi/provider-codex": "workspace:*",
+        "@demi/provider-openai-api": "workspace:*",
         "@demi/shell": "workspace:*",
       },
     },
@@ -148,8 +166,10 @@
         "@demi/core": "workspace:*",
         "@demi/host-local": "workspace:*",
         "@demi/provider": "workspace:*",
+        "@demi/provider-anthropic-api": "workspace:*",
         "@demi/provider-claude-code": "workspace:*",
         "@demi/provider-codex": "workspace:*",
+        "@demi/provider-openai-api": "workspace:*",
         "@demi/shell": "workspace:*",
         "@demi/web-ui": "workspace:*",
         "katex": "^0.17.0",
@@ -220,9 +240,13 @@
 
     "@demi/provider": ["@demi/provider@workspace:packages/provider"],
 
+    "@demi/provider-anthropic-api": ["@demi/provider-anthropic-api@workspace:packages/provider-anthropic-api"],
+
     "@demi/provider-claude-code": ["@demi/provider-claude-code@workspace:packages/provider-claude-code"],
 
     "@demi/provider-codex": ["@demi/provider-codex@workspace:packages/provider-codex"],
+
+    "@demi/provider-openai-api": ["@demi/provider-openai-api@workspace:packages/provider-openai-api"],
 
     "@demi/repl": ["@demi/repl@workspace:packages/repl"],
 

@@ -79,7 +79,7 @@ Host
 7. **状态类 builtin 必须在 runner 内维护**：`cd` / `export` / `unset` / `read` / `local` / `return` / `source` / `shift` / `pushd` / `popd` / `dirs` / `jobs` / `wait` / `exit` / loop control 等会改变 shell session 的行为不能交给 host external command。
 8. **portable command 复用 fork，不在 Demi 重造**：`cat` / `ls` / `grep` / `sed` / `awk` / `jq` / `find` / `tee` / `cp` / `mv` / `touch` 等 fork 已实现的命令应通过 just-bash command registry 运行，并读写 `Host.fs`。Demi 不再复制实现，也不把这些命令退回本机 coreutils。只有真正依赖 host runtime 的命令才走 `Host.process.spawn`。
 9. **注册命令不可被 shell function 遮蔽**：`editor` / `todo` 这类注册命令是 agent 能力边界，普通函数定义不能覆盖它们；`command` builtin 也不能把状态 builtin 强行改成外部命令。`command` 执行路径应跳过 shell function，但仍保留状态 builtin、注册命令、portable command 和 host external command 的正常边界。
-10. **Provider config 是协议输入**：经 AgentClient 进入真实 provider 的 `config` 必须按 provider 自己的可序列化白名单解析；测试/内部注入能力（如 fake transport factory）不能通过协议 config 暴露。
+10. **Provider config 不进协议**：AgentClient / Web browser-visible frame 只携带 `providerId` 和 `ModelSelection`；provider 的 `baseUrl`、API key、headers、envPrefix、transport 注入和测试 fake transport 都只能留在创建 public provider 的用户侧闭包里，由 AgentServer 私有解析 provider id 后创建 live runtime。
 11. **Manifest 不虚增层依赖**：package manifest 必须反映真实源码依赖，不能让平台无关包通过声明依赖暗中耦合 provider、Node-only adapter 或真实 CLI provider。
 12. **命令说明单一来源**：注册命令的 prompt、`<command> prompt` 输出、system prompt 中的命令说明必须由同一份 `CommandSpec` 渲染，不手写多份说明。
 13. **AgentClient action Promise 按 action 收敛**：`phase` 是 session 级广播，不是 per-command ack。非 send action 必须按本地发出的 action 顺序把每个 active→idle phase 周期分配给一个已接受 action；`send` 帧必须携带 client-generated `messageId`，queued item mutation 用同一个 id 解析、重排或清空对应的 pending send。多个 queued `send` 不能因为监听到同一个 phase 周期而一起 resolve。
@@ -1119,6 +1119,8 @@ packages/host-local/       本机 Node adapter：LocalHost(defaultCwd/fs/process
 packages/coding-agent/    Coding agent harness、prompt、coding commands、todo
 packages/provider-claude-code/  Claude Code provider：驱动系统 claude code CLI
 packages/provider-codex/  Codex provider：复用官方 Codex auth，驱动 Responses transport
+packages/provider-openai-api/  OpenAI API provider：Chat Completions endpoint/env 映射
+packages/provider-anthropic-api/  Anthropic API provider：Messages endpoint/env 映射
 packages/repl/             本地验收壳子和 composition root
 ```
 
@@ -1128,7 +1130,7 @@ packages/repl/             本地验收壳子和 composition root
 
 `packages/provider-claude-code` 的实现机制：直接 spawn 系统 `claude` CLI（`--print --output-format stream-json --input-format stream-json`），stdin/stdout JSON 行通信，手写 MCP JSON-RPC bridge 处理 tool 调用，`DISABLE_AUTO_COMPACT: 1`（用 demi 自己的 compaction）。**不依赖 `@anthropic-ai/claude-agent-sdk`**——Rust 蓝本完全自实现，demi 照搬。CLI 的 stream event 映射成 `ProviderEvent`。这套机制照搬 Rust `provider-claude-code` crate。
 
-没有 provider 包，AgentSession 无法跑（§5 的 send/retry/resume/compact 都依赖 `AgentProvider.run`）。所以 provider 包先于 agent 实现，第一版带一个 stub provider（返回脚本化事件流）让 agent 测试能跑；claude-code provider 作为第一个真实 provider 单独成包。
+没有 provider 包，AgentSession 无法跑（§5 的 send/retry/resume/compact 都依赖 `AgentProvider.run`）。provider 包先于 agent 实现，测试使用 stub provider（返回脚本化事件流）让 agent 行为规格能独立验证；真实 provider 以 leaf package 方式落在 concrete provider 包中，产品入口通过 `providers: [...]` 直接装配。
 
 `AgentHarness` 类型属于 agent assembly 边界。对外只传入一个已选好的 harness 给 AgentServer，不暴露 harness registry，不暴露可替换 Bash Environment。
 
@@ -1340,7 +1342,7 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 ### 14.10 当前进展
 
-Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-bash / shell / host-local / coding-agent / provider-claude-code / provider-codex。公开运行入口已调整为 `AgentServer` + `AgentClient`：本地调用使用 `server.client()`，跨进程/网络使用 `attachTransport()`；coding harness 只定义 Host、commands、prompt、reference resolver 和 lifecycle。当前门禁已通过：`bun run typecheck`、`bun run test`（345 pass / 10 skip）、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`./node_modules/.bin/vitest run src/interpreter/`。
+Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-bash / shell / host-local / coding-agent / provider-claude-code / provider-codex / provider-openai-api / provider-anthropic-api。公开运行入口已调整为 `AgentServer` + `AgentClient`：本地调用使用 `server.client()`，跨进程/网络使用 `attachTransport()`；coding harness 只定义 Host、commands、prompt、reference resolver 和 lifecycle。当前门禁已通过：`bun run typecheck`、`bun run test`（345 pass / 10 skip）、`bun run test:just-bash-core`、`packages/just-bash/packages/just-bash` 下的 `pnpm typecheck`、`./node_modules/.bin/vitest run src/interpreter/`。
 
 **已完成的关键实现**（按 §3.1 架构守则覆盖）：
 
@@ -1353,6 +1355,9 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 - agent 的 transcript/queue/retry/resume/compaction/mutation guard/abort 收敛/tool error 局部化/extension state snapshot——均已落地。
 - AgentClient 的 action FIFO 收敛/abort Promise/shellInput 等待/transcript snapshot+patch/stdio+websocket transport/Uint8Array+bigint 安全编解码——均已落地。
 - claude-code provider 的 CLI spawn/stream-json/MCP bridge/event 映射/tool_use continuation/abort 清理/binary media 转换/config 白名单——均已落地。真实 CLI e2e 默认跳过，`DEMI_CLAUDE_CODE_E2E=1` 手动跑。
+- provider public API 已收敛为用户侧 direct provider creation：`createClaudeCodeProvider` / `createCodexProvider` / `createOpenAIApiProvider` / `createAnthropicApiProvider` 返回 public `Provider`；AgentServer 接收 `providers: Provider[]`，协议只携带 `ProviderSelection`，不再让 secret-bearing config 往返浏览器。
+- OpenAI API provider 已落地：默认 `OPENAI_BASE_URL ?? https://api.openai.com/v1` 和 `OPENAI_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先、Chat Completions request/body/tool/result 映射和 SSE text/tool/usage 映射。
+- Anthropic API provider 已落地：默认 `ANTHROPIC_BASE_URL ?? https://api.anthropic.com/v1` 和 `ANTHROPIC_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先、Messages request/body/tool/result 映射和 event-stream thinking/text/tool/usage 映射。
 - coding editor/todo/reference resolver 已改为使用 Host contract；editor patch 兼容 `diff -u`/git-style unified diff。editor/reference resolver 不再把 default cwd 当作 workspace/sandbox/权限边界；如果以后需要项目级路径限制，只能作为显式 policy 或 command-level guard 建模。
 
 **已修正 Step 3 的重大偏离**：
@@ -1379,6 +1384,17 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 已补齐 provider contract 的稳定 `sessionId` / `turnId` / `requestId`：AgentSession 负责生成并传入 provider，Codex provider 用它们设置 `session-id`、`thread-id`、`x-client-request-id` 和 `prompt_cache_key`。WebSocket/SSE、auth refresh、reasoning/tool replay 仍保持为 provider 内部机制，不进入 Agent Loop。
 
 当前实现包含 `packages/provider-codex`、REPL `--provider codex` 入口、platform boundary 检查、默认 deterministic provider tests，以及默认跳过的真实 Codex e2e。真实 e2e 已用本机官方 Codex auth 验证 text、medium thinking、cache usage 和 shell tool roundtrip；测试模块和 gated 验收入口见 `docs/testing.md#531-codex-provider`。
+
+### 14.12 OpenAI API / Anthropic API Provider 最终态入口
+
+`packages/provider-openai-api` 和 `packages/provider-anthropic-api` 是 concrete provider leaf packages。它们不复用 Codex Responses 或 Claude Code JSONL/CLI mapper，而是分别实现官方 HTTP API wire contract：
+
+- OpenAI API：`POST {baseUrl}/chat/completions`，SSE `choices[].delta.content` 映射为 `text_delta`，split `tool_calls[].function.arguments` 聚合为 `tool_call_requested`，usage 映射为 Demi `TokenUsage`。
+- Anthropic API：`POST {baseUrl}/messages`，event stream 的 thinking/text/tool_use/message_delta/message_stop 映射为 Demi `ProviderEvent`，tool result 以 Anthropic user content block replay。
+- Endpoint/env 规则一致：显式 `baseUrl` 优先，其次 `${envPrefix}_BASE_URL`，最后官方默认 endpoint；显式 `apiKey` 优先，其次 `${envPrefix}_API_KEY`。默认 prefix 分别为 `OPENAI` 和 `ANTHROPIC`。
+- Secret boundary 一致：API key、自定义 headers、raw baseUrl、envPrefix 和 raw provider options 只留在 provider creator closure，Web `listProviders` / `listModels` / `prepareSession` 和 AgentClient frames 不携带这些值。
+
+REPL/Web 当前 composition root 默认装配 `createClaudeCodeProvider()`、`createCodexProvider()`、`createOpenAIApiProvider()`、`createAnthropicApiProvider()`；`--provider openai|anthropic` 选择对应 provider，`--base-url` 只覆盖当前选中的 HTTP provider。
 
 ## 15. 优先级
 

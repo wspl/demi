@@ -17,6 +17,8 @@ const workspaceEntries = new Map<string, string>([
   ...platformNeutralEntries,
   ['@demi/provider-claude-code', 'packages/provider-claude-code/src/index.ts'],
   ['@demi/provider-codex', 'packages/provider-codex/src/index.ts'],
+  ['@demi/provider-openai-api', 'packages/provider-openai-api/src/index.ts'],
+  ['@demi/provider-anthropic-api', 'packages/provider-anthropic-api/src/index.ts'],
   ['@demi/host-local', 'packages/host-local/src/index.ts'],
   ['@demi/repl', 'packages/repl/src/index.ts'],
 ])
@@ -30,6 +32,8 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demi/coding-agent', 'packages/coding-agent'],
   ['@demi/provider-claude-code', 'packages/provider-claude-code'],
   ['@demi/provider-codex', 'packages/provider-codex'],
+  ['@demi/provider-openai-api', 'packages/provider-openai-api'],
+  ['@demi/provider-anthropic-api', 'packages/provider-anthropic-api'],
   ['@demi/repl', 'packages/repl'],
 ])
 
@@ -42,6 +46,8 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demi/coding-agent', ['@demi/agent', '@demi/core', '@demi/shell']],
   ['@demi/provider-claude-code', ['@demi/core', '@demi/provider']],
   ['@demi/provider-codex', ['@demi/core', '@demi/provider']],
+  ['@demi/provider-openai-api', ['@demi/core', '@demi/provider']],
+  ['@demi/provider-anthropic-api', ['@demi/core', '@demi/provider']],
   [
     '@demi/repl',
     [
@@ -50,8 +56,10 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
       '@demi/core',
       '@demi/host-local',
       '@demi/provider',
+      '@demi/provider-anthropic-api',
       '@demi/provider-claude-code',
       '@demi/provider-codex',
+      '@demi/provider-openai-api',
       '@demi/shell',
     ],
   ],
@@ -76,8 +84,8 @@ const forbiddenSourcePatterns = [
 ] as const
 
 const neutralPackageLeakPatterns = [
-  ['concrete provider package reference', /@demi\/provider-(?:claude-code|codex)\b|provider-(?:claude-code|codex)/i],
-  ['concrete provider implementation class', /\b(?:ClaudeCodeProvider|CodexProvider)\b/],
+  ['concrete provider package reference', /@demi\/provider-(?:claude-code|codex|openai-api|anthropic-api)\b|provider-(?:claude-code|codex|openai-api|anthropic-api)/i],
+  ['concrete provider implementation class', /\b(?:ClaudeCodeProvider|CodexProvider|OpenAIApiProvider|AnthropicApiProvider)\b/],
   ['concrete catalog source label', /\b(?:codex-backend|models\.dev)\b/i],
   ['provider backend identifier', /\b(?:backend-api|chatgpt\.com|api\.openai\.com|responses_websockets)\b/i],
   ['concrete provider product name', /\bClaude Code\b|\bOpenAI Codex\b/i],
@@ -164,6 +172,8 @@ test('package manifests preserve layering boundaries', async () => {
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/host-local')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-claude-code')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-codex')
+    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-openai-api')
+    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demi/provider-anthropic-api')
   }
 
   const claudeProviderDependencies = packageDependencyNames(manifests.get('@demi/provider-claude-code'))
@@ -176,6 +186,8 @@ test('package manifests preserve layering boundaries', async () => {
     '@demi/coding-agent',
     '@demi/provider-claude-code',
     '@demi/provider-codex',
+    '@demi/provider-openai-api',
+    '@demi/provider-anthropic-api',
     '@demi/repl',
     '@demi/web',
   ]) {
@@ -256,6 +268,20 @@ test('public root exports do not expose provider internals or testing helpers', 
         ['provider class export', /\bCodexProvider\b/],
         ['auth store or transport helper export', /\b(?:FileCodexAuthStore\b|StaticCodexAuthStore\b|CodexAuthStore\b|buildCodexHeaders|responsesUrlForAuth)\b/],
         ['catalog parser or test helper export', /\b(?:ModelCatalogFetch|codexBackendModelsToModelList|resetCodexModelCatalogCacheForTests)\b/],
+      ],
+    ],
+    [
+      'packages/provider-openai-api/src/index.ts',
+      [
+        ['wildcard export', /\bexport\s+\*\s+from\b/],
+        ['provider class export', /\bOpenAIApiProvider\b/],
+      ],
+    ],
+    [
+      'packages/provider-anthropic-api/src/index.ts',
+      [
+        ['wildcard export', /\bexport\s+\*\s+from\b/],
+        ['provider class export', /\bAnthropicApiProvider\b/],
       ],
     ],
   ] as const

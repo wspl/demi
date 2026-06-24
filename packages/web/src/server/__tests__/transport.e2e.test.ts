@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { defineProvider, type Provider } from '@demi/provider'
+import { StubProvider, events } from '@demi/provider/testing'
 import { agentSocketUrl, connectAgentClient } from '@demi/web-ui/transport/agent-socket'
 import { connectControlClient } from '@demi/web-ui/transport/control-client'
 import { parseServerOptions } from '../server-options'
@@ -45,6 +47,33 @@ test('web transport round-trips open/send/stream over websocket', async () => {
   }
 })
 
+test('web control protocol does not expose secret-bearing provider options', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-web-secret-boundary-'))
+  const secretProvider = createSecretBackedProvider()
+  const handle = startWebServer([secretProvider], parseServerOptions(['--port', '0', '--cwd', cwd]))
+
+  try {
+    const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
+
+    const providers = await control.listProviders()
+    const models = await control.listModels({ providerId: 'secret-api' })
+    const providerSelection = await control.prepareSession({ providerId: 'secret-api', modelId: 'secret-model' })
+    const browserVisibleJson = JSON.stringify({ providers, models, providerSelection })
+
+    expect(browserVisibleJson).toContain('secret-api')
+    expect(browserVisibleJson).toContain('secret-model')
+    expect(browserVisibleJson).not.toContain('sk-secret')
+    expect(browserVisibleJson).not.toContain('x-secret-token')
+    expect(browserVisibleJson).not.toContain('https://secret-gateway.example/v1')
+    expect(browserVisibleJson).not.toContain('SECRET_PREFIX')
+    expect(providerSelection).not.toHaveProperty('config')
+    expect(providerSelection).not.toHaveProperty('baseUrl')
+    expect(providerSelection).not.toHaveProperty('envPrefix')
+  } finally {
+    await handle.stop()
+  }
+})
+
 test('web backend rejects ordinary HTTP so UI must come from Vite dev server', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-backend-only-'))
   const handle = startWebServer([createStubProvider()], parseServerOptions(['--port', '0', '--cwd', cwd]))
@@ -58,3 +87,45 @@ test('web backend rejects ordinary HTTP so UI must come from Vite dev server', a
     await handle.stop()
   }
 })
+
+function createSecretBackedProvider(): Provider {
+  const secret = {
+    baseUrl: 'https://secret-gateway.example/v1',
+    apiKey: 'sk-secret',
+    envPrefix: 'SECRET_PREFIX',
+    headers: { 'x-secret-token': 'x-secret-token' },
+  }
+
+  return defineProvider({
+    id: 'secret-api',
+    displayName: 'Secret API',
+    state: () => ({ status: 'ready' }),
+    listModels: () => ({
+      providerId: 'secret-api',
+      defaultModelId: 'secret-model',
+      warnings: [],
+      sourceFetchedAt: '1970-01-01T00:00:00.000Z',
+      stale: false,
+      models: [
+        {
+          providerId: 'secret-api',
+          id: 'secret-model',
+          displayName: 'Secret Model',
+          contextWindow: 1000,
+          outputLimit: 1000,
+          supportsTools: true,
+          supportsAttachments: false,
+          supportsReasoning: false,
+          supportedThinkingEfforts: null,
+          defaultThinkingEffort: null,
+          sourceFetchedAt: '1970-01-01T00:00:00.000Z',
+          stale: false,
+        },
+      ],
+    }),
+    createRuntime: () => {
+      void secret
+      return new StubProvider([[events.text('secret ok'), events.response()]])
+    },
+  })
+}

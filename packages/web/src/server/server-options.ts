@@ -2,7 +2,7 @@ import process from 'node:process'
 import { resolve } from 'node:path'
 import type { CodexTransportMode } from '@demi/provider-codex'
 
-export type ProviderId = 'claude-code' | 'codex'
+export type ProviderId = 'claude-code' | 'codex' | 'openai' | 'anthropic'
 
 export interface ServerOptions {
   port: number
@@ -56,8 +56,8 @@ export function parseServerOptions(args: string[]): ServerOptions {
 }
 
 function parseProvider(value: string): ProviderId {
-  if (value === 'claude-code' || value === 'codex') return value
-  throw new Error('--provider must be one of: claude-code, codex')
+  if (value === 'claude-code' || value === 'codex' || value === 'openai' || value === 'anthropic') return value
+  throw new Error('--provider must be one of: claude-code, codex, openai, anthropic')
 }
 
 function parseTransport(value: string): CodexTransportMode {

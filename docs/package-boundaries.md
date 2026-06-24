@@ -32,8 +32,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demi/core`.
-- Owns: abstract provider contract, inference request items, provider events, provider definition, provider registry, auth/runtime status, and model catalog shape.
-- Public boundary: provider contract and registry from root; provider test helpers only from `@demi/provider/testing`.
+- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, and model catalog shape.
+- Public boundary: provider contract, direct `Provider[]` composition types, and provider test helpers only from `@demi/provider/testing`.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
 - Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or REPL.
@@ -99,10 +99,32 @@ Test code may depend upward for integration coverage. Production code must not.
 - Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, and test cache helpers stay behind implementation files.
 - Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/repl` in production code.
 
+### `@demi/provider-openai-api`
+
+- Status: implemented.
+- Production deps: `@demi/core`, `@demi/provider`.
+- Owns: OpenAI Chat Completions API request mapping, SSE event mapping, official OpenAI API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping, and provider-specific tests.
+- Public boundary: `createOpenAIApiProvider`, default model catalog function, and public option/model types from root.
+- Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`.
+- Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
+- Internal boundary: Chat Completions body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/repl` in production code.
+
+### `@demi/provider-anthropic-api`
+
+- Status: implemented.
+- Production deps: `@demi/core`, `@demi/provider`.
+- Owns: Anthropic Messages API request mapping, event-stream mapping, official Anthropic API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping, and provider-specific tests.
+- Public boundary: `createAnthropicApiProvider`, default model catalog function, and public option/model types from root.
+- Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.anthropic.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `ANTHROPIC`.
+- Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
+- Internal boundary: Messages body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Must not: import `@demi/agent`, `@demi/shell`, `@demi/coding-agent`, `@demi/host-local`, or `@demi/repl` in production code.
+
 ### `@demi/repl`
 
 - Status: implemented.
-- Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/shell`, `@demi/host-local`.
+- Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/provider-openai-api`, `@demi/provider-anthropic-api`, `@demi/shell`, `@demi/host-local`.
 - Owns: local REPL process, command-line parsing, renderer, input loop, real-provider smoke entry points, and local composition.
 - Public boundary: local application entry point and test/acceptance shell.
 - May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
@@ -129,7 +151,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: planned (see `docs/web-plan.md`).
 - Production deps: `@demi/web-ui`, `@demi/agent`, `@demi/host-local`, `@demi/coding-agent`,
   `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`,
-  `@demi/shell`.
+  `@demi/provider-openai-api`, `@demi/provider-anthropic-api`, `@demi/shell`.
 - Owns: the Demi web product — the Vite-dev-only browser app plus its embedded Node/Bun
   backend. The server serves only the WebSocket/API endpoints (per-session `/agent` + a
   `/control` RPC), assembling shared public providers and a per-cwd `AgentServer` over
@@ -143,7 +165,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: planned (see `docs/agent-evaluation-plan.md`).
 - Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/host-local`,
-  `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/shell`.
+  `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`,
+  `@demi/provider-openai-api`, `@demi/provider-anthropic-api`, `@demi/shell`.
 - Owns: agent benchmark case loading, fixture setup, Evaluator supervision/judging loop,
   oracle execution, metrics aggregation, run artifacts, reports, and gated real-provider
   evaluation entry points.
@@ -167,10 +190,12 @@ agent -> core, provider, shell
 coding-agent -> agent, core, shell
 provider-claude-code -> core, provider
 provider-codex -> core, provider
-repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, shell, host-local
+provider-openai-api -> core, provider
+provider-anthropic-api -> core, provider
+repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, host-local
 web-ui -> agent, core
-web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, shell
-agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, shell
+web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell
+agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell
 ```
 
 `web-ui` and `web` are browser/product packages built with Vite/Vue; their internal source

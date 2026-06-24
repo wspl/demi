@@ -12,8 +12,10 @@
     "@demi/core": "workspace:*",
     "@demi/host-local": "workspace:*",
     "@demi/provider": "workspace:*",
+    "@demi/provider-anthropic-api": "workspace:*",
     "@demi/provider-claude-code": "workspace:*",
     "@demi/provider-codex": "workspace:*",
+    "@demi/provider-openai-api": "workspace:*",
     "@demi/shell": "workspace:*"
   }
 }
