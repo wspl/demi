@@ -136,8 +136,8 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 - `packages/web/src/server/__tests__/transport.e2e.test.ts`：覆盖 web 后端只暴露 `/control`
   和 `/agent` WebSocket 能力，普通 HTTP 请求必须拒绝并指向 Vite dev server，防止静态
   `dist` / preview / production bundle 路径重新进入验收流程；同时覆盖启动时显式
-  `--model` 会作为选中 provider 的首选模型进入 control catalog，避免 compatible
-  endpoint 被官方默认 catalog 的第一项误选。
+  `--model` 会全量替换选中 provider 的 control catalog，避免 compatible endpoint 被
+  默认 catalog 的任何模型误选。
 
 ## 5. 模块测试点
 
@@ -218,11 +218,12 @@ Owner：`packages/provider-codex`
 
 Owner：`packages/provider-openai-api`
 
-验证：`bun test packages/provider-openai-api/src/__tests__/provider.test.ts`，8 pass。
+验证：`bun test packages/provider-openai-api/src/__tests__/provider.test.ts`，9 pass。
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
 | endpoint/env/api key 解析 | 有效 | `provider.test.ts` 通过真实 provider runtime + fake fetch 断言默认 `OPENAI_BASE_URL`、`OPENAI_API_KEY` 会被读取，默认 URL 拼为 `{baseUrl}/responses`；另测 `wireApi: "chat-completions"` 下显式 `baseUrl`/`apiKey` 优先于自定义 `envPrefix` env vars，并保留 custom header。 | `packages/provider-openai-api/src/__tests__/provider.test.ts` | 防止 API provider 只能硬编码官方 endpoint，或把 envPrefix/baseUrl/apiKey/wireApi 优先级做反。 |
+| default/custom model catalog | 有效 | 测试断言默认 OpenAI API catalog 镜像 Codex 当前可见模型 `gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex-spark` 和 priority tier 元数据；传入 `models` 时断言 custom list 全量替换默认 list。 | `provider.test.ts` | 防止 API provider 继续暴露单独维护的过期 OpenAI 模型表，或 compatible endpoint 的 custom model 被追加到默认列表而不是替换。 |
 | Responses request/stream conversion | 有效 | 测试直接断言 system/user/assistant/tool_use/tool_result、function tool schema、service tier、reasoning、`store:false`、`include:["reasoning.encrypted_content"]` 和 `prompt_cache_key` 的 Responses body；stream 测试覆盖 thinking、split text、function call args 和 usage。 | `provider.test.ts` | 防止官方 OpenAI 默认路径没有走 Responses schema，或模型可见上下文、thinking replay、tool pairing、usage 映射错位。 |
 | Chat Completions request conversion | 有效 | 测试直接断言 `wireApi: "chat-completions"` 使用 system/user/assistant/tool_use/tool_result、tool schema、service tier、reasoning effort 和 `stream_options.include_usage` 的 request body。 | `provider.test.ts` | 防止兼容 endpoint 路径的模型可见上下文、tool pairing、service tier 或 reasoning effort 在 OpenAI Chat Completions schema 上错位。 |
 | Chat Completions stream 映射 thinking/text/tool/usage | 有效 | 测试 compatible `choices[].delta.reasoning_content` 映射 Demi `thinking_start`/`thinking_delta`，并覆盖 split `choices[].delta.content`、split `tool_calls[].function.arguments`、`finish_reason=tool_calls`、final usage 和 `[DONE]`。 | `provider.test.ts` | 防止真实 compatible streaming chunk 被吞、thinking delta 被丢、tool args 分片丢失、cache read usage 扣减错误或 response 终止事件缺失。 |
@@ -234,11 +235,12 @@ Owner：`packages/provider-openai-api`
 
 Owner：`packages/provider-anthropic-api`
 
-验证：`bun test packages/provider-anthropic-api/src/__tests__/provider.test.ts`，4 pass。
+验证：`bun test packages/provider-anthropic-api/src/__tests__/provider.test.ts`，5 pass。
 
 | 测试点 | 审查结论 | 审查记录 | 候选覆盖 / 待核对 | 能发现或规避的问题 |
 |---|---|---|---|---|
 | endpoint/env/api key 解析 | 有效 | `provider.test.ts` 通过真实 provider runtime + fake fetch 断言默认 `ANTHROPIC_BASE_URL`、`ANTHROPIC_API_KEY` 会被读取，URL 拼为 `{baseUrl}/messages`；另测显式 `baseUrl`/`apiKey`/`anthropicVersion` 优先于自定义 `envPrefix` env vars，并保留 custom header。 | `packages/provider-anthropic-api/src/__tests__/provider.test.ts` | 防止 API provider 只能硬编码官方 endpoint，或把 envPrefix/baseUrl/apiKey/version 优先级做反。 |
+| default/custom model catalog | 有效 | 测试断言默认 Anthropic API catalog 镜像 Claude Code 当前模型 `claude-opus-4-8`、`claude-opus-4-7`、`claude-opus-4-6`、`claude-sonnet-4-6`、`claude-fable-5` 和 thinking effort 元数据；传入 `models` 时断言 custom list 全量替换默认 list。 | `provider.test.ts` | 防止 API provider 继续暴露单独维护的过期 Anthropic 模型表，或 compatible endpoint 的 custom model 被追加到默认列表而不是替换。 |
 | Messages request conversion | 有效 | 测试断言 user/tool_result 与 assistant/tool_use 按 Anthropic role 分组，system、tools、service tier、max_tokens 和 budget thinking 进入 body。 | `provider.test.ts` | 防止 Anthropic Messages 对 assistant/tool_result 顺序要求被拆乱，引发 tool_use 无匹配结果或模型上下文漂移。 |
 | Event stream 映射 thinking/text/tool/usage | 有效 | 测试覆盖 `message_start` usage、thinking start/delta/signature、text delta、tool_use input_json_delta、content_block_stop 和 `message_stop`，断言输出 Demi `thinking_*`、`text_delta`、`tool_call_requested` 和 `response.usage`。 | `provider.test.ts` | 防止真实 stream thinking 不显示、tool call 不触发、cache read/write usage 丢失或 response 终止事件缺失。 |
 | Web secret boundary | 有效 | Web control path 只返回 `ProviderSelection`，provider runtime 通过闭包持有 `baseUrl`/`apiKey`/headers/version；transport e2e 断言 browser-visible prepare/open frame 不包含 `apiKey`、secret headers、`baseUrl`、`envPrefix` 或 raw provider options。 | `packages/web/src/server/__tests__/transport.e2e.test.ts` | 防止 API key 和 endpoint 配置经 Web UI 往返，或被 AgentClient frame 序列化。 |

@@ -12,6 +12,8 @@ export interface OpenAIApiModelOptions {
   supportedThinkingEfforts?: string[] | null
   defaultThinkingEffort?: string | null
   canDisableThinking?: boolean | null
+  serviceTiers?: ProviderModel['serviceTiers']
+  defaultServiceTierId?: string | null
 }
 
 const SOURCE_FETCHED_AT = '1970-01-01T00:00:00.000Z'
@@ -20,51 +22,53 @@ export function openAIApiDefaultModels(providerId = 'openai'): ProviderModelList
   return modelListFromOpenAIApiModels(
     [
       {
-        id: 'gpt-5.1',
-        displayName: 'GPT-5.1',
-        contextWindow: 400_000,
-        outputLimit: 128_000,
-        supportsTools: true,
+        id: 'gpt-5.5',
+        displayName: 'GPT-5.5',
+        contextWindow: 272_000,
+        outputLimit: null,
+        supportsTools: false,
         supportsAttachments: true,
         supportsReasoning: true,
-        supportedThinkingEfforts: ['minimal', 'low', 'medium', 'high'],
-        defaultThinkingEffort: 'medium',
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+        serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
       },
       {
-        id: 'gpt-5',
-        displayName: 'GPT-5',
-        contextWindow: 400_000,
-        outputLimit: 128_000,
-        supportsTools: true,
+        id: 'gpt-5.4',
+        displayName: 'GPT-5.4',
+        contextWindow: 272_000,
+        outputLimit: null,
+        supportsTools: false,
         supportsAttachments: true,
         supportsReasoning: true,
-        supportedThinkingEfforts: ['minimal', 'low', 'medium', 'high'],
-        defaultThinkingEffort: 'medium',
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+        serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
       },
       {
-        id: 'gpt-4.1',
-        displayName: 'GPT-4.1',
-        contextWindow: 1_000_000,
-        outputLimit: 32_768,
-        supportsTools: true,
+        id: 'gpt-5.4-mini',
+        displayName: 'GPT-5.4-Mini',
+        contextWindow: 272_000,
+        outputLimit: null,
+        supportsTools: false,
         supportsAttachments: true,
-        supportsReasoning: false,
-        supportedThinkingEfforts: null,
+        supportsReasoning: true,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+        serviceTiers: [],
       },
       {
-        id: 'gpt-4.1-mini',
-        displayName: 'GPT-4.1 mini',
-        contextWindow: 1_000_000,
-        outputLimit: 32_768,
-        supportsTools: true,
-        supportsAttachments: true,
-        supportsReasoning: false,
-        supportedThinkingEfforts: null,
+        id: 'gpt-5.3-codex-spark',
+        displayName: 'GPT-5.3-Codex-Spark',
+        contextWindow: 128_000,
+        outputLimit: null,
+        supportsTools: false,
+        supportsAttachments: false,
+        supportsReasoning: true,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+        serviceTiers: [],
       },
     ],
     {
       providerId,
-      defaultModelId: 'gpt-5.1',
+      defaultModelId: 'gpt-5.5',
       sourceFetchedAt: SOURCE_FETCHED_AT,
     },
   )
@@ -94,6 +98,8 @@ export function modelListFromOpenAIApiModels(
     supportedThinkingEfforts: model.supportedThinkingEfforts ? [...model.supportedThinkingEfforts] : null,
     defaultThinkingEffort: model.defaultThinkingEffort ?? null,
     canDisableThinking: model.canDisableThinking ?? null,
+    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({ ...tier })) : model.serviceTiers,
+    defaultServiceTierId: model.defaultServiceTierId ?? null,
     sourceFetchedAt,
     stale,
   }))

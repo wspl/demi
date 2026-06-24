@@ -24,7 +24,7 @@ const agent = createCodingAgent({
       wireApi: 'chat-completions',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: () => process.env.OPENROUTER_API_KEY,
-      models: [{ id: 'openai/gpt-5.1', displayName: 'GPT 5.1' }],
+      models: [{ id: 'openai/gpt-5.4', displayName: 'GPT 5.4' }],
     }),
   ],
 })
@@ -218,7 +218,7 @@ With no options, this provider targets the official OpenAI API:
 - `envPrefix: 'OPENAI'`
 - `baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'`
 - `apiKey: () => process.env.OPENAI_API_KEY`
-- built-in official OpenAI model catalog metadata
+- built-in model catalog metadata mirrored from the current Codex-visible model set
 
 The default wire contract is OpenAI Responses:
 
@@ -248,7 +248,7 @@ createOpenAIApiProvider({
   envPrefix: 'OPENROUTER',
   baseUrl: 'https://openrouter.ai/api/v1',
   apiKey: () => process.env.OPENROUTER_API_KEY,
-  models: [{ id: 'openai/gpt-5.1', displayName: 'GPT 5.1' }],
+  models: [{ id: 'openai/gpt-5.4', displayName: 'GPT 5.4' }],
 })
 ```
 
@@ -289,7 +289,7 @@ With no options, this provider targets the official Anthropic API:
 - `baseUrl: process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com/v1'`
 - `apiKey: () => process.env.ANTHROPIC_API_KEY`
 - a provider-owned default `anthropic-version`
-- built-in official Anthropic model catalog metadata
+- built-in model catalog metadata mirrored from the current Claude Code model set
 
 Passing `baseUrl`, or setting the endpoint env var resolved by `envPrefix`, turns the same provider
 into an Anthropic-compatible endpoint adapter. Non-official endpoints should pass explicit `models`
@@ -309,9 +309,11 @@ different transport contracts.
 
 ### API Provider Model Metadata
 
-Official OpenAI and Anthropic API providers can ship curated default model metadata. Compatible
-endpoints often do not expose enough capability metadata, so Demi should require capability metadata
-in config instead of guessing:
+OpenAI and Anthropic API providers ship curated default model metadata by mirroring the current
+Codex-visible and Claude Code model sets respectively. Compatible endpoints often do not expose
+enough capability metadata, so Demi should require capability metadata in config instead of guessing.
+When `models` is passed, it replaces the provider default catalog completely; it must not append to
+the default list.
 
 ```ts
 interface ApiProviderModel {

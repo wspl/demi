@@ -57,6 +57,32 @@ test('OpenAI API provider can use Chat Completions wire API with explicit endpoi
   )
 })
 
+test('OpenAI API model catalog mirrors Codex-visible defaults and explicit models replace it', async () => {
+  const defaults = await createOpenAIApiProvider().listModels?.()
+
+  expect(defaults?.defaultModelId).toBe('gpt-5.5')
+  expect(defaults?.models.map((model) => model.id)).toEqual([
+    'gpt-5.5',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.3-codex-spark',
+  ])
+  expect(defaults?.models[0]).toMatchObject({
+    displayName: 'GPT-5.5',
+    contextWindow: 272_000,
+    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+    serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
+  })
+
+  const custom = await createOpenAIApiProvider({
+    models: [{ id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' }],
+    defaultModelId: 'deepseek-v4-pro',
+  }).listModels?.()
+
+  expect(custom?.defaultModelId).toBe('deepseek-v4-pro')
+  expect(custom?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
+})
+
 test('OpenAI Responses request body maps text, tools, tool replay, service tier, and reasoning', () => {
   const body = buildOpenAIResponsesBody(
     request({

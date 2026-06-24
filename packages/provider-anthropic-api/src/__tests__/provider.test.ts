@@ -57,6 +57,34 @@ test('Anthropic API provider explicit baseUrl and apiKey take precedence over en
   )
 })
 
+test('Anthropic API model catalog mirrors Claude Code defaults and explicit models replace it', async () => {
+  const defaults = await createAnthropicApiProvider().listModels?.()
+
+  expect(defaults?.defaultModelId).toBe('claude-opus-4-8')
+  expect(defaults?.models.map((model) => model.id)).toEqual([
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+    'claude-opus-4-6',
+    'claude-sonnet-4-6',
+    'claude-fable-5',
+  ])
+  expect(defaults?.models[0]).toMatchObject({
+    displayName: 'Claude Opus 4.8',
+    contextWindow: 1_000_000,
+    outputLimit: 128_000,
+    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    canDisableThinking: false,
+  })
+
+  const custom = await createAnthropicApiProvider({
+    models: [{ id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' }],
+    defaultModelId: 'deepseek-v4-pro',
+  }).listModels?.()
+
+  expect(custom?.defaultModelId).toBe('deepseek-v4-pro')
+  expect(custom?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
+})
+
 test('Anthropic API request body groups user/tool_result and assistant/tool_use turns', () => {
   const body = buildAnthropicMessagesBody(
     request({

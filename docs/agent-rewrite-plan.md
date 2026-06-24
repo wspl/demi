@@ -1357,8 +1357,8 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 - AgentClient 的 action FIFO 收敛/abort Promise/shellInput 等待/transcript snapshot+patch/stdio+websocket transport/Uint8Array+bigint 安全编解码——均已落地。
 - claude-code provider 的 CLI spawn/stream-json/MCP bridge/event 映射/tool_use continuation/abort 清理/binary media 转换/config 白名单——均已落地。真实 CLI e2e 默认跳过，`DEMI_CLAUDE_CODE_E2E=1` 手动跑。
 - provider public API 已收敛为用户侧 direct provider creation：`createClaudeCodeProvider` / `createCodexProvider` / `createOpenAIApiProvider` / `createAnthropicApiProvider` 返回 public `Provider`；AgentServer 接收 `providers: Provider[]`，协议只携带 `ProviderSelection`，不再让 secret-bearing config 往返浏览器。
-- OpenAI API provider 已落地：默认 `OPENAI_BASE_URL ?? https://api.openai.com/v1` 和 `OPENAI_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先；默认 `wireApi: "responses"` 走 Responses request/body/tool/result 映射和 SSE text/tool/usage 映射，兼容 endpoint 可显式传 `wireApi: "chat-completions"` 走 Chat Completions 映射；兼容 endpoint 若在 `choices[].delta.reasoning_content` 暴露非标准 reasoning delta，则 best-effort 映射为 Demi `thinking_*` 事件，不伪造 Responses encrypted reasoning signature。
-- Anthropic API provider 已落地：默认 `ANTHROPIC_BASE_URL ?? https://api.anthropic.com/v1` 和 `ANTHROPIC_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先、Messages request/body/tool/result 映射和 event-stream thinking/text/tool/usage 映射。
+- OpenAI API provider 已落地：默认 `OPENAI_BASE_URL ?? https://api.openai.com/v1` 和 `OPENAI_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先；默认 model catalog 镜像 Codex 当前可见模型集合；传入 `models` 时全量替换默认 catalog；默认 `wireApi: "responses"` 走 Responses request/body/tool/result 映射和 SSE text/tool/usage 映射，兼容 endpoint 可显式传 `wireApi: "chat-completions"` 走 Chat Completions 映射；兼容 endpoint 若在 `choices[].delta.reasoning_content` 暴露非标准 reasoning delta，则 best-effort 映射为 Demi `thinking_*` 事件，不伪造 Responses encrypted reasoning signature。
+- Anthropic API provider 已落地：默认 `ANTHROPIC_BASE_URL ?? https://api.anthropic.com/v1` 和 `ANTHROPIC_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先；默认 model catalog 镜像 Claude Code 当前模型集合；传入 `models` 时全量替换默认 catalog；Messages request/body/tool/result 映射和 event-stream thinking/text/tool/usage 映射。
 - coding editor/todo/reference resolver 已改为使用 Host contract；editor patch 兼容 `diff -u`/git-style unified diff。editor/reference resolver 不再把 default cwd 当作 workspace/sandbox/权限边界；如果以后需要项目级路径限制，只能作为显式 policy 或 command-level guard 建模。
 
 **已修正 Step 3 的重大偏离**：
@@ -1395,7 +1395,7 @@ Codex provider 的调研过程、最终态设计和落地记录见 `docs/codex-p
 - Endpoint/env 规则一致：显式 `baseUrl` 优先，其次 `${envPrefix}_BASE_URL`，最后官方默认 endpoint；显式 `apiKey` 优先，其次 `${envPrefix}_API_KEY`。默认 prefix 分别为 `OPENAI` 和 `ANTHROPIC`。
 - Secret boundary 一致：API key、自定义 headers、raw baseUrl、envPrefix 和 raw provider options 只留在 provider creator closure，Web `listProviders` / `listModels` / `prepareSession` 和 AgentClient frames 不携带这些值。
 
-REPL/Web 当前 composition root 默认装配 `createClaudeCodeProvider()`、`createCodexProvider()`、`createOpenAIApiProvider()`、`createAnthropicApiProvider()`；`--provider openai|anthropic` 选择对应 provider，`--base-url` 只覆盖当前选中的 HTTP provider；`--openai-wire-api responses|chat-completions` 只控制 OpenAI provider 的 wire API。Web 启动时传入的 `--model` 必须作为选中 provider 的首选模型进入 control catalog，保证 DeepSeek、OpenRouter 等 compatible endpoint 不会因为官方默认 catalog 的第一项而请求错误模型；这个过程仍只暴露 `providerId`、`modelId` 和便携模型元数据，不把 raw endpoint 或 secret-bearing options 发给浏览器。
+REPL/Web 当前 composition root 默认装配 `createClaudeCodeProvider()`、`createCodexProvider()`、`createOpenAIApiProvider()`、`createAnthropicApiProvider()`；`--provider openai|anthropic` 选择对应 provider，`--base-url` 只覆盖当前选中的 HTTP provider；`--openai-wire-api responses|chat-completions` 只控制 OpenAI provider 的 wire API。Web 启动时传入的 `--model` 必须全量替换选中 provider 的 control catalog，保证 DeepSeek、OpenRouter 等 compatible endpoint 不会因为默认 catalog 的任何模型而请求错误模型；这个过程仍只暴露 `providerId`、`modelId` 和便携模型元数据，不把 raw endpoint 或 secret-bearing options 发给浏览器。
 
 ## 15. 优先级
 

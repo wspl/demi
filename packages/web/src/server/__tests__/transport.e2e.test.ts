@@ -74,7 +74,7 @@ test('web control protocol does not expose secret-bearing provider options', asy
   }
 })
 
-test('web control protocol prepends explicit startup model for selected provider', async () => {
+test('web control protocol replaces selected provider catalog with explicit startup model', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-explicit-model-'))
   const provider = createCatalogProvider('openai', 'catalog-model')
   const handle = startWebServer(
@@ -86,10 +86,11 @@ test('web control protocol prepends explicit startup model for selected provider
     const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
 
     const models = await control.listModels({ providerId: 'openai' })
-    expect(models.map((model) => model.id).slice(0, 2)).toEqual(['deepseek-v4-pro', 'catalog-model'])
+    expect(models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
 
     const providerSelection = await control.prepareSession({ providerId: 'openai', modelId: 'deepseek-v4-pro' })
     expect(providerSelection.model.model.id).toBe('deepseek-v4-pro')
+    expect(providerSelection.model.model.name).toBe('deepseek-v4-pro')
   } finally {
     await handle.stop()
   }

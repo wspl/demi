@@ -12,6 +12,8 @@ export interface AnthropicApiModelOptions {
   supportedThinkingEfforts?: string[] | null
   defaultThinkingEffort?: string | null
   canDisableThinking?: boolean | null
+  serviceTiers?: ProviderModel['serviceTiers']
+  defaultServiceTierId?: string | null
 }
 
 const SOURCE_FETCHED_AT = '1970-01-01T00:00:00.000Z'
@@ -22,37 +24,62 @@ export function anthropicApiDefaultModels(providerId = 'anthropic'): ProviderMod
       {
         id: 'claude-opus-4-8',
         displayName: 'Claude Opus 4.8',
-        contextWindow: 200_000,
-        outputLimit: 32_000,
+        contextWindow: 1_000_000,
+        outputLimit: 128_000,
         supportsTools: true,
         supportsAttachments: true,
         supportsReasoning: true,
-        supportedThinkingEfforts: null,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        canDisableThinking: false,
       },
       {
-        id: 'claude-sonnet-4-8',
-        displayName: 'Claude Sonnet 4.8',
-        contextWindow: 200_000,
+        id: 'claude-opus-4-7',
+        displayName: 'Claude Opus 4.7',
+        contextWindow: 1_000_000,
+        outputLimit: 128_000,
+        supportsTools: true,
+        supportsAttachments: true,
+        supportsReasoning: true,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        canDisableThinking: false,
+      },
+      {
+        id: 'claude-opus-4-6',
+        displayName: 'Claude Opus 4.6',
+        contextWindow: 1_000_000,
+        outputLimit: 128_000,
+        supportsTools: true,
+        supportsAttachments: true,
+        supportsReasoning: true,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'max'],
+        canDisableThinking: false,
+      },
+      {
+        id: 'claude-sonnet-4-6',
+        displayName: 'Claude Sonnet 4.6',
+        contextWindow: 1_000_000,
         outputLimit: 64_000,
         supportsTools: true,
         supportsAttachments: true,
         supportsReasoning: true,
-        supportedThinkingEfforts: null,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'max'],
+        canDisableThinking: false,
       },
       {
-        id: 'claude-haiku-4-5',
-        displayName: 'Claude Haiku 4.5',
-        contextWindow: 200_000,
-        outputLimit: 32_000,
+        id: 'claude-fable-5',
+        displayName: 'Claude Fable 5',
+        contextWindow: 1_000_000,
+        outputLimit: 128_000,
         supportsTools: true,
         supportsAttachments: true,
         supportsReasoning: true,
-        supportedThinkingEfforts: null,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        canDisableThinking: false,
       },
     ],
     {
       providerId,
-      defaultModelId: 'claude-sonnet-4-8',
+      defaultModelId: 'claude-opus-4-8',
       sourceFetchedAt: SOURCE_FETCHED_AT,
     },
   )
@@ -82,6 +109,8 @@ export function modelListFromAnthropicApiModels(
     supportedThinkingEfforts: model.supportedThinkingEfforts ? [...model.supportedThinkingEfforts] : null,
     defaultThinkingEffort: model.defaultThinkingEffort ?? null,
     canDisableThinking: model.canDisableThinking ?? null,
+    serviceTiers: model.serviceTiers ? model.serviceTiers.map((tier) => ({ ...tier })) : model.serviceTiers,
+    defaultServiceTierId: model.defaultServiceTierId ?? null,
     sourceFetchedAt,
     stale,
   }))

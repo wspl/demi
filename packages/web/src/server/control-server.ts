@@ -1,4 +1,4 @@
-import type { Provider, ProviderSelection } from '@demi/provider'
+import type { Provider, ProviderModel, ProviderSelection } from '@demi/provider'
 import type {
   ControlMethod,
   ModelInfo,
@@ -47,9 +47,14 @@ export class ControlServer {
 
   private async listModels(params: { providerId: string }): Promise<ModelInfo[]> {
     const provider = this.providerFor(params.providerId)
+    const explicitModelId = this.explicitModelIdFor(params.providerId)
+    if (explicitModelId) {
+      const model = await this.findProviderCatalogModel(provider, explicitModelId)
+      return [model ? toModelInfo(model) : explicitModelInfo(explicitModelId)]
+    }
     if (!provider.listModels) throw new Error(`Provider "${params.providerId}" does not expose a model catalog`)
     const catalog = await provider.listModels()
-    return this.withExplicitDefaultModel(params.providerId, catalog.models.map(toModelInfo))
+    return catalog.models.map(toModelInfo)
   }
 
   private async prepareSession(params: PrepareSessionParams): Promise<ProviderSelection> {
@@ -67,11 +72,12 @@ export class ControlServer {
   private async findCatalogModel(providerId: string, modelId: string) {
     try {
       const provider = this.providerFor(providerId)
-      if (!provider.listModels) return null
-      const catalog = await provider.listModels()
-      return catalog.models.find((model) => model.id === modelId) ?? null
+      const explicitModelId = this.explicitModelIdFor(providerId)
+      if (explicitModelId && modelId !== explicitModelId) return null
+      const model = await this.findProviderCatalogModel(provider, modelId)
+      return model ?? (explicitModelId ? explicitProviderModel(providerId, modelId) : null)
     } catch {
-      return null
+      return this.explicitModelIdFor(providerId) === modelId ? explicitProviderModel(providerId, modelId) : null
     }
   }
 
@@ -81,25 +87,49 @@ export class ControlServer {
     return provider
   }
 
-  private withExplicitDefaultModel(providerId: string, models: ModelInfo[]): ModelInfo[] {
-    const modelId = this.options.provider === providerId ? this.options.modelId : null
-    if (!modelId) return models
-    const existing = models.find((model) => model.id === modelId)
-    if (existing) return [existing, ...models.filter((model) => model.id !== modelId)]
-    return [
-      {
-        id: modelId,
-        name: modelId,
-        contextWindow: null,
-        inputLimit: null,
-        acceptedExtensions: [],
-        reasoning: null,
-      },
-      ...models,
-    ]
+  private explicitModelIdFor(providerId: string): string | null {
+    return this.options.provider === providerId ? this.options.modelId : null
+  }
+
+  private async findProviderCatalogModel(provider: Provider, modelId: string): Promise<ProviderModel | null> {
+    try {
+      if (!provider.listModels) return null
+      const catalog = await provider.listModels()
+      return catalog.models.find((model) => model.id === modelId) ?? null
+    } catch {
+      return null
+    }
   }
 
   private defaultWorkspace(): WorkspaceInfo {
     return { cwd: this.options.cwd }
+  }
+}
+
+function explicitModelInfo(modelId: string): ModelInfo {
+  return {
+    id: modelId,
+    name: modelId,
+    contextWindow: null,
+    inputLimit: null,
+    acceptedExtensions: [],
+    reasoning: null,
+  }
+}
+
+function explicitProviderModel(providerId: string, modelId: string): ProviderModel {
+  return {
+    providerId,
+    id: modelId,
+    displayName: modelId,
+    contextWindow: null,
+    outputLimit: null,
+    supportsTools: null,
+    supportsAttachments: null,
+    supportsReasoning: null,
+    supportedThinkingEfforts: null,
+    defaultThinkingEffort: null,
+    sourceFetchedAt: '1970-01-01T00:00:00.000Z',
+    stale: false,
   }
 }
