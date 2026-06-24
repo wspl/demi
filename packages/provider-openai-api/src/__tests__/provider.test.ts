@@ -79,7 +79,7 @@ test('OpenAI API model catalog mirrors Codex-visible defaults and explicit model
       {
         id: 'deepseek-v4-pro',
         displayName: 'DeepSeek V4 Pro',
-        contextWindow: 128_000,
+        contextWindow: 1_000_000,
         supportsReasoning: true,
         supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         defaultThinkingEffort: 'medium',
@@ -93,7 +93,7 @@ test('OpenAI API model catalog mirrors Codex-visible defaults and explicit model
   expect(custom?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
   expect(custom?.models[0]).toMatchObject({
     displayName: 'DeepSeek V4 Pro',
-    contextWindow: 128_000,
+    contextWindow: 1_000_000,
     supportsReasoning: true,
     supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     defaultThinkingEffort: 'medium',
