@@ -4,7 +4,7 @@
 |---|---|
 | Date | 2026-06-25 |
 | Status | Design |
-| Scope | Provider construction API, AgentServer composition, Web/REPL provider selection, compatible HTTP providers |
+| Scope | Provider construction API, AgentServer composition, Web/REPL provider selection, OpenAI/Anthropic API providers |
 
 ## Goal
 
@@ -16,7 +16,9 @@ const agent = createCodingAgent({
   providers: [
     createClaudeCodeProvider({ claudePath: '/opt/homebrew/bin/claude' }),
     createCodexProvider({ codexHome: '~/.codex' }),
-    createOpenAICompatibleProvider({
+    createOpenAIApiProvider(),
+    createAnthropicApiProvider(),
+    createOpenAIApiProvider({
       id: 'openrouter',
       displayName: 'OpenRouter',
       baseUrl: 'https://openrouter.ai/api/v1',
@@ -71,8 +73,8 @@ Concrete packages expose creation functions:
 ```ts
 createClaudeCodeProvider(options?: ClaudeCodeProviderOptions): Provider
 createCodexProvider(options?: CodexProviderOptions): Provider
-createOpenAICompatibleProvider(options: OpenAICompatibleProviderOptions): Provider
-createAnthropicCompatibleProvider(options: AnthropicCompatibleProviderOptions): Provider
+createOpenAIApiProvider(options?: OpenAIApiProviderOptions): Provider
+createAnthropicApiProvider(options?: AnthropicApiProviderOptions): Provider
 ```
 
 The returned value is safe to pass around as an app-level provider. It is not the per-session live
@@ -94,7 +96,7 @@ session-local state:
 - Claude Code keeps a long-lived CLI process, pending tool state, sent user count, and model/thinking
   signature.
 - Codex may choose an SSE/WebSocket transport and hold transport-level retry/timeout state.
-- Compatible HTTP providers may hold endpoint profile settings but should create stateless runtimes
+- HTTP API providers may hold endpoint profile settings but should create stateless runtimes
   per session or provider switch.
 
 Sharing one live `AgentProvider` instance across sessions is explicitly invalid.
@@ -120,7 +122,9 @@ Product entry points should read like composition, not registration:
 const providers = [
   createClaudeCodeProvider({ claudePath: options.claudePath }),
   createCodexProvider({ codexHome: options.codexHome }),
-  ...configuredCompatibleProviders(options),
+  createOpenAIApiProvider(),
+  createAnthropicApiProvider(),
+  ...configuredApiProviders(options),
 ]
 
 startWebServer({ providers, cwd: options.cwd, ... })
@@ -187,22 +191,34 @@ createCodexProvider({
 Codex keeps its existing auth reuse and Responses transport behavior. The creation function hides
 the old config parser from normal users.
 
-### OpenAI-Compatible
+### OpenAI API
 
 ```ts
-createOpenAICompatibleProvider({
-  id: string
+createOpenAIApiProvider({
+  id?: string
   displayName?: string
-  baseUrl: string
-  apiKey: () => string | Promise<string> | null | undefined
+  baseUrl?: string
+  apiKey?: () => string | Promise<string> | null | undefined
   headers?: () => Record<string, string> | Promise<Record<string, string>>
-  models: CompatibleModel[]
+  models?: ApiProviderModel[]
   defaultModelId?: string
-  request?: OpenAICompatibleRequestOptions
+  request?: OpenAIApiRequestOptions
 })
 ```
 
-This provider targets OpenAI Chat Completions compatibility:
+With no options, this provider targets the official OpenAI API:
+
+- `id: 'openai'`
+- `displayName: 'OpenAI API'`
+- `baseUrl: 'https://api.openai.com/v1'`
+- `apiKey: () => process.env.OPENAI_API_KEY`
+- built-in official OpenAI model catalog metadata
+
+Passing `baseUrl` turns the same provider into an OpenAI-compatible endpoint adapter, such as
+OpenRouter, LiteLLM, vLLM, or an internal gateway. Non-official endpoints should pass explicit
+`models` metadata unless Demi ships a first-class profile for that endpoint.
+
+The wire contract is OpenAI Chat Completions:
 
 - `POST {baseUrl}/chat/completions`
 - streaming SSE chunks
@@ -211,26 +227,39 @@ This provider targets OpenAI Chat Completions compatibility:
 - `choices[].delta.tool_calls[].function.arguments` accumulated into `tool_call_requested`
 - optional `stream_options: { include_usage: true }`
 
-It should not reuse the Codex Responses mapper. Codex and OpenAI-compatible are different wire
+It should not reuse the Codex Responses mapper. Codex and OpenAI API are different wire
 contracts.
 
-### Anthropic-Compatible
+### Anthropic API
 
 ```ts
-createAnthropicCompatibleProvider({
-  id: string
+createAnthropicApiProvider({
+  id?: string
   displayName?: string
-  baseUrl: string
-  apiKey: () => string | Promise<string> | null | undefined
+  baseUrl?: string
+  apiKey?: () => string | Promise<string> | null | undefined
   headers?: () => Record<string, string> | Promise<Record<string, string>>
   anthropicVersion?: string
-  models: CompatibleModel[]
+  models?: ApiProviderModel[]
   defaultModelId?: string
-  request?: AnthropicCompatibleRequestOptions
+  request?: AnthropicApiRequestOptions
 })
 ```
 
-This provider targets Anthropic Messages compatibility:
+With no options, this provider targets the official Anthropic API:
+
+- `id: 'anthropic'`
+- `displayName: 'Anthropic API'`
+- `baseUrl: 'https://api.anthropic.com/v1'`
+- `apiKey: () => process.env.ANTHROPIC_API_KEY`
+- a provider-owned default `anthropic-version`
+- built-in official Anthropic model catalog metadata
+
+Passing `baseUrl` turns the same provider into an Anthropic-compatible endpoint adapter. Non-official
+endpoints should pass explicit `models` metadata unless Demi ships a first-class profile for that
+endpoint.
+
+The wire contract is Anthropic Messages:
 
 - `POST {baseUrl}/messages`
 - event stream mapping for `message_start`, `content_block_start`, `content_block_delta`,
@@ -239,16 +268,17 @@ This provider targets Anthropic Messages compatibility:
 - tool results as user content blocks with `type: 'tool_result'`
 - thinking only when the model profile explicitly supports it
 
-It should not reuse the Claude Code JSONL/CLI mapper. Claude Code and Anthropic-compatible are
+It should not reuse the Claude Code JSONL/CLI mapper. Claude Code and Anthropic API are
 different transport contracts.
 
-### Compatible Model Metadata
+### API Provider Model Metadata
 
-Compatible endpoints often do not expose enough model capability metadata. Demi should require
-capability metadata in config instead of guessing:
+Official OpenAI and Anthropic API providers can ship curated default model metadata. Compatible
+endpoints often do not expose enough capability metadata, so Demi should require capability metadata
+in config instead of guessing:
 
 ```ts
-interface CompatibleModel {
+interface ApiProviderModel {
   id: string
   displayName?: string
   description?: string
@@ -265,15 +295,17 @@ interface CompatibleModel {
 }
 ```
 
-If a compatible endpoint exposes `/models`, it may supplement ids and display names, but it must not
-invent tool, attachment, context, or thinking capabilities.
+If an API-compatible endpoint exposes `/models`, it may supplement ids and display names, but it
+must not invent tool, attachment, context, or thinking capabilities.
 
 ## Secret Boundary
 
 API secrets must be resolved only in the provider creator closure:
 
 ```ts
-createOpenAICompatibleProvider({
+createOpenAIApiProvider()
+createAnthropicApiProvider()
+createOpenAIApiProvider({
   id: 'openrouter',
   baseUrl: 'https://openrouter.ai/api/v1',
   apiKey: () => process.env.OPENROUTER_API_KEY,
@@ -281,8 +313,10 @@ createOpenAICompatibleProvider({
 })
 ```
 
-The browser-visible protocol may carry `providerId`, `modelId`, thinking, and service tier only. It
-must not carry `apiKey`, `headers`, raw `baseUrl` secrets, or arbitrary serializable provider config.
+The default OpenAI and Anthropic providers resolve official API keys from `OPENAI_API_KEY` and
+`ANTHROPIC_API_KEY` respectively. The browser-visible protocol may carry `providerId`, `modelId`,
+thinking, and service tier only. It must not carry `apiKey`, `headers`, raw `baseUrl` secrets, or
+arbitrary serializable provider config.
 
 For Web, this means replacing `prepareSession -> ProviderConfig` with a server-side session
 preparation step that returns a public selection object or opens the server session directly using
@@ -297,8 +331,8 @@ server-held providers.
 4. Move registry/map construction inside `AgentServer` or replace it with a private provider map.
 5. Change `AgentClient.open` / Web control flow to avoid browser-visible provider config.
 6. Update Web and REPL composition roots to pass `providers: [...]`.
-7. Add `@demi/provider-openai-compatible`.
-8. Add `@demi/provider-anthropic-compatible`.
+7. Add `@demi/provider-openai-api`.
+8. Add `@demi/provider-anthropic-api`.
 9. Remove public registry/definition usage from product packages once all call sites migrate.
 
 No compatibility shim should remain in the final state. Deprecated exports are only a short-lived
@@ -332,11 +366,11 @@ Update `packages/web/src/server/__tests__/transport.e2e.test.ts`:
 - `listProviders` exposes only provider ids, labels, and availability
 - `listModels` exposes only model metadata
 - `prepare/open` frames never include `apiKey`, custom secret headers, or raw provider options
-- compatible provider secrets are read server-side via the provider closure
+- API provider secrets are read server-side via the provider closure
 
-### OpenAI-Compatible Provider
+### OpenAI API Provider
 
-Add `packages/provider-openai-compatible/src/__tests__/`:
+Add `packages/provider-openai-api/src/__tests__/`:
 
 - request body maps text, image support gates, tool definitions, prior tool use/result, and service tier
 - streaming parser maps text deltas, split tool call arguments, usage, provider errors, and abort
@@ -344,9 +378,9 @@ Add `packages/provider-openai-compatible/src/__tests__/`:
 - AgentSession tool roundtrip includes tool result in the next request
 - provider-stream steer fallback materializes into the next request without native `steer()`
 
-### Anthropic-Compatible Provider
+### Anthropic API Provider
 
-Add `packages/provider-anthropic-compatible/src/__tests__/`:
+Add `packages/provider-anthropic-api/src/__tests__/`:
 
 - request body groups user/tool_result and assistant/tool_use turns in Anthropic order
 - streaming parser maps thinking, text, tool_use, message usage, provider errors, and abort
@@ -358,8 +392,8 @@ Add `packages/provider-anthropic-compatible/src/__tests__/`:
 
 Real-provider tests stay skipped by default and require explicit environment variables:
 
-- `DEMI_OPENAI_COMPAT_E2E=1`
-- `DEMI_ANTHROPIC_COMPAT_E2E=1`
+- `DEMI_OPENAI_API_E2E=1`
+- `DEMI_ANTHROPIC_API_E2E=1`
 
 Each real acceptance should cover:
 
@@ -373,8 +407,10 @@ The implementation checkpoint must update `docs/package-boundaries.md` to reflec
 
 - `@demi/provider` owns public `Provider` / `ProviderSelection` contracts and internal provider
   lookup helpers, not a user-facing registry assembly API.
-- `@demi/provider-openai-compatible` owns OpenAI Chat Completions-compatible HTTP mapping.
-- `@demi/provider-anthropic-compatible` owns Anthropic Messages-compatible HTTP mapping.
+- `@demi/provider-openai-api` owns OpenAI Chat Completions API mapping, including official
+  OpenAI defaults and configurable compatible endpoints.
+- `@demi/provider-anthropic-api` owns Anthropic Messages API mapping, including official Anthropic
+  defaults and configurable compatible endpoints.
 - `@demi/web`, `@demi/repl`, and future product packages assemble providers by passing
   `providers: [...]` at creation time.
 
