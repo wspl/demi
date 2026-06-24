@@ -77,12 +77,28 @@ test('Anthropic API model catalog mirrors Claude Code defaults and explicit mode
   })
 
   const custom = await createAnthropicApiProvider({
-    models: [{ id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' }],
+    models: [
+      {
+        id: 'deepseek-v4-pro',
+        displayName: 'DeepSeek V4 Pro',
+        supportsReasoning: true,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultThinkingEffort: 'medium',
+        canDisableThinking: false,
+      },
+    ],
     defaultModelId: 'deepseek-v4-pro',
   }).listModels?.()
 
   expect(custom?.defaultModelId).toBe('deepseek-v4-pro')
   expect(custom?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
+  expect(custom?.models[0]).toMatchObject({
+    displayName: 'DeepSeek V4 Pro',
+    supportsReasoning: true,
+    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultThinkingEffort: 'medium',
+    canDisableThinking: false,
+  })
 })
 
 test('Anthropic API request body groups user/tool_result and assistant/tool_use turns', () => {

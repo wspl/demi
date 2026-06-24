@@ -336,6 +336,12 @@ interface ApiProviderModel {
 If an API-compatible endpoint exposes `/models`, it may supplement ids and display names, but it
 must not invent tool, attachment, context, or thinking capabilities.
 
+Web startup explicit model options follow the same rule at the composition boundary: when `--model`
+targets a compatible endpoint, the Web composition root turns optional `--model-display-name`,
+`--model-thinking-efforts`, `--model-can-disable-thinking`, and `--thinking` into the selected API
+provider creator's `models` and `defaultModelId` options. The browser then consumes normal provider
+catalog metadata; it does not receive raw endpoint, key, headers, or provider constructor options.
+
 ### Endpoint Environment Variables
 
 OpenAI API and Anthropic API providers should support endpoint configuration through env vars as a

@@ -47,11 +47,6 @@ export class ControlServer {
 
   private async listModels(params: { providerId: string }): Promise<ModelInfo[]> {
     const provider = this.providerFor(params.providerId)
-    const explicitModel = this.explicitModelFor(params.providerId)
-    if (explicitModel) {
-      const model = await this.findProviderCatalogModel(provider, explicitModel.id)
-      return [model ? withModelInfoDisplayName(toModelInfo(model), explicitModel.displayName) : explicitModelInfo(explicitModel)]
-    }
     if (!provider.listModels) throw new Error(`Provider "${params.providerId}" does not expose a model catalog`)
     const catalog = await provider.listModels()
     return catalog.models.map(toModelInfo)
@@ -59,10 +54,13 @@ export class ControlServer {
 
   private async prepareSession(params: PrepareSessionParams): Promise<ProviderSelection> {
     const catalogModel = await this.findCatalogModel(params.providerId, params.modelId)
+    const thinkingEffort = hasOwn(params, 'thinkingEffort')
+      ? params.thinkingEffort ?? null
+      : defaultThinkingEffort(catalogModel)
     const model = buildModelSelection(
       params.providerId,
       params.modelId,
-      params.thinkingEffort ?? null,
+      thinkingEffort,
       params.serviceTierId ?? null,
       catalogModel,
     )
@@ -72,16 +70,9 @@ export class ControlServer {
   private async findCatalogModel(providerId: string, modelId: string) {
     try {
       const provider = this.providerFor(providerId)
-      const explicitModel = this.explicitModelFor(providerId)
-      if (explicitModel && modelId !== explicitModel.id) return null
-      const model = await this.findProviderCatalogModel(provider, modelId)
-      if (!explicitModel) return model
-      return model
-        ? withProviderModelDisplayName(model, explicitModel.displayName)
-        : explicitProviderModel(providerId, explicitModel)
+      return await this.findProviderCatalogModel(provider, modelId)
     } catch {
-      const explicitModel = this.explicitModelFor(providerId)
-      return explicitModel?.id === modelId ? explicitProviderModel(providerId, explicitModel) : null
+      return null
     }
   }
 
@@ -89,11 +80,6 @@ export class ControlServer {
     const provider = this.providers.get(providerId)
     if (!provider) throw new Error(`Provider "${providerId}" is not available`)
     return provider
-  }
-
-  private explicitModelFor(providerId: string): ExplicitModelOverride | null {
-    if (this.options.provider !== providerId || !this.options.modelId) return null
-    return { id: this.options.modelId, displayName: this.options.modelDisplayName }
   }
 
   private async findProviderCatalogModel(provider: Provider, modelId: string): Promise<ProviderModel | null> {
@@ -111,43 +97,10 @@ export class ControlServer {
   }
 }
 
-interface ExplicitModelOverride {
-  id: string
-  displayName: string | null
+function defaultThinkingEffort(model: ProviderModel | null): string | null {
+  return model?.defaultThinkingEffort ?? (model?.canDisableThinking === false ? model.supportedThinkingEfforts?.[0] ?? null : null)
 }
 
-function explicitModelInfo(model: ExplicitModelOverride): ModelInfo {
-  return {
-    id: model.id,
-    name: model.displayName ?? model.id,
-    contextWindow: null,
-    inputLimit: null,
-    acceptedExtensions: [],
-    reasoning: null,
-  }
-}
-
-function explicitProviderModel(providerId: string, model: ExplicitModelOverride): ProviderModel {
-  return {
-    providerId,
-    id: model.id,
-    displayName: model.displayName ?? model.id,
-    contextWindow: null,
-    outputLimit: null,
-    supportsTools: null,
-    supportsAttachments: null,
-    supportsReasoning: null,
-    supportedThinkingEfforts: null,
-    defaultThinkingEffort: null,
-    sourceFetchedAt: '1970-01-01T00:00:00.000Z',
-    stale: false,
-  }
-}
-
-function withModelInfoDisplayName(model: ModelInfo, displayName: string | null): ModelInfo {
-  return displayName ? { ...model, name: displayName } : model
-}
-
-function withProviderModelDisplayName(model: ProviderModel, displayName: string | null): ProviderModel {
-  return displayName ? { ...model, displayName } : model
+function hasOwn<T extends object, K extends PropertyKey>(object: T, key: K): object is T & Record<K, unknown> {
+  return Object.prototype.hasOwnProperty.call(object, key)
 }

@@ -75,12 +75,28 @@ test('OpenAI API model catalog mirrors Codex-visible defaults and explicit model
   })
 
   const custom = await createOpenAIApiProvider({
-    models: [{ id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' }],
+    models: [
+      {
+        id: 'deepseek-v4-pro',
+        displayName: 'DeepSeek V4 Pro',
+        supportsReasoning: true,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultThinkingEffort: 'medium',
+        canDisableThinking: false,
+      },
+    ],
     defaultModelId: 'deepseek-v4-pro',
   }).listModels?.()
 
   expect(custom?.defaultModelId).toBe('deepseek-v4-pro')
   expect(custom?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
+  expect(custom?.models[0]).toMatchObject({
+    displayName: 'DeepSeek V4 Pro',
+    supportsReasoning: true,
+    supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultThinkingEffort: 'medium',
+    canDisableThinking: false,
+  })
 })
 
 test('OpenAI Responses request body maps text, tools, tool replay, service tier, and reasoning', () => {

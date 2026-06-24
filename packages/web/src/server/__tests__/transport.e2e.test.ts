@@ -7,6 +7,7 @@ import { StubProvider, events } from '@demi/provider/testing'
 import { agentSocketUrl, connectAgentClient } from '@demi/web-ui/transport/agent-socket'
 import { connectControlClient } from '@demi/web-ui/transport/control-client'
 import { parseServerOptions } from '../server-options'
+import { createWebProviders } from '../providers'
 import { startWebServer } from '../serve'
 import { createStubProvider } from '../stub-provider'
 
@@ -76,22 +77,25 @@ test('web control protocol does not expose secret-bearing provider options', asy
 
 test('web control protocol replaces selected provider catalog with explicit startup model', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-explicit-model-'))
-  const provider = createCatalogProvider('openai', 'catalog-model')
-  const handle = startWebServer(
-    [provider],
-    parseServerOptions([
-      '--port',
-      '0',
-      '--cwd',
-      cwd,
-      '--provider',
-      'openai',
-      '--model',
-      'deepseek-v4-pro',
-      '--model-display-name',
-      'DeepSeek V4 Pro',
-    ]),
-  )
+  const options = parseServerOptions([
+    '--port',
+    '0',
+    '--cwd',
+    cwd,
+    '--provider',
+    'openai',
+    '--model',
+    'deepseek-v4-pro',
+    '--model-display-name',
+    'DeepSeek V4 Pro',
+    '--model-thinking-efforts',
+    'low,medium,high,xhigh,max',
+    '--model-can-disable-thinking',
+    'false',
+    '--thinking',
+    'medium',
+  ])
+  const handle = startWebServer(createWebProviders(options), options)
 
   try {
     const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
@@ -99,13 +103,43 @@ test('web control protocol replaces selected provider catalog with explicit star
     const models = await control.listModels({ providerId: 'openai' })
     expect(models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
     expect(models.map((model) => model.name)).toEqual(['DeepSeek V4 Pro'])
+    expect(models[0]?.reasoning).toEqual({
+      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      defaultEffort: 'medium',
+      canDisable: false,
+    })
 
     const providerSelection = await control.prepareSession({ providerId: 'openai', modelId: 'deepseek-v4-pro' })
     expect(providerSelection.model.model.id).toBe('deepseek-v4-pro')
     expect(providerSelection.model.model.name).toBe('DeepSeek V4 Pro')
+    expect(providerSelection.model.thinking).toEqual({ type: 'effort', effort: 'medium', summary: null })
+    expect(providerSelection.model.model.thinking).toEqual([
+      {
+        type: 'effort',
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultEffort: 'medium',
+        summaries: ['auto', 'concise', 'detailed', 'off', 'on'],
+        defaultSummary: null,
+      },
+    ])
   } finally {
     await handle.stop()
   }
+})
+
+test('web startup rejects explicit thinking default outside explicit model efforts', () => {
+  expect(() =>
+    parseServerOptions([
+      '--provider',
+      'openai',
+      '--model',
+      'deepseek-v4-pro',
+      '--model-thinking-efforts',
+      'low,medium,high',
+      '--thinking',
+      'max',
+    ]),
+  ).toThrow('--thinking must be one of --model-thinking-efforts')
 })
 
 test('web backend rejects ordinary HTTP so UI must come from Vite dev server', async () => {
@@ -161,37 +195,5 @@ function createSecretBackedProvider(): Provider {
       void secret
       return new StubProvider([[events.text('secret ok'), events.response()]])
     },
-  })
-}
-
-function createCatalogProvider(providerId: string, modelId: string): Provider {
-  return defineProvider({
-    id: providerId,
-    displayName: providerId,
-    state: () => ({ status: 'ready' }),
-    listModels: () => ({
-      providerId,
-      defaultModelId: modelId,
-      warnings: [],
-      sourceFetchedAt: '1970-01-01T00:00:00.000Z',
-      stale: false,
-      models: [
-        {
-          providerId,
-          id: modelId,
-          displayName: modelId,
-          contextWindow: 1000,
-          outputLimit: 1000,
-          supportsTools: true,
-          supportsAttachments: false,
-          supportsReasoning: false,
-          supportedThinkingEfforts: null,
-          defaultThinkingEffort: null,
-          sourceFetchedAt: '1970-01-01T00:00:00.000Z',
-          stale: false,
-        },
-      ],
-    }),
-    createRuntime: () => new StubProvider([[events.text('catalog ok'), events.response()]]),
   })
 }

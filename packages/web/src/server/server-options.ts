@@ -11,6 +11,8 @@ export interface ServerOptions {
   provider: ProviderId
   modelId: string | null
   modelDisplayName: string | null
+  modelThinkingEfforts: string[] | null
+  modelCanDisableThinking: boolean | null
   thinkingEffort: string | null
   serviceTierId: string | null
   openAIWireApi: OpenAIApiWireApi
@@ -29,6 +31,8 @@ export function parseServerOptions(args: string[]): ServerOptions {
     provider: parseProvider(process.env.DEMI_PROVIDER ?? 'claude-code'),
     modelId: null,
     modelDisplayName: process.env.DEMI_MODEL_DISPLAY_NAME ?? null,
+    modelThinkingEfforts: parseOptionalCsv(process.env.DEMI_MODEL_THINKING_EFFORTS),
+    modelCanDisableThinking: parseOptionalBoolean(process.env.DEMI_MODEL_CAN_DISABLE_THINKING, 'DEMI_MODEL_CAN_DISABLE_THINKING'),
     thinkingEffort: null,
     serviceTierId: null,
     openAIWireApi: parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses'),
@@ -45,6 +49,10 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else if (arg === '--provider') options.provider = parseProvider(required(args, ++index, '--provider'))
     else if (arg === '--model') options.modelId = required(args, ++index, '--model')
     else if (arg === '--model-display-name') options.modelDisplayName = required(args, ++index, '--model-display-name')
+    else if (arg === '--model-thinking-efforts') options.modelThinkingEfforts = parseRequiredCsv(required(args, ++index, '--model-thinking-efforts'), '--model-thinking-efforts')
+    else if (arg === '--model-can-disable-thinking') {
+      options.modelCanDisableThinking = parseBoolean(required(args, ++index, '--model-can-disable-thinking'), '--model-can-disable-thinking')
+    }
     else if (arg === '--thinking') options.thinkingEffort = required(args, ++index, '--thinking')
     else if (arg === '--no-thinking') options.thinkingEffort = null
     else if (arg === '--service-tier') options.serviceTierId = required(args, ++index, '--service-tier')
@@ -59,6 +67,11 @@ export function parseServerOptions(args: string[]): ServerOptions {
   }
 
   if (options.modelDisplayName && !options.modelId) throw new Error('--model-display-name requires --model')
+  if (options.modelThinkingEfforts && !options.modelId) throw new Error('--model-thinking-efforts requires --model')
+  if (options.modelCanDisableThinking !== null && !options.modelId) throw new Error('--model-can-disable-thinking requires --model')
+  if (options.thinkingEffort && options.modelThinkingEfforts && !options.modelThinkingEfforts.includes(options.thinkingEffort)) {
+    throw new Error('--thinking must be one of --model-thinking-efforts')
+  }
   options.cwd = resolve(options.cwd)
   return options
 }
@@ -76,6 +89,31 @@ function parseOpenAIWireApi(value: string): OpenAIApiWireApi {
 function parseTransport(value: string): CodexTransportMode {
   if (value === 'auto' || value === 'sse' || value === 'websocket') return value
   throw new Error('--transport must be one of: auto, sse, websocket')
+}
+
+function parseOptionalCsv(value: string | undefined): string[] | null {
+  if (!value || value.trim() === '') return null
+  return parseRequiredCsv(value, 'DEMI_MODEL_THINKING_EFFORTS')
+}
+
+function parseRequiredCsv(value: string, flag: string): string[] {
+  const values = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+  if (values.length === 0) throw new Error(`${flag} requires at least one value`)
+  return values
+}
+
+function parseOptionalBoolean(value: string | undefined, flag: string): boolean | null {
+  if (value === undefined || value.trim() === '') return null
+  return parseBoolean(value, flag)
+}
+
+function parseBoolean(value: string, flag: string): boolean {
+  if (value === 'true' || value === '1' || value === 'yes') return true
+  if (value === 'false' || value === '0' || value === 'no') return false
+  throw new Error(`${flag} must be true or false`)
 }
 
 function required(args: string[], index: number, flag: string): string {
