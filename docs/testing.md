@@ -135,7 +135,9 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
   不会提交，且 steer/queue 按钮由 editor update 后的内容状态驱动。
 - `packages/web/src/server/__tests__/transport.e2e.test.ts`：覆盖 web 后端只暴露 `/control`
   和 `/agent` WebSocket 能力，普通 HTTP 请求必须拒绝并指向 Vite dev server，防止静态
-  `dist` / preview / production bundle 路径重新进入验收流程。
+  `dist` / preview / production bundle 路径重新进入验收流程；同时覆盖启动时显式
+  `--model` 会作为选中 provider 的首选模型进入 control catalog，避免 compatible
+  endpoint 被官方默认 catalog 的第一项误选。
 
 ## 5. 模块测试点
 
@@ -226,7 +228,7 @@ Owner：`packages/provider-openai-api`
 | Chat Completions stream 映射 text/tool/usage | 有效 | 测试 split `choices[].delta.content`、split `tool_calls[].function.arguments`、`finish_reason=tool_calls`、final usage 和 `[DONE]`，断言输出 Demi `text_delta`、`tool_call_requested` 和 `response.usage`。 | `provider.test.ts` | 防止真实 compatible streaming chunk 被吞、tool args 分片丢失、cache read usage 扣减错误或 response 终止事件缺失。 |
 | malformed tool args 可预测降级 | 有效 | 测试 malformed JSON tool args 不抛异常，`input` 以原始 string 进入 `tool_call_requested`。 | `provider.test.ts` | 防止 provider 返回不完整工具参数时 agent stream 崩溃，或静默丢掉 tool call。 |
 | Web secret boundary | 有效 | Web control path 只返回 `ProviderSelection`，provider runtime 通过闭包持有 `baseUrl`/`apiKey`/headers；transport e2e 断言 browser-visible prepare/open frame 不包含 `apiKey`、secret headers、`baseUrl`、`envPrefix` 或 raw provider options。 | `packages/web/src/server/__tests__/transport.e2e.test.ts` | 防止 API key 和 endpoint 配置经 Web UI 往返，或被 AgentClient frame 序列化。 |
-| 真实 OpenAI API e2e | Gated；待接入 | 预留 `DEMI_OPENAI_API_E2E=1`：最小文本、standard shell tool roundtrip、active steer fallback 三类真实验收。默认 deterministic 测试不依赖网络和账号。 | 待新增 `real-openai-api.e2e.test.ts` | 用来发现 fake SSE 无法覆盖的真实账号、模型、API event shape、tool_call 分片和限流/错误分类变化。 |
+| 真实 OpenAI API e2e | Gated；已手动验证 DeepSeek compatible | 预留 `DEMI_OPENAI_API_E2E=1`：最小文本、standard shell tool roundtrip、active steer fallback 三类真实验收。默认 deterministic 测试不依赖网络和账号。2026-06-25 手动用 DeepSeek `deepseek-v4-pro`、`baseUrl=https://api.deepseek.com`、`wireApi="chat-completions"` 验证 provider runtime 最小文本返回 `demi-provider-openai-ok`、工具流返回 `record_value({ value: "openai-tool-ok" })`，并通过 REPL 真实路径返回 `repl-openai-deepseek-ok`。 | 待新增 `real-openai-api.e2e.test.ts` | 用来发现 fake SSE 无法覆盖的真实账号、模型、API event shape、tool_call 分片和限流/错误分类变化。 |
 
 ### 5.3.3 Anthropic API Provider
 
@@ -240,7 +242,7 @@ Owner：`packages/provider-anthropic-api`
 | Messages request conversion | 有效 | 测试断言 user/tool_result 与 assistant/tool_use 按 Anthropic role 分组，system、tools、service tier、max_tokens 和 budget thinking 进入 body。 | `provider.test.ts` | 防止 Anthropic Messages 对 assistant/tool_result 顺序要求被拆乱，引发 tool_use 无匹配结果或模型上下文漂移。 |
 | Event stream 映射 thinking/text/tool/usage | 有效 | 测试覆盖 `message_start` usage、thinking start/delta/signature、text delta、tool_use input_json_delta、content_block_stop 和 `message_stop`，断言输出 Demi `thinking_*`、`text_delta`、`tool_call_requested` 和 `response.usage`。 | `provider.test.ts` | 防止真实 stream thinking 不显示、tool call 不触发、cache read/write usage 丢失或 response 终止事件缺失。 |
 | Web secret boundary | 有效 | Web control path 只返回 `ProviderSelection`，provider runtime 通过闭包持有 `baseUrl`/`apiKey`/headers/version；transport e2e 断言 browser-visible prepare/open frame 不包含 `apiKey`、secret headers、`baseUrl`、`envPrefix` 或 raw provider options。 | `packages/web/src/server/__tests__/transport.e2e.test.ts` | 防止 API key 和 endpoint 配置经 Web UI 往返，或被 AgentClient frame 序列化。 |
-| 真实 Anthropic API e2e | Gated；待接入 | 预留 `DEMI_ANTHROPIC_API_E2E=1`：最小文本、standard shell tool roundtrip、active steer fallback 三类真实验收。默认 deterministic 测试不依赖网络和账号。 | 待新增 `real-anthropic-api.e2e.test.ts` | 用来发现 fake event stream 无法覆盖的真实账号、模型、API event shape、tool_use 分片和限流/错误分类变化。 |
+| 真实 Anthropic API e2e | Gated；已手动验证 DeepSeek compatible | 预留 `DEMI_ANTHROPIC_API_E2E=1`：最小文本、standard shell tool roundtrip、active steer fallback 三类真实验收。默认 deterministic 测试不依赖网络和账号。2026-06-25 手动用 DeepSeek `deepseek-v4-pro`、`baseUrl=https://api.deepseek.com/anthropic` 验证 provider runtime 最小文本返回 `demi-provider-anthropic-ok`、工具流返回 `record_value({ value: "anthropic-tool-ok" })`，并通过 REPL 真实路径返回 `repl-anthropic-deepseek-ok`。真实 DeepSeek Anthropic-compatible 即使未请求 thinking 也会返回 thinking stream，当前 mapper 可正常呈现。 | 待新增 `real-anthropic-api.e2e.test.ts` | 用来发现 fake event stream 无法覆盖的真实账号、模型、API event shape、tool_use 分片和限流/错误分类变化。 |
 
 ### 5.4 Agent Session Runtime
 

@@ -684,9 +684,6 @@ function validateExplicitModelId(provider: ReplOptions['provider'], modelId: str
   if (provider === 'codex' && !modelId.startsWith('gpt-') && !modelId.startsWith('codex-')) {
     throw new Error('--model for codex must be a full Codex model id such as gpt-5.5')
   }
-  if (provider === 'anthropic' && !modelId.startsWith('claude-')) {
-    throw new Error('--model for anthropic must be a full Anthropic model id such as claude-sonnet-4-8')
-  }
 }
 
 function validateThinkingEffortForCatalogModel(thinkingEffort: ThinkingEffort | null, model: ProviderModel): void {

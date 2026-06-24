@@ -49,7 +49,7 @@ export class ControlServer {
     const provider = this.providerFor(params.providerId)
     if (!provider.listModels) throw new Error(`Provider "${params.providerId}" does not expose a model catalog`)
     const catalog = await provider.listModels()
-    return catalog.models.map(toModelInfo)
+    return this.withExplicitDefaultModel(params.providerId, catalog.models.map(toModelInfo))
   }
 
   private async prepareSession(params: PrepareSessionParams): Promise<ProviderSelection> {
@@ -79,6 +79,24 @@ export class ControlServer {
     const provider = this.providers.get(providerId)
     if (!provider) throw new Error(`Provider "${providerId}" is not available`)
     return provider
+  }
+
+  private withExplicitDefaultModel(providerId: string, models: ModelInfo[]): ModelInfo[] {
+    const modelId = this.options.provider === providerId ? this.options.modelId : null
+    if (!modelId) return models
+    const existing = models.find((model) => model.id === modelId)
+    if (existing) return [existing, ...models.filter((model) => model.id !== modelId)]
+    return [
+      {
+        id: modelId,
+        name: modelId,
+        contextWindow: null,
+        inputLimit: null,
+        acceptedExtensions: [],
+        reasoning: null,
+      },
+      ...models,
+    ]
   }
 
   private defaultWorkspace(): WorkspaceInfo {

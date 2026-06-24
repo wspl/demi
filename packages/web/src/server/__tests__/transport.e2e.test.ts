@@ -74,6 +74,27 @@ test('web control protocol does not expose secret-bearing provider options', asy
   }
 })
 
+test('web control protocol prepends explicit startup model for selected provider', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-web-explicit-model-'))
+  const provider = createCatalogProvider('openai', 'catalog-model')
+  const handle = startWebServer(
+    [provider],
+    parseServerOptions(['--port', '0', '--cwd', cwd, '--provider', 'openai', '--model', 'deepseek-v4-pro']),
+  )
+
+  try {
+    const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
+
+    const models = await control.listModels({ providerId: 'openai' })
+    expect(models.map((model) => model.id).slice(0, 2)).toEqual(['deepseek-v4-pro', 'catalog-model'])
+
+    const providerSelection = await control.prepareSession({ providerId: 'openai', modelId: 'deepseek-v4-pro' })
+    expect(providerSelection.model.model.id).toBe('deepseek-v4-pro')
+  } finally {
+    await handle.stop()
+  }
+})
+
 test('web backend rejects ordinary HTTP so UI must come from Vite dev server', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-backend-only-'))
   const handle = startWebServer([createStubProvider()], parseServerOptions(['--port', '0', '--cwd', cwd]))
@@ -127,5 +148,37 @@ function createSecretBackedProvider(): Provider {
       void secret
       return new StubProvider([[events.text('secret ok'), events.response()]])
     },
+  })
+}
+
+function createCatalogProvider(providerId: string, modelId: string): Provider {
+  return defineProvider({
+    id: providerId,
+    displayName: providerId,
+    state: () => ({ status: 'ready' }),
+    listModels: () => ({
+      providerId,
+      defaultModelId: modelId,
+      warnings: [],
+      sourceFetchedAt: '1970-01-01T00:00:00.000Z',
+      stale: false,
+      models: [
+        {
+          providerId,
+          id: modelId,
+          displayName: modelId,
+          contextWindow: 1000,
+          outputLimit: 1000,
+          supportsTools: true,
+          supportsAttachments: false,
+          supportsReasoning: false,
+          supportedThinkingEfforts: null,
+          defaultThinkingEffort: null,
+          sourceFetchedAt: '1970-01-01T00:00:00.000Z',
+          stale: false,
+        },
+      ],
+    }),
+    createRuntime: () => new StubProvider([[events.text('catalog ok'), events.response()]]),
   })
 }

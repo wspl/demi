@@ -454,6 +454,30 @@ test('REPL model resolver rejects aliases and does not call model catalog for ex
   expect(resolved.selection.model.contextWindow).toBe(0)
 })
 
+test('REPL model resolver allows Anthropic-compatible explicit model ids', async () => {
+  let listCalls = 0
+  const provider = catalogProvider('anthropic', () => {
+    listCalls += 1
+    throw new Error('catalog should not be called for explicit model ids')
+  })
+
+  const resolved = await resolveReplModel(provider, {
+    provider: 'anthropic',
+    cwd: '/tmp',
+    modelId: 'deepseek-v4-pro',
+    thinkingEffort: null,
+    serviceTierId: null,
+    openAIWireApi: 'responses',
+    transport: 'auto',
+    yieldAfterMs: 10,
+    timeoutMs: 100,
+  })
+
+  expect(listCalls).toBe(0)
+  expect(resolved.selection.model.id).toBe('deepseek-v4-pro')
+  expect(resolved.selection.model.name).toBe('Anthropic API deepseek-v4-pro')
+})
+
 test('REPL commands dispatch to the agent client and validate input usage', async () => {
   const output = new CaptureOutput()
   const client = new FakeCommandClient()
