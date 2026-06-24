@@ -503,6 +503,7 @@ export async function* mapOpenAIChatCompletionStream(
   signal?: AbortSignal,
 ): AsyncIterable<ProviderEvent> {
   const toolCalls = new Map<number, MutableOpenAIToolCall>()
+  let thinkingStarted = false
   let usage = zeroUsage()
 
   for await (const event of events) {
@@ -533,6 +534,14 @@ export async function* mapOpenAIChatCompletionStream(
         if (!isRecord(choice)) continue
         const delta = isRecord(choice.delta) ? choice.delta : null
         if (delta) {
+          const reasoning = stringOr(delta.reasoning_content)
+          if (reasoning) {
+            if (!thinkingStarted) {
+              thinkingStarted = true
+              yield { type: 'thinking_start' }
+            }
+            yield { type: 'thinking_delta', text: reasoning }
+          }
           const content = stringOr(delta.content)
           if (content) yield { type: 'text_delta', text: content }
           if (Array.isArray(delta.tool_calls)) collectOpenAIToolCalls(delta.tool_calls, toolCalls)

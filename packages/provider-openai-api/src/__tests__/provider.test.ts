@@ -247,6 +247,24 @@ test('OpenAI Chat Completions stream maps split text, tool call arguments, and u
   ])
 })
 
+test('OpenAI Chat Completions stream maps compatible reasoning content', async () => {
+  const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
+    { choices: [{ delta: { role: 'assistant', content: null, reasoning_content: '' } }] },
+    { choices: [{ delta: { content: null, reasoning_content: 'think ' } }] },
+    { choices: [{ delta: { content: null, reasoning_content: 'more' } }] },
+    { choices: [{ delta: { content: 'answer' } }] },
+    '[DONE]',
+  ])))
+
+  expect(events).toEqual([
+    { type: 'thinking_start' },
+    { type: 'thinking_delta', text: 'think ' },
+    { type: 'thinking_delta', text: 'more' },
+    { type: 'text_delta', text: 'answer' },
+    { type: 'response', usage: zeroUsage() },
+  ])
+})
+
 test('OpenAI Chat Completions stream preserves malformed tool arguments as a string', async () => {
   const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
     { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', function: { name: 'bad', arguments: '{' } }] } }] },

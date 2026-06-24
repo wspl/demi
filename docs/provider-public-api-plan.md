@@ -469,6 +469,8 @@ Add `packages/provider-openai-api/src/__tests__/`:
 - custom `envPrefix` resolves `${envPrefix}_BASE_URL` and `${envPrefix}_API_KEY`
 - request body maps text, image support gates, tool definitions, prior tool use/result, and service tier
 - streaming parser maps text deltas, split tool call arguments, usage, provider errors, and abort
+- Chat Completions compatible streaming parser maps provider-specific `choices[].delta.reasoning_content`
+  to Demi thinking events when present, without fabricating a Responses reasoning signature
 - malformed JSON tool arguments degrade predictably
 - AgentSession tool roundtrip includes tool result in the next request
 - provider-stream steer fallback materializes into the next request without native `steer()`
