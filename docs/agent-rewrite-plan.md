@@ -15,6 +15,7 @@
 - Rust `agent-session`：session runtime、transcript、生命周期、compaction、queue、retry/resume、mutation guard。
 - Codex active turn steer：queue 与 steer 是 busy session 的两种不同输入策略，不能互相伪装或自动降级。Codex core 的 steer 是 session-level same-turn pending input：接受后进入当前 turn，并在当前 provider stream / tool boundary 后的同一 turn continuation 中送达；不是 Responses WebSocket 专属控制事件。
 - Agent evaluation：性能评估必须模拟真实监督验收循环。Evaluator 同时负责裁判和监督，基于 oracle evidence 判断是否完成；未完成时给 Worker 发送结构化 intervention，并把 intervention 类型、通道和 assistance score 计入评分。
+- Provider public API：provider 由用户在 agent / app 创建时显式传入 `providers: [createClaudeCodeProvider(...), createCodexProvider(...)]`；`ProviderDefinition`、`ProviderRegistry` 和 secret-bearing config roundtrip 不应成为用户面对的装配概念。详细设计见 `docs/provider-public-api-plan.md`。
 - Rust `coding-agent`：todo、ref expansion、shell。
 - `vercel-labs/just-bash`：Bash Engine 实现基线（维护完整 fork，见 §7）。
 
@@ -90,6 +91,7 @@ Host
 19. **长进程优先走受控前台**：需要观测和停止的长进程（如 dev server、watch、preview）应作为 foreground command 运行，由 `yieldAfterMs` / `shell_wait` 观测、由 `shell_abort` 停止；不要用 `cmd &` 后再 `pkill` / `killall` 按进程名清理。后台 job 只用于明确需要在 shell session 生命周期内持续保留、且后续通过 jobs/wait 或 session dispose 管理的进程。
 20. **Bash Environment 不是 Harness 注入项**：Agent Harness 只能定义 `Host`、注册命令、prompt、引用解析和生命周期；不得让用户传入自定义 `BashEnvironment` 或替换 shell tool control surface。Demi 的差异化是统一、可审计、可长程运行的 shell session 机制，所有 agent 都走同一套 wait/input/abort、audit、tool result 和 compaction 语义。
 21. **模型目录属于 provider 能力**：REPL / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
+22. **Provider 装配属于用户创建边界**：用户创建 agent / app runtime 时传入 public provider 对象数组，例如 `providers: [createClaudeCodeProvider(...), createCodexProvider(...)]`。`ProviderDefinition`、`ProviderRegistry`、可序列化 provider config 解析器和 live provider runtime factory 都是内部机制；API key 和 secret-bearing provider options 只能留在创建 provider 的用户侧闭包里，不能经浏览器或 AgentClient frame 往返。详细设计见 `docs/provider-public-api-plan.md`。
 
 ### 3.2 Shell 控制面为什么要显式 wait/input
 

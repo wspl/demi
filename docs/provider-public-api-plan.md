@@ -1,0 +1,381 @@
+# Provider Public API Plan
+
+| | |
+|---|---|
+| Date | 2026-06-25 |
+| Status | Design |
+| Scope | Provider construction API, AgentServer composition, Web/REPL provider selection, compatible HTTP providers |
+
+## Goal
+
+Demi's public provider API should match the way users think about agent assembly:
+
+```ts
+const agent = createCodingAgent({
+  host,
+  providers: [
+    createClaudeCodeProvider({ claudePath: '/opt/homebrew/bin/claude' }),
+    createCodexProvider({ codexHome: '~/.codex' }),
+    createOpenAICompatibleProvider({
+      id: 'openrouter',
+      displayName: 'OpenRouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      apiKey: () => process.env.OPENROUTER_API_KEY,
+      models: [{ id: 'openai/gpt-5.1', displayName: 'GPT 5.1' }],
+    }),
+  ],
+})
+```
+
+The user-facing concept is **Provider**. Users should not need to understand or instantiate
+`ProviderDefinition`, `ProviderRegistry`, or serializable provider `config` objects. Those are
+implementation details of transport and session management.
+
+## Current Shape
+
+Today the public assembly path is registry-first:
+
+```ts
+const registry = new ProviderRegistry()
+registry.register(createClaudeCodeProviderDefinition())
+registry.register(createCodexProviderDefinition())
+
+const server = new AgentServer({
+  agent: harness,
+  providerRegistry: registry,
+})
+```
+
+The Web control path also materializes a serializable `ProviderConfig` and sends it to the
+browser. The browser later sends it back on `AgentClient.open`. That is acceptable for the current
+Claude Code and Codex configs, but it is the wrong boundary for API-key based providers: secrets
+must stay on the user/server side.
+
+## Final Public API
+
+### Provider
+
+`@demi/provider` should expose one public provider object type:
+
+```ts
+export interface Provider {
+  id: string
+  displayName: string
+  state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
+  listModels?(): Promise<ProviderModelList> | ProviderModelList
+}
+```
+
+Concrete packages expose creation functions:
+
+```ts
+createClaudeCodeProvider(options?: ClaudeCodeProviderOptions): Provider
+createCodexProvider(options?: CodexProviderOptions): Provider
+createOpenAICompatibleProvider(options: OpenAICompatibleProviderOptions): Provider
+createAnthropicCompatibleProvider(options: AnthropicCompatibleProviderOptions): Provider
+```
+
+The returned value is safe to pass around as an app-level provider. It is not the per-session live
+runtime. For example, `createClaudeCodeProvider()` must not immediately start a Claude process.
+
+### Internal Runtime
+
+Each public `Provider` owns an internal runtime factory:
+
+```ts
+interface ProviderRuntimeFactory {
+  createRuntime(selection: ProviderSelection): Promise<AgentProvider> | AgentProvider
+}
+```
+
+This factory is not part of the user-facing API. It exists because live provider runtimes may hold
+session-local state:
+
+- Claude Code keeps a long-lived CLI process, pending tool state, sent user count, and model/thinking
+  signature.
+- Codex may choose an SSE/WebSocket transport and hold transport-level retry/timeout state.
+- Compatible HTTP providers may hold endpoint profile settings but should create stateless runtimes
+  per session or provider switch.
+
+Sharing one live `AgentProvider` instance across sessions is explicitly invalid.
+
+### Agent Assembly
+
+`AgentServer` should accept providers directly:
+
+```ts
+export interface AgentServerOptions {
+  agent: AgentHarness<unknown>
+  providers: Provider[]
+  shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+}
+```
+
+The server can build an internal provider map, but callers should not construct or mutate a
+registry.
+
+Product entry points should read like composition, not registration:
+
+```ts
+const providers = [
+  createClaudeCodeProvider({ claudePath: options.claudePath }),
+  createCodexProvider({ codexHome: options.codexHome }),
+  ...configuredCompatibleProviders(options),
+]
+
+startWebServer({ providers, cwd: options.cwd, ... })
+```
+
+### Provider Selection
+
+The protocol between UI and server should carry only provider identity and model selection:
+
+```ts
+interface ProviderSelection {
+  providerId: string
+  modelId: string
+  thinking: ThinkingConfig | null
+  serviceTierId?: string | null
+}
+```
+
+The UI should never receive raw provider options. In particular, API keys and secret-bearing config
+must not round-trip through browser-visible frames.
+
+The server resolves `providerId` against its in-memory provider map and asks that provider to create
+a runtime for the selected model.
+
+## Concrete Provider Options
+
+### Claude Code
+
+```ts
+createClaudeCodeProvider({
+  id?: string
+  displayName?: string
+  claudePath?: string
+  models?: ModelPolicy
+})
+```
+
+`models` is a catalog policy over the provider's native model catalog:
+
+```ts
+type ModelPolicy = {
+  include?: string[]
+  exclude?: string[]
+  default?: string
+}
+```
+
+The provider remains responsible for catalog capability metadata. The policy only filters and
+chooses defaults.
+
+### Codex
+
+```ts
+createCodexProvider({
+  id?: string
+  displayName?: string
+  codexHome?: string
+  baseUrl?: string
+  transport?: 'auto' | 'sse' | 'websocket'
+  models?: ModelPolicy
+})
+```
+
+Codex keeps its existing auth reuse and Responses transport behavior. The creation function hides
+the old config parser from normal users.
+
+### OpenAI-Compatible
+
+```ts
+createOpenAICompatibleProvider({
+  id: string
+  displayName?: string
+  baseUrl: string
+  apiKey: () => string | Promise<string> | null | undefined
+  headers?: () => Record<string, string> | Promise<Record<string, string>>
+  models: CompatibleModel[]
+  defaultModelId?: string
+  request?: OpenAICompatibleRequestOptions
+})
+```
+
+This provider targets OpenAI Chat Completions compatibility:
+
+- `POST {baseUrl}/chat/completions`
+- streaming SSE chunks
+- `tools: [{ type: 'function', function: ... }]`
+- `choices[].delta.content` -> `text_delta`
+- `choices[].delta.tool_calls[].function.arguments` accumulated into `tool_call_requested`
+- optional `stream_options: { include_usage: true }`
+
+It should not reuse the Codex Responses mapper. Codex and OpenAI-compatible are different wire
+contracts.
+
+### Anthropic-Compatible
+
+```ts
+createAnthropicCompatibleProvider({
+  id: string
+  displayName?: string
+  baseUrl: string
+  apiKey: () => string | Promise<string> | null | undefined
+  headers?: () => Record<string, string> | Promise<Record<string, string>>
+  anthropicVersion?: string
+  models: CompatibleModel[]
+  defaultModelId?: string
+  request?: AnthropicCompatibleRequestOptions
+})
+```
+
+This provider targets Anthropic Messages compatibility:
+
+- `POST {baseUrl}/messages`
+- event stream mapping for `message_start`, `content_block_start`, `content_block_delta`,
+  `content_block_stop`, `message_delta`, and `message_stop`
+- tool definitions in Anthropic `tools`
+- tool results as user content blocks with `type: 'tool_result'`
+- thinking only when the model profile explicitly supports it
+
+It should not reuse the Claude Code JSONL/CLI mapper. Claude Code and Anthropic-compatible are
+different transport contracts.
+
+### Compatible Model Metadata
+
+Compatible endpoints often do not expose enough model capability metadata. Demi should require
+capability metadata in config instead of guessing:
+
+```ts
+interface CompatibleModel {
+  id: string
+  displayName?: string
+  description?: string
+  contextWindow?: number | null
+  outputLimit?: number | null
+  supportsTools?: boolean | null
+  supportsAttachments?: boolean | null
+  supportsReasoning?: boolean | null
+  supportedThinkingEfforts?: string[] | null
+  defaultThinkingEffort?: string | null
+  canDisableThinking?: boolean | null
+  serviceTiers?: ProviderServiceTier[] | null
+  defaultServiceTierId?: string | null
+}
+```
+
+If a compatible endpoint exposes `/models`, it may supplement ids and display names, but it must not
+invent tool, attachment, context, or thinking capabilities.
+
+## Secret Boundary
+
+API secrets must be resolved only in the provider creator closure:
+
+```ts
+createOpenAICompatibleProvider({
+  id: 'openrouter',
+  baseUrl: 'https://openrouter.ai/api/v1',
+  apiKey: () => process.env.OPENROUTER_API_KEY,
+  models: [...],
+})
+```
+
+The browser-visible protocol may carry `providerId`, `modelId`, thinking, and service tier only. It
+must not carry `apiKey`, `headers`, raw `baseUrl` secrets, or arbitrary serializable provider config.
+
+For Web, this means replacing `prepareSession -> ProviderConfig` with a server-side session
+preparation step that returns a public selection object or opens the server session directly using
+server-held providers.
+
+## Migration
+
+1. Introduce public `Provider` and `ProviderSelection` types in `@demi/provider`.
+2. Add `createClaudeCodeProvider` and `createCodexProvider` as the new public creation functions.
+   Keep `create*ProviderDefinition` temporarily as deprecated internal compatibility exports.
+3. Change `AgentServerOptions` from `providerRegistry` to `providers`.
+4. Move registry/map construction inside `AgentServer` or replace it with a private provider map.
+5. Change `AgentClient.open` / Web control flow to avoid browser-visible provider config.
+6. Update Web and REPL composition roots to pass `providers: [...]`.
+7. Add `@demi/provider-openai-compatible`.
+8. Add `@demi/provider-anthropic-compatible`.
+9. Remove public registry/definition usage from product packages once all call sites migrate.
+
+No compatibility shim should remain in the final state. Deprecated exports are only a short-lived
+implementation aid inside the migration checkpoint.
+
+## Tests And Acceptance
+
+### Provider Public API
+
+Add or update tests under `packages/provider/src/__tests__/`:
+
+- provider map rejects duplicate `id`
+- provider list preserves display metadata
+- selection resolves by `providerId`
+- public API exports `Provider` / `ProviderSelection`, not a required `ProviderRegistry` creation path
+
+### Agent Server
+
+Update `packages/agent/src/__tests__/server.test.ts` and transport tests:
+
+- `AgentServer` accepts `providers: [...]`
+- opening a session creates a fresh live runtime from the selected provider
+- two sessions using the same public provider do not share runtime state
+- switching model within the same provider keeps runtime reuse semantics where the provider supports it
+- switching provider disposes the previous runtime and creates the next one
+
+### Web Secret Safety
+
+Update `packages/web/src/server/__tests__/transport.e2e.test.ts`:
+
+- `listProviders` exposes only provider ids, labels, and availability
+- `listModels` exposes only model metadata
+- `prepare/open` frames never include `apiKey`, custom secret headers, or raw provider options
+- compatible provider secrets are read server-side via the provider closure
+
+### OpenAI-Compatible Provider
+
+Add `packages/provider-openai-compatible/src/__tests__/`:
+
+- request body maps text, image support gates, tool definitions, prior tool use/result, and service tier
+- streaming parser maps text deltas, split tool call arguments, usage, provider errors, and abort
+- malformed JSON tool arguments degrade predictably
+- AgentSession tool roundtrip includes tool result in the next request
+- provider-stream steer fallback materializes into the next request without native `steer()`
+
+### Anthropic-Compatible Provider
+
+Add `packages/provider-anthropic-compatible/src/__tests__/`:
+
+- request body groups user/tool_result and assistant/tool_use turns in Anthropic order
+- streaming parser maps thinking, text, tool_use, message usage, provider errors, and abort
+- thinking replay skips unsigned thinking unless the profile explicitly allows it
+- AgentSession tool roundtrip preserves `tool_use_id` pairing
+- provider-stream steer fallback materializes into the next request without native `steer()`
+
+### Real Acceptance
+
+Real-provider tests stay skipped by default and require explicit environment variables:
+
+- `DEMI_OPENAI_COMPAT_E2E=1`
+- `DEMI_ANTHROPIC_COMPAT_E2E=1`
+
+Each real acceptance should cover:
+
+- minimal text response
+- tool roundtrip through the standard shell tools
+- one steer during an active turn, accepted by AgentSession fallback and visible in the continuation
+
+## Package Boundary Updates Required During Implementation
+
+The implementation checkpoint must update `docs/package-boundaries.md` to reflect:
+
+- `@demi/provider` owns public `Provider` / `ProviderSelection` contracts and internal provider
+  lookup helpers, not a user-facing registry assembly API.
+- `@demi/provider-openai-compatible` owns OpenAI Chat Completions-compatible HTTP mapping.
+- `@demi/provider-anthropic-compatible` owns Anthropic Messages-compatible HTTP mapping.
+- `@demi/web`, `@demi/repl`, and future product packages assemble providers by passing
+  `providers: [...]` at creation time.
+
+Until the migration is implemented, current package boundary text still describes the existing code.
