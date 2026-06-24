@@ -197,6 +197,7 @@ the old config parser from normal users.
 createOpenAIApiProvider({
   id?: string
   displayName?: string
+  envPrefix?: string
   baseUrl?: string
   apiKey?: () => string | Promise<string> | null | undefined
   headers?: () => Record<string, string> | Promise<Record<string, string>>
@@ -210,13 +211,15 @@ With no options, this provider targets the official OpenAI API:
 
 - `id: 'openai'`
 - `displayName: 'OpenAI API'`
-- `baseUrl: 'https://api.openai.com/v1'`
+- `envPrefix: 'OPENAI'`
+- `baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'`
 - `apiKey: () => process.env.OPENAI_API_KEY`
 - built-in official OpenAI model catalog metadata
 
-Passing `baseUrl` turns the same provider into an OpenAI-compatible endpoint adapter, such as
-OpenRouter, LiteLLM, vLLM, or an internal gateway. Non-official endpoints should pass explicit
-`models` metadata unless Demi ships a first-class profile for that endpoint.
+Passing `baseUrl`, or setting the endpoint env var resolved by `envPrefix`, turns the same provider
+into an OpenAI-compatible endpoint adapter, such as OpenRouter, LiteLLM, vLLM, or an internal
+gateway. Non-official endpoints should pass explicit `models` metadata unless Demi ships a
+first-class profile for that endpoint.
 
 The wire contract is OpenAI Chat Completions:
 
@@ -236,6 +239,7 @@ contracts.
 createAnthropicApiProvider({
   id?: string
   displayName?: string
+  envPrefix?: string
   baseUrl?: string
   apiKey?: () => string | Promise<string> | null | undefined
   headers?: () => Record<string, string> | Promise<Record<string, string>>
@@ -250,14 +254,15 @@ With no options, this provider targets the official Anthropic API:
 
 - `id: 'anthropic'`
 - `displayName: 'Anthropic API'`
-- `baseUrl: 'https://api.anthropic.com/v1'`
+- `envPrefix: 'ANTHROPIC'`
+- `baseUrl: process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com/v1'`
 - `apiKey: () => process.env.ANTHROPIC_API_KEY`
 - a provider-owned default `anthropic-version`
 - built-in official Anthropic model catalog metadata
 
-Passing `baseUrl` turns the same provider into an Anthropic-compatible endpoint adapter. Non-official
-endpoints should pass explicit `models` metadata unless Demi ships a first-class profile for that
-endpoint.
+Passing `baseUrl`, or setting the endpoint env var resolved by `envPrefix`, turns the same provider
+into an Anthropic-compatible endpoint adapter. Non-official endpoints should pass explicit `models`
+metadata unless Demi ships a first-class profile for that endpoint.
 
 The wire contract is Anthropic Messages:
 
@@ -298,9 +303,62 @@ interface ApiProviderModel {
 If an API-compatible endpoint exposes `/models`, it may supplement ids and display names, but it
 must not invent tool, attachment, context, or thinking capabilities.
 
+### Endpoint Environment Variables
+
+OpenAI API and Anthropic API providers should support endpoint configuration through env vars as a
+first-class path. This keeps common setup simple and avoids forcing users to pass `baseUrl` in code.
+
+Resolution order:
+
+1. Explicit constructor option: `baseUrl`.
+2. Environment variable: `${envPrefix}_BASE_URL`.
+3. Official default endpoint.
+
+API key resolution follows the same prefix:
+
+1. Explicit constructor option: `apiKey`.
+2. Environment variable: `${envPrefix}_API_KEY`.
+
+`envPrefix` defaults to `OPENAI` for `createOpenAIApiProvider()` and `ANTHROPIC` for
+`createAnthropicApiProvider()`.
+
+Examples:
+
+```ts
+createOpenAIApiProvider()
+// OPENAI_BASE_URL=https://api.openai.com/v1
+// OPENAI_API_KEY=...
+
+createAnthropicApiProvider()
+// ANTHROPIC_BASE_URL=https://api.anthropic.com/v1
+// ANTHROPIC_API_KEY=...
+
+createOpenAIApiProvider({
+  id: 'openrouter',
+  displayName: 'OpenRouter',
+  envPrefix: 'OPENROUTER',
+  models: [...],
+})
+// OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+// OPENROUTER_API_KEY=...
+
+createAnthropicApiProvider({
+  id: 'anthropic-gateway',
+  displayName: 'Internal Anthropic Gateway',
+  envPrefix: 'ANTHROPIC_GATEWAY',
+  models: [...],
+})
+// ANTHROPIC_GATEWAY_BASE_URL=https://gateway.example.internal/anthropic/v1
+// ANTHROPIC_GATEWAY_API_KEY=...
+```
+
+Explicit options win over env vars. Env vars win over official defaults. The provider should trim
+trailing slashes before appending endpoint paths, but it should not silently rewrite arbitrary
+middle path segments because gateways often mount providers under custom prefixes.
+
 ## Secret Boundary
 
-API secrets must be resolved only in the provider creator closure:
+API secrets and endpoint options must be resolved only in the provider creator closure:
 
 ```ts
 createOpenAIApiProvider()
@@ -314,9 +372,10 @@ createOpenAIApiProvider({
 ```
 
 The default OpenAI and Anthropic providers resolve official API keys from `OPENAI_API_KEY` and
-`ANTHROPIC_API_KEY` respectively. The browser-visible protocol may carry `providerId`, `modelId`,
-thinking, and service tier only. It must not carry `apiKey`, `headers`, raw `baseUrl` secrets, or
-arbitrary serializable provider config.
+`ANTHROPIC_API_KEY` respectively, and endpoints from `OPENAI_BASE_URL` and `ANTHROPIC_BASE_URL`.
+The browser-visible protocol may carry `providerId`, `modelId`, thinking, and service tier only. It
+must not carry `apiKey`, `headers`, raw `baseUrl` values, `envPrefix`, or arbitrary serializable
+provider config.
 
 For Web, this means replacing `prepareSession -> ProviderConfig` with a server-side session
 preparation step that returns a public selection object or opens the server session directly using
@@ -365,13 +424,20 @@ Update `packages/web/src/server/__tests__/transport.e2e.test.ts`:
 
 - `listProviders` exposes only provider ids, labels, and availability
 - `listModels` exposes only model metadata
-- `prepare/open` frames never include `apiKey`, custom secret headers, or raw provider options
+- `prepare/open` frames never include `apiKey`, custom secret headers, `baseUrl`, `envPrefix`, or raw
+  provider options
 - API provider secrets are read server-side via the provider closure
+- API provider endpoints are read server-side from explicit options or env vars and do not leak to
+  the browser-visible protocol
 
 ### OpenAI API Provider
 
 Add `packages/provider-openai-api/src/__tests__/`:
 
+- default provider uses `OPENAI_BASE_URL` when present and otherwise `https://api.openai.com/v1`
+- default provider reads `OPENAI_API_KEY`
+- explicit `baseUrl` and `apiKey` options take precedence over env vars
+- custom `envPrefix` resolves `${envPrefix}_BASE_URL` and `${envPrefix}_API_KEY`
 - request body maps text, image support gates, tool definitions, prior tool use/result, and service tier
 - streaming parser maps text deltas, split tool call arguments, usage, provider errors, and abort
 - malformed JSON tool arguments degrade predictably
@@ -382,6 +448,10 @@ Add `packages/provider-openai-api/src/__tests__/`:
 
 Add `packages/provider-anthropic-api/src/__tests__/`:
 
+- default provider uses `ANTHROPIC_BASE_URL` when present and otherwise `https://api.anthropic.com/v1`
+- default provider reads `ANTHROPIC_API_KEY`
+- explicit `baseUrl` and `apiKey` options take precedence over env vars
+- custom `envPrefix` resolves `${envPrefix}_BASE_URL` and `${envPrefix}_API_KEY`
 - request body groups user/tool_result and assistant/tool_use turns in Anthropic order
 - streaming parser maps thinking, text, tool_use, message usage, provider errors, and abort
 - thinking replay skips unsigned thinking unless the profile explicitly allows it
