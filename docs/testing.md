@@ -136,13 +136,14 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 - `packages/web/src/server/__tests__/transport.e2e.test.ts`：覆盖 web 后端只暴露 `/control`
   和 `/agent` WebSocket 能力，普通 HTTP 请求必须拒绝并指向 Vite dev server，防止静态
   `dist` / preview / production bundle 路径重新进入验收流程；同时覆盖启动时显式
-  `--model` 会在 Web composition root 转成选中 API provider creator 的 `models`
-  配置并全量替换 control catalog，避免 compatible endpoint 被默认 catalog 的任何模型
-  误选；`--model-display-name` 只改变 UI 展示名，不改变真实 `modelId`；
+  `--model` / `--model-context-window` 会在 Web composition root 转成选中 API
+  provider creator 的 `models` 配置并全量替换 control catalog，避免 compatible endpoint
+  被默认 catalog 的任何模型误选；显式模型缺少 context window 会启动失败；
+  `--model-display-name` 只改变 UI 展示名，不改变真实 `modelId`；
   `--model-thinking-efforts` / `--model-can-disable-thinking` / `--thinking` 经 provider
   catalog 暴露 reasoning selector 元数据并作为未显式选择时的默认
   `ProviderSelection.model.thinking`。OpenAI / Anthropic API provider tests 还覆盖
-  `models` 中声明的 `supportsReasoning`、`supportedThinkingEfforts`、
+  `models` 中声明的 `contextWindow`、`supportsReasoning`、`supportedThinkingEfforts`、
   `defaultThinkingEffort`、`canDisableThinking` 不会在 catalog 映射时丢失。
 
 ## 5. 模块测试点

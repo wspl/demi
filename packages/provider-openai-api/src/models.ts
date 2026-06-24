@@ -4,7 +4,7 @@ export interface OpenAIApiModelOptions {
   id: string
   displayName?: string
   description?: string
-  contextWindow?: number | null
+  contextWindow: number
   outputLimit?: number | null
   supportsTools?: boolean | null
   supportsAttachments?: boolean | null
@@ -90,7 +90,7 @@ export function modelListFromOpenAIApiModels(
     id: model.id,
     displayName: model.displayName ?? model.id,
     description: model.description,
-    contextWindow: model.contextWindow ?? null,
+    contextWindow: positiveInteger(model.contextWindow, `models[${model.id}].contextWindow`),
     outputLimit: model.outputLimit ?? null,
     supportsTools: model.supportsTools ?? null,
     supportsAttachments: model.supportsAttachments ?? null,
@@ -114,4 +114,9 @@ export function modelListFromOpenAIApiModels(
     sourceFetchedAt,
     stale,
   }
+}
+
+function positiveInteger(value: number, field: string): number {
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`${field} must be a positive integer`)
+  return value
 }

@@ -10,6 +10,7 @@ export interface ServerOptions {
   cwd: string
   provider: ProviderId
   modelId: string | null
+  modelContextWindow: number | null
   modelDisplayName: string | null
   modelThinkingEfforts: string[] | null
   modelCanDisableThinking: boolean | null
@@ -30,6 +31,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
     cwd: process.cwd(),
     provider: parseProvider(process.env.DEMI_PROVIDER ?? 'claude-code'),
     modelId: null,
+    modelContextWindow: parseOptionalPositiveInteger(process.env.DEMI_MODEL_CONTEXT_WINDOW, 'DEMI_MODEL_CONTEXT_WINDOW'),
     modelDisplayName: process.env.DEMI_MODEL_DISPLAY_NAME ?? null,
     modelThinkingEfforts: parseOptionalCsv(process.env.DEMI_MODEL_THINKING_EFFORTS),
     modelCanDisableThinking: parseOptionalBoolean(process.env.DEMI_MODEL_CAN_DISABLE_THINKING, 'DEMI_MODEL_CAN_DISABLE_THINKING'),
@@ -48,6 +50,9 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else if (arg === '--cwd') options.cwd = required(args, ++index, '--cwd')
     else if (arg === '--provider') options.provider = parseProvider(required(args, ++index, '--provider'))
     else if (arg === '--model') options.modelId = required(args, ++index, '--model')
+    else if (arg === '--model-context-window') {
+      options.modelContextWindow = parsePositiveInteger(required(args, ++index, '--model-context-window'), '--model-context-window')
+    }
     else if (arg === '--model-display-name') options.modelDisplayName = required(args, ++index, '--model-display-name')
     else if (arg === '--model-thinking-efforts') options.modelThinkingEfforts = parseRequiredCsv(required(args, ++index, '--model-thinking-efforts'), '--model-thinking-efforts')
     else if (arg === '--model-can-disable-thinking') {
@@ -66,6 +71,8 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else throw new Error(`Unknown option: ${arg}`)
   }
 
+  if (options.modelId && options.modelContextWindow === null) throw new Error('--model-context-window is required when --model is set')
+  if (options.modelContextWindow !== null && !options.modelId) throw new Error('--model-context-window requires --model')
   if (options.modelDisplayName && !options.modelId) throw new Error('--model-display-name requires --model')
   if (options.modelThinkingEfforts && !options.modelId) throw new Error('--model-thinking-efforts requires --model')
   if (options.modelCanDisableThinking !== null && !options.modelId) throw new Error('--model-can-disable-thinking requires --model')
@@ -108,6 +115,17 @@ function parseRequiredCsv(value: string, flag: string): string[] {
 function parseOptionalBoolean(value: string | undefined, flag: string): boolean | null {
   if (value === undefined || value.trim() === '') return null
   return parseBoolean(value, flag)
+}
+
+function parseOptionalPositiveInteger(value: string | undefined, flag: string): number | null {
+  if (value === undefined || value.trim() === '') return null
+  return parsePositiveInteger(value, flag)
+}
+
+function parsePositiveInteger(value: string, flag: string): number {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number <= 0) throw new Error(`${flag} must be a positive integer`)
+  return number
 }
 
 function parseBoolean(value: string, flag: string): boolean {

@@ -42,6 +42,7 @@ function apiModelOptionsFor(
     {
       id: options.modelId,
       displayName: options.modelDisplayName ?? undefined,
+      contextWindow: options.modelContextWindow!,
       supportsReasoning: supportedThinkingEfforts ? true : undefined,
       supportedThinkingEfforts,
       defaultThinkingEffort: defaultThinkingEffort ?? undefined,

@@ -24,7 +24,7 @@ const agent = createCodingAgent({
       wireApi: 'chat-completions',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: () => process.env.OPENROUTER_API_KEY,
-      models: [{ id: 'openai/gpt-5.4', displayName: 'GPT 5.4' }],
+      models: [{ id: 'openai/gpt-5.4', displayName: 'GPT 5.4', contextWindow: 272_000 }],
     }),
   ],
 })
@@ -248,7 +248,7 @@ createOpenAIApiProvider({
   envPrefix: 'OPENROUTER',
   baseUrl: 'https://openrouter.ai/api/v1',
   apiKey: () => process.env.OPENROUTER_API_KEY,
-  models: [{ id: 'openai/gpt-5.4', displayName: 'GPT 5.4' }],
+  models: [{ id: 'openai/gpt-5.4', displayName: 'GPT 5.4', contextWindow: 272_000 }],
 })
 ```
 
@@ -320,7 +320,7 @@ interface ApiProviderModel {
   id: string
   displayName?: string
   description?: string
-  contextWindow?: number | null
+  contextWindow: number
   outputLimit?: number | null
   supportsTools?: boolean | null
   supportsAttachments?: boolean | null
@@ -335,12 +335,16 @@ interface ApiProviderModel {
 
 If an API-compatible endpoint exposes `/models`, it may supplement ids and display names, but it
 must not invent tool, attachment, context, or thinking capabilities.
+Custom API provider `models` entries must always declare a positive `contextWindow`; context usage,
+compaction thresholds, and model switching decisions depend on this value and must not silently
+fall back to "unknown" for caller-declared compatible models.
 
 Web startup explicit model options follow the same rule at the composition boundary: when `--model`
-targets a compatible endpoint, the Web composition root turns optional `--model-display-name`,
-`--model-thinking-efforts`, `--model-can-disable-thinking`, and `--thinking` into the selected API
-provider creator's `models` and `defaultModelId` options. The browser then consumes normal provider
-catalog metadata; it does not receive raw endpoint, key, headers, or provider constructor options.
+targets a compatible endpoint, the Web composition root requires `--model-context-window` and turns
+optional `--model-display-name`, `--model-thinking-efforts`, `--model-can-disable-thinking`, and
+`--thinking` into the selected API provider creator's `models` and `defaultModelId` options. The
+browser then consumes normal provider catalog metadata; it does not receive raw endpoint, key,
+headers, or provider constructor options.
 
 ### Endpoint Environment Variables
 

@@ -81,6 +81,7 @@ test('Anthropic API model catalog mirrors Claude Code defaults and explicit mode
       {
         id: 'deepseek-v4-pro',
         displayName: 'DeepSeek V4 Pro',
+        contextWindow: 128_000,
         supportsReasoning: true,
         supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         defaultThinkingEffort: 'medium',
@@ -94,6 +95,7 @@ test('Anthropic API model catalog mirrors Claude Code defaults and explicit mode
   expect(custom?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
   expect(custom?.models[0]).toMatchObject({
     displayName: 'DeepSeek V4 Pro',
+    contextWindow: 128_000,
     supportsReasoning: true,
     supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     defaultThinkingEffort: 'medium',

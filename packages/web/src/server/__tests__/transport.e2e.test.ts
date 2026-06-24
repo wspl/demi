@@ -86,6 +86,8 @@ test('web control protocol replaces selected provider catalog with explicit star
     'openai',
     '--model',
     'deepseek-v4-pro',
+    '--model-context-window',
+    '128000',
     '--model-display-name',
     'DeepSeek V4 Pro',
     '--model-thinking-efforts',
@@ -103,6 +105,7 @@ test('web control protocol replaces selected provider catalog with explicit star
     const models = await control.listModels({ providerId: 'openai' })
     expect(models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
     expect(models.map((model) => model.name)).toEqual(['DeepSeek V4 Pro'])
+    expect(models[0]?.contextWindow).toBe(128_000)
     expect(models[0]?.reasoning).toEqual({
       efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
       defaultEffort: 'medium',
@@ -112,6 +115,7 @@ test('web control protocol replaces selected provider catalog with explicit star
     const providerSelection = await control.prepareSession({ providerId: 'openai', modelId: 'deepseek-v4-pro' })
     expect(providerSelection.model.model.id).toBe('deepseek-v4-pro')
     expect(providerSelection.model.model.name).toBe('DeepSeek V4 Pro')
+    expect(providerSelection.model.model.contextWindow).toBe(128_000)
     expect(providerSelection.model.thinking).toEqual({ type: 'effort', effort: 'medium', summary: null })
     expect(providerSelection.model.model.thinking).toEqual([
       {
@@ -127,6 +131,17 @@ test('web control protocol replaces selected provider catalog with explicit star
   }
 })
 
+test('web startup requires context window for explicit startup model', () => {
+  expect(() =>
+    parseServerOptions([
+      '--provider',
+      'openai',
+      '--model',
+      'deepseek-v4-pro',
+    ]),
+  ).toThrow('--model-context-window is required when --model is set')
+})
+
 test('web startup rejects explicit thinking default outside explicit model efforts', () => {
   expect(() =>
     parseServerOptions([
@@ -134,6 +149,8 @@ test('web startup rejects explicit thinking default outside explicit model effor
       'openai',
       '--model',
       'deepseek-v4-pro',
+      '--model-context-window',
+      '128000',
       '--model-thinking-efforts',
       'low,medium,high',
       '--thinking',
