@@ -40,7 +40,7 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_exec',
       description:
-        'Start a shell script. yieldAfterMs observes briefly and never kills. If running, use yield then shell_status.',
+        'Start a shell script. yieldAfterMs observes briefly and never kills. Completed short output is returned directly; running or truncated output returns a command handle.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -65,13 +65,13 @@ export function createStandardAgentTools<State = unknown>(
           signal: ctx.signal,
         })
         ctx.emitProgress(result)
-        return toShellToolResult(result, ctx.toolCallId, previewOptions(ctx, true))
+        return finishShellToolResult(environment, result, ctx)
       },
     },
     {
       name: 'shell_status',
       description:
-        'Read command status by commandId. Does not wait, write stdin, or read output content.',
+        'Read a running command handle status and any new budgeted output preview. Does not wait or write stdin.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -87,13 +87,13 @@ export function createStandardAgentTools<State = unknown>(
       invoke: async (ctx, input) => {
         const result = await environment.status(parseShellStatusInput(input))
         ctx.emitProgress(result)
-        return toShellToolResult(result, ctx.toolCallId, previewOptions(ctx, false))
+        return finishShellToolResult(environment, result, ctx)
       },
     },
     {
       name: 'shell_write',
       description:
-        'Write non-empty stdin to a running foreground command. Include a newline for line-oriented prompts.',
+        'Write non-empty stdin to a running foreground command and return status with new budgeted output preview. Include a newline for line-oriented prompts.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -110,7 +110,7 @@ export function createStandardAgentTools<State = unknown>(
       invoke: async (ctx, input) => {
         const result = await environment.write({ ...parseShellWriteInput(input), signal: ctx.signal })
         ctx.emitProgress(result)
-        return toShellToolResult(result, ctx.toolCallId, previewOptions(ctx, false))
+        return finishShellToolResult(environment, result, ctx)
       },
     },
     {
@@ -132,7 +132,7 @@ export function createStandardAgentTools<State = unknown>(
       invoke: async (ctx, input) => {
         const result = await environment.abort(parseShellAbortInput(input))
         ctx.emitProgress(result)
-        return { ...toShellToolResult(result, ctx.toolCallId, previewOptions(ctx, true)), isError: false }
+        return { ...(await finishShellToolResult(environment, result, ctx)), isError: false }
       },
     },
     {
@@ -159,6 +159,7 @@ export function createStandardAgentTools<State = unknown>(
 export interface ShellToolResultOptions {
   includePreview?: boolean
   previewBudgetTokens?: number
+  exposeCommandHandle?: boolean
 }
 
 export function shellPreviewBudgetTokens(contextWindow: number): number {
@@ -270,19 +271,20 @@ function repeatedShellExecResult(
 }
 
 function formatShellToolResult(result: ShellCommandSnapshot, options: ShellToolResultOptions): string {
-  const lines = [
-    `status: ${result.status}`,
-    `shellId: ${result.shellId}`,
-    `commandId: ${result.commandId}`,
-    `runningMs: ${result.runningMs}`,
-    `idleMs: ${result.idleMs}`,
-  ]
+  const exposeCommandHandle = options.exposeCommandHandle ?? true
+  const lines = [`status: ${result.status}`]
 
   if (result.status === 'exited') lines.push(`exitCode: ${result.exitCode}`)
 
-  appendArtifact(lines, 'stdout', result.stdout)
-  appendArtifact(lines, 'stderr', result.stderr)
-  lines.push(`metaPath: /@/commands/${result.commandId}/meta.json`)
+  if (exposeCommandHandle) {
+    lines.push(`shellId: ${result.shellId}`)
+    lines.push(`commandId: ${result.commandId}`)
+    lines.push(`runningMs: ${result.runningMs}`)
+    lines.push(`idleMs: ${result.idleMs}`)
+    appendArtifact(lines, 'stdout', result.stdout)
+    appendArtifact(lines, 'stderr', result.stderr)
+    lines.push(`metaPath: /@/commands/${result.commandId}/meta.json`)
+  }
 
   if (options.includePreview) {
     appendPreview(lines, result, options.previewBudgetTokens ?? SMALL_CONTEXT_PREVIEW_TOKENS)
@@ -292,6 +294,8 @@ function formatShellToolResult(result: ShellCommandSnapshot, options: ShellToolR
     lines.push('next: command is still running; use yield to pause this turn, then shell_status with commandId.')
   } else if (result.status === 'aborted') {
     lines.push('next: command was intentionally stopped.')
+  } else if (exposeCommandHandle) {
+    lines.push('next: command is complete; read the artifact only if the preview is insufficient.')
   }
 
   return lines.join('\n')
@@ -325,11 +329,33 @@ function boundedPreview(text: string, budgetTokens: number): { text: string; tru
   return { text: text.slice(0, maxChars), truncated: true }
 }
 
-function previewOptions<State>(ctx: AgentToolInvokeContext<State>, includePreview: boolean): ShellToolResultOptions {
-  return {
-    includePreview,
-    previewBudgetTokens: shellPreviewBudgetTokens(ctx.model.model.contextWindow),
-  }
+async function finishShellToolResult<State>(
+  environment: BashEnvironment,
+  result: ShellCommandSnapshot,
+  ctx: AgentToolInvokeContext<State>,
+): Promise<AgentToolInvokeResult> {
+  const previewBudgetTokens = shellPreviewBudgetTokens(ctx.model.model.contextWindow)
+  const exposeCommandHandle = shellCommandHandleRequired(result, previewBudgetTokens)
+  const toolResult = toShellToolResult(result, ctx.toolCallId, {
+    includePreview: true,
+    previewBudgetTokens,
+    exposeCommandHandle,
+  })
+  if (!exposeCommandHandle) await environment.releaseCommand(result.commandId)
+  return toolResult
+}
+
+export function shellCommandHandleRequired(result: ShellCommandSnapshot, budgetTokens: number): boolean {
+  if (result.status === 'running') return true
+  const preview = boundedPreview(result.output.text, budgetTokens)
+  const maxChars = Math.max(0, Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN))
+  return (
+    preview.truncated ||
+    result.output.truncated ||
+    result.output.bytes > maxChars ||
+    result.stdout.truncated ||
+    result.stderr.truncated
+  )
 }
 
 function asRecord(input: unknown): Record<string, unknown> {

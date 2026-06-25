@@ -2195,6 +2195,27 @@ test('BashEnvironment records visible stdout and stderr in arrival order', async
   expect(result.output.text).toBe('out1err1out2err2')
 })
 
+test('BashEnvironment output preview includes stdout from sequential foreground commands', async () => {
+  const env = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const result = await env.exec({
+    script: 'echo SHORT-OUT; echo SHORT-ERR >&2',
+    yieldAfterMs: 1_000,
+  })
+
+  expect(result.status).toBe('exited')
+  expect(result.stdout.delta).toBe('SHORT-OUT\n')
+  expect(result.stderr.delta).toBe('SHORT-ERR\n')
+  expect(result.output.chunks).toEqual([
+    { stream: 'stdout', text: 'SHORT-OUT\n' },
+    { stream: 'stderr', text: 'SHORT-ERR\n' },
+  ])
+  expect(result.output.text).toBe('SHORT-OUT\nSHORT-ERR\n')
+})
+
 test('BashEnvironment exposes complete split command artifacts through /@ and Host.store', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-command-artifact-'))
   const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
@@ -2259,6 +2280,35 @@ test('BashEnvironment exposes complete split command artifacts through /@ and Ho
     stdout: 'out1\nout2\n',
     stderr: 'err1\nerr2\n',
   })
+})
+
+test('BashEnvironment releaseCommand removes completed command handle and virtual artifacts', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-bash-command-release-'))
+  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+  let nextCommand = 0
+  const env = new BashEnvironment({
+    host,
+    shellIdFactory: () => 'shell-command-release',
+    commandIdFactory: () => `cmd-release-${++nextCommand}`,
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const produced = await env.exec({
+    agentSessionId: 'agent-command-release',
+    script: 'printf "out\\n"; printf "err\\n" >&2',
+    yieldAfterMs: 1_000,
+  })
+  expect(produced.status).toBe('exited')
+  expect(await env.releaseCommand(produced.commandId)).toBe(true)
+
+  await expect(env.status({ commandId: produced.commandId })).rejects.toThrow('Unknown shell command')
+
+  const artifactProbe = await env.exec({
+    agentSessionId: 'agent-command-release',
+    script: `if cat /@/commands/${produced.commandId}/stdout.txt >/dev/null 2>&1; then printf found; else printf missing; fi`,
+    yieldAfterMs: 1_000,
+  })
+  expect(artifactProbe.stdout.delta).toBe('missing')
 })
 
 test('BashEnvironment supports shell_write for a foreground process', async () => {

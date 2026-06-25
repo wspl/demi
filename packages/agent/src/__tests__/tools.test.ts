@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
+import type { ModelSelection } from '@demi/core'
 import type { BashEnvironment, ShellCommandSnapshot } from '@demi/shell'
-import { createStandardAgentTools, shellPreviewBudgetTokens, toShellToolResult } from '../tools'
+import type { AgentToolInvokeContext } from '../types'
+import { createStandardAgentTools, shellCommandHandleRequired, shellPreviewBudgetTokens, toShellToolResult } from '../tools'
 
 test('standard shell tool schemas do not expose model-controlled output budgets or offsets', () => {
   const tools = createStandardAgentTools({
@@ -43,7 +45,66 @@ test('shell tool result exposes artifact refs and bounded preview without stdout
   expect(text).not.toContain('tail')
 })
 
-function shellSnapshot(output: string): ShellCommandSnapshot {
+test('completed short shell_exec hides and releases the command handle', async () => {
+  const released: string[] = []
+  const tools = createStandardAgentTools({
+    environment: {
+      exec: async () => shellSnapshot('done\n'),
+      releaseCommand: async (commandId: string) => {
+        released.push(commandId)
+        return true
+      },
+    } as unknown as BashEnvironment,
+    scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
+  })
+  const shellExec = tools.find((tool) => tool.name === 'shell_exec')
+  if (!shellExec) throw new Error('missing shell_exec')
+
+  const result = await shellExec.invoke(toolContext(), { script: 'printf done', yieldAfterMs: 1 })
+  const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
+
+  expect(text).toContain('status: exited')
+  expect(text).toContain('exitCode: 0')
+  expect(text).toContain('preview:')
+  expect(text).toContain('done')
+  expect(text).not.toContain('commandId:')
+  expect(text).not.toContain('stdoutPath:')
+  expect(text).not.toContain('/@/commands/')
+  expect(released).toEqual(['cmd-1'])
+})
+
+test('completed truncated shell_exec keeps the command handle for artifacts', async () => {
+  const released: string[] = []
+  const output = `${'x'.repeat(4_200)}tail`
+  const tools = createStandardAgentTools({
+    environment: {
+      exec: async () => shellSnapshot(output),
+      releaseCommand: async (commandId: string) => {
+        released.push(commandId)
+        return true
+      },
+    } as unknown as BashEnvironment,
+    scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
+  })
+  const shellExec = tools.find((tool) => tool.name === 'shell_exec')
+  if (!shellExec) throw new Error('missing shell_exec')
+
+  const result = await shellExec.invoke(toolContext(), { script: 'printf long', yieldAfterMs: 1 })
+  const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
+
+  expect(text).toContain('commandId: cmd-1')
+  expect(text).toContain('stdoutPath: /@/commands/cmd-1/stdout.txt')
+  expect(text).toContain('previewTruncated: true')
+  expect(released).toEqual([])
+})
+
+test('shell command handles are required only for running or over-budget output', () => {
+  expect(shellCommandHandleRequired(runningShellSnapshot(''), 1_000)).toBe(true)
+  expect(shellCommandHandleRequired(shellSnapshot('short\n'), 1_000)).toBe(false)
+  expect(shellCommandHandleRequired(shellSnapshot('x'.repeat(4_001)), 1_000)).toBe(true)
+})
+
+function shellSnapshot(output: string): Extract<ShellCommandSnapshot, { status: 'exited' }> {
   const bytes = new TextEncoder().encode(output).byteLength
   return {
     status: 'exited',
@@ -79,4 +140,65 @@ function shellSnapshot(output: string): ShellCommandSnapshot {
     idleMs: 0,
     audit: [],
   }
+}
+
+function runningShellSnapshot(output: string): Extract<ShellCommandSnapshot, { status: 'running' }> {
+  const bytes = new TextEncoder().encode(output).byteLength
+  return {
+    status: 'running',
+    shellId: 'shell-1',
+    commandId: 'cmd-1',
+    stdout: {
+      path: '/@/commands/cmd-1/stdout.txt',
+      offset: bytes,
+      delta: output,
+      tail: output.slice(-128),
+      bytes,
+      truncated: false,
+    },
+    stderr: {
+      path: '/@/commands/cmd-1/stderr.txt',
+      offset: 0,
+      delta: '',
+      tail: '',
+      bytes: 0,
+      truncated: false,
+    },
+    output: {
+      path: 'demi://shell/shell-1/commands/cmd-1/output',
+      offset: bytes,
+      text: output,
+      tail: output.slice(-128),
+      chunks: output ? [{ stream: 'stdout', text: output }] : [],
+      bytes,
+      truncated: false,
+    },
+    runningMs: 1,
+    idleMs: 0,
+  }
+}
+
+function toolContext(): AgentToolInvokeContext<unknown> {
+  return {
+    agentSessionId: 'agent-1',
+    state: null,
+    cwd: '/workspace',
+    model,
+    toolCallId: 'tool-1',
+    signal: new AbortController().signal,
+    emitProgress: () => {},
+  }
+}
+
+const model: ModelSelection = {
+  providerId: 'stub',
+  model: {
+    id: 'stub-model',
+    name: 'Stub Model',
+    contextWindow: 100_000,
+    inputLimit: null,
+    thinking: [],
+    acceptedExtensions: [],
+  },
+  thinking: null,
 }

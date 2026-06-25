@@ -252,6 +252,7 @@ export class BashEnvironment {
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
   private readonly commandsById = new Map<string, ShellCommandRecord>()
   private readonly artifactStorageByScope = new Map<string, AgentSessionCommandStorage>()
+  private readonly releasedCommandArtifacts = new Set<string>()
 
   constructor(options: BashEnvironmentOptions) {
     this.host = options.host
@@ -313,6 +314,15 @@ export class BashEnvironment {
     await foreground.handle.kill('SIGTERM')
     session.state.lastExitCode = 130
     return this.collectAborted(session, record, foreground, input)
+  }
+
+  async releaseCommand(commandId: string): Promise<boolean> {
+    const record = this.commandsById.get(commandId)
+    if (!record || record.status === 'running') return false
+    this.commandsById.delete(commandId)
+    this.releasedCommandArtifacts.add(this.releasedCommandKey(record.commandScopeId, commandId))
+    await this.artifactStorage(record.commandScopeId).delete(`commands/${commandId}/artifact.json`).catch(() => {})
+    return true
   }
 
   async disposeShell(shellId: string): Promise<boolean> {
@@ -967,6 +977,7 @@ export class BashEnvironment {
       appendRecordOutput(record, 'stdout', record.stdout)
       appendRecordOutput(record, 'stderr', record.stderr)
     }
+    ensureRecordOutputCoverage(record)
     record.lastOutputAt = Date.now()
     record.status = 'exited'
     record.exitCode = exitCode
@@ -1087,18 +1098,19 @@ export class BashEnvironment {
   private async commandArtifactIds(scopeId: string): Promise<string[]> {
     const ids = new Set<string>()
     for (const record of this.commandsById.values()) {
-      if (record.commandScopeId === scopeId) ids.add(record.id)
+      if (record.commandScopeId === scopeId && !this.isCommandReleased(scopeId, record.id)) ids.add(record.id)
     }
     const storage = this.artifactStorage(scopeId)
     const keys = await storage.list('commands').catch(() => [])
     for (const key of keys) {
       const match = /^commands\/([^/]+)\/artifact\.json$/.exec(key)
-      if (match) ids.add(match[1]!)
+      if (match && !this.isCommandReleased(scopeId, match[1]!)) ids.add(match[1]!)
     }
     return [...ids]
   }
 
   private async commandArtifact(scopeId: string, commandId: string): Promise<PersistedShellCommandArtifact | null> {
+    if (this.isCommandReleased(scopeId, commandId)) return null
     const record = this.commandsById.get(commandId)
     if (record?.commandScopeId === scopeId) {
       this.syncRunningRecord(record)
@@ -1119,10 +1131,19 @@ export class BashEnvironment {
   }
 
   private persistCommandArtifact(record: ShellCommandRecord): void {
+    if (this.isCommandReleased(record.commandScopeId, record.id)) return
     const artifact = persistedArtifactFromRecord(record)
     void this.artifactStorage(record.commandScopeId)
       .writeJson(`commands/${record.id}/artifact.json`, artifact)
       .catch(() => {})
+  }
+
+  private isCommandReleased(scopeId: string, commandId: string): boolean {
+    return this.releasedCommandArtifacts.has(this.releasedCommandKey(scopeId, commandId))
+  }
+
+  private releasedCommandKey(scopeId: string, commandId: string): string {
+    return `${scopeId}\0${commandId}`
   }
 
   private syncRunningRecord(record: ShellCommandRecord): void {
@@ -1238,6 +1259,19 @@ function appendRecordOutput(record: ShellCommandRecord, stream: 'stdout' | 'stde
   if (text.length === 0) return
   const offset = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
   record.outputChunks.push({ stream, text, offset, bytes: utf8Bytes(text) })
+}
+
+function ensureRecordOutputCoverage(record: ShellCommandRecord): void {
+  const stdoutBytes = record.outputChunks
+    .filter((chunk) => chunk.stream === 'stdout')
+    .reduce((total, chunk) => total + chunk.bytes, 0)
+  const stderrBytes = record.outputChunks
+    .filter((chunk) => chunk.stream === 'stderr')
+    .reduce((total, chunk) => total + chunk.bytes, 0)
+  if (stdoutBytes === utf8Bytes(record.stdout) && stderrBytes === utf8Bytes(record.stderr)) return
+  record.outputChunks = []
+  appendRecordOutput(record, 'stdout', record.stdout)
+  appendRecordOutput(record, 'stderr', record.stderr)
 }
 
 function persistedArtifactFromRecord(record: ShellCommandRecord): PersistedShellCommandArtifact {
