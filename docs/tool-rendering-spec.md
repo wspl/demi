@@ -49,20 +49,15 @@ model/render-model 包。
 
 所有标准工具的 input schema 都必须允许可选 `description?: string`。
 
-`description` 是短的用户可见动作标题，用于解释工具正在做什么，例如：
-
-- `Run unit tests`
-- `Check dev server output`
-- `Send Enter to installer`
-- `Stop preview server`
-- `Wait before checking build`
+`description` 是短的用户可见意图标题，要让用户看懂这一步想完成什么。
 
 渲染规则：
 
 1. 非空 `description` 是工具 block 的首选标题。
 2. 没有 `description` 时，渲染层使用各工具的确定性 fallback。
 3. `description` 只影响展示，不改变 shell runtime、tool result 或模型 replay 语义。
-4. `description` 不应该塞入长脚本、完整 stdout/stderr 或协议状态。
+4. `description` 不应该是单纯事物名，也不应该塞入长脚本、完整 stdout/stderr、协议状态、
+   step 编号、toolName、commandId、内部标签或原因说明。
 
 ## 4. 标准工具展示
 

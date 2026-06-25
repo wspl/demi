@@ -45,6 +45,7 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
         [
           'Shell session rules:',
           '- Use shell_exec for commands. yieldAfterMs is required and only controls the initial observation window; it never kills the command.',
+          '- Tool description: concise user-visible intent; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
           '- shell_exec returns shellId, commandId, stdout/stderr deltas, and status. Track commandId for all follow-up control.',
           '- If status is running, call yield to end the current turn and schedule a wakeup, then call shell_status with commandId in the next turn.',
           '- Use shell_status for polling. It is non-blocking and reads new stdout/stderr since the last snapshot unless offsets are provided.',

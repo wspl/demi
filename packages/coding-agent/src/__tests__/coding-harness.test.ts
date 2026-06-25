@@ -68,6 +68,8 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(prompt).toContain('todo add "Run tests"')
   expect(prompt).toContain('Effects: modifies agent-session-scoped command storage')
   expect(prompt).toContain('run them in the foreground with a short yieldAfterMs')
+  expect(prompt).toContain('Tool description: concise user-visible intent')
+  expect(prompt).toContain('no object-only labels, steps, tool names')
   expect(prompt).toContain('yield + shell_status')
   expect(prompt).toContain('avoid pkill/killall by process name')
   expect(prompt).toContain('instead of restarting it to demonstrate the same behavior again')

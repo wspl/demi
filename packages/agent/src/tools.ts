@@ -34,7 +34,7 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_exec',
       description:
-        'Start a shell script. yieldAfterMs is required and only controls the initial observation window; it never kills the command. Returns a commandId. For long-running work, call yield and then shell_status with commandId. If the default shell is busy and shellId is omitted, a helper shell is used. Always set description to a short title for the UI.',
+        'Start a shell script. yieldAfterMs observes briefly and never kills. If running, use yield then shell_status.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -43,7 +43,7 @@ export function createStandardAgentTools<State = unknown>(
           script: { type: 'string' },
           description: {
             type: 'string',
-            description: 'A short clear title for this command, shown in the UI.',
+            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
           },
           shellId: { type: 'string' },
           yieldAfterMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
@@ -66,7 +66,7 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_status',
       description:
-        'Read a command status and bounded stdout/stderr deltas by commandId. This never waits, writes stdin, or changes command lifecycle. Omit offsets to read new output since the last snapshot, or pass offsets to reread history. Always set description to a short title for the UI.',
+        'Read command status and bounded stdout/stderr deltas by commandId. Does not wait or mutate.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -75,7 +75,7 @@ export function createStandardAgentTools<State = unknown>(
           commandId: { type: 'string' },
           description: {
             type: 'string',
-            description: 'A short clear title for this status check, shown in the UI.',
+            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
           },
           stdoutOffset: { type: 'number' },
           stderrOffset: { type: 'number' },
@@ -91,7 +91,7 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_write',
       description:
-        'Write non-empty stdin to a running foreground command by commandId, then return an immediate status snapshot. Include a newline for line-oriented prompts. Use shell_status for polling. Always set description to a short title for the UI.',
+        'Write non-empty stdin to a running foreground command. Include a newline for line-oriented prompts.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -100,7 +100,7 @@ export function createStandardAgentTools<State = unknown>(
           commandId: { type: 'string' },
           description: {
             type: 'string',
-            description: 'A short clear title for this stdin write, shown in the UI.',
+            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
           },
           stdin: { type: 'string' },
           maxOutputBytes: { type: 'number' },
@@ -115,7 +115,7 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_abort',
       description:
-        'Intentionally stop a running foreground command by commandId. Calling it for a completed command returns that command snapshot without killing the shell session. Always set description to a short title for the UI.',
+        'Stop a running foreground command by commandId.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -124,7 +124,7 @@ export function createStandardAgentTools<State = unknown>(
           commandId: { type: 'string' },
           description: {
             type: 'string',
-            description: 'A short clear title for this abort action, shown in the UI.',
+            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
           },
           maxOutputBytes: { type: 'number' },
         },
@@ -138,7 +138,7 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'yield',
       description:
-        'End the current turn and schedule a one-shot internal wakeup after durationMs. Use this after starting or checking long-running work so the next turn can call shell_status. It does not read, write, or abort shell commands. Always set description to a short title for the UI.',
+        'End this turn and schedule a one-shot wakeup. Does not touch shell commands.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -146,7 +146,7 @@ export function createStandardAgentTools<State = unknown>(
         properties: {
           description: {
             type: 'string',
-            description: 'A short clear title for this delayed wakeup, shown in the UI.',
+            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
           },
           durationMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
         },
