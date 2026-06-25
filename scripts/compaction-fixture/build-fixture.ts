@@ -21,8 +21,8 @@ import { readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { ClaudeCodeProvider } from '../../packages/provider-claude-code/src/provider'
-import { AgentSession } from '../../packages/agent/src/index'
-import { BashEnvironment, createShellSessionTools } from '../../packages/shell/src/index'
+import { AgentSession, createStandardAgentTools } from '../../packages/agent/src/index'
+import { BashEnvironment } from '../../packages/shell/src/index'
 import { LocalHost } from '../../packages/host-local/src/index'
 
 const REPO = join(import.meta.dir, '../..')
@@ -38,14 +38,23 @@ const model = {
 }
 const provider = new ClaudeCodeProvider({})
 const environment = new BashEnvironment({ host: new LocalHost(REPO), shellIdFactory: () => 'fx-shell', initialEnv: { PATH: process.env.PATH ?? '' } })
+let sessionRef: AgentSession<Record<string, never>> | null = null
 const runtime = {
   harnessName: 'fixture',
   initialState: () => ({}),
   systemPrompt: () => 'You are a careful coding assistant. Remember any secrets the user tells you verbatim, forever.',
-  tools: () => createShellSessionTools(environment),
+  tools: () =>
+    createStandardAgentTools({
+      environment,
+      scheduleYield: (_ctx, durationMs) => {
+        if (!sessionRef) throw new Error('fixture session is not ready for yield scheduling')
+        return sessionRef.scheduleYieldWakeup(durationMs)
+      },
+    }),
 }
 // Default-ish compaction so the session compacts for real as it grows past the window.
 const session = new AgentSession({ provider, model, cwd: REPO, runtime }, { compaction: { keepRecentTokens: 6000, preflightThresholdRatio: 0.7 } })
+sessionRef = session
 
 const log = (m: string): void => process.stdout.write(`${m}\n`)
 // Size proxy over the FULL transcript (replayableBlocks is window-bounded; we want the whole thing).

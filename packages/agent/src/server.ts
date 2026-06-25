@@ -2,7 +2,6 @@ import { AgentSession } from './session'
 import {
   BashEnvironment,
   CommandRegistry,
-  createShellSessionTools,
   type BashAuditEvent,
   type BashEnvironmentOptions,
   type HostStore,
@@ -11,9 +10,10 @@ import type { Block, ToolResultContentBlock } from '@demi/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demi/provider'
 import { AgentClient } from './client'
 import { cloneBlocks, diffTranscriptBlocks } from './patch'
-import type { ClientFrame, OutputSnapshotLike, ServerFrame } from './frames'
+import type { ClientFrame, ServerFrame, ShellCommandSnapshotLike } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
 import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
+import { createStandardAgentTools } from './tools'
 
 export interface AgentServerOptions {
   agent: AgentHarness<unknown>
@@ -203,11 +203,12 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         case 'abort': {
           const session = this.sessionFor('abort')
           if (!session) return
-          await session.abort()
+          const result = await session.abort()
+          this.send({ type: 'abort_result', result })
           return
         }
-        case 'shell_input':
-          await this.handleShellInput(frame)
+        case 'shell_write':
+          await this.handleShellWrite(frame)
           return
         case 'close':
           await this.closeSession()
@@ -238,7 +239,14 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       host,
       commands: commandRegistry,
     })
-    const tools = createShellSessionTools(environment)
+    let sessionRef: AgentSession<unknown> | null = null
+    const tools = createStandardAgentTools({
+      environment,
+      scheduleYield: (_ctx, durationMs) => {
+        if (!sessionRef) throw new Error('AgentServer: session is not ready for yield scheduling')
+        return sessionRef.scheduleYieldWakeup(durationMs)
+      },
+    })
     const runtime: AgentHarnessRuntime<unknown> = {
       harnessName: agent.name,
       initialState: () => state,
@@ -249,7 +257,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       tools: () => tools,
     }
     const agentSessionId = globalThis.crypto.randomUUID()
-    this.session = new AgentSession(
+    const session = new AgentSession(
       {
         provider,
         model: frame.provider.model,
@@ -262,6 +270,8 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         store: new HostAgentSessionStore(host.store, agentSessionId),
       },
     )
+    sessionRef = session
+    this.session = session
     this.currentAgent = agent
     this.currentEnvironment = environment
     this.currentCwd = frame.cwd
@@ -352,33 +362,15 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     }
   }
 
-  private async handleShellInput(frame: Extract<ClientFrame, { type: 'shell_input' }>): Promise<void> {
-    const session = this.sessionFor('shell_input')
+  private async handleShellWrite(frame: Extract<ClientFrame, { type: 'shell_write' }>): Promise<void> {
+    const session = this.sessionFor('shell_write')
     if (!session || !this.currentEnvironment || !this.currentCwd) return
 
-    const tools = createShellSessionTools(this.currentEnvironment)
-    const tool = tools.find((candidate) => candidate.name === 'shell_input')
-    if (!tool) {
-      this.send({ type: 'rejected', command: 'shell_input', reason: 'Current harness does not expose shell_input' })
-      return
-    }
-
-    let emittedProgress = false
-    const result = await tool.invoke(
-      {
-        agentSessionId: session.id(),
-        state: session.state(),
-        cwd: this.currentCwd,
-        toolCallId: frame.shellId,
-        signal: new AbortController().signal,
-        emitProgress: (progress) => {
-          emittedProgress = true
-          this.sendShellInputResult(frame.shellId, progress)
-        },
-      },
-      { shellId: frame.shellId, stdin: frame.stdin },
-    )
-    if (!emittedProgress) this.sendShellInputResult(frame.shellId, result.metadata ?? result.output)
+    const result = await this.currentEnvironment.write({
+      commandId: frame.commandId,
+      stdin: frame.stdin,
+    })
+    this.sendShellWriteResult(frame.commandId, result)
   }
 
   private sessionFor(command: string): AgentSession<unknown> | null {
@@ -400,17 +392,31 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const output = progressToOutput(progress)
     this.send({ type: 'tool_progress', toolUseId: toolCallId, output })
     const shell = progressToShellOutput(progress)
-    if (shell) this.send({ type: 'shell_output', shellId: shell.shellId, snapshot: shell.snapshot })
+    if (shell) {
+      this.send({
+        type: 'shell_output',
+        shellId: shell.shellId,
+        commandId: shell.commandId,
+        snapshot: shell.snapshot,
+      })
+    }
     const audit = progressToAudit(progress)
     if (audit.length > 0) this.send({ type: 'audit', events: audit })
   }
 
-  private sendShellInputResult(shellId: string, progress: unknown): void {
+  private sendShellWriteResult(commandId: string, progress: unknown): void {
     const shell = progressToShellOutput(progress)
-    if (shell) this.send({ type: 'shell_output', shellId: shell.shellId, snapshot: shell.snapshot })
+    if (shell) {
+      this.send({
+        type: 'shell_output',
+        shellId: shell.shellId,
+        commandId: shell.commandId,
+        snapshot: shell.snapshot,
+      })
+    }
     const audit = progressToAudit(progress)
     if (audit.length > 0) this.send({ type: 'audit', events: audit })
-    this.send({ type: 'shell_input_result', shellId, output: progressToOutput(progress) })
+    this.send({ type: 'shell_write_result', commandId, output: progressToOutput(progress) })
   }
 
   private send(frame: ServerFrame): void {
@@ -469,22 +475,39 @@ function safeStringify(value: unknown): string | undefined {
   })
 }
 
-function progressToShellOutput(progress: unknown): { shellId: string; snapshot: OutputSnapshotLike } | null {
+function progressToShellOutput(
+  progress: unknown,
+): { shellId: string; commandId: string; snapshot: ShellCommandSnapshotLike } | null {
   if (!isRecord(progress)) return null
-  if (typeof progress.shellId !== 'string' || !isRecord(progress.output)) return null
-  const output = progress.output
+  if (typeof progress.shellId !== 'string' || typeof progress.commandId !== 'string') return null
+  if (progress.status !== 'running' && progress.status !== 'exited' && progress.status !== 'aborted') return null
+  if (!isRecord(progress.stdout) || !isRecord(progress.stderr)) return null
+  const stdout = progress.stdout
+  const stderr = progress.stderr
   if (
-    typeof output.stdoutDelta !== 'string' ||
-    typeof output.stderrDelta !== 'string' ||
-    typeof output.stdoutTail !== 'string' ||
-    typeof output.stderrTail !== 'string' ||
-    typeof output.totalStdoutBytes !== 'number' ||
-    typeof output.totalStderrBytes !== 'number' ||
-    typeof output.truncated !== 'boolean'
+    !isStreamArtifact(stdout) ||
+    !isStreamArtifact(stderr) ||
+    typeof progress.runningMs !== 'number' ||
+    typeof progress.idleMs !== 'number'
   ) {
     return null
   }
-  return { shellId: progress.shellId, snapshot: output as unknown as OutputSnapshotLike }
+  return {
+    shellId: progress.shellId,
+    commandId: progress.commandId,
+    snapshot: progress as unknown as ShellCommandSnapshotLike,
+  }
+}
+
+function isStreamArtifact(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.path === 'string' &&
+    typeof value.offset === 'number' &&
+    typeof value.delta === 'string' &&
+    typeof value.tail === 'string' &&
+    typeof value.bytes === 'number' &&
+    typeof value.truncated === 'boolean'
+  )
 }
 
 function progressToAudit(progress: unknown): BashAuditEvent[] {
@@ -496,6 +519,14 @@ function isBashAuditEvent(value: unknown): value is BashAuditEvent {
   if (!isRecord(value)) return false
   if (value.kind === 'registered-command') {
     return typeof value.name === 'string' && isStringArray(value.args) && typeof value.exitCode === 'number'
+  }
+  if (value.kind === 'portable-command') {
+    return (
+      typeof value.name === 'string' &&
+      isStringArray(value.args) &&
+      typeof value.cwd === 'string' &&
+      typeof value.exitCode === 'number'
+    )
   }
   if (value.kind === 'system-command') {
     return (

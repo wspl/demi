@@ -1,9 +1,15 @@
 import { expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import type { Block, ModelSelection, TokenUsage } from '@demi/core'
-import { AgentSession, type AgentHarnessRuntime, type AgentTool, type AgentToolInvokeResult } from '@demi/agent'
+import {
+  AgentSession,
+  createStandardAgentTools,
+  type AgentHarnessRuntime,
+  type AgentTool,
+  type AgentToolInvokeResult,
+} from '@demi/agent'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
-import { BashEnvironment, createShellSessionTools } from '@demi/shell'
+import { BashEnvironment } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { FileCodexAuthStore } from '../auth'
 import { CodexProvider } from '../provider'
@@ -111,7 +117,14 @@ toolE2e('CodexProvider drives a real AgentSession shell tool roundtrip', async (
       'You have a shell_exec tool.',
       'For this smoke test, call shell_exec exactly once with `printf DEMI_CODEX_TOOL_OK`, then answer with DEMI_CODEX_TOOL_DONE.',
     ].join('\n'),
-    tools: () => createShellSessionTools(environment),
+    tools: () =>
+      createStandardAgentTools({
+        environment,
+        scheduleYield: (_ctx, durationMs) => ({
+          output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
+          stopAfterToolResult: true,
+        }),
+      }),
   }
   const model: ModelSelection = {
     providerId: 'codex',

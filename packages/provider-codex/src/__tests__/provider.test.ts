@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
+import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demi/agent'
 import { providerRuntime, type InferenceRequest, type ProviderSelection } from '@demi/provider'
-import { BashEnvironment, createShellSessionTools } from '@demi/shell'
+import { BashEnvironment } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { StaticCodexAuthStore, type CodexResolvedAuth } from '../auth'
 import { CodexProvider, buildCodexHeaders, createCodexProvider, parseCodexProviderConfig, responsesUrlForAuth } from '../provider'
@@ -225,7 +225,7 @@ test('WebSocketCodexResponsesTransport finishes when a response.completed event 
 test('CodexProvider integrates with AgentSession and shell tools for function calls', async () => {
   const transport = new FakeCodexTransport([
     [
-      { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'shell_exec', arguments: '{"script":"printf demi-codex"}' } },
+      { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'shell_exec', arguments: '{"script":"printf demi-codex","yieldAfterMs":1000}' } },
       { type: 'response.completed', response: { usage: { input_tokens: 4, output_tokens: 2 } } },
     ],
     [
@@ -247,7 +247,14 @@ test('CodexProvider integrates with AgentSession and shell tools for function ca
     harnessName: 'codex-shell-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
-    tools: () => createShellSessionTools(environment),
+    tools: () =>
+      createStandardAgentTools({
+        environment,
+        scheduleYield: (_ctx, durationMs) => ({
+          output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
+          stopAfterToolResult: true,
+        }),
+      }),
   }
   const session = new AgentSession({ provider, model, cwd: process.cwd(), runtime }, { agentSessionId: 'agent-session-1' })
 

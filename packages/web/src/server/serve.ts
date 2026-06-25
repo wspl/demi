@@ -22,7 +22,6 @@ export function startWebServer(providers: Provider[], options: ServerOptions): W
   const hub = new AgentHub(providers, {
     initialEnv: { PATH: process.env.PATH ?? '' },
     yieldAfterMs: options.yieldAfterMs,
-    timeoutMs: options.timeoutMs,
   })
   const control = new ControlServer(providers, options)
 

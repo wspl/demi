@@ -22,7 +22,6 @@ export interface ServerOptions {
   baseUrl?: string
   transport: CodexTransportMode
   yieldAfterMs: number
-  timeoutMs: number
 }
 
 export function parseServerOptions(args: string[]): ServerOptions {
@@ -41,7 +40,6 @@ export function parseServerOptions(args: string[]): ServerOptions {
     codexHome: process.env.CODEX_HOME,
     transport: 'auto',
     yieldAfterMs: 10_000,
-    timeoutMs: 120_000,
   }
 
   for (let index = 0; index < args.length; index++) {
@@ -67,7 +65,6 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else if (arg === '--base-url') options.baseUrl = required(args, ++index, '--base-url')
     else if (arg === '--transport') options.transport = parseTransport(required(args, ++index, '--transport'))
     else if (arg === '--yield-after-ms') options.yieldAfterMs = Number(required(args, ++index, '--yield-after-ms'))
-    else if (arg === '--timeout-ms') options.timeoutMs = Number(required(args, ++index, '--timeout-ms'))
     else throw new Error(`Unknown option: ${arg}`)
   }
 

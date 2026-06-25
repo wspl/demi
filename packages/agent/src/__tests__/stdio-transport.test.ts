@@ -114,7 +114,7 @@ test('StdioTransport preserves complex AgentClient action convergence over NDJSO
 
   const aborting = client.send([{ type: 'text', text: 'abort me' }])
   await provider.abortStarted.promise
-  await expect(client.abort()).resolves.toBe(true)
+  await expect(client.abort()).resolves.toMatchObject({ aborted: true })
   await aborting
   await client.resume()
 

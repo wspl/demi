@@ -375,8 +375,8 @@ Turn B（用户 10s 后发送新话题）
 
 单元测试模块与覆盖意图：
 
-- `packages/shell/src/__tests__/tools.test.ts`
-  - 工具 schema 只暴露 `shell_exec` / `shell_status` / `shell_write` / `shell_abort`。
+- `packages/agent/src/tools.ts`（由 agent/coding/provider integration tests 覆盖）
+  - 工具 schema 只暴露 `shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield`。
   - `yieldAfterMs` 必填且最大 10 分钟。
   - `shell_write` 拒绝空 stdin。
   - tool result 包含 `shellId`、`commandId`、stdout/stderr artifact、offset 和 next action。

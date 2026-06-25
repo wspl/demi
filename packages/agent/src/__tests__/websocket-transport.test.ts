@@ -145,7 +145,7 @@ test('WebSocket transports preserve complex AgentClient action convergence', asy
 
   const aborting = client.send([{ type: 'text', text: 'abort me' }])
   await provider.abortStarted.promise
-  await expect(client.abort()).resolves.toBe(true)
+  await expect(client.abort()).resolves.toMatchObject({ aborted: true })
   await aborting
   await client.resume()
   await client.compact()

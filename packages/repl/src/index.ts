@@ -22,6 +22,7 @@ import { createOpenAIApiProvider, type OpenAIApiWireApi } from '@demi/provider-o
 import {
   AgentClient,
   AgentServer,
+  type AbortResult,
   type ClientSessionEvent,
 } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
@@ -38,7 +39,6 @@ export interface ReplOptions {
   baseUrl?: string
   transport: CodexTransportMode
   yieldAfterMs: number
-  timeoutMs: number
 }
 
 export interface ReplOutput {
@@ -64,12 +64,12 @@ export interface RenderState {
 }
 
 interface ReplCommandClient {
-  abort(): Promise<boolean>
+  abort(): Promise<AbortResult>
   steer(content: UserContentBlock[]): Promise<void>
   retry(): Promise<void>
   resume(): Promise<void>
   compact(): Promise<void>
-  shellInput(shellId: string, stdin: string): Promise<void>
+  shellWrite(commandId: string, stdin: string): Promise<void>
 }
 
 interface ReplLoopClient extends ReplCommandClient {
@@ -94,7 +94,7 @@ const helpText = `Commands:
   /retry                     Retry the latest user turn
   /resume                    Resume after an abort
   /compact                   Request transcript compaction
-  /input <shellId> <text>    Send stdin to a foreground shell session
+  /input <commandId> <text>  Send stdin to a running command
   /exit                      Close the session
 
 Tips:
@@ -122,7 +122,6 @@ async function main(): Promise<void> {
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       yieldAfterMs: options.yieldAfterMs,
-      timeoutMs: options.timeoutMs,
     },
   })
   const client = server.client()
@@ -219,13 +218,13 @@ export async function handleCommand(
       void client.compact().catch((error) => writeEventLine(output, 'error', `compact failed: ${messageOf(error)}`, 'red'))
       return false
     case '/input': {
-      const shellId = rest.shift()
-      if (!shellId) {
-        writeEventLine(output, 'error', 'usage: /input <shellId> <text>', 'red')
+      const commandId = rest.shift()
+      if (!commandId) {
+        writeEventLine(output, 'error', 'usage: /input <commandId> <text>', 'red')
         return false
       }
       void client
-        .shellInput(shellId, `${rest.join(' ')}\n`)
+        .shellWrite(commandId, `${rest.join(' ')}\n`)
         .catch((error) => writeEventLine(output, 'error', `input failed: ${messageOf(error)}`, 'red'))
       return false
     }
@@ -270,7 +269,7 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
       return
     case 'shell_output':
       finishStream(state)
-      renderShellOutput(state, event.shellId, event.snapshot.stdoutDelta, event.snapshot.stderrDelta)
+      renderShellOutput(state, event.commandId, event.snapshot.stdout.delta, event.snapshot.stderr.delta)
       return
     case 'audit':
       finishStream(state)
@@ -290,8 +289,19 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
     case 'tool_progress':
       renderToolProgress(state, event.output)
       return
-    case 'shell_input_result':
+    case 'shell_write_result':
       finishStream(state)
+      return
+    case 'abort_result':
+      finishStream(state)
+      writeEventLine(
+        state.output,
+        'state',
+        event.result.aborted
+          ? `aborted ${event.result.target}${event.result.canAbortAgain ? '; more abortable work remains' : ''}`
+          : 'nothing to abort',
+        event.result.aborted ? 'yellow' : 'dim',
+      )
       return
     case 'error':
       finishStream(state)
@@ -404,9 +414,9 @@ function renderToolCallOutput(state: RenderState, block: Extract<Block, { type: 
   writePrefixed(state.output, 'tool-error', text, 'red')
 }
 
-function renderShellOutput(state: RenderState, shellId: string, stdoutDelta: string, stderrDelta: string): void {
-  if (stdoutDelta) writePrefixed(state.output, `shell[${shellId}] stdout`, stdoutDelta, 'green')
-  if (stderrDelta) writePrefixed(state.output, `shell[${shellId}] stderr`, stderrDelta, 'red')
+function renderShellOutput(state: RenderState, commandId: string, stdoutDelta: string, stderrDelta: string): void {
+  if (stdoutDelta) writePrefixed(state.output, `shell[${commandId}] stdout`, stdoutDelta, 'green')
+  if (stderrDelta) writePrefixed(state.output, `shell[${commandId}] stderr`, stderrDelta, 'red')
 }
 
 function renderToolProgress(state: RenderState, output: Extract<ClientSessionEvent, { type: 'tool_progress' }>['output']): void {
@@ -426,9 +436,10 @@ function renderToolProgress(state: RenderState, output: Extract<ClientSessionEve
 function parseShellProgress(text: string): { shellId: string; status: string; reason?: string } | null {
   try {
     const value = JSON.parse(text) as Record<string, unknown>
-    if (typeof value.shellId !== 'string' || typeof value.status !== 'string') return null
+    const id = typeof value.commandId === 'string' ? value.commandId : value.shellId
+    if (typeof id !== 'string' || typeof value.status !== 'string') return null
     return {
-      shellId: value.shellId,
+      shellId: id,
       status: value.status,
       reason: typeof value.reason === 'string' ? value.reason : undefined,
     }
@@ -484,9 +495,10 @@ function formatToolInput(block: Extract<Block, { type: 'tool_call' }>): string {
     if (block.toolName === 'shell_exec' && typeof input.script === 'string') {
       return trimOneLine(input.script)
     }
-    if (block.toolName === 'shell_wait' && typeof input.shellId === 'string') return input.shellId
-    if (block.toolName === 'shell_input' && typeof input.shellId === 'string') return input.shellId
-    if (block.toolName === 'shell_abort' && typeof input.shellId === 'string') return input.shellId
+    if (block.toolName === 'shell_status' && typeof input.commandId === 'string') return input.commandId
+    if (block.toolName === 'shell_write' && typeof input.commandId === 'string') return input.commandId
+    if (block.toolName === 'shell_abort' && typeof input.commandId === 'string') return input.commandId
+    if (block.toolName === 'yield' && typeof input.durationMs === 'number') return `${input.durationMs}ms`
   } catch {
     // Fall through to raw input.
   }
@@ -534,7 +546,6 @@ function parseArgs(args: string[]): ReplOptions {
   let openAIWireApi = parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses')
   let transport: CodexTransportMode = 'auto'
   let yieldAfterMs = 10_000
-  let timeoutMs = 120_000
 
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
@@ -561,7 +572,6 @@ function parseArgs(args: string[]): ReplOptions {
     else if (arg === '--openai-wire-api') openAIWireApi = parseOpenAIWireApi(requiredValue(args, ++index, '--openai-wire-api'))
     else if (arg === '--transport') transport = parseCodexTransport(requiredValue(args, ++index, '--transport'))
     else if (arg === '--yield-after-ms') yieldAfterMs = Number(requiredValue(args, ++index, '--yield-after-ms'))
-    else if (arg === '--timeout-ms') timeoutMs = Number(requiredValue(args, ++index, '--timeout-ms'))
     else if (!arg.startsWith('-')) cwd = arg
     else throw new Error(`Unknown option: ${arg}`)
   }
@@ -580,7 +590,6 @@ function parseArgs(args: string[]): ReplOptions {
     baseUrl,
     transport,
     yieldAfterMs,
-    timeoutMs,
   }
 }
 
@@ -813,7 +822,6 @@ Options:
   --openai-wire-api <api>  OpenAI wire API: responses, chat-completions. Defaults to responses.
   --transport <mode>       Codex transport: auto, sse, websocket. Defaults to auto.
   --yield-after-ms <n>     Shell yield interval. Defaults to 10000.
-  --timeout-ms <n>         Shell command timeout. Defaults to 120000.
 
 ${helpText}`)
 }

@@ -744,7 +744,7 @@ fork `CommandContext` 与 demi `CommandRunContext` 的字段差异：
 
 #### ExecutionLimits
 
-fork 有 `ExecutionLimits`（maxCommandCount/maxOutputSize/maxCallDepth/maxLoopIterations/maxHeredocSize）。demi 有自己的 output 限制（`outputLimitBytes` + RingBuffer），不需要 fork 的 `maxOutputSize`。构造 `Interpreter` 时传入高限值或禁用 fork 的 output limit，避免 fork 在 demi 的边界点之前就抛 `ExecutionLimitError`。
+fork 有 `ExecutionLimits`（maxCommandCount/maxOutputSize/maxCallDepth/maxLoopIterations/maxHeredocSize）。demi 有自己的 output 限制（`maxOutputBytes` + RingBuffer），不需要 fork 的 `maxOutputSize`。构造 `Interpreter` 时传入高限值或禁用 fork 的 output limit，避免 fork 在 demi 的边界点之前就抛 `ExecutionLimitError`。
 
 #### fork 测试基础设施
 
@@ -1383,7 +1383,7 @@ Step 0-6 的本地包和集成测试已落地：core / provider / agent / just-b
 - 平台默认入口静态闭包测试覆盖所有平台无关包；just-bash 边界静态扫描；AgentServer/transport 边界静态扫描；package manifest 分层扫描。
 - shell session 生命周期、状态连续性、长命令观测、DEMI_SESSION_ID/DEMI_SHELL_ID、CommandStorage、audit、注册命令 prompt/`--json`/commandMetadata、shell 控制接入 AgentSession abort signal——均已具备基础实现；最终 shell + yield 控制面将收敛为 `shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield`，见 `docs/shell-yield-control-plan.md`。
 - agent 的 transcript/queue/retry/resume/compaction/mutation guard/abort 收敛/tool error 局部化/extension state snapshot——均已落地。
-- AgentClient 的 action FIFO 收敛/abort Promise/shellInput 等待/transcript snapshot+patch/stdio+websocket transport/Uint8Array+bigint 安全编解码——均已落地。
+- AgentClient 的 action FIFO 收敛/abort Promise/shellWrite 等待/transcript snapshot+patch/stdio+websocket transport/Uint8Array+bigint 安全编解码——均已落地。
 - claude-code provider 的 CLI spawn/stream-json/MCP bridge/event 映射/tool_use continuation/abort 清理/binary media 转换/config 白名单——均已落地。真实 CLI e2e 默认跳过，`DEMI_CLAUDE_CODE_E2E=1` 手动跑。
 - provider public API 已收敛为用户侧 direct provider creation：`createClaudeCodeProvider` / `createCodexProvider` / `createOpenAIApiProvider` / `createAnthropicApiProvider` 返回 public `Provider`；AgentServer 接收 `providers: Provider[]`，协议只携带 `ProviderSelection`，不再让 secret-bearing config 往返浏览器。
 - OpenAI API provider 已落地：默认 `OPENAI_BASE_URL ?? https://api.openai.com/v1` 和 `OPENAI_API_KEY`，支持 `envPrefix`、显式 `baseUrl`/`apiKey` 优先；默认 model catalog 镜像 Codex 当前可见模型集合；传入 `models` 时全量替换默认 catalog；默认 `wireApi: "responses"` 走 Responses request/body/tool/result 映射和 SSE text/tool/usage 映射，兼容 endpoint 可显式传 `wireApi: "chat-completions"` 走 Chat Completions 映射；兼容 endpoint 若在 `choices[].delta.reasoning_content` 暴露非标准 reasoning delta，则 best-effort 映射为 Demi `thinking_*` 事件，不伪造 Responses encrypted reasoning signature。
@@ -1446,7 +1446,7 @@ REPL/Web 当前 composition root 默认装配 `createClaudeCodeProvider()`、`cr
 
 - shell session 状态连续性（跨 exec 复用 cwd/env，§4.7.1）
 - stdout/stderr 经协议层 `shell_output` 事件流出
-- wait / input / abort
+- status / write / abort / yield
 - `DEMI_SESSION_ID` / `DEMI_SHELL_ID` env 注入与命令状态隔离
 - coding 注册命令：`editor` / `todo`
 - 注册命令 `--json` / raw 双模式输出

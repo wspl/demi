@@ -14,13 +14,10 @@ import {
   buildBashopts,
   buildShellopts,
   createOutputSinks,
-  emptySnapshot,
-  exitedResult,
   flushForegroundSinks,
   notifyForegroundWaiters,
   pumpStream,
   recordForegroundChunk,
-  runningResult,
   snapshotFromAccumulator,
   snapshotFromForeground,
 } from './environment-output'
@@ -34,10 +31,10 @@ export interface BashEnvironmentOptions {
   host: Host
   commands?: CommandRegistry
   shellIdFactory?: () => string
+  commandIdFactory?: () => string
   initialEnv?: Record<string, string>
   yieldAfterMs?: number
-  timeoutMs?: number
-  outputLimitBytes?: number
+  maxOutputBytes?: number
 }
 
 export interface ShellExecInput {
@@ -45,29 +42,27 @@ export interface ShellExecInput {
   shellId?: string
   agentSessionId?: string
   yieldAfterMs?: number
-  timeoutMs?: number
-  outputLimitBytes?: number
+  maxOutputBytes?: number
   signal?: AbortSignal
 }
 
-export interface ShellWaitInput {
-  shellId: string
-  yieldAfterMs?: number
-  timeoutMs?: number
-  outputLimitBytes?: number
-  signal?: AbortSignal
+export interface ShellStatusInput {
+  commandId: string
+  stdoutOffset?: number
+  stderrOffset?: number
+  maxOutputBytes?: number
 }
 
-export interface ShellStdinInput {
-  shellId: string
+export interface ShellWriteInput {
+  commandId: string
   stdin: string | Uint8Array
-  yieldAfterMs?: number
-  outputLimitBytes?: number
+  maxOutputBytes?: number
   signal?: AbortSignal
 }
 
 export interface ShellAbortInput {
-  shellId: string
+  commandId: string
+  maxOutputBytes?: number
 }
 
 export interface OutputSnapshot {
@@ -77,6 +72,15 @@ export interface OutputSnapshot {
   stderrTail: string
   totalStdoutBytes: number
   totalStderrBytes: number
+  truncated: boolean
+}
+
+export interface StreamArtifact {
+  path: string
+  offset: number
+  delta: string
+  tail: string
+  bytes: number
   truncated: boolean
 }
 
@@ -92,29 +96,57 @@ export interface CommandMetadataRecord {
   metadata: unknown
 }
 
-export type ShellToolResult =
+export type ShellCommandSnapshot =
   | {
       status: 'exited'
       shellId: string
+      commandId: string
       exitCode: number
-      output: OutputSnapshot
+      stdout: StreamArtifact
+      stderr: StreamArtifact
+      runningMs: number
+      idleMs: number
       audit: BashAuditEvent[]
       commandMetadata?: CommandMetadataRecord[]
     }
   | {
       status: 'running'
       shellId: string
-      reason: 'yield' | 'output_limit'
-      output: OutputSnapshot
+      commandId: string
+      stdout: StreamArtifact
+      stderr: StreamArtifact
       runningMs: number
       idleMs: number
     }
-  | { status: 'timeout'; shellId: string; output: OutputSnapshot; runningMs: number }
-  | { status: 'aborted'; shellId: string; output: OutputSnapshot; runningMs: number }
+  | {
+      status: 'aborted'
+      shellId: string
+      commandId: string
+      stdout: StreamArtifact
+      stderr: StreamArtifact
+      runningMs: number
+      idleMs: number
+    }
+
+interface ShellCommandRecord {
+  id: string
+  shellId: string
+  script: string
+  startedAt: number
+  lastOutputAt: number
+  status: 'running' | 'exited' | 'aborted'
+  stdout: string
+  stderr: string
+  stdoutOffset: number
+  stderrOffset: number
+  exitCode?: number
+  audit: BashAuditEvent[]
+  commandMetadata: CommandMetadataRecord[]
+}
 
 const DEFAULT_YIELD_AFTER_MS = 10_000
-const DEFAULT_TIMEOUT_MS = 120_000
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
+const MAX_YIELD_AFTER_MS = 600_000
 const DEMI_PORTABLE_COMMANDS: CommandName[] = [
   'cat',
   'ls',
@@ -173,21 +205,22 @@ export class BashEnvironment {
   private readonly host: Host
   private readonly commands: CommandRegistry
   private readonly shellIdFactory: () => string
+  private readonly commandIdFactory: () => string
   private readonly initialEnv: Record<string, string>
   private readonly defaultYieldAfterMs: number
-  private readonly defaultTimeoutMs: number
   private readonly defaultOutputLimitBytes: number
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
+  private readonly commandsById = new Map<string, ShellCommandRecord>()
 
   constructor(options: BashEnvironmentOptions) {
     this.host = options.host
     this.commands = options.commands ?? new CommandRegistry()
     this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
+    this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}
     this.defaultYieldAfterMs = options.yieldAfterMs ?? DEFAULT_YIELD_AFTER_MS
-    this.defaultTimeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-    this.defaultOutputLimitBytes = options.outputLimitBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
+    this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
   }
 
   getShell(shellId: string): ShellSession | null {
@@ -203,48 +236,43 @@ export class BashEnvironment {
     return this.commands.list()
   }
 
-  async exec(input: ShellExecInput): Promise<ShellToolResult> {
+  async exec(input: ShellExecInput): Promise<ShellCommandSnapshot> {
+    const yieldAfterMs = normalizeYieldAfterMs(input.yieldAfterMs ?? this.defaultYieldAfterMs)
     const session = input.shellId ? this.requireShell(input.shellId) : this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
-    if (session.pendingExec) return this.raceForeground(session, session.foreground, session.pendingExec, input)
-    if (session.foreground) return runningResult(session, session.foreground, 'yield')
+    if (session.pendingExec || session.foreground) {
+      const commandId = session.activeCommandId ?? session.foreground?.commandId ?? 'unknown'
+      throw new Error(`Shell session "${session.id}" is already running command "${commandId}"`)
+    }
 
-    return this.runScript(session, input.script, input)
+    return this.runScript(session, input.script, { ...input, yieldAfterMs })
   }
 
-  async wait(input: ShellWaitInput): Promise<ShellToolResult> {
-    const session = this.requireShell(input.shellId)
-    if (!session.pendingExec) {
-      return exitedResult(session, 0, emptySnapshot())
-    }
-    return this.raceForeground(session, session.foreground, session.pendingExec, input)
+  async status(input: ShellStatusInput): Promise<ShellCommandSnapshot> {
+    const record = this.requireCommand(input.commandId)
+    return this.snapshotCommand(record, input)
   }
 
-  async input(input: ShellStdinInput): Promise<ShellToolResult> {
-    const session = this.requireShell(input.shellId)
-    if (!session.foreground || !session.pendingExec) {
-      throw new Error(`Shell session "${session.id}" has no foreground process`)
-    }
+  async write(input: ShellWriteInput): Promise<ShellCommandSnapshot> {
+    const record = this.requireCommand(input.commandId)
+    if (record.status !== 'running') throw new Error(`Command "${record.id}" is not running`)
+    const session = this.requireShell(record.shellId)
+    const foreground = this.requireForegroundCommand(session, record.id)
     const data = typeof input.stdin === 'string' ? encodeUtf8(input.stdin) : input.stdin
-    await session.foreground.handle.writeStdin(data)
-    return this.raceForeground(session, session.foreground, session.pendingExec, input)
+    if (data.byteLength === 0) throw new Error('shell_write field "stdin" must not be empty; use shell_status to poll')
+    await foreground.handle.writeStdin(data)
+    return this.snapshotCommand(record, input)
   }
 
-  async abort(input: ShellAbortInput): Promise<ShellToolResult> {
-    const session = this.requireShell(input.shellId)
-    const foreground = session.foreground
-    if (!foreground) {
-      return {
-        status: 'aborted',
-        shellId: session.id,
-        output: emptySnapshot(),
-        runningMs: 0,
-      }
-    }
+  async abort(input: ShellAbortInput): Promise<ShellCommandSnapshot> {
+    const record = this.requireCommand(input.commandId)
+    if (record.status !== 'running') return this.snapshotCommand(record, input)
+    const session = this.requireShell(record.shellId)
+    const foreground = this.requireForegroundCommand(session, record.id)
     foreground.abortController.abort()
     await foreground.handle.kill('SIGTERM')
     session.state.lastExitCode = 130
-    return this.collectAborted(session, foreground)
+    return this.collectAborted(session, record, foreground, input)
   }
 
   async disposeShell(shellId: string): Promise<boolean> {
@@ -285,6 +313,27 @@ export class BashEnvironment {
     const session = this.shells.get(shellId)
     if (!session) throw new Error(`Unknown shell session "${shellId}"`)
     return session
+  }
+
+  private requireCommand(commandId: string): ShellCommandRecord {
+    const record = this.commandsById.get(commandId)
+    if (!record) throw new Error(`Unknown shell command "${commandId}"`)
+    const session = this.shells.get(record.shellId)
+    const foreground = session?.foreground
+    if (record.status === 'running' && foreground?.commandId === record.id) {
+      record.stdout = foreground.stdoutBuffer
+      record.stderr = foreground.stderrBuffer
+      record.lastOutputAt = foreground.lastOutputAt
+    }
+    return record
+  }
+
+  private requireForegroundCommand(session: ShellSession, commandId: string): ForegroundProcess {
+    const foreground = session.foreground
+    if (!foreground || foreground.commandId !== commandId) {
+      throw new Error(`Command "${commandId}" has no foreground process`)
+    }
+    return foreground
   }
 
   private defaultShell(agentSessionId: string | undefined): ShellSession {
@@ -430,15 +479,24 @@ export class BashEnvironment {
     return session
   }
 
-  private async runScript(session: ShellSession, script: string, input: ShellExecInput): Promise<ShellToolResult> {
+  private async runScript(
+    session: ShellSession,
+    script: string,
+    input: ShellExecInput & { yieldAfterMs: number },
+  ): Promise<ShellCommandSnapshot> {
+    const record = this.createCommandRecord(session, script)
     let ast: ScriptNode
     try {
       ast = parse(script)
     } catch (error) {
       if (error instanceof ParseException || error instanceof LexerError) {
         const message = (error as Error).message
-        session.accumulator.stderr += `bash: ${message}\n`
-        return exitedResult(session, 2, snapshotFromAccumulator(session, session.accumulator))
+        record.stderr += `bash: ${message}\n`
+        record.status = 'exited'
+        record.exitCode = 2
+        session.state.lastExitCode = 2
+        session.activeCommandId = undefined
+        return this.snapshotCommand(record, input)
       }
       throw error
     }
@@ -446,13 +504,51 @@ export class BashEnvironment {
     session.startStdoutBytes = session.totalStdoutBytes
     session.startStderrBytes = session.totalStderrBytes
     session.abortController = new AbortController()
+    session.activeCommandId = record.id
 
     const execPromise = session.interpreter.executeScript(ast).then(
       (result) => result,
       (error) => error as Error,
     )
     session.pendingExec = execPromise
-    return this.raceForeground(session, undefined, execPromise, input)
+    execPromise.then(
+      (result) => {
+        try {
+          if (record.status === 'running' && session.pendingExec === execPromise) {
+            this.collectExited(session, record, result, session.foreground, {
+              stdoutOffset: record.stdoutOffset,
+              stderrOffset: record.stderrOffset,
+            })
+          }
+        } catch {
+          // The foreground caller observes execution errors; this background settle path
+          // exists only to make later shell_status calls see naturally completed commands.
+        }
+      },
+      () => {},
+    )
+    return this.raceForeground(session, record, undefined, execPromise, input)
+  }
+
+  private createCommandRecord(session: ShellSession, script: string): ShellCommandRecord {
+    const id = this.commandIdFactory()
+    const now = Date.now()
+    const record: ShellCommandRecord = {
+      id,
+      shellId: session.id,
+      script,
+      startedAt: now,
+      lastOutputAt: now,
+      status: 'running',
+      stdout: '',
+      stderr: '',
+      stdoutOffset: 0,
+      stderrOffset: 0,
+      audit: [],
+      commandMetadata: [],
+    }
+    this.commandsById.set(id, record)
+    return record
   }
 
   private async startBackgroundJob(session: ShellSession, statement: unknown): Promise<ForkExecResult | null> {
@@ -543,13 +639,12 @@ export class BashEnvironment {
 
   private async raceForeground(
     session: ShellSession,
+    record: ShellCommandRecord,
     foreground: ForegroundProcess | undefined,
     execPromise: Promise<ForkExecResult | Error>,
-    input: { yieldAfterMs?: number; timeoutMs?: number; outputLimitBytes?: number; signal?: AbortSignal },
-  ): Promise<ShellToolResult> {
-    const yieldAfterMs = input.yieldAfterMs ?? this.defaultYieldAfterMs
-    const timeoutMs = input.timeoutMs ?? this.defaultTimeoutMs
-    const outputLimitBytes = input.outputLimitBytes ?? this.defaultOutputLimitBytes
+    input: { yieldAfterMs: number; signal?: AbortSignal; maxOutputBytes?: number },
+  ): Promise<ShellCommandSnapshot> {
+    const yieldAfterMs = normalizeYieldAfterMs(input.yieldAfterMs)
     const operationStartedAt = Date.now()
 
     while (true) {
@@ -561,8 +656,6 @@ export class BashEnvironment {
         foreground,
         operationStartedAt,
         yieldAfterMs,
-        timeoutMs,
-        outputLimitBytes,
         input.signal,
       )
 
@@ -574,28 +667,19 @@ export class BashEnvironment {
       boundary.cancel()
 
       if (outcome.kind === 'done') {
-        return this.collectExited(session, outcome.result, foreground)
+        return this.collectExited(session, record, outcome.result, foreground, input)
       }
       if (outcome.kind === 'foreground_appeared') {
         foreground = outcome.foreground
         continue
       }
-      const activeForeground = foreground ?? session.foreground
-      if (!activeForeground) {
-        if (outcome.kind === 'aborted') return this.collectAbortedWithoutForeground(session)
-        continue
-      }
       if (outcome.kind === 'yield') {
-        return runningResult(session, activeForeground, 'yield')
-      }
-      if (outcome.kind === 'output_limit') {
-        return runningResult(session, activeForeground, 'output_limit')
-      }
-      if (outcome.kind === 'timeout') {
-        return this.collectTimeout(session, activeForeground)
+        return this.snapshotCommand(record, input)
       }
       if (outcome.kind === 'aborted') {
-        return this.collectAborted(session, activeForeground)
+        const activeForeground = foreground ?? session.foreground
+        if (!activeForeground) return this.collectAbortedWithoutForeground(session, record, input)
+        return this.collectAborted(session, record, activeForeground, input)
       }
     }
   }
@@ -605,8 +689,6 @@ export class BashEnvironment {
     foreground: ForegroundProcess | undefined,
     operationStartedAt: number,
     yieldAfterMs: number,
-    timeoutMs: number,
-    outputLimitBytes: number,
     externalSignal?: AbortSignal,
   ): { promise: Promise<BoundaryOutcome>; cancel: () => void } {
     const timers: Array<() => void> = []
@@ -625,6 +707,10 @@ export class BashEnvironment {
             resolve({ kind: 'aborted' })
             return
           }
+          const now = Date.now()
+          const yieldIn = Math.max(0, yieldAfterMs - (now - operationStartedAt))
+          const t = setTimeout(() => resolve({ kind: 'yield' }), yieldIn)
+          timers.push(() => clearTimeout(t))
           const onForeground = (nextForeground: ForegroundProcess): void => {
             resolve({ kind: 'foreground_appeared', foreground: nextForeground })
           }
@@ -649,32 +735,9 @@ export class BashEnvironment {
 
       const now = Date.now()
       const yieldIn = Math.max(0, yieldAfterMs - (now - operationStartedAt))
-      const timeoutIn = Math.max(0, timeoutMs - (now - fg.startedAt))
 
-      if (yieldAfterMs > 0) {
-        const t = setTimeout(() => resolve({ kind: 'yield' }), yieldIn)
-        timers.push(() => clearTimeout(t))
-      }
-      if (timeoutMs > 0) {
-        const t = setTimeout(() => resolve({ kind: 'timeout' }), timeoutIn)
-        timers.push(() => clearTimeout(t))
-      }
-      if (outputLimitBytes > 0) {
-        const check = (): void => {
-          const produced =
-            fg.rawStdoutBytes -
-            fg.lastRawStdoutBytesSnapshot +
-            fg.rawStderrBytes -
-            fg.lastRawStderrBytesSnapshot
-          if (produced >= outputLimitBytes) {
-            resolve({ kind: 'output_limit' })
-          } else {
-            fg.outputLimitWaiters.add(check)
-          }
-        }
-        check()
-        timers.push(() => fg.outputLimitWaiters.delete(check))
-      }
+      const t = setTimeout(() => resolve({ kind: 'yield' }), yieldIn)
+      timers.push(() => clearTimeout(t))
 
       const onAbort = (): void => resolve({ kind: 'aborted' })
       fg.abortController.signal.addEventListener('abort', onAbort, { once: true })
@@ -707,7 +770,10 @@ export class BashEnvironment {
     })
     const startedAt = Date.now()
     const abortController = new AbortController()
+    const commandId = session.activeCommandId
+    if (!commandId) throw new Error(`hostSpawn: session "${session.id}" has no active command`)
     const foreground: ForegroundProcess = {
+      commandId,
       command,
       args,
       cwd: opts.cwd,
@@ -762,27 +828,35 @@ export class BashEnvironment {
         : foreground.rawStderrBuffer
 
     foreground.audit[0] = { kind: 'system-command', name: command, args, cwd: opts.cwd, exitCode }
+    session.accumulator.audit.push(...foreground.audit)
     session.foreground = undefined
 
     return { stdout, stderr, exitCode }
   }
 
-  private collectExited(session: ShellSession, resultOrError: ForkExecResult | Error, foreground: ForegroundProcess | undefined): ShellToolResult {
+  private collectExited(
+    session: ShellSession,
+    record: ShellCommandRecord,
+    resultOrError: ForkExecResult | Error,
+    foreground: ForegroundProcess | undefined,
+    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number } = {},
+  ): ShellCommandSnapshot {
+    if (record.status !== 'running') return this.snapshotCommand(record, input)
     if (resultOrError instanceof Error) {
       if (resultOrError instanceof ExitError) {
         session.exited = true
         const err = resultOrError as unknown as { stdout: string; stderr: string; exitCode: number }
         session.accumulator.stdout += err.stdout
         session.accumulator.stderr += err.stderr
-        return exitedResult(session, err.exitCode, snapshotFromAccumulator(session, session.accumulator))
+        return this.finishExited(session, record, err.exitCode, input)
       }
       if (resultOrError instanceof ExecutionLimitError) {
         session.accumulator.stderr += `bash: execution limit exceeded: ${resultOrError.message}\n`
-        return exitedResult(session, ExecutionLimitError.EXIT_CODE, snapshotFromAccumulator(session, session.accumulator))
+        return this.finishExited(session, record, ExecutionLimitError.EXIT_CODE, input)
       }
       if (resultOrError instanceof ParseException || resultOrError instanceof LexerError) {
         session.accumulator.stderr += `bash: ${(resultOrError as Error).message}\n`
-        return exitedResult(session, 2, snapshotFromAccumulator(session, session.accumulator))
+        return this.finishExited(session, record, 2, input)
       }
       if (resultOrError.message.startsWith('Unsupported shell syntax:')) {
         session.pendingExec = undefined
@@ -793,41 +867,106 @@ export class BashEnvironment {
         throw resultOrError
       }
       session.accumulator.stderr += `bash: ${(resultOrError as Error).message}\n`
-      return exitedResult(session, 1, snapshotFromAccumulator(session, session.accumulator))
+      return this.finishExited(session, record, 1, input)
     }
 
     session.accumulator.stdout += foreground ? resultOrError.stdout.slice(foreground.lastStdoutSnapshot) : resultOrError.stdout
     session.accumulator.stderr += foreground ? resultOrError.stderr.slice(foreground.lastStderrSnapshot) : resultOrError.stderr
-    if (foreground) {
-      session.accumulator.audit.push(...foreground.audit)
-    }
-    return exitedResult(session, resultOrError.exitCode, snapshotFromAccumulator(session, session.accumulator))
+    return this.finishExited(session, record, resultOrError.exitCode, input)
   }
 
-  private async collectTimeout(session: ShellSession, foreground: ForegroundProcess): Promise<ShellToolResult> {
+  private finishExited(
+    session: ShellSession,
+    record: ShellCommandRecord,
+    exitCode: number,
+    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number },
+  ): ShellCommandSnapshot {
+    const snapshot = snapshotFromAccumulator(session, session.accumulator)
+    record.stdout = snapshot.stdoutTail.length === snapshot.stdoutDelta.length ? snapshot.stdoutDelta : session.accumulator.stdout
+    record.stderr = snapshot.stderrTail.length === snapshot.stderrDelta.length ? snapshot.stderrDelta : session.accumulator.stderr
+    record.lastOutputAt = Date.now()
+    record.status = 'exited'
+    record.exitCode = exitCode
+    record.audit = [...session.accumulator.audit]
+    record.commandMetadata = [...session.accumulator.commandMetadata]
+    session.pendingExec = undefined
+    if (session.activeCommandId === record.id) session.activeCommandId = undefined
+    return this.snapshotCommand(record, input)
+  }
+
+  private async collectAborted(
+    session: ShellSession,
+    record: ShellCommandRecord,
+    foreground: ForegroundProcess,
+    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number } = {},
+  ): Promise<ShellCommandSnapshot> {
+    if (record.status !== 'running') return this.snapshotCommand(record, input)
     foreground.abortController.abort()
     foreground.handle.kill('SIGTERM').catch(() => {})
     await flushForegroundSinks(session, foreground)
     const snapshot = snapshotFromForeground(session, foreground)
+    record.stdout = foreground.stdoutBuffer
+    record.stderr = foreground.stderrBuffer
+    record.lastOutputAt = Date.now()
+    record.status = 'aborted'
     session.foreground = undefined
     session.pendingExec = undefined
-    return { status: 'timeout', shellId: session.id, output: snapshot, runningMs: Date.now() - foreground.startedAt }
+    if (session.activeCommandId === record.id) session.activeCommandId = undefined
+    void snapshot
+    return this.snapshotCommand(record, input)
   }
 
-  private async collectAborted(session: ShellSession, foreground: ForegroundProcess): Promise<ShellToolResult> {
-    foreground.abortController.abort()
-    foreground.handle.kill('SIGTERM').catch(() => {})
-    await flushForegroundSinks(session, foreground)
-    const snapshot = snapshotFromForeground(session, foreground)
-    session.foreground = undefined
-    session.pendingExec = undefined
-    return { status: 'aborted', shellId: session.id, output: snapshot, runningMs: Date.now() - foreground.startedAt }
-  }
-
-  private collectAbortedWithoutForeground(session: ShellSession): ShellToolResult {
+  private collectAbortedWithoutForeground(
+    session: ShellSession,
+    record: ShellCommandRecord,
+    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number } = {},
+  ): ShellCommandSnapshot {
+    if (record.status !== 'running') return this.snapshotCommand(record, input)
     session.abortController?.abort()
     session.pendingExec = undefined
-    return { status: 'aborted', shellId: session.id, output: snapshotFromAccumulator(session, session.accumulator), runningMs: 0 }
+    if (session.activeCommandId === record.id) session.activeCommandId = undefined
+    const snapshot = snapshotFromAccumulator(session, session.accumulator)
+    record.stdout = snapshot.stdoutDelta
+    record.stderr = snapshot.stderrDelta
+    record.lastOutputAt = Date.now()
+    record.status = 'aborted'
+    return this.snapshotCommand(record, input)
+  }
+
+  private snapshotCommand(
+    record: ShellCommandRecord,
+    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number } = {},
+  ): ShellCommandSnapshot {
+    const session = this.shells.get(record.shellId)
+    const foreground = session?.foreground
+    if (record.status === 'running' && foreground?.commandId === record.id) {
+      record.stdout = foreground.stdoutBuffer
+      record.stderr = foreground.stderrBuffer
+      record.lastOutputAt = foreground.lastOutputAt
+    }
+    const maxOutputBytes = input.maxOutputBytes ?? this.defaultOutputLimitBytes
+    const stdout = streamArtifact(record, 'stdout', input.stdoutOffset, maxOutputBytes)
+    const stderr = streamArtifact(record, 'stderr', input.stderrOffset, maxOutputBytes)
+    const base = {
+      shellId: record.shellId,
+      commandId: record.id,
+      stdout,
+      stderr,
+      runningMs: Date.now() - record.startedAt,
+      idleMs: Date.now() - record.lastOutputAt,
+    }
+    if (record.status === 'exited') {
+      const result: ShellCommandSnapshot = {
+        ...base,
+        status: 'exited',
+        exitCode: record.exitCode ?? 0,
+        audit: record.audit,
+      }
+      if (record.commandMetadata.length > 0) result.commandMetadata = record.commandMetadata
+      return result
+    }
+    if (record.status === 'aborted') return { ...base, status: 'aborted' }
+    return { ...base, status: 'running' }
   }
 }
 
@@ -846,6 +985,63 @@ function createPortableCommands(session: ShellSession): ForkCommand[] {
       return result
     },
   }))
+}
+
+function normalizeYieldAfterMs(value: number): number {
+  if (!Number.isFinite(value) || value < 1 || value > MAX_YIELD_AFTER_MS) {
+    throw new Error(`yieldAfterMs must be between 1 and ${MAX_YIELD_AFTER_MS}`)
+  }
+  return Math.floor(value)
+}
+
+function streamArtifact(
+  record: ShellCommandRecord,
+  stream: 'stdout' | 'stderr',
+  explicitOffset: number | undefined,
+  maxOutputBytes: number,
+): StreamArtifact {
+  const text = stream === 'stdout' ? record.stdout : record.stderr
+  const totalBytes = utf8Bytes(text)
+  const offset = explicitOffset ?? (stream === 'stdout' ? record.stdoutOffset : record.stderrOffset)
+  const boundedOffset = clampOffset(offset, totalBytes)
+  const available = Math.max(0, totalBytes - boundedOffset)
+  const byteLimit = Math.max(0, Math.floor(maxOutputBytes))
+  const takeBytes = byteLimit === 0 ? available : Math.min(available, byteLimit)
+  const delta = utf8Slice(text, boundedOffset, boundedOffset + takeBytes)
+  const nextOffset = boundedOffset + utf8Bytes(delta)
+  const truncated = nextOffset < totalBytes
+  if (explicitOffset === undefined) {
+    if (stream === 'stdout') record.stdoutOffset = nextOffset
+    else record.stderrOffset = nextOffset
+  }
+  return {
+    path: `demi://shell/${record.shellId}/commands/${record.id}/${stream}`,
+    offset: nextOffset,
+    delta,
+    tail: tailString(text),
+    bytes: totalBytes,
+    truncated,
+  }
+}
+
+function clampOffset(value: number, max: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  return Math.min(Math.floor(value), max)
+}
+
+function utf8Bytes(text: string): number {
+  return encodeUtf8(text).byteLength
+}
+
+function utf8Slice(text: string, start: number, end: number): string {
+  if (start <= 0 && end >= utf8Bytes(text)) return text
+  return decodeUtf8(encodeUtf8(text).slice(start, end))
+}
+
+function tailString(value: string): string {
+  const maxChars = 4096
+  if (value.length <= maxChars) return value
+  return value.slice(value.length - maxChars)
 }
 
 void (undefined as unknown as InterpreterContext)

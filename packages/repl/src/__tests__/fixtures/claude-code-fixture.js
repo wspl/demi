@@ -55,8 +55,8 @@ input.on('line', (line) => {
               mode === 'input'
                 ? { script: 'sh -c \'IFS= read -r line; printf "fixture-input:%s" "$line"\'', yieldAfterMs: 1 }
                 : mode === 'flood'
-                  ? { script: floodScript(), yieldAfterMs: 10_000, outputLimitBytes: 512 * 1024 }
-                : { script: 'printf fixture-shell' },
+                  ? { script: floodScript(), yieldAfterMs: 10_000, maxOutputBytes: 512 * 1024 }
+                : { script: 'printf fixture-shell', yieldAfterMs: 1_000 },
           },
         },
       },

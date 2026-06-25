@@ -10,34 +10,34 @@ test('todo command supports add/list/update/done with raw and JSON output', asyn
   const env = await createTodoEnvironment(() => 'todo-shell')
 
   const add = await env.exec({ agentSessionId: 'todo-agent', script: 'todo add "Run tests"' })
-  expect(add.output.stdoutDelta).toBe('[ ] T1 Run tests\n')
+  expect(add.stdout.delta).toBe('[ ] T1 Run tests\n')
 
   const addJson = await env.exec({ agentSessionId: 'todo-agent', script: 'todo add "Write docs" --json' })
-  expect(JSON.parse(addJson.output.stdoutDelta)).toEqual({
+  expect(JSON.parse(addJson.stdout.delta)).toEqual({
     todo: { id: 'T2', text: 'Write docs', status: 'pending' },
   })
 
   const rawList = await env.exec({ agentSessionId: 'todo-agent', script: 'todo list' })
-  expect(rawList.output.stdoutDelta).toBe('[ ] T1 Run tests\n[ ] T2 Write docs\n')
+  expect(rawList.stdout.delta).toBe('[ ] T1 Run tests\n[ ] T2 Write docs\n')
 
   const update = await env.exec({ agentSessionId: 'todo-agent', script: 'todo update T1 --text "Run full tests"' })
-  expect(update.output.stdoutDelta).toBe('[ ] T1 Run full tests\n')
+  expect(update.stdout.delta).toBe('[ ] T1 Run full tests\n')
 
   const inProgress = await env.exec({ agentSessionId: 'todo-agent', script: 'todo update T1 --status in_progress --json' })
-  expect(JSON.parse(inProgress.output.stdoutDelta)).toEqual({
+  expect(JSON.parse(inProgress.stdout.delta)).toEqual({
     todo: { id: 'T1', text: 'Run full tests', status: 'in_progress' },
   })
 
   const doneRaw = await env.exec({ agentSessionId: 'todo-agent', script: 'todo done T2' })
-  expect(doneRaw.output.stdoutDelta).toBe('[x] T2 Write docs\n')
+  expect(doneRaw.stdout.delta).toBe('[x] T2 Write docs\n')
 
   const done = await env.exec({ agentSessionId: 'todo-agent', script: 'todo done T1 --json' })
-  expect(JSON.parse(done.output.stdoutDelta)).toEqual({
+  expect(JSON.parse(done.stdout.delta)).toEqual({
     todo: { id: 'T1', text: 'Run full tests', status: 'done' },
   })
 
   const list = await env.exec({ agentSessionId: 'todo-agent', script: 'todo list --json' })
-  expect(JSON.parse(list.output.stdoutDelta)).toEqual({
+  expect(JSON.parse(list.stdout.delta)).toEqual({
     todos: [
       { id: 'T1', text: 'Run full tests', status: 'done' },
       { id: 'T2', text: 'Write docs', status: 'done' },
@@ -52,8 +52,8 @@ test('todo command state is isolated by agent session id', async () => {
   const first = await env.exec({ agentSessionId: 'agent-a', script: 'todo add "First session"' })
   const second = await env.exec({ agentSessionId: 'agent-b', script: 'todo add "Second session"' })
 
-  expect(first.output.stdoutDelta).toBe('[ ] T1 First session\n')
-  expect(second.output.stdoutDelta).toBe('[ ] T1 Second session\n')
+  expect(first.stdout.delta).toBe('[ ] T1 First session\n')
+  expect(second.stdout.delta).toBe('[ ] T1 Second session\n')
 })
 
 test('todo command keeps agent-session storage across shell recreation', async () => {
@@ -69,14 +69,14 @@ test('todo command keeps agent-session storage across shell recreation', async (
   expect(secondShell.shellId).toBe('todo-recreated-shell-2')
   expect(otherAgent.shellId).toBe('todo-recreated-shell-3')
   const list = await env.exec({ agentSessionId: 'todo-agent', script: 'todo list --json' })
-  expect(JSON.parse(list.output.stdoutDelta)).toEqual({
+  expect(JSON.parse(list.stdout.delta)).toEqual({
     todos: [
       { id: 'T1', text: 'First shell', status: 'pending' },
       { id: 'T2', text: 'Second shell', status: 'pending' },
     ],
   })
   const otherList = await env.exec({ agentSessionId: 'other-agent', script: 'todo list --json' })
-  expect(JSON.parse(otherList.output.stdoutDelta)).toEqual({
+  expect(JSON.parse(otherList.stdout.delta)).toEqual({
     todos: [{ id: 'T1', text: 'Other agent', status: 'pending' }],
   })
 })

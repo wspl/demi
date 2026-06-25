@@ -85,13 +85,13 @@ terminal, editor (CodeMirror), LSP, MCP panels, settings.
   (`packages/agent/src/json-codec.ts`), so image/document bytes survive JSON-over-WS.
 - **The protocol is fully defined** (`packages/agent/src/frames.ts`):
   - `ClientFrame`: `open` (carries `ProviderSelection {providerId, model}` + `cwd`), `send`,
-    `abort`, `retry`, `resume`, `compact`, `shell_input`, `close`.
+    `abort`, `retry`, `resume`, `compact`, `shell_write`, `close`.
   - `ServerFrame`: `opened`, `rejected`, `transcript_snapshot`, `transcript_patch`,
-    `phase`, `queue`, `tool_progress`, `shell_output`, `shell_input_result`, `audit`,
+    `phase`, `queue`, `tool_progress`, `shell_output`, `shell_write_result`, `audit`,
     `error`, `closed`. Streaming updates flow as `TranscriptPatch` diffs.
 - **`AgentClient`** (`packages/agent/src/client.ts`) is the exact front-end API a Vue store
   will wrap: `open(provider, cwd)`, `send(content)`, `retry/resume/compact/abort`,
-  `shellInput`, `subscribe(listener) → ClientSessionEvent`, `transcript() → {blocks}`. It
+  `shellWrite`, `subscribe(listener) → ClientSessionEvent`, `transcript() → {blocks}`. It
   maintains `blocks` internally by applying patches. Its import closure is **browser-safe**
   (only `@demi/core` types + `patch`/`frames`/`transport`).
 - **`AgentServer`** (`packages/agent/src/server.ts`): `attachTransport(serverTransport)`
@@ -182,9 +182,9 @@ applies unchanged to Demi.
 
 agent-gui dispatches `tool_call` by rich tool names —
 `Read/Write/Edit/Delete/Shell/Grep/Glob/List/ExitPlanMode/TodoWrite/Skill/mcp_*` — each
-with a bespoke block (`ToolCallBlock.vue`). **Demi's only agent tools are the shell family**
-(`createShellSessionTools`): `shell_exec {script, shellId?, yieldAfterMs?, timeoutMs?}`,
-`shell_wait`, `shell_input`, `shell_abort`. Everything else (cat/ls/grep/edit, the `editor`
+with a bespoke block (`ToolCallBlock.vue`). **Demi's standard agent tools are the shell/yield family**
+(`createStandardAgentTools`): `shell_exec {script, shellId?, yieldAfterMs, maxOutputBytes?}`,
+`shell_status`, `shell_write`, `shell_abort`, `yield`. Everything else (cat/ls/grep/edit, the `editor`
 and `todo` registered commands) runs *through bash inside `shell_exec`*, and Demi reports
 structured `audit` events (`registered-command` / `system-command` with name/args/exitCode).
 
@@ -355,7 +355,7 @@ features dropped — §10).
 - One shared `Provider[]` (claude-code + codex created once).
 - `getOrCreateAgentServer(cwd)`: cached `Map<cwd, AgentServer>`; each builds
   `new LocalHost(cwd)` + `createCodingAgentHarness({ host })` +
-  `new AgentServer({ agent, providers, shell:{ initialEnv:{PATH}, yieldAfterMs, timeoutMs } })`.
+  `new AgentServer({ agent, providers, shell:{ initialEnv:{PATH}, yieldAfterMs } })`.
   Conversations sharing a cwd share an `AgentServer` (multiple transports, independent
   sessions). (Alternative: a cwd-dynamic harness whose `host(ctx)` derives from `ctx.cwd`,
   letting one `AgentServer` serve all cwds; requires a small `@demi/coding-agent` option.
@@ -429,7 +429,7 @@ change data model / RPC calls. **Defer** = copy into the library but leave unwir
   Demi queue frames),
   `StickyUserBlockOverlay.vue`, `LoadingBlock.vue`, `AnsiText.vue`.
 - Tool subtree — Rewire dispatch + core: `ToolCallBlock.vue` (dispatch on Demi tool names:
-  `shell_exec → ToolShellBlock`, `shell_wait/shell_input/shell_abort → small status rows`,
+  `shell_exec → ToolShellBlock`, `shell_status/shell_write/shell_abort/yield → small status rows`,
   else `ToolGenericBlock`), `ToolCard.vue` (Copy), `ToolShellBlock.vue` (Rewire: `command ←
   input.script`; drop terminal nav), `ToolStatusBadge.vue` (Copy), `CodeView.vue`/
   `DiffView.vue` (Copy, for future).
@@ -466,8 +466,8 @@ collapse to an auto-grow `<textarea>` stays possible but is not planned.
 - `shell_exec` → `ToolShellBlock` via `ToolCard`: header = `input.description || input.script`;
   body-top = `$ <script>`; body = `AnsiText(output)`; loading = `status==='executing'`;
   error = `status==='error'`.
-- `shell_wait` / `shell_input` / `shell_abort` → compact status rows (target shellId +
-  status), styled like `InlineToolRow`.
+- `shell_status` / `shell_write` / `shell_abort` / `yield` → compact status rows (target
+  commandId/status or wakeup duration), styled like `InlineToolRow`.
 - The `audit` server event (`registered-command`/`system-command` with name/args/exitCode)
   can drive a future per-command breakdown inside a `shell_exec` card; the `shell_output`
   event already carries live stdout/stderr deltas for foreground shells.

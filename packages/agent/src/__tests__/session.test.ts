@@ -66,6 +66,26 @@ function createSession(
   )
 }
 
+function createYieldRuntime(
+  sessionRef: () => AgentSession<{ toolCalls: number }> | null,
+  durationMs: number,
+): AgentHarnessRuntime<{ toolCalls: number }> {
+  return createRuntime({
+    tools: () => [
+      {
+        name: 'yield_tool',
+        description: 'Schedules a yield wakeup.',
+        inputSchema: { type: 'object' },
+        invoke: () => {
+          const session = sessionRef()
+          if (!session) throw new Error('session is not ready')
+          return session.scheduleYieldWakeup(durationMs)
+        },
+      },
+    ],
+  })
+}
+
 class RecordingProvider implements AgentProvider {
   readonly runModelIds: string[] = []
   disposed = false
@@ -285,7 +305,7 @@ test('AgentSession abort is not blocked by reference resolution', async () => {
   const aborted = await session.abort()
   await sending
 
-  expect(aborted).toBe(true)
+  expect(aborted.aborted).toBe(true)
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['abort'])
   expect(emitted).toContainEqual({ type: 'phase_changed', phase: 'running' })
   expect(emitted).toContainEqual({ type: 'phase_changed', phase: 'idle' })
@@ -300,10 +320,27 @@ test('AgentSession abort is not blocked by a provider that does not yield', asyn
   const aborted = await session.abort()
   await withTimeout(sending)
 
-  expect(aborted).toBe(true)
+  expect(aborted.aborted).toBe(true)
   expect(provider.cancelled).toBe(true)
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'abort'])
+})
+
+test('AgentSession dispose resolves queued actions after aborting active work', async () => {
+  const provider = new HangingProvider()
+  const session = createSession(provider)
+
+  const first = session.send(text('hang provider'))
+  await provider.started.promise
+  const second = session.send(text('queued'))
+  await waitFor(() => session.queuedMessages().length === 1)
+
+  await session.dispose()
+  await withTimeout(first)
+  await withTimeout(second)
+
+  expect(provider.cancelled).toBe(true)
+  expect(session.queuedMessages()).toEqual([])
 })
 
 test('AgentSession abort is not blocked by a hanging compaction summary provider', async () => {
@@ -326,7 +363,7 @@ test('AgentSession abort is not blocked by a hanging compaction summary provider
   const aborted = await session.abort()
   await withTimeout(compacting)
 
-  expect(aborted).toBe(true)
+  expect(aborted.aborted).toBe(true)
   expect(provider.cancelled).toBe(true)
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks.at(-1)).toMatchObject({ type: 'abort' })
@@ -534,6 +571,134 @@ test('AgentSession can stop a turn after a terminal tool result', async () => {
     output: [{ type: 'text', text: 'stop here' }],
   })
   expect(session.phase()).toBe('idle')
+})
+
+test('AgentSession yield wakeup is a terminal tool result and starts a later idle turn', async () => {
+  const provider = new StubProvider([
+    [events.toolCall('yield-1', 'yield_tool', {}), events.response()],
+    (request) => {
+      expect(request.items.map((item) => item.type)).toEqual(['user_message', 'tool_use', 'tool_result', 'user_message'])
+      const resume = request.items.at(-1)
+      expect(resume).toMatchObject({
+        type: 'user_message',
+        content: [{ type: 'text', text: 'Continue from where you left off.' }],
+      })
+      return [events.text('woke'), events.response()]
+    },
+  ])
+  let session: AgentSession<{ toolCalls: number }> | null = null
+  session = createSession(provider, createYieldRuntime(() => session, 5))
+
+  await session.send(text('schedule a wakeup'))
+
+  expect(provider.consumedTurns).toBe(1)
+  const toolBlock = session.transcript().blocks.find((block) => block.type === 'tool_call')
+  expect(toolBlock).toMatchObject({
+    type: 'tool_call',
+    status: 'completed',
+    metadata: { kind: 'yield_wakeup', durationMs: 5 },
+  })
+  const outputText =
+    toolBlock?.type === 'tool_call' && toolBlock.output[0]?.type === 'text' ? toolBlock.output[0].text : ''
+  expect(outputText).toContain('yield scheduled')
+
+  await waitFor(() => provider.consumedTurns === 2)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'tool_call',
+    'response',
+    'resume',
+    'text',
+    'response',
+  ])
+})
+
+test('AgentSession yield wakeup steers into an active turn instead of queueing', async () => {
+  const provider = new SteerableGateProvider([
+    [events.toolCall('yield-1', 'yield_tool', {}), events.response()],
+    [events.text('active done'), events.response()],
+  ])
+  let session: AgentSession<{ toolCalls: number }> | null = null
+  session = createSession(provider, createYieldRuntime(() => session, 20))
+
+  const first = session.send(text('schedule a wakeup'))
+  await provider.waitForRun(0)
+  provider.release(0)
+  await first
+
+  const active = session.send(text('new active turn'))
+  await provider.waitForRun(1)
+  await waitFor(() => provider.steers.length === 1)
+
+  const steerContent = provider.steers[0]?.content[0]
+  expect(steerContent?.type).toBe('text')
+  expect(steerContent && steerContent.type === 'text' ? steerContent.text : '').toContain('Scheduled yield wakeup fired')
+  expect(session.queuedMessages()).toEqual([])
+
+  provider.release(1)
+  await active
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'tool_call',
+    'response',
+    'user',
+    'steer',
+    'text',
+    'response',
+  ])
+})
+
+test('AgentSession abort cancels pending yield wakeup as the final layer', async () => {
+  const provider = new StubProvider([[events.toolCall('yield-1', 'yield_tool', {}), events.response()]])
+  let session: AgentSession<{ toolCalls: number }> | null = null
+  session = createSession(provider, createYieldRuntime(() => session, 50))
+
+  await session.send(text('schedule a wakeup'))
+  const aborted = await session.abort()
+  await delay(80)
+
+  expect(aborted).toEqual({ aborted: true, target: 'pending_yield_wakeup', canAbortAgain: false })
+  expect(provider.consumedTurns).toBe(1)
+})
+
+test('AgentSession abort preserves pending yield until active work has been canceled', async () => {
+  let runCount = 0
+  const activeStarted = deferred<void>()
+  let activeCancelled = false
+  const provider: AgentProvider = {
+    async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+      runCount += 1
+      if (runCount === 1) {
+        yield events.toolCall('yield-1', 'yield_tool', {})
+        yield events.response()
+        return
+      }
+
+      request.cancel.addEventListener(
+        'abort',
+        () => {
+          activeCancelled = true
+        },
+        { once: true },
+      )
+      activeStarted.resolve()
+      await new Promise<never>(() => {})
+    },
+  }
+  let session: AgentSession<{ toolCalls: number }> | null = null
+  session = createSession(provider, createYieldRuntime(() => session, 1_000))
+
+  await session.send(text('schedule a wakeup'))
+  const active = session.send(text('active turn'))
+  await activeStarted.promise
+
+  const firstAbort = await session.abort()
+  await withTimeout(active)
+  const secondAbort = await session.abort()
+
+  expect(activeCancelled).toBe(true)
+  expect(firstAbort).toEqual({ aborted: true, target: 'active_provider_stream', canAbortAgain: true })
+  expect(secondAbort).toEqual({ aborted: true, target: 'pending_yield_wakeup', canAbortAgain: false })
 })
 
 test('AgentSession records thrown tool invocations as error tool results and continues', async () => {
@@ -1215,7 +1380,7 @@ test('AgentSession abort is not blocked by a long-running tool invocation', asyn
   const aborted = await session.abort()
   await running
 
-  expect(aborted).toBe(true)
+  expect(aborted.aborted).toBe(true)
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks.at(-1)).toMatchObject({ type: 'abort' })
 })
@@ -1582,6 +1747,10 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     if (Date.now() - startedAt > 1_000) throw new Error('Timed out waiting for predicate')
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function withTimeout<T>(promise: Promise<T>): Promise<T> {

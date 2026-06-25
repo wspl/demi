@@ -3,13 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, type AgentHarness, type AgentHarnessRuntime } from '@demi/agent'
+import { AgentSession, createStandardAgentTools, type AgentHarness, type AgentHarnessRuntime } from '@demi/agent'
 import type { InferenceRequest } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import {
   BashEnvironment,
   CommandRegistry,
-  createShellSessionTools,
   type Host,
   type HostDirent,
   type HostFileSystem,
@@ -42,9 +41,10 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(commands.map((command) => command.name)).toEqual(['editor', 'todo'])
   expect(runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() }).map((tool) => tool.name)).toEqual([
     'shell_exec',
-    'shell_wait',
-    'shell_input',
+    'shell_status',
+    'shell_write',
     'shell_abort',
+    'yield',
   ])
   const prompt = harness.systemPrompt({
     agentSessionId: 'coding-test-agent',
@@ -63,7 +63,7 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(prompt).toContain('todo add "Run tests"')
   expect(prompt).toContain('Effects: modifies agent-session-scoped command storage')
   expect(prompt).toContain('run them in the foreground with a short yieldAfterMs')
-  expect(prompt).toContain('do not set timeoutMs on shell_wait for a process you intend to keep running')
+  expect(prompt).toContain('yield + shell_status')
   expect(prompt).toContain('avoid pkill/killall by process name')
   expect(prompt).toContain('instead of restarting it to demonstrate the same behavior again')
   expect(prompt).toContain('include a newline such as "Alice\\n" for line-oriented prompts')
@@ -71,11 +71,11 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(prompt).toContain('File references attached by the client are expanded before provider calls.')
 
   const todo = await environment.exec({ script: 'todo add "Verify default registration"' })
-  expect(todo.output.stdoutDelta).toBe('[ ] T1 Verify default registration\n')
+  expect(todo.stdout.delta).toBe('[ ] T1 Verify default registration\n')
   const editorPrompt = await environment.exec({ shellId: todo.shellId, script: 'editor prompt' })
-  expect(editorPrompt.output.stdoutDelta).toContain('editor create')
-  expect(editorPrompt.output.stdoutDelta).toContain('Effects: modifies files by creating a new file')
-  expect(editorPrompt.output.stdoutDelta).toContain('Success output: writes "Created <path>" to stdout')
+  expect(editorPrompt.stdout.delta).toContain('editor create')
+  expect(editorPrompt.stdout.delta).toContain('Effects: modifies files by creating a new file')
+  expect(editorPrompt.stdout.delta).toContain('Success output: writes "Created <path>" to stdout')
 })
 
 test('coding agent resolves file references through Host.fs', async () => {
@@ -221,7 +221,14 @@ function createRuntimeFromHarness(
     preamble: (ctx) => harness.preamble?.(ctx) ?? null,
     resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
     lifecycle: (event) => harness.lifecycle?.(event),
-    tools: () => createShellSessionTools(environment),
+    tools: () =>
+      createStandardAgentTools({
+        environment,
+        scheduleYield: (_ctx, durationMs) => ({
+          output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
+          stopAfterToolResult: true,
+        }),
+      }),
   }
   return { environment, runtime, state }
 }

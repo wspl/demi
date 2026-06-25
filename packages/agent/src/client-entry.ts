@@ -9,6 +9,6 @@ export type {
   ServerFrame,
   ClientSessionEvent,
   TranscriptPatch,
-  OutputSnapshotLike,
+  ShellCommandSnapshotLike,
 } from './frames'
 export type { ProviderSelection } from '@demi/provider'

@@ -33,7 +33,7 @@ Codex 的工作模型里 `queue` 和 `steer` 是两种不同的 active session i
 2. A rejected steer is not written to transcript and is not queued automatically.
 3. An accepted steer is active-turn input and belongs to the active `turnId`; transcript-backed steers become durable transcript data when materialized at the Codex-equivalent continuation boundary.
 4. Steer must not reorder queued turns. Queued turns drain only after the active turn finishes.
-5. Steer must not interrupt or rewrite tool results by itself. If the user wants cancellation, that remains `abort`; if the user wants shell stdin, that remains `shell_input`.
+5. Steer must not interrupt or rewrite tool results by itself. If the user wants cancellation, that remains `abort`; if the user wants shell stdin, that remains `shell_write`.
 6. Steer accepted during tool execution is delivered before the next provider continuation in the same turn.
 7. Steer accepted during provider streaming is same-turn pending input. If a provider run exposes native active-run steering, use it; otherwise store the steer as pending active-turn input, materialize it at the nearest stream/tool/required resume boundary, and force a provider continuation. Do not claim it changed tokens already emitted by the current provider response.
 8. Compaction and retry must treat a base user input and its accepted steers as one logical turn group.
@@ -46,7 +46,7 @@ The package boundary remains the highest constraint:
 - `@demi/core` owns shared data types only: add portable transcript and content types needed to represent steer.
 - `@demi/provider` owns the abstract inference contract and optional native active-run steering hook.
 - `@demi/agent` owns session state, turn grouping, steer acceptance rules, transcript-backed same-turn continuation, transport frames, and `AgentClient` APIs.
-- `@demi/shell` remains unaware of steer. `shell_input` stays shell-process stdin, not agent steering.
+- `@demi/shell` remains unaware of steer. `shell_write` stays shell-process stdin, not agent steering.
 - `@demi/coding-agent` may adjust prompt wording for steered turns, but must not instantiate sessions or replace runtime behavior.
 - `@demi/repl`, `@demi/web-ui`, and `@demi/web` expose explicit input affordances and call `AgentClient.steer` or queue/send APIs.
 - Concrete provider packages may implement native steering only inside their own transport boundaries, but normal `user_steer` replay remains provider input like any other inference item.

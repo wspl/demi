@@ -78,7 +78,23 @@ export interface AgentToolInvokeResult {
 export interface ToolContinuation {
   toolCallId: string
   shellId: string
+  commandId: string
   status: 'running'
+}
+
+export type AbortTarget =
+  | 'active_provider_stream'
+  | 'active_tool'
+  | 'active_compaction'
+  | 'active_turn'
+  | 'queued_action'
+  | 'queued_message'
+  | 'pending_yield_wakeup'
+
+export interface AbortResult {
+  aborted: boolean
+  target: AbortTarget | null
+  canAbortAgain: boolean
 }
 
 export interface AgentTool<State = unknown> extends ToolDefinition {

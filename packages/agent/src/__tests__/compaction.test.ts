@@ -215,7 +215,7 @@ test('aborting a hanging compaction summary does not leave boundary or marker bl
   const aborted = await session.abort()
   await withTimeout(compacting)
 
-  expect(aborted).toBe(true)
+  expect(aborted.aborted).toBe(true)
   await provider.cancelled.promise
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks.slice(0, before.blocks.length)).toEqual(before.blocks)
@@ -603,7 +603,7 @@ test('aborting during preflight compaction stops before the model request and st
   const aborted = await session.abort()
   await withTimeout(sending)
 
-  expect(aborted).toBe(true)
+  expect(aborted.aborted).toBe(true)
   await provider.cancelled.promise
   expect(provider.requests).toHaveLength(1)
   expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')
@@ -643,7 +643,7 @@ test('aborting during retry preflight compaction stops before rerunning the mode
   const aborted = await session.abort()
   await withTimeout(retrying)
 
-  expect(aborted).toBe(true)
+  expect(aborted.aborted).toBe(true)
   await provider.cancelled.promise
   expect(provider.requests).toHaveLength(1)
   expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')
@@ -673,7 +673,7 @@ test('aborting during resume preflight compaction stops before continuing the mo
   const aborted = await session.abort()
   await withTimeout(resuming)
 
-  expect(aborted).toBe(true)
+  expect(aborted.aborted).toBe(true)
   await provider.cancelled.promise
   expect(provider.requests).toHaveLength(1)
   expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')

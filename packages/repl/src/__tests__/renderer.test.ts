@@ -3,7 +3,7 @@ import type { Block, ModelSelection, UserContentBlock } from '@demi/core'
 import { defineProvider, type AgentProvider, type Provider, type ProviderModelList, type ProviderSelection } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import { AgentServer } from '@demi/agent'
-import type { AgentHarness } from '@demi/agent'
+import type { AbortResult, AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
 import { attachRenderer, createRenderer, handleCommand, renderEvent, resolveReplModel, runInputLoop, type ReplOutput } from '../index'
 
@@ -146,14 +146,15 @@ test('REPL renderer prints phase, queue, shell output, audit, and progress frame
   renderEvent(renderer, {
     type: 'shell_output',
     shellId: 'shell-1',
+    commandId: 'command-1',
     snapshot: {
-      stdoutDelta: 'out\n',
-      stderrDelta: 'err\n',
-      stdoutTail: 'out\n',
-      stderrTail: 'err\n',
-      totalStdoutBytes: 4,
-      totalStderrBytes: 4,
-      truncated: false,
+      status: 'running',
+      shellId: 'shell-1',
+      commandId: 'command-1',
+      stdout: { path: 'demi://stdout', offset: 4, delta: 'out\n', tail: 'out\n', bytes: 4, truncated: false },
+      stderr: { path: 'demi://stderr', offset: 4, delta: 'err\n', tail: 'err\n', bytes: 4, truncated: false },
+      runningMs: 10,
+      idleMs: 0,
     },
   })
   renderEvent(renderer, {
@@ -180,8 +181,8 @@ test('REPL renderer prints phase, queue, shell output, audit, and progress frame
   const text = output.text()
   expect(text).toContain('state> running')
   expect(text).toContain('queue> 1 pending')
-  expect(text).toContain('shell[shell-1] stdout> out')
-  expect(text).toContain('shell[shell-1] stderr> err')
+  expect(text).toContain('shell[command-1] stdout> out')
+  expect(text).toContain('shell[command-1] stderr> err')
   expect(text).toContain('audit> registered editor list -> 0')
   expect(text).toContain('audit> system bun test -> 1')
   expect(text).toContain('progress> shell[shell-1] running (yield)')
@@ -275,7 +276,6 @@ test('REPL model resolver selects from provider catalog when no full model id is
     openAIWireApi: 'responses' as const,
     transport: 'auto',
     yieldAfterMs: 10,
-    timeoutMs: 100,
   })
 
   expect(resolved.selection.model).toMatchObject({
@@ -331,7 +331,6 @@ test('REPL model resolver rejects explicit thinking efforts not advertised by ca
     openAIWireApi: 'responses' as const,
     transport: 'auto',
     yieldAfterMs: 10,
-    timeoutMs: 100,
   })).rejects.toThrow('does not support thinking effort "medium"')
 })
 
@@ -369,7 +368,6 @@ test('REPL model resolver accepts provider-advertised future thinking effort ids
     openAIWireApi: 'responses',
     transport: 'auto',
     yieldAfterMs: 10,
-    timeoutMs: 100,
   })
 
   expect(resolved.selection.model.thinking).toMatchObject([{ type: 'effort', efforts: ['ultra'], defaultEffort: null }])
@@ -412,7 +410,6 @@ test('REPL model resolver validates provider-advertised service tier ids', async
     openAIWireApi: 'responses',
     transport: 'auto',
     yieldAfterMs: 10,
-    timeoutMs: 100,
   })
 
   expect(resolved.selection.serviceTierId).toBe('priority')
@@ -425,7 +422,6 @@ test('REPL model resolver validates provider-advertised service tier ids', async
     openAIWireApi: 'responses',
     transport: 'auto',
     yieldAfterMs: 10,
-    timeoutMs: 100,
   })).rejects.toThrow('does not support service tier "fast"')
 })
 
@@ -443,7 +439,6 @@ test('REPL model resolver rejects aliases and does not call model catalog for ex
     openAIWireApi: 'responses' as const,
     transport: 'auto' as const,
     yieldAfterMs: 10,
-    timeoutMs: 100,
   }
 
   await expect(resolveReplModel(provider, { ...baseOptions, modelId: 'opus' })).rejects.toThrow('not alias "opus"')
@@ -470,7 +465,6 @@ test('REPL model resolver allows Anthropic-compatible explicit model ids', async
     openAIWireApi: 'responses',
     transport: 'auto',
     yieldAfterMs: 10,
-    timeoutMs: 100,
   })
 
   expect(listCalls).toBe(0)
@@ -489,7 +483,7 @@ test('REPL commands dispatch to the agent client and validate input usage', asyn
   await expect(handleCommand('/retry', client, output)).resolves.toBe(false)
   await expect(handleCommand('/resume', client, output)).resolves.toBe(false)
   await expect(handleCommand('/compact', client, output)).resolves.toBe(false)
-  await expect(handleCommand('/input shell-1 typed words', client, output)).resolves.toBe(false)
+  await expect(handleCommand('/input command-1 typed words', client, output)).resolves.toBe(false)
   await expect(handleCommand('/input', client, output)).resolves.toBe(false)
   await expect(handleCommand('/bogus', client, output)).resolves.toBe(false)
   await expect(handleCommand('/exit', client, output)).resolves.toBe(true)
@@ -500,12 +494,12 @@ test('REPL commands dispatch to the agent client and validate input usage', asyn
     ['retry'],
     ['resume'],
     ['compact'],
-    ['shellInput', 'shell-1', 'typed words\n'],
+    ['shellWrite', 'command-1', 'typed words\n'],
   ])
   expect(output.text()).toContain('Commands:')
   expect(output.text()).toContain('state> abort requested')
   expect(output.text()).toContain('usage: /steer <message>')
-  expect(output.text()).toContain('usage: /input <shellId> <text>')
+  expect(output.text()).toContain('usage: /input <commandId> <text>')
   expect(output.text()).toContain('error> unknown command: /bogus')
 })
 
@@ -583,9 +577,9 @@ class FakeCommandClient {
   readonly calls: Array<[string] | [string, string] | [string, string, string]> = []
   onSteer: () => Promise<void> = () => Promise.resolve()
 
-  async abort(): Promise<boolean> {
+  async abort(): Promise<AbortResult> {
     this.calls.push(['abort'])
-    return true
+    return { aborted: true, target: 'active_turn', canAbortAgain: false }
   }
 
   async steer(content: UserContentBlock[]): Promise<void> {
@@ -605,8 +599,8 @@ class FakeCommandClient {
     this.calls.push(['compact'])
   }
 
-  async shellInput(shellId: string, stdin: string): Promise<void> {
-    this.calls.push(['shellInput', shellId, stdin])
+  async shellWrite(commandId: string, stdin: string): Promise<void> {
+    this.calls.push(['shellWrite', commandId, stdin])
   }
 }
 

@@ -1,36 +1,10 @@
 import type { HostSpawnRedirection, ShellOptions, ShoptOptions } from 'just-bash/interpreter'
 import { concatBytes, decodeUtf8, utf8ByteLength } from './bytes'
 import type { ExecAccumulator, ForegroundProcess, ForegroundSink, ShellSession } from './environment-state'
-import type { OutputSnapshot, ShellToolResult } from './environment'
+import type { OutputSnapshot } from './environment'
 import type { HostBackedFileSystem } from './host-fs'
 
 const TAIL_SIZE = 4096
-
-export function runningResult(session: ShellSession, foreground: ForegroundProcess, reason: 'yield' | 'output_limit'): ShellToolResult {
-  return {
-    status: 'running',
-    shellId: session.id,
-    reason,
-    output: snapshotFromForeground(session, foreground),
-    runningMs: Date.now() - foreground.startedAt,
-    idleMs: Date.now() - foreground.lastOutputAt,
-  }
-}
-
-export function exitedResult(session: ShellSession, exitCode: number, output: OutputSnapshot): ShellToolResult {
-  const result: ShellToolResult = {
-    status: 'exited',
-    shellId: session.id,
-    exitCode,
-    output,
-    audit: session.accumulator.audit,
-  }
-  if (session.accumulator.commandMetadata.length > 0) {
-    result.commandMetadata = session.accumulator.commandMetadata
-  }
-  session.pendingExec = undefined
-  return result
-}
 
 export function emptySnapshot(): OutputSnapshot {
   return {

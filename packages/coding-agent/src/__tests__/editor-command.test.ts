@@ -22,7 +22,7 @@ test('editor create writes a new file from heredoc content', async () => {
   const created = await env.exec({
     script: "editor create src/foo.txt <<'EOF'\nhello\nEOF",
   })
-  expect(created.output.stdoutDelta).toBe('Created src/foo.txt\n')
+  expect(created.stdout.delta).toBe('Created src/foo.txt\n')
   expect(editorDiffs(created)[0]).toMatchObject({
     type: 'file_diff',
     action: 'create',
@@ -35,7 +35,7 @@ test('editor create writes a new file from heredoc content', async () => {
   expect(String(editorDiffs(created)[0].unifiedDiff)).toContain('+++ b/src/foo.txt')
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat src/foo.txt' })
-  expect(read.output.stdoutDelta).toBe('hello\n')
+  expect(read.stdout.delta).toBe('hello\n')
 })
 
 test('editor allows paths outside default cwd when Host.fs allows them', async () => {
@@ -95,7 +95,7 @@ test('editor patch can modify paths outside default cwd when Host.fs allows them
   expect(patched.exitCode).toBe(0)
 
   const inside = await env.exec({ shellId: created.shellId, script: 'cat inside.txt' })
-  expect(inside.output.stdoutDelta).toBe('changed\n')
+  expect(inside.stdout.delta).toBe('changed\n')
   await expect(readFile(outsidePath, 'utf8')).resolves.toBe('outside\n')
 })
 
@@ -112,13 +112,13 @@ test('editor edit replaces exact text and fails on ambiguous matches', async () 
   })
   if (ambiguous.status !== 'exited') throw new Error('expected exited result')
   expect(ambiguous.exitCode).toBe(1)
-  expect(ambiguous.output.stderrDelta).toContain('Multiple matches')
+  expect(ambiguous.stderr.delta).toContain('Multiple matches')
 
   const edited = await env.exec({
     shellId: created.shellId,
     script: 'editor edit file.txt --old two --new changed --occurrence 2',
   })
-  expect(edited.output.stdoutDelta).toBe('Edited file.txt\n')
+  expect(edited.stdout.delta).toBe('Edited file.txt\n')
   expect(editorDiffs(edited)[0]).toMatchObject({
     action: 'edit',
     path: 'file.txt',
@@ -127,7 +127,7 @@ test('editor edit replaces exact text and fails on ambiguous matches', async () 
   })
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat file.txt' })
-  expect(read.output.stdoutDelta).toBe('one\ntwo\nchanged\n')
+  expect(read.stdout.delta).toBe('one\ntwo\nchanged\n')
 })
 
 test('editor edit uses context only when it disambiguates to one nearest match', async () => {
@@ -143,21 +143,21 @@ test('editor edit uses context only when it disambiguates to one nearest match',
   })
   if (ambiguous.status !== 'exited') throw new Error('expected exited result')
   expect(ambiguous.exitCode).toBe(1)
-  expect(ambiguous.output.stderrDelta).toContain('Context line 2 is ambiguous')
-  expect(ambiguous.output.stderrDelta).toContain('occurrence 1 at line 1')
-  expect(ambiguous.output.stderrDelta).toContain('occurrence 2 at line 3')
+  expect(ambiguous.stderr.delta).toContain('Context line 2 is ambiguous')
+  expect(ambiguous.stderr.delta).toContain('occurrence 1 at line 1')
+  expect(ambiguous.stderr.delta).toContain('occurrence 2 at line 3')
 
   const unchanged = await env.exec({ shellId: created.shellId, script: 'cat context.txt' })
-  expect(unchanged.output.stdoutDelta).toBe('target\nmiddle\ntarget\n')
+  expect(unchanged.stdout.delta).toBe('target\nmiddle\ntarget\n')
 
   const edited = await env.exec({
     shellId: created.shellId,
     script: 'editor edit context.txt --old target --new changed --context 3',
   })
-  expect(edited.output.stdoutDelta).toBe('Edited context.txt\n')
+  expect(edited.stdout.delta).toBe('Edited context.txt\n')
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat context.txt' })
-  expect(read.output.stdoutDelta).toBe('target\nmiddle\nchanged\n')
+  expect(read.stdout.delta).toBe('target\nmiddle\nchanged\n')
 })
 
 test('editor edit rejects empty old text without modifying the file', async () => {
@@ -174,10 +174,10 @@ test('editor edit rejects empty old text without modifying the file', async () =
   expect(failed.status).toBe('exited')
   if (failed.status !== 'exited') throw new Error('expected exited result')
   expect(failed.exitCode).toBe(1)
-  expect(failed.output.stderrDelta).toContain('Old text must not be empty')
+  expect(failed.stderr.delta).toContain('Old text must not be empty')
 
   const unchanged = await env.exec({ shellId: created.shellId, script: 'cat empty-old.txt' })
-  expect(unchanged.output.stdoutDelta).toBe('content\n')
+  expect(unchanged.stdout.delta).toBe('content\n')
 })
 
 test('editor patch applies a unified diff', async () => {
@@ -191,7 +191,7 @@ test('editor patch applies a unified diff', async () => {
     shellId: created.shellId,
     script: "editor patch <<'PATCH'\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
   })
-  expect(patched.output.stdoutDelta).toBe('Patched 1 file(s)\n')
+  expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
   expect(editorDiffs(patched)[0]).toMatchObject({
     action: 'patch',
     path: 'patch.txt',
@@ -200,7 +200,7 @@ test('editor patch applies a unified diff', async () => {
   })
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat patch.txt' })
-  expect(read.output.stdoutDelta).toBe('one\nthree\n')
+  expect(read.stdout.delta).toBe('one\nthree\n')
 })
 
 test('editor patch accepts unified diff headers with timestamps', async () => {
@@ -215,10 +215,10 @@ test('editor patch accepts unified diff headers with timestamps', async () => {
     script:
       "editor patch <<'PATCH'\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
   })
-  expect(patched.output.stdoutDelta).toBe('Patched 1 file(s)\n')
+  expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat timed.txt' })
-  expect(read.output.stdoutDelta).toBe('new\n')
+  expect(read.stdout.delta).toBe('new\n')
 })
 
 test('editor patch applies multiple files and creates new files', async () => {
@@ -233,7 +233,7 @@ test('editor patch applies multiple files and creates new files', async () => {
     script:
       "editor patch <<'PATCH'\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
   })
-  expect(patched.output.stdoutDelta).toBe('Patched 2 file(s)\n')
+  expect(patched.stdout.delta).toBe('Patched 2 file(s)\n')
   expect(editorDiffs(patched)).toHaveLength(2)
   expect(editorDiffs(patched)[1]).toMatchObject({
     action: 'patch',
@@ -245,9 +245,9 @@ test('editor patch applies multiple files and creates new files', async () => {
   })
 
   const existing = await env.exec({ shellId: created.shellId, script: 'cat existing.txt' })
-  expect(existing.output.stdoutDelta).toBe('changed\n')
+  expect(existing.stdout.delta).toBe('changed\n')
   const added = await env.exec({ shellId: created.shellId, script: 'cat nested/new.txt' })
-  expect(added.output.stdoutDelta).toBe('new\nfile\n')
+  expect(added.stdout.delta).toBe('new\nfile\n')
 })
 
 test('editor patch deletes files with a /dev/null target', async () => {
@@ -261,7 +261,7 @@ test('editor patch deletes files with a /dev/null target', async () => {
     shellId: created.shellId,
     script: "editor patch <<'PATCH'\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
   })
-  expect(patched.output.stdoutDelta).toBe('Patched 1 file(s)\n')
+  expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
   expect(editorDiffs(patched)[0]).toMatchObject({
     action: 'delete',
     path: 'doomed.txt',
@@ -292,10 +292,10 @@ test('editor patch validates all files before writing any changes', async () => 
   expect(failed.status).toBe('exited')
   if (failed.status !== 'exited') throw new Error('expected exited result')
   expect(failed.exitCode).toBe(1)
-  expect(failed.output.stderrDelta).toContain('Patch does not apply to second.txt')
+  expect(failed.stderr.delta).toContain('Patch does not apply to second.txt')
 
   const first = await env.exec({ shellId: created.shellId, script: 'cat first.txt' })
-  expect(first.output.stdoutDelta).toBe('first\n')
+  expect(first.stdout.delta).toBe('first\n')
 })
 
 test('editor patch rolls back files when a later write fails', async () => {

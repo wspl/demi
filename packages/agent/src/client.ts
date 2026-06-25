@@ -3,6 +3,7 @@ import { applyTranscriptPatches } from './patch'
 import type { ProviderSelection } from '@demi/provider'
 import type { ClientFrame, ClientSessionEvent, ServerFrame } from './frames'
 import type { AgentClientTransport } from './transport'
+import type { AbortResult } from './types'
 
 export type AgentClientListener = (event: ClientSessionEvent) => void
 
@@ -21,11 +22,17 @@ interface SteerWaiter {
   reject: (error: Error) => void
 }
 
+interface AbortWaiter {
+  resolve: (result: AbortResult) => void
+  reject: (error: Error) => void
+}
+
 export class AgentClient {
   private readonly transport: AgentClientTransport
   private readonly listeners = new Set<AgentClientListener>()
   private readonly pendingActionWaiters: ActionWaiter[] = []
   private readonly pendingSteerWaiters = new Map<string, SteerWaiter>()
+  private readonly pendingAbortWaiters: AbortWaiter[] = []
   private readonly queuedMessageIds = new Set<string>()
   private blocks: Block[] = []
   private phase: SessionPhase | null = null
@@ -119,16 +126,15 @@ export class AgentClient {
     return wait
   }
 
-  abort(): Promise<boolean> {
-    if (this.phase === 'idle' && this.pendingActionWaiters.length === 0) return Promise.resolve(false)
+  abort(): Promise<AbortResult> {
     const wait = this.waitForAbort()
     this.sendFrame({ type: 'abort' })
     return wait
   }
 
-  shellInput(shellId: string, stdin: string): Promise<void> {
-    const wait = this.waitForShellInput(shellId)
-    this.sendFrame({ type: 'shell_input', shellId, stdin })
+  shellWrite(commandId: string, stdin: string): Promise<void> {
+    const wait = this.waitForShellWrite(commandId)
+    this.sendFrame({ type: 'shell_write', commandId, stdin })
     return wait
   }
 
@@ -173,6 +179,7 @@ export class AgentClient {
         this.emit(frame)
         this.resolveAllActionWaiters()
         this.rejectAllSteerWaiters(new Error('Session closed'))
+        this.rejectAllAbortWaiters(new Error('Session closed'))
         return
       case 'opened':
         this.emit(frame)
@@ -193,20 +200,26 @@ export class AgentClient {
         this.emit(frame)
         this.handleSteerResult(frame)
         return
+      case 'abort_result':
+        this.emit(frame)
+        this.resolveAbortWaiter(frame.result)
+        return
       case 'tool_progress':
       case 'shell_output':
-      case 'shell_input_result':
+      case 'shell_write_result':
       case 'audit':
         this.emit(frame)
         return
       case 'rejected':
         this.emit(frame)
         this.rejectPendingAction(frame.command, new Error(frame.reason))
+        if (frame.command === 'abort') this.rejectAllAbortWaiters(new Error(frame.reason))
         return
       case 'error':
         this.emit(frame)
         this.rejectErroredAction(new Error(frame.message))
         this.rejectAllSteerWaiters(new Error(frame.message))
+        this.rejectAllAbortWaiters(new Error(frame.message))
         return
     }
   }
@@ -337,41 +350,21 @@ export class AgentClient {
     settle()
   }
 
-  private waitForAbort(): Promise<boolean> {
+  private waitForAbort(): Promise<AbortResult> {
     return new Promise((resolve, reject) => {
-      const unsubscribe = this.subscribe((event) => {
-        if (event.type === 'phase' && event.phase === 'idle') {
-          unsubscribe()
-          resolve(true)
-          return
-        }
-        if (event.type === 'closed') {
-          unsubscribe()
-          resolve(true)
-          return
-        }
-        if (event.type === 'error') {
-          unsubscribe()
-          reject(new Error(event.message))
-          return
-        }
-        if (event.type === 'rejected' && event.command === 'abort') {
-          unsubscribe()
-          reject(new Error(event.reason))
-        }
-      })
+      this.pendingAbortWaiters.push({ resolve, reject })
     })
   }
 
-  private waitForShellInput(shellId: string): Promise<void> {
+  private waitForShellWrite(commandId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const unsubscribe = this.subscribe((event) => {
-        if (event.type === 'shell_output' && event.shellId === shellId) {
+        if (event.type === 'shell_output' && event.commandId === commandId) {
           unsubscribe()
           resolve()
           return
         }
-        if (event.type === 'shell_input_result' && event.shellId === shellId) {
+        if (event.type === 'shell_write_result' && event.commandId === commandId) {
           unsubscribe()
           resolve()
           return
@@ -381,7 +374,7 @@ export class AgentClient {
           reject(new Error(event.message))
           return
         }
-        if (event.type === 'rejected' && event.command === 'shell_input') {
+        if (event.type === 'rejected' && event.command === 'shell_write') {
           unsubscribe()
           reject(new Error(event.reason))
           return
@@ -396,5 +389,16 @@ export class AgentClient {
 
   private emit(event: ClientSessionEvent): void {
     for (const listener of this.listeners) listener(event)
+  }
+
+  private resolveAbortWaiter(result: AbortResult): void {
+    const waiter = this.pendingAbortWaiters.shift()
+    if (!waiter) return
+    waiter.resolve(result)
+  }
+
+  private rejectAllAbortWaiters(error: Error): void {
+    const waiters = this.pendingAbortWaiters.splice(0)
+    for (const waiter of waiters) waiter.reject(error)
   }
 }

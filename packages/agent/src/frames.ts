@@ -6,7 +6,8 @@ import type {
   UserContentBlock,
 } from '@demi/core'
 import type { ProviderSelection } from '@demi/provider'
-import type { BashAuditEvent, OutputSnapshot } from '@demi/shell'
+import type { AbortResult } from './types'
+import type { BashAuditEvent, ShellCommandSnapshot } from '@demi/shell'
 
 export type ClientFrame =
   | { type: 'open'; provider: ProviderSelection; cwd: string }
@@ -22,7 +23,7 @@ export type ClientFrame =
   | { type: 'retry' }
   | { type: 'resume' }
   | { type: 'compact' }
-  | { type: 'shell_input'; shellId: string; stdin: string }
+  | { type: 'shell_write'; commandId: string; stdin: string }
   | { type: 'close' }
 
 export type ServerFrame =
@@ -34,9 +35,10 @@ export type ServerFrame =
   | { type: 'queue'; queue: QueuedMessage[] }
   | { type: 'steer_result'; steerId: string; status: 'accepted' }
   | { type: 'steer_result'; steerId: string; status: 'rejected'; reason: string }
+  | { type: 'abort_result'; result: AbortResult }
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
-  | { type: 'shell_output'; shellId: string; snapshot: OutputSnapshotLike }
-  | { type: 'shell_input_result'; shellId: string; output: ToolResultContentBlock[] }
+  | { type: 'shell_output'; shellId: string; commandId: string; snapshot: ShellCommandSnapshotLike }
+  | { type: 'shell_write_result'; commandId: string; output: ToolResultContentBlock[] }
   | { type: 'audit'; events: BashAuditEvent[] }
   | { type: 'error'; message: string; code?: string }
   | { type: 'closed' }
@@ -46,7 +48,7 @@ export type TranscriptPatch =
   | { op: 'remove'; path: ['blocks', number] }
   | { op: 'replace'; path: ['blocks']; value: Block[] }
 
-export type OutputSnapshotLike = OutputSnapshot
+export type ShellCommandSnapshotLike = ShellCommandSnapshot
 
 export type ClientSessionEvent =
   | { type: 'transcript_snapshot'; blocks: Block[] }
@@ -55,9 +57,10 @@ export type ClientSessionEvent =
   | { type: 'queue'; queue: QueuedMessage[] }
   | { type: 'steer_result'; steerId: string; status: 'accepted' }
   | { type: 'steer_result'; steerId: string; status: 'rejected'; reason: string }
+  | { type: 'abort_result'; result: AbortResult }
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
-  | { type: 'shell_output'; shellId: string; snapshot: OutputSnapshotLike }
-  | { type: 'shell_input_result'; shellId: string; output: ToolResultContentBlock[] }
+  | { type: 'shell_output'; shellId: string; commandId: string; snapshot: ShellCommandSnapshotLike }
+  | { type: 'shell_write_result'; commandId: string; output: ToolResultContentBlock[] }
   | { type: 'audit'; events: BashAuditEvent[] }
   | { type: 'rejected'; command: string; reason: string }
   | { type: 'error'; message: string; code?: string }

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, type AgentHarnessRuntime } from '@demi/agent'
-import { BashEnvironment, createShellSessionTools } from '@demi/shell'
+import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demi/agent'
+import { BashEnvironment } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
 import { providerRuntime, type InferenceRequest, type ProviderSelection } from '@demi/provider'
 import {
@@ -687,7 +687,7 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
       type: 'control_request',
       id: 'call-1',
       method: 'tools/call',
-      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf demi-provider' } },
+      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf demi-provider', yieldAfterMs: 1_000 } },
     },
     { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } },
     { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
@@ -702,7 +702,14 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
     harnessName: 'claude-shell-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
-    tools: () => createShellSessionTools(environment),
+    tools: () =>
+      createStandardAgentTools({
+        environment,
+        scheduleYield: (_ctx, durationMs) => ({
+          output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
+          stopAfterToolResult: true,
+        }),
+      }),
   }
   const session = new AgentSession({ provider, model, cwd: process.cwd(), runtime })
 
@@ -726,13 +733,13 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
       type: 'control_request',
       id: '0',
       method: 'tools/call',
-      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf first-tool' } },
+      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf first-tool', yieldAfterMs: 1_000 } },
     },
     {
       type: 'control_request',
       id: '0',
       method: 'tools/call',
-      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf second-tool' } },
+      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf second-tool', yieldAfterMs: 1_000 } },
     },
     { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } },
     { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
@@ -747,7 +754,14 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
     harnessName: 'claude-repeated-id-test',
     initialState: () => ({}),
     systemPrompt: () => 'system',
-    tools: () => createShellSessionTools(environment),
+    tools: () =>
+      createStandardAgentTools({
+        environment,
+        scheduleYield: (_ctx, durationMs) => ({
+          output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
+          stopAfterToolResult: true,
+        }),
+      }),
   }
   const session = new AgentSession({ provider, model, cwd: process.cwd(), runtime })
 
@@ -758,8 +772,8 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
   expect(new Set(toolBlocks.map((block) => block.toolUseId)).size).toBe(2)
   expect(toolBlocks.map((block) => block.status)).toEqual(['completed', 'completed'])
   expect(toolBlocks.map((block) => block.input)).toEqual([
-    JSON.stringify({ script: 'printf first-tool' }),
-    JSON.stringify({ script: 'printf second-tool' }),
+    JSON.stringify({ script: 'printf first-tool', yieldAfterMs: 1_000 }),
+    JSON.stringify({ script: 'printf second-tool', yieldAfterMs: 1_000 }),
   ])
 
   const responses = transport.writes.filter((write): write is { type: string; id: string; response: Record<string, unknown> } => {

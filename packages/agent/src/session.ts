@@ -23,6 +23,8 @@ import type {
   AgentSessionStore,
   AgentTool,
   AgentToolInvokeResult,
+  AbortResult,
+  AbortTarget,
   ExternalMutationReservation,
   SessionEvent,
   SessionEventListener,
@@ -47,6 +49,7 @@ type PendingAction =
   | { type: 'retry'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'resume'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'compact'; resolve: () => void; reject: (error: unknown) => void }
+  | { type: 'yield_wakeup'; id: string; resolve: () => void; reject: (error: unknown) => void }
 
 type PendingSendAction = Extract<PendingAction, { type: 'send' }>
 
@@ -57,6 +60,14 @@ interface PendingSteer {
   turnId: string
   model: ModelSelection
   content: UserContentBlock[]
+}
+
+interface PendingYieldWakeup {
+  id: string
+  durationMs: number
+  timer: ReturnType<typeof setTimeout> | null
+  dueAt: number | null
+  armed: boolean
 }
 
 interface TakenQueuedSend {
@@ -92,6 +103,7 @@ export class AgentSession<State> {
   private activeProviderRun: ProviderRun | null = null
   private readonly pendingSteers: PendingSteer[] = []
   private readonly canceledPendingSteerIds = new Set<string>()
+  private readonly pendingYieldWakeups: PendingYieldWakeup[] = []
   private pendingSteerContinuationCount = 0
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
@@ -246,12 +258,47 @@ export class AgentSession<State> {
     this.pendingModelSwitch = { provider, model }
   }
 
-  async abort(): Promise<boolean> {
-    if (!this.currentAbortController || this.currentAbortController.signal.aborted) return false
+  async abort(): Promise<AbortResult> {
+    if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
+      const target = this.activeAbortTarget()
+      this.currentAbortController.abort()
+      await this.recordAbort()
+      return { aborted: true, target, canAbortAgain: this.canAbortAgain() }
+    }
 
-    this.currentAbortController.abort()
-    await this.recordAbort()
-    return true
+    const queuedTarget = this.abortQueuedAction()
+    if (queuedTarget) return { aborted: true, target: queuedTarget, canAbortAgain: this.canAbortAgain() }
+
+    if (this.cancelOnePendingYieldWakeup()) {
+      return { aborted: true, target: 'pending_yield_wakeup', canAbortAgain: this.canAbortAgain() }
+    }
+
+    return { aborted: false, target: null, canAbortAgain: false }
+  }
+
+  scheduleYieldWakeup(durationMs: number): AgentToolInvokeResult {
+    const wakeupId = this.idFactory()
+    this.pendingYieldWakeups.push({
+      id: wakeupId,
+      durationMs,
+      timer: null,
+      dueAt: null,
+      armed: false,
+    })
+    return {
+      output: [
+        {
+          type: 'text',
+          text: [`yield scheduled`, `wakeupId: ${wakeupId}`, `durationMs: ${durationMs}`].join('\n'),
+        },
+      ],
+      metadata: {
+        kind: 'yield_wakeup',
+        wakeupId,
+        durationMs,
+      },
+      stopAfterToolResult: true,
+    }
   }
 
   waitUntilDone(): Promise<void> {
@@ -267,6 +314,8 @@ export class AgentSession<State> {
    */
   async dispose(): Promise<void> {
     await this.abort()
+    this.clearPendingActions()
+    this.clearPendingYieldWakeups()
     const pending = this.pendingModelSwitch?.provider ?? null
     this.pendingModelSwitch = null
     await this.provider.dispose?.()
@@ -386,6 +435,148 @@ export class AgentSession<State> {
     }
   }
 
+  private activeAbortTarget(): AbortTarget {
+    switch (this.activeTurnPhase) {
+      case 'provider_streaming':
+        return 'active_provider_stream'
+      case 'tool_executing':
+        return 'active_tool'
+      case 'compacting':
+        return 'active_compaction'
+      case 'finalizing':
+      case null:
+        return 'active_turn'
+    }
+  }
+
+  private abortQueuedAction(): AbortTarget | null {
+    const action = this.pendingActions.shift()
+    if (!action) return null
+
+    if (action.type === 'send') {
+      this.removeQueuedMessage(action.id)
+      action.resolve()
+      return 'queued_message'
+    }
+    action.resolve()
+    return action.type === 'yield_wakeup' ? 'pending_yield_wakeup' : 'queued_action'
+  }
+
+  private canAbortAgain(): boolean {
+    if (this.currentAbortController && !this.currentAbortController.signal.aborted) return true
+    return this.pendingActions.length > 0 || this.pendingYieldWakeups.length > 0
+  }
+
+  private cancelOnePendingYieldWakeup(): boolean {
+    const wakeup = this.pendingYieldWakeups.shift()
+    if (!wakeup) return false
+    if (wakeup.timer) clearTimeout(wakeup.timer)
+    return true
+  }
+
+  private clearPendingYieldWakeups(): void {
+    for (const wakeup of this.pendingYieldWakeups.splice(0)) {
+      if (wakeup.timer) clearTimeout(wakeup.timer)
+    }
+  }
+
+  private clearPendingActions(): void {
+    for (const action of this.pendingActions.splice(0)) {
+      if (action.type === 'send') {
+        this.removeQueuedMessage(action.id)
+      }
+      action.resolve()
+    }
+  }
+
+  private armPendingYieldWakeups(): void {
+    const now = Date.now()
+    for (const wakeup of this.pendingYieldWakeups) {
+      if (wakeup.armed) continue
+      wakeup.armed = true
+      wakeup.dueAt = now + wakeup.durationMs
+      wakeup.timer = setTimeout(() => {
+        void this.deliverYieldWakeup(wakeup.id)
+      }, wakeup.durationMs)
+    }
+  }
+
+  private async deliverYieldWakeup(wakeupId: string): Promise<void> {
+    const wakeup = this.takePendingYieldWakeup(wakeupId)
+    if (!wakeup) return
+
+    const content: UserContentBlock[] = [
+      {
+        type: 'text',
+        text:
+          'Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.',
+      },
+    ]
+
+    if (this.canAcceptInternalSteer()) {
+      try {
+        await this.steerInternal(content, wakeup.id)
+        return
+      } catch (error) {
+        this.emit({ type: 'error', error: asError(error) })
+      }
+    }
+
+    this.enqueueInternalYieldWakeup(wakeup.id)
+  }
+
+  private takePendingYieldWakeup(wakeupId: string): PendingYieldWakeup | null {
+    const index = this.pendingYieldWakeups.findIndex((wakeup) => wakeup.id === wakeupId)
+    if (index === -1) return null
+    const [wakeup] = this.pendingYieldWakeups.splice(index, 1)
+    if (!wakeup) return null
+    if (wakeup.timer) clearTimeout(wakeup.timer)
+    return wakeup
+  }
+
+  private canAcceptInternalSteer(): boolean {
+    try {
+      this.steerDelivery()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private async steerInternal(content: UserContentBlock[], id: string): Promise<void> {
+    const delivery = this.steerDelivery()
+    const turnId = this.currentTurnId()
+    if (delivery.type === 'provider') {
+      await delivery.run.steer({
+        id,
+        sessionId: this.agentSessionId,
+        turnId,
+        content,
+      })
+      this.transcriptLog.pushSteer(turnId, this.model, content, id)
+      await this.commitTranscript()
+      return
+    }
+
+    this.pendingSteers.push({
+      id,
+      turnId,
+      model: this.model,
+      content,
+    })
+    this.pendingSteerContinuationCount += 1
+  }
+
+  private enqueueInternalYieldWakeup(id: string): void {
+    this.pendingActions.push({
+      type: 'yield_wakeup',
+      id,
+      resolve: noop,
+      reject: noop,
+    })
+    this.kickWorker()
+  }
+
   private steerDelivery():
     | { type: 'provider'; run: ProviderRun & { steer: NonNullable<ProviderRun['steer']> } }
     | { type: 'next_provider_continuation' } {
@@ -474,11 +665,13 @@ export class AgentSession<State> {
           this.canceledPendingSteerIds.clear()
           this.abortRecorded = false
           this.setPhase('idle')
+          this.armPendingYieldWakeups()
         }
       }
     } finally {
       this.workerRunning = false
       this.resolveIdleWaiters()
+      if (this.pendingActions.length > 0) this.kickWorker()
     }
   }
 
@@ -500,6 +693,10 @@ export class AgentSession<State> {
         this.setPhase('compacting')
         this.activeTurnPhase = 'compacting'
         await this.executeCompaction()
+        return
+      case 'yield_wakeup':
+        this.setPhase('running')
+        await this.executeYieldWakeup()
         return
     }
   }
@@ -618,6 +815,14 @@ export class AgentSession<State> {
   private async executeResume(): Promise<void> {
     await this.applyPendingModelSwitch()
     this.transcriptLog.markLatestAbortResumed()
+    this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
+    await this.commitTranscript()
+    await this.executePreflightCompaction()
+    await this.executeProviderTurn()
+  }
+
+  private async executeYieldWakeup(): Promise<void> {
+    await this.applyPendingModelSwitch()
     this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
     await this.commitTranscript()
     await this.executePreflightCompaction()

@@ -26,6 +26,7 @@ export interface ShellSession {
   stderrTail: string
   truncated: boolean
   foreground?: ForegroundProcess
+  activeCommandId?: string
   backgroundJobs: Map<number, BackgroundJob>
   nextBackgroundJobId: number
   pendingExec?: Promise<ForkExecResult | Error>
@@ -49,6 +50,7 @@ export interface BackgroundJob {
 }
 
 export interface ForegroundProcess {
+  commandId: string
   command: string
   args: string[]
   cwd: string

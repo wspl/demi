@@ -21,13 +21,13 @@ e2e(
 )
 
 fuzzyShellE2e(
-  'REPL real model smoke chooses wait, input, and abort for a fuzzy shell-control task',
+  'REPL real model smoke chooses status, write, and abort for a fuzzy shell-control task',
   async () => {
     for (let attempt = 0; attempt < fuzzyShellAttempts; attempt++) {
       const stdout = await runRealReplFuzzyShellOnce()
       expect(stdout).toContain('tool> shell_exec')
-      expect(stdout).toContain('tool> shell_wait')
-      expect(stdout).toContain('tool> shell_input')
+      expect(stdout).toContain('tool> shell_status')
+      expect(stdout).toContain('tool> shell_write')
       expect(stdout).toContain('tool> shell_abort')
       expect(stdout).toContain('DEMI_FUZZY_INPUT:')
       expect(stdout).toContain('DEMI_FUZZY_SHELL_OK')
@@ -52,8 +52,6 @@ async function runRealReplSmokeOnce(): Promise<string> {
       'medium',
       '--yield-after-ms',
       '250',
-      '--timeout-ms',
-      '120000',
     ],
     { cwd: process.cwd(), env: process.env, stdio: ['pipe', 'pipe', 'pipe'] },
   )
@@ -105,8 +103,6 @@ async function runRealReplFuzzyShellOnce(): Promise<string> {
       'medium',
       '--yield-after-ms',
       '250',
-      '--timeout-ms',
-      '120000',
     ],
     { cwd: process.cwd(), env: process.env, stdio: ['pipe', 'pipe', 'pipe'] },
   )
@@ -120,10 +116,10 @@ async function runRealReplFuzzyShellOnce(): Promise<string> {
         'Do not ask me for clarification and do not install packages.',
         'I need you to handle two small foreground process checks.',
         'First, run a local command of your choice that waits for one line on stdin and then prints DEMI_FUZZY_INPUT:<that line>.',
-        'Before sending stdin, make a separate shell_wait call to observe that it is still running; do not count the initial shell_exec running result as this observation.',
-        'Then send a non-empty line using the shell control tool.',
+        'Before sending stdin, schedule a yield, then make a separate shell_status call to observe that it is still running; do not count the initial shell_exec running result as this observation.',
+        'Then send a non-empty line using shell_write.',
         'Second, run a local command of your choice that would keep running for a while.',
-        'Make a separate shell_wait call to observe it once, then stop it intentionally using the shell control tool.',
+        'Schedule a yield, make a separate shell_status call to observe it once, then stop it intentionally using shell_abort.',
         'When both checks are complete, reply with exactly DEMI_FUZZY_SHELL_OK and no extra words.',
       ].join(' ') + '\n',
     )

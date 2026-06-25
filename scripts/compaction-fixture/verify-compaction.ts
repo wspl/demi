@@ -13,8 +13,8 @@ import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import type { Block, ModelSelection } from '../../packages/core/src/index'
 import { ClaudeCodeProvider } from '../../packages/provider-claude-code/src/provider'
-import { AgentSession } from '../../packages/agent/src/index'
-import { BashEnvironment, createShellSessionTools } from '../../packages/shell/src/index'
+import { AgentSession, createStandardAgentTools } from '../../packages/agent/src/index'
+import { BashEnvironment } from '../../packages/shell/src/index'
 import { LocalHost } from '../../packages/host-local/src/index'
 
 const FIXTURE = join(import.meta.dir, 'large-context-fixture.json.gz')
@@ -33,15 +33,24 @@ log(`loaded long session: total≈${fx.builtTokens} tokens, ${fx.blocks.length} 
 
 const provider = new ClaudeCodeProvider({})
 const environment = new BashEnvironment({ host: new LocalHost(fx.cwd), shellIdFactory: () => 'cmp-shell', initialEnv: { PATH: process.env.PATH ?? '' } })
+let sessionRef: AgentSession<Record<string, never>> | null = null
 const runtime = {
   harnessName: fx.harnessName,
   initialState: () => ({}),
   systemPrompt: () => 'You are a careful coding assistant. Remember any secrets the user told you verbatim.',
-  tools: () => createShellSessionTools(environment),
+  tools: () =>
+    createStandardAgentTools({
+      environment,
+      scheduleYield: (_ctx, durationMs) => {
+        if (!sessionRef) throw new Error('fixture session is not ready for yield scheduling')
+        return sessionRef.scheduleYieldWakeup(durationMs)
+      },
+    }),
 }
 const snapshot = { transcript: { blocks: fx.blocks }, state: {}, phase: 'idle' as const, queue: [], cwd: fx.cwd, model: fx.model, harnessName: fx.harnessName }
 // Real default compaction thresholds — no override, no faking.
 const session = AgentSession.fromSnapshot({ provider, snapshot, runtime })
+sessionRef = session
 
 log('>>> recall question (the secrets must have survived every compaction generation)')
 await session.send([{ type: 'text', text: '只回答暗号值,用「ALPHA=…, BETA=…, GAMMA=…」格式:我最早让你记住的三个暗号分别是什么?' }])

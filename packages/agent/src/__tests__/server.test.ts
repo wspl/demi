@@ -149,7 +149,7 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
       shellIdFactory: () => 'agent-shell',
     },
     providerTurns: [
-      [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi' })],
+      [events.toolCall('tool-1', 'shell_exec', { script: 'sh -c "printf hi"', yieldAfterMs: 1_000 })],
       [events.text('done'), events.response()],
     ],
   })
@@ -157,7 +157,7 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
   client.subscribe((event) => seen.push(event))
 
   await client.open(providerConfig([
-      [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi' })],
+      [events.toolCall('tool-1', 'shell_exec', { script: 'sh -c "printf hi"', yieldAfterMs: 1_000 })],
       [events.text('done'), events.response()],
     ]),
     process.cwd(),
@@ -169,16 +169,18 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
   expect(shellOutput).toMatchObject({
     type: 'shell_output',
     shellId: 'agent-shell',
-    snapshot: { stdoutDelta: 'hi' },
+    commandId: expect.any(String),
+    snapshot: { stdout: { delta: 'hi' } },
   })
   expect(seen.some((event) => event.type === 'audit')).toBe(true)
 })
 
-test('AgentServer bridges shell_input frames to the active shell session tool', async () => {
+test('AgentServer bridges shell_write frames to the active shell command', async () => {
   const { client } = createAgentClientHarness({
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       shellIdFactory: () => 'agent-input-shell',
+      commandIdFactory: () => 'agent-input-command',
     },
     providerTurns: [
       [
@@ -208,39 +210,40 @@ test('AgentServer bridges shell_input frames to the active shell session tool', 
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   seen.length = 0
-  await client.shellInput('agent-input-shell', 'typed\n')
-  await waitFor(() => seen.some((event) => event.type === 'shell_output' && event.snapshot.stdoutDelta === 'typed'))
-  await waitFor(() => seen.some((event) => event.type === 'shell_input_result' && event.shellId === 'agent-input-shell'))
+  await client.shellWrite('agent-input-command', 'typed\n')
+  await waitFor(() => seen.some((event) => event.type === 'shell_write_result' && event.commandId === 'agent-input-command'))
 
   expect(seen).toContainEqual({
     type: 'shell_output',
     shellId: 'agent-input-shell',
+    commandId: 'agent-input-command',
     snapshot: {
-      stdoutDelta: 'typed',
-      stderrDelta: '',
-      stdoutTail: 'typed',
-      stderrTail: '',
-      totalStdoutBytes: 5,
-      totalStderrBytes: 0,
-      truncated: false,
+      status: 'running',
+      shellId: 'agent-input-shell',
+      commandId: 'agent-input-command',
+      stdout: expect.objectContaining({ delta: '', truncated: false }),
+      stderr: expect.objectContaining({ delta: '', tail: '', bytes: 0, truncated: false }),
+      runningMs: expect.any(Number),
+      idleMs: expect.any(Number),
     },
   })
   expect(seen).not.toContainEqual({
     type: 'tool_progress',
-    toolUseId: 'agent-shell-input:agent-input-shell',
+    toolUseId: 'agent-shell-write:agent-input-command',
     output: expect.any(Array),
   })
 })
 
-test('AgentClient.shellInput waits for shell_input_result and rejects when no session is open', async () => {
+test('AgentClient.shellWrite waits for shell_write_result and rejects when no session is open', async () => {
   const unopened = createAgentClientHarness({ providerTurns: [] })
-  await expect(unopened.client.shellInput('missing-shell', 'stdin')).rejects.toThrow('No session is open')
+  await expect(unopened.client.shellWrite('missing-command', 'stdin')).rejects.toThrow('No session is open')
 
   const seen: ClientSessionEvent[] = []
   const { client } = createAgentClientHarness({
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       shellIdFactory: () => 'agent-delayed-input-shell',
+      commandIdFactory: () => 'agent-delayed-input-command',
     },
     providerTurns: [
       [
@@ -267,18 +270,18 @@ test('AgentClient.shellInput waits for shell_input_result and rejects when no se
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
   let settled = false
-  const writing = client.shellInput('agent-delayed-input-shell', 'accepted\n').then(() => {
+  const writing = client.shellWrite('agent-delayed-input-command', 'accepted\n').then(() => {
     settled = true
   })
   await delay(5)
-  expect(settled).toBe(false)
+  expect(settled).toBe(true)
 
   await writing
   expect(settled).toBe(true)
-  expect(seen.some((event) => event.type === 'shell_input_result' && event.shellId === 'agent-delayed-input-shell')).toBe(true)
+  expect(seen.some((event) => event.type === 'shell_write_result' && event.commandId === 'agent-delayed-input-command')).toBe(true)
   expect(seen).not.toContainEqual({
     type: 'tool_progress',
-    toolUseId: 'agent-shell-input:agent-delayed-input-shell',
+    toolUseId: 'agent-shell-write:agent-delayed-input-command',
     output: expect.any(Array),
   })
 })
@@ -832,11 +835,11 @@ test('AgentClient.abort returns false while idle and true after aborting active 
   const client = server.client()
 
   await client.open(providerSelection('abort-aware'), '/workspace')
-  expect(await client.abort()).toBe(false)
+  expect(await client.abort()).toMatchObject({ aborted: false })
 
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.started.promise
-  await expect(client.abort()).resolves.toBe(true)
+  await expect(client.abort()).resolves.toMatchObject({ aborted: true })
   await provider.aborted.promise
   await sending
 })

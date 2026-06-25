@@ -3,11 +3,10 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, type AgentHarness, type AgentHarnessRuntime } from '@demi/agent'
+import { AgentSession, createStandardAgentTools, type AgentHarness, type AgentHarnessRuntime } from '@demi/agent'
 import {
   BashEnvironment,
   CommandRegistry,
-  createShellSessionTools,
   type BashEnvironmentOptions,
 } from '@demi/shell'
 import { LocalHost } from '@demi/host-local'
@@ -38,6 +37,7 @@ test('coding agent completes an editor/todo workflow through shell session tools
   const provider = new StubProvider([
     [
       events.toolCall('create-file', 'shell_exec', {
+        yieldAfterMs: 1_000,
         script: "editor create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
       }),
     ],
@@ -45,7 +45,7 @@ test('coding agent completes an editor/todo workflow through shell session tools
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.stdout).toBe('Created src/app.ts')
-      return [events.toolCall('add-todo', 'shell_exec', { shellId: result.shellId, script: 'todo add "Run tests" --json' })]
+      return [events.toolCall('add-todo', 'shell_exec', { shellId: result.shellId, script: 'todo add \"Run tests\" --json', yieldAfterMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -54,6 +54,7 @@ test('coding agent completes an editor/todo workflow through shell session tools
       return [
         events.toolCall('edit-file', 'shell_exec', {
           shellId: result.shellId,
+          yieldAfterMs: 1_000,
           script: 'editor edit src/app.ts --old "1" --new "2"',
         }),
       ]
@@ -78,9 +79,9 @@ test('coding agent completes an editor/todo workflow through shell session tools
     'response',
   ])
   const file = await environment.exec({ shellId: 'coding-shell', script: 'cat src/app.ts' })
-  expect(file.output.stdoutDelta).toBe('export const value = 2\n')
+  expect(file.stdout.delta).toBe('export const value = 2\n')
   const todos = await environment.exec({ agentSessionId: session.id(), shellId: 'coding-shell', script: 'todo list --json' })
-  expect(JSON.parse(todos.output.stdoutDelta)).toEqual({ todos: [{ id: 'T1', text: 'Run tests', status: 'pending' }] })
+  expect(JSON.parse(todos.stdout.delta)).toEqual({ todos: [{ id: 'T1', text: 'Run tests', status: 'pending' }] })
 })
 
 test('coding agent preserves workflow state across multiple user messages', async () => {
@@ -92,6 +93,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
   const provider = new StubProvider([
     [
       events.toolCall('start-workflow', 'shell_exec', {
+        yieldAfterMs: 1_000,
         script: [
           "editor create note.txt <<'EOF'",
           'first turn',
@@ -115,6 +117,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
       expect(serialized).toContain('carry state')
       return [
         events.toolCall('continue-workflow', 'shell_exec', {
+          yieldAfterMs: 1_000,
           script: ['todo done T1 --json', "printf '\\n'", 'todo list --json', "printf '\\n'", 'cat note.txt'].join('\n'),
         }),
       ]
@@ -136,7 +139,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
 
   expect(provider.consumedTurns).toBe(4)
   const todos = await environment.exec({ agentSessionId: 'coding-multiturn-agent', script: 'todo list --json' })
-  expect(JSON.parse(todos.output.stdoutDelta)).toEqual({
+  expect(JSON.parse(todos.stdout.delta)).toEqual({
     todos: [{ id: 'T1', text: 'carry state', status: 'done' }],
   })
 })
@@ -150,6 +153,7 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
   const provider = new StubProvider([
     [
       events.toolCall('prepare-shell-state', 'shell_exec', {
+        yieldAfterMs: 1_000,
         script: [
           'mkdir -p pkg',
           'cd pkg',
@@ -165,6 +169,7 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
       return [
         events.toolCall('read-shell-state', 'shell_exec', {
           shellId: result.shellId,
+          yieldAfterMs: 1_000,
           script: 'printf "state:%s:%s" "$PWD" "$WORKFLOW_TOKEN"',
         }),
       ]
@@ -194,6 +199,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
   const provider = new StubProvider([
     [
       events.toolCall('create-project', 'shell_exec', {
+        yieldAfterMs: 1_000,
         script: [
           'mkdir -p src',
           "editor create src/todo.ts <<'EOF'\nexport function addTodo(items: string[], text: string): string[] {\n  return items\n}\nEOF",
@@ -206,14 +212,14 @@ test('coding agent iterates from a failing project test to a passing fix', async
       expect(result.status).toBe('exited')
       expect(result.exitCode).toBe(0)
       expect(result.stdout).toContain('Created src/todo.ts')
-      return [events.toolCall('run-failing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts' })]
+      return [events.toolCall('run-failing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts', yieldAfterMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.exitCode).not.toBe(0)
       expect(`${result.stdout}\n${result.stderr}`).toContain('ship tests')
-      return [events.toolCall('read-source', 'shell_exec', { shellId: result.shellId, script: 'cat src/todo.ts' })]
+      return [events.toolCall('read-source', 'shell_exec', { shellId: result.shellId, script: 'cat src/todo.ts', yieldAfterMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -221,6 +227,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
       return [
         events.toolCall('fix-source', 'shell_exec', {
           shellId: result.shellId,
+          yieldAfterMs: 1_000,
           script: 'editor edit src/todo.ts --old "return items" --new "return [...items, text]"',
         }),
       ]
@@ -229,7 +236,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.exitCode).toBe(0)
-      return [events.toolCall('run-passing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts' })]
+      return [events.toolCall('run-passing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts', yieldAfterMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -244,10 +251,10 @@ test('coding agent iterates from a failing project test to a passing fix', async
   await session.send([{ type: 'text', text: 'Create a tiny todo module, run its test, fix the failure, and rerun.' }])
 
   const file = await environment.exec({ shellId: 'coding-fix-shell', script: 'cat src/todo.ts' })
-  expect(file.output.stdoutDelta).toContain('return [...items, text]')
+  expect(file.stdout.delta).toContain('return [...items, text]')
 })
 
-test('coding agent controls a long foreground command with wait, input, and abort', async () => {
+test('coding agent controls a long foreground command with status and abort', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-long-command-'))
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
   const { runtime } = createRuntimeFromHarness(harness, root, {
@@ -256,26 +263,15 @@ test('coding agent controls a long foreground command with wait, input, and abor
   const provider = new StubProvider([
     [
       events.toolCall('start-long', 'shell_exec', {
-        script: "sh -c 'sleep 0.02; printf ready; IFS= read -r line; printf \" got:%s\" \"$line\"; sleep 10'",
-        yieldAfterMs: 1,
+        script: "sh -c 'printf ready; sleep 10'",
+        yieldAfterMs: 20,
       }),
     ],
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.status).toBe('running')
-      return [events.toolCall('wait-ready', 'shell_wait', { shellId: result.shellId, yieldAfterMs: 1_000 })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      expect(result.status).toBe('running')
       expect(result.stdout).toContain('ready')
-      return [events.toolCall('send-input', 'shell_input', { shellId: result.shellId, stdin: 'typed\n', yieldAfterMs: 20 })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      expect(result.status).toBe('running')
-      expect(result.stdout).toContain('got:typed')
-      return [events.toolCall('stop-long', 'shell_abort', { shellId: result.shellId })]
+      return [events.toolCall('stop-long', 'shell_abort', { commandId: result.commandId })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -312,7 +308,14 @@ function createRuntimeFromHarness(
     preamble: (ctx) => harness.preamble?.(ctx) ?? null,
     resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
     lifecycle: (event) => harness.lifecycle?.(event),
-    tools: () => createShellSessionTools(environment),
+    tools: () =>
+      createStandardAgentTools({
+        environment,
+        scheduleYield: (_ctx, durationMs) => ({
+          output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
+          stopAfterToolResult: true,
+        }),
+      }),
   }
   return { environment, runtime }
 }
@@ -320,6 +323,7 @@ function createRuntimeFromHarness(
 function latestShellResult(request: InferenceRequest): {
   status: string
   shellId: string
+  commandId: string
   stdout: string
   stderr: string
   exitCode: number | null
@@ -332,6 +336,7 @@ function latestShellResult(request: InferenceRequest): {
   return {
     status: requiredField(first.text, 'status'),
     shellId: requiredField(first.text, 'shellId'),
+    commandId: requiredField(first.text, 'commandId'),
     stdout: section(first.text, 'stdout'),
     stderr: section(first.text, 'stderr'),
     exitCode: exitCodeText === null ? null : Number(exitCodeText),
@@ -354,7 +359,10 @@ function section(text: string, name: string): string {
   if (start === -1) throw new Error(`missing section ${name} in ${text}`)
   const bodyStart = start + `${name}:\n`.length
   const rest = text.slice(bodyStart)
-  const nextField = /\n(?:stdout|stderr|status|shellId|exitCode|runningMs|reason|idleMs|next):/.exec(rest)
+  const nextField =
+    /\n(?:stdout|stderr|status|shellId|commandId|exitCode|runningMs|idleMs|stdoutPath|stdoutOffset|stdoutBytes|stderrPath|stderrOffset|stderrBytes|next):/.exec(
+      rest,
+    )
   const rawValue = nextField ? rest.slice(0, nextField.index) : rest
   const value = nextField && rawValue.endsWith('\n') ? rawValue.slice(0, -1) : rawValue
   return value === '(empty)' ? '' : value

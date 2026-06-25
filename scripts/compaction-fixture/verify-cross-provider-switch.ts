@@ -23,8 +23,8 @@ import { gunzipSync } from 'node:zlib'
 import type { Block, ModelSelection } from '../../packages/core/src/index'
 import { ClaudeCodeProvider } from '../../packages/provider-claude-code/src/provider'
 import { CodexProvider } from '../../packages/provider-codex/src/provider'
-import { AgentSession } from '../../packages/agent/src/index'
-import { BashEnvironment, createShellSessionTools } from '../../packages/shell/src/index'
+import { AgentSession, createStandardAgentTools } from '../../packages/agent/src/index'
+import { BashEnvironment } from '../../packages/shell/src/index'
 import { LocalHost } from '../../packages/host-local/src/index'
 
 const REPO = join(import.meta.dir, '../..')
@@ -50,14 +50,23 @@ const codexModel: ModelSelection = {
 }
 
 const environment = new BashEnvironment({ host: new LocalHost(fx.cwd), shellIdFactory: () => 'xp-shell', initialEnv: { PATH: process.env.PATH ?? '' } })
+let sessionRef: AgentSession<Record<string, never>> | null = null
 const runtime = {
   harnessName: fx.harnessName,
   initialState: () => ({}),
   systemPrompt: () => 'You are a careful coding assistant. Remember any secrets the user told you verbatim.',
-  tools: () => createShellSessionTools(environment),
+  tools: () =>
+    createStandardAgentTools({
+      environment,
+      scheduleYield: (_ctx, durationMs) => {
+        if (!sessionRef) throw new Error('fixture session is not ready for yield scheduling')
+        return sessionRef.scheduleYieldWakeup(durationMs)
+      },
+    }),
 }
 const snapshot = { transcript: { blocks: fx.blocks }, state: {}, phase: 'idle' as const, queue: [], cwd: fx.cwd, model: claudeModel, harnessName: fx.harnessName }
 const session = AgentSession.fromSnapshot({ provider: new ClaudeCodeProvider({}), snapshot, runtime }) // real default compaction
+sessionRef = session
 
 const ctx = (): number => session.transcript().estimateContextTokens()
 const gens = (): number => session.transcript().blocks.filter((b) => b.type === 'compaction_boundary').length
