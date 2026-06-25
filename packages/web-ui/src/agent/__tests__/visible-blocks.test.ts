@@ -22,6 +22,16 @@ test('visible blocks hide ordinary response blocks too', () => {
   expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['exec-1', 'status-1'])
 })
 
+test('visible blocks hide resume blocks because web has no resume row renderer', () => {
+  const blocks = [
+    tool('yield-1', 'yield'),
+    resume('resume-after-yield'),
+    tool('status-1', 'shell_status'),
+  ]
+
+  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['yield-1', 'status-1'])
+})
+
 function tool(id: string, toolName: string): Extract<Block, { type: 'tool_call' }> {
   return {
     type: 'tool_call',
@@ -50,6 +60,16 @@ function response(id: string): Extract<Block, { type: 'response' }> {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     },
+  }
+}
+
+function resume(id: string): Extract<Block, { type: 'resume' }> {
+  return {
+    type: 'resume',
+    id,
+    turnId: id,
+    createdAt: '1970-01-01T00:00:00.000Z',
+    model,
   }
 }
 
