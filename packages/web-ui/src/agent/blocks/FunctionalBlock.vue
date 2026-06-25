@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onUpdated, ref, useSlots, watch } from 'vue'
+import { computed, onBeforeUnmount, onUpdated, ref, useSlots, watch } from 'vue'
 import { RightLine } from '@mingcute/vue/right'
 import ToolStatusBadge from './ToolStatusBadge.vue'
+
+const ACTIVE_OUTPUT_CLOSE_DELAY_MS = 1000
 
 const props = defineProps<{
   label?: string
@@ -24,20 +26,42 @@ const isOpen = defineModel<boolean>('open', { default: false })
 const hasBodySlot = () => !!slots['body']
 const isExpandable = computed(() => props.expandable || hasBodySlot() || !!props.errorText)
 const bodyScroll = ref<HTMLElement>()
+let closeTimer: ReturnType<typeof setTimeout> | undefined
 
-watch(() => props.errorText, (text) => {
-  if (text) isOpen.value = true
-})
+function clearCloseTimer() {
+  if (!closeTimer) return
+  clearTimeout(closeTimer)
+  closeTimer = undefined
+}
+
+function closeAfterActiveOutputSettles() {
+  if (!isOpen.value) return
+  clearCloseTimer()
+  closeTimer = setTimeout(() => {
+    closeTimer = undefined
+    if (!props.openWhile && !props.errorText) isOpen.value = false
+  }, ACTIVE_OUTPUT_CLOSE_DELAY_MS)
+}
 
 watch(
-  [() => props.openWhile, isExpandable],
-  ([openWhile]) => {
-    if (openWhile !== undefined) {
-      isOpen.value = Boolean(openWhile && isExpandable.value)
+  [() => props.errorText, () => props.openWhile, isExpandable],
+  ([errorText, openWhile, expandable]) => {
+    clearCloseTimer()
+    if (errorText) {
+      isOpen.value = true
+      return
     }
+    if (openWhile === undefined) return
+    if (openWhile && expandable) {
+      isOpen.value = true
+      return
+    }
+    closeAfterActiveOutputSettles()
   },
   { immediate: true },
 )
+
+onBeforeUnmount(clearCloseTimer)
 
 onUpdated(() => {
   if (props.stickBottom && isOpen.value && bodyScroll.value) {
