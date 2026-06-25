@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { HistoryLine } from '@mingcute/vue/history'
 import { SearchLine } from '@mingcute/vue/search'
 import { SendLine } from '@mingcute/vue/send'
-import { StopFill } from '@mingcute/vue/stop'
+import { StopLine } from '@mingcute/vue/stop'
 import AnsiText from './AnsiText.vue'
 import CollapsibleBlock from './CollapsibleBlock.vue'
 import type { ToolCallBlock } from '../block-types'
@@ -28,7 +28,7 @@ const iconComponent = computed(() => {
     case 'shell_write':
       return SendLine
     case 'shell_abort':
-      return StopFill
+      return StopLine
     case 'yield':
       return HistoryLine
   }

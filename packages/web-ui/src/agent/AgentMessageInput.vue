@@ -3,7 +3,7 @@ import { nextTick } from 'vue'
 import type { UserContentBlock } from '@demi/core'
 import { AddLine } from '@mingcute/vue/add'
 import { SendLine } from '@mingcute/vue/send'
-import { StopFill } from '@mingcute/vue/stop'
+import { StopLine } from '@mingcute/vue/stop'
 import { EditorContent } from '@tiptap/vue-3'
 import { useAgentWorkspace } from './workspace'
 import ModelSelector from './ModelSelector.vue'
@@ -135,7 +135,7 @@ defineExpose({
             class="flex size-7 cursor-pointer items-center justify-center rounded-lg bg-overlay/10 text-fg transition-colors hover:bg-active"
             @click="handleAbort"
           >
-            <StopFill :size="11" />
+            <StopLine :size="15" />
           </span>
           <span
             v-else
