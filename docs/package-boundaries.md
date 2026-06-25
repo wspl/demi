@@ -42,8 +42,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `just-bash`.
-- Owns: Host contract (`defaultCwd`, `fs`, `process`, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell session tools, shell output, audit, and storage abstractions.
-- Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`.
+- Owns: Host contract (`defaultCwd`, `fs`, `process`, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools.
+- Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`. It does not expose model-facing AgentTool ownership.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
@@ -66,11 +66,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demi/core`, `@demi/provider`, `@demi/shell`.
-- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, and assembly of one harness with the standard shell tools.
+- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, and assembly of one harness with the standard shell runtime.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only transports from explicit subpaths such as `@demi/agent/stdio`.
 - Must not: import concrete providers, `@demi/host-local`, or UI packages.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
-- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, and shell runtime options that do not replace the shell mechanism.
+- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface.
 
 ### `@demi/coding-agent`
 
@@ -79,7 +79,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: coding harness, coding prompt, coding commands, todo command, and file reference resolution.
 - Public boundary: harness and coding command construction based on Host and CommandSpec contracts.
 - Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, or LocalHost.
-- Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism or provide an alternate BashEnvironment or tool runtime.
+- Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate BashEnvironment/tool runtime.
 
 ### `@demi/provider-claude-code`
 
