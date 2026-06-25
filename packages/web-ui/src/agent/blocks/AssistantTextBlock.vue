@@ -24,7 +24,7 @@ function handleClick(event: MouseEvent) {
 </script>
 
 <template>
-  <div class="px-8 py-1">
+  <div class="px-8 py-1.5">
     <div
       class="markdown-body select-text text-sm leading-relaxed text-fg-body"
       v-html="renderedMarkdown"

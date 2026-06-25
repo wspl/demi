@@ -8,6 +8,7 @@ interface VirtualizedBlock {
 }
 
 const OVERSCAN = 8
+const BLOCK_GAP = 4
 const BOTTOM_THRESHOLD = 100
 const AUTO_SCROLL_REENGAGE_THRESHOLD = 1
 
@@ -61,7 +62,7 @@ export function useBlockVirtualizer(
         return heightCache.get(block.id) ?? (BLOCK_HEIGHT_ESTIMATES[block.type] ?? 40)
       },
       overscan: OVERSCAN,
-      gap: 8,
+      gap: BLOCK_GAP,
       getItemKey: (index: number) => {
         const block = blocks.value[index]
         return block ? block.id : index
