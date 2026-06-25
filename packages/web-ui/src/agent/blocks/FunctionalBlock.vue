@@ -56,7 +56,7 @@ onUpdated(() => {
       </span>
       <div class="flex-1"></div>
     </div>
-    <div v-if="isExpandable" class="collapsible-body" :class="isOpen ? 'is-open' : ''">
+    <div v-if="isExpandable" class="functional-block-body" :class="isOpen ? 'is-open' : ''">
       <div class="overflow-hidden">
         <div class="mb-1 ml-6 overflow-hidden rounded-md bg-overlay/6">
           <div ref="bodyScroll" class="max-h-80 overflow-y-auto py-0.5">
@@ -70,13 +70,13 @@ onUpdated(() => {
 </template>
 
 <style scoped>
-.collapsible-body {
+.functional-block-body {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.2s ease;
 }
 
-.collapsible-body.is-open {
+.functional-block-body.is-open {
   grid-template-rows: 1fr;
 }
 </style>

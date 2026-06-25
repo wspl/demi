@@ -69,15 +69,19 @@ model/render-model 包。
 | 工具 | 展示形态 | 标题 fallback | 关键内容 | 执行中状态 |
 |---|---|---|---|---|
 | `shell_exec` | 终端命令 block | `input.script` | script、stdout/stderr、exit/status、commandId、shellId | 扫光 loading，支持展开输出 |
-| `shell_status` | 命令状态 block | `Check <commandId>` | commandId、status、runningMs、idleMs、stdout/stderr delta | 扫光 loading，不能伪装成 shell_exec |
-| `shell_write` | stdin 写入 block | `Send input to <commandId>` | commandId、stdin preview、写入后的 status snapshot | 扫光 loading，成功不等于命令完成 |
-| `shell_abort` | 停止命令 block | `Stop <commandId>` | commandId、最终 status snapshot | 扫光 loading，completed/aborted 都不是 UI 错误 |
-| `yield` | 等待唤醒 block | `Wait <durationMs>ms` | durationMs、wakeup 状态、terminal tool result | 等待中使用和 thinking 一致的扫光 |
+| `shell_status` | 命令状态 inline block | `Check <commandId>` | 标题说明状态检查动作；不提供展开面板 | 扫光 loading，不能伪装成 shell_exec |
+| `shell_write` | stdin 写入 inline block | `Send input to <commandId>` | 标题说明写入动作；不提供展开面板 | 扫光 loading，成功不等于命令完成 |
+| `shell_abort` | 停止命令 inline block | `Stop <commandId>` | 标题说明停止动作；不提供展开面板 | 扫光 loading，completed/aborted 都不是 UI 错误 |
+| `yield` | 等待唤醒 inline block | `Wait <durationMs>ms` | 标题说明等待时长；不提供展开面板 | 等待中使用和 thinking 一致的扫光 |
 
 这些工具可以共用一个基础 `ToolCard` 外壳，但内容区域、标题 fallback、图标和状态文案必须按
 工具名区分。图标可以不同：`shell_exec` 用 terminal，`shell_status` 用 activity/search，
 `shell_write` 用 keyboard/input，`shell_abort` 用 stop，`yield` 用 clock/timer。
 标准工具执行中状态统一使用和 thinking 一致的扫光 loading，不使用独立 spinner。
+
+Web 中只有 `shell_exec` 工具块和 `thinking` block 可展开。`shell_status` / `shell_write` /
+`shell_abort` / `yield` 以及未知 generic tool 都必须保持不可展开的 inline 呈现；错误信息如需
+展示，只能作为 badge 或行内摘要出现，不能通过 disclosure 展开。
 
 ## 5. Web 规范
 

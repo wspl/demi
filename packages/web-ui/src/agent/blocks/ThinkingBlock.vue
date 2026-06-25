@@ -4,7 +4,7 @@ import { BrainLine } from '@mingcute/vue/brain'
 import { md } from '@demi/web-ui/markdown/md'
 import { t } from '@demi/web-ui/infra/i18n'
 import { useThinkingDisclosure } from '@demi/web-ui/composables/useThinkingDisclosure'
-import CollapsibleBlock from './CollapsibleBlock.vue'
+import FunctionalBlock from './FunctionalBlock.vue'
 
 const props = defineProps<{
   thinking: string
@@ -72,7 +72,7 @@ function formatDuration(ms: number): string {
 
 <template>
   <div class="px-8">
-    <CollapsibleBlock v-model:open="isOpen" :expandable="hasContent" :stick-bottom="isStreaming">
+    <FunctionalBlock v-model:open="isOpen" :expandable="hasContent" :stick-bottom="isStreaming">
       <template #icon>
         <BrainLine :size="16" />
       </template>
@@ -80,6 +80,6 @@ function formatDuration(ms: number): string {
       <template v-if="hasContent" #body>
         <div class="markdown-body px-3 py-1 text-[13px] leading-relaxed text-fg-muted" v-html="renderedMarkdown" />
       </template>
-    </CollapsibleBlock>
+    </FunctionalBlock>
   </div>
 </template>
