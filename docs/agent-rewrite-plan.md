@@ -87,8 +87,8 @@ Host
 15. **观测边界不改变 shell 可见语义**：长命令跨 `running` / `shell_status` / `shell_abort` / `yield` 收敛时，重定向、fd duplicate、fd close、`!` 等 shell 语义必须保持一致；本该写入文件的 stdout/stderr 不能因为中途 yield 或中断泄漏到 tool output。
 16. **AgentSession 只被 AgentServer 消费**：非测试运行时代码只有 `AgentServer` 可以直接实例化 `AgentSession`；壳子、provider 和业务 harness 只能经 `AgentClient` 或类型契约交互。
 17. **新增原则先入文档再实现**：新增架构原则先记录到本方案文档，再继续实现；实现后用测试、扫描或门禁验证。
-18. **Shell 控制面显式区分 status 与 write**：模型面对的基础工具必须顺滑且不含隐式状态魔法：`shell_exec` 启动命令并返回 `commandId`；`shell_status` 是唯一读取命令状态和 stdout/stderr 增量的入口；`shell_write` 只写入非空 stdin；`yield` 是 agent-level 单次暂停，不读写 shell；进程安静不等于需要输入；主动终止前台命令只能通过 `shell_abort` 显式表达，不应默认当作任务失败污染模型上下文。
-19. **长进程优先走受控前台**：需要观测和停止的长进程（如 dev server、watch、preview）应作为 foreground command 运行，由 `shell_exec` / `yield` / `shell_status` 观测、由 `shell_abort` 停止；不要用 `cmd &` 后再 `pkill` / `killall` 按进程名清理。后台 job 只用于明确需要在 shell session 生命周期内持续保留、且后续通过 jobs/wait 或 session dispose 管理的进程。
+18. **Shell 控制面显式区分 status 与 write**：模型面对的基础工具必须顺滑且不含隐式状态魔法：`shell_exec` 启动命令并返回 `commandId`；`shell_status` 是唯一读取命令状态和 stdout/stderr 增量的入口；`shell_write` 只写入非空 stdin；`yield` 是 agent-level 单次 delayed wakeup，终止当前 turn，并在 turn 完成后等待指定时间再唤醒：session idle 时启动内部 wakeup turn，session active 时作为内部 steer 插入当前 turn，绝不进入 queue；进程安静不等于需要输入；主动终止前台命令只能通过 `shell_abort` 显式表达，不应默认当作任务失败污染模型上下文。
+19. **长进程优先走受控前台**：需要观测和停止的长进程（如 dev server、watch、preview）应作为 foreground command 运行，由 `shell_exec` / `yield wakeup` / `shell_status` 观测、由 `shell_abort` 停止；不要用 `cmd &` 后再 `pkill` / `killall` 按进程名清理。后台 job 只用于明确需要在 shell session 生命周期内持续保留、且后续通过 jobs/wait 或 session dispose 管理的进程。
 20. **Bash Environment 不是 Harness 注入项**：Agent Harness 只能定义 `Host`、注册命令、prompt、引用解析和生命周期；不得让用户传入自定义 `BashEnvironment` 或替换标准 agent 工具面。Demi 的差异化是统一、可审计、可长程运行的 shell session 机制，所有 agent 都走同一套 exec/status/write/abort/yield、audit、tool result 和 compaction 语义。
 21. **模型目录属于 provider 能力**：REPL / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
 22. **Provider 装配属于用户创建边界**：用户创建 agent / app runtime 时传入 public provider 对象数组，例如 `providers: [createClaudeCodeProvider(...), createCodexProvider(...)]`。`ProviderDefinition`、`ProviderRegistry`、可序列化 provider config 解析器和 live provider runtime factory 都是内部机制；API key 和 secret-bearing provider options 只能留在创建 provider 的用户侧闭包里，不能经浏览器或 AgentClient frame 往返。详细设计见 `docs/provider-public-api-plan.md`。
@@ -120,9 +120,12 @@ shell_abort(commandId)
   → 主动终止前台进程；这是控制动作，不默认表示 agent 任务失败
 
 yield(durationMs)
-  → 暂停当前 active turn 一段时间；不读写 shell
-  → 可被 steer / abort / queue promotion / active-turn input 打断
-  → 单次 sleep，不支持 repeat / start_yield / stop_yield
+  → 写入 terminal tool result，结束当前 provider continuation；不读写 shell
+  → 当前 turn 完成后开始计时
+  → 到点时 session idle：启动一个内部 wakeup turn
+  → 到点时 session active：作为内部 steer 投递到当前 active turn，不能进入 queue
+  → abort / session close 清理 pending wakeup
+  → 单次 delayed wakeup，不支持 repeat / start_yield / stop_yield
 ```
 
 业务能力通过命令表达：
@@ -134,9 +137,9 @@ editor edit src/main.ts --old "foo" --new "bar"
 git status --short
 ```
 
-`shell_status` 是唯一读取命令状态的工具；模型不应因为重复看到 `running` 就盲目连续 status。长命令等待节奏由 `yield` 表达：`shell_exec → yield → shell_status → yield → shell_status`。工具结果必须直接可读，包含 status、shellId、commandId、stdout/stderr artifact delta、exitCode 或 next action，不要求模型从一坨 JSON 里猜状态。
+`shell_status` 是唯一读取命令状态的工具；模型不应因为重复看到 `running` 就盲目连续 status。长命令等待节奏由 `yield` 表达：`shell_exec → yield → wakeup turn 或 wakeup steer → shell_status → yield → wakeup turn 或 wakeup steer → shell_status`。工具结果必须直接可读，包含 status、shellId、commandId、stdout/stderr artifact delta、exitCode 或 next action，不要求模型从一坨 JSON 里猜状态。
 
-runner 不提供由 idle timeout 触发的 shell 输入需求状态。`shell_exec` 的 `yieldAfterMs` 到期时，如果进程还活着，就返回 `running + shellId + commandId`；模型用 `yield` 暂停、再用 `shell_status` 读取状态，或在明确知道命令正在等待具体输入时用 `shell_write` 写入非空 stdin。demi 不保留空 input 轮询入口，避免把一个无效果的 stdin 写入伪装成控制动作，也避免把 `npm install --silent` 这类安静长命令误判成交互输入。
+runner 不提供由 idle timeout 触发的 shell 输入需求状态。`shell_exec` 的 `yieldAfterMs` 到期时，如果进程还活着，就返回 `running + shellId + commandId`；模型用 `yield` 结束当前 turn 并安排稍后唤醒，在 wakeup turn 或 wakeup steer 中用 `shell_status` 读取状态，或在明确知道命令正在等待具体输入时用 `shell_write` 写入非空 stdin。demi 不保留空 input 轮询入口，避免把一个无效果的 stdin 写入伪装成控制动作，也避免把 `npm install --silent` 这类安静长命令误判成交互输入。
 
 这组工具不是业务能力工具，只是 shell session 的控制面。agent core 保持极简，业务能力通过命令环境扩展。
 
@@ -394,9 +397,9 @@ shell_exec(script, yieldAfterMs)
   → 后续 shell_status / shell_write / shell_abort 操作同一 command
 ```
 
-Agent Loop 只在明确边界点恢复：command exit、`shell_exec` 的 `yieldAfterMs` 到点、`shell_status` / `shell_write` / `shell_abort` tool result 返回、`yield` 完成或被打断、provider stream 自身完成或出错。每次恢复给模型的是程序化 command snapshot，不是模型生成的摘要。模型不应每个输出 chunk 都被唤醒；`maxOutputBytes` 只限制本次 tool result 的 delta/tail，不改变命令生命周期。
+Agent Loop 只在明确边界点恢复：command exit、`shell_exec` 的 `yieldAfterMs` 到点、`shell_status` / `shell_write` / `shell_abort` tool result 返回、`yield` terminal result 返回、pending yield wakeup 到点、provider stream 自身完成或出错。每次恢复给模型的是程序化 command snapshot 或内部 wakeup 输入，不是模型生成的摘要。模型不应每个输出 chunk 都被唤醒；`maxOutputBytes` 只限制本次 tool result 的 delta/tail，不改变命令生命周期。
 
-`yieldAfterMs` 到期且进程仍在运行时，默认状态是 `running`，即使 stdout/stderr 没有新增内容。安静长命令由 `runningMs` / `idleMs` 暴露观测信息，是否 `yield` 后继续 `shell_status`、改用非静默命令、或主动 abort 由模型决定；runner 不能把 idle timeout 自动升级成输入需求状态。
+`yieldAfterMs` 到期且进程仍在运行时，默认状态是 `running`，即使 stdout/stderr 没有新增内容。安静长命令由 `runningMs` / `idleMs` 暴露观测信息，是否通过 `yield` 安排后续 wakeup 再继续 `shell_status`、改用非静默命令、或主动 abort 由模型决定；runner 不能把 idle timeout 自动升级成输入需求状态。pending yield wakeup 到点时，若 session idle 就启动内部 wakeup turn；若 session 已经 active，就复用 steer delivery 插入当前 turn，不能进入普通 queue。
 
 dev server / watch / preview 这类命令如果只是为了冒烟验证，应作为 foreground command 启动，并设置较短 `yieldAfterMs` 观察启动日志；验证完成后调用 `shell_abort(commandId)`。不要把这类命令放到后台再用 `pkill -f`、`killall` 或类似进程名匹配方式回收，因为这绕过 shell 控制面，可能误杀同名进程，也让审计链路变差。
 
@@ -435,7 +438,7 @@ type ShellCommandSnapshot = {
 
 - 长命令的首次 `shell_exec` 通常使用 `yieldAfterMs = 10_000`。
 - `idleMs` 仅作观测，不自动 kill。
-- `yield` 是 agent-level 单次暂停；不做 repeat / heartbeat。
+- `yield` 是 agent-level 单次 delayed wakeup；不做 repeat / heartbeat。
 - 连续多次 `running` 且无输出时，由 agent 决定继续等 / abort / 询问用户。
 
 ## 5. Agent Loop
@@ -1299,7 +1302,7 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 **3.8 Audit**：`BashAuditEvent` 区分 registered command、portable command 和 host external command；每次 command 收集 audit events 附在 `ShellCommandSnapshot` 的完成结果上。**验收**：三类命令各产生对应 kind 的 event。
 
-**3.9 标准基础工具组封装**：`@demi/agent` 把 BashEnvironment 的 exec/status/write/abort primitives 和 agent-level `yield` 包装成 §3.2 的五个 AgentTool；zod schema；接入 agent 的 ToolContinuation；shell 命令实时输出经协议层 `shell_output` 事件流出。**验收**：主路径手测通过（cat/editor/git status）；长命令手测通过；shell session 状态跨 exec 连续。
+**3.9 标准基础工具组封装**：`@demi/agent` 把 BashEnvironment 的 exec/status/write/abort primitives 和 agent-level `yield` 包装成 §3.2 的五个 AgentTool；`yield` 是 terminal tool result，并登记 delayed wakeup 调度器；到点时 idle session 开内部 wakeup turn，active session 走内部 steer，不进 queue；zod schema；接入 agent 的 ToolContinuation；shell 命令实时输出经协议层 `shell_output` 事件流出。**验收**：主路径手测通过（cat/editor/git status）；长命令手测通过；shell session 状态跨 exec 连续。
 
 **3.10 fork engine 集成与 @demi/shell 重写**：把 `@demi/shell` 手写的 bash 语义（`environment.ts` 3340 行 + `script-parser.ts` 1444 行）替换成 fork `Interpreter`，对齐 §7.1。这是 Step 3 的收尾重构——3.1-3.9 的能力全部保留，实现从"手写 interpreter"切换到"消费 fork engine"。
 

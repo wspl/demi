@@ -4,12 +4,12 @@
 |---|---|
 | 日期 | 2026-06-25 |
 | 状态 | 设计方案 |
-| 范围 | `@demi/shell` shell 控制面、`@demi/agent` active-turn yield 工具 |
+| 范围 | `@demi/shell` shell 控制面、`@demi/agent` delayed-turn yield 工具 |
 
 ## 1. 结论
 
-Demi 的 agent 不先做 Codex thread heartbeat / automation。当前阶段只做 active turn 内的
-shell + yield 控制面：
+Demi 的 agent 不先做 Codex thread heartbeat / automation。当前阶段只做 shell 控制面和
+单次 delayed wakeup：
 
 ```text
 shell_exec
@@ -19,13 +19,13 @@ shell_abort
 yield
 ```
 
-这套设计把“执行命令”“读取状态”“写 stdin”“显式终止”“暂停 agent turn”分开：
+这套设计把“执行命令”“读取状态”“写 stdin”“显式终止”“让出当前 turn 并延迟唤醒”分开：
 
 - `shell_exec` 只启动命令，并在初始观察窗口内等待。
 - `shell_status` 只读命令状态和 stdout/stderr 增量，不等待。
 - `shell_write` 只写非空 stdin，不伪装成轮询。
 - `shell_abort` 是唯一终止命令的工具。
-- `yield` 是 agent-level 单次 sleep，不属于 shell，不做 repeat，不启动新 turn。
+- `yield` 是 agent-level 单次 delayed wakeup：当前 turn 完成后等待指定时间，session idle 时启动内部唤醒 turn，session active 时作为内部 steer 插入。
 
 删除 `timeoutMs` 作为 shell tool 的默认控制语义。命令不应因为等待时间过长被隐式杀掉；
 疑似卡死时由模型或用户显式调用 `shell_abort`。
@@ -38,8 +38,8 @@ yield
 - `timeoutMs` 是硬终止，而且当前默认值会让长任务在后续 wait 中被意外杀掉。
 - `shell_input` 这个名字偏交互输入；我们真正需要的是对 foreground command 写 stdin，空输入轮询必须消失。
 
-新方案把等待从 shell 中移到 `yield`。shell 工具只表达 shell 控制动作，agent 等待节奏由模型通过
-`yield` 决定。
+新方案把等待从 shell 中移到 `yield`。shell 工具只表达 shell 控制动作；模型需要稍后再看结果时，
+通过 `yield` 结束当前 turn，并让 runtime 在指定时间后重新唤醒会话。
 
 ## 3. 工具语义
 
@@ -105,7 +105,7 @@ type ShellWriteInput = {
 - `stdin` 必须非空；轮询必须用 `shell_status`。
 - 写入目标 command 的 stdin 后，立即返回一次 status snapshot。
 - 如果 command 不存在、已结束、或没有可写 stdin，返回错误。
-- 是否等待写入后的输出，由模型通过 `yield` 再 `shell_status` 决定。
+- 是否等待写入后的输出，由模型通过 `yield` 安排后续 turn，再在唤醒后调用 `shell_status` 决定。
 
 ### 3.4 `shell_abort`
 
@@ -126,7 +126,7 @@ type ShellAbortInput = {
 
 ### 3.5 `yield`
 
-暂停当前 active turn 一段时间，然后把控制权交回模型。
+结束当前 turn，并安排 runtime 在当前 turn 完成后等待一段时间；到点时 idle 则启动内部唤醒 turn，active 则作为内部 steer 插入。
 
 ```ts
 type YieldInput = {
@@ -138,21 +138,29 @@ type YieldInput = {
 
 - `durationMs` 必填，取值范围 `1..600000`，最大 10 分钟。
 - `yield` 不读 shell、不写 shell、不管理进程。
-- 如果等待期间有用户 steer、abort、queue promotion 或其他 active-turn input，`yield` 提前结束并返回 `interrupted`。
-- 如果时间到，返回 `completed`。
-- `yield` 是单次 sleep；不支持 `repeat`、`start_yield` 或 `stop_yield`。
+- `yield` tool result 是 terminal result：写入 transcript 后当前 provider continuation 结束，不在同一 turn 里继续采样。
+- `durationMs` 从当前 turn 完成、session 进入可等待状态后开始计时，不从 tool call 开始计时。
+- 计时结束时，如果 session idle，runtime 启动一个普通的新 turn，并插入一个内部 wakeup 输入，让模型继续推理。
+- 计时结束时，如果 session 已经因为用户新话题或其他动作 active，wakeup 作为内部 steer 投递到当前 active turn，使用和用户 steer 相同的插入点语义；它不能进入 queue。
+- 等待期间用户可以正常发送新话题；这不会自动取消 pending wakeup。显式 abort、关闭 session 或未来的 cancel-yield 动作才清理 pending wakeup。
+- `yield` 是单次 delayed wakeup；不支持 `repeat`、`start_yield` 或 `stop_yield`。
 
 重复检查长命令时由模型显式组合：
 
 ```text
 shell_exec(...)
 yield(...)
+
+# wakeup turn
 shell_status(...)
 yield(...)
+
+# next wakeup turn
 shell_status(...)
 ```
 
-跨 turn 的定时唤醒属于后续 heartbeat / automation 机制，不放进 `yield`。
+`yield` 自身就是一次性的跨 turn 唤醒机制；heartbeat / automation 指的是长期、重复、可外部管理的唤醒，
+不放进当前方案。wakeup 到点后的投递复用 steer delivery：idle 时开新 turn，active 时内部 steer。
 
 ## 4. 标识符模型
 
@@ -221,24 +229,34 @@ agent loop 只在明确边界恢复模型：
 - `shell_exec` 的 `yieldAfterMs` 到点。
 - command exit。
 - `shell_status` / `shell_write` / `shell_abort` tool result 返回。
-- `yield` 完成或被打断。
+- `yield` tool result 返回并终止当前 turn。
+- pending yield wakeup 到点后，runtime 启动新的内部 wakeup turn，或在已有 active turn 中作为内部 steer 插入。
 - provider stream 自身完成或出错。
 
-输出 chunk 到达不直接唤醒模型。UI 可以基于 artifact 或 progress event 实时展示终端输出，但模型只有在工具返回后才继续推理。
+输出 chunk 到达不直接唤醒模型。UI 可以基于 artifact 或 progress event 实时展示终端输出；模型只在工具返回、内部 wakeup turn 或内部 wakeup steer 后继续推理。
+`yield` 到点不是让上一轮 provider stream 复活。session idle 时，它和用户 send / resume 一样进入普通 turn 执行路径；
+session active 时，它复用 steer delivery 插入最近的可插入位置。
 
 ## 7. 典型流程
 
 ### 长测试命令
 
 ```text
+Turn A
 shell_exec({ script: "pnpm test", yieldAfterMs: 10000 })
 → running + commandId
 
 yield({ durationMs: 30000 })
+→ scheduled，Turn A 完成
+
+Turn B（30s 后内部 wakeup）
 shell_status({ commandId })
 → running，返回新增 stdout/stderr
 
 yield({ durationMs: 30000 })
+→ scheduled，Turn B 完成
+
+Turn C（30s 后内部 wakeup）
 shell_status({ commandId })
 → exited + exitCode
 ```
@@ -260,11 +278,15 @@ shell_abort({ commandId: server })
 ### 交互式输入
 
 ```text
+Turn A
 shell_exec({ script: "node prompt.js", yieldAfterMs: 1000 })
 → running + commandId
 
 shell_write({ commandId, stdin: "Alice\n" })
 yield({ durationMs: 500 })
+→ scheduled，Turn A 完成
+
+Turn B（500ms 后内部 wakeup）
 shell_status({ commandId })
 ```
 
@@ -278,20 +300,40 @@ shell_abort({ commandId })
 → aborted + 最后输出
 ```
 
+### 等待期间用户开启新话题
+
+```text
+Turn A
+shell_exec({ script: "pnpm test", yieldAfterMs: 10000 })
+→ running + commandId
+yield({ durationMs: 30000 })
+→ scheduled，Turn A 完成
+
+Turn B（用户 10s 后发送新话题）
+...模型正在处理用户新话题...
+
+30s 到点
+→ runtime 把 yield wakeup 作为内部 steer 插入 Turn B
+→ 模型在 Turn B 的最近 provider/tool 边界看到 wakeup，再决定是否 shell_status({ commandId })
+```
+
+这个 wakeup 不能进入普通 queue；进入 queue 会让长命令检查被用户新话题无期限延后，违背 yield 的目的。
+
 ## 8. 为什么不做 repeat yield
 
 `yield({ repeat: true })` 会把两种不同机制混在一起：
 
-- active turn 内暂停：`yield`
-- turn 结束后的定时唤醒：heartbeat / automation
+- 单次 turn 结束后的定时唤醒：`yield`
+- 长期重复唤醒：heartbeat / automation
 
-如果 repeat 不把控制权交给模型，模型没有机会检查 `shell_status`。如果每次都交还给模型，它等价于单次 `yield`。因此 `yield` 保持单次；长期跨 turn 轮询以后用独立 heartbeat 设计。
+如果每次唤醒都要把控制权交给模型，它等价于模型在每个 wakeup turn 里再次显式调用单次 `yield`。
+因此 `yield` 保持单次；长期自动轮询以后用独立 heartbeat 设计。
 
 ## 9. 包职责
 
 模型可见的五个工具是一个完整的 agent 基础工具组，不按工具名拆给不同包：
 
-- `@demi/agent` 拥有模型可见工具面：`shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield` 的名称、schema、tool call/result transcript 语义、与 active turn / steer / abort / queue 的集成，以及对 provider 暴露这些工具的装配。
+- `@demi/agent` 拥有模型可见工具面：`shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield` 的名称、schema、tool call/result transcript 语义、turn 结束后的 delayed wakeup 调度、idle wakeup turn 创建、active wakeup steer 投递、显式 abort/session close 清理，以及对 provider 暴露这些工具的装配。
 - `@demi/shell` 拥有 shell runtime 服务：BashEnvironment、shell session、command record、command artifact、Host-backed stream sink，以及可被 agent 工具调用的 exec/status/write/abort primitives。它不拥有模型可见 AgentTool，也不决定 `yield` 语义。
 - `@demi/coding-agent` 只在 prompt 中解释这五个工具的使用策略，不替换 agent 基础工具组、shell runtime 或 yield 实现。
 - `@demi/web-ui` 和 `@demi/repl` 消费统一协议事件展示状态，不直接读 shell 内部对象。
@@ -320,13 +362,16 @@ shell_abort({ commandId })
   - 默认 shell 忙时未指定 `shellId` 的 `shell_exec` 创建辅助 shell；指定忙碌 `shellId` 时拒绝。
 
 - `packages/agent/src/__tests__/session.test.ts`
-  - `yield` 完成后同一 active turn 继续 provider loop。
-  - steer 会打断 `yield`，并在后续同一 turn continuation 中进入模型上下文。
-  - abort 会取消 `yield`。
-  - `yield` 不创建新 user turn、不写 shell 状态。
+  - `yield` tool result 是 terminal result，当前 provider continuation 不再继续采样。
+  - `yield` duration 从当前 turn 完成后开始计时。
+  - 计时到点后启动新的内部 wakeup turn，并让模型能继续调用 `shell_status`。
+  - 等待期间如果 session 被用户新话题启动，计时到点后 wakeup 作为内部 steer 插入当前 active turn，不进入 queue。
+  - abort / session close 清理 pending wakeup。
+  - `yield` 不读写 shell 状态，不隐式 abort shell command。
 
 - `packages/agent/src/__tests__/server.test.ts`
   - AgentServer 对客户端暴露新工具面和对应 events。
+  - pending yield wakeup 在协议状态中可观测；idle 到点开新 turn，active 到点发内部 steer。
   - 旧 `shell_wait` / `shell_input` frame 不再作为 final API。
 
 - `packages/repl/src/__tests__/real-repl.e2e.test.ts`
@@ -338,5 +383,5 @@ shell_abort({ commandId })
 - 长命令超过 120 秒不会因为默认 timeout 被杀。
 - 模型不需要空 stdin 或 `shell_wait` 也能读取长命令输出。
 - stdout/stderr 大输出不会被塞满 transcript；tool result 只给 delta/tail，完整内容留在 artifact。
-- 用户 steer 可以打断 `yield`，但不会隐式 abort shell command。
+- 用户新话题不会让 pending yield 进入 queue；到点 wakeup 必须作为内部 steer 进入 active turn，且不会隐式 abort shell command。
 - 所有中止命令的路径都能在 transcript 中看到显式 `shell_abort`。
