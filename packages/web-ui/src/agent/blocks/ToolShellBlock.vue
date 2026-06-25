@@ -23,7 +23,7 @@ const isOpen = ref(false)
 <template>
   <FunctionalBlock
     v-model:open="isOpen"
-    :auto-open="block.status === 'executing' || isStreaming"
+    :open-while="block.status === 'executing' || isStreaming"
     :loading="block.status === 'executing'"
     :error="block.status === 'error'"
     :error-text="errorText"

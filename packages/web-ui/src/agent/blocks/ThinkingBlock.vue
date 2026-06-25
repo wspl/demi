@@ -3,7 +3,6 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { BrainLine } from '@mingcute/vue/brain'
 import { md } from '@demi/web-ui/markdown/md'
 import { t } from '@demi/web-ui/infra/i18n'
-import { useThinkingDisclosure } from '@demi/web-ui/composables/useThinkingDisclosure'
 import FunctionalBlock from './FunctionalBlock.vue'
 
 const props = defineProps<{
@@ -15,10 +14,7 @@ const props = defineProps<{
 }>()
 
 const hasContent = computed(() => props.thinking.trim().length > 0)
-const isOpen = useThinkingDisclosure({
-  hasContent: () => hasContent.value,
-  isStreaming: () => props.isStreaming,
-})
+const isOpen = ref(false)
 const renderedMarkdown = computed(() => md.render(props.thinking))
 
 // Live timer while thinking; once done the elapsed is frozen to (next block's createdAt - this
@@ -72,7 +68,12 @@ function formatDuration(ms: number): string {
 
 <template>
   <div class="px-8">
-    <FunctionalBlock v-model:open="isOpen" :expandable="hasContent" :stick-bottom="isStreaming">
+    <FunctionalBlock
+      v-model:open="isOpen"
+      :expandable="hasContent"
+      :open-while="isStreaming && hasContent"
+      :stick-bottom="isStreaming"
+    >
       <template #icon>
         <BrainLine :size="16" />
       </template>
