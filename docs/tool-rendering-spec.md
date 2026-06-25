@@ -49,29 +49,31 @@ model/render-model 包。
 
 所有标准工具的 input schema 都必须允许可选 `description?: string`。
 
-`description` 是短的用户可见意图标题，要让用户看懂这一步想完成什么。
+`description` 是短的用户可见意图标题，要让用户看懂这一步想让哪些具体用户可见
+状态或结果出现、被确认或继续推进，而不是工具机制。
 
 渲染规则：
 
 1. 非空 `description` 是工具 block 的首选标题。
 2. 没有 `description` 时，渲染层使用各工具的确定性 fallback。
 3. `description` 只影响展示，不改变 shell runtime、tool result 或模型 replay 语义。
-4. `description` 不应该是单纯事物名，也不应该塞入长脚本、完整 stdout/stderr、协议状态、
-   step 编号、toolName、commandId、内部标签或原因说明。
+4. `description` 不应该描述等待、暂停或工具机制，不应该是泛化操作名或单纯事物名，
+   也不应该塞入长脚本、完整 stdout/stderr、协议状态、step 编号、toolName、
+   commandId、内部标签或原因说明。
 
 ## 4. 标准工具展示
 
 | 工具 | 展示形态 | 标题 fallback | 关键内容 | 执行中状态 |
 |---|---|---|---|---|
 | `shell_exec` | 终端命令 block | `input.script` | script、stdout/stderr、exit/status、commandId、shellId | 扫光 loading，支持展开输出 |
-| `shell_status` | 命令状态 inline block | `Check <commandId>` | 标题说明状态检查动作；不提供展开面板 | 扫光 loading，不能伪装成 shell_exec |
-| `shell_write` | stdin 写入 inline block | `Send input to <commandId>` | 标题说明写入动作；不提供展开面板 | 扫光 loading，成功不等于命令完成 |
-| `shell_abort` | 停止命令 inline block | `Stop <commandId>` | 标题说明停止动作；不提供展开面板 | 扫光 loading，completed/aborted 都不是 UI 错误 |
-| `yield` | 等待唤醒 inline block | `Wait <durationMs>ms` | 标题说明等待时长；不提供展开面板 | 等待中使用和 thinking 一致的扫光 |
+| `shell_status` | 命令状态 inline block | `Check <commandId>` | 首选标题说明要确认的用户可见状态；不提供展开面板 | 扫光 loading，不能伪装成 shell_exec |
+| `shell_write` | stdin 写入 inline block | `Send input to <commandId>` | 首选标题说明要推进的用户可见结果；不提供展开面板 | 扫光 loading，成功不等于命令完成 |
+| `shell_abort` | 停止命令 inline block | `Stop <commandId>` | 首选标题说明要收敛的用户可见状态；不提供展开面板 | 扫光 loading，completed/aborted 都不是 UI 错误 |
+| `yield` | 等待唤醒 inline block | `Wait <durationMs>ms` | 首选标题说明下一次要观察或确认的用户可见状态；不提供展开面板 | 等待中使用和 thinking 一致的扫光 |
 
-这些工具可以共用一个基础 `ToolCard` 外壳，但内容区域、标题 fallback、图标和状态文案必须按
-工具名区分。图标可以不同：`shell_exec` 用 terminal，`shell_status` 用 activity/search，
-`shell_write` 用 keyboard/input，`shell_abort` 用 stop，`yield` 用 clock/timer。
+这些工具可以共用一个基础 `ToolCard` 外壳，但内容区域、标题 fallback 和状态文案必须按
+工具名区分。`shell_exec` / `shell_status` / `shell_write` / `shell_abort` 都使用 terminal
+图标，`yield` 使用 clock/timer。
 标准工具执行中状态统一使用和 thinking 一致的扫光 loading，不使用独立 spinner。
 
 Web 中只有 `shell_exec` 工具块和 `thinking` block 可展开。`shell_status` / `shell_write` /
@@ -108,10 +110,10 @@ REPL 继续消费同样的 `Block` 和 `ClientSessionEvent`，但输出是 termi
 最低要求：
 
 - `shell_exec` 输出 `tool> shell_exec ...`，并展示 script fallback。
-- `shell_status` 输出 commandId 和状态检查含义。
-- `shell_write` 输出 commandId 和 stdin 写入含义；stdin 内容可截断。
-- `shell_abort` 输出 commandId 和停止含义。
-- `yield` 输出等待时长和唤醒含义。
+- `shell_status` 输出 commandId 和状态结果摘要。
+- `shell_write` 输出 commandId 和 stdin 影响摘要；stdin 内容可截断。
+- `shell_abort` 输出 commandId 和停止结果摘要。
+- `yield` 输出 durationMs 和唤醒结果摘要。
 - `description` 存在时优先用于摘要；没有时使用第 4 节 fallback。
 
 REPL 不需要复用 Web 组件，也不应该引入 DOM-oriented render model。它只需要和 Web 遵循同一份

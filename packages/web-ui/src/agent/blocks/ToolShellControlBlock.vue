@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { HistoryLine } from '@mingcute/vue/history'
-import { SearchLine } from '@mingcute/vue/search'
-import { SendLine } from '@mingcute/vue/send'
-import { StopLine } from '@mingcute/vue/stop'
+import { TerminalBoxLine } from '@mingcute/vue/terminal-box'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
@@ -24,11 +22,9 @@ const errorSummary = computed(() => {
 const iconComponent = computed(() => {
   switch (props.toolName) {
     case 'shell_status':
-      return SearchLine
     case 'shell_write':
-      return SendLine
     case 'shell_abort':
-      return StopLine
+      return TerminalBoxLine
     case 'yield':
       return HistoryLine
   }

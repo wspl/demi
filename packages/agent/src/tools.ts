@@ -12,6 +12,8 @@ import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from '.
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
 const REPEAT_WINDOW_MS = 60_000
 const MAX_DELAY_MS = 600_000
+const TOOL_DESCRIPTION_FIELD =
+  'Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.'
 
 interface ShellExecRepeatState {
   script: string
@@ -43,7 +45,7 @@ export function createStandardAgentTools<State = unknown>(
           script: { type: 'string' },
           description: {
             type: 'string',
-            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
+            description: TOOL_DESCRIPTION_FIELD,
           },
           shellId: { type: 'string' },
           yieldAfterMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
@@ -75,7 +77,7 @@ export function createStandardAgentTools<State = unknown>(
           commandId: { type: 'string' },
           description: {
             type: 'string',
-            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
+            description: TOOL_DESCRIPTION_FIELD,
           },
           stdoutOffset: { type: 'number' },
           stderrOffset: { type: 'number' },
@@ -100,7 +102,7 @@ export function createStandardAgentTools<State = unknown>(
           commandId: { type: 'string' },
           description: {
             type: 'string',
-            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
+            description: TOOL_DESCRIPTION_FIELD,
           },
           stdin: { type: 'string' },
           maxOutputBytes: { type: 'number' },
@@ -124,7 +126,7 @@ export function createStandardAgentTools<State = unknown>(
           commandId: { type: 'string' },
           description: {
             type: 'string',
-            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
+            description: TOOL_DESCRIPTION_FIELD,
           },
           maxOutputBytes: { type: 'number' },
         },
@@ -146,7 +148,7 @@ export function createStandardAgentTools<State = unknown>(
         properties: {
           description: {
             type: 'string',
-            description: 'Concise user-visible intent title; no object-only labels, steps, tool names, ids, internal labels, or reasons.',
+            description: TOOL_DESCRIPTION_FIELD,
           },
           durationMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
         },
