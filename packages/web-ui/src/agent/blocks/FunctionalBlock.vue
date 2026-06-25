@@ -58,7 +58,7 @@ onUpdated(() => {
     </div>
     <div v-if="isExpandable" class="functional-block-body" :class="isOpen ? 'is-open' : ''">
       <div class="overflow-hidden">
-        <div class="mb-1 ml-6 overflow-hidden rounded-md bg-overlay/6">
+        <div class="mb-1 overflow-hidden rounded-md bg-overlay/6">
           <div ref="bodyScroll" class="max-h-80 overflow-y-auto py-0.5">
             <pre v-if="errorText" class="whitespace-pre-wrap px-3 py-1.5 font-mono text-xs text-on-danger-muted">{{ errorText }}</pre>
             <slot v-if="hasBodySlot()" name="body" />
