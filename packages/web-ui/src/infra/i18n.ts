@@ -19,7 +19,6 @@ const messages: Record<string, string> = {
   'agent.block.error': 'Error',
   'agent.block.stackTrace': 'Stack trace',
   'agent.block.aborted': 'Aborted',
-  'agent.block.responseStats': 'Response',
   'agent.stats.contextWindow': 'Context window',
   'agent.stats.cacheRead': 'Cache read',
   'agent.stats.input': 'Input',

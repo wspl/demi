@@ -12,7 +12,6 @@ test('tail loading appears after user-like blocks while the turn is running', ()
   expect(shouldShowTailLoading('running', [steerBlock()])).toBe(true)
   expect(shouldShowTailLoading('running', [pendingSteerBlock()])).toBe(true)
   expect(shouldShowTailLoading('running', [resumeBlock()])).toBe(true)
-  expect(shouldShowTailLoading('running', [responseBlock()])).toBe(true)
   expect(shouldShowTailLoading('running', [compactionBoundaryBlock()])).toBe(true)
 })
 
@@ -86,16 +85,6 @@ function steerBlock(): MessageListBlock {
 
 function resumeBlock(): MessageListBlock {
   return { type: 'resume', id: 'resume-1', turnId: 'turn-1', createdAt, model }
-}
-
-function responseBlock(): MessageListBlock {
-  return {
-    type: 'response',
-    id: 'response-1',
-    createdAt,
-    model,
-    usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
-  }
 }
 
 function compactionBoundaryBlock(): MessageListBlock {

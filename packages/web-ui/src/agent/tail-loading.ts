@@ -18,7 +18,6 @@ export function shouldShowTailLoading(
     || last.type === 'steer'
     || last.type === 'pending_steer'
     || last.type === 'resume'
-    || last.type === 'response'
     || last.type === 'compaction_boundary'
   )
 }

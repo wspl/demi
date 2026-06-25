@@ -1,0 +1,68 @@
+import { expect, test } from 'bun:test'
+import type { Block, ModelSelection } from '@demi/core'
+import { getVisibleBlocks } from '../visible-blocks'
+
+test('visible blocks hide response blocks because web no longer renders response stats rows', () => {
+  const blocks = [
+    tool('yield-1', 'yield'),
+    response('response-after-yield'),
+    tool('status-1', 'shell_status'),
+  ]
+
+  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['yield-1', 'status-1'])
+})
+
+test('visible blocks hide ordinary response blocks too', () => {
+  const blocks = [
+    tool('exec-1', 'shell_exec'),
+    response('response-after-exec'),
+    tool('status-1', 'shell_status'),
+  ]
+
+  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['exec-1', 'status-1'])
+})
+
+function tool(id: string, toolName: string): Extract<Block, { type: 'tool_call' }> {
+  return {
+    type: 'tool_call',
+    id,
+    createdAt: '1970-01-01T00:00:00.000Z',
+    model,
+    toolUseId: id,
+    toolName,
+    input: '{}',
+    status: 'completed',
+    streamingOutput: [],
+    output: [],
+    metadata: null,
+  }
+}
+
+function response(id: string): Extract<Block, { type: 'response' }> {
+  return {
+    type: 'response',
+    id,
+    createdAt: '1970-01-01T00:00:00.000Z',
+    model,
+    usage: {
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    },
+  }
+}
+
+const model: ModelSelection = {
+  providerId: 'test',
+  model: {
+    id: 'test-model',
+    name: 'Test Model',
+    contextWindow: 1000,
+    inputLimit: null,
+    thinking: [],
+    acceptedExtensions: [],
+  },
+  thinking: null,
+  serviceTierId: null,
+}

@@ -133,6 +133,9 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
 - `packages/web-ui/src/agent/__tests__/input-editor.test.ts`：覆盖 composer editor 自身的
   keydown 判定和内容状态投影，确保 bare Enter 才触发提交，Shift+Enter / IME composition
   不会提交，且 steer/queue 按钮由 editor update 后的内容状态驱动。
+- `packages/web-ui/src/agent/__tests__/visible-blocks.test.ts`：覆盖 web 消息列表的可见
+  block 过滤规则，确保 `response` block 不再进入渲染列表，避免零高度 usage stats row
+  在工具之间制造额外 virtual gap。
 - `packages/web/src/server/__tests__/transport.e2e.test.ts`：覆盖 web 后端只暴露 `/control`
   和 `/agent` WebSocket 能力，普通 HTTP 请求必须拒绝并指向 Vite dev server，防止静态
   `dist` / preview / production bundle 路径重新进入验收流程；同时覆盖 web dev 固定端口

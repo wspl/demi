@@ -7,7 +7,6 @@ import AssistantTextBlock from './AssistantTextBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
 import AbortedBlock from './AbortedBlock.vue'
-import ResponseStatsBlock from './ResponseStatsBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
 
 defineOptions({ inheritAttrs: false })
@@ -64,11 +63,6 @@ const attrs = useAttrs()
     <div v-else-if="block.type === 'tool_call'" class="overflow-hidden px-8">
       <ToolCallBlock :block="block" :conversation-id="props.conversationId" :is-streaming="block.status === 'executing'" />
     </div>
-    <ResponseStatsBlock
-      v-else-if="block.type === 'response'"
-      :usage="block.usage"
-      :context-window="block.model.model.contextWindow"
-    />
     <div v-else-if="block.type === 'error'" class="px-8">
       <ErrorBlock
         :message="block.message"
