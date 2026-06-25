@@ -27,6 +27,12 @@ export function toolOutputText(block: ToolCallBlock): string {
     .join('\n')
 }
 
+export function shellStderrText(block: ToolCallBlock): string {
+  const fromMetadata = artifactDelta(block.metadata, 'stderr')
+  if (fromMetadata) return fromMetadata
+  return stderrSection(toolOutputText(block))
+}
+
 export function parseToolInput(raw: string): Record<string, unknown> {
   if (!raw) return {}
   try {
@@ -35,4 +41,41 @@ export function parseToolInput(raw: string): Record<string, unknown> {
   } catch {
     return {}
   }
+}
+
+function artifactDelta(metadata: unknown, name: 'stderr'): string {
+  if (!isRecord(metadata)) return ''
+  const artifact = metadata[name]
+  if (!isRecord(artifact)) return ''
+  const delta = artifact['delta']
+  if (typeof delta === 'string' && delta.length > 0) return delta
+  const tail = artifact['tail']
+  return typeof tail === 'string' ? tail : ''
+}
+
+function stderrSection(text: string): string {
+  const marker = '\nstderr:\n'
+  const start = text.startsWith('stderr:\n') ? 0 : text.indexOf(marker)
+  if (start < 0) return ''
+  const bodyStart = start + (start === 0 ? 'stderr:\n'.length : marker.length)
+  const lines = text.slice(bodyStart).split('\n')
+  const stderr: string[] = []
+  for (const line of lines) {
+    if (
+      line.startsWith('stderrPath:')
+      || line.startsWith('stderrOffset:')
+      || line.startsWith('stderrBytes:')
+      || line === 'stderr: truncated'
+      || line.startsWith('next:')
+    ) {
+      break
+    }
+    stderr.push(line)
+  }
+  const result = stderr.join('\n').trimEnd()
+  return result === '(empty)' ? '' : result
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

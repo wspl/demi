@@ -13,6 +13,8 @@ const props = defineProps<{
   errorText?: string
   /** Keep the body scrolled to the latest line while content streams in (e.g. live thinking). */
   stickBottom?: boolean
+  /** Open the block when it starts producing visible content. Does not auto-close it later. */
+  autoOpen?: boolean
   /** Force expandability instead of inferring it from the body slot (slot presence isn't reactive). */
   expandable?: boolean
 }>()
@@ -26,6 +28,14 @@ const bodyScroll = ref<HTMLElement>()
 watch(() => props.errorText, (text) => {
   if (text) isOpen.value = true
 })
+
+watch(
+  () => props.autoOpen,
+  (autoOpen) => {
+    if (autoOpen && isExpandable.value) isOpen.value = true
+  },
+  { immediate: true },
+)
 
 onUpdated(() => {
   if (props.stickBottom && isOpen.value && bodyScroll.value) {
