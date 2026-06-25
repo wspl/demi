@@ -12,6 +12,10 @@ import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from '.
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
 const REPEAT_WINDOW_MS = 60_000
 const MAX_DELAY_MS = 600_000
+const SMALL_CONTEXT_PREVIEW_TOKENS = 1_000
+const LARGE_CONTEXT_PREVIEW_TOKENS = 10_000
+const LARGE_CONTEXT_THRESHOLD_TOKENS = 800_000
+const APPROX_CHARS_PER_TOKEN = 4
 const TOOL_DESCRIPTION_FIELD =
   'Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.'
 
@@ -49,7 +53,6 @@ export function createStandardAgentTools<State = unknown>(
           },
           shellId: { type: 'string' },
           yieldAfterMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
-          maxOutputBytes: { type: 'number' },
         },
       },
       invoke: async (ctx, input) => {
@@ -62,13 +65,13 @@ export function createStandardAgentTools<State = unknown>(
           signal: ctx.signal,
         })
         ctx.emitProgress(result)
-        return toShellToolResult(result, ctx.toolCallId)
+        return toShellToolResult(result, ctx.toolCallId, previewOptions(ctx, true))
       },
     },
     {
       name: 'shell_status',
       description:
-        'Read command status and bounded stdout/stderr deltas by commandId. Does not wait or mutate.',
+        'Read command status by commandId. Does not wait, write stdin, or read output content.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -79,15 +82,12 @@ export function createStandardAgentTools<State = unknown>(
             type: 'string',
             description: TOOL_DESCRIPTION_FIELD,
           },
-          stdoutOffset: { type: 'number' },
-          stderrOffset: { type: 'number' },
-          maxOutputBytes: { type: 'number' },
         },
       },
       invoke: async (ctx, input) => {
         const result = await environment.status(parseShellStatusInput(input))
         ctx.emitProgress(result)
-        return toShellToolResult(result, ctx.toolCallId)
+        return toShellToolResult(result, ctx.toolCallId, previewOptions(ctx, false))
       },
     },
     {
@@ -105,13 +105,12 @@ export function createStandardAgentTools<State = unknown>(
             description: TOOL_DESCRIPTION_FIELD,
           },
           stdin: { type: 'string' },
-          maxOutputBytes: { type: 'number' },
         },
       },
       invoke: async (ctx, input) => {
         const result = await environment.write({ ...parseShellWriteInput(input), signal: ctx.signal })
         ctx.emitProgress(result)
-        return toShellToolResult(result, ctx.toolCallId)
+        return toShellToolResult(result, ctx.toolCallId, previewOptions(ctx, false))
       },
     },
     {
@@ -128,13 +127,12 @@ export function createStandardAgentTools<State = unknown>(
             type: 'string',
             description: TOOL_DESCRIPTION_FIELD,
           },
-          maxOutputBytes: { type: 'number' },
         },
       },
       invoke: async (ctx, input) => {
         const result = await environment.abort(parseShellAbortInput(input))
         ctx.emitProgress(result)
-        return { ...toShellToolResult(result, ctx.toolCallId), isError: false }
+        return { ...toShellToolResult(result, ctx.toolCallId, previewOptions(ctx, true)), isError: false }
       },
     },
     {
@@ -158,9 +156,22 @@ export function createStandardAgentTools<State = unknown>(
   ]
 }
 
-export function toShellToolResult(result: ShellCommandSnapshot, toolCallId = ''): AgentToolInvokeResult {
+export interface ShellToolResultOptions {
+  includePreview?: boolean
+  previewBudgetTokens?: number
+}
+
+export function shellPreviewBudgetTokens(contextWindow: number): number {
+  return contextWindow >= LARGE_CONTEXT_THRESHOLD_TOKENS ? LARGE_CONTEXT_PREVIEW_TOKENS : SMALL_CONTEXT_PREVIEW_TOKENS
+}
+
+export function toShellToolResult(
+  result: ShellCommandSnapshot,
+  toolCallId = '',
+  options: ShellToolResultOptions = {},
+): AgentToolInvokeResult {
   return {
-    output: [{ type: 'text', text: formatShellToolResult(result) }],
+    output: [{ type: 'text', text: formatShellToolResult(result, options) }],
     isError: false,
     metadata: result,
     continuation:
@@ -182,7 +193,6 @@ function parseShellExecInput(input: unknown): ShellExecInput {
     script: record.script,
     shellId: optionalString(record.shellId),
     yieldAfterMs: requiredDelay(record.yieldAfterMs, 'shell_exec field "yieldAfterMs"'),
-    maxOutputBytes: optionalNumber(record.maxOutputBytes),
   }
 }
 
@@ -191,9 +201,6 @@ function parseShellStatusInput(input: unknown): ShellStatusInput {
   if (typeof record.commandId !== 'string') throw new Error('shell_status requires string field "commandId"')
   return {
     commandId: record.commandId,
-    stdoutOffset: optionalNumber(record.stdoutOffset),
-    stderrOffset: optionalNumber(record.stderrOffset),
-    maxOutputBytes: optionalNumber(record.maxOutputBytes),
   }
 }
 
@@ -205,14 +212,13 @@ function parseShellWriteInput(input: unknown): ShellWriteInput {
   return {
     commandId: record.commandId,
     stdin: record.stdin,
-    maxOutputBytes: optionalNumber(record.maxOutputBytes),
   }
 }
 
 function parseShellAbortInput(input: unknown): ShellAbortInput {
   const record = asRecord(input)
   if (typeof record.commandId !== 'string') throw new Error('shell_abort requires string field "commandId"')
-  return { commandId: record.commandId, maxOutputBytes: optionalNumber(record.maxOutputBytes) }
+  return { commandId: record.commandId }
 }
 
 function parseYieldDuration(input: unknown): number {
@@ -263,7 +269,7 @@ function repeatedShellExecResult(
   }
 }
 
-function formatShellToolResult(result: ShellCommandSnapshot): string {
+function formatShellToolResult(result: ShellCommandSnapshot, options: ShellToolResultOptions): string {
   const lines = [
     `status: ${result.status}`,
     `shellId: ${result.shellId}`,
@@ -276,6 +282,11 @@ function formatShellToolResult(result: ShellCommandSnapshot): string {
 
   appendArtifact(lines, 'stdout', result.stdout)
   appendArtifact(lines, 'stderr', result.stderr)
+  lines.push(`metaPath: /@/commands/${result.commandId}/meta.json`)
+
+  if (options.includePreview) {
+    appendPreview(lines, result, options.previewBudgetTokens ?? SMALL_CONTEXT_PREVIEW_TOKENS)
+  }
 
   if (result.status === 'running') {
     lines.push('next: command is still running; use yield to pause this turn, then shell_status with commandId.')
@@ -287,12 +298,38 @@ function formatShellToolResult(result: ShellCommandSnapshot): string {
 }
 
 function appendArtifact(lines: string[], label: string, artifact: StreamArtifact): void {
-  lines.push(`${label}:`)
-  lines.push(artifact.delta || '(empty)')
   lines.push(`${label}Path: ${artifact.path}`)
-  lines.push(`${label}Offset: ${artifact.offset}`)
   lines.push(`${label}Bytes: ${artifact.bytes}`)
-  if (artifact.truncated) lines.push(`${label}: truncated`)
+}
+
+function appendPreview(lines: string[], result: ShellCommandSnapshot, budgetTokens: number): void {
+  const preview = boundedPreview(result.output.text, budgetTokens)
+  lines.push(`previewBudgetTokens: ${budgetTokens}`)
+  if (preview.text.length === 0) {
+    lines.push('preview: (empty)')
+    return
+  }
+  lines.push('preview:')
+  lines.push(preview.text)
+  if (preview.truncated || result.output.truncated) {
+    lines.push(
+      `previewTruncated: true; read /@/commands/${result.commandId}/stdout.txt or /@/commands/${result.commandId}/stderr.txt for more.`,
+    )
+  }
+}
+
+function boundedPreview(text: string, budgetTokens: number): { text: string; truncated: boolean } {
+  const maxChars = Math.max(0, Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN))
+  if (maxChars === 0) return { text: '', truncated: text.length > 0 }
+  if (text.length <= maxChars) return { text, truncated: false }
+  return { text: text.slice(0, maxChars), truncated: true }
+}
+
+function previewOptions<State>(ctx: AgentToolInvokeContext<State>, includePreview: boolean): ShellToolResultOptions {
+  return {
+    includePreview,
+    previewBudgetTokens: shellPreviewBudgetTokens(ctx.model.model.contextWindow),
+  }
 }
 
 function asRecord(input: unknown): Record<string, unknown> {
@@ -304,8 +341,4 @@ function asRecord(input: unknown): Record<string, unknown> {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
-}
-
-function optionalNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined
 }

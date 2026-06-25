@@ -72,6 +72,31 @@ test('HostBackedFileSystem.readFileBuffer returns raw bytes via Host.fs', async 
   expect(Array.from(bytes)).toEqual([0x68, 0x69, 0x0a])
 })
 
+test('HostBackedFileSystem serves read-only virtual files under /@', async () => {
+  const host = new RecordingHost('/workspace')
+  const fs = new HostBackedFileSystem(host, {
+    lookup: (path) => {
+      if (path === '/@') return { kind: 'directory', entries: [dirent('commands', 'directory')] }
+      if (path === '/@/commands') return { kind: 'directory', entries: [dirent('cmd-1', 'directory')] }
+      if (path === '/@/commands/cmd-1') {
+        return { kind: 'directory', entries: [dirent('stdout.txt', 'file'), dirent('stderr.txt', 'file')] }
+      }
+      if (path === '/@/commands/cmd-1/stdout.txt') return { kind: 'file', content: encode('virtual out\n') }
+      if (path === '/@/commands/cmd-1/stderr.txt') return { kind: 'file', content: encode('virtual err\n') }
+      return null
+    },
+  })
+
+  expect(await fs.readFile('/@/commands/cmd-1/stdout.txt')).toBe('virtual out\n')
+  expect(await fs.exists('/@/commands/cmd-1/stderr.txt')).toBe(true)
+  expect((await fs.stat('/@/commands/cmd-1/stdout.txt')).size).toBe(12)
+  expect(await fs.readdir('/@/commands/cmd-1')).toEqual(['stdout.txt', 'stderr.txt'])
+
+  await fs.cp('/@/commands/cmd-1/stdout.txt', '/workspace/copied.txt')
+  expect(host.fileText('/workspace/copied.txt')).toBe('virtual out\n')
+  await expect(fs.writeFile('/@/commands/cmd-1/stdout.txt', 'nope')).rejects.toThrow('EROFS')
+})
+
 test('HostBackedFileSystem routes IFileSystem operations to Host.fs and never Host.process.spawn', async () => {
   const host = new RecordingHost('/workspace')
   const fs = new HostBackedFileSystem(host)
@@ -128,6 +153,15 @@ class RecordingHost implements Host {
     return content ? decode(content) : ''
   }
 
+}
+
+function dirent(name: string, type: 'file' | 'directory') {
+  return {
+    name,
+    isFile: type === 'file',
+    isDirectory: type === 'directory',
+    isSymbolicLink: false,
+  }
 }
 
 class MemoryHostStore implements HostStore {

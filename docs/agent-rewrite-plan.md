@@ -445,9 +445,14 @@ artifact 路径挂载在只读虚拟文件系统：
 
 `stdout.txt` 和 `stderr.txt` 分别保存可见 stream。stdout/stderr 按到达顺序交错后的终端 transcript 只存在于运行时事件、UI 展示或 tool result preview 中，不作为 `/@` 文件保存。`/@` 路径由 just-bash `IFileSystem` overlay 提供，只允许 fork portable commands 读取；真实 host external process 不能 fallback 读取内存态 `/@` 路径。`/@` 命名空间只读、生命周期跟随 AgentSession，不写入任务 workspace。
 
-`@demi/agent` 根据当前 `Model.contextWindow` 自动决定 tool result preview 预算：未知或 `<= 300k`
-tokens 使用约 `1k` tokens，`<= 1M` 使用约 `10k` tokens，更大窗口 hard cap 到约 `20k`
-tokens。模型不能通过 `maxOutputBytes` 控制预算；需要更多内容时必须用 shell 文本命令读取 artifact。
+`@demi/agent` 根据当前 `Model.contextWindow` 自动决定 tool result preview 预算：未知或 `< 800k`
+tokens 使用约 `1k` tokens，`>= 800k` tokens 使用约 `10k` tokens。模型不能通过
+`maxOutputBytes` 控制预算；需要更多内容时必须用 shell 文本命令读取 artifact。
+
+完整 stdout/stderr 也必须落到持久 command artifact 中，作为 transcript/session 的审计历史和恢复来源。
+它不能以内联完整正文进入 provider replay；模型可见 transcript 只保存预算 preview、artifact path、byte
+counter 和状态字段。重开 session 后，runtime 必须能根据持久 artifact 重建
+`/@/commands/<commandId>/stdout.txt`、`stderr.txt` 和 `meta.json`。
 
 卡死感知字段：`runningMs`（已跑时长）、`idleMs`（距上次输出时长）、`stdout.bytes` / `stderr.bytes`（是否有新增或异常大输出）。
 
@@ -1325,7 +1330,7 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 **3.4 Shell session + 状态连续性**：`ShellSession` 结构；engine 的 cwd/env/last status 读写指向 session；状态类 builtin 改 session 状态；fork portable commands 通过 Host.fs 执行；真实外部命令通过 Host.process.spawn 执行；list operators + pipeline 由 engine 解释；文件重定向经 Host.fs；prefix assignment；parameter/command/glob expansion；根入口平台无关。**验收**：§4.7.1 的连续性场景全部通过，且 `cat`/`ls`/`grep`/redirection 可在 memfs/virtual Host 上不依赖系统 coreutils。
 
-**3.5 ShellCommandSnapshot + command artifact**：runner 实时收集模型可见 stdout/stderr 到 command artifact；artifact 通过只读 `/@/commands/<commandId>/...` 虚拟文件暴露给 just-bash portable commands；stdout/stderr 交错后的 terminal transcript 只作为运行时/UI preview，不写入 `/@` 文件；`yieldAfterMs` 必填且最大 10 分钟；tool result 只返回状态、artifact 路径和按当前模型 `contextWindow` 自动预算的 preview；安静长命令默认仍返回 `running`，不由 idle timeout 推断输入需求；`ShellCommandSnapshot` 只包含 `running` / `exited` / `aborted`。**验收**：长命令可观测，`shell_exec` 超过 `yieldAfterMs` 返回 `running + commandId` 且不杀进程，模型可用 `tail` / `grep` / `sed` / `awk` 读取 `/@` artifact，§4.7.2 行为通过。
+**3.5 ShellCommandSnapshot + command artifact**：runner 实时收集模型可见 stdout/stderr 到 command artifact；artifact 通过只读 `/@/commands/<commandId>/...` 虚拟文件暴露给 just-bash portable commands，并作为 transcript/session 持久审计历史保存，恢复 session 后仍可读取；stdout/stderr 交错后的 terminal transcript 只作为运行时/UI preview，不写入 `/@` 文件；`yieldAfterMs` 必填且最大 10 分钟；tool result 只返回状态、artifact 路径和按当前模型 `contextWindow` 自动预算的 preview；安静长命令默认仍返回 `running`，不由 idle timeout 推断输入需求；`ShellCommandSnapshot` 只包含 `running` / `exited` / `aborted`。**验收**：长命令可观测，`shell_exec` 超过 `yieldAfterMs` 返回 `running + commandId` 且不杀进程，模型可用 `tail` / `grep` / `sed` / `awk` 读取 `/@` artifact，§4.7.2 行为通过。
 
 **3.6 status / write / abort / dispose**：`shell_status`/`shell_write`/`shell_abort`/`disposeShell`/`disposeAllShells`；`shell_status` 负责非阻塞读取 command 状态、计时、字节计数和 artifact 路径，不返回 stdout/stderr 正文；`shell_write` 要求非空 stdin；主动 `shell_abort` 是控制动作；AgentSession abort 时终止前台进程；AgentServer 关闭 session 时统一 dispose Bash Environment，并调用 harness lifecycle 清理。**验收**：各路径单测通过，且 `shell_status` 不再承担输出分页。
 

@@ -24,7 +24,7 @@ import {
 } from './environment-output'
 import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } from './environment-state'
 import type { Host } from './host'
-import { HostBackedFileSystem } from './host-fs'
+import { HostBackedFileSystem, type VirtualFileSystemNode } from './host-fs'
 import { AgentSessionCommandStorage } from './storage'
 import { commandSpecToForkCommand } from './registered-command-adapter'
 
@@ -156,6 +156,7 @@ export type ShellCommandSnapshot =
 interface ShellCommandRecord {
   id: string
   shellId: string
+  commandScopeId: string
   script: string
   startedAt: number
   lastOutputAt: number
@@ -169,6 +170,17 @@ interface ShellCommandRecord {
   exitCode?: number
   audit: BashAuditEvent[]
   commandMetadata: CommandMetadataRecord[]
+}
+
+interface PersistedShellCommandArtifact {
+  status: 'running' | 'exited' | 'aborted'
+  shellId: string
+  commandId: string
+  startedAt: number
+  lastOutputAt: number
+  exitCode: number | null
+  stdout: string
+  stderr: string
 }
 
 const DEFAULT_YIELD_AFTER_MS = 10_000
@@ -239,6 +251,7 @@ export class BashEnvironment {
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
   private readonly commandsById = new Map<string, ShellCommandRecord>()
+  private readonly artifactStorageByScope = new Map<string, AgentSessionCommandStorage>()
 
   constructor(options: BashEnvironmentOptions) {
     this.host = options.host
@@ -384,7 +397,9 @@ export class BashEnvironment {
     const id = this.shellIdFactory()
     const commandScopeId = agentSessionId ?? id
     const cwd = this.host.defaultCwd
-    const fs = new HostBackedFileSystem(this.host)
+    const fs = new HostBackedFileSystem(this.host, {
+      lookup: (path) => this.lookupVirtualArtifact(commandScopeId, path),
+    })
     const env = new Map<string, string>()
     for (const [key, value] of Object.entries(this.initialEnv)) env.set(key, value)
     env.set('PWD', cwd)
@@ -459,6 +474,7 @@ export class BashEnvironment {
     const forkCommands: ForkCommandRegistry = new Map()
     const session: ShellSession = {
       id,
+      commandScopeId,
       state,
       fs,
       interpreter: undefined as unknown as Interpreter,
@@ -519,7 +535,8 @@ export class BashEnvironment {
     } catch (error) {
       if (error instanceof ParseException || error instanceof LexerError) {
         const message = (error as Error).message
-        appendRecordOutput(record, 'stderr', `bash: ${message}\n`)
+        record.stderr = `bash: ${message}\n`
+        appendRecordOutput(record, 'stderr', record.stderr)
         record.status = 'exited'
         record.exitCode = 2
         session.state.lastExitCode = 2
@@ -565,6 +582,7 @@ export class BashEnvironment {
     const record: ShellCommandRecord = {
       id,
       shellId: session.id,
+      commandScopeId: session.commandScopeId,
       script,
       startedAt: now,
       lastOutputAt: now,
@@ -1028,6 +1046,7 @@ export class BashEnvironment {
       runningMs: Date.now() - record.startedAt,
       idleMs: Date.now() - record.lastOutputAt,
     }
+    this.persistCommandArtifact(record)
     if (record.status === 'exited') {
       const result: ShellCommandSnapshot = {
         ...base,
@@ -1040,6 +1059,81 @@ export class BashEnvironment {
     }
     if (record.status === 'aborted') return { ...base, status: 'aborted' }
     return { ...base, status: 'running' }
+  }
+
+  private async lookupVirtualArtifact(scopeId: string, path: string): Promise<VirtualFileSystemNode | null> {
+    const parts = path.split('/').filter(Boolean)
+    if (parts.length === 1 && parts[0] === '@') return virtualDirectory(['commands'])
+    if (parts.length === 2 && parts[0] === '@' && parts[1] === 'commands') {
+      return virtualDirectory(await this.commandArtifactIds(scopeId))
+    }
+    if (parts.length === 3 && parts[0] === '@' && parts[1] === 'commands') {
+      const artifact = await this.commandArtifact(scopeId, parts[2]!)
+      if (!artifact) return null
+      return virtualDirectory(['meta.json', 'stderr.txt', 'stdout.txt'])
+    }
+    if (parts.length !== 4 || parts[0] !== '@' || parts[1] !== 'commands') return null
+
+    const artifact = await this.commandArtifact(scopeId, parts[2]!)
+    if (!artifact) return null
+
+    const fileName = parts[3]
+    if (fileName === 'stdout.txt') return virtualFile(encodeUtf8(artifact.stdout))
+    if (fileName === 'stderr.txt') return virtualFile(encodeUtf8(artifact.stderr))
+    if (fileName === 'meta.json') return virtualFile(encodeUtf8(`${JSON.stringify(commandArtifactMeta(artifact), null, 2)}\n`))
+    return null
+  }
+
+  private async commandArtifactIds(scopeId: string): Promise<string[]> {
+    const ids = new Set<string>()
+    for (const record of this.commandsById.values()) {
+      if (record.commandScopeId === scopeId) ids.add(record.id)
+    }
+    const storage = this.artifactStorage(scopeId)
+    const keys = await storage.list('commands').catch(() => [])
+    for (const key of keys) {
+      const match = /^commands\/([^/]+)\/artifact\.json$/.exec(key)
+      if (match) ids.add(match[1]!)
+    }
+    return [...ids]
+  }
+
+  private async commandArtifact(scopeId: string, commandId: string): Promise<PersistedShellCommandArtifact | null> {
+    const record = this.commandsById.get(commandId)
+    if (record?.commandScopeId === scopeId) {
+      this.syncRunningRecord(record)
+      return persistedArtifactFromRecord(record)
+    }
+    const value = await this.artifactStorage(scopeId)
+      .readJson<PersistedShellCommandArtifact>(`commands/${commandId}/artifact.json`)
+      .catch(() => null)
+    return isPersistedShellCommandArtifact(value) ? value : null
+  }
+
+  private artifactStorage(scopeId: string): AgentSessionCommandStorage {
+    const existing = this.artifactStorageByScope.get(scopeId)
+    if (existing) return existing
+    const storage = new AgentSessionCommandStorage(this.host.store, scopeId)
+    this.artifactStorageByScope.set(scopeId, storage)
+    return storage
+  }
+
+  private persistCommandArtifact(record: ShellCommandRecord): void {
+    const artifact = persistedArtifactFromRecord(record)
+    void this.artifactStorage(record.commandScopeId)
+      .writeJson(`commands/${record.id}/artifact.json`, artifact)
+      .catch(() => {})
+  }
+
+  private syncRunningRecord(record: ShellCommandRecord): void {
+    const session = this.shells.get(record.shellId)
+    const foreground = session?.foreground
+    if (record.status === 'running' && foreground?.commandId === record.id) {
+      record.stdout = foreground.stdoutBuffer
+      record.stderr = foreground.stderrBuffer
+      record.outputChunks = [...foreground.outputChunks]
+      record.lastOutputAt = foreground.lastOutputAt
+    }
   }
 }
 
@@ -1088,7 +1182,7 @@ function streamArtifact(
     else record.stderrOffset = nextOffset
   }
   return {
-    path: `demi://shell/${record.shellId}/commands/${record.id}/${stream}`,
+    path: `/@/commands/${record.id}/${stream}.txt`,
     offset: nextOffset,
     delta,
     tail: tailString(text),
@@ -1144,6 +1238,67 @@ function appendRecordOutput(record: ShellCommandRecord, stream: 'stdout' | 'stde
   if (text.length === 0) return
   const offset = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
   record.outputChunks.push({ stream, text, offset, bytes: utf8Bytes(text) })
+}
+
+function persistedArtifactFromRecord(record: ShellCommandRecord): PersistedShellCommandArtifact {
+  return {
+    status: record.status,
+    shellId: record.shellId,
+    commandId: record.id,
+    startedAt: record.startedAt,
+    lastOutputAt: record.lastOutputAt,
+    exitCode: record.exitCode ?? null,
+    stdout: record.stdout,
+    stderr: record.stderr,
+  }
+}
+
+function commandArtifactMeta(artifact: PersistedShellCommandArtifact): Record<string, unknown> {
+  const stdoutPath = `/@/commands/${artifact.commandId}/stdout.txt`
+  const stderrPath = `/@/commands/${artifact.commandId}/stderr.txt`
+  return {
+    status: artifact.status,
+    shellId: artifact.shellId,
+    commandId: artifact.commandId,
+    startedAt: artifact.startedAt,
+    lastOutputAt: artifact.lastOutputAt,
+    runningMs: Date.now() - artifact.startedAt,
+    idleMs: Date.now() - artifact.lastOutputAt,
+    exitCode: artifact.exitCode,
+    stdout: { path: stdoutPath, bytes: utf8Bytes(artifact.stdout) },
+    stderr: { path: stderrPath, bytes: utf8Bytes(artifact.stderr) },
+  }
+}
+
+function isPersistedShellCommandArtifact(value: unknown): value is PersistedShellCommandArtifact {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    (record.status === 'running' || record.status === 'exited' || record.status === 'aborted') &&
+    typeof record.shellId === 'string' &&
+    typeof record.commandId === 'string' &&
+    typeof record.startedAt === 'number' &&
+    typeof record.lastOutputAt === 'number' &&
+    (typeof record.exitCode === 'number' || record.exitCode === null) &&
+    typeof record.stdout === 'string' &&
+    typeof record.stderr === 'string'
+  )
+}
+
+function virtualDirectory(names: string[]): VirtualFileSystemNode {
+  return {
+    kind: 'directory',
+    entries: names.sort().map((name) => ({
+      name,
+      isFile: name.includes('.'),
+      isDirectory: !name.includes('.'),
+      isSymbolicLink: false,
+    })),
+  }
+}
+
+function virtualFile(content: Uint8Array): VirtualFileSystemNode {
+  return { kind: 'file', content }
 }
 
 function tailOutputText(chunks: readonly ShellOutputRecordChunk[]): string {

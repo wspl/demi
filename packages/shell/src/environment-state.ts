@@ -13,6 +13,7 @@ export interface ExecAccumulator {
 
 export interface ShellSession {
   id: string
+  commandScopeId: string
   state: InterpreterState
   fs: HostBackedFileSystem
   interpreter: Interpreter

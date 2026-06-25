@@ -989,6 +989,7 @@ export class AgentSession<State> {
             agentSessionId: this.agentSessionId,
             state: this.agentState,
             cwd: this.cwd,
+            model: this.model,
             toolCallId,
             signal,
             emitProgress: (progress) => {

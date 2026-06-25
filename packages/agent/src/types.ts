@@ -62,6 +62,7 @@ export interface AgentToolInvokeContext<State> {
   agentSessionId: string
   state: State
   cwd: string
+  model: ModelSelection
   toolCallId: string
   signal: AbortSignal
   emitProgress(progress: unknown): void

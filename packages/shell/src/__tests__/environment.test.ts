@@ -2195,6 +2195,72 @@ test('BashEnvironment records visible stdout and stderr in arrival order', async
   expect(result.output.text).toBe('out1err1out2err2')
 })
 
+test('BashEnvironment exposes complete split command artifacts through /@ and Host.store', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-bash-command-artifact-'))
+  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+  let nextCommand = 0
+  const env = new BashEnvironment({
+    host,
+    shellIdFactory: () => 'shell-command-artifact',
+    commandIdFactory: () => `cmd-artifact-${++nextCommand}`,
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const produced = await env.exec({
+    agentSessionId: 'agent-command-artifact',
+    script: 'printf "out1\\nout2\\n"; printf "err1\\nerr2\\n" >&2',
+    yieldAfterMs: 1_000,
+  })
+  expect(produced.status).toBe('exited')
+  const commandId = produced.commandId
+  expect(produced.stdout.path).toBe(`/@/commands/${commandId}/stdout.txt`)
+  expect(produced.stderr.path).toBe(`/@/commands/${commandId}/stderr.txt`)
+
+  const stdout = await env.exec({
+    agentSessionId: 'agent-command-artifact',
+    script: `cat /@/commands/${commandId}/stdout.txt`,
+    yieldAfterMs: 1_000,
+  })
+  expect(stdout.stdout.delta).toBe('out1\nout2\n')
+
+  const stderr = await env.exec({
+    agentSessionId: 'agent-command-artifact',
+    script: `cat /@/commands/${commandId}/stderr.txt`,
+    yieldAfterMs: 1_000,
+  })
+  expect(stderr.stdout.delta).toBe('err1\nerr2\n')
+
+  const selected = await env.exec({
+    agentSessionId: 'agent-command-artifact',
+    script:
+      `tail -n 1 /@/commands/${commandId}/stdout.txt; ` +
+      `grep -n err2 /@/commands/${commandId}/stderr.txt; ` +
+      `if cat /@/commands/${commandId}/output.txt >/dev/null 2>&1; then printf bad; else printf missing; fi`,
+    yieldAfterMs: 1_000,
+  })
+  expect(selected.stdout.delta).toBe('out2\n2:err2\nmissing')
+
+  const meta = await env.exec({
+    agentSessionId: 'agent-command-artifact',
+    script: `cat /@/commands/${commandId}/meta.json`,
+    yieldAfterMs: 1_000,
+  })
+  expect(JSON.parse(meta.stdout.delta)).toMatchObject({
+    status: 'exited',
+    commandId,
+    stdout: { path: `/@/commands/${commandId}/stdout.txt`, bytes: 10 },
+    stderr: { path: `/@/commands/${commandId}/stderr.txt`, bytes: 10 },
+  })
+
+  const persisted = await waitForStoreJson<{ stdout: string; stderr: string }>(
+    () => host.store.readJson(`agent-command-artifact/commands/${commandId}/artifact.json`),
+  )
+  expect(persisted).toMatchObject({
+    stdout: 'out1\nout2\n',
+    stderr: 'err1\nerr2\n',
+  })
+})
+
 test('BashEnvironment supports shell_write for a foreground process', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
@@ -2494,6 +2560,15 @@ class NoSpawnLocalHost extends LocalHost {
       throw new Error('Host.process.spawn must not be used')
     },
   }
+}
+
+async function waitForStoreJson<T>(read: () => Promise<T | null>): Promise<T> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const value = await read()
+    if (value !== null) return value
+    await delay(5)
+  }
+  throw new Error('timed out waiting for Host.store JSON')
 }
 
 function delay(ms: number): Promise<void> {

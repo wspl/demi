@@ -301,7 +301,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         this.send({ type: 'queue', queue: event.queue })
         return
       case 'tool_progress': {
-        this.sendToolProgress(event.toolCallId, event.progress)
+        this.sendToolProgress(event.toolCallId, event.toolName, event.progress)
         return
       }
       case 'error':
@@ -388,10 +388,10 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     return true
   }
 
-  private sendToolProgress(toolCallId: string, progress: unknown): void {
+  private sendToolProgress(toolCallId: string, toolName: string, progress: unknown): void {
     const output = progressToOutput(progress)
     this.send({ type: 'tool_progress', toolUseId: toolCallId, output })
-    const shell = progressToShellOutput(progress)
+    const shell = toolName === 'shell_status' ? null : progressToShellOutput(progress)
     if (shell) {
       this.send({
         type: 'shell_output',
