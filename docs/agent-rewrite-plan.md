@@ -93,7 +93,7 @@ Host
 21. **模型目录属于 provider 能力**：REPL / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
 22. **Provider 装配属于用户创建边界**：用户创建 agent / app runtime 时传入 public provider 对象数组，例如 `providers: [createClaudeCodeProvider(...), createCodexProvider(...)]`。`ProviderDefinition`、`ProviderRegistry`、可序列化 provider config 解析器和 live provider runtime factory 都是内部机制；API key 和 secret-bearing provider options 只能留在创建 provider 的用户侧闭包里，不能经浏览器或 AgentClient frame 往返。详细设计见 `docs/provider-public-api-plan.md`。
 23. **Abort 是可重复的分层收敛动作**：`abort()` 每次只取消当前最高优先级的可取消层，并返回本次 target 与 `canAbortAgain`。active provider/tool/turn、queued action 都优先于 pending `yield` wakeup；pending wakeup 是最低优先级，不能因为普通 active turn abort 被顺手清理。
-24. **工具展示按具体标准工具分发**：`tool_call` 只是 transcript envelope；Web / REPL / 未来壳子遇到标准工具时必须按 `toolName` 分发到 `shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield` 的具体展示，未知工具才使用 generic fallback。不得为展示引入新的 model 包；共享边界继续是 `@demi/core` 的 `Block` 与 `@demi/agent` 的 `ClientSessionEvent`。五个标准工具 input schema 都必须允许 `description`，作为具体用户可见状态/结果标题。详细规范见 `docs/tool-rendering-spec.md`。
+24. **工具展示按具体标准工具分发**：`tool_call` 只是 transcript envelope；Web / REPL / 未来壳子遇到标准工具时必须按 `toolName` 分发到 `shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield` 的具体展示，未知工具才使用 generic fallback。不得为展示引入新的 model 包；共享边界继续是 `@demi/core` 的 `Block` 与 `@demi/agent` 的 `ClientSessionEvent`。五个标准工具 input schema 都必须允许 `description`，作为具体用户可见状态/结果标题。`shell_exec` 的展开内容必须渲染命令和模型/用户可见的有序 terminal output stream，也就是 stdout/stderr 按到达顺序交错后的内容；不得只显示 stderr，也不得显示 status、shellId、commandId、offset 等协议字段。详细规范见 `docs/tool-rendering-spec.md`。
 
 ### 3.2 Shell + yield 控制面
 
@@ -427,6 +427,15 @@ type ShellCommandSnapshot = {
   commandId: string
   stdout: StreamArtifact
   stderr: StreamArtifact
+  output: {
+    path: string
+    offset: number
+    text: string
+    tail: string
+    chunks: Array<{ stream: 'stdout' | 'stderr'; text: string }>
+    bytes: number
+    truncated: boolean
+  }
   runningMs: number
   idleMs: number
   exitCode?: number

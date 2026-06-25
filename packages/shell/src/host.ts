@@ -64,10 +64,16 @@ export interface HostSpawnParams {
 export interface HostSpawnHandle {
   stdout: AsyncIterable<Uint8Array>
   stderr: AsyncIterable<Uint8Array>
+  output?: AsyncIterable<HostProcessOutputChunk>
   writeStdin(data: Uint8Array): Promise<void>
   closeStdin(): Promise<void>
   kill(signal?: string): Promise<void>
   wait(): Promise<HostSpawnExit>
+}
+
+export interface HostProcessOutputChunk {
+  stream: 'stdout' | 'stderr'
+  chunk: Uint8Array
 }
 
 export interface HostSpawnExit {

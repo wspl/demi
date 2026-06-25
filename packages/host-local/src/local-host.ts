@@ -28,6 +28,7 @@ import type {
   HostFileStat,
   HostFileSystem,
   HostProcess,
+  HostProcessOutputChunk,
   HostSpawnHandle,
   HostSpawnParams,
   HostStore,
@@ -80,6 +81,7 @@ class LocalHostProcess implements HostProcess {
     return {
       stdout: streamBytes(child.stdout),
       stderr: streamBytes(child.stderr),
+      output: streamMergedOutput(child.stdout, child.stderr),
       writeStdin: async (data) => {
         if (!child.stdin || child.stdin.destroyed) return
         await new Promise<void>((resolve, reject) => {
@@ -107,6 +109,63 @@ class LocalHostProcess implements HostProcess {
       },
       wait: () => waitPromise,
     }
+  }
+}
+
+async function* streamMergedOutput(
+  stdout: Readable | null,
+  stderr: Readable | null,
+): AsyncIterable<HostProcessOutputChunk> {
+  const queue: Array<HostProcessOutputChunk | { done: true }> = []
+  let wake: (() => void) | null = null
+  let open = 0
+
+  const push = (item: HostProcessOutputChunk | { done: true }) => {
+    queue.push(item)
+    wake?.()
+    wake = null
+  }
+  const attach = (stream: Readable | null, name: 'stdout' | 'stderr') => {
+    if (!stream) return []
+    open += 1
+    let ended = false
+    const onData = (chunk: Buffer) => push({ stream: name, chunk })
+    const onEnd = () => {
+      if (ended) return
+      ended = true
+      open -= 1
+      if (open === 0) push({ done: true })
+    }
+    stream.on('data', onData)
+    stream.once('end', onEnd)
+    stream.once('close', onEnd)
+    return [
+      () => stream.off('data', onData),
+      () => stream.off('end', onEnd),
+      () => stream.off('close', onEnd),
+    ]
+  }
+
+  const cleanup = [
+    ...attach(stdout, 'stdout'),
+    ...attach(stderr, 'stderr'),
+  ]
+  if (open === 0) push({ done: true })
+
+  try {
+    while (true) {
+      if (queue.length === 0) {
+        await new Promise<void>((resolve) => {
+          wake = resolve
+        })
+      }
+      const item = queue.shift()
+      if (!item) continue
+      if ('done' in item) break
+      yield item
+    }
+  } finally {
+    for (const remove of cleanup) remove()
   }
 }
 

@@ -65,7 +65,7 @@ model/render-model 包。
 
 | 工具 | 展示形态 | 标题 fallback | 关键内容 | 执行中状态 |
 |---|---|---|---|---|
-| `shell_exec` | 终端命令 block | `input.script` | script、stdout/stderr、exit/status、commandId、shellId | 扫光 loading，支持展开输出 |
+| `shell_exec` | 终端命令 block | `input.script` | script、按到达顺序交错的 stdout/stderr terminal output | 扫光 loading，支持展开输出 |
 | `shell_status` | 命令状态 inline block | `Check <commandId>` | 首选标题说明要确认的用户可见状态；不提供展开面板 | 扫光 loading，不能伪装成 shell_exec |
 | `shell_write` | stdin 写入 inline block | `Send input to <commandId>` | 首选标题说明要推进的用户可见结果；不提供展开面板 | 扫光 loading，成功不等于命令完成 |
 | `shell_abort` | 停止命令 inline block | `Stop <commandId>` | 首选标题说明要收敛的用户可见状态；不提供展开面板 | 扫光 loading，completed/aborted 都不是 UI 错误 |
@@ -79,6 +79,11 @@ model/render-model 包。
 Web 中只有 `shell_exec` 工具块和 `thinking` block 可展开。`shell_status` / `shell_write` /
 `shell_abort` / `yield` 以及未知 generic tool 都必须保持不可展开的 inline 呈现；错误信息如需
 展示，只能作为 badge 或行内摘要出现，不能通过 disclosure 展开。
+
+`shell_exec` 展开内容只展示命令和用户可见 terminal output。terminal output 优先消费
+`ShellCommandSnapshot.output.chunks`，按 chunk 到达顺序把 stdout/stderr 合并成一条 transcript。
+旧 transcript 缺少 `output.chunks` 时可以退回为 stdout 后 stderr，但不能只展示 stderr，也不能展示
+`status`、`shellId`、`commandId`、path、offset、bytes、truncation 等协议字段。
 
 ## 5. Web 规范
 

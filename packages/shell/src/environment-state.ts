@@ -2,7 +2,7 @@ import type { Interpreter, InterpreterState } from 'just-bash/interpreter'
 import type { CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult } from 'just-bash/types'
 import type { HostSpawnHandle } from './host'
 import type { HostBackedFileSystem } from './host-fs'
-import type { BashAuditEvent, CommandMetadataRecord } from './environment'
+import type { BashAuditEvent, CommandMetadataRecord, ShellOutputRecordChunk } from './environment'
 
 export interface ExecAccumulator {
   stdout: string
@@ -61,6 +61,8 @@ export interface ForegroundProcess {
   rawStderrBuffer: string
   stdoutBuffer: string
   stderrBuffer: string
+  outputChunks: ShellOutputRecordChunk[]
+  outputBytes: number
   lastStdoutSnapshot: number
   lastStderrSnapshot: number
   lastRawStdoutBytesSnapshot: number

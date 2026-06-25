@@ -16,6 +16,7 @@ import {
   createOutputSinks,
   flushForegroundSinks,
   notifyForegroundWaiters,
+  pumpOutputStream,
   pumpStream,
   recordForegroundChunk,
   snapshotFromAccumulator,
@@ -50,6 +51,7 @@ export interface ShellStatusInput {
   commandId: string
   stdoutOffset?: number
   stderrOffset?: number
+  outputOffset?: number
   maxOutputBytes?: number
 }
 
@@ -84,6 +86,26 @@ export interface StreamArtifact {
   truncated: boolean
 }
 
+export interface ShellOutputChunk {
+  stream: 'stdout' | 'stderr'
+  text: string
+}
+
+export interface ShellOutputRecordChunk extends ShellOutputChunk {
+  offset: number
+  bytes: number
+}
+
+export interface ShellOutputArtifact {
+  path: string
+  offset: number
+  text: string
+  tail: string
+  chunks: ShellOutputChunk[]
+  bytes: number
+  truncated: boolean
+}
+
 export type BashAuditEvent =
   | { kind: 'registered-command'; name: string; args: string[]; exitCode: number }
   | { kind: 'portable-command'; name: string; args: string[]; cwd: string; exitCode: number }
@@ -104,6 +126,7 @@ export type ShellCommandSnapshot =
       exitCode: number
       stdout: StreamArtifact
       stderr: StreamArtifact
+      output: ShellOutputArtifact
       runningMs: number
       idleMs: number
       audit: BashAuditEvent[]
@@ -115,6 +138,7 @@ export type ShellCommandSnapshot =
       commandId: string
       stdout: StreamArtifact
       stderr: StreamArtifact
+      output: ShellOutputArtifact
       runningMs: number
       idleMs: number
     }
@@ -124,6 +148,7 @@ export type ShellCommandSnapshot =
       commandId: string
       stdout: StreamArtifact
       stderr: StreamArtifact
+      output: ShellOutputArtifact
       runningMs: number
       idleMs: number
     }
@@ -139,6 +164,8 @@ interface ShellCommandRecord {
   stderr: string
   stdoutOffset: number
   stderrOffset: number
+  outputChunks: ShellOutputRecordChunk[]
+  outputOffset: number
   exitCode?: number
   audit: BashAuditEvent[]
   commandMetadata: CommandMetadataRecord[]
@@ -323,6 +350,7 @@ export class BashEnvironment {
     if (record.status === 'running' && foreground?.commandId === record.id) {
       record.stdout = foreground.stdoutBuffer
       record.stderr = foreground.stderrBuffer
+      record.outputChunks = [...foreground.outputChunks]
       record.lastOutputAt = foreground.lastOutputAt
     }
     return record
@@ -491,7 +519,7 @@ export class BashEnvironment {
     } catch (error) {
       if (error instanceof ParseException || error instanceof LexerError) {
         const message = (error as Error).message
-        record.stderr += `bash: ${message}\n`
+        appendRecordOutput(record, 'stderr', `bash: ${message}\n`)
         record.status = 'exited'
         record.exitCode = 2
         session.state.lastExitCode = 2
@@ -518,6 +546,7 @@ export class BashEnvironment {
             this.collectExited(session, record, result, session.foreground, {
               stdoutOffset: record.stdoutOffset,
               stderrOffset: record.stderrOffset,
+              outputOffset: record.outputOffset,
             })
           }
         } catch {
@@ -544,6 +573,8 @@ export class BashEnvironment {
       stderr: '',
       stdoutOffset: 0,
       stderrOffset: 0,
+      outputChunks: [],
+      outputOffset: 0,
       audit: [],
       commandMetadata: [],
     }
@@ -784,6 +815,8 @@ export class BashEnvironment {
       rawStderrBuffer: '',
       stdoutBuffer: '',
       stderrBuffer: '',
+      outputChunks: [],
+      outputBytes: 0,
       lastStdoutSnapshot: 0,
       lastStderrSnapshot: 0,
       lastRawStdoutBytesSnapshot: 0,
@@ -814,8 +847,15 @@ export class BashEnvironment {
       await handle.closeStdin()
     }
 
-    foreground.stdoutPump = pumpStream(handle.stdout, (chunk) => recordForegroundChunk(session, foreground, 1, chunk))
-    foreground.stderrPump = pumpStream(handle.stderr, (chunk) => recordForegroundChunk(session, foreground, 2, chunk))
+    if (handle.output) {
+      foreground.stdoutPump = pumpOutputStream(handle.output, (chunk) => {
+        recordForegroundChunk(session, foreground, chunk.stream === 'stdout' ? 1 : 2, chunk.chunk)
+      })
+      foreground.stderrPump = Promise.resolve()
+    } else {
+      foreground.stdoutPump = pumpStream(handle.stdout, (chunk) => recordForegroundChunk(session, foreground, 1, chunk))
+      foreground.stderrPump = pumpStream(handle.stderr, (chunk) => recordForegroundChunk(session, foreground, 2, chunk))
+    }
 
     const exit = await foreground.exitPromise
     await Promise.allSettled([foreground.stdoutPump, foreground.stderrPump])
@@ -829,6 +869,13 @@ export class BashEnvironment {
 
     foreground.audit[0] = { kind: 'system-command', name: command, args, cwd: opts.cwd, exitCode }
     session.accumulator.audit.push(...foreground.audit)
+    const record = this.commandsById.get(commandId)
+    if (record) {
+      record.stdout = foreground.stdoutBuffer
+      record.stderr = foreground.stderrBuffer
+      record.outputChunks = [...foreground.outputChunks]
+      record.lastOutputAt = foreground.lastOutputAt
+    }
     session.foreground = undefined
 
     return { stdout, stderr, exitCode }
@@ -839,7 +886,7 @@ export class BashEnvironment {
     record: ShellCommandRecord,
     resultOrError: ForkExecResult | Error,
     foreground: ForegroundProcess | undefined,
-    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number } = {},
+    input: { stdoutOffset?: number; stderrOffset?: number; outputOffset?: number; maxOutputBytes?: number } = {},
   ): ShellCommandSnapshot {
     if (record.status !== 'running') return this.snapshotCommand(record, input)
     if (resultOrError instanceof Error) {
@@ -848,14 +895,20 @@ export class BashEnvironment {
         const err = resultOrError as unknown as { stdout: string; stderr: string; exitCode: number }
         session.accumulator.stdout += err.stdout
         session.accumulator.stderr += err.stderr
+        appendRecordOutput(record, 'stdout', err.stdout)
+        appendRecordOutput(record, 'stderr', err.stderr)
         return this.finishExited(session, record, err.exitCode, input)
       }
       if (resultOrError instanceof ExecutionLimitError) {
-        session.accumulator.stderr += `bash: execution limit exceeded: ${resultOrError.message}\n`
+        const text = `bash: execution limit exceeded: ${resultOrError.message}\n`
+        session.accumulator.stderr += text
+        appendRecordOutput(record, 'stderr', text)
         return this.finishExited(session, record, ExecutionLimitError.EXIT_CODE, input)
       }
       if (resultOrError instanceof ParseException || resultOrError instanceof LexerError) {
-        session.accumulator.stderr += `bash: ${(resultOrError as Error).message}\n`
+        const text = `bash: ${(resultOrError as Error).message}\n`
+        session.accumulator.stderr += text
+        appendRecordOutput(record, 'stderr', text)
         return this.finishExited(session, record, 2, input)
       }
       if (resultOrError.message.startsWith('Unsupported shell syntax:')) {
@@ -866,12 +919,20 @@ export class BashEnvironment {
         session.pendingExec = undefined
         throw resultOrError
       }
-      session.accumulator.stderr += `bash: ${(resultOrError as Error).message}\n`
+      const text = `bash: ${(resultOrError as Error).message}\n`
+      session.accumulator.stderr += text
+      appendRecordOutput(record, 'stderr', text)
       return this.finishExited(session, record, 1, input)
     }
 
     session.accumulator.stdout += foreground ? resultOrError.stdout.slice(foreground.lastStdoutSnapshot) : resultOrError.stdout
     session.accumulator.stderr += foreground ? resultOrError.stderr.slice(foreground.lastStderrSnapshot) : resultOrError.stderr
+    if (foreground) {
+      record.outputChunks = [...foreground.outputChunks]
+    } else if (record.outputChunks.length === 0) {
+      appendRecordOutput(record, 'stdout', resultOrError.stdout)
+      appendRecordOutput(record, 'stderr', resultOrError.stderr)
+    }
     return this.finishExited(session, record, resultOrError.exitCode, input)
   }
 
@@ -879,11 +940,15 @@ export class BashEnvironment {
     session: ShellSession,
     record: ShellCommandRecord,
     exitCode: number,
-    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number },
+    input: { stdoutOffset?: number; stderrOffset?: number; outputOffset?: number; maxOutputBytes?: number },
   ): ShellCommandSnapshot {
     const snapshot = snapshotFromAccumulator(session, session.accumulator)
     record.stdout = snapshot.stdoutTail.length === snapshot.stdoutDelta.length ? snapshot.stdoutDelta : session.accumulator.stdout
     record.stderr = snapshot.stderrTail.length === snapshot.stderrDelta.length ? snapshot.stderrDelta : session.accumulator.stderr
+    if (record.outputChunks.length === 0) {
+      appendRecordOutput(record, 'stdout', record.stdout)
+      appendRecordOutput(record, 'stderr', record.stderr)
+    }
     record.lastOutputAt = Date.now()
     record.status = 'exited'
     record.exitCode = exitCode
@@ -898,7 +963,7 @@ export class BashEnvironment {
     session: ShellSession,
     record: ShellCommandRecord,
     foreground: ForegroundProcess,
-    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number } = {},
+    input: { stdoutOffset?: number; stderrOffset?: number; outputOffset?: number; maxOutputBytes?: number } = {},
   ): Promise<ShellCommandSnapshot> {
     if (record.status !== 'running') return this.snapshotCommand(record, input)
     foreground.abortController.abort()
@@ -907,6 +972,7 @@ export class BashEnvironment {
     const snapshot = snapshotFromForeground(session, foreground)
     record.stdout = foreground.stdoutBuffer
     record.stderr = foreground.stderrBuffer
+    record.outputChunks = [...foreground.outputChunks]
     record.lastOutputAt = Date.now()
     record.status = 'aborted'
     session.foreground = undefined
@@ -919,7 +985,7 @@ export class BashEnvironment {
   private collectAbortedWithoutForeground(
     session: ShellSession,
     record: ShellCommandRecord,
-    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number } = {},
+    input: { stdoutOffset?: number; stderrOffset?: number; outputOffset?: number; maxOutputBytes?: number } = {},
   ): ShellCommandSnapshot {
     if (record.status !== 'running') return this.snapshotCommand(record, input)
     session.abortController?.abort()
@@ -928,6 +994,10 @@ export class BashEnvironment {
     const snapshot = snapshotFromAccumulator(session, session.accumulator)
     record.stdout = snapshot.stdoutDelta
     record.stderr = snapshot.stderrDelta
+    if (record.outputChunks.length === 0) {
+      appendRecordOutput(record, 'stdout', record.stdout)
+      appendRecordOutput(record, 'stderr', record.stderr)
+    }
     record.lastOutputAt = Date.now()
     record.status = 'aborted'
     return this.snapshotCommand(record, input)
@@ -935,23 +1005,26 @@ export class BashEnvironment {
 
   private snapshotCommand(
     record: ShellCommandRecord,
-    input: { stdoutOffset?: number; stderrOffset?: number; maxOutputBytes?: number } = {},
+    input: { stdoutOffset?: number; stderrOffset?: number; outputOffset?: number; maxOutputBytes?: number } = {},
   ): ShellCommandSnapshot {
     const session = this.shells.get(record.shellId)
     const foreground = session?.foreground
     if (record.status === 'running' && foreground?.commandId === record.id) {
       record.stdout = foreground.stdoutBuffer
       record.stderr = foreground.stderrBuffer
+      record.outputChunks = [...foreground.outputChunks]
       record.lastOutputAt = foreground.lastOutputAt
     }
     const maxOutputBytes = input.maxOutputBytes ?? this.defaultOutputLimitBytes
     const stdout = streamArtifact(record, 'stdout', input.stdoutOffset, maxOutputBytes)
     const stderr = streamArtifact(record, 'stderr', input.stderrOffset, maxOutputBytes)
+    const output = streamOutputArtifact(record, input.outputOffset, maxOutputBytes)
     const base = {
       shellId: record.shellId,
       commandId: record.id,
       stdout,
       stderr,
+      output,
       runningMs: Date.now() - record.startedAt,
       idleMs: Date.now() - record.lastOutputAt,
     }
@@ -1022,6 +1095,64 @@ function streamArtifact(
     bytes: totalBytes,
     truncated,
   }
+}
+
+function streamOutputArtifact(
+  record: ShellCommandRecord,
+  explicitOffset: number | undefined,
+  maxOutputBytes: number,
+): ShellOutputArtifact {
+  const totalBytes = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
+  const offset = clampOffset(explicitOffset ?? record.outputOffset, totalBytes)
+  const byteLimit = Math.max(0, Math.floor(maxOutputBytes))
+  const available = Math.max(0, totalBytes - offset)
+  let remaining = byteLimit === 0 ? available : Math.min(available, byteLimit)
+  const chunks: ShellOutputChunk[] = []
+
+  for (const chunk of record.outputChunks) {
+    if (remaining <= 0) break
+    const chunkStart = chunk.offset
+    const chunkEnd = chunk.offset + chunk.bytes
+    if (chunkEnd <= offset) continue
+    const start = Math.max(0, offset - chunkStart)
+    const take = Math.min(chunk.bytes - start, remaining)
+    const text = utf8Slice(chunk.text, start, start + take)
+    if (text.length > 0) {
+      chunks.push({ stream: chunk.stream, text })
+      remaining -= utf8Bytes(text)
+    } else {
+      remaining -= take
+    }
+  }
+
+  const text = chunks.map((chunk) => chunk.text).join('')
+  const nextOffset = offset + utf8Bytes(text)
+  const truncated = nextOffset < totalBytes
+  if (explicitOffset === undefined) record.outputOffset = nextOffset
+  return {
+    path: `demi://shell/${record.shellId}/commands/${record.id}/output`,
+    offset: nextOffset,
+    text,
+    tail: tailOutputText(record.outputChunks),
+    chunks,
+    bytes: totalBytes,
+    truncated,
+  }
+}
+
+function appendRecordOutput(record: ShellCommandRecord, stream: 'stdout' | 'stderr', text: string): void {
+  if (text.length === 0) return
+  const offset = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
+  record.outputChunks.push({ stream, text, offset, bytes: utf8Bytes(text) })
+}
+
+function tailOutputText(chunks: readonly ShellOutputRecordChunk[]): string {
+  const maxChars = 4096
+  let text = ''
+  for (let i = chunks.length - 1; i >= 0 && text.length < maxChars; i -= 1) {
+    text = `${chunks[i]!.text}${text}`
+  }
+  return tailString(text)
 }
 
 function clampOffset(value: number, max: number): number {

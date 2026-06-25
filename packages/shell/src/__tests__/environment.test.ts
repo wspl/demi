@@ -2171,6 +2171,30 @@ test('BashEnvironment returns bounded output deltas by maxOutputBytes', async ()
   expect(second.stdout.delta).toBe('67890done')
 })
 
+test('BashEnvironment records visible stdout and stderr in arrival order', async () => {
+  const env = new BashEnvironment({
+    host: new LocalHost(process.cwd()),
+    shellIdFactory: () => 'shell-output-order',
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const result = await env.exec({
+    script: 'sh -c "printf out1; sleep 0.03; printf err1 >&2; sleep 0.03; printf out2; sleep 0.03; printf err2 >&2"',
+    yieldAfterMs: 1_000,
+  })
+
+  expect(result.status).toBe('exited')
+  expect(result.stdout.delta).toBe('out1out2')
+  expect(result.stderr.delta).toBe('err1err2')
+  expect(result.output.chunks).toEqual([
+    { stream: 'stdout', text: 'out1' },
+    { stream: 'stderr', text: 'err1' },
+    { stream: 'stdout', text: 'out2' },
+    { stream: 'stderr', text: 'err2' },
+  ])
+  expect(result.output.text).toBe('out1err1out2err2')
+})
+
 test('BashEnvironment supports shell_write for a foreground process', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),

@@ -4,7 +4,7 @@ import { TerminalBoxLine } from '@mingcute/vue/terminal-box'
 import AnsiText from './AnsiText.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
-import { getToolErrorText, shellStderrText } from '../block-helpers'
+import { getToolErrorText, shellTerminalOutputChunks } from '../block-helpers'
 import { standardToolTitle } from '../tool-rendering'
 
 const props = defineProps<{
@@ -16,7 +16,7 @@ const props = defineProps<{
 const command = computed(() => (props.input['script'] as string) ?? '')
 const title = computed(() => standardToolTitle('shell_exec', props.input))
 const errorText = computed(() => getToolErrorText(props.block))
-const stderrText = computed(() => shellStderrText(props.block))
+const terminalOutputText = computed(() => shellTerminalOutputChunks(props.block).map((chunk) => chunk.text).join(''))
 const isOpen = ref(false)
 </script>
 
@@ -41,7 +41,7 @@ const isOpen = ref(false)
       <div class="flex px-3 py-1 font-mono text-xs">
         <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span class="min-w-0 select-all whitespace-pre-wrap break-words text-fg-muted">{{ command }}</span>
       </div>
-      <AnsiText v-if="stderrText" :content="stderrText" class="px-3 pb-1" />
+      <AnsiText v-if="terminalOutputText" :content="terminalOutputText" class="px-3 pb-1" />
     </template>
   </FunctionalBlock>
 </template>

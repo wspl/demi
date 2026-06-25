@@ -2,6 +2,7 @@ import type { HostSpawnRedirection, ShellOptions, ShoptOptions } from 'just-bash
 import { concatBytes, decodeUtf8, utf8ByteLength } from './bytes'
 import type { ExecAccumulator, ForegroundProcess, ForegroundSink, ShellSession } from './environment-state'
 import type { OutputSnapshot } from './environment'
+import type { HostProcessOutputChunk } from './host'
 import type { HostBackedFileSystem } from './host-fs'
 
 const TAIL_SIZE = 4096
@@ -170,6 +171,17 @@ export async function pumpStream(stream: AsyncIterable<Uint8Array>, onChunk: (ch
   }
 }
 
+export async function pumpOutputStream(
+  stream: AsyncIterable<HostProcessOutputChunk>,
+  onChunk: (chunk: HostProcessOutputChunk) => void,
+): Promise<void> {
+  try {
+    for await (const chunk of stream) onChunk(chunk)
+  } catch {
+    // stream errors surface in handle.wait()
+  }
+}
+
 export function buildShellopts(options: ShellOptions): string {
   const flags: string[] = []
   if (options.errexit) flags.push('errexit')
@@ -225,6 +237,14 @@ function appendVisibleChunk(
   text: string,
   byteLength: number,
 ): void {
+  foreground.outputChunks.push({
+    stream: targetFd === 1 ? 'stdout' : 'stderr',
+    text,
+    offset: foreground.outputBytes,
+    bytes: byteLength,
+  })
+  foreground.outputBytes += byteLength
+
   if (targetFd === 1) {
     foreground.stdoutBuffer += text
     foreground.totalStdoutBytes += byteLength

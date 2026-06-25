@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection } from '@demi/core'
-import { shellStderrText } from '../block-helpers'
+import { shellTerminalOutputChunks } from '../block-helpers'
 
-test('shell stderr text prefers structured metadata', () => {
+test('shell terminal output prefers structured interleaved metadata chunks', () => {
   const block = tool({
     outputText: [
       'status: exited',
@@ -13,16 +13,30 @@ test('shell stderr text prefers structured metadata', () => {
       'stderrPath: demi://stderr',
     ].join('\n'),
     metadata: {
+      output: {
+        chunks: [
+          { stream: 'stdout', text: 'first stdout\n' },
+          { stream: 'stderr', text: 'first stderr\n' },
+          { stream: 'stdout', text: 'second stdout\n' },
+        ],
+      },
+      stdout: {
+        delta: 'metadata stdout\n',
+      },
       stderr: {
         delta: 'metadata stderr\n',
       },
     },
   })
 
-  expect(shellStderrText(block)).toBe('metadata stderr\n')
+  expect(shellTerminalOutputChunks(block)).toEqual([
+    { stream: 'stdout', text: 'first stdout\n' },
+    { stream: 'stderr', text: 'first stderr\n' },
+    { stream: 'stdout', text: 'second stdout\n' },
+  ])
 })
 
-test('shell stderr text falls back to the formatted stderr section', () => {
+test('shell terminal output falls back to stdout then stderr sections', () => {
   const block = tool({
     outputText: [
       'status: exited',
@@ -37,15 +51,18 @@ test('shell stderr text falls back to the formatted stderr section', () => {
     ].join('\n'),
   })
 
-  expect(shellStderrText(block)).toBe('first stderr line\nsecond stderr line')
+  expect(shellTerminalOutputChunks(block)).toEqual([
+    { stream: 'stdout', text: 'visible stdout' },
+    { stream: 'stderr', text: 'first stderr line\nsecond stderr line' },
+  ])
 })
 
-test('shell stderr text hides empty stderr sections', () => {
+test('shell terminal output hides empty sections', () => {
   const block = tool({
     outputText: [
       'status: exited',
       'stdout:',
-      'visible stdout',
+      '(empty)',
       'stdoutPath: demi://stdout',
       'stderr:',
       '(empty)',
@@ -53,7 +70,7 @@ test('shell stderr text hides empty stderr sections', () => {
     ].join('\n'),
   })
 
-  expect(shellStderrText(block)).toBe('')
+  expect(shellTerminalOutputChunks(block)).toEqual([])
 })
 
 function tool(options: { outputText: string; metadata?: unknown }): Extract<Block, { type: 'tool_call' }> {

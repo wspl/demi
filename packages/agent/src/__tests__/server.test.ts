@@ -223,6 +223,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
       commandId: 'agent-input-command',
       stdout: expect.objectContaining({ delta: '', truncated: false }),
       stderr: expect.objectContaining({ delta: '', tail: '', bytes: 0, truncated: false }),
+      output: expect.objectContaining({ chunks: expect.any(Array) }),
       runningMs: expect.any(Number),
       idleMs: expect.any(Number),
     },
