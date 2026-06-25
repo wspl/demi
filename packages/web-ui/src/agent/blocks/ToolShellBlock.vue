@@ -5,6 +5,7 @@ import AnsiText from './AnsiText.vue'
 import CollapsibleBlock from './CollapsibleBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
+import { standardToolTitle } from '../tool-rendering'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -13,10 +14,7 @@ const props = defineProps<{
 }>()
 
 const command = computed(() => (props.input['script'] as string) ?? '')
-const description = computed(() => (props.input['description'] as string) ?? '')
-// Collapsed, the row exposes only the terminal icon + this title (the model's description, or the
-// command itself when none was given). Expanding reveals the actual command and its output.
-const title = computed(() => description.value || command.value)
+const title = computed(() => standardToolTitle('shell_exec', props.input))
 const errorText = computed(() => getToolErrorText(props.block))
 
 const outputText = computed(() => {

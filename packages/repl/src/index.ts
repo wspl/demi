@@ -492,13 +492,16 @@ function formatUsage(usage: TokenUsage): string {
 function formatToolInput(block: Extract<Block, { type: 'tool_call' }>): string {
   try {
     const input = JSON.parse(block.input) as Record<string, unknown>
+    if (typeof input.description === 'string' && input.description.trim()) {
+      return trimOneLine(input.description)
+    }
     if (block.toolName === 'shell_exec' && typeof input.script === 'string') {
       return trimOneLine(input.script)
     }
-    if (block.toolName === 'shell_status' && typeof input.commandId === 'string') return input.commandId
-    if (block.toolName === 'shell_write' && typeof input.commandId === 'string') return input.commandId
-    if (block.toolName === 'shell_abort' && typeof input.commandId === 'string') return input.commandId
-    if (block.toolName === 'yield' && typeof input.durationMs === 'number') return `${input.durationMs}ms`
+    if (block.toolName === 'shell_status' && typeof input.commandId === 'string') return `Check ${input.commandId}`
+    if (block.toolName === 'shell_write' && typeof input.commandId === 'string') return `Send input to ${input.commandId}`
+    if (block.toolName === 'shell_abort' && typeof input.commandId === 'string') return `Stop ${input.commandId}`
+    if (block.toolName === 'yield' && typeof input.durationMs === 'number') return `Wait ${input.durationMs}ms`
   } catch {
     // Fall through to raw input.
   }

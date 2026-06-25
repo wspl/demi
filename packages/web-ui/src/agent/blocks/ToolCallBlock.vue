@@ -3,9 +3,12 @@ import { computed } from 'vue'
 import { parse, Allow } from 'partial-json'
 import type { ToolCallBlock } from '../block-types'
 import ToolShellBlock from './ToolShellBlock.vue'
+import ToolShellStatusBlock from './ToolShellStatusBlock.vue'
+import ToolShellWriteBlock from './ToolShellWriteBlock.vue'
+import ToolShellAbortBlock from './ToolShellAbortBlock.vue'
+import ToolYieldBlock from './ToolYieldBlock.vue'
 import ToolGenericBlock from './ToolGenericBlock.vue'
-
-const STREAMING_INPUT_TOOLS = new Set(['shell_exec'])
+import { shouldParsePartialToolInput, toolRenderKind } from '../tool-rendering'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -16,7 +19,7 @@ const props = defineProps<{
 const parsedInput = computed<Record<string, unknown>>(() => {
   if (!props.block.input) return {}
   try {
-    const result = STREAMING_INPUT_TOOLS.has(props.block.toolName)
+    const result = shouldParsePartialToolInput(props.block.toolName)
       ? parse(props.block.input, Allow.ALL)
       : JSON.parse(props.block.input)
     return typeof result === 'object' && result !== null ? result as Record<string, unknown> : {}
@@ -24,9 +27,14 @@ const parsedInput = computed<Record<string, unknown>>(() => {
     return {}
   }
 })
+const renderKind = computed(() => toolRenderKind(props.block.toolName))
 </script>
 
 <template>
-  <ToolShellBlock v-if="block.toolName === 'shell_exec'" :block="block" :input="parsedInput" :is-streaming="isStreaming" />
+  <ToolShellBlock v-if="renderKind === 'shell_exec'" :block="block" :input="parsedInput" :is-streaming="isStreaming" />
+  <ToolShellStatusBlock v-else-if="renderKind === 'shell_status'" :block="block" :input="parsedInput" />
+  <ToolShellWriteBlock v-else-if="renderKind === 'shell_write'" :block="block" :input="parsedInput" />
+  <ToolShellAbortBlock v-else-if="renderKind === 'shell_abort'" :block="block" :input="parsedInput" />
+  <ToolYieldBlock v-else-if="renderKind === 'yield'" :block="block" :input="parsedInput" />
   <ToolGenericBlock v-else :block="block" :input="parsedInput" />
 </template>

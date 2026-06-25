@@ -3,7 +3,14 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demi/core'
-import { AgentSession, createStandardAgentTools, type AgentHarness, type AgentHarnessRuntime } from '@demi/agent'
+import {
+  AgentSession,
+  createStandardAgentTools,
+  type AgentHarness,
+  type AgentHarnessRuntime,
+  type AgentToolInvokeContext,
+  type AgentToolInvokeResult,
+} from '@demi/agent'
 import {
   BashEnvironment,
   CommandRegistry,
@@ -286,10 +293,113 @@ test('coding agent controls a long foreground command with status and abort', as
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
+test('coding agent exercises all standard shell control tools in one flow', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-coding-standard-tools-'))
+  const harness = createCodingAgentHarness({ host: new LocalHost(root) })
+  let session: AgentSession<Record<string, never>> | null = null
+  const { runtime } = createRuntimeFromHarness(
+    harness,
+    root,
+    {
+      shellIdFactory: () => `coding-standard-shell-${crypto.randomUUID()}`,
+    },
+    (_ctx, durationMs) => {
+      if (!session) throw new Error('session is not ready')
+      return session.scheduleYieldWakeup(durationMs)
+    },
+  )
+  let readerCommandId = ''
+  let longCommandId = ''
+  const provider = new StubProvider([
+    [
+      events.toolCall('start-reader', 'shell_exec', {
+        description: 'Start reader',
+        script: 'sh -c \'IFS= read -r line; printf "DEMI_FULL_INPUT:%s" "$line"\'',
+        yieldAfterMs: 1,
+      }),
+    ],
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('running')
+      readerCommandId = result.commandId
+      return [events.toolCall('yield-reader', 'yield', { description: 'Wait before checking reader', durationMs: 1 })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.commandId).toBe(readerCommandId)
+      expect(result.status).toBe('running')
+      return [events.toolCall('status-reader', 'shell_status', { description: 'Check reader', commandId: readerCommandId })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.commandId).toBe(readerCommandId)
+      expect(result.status).toBe('running')
+      return [events.toolCall('write-reader', 'shell_write', { description: 'Send reader input', commandId: readerCommandId, stdin: 'typed\n' })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.commandId).toBe(readerCommandId)
+      return [events.toolCall('yield-reader-after-write', 'yield', { description: 'Wait for reader output', durationMs: 5 })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.commandId).toBe(readerCommandId)
+      return [events.toolCall('status-reader-after-write', 'shell_status', { commandId: readerCommandId })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.commandId).toBe(readerCommandId)
+      expect(result.status).toBe('exited')
+      expect(result.stdout).toContain('DEMI_FULL_INPUT:typed')
+      return [
+        events.toolCall('start-long', 'shell_exec', {
+          description: 'Start long command',
+          script: "sh -c 'printf long-ready; sleep 10'",
+          yieldAfterMs: 20,
+        }),
+      ]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.status).toBe('running')
+      expect(result.stdout).toContain('long-ready')
+      longCommandId = result.commandId
+      return [events.toolCall('status-long', 'shell_status', { description: 'Check long command', commandId: longCommandId })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.commandId).toBe(longCommandId)
+      expect(result.status).toBe('running')
+      return [events.toolCall('abort-long', 'shell_abort', { description: 'Stop long command', commandId: longCommandId })]
+    },
+    (request: InferenceRequest) => {
+      const result = latestShellResult(request)
+      expect(result.commandId).toBe(longCommandId)
+      expect(result.status).toBe('aborted')
+      return [events.text('full control ok'), events.response()]
+    },
+  ])
+  session = new AgentSession({ provider, model, cwd: root, runtime })
+
+  await session.send([{ type: 'text', text: 'Exercise every standard shell control tool.' }])
+  await waitFor(
+    () => session?.transcript().blocks.some((block) => block.type === 'text' && block.text.includes('full control ok')) ?? false,
+    () => transcriptSummary(session),
+  )
+
+  const toolNames = session.transcript().blocks.flatMap((block) => (block.type === 'tool_call' ? [block.toolName] : []))
+  expect(new Set(toolNames)).toEqual(new Set(['shell_exec', 'yield', 'shell_status', 'shell_write', 'shell_abort']))
+  expect(session.transcript().pendingToolCalls()).toHaveLength(0)
+})
+
 function createRuntimeFromHarness(
   harness: AgentHarness<Record<string, never>>,
   cwd: string,
   options: Omit<BashEnvironmentOptions, 'host' | 'commands'> = {},
+  scheduleYield?: (
+    ctx: AgentToolInvokeContext<Record<string, never>>,
+    durationMs: number,
+  ) => AgentToolInvokeResult,
 ): { environment: BashEnvironment; runtime: AgentHarnessRuntime<Record<string, never>> } {
   const state = harness.initialState()
   const harnessContext = { state, cwd }
@@ -311,10 +421,12 @@ function createRuntimeFromHarness(
     tools: () =>
       createStandardAgentTools({
         environment,
-        scheduleYield: (_ctx, durationMs) => ({
-          output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
-          stopAfterToolResult: true,
-        }),
+        scheduleYield:
+          scheduleYield ??
+          ((_ctx, durationMs) => ({
+            output: [{ type: 'text', text: `yield scheduled\nwakeupId: test\ndurationMs: ${durationMs}` }],
+            stopAfterToolResult: true,
+          })),
       }),
   }
   return { environment, runtime }
@@ -328,7 +440,11 @@ function latestShellResult(request: InferenceRequest): {
   stderr: string
   exitCode: number | null
 } {
-  const item = [...request.items].reverse().find((candidate) => candidate.type === 'tool_result')
+  const item = [...request.items].reverse().find((candidate) => {
+    if (candidate.type !== 'tool_result') return false
+    const [first] = candidate.output
+    return first?.type === 'text' && first.text.includes('status:')
+  })
   if (item?.type !== 'tool_result') throw new Error('missing tool result')
   const [first] = item.output
   if (first?.type !== 'text') throw new Error('tool result was not text')
@@ -366,4 +482,27 @@ function section(text: string, name: string): string {
   const rawValue = nextField ? rest.slice(0, nextField.index) : rest
   const value = nextField && rawValue.endsWith('\n') ? rawValue.slice(0, -1) : rawValue
   return value === '(empty)' ? '' : value
+}
+
+function transcriptSummary(session: AgentSession<Record<string, never>> | null): string {
+  if (!session) return 'session is null'
+  return session
+    .transcript()
+    .blocks.map((block) => {
+      if (block.type === 'tool_call') return `${block.type}:${block.toolName}:${block.status}`
+      if (block.type === 'text') return `${block.type}:${block.text}`
+      if (block.type === 'error') return `${block.type}:${block.message}`
+      return block.type
+    })
+    .join(' | ')
+}
+
+async function waitFor(predicate: () => boolean, debug?: () => string): Promise<void> {
+  const startedAt = Date.now()
+  while (!predicate()) {
+    if (Date.now() - startedAt > 1_000) {
+      throw new Error(`Timed out waiting for predicate${debug ? `: ${debug()}` : ''}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  }
 }

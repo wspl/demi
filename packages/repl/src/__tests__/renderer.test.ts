@@ -192,6 +192,29 @@ test('REPL renderer prints phase, queue, shell output, audit, and progress frame
   expect(text).toContain('state> closed')
 })
 
+test('REPL renderer summarizes every standard tool with description or fallback', () => {
+  const output = new CaptureOutput()
+  const renderer = createRenderer(output)
+  const toolBlocks = [
+    toolBlock('tool-exec', 'shell_exec', { description: 'Run project tests', script: 'bun test' }, 'executing'),
+    toolBlock('tool-status', 'shell_status', { description: 'Check dev server output', commandId: 'cmd-1' }),
+    toolBlock('tool-write', 'shell_write', { commandId: 'cmd-1', stdin: 'typed\n' }),
+    toolBlock('tool-abort', 'shell_abort', { commandId: 'cmd-2' }),
+    toolBlock('tool-yield', 'yield', { durationMs: 250 }),
+    toolBlock('tool-unknown', 'unknown_tool', { value: 'raw' }),
+  ]
+
+  renderEvent(renderer, { type: 'transcript_snapshot', blocks: toolBlocks })
+
+  const text = output.text()
+  expect(text).toContain('tool> shell_exec executing -- Run project tests')
+  expect(text).toContain('tool> shell_status completed -- Check dev server output')
+  expect(text).toContain('tool> shell_write completed -- Send input to cmd-1')
+  expect(text).toContain('tool> shell_abort completed -- Stop cmd-2')
+  expect(text).toContain('tool> yield completed -- Wait 250ms')
+  expect(text).toContain('tool> unknown_tool completed -- {"value":"raw"}')
+})
+
 test('REPL renderer receives AgentClient subscription events end to end', async () => {
   const provider = defineProvider({
     id: 'stub',
@@ -549,6 +572,27 @@ test('REPL input loop prints asynchronous send failures', async () => {
 
 function block<T extends Block>(value: T): T {
   return value
+}
+
+function toolBlock(
+  id: string,
+  toolName: string,
+  input: Record<string, unknown>,
+  status: Extract<Block, { type: 'tool_call' }>['status'] = 'completed',
+): Extract<Block, { type: 'tool_call' }> {
+  return block({
+    type: 'tool_call',
+    id,
+    createdAt: '2026-06-19T00:00:00.000Z',
+    model,
+    toolUseId: `${id}-use`,
+    toolName,
+    input: JSON.stringify(input),
+    status,
+    streamingOutput: [],
+    output: [],
+    metadata: null,
+  })
 }
 
 function catalogProvider(id: string, listModels: () => ProviderModelList): Provider {

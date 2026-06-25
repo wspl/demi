@@ -26,6 +26,7 @@ fuzzyShellE2e(
     for (let attempt = 0; attempt < fuzzyShellAttempts; attempt++) {
       const stdout = await runRealReplFuzzyShellOnce()
       expect(stdout).toContain('tool> shell_exec')
+      expect(stdout).toContain('tool> yield')
       expect(stdout).toContain('tool> shell_status')
       expect(stdout).toContain('tool> shell_write')
       expect(stdout).toContain('tool> shell_abort')
