@@ -139,7 +139,7 @@ editor edit src/main.ts --old "foo" --new "bar"
 git status --short
 ```
 
-`shell_status` 是唯一读取命令状态的工具，但不是读取输出内容的工具；模型不应因为重复看到 `running` 就盲目连续 status。长命令等待节奏由 `yield` 表达：`shell_exec → yield → wakeup turn 或 wakeup steer → shell_status → yield → wakeup turn 或 wakeup steer → shell_status`。需要看输出时，模型使用普通 shell 命令读取 `/@/commands/<commandId>/output.txt`、`stdout.txt` 或 `stderr.txt`，例如 `tail -n 80`、`grep -n ERROR`、`sed -n '200,260p'`。工具结果必须直接可读，包含 status、shellId、commandId、artifact 路径、exitCode 或 next action，不要求模型从一坨 JSON 里猜状态。
+`shell_status` 是唯一读取命令状态的工具，但不是读取输出内容的工具；模型不应因为重复看到 `running` 就盲目连续 status。长命令等待节奏由 `yield` 表达：`shell_exec → yield → wakeup turn 或 wakeup steer → shell_status → yield → wakeup turn 或 wakeup steer → shell_status`。需要看输出时，模型使用普通 shell 命令读取 `/@/commands/<commandId>/stdout.txt` 或 `stderr.txt`，例如 `tail -n 80`、`grep -n ERROR`、`sed -n '200,260p'`。工具结果必须直接可读，包含 status、shellId、commandId、artifact 路径、exitCode 或 next action，不要求模型从一坨 JSON 里猜状态。
 
 runner 不提供由 idle timeout 触发的 shell 输入需求状态。`shell_exec` 的 `yieldAfterMs` 到期时，如果进程还活着，就返回 `running + shellId + commandId + artifact paths`；模型用 `yield` 结束当前 turn 并安排稍后唤醒，在 wakeup turn 或 wakeup steer 中用 `shell_status` 读取状态，必要时再用 `tail` / `grep` / `awk` / `sed` 读取 `/@` artifact，或在明确知道命令正在等待具体输入时用 `shell_write` 写入非空 stdin。慢输出和超长输出都走这套机制：输出 chunk 到达不会直接唤醒模型，超长输出不会塞进 `shell_status`。demi 不保留空 input 轮询入口，避免把一个无效果的 stdin 写入伪装成控制动作，也避免把 `npm install --silent` 这类安静长命令误判成交互输入。
 
@@ -394,7 +394,7 @@ shell session 通常对一个 AgentSession 长期存活（跨多个 user turn）
 ```text
 shell_exec(script, yieldAfterMs)
   → 在当前 shell session 执行
-  → runner 实时收集模型可见 stdout/stderr 到 command artifact 和 interleaved output artifact
+  → runner 实时收集模型可见 stdout/stderr 到 command artifact
   → yieldAfterMs 到点且命令未结束：返回 running + shellId + commandId
   → 后续 shell_status / shell_write / shell_abort 操作同一 command
 ```
@@ -423,7 +423,6 @@ type ShellCommandSnapshot = {
   commandId: string
   stdout: StreamArtifact
   stderr: StreamArtifact
-  output: StreamArtifact
   runningMs: number
   idleMs: number
   exitCode?: number
@@ -441,19 +440,16 @@ artifact 路径挂载在只读虚拟文件系统：
 ```text
 /@/commands/<commandId>/stdout.txt
 /@/commands/<commandId>/stderr.txt
-/@/commands/<commandId>/output.txt
 /@/commands/<commandId>/meta.json
 ```
 
-`output.txt` 是 stdout/stderr 按到达顺序交错后的终端 transcript。`/@` 路径由 just-bash `IFileSystem`
-overlay 提供，只允许 fork portable commands 读取；真实 host external process 不能 fallback 读取内存态
-`/@` 路径。`/@` 命名空间只读、生命周期跟随 AgentSession，不写入任务 workspace。
+`stdout.txt` 和 `stderr.txt` 分别保存可见 stream。stdout/stderr 按到达顺序交错后的终端 transcript 只存在于运行时事件、UI 展示或 tool result preview 中，不作为 `/@` 文件保存。`/@` 路径由 just-bash `IFileSystem` overlay 提供，只允许 fork portable commands 读取；真实 host external process 不能 fallback 读取内存态 `/@` 路径。`/@` 命名空间只读、生命周期跟随 AgentSession，不写入任务 workspace。
 
 `@demi/agent` 根据当前 `Model.contextWindow` 自动决定 tool result preview 预算：未知或 `<= 300k`
 tokens 使用约 `1k` tokens，`<= 1M` 使用约 `10k` tokens，更大窗口 hard cap 到约 `20k`
 tokens。模型不能通过 `maxOutputBytes` 控制预算；需要更多内容时必须用 shell 文本命令读取 artifact。
 
-卡死感知字段：`runningMs`（已跑时长）、`idleMs`（距上次输出时长）、`stdout.bytes` / `stderr.bytes` / `output.bytes`（是否有新增或异常大输出）。
+卡死感知字段：`runningMs`（已跑时长）、`idleMs`（距上次输出时长）、`stdout.bytes` / `stderr.bytes`（是否有新增或异常大输出）。
 
 观测节奏（参考 Codex）：
 
@@ -1329,7 +1325,7 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 **3.4 Shell session + 状态连续性**：`ShellSession` 结构；engine 的 cwd/env/last status 读写指向 session；状态类 builtin 改 session 状态；fork portable commands 通过 Host.fs 执行；真实外部命令通过 Host.process.spawn 执行；list operators + pipeline 由 engine 解释；文件重定向经 Host.fs；prefix assignment；parameter/command/glob expansion；根入口平台无关。**验收**：§4.7.1 的连续性场景全部通过，且 `cat`/`ls`/`grep`/redirection 可在 memfs/virtual Host 上不依赖系统 coreutils。
 
-**3.5 ShellCommandSnapshot + command artifact**：runner 实时收集模型可见 stdout/stderr 到 command artifact，并维护 stdout/stderr 交错后的 output artifact；artifact 通过只读 `/@/commands/<commandId>/...` 虚拟文件暴露给 just-bash portable commands；`yieldAfterMs` 必填且最大 10 分钟；tool result 只返回状态、artifact 路径和按当前模型 `contextWindow` 自动预算的 preview；安静长命令默认仍返回 `running`，不由 idle timeout 推断输入需求；`ShellCommandSnapshot` 只包含 `running` / `exited` / `aborted`。**验收**：长命令可观测，`shell_exec` 超过 `yieldAfterMs` 返回 `running + commandId` 且不杀进程，模型可用 `tail` / `grep` / `sed` / `awk` 读取 `/@` artifact，§4.7.2 行为通过。
+**3.5 ShellCommandSnapshot + command artifact**：runner 实时收集模型可见 stdout/stderr 到 command artifact；artifact 通过只读 `/@/commands/<commandId>/...` 虚拟文件暴露给 just-bash portable commands；stdout/stderr 交错后的 terminal transcript 只作为运行时/UI preview，不写入 `/@` 文件；`yieldAfterMs` 必填且最大 10 分钟；tool result 只返回状态、artifact 路径和按当前模型 `contextWindow` 自动预算的 preview；安静长命令默认仍返回 `running`，不由 idle timeout 推断输入需求；`ShellCommandSnapshot` 只包含 `running` / `exited` / `aborted`。**验收**：长命令可观测，`shell_exec` 超过 `yieldAfterMs` 返回 `running + commandId` 且不杀进程，模型可用 `tail` / `grep` / `sed` / `awk` 读取 `/@` artifact，§4.7.2 行为通过。
 
 **3.6 status / write / abort / dispose**：`shell_status`/`shell_write`/`shell_abort`/`disposeShell`/`disposeAllShells`；`shell_status` 负责非阻塞读取 command 状态、计时、字节计数和 artifact 路径，不返回 stdout/stderr 正文；`shell_write` 要求非空 stdin；主动 `shell_abort` 是控制动作；AgentSession abort 时终止前台进程；AgentServer 关闭 session 时统一 dispose Bash Environment，并调用 harness lifecycle 清理。**验收**：各路径单测通过，且 `shell_status` 不再承担输出分页。
 

@@ -81,10 +81,11 @@ Web 中只有 `shell_exec` 工具块和 `thinking` block 可展开。`shell_stat
 展示，只能作为 badge 或行内摘要出现，不能通过 disclosure 展开。
 
 `shell_exec` 展开内容只展示命令和用户可见 terminal output。terminal output 来自 runtime/progress
-里的交错输出流或自动预算 preview，按 stdout/stderr 到达顺序合并成一条 transcript。最终模型可见
-完整输出读取接口是 `/@/commands/<commandId>/output.txt`、`stdout.txt` 和 `stderr.txt`，不是
-`shell_status`。旧 transcript 缺少交错输出时可以退回为 stdout 后 stderr，但不能只展示 stderr，
-也不能展示 `status`、`shellId`、`commandId`、path、offset、bytes、truncation 等协议字段。
+里的交错输出流或自动预算 preview，按 stdout/stderr 到达顺序合并成一条 transcript；这只是 UI/runtime
+呈现，不作为 `/@` 文件保存。最终模型可见完整输出读取接口是
+`/@/commands/<commandId>/stdout.txt` 和 `stderr.txt`，不是 `shell_status`。旧 transcript
+缺少交错输出时可以退回为 stdout 后 stderr，但不能只展示 stderr，也不能展示
+`status`、`shellId`、`commandId`、path、offset、bytes、truncation 等协议字段。
 
 `shell_status` 只能展示命令状态摘要。即使 metadata 带有 artifact 路径、byte counter 或 preview，
 它也不能被渲染成可展开终端输出块；需要输出内容的用户路径是查看对应 `shell_exec` block 或让
