@@ -142,7 +142,7 @@ type YieldInput = {
 - `durationMs` 从当前 turn 完成、session 进入可等待状态后开始计时，不从 tool call 开始计时。
 - 计时结束时，如果 session idle，runtime 启动一个普通的新 turn，并插入一个内部 wakeup 输入，让模型继续推理。
 - 计时结束时，如果 session 已经因为用户新话题或其他动作 active，wakeup 作为内部 steer 投递到当前 active turn，使用和用户 steer 相同的插入点语义；它不能进入 queue。
-- 等待期间用户可以正常发送新话题；这不会自动取消 pending wakeup。显式 abort、关闭 session 或未来的 cancel-yield 动作才清理 pending wakeup。
+- 等待期间用户可以正常发送新话题；这不会自动取消 pending wakeup。`abort` 只有在所有更高优先级的可取消工作都收敛后，才会轮到 pending wakeup；关闭 session 或未来的 cancel-yield 动作会直接清理 pending wakeup。
 - `yield` 是单次 delayed wakeup；不支持 `repeat`、`start_yield` 或 `stop_yield`。
 
 重复检查长命令时由模型显式组合：
@@ -161,6 +161,36 @@ shell_status(...)
 
 `yield` 自身就是一次性的跨 turn 唤醒机制；heartbeat / automation 指的是长期、重复、可外部管理的唤醒，
 不放进当前方案。wakeup 到点后的投递复用 steer delivery：idle 时开新 turn，active 时内部 steer。
+
+### 3.6 `abort`
+
+这里的 `abort` 指 AgentSession / AgentClient 的会话控制动作，不是模型可见的 `shell_abort`。
+
+`abort` 是可重复执行的分层收敛动作。每次调用只取消当前最高优先级、仍可取消的一层，并返回这次取消了什么，以及是否还能继续 abort：
+
+```ts
+type AbortTarget =
+  | 'active_provider_stream'
+  | 'active_tool_invocation'
+  | 'active_turn'
+  | 'queued_action'
+  | 'pending_yield_wakeup'
+
+type AbortResult =
+  | { aborted: true; target: AbortTarget; canAbortAgain: boolean }
+  | { aborted: false; target: null; canAbortAgain: false }
+```
+
+优先级从高到低：
+
+1. 当前 active provider stream、reference resolution、compaction 或 tool invocation。
+2. 当前 active turn 的剩余收敛状态。
+3. 等待执行的 queued send / retry / resume / compact 等 action。
+4. pending `yield` wakeup。
+
+pending `yield` wakeup 是最后优先级。普通 active turn abort 不应该顺手清掉 wakeup，因为它可能是之前长命令复查留下的 schedule。只有当没有 active work、没有 queued action，且调用方再次 abort 时，才取消 pending wakeup。
+
+`shell_abort(commandId)` 不走这个层级；它是模型或用户显式终止某个 foreground command 的工具。除非当前正在执行的 shell tool invocation 本身被 abort，否则 AgentSession `abort` 不应隐式终止已经返回 `running` 的 shell command。
 
 ## 4. 标识符模型
 
@@ -366,12 +396,14 @@ Turn B（用户 10s 后发送新话题）
   - `yield` duration 从当前 turn 完成后开始计时。
   - 计时到点后启动新的内部 wakeup turn，并让模型能继续调用 `shell_status`。
   - 等待期间如果 session 被用户新话题启动，计时到点后 wakeup 作为内部 steer 插入当前 active turn，不进入 queue。
-  - abort / session close 清理 pending wakeup。
+  - `abort` 返回 `AbortResult`，重复调用时按 active work、queued action、pending yield wakeup 的优先级逐层收敛。
+  - active work abort 不清理 pending yield wakeup；pending wakeup 只在最后一层 abort 或 session close 时清理。
   - `yield` 不读写 shell 状态，不隐式 abort shell command。
 
 - `packages/agent/src/__tests__/server.test.ts`
   - AgentServer 对客户端暴露新工具面和对应 events。
   - pending yield wakeup 在协议状态中可观测；idle 到点开新 turn，active 到点发内部 steer。
+  - abort response/frame 暴露 `target` 与 `canAbortAgain`，UI 可决定是否继续显示 abort action。
   - 旧 `shell_wait` / `shell_input` frame 不再作为 final API。
 
 - `packages/repl/src/__tests__/real-repl.e2e.test.ts`
@@ -384,4 +416,5 @@ Turn B（用户 10s 后发送新话题）
 - 模型不需要空 stdin 或 `shell_wait` 也能读取长命令输出。
 - stdout/stderr 大输出不会被塞满 transcript；tool result 只给 delta/tail，完整内容留在 artifact。
 - 用户新话题不会让 pending yield 进入 queue；到点 wakeup 必须作为内部 steer 进入 active turn，且不会隐式 abort shell command。
+- `abort` 可重复执行；每次结果都说明本次取消的层级以及是否还能继续 abort；pending yield wakeup 只有在最低优先级才被清理。
 - 所有中止命令的路径都能在 transcript 中看到显式 `shell_abort`。

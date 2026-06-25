@@ -92,6 +92,7 @@ Host
 20. **Bash Environment 不是 Harness 注入项**：Agent Harness 只能定义 `Host`、注册命令、prompt、引用解析和生命周期；不得让用户传入自定义 `BashEnvironment` 或替换标准 agent 工具面。Demi 的差异化是统一、可审计、可长程运行的 shell session 机制，所有 agent 都走同一套 exec/status/write/abort/yield、audit、tool result 和 compaction 语义。
 21. **模型目录属于 provider 能力**：REPL / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
 22. **Provider 装配属于用户创建边界**：用户创建 agent / app runtime 时传入 public provider 对象数组，例如 `providers: [createClaudeCodeProvider(...), createCodexProvider(...)]`。`ProviderDefinition`、`ProviderRegistry`、可序列化 provider config 解析器和 live provider runtime factory 都是内部机制；API key 和 secret-bearing provider options 只能留在创建 provider 的用户侧闭包里，不能经浏览器或 AgentClient frame 往返。详细设计见 `docs/provider-public-api-plan.md`。
+23. **Abort 是可重复的分层收敛动作**：`abort()` 每次只取消当前最高优先级的可取消层，并返回本次 target 与 `canAbortAgain`。active provider/tool/turn、queued action 都优先于 pending `yield` wakeup；pending wakeup 是最低优先级，不能因为普通 active turn abort 被顺手清理。
 
 ### 3.2 Shell + yield 控制面
 
@@ -124,7 +125,7 @@ yield(durationMs)
   → 当前 turn 完成后开始计时
   → 到点时 session idle：启动一个内部 wakeup turn
   → 到点时 session active：作为内部 steer 投递到当前 active turn，不能进入 queue
-  → abort / session close 清理 pending wakeup
+  → pending wakeup 是 abort 最低优先级；session close 直接清理
   → 单次 delayed wakeup，不支持 repeat / start_yield / stop_yield
 ```
 
@@ -487,6 +488,17 @@ interface AgentHarnessRuntime<State> {
   dispose?(): Promise<void>
 }
 
+type AbortTarget =
+  | 'active_provider_stream'
+  | 'active_tool_invocation'
+  | 'active_turn'
+  | 'queued_action'
+  | 'pending_yield_wakeup'
+
+type AbortResult =
+  | { aborted: true; target: AbortTarget; canAbortAgain: boolean }
+  | { aborted: false; target: null; canAbortAgain: false }
+
 interface AgentSession<State> {
   send(content: UserContentBlock[], options?: { id?: string }): Promise<void>
   dequeueMessage(id: string): boolean
@@ -497,7 +509,7 @@ interface AgentSession<State> {
   retry(): Promise<void>
   resume(): Promise<void>
   compact(): Promise<void>
-  abort(): Promise<boolean>
+  abort(): Promise<AbortResult>
   waitUntilDone(): Promise<void>
 
   transcript(): Transcript
@@ -511,6 +523,8 @@ interface AgentSession<State> {
 相对 Rust 蓝本删除 `replayFrom`。mutation guard 保留，用于外部 transcript 编辑（`reserve_mutation`）与 compact 期间的并发保护。
 
 `send` 在 busy 时仍表示下一 turn 队列；`steer` 表示追加到当前 active turn。两者是显式调用方选择，runtime 不允许把 rejected steer 自动转成 queued send，也不允许用 abort/resume 模拟 steer。
+
+`abort` 是可重复执行的分层收敛动作，不是 session close。每次调用按优先级取消一层：active provider stream / active tool invocation / active turn 收敛状态、queued action、pending `yield` wakeup。返回的 `AbortResult.canAbortAgain` 告诉调用方是否还存在下一层可取消目标。pending `yield` wakeup 是最后优先级：普通 active turn abort 不清理它；只有当前面所有 active 和 queued 状态都收敛后，再次 abort 才取消 pending wakeup。关闭 session / dispose 则直接清理全部 pending wakeup。
 
 Queue item management 是最终 runtime 契约的一部分，不是 UI 本地状态。
 `dequeueMessage` 只删除仍在队列里的 send，并 resolve 对应 pending action，但不执行；
@@ -986,7 +1000,7 @@ interface AgentClient {
   retry(): Promise<void>
   resume(): Promise<void>
   compact(): Promise<void>
-  abort(): Promise<boolean>
+  abort(): Promise<AbortResult>
 
   subscribe(listener: (event: SessionEvent) => void): () => void
   close(): Promise<void>
@@ -1051,6 +1065,7 @@ type ClientFrame =
 // server → client：session 状态变化
 type ServerFrame =
   | { type: 'opened' }
+  | { type: 'abort_result'; result: AbortResult }
   | { type: 'rejected'; command: string; reason: string }
   | { type: 'transcript_snapshot'; blocks: Block[] }
   | { type: 'transcript_patch'; patches: Patch[] }

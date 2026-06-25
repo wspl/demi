@@ -66,7 +66,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demi/core`, `@demi/provider`, `@demi/shell`.
-- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, and assembly of one harness with the standard shell runtime.
+- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, and assembly of one harness with the standard shell runtime.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only transports from explicit subpaths such as `@demi/agent/stdio`.
 - Must not: import concrete providers, `@demi/host-local`, or UI packages.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
