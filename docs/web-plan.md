@@ -463,11 +463,14 @@ collapse to an auto-grow `<textarea>` stays possible but is not planned.
 
 ## 8. Tool Rendering for Demi (detail)
 
-- `shell_exec` → `ToolShellBlock` via `ToolCard`: header = `input.description || input.script`;
-  body-top = `$ <script>`; body = `AnsiText(output)`; loading = `status==='executing'`;
-  error = `status==='error'`.
-- `shell_status` / `shell_write` / `shell_abort` / `yield` → compact status rows (target
-  commandId/status or wakeup duration), styled like `InlineToolRow`.
+Final rules live in `docs/tool-rendering-spec.md`.
+
+- `ToolCallBlock` must dispatch by concrete Demi tool name, not by the generic `tool_call`
+  envelope alone.
+- Standard tools `shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield`
+  all need dedicated display blocks or rows, all using `input.description` as the preferred
+  title and a deterministic per-tool fallback when it is missing.
+- Unknown future tools may use `ToolGenericBlock`; standard tools must not.
 - The `audit` server event (`registered-command`/`system-command` with name/args/exitCode)
   can drive a future per-command breakdown inside a `shell_exec` card; the `shell_output`
   event already carries live stdout/stderr deltas for foreground shells.

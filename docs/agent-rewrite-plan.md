@@ -8,7 +8,7 @@
 
 ## 1. 背景与目标
 
-在 TypeScript 里重写整套 agent 架构，覆盖通用 agent 壳与 coding agent。以 Rust `agent-session` / `coding-agent` 为实现蓝本：已验证的 session lifecycle、turn queue、retry/resume、compaction、mutation guard 等逻辑直接照搬，只在语言、包边界和 Shell/Bash 核心机制上调整。Active turn steer 的详细设计见 `docs/agent-steer-plan.md`；agent 性能评估体系见 `docs/agent-evaluation-plan.md`；Shell + yield 控制面的最终设计见 `docs/shell-yield-control-plan.md`。
+在 TypeScript 里重写整套 agent 架构，覆盖通用 agent 壳与 coding agent。以 Rust `agent-session` / `coding-agent` 为实现蓝本：已验证的 session lifecycle、turn queue、retry/resume、compaction、mutation guard 等逻辑直接照搬，只在语言、包边界和 Shell/Bash 核心机制上调整。Active turn steer 的详细设计见 `docs/agent-steer-plan.md`；agent 性能评估体系见 `docs/agent-evaluation-plan.md`；Shell + yield 控制面的最终设计见 `docs/shell-yield-control-plan.md`；标准工具展示规范见 `docs/tool-rendering-spec.md`。
 
 参考实现：
 
@@ -93,6 +93,7 @@ Host
 21. **模型目录属于 provider 能力**：REPL / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
 22. **Provider 装配属于用户创建边界**：用户创建 agent / app runtime 时传入 public provider 对象数组，例如 `providers: [createClaudeCodeProvider(...), createCodexProvider(...)]`。`ProviderDefinition`、`ProviderRegistry`、可序列化 provider config 解析器和 live provider runtime factory 都是内部机制；API key 和 secret-bearing provider options 只能留在创建 provider 的用户侧闭包里，不能经浏览器或 AgentClient frame 往返。详细设计见 `docs/provider-public-api-plan.md`。
 23. **Abort 是可重复的分层收敛动作**：`abort()` 每次只取消当前最高优先级的可取消层，并返回本次 target 与 `canAbortAgain`。active provider/tool/turn、queued action 都优先于 pending `yield` wakeup；pending wakeup 是最低优先级，不能因为普通 active turn abort 被顺手清理。
+24. **工具展示按具体标准工具分发**：`tool_call` 只是 transcript envelope；Web / REPL / 未来壳子遇到标准工具时必须按 `toolName` 分发到 `shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield` 的具体展示，未知工具才使用 generic fallback。不得为展示引入新的 model 包；共享边界继续是 `@demi/core` 的 `Block` 与 `@demi/agent` 的 `ClientSessionEvent`。五个标准工具 input schema 都必须允许 `description`，作为用户可见动作标题。详细规范见 `docs/tool-rendering-spec.md`。
 
 ### 3.2 Shell + yield 控制面
 
@@ -103,24 +104,24 @@ Host
 目标语义：
 
 ```text
-shell_exec(script, shellId?, yieldAfterMs, maxOutputBytes?)
+shell_exec(script, description?, shellId?, yieldAfterMs, maxOutputBytes?)
   → 命令结束：返回 exited + exitCode + stdout/stderr
   → 命令仍在跑：返回 running + shellId + commandId + stdout/stderr delta
   → yieldAfterMs 必填，最大 10 分钟；不接受 timeoutMs，不隐式终止进程
 
-shell_status(commandId, stdoutOffset?, stderrOffset?, maxOutputBytes?)
+shell_status(commandId, description?, stdoutOffset?, stderrOffset?, maxOutputBytes?)
   → 读取命令状态和 stdout/stderr 增量；不等待、不写 stdin、不改变生命周期
   → running / exited / aborted 都可读取；已完成命令在 AgentSession 生命周期内可继续读取 artifact
 
-shell_write(commandId, stdin, maxOutputBytes?)
+shell_write(commandId, stdin, description?, maxOutputBytes?)
   → stdin 必须是非空字符串；写入前台进程
   → 轮询必须使用 shell_status，不允许空 input 兼容路径
   → 写入后立即返回一次 status snapshot
 
-shell_abort(commandId)
+shell_abort(commandId, description?, maxOutputBytes?)
   → 主动终止前台进程；这是控制动作，不默认表示 agent 任务失败
 
-yield(durationMs)
+yield(durationMs, description?)
   → 写入 terminal tool result，结束当前 provider continuation；不读写 shell
   → 当前 turn 完成后开始计时
   → 到点时 session idle：启动一个内部 wakeup turn

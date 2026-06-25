@@ -39,13 +39,18 @@ test('coding agent harness exposes shell session tools and registered command pr
 
   expect(harness.name).toBe('coding')
   expect(commands.map((command) => command.name)).toEqual(['editor', 'todo'])
-  expect(runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() }).map((tool) => tool.name)).toEqual([
+  const tools = runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() })
+  expect(tools.map((tool) => tool.name)).toEqual([
     'shell_exec',
     'shell_status',
     'shell_write',
     'shell_abort',
     'yield',
   ])
+  for (const tool of tools) {
+    const properties = tool.inputSchema.properties as Record<string, unknown> | undefined
+    expect(properties?.description).toEqual(expect.objectContaining({ type: 'string' }))
+  }
   const prompt = harness.systemPrompt({
     agentSessionId: 'coding-test-agent',
     state,

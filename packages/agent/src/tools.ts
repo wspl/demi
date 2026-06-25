@@ -66,13 +66,17 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_status',
       description:
-        'Read a command status and bounded stdout/stderr deltas by commandId. This never waits, writes stdin, or changes command lifecycle. Omit offsets to read new output since the last snapshot, or pass offsets to reread history.',
+        'Read a command status and bounded stdout/stderr deltas by commandId. This never waits, writes stdin, or changes command lifecycle. Omit offsets to read new output since the last snapshot, or pass offsets to reread history. Always set description to a short title for the UI.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         required: ['commandId'],
         properties: {
           commandId: { type: 'string' },
+          description: {
+            type: 'string',
+            description: 'A short clear title for this status check, shown in the UI.',
+          },
           stdoutOffset: { type: 'number' },
           stderrOffset: { type: 'number' },
           maxOutputBytes: { type: 'number' },
@@ -87,13 +91,17 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_write',
       description:
-        'Write non-empty stdin to a running foreground command by commandId, then return an immediate status snapshot. Include a newline for line-oriented prompts. Use shell_status for polling.',
+        'Write non-empty stdin to a running foreground command by commandId, then return an immediate status snapshot. Include a newline for line-oriented prompts. Use shell_status for polling. Always set description to a short title for the UI.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         required: ['commandId', 'stdin'],
         properties: {
           commandId: { type: 'string' },
+          description: {
+            type: 'string',
+            description: 'A short clear title for this stdin write, shown in the UI.',
+          },
           stdin: { type: 'string' },
           maxOutputBytes: { type: 'number' },
         },
@@ -107,13 +115,17 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_abort',
       description:
-        'Intentionally stop a running foreground command by commandId. Calling it for a completed command returns that command snapshot without killing the shell session.',
+        'Intentionally stop a running foreground command by commandId. Calling it for a completed command returns that command snapshot without killing the shell session. Always set description to a short title for the UI.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         required: ['commandId'],
         properties: {
           commandId: { type: 'string' },
+          description: {
+            type: 'string',
+            description: 'A short clear title for this abort action, shown in the UI.',
+          },
           maxOutputBytes: { type: 'number' },
         },
       },
@@ -126,12 +138,16 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'yield',
       description:
-        'End the current turn and schedule a one-shot internal wakeup after durationMs. Use this after starting or checking long-running work so the next turn can call shell_status. It does not read, write, or abort shell commands.',
+        'End the current turn and schedule a one-shot internal wakeup after durationMs. Use this after starting or checking long-running work so the next turn can call shell_status. It does not read, write, or abort shell commands. Always set description to a short title for the UI.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         required: ['durationMs'],
         properties: {
+          description: {
+            type: 'string',
+            description: 'A short clear title for this delayed wakeup, shown in the UI.',
+          },
           durationMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
         },
       },
