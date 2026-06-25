@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+import { WEB_DEV_HOST, WEB_FRONTEND_PORT } from './src/dev-ports'
 
 export default defineConfig(() => ({
   plugins: [vue(), tailwindcss()],
@@ -12,6 +13,8 @@ export default defineConfig(() => ({
     },
   },
   server: {
-    port: Number(process.env.PORT) || 5173,
+    host: WEB_DEV_HOST,
+    port: WEB_FRONTEND_PORT,
+    strictPort: true,
   },
 }))

@@ -13,11 +13,11 @@ import { createStubProvider } from '../stub-provider'
 
 test('AgentWorkspace drives a conversation through the websocket stack', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-workspace-'))
-  const handle = startWebServer([createStubProvider()], parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([createStubProvider()], testServerOptions(['--cwd', cwd]))
 
   try {
-    const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
-    const workspace = new AgentWorkspace({ baseUrl: `http://localhost:${handle.port}`, control, cwd })
+    const control = await connectControlClient(`${handle.url.replace(/^http/, 'ws')}/control`)
+    const workspace = new AgentWorkspace({ baseUrl: handle.url, control, cwd })
 
     await workspace.init()
 
@@ -45,11 +45,11 @@ test('AgentWorkspace steers a queued message through the websocket stack', async
     [events.text('active output'), events.response()],
     [events.text('continued output'), events.response()],
   ])
-  const handle = startWebServer([createGateProvider(provider)], parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([createGateProvider(provider)], testServerOptions(['--cwd', cwd]))
 
   try {
-    const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
-    const workspace = new AgentWorkspace({ baseUrl: `http://localhost:${handle.port}`, control, cwd })
+    const control = await connectControlClient(`${handle.url.replace(/^http/, 'ws')}/control`)
+    const workspace = new AgentWorkspace({ baseUrl: handle.url, control, cwd })
 
     await workspace.init()
 
@@ -183,4 +183,8 @@ function deferred<T>(): Deferred<T> {
 interface Deferred<T> {
   promise: Promise<T>
   resolve: (value: T) => void
+}
+
+function testServerOptions(args: string[]) {
+  return { ...parseServerOptions(args), port: 0 }
 }

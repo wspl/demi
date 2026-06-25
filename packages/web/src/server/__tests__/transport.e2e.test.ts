@@ -6,17 +6,27 @@ import { defineProvider, type Provider } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
 import { agentSocketUrl, connectAgentClient } from '@demi/web-ui/transport/agent-socket'
 import { connectControlClient } from '@demi/web-ui/transport/control-client'
+import { WEB_BACKEND_BASE_URL, WEB_BACKEND_PORT, WEB_FRONTEND_URL } from '../../dev-ports'
 import { parseServerOptions } from '../server-options'
 import { createWebProviders } from '../providers'
 import { startWebServer } from '../serve'
 import { createStubProvider } from '../stub-provider'
 
+test('web dev ports are fixed and not configurable through startup options', () => {
+  const options = parseServerOptions([])
+
+  expect(options.port).toBe(WEB_BACKEND_PORT)
+  expect(WEB_BACKEND_BASE_URL).toBe('http://127.0.0.1:18911')
+  expect(WEB_FRONTEND_URL).toBe('http://127.0.0.1:18922')
+  expect(() => parseServerOptions(['--port', '1234'])).toThrow('Unknown option: --port')
+})
+
 test('web transport round-trips open/send/stream over websocket', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-transport-'))
-  const handle = startWebServer([createStubProvider()], parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([createStubProvider()], testServerOptions(['--cwd', cwd]))
 
   try {
-    const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
+    const control = await connectControlClient(`${handle.url.replace(/^http/, 'ws')}/control`)
 
     const providers = await control.listProviders()
     expect(providers.map((provider) => provider.id)).toContain('claude-code')
@@ -28,7 +38,7 @@ test('web transport round-trips open/send/stream over websocket', async () => {
     expect(providerSelection).not.toHaveProperty('config')
     expect(providerSelection.model.model.id).toBe('stub-model')
 
-    const client = await connectAgentClient(agentSocketUrl(`http://localhost:${handle.port}`, cwd))
+    const client = await connectAgentClient(agentSocketUrl(handle.url, cwd))
     const seenText: string[] = []
     client.subscribe((event) => {
       if (event.type !== 'transcript_snapshot' && event.type !== 'transcript_patch') return
@@ -51,10 +61,10 @@ test('web transport round-trips open/send/stream over websocket', async () => {
 test('web control protocol does not expose secret-bearing provider options', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-secret-boundary-'))
   const secretProvider = createSecretBackedProvider()
-  const handle = startWebServer([secretProvider], parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([secretProvider], testServerOptions(['--cwd', cwd]))
 
   try {
-    const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
+    const control = await connectControlClient(`${handle.url.replace(/^http/, 'ws')}/control`)
 
     const providers = await control.listProviders()
     const models = await control.listModels({ providerId: 'secret-api' })
@@ -77,9 +87,7 @@ test('web control protocol does not expose secret-bearing provider options', asy
 
 test('web control protocol replaces selected provider catalog with explicit startup model', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-explicit-model-'))
-  const options = parseServerOptions([
-    '--port',
-    '0',
+  const options = testServerOptions([
     '--cwd',
     cwd,
     '--provider',
@@ -100,7 +108,7 @@ test('web control protocol replaces selected provider catalog with explicit star
   const handle = startWebServer(createWebProviders(options), options)
 
   try {
-    const control = await connectControlClient(`ws://localhost:${handle.port}/control`)
+    const control = await connectControlClient(`${handle.url.replace(/^http/, 'ws')}/control`)
 
     const models = await control.listModels({ providerId: 'openai' })
     expect(models.map((model) => model.id)).toEqual(['deepseek-v4-pro'])
@@ -161,7 +169,7 @@ test('web startup rejects explicit thinking default outside explicit model effor
 
 test('web backend rejects ordinary HTTP so UI must come from Vite dev server', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-web-backend-only-'))
-  const handle = startWebServer([createStubProvider()], parseServerOptions(['--port', '0', '--cwd', cwd]))
+  const handle = startWebServer([createStubProvider()], testServerOptions(['--cwd', cwd]))
 
   try {
     const response = await fetch(`${handle.url}/`)
@@ -172,6 +180,10 @@ test('web backend rejects ordinary HTTP so UI must come from Vite dev server', a
     await handle.stop()
   }
 })
+
+function testServerOptions(args: string[]) {
+  return { ...parseServerOptions(args), port: 0 }
+}
 
 function createSecretBackedProvider(): Provider {
   const secret = {

@@ -2,6 +2,7 @@ import process from 'node:process'
 import { resolve } from 'node:path'
 import type { CodexTransportMode } from '@demi/provider-codex'
 import type { OpenAIApiWireApi } from '@demi/provider-openai-api'
+import { WEB_BACKEND_PORT } from '../dev-ports'
 
 export type ProviderId = 'claude-code' | 'codex' | 'openai' | 'anthropic'
 
@@ -26,7 +27,7 @@ export interface ServerOptions {
 
 export function parseServerOptions(args: string[]): ServerOptions {
   const options: ServerOptions = {
-    port: Number(process.env.DEMI_WEB_PORT ?? '4280'),
+    port: WEB_BACKEND_PORT,
     cwd: process.cwd(),
     provider: parseProvider(process.env.DEMI_PROVIDER ?? 'claude-code'),
     modelId: null,
@@ -44,8 +45,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
 
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
-    if (arg === '--port') options.port = Number(required(args, ++index, '--port'))
-    else if (arg === '--cwd') options.cwd = required(args, ++index, '--cwd')
+    if (arg === '--cwd') options.cwd = required(args, ++index, '--cwd')
     else if (arg === '--provider') options.provider = parseProvider(required(args, ++index, '--provider'))
     else if (arg === '--model') options.modelId = required(args, ++index, '--model')
     else if (arg === '--model-context-window') {

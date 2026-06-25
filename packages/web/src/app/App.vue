@@ -4,10 +4,11 @@ import { AgentWorkspace } from '@demi/web-ui/agent/workspace'
 import { connectControlClient } from '@demi/web-ui/transport/control-client'
 import { applyThemeToDocument } from '@demi/web-ui/theme/appTheme'
 import AgentRoot from '@demi/web-ui/agent/AgentRoot.vue'
+import { WEB_BACKEND_BASE_URL } from '../dev-ports'
 
 applyThemeToDocument()
 
-const serverBase = import.meta.env.VITE_DEMI_SERVER_BASE ?? 'http://localhost:4280'
+const serverBase = WEB_BACKEND_BASE_URL
 
 const workspace = shallowRef<AgentWorkspace | null>(null)
 const status = ref('connecting…')

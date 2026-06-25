@@ -297,7 +297,7 @@ shell_status({ commandId })
 shell_exec({ script: "pnpm dev", yieldAfterMs: 3000 })
 → running + commandId=server
 
-shell_exec({ script: "curl -I http://127.0.0.1:5173", yieldAfterMs: 10000 })
+shell_exec({ script: "curl -I http://127.0.0.1:18922", yieldAfterMs: 10000 })
 → exited
 
 shell_abort({ commandId: server })

@@ -11,6 +11,6 @@
       "@demi/web-ui/*": ["../web-ui/src/*"]
     }
   },
-  "include": ["src/app", "../web-ui/src"],
+  "include": ["src/app", "src/dev-ports.ts", "../web-ui/src"],
   "exclude": ["node_modules", "dist"]
 }

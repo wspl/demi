@@ -135,7 +135,8 @@ Codex 与 pi agent 的参考价值主要在模型实际看到什么、异常 pro
   不会提交，且 steer/queue 按钮由 editor update 后的内容状态驱动。
 - `packages/web/src/server/__tests__/transport.e2e.test.ts`：覆盖 web 后端只暴露 `/control`
   和 `/agent` WebSocket 能力，普通 HTTP 请求必须拒绝并指向 Vite dev server，防止静态
-  `dist` / preview / production bundle 路径重新进入验收流程；同时覆盖启动时显式
+  `dist` / preview / production bundle 路径重新进入验收流程；同时覆盖 web dev 固定端口
+  契约：后端 `18911`、前端 `18922`、启动参数不能覆盖端口；同时覆盖启动时显式
   `--model` / `--model-context-window` 会在 Web composition root 转成选中 API
   provider creator 的 `models` 配置并全量替换 control catalog，避免 compatible endpoint
   被默认 catalog 的任何模型误选；显式模型缺少 context window 会启动失败；

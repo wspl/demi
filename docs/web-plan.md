@@ -14,8 +14,11 @@ Implemented and verified (against a scripted stub provider that emits thinking +
 - Transport: per-session `/agent` WebSocket reusing `@demi/agent`'s WS transport, plus a
   `/control` WebSocket RPC (providers/models/prepareSession/workspace). Browser-safe
   `@demi/agent/client` subpath keeps the bundle free of `AgentServer`/`@demi/shell`.
-- Server: Bun.serve serving the built app + the two WS endpoints; per-cwd `AgentServer` over
+- Server: Bun.serve exposes only the two WS endpoints; per-cwd `AgentServer` over
   `LocalHost` + the coding harness.
+- Dev runtime uses fixed ports only: backend `127.0.0.1:18911`, Vite frontend
+  `127.0.0.1:18922`. The dev launcher kills existing listeners on those ports before
+  startup, and Vite runs with `strictPort` so it never rolls forward to another port.
 - Store: `AgentWorkspace` + `ConversationRuntime` (one `AgentClient` per conversation),
   provide/inject, control-backed catalog.
 - UI ported from agent-gui (copy → surgical adapt): app-basic primitives, markdown (marked +
@@ -47,9 +50,8 @@ yet):
 - Plan/agent mode toggle, `@`/`/` mentions (removed), MCP/skills.
 - Keyboard command registry / tab shortcuts, conversation persistence + reopen-closed,
   light/dark toggle UI (the token system supports both; default is dark).
-- Real-provider (claude-code/codex) acceptance is available via the `@demi/web` server
-  (`bun run packages/web/src/server/index.ts`); the stub path validates the full mechanism
-  without API cost.
+- Real-provider (claude-code/codex) acceptance is available via the `@demi/web` dev launcher
+  (`bun run web:dev`); the stub path validates the full mechanism without API cost.
 
 ## 1. Goal and Scope
 
@@ -262,10 +264,13 @@ The concrete Demi web app. The server is **not** split into its own package. Two
 - **Browser app** (Vite dev only): mounts `@demi/web-ui`, wires the WS transports
   (`createWebSocketClientTransport` → `AgentClient`; control WS → control client), theme,
   and commands. Entry `src/app/main.ts`. It is served only by Vite during development and
-  acceptance; Demi does not build, preview, or serve a static browser bundle.
+  acceptance; Demi does not build, preview, or serve a static browser bundle. The frontend
+  port is fixed at `127.0.0.1:18922`, with Vite `strictPort` enabled.
 - **Node/Bun server**: serves only the WebSocket/API endpoints; assembles
   shared public providers and a per-`cwd` `AgentServer` over `LocalHost` +
   `createCodingAgentHarness`; implements the control RPC. Entry `src/server/index.ts`.
+  The backend port is fixed at `127.0.0.1:18911`; startup kills any existing listener on
+  that port before binding.
 
 Production deps: `@demi/web-ui`, `@demi/agent`, `@demi/host-local`, `@demi/coding-agent`,
 `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/shell`,
@@ -363,6 +368,9 @@ features dropped — §10).
 - HTTP: no browser assets. The Bun server is an API/WebSocket backend only; ordinary HTTP
   requests return an explicit "use Vite dev server" response. Browser GUI development and
   acceptance must open the Vite dev server, which connects to `/control` and `/agent`.
+- Ports are not configurable through the web startup interface. `bun run web:dev` always
+  clears and uses backend `18911` plus frontend `18922`; stale listeners are killed before
+  startup, and the frontend must fail instead of falling through to another port.
 - `Bun.serve` owns the websocket handlers; adapt Bun's server WebSocket to the
   `JsonWebSocket` interface (a ~20-line adapter mapping `message`/`close`).
 - `WS /agent?cwd=…` and `WS /control` as in §4.

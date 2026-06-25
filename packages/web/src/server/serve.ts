@@ -6,6 +6,7 @@ import { AgentHub } from './agent-hub'
 import { BunServerSocket } from './bun-socket'
 import { ControlServer } from './control-server'
 import type { ServerOptions } from './server-options'
+import { WEB_DEV_HOST } from '../dev-ports'
 
 type AgentConn = { kind: 'agent'; cwd: string; socket?: BunServerSocket; binding?: AgentTransportBinding }
 type ConnData = AgentConn | { kind: 'control' }
@@ -26,6 +27,7 @@ export function startWebServer(providers: Provider[], options: ServerOptions): W
   const control = new ControlServer(providers, options)
 
   const server = Bun.serve<ConnData>({
+    hostname: WEB_DEV_HOST,
     port: options.port,
     async fetch(req, srv) {
       const url = new URL(req.url)
@@ -70,7 +72,7 @@ export function startWebServer(providers: Provider[], options: ServerOptions): W
   const port = server.port ?? options.port
   return {
     port,
-    url: `http://localhost:${port}`,
+    url: `http://${WEB_DEV_HOST}:${port}`,
     async stop() {
       server.stop(true)
       await hub.close()
