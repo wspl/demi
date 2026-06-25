@@ -87,7 +87,7 @@ Host
 15. **观测边界不改变 shell 可见语义**：长命令跨 `running` / `shell_status` / `shell_abort` / `yield` 收敛时，重定向、fd duplicate、fd close、`!` 等 shell 语义必须保持一致；本该写入文件的 stdout/stderr 不能因为中途 yield 或中断泄漏到 tool output。
 16. **AgentSession 只被 AgentServer 消费**：非测试运行时代码只有 `AgentServer` 可以直接实例化 `AgentSession`；壳子、provider 和业务 harness 只能经 `AgentClient` 或类型契约交互。
 17. **新增原则先入文档再实现**：新增架构原则先记录到本方案文档，再继续实现；实现后用测试、扫描或门禁验证。
-18. **Shell 控制面显式区分 status 与 write**：模型面对的基础工具必须顺滑且不含隐式状态魔法：`shell_exec` 启动命令并返回 `commandId`；`shell_status` 是唯一读取命令状态和 stdout/stderr 增量的入口；`shell_write` 只写入非空 stdin；`yield` 是 agent-level 单次 delayed wakeup，终止当前 turn，并在 turn 完成后等待指定时间再唤醒：session idle 时启动内部 wakeup turn，session active 时作为内部 steer 插入当前 turn，绝不进入 queue；进程安静不等于需要输入；主动终止前台命令只能通过 `shell_abort` 显式表达，不应默认当作任务失败污染模型上下文。
+18. **Shell 控制面显式区分 status、内容和 write**：模型面对的基础工具必须顺滑且不含隐式状态魔法：`shell_exec` 启动命令并返回 `commandId`；`shell_status` 只读取命令状态、计时和 artifact 路径，不返回 stdout/stderr 正文；输出内容通过 `/@/commands/<commandId>/...` 只读虚拟文件，用 `tail` / `grep` / `sed` / `awk` 等 shell 文本命令读取；`shell_write` 只写入非空 stdin；`yield` 是 agent-level 单次 delayed wakeup，终止当前 turn，并在 turn 完成后等待指定时间再唤醒：session idle 时启动内部 wakeup turn，session active 时作为内部 steer 插入当前 turn，绝不进入 queue；进程安静不等于需要输入；主动终止前台命令只能通过 `shell_abort` 显式表达，不应默认当作任务失败污染模型上下文。
 19. **长进程优先走受控前台**：需要观测和停止的长进程（如 dev server、watch、preview）应作为 foreground command 运行，由 `shell_exec` / `yield wakeup` / `shell_status` 观测、由 `shell_abort` 停止；不要用 `cmd &` 后再 `pkill` / `killall` 按进程名清理。后台 job 只用于明确需要在 shell session 生命周期内持续保留、且后续通过 jobs/wait 或 session dispose 管理的进程。
 20. **Bash Environment 不是 Harness 注入项**：Agent Harness 只能定义 `Host`、注册命令、prompt、引用解析和生命周期；不得让用户传入自定义 `BashEnvironment` 或替换标准 agent 工具面。Demi 的差异化是统一、可审计、可长程运行的 shell session 机制，所有 agent 都走同一套 exec/status/write/abort/yield、audit、tool result 和 compaction 语义。
 21. **模型目录属于 provider 能力**：REPL / AgentClient 不硬编码 provider 模型、默认模型、context window 或别名映射；上层只消费 provider catalog 暴露的 full model id 与能力元数据。Codex catalog 复用官方 Codex auth 直接请求 backend；Claude catalog 使用 `models.dev` 并按最低模型版本阈值过滤。详细设计见 `docs/provider-model-catalog-design.md`。
@@ -104,21 +104,21 @@ Host
 目标语义：
 
 ```text
-shell_exec(script, description?, shellId?, yieldAfterMs, maxOutputBytes?)
-  → 命令结束：返回 exited + exitCode + stdout/stderr
-  → 命令仍在跑：返回 running + shellId + commandId + stdout/stderr delta
+shell_exec(script, description?, shellId?, yieldAfterMs)
+  → 命令结束：返回 exited + exitCode + artifact 路径 + 自动预算 preview
+  → 命令仍在跑：返回 running + shellId + commandId + artifact 路径 + 自动预算 preview
   → yieldAfterMs 必填，最大 10 分钟；不接受 timeoutMs，不隐式终止进程
 
-shell_status(commandId, description?, stdoutOffset?, stderrOffset?, maxOutputBytes?)
-  → 读取命令状态和 stdout/stderr 增量；不等待、不写 stdin、不改变生命周期
+shell_status(commandId, description?)
+  → 只读取命令状态、runningMs、idleMs、bytes、artifact 路径；不等待、不写 stdin、不返回输出正文、不改变生命周期
   → running / exited / aborted 都可读取；已完成命令在 AgentSession 生命周期内可继续读取 artifact
 
-shell_write(commandId, stdin, description?, maxOutputBytes?)
+shell_write(commandId, stdin, description?)
   → stdin 必须是非空字符串；写入前台进程
   → 轮询必须使用 shell_status，不允许空 input 兼容路径
   → 写入后立即返回一次 status snapshot
 
-shell_abort(commandId, description?, maxOutputBytes?)
+shell_abort(commandId, description?)
   → 主动终止前台进程；这是控制动作，不默认表示 agent 任务失败
 
 yield(durationMs, description?)
@@ -139,9 +139,9 @@ editor edit src/main.ts --old "foo" --new "bar"
 git status --short
 ```
 
-`shell_status` 是唯一读取命令状态的工具；模型不应因为重复看到 `running` 就盲目连续 status。长命令等待节奏由 `yield` 表达：`shell_exec → yield → wakeup turn 或 wakeup steer → shell_status → yield → wakeup turn 或 wakeup steer → shell_status`。工具结果必须直接可读，包含 status、shellId、commandId、stdout/stderr artifact delta、exitCode 或 next action，不要求模型从一坨 JSON 里猜状态。
+`shell_status` 是唯一读取命令状态的工具，但不是读取输出内容的工具；模型不应因为重复看到 `running` 就盲目连续 status。长命令等待节奏由 `yield` 表达：`shell_exec → yield → wakeup turn 或 wakeup steer → shell_status → yield → wakeup turn 或 wakeup steer → shell_status`。需要看输出时，模型使用普通 shell 命令读取 `/@/commands/<commandId>/output.txt`、`stdout.txt` 或 `stderr.txt`，例如 `tail -n 80`、`grep -n ERROR`、`sed -n '200,260p'`。工具结果必须直接可读，包含 status、shellId、commandId、artifact 路径、exitCode 或 next action，不要求模型从一坨 JSON 里猜状态。
 
-runner 不提供由 idle timeout 触发的 shell 输入需求状态。`shell_exec` 的 `yieldAfterMs` 到期时，如果进程还活着，就返回 `running + shellId + commandId`；模型用 `yield` 结束当前 turn 并安排稍后唤醒，在 wakeup turn 或 wakeup steer 中用 `shell_status` 读取状态，或在明确知道命令正在等待具体输入时用 `shell_write` 写入非空 stdin。demi 不保留空 input 轮询入口，避免把一个无效果的 stdin 写入伪装成控制动作，也避免把 `npm install --silent` 这类安静长命令误判成交互输入。
+runner 不提供由 idle timeout 触发的 shell 输入需求状态。`shell_exec` 的 `yieldAfterMs` 到期时，如果进程还活着，就返回 `running + shellId + commandId + artifact paths`；模型用 `yield` 结束当前 turn 并安排稍后唤醒，在 wakeup turn 或 wakeup steer 中用 `shell_status` 读取状态，必要时再用 `tail` / `grep` / `awk` / `sed` 读取 `/@` artifact，或在明确知道命令正在等待具体输入时用 `shell_write` 写入非空 stdin。慢输出和超长输出都走这套机制：输出 chunk 到达不会直接唤醒模型，超长输出不会塞进 `shell_status`。demi 不保留空 input 轮询入口，避免把一个无效果的 stdin 写入伪装成控制动作，也避免把 `npm install --silent` 这类安静长命令误判成交互输入。
 
 这组工具不是业务能力工具，只是 shell session 的控制面。agent core 保持极简，业务能力通过命令环境扩展。
 
@@ -394,14 +394,14 @@ shell session 通常对一个 AgentSession 长期存活（跨多个 user turn）
 ```text
 shell_exec(script, yieldAfterMs)
   → 在当前 shell session 执行
-  → runner 实时收集模型可见 stdout/stderr 到 command artifact
+  → runner 实时收集模型可见 stdout/stderr 到 command artifact 和 interleaved output artifact
   → yieldAfterMs 到点且命令未结束：返回 running + shellId + commandId
   → 后续 shell_status / shell_write / shell_abort 操作同一 command
 ```
 
-Agent Loop 只在明确边界点恢复：command exit、`shell_exec` 的 `yieldAfterMs` 到点、`shell_status` / `shell_write` / `shell_abort` tool result 返回、`yield` terminal result 返回、pending yield wakeup 到点、provider stream 自身完成或出错。每次恢复给模型的是程序化 command snapshot 或内部 wakeup 输入，不是模型生成的摘要。模型不应每个输出 chunk 都被唤醒；`maxOutputBytes` 只限制本次 tool result 的 delta/tail，不改变命令生命周期。
+Agent Loop 只在明确边界点恢复：command exit、`shell_exec` 的 `yieldAfterMs` 到点、`shell_status` / `shell_write` / `shell_abort` tool result 返回、`yield` terminal result 返回、pending yield wakeup 到点、provider stream 自身完成或出错。每次恢复给模型的是程序化 command snapshot 或内部 wakeup 输入，不是模型生成的摘要。模型不应每个输出 chunk 都被唤醒；输出内容不通过 `shell_status` 分页读取，而是通过 `/@/commands/<commandId>/...` artifact 文件读取。
 
-`yieldAfterMs` 到期且进程仍在运行时，默认状态是 `running`，即使 stdout/stderr 没有新增内容。安静长命令由 `runningMs` / `idleMs` 暴露观测信息，是否通过 `yield` 安排后续 wakeup 再继续 `shell_status`、改用非静默命令、或主动 abort 由模型决定；runner 不能把 idle timeout 自动升级成输入需求状态。pending yield wakeup 到点时，若 session idle 就启动内部 wakeup turn；若 session 已经 active，就复用 steer delivery 插入当前 turn，不能进入普通 queue。
+`yieldAfterMs` 到期且进程仍在运行时，默认状态是 `running`，即使 stdout/stderr 没有新增内容。安静长命令由 `runningMs` / `idleMs` 暴露观测信息，是否通过 `yield` 安排后续 wakeup 再继续 `shell_status`、用 `tail` / `grep` / `awk` 读取 artifact、改用非静默命令、或主动 abort 由模型决定；runner 不能把 idle timeout 自动升级成输入需求状态。pending yield wakeup 到点时，若 session idle 就启动内部 wakeup turn；若 session 已经 active，就复用 steer delivery 插入当前 turn，不能进入普通 queue。
 
 dev server / watch / preview 这类命令如果只是为了冒烟验证，应作为 foreground command 启动，并设置较短 `yieldAfterMs` 观察启动日志；验证完成后调用 `shell_abort(commandId)`。不要把这类命令放到后台再用 `pkill -f`、`killall` 或类似进程名匹配方式回收，因为这绕过 shell 控制面，可能误杀同名进程，也让审计链路变差。
 
@@ -414,11 +414,7 @@ WebSocket/API 后端，不得服务 Vite `dist`、静态 bundle、preview 页面
 ```ts
 type StreamArtifact = {
   path: string
-  offset: number
-  delta: string
-  tail: string
   bytes: number
-  truncated: boolean
 }
 
 type ShellCommandSnapshot = {
@@ -427,23 +423,37 @@ type ShellCommandSnapshot = {
   commandId: string
   stdout: StreamArtifact
   stderr: StreamArtifact
-  output: {
-    path: string
-    offset: number
-    text: string
-    tail: string
-    chunks: Array<{ stream: 'stdout' | 'stderr'; text: string }>
-    bytes: number
-    truncated: boolean
-  }
+  output: StreamArtifact
   runningMs: number
   idleMs: number
   exitCode?: number
+  preview?: {
+    text: string
+    budgetTokens: number
+    truncated: boolean
+  }
   audit?: BashAuditEvent[]
 }
 ```
 
-卡死感知字段：`runningMs`（已跑时长）、`idleMs`（距上次输出时长）、`stdout.delta` / `stderr.delta`（本次是否有新输出）、`stdout.bytes` / `stderr.bytes`（是否异常大输出）。
+artifact 路径挂载在只读虚拟文件系统：
+
+```text
+/@/commands/<commandId>/stdout.txt
+/@/commands/<commandId>/stderr.txt
+/@/commands/<commandId>/output.txt
+/@/commands/<commandId>/meta.json
+```
+
+`output.txt` 是 stdout/stderr 按到达顺序交错后的终端 transcript。`/@` 路径由 just-bash `IFileSystem`
+overlay 提供，只允许 fork portable commands 读取；真实 host external process 不能 fallback 读取内存态
+`/@` 路径。`/@` 命名空间只读、生命周期跟随 AgentSession，不写入任务 workspace。
+
+`@demi/agent` 根据当前 `Model.contextWindow` 自动决定 tool result preview 预算：未知或 `<= 300k`
+tokens 使用约 `1k` tokens，`<= 1M` 使用约 `10k` tokens，更大窗口 hard cap 到约 `20k`
+tokens。模型不能通过 `maxOutputBytes` 控制预算；需要更多内容时必须用 shell 文本命令读取 artifact。
+
+卡死感知字段：`runningMs`（已跑时长）、`idleMs`（距上次输出时长）、`stdout.bytes` / `stderr.bytes` / `output.bytes`（是否有新增或异常大输出）。
 
 观测节奏（参考 Codex）：
 
@@ -694,7 +704,7 @@ BashEnvironment.exec(script)
 
 #### 长命令挂起机制
 
-fork interpreter 是"跑完整个 script 返回 ExecResult"的同步模型。demi 需要长命令跑到初始观察边界点时**暂停 script 执行**，返回 `running + commandId`。之后 `shell_status` 不续接 interpreter，也不等待；它只读取 command record 和 stdout/stderr artifact。command exit 时 pending `executeScript` 自然 settle，并更新 command record。
+fork interpreter 是"跑完整个 script 返回 ExecResult"的同步模型。demi 需要长命令跑到初始观察边界点时**暂停 script 执行**，返回 `running + commandId`。之后 `shell_status` 不续接 interpreter，也不等待；它只读取 command record 的状态、计时、字节计数和 artifact 路径，不读取输出正文。command exit 时 pending `executeScript` 自然 settle，并更新 command record。
 
 `BashEnvironment.exec()` 不直接 await `interpreter.executeScript`，而是 race 它和边界点：
 
@@ -754,7 +764,7 @@ fork `CommandContext` 与 demi `CommandRunContext` 的字段差异：
 
 #### ExecutionLimits
 
-fork 有 `ExecutionLimits`（maxCommandCount/maxOutputSize/maxCallDepth/maxLoopIterations/maxHeredocSize）。demi 有自己的 output 限制（`maxOutputBytes` + RingBuffer），不需要 fork 的 `maxOutputSize`。构造 `Interpreter` 时传入高限值或禁用 fork 的 output limit，避免 fork 在 demi 的边界点之前就抛 `ExecutionLimitError`。
+fork 有 `ExecutionLimits`（maxCommandCount/maxOutputSize/maxCallDepth/maxLoopIterations/maxHeredocSize）。demi 自己维护 command artifact 和按模型上下文窗口决定的 tool result preview 预算，不需要 fork 的 `maxOutputSize`。构造 `Interpreter` 时传入高限值或禁用 fork 的 output limit，避免 fork 在 demi 的边界点之前就抛 `ExecutionLimitError`。
 
 #### fork 测试基础设施
 
@@ -1319,9 +1329,9 @@ cd packages/just-bash/packages/just-bash && npx vitest run src/interpreter/
 
 **3.4 Shell session + 状态连续性**：`ShellSession` 结构；engine 的 cwd/env/last status 读写指向 session；状态类 builtin 改 session 状态；fork portable commands 通过 Host.fs 执行；真实外部命令通过 Host.process.spawn 执行；list operators + pipeline 由 engine 解释；文件重定向经 Host.fs；prefix assignment；parameter/command/glob expansion；根入口平台无关。**验收**：§4.7.1 的连续性场景全部通过，且 `cat`/`ls`/`grep`/redirection 可在 memfs/virtual Host 上不依赖系统 coreutils。
 
-**3.5 ShellCommandSnapshot + command artifact**：runner 实时收集模型可见 stdout/stderr 到 command artifact；`yieldAfterMs` 必填且最大 10 分钟；tool result 只返回 bounded delta/tail；安静长命令默认仍返回 `running`，不由 idle timeout 推断输入需求；`ShellCommandSnapshot` 只包含 `running` / `exited` / `aborted`。**验收**：长命令可观测，`shell_exec` 超过 `yieldAfterMs` 返回 `running + commandId` 且不杀进程，§4.7.2 行为通过。
+**3.5 ShellCommandSnapshot + command artifact**：runner 实时收集模型可见 stdout/stderr 到 command artifact，并维护 stdout/stderr 交错后的 output artifact；artifact 通过只读 `/@/commands/<commandId>/...` 虚拟文件暴露给 just-bash portable commands；`yieldAfterMs` 必填且最大 10 分钟；tool result 只返回状态、artifact 路径和按当前模型 `contextWindow` 自动预算的 preview；安静长命令默认仍返回 `running`，不由 idle timeout 推断输入需求；`ShellCommandSnapshot` 只包含 `running` / `exited` / `aborted`。**验收**：长命令可观测，`shell_exec` 超过 `yieldAfterMs` 返回 `running + commandId` 且不杀进程，模型可用 `tail` / `grep` / `sed` / `awk` 读取 `/@` artifact，§4.7.2 行为通过。
 
-**3.6 status / write / abort / dispose**：`shell_status`/`shell_write`/`shell_abort`/`disposeShell`/`disposeAllShells`；`shell_status` 负责非阻塞读取 command 状态和 artifact delta，`shell_write` 要求非空 stdin；主动 `shell_abort` 是控制动作；AgentSession abort 时终止前台进程；AgentServer 关闭 session 时统一 dispose Bash Environment，并调用 harness lifecycle 清理。**验收**：各路径单测通过。
+**3.6 status / write / abort / dispose**：`shell_status`/`shell_write`/`shell_abort`/`disposeShell`/`disposeAllShells`；`shell_status` 负责非阻塞读取 command 状态、计时、字节计数和 artifact 路径，不返回 stdout/stderr 正文；`shell_write` 要求非空 stdin；主动 `shell_abort` 是控制动作；AgentSession abort 时终止前台进程；AgentServer 关闭 session 时统一 dispose Bash Environment，并调用 harness lifecycle 清理。**验收**：各路径单测通过，且 `shell_status` 不再承担输出分页。
 
 **3.7 DEMI_SESSION_ID / DEMI_SHELL_ID + Host.store + CommandStorage**：创建 shell 时注入 `DEMI_SESSION_ID`（agent session id）和 `DEMI_SHELL_ID`（shell 控制句柄）；`HostStore` 接口挂在 Host 上；`CommandStorage` 是 Host.store 的 agent-session-scoped 视图，拒绝绝对路径/`..`穿越/非法 agent session id。**验收**：同一 agent session 的多次 shell_exec 共享 todo 状态，不同 agent session 读写互不干扰。
 

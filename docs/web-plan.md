@@ -185,8 +185,8 @@ applies unchanged to Demi.
 agent-gui dispatches `tool_call` by rich tool names —
 `Read/Write/Edit/Delete/Shell/Grep/Glob/List/ExitPlanMode/TodoWrite/Skill/mcp_*` — each
 with a bespoke block (`ToolCallBlock.vue`). **Demi's standard agent tools are the shell/yield family**
-(`createStandardAgentTools`): `shell_exec {script, shellId?, yieldAfterMs, maxOutputBytes?}`,
-`shell_status`, `shell_write`, `shell_abort`, `yield`. Everything else (cat/ls/grep/edit, the `editor`
+(`createStandardAgentTools`): `shell_exec {script, shellId?, yieldAfterMs}`,
+`shell_status {commandId}`, `shell_write`, `shell_abort`, `yield`. Everything else (cat/ls/grep/edit, the `editor`
 and `todo` registered commands) runs *through bash inside `shell_exec`*, and Demi reports
 structured `audit` events (`registered-command` / `system-command` with name/args/exitCode).
 

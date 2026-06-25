@@ -66,7 +66,7 @@ model/render-model 包。
 | 工具 | 展示形态 | 标题 fallback | 关键内容 | 执行中状态 |
 |---|---|---|---|---|
 | `shell_exec` | 终端命令 block | `input.script` | script、按到达顺序交错的 stdout/stderr terminal output | 扫光 loading，支持展开输出 |
-| `shell_status` | 命令状态 inline block | `Check <commandId>` | 首选标题说明要确认的用户可见状态；不提供展开面板 | 扫光 loading，不能伪装成 shell_exec |
+| `shell_status` | 命令状态 inline block | `Check <commandId>` | status、runningMs、idleMs、bytes、artifact 路径；不展示输出正文；不提供展开面板 | 扫光 loading，不能伪装成 shell_exec |
 | `shell_write` | stdin 写入 inline block | `Send input to <commandId>` | 首选标题说明要推进的用户可见结果；不提供展开面板 | 扫光 loading，成功不等于命令完成 |
 | `shell_abort` | 停止命令 inline block | `Stop <commandId>` | 首选标题说明要收敛的用户可见状态；不提供展开面板 | 扫光 loading，completed/aborted 都不是 UI 错误 |
 | `yield` | 等待唤醒 inline block | `Wait <durationMs>ms` | 首选标题说明下一次要观察或确认的用户可见状态；不提供展开面板 | 等待中使用和 thinking 一致的扫光 |
@@ -80,10 +80,15 @@ Web 中只有 `shell_exec` 工具块和 `thinking` block 可展开。`shell_stat
 `shell_abort` / `yield` 以及未知 generic tool 都必须保持不可展开的 inline 呈现；错误信息如需
 展示，只能作为 badge 或行内摘要出现，不能通过 disclosure 展开。
 
-`shell_exec` 展开内容只展示命令和用户可见 terminal output。terminal output 优先消费
-`ShellCommandSnapshot.output.chunks`，按 chunk 到达顺序把 stdout/stderr 合并成一条 transcript。
-旧 transcript 缺少 `output.chunks` 时可以退回为 stdout 后 stderr，但不能只展示 stderr，也不能展示
-`status`、`shellId`、`commandId`、path、offset、bytes、truncation 等协议字段。
+`shell_exec` 展开内容只展示命令和用户可见 terminal output。terminal output 来自 runtime/progress
+里的交错输出流或自动预算 preview，按 stdout/stderr 到达顺序合并成一条 transcript。最终模型可见
+完整输出读取接口是 `/@/commands/<commandId>/output.txt`、`stdout.txt` 和 `stderr.txt`，不是
+`shell_status`。旧 transcript 缺少交错输出时可以退回为 stdout 后 stderr，但不能只展示 stderr，
+也不能展示 `status`、`shellId`、`commandId`、path、offset、bytes、truncation 等协议字段。
+
+`shell_status` 只能展示命令状态摘要。即使 metadata 带有 artifact 路径、byte counter 或 preview，
+它也不能被渲染成可展开终端输出块；需要输出内容的用户路径是查看对应 `shell_exec` block 或让
+模型用 shell 文本命令读取 `/@` artifact。
 
 ## 5. Web 规范
 
@@ -115,7 +120,7 @@ REPL 继续消费同样的 `Block` 和 `ClientSessionEvent`，但输出是 termi
 最低要求：
 
 - `shell_exec` 输出 `tool> shell_exec ...`，并展示 script fallback。
-- `shell_status` 输出 commandId 和状态结果摘要。
+- `shell_status` 输出 commandId 和状态结果摘要；不输出 stdout/stderr 正文。
 - `shell_write` 输出 commandId 和 stdin 影响摘要；stdin 内容可截断。
 - `shell_abort` 输出 commandId 和停止结果摘要。
 - `yield` 输出 durationMs 和唤醒结果摘要。
