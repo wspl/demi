@@ -1,4 +1,4 @@
-import { isRecord, numberOrZero, parseJsonOrString, shortHash } from '@demi/utils'
+import { isRecord, numberOrZero, parseJsonOrString, shortHash, stringOrNull } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import type { InferenceItem, InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
@@ -406,8 +406,4 @@ function isMessageItem(item: unknown): item is CodexMessageItem {
 
 function isFunctionCallItem(item: unknown): item is CodexFunctionCallItem {
   return isRecord(item) && item.type === 'function_call'
-}
-
-function stringOrNull(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
 }

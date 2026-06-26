@@ -1,4 +1,4 @@
-import { isAbortError, isRecord, normalizeBaseUrl, numberOrZero, parseJsonObject, parseJsonOrString, shortHash } from '@demi/utils'
+import { isAbortError, isRecord, normalizeBaseUrl, numberOrZero, parseJsonObject, parseJsonOrString, shortHash, stringOrNull } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import { zeroUsage } from '@demi/core'
@@ -525,8 +525,8 @@ export async function* mapOpenAIChatCompletionStream(
       if (error) {
         yield {
           type: 'error',
-          message: stringOr(error.message) ?? 'OpenAI API stream error',
-          code: normalizeErrorCode(stringOr(error.code) ?? stringOr(error.type), stringOr(error.message) ?? ''),
+          message: stringOrNull(error.message) ?? 'OpenAI API stream error',
+          code: normalizeErrorCode(stringOrNull(error.code) ?? stringOrNull(error.type), stringOrNull(error.message) ?? ''),
         }
         return
       }
@@ -536,7 +536,7 @@ export async function* mapOpenAIChatCompletionStream(
         if (!isRecord(choice)) continue
         const delta = isRecord(choice.delta) ? choice.delta : null
         if (delta) {
-          const reasoning = stringOr(delta.reasoning_content)
+          const reasoning = stringOrNull(delta.reasoning_content)
           if (reasoning) {
             if (!thinkingStarted) {
               thinkingStarted = true
@@ -544,7 +544,7 @@ export async function* mapOpenAIChatCompletionStream(
             }
             yield { type: 'thinking_delta', text: reasoning }
           }
-          const content = stringOr(delta.content)
+          const content = stringOrNull(delta.content)
           if (content) yield { type: 'text_delta', text: content }
           if (Array.isArray(delta.tool_calls)) collectOpenAIToolCalls(delta.tool_calls, toolCalls)
         }
@@ -655,11 +655,11 @@ function collectOpenAIToolCalls(values: unknown[], toolCalls: Map<number, Mutabl
     const index = typeof value.index === 'number' ? value.index : toolCalls.size
     const existing = toolCalls.get(index) ?? { id: '', name: '', arguments: '' }
     const fn = isRecord(value.function) ? value.function : null
-    const id = stringOr(value.id)
+    const id = stringOrNull(value.id)
     if (id) existing.id = id
-    const name = stringOr(fn?.name)
+    const name = stringOrNull(fn?.name)
     if (name) existing.name = name
-    const delta = stringOr(fn?.arguments)
+    const delta = stringOrNull(fn?.arguments)
     if (delta) existing.arguments += delta
     toolCalls.set(index, existing)
   }
@@ -777,8 +777,8 @@ function openAIResponsesUsage(response: unknown) {
 
 function openAIResponseErrorEvent(response: unknown): ProviderEvent {
   const error = isRecord(response) && isRecord(response.error) ? response.error : null
-  const message = stringOr(error?.message) ?? 'OpenAI response failed'
-  const rawCode = stringOr(error?.code) ?? stringOr(error?.type)
+  const message = stringOrNull(error?.message) ?? 'OpenAI response failed'
+  const rawCode = stringOrNull(error?.code) ?? stringOrNull(error?.type)
   return { type: 'error', message, code: normalizeErrorCode(rawCode, message) }
 }
 
@@ -964,6 +964,3 @@ function withProviderId(list: ProviderModelList, providerId: string): ProviderMo
   }
 }
 
-function stringOr(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
-}

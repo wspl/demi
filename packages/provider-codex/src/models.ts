@@ -1,4 +1,4 @@
-import { errorMessage, isRecord } from '@demi/utils'
+import { errorMessage, isRecord, nonEmptyString, numberOrNull } from '@demi/utils'
 import type { ProviderModel, ProviderModelList } from '@demi/provider'
 import {
   CodexAuthError,
@@ -106,12 +106,12 @@ export function codexBackendModelsToModelList(
       warnings.push('Skipped Codex model with invalid metadata')
       continue
     }
-    const id = stringOr(raw.slug)
+    const id = nonEmptyString(raw.slug)
     if (!id) {
       warnings.push('Skipped Codex model without slug')
       continue
     }
-    if (stringOr(raw.visibility) === 'hide') continue
+    if (nonEmptyString(raw.visibility) === 'hide') continue
     models.push(codexModelFromBackendEntry(id, raw, sourceFetchedAt, options.stale === true))
   }
   return {
@@ -160,8 +160,8 @@ function codexModelFromBackendEntry(
   return {
     providerId: 'codex',
     id,
-    displayName: stringOr(raw.display_name) ?? id,
-    description: stringOr(raw.description),
+    displayName: nonEmptyString(raw.display_name) ?? id,
+    description: nonEmptyString(raw.description),
     contextWindow: numberOrNull(raw.context_window),
     outputLimit: null,
     supportsTools: supportsCodexTools(raw),
@@ -215,7 +215,7 @@ function codexModelCatalogCacheKey(auth: CodexResolvedAuth, baseUrl: string | un
 function supportedReasoningLevels(value: unknown): ProviderModel['supportedThinkingEfforts'] {
   if (!Array.isArray(value)) return null
   const efforts = value
-    .map((level) => isRecord(level) ? stringOr(level.effort) : undefined)
+    .map((level) => isRecord(level) ? nonEmptyString(level.effort) : undefined)
     .filter((effort): effort is string => effort !== undefined)
   return efforts.length > 0 ? efforts : []
 }
@@ -224,12 +224,12 @@ function serviceTiers(value: unknown): ProviderModel['serviceTiers'] {
   if (!Array.isArray(value)) return null
   const tiers = value.flatMap((tier) => {
     if (!isRecord(tier)) return []
-    const id = stringOr(tier.id)
+    const id = nonEmptyString(tier.id)
     if (!id) return []
     return [{
       id,
-      label: stringOr(tier.name) ?? id,
-      ...(stringOr(tier.description) ? { description: stringOr(tier.description) } : {}),
+      label: nonEmptyString(tier.name) ?? id,
+      ...(nonEmptyString(tier.description) ? { description: nonEmptyString(tier.description) } : {}),
     }]
   })
   return tiers.length > 0 ? tiers : []
@@ -286,10 +286,3 @@ function defaultModelCatalogUserAgent(): string {
   return `demi-provider-codex/0.0.0`
 }
 
-function stringOr(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined
-}
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}

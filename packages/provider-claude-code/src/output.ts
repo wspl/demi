@@ -1,4 +1,4 @@
-import { isRecord } from '@demi/utils'
+import { isRecord, stringOrNull } from '@demi/utils'
 import type { TokenUsage } from '@demi/core'
 import type { ProviderEvent } from '@demi/provider'
 
@@ -160,10 +160,6 @@ function mapUsage(usage: unknown): TokenUsage {
 
 function numberValue(value: unknown): number {
   return typeof value === 'number' ? value : 0
-}
-
-function stringOrNull(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
 }
 
 function resultErrorMessage(message: Record<string, unknown>): string {

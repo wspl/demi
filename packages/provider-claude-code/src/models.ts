@@ -1,4 +1,4 @@
-import { errorMessage, isRecord } from '@demi/utils'
+import { errorMessage, isRecord, nonEmptyString, numberOrNull } from '@demi/utils'
 import type { ProviderModel, ProviderModelList } from '@demi/provider'
 
 export interface ClaudeCodeModelCatalogOptions {
@@ -173,8 +173,8 @@ function modelFromModelsDevEntry(id: string, raw: Record<string, unknown>, sourc
   return {
     providerId: 'claude-code',
     id,
-    displayName: stringOr(raw.name) ?? id,
-    description: stringOr(raw.description),
+    displayName: nonEmptyString(raw.name) ?? id,
+    description: nonEmptyString(raw.description),
     contextWindow: numberOrNull(limit?.context),
     outputLimit: numberOrNull(limit?.output),
     supportsTools: booleanOrNull(isRecord(raw.tool) ? raw.tool.call : raw.tool_call),
@@ -235,13 +235,6 @@ function cloneModelList(list: ProviderModelList): ProviderModelList {
   }
 }
 
-function stringOr(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined
-}
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
 
 function booleanOrNull(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
@@ -251,6 +244,6 @@ function reasoningEfforts(value: unknown): ProviderModel['supportedThinkingEffor
   if (!Array.isArray(value)) return null
   const effortOption = value.find((option) => isRecord(option) && option.type === 'effort')
   if (!isRecord(effortOption) || !Array.isArray(effortOption.values)) return null
-  const efforts = effortOption.values.map((effort) => stringOr(effort)).filter((effort): effort is string => effort !== undefined)
+  const efforts = effortOption.values.map((effort) => nonEmptyString(effort)).filter((effort): effort is string => effort !== undefined)
   return efforts.length > 0 ? efforts : []
 }

@@ -1,4 +1,4 @@
-import { delay, errorMessage, isRecord } from '@demi/utils'
+import { delay, errorMessage, isRecord, nonEmptyString, stringOrNull } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import { chmod, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -164,7 +164,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
     const accessToken = nonEmptyString(tokens.access_token)
     if (!accessToken) throw new CodexAuthError('auth_missing', `No ChatGPT access token found in ${this.authFile}`)
 
-    const refreshToken = nonEmptyString(tokens.refresh_token)
+    const refreshToken = nonEmptyString(tokens.refresh_token) ?? null
     const claims = parseChatGptClaims(accessToken)
     const idClaims = parseIdTokenClaims(tokens.id_token)
     const accountId = nonEmptyString(tokens.account_id) ?? claims.accountId ?? idClaims.accountId
@@ -365,7 +365,7 @@ function resolveChatGptAuthFromFile(auth: CodexAuthDotJson, authFile: string): C
     kind: 'chatgpt',
     mode: resolvedAuthMode(auth) === 'chatgptAuthTokens' ? 'chatgptAuthTokens' : 'chatgpt',
     accessToken,
-    refreshToken: nonEmptyString(tokens.refresh_token),
+    refreshToken: nonEmptyString(tokens.refresh_token) ?? null,
     accountId,
     email: idClaims.email ?? claims.email,
     isFedrampAccount: idClaims.isFedrampAccount || claims.isFedrampAccount,
@@ -429,14 +429,6 @@ function parseDate(value: unknown): Date | null {
   if (typeof value !== 'string' || !value) return null
   const ms = Date.parse(value)
   return Number.isFinite(ms) ? new Date(ms) : null
-}
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value : null
-}
-
-function stringOrNull(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

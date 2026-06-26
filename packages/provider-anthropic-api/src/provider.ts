@@ -1,4 +1,4 @@
-import { isAbortError, isRecord, normalizeBaseUrl, numberOrZero, parseJsonObject, parseJsonOrString } from '@demi/utils'
+import { isAbortError, isRecord, normalizeBaseUrl, numberOrNull, numberOrZero, parseJsonObject, parseJsonOrString, stringOrNull } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import { zeroUsage } from '@demi/core'
@@ -208,12 +208,12 @@ export async function* mapAnthropicMessageStream(
     for (const data of event.data) {
       const value = parseJsonObject(data)
       if (!value) continue
-      const type = stringOr(value.type) ?? event.event
+      const type = stringOrNull(value.type) ?? event.event
 
       if (type === 'error') {
         const error = isRecord(value.error) ? value.error : value
-        const message = stringOr(error.message) ?? 'Anthropic API stream error'
-        yield { type: 'error', message, code: normalizeErrorCode(stringOr(error.type), message) }
+        const message = stringOrNull(error.message) ?? 'Anthropic API stream error'
+        yield { type: 'error', message, code: normalizeErrorCode(stringOrNull(error.type), message) }
         return
       }
 
@@ -225,46 +225,46 @@ export async function* mapAnthropicMessageStream(
       }
 
       if (type === 'content_block_start') {
-        const index = numberOr(value.index) ?? 0
+        const index = numberOrNull(value.index) ?? 0
         const block = isRecord(value.content_block) ? value.content_block : null
         if (block?.type === 'tool_use') {
           toolBlocks.set(index, {
-            id: stringOr(block.id) ?? `tool_use_${index}`,
-            name: stringOr(block.name) ?? '',
+            id: stringOrNull(block.id) ?? `tool_use_${index}`,
+            name: stringOrNull(block.name) ?? '',
             initialInput: block.input,
             inputJson: '',
           })
         } else if (block?.type === 'thinking') {
           yield { type: 'thinking_start' }
         } else if (block?.type === 'text') {
-          const text = stringOr(block.text)
+          const text = stringOrNull(block.text)
           if (text) yield { type: 'text_delta', text }
         }
         continue
       }
 
       if (type === 'content_block_delta') {
-        const index = numberOr(value.index) ?? 0
+        const index = numberOrNull(value.index) ?? 0
         const delta = isRecord(value.delta) ? value.delta : null
         if (!delta) continue
         if (delta.type === 'text_delta') {
-          const text = stringOr(delta.text)
+          const text = stringOrNull(delta.text)
           if (text) yield { type: 'text_delta', text }
         } else if (delta.type === 'thinking_delta') {
-          const text = stringOr(delta.thinking)
+          const text = stringOrNull(delta.thinking)
           if (text) yield { type: 'thinking_delta', text }
         } else if (delta.type === 'signature_delta') {
-          const signature = stringOr(delta.signature)
+          const signature = stringOrNull(delta.signature)
           if (signature) yield { type: 'thinking_signature', signature }
         } else if (delta.type === 'input_json_delta') {
           const block = toolBlocks.get(index)
-          if (block) block.inputJson += stringOr(delta.partial_json) ?? ''
+          if (block) block.inputJson += stringOrNull(delta.partial_json) ?? ''
         }
         continue
       }
 
       if (type === 'content_block_stop') {
-        const index = numberOr(value.index) ?? 0
+        const index = numberOrNull(value.index) ?? 0
         const block = toolBlocks.get(index)
         if (block && block.name) {
           yield {
@@ -499,10 +499,3 @@ function withProviderId(list: ProviderModelList, providerId: string): ProviderMo
   }
 }
 
-function stringOr(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
-}
-
-function numberOr(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}

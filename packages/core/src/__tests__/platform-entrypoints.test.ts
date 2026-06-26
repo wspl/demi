@@ -274,6 +274,9 @@ test('generic helpers provided by shared packages are not re-implemented in prod
     'normalizeBaseUrl',
     'parseJsonObject',
     'parseJsonOrString',
+    'stringOrNull',
+    'nonEmptyString',
+    'numberOrNull',
   ]
   const sharedHelpers = [
     ...utilsHelperNames.map((name) => ({ name, home: 'packages/utils/', pkg: '@demi/utils' })),
