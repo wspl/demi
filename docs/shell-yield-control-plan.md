@@ -1,24 +1,28 @@
-# Shell 控制面 + Yield 唤醒设计
+# Shell Control Surface + Yield Wakeup Design
 
 | | |
 |---|---|
-| 日期 | 2026-06-26 |
-| 状态 | 设计方案（重写） |
-| 范围 | `@demi/shell` shell 控制面、`@demi/agent` yield 延迟唤醒、`@demi/core` 不可见 user_message |
+| Date | 2026-06-26 |
+| Status | Design (rewrite) |
+| Scope | The `@demi/shell` control surface, `@demi/agent` delayed yield wakeups, and the `@demi/core` invisible user_message |
 
-本文件是 shell 控制面与 yield 唤醒机制的**唯一真相来源**。`docs/tool-rendering-spec.md`
-只引用本文件，不重复描述这套语义。
+This document is the **single source of truth** for the shell control surface and the
+yield wakeup mechanism. `docs/tool-rendering-spec.md` only references it and does not
+restate these semantics.
 
-## 1. 结论
+## 1. Conclusion
 
-Demi 把 shell 控制和延迟唤醒拆成**两个正交概念**，互不依赖：
+Demi splits shell control and delayed wakeup into **two orthogonal concepts** that do
+not depend on each other:
 
-- **Shell 控制面**：`shell_exec` / `shell_status` / `shell_write` / `shell_abort`。
-  只表达“对一条命令做什么”，**不涉及 turn、计时、唤醒**。
-- **Yield 唤醒**：`yield`。唯一的跨 turn 延迟唤醒机制。
-  只表达“结束当前 turn，稍后用一个不可见 user_message 唤醒会话”，**不涉及 shell**。
+- **Shell control surface**: `shell_exec` / `shell_status` / `shell_write` / `shell_abort`.
+  These express only "do something to a command" — they have **nothing to do with turns,
+  timing, or wakeups**.
+- **Yield wakeup**: `yield`. The single cross-turn delayed-wakeup mechanism. It expresses
+  only "end the current turn and wake the session later with an invisible user_message" —
+  it has **nothing to do with the shell**.
 
-模型可见的工具仍然是五个：
+The model still sees exactly five tools:
 
 ```text
 shell_exec
@@ -28,49 +32,64 @@ shell_abort
 yield
 ```
 
-两条关键语义（也是本次重写要纠正的两个误解）：
+Two key semantics (the two misunderstandings this rewrite corrects):
 
-1. **`shell_exec` 不 yield。** 它有一个 `timeoutMs`，是**同步观察窗口的上限**，
-   不是 kill deadline。到点时进程不被终止，命令记录不被释放，工具返回
-   `running + commandId`，**当前 turn 继续**。模型自行决定下一步：立刻 `shell_status`、
-   `yield` 一段时间后再看、`shell_write`、或 `shell_abort`。`shell_exec` 永远不会自己结束 turn。
+1. **`shell_exec` does not yield.** It has a `timeoutMs`, which is the **upper bound on a
+   synchronous observation window**, not a kill deadline. When it elapses the process is
+   not terminated, the command record is not released, the tool returns
+   `running + commandId`, and **the current turn continues**. The model decides what to do
+   next: `shell_status` immediately, `yield` for a while and look again, `shell_write`, or
+   `shell_abort`. `shell_exec` never ends a turn on its own.
 
-2. **`yield` 唤醒只有 steer / send 两种投递方式，载荷都是同一个不可见 user_message。**
-   - **steer**：会话**正在运行**时，把这个 user_message 插入当前 active turn（插嘴）。
-   - **send**：会话**空闲**时，把这个 user_message 作为一个新 turn 发给会话（走普通 `send` 路径，只是 user_message 带 `hidden`）。**这不是 abort/压缩后的 `resume`，两者不能混淆。**
+2. **A `yield` wakeup is delivered in only two ways — steer / send — both carrying the same
+   invisible user_message.**
+   - **steer**: when the session is **running**, insert this user_message into the current
+     active turn (interjection).
+   - **send**: when the session is **idle**, send this user_message to the session as a new
+     turn (the ordinary `send` path, just with a `hidden` user_message). **This is not the
+     `resume` used after abort/compaction — do not conflate the two.**
 
-   这个 user_message 对模型可见（正常 replay），对用户不渲染。
+   This user_message is visible to the model (replayed normally) and not rendered to the user.
 
-`shell_abort` 是唯一终止命令的入口。`timeoutMs` 到点不终止、不隐式 kill；疑似卡死时由模型或用户显式 `shell_abort`。
+`shell_abort` is the only entry point that terminates a command. When `timeoutMs` elapses
+nothing is terminated and nothing is implicitly killed; if a command seems stuck, the model
+or user terminates it explicitly with `shell_abort`.
 
-## 2. 设计动机
+## 2. Motivation
 
-### 2.1 旧设计错在哪
+### 2.1 What the old design got wrong
 
-旧设计有两处混淆，必须连同实现一起清理：
+The old design had two conflations that must be cleaned up along with the implementation:
 
-- **把观察窗口包装成 `yieldAfterMs`，并强制 `shell_exec → yield` 手动串联。**
-  参数叫“yield after Ms”，行为却只是“到点返回 running，turn 继续，靠模型再补一个 `yield`”。
-  名字承诺了自动 yield，语义却是观察窗口；模型每次长命令都要写两步。shell 控制和 yield 被错误地耦合。
+- **It wrapped the observation window as `yieldAfterMs` and forced a manual `shell_exec →
+  yield` chain.** The parameter was named "yield after Ms" but the behavior was only "return
+  running when it elapses, the turn continues, and rely on the model to add another
+  `yield`." The name promised an automatic yield while the semantics were an observation
+  window, and the model had to write two steps for every long command. Shell control and
+  yield were wrongly coupled.
 
-- **唤醒载荷在两条路径上不一致。** active 路径把唤醒做成一个**可见的 steer block**
-  （把框架内部指令伪装成用户发言显示出来），idle 路径只 push 一个空的 resume turn、
-  把唤醒文字直接丢弃。两条路给模型的东西不一样，且都不是“一个不可见 user_message”。
+- **The wakeup payload was inconsistent across the two paths.** The active path turned the
+  wakeup into a **visible steer block** (disguising an internal framework instruction as a
+  user utterance), while the idle path pushed an empty resume turn and discarded the wakeup
+  text entirely. The two paths gave the model different things, and neither was "one
+  invisible user_message."
 
-### 2.2 重写后的原则
+### 2.2 Principles after the rewrite
 
-- **正交。** shell 工具不碰 turn / 计时 / 唤醒；`yield` 不碰 shell / 进程 / command record。
-  二者唯一的接触点是：模型可以在 shell 命令仍在运行时**选择**用 `yield` 安排稍后复查。
-- **单一唤醒载荷。** 所有 yield 唤醒都投递同一个不可见 user_message；steer / send 只是
-  “插入运行中的 turn” 还是 “启动空闲会话的新 turn” 的差别，不是两种不同内容。
-- **`timeoutMs` 只是同步等待上限。** 它决定 `shell_exec` 内联等多久就返回运行句柄，
-  绝不终止进程。
+- **Orthogonal.** Shell tools never touch turns / timing / wakeups; `yield` never touches
+  the shell / process / command record. Their only point of contact is that the model may
+  **choose** to schedule a later re-check with `yield` while a shell command is still running.
+- **A single wakeup payload.** Every yield wakeup delivers the same invisible user_message;
+  steer / send is only the difference between "insert into a running turn" and "start a new
+  turn on an idle session," not two different contents.
+- **`timeoutMs` is only a synchronous wait bound.** It decides how long `shell_exec` waits
+  inline before returning a running handle — it never terminates the process.
 
-## 3. 工具语义
+## 3. Tool semantics
 
 ### 3.1 `shell_exec`
 
-启动一条 shell script，并在 `timeoutMs` 内同步观察。
+Start a shell script and observe it synchronously within `timeoutMs`.
 
 ```ts
 type ShellExecInput = {
@@ -81,35 +100,44 @@ type ShellExecInput = {
 }
 ```
 
-语义：
+Semantics:
 
-- `timeoutMs` 必填，取值范围 `1..600000`，最大 10 分钟。它是**同步观察窗口上限**，
-  到点**不终止进程**、不释放 command record。
-- `timeoutMs` 是纯 per-call 参数，由模型每次 `shell_exec` 调用决定：**没有全局或可配置默认值**，
-  也没有 CLI flag 或 `BashEnvironment` 选项能改它。只有直接、非模型路径的 `exec()`（如内部 `editor` / `todo` 等瞬时命令）省略它时，才落到一个固定的内部 fallback 常量。
-- 如果指定 `shellId`，命令在该 shell session 中执行。
-- 如果未指定 `shellId`，使用当前 agent session 的默认 shell；默认 shell 正在跑 foreground command 时创建辅助 shell。
-- 如果调用方显式指定的 `shellId` 正在跑 foreground command，返回错误并带出当前 `commandId`，不覆盖正在运行的命令。
-- 命令在 `timeoutMs` 内退出且 preview 完整：返回 `status: "exited"`、`exitCode` 和 preview，
-  不暴露 `commandId`，并释放 command record。
-- 命令在 `timeoutMs` 内退出但 preview 截断：返回 `status: "exited"`、`exitCode`、preview 和 artifact 路径，保留 artifact 读取入口。
-- 命令在 `timeoutMs` 后仍在运行：返回 `status: "running"`、`commandId`、preview 和 artifact 路径。
-  **命令继续运行，当前 turn 不结束。**
-- `shell_exec` 自身**不结束 turn、不安排唤醒、不终止进程**。
+- `timeoutMs` is required, in the range `1..600000` (max 10 minutes). It is the **upper
+  bound on the synchronous observation window**; when it elapses the process is **not
+  terminated** and the command record is not released.
+- `timeoutMs` is a pure per-call parameter, decided by the model on each `shell_exec` call:
+  there is **no global or configurable default**, and no CLI flag or `BashEnvironment`
+  option can change it. Only direct, non-model `exec()` paths (internal transient commands
+  like `editor` / `todo`) fall back to a fixed internal constant when they omit it.
+- If `shellId` is given, the command runs in that shell session.
+- If `shellId` is omitted, the current agent session's default shell is used; an auxiliary
+  shell is created when the default shell is running a foreground command.
+- If the caller explicitly names a `shellId` that is running a foreground command, an error
+  is returned with the current `commandId` — the running command is not overwritten.
+- Command exits within `timeoutMs` with a complete preview: returns `status: "exited"`,
+  `exitCode`, and the preview, does not expose a `commandId`, and releases the command record.
+- Command exits within `timeoutMs` but the preview is truncated: returns `status: "exited"`,
+  `exitCode`, the preview, and artifact paths, keeping the artifact read path.
+- Command still running after `timeoutMs`: returns `status: "running"`, `commandId`, the
+  preview, and artifact paths. **The command keeps running; the current turn does not end.**
+- `shell_exec` itself **never ends a turn, schedules a wakeup, or terminates a process**.
 
-`running` 之后是模型的决策点，不是框架的自动行为。模型可以：
+`running` is a decision point for the model, not automatic framework behavior. The model may:
 
-- 立刻 `shell_status(commandId)` 再看一眼；
-- `yield(durationMs)` 结束当前 turn，稍后被唤醒再 `shell_status`；
-- `shell_write(commandId, stdin)`（确知命令在等输入时）；
-- `shell_abort(commandId)`（疑似卡死或不再需要时）。
+- `shell_status(commandId)` immediately to look again;
+- `yield(durationMs)` to end the current turn and be woken later to `shell_status`;
+- `shell_write(commandId, stdin)` (when it knows the command is waiting for input);
+- `shell_abort(commandId)` (when it seems stuck or is no longer needed).
 
-工具结果包含一段按当前模型上下文窗口自动预算的输出 preview，用于让模型快速判断普通输出、明显失败或完成状态。
-普通短命令必须直接从 preview 判断，不应再读 `/@`。只有 preview 截断、命令长时间运行需看历史输出、或需要文本检索时，才走 `/@` artifact。
+The tool result includes an output preview auto-budgeted to the current model context
+window, so the model can quickly judge ordinary output, an obvious failure, or completion.
+Ordinary short commands must be judged straight from the preview and should not re-read
+`/@`. Only a truncated preview, a long-running command whose history must be inspected, or a
+need for text search calls for the `/@` artifact.
 
 ### 3.2 `shell_status`
 
-读取一条运行中 command handle 的当前状态。不等待、不写 stdin。
+Read the current state of a running command handle. It does not wait or write stdin.
 
 ```ts
 type ShellStatusInput = {
@@ -118,19 +146,25 @@ type ShellStatusInput = {
 }
 ```
 
-语义：
+Semantics:
 
-- `commandId` 指向一次 foreground command，不是 shell session。
-- 命令仍在运行：返回 `status: "running"`。
-- 命令已退出：返回 `status: "exited"`、`exitCode` 和预算 preview；preview 完整时返回后释放 command record。
-- 命令已被中止：返回 `status: "aborted"`；preview 完整时返回后释放 command record。
-- 返回 `runningMs`、`idleMs`、stdout/stderr 字节计数和 artifact 路径，方便模型判断是否有新输出或异常安静。
-- 它返回新的预算 preview 只是为了让模型在命令完成或产出少量新增输出时直接判断结果，**不是输出分页接口**。
-- 已完成且 preview 完整的 commandId 不再有效；只有 preview 截断时才保留 artifact 读取入口。
+- `commandId` points at a foreground command, not a shell session.
+- Still running: returns `status: "running"`.
+- Already exited: returns `status: "exited"`, `exitCode`, and a budgeted preview; releases
+  the command record after returning when the preview is complete.
+- Already aborted: returns `status: "aborted"`; releases the command record after returning
+  when the preview is complete.
+- Returns `runningMs`, `idleMs`, stdout/stderr byte counts, and artifact paths, so the model
+  can judge whether there is new output or unusual silence.
+- The new budgeted preview it returns exists only so the model can judge the result directly
+  when the command completes or produces a little new output — it is **not an output
+  pagination interface**.
+- A `commandId` that has completed with a complete preview is no longer valid; only a
+  truncated preview keeps the artifact read path.
 
 ### 3.3 `shell_write`
 
-向 foreground command 写 stdin，只接受非空输入。
+Write stdin to a foreground command; only non-empty input is accepted.
 
 ```ts
 type ShellWriteInput = {
@@ -140,16 +174,20 @@ type ShellWriteInput = {
 }
 ```
 
-语义：
+Semantics:
 
-- `stdin` 必须非空；轮询必须用 `shell_status`，不保留空 input 兼容路径。
-- 写入目标 command 的 stdin 后立即返回一次 status snapshot 和新的预算 preview；命令因此完成且 preview 完整时返回后释放 command record。
-- command 不存在、已结束、或没有可写 stdin 时返回错误。
-- 是否等待写入后的输出，由模型用 `yield` 安排后续 turn、唤醒后 `shell_status` 决定。
+- `stdin` must be non-empty; polling must use `shell_status` — there is no empty-input
+  compatibility path.
+- After writing to the target command's stdin it immediately returns a status snapshot and a
+  new budgeted preview; if the command thereby completes with a complete preview, the command
+  record is released after returning.
+- Returns an error when the command does not exist, has ended, or has no writable stdin.
+- Whether to wait for output after the write is up to the model, by scheduling a follow-up
+  turn with `yield` and calling `shell_status` after the wakeup.
 
 ### 3.4 `shell_abort`
 
-显式终止 foreground command。这是**唯一**终止命令的工具。
+Explicitly terminate a foreground command. This is the **only** tool that terminates a command.
 
 ```ts
 type ShellAbortInput = {
@@ -158,16 +196,18 @@ type ShellAbortInput = {
 }
 ```
 
-语义：
+Semantics:
 
-- 终止 command 所在 foreground process group。
-- 返回最终 status snapshot 和 artifact 路径。
-- 对已结束命令调用时返回该命令的最终状态，不重新杀 shell session。
-- `shell_abort` 是控制动作，不默认表示 agent 任务失败。
+- Terminates the foreground process group the command runs in.
+- Returns the final status snapshot and artifact paths.
+- When called on a command that has already ended, returns that command's final status; it
+  does not re-kill the shell session.
+- `shell_abort` is a control action and does not by default signal agent task failure.
 
 ### 3.5 `yield`
 
-结束当前 turn，并安排 runtime 在 turn 完成后等待一段时间，到点用一个**不可见 user_message** 唤醒会话。
+End the current turn and schedule the runtime, after the turn completes, to wait a while and
+then wake the session with an **invisible user_message**.
 
 ```ts
 type YieldInput = {
@@ -176,23 +216,30 @@ type YieldInput = {
 }
 ```
 
-语义：
+Semantics:
 
-- `durationMs` 必填，取值范围 `1..600000`，最大 10 分钟。
-- `yield` **不读 shell、不写 shell、不管理进程、不持有 commandId**。它是纯 agent-level 机制。
-- `yield` tool result 是 terminal result：写入 transcript 后当前 provider continuation 结束，不在同一 turn 里继续采样。
-- `durationMs` 从**当前 turn 完成、session 进入可等待状态后**开始计时，不从 tool call 开始计时。
-- 到点投递一个不可见 user_message（详见 §4）：
-  - session **idle** → **send**：以这个 user_message 启动一个新 turn（走普通 `send` 路径，不是 abort `resume`）。
-  - session **active** → **steer**：把这个 user_message 作为内部 steer 插入当前 active turn，复用用户 steer 的插入点语义，**不进 queue**。
-- 等待期间用户可以正常发新话题；这不会自动取消 pending wakeup。
-- `yield` 是单次 delayed wakeup；不支持 `repeat` / `start_yield` / `stop_yield`。
+- `durationMs` is required, in the range `1..600000` (max 10 minutes).
+- `yield` **does not read the shell, write the shell, manage processes, or hold a
+  commandId**. It is a pure agent-level mechanism.
+- The `yield` tool result is a terminal result: once written to the transcript the current
+  provider continuation ends; sampling does not continue in the same turn.
+- `durationMs` is timed from **after the current turn completes and the session enters a
+  waitable state**, not from the tool call.
+- When it elapses, an invisible user_message is delivered (see §4):
+  - session **idle** → **send**: start a new turn with this user_message (the ordinary
+    `send` path, not an abort `resume`).
+  - session **active** → **steer**: insert this user_message as an internal steer into the
+    current active turn, reusing the user-steer insertion-point semantics — **never queued**.
+- During the wait the user may freely send a new topic; this does not automatically cancel
+  the pending wakeup.
+- `yield` is a one-shot delayed wakeup; there is no `repeat` / `start_yield` / `stop_yield`.
 
-`yield` 与 shell 的组合完全由模型显式表达，框架不自动串联：
+The combination of `yield` and the shell is expressed entirely by the model; the framework
+never chains them automatically:
 
 ```text
 shell_exec(..., timeoutMs)        # running + commandId
-yield(durationMs)                 # 结束 turn
+yield(durationMs)                 # ends the turn
 
 # wakeup turn / wakeup steer
 shell_status(commandId)
@@ -202,35 +249,44 @@ yield(durationMs)
 shell_status(commandId)
 ```
 
-## 4. Yield 唤醒机制
+## 4. The yield wakeup mechanism
 
-唤醒分三步，时序是这个机制的关键：
+A wakeup has three steps, and the timing is the heart of the mechanism:
 
-1. **当前 turn 自然结束。** `yield` 的 terminal tool result 结束当前 provider continuation，
-   turn 收敛到 idle。`yield` 不抢占、不打断正在进行的采样或工具；它就是让这一轮正常走完。
-2. **turn 完成后才开始计时。** 计时器只在 turn 完全结束、session 进入可等待状态后才 arm；
-   不从 `yield` 被调用的那一刻算起。这样“等 `durationMs`”指的是“turn 结束之后再等 `durationMs`”。
-3. **到点投递不可见 user_message。** 根据此刻的会话状态选择投递方式：
-   - **idle → send**：把这个 user_message 当成一次普通 `send` 发给空闲会话，启动一个新 turn（只是 user_message 带 `hidden`）。
-     **这是 `send`，不是 abort/压缩后的 `resume`；`resume` 是另一套机制，不要混用。**
-   - **active → steer**：把这个 user_message 作为内部 steer 插入当前 active turn，
-     在最近的 provider / tool 边界让模型看到，**绝不进入 queue**。
+1. **The current turn ends naturally.** The terminal `yield` tool result ends the current
+   provider continuation and the turn settles to idle. `yield` does not preempt or interrupt
+   ongoing sampling or tools; it simply lets the round finish normally.
+2. **Timing starts only after the turn completes.** The timer is armed only after the turn
+   has fully ended and the session has entered a waitable state — not from the moment `yield`
+   was called. So "wait `durationMs`" means "wait `durationMs` after the turn ends."
+3. **Deliver the invisible user_message when it elapses.** The delivery method is chosen by
+   the session state at that moment:
+   - **idle → send**: send this user_message to the idle session as an ordinary `send`,
+     starting a new turn (just with a `hidden` user_message). **This is `send`, not the
+     `resume` after abort/compaction; `resume` is a different mechanism — do not mix them.**
+   - **active → steer**: insert this user_message as an internal steer into the current
+     active turn, visible to the model at the nearest provider / tool boundary, **never
+     entering the queue**.
 
-唤醒载荷是**同一个不可见 user_message**，与投递方式无关：
+The wakeup payload is **the same invisible user_message** regardless of delivery method:
 
-- 它对模型可见——正常 replay 成 `user_message`（send 路径）或 `user_steer`（steer 路径），模型据此继续推理。
-- 它对用户不渲染——UI / REPL 不把它显示成用户发言（详见 §5）。
-- 它的内容是 **shell-agnostic 的内部提示**，例如“你之前安排的等待已结束，继续之前的工作；如有运行中的命令可用 `shell_status` 查看”。
-  `yield` 不知道任何 commandId；模型从上下文自己知道在等什么。
+- It is visible to the model — replayed normally as a `user_message` (send path) or
+  `user_steer` (steer path), and the model reasons from it.
+- It is not rendered to the user — the UI / REPL does not show it as a user utterance (see §5).
+- Its content is a **shell-agnostic internal hint**, e.g. "the wait you scheduled earlier is
+  over; continue your previous work, and use `shell_status` if a command is still running."
+  `yield` knows no commandId; the model knows what it is waiting for from context.
 
-为什么 wakeup 不能进 queue：进 queue 会让长命令复查被用户新话题无期限延后，违背 yield 的目的。
-active 时它必须以 steer 形式插入当前 turn；idle 时它本身就是一个新 turn。
+Why a wakeup must not enter the queue: queuing it would let a long-command re-check be
+deferred indefinitely behind the user's new topics, defeating yield's purpose. When active it
+must be inserted into the current turn as a steer; when idle it is itself a new turn.
 
-## 5. 不可见 user_message
+## 5. The invisible user_message
 
-唤醒载荷需要一个一等的“对模型可见、对用户不渲染”的 user 输入。
+The wakeup payload needs a first-class "visible to the model, not rendered to the user" user
+input.
 
-core 层在 user / steer 这两类 user 输入上增加 `hidden` 标记：
+The core layer adds a `hidden` flag to the two kinds of user input — user / steer:
 
 ```ts
 type Block =
@@ -238,42 +294,53 @@ type Block =
       content: UserContentBlock[]; preamble: string | null; hidden?: boolean }
   | { type: 'steer'; id: string; turnId: string; createdAt: string; model: ModelSelection
       content: UserContentBlock[]; hidden?: boolean }
-  // 其余 block 不变
+  // all other blocks unchanged
 ```
 
-规则：
+Rules:
 
-- `hidden` 缺省为 `false`。普通用户输入不带这个标记，行为完全不变。
-- `collectInferenceItems()` 对 `hidden` 与非 `hidden` 一视同仁：仍然 emit `user_message` / `user_steer`，
-  所以**模型一定看得到唤醒输入**。`hidden` 不进入 provider replay、不影响 compaction / retry / resume 的 turn 分组。
-- 渲染层（Web 的 visible-block 过滤、REPL 渲染）**跳过** `hidden === true` 的 user / steer block，不显示成用户气泡。
-- yield 唤醒投递：
-  - idle → 以 `hidden: true` 的 user 输入启动新 turn（`pushUserTurn(..., { hidden: true })`）。
-  - active → 以 `hidden: true` 的 steer 插入（`pushSteer(..., { hidden: true })`）。
+- `hidden` defaults to `false`. Ordinary user input carries no such flag and its behavior is
+  entirely unchanged.
+- `collectInferenceItems()` treats `hidden` and non-`hidden` identically: it still emits
+  `user_message` / `user_steer`, so **the model always sees the wakeup input**. `hidden` does
+  not enter provider replay and does not affect the turn grouping of compaction / retry / resume.
+- The render layer (the Web UI's visible-block filter, the REPL renderer) **skips** user /
+  steer blocks with `hidden === true` and does not show them as user bubbles.
+- Yield wakeup delivery:
+  - idle → start a new turn with a `hidden: true` user input (`pushUserTurn(..., { hidden: true })`).
+  - active → insert a `hidden: true` steer (`pushSteer(..., { hidden: true })`).
 
-`hidden` 只影响 UI 是否渲染，是唯一区别；它不创造第二套 replay 语义，也不改变 turn 边界。
+`hidden` only affects whether the UI renders — that is its sole effect; it does not create a
+second replay semantics, nor change turn boundaries.
 
-## 6. 标识符模型
+## 6. The identifier model
 
-`shellId` 和 `commandId` 必须分开：
+`shellId` and `commandId` must be kept separate:
 
-- `shellId`：长期 shell session 句柄，承载 cwd、env、函数、后台 job 和当前 foreground command。
-- `commandId`：一次 foreground command 句柄，承载进程状态、stdout/stderr artifact、字节计数和 exit 信息。
+- `shellId`: a long-lived shell session handle, carrying cwd, env, functions, background jobs,
+  and the current foreground command.
+- `commandId`: a single foreground command handle, carrying process state, the stdout/stderr
+  artifacts, byte counts, and exit info.
 
-一个 shell session 同时最多有一条 foreground command。后台 job 仍属于 shell session 状态，但模型可观测、可控的长程前台任务都用 `commandId`。
+A shell session has at most one foreground command at a time. Background jobs remain shell
+session state, but every long-running foreground task the model can observe and control uses a
+`commandId`.
 
-默认 shell 规则：
+Default-shell rules:
 
-- 每个 AgentSession 有一个默认 shell。
-- 默认 shell 空闲时，未传 `shellId` 的 `shell_exec` 复用它。
-- 默认 shell 忙时，未传 `shellId` 的 `shell_exec` 创建辅助 shell，方便模型在 dev server 运行时执行一次性检查命令。
-- 显式传入忙碌 `shellId` 时不自动创建辅助 shell，避免模型误以为命令跑在指定 shell 状态里。
+- Every AgentSession has one default shell.
+- When the default shell is idle, a `shell_exec` without `shellId` reuses it.
+- When the default shell is busy, a `shell_exec` without `shellId` creates an auxiliary shell,
+  so the model can run one-off check commands while a dev server is running.
+- When an explicit busy `shellId` is passed, no auxiliary shell is created automatically,
+  avoiding the model's mistaken belief that the command ran inside the named shell's state.
 
-`commandId` 是 shell 控制面的东西，`yield` 不持有它。yield 唤醒后由模型用记得的 `commandId` 调 `shell_status`。
+`commandId` belongs to the shell control surface; `yield` does not hold it. After a yield
+wakeup the model calls `shell_status` with the `commandId` it remembers.
 
-## 7. stdout/stderr Artifact
+## 7. stdout/stderr artifacts
 
-每个 command 都有两个只读 append-only 输出 artifact 和一个元信息文件：
+Every command has two read-only, append-only output artifacts and a metadata file:
 
 ```ts
 type ShellArtifactRef = {
@@ -298,7 +365,7 @@ type ShellCommandSnapshot = {
 }
 ```
 
-路径使用 shell 虚拟文件系统命名空间：
+Paths use the shell virtual-filesystem namespace:
 
 ```text
 /@/commands/<commandId>/stdout.txt
@@ -306,28 +373,48 @@ type ShellCommandSnapshot = {
 /@/commands/<commandId>/meta.json
 ```
 
-保留的 command artifact 中，`stdout.txt` / `stderr.txt` 分别保留对应 stream；`meta.json` 暴露 status、exitCode、runningMs、idleMs、bytes 和 timestamps。
-这些文件不写进任务 cwd，也不污染用户 workspace。普通短命令完成且 preview 完整时不保留；running、preview 截断或需要检索的 command 才把完整输出作为持久审计落点。
-session snapshot 保存或会话恢复时，runtime 必须能从持久 command artifact 重建仍需读取的 `/@/commands/<commandId>/...`。
-transcript 的模型可见 tool result 优先保存自动预算 preview，只在需要保留 artifact 时保存引用；UI/runtime 可以保存交错输出事件用于展示，但 stdout/stderr 交错后的 terminal transcript 不作为 `/@` 文件保存。
+For a retained command artifact, `stdout.txt` / `stderr.txt` keep their respective streams;
+`meta.json` exposes status, exitCode, runningMs, idleMs, bytes, and timestamps. These files are
+not written into the task cwd and do not pollute the user workspace. An ordinary short command
+that completes with a complete preview is not retained; only running, preview-truncated, or
+search-needing commands keep the full output as a durable audit sink. When a session snapshot is
+saved or a session is restored, the runtime must be able to rebuild the still-needed
+`/@/commands/<commandId>/...` from the durable command artifacts. The model-visible tool result
+in the transcript prefers to store the auto-budgeted preview, storing a reference only when an
+artifact must be retained; the UI/runtime may store interleaved output events for display, but
+the interleaved stdout/stderr terminal transcript is not saved as a `/@` file.
 
-artifact 内容是**shell redirection 后模型可见的 stdout/stderr**，不是 raw process fd：
+Artifact content is the **model-visible stdout/stderr after shell redirection**, not raw process
+fds:
 
-- `cmd > file` 不应该把 stdout 泄漏进 stdout artifact。
-- `cmd 2>/dev/null` 不应该把 stderr 泄漏进 stderr artifact。
-- `cmd >&2` 应该进入 stderr artifact。
-- `cmd > file` 的目标文件仍通过 `Host.fs` 按 shell 语义写入。
+- `cmd > file` should not leak stdout into the stdout artifact.
+- `cmd 2>/dev/null` should not leak stderr into the stderr artifact.
+- `cmd >&2` should go into the stderr artifact.
+- The target file of `cmd > file` is still written through `Host.fs` per shell semantics.
 
-`/@` 通过 just-bash 的 `IFileSystem` 叠加到 `HostBackedFileSystem` 上，是只读虚拟命名空间：
+`/@` is overlaid onto `HostBackedFileSystem` via just-bash's `IFileSystem` and is a read-only
+virtual namespace:
 
-- `cat` / `head` / `tail` / `grep` / `rg` / `sed` / `awk` / `wc` / `cut` / `sort` / `jq` 等 portable commands 读 `/@` 路径时必须走 just-bash command registry 和 virtual FS。
-- 真实 host external process 看不到内存态 `/@` 路径；包含 `/@` path 的文本读取命令不能 fallback 到本机 coreutils。无法由 portable path 执行时应明确报错。
-- `/@` artifact 默认只读；任何写入、删除、重命名、chmod、link 操作都应拒绝。
-- 只有被保留的 command artifact 生命周期跟随 AgentSession 持久历史；普通短命令完成且 preview 完整时释放 command record，不再暴露 `/@`。关闭 live session 时释放内存态 overlay，但已保存的 session snapshot 必须保留需要继续读取的 artifact 内容或可恢复引用。
+- Portable commands like `cat` / `head` / `tail` / `grep` / `rg` / `sed` / `awk` / `wc` / `cut`
+  / `sort` / `jq` reading `/@` paths must go through the just-bash command registry and the
+  virtual FS.
+- A real host external process cannot see the in-memory `/@` paths; a text-read command that
+  includes a `/@` path must not fall back to host coreutils. When it cannot be executed via a
+  portable path it should error explicitly.
+- `/@` artifacts are read-only by default; any write, delete, rename, chmod, or link operation
+  should be rejected.
+- Only a retained command artifact's lifecycle follows the AgentSession's durable history; an
+  ordinary short command that completes with a complete preview releases the command record and
+  no longer exposes `/@`. Closing a live session releases the in-memory overlay, but a saved
+  session snapshot must retain the artifact content or a restorable reference for anything that
+  still needs reading.
 
-输出 sink 流式写入：visible stdout/stderr chunk 实时 append 到对应 command artifact；file redirection sink 也按 chunk 写入 `Host.fs`，保证长命令运行中目标文件可见。
+Output sinks stream as they write: visible stdout/stderr chunks append to the matching command
+artifact in real time; the file-redirection sink also writes to `Host.fs` chunk by chunk, so a
+long command's target file is visible while it runs.
 
-模型只有在 preview 截断、命令长时间运行需看历史输出、或需要文本检索时，才用普通 shell 文本命令读取 artifact：
+The model reads an artifact with an ordinary shell text command only when the preview is
+truncated, a long-running command's history must be inspected, or text search is needed:
 
 ```bash
 tail -n 80 /@/commands/<commandId>/stdout.txt
@@ -336,53 +423,65 @@ sed -n '200,260p' /@/commands/<commandId>/stdout.txt
 awk '/failed|error/i { print NR ":" $0 }' /@/commands/<commandId>/stderr.txt
 ```
 
-`maxOutputBytes` 不属于最终模型可见 schema。输出预算由 `@demi/agent` 根据当前模型的 `contextWindow` 自动决定，只影响 tool result preview，不影响 artifact 保存：
+`maxOutputBytes` is not part of the final model-visible schema. The output budget is decided
+automatically by `@demi/agent` from the current model's `contextWindow`; it affects only the
+tool-result preview, not artifact storage:
 
-| 模型上下文窗口 | tool result preview 预算 |
+| Model context window | Tool-result preview budget |
 |---|---:|
-| 未知或 `< 800_000` tokens | `1_000` tokens |
+| Unknown or `< 800_000` tokens | `1_000` tokens |
 | `>= 800_000` tokens | `10_000` tokens |
 
-预算单位是 token。实现优先使用 provider/model tokenizer；没有 tokenizer 时用保守估算把 `budgetTokens` 转成字符上限。
-preview 截断时必须带 `truncated: true` 并提示模型用 `/@/commands/<commandId>/...` 读取需要的部分；preview 完整时不暴露 artifact 路径诱导二次读取。
+The budget unit is tokens. The implementation prefers the provider/model tokenizer; with no
+tokenizer it uses a conservative estimate to convert `budgetTokens` into a character limit. A
+truncated preview must carry `truncated: true` and prompt the model to read the needed part via
+`/@/commands/<commandId>/...`; a complete preview does not expose artifact paths and so does not
+invite a second read.
 
-## 8. Agent Loop 行为
+## 8. Agent loop behavior
 
-agent loop 只在明确边界恢复模型：
+The agent loop resumes the model only at well-defined boundaries:
 
-- `shell_exec` 的 `timeoutMs` 到点（tool result 返回，**turn 继续**）。
-- command exit。
-- `shell_status` / `shell_write` / `shell_abort` tool result 返回。
-- `yield` tool result 返回并**结束当前 turn**。
-- pending yield wakeup 到点：idle 时以不可见 user_message 启动新 turn，active 时作为内部 steer 插入当前 turn。
-- provider stream 自身完成或出错。
+- `shell_exec`'s `timeoutMs` elapses (the tool result returns, **the turn continues**).
+- A command exits.
+- A `shell_status` / `shell_write` / `shell_abort` tool result returns.
+- A `yield` tool result returns and **ends the current turn**.
+- A pending yield wakeup elapses: when idle, start a new turn with the invisible user_message;
+  when active, insert it as an internal steer into the current turn.
+- The provider stream itself completes or errors.
 
-输出 chunk 到达**不**直接唤醒模型。UI 可以基于 artifact 或 progress event 实时展示终端输出；模型只在工具返回、内部 wakeup turn 或内部 wakeup steer 后继续推理。
+The arrival of an output chunk does **not** wake the model directly. The UI may display terminal
+output live from the artifact or progress events; the model only resumes reasoning after a tool
+returns, an internal wakeup turn, or an internal wakeup steer.
 
-慢输出和超长输出共用同一套机制：模型先让长命令在 foreground 运行，`shell_exec` 到 `timeoutMs` 返回 `running`；
-模型按需 `yield`，唤醒后用 `shell_status` 判断命令是否仍在跑、是否有新 bytes、是否 idle 过久；普通新增输出直接看预算 preview；只有 preview 截断或需要检索时再用 `tail` / `grep` / `awk` / `sed` 读 `/@` artifact。
-runtime 不因为输出慢或大而自动唤醒模型，也不把大段输出塞进 `shell_status`。
+Slow output and very large output share one mechanism: the model lets a long command run in the
+foreground, and `shell_exec` returns `running` at `timeoutMs`; the model `yield`s as needed and,
+after waking, uses `shell_status` to judge whether the command is still running, has new bytes,
+or has been idle too long; ordinary new output is judged straight from the budgeted preview; only
+a truncated preview or a need for search calls for reading the `/@` artifact with `tail` / `grep`
+/ `awk` / `sed`. The runtime never wakes the model automatically because output is slow or large,
+and never stuffs a large chunk of output into `shell_status`.
 
-## 9. 典型流程
+## 9. Typical flows
 
-### 长测试命令
+### A long test command
 
 ```text
 Turn A
 shell_exec({ script: "pnpm test", timeoutMs: 10000 })
-→ running + commandId（turn 未结束）
+→ running + commandId (turn not ended)
 
 yield({ durationMs: 30000 })
-→ scheduled，Turn A 完成
+→ scheduled, Turn A completes
 
-Turn B（30s 后内部 wakeup，send 一个不可见 user_message）
+Turn B (internal wakeup 30s later, sends an invisible user_message)
 shell_status({ commandId })
-→ running，输出 bytes 增长
+→ running, output bytes growing
 
 yield({ durationMs: 30000 })
-→ scheduled，Turn B 完成
+→ scheduled, Turn B completes
 
-Turn C（30s 后内部 wakeup）
+Turn C (internal wakeup 30s later)
 shell_status({ commandId })
 → exited + exitCode
 
@@ -390,19 +489,20 @@ tail -n 80 /@/commands/<commandId>/stdout.txt
 grep -n -E "ERROR|FAIL" /@/commands/<commandId>/stderr.txt
 ```
 
-### Dev server 冒烟验证
+### Dev-server smoke check
 
 ```text
 shell_exec({ script: "pnpm dev", timeoutMs: 3000 })
 → running + commandId=server
 
 shell_exec({ script: "curl -I http://127.0.0.1:18922", timeoutMs: 10000 })
-→ exited（默认 shell 忙，自动用辅助 shell，不打断 dev server）
+→ exited (default shell busy, an auxiliary shell is used automatically, without
+  interrupting the dev server)
 
 shell_abort({ commandId: server })
 ```
 
-### 交互式输入
+### Interactive input
 
 ```text
 Turn A
@@ -411,47 +511,52 @@ shell_exec({ script: "node prompt.js", timeoutMs: 1000 })
 
 shell_write({ commandId, stdin: "Alice\n" })
 yield({ durationMs: 500 })
-→ scheduled，Turn A 完成
+→ scheduled, Turn A completes
 
-Turn B（500ms 后内部 wakeup）
+Turn B (internal wakeup 500ms later)
 shell_status({ commandId })
 → running
 
 tail -n 40 /@/commands/<commandId>/stdout.txt
 ```
 
-### 疑似卡死
+### Suspected hang
 
 ```text
 shell_status({ commandId })
-→ running, idleMs 很大
+→ running, idleMs very large
 
 shell_abort({ commandId })
-→ aborted + 最后输出
+→ aborted + last output
 ```
 
-### 等待期间用户开启新话题
+### The user starts a new topic during the wait
 
 ```text
 Turn A
 shell_exec({ script: "pnpm test", timeoutMs: 10000 })
 → running + commandId
 yield({ durationMs: 30000 })
-→ scheduled，Turn A 完成
+→ scheduled, Turn A completes
 
-Turn B（用户 10s 后发送新话题）
-...模型正在处理用户新话题（session active）...
+Turn B (user sends a new topic 10s later)
+...the model is handling the user's new topic (session active)...
 
-30s 到点
-→ runtime 把唤醒 user_message 作为内部 steer 插入 Turn B（不渲染、不进 queue）
-→ 模型在 Turn B 最近的 provider/tool 边界看到它，再决定是否 shell_status({ commandId })
+30s elapses
+→ the runtime inserts the wakeup user_message into Turn B as an internal steer
+  (not rendered, not queued)
+→ the model sees it at Turn B's nearest provider/tool boundary, then decides whether
+  to shell_status({ commandId })
 ```
 
-## 10. `abort` 分层
+## 10. The `abort` hierarchy
 
-这里的 `abort` 指 AgentSession / AgentClient 的会话控制动作，不是模型可见的 `shell_abort`。
+Here `abort` is the AgentSession / AgentClient session-control action, not the model-visible
+`shell_abort`.
 
-`abort` 是可重复执行的分层收敛动作。每次调用只取消当前最高优先级、仍可取消的一层，并返回这次取消了什么以及是否还能继续 abort：
+`abort` is a repeatable, layered settling action. Each call cancels only the current
+highest-priority layer that can still be cancelled, and returns what it cancelled plus whether
+`abort` can continue:
 
 ```ts
 type AbortTarget =
@@ -464,96 +569,141 @@ type AbortTarget =
   | 'pending_yield_wakeup'
 ```
 
-优先级从高到低：
+Priority, highest to lowest:
 
-1. 当前 active provider stream、reference resolution、compaction 或 tool invocation。
-2. 当前 active turn 的剩余收敛状态。
-3. 等待执行的 queued send / retry / resume / compact 等 action。
-4. pending `yield` wakeup。
+1. The current active provider stream, reference resolution, compaction, or tool invocation.
+2. The current active turn's remaining settling state.
+3. A queued action awaiting execution — send / retry / resume / compact, etc.
+4. A pending `yield` wakeup.
 
-pending `yield` wakeup 是最后优先级。普通 active turn abort 不应该顺手清掉 wakeup，因为它可能是之前长命令复查留下的 schedule。
-只有没有 active work、没有 queued action，且调用方再次 abort 时，才取消 pending wakeup。关闭 session 直接清理全部 pending wakeup。
+A pending `yield` wakeup is the lowest priority. An ordinary active-turn abort should not also
+clear the wakeup, because it may be a schedule left by a previous long-command re-check. Only
+when there is no active work, no queued action, and the caller aborts again is the pending
+wakeup cancelled. Closing the session clears all pending wakeups outright.
 
-`shell_abort(commandId)` 不走这个层级；它是模型或用户显式终止某个 foreground command 的工具。除非当前正在执行的 shell tool invocation 本身被 abort，否则 AgentSession `abort` 不应隐式终止已经返回 `running` 的 shell command。
+`shell_abort(commandId)` does not go through this hierarchy; it is the tool with which the model
+or user explicitly terminates a foreground command. Unless the currently executing shell tool
+invocation is itself aborted, AgentSession `abort` should not implicitly terminate a shell
+command that has already returned `running`.
 
-## 11. 为什么不做 repeat yield
+## 11. Why there is no repeat yield
 
-`yield({ repeat: true })` 会把两种不同机制混在一起：
+`yield({ repeat: true })` would mix two different mechanisms:
 
-- 单次 turn 结束后的定时唤醒：`yield`。
-- 长期重复唤醒：heartbeat / automation。
+- A timed wakeup after a single turn ends: `yield`.
+- Long-lived repeated wakeups: heartbeat / automation.
 
-如果每次唤醒都要把控制权交给模型，它等价于模型在每个 wakeup turn 里再次显式调用单次 `yield`。
-因此 `yield` 保持单次；长期自动轮询以后用独立 heartbeat 设计。
+If every wakeup hands control back to the model, it is equivalent to the model explicitly
+calling a one-shot `yield` again in each wakeup turn. So `yield` stays one-shot; long-lived
+automatic polling will use a separate heartbeat design later.
 
-## 12. 包职责
+## 12. Package responsibilities
 
-模型可见的五个工具是一个完整的 agent 基础工具组，不按工具名拆给不同包：
+The five model-visible tools are one complete agent base toolset, not split across packages by
+tool name:
 
-- `@demi/core` 拥有共享 `Block` 类型，包括 user / steer 上的 `hidden` 标记。
-- `@demi/agent` 拥有模型可见工具面：`shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield` 的名称、schema、tool call/result transcript 语义，
-  以及 turn 结束后的延迟唤醒调度、idle send 不可见 user_message turn、active steer 不可见 user_message、显式 abort / session close 清理。
-  `yield` 的唤醒载荷由 `@demi/agent` 构造，不依赖 shell。
-- `@demi/shell` 拥有 shell runtime 服务：BashEnvironment、shell session、command record、command artifact、Host-backed stream sink，
-  以及 exec/status/write/abort primitives。它**不拥有模型可见 AgentTool，也不知道 `yield`、turn 或 wakeup 的存在**。
-- `@demi/coding-agent` 只在 prompt 中解释这五个工具的使用策略。
-- `@demi/web-ui` 和 `@demi/repl` 消费统一协议事件展示状态，并按 §5 跳过 `hidden` user/steer block。
+- `@demi/core` owns the shared `Block` types, including the `hidden` flag on user / steer.
+- `@demi/agent` owns the model-visible tool surface: the names, schemas, and tool-call/result
+  transcript semantics of `shell_exec` / `shell_status` / `shell_write` / `shell_abort` /
+  `yield`, plus the post-turn delayed-wakeup scheduling, the idle-send invisible-user_message
+  turn, the active-steer invisible user_message, and the explicit-abort / session-close cleanup.
+  `yield`'s wakeup payload is constructed by `@demi/agent` and does not depend on the shell.
+- `@demi/shell` owns the shell runtime services: BashEnvironment, shell sessions, command
+  records, command artifacts, the Host-backed stream sink, and the exec/status/write/abort
+  primitives. It **owns no model-visible AgentTool, and knows nothing of `yield`, turns, or
+  wakeups**.
+- `@demi/coding-agent` only explains the usage policy for these five tools in the prompt.
+- `@demi/web-ui` and `@demi/repl` consume the unified protocol events to display state, and skip
+  `hidden` user/steer blocks per §5.
 
-因此最终分层是：`@demi/agent` 拥有完整工具面和 yield 唤醒语义，`@demi/shell` 只提供 shell 执行能力，二者正交。
+So the final layering is: `@demi/agent` owns the complete tool surface and the yield wakeup
+semantics, `@demi/shell` provides only shell execution, and the two are orthogonal.
 
-## 13. 测试与验收
+## 13. Tests & acceptance
 
-单元测试模块与覆盖意图：
+Unit-test modules and their intended coverage:
 
-- `packages/agent/src/tools.ts`（由 agent/coding/provider integration tests 覆盖）
-  - 工具 schema 只暴露 `shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield`。
-  - `shell_exec` 暴露 `timeoutMs`（必填，最大 10 分钟），**不暴露 `yieldAfterMs`**。
-  - `shell_write` 拒绝空 stdin。
-  - tool result 对普通完成结果只包含状态、exitCode 和 preview；running 或 preview 截断时才包含 `shellId`、`commandId`、artifact 路径和 next action。
-  - 最终 schema 不暴露 `maxOutputBytes`、stdout/stderr offset 或由模型控制的输出预算。
-  - `shell_exec` 返回 `running` 时不携带任何“结束 turn / 安排 yield”的隐式语义；`yield` 与 shell 工具是独立 schema。
+- `packages/agent/src/tools.ts` (covered by agent/coding/provider integration tests)
+  - The tool schema exposes only `shell_exec` / `shell_status` / `shell_write` / `shell_abort`
+    / `yield`.
+  - `shell_exec` exposes `timeoutMs` (required, max 10 minutes) and **does not expose
+    `yieldAfterMs`**.
+  - `shell_write` rejects empty stdin.
+  - The tool result contains only status, exitCode, and preview for an ordinary completion;
+    `shellId`, `commandId`, artifact paths, and a next action appear only when running or the
+    preview is truncated.
+  - The final schema exposes neither `maxOutputBytes`, stdout/stderr offsets, nor a
+    model-controlled output budget.
+  - When `shell_exec` returns `running` it carries no implicit "end the turn / schedule a yield"
+    semantics; `yield` and the shell tools are independent schemas.
 
 - `packages/shell/src/__tests__/environment.test.ts`
-  - `shell_exec` 超过 `timeoutMs` 返回 `running` 且**不杀进程、不释放 record**。
-  - `timeoutMs` 是同步观察窗口上限，不是 kill deadline。
-  - `shell_status` 非阻塞读取状态和新的预算 preview，不承担输出分页。
-  - 普通短命令完成后释放 command record，后续 status 和 `/@` 读取都失败。
-  - 保留的 command artifact 暴露 `/@/commands/<commandId>/stdout.txt`、`stderr.txt` 和 `meta.json`。
-  - `tail` / `grep` / `sed` / `awk` / `wc` 通过 just-bash portable commands 能读取 `/@` artifact；含 `/@` 的文本读取命令不 fallback 到 host external process。
-  - command exit 后仍可读取最终 artifact。
-  - `shell_abort` 终止 foreground process group 并保留最终输出。
-  - redirection 不泄漏到可见 stdout/stderr artifact；file redirection sink 在长命令运行中可见。
-  - 默认 shell 忙时未指定 `shellId` 的 `shell_exec` 创建辅助 shell；指定忙碌 `shellId` 时拒绝。
+  - `shell_exec` past `timeoutMs` returns `running` and **does not kill the process or release
+    the record**.
+  - `timeoutMs` is the synchronous observation-window bound, not a kill deadline.
+  - `shell_status` reads state and a new budgeted preview non-blockingly, and does not do output
+    pagination.
+  - After an ordinary short command completes, the command record is released and subsequent
+    status and `/@` reads both fail.
+  - A retained command artifact exposes `/@/commands/<commandId>/stdout.txt`, `stderr.txt`, and
+    `meta.json`.
+  - `tail` / `grep` / `sed` / `awk` / `wc` can read `/@` artifacts via just-bash portable
+    commands; a text-read command containing `/@` does not fall back to a host external process.
+  - The final artifact is still readable after the command exits.
+  - `shell_abort` terminates the foreground process group and retains the final output.
+  - Redirection does not leak into the visible stdout/stderr artifacts; the file-redirection sink
+    is visible while a long command runs.
+  - When the default shell is busy, a `shell_exec` without `shellId` creates an auxiliary shell;
+    a named busy `shellId` is rejected.
 
 - `packages/agent/src/__tests__/session.test.ts`
-  - `yield` tool result 是 terminal result，当前 provider continuation 不再继续采样，turn 自然结束。
-  - `yield` duration 从当前 turn **完成后**开始计时。
-  - 到点时 session idle：以不可见 user_message 启动新 turn（send，不是 abort `resume`），模型 replay 看得到该 user_message，并能继续调用 `shell_status`。
-  - 到点时 session active：不可见 user_message 作为内部 steer 插入当前 active turn，不进入 queue。
-  - 唤醒 user_message 的 `hidden` 为 true：`collectInferenceItems()` 仍 emit `user_message` / `user_steer`（模型可见），渲染层过滤（用户不可见）。
-  - `yield` 不读写 shell 状态、不持有 commandId、不隐式 abort shell command。
-  - `abort` 按 active work、queued action、pending yield wakeup 的优先级逐层收敛；active work abort 不清理 pending yield wakeup；pending wakeup 只在最后一层 abort 或 session close 时清理。
-  - 慢输出和超长输出都不会按 chunk 唤醒模型。
-  - tool result preview 预算按当前 `Model.contextWindow` 自动选择：未知或 800k 以下 1k tokens，800k 及以上 10k tokens。
+  - The `yield` tool result is a terminal result; the current provider continuation stops
+    sampling and the turn ends naturally.
+  - The `yield` duration is timed from **after** the current turn completes.
+  - When it elapses with the session idle: a new turn starts with the invisible user_message
+    (send, not an abort `resume`), the model sees that user_message on replay, and can go on to
+    call `shell_status`.
+  - When it elapses with the session active: the invisible user_message is inserted into the
+    current active turn as an internal steer and does not enter the queue.
+  - The wakeup user_message's `hidden` is true: `collectInferenceItems()` still emits
+    `user_message` / `user_steer` (model-visible), and the render layer filters it (user-invisible).
+  - `yield` neither reads nor writes shell state, holds no commandId, and does not implicitly
+    abort a shell command.
+  - `abort` settles layer by layer in priority order — active work, queued action, pending yield
+    wakeup; an active-work abort does not clear a pending yield wakeup; a pending wakeup is
+    cleared only at the last abort layer or on session close.
+  - Neither slow nor very large output wakes the model chunk by chunk.
+  - The tool-result preview budget is chosen automatically from the current `Model.contextWindow`:
+    1k tokens when unknown or below 800k, 10k tokens at 800k and above.
 
 - `packages/agent/src/__tests__/server.test.ts`
-  - AgentServer 对客户端暴露新工具面和对应 events。
-  - pending yield wakeup 在协议状态中可观测；idle 到点开新 turn，active 到点发内部 steer。
-  - abort response/frame 暴露 `target` 与 `canAbortAgain`。
+  - AgentServer exposes the new tool surface and corresponding events to the client.
+  - A pending yield wakeup is observable in the protocol state; idle elapse opens a new turn,
+    active elapse sends an internal steer.
+  - The abort response/frame exposes `target` and `canAbortAgain`.
 
-- 渲染层（`packages/web-ui`、`packages/repl`）
-  - `hidden === true` 的 user / steer block 不渲染成用户气泡；非 hidden 行为不变。
+- The render layer (`packages/web-ui`, `packages/repl`)
+  - User / steer blocks with `hidden === true` are not rendered as user bubbles; non-hidden
+    behavior is unchanged.
 
-- 真实模型验收
-  - 真实模型用 `shell_exec(timeoutMs) → yield → shell_status` 监控长命令直到完成，并用 `tail` / `grep` / `sed` 读取 `/@` artifact。
-  - 真实模型启动 dev server、用辅助 shell 验证、再 `shell_abort` 清理。
+- Real-model acceptance
+  - A real model monitors a long command to completion with `shell_exec(timeoutMs) → yield →
+    shell_status`, and reads `/@` artifacts with `tail` / `grep` / `sed`.
+  - A real model starts a dev server, verifies it with an auxiliary shell, then `shell_abort`s to
+    clean up.
 
-验收标准：
+Acceptance criteria:
 
-- 长命令超过 120 秒不会因为 `timeoutMs` 被杀；`timeoutMs` 只决定 `shell_exec` 同步返回 `running` 的时机。
-- `shell_exec` 返回 `running` 时当前 turn 继续，模型可立即 `shell_status` 或自行 `yield`；框架不自动串联 yield。
-- yield 唤醒在 idle 和 active 下投递同一个不可见 user_message；模型一定看得到，用户一定看不到。
-- 用户新话题不会让 pending yield 进入 queue；到点 wakeup 作为内部 steer 进入 active turn，且不隐式 abort shell command。
-- `abort` 可重复执行；pending yield wakeup 是最低优先级。
-- 所有中止命令的路径都能在 transcript 中看到显式 `shell_abort`。
-- 会话恢复后，历史 command 的 `/@/commands/<commandId>/stdout.txt`、`stderr.txt`、`meta.json` 仍可读取，内容与原始完整可见输出一致。
+- A long command past 120 seconds is not killed by `timeoutMs`; `timeoutMs` only decides when
+  `shell_exec` returns `running` synchronously.
+- When `shell_exec` returns `running` the current turn continues, the model may `shell_status`
+  immediately or `yield` on its own; the framework does not chain yield automatically.
+- A yield wakeup delivers the same invisible user_message whether idle or active; the model
+  always sees it and the user never does.
+- A user's new topic does not push the pending yield into the queue; the elapsed wakeup enters
+  the active turn as an internal steer and does not implicitly abort the shell command.
+- `abort` is repeatable; a pending yield wakeup is the lowest priority.
+- Every command-termination path shows an explicit `shell_abort` in the transcript.
+- After a session is restored, a historical command's `/@/commands/<commandId>/stdout.txt`,
+  `stderr.txt`, and `meta.json` are still readable, with content identical to the original
+  complete visible output.
