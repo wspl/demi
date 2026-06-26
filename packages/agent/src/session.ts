@@ -16,6 +16,7 @@ import type {
   ToolDefinition,
 } from '@demi/provider'
 import { Transcript, type TranscriptOptions } from './transcript'
+import { YieldScheduler } from './yield-scheduler'
 import type {
   AgentHarnessRuntime,
   AgentSessionOptions,
@@ -66,14 +67,6 @@ interface PendingSteer {
   hidden?: boolean
 }
 
-interface PendingYieldWakeup {
-  id: string
-  durationMs: number
-  timer: ReturnType<typeof setTimeout> | null
-  dueAt: number | null
-  armed: boolean
-}
-
 interface TakenQueuedSend {
   message: QueuedMessage
   messageIndex: number
@@ -107,7 +100,7 @@ export class AgentSession<State> {
   private activeProviderRun: ProviderRun | null = null
   private readonly pendingSteers: PendingSteer[] = []
   private readonly canceledPendingSteerIds = new Set<string>()
-  private readonly pendingYieldWakeups: PendingYieldWakeup[] = []
+  private readonly yields: YieldScheduler
   private pendingSteerContinuationCount = 0
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
@@ -143,6 +136,9 @@ export class AgentSession<State> {
     this.agentState = params.state === undefined ? params.runtime.initialState() : structuredClone(params.state)
     this.agentSessionId = options.agentSessionId ?? createId()
     this.idFactory = options.idFactory ?? createId
+    this.yields = new YieldScheduler(this.idFactory, (wakeupId) => {
+      void this.deliverYieldWakeup(wakeupId)
+    })
     this.store = options.store
     this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens ?? DEFAULT_KEEP_RECENT_TOKENS
     this.compactionThresholdRatio =
@@ -273,7 +269,7 @@ export class AgentSession<State> {
     const queuedTarget = this.abortQueuedAction()
     if (queuedTarget) return { aborted: true, target: queuedTarget, canAbortAgain: this.canAbortAgain() }
 
-    if (this.cancelOnePendingYieldWakeup()) {
+    if (this.yields.cancelOne()) {
       return { aborted: true, target: 'pending_yield_wakeup', canAbortAgain: this.canAbortAgain() }
     }
 
@@ -281,14 +277,7 @@ export class AgentSession<State> {
   }
 
   scheduleYieldWakeup(durationMs: number): AgentToolInvokeResult {
-    const wakeupId = this.idFactory()
-    this.pendingYieldWakeups.push({
-      id: wakeupId,
-      durationMs,
-      timer: null,
-      dueAt: null,
-      armed: false,
-    })
+    const wakeupId = this.yields.schedule(durationMs)
     return {
       output: [
         {
@@ -319,7 +308,7 @@ export class AgentSession<State> {
   async dispose(): Promise<void> {
     await this.abort()
     this.clearPendingActions()
-    this.clearPendingYieldWakeups()
+    this.yields.clear()
     const pending = this.pendingModelSwitch?.provider ?? null
     this.pendingModelSwitch = null
     await this.provider.dispose?.()
@@ -468,20 +457,7 @@ export class AgentSession<State> {
 
   private canAbortAgain(): boolean {
     if (this.currentAbortController && !this.currentAbortController.signal.aborted) return true
-    return this.pendingActions.length > 0 || this.pendingYieldWakeups.length > 0
-  }
-
-  private cancelOnePendingYieldWakeup(): boolean {
-    const wakeup = this.pendingYieldWakeups.shift()
-    if (!wakeup) return false
-    if (wakeup.timer) clearTimeout(wakeup.timer)
-    return true
-  }
-
-  private clearPendingYieldWakeups(): void {
-    for (const wakeup of this.pendingYieldWakeups.splice(0)) {
-      if (wakeup.timer) clearTimeout(wakeup.timer)
-    }
+    return this.pendingActions.length > 0 || this.yields.hasPending
   }
 
   private clearPendingActions(): void {
@@ -493,21 +469,8 @@ export class AgentSession<State> {
     }
   }
 
-  private armPendingYieldWakeups(): void {
-    const now = Date.now()
-    for (const wakeup of this.pendingYieldWakeups) {
-      if (wakeup.armed) continue
-      wakeup.armed = true
-      wakeup.dueAt = now + wakeup.durationMs
-      wakeup.timer = setTimeout(() => {
-        void this.deliverYieldWakeup(wakeup.id)
-      }, wakeup.durationMs)
-    }
-  }
-
   private async deliverYieldWakeup(wakeupId: string): Promise<void> {
-    const wakeup = this.takePendingYieldWakeup(wakeupId)
-    if (!wakeup) return
+    if (!this.yields.take(wakeupId)) return
 
     const content: UserContentBlock[] = [
       {
@@ -520,7 +483,7 @@ export class AgentSession<State> {
     // Active session: interject the hidden wakeup as a steer into the current turn (never queued).
     if (this.canAcceptInternalSteer()) {
       try {
-        await this.steerInternal(content, wakeup.id, true)
+        await this.steerInternal(content, wakeupId, true)
         return
       } catch (error) {
         this.emit({ type: 'error', error: asError(error) })
@@ -529,15 +492,6 @@ export class AgentSession<State> {
 
     // Idle session: deliver the hidden wakeup as a normal send that starts a new turn.
     this.enqueueHiddenSend(content)
-  }
-
-  private takePendingYieldWakeup(wakeupId: string): PendingYieldWakeup | null {
-    const index = this.pendingYieldWakeups.findIndex((wakeup) => wakeup.id === wakeupId)
-    if (index === -1) return null
-    const [wakeup] = this.pendingYieldWakeups.splice(index, 1)
-    if (!wakeup) return null
-    if (wakeup.timer) clearTimeout(wakeup.timer)
-    return wakeup
   }
 
   private canAcceptInternalSteer(): boolean {
@@ -673,7 +627,7 @@ export class AgentSession<State> {
           this.canceledPendingSteerIds.clear()
           this.abortRecorded = false
           this.setPhase('idle')
-          this.armPendingYieldWakeups()
+          this.yields.arm()
         }
       }
     } finally {
