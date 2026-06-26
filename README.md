@@ -109,6 +109,7 @@ bun run typecheck      # type-check all packages
 bun run typecheck:web  # type-check the Vue UI packages
 bun run test           # run the test suite
 bun run build          # build every library package to dist/ (tsdown)
+bun run docs:api       # generate the typedoc API reference into docs/api/
 ```
 
 Workspaces resolve `@demi/*` from source in dev/test (the `development` export
