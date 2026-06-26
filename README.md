@@ -93,7 +93,8 @@ consumes an injected `AgentClient`, see `@demi/web-ui`.
 
 - **A new provider** — implement the `@demi/provider` contract (`run()` returning a
   `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
-  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md).
+  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md) and the runnable
+  template [examples/custom-provider.ts](examples/custom-provider.ts).
 - **A new Host** — implement `{ defaultCwd, fs, process, store }`; `@demi/host-local`
   is the reference for a remote/container/sandboxed backend.
   See [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md).

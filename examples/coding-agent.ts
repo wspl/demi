@@ -7,6 +7,7 @@
 import { AgentServer } from '@demi/agent'
 import { createCodingAgentHarness } from '@demi/coding-agent'
 import { LocalHost } from '@demi/host-local'
+import type { Block } from '@demi/core'
 import { modelSelectionFromCatalog } from '@demi/provider'
 import { createClaudeCodeProvider, listClaudeCodeModels } from '@demi/provider-claude-code'
 
@@ -31,14 +32,26 @@ async function main(): Promise<void> {
   })
   const client = server.client()
 
+  // Each patch carries the full current text per block; print only the new suffix
+  // (keyed by block id) so streaming renders correctly instead of cumulatively.
+  const printed = new Map<string, number>()
+  function render(blocks: Block[]): void {
+    for (const block of blocks) {
+      if (block.type !== 'text') continue
+      const already = printed.get(block.id) ?? 0
+      if (block.text.length > already) {
+        process.stdout.write(block.text.slice(already))
+        printed.set(block.id, block.text.length)
+      }
+    }
+  }
+
   // Resolve once the turn we send has run to completion (running -> idle).
   let started = false
   const done = new Promise<void>((resolve) => {
     const unsubscribe = client.subscribe((event) => {
       if (event.type === 'transcript_snapshot' || event.type === 'transcript_patch') {
-        for (const block of event.blocks) {
-          if (block.type === 'text') process.stdout.write(block.text)
-        }
+        render(event.blocks)
       } else if (event.type === 'phase') {
         if (event.phase === 'running') started = true
         else if (event.phase === 'idle' && started) {
