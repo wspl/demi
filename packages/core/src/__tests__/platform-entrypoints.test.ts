@@ -267,6 +267,9 @@ test('generic helpers provided by @demi/utils are not re-implemented in producti
     'decodeUtf8',
     'concatBytes',
     'shortHash',
+    'normalizePath',
+    'dirnamePath',
+    'isAbsolutePath',
   ]
   const files = (await listSourceFiles(resolveRepoPath('packages'))).filter(
     (file) => !formatPath(file).startsWith('packages/utils/'),

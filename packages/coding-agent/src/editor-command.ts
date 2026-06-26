@@ -1,7 +1,6 @@
-import { asError, decodeUtf8, encodeUtf8, errorMessage } from '@demi/utils'
+import { asError, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@demi/utils'
 import { z } from 'zod'
 import type { CommandSpec, Host } from '@demi/shell'
-import { dirnamePath } from './platform'
 
 export function createEditorCommand(host: Host): CommandSpec {
   return {

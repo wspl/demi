@@ -1,4 +1,4 @@
-import { decodeUtf8, encodeUtf8 } from '@demi/utils'
+import { decodeUtf8, encodeUtf8, isAbsolutePath, normalizePath } from '@demi/utils'
 import type {
   BufferEncoding,
   CpOptions,
@@ -259,30 +259,6 @@ function virtualStat(node: VirtualFileSystemNode): FsStat {
     size: node.content.byteLength,
     mtime: node.mtime ?? now,
   }
-}
-
-function normalizePath(path: string): string {
-  const slashPath = path.replace(/\\/g, '/')
-  const drive = /^[A-Za-z]:/.exec(slashPath)?.[0].toUpperCase() ?? ''
-  const absolute = slashPath.startsWith('/') || drive.length > 0
-  const body = drive ? slashPath.slice(2) : slashPath
-  const parts: string[] = []
-  for (const segment of body.split('/')) {
-    if (segment === '' || segment === '.') continue
-    if (segment === '..') {
-      if (parts.length > 0 && parts[parts.length - 1] !== '..') parts.pop()
-      else if (!absolute) parts.push(segment)
-      continue
-    }
-    parts.push(segment)
-  }
-  if (drive) return parts.length > 0 ? `${drive}/${parts.join('/')}` : `${drive}/`
-  if (absolute) return `/${parts.join('/')}`
-  return parts.join('/') || '.'
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 }
 
 function isVirtualPath(path: string): boolean {
