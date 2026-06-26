@@ -1,4 +1,4 @@
-import { isRecord } from '@demi/utils'
+import { isRecord, parseJsonObject } from '@demi/utils'
 import { parseSseResponseStream } from './sse'
 import type { CodexResponseStreamEvent } from './responses'
 import type { CodexTransportMode } from './types'
@@ -334,15 +334,6 @@ function codexHttpErrorMessage(status: number, statusText: string, responseText:
   const body = parseJsonObject(responseText)
   const error = isRecord(body?.error) ? body.error : null
   return typeof error?.message === 'string' ? error.message : responseText || statusText || `HTTP ${status}`
-}
-
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(text)
-    return isRecord(parsed) ? parsed : null
-  } catch {
-    return null
-  }
 }
 
 function defaultWebSocketConstructor(): WebSocketConstructorLike | null {

@@ -1,6 +1,7 @@
-import { isAbortError, isRecord, numberOrZero } from '@demi/utils'
+import { isAbortError, isRecord, normalizeBaseUrl, numberOrZero, parseJsonObject, parseJsonOrString } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
+import { zeroUsage } from '@demi/core'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import {
   defineProvider,
@@ -437,10 +438,6 @@ function anthropicMessagesUrl(baseUrl: string): string {
   return normalized.endsWith('/messages') ? normalized : `${normalized}/messages`
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, '')
-}
-
 async function authStatus(apiKey: AnthropicApiSecretResolver, headersResolver: AnthropicApiHeadersResolver | undefined, authHeader: string) {
   const [key, headers] = await Promise.all([apiKey(), headersResolver?.()])
   if (key || (headers && Object.keys(headers).some((name) => name.toLowerCase() === authHeader))) {
@@ -473,26 +470,6 @@ function mergeAnthropicUsage(current: TokenUsage, usage: Record<string, unknown>
   }
 }
 
-function zeroUsage(): TokenUsage {
-  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
-}
-
-function parseJsonOrString(value: string): unknown {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
-  }
-}
-
-function parseJsonObject(value: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(value)
-    return isRecord(parsed) ? parsed : null
-  } catch {
-    return null
-  }
-}
 
 function httpErrorCode(status: number, message: string): string | null {
   if (status === 401 || status === 403) return 'auth_expired'

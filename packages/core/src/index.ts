@@ -41,6 +41,11 @@ export interface TokenUsage {
   cacheWriteTokens: number
 }
 
+/** A `TokenUsage` with every counter at zero. */
+export function zeroUsage(): TokenUsage {
+  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+}
+
 export type FileExtension = 'png' | 'jpg' | 'jpeg' | 'gif' | 'webp' | 'pdf'
 
 export type ThinkingEffort = string

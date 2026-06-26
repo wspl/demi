@@ -1,4 +1,4 @@
-import { isRecord, numberOrZero, shortHash } from '@demi/utils'
+import { isRecord, numberOrZero, parseJsonOrString, shortHash } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import type { InferenceItem, InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
@@ -341,13 +341,6 @@ function stringifyArguments(input: unknown): string {
   return typeof input === 'string' ? input : JSON.stringify(input ?? {})
 }
 
-function parseJsonOrString(value: string): unknown {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
-  }
-}
 
 function messageText(item: CodexMessageItem): string {
   return (

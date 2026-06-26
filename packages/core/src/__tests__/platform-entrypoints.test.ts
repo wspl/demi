@@ -248,11 +248,12 @@ test('production workspace imports are declared as package dependencies', async 
   expect([...new Set(violations)].sort()).toEqual([])
 })
 
-test('generic helpers provided by @demi/utils are not re-implemented in production source', async () => {
-  // Helpers fully consolidated into @demi/utils. Re-defining one (instead of importing it) is a
+test('generic helpers provided by shared packages are not re-implemented in production source', async () => {
+  // Helpers consolidated into a shared package. Re-defining one (instead of importing it) is a
   // code-reuse regression and must fail, the same way boundary violations do. `messageOf` is the
-  // deleted alias of `errorMessage` and must not return.
-  const utilsProvidedHelpers = [
+  // deleted alias of `errorMessage` and must not return. Each helper records the package that owns
+  // it; the canonical definition lives under `home` and is exempt.
+  const utilsHelperNames = [
     'isRecord',
     'numberOrZero',
     'asError',
@@ -270,18 +271,26 @@ test('generic helpers provided by @demi/utils are not re-implemented in producti
     'normalizePath',
     'dirnamePath',
     'isAbsolutePath',
+    'normalizeBaseUrl',
+    'parseJsonObject',
+    'parseJsonOrString',
   ]
-  const files = (await listSourceFiles(resolveRepoPath('packages'))).filter(
-    (file) => !formatPath(file).startsWith('packages/utils/'),
-  )
+  const sharedHelpers = [
+    ...utilsHelperNames.map((name) => ({ name, home: 'packages/utils/', pkg: '@demi/utils' })),
+    // zeroUsage returns core's TokenUsage, so its canonical home is @demi/core (utils cannot depend on core).
+    { name: 'zeroUsage', home: 'packages/core/', pkg: '@demi/core' },
+  ]
+  const files = await listSourceFiles(resolveRepoPath('packages'))
   const violations: string[] = []
 
   for (const file of files) {
+    const relativePath = formatPath(file)
     const source = await readFile(file, 'utf8')
-    for (const name of utilsProvidedHelpers) {
+    for (const { name, home, pkg } of sharedHelpers) {
+      if (relativePath.startsWith(home)) continue // the canonical definition lives here
       // Match a function or class definition (not local variables that happen to share the name).
       const definition = new RegExp(`\\b(?:export\\s+)?(?:async\\s+)?function ${name}\\b|\\b(?:export\\s+)?(?:abstract\\s+)?class ${name}\\b`)
-      if (definition.test(source)) violations.push(`${formatPath(file)} re-implements "${name}" (import it from @demi/utils)`)
+      if (definition.test(source)) violations.push(`${relativePath} re-implements "${name}" (import it from ${pkg})`)
     }
   }
 

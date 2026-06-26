@@ -1,6 +1,7 @@
-import { isAbortError, isRecord, numberOrZero, shortHash } from '@demi/utils'
+import { isAbortError, isRecord, normalizeBaseUrl, numberOrZero, parseJsonObject, parseJsonOrString, shortHash } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
+import { zeroUsage } from '@demi/core'
 import type { ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import {
   defineProvider,
@@ -889,10 +890,6 @@ function openAIResponsesUrl(baseUrl: string): string {
   return normalized.endsWith('/responses') ? normalized : `${normalized}/responses`
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, '')
-}
-
 function thinkingToReasoningEffort(request: InferenceRequest): string | undefined {
   const thinking = request.thinking
   if (!thinking || thinking.type === 'disabled' || thinking.type === 'budget') return undefined
@@ -901,23 +898,6 @@ function thinkingToReasoningEffort(request: InferenceRequest): string | undefine
 
 function stringifyToolArguments(input: unknown): string {
   return typeof input === 'string' ? input : JSON.stringify(input ?? {})
-}
-
-function parseJsonOrString(value: string): unknown {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
-  }
-}
-
-function parseJsonObject(value: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(value)
-    return isRecord(parsed) ? parsed : null
-  } catch {
-    return null
-  }
 }
 
 function clampPromptCacheKey(value: string): string {
@@ -935,10 +915,6 @@ function openAIUsage(usage: Record<string, unknown>) {
     cacheReadTokens: cachedTokens,
     cacheWriteTokens: 0,
   }
-}
-
-function zeroUsage() {
-  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
 }
 
 async function authStatus(apiKey: OpenAIApiSecretResolver, headersResolver: OpenAIApiHeadersResolver | undefined, authHeader: string) {

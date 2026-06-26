@@ -3,6 +3,11 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
+/** Strips trailing slashes from a base URL so paths can be appended consistently. */
+export function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, '')
+}
+
 /** Truncates `text` to at most `maxChars` characters, appending `ellipsis` when shortened. */
 export function truncate(text: string, maxChars: number, ellipsis = '…'): string {
   if (text.length <= maxChars) return text
