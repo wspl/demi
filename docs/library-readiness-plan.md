@@ -44,9 +44,9 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 
 | # | severity | 问题 | 证据 | 改造 |
 |---|---|---|---|---|
-| A1 | blocker | **没有构建产物**。所有包通过根 `tsconfig.json` 的 `paths` 映射到 `src/index.ts`,`noEmit`,且 `moduleResolution:bundler` + `types:["bun"]` + `verbatimModuleSyntax` 绑死 Bun。`exports` 全指向 `./src/index.ts`(裸 TS)。`npm install @demi/agent` 拿到的是 `.ts`。 | `tsconfig.json`;各包 `exports` | 引入构建(tsup/unbuild/`tsc -b`)产出 **ESM `.js` + `.d.ts`**,`exports` 用条件导出到 `dist`,`prepublishOnly` 跑构建。 |
+| A1 | blocker | **没有构建产物**。所有包通过根 `tsconfig.json` 的 `paths` 映射到 `src/index.ts`,`noEmit`,且 `moduleResolution:bundler` + `types:["bun"]` + `verbatimModuleSyntax` 绑死 Bun。`exports` 全指向 `./src/index.ts`(裸 TS)。`npm install @demi/agent` 拿到的是 `.ts`。 | `tsconfig.json`;各包 `exports` | 引入 **`tsdown`**(Rolldown + oxc,Vite/VoidZero 生态)产出 **ESM `.js` + `.d.ts`**,`exports` 用条件导出到 `dist`,`prepublishOnly` 跑构建。 |
 | A2 | blocker | 全部 `private:true`、`version:"0.0.0"`、无 description/repository/license/keywords。 | 所有 `packages/*/package.json` | 补元数据 + 真实版本 + `publishConfig.access:"public"` + **changesets**。 |
-| A3 | blocker | **无 LICENSE**;`just-bash` 是 git submodule(独立 monorepo),消费者装不到,fork 来源未交代。 | `.gitmodules`;`docs/package-boundaries.md:15` | 选 license;`just-bash` 独立发包或 vendored;交代 provenance。 |
+| A3 | blocker | **无 LICENSE 文件**(`just-bash` 已声明 `Apache-2.0` 但缺文件);`just-bash` 是 git submodule(自有仓库 `wspl/just-bash`),消费者装不到。 | `.gitmodules`;`packages/just-bash/packages/just-bash/package.json` | 采用 **Apache-2.0**;为 Demi 与 just-bash 各补 `LICENSE`+`NOTICE`;`just-bash` 独立发 npm 包。 |
 | A4 | low | 根 tsconfig 两条死 `paths`(`@demi/shell/local-host`、`@demi/shell/store` 指向不存在文件)。 | `tsconfig.json` | 删除/修正。 |
 
 ### Phase B —— 质量 / 可维护性
@@ -58,7 +58,7 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 | B3 | high | **`BashEnvironment` god-object**。 | `packages/shell/src/environment.ts`(1367 行) | 拆为协作者(详见 §5.2)。 |
 | B4 | high | **Provider 重复**(SSE/event 映射/usage/endpoint 解析/catalog)。 | `provider-openai-api/src/provider.ts`(1013)、anthropic(542)、claude-code(502) | 抽 `@demi/provider-kit`(详见 §5.3),与 §4 共同消化 provider 内的重复。 |
 | B5 | medium | `repl/src/index.ts` 既是 878 行应用又是包 `index.ts`。 | `packages/repl/src/index.ts` | 拆 `args`/`renderer`/`loop`/`compose`,`index.ts` 变薄。 |
-| B6 | medium | **无 lint/format**。 | 根目录 | Biome 或 oxlint+prettier,纳入 CI。 |
+| B6 | — | **无 lint/format**。 | 根目录 | **本阶段不做**(后续如需再议)。 |
 | B7 | low | public export 缺 TSDoc。 | `packages/*/src/index.ts` | 补 TSDoc(feeds typedoc)。 |
 
 ### Phase C —— 文档 / DX
@@ -175,11 +175,13 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 3. **里程碑 3 — 文档与采用(Phase C)**。
 4. **里程碑 4 — 开源工程化(Phase D)**,最后公开。
 
-## 8. 待决问题(需要拍板)
+## 8. 已定决策
 
-- **License**:MIT(最大采用)还是 Apache-2.0(带专利授权)?需与 `just-bash` 上游许可证兼容。
-- **`just-bash`**:独立发 npm 包,还是 vendored 进 `@demi/shell`?
-- **构建工具**:tsup / unbuild / `tsc -b`?
-- **Lint/format**:Biome,还是 oxlint + prettier?
-- **utils 形态**:独立 `@demi/utils`(推荐,边界清晰)还是并入 `@demi/core`(core 现为"纯类型",并入会破坏该定位)?`@demi/testkit` 是否独立包还是 `@demi/utils/testing` 子路径?
-- **共享渲染层**:`repl` 与 `web-ui` 的 block 渲染/工具分发/展示格式化是否提取为共享 presentation 包(`tool-rendering-spec.md` 已定义规则,但两端各自实现)。
+- **utils 形态**:独立 `@demi/utils` + 独立 `@demi/testkit`(均为 leaf;`testkit` 仅 devDependency)。
+- **License**:**Apache-2.0**。`just-bash`(自有仓库 `wspl/just-bash`)`package.json` 已声明 `Apache-2.0`,兼容;需为 Demi 与 just-bash 各补 `LICENSE`(全文)+ `NOTICE`(just-bash 目前只有 license 字段、缺文件)。
+- **`just-bash`**:独立发 npm 包(自有仓库,可控)。
+- **构建工具**:**`tsdown`**(Rolldown + oxc,Vite/VoidZero 生态,出 ESM + `.d.ts`),与现有 `oxc-parser`/`tsgo` 一致。
+- **Lint/format**:本阶段**不做**。
+- **共享 presentation 层**:**暂缓**,低优先级,等真正拆 `repl`/`web-ui` 时再评估。
+
+> **共享 presentation 层是什么**:`repl`(终端)和 `web-ui`(浏览器)拿到相同的 `Block`/工具结果,却各自实现一套"展示决策"(`shell_exec` 块标题、`yield` 块、输出截断、status/usage 格式化、stdout/stderr 交错——即 `tool-rendering-spec.md` 的规则)。共享层 = 一个平台中立包,只产出"给定 Block → {标题, 正文分段, 状态, 是否截断}"这类**纯数据**结论,不碰 DOM/终端;`repl` 渲成终端行、`web-ui` 渲成 Vue,共用同一套决策,规则只一处、不漂移。但两端渲染目标差异大,可共享的"纯决策"占比需实测,故暂缓。
