@@ -17,6 +17,7 @@ import type {
 } from '@demi/provider'
 import { Transcript, type TranscriptOptions } from './transcript'
 import { YieldScheduler } from './yield-scheduler'
+import { PendingSteerQueue, type PendingSteer } from './pending-steer-queue'
 import type {
   AgentHarnessRuntime,
   AgentSessionOptions,
@@ -59,14 +60,6 @@ type PendingSendAction = Extract<PendingAction, { type: 'send' }>
 
 type ActiveTurnPhase = 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing'
 
-interface PendingSteer {
-  id: string
-  turnId: string
-  model: ModelSelection
-  content: UserContentBlock[]
-  hidden?: boolean
-}
-
 interface TakenQueuedSend {
   message: QueuedMessage
   messageIndex: number
@@ -98,10 +91,8 @@ export class AgentSession<State> {
   private activeTurnId: string | null = null
   private activeTurnPhase: ActiveTurnPhase | null = null
   private activeProviderRun: ProviderRun | null = null
-  private readonly pendingSteers: PendingSteer[] = []
-  private readonly canceledPendingSteerIds = new Set<string>()
+  private readonly steerQueue = new PendingSteerQueue()
   private readonly yields: YieldScheduler
-  private pendingSteerContinuationCount = 0
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
 
@@ -194,7 +185,7 @@ export class AgentSession<State> {
 
     let blockId: string | undefined
     if (deliveryAfterResolve.type === 'provider') {
-      if (this.canceledPendingSteerIds.delete(steerId)) return
+      if (this.steerQueue.takeCanceled(steerId)) return
       blockId = steerId
       try {
         await deliveryAfterResolve.run.steer({
@@ -216,27 +207,21 @@ export class AgentSession<State> {
       return
     }
 
-    if (this.canceledPendingSteerIds.delete(steerId)) return
-    this.pendingSteers.push({
+    if (this.steerQueue.takeCanceled(steerId)) return
+    this.steerQueue.add({
       id: steerId,
       turnId,
       model: this.model,
       content: resolvedContent,
     })
-    this.pendingSteerContinuationCount += 1
     // Transcript-backed steering is materialized after the current sampling/tool boundary,
     // matching Codex pending input semantics.
   }
 
   cancelPendingSteer(id: string): boolean {
-    const index = this.pendingSteers.findIndex((steer) => steer.id === id)
-    if (index !== -1) {
-      this.pendingSteers.splice(index, 1)
-      this.pendingSteerContinuationCount = Math.max(0, this.pendingSteerContinuationCount - 1)
-      return true
-    }
+    if (this.steerQueue.removePending(id)) return true
     if (this.activeTurnId && this.currentAbortController && this.activeTurnPhase !== 'finalizing') {
-      this.canceledPendingSteerIds.add(id)
+      this.steerQueue.markCanceled(id)
       return true
     }
     return false
@@ -518,14 +503,13 @@ export class AgentSession<State> {
       return
     }
 
-    this.pendingSteers.push({
+    this.steerQueue.add({
       id,
       turnId,
       model: this.model,
       content,
       hidden,
     })
-    this.pendingSteerContinuationCount += 1
   }
 
   private enqueueHiddenSend(content: UserContentBlock[]): void {
@@ -624,7 +608,7 @@ export class AgentSession<State> {
           this.currentAbortController = null
           this.activeTurnId = null
           this.activeTurnPhase = null
-          this.canceledPendingSteerIds.clear()
+          this.steerQueue.clearCanceled()
           this.abortRecorded = false
           this.setPhase('idle')
           this.yields.arm()
@@ -801,7 +785,7 @@ export class AgentSession<State> {
     let autoCompactions = 0
     while (true) {
       throwIfAborted(this.currentSignal())
-      const steerContinuationBeforeStream = this.pendingSteerContinuationCount
+      const steerContinuationBeforeStream = this.steerQueue.continuationCount
       const shouldAutoRecover = await this.streamProviderOnce()
       throwIfAborted(this.currentSignal())
 
@@ -834,7 +818,7 @@ export class AgentSession<State> {
         }
       }
       if (toolExecution.stopAfterToolResult) return
-      if (this.pendingSteerContinuationCount > steerContinuationBeforeStream) {
+      if (this.steerQueue.continuationCount > steerContinuationBeforeStream) {
         await this.materializePendingSteersArrivedSince(steerContinuationBeforeStream)
         continue
       }
@@ -880,7 +864,7 @@ export class AgentSession<State> {
     try {
       for (const toolCall of pending) {
         throwIfAborted(this.currentSignal())
-        const steerContinuationBeforeTool = this.pendingSteerContinuationCount
+        const steerContinuationBeforeTool = this.steerQueue.continuationCount
 
         const tool = toolsByName.get(toolCall.toolName)
         if (!tool) {
@@ -1147,7 +1131,7 @@ export class AgentSession<State> {
 
   private async materializePendingSteersForCurrentTurn(): Promise<boolean> {
     if (!this.activeTurnId) return false
-    const steers = this.takePendingSteersForTurn(this.activeTurnId)
+    const steers = this.steerQueue.takeForTurn(this.activeTurnId)
     if (steers.length === 0) return false
     for (const steer of steers) {
       this.transcriptLog.pushSteer(steer.turnId, steer.model, steer.content, steer.id, steer.hidden ?? false)
@@ -1157,26 +1141,12 @@ export class AgentSession<State> {
   }
 
   private async materializePendingSteersArrivedSince(continuationCount: number): Promise<boolean> {
-    if (this.pendingSteerContinuationCount <= continuationCount) return false
+    if (this.steerQueue.continuationCount <= continuationCount) return false
     return this.materializePendingSteersForCurrentTurn()
   }
 
-  private takePendingSteersForTurn(turnId: string): PendingSteer[] {
-    const steers: PendingSteer[] = []
-    for (let index = 0; index < this.pendingSteers.length; ) {
-      const steer = this.pendingSteers[index]
-      if (steer.turnId !== turnId) {
-        index += 1
-        continue
-      }
-      steers.push(steer)
-      this.pendingSteers.splice(index, 1)
-    }
-    return steers
-  }
-
   private discardPendingSteersForCurrentTurn(): void {
-    if (this.activeTurnId) this.takePendingSteersForTurn(this.activeTurnId)
+    if (this.activeTurnId) this.steerQueue.takeForTurn(this.activeTurnId)
   }
 
   private removeQueuedMessage(id: string): void {
