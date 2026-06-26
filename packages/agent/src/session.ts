@@ -18,12 +18,8 @@ import type {
 import { Transcript, type TranscriptOptions } from './transcript'
 import { YieldScheduler } from './yield-scheduler'
 import { PendingSteerQueue, type PendingSteer } from './pending-steer-queue'
-import {
-  buildCompactionSummaryRequest,
-  estimateTokens,
-  nextSmallerCompactionCutPoint,
-  renderItemsForSummary,
-} from './compaction-support'
+import { CompactionController, type CompactionHost } from './compaction-controller'
+import { ProviderStreamError } from './provider-stream-error'
 import type {
   AgentHarnessRuntime,
   AgentSessionOptions,
@@ -99,6 +95,7 @@ export class AgentSession<State> {
   private activeProviderRun: ProviderRun | null = null
   private readonly steerQueue = new PendingSteerQueue()
   private readonly yields: YieldScheduler
+  private readonly compaction: CompactionController
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
 
@@ -149,6 +146,34 @@ export class AgentSession<State> {
       params.transcript instanceof Transcript
         ? params.transcript
         : new Transcript(params.transcript?.blocks ?? [], transcriptOptions)
+
+    const self = this
+    const compactionHost: CompactionHost = {
+      get transcript() {
+        return self.transcriptLog
+      },
+      get model() {
+        return self.model
+      },
+      get provider() {
+        return self.provider
+      },
+      get keepRecentTokens() {
+        return self.compactionKeepRecentTokens
+      },
+      get sessionId() {
+        return self.agentSessionId
+      },
+      get cwd() {
+        return self.cwd
+      },
+      nextRequestId: () => self.idFactory(),
+      currentTurnId: () => self.currentTurnId(),
+      currentSignal: () => self.currentSignal(),
+      streamProvider: (request, run) => self.providerEvents(request, run),
+      commitTranscript: () => self.commitTranscript(),
+    }
+    this.compaction = new CompactionController(compactionHost)
   }
 
   send(content: UserContentBlock[], options: { id?: string } = {}): Promise<void> {
@@ -644,7 +669,7 @@ export class AgentSession<State> {
       case 'compact':
         this.setPhase('compacting')
         this.activeTurnPhase = 'compacting'
-        await this.executeCompaction()
+        await this.compaction.run()
         return
     }
   }
@@ -682,7 +707,7 @@ export class AgentSession<State> {
     this.activeTurnPhase = 'compacting'
     try {
       for (let attempt = 0; attempt < 8 && this.transcriptLog.estimateContextTokens() >= threshold; attempt += 1) {
-        if (!(await this.executeCompaction())) break
+        if (!(await this.compaction.run())) break
       }
     } finally {
       this.activeTurnPhase = previousActivePhase
@@ -780,7 +805,7 @@ export class AgentSession<State> {
     this.setPhase('compacting')
     this.activeTurnPhase = 'compacting'
     try {
-      await this.executeCompaction()
+      await this.compaction.run()
     } finally {
       this.activeTurnPhase = previousActivePhase
       this.setPhase(previousPhase)
@@ -809,7 +834,7 @@ export class AgentSession<State> {
         this.activeTurnPhase = 'compacting'
         let compacted = false
         try {
-          compacted = await this.executeCompaction()
+          compacted = await this.compaction.run()
         } finally {
           this.activeTurnPhase = previousActivePhase
           this.setPhase(previousPhase)
@@ -964,61 +989,6 @@ export class AgentSession<State> {
         metadata: { error: normalized.message },
       }
     }
-  }
-
-  private async executeCompaction(): Promise<boolean> {
-    if (this.transcriptLog.pendingToolCalls().length > 0) return false
-
-    const window = this.transcriptLog.findCompactionWindow(this.compactionKeepRecentTokens)
-    if (window === null || window.cutPoint <= window.startIndex) return false
-
-    let cutPoint = window.cutPoint
-    while (cutPoint > window.startIndex) {
-      const compactedBlocks = this.transcriptLog.blocks.slice(window.startIndex, cutPoint)
-      const compactedTokens = compactedBlocks.reduce((total, block) => {
-        return total + new Transcript([block]).estimateContextTokens()
-      }, 0)
-
-      try {
-        const summary = await this.generateCompactionSummary(compactedBlocks)
-        if (!summary) return false
-
-        const boundary = this.transcriptLog.insertCompactionBoundary(cutPoint, this.model, summary, estimateTokens(summary))
-        this.transcriptLog.appendCompactionMarker(this.model, boundary.id, compactedTokens)
-        await this.commitTranscript()
-        return true
-      } catch (error) {
-        if (!isContextLengthExceeded(error)) throw error
-        const nextCutPoint = nextSmallerCompactionCutPoint(window.startIndex, cutPoint)
-        if (nextCutPoint === null) throw error
-        cutPoint = nextCutPoint
-      }
-    }
-
-    return false
-  }
-
-  private async generateCompactionSummary(blocks: typeof this.transcriptLog.blocks): Promise<string> {
-    const compactTranscript = new Transcript(blocks)
-    const rendered = renderItemsForSummary(compactTranscript.collectInferenceItems())
-    const request = buildCompactionSummaryRequest(rendered, {
-      sessionId: this.agentSessionId,
-      turnId: this.currentTurnId(),
-      requestId: this.idFactory(),
-      modelId: this.model.model.id,
-      cwd: this.cwd,
-      serviceTierId: this.model.serviceTierId ?? null,
-      cancel: this.currentSignal(),
-    })
-
-    let summary = ''
-    for await (const event of this.providerEvents(request, this.provider.run(request))) {
-      throwIfAborted(request.cancel)
-      if (event.type === 'text_delta') summary += event.text
-      if (event.type === 'abort') throw new AbortError()
-      if (event.type === 'error') throw new ProviderStreamError(event.message, event.code)
-    }
-    return summary.trim()
   }
 
   private async *providerEvents(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent> {
@@ -1236,20 +1206,6 @@ function textContentSummary(content: UserContentBlock[]): string {
     .join('\n')
     .trim()
   return truncate(text, 120, '...')
-}
-
-class ProviderStreamError extends Error {
-  readonly code: string | null
-
-  constructor(message: string, code: string | null) {
-    super(message)
-    this.name = 'ProviderStreamError'
-    this.code = code
-  }
-}
-
-function isContextLengthExceeded(error: unknown): boolean {
-  return error instanceof ProviderStreamError && error.code === 'context_length_exceeded'
 }
 
 async function readProviderIterator(
