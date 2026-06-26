@@ -192,7 +192,7 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - [x] `examples/` 最小可跑示例(`examples/coding-agent.ts`,纳入 `tsconfig` 受类型校验)
 - [x] 扩展指南 ×3(`docs/guides/`)+ typedoc API 参考(`typedoc.json` + `bun run docs:api` → `docs/api`,11 入口点,247 页,已 gitignore)
 - [~] CI(GitHub Actions:typecheck/typecheck:web/test/build)+ 贡献者文档(`CONTRIBUTING`/`SECURITY`/`CODE_OF_CONDUCT`)已就绪;lint/format 本阶段不做(已定决策)
-- [ ] 内部设计记录与用户文档分离
+- [~] 内部设计记录与用户文档分离(可选/低优先):多数内部设计/研究文档已 0 外链,移入 `docs/design/` 属纯整理;有跨文档相对链接维护成本、价值偏装饰,暂缓。用户向文档(README、`docs/guides/`、`package-boundaries`、`tool-rendering-spec`)已清晰可达。
 
 ## 7. 执行顺序与里程碑
 
