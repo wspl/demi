@@ -23,11 +23,14 @@ export interface CompactionHost {
   readonly keepRecentTokens: number
   readonly sessionId: string
   readonly cwd: string
+  readonly thresholdRatio: number
   nextRequestId(): string
   currentTurnId(): string
   currentSignal(): AbortSignal
   streamProvider(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent>
   commitTranscript(): Promise<void>
+  /** Runs `fn` with the session marked as compacting, restoring the prior phase afterwards. */
+  runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T>
 }
 
 /**
@@ -37,6 +40,28 @@ export interface CompactionHost {
  */
 export class CompactionController {
   constructor(private readonly host: CompactionHost) {}
+
+  /** Compacts (up to 8 passes) until the history fits `targetModel`'s context, if over threshold. */
+  async compactToFit(targetModel: ModelSelection): Promise<void> {
+    const contextWindow = targetModel.model.contextWindow
+    if (contextWindow <= 0) return
+    const threshold = Math.floor(contextWindow * this.host.thresholdRatio)
+    if (this.host.transcript.estimateContextTokens() < threshold) return
+    await this.host.runWithCompactingPhase(async () => {
+      for (let attempt = 0; attempt < 8 && this.host.transcript.estimateContextTokens() >= threshold; attempt += 1) {
+        if (!(await this.run())) break
+      }
+    })
+  }
+
+  /** Runs one compaction pass before a turn when the current model is over threshold. */
+  async preflight(): Promise<void> {
+    const contextWindow = this.host.model.model.contextWindow
+    if (contextWindow <= 0) return
+    const threshold = Math.floor(contextWindow * this.host.thresholdRatio)
+    if (this.host.transcript.estimateContextTokens() < threshold) return
+    await this.host.runWithCompactingPhase(() => this.run())
+  }
 
   /** Runs one compaction pass; returns whether it compacted anything. */
   async run(): Promise<boolean> {

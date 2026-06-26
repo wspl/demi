@@ -167,11 +167,15 @@ export class AgentSession<State> {
       get cwd() {
         return self.cwd
       },
+      get thresholdRatio() {
+        return self.compactionThresholdRatio
+      },
       nextRequestId: () => self.idFactory(),
       currentTurnId: () => self.currentTurnId(),
       currentSignal: () => self.currentSignal(),
       streamProvider: (request, run) => self.providerEvents(request, run),
       commitTranscript: () => self.commitTranscript(),
+      runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
     }
     this.compaction = new CompactionController(compactionHost)
   }
@@ -686,7 +690,7 @@ export class AgentSession<State> {
     if (!pending) return
     this.pendingModelSwitch = null
 
-    await this.compactToFitModel(pending.model)
+    await this.compaction.compactToFit(pending.model)
     if (pending.provider && pending.provider !== this.provider) {
       const previous = this.provider
       this.provider = pending.provider
@@ -695,20 +699,13 @@ export class AgentSession<State> {
     this.model = pending.model
   }
 
-  private async compactToFitModel(nextModel: ModelSelection): Promise<void> {
-    const contextWindow = nextModel.model.contextWindow
-    if (contextWindow <= 0) return
-    const threshold = Math.floor(contextWindow * this.compactionThresholdRatio)
-    if (this.transcriptLog.estimateContextTokens() < threshold) return
-
+  private async runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T> {
     const previousPhase = this.currentPhase
     const previousActivePhase = this.activeTurnPhase
     this.setPhase('compacting')
     this.activeTurnPhase = 'compacting'
     try {
-      for (let attempt = 0; attempt < 8 && this.transcriptLog.estimateContextTokens() >= threshold; attempt += 1) {
-        if (!(await this.compaction.run())) break
-      }
+      return await fn()
     } finally {
       this.activeTurnPhase = previousActivePhase
       this.setPhase(previousPhase)
@@ -731,7 +728,7 @@ export class AgentSession<State> {
     this.transcriptLog.pushUserTurn(this.currentTurnId(), this.model, resolvedContent, preamble, hidden)
     await this.commitTranscript()
 
-    await this.executePreflightCompaction()
+    await this.compaction.preflight()
     await this.executeProviderTurn()
   }
 
@@ -781,7 +778,7 @@ export class AgentSession<State> {
     await this.commitTranscript()
 
     await this.applyPendingModelSwitch()
-    await this.executePreflightCompaction()
+    await this.compaction.preflight()
     await this.executeProviderTurn()
   }
 
@@ -790,26 +787,8 @@ export class AgentSession<State> {
     this.transcriptLog.markLatestAbortResumed()
     this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
     await this.commitTranscript()
-    await this.executePreflightCompaction()
+    await this.compaction.preflight()
     await this.executeProviderTurn()
-  }
-
-  private async executePreflightCompaction(): Promise<void> {
-    const contextWindow = this.model.model.contextWindow
-    if (contextWindow <= 0) return
-    const threshold = Math.floor(contextWindow * this.compactionThresholdRatio)
-    if (this.transcriptLog.estimateContextTokens() < threshold) return
-
-    const previousPhase = this.currentPhase
-    const previousActivePhase = this.activeTurnPhase
-    this.setPhase('compacting')
-    this.activeTurnPhase = 'compacting'
-    try {
-      await this.compaction.run()
-    } finally {
-      this.activeTurnPhase = previousActivePhase
-      this.setPhase(previousPhase)
-    }
   }
 
   private async executeProviderTurn(): Promise<void> {
