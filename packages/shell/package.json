@@ -1,8 +1,8 @@
 {
   "name": "@demi/shell",
   "description": "Sandboxable bash engine and Host contract for Demi.",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "private": false,
   "type": "module",
   "exports": {
     ".": {
@@ -35,5 +35,8 @@
   ],
   "scripts": {
     "build": "tsdown"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

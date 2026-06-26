@@ -1,8 +1,8 @@
 {
   "name": "@demi/core",
   "description": "Core data types and shared domain primitives for the Demi agent toolkit.",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "private": false,
   "type": "module",
   "exports": {
     ".": {
@@ -20,5 +20,8 @@
   ],
   "scripts": {
     "build": "tsdown"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

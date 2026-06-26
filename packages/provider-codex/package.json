@@ -1,8 +1,8 @@
 {
   "name": "@demi/provider-codex",
   "description": "Codex provider adapter for Demi.",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "private": false,
   "type": "module",
   "exports": {
     ".": {
@@ -29,5 +29,8 @@
   ],
   "scripts": {
     "build": "tsdown"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
