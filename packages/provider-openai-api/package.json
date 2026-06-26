@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@demi/core": "workspace:*",
-    "@demi/provider": "workspace:*"
+    "@demi/provider": "workspace:*",
+    "@demi/utils": "workspace:*"
   }
 }

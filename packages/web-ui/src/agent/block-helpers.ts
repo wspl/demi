@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import type { Block, TokenUsage } from '@demi/core'
 
 type ToolCallBlock = Extract<Block, { type: 'tool_call' }>
@@ -107,8 +108,4 @@ function namedSection(text: string, name: 'stdout' | 'stderr', nextNames: string
   }
   const result = section.join('\n').trimEnd()
   return result === '(empty)' ? '' : result
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

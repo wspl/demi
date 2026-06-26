@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import type { TokenUsage } from '@demi/core'
 import type { ProviderEvent } from '@demi/provider'
 
@@ -211,10 +212,6 @@ function classifyProviderError(message: string): string | null {
     return 'auth_expired'
   }
   return null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function stripMcpToolPrefix(name: string): string {

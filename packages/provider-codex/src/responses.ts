@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import type { InferenceItem, InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
@@ -421,10 +422,6 @@ function isMessageItem(item: unknown): item is CodexMessageItem {
 
 function isFunctionCallItem(item: unknown): item is CodexFunctionCallItem {
   return isRecord(item) && item.type === 'function_call'
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function numberOrZero(value: unknown): number {

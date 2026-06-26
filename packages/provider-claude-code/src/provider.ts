@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import { randomUUID } from 'node:crypto'
 import type { ToolResultContentBlock } from '@demi/core'
 import {
@@ -463,10 +464,6 @@ function toolResultContentToMcp(output: ToolResultContentBlock[]): Array<Record<
       mimeType: block.source.mediaType,
     }
   })
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function isMessageType(value: unknown, type: string): boolean {

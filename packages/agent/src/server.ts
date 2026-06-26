@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import { AgentSession } from './session'
 import {
   BashEnvironment,
@@ -541,10 +542,6 @@ function isBashAuditEvent(value: unknown): value is BashAuditEvent {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function errorCode(error: unknown): string | undefined {

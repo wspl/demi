@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import type { ProviderModel, ProviderModelList } from '@demi/provider'
 
 export interface ClaudeCodeModelCatalogOptions {
@@ -256,8 +257,4 @@ function reasoningEfforts(value: unknown): ProviderModel['supportedThinkingEffor
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

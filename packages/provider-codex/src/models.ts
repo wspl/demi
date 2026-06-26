@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import type { ProviderModel, ProviderModelList } from '@demi/provider'
 import {
   CodexAuthError,
@@ -295,8 +296,4 @@ function numberOrNull(value: unknown): number | null {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

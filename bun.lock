@@ -17,6 +17,7 @@
         "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
         "@demi/shell": "workspace:*",
+        "@demi/utils": "workspace:*",
       },
     },
     "packages/coding-agent": {
@@ -99,6 +100,7 @@
       "dependencies": {
         "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
+        "@demi/utils": "workspace:*",
       },
     },
     "packages/provider-claude-code": {
@@ -107,6 +109,7 @@
       "dependencies": {
         "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
+        "@demi/utils": "workspace:*",
       },
       "devDependencies": {
         "@demi/agent": "workspace:*",
@@ -119,6 +122,7 @@
       "dependencies": {
         "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
+        "@demi/utils": "workspace:*",
       },
       "devDependencies": {
         "@demi/agent": "workspace:*",
@@ -131,6 +135,7 @@
       "dependencies": {
         "@demi/core": "workspace:*",
         "@demi/provider": "workspace:*",
+        "@demi/utils": "workspace:*",
       },
     },
     "packages/repl": {
@@ -156,6 +161,10 @@
         "just-bash": "workspace:*",
         "zod": "^4.0.0",
       },
+    },
+    "packages/utils": {
+      "name": "@demi/utils",
+      "version": "0.0.0",
     },
     "packages/web": {
       "name": "@demi/web",
@@ -191,6 +200,7 @@
       "dependencies": {
         "@demi/agent": "workspace:*",
         "@demi/core": "workspace:*",
+        "@demi/utils": "workspace:*",
         "@floating-ui/vue": "^2.0.0",
         "@mingcute/vue": "^1.4.1",
         "@tanstack/vue-virtual": "^3.13.29",
@@ -251,6 +261,8 @@
     "@demi/repl": ["@demi/repl@workspace:packages/repl"],
 
     "@demi/shell": ["@demi/shell@workspace:packages/shell"],
+
+    "@demi/utils": ["@demi/utils@workspace:packages/utils"],
 
     "@demi/web": ["@demi/web@workspace:packages/web"],
 

@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import { chmod, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -436,10 +437,6 @@ function nonEmptyString(value: unknown): string | null {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

@@ -11,6 +11,7 @@
   "dependencies": {
     "@demi/core": "workspace:*",
     "@demi/provider": "workspace:*",
-    "@demi/shell": "workspace:*"
+    "@demi/shell": "workspace:*",
+    "@demi/utils": "workspace:*"
   }
 }

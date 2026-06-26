@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import {
   applyModelPolicy,
   defineProvider,
@@ -255,10 +256,6 @@ function expectStringRecord(value: unknown, field: string): Record<string, strin
     out[key] = nested
   }
   return out
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function defaultUserAgent(): string {

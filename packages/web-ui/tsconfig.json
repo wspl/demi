@@ -6,7 +6,8 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["bun"],
     "paths": {
-      "@demi/web-ui/*": ["./src/*"]
+      "@demi/web-ui/*": ["./src/*"],
+      "@demi/*": ["../*/src/index.ts"]
     }
   },
   "include": ["src"],

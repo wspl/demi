@@ -6,6 +6,7 @@
     "packages/coding-agent",
     "packages/agent",
     "packages/core",
+    "packages/utils",
     "packages/host-local",
     "packages/provider",
     "packages/provider-codex",

@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
@@ -535,8 +536,4 @@ function numberOr(value: unknown): number | null {
 
 function numberOrZero(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

@@ -6,6 +6,7 @@ import { parseSync } from 'oxc-parser'
 const repoRoot = resolve(import.meta.dir, '../../../..')
 
 const platformNeutralEntries = [
+  ['@demi/utils', 'packages/utils/src/index.ts'],
   ['@demi/core', 'packages/core/src/index.ts'],
   ['@demi/provider', 'packages/provider/src/index.ts'],
   ['@demi/agent', 'packages/agent/src/index.ts'],
@@ -24,6 +25,7 @@ const workspaceEntries = new Map<string, string>([
 ])
 
 const productionPackageDirectories = new Map<string, string>([
+  ['@demi/utils', 'packages/utils'],
   ['@demi/core', 'packages/core'],
   ['@demi/provider', 'packages/provider'],
   ['@demi/shell', 'packages/shell'],
@@ -38,16 +40,17 @@ const productionPackageDirectories = new Map<string, string>([
 ])
 
 const productionDependencyGraph = new Map<string, readonly string[]>([
+  ['@demi/utils', []],
   ['@demi/core', []],
   ['@demi/provider', ['@demi/core']],
   ['@demi/shell', []],
   ['@demi/host-local', ['@demi/shell']],
-  ['@demi/agent', ['@demi/core', '@demi/provider', '@demi/shell']],
+  ['@demi/agent', ['@demi/core', '@demi/provider', '@demi/shell', '@demi/utils']],
   ['@demi/coding-agent', ['@demi/agent', '@demi/core', '@demi/shell']],
-  ['@demi/provider-claude-code', ['@demi/core', '@demi/provider']],
-  ['@demi/provider-codex', ['@demi/core', '@demi/provider']],
-  ['@demi/provider-openai-api', ['@demi/core', '@demi/provider']],
-  ['@demi/provider-anthropic-api', ['@demi/core', '@demi/provider']],
+  ['@demi/provider-claude-code', ['@demi/core', '@demi/provider', '@demi/utils']],
+  ['@demi/provider-codex', ['@demi/core', '@demi/provider', '@demi/utils']],
+  ['@demi/provider-openai-api', ['@demi/core', '@demi/provider', '@demi/utils']],
+  ['@demi/provider-anthropic-api', ['@demi/core', '@demi/provider', '@demi/utils']],
   [
     '@demi/repl',
     [
@@ -162,6 +165,7 @@ test('package manifests preserve layering boundaries', async () => {
   expect(packageDependencyNames(manifests.get('@demi/shell')).filter((name) => name === '@demi/core' || name === '@demi/provider')).toEqual([])
 
   const platformNeutralPackages = [
+    '@demi/utils',
     '@demi/core',
     '@demi/provider',
     '@demi/agent',

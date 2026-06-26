@@ -1,3 +1,4 @@
+import { isRecord } from '@demi/utils'
 import { parseSseResponseStream } from './sse'
 import type { CodexResponseStreamEvent } from './responses'
 import type { CodexTransportMode } from './types'
@@ -342,10 +343,6 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   } catch {
     return null
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function defaultWebSocketConstructor(): WebSocketConstructorLike | null {
