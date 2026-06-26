@@ -7,6 +7,10 @@ import typedocSidebar from '../api/typedoc-sidebar.json'
 export default defineConfig({
   title: 'Demi',
   description: 'A TypeScript toolkit for building agents and coding agents.',
+  // Default '/' suits a user/org page or a custom domain. For a GitHub *project*
+  // page (https://<user>.github.io/<repo>/), set DOCS_BASE=/<repo>/ — the deploy
+  // workflow passes it through, so no code edit is needed.
+  base: process.env.DOCS_BASE || '/',
   cleanUrls: true,
   srcExclude: ['internal/**'],
   // TODO: tighten to false once every page is migrated and cross-links are final.
