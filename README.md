@@ -93,10 +93,13 @@ consumes an injected `AgentClient`, see `@demi/web-ui`.
 
 - **A new provider** — implement the `@demi/provider` contract (`run()` returning a
   `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
+  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md).
 - **A new Host** — implement `{ defaultCwd, fs, process, store }`; `@demi/host-local`
   is the reference for a remote/container/sandboxed backend.
+  See [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md).
 - **A new UI** — consume an `AgentClient` (in-process, stdio via `@demi/agent/stdio`,
   or WebSocket) and render `Block`s per [docs/tool-rendering-spec.md](docs/tool-rendering-spec.md).
+  See [docs/guides/embed-the-ui.md](docs/guides/embed-the-ui.md).
 
 ## Development
 

@@ -177,7 +177,7 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - [x] tsdown 构建产物(ESM `.mjs` + `.d.mts`)+ `development`(→src)/`import`(→dist)条件 exports;dev/test 仍走 src,解除 Bun 绑定
 - [ ] 包元数据 + 真实版本 + changesets
 - [x] `examples/` 最小可跑示例(`examples/coding-agent.ts`,纳入 `tsconfig` 受类型校验)
-- [ ] API 参考(typedoc)+ 扩展指南 ×3
+- [~] 扩展指南 ×3 已写(`docs/guides/{add-a-provider,implement-a-host,embed-the-ui}.md`);API 参考(typedoc)待做
 - [ ] lint/format + CI + 贡献者文档
 - [ ] 内部设计记录与用户文档分离
 
