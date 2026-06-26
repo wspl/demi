@@ -248,6 +248,40 @@ test('production workspace imports are declared as package dependencies', async 
   expect([...new Set(violations)].sort()).toEqual([])
 })
 
+test('generic helpers provided by @demi/utils are not re-implemented in production source', async () => {
+  // Helpers fully consolidated into @demi/utils. Re-defining one (instead of importing it) is a
+  // code-reuse regression and must fail, the same way boundary violations do. `messageOf` is the
+  // deleted alias of `errorMessage` and must not return.
+  const utilsProvidedHelpers = [
+    'isRecord',
+    'numberOrZero',
+    'asError',
+    'errorMessage',
+    'messageOf',
+    'isAbortError',
+    'noop',
+    'encodeUtf8',
+    'decodeUtf8',
+    'concatBytes',
+    'shortHash',
+  ]
+  const files = (await listSourceFiles(resolveRepoPath('packages'))).filter(
+    (file) => !formatPath(file).startsWith('packages/utils/'),
+  )
+  const violations: string[] = []
+
+  for (const file of files) {
+    const source = await readFile(file, 'utf8')
+    for (const name of utilsProvidedHelpers) {
+      // Match a function definition only (not local variables that happen to share the name).
+      const definition = new RegExp(`\\b(?:export\\s+)?(?:async\\s+)?function ${name}\\b`)
+      if (definition.test(source)) violations.push(`${formatPath(file)} re-implements "${name}" (import it from @demi/utils)`)
+    }
+  }
+
+  expect(violations.sort()).toEqual([])
+})
+
 test('public root exports do not expose provider internals or testing helpers', async () => {
   const checks = [
     [
