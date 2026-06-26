@@ -1,3 +1,4 @@
+import { delay } from '@demi/utils'
 import process from 'node:process'
 
 const KILL_WAIT_MS = 100
@@ -27,7 +28,7 @@ export async function killListeningPort(port: number): Promise<void> {
 async function waitUntilFree(port: number): Promise<boolean> {
   for (let attempt = 0; attempt < KILL_RETRIES; attempt++) {
     if ((await listeningPids(port)).length === 0) return true
-    await sleep(KILL_WAIT_MS)
+    await delay(KILL_WAIT_MS)
   }
   return false
 }
@@ -49,8 +50,4 @@ async function run(cmd: string[]): Promise<void> {
   const proc = Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' })
   const exitCode = await proc.exited
   if (exitCode !== 0) throw new Error(`${cmd.join(' ')} failed with exit code ${exitCode}`)
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

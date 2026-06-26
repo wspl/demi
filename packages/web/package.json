@@ -14,6 +14,7 @@
     "@demi/core": "workspace:*",
     "@demi/host-local": "workspace:*",
     "@demi/provider": "workspace:*",
+    "@demi/utils": "workspace:*",
     "@demi/provider-anthropic-api": "workspace:*",
     "@demi/provider-claude-code": "workspace:*",
     "@demi/provider-codex": "workspace:*",

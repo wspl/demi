@@ -184,6 +184,7 @@
         "@demi/provider-codex": "workspace:*",
         "@demi/provider-openai-api": "workspace:*",
         "@demi/shell": "workspace:*",
+        "@demi/utils": "workspace:*",
         "@demi/web-ui": "workspace:*",
         "katex": "^0.17.0",
         "vue": "^3.5.21",

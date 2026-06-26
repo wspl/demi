@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { deferred, waitFor, type Deferred } from '@demi/utils'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -162,27 +163,6 @@ class GateProvider implements AgentProvider {
 
 function text(value: string): UserContentBlock[] {
   return [{ type: 'text', text: value }]
-}
-
-async function waitFor(predicate: () => boolean): Promise<void> {
-  const startedAt = Date.now()
-  while (!predicate()) {
-    if (Date.now() - startedAt > 1_000) throw new Error('Timed out waiting for predicate')
-    await new Promise((resolve) => setTimeout(resolve, 1))
-  }
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
-}
-
-interface Deferred<T> {
-  promise: Promise<T>
-  resolve: (value: T) => void
 }
 
 function testServerOptions(args: string[]) {
