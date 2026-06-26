@@ -140,7 +140,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demi/web-ui`
 
-- Status: planned (see `docs/web-plan.md`).
+- Status: planned.
 - Production deps: `@demi/core`, `@demi/agent`, `@demi/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, and a
@@ -156,7 +156,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demi/web`
 
-- Status: planned (see `docs/web-plan.md`).
+- Status: planned.
 - Production deps: `@demi/web-ui`, `@demi/agent`, `@demi/host-local`, `@demi/coding-agent`,
   `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`,
   `@demi/provider-openai-api`, `@demi/provider-anthropic-api`, `@demi/shell`.
@@ -171,7 +171,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demi/agent-eval`
 
-- Status: planned (see `docs/agent-evaluation-plan.md`).
+- Status: planned.
 - Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/host-local`,
   `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`,
   `@demi/provider-openai-api`, `@demi/provider-anthropic-api`, `@demi/shell`.

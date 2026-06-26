@@ -8,6 +8,10 @@ dist/
 # Generated API reference — `bun run docs:api` (typedoc)
 docs/api/
 
+# Internal-only docs (design history, research, QA acceptance, the readiness plan).
+# Kept locally for the team, excluded from the published/open-source repo.
+docs/internal/
+
 # Test & coverage
 coverage/
 .test-cache/
