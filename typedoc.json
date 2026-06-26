@@ -18,5 +18,8 @@
   "readme": "none",
   "excludeExternals": true,
   "skipErrorChecking": true,
-  "githubPages": false
+  "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme"],
+  "docsRoot": "docs",
+  "entryFileName": "index",
+  "hideBreadcrumbs": true
 }
