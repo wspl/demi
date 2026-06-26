@@ -1,4 +1,4 @@
-import { concatBytes, decodeUtf8, utf8Bytes } from '@demi/utils'
+import { concatBytes, decodeUtf8, tail, utf8Bytes } from '@demi/utils'
 import type { HostSpawnRedirection, ShellOptions, ShoptOptions } from 'just-bash/interpreter'
 import type { ExecAccumulator, ForegroundProcess, ForegroundSink, ShellSession } from './environment-state'
 import type { OutputSnapshot } from './environment'
@@ -259,8 +259,7 @@ function appendVisibleChunk(
 }
 
 function tailString(value: string): string {
-  if (value.length <= TAIL_SIZE) return value
-  return value.slice(value.length - TAIL_SIZE)
+  return tail(value, TAIL_SIZE)
 }
 
 function notifyWaiters(waiters: Set<() => void>): void {

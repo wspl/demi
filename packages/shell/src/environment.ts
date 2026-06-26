@@ -1,4 +1,4 @@
-import { decodeUtf8, encodeUtf8 } from '@demi/utils'
+import { decodeUtf8, encodeUtf8, tail } from '@demi/utils'
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterContext, type InterpreterState } from 'just-bash/interpreter'
 import type { HostSpawnRedirection } from 'just-bash/interpreter'
 import type { ScriptNode } from 'just-bash/ast/types'
@@ -1359,9 +1359,7 @@ function utf8Slice(text: string, start: number, end: number): string {
 }
 
 function tailString(value: string): string {
-  const maxChars = 4096
-  if (value.length <= maxChars) return value
-  return value.slice(value.length - maxChars)
+  return tail(value, 4096)
 }
 
 void (undefined as unknown as InterpreterContext)

@@ -1,4 +1,4 @@
-import { errorMessage, isRecord } from '@demi/utils'
+import { delay, errorMessage, isRecord } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import { chmod, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -441,8 +441,4 @@ function stringOrNull(value: unknown): string | null {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
