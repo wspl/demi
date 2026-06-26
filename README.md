@@ -97,7 +97,8 @@ consumes an injected `AgentClient`, see `@demi/web-ui`.
   template [examples/custom-provider.ts](examples/custom-provider.ts).
 - **A new Host** — implement `{ defaultCwd, fs, process, store }`; `@demi/host-local`
   is the reference for a remote/container/sandboxed backend.
-  See [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md).
+  See [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md) and the
+  sandbox template [examples/sandboxed-host.ts](examples/sandboxed-host.ts).
 - **A new UI** — consume an `AgentClient` (in-process, stdio via `@demi/agent/stdio`,
   or WebSocket) and render `Block`s per [docs/tool-rendering-spec.md](docs/tool-rendering-spec.md).
   See [docs/guides/embed-the-ui.md](docs/guides/embed-the-ui.md).

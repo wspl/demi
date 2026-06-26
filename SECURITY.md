@@ -32,5 +32,7 @@ prompts should be aware of it:
 
 The shell runs against a `Host` abstraction. When running untrusted agents, supply
 a `Host` that enforces your sandbox (path jail, restricted `spawn`, ephemeral
-store) — see [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md).
-The default `@demi/host-local` grants full local filesystem and process access.
+store) — see [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md) and
+the runnable [examples/sandboxed-host.ts](examples/sandboxed-host.ts) (a command
+allowlist over `@demi/host-local`). The default `@demi/host-local` grants full
+local filesystem and process access.
