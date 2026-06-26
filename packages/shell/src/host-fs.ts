@@ -1,3 +1,4 @@
+import { decodeUtf8, encodeUtf8 } from '@demi/utils'
 import type {
   BufferEncoding,
   CpOptions,
@@ -10,7 +11,6 @@ import type {
   RmOptions,
   WriteFileOptions,
 } from 'just-bash/fs/interface'
-import { decodeUtf8, encodeUtf8 } from './bytes'
 import type { Host, HostDirent, HostFileStat } from './host'
 
 export type VirtualFileSystemNode =

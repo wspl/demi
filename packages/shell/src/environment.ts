@@ -1,3 +1,4 @@
+import { decodeUtf8, encodeUtf8 } from '@demi/utils'
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterContext, type InterpreterState } from 'just-bash/interpreter'
 import type { HostSpawnRedirection } from 'just-bash/interpreter'
 import type { ScriptNode } from 'just-bash/ast/types'
@@ -8,7 +9,6 @@ import { LexerError } from 'just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from 'just-bash/types'
 import { resolveLimits } from 'just-bash/limits'
 import { CommandRegistry, type CommandSpec } from './command'
-import { decodeUtf8, encodeUtf8 } from './bytes'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
   buildBashopts,

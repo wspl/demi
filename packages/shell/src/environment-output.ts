@@ -1,5 +1,5 @@
+import { concatBytes, decodeUtf8, utf8Bytes } from '@demi/utils'
 import type { HostSpawnRedirection, ShellOptions, ShoptOptions } from 'just-bash/interpreter'
-import { concatBytes, decodeUtf8, utf8ByteLength } from './bytes'
 import type { ExecAccumulator, ForegroundProcess, ForegroundSink, ShellSession } from './environment-state'
 import type { OutputSnapshot } from './environment'
 import type { HostProcessOutputChunk } from './host'
@@ -22,8 +22,8 @@ export function emptySnapshot(): OutputSnapshot {
 export function snapshotFromAccumulator(session: ShellSession, accumulator: ExecAccumulator): OutputSnapshot {
   const stdoutDelta = accumulator.stdout
   const stderrDelta = accumulator.stderr
-  session.totalStdoutBytes = session.startStdoutBytes + utf8ByteLength(stdoutDelta)
-  session.totalStderrBytes = session.startStderrBytes + utf8ByteLength(stderrDelta)
+  session.totalStdoutBytes = session.startStdoutBytes + utf8Bytes(stdoutDelta)
+  session.totalStderrBytes = session.startStderrBytes + utf8Bytes(stderrDelta)
   return {
     stdoutDelta,
     stderrDelta,

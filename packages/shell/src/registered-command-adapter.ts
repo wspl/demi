@@ -1,5 +1,5 @@
+import { concatBytes, decodeUtf8, encodeUtf8 } from '@demi/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from 'just-bash/types'
-import { concatBytes, decodeUtf8, encodeUtf8 } from './bytes'
 import { runRegisteredCommand, type CommandIO, type CommandSpec } from './command'
 import type { ShellSession } from './environment-state'
 import type { AgentSessionCommandStorage } from './storage'

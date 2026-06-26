@@ -1,8 +1,7 @@
-import { errorMessage } from '@demi/utils'
+import { decodeUtf8, errorMessage } from '@demi/utils'
 import type { Host } from '@demi/shell'
 import type { AgentReferenceResolveContext } from '@demi/agent'
 import type { UserContentBlock } from '@demi/core'
-import { decodeUtf8 } from './platform'
 
 export function createFileReferenceResolver<State>(host: Host) {
   return async (

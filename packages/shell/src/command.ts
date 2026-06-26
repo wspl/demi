@@ -1,6 +1,5 @@
-import { asError } from '@demi/utils'
+import { asError, concatBytes, decodeUtf8, encodeUtf8 } from '@demi/utils'
 import type { z } from 'zod'
-import { concatBytes, decodeUtf8, encodeUtf8 } from './bytes'
 
 export type CommandInputSpec = Record<string, z.ZodType>
 
