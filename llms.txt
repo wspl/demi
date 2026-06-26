@@ -1,0 +1,42 @@
+# Demi
+
+> Demi is a TypeScript toolkit for building agents and coding agents: a
+> provider-agnostic agent runtime, a sandboxable shell, a transport-neutral
+> client/server protocol, and a ready-made coding-agent harness — composable
+> packages you assemble into your own app.
+
+The audience is developers (often LLM-assisted) building agents, so the
+documentation is shipped LLM-first: this file is the curated index, and
+[llms-full.txt](llms-full.txt) inlines the complete documentation for ingestion.
+Packages depend strictly downward (`utils`/`core` → `provider`/`shell` → `agent` →
+`coding-agent`/providers; apps are leaves), enforced by a boundary test. Source is
+TypeScript ESM with bundled `.d.ts`; install only the packages you need.
+
+## Packages
+
+- `@demi/core`: core data types and shared domain primitives (`Block`, `ModelSelection`, `TokenUsage`, `zeroUsage`).
+- `@demi/utils`: zero-dependency utilities — type guards, errors, async (`deferred`/`delay`/`waitFor`), bytes, strings, paths, JSON.
+- `@demi/provider`: the inference contract (`defineProvider`, `run()` → `ProviderEvent`) plus shared building blocks (`modelSelectionFromCatalog`, HTTP/error helpers).
+- `@demi/shell`: sandboxable bash engine and the `Host` contract (`fs`/`process`/`store`); long-running shell control (`shell_exec`/`shell_status`/`yield`).
+- `@demi/host-local`: Node reference `Host` (`LocalHost`).
+- `@demi/agent`: session runtime + transport-neutral `AgentClient`/`AgentServer` protocol (in-process, stdio, WebSocket).
+- `@demi/coding-agent`: coding-agent harness, commands, and reference resolution (`createCodingAgentHarness`).
+- `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/provider-openai-api`, `@demi/provider-anthropic-api`: concrete provider adapters.
+
+## Guides
+
+- [Add a Provider](docs/guides/add-a-provider.md): implement the `@demi/provider` contract for a new inference backend and reuse the shared kit.
+- [Implement a Host](docs/guides/implement-a-host.md): back the shell with a remote/container/sandbox filesystem and process model.
+- [Embed the UI](docs/guides/embed-the-ui.md): drive a session from your own UI via `AgentClient` and render `Block`s.
+
+## Reference
+
+- [Package boundaries](docs/package-boundaries.md): the enforced dependency graph and per-package public surface.
+- [Shell & yield control](docs/shell-yield-control-plan.md): long-running shell execution, the `/@` command-artifact filesystem, and yield wakeups.
+- [Tool rendering spec](docs/tool-rendering-spec.md): how a UI renders the standard tool blocks.
+
+## Optional
+
+- [README](README.md): install, quickstart, and architecture overview.
+- [CONTRIBUTING](CONTRIBUTING.md): local setup and the enforced architecture/reuse rules.
+- [llms-full.txt](llms-full.txt): the complete documentation inlined into one file.

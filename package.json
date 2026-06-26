@@ -24,10 +24,7 @@
     "typecheck": "node node_modules/.bin/tsgo --noEmit",
     "typecheck:web": "bun --filter @demi/web-ui typecheck && bun --filter @demi/web typecheck",
     "build": "bun --filter '@demi/*' build",
-    "docs:api": "typedoc",
-    "docs:dev": "typedoc && vitepress dev docs",
-    "docs:build": "typedoc && vitepress build docs",
-    "docs:preview": "vitepress preview docs",
+    "llms": "bun run scripts/build-llms.ts",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "changeset:publish": "bun run build && changeset publish",
@@ -42,11 +39,7 @@
     "@types/bun": "^1.3.14",
     "@typescript/native-preview": "^7.0.0-dev.20260618.1",
     "oxc-parser": "^0.137.0",
-    "tsdown": "^0.22.3",
-    "typedoc": "^0.28.19",
-    "typedoc-plugin-markdown": "^4.12.0",
-    "typedoc-vitepress-theme": "^1.1.3",
-    "vitepress": "^1.6.4"
+    "tsdown": "^0.22.3"
   },
   "license": "Apache-2.0"
 }
