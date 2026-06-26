@@ -171,12 +171,12 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 
 ### 5.x 进度小结(本轮)
 
-**已抽出 7 个聚焦模块(均行为保持、全量测试绿),`session.ts` 1480→1238 行(−16%)、`environment.ts` 1367→1346:**
-- 状态容器:`CommandArtifactStore`(shell)、`YieldScheduler`、`PendingSteerQueue`(agent)—— 容器持自洽状态 + 纯操作,原类经回调/查询保留决策。
-- 纯逻辑:`compaction-support`、`provider-stream-error`(agent)。
-- **编排单元(behavior):`CompactionController` ✅**(agent)—— 经显式 `CompactionHost` 接口抽出:压缩算法(选窗口→provider 摘要→插边界→上下文溢出重试)成为可独立测试的单元,session 仅保留「何时压缩」(phase/threshold/model-switch)并提供 host。
+**已抽出 9 个聚焦模块(均行为保持、全量测试绿),`session.ts` 1480→1217 行(−18%)、`environment.ts` 1367→1330:**
+- 状态容器:`CommandArtifactStore`(shell)、`YieldScheduler`、`PendingSteerQueue`(agent)。
+- 纯逻辑:`compaction-support`、`provider-stream-error`(agent);`virtualDirectory`/`virtualFile` 归位 `host-fs`(shell)。
+- **整个压缩子系统 → `CompactionController` ✅**(agent,显式 `CompactionHost` 接口):`run`(选窗口→摘要→插边界→溢出重试)+ `compactToFit`(压到容纳目标模型)+ `preflight` + `generateSummary`。session 仅保留 model/provider 身份变更(`applyPendingModelSwitch`)并提供 `runWithCompactingPhase` host 钩子(phase 类型不外泄)。压缩逻辑现在可独立测试。
 
-**修正结论(实测后):** 编排单元**可以**用「显式 host 接口」干净抽出 —— `CompactionController` 证明了:把 `this.X` 耦合变成一份**文档化的 `CompactionHost` 契约**,既缩小 god-object 又让算法可独立测试,**是真改进而非纯重排**。同模式可继续用于剩余编排单元:`ProviderTurnLoop`(turn 流式 + 工具执行,最核心)、`ActionQueue`/`TurnWorker`、`ModelSwitchController`(`applyPendingModelSwitch`+`compactToFitModel`,需 host 暴露 model/provider 的 set)、shell `ForegroundController`。越往核心走、host 接口越大、风险越高,逐个 + marathon/e2e 兜底即可。
+**最终结论(逐个实测后):** 可干净分离的单元已抽完。`CompactionController` 证明编排子系统**能**经显式 host 干净抽出(真改进);但 `ActionQueue`/`ProviderTurnLoop` 是**不可再分的核心**——`pendingActions` 在 ~20 处被复杂操作(steer 先于 send 的插序、abort 拆除、消息物化),turn loop 是流式+工具执行+steer 投递的交汇点。把它们抽成 controller 等于「带巨型 back-reference 把核心搬到别处」——**是重排而非降耦,反而降可读性**。结论:**到此为止是质量最优点**;再拆需要的不是「显式 host」而是「重新设计 session 的协调模型」,属于另一个独立的设计任务,不宜在不改变行为的前提下硬拆。
 
 ### 5.3 Provider Kit(去重,与 §4 协同)
 
