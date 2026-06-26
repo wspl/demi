@@ -133,11 +133,16 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 
 ### 4.7 进度(已落地、全量测试通过)
 
-- `@demi/utils`(独立 leaf 包):type guards / error+abort / async / bytes / strings(含 `shortHash`)/ id,带 TSDoc 与单测;已登记进 `package-boundaries.md` 注册表+图 与 `platform-entrypoints.test.ts` 图。
+- `@demi/utils`(独立 leaf 包):type guards / error+abort / async / bytes / strings(含 `shortHash`/`truncate`/`tail`/`normalizeBaseUrl`)/ json / paths / id,带 TSDoc 与单测;已登记进 `package-boundaries.md` 注册表+图 与 `platform-entrypoints.test.ts` 图。utils 测试套件(`utils.test.ts`/`paths.test.ts`/`json.test.ts`)已并入根 `test` 脚本(此前从未被执行)。
 - 合并迁移:`isRecord`(14→1)、error 家族(`asError`/`messageOf`/`errorMessage`/`isAbortError`,13→3,**删除 `messageOf`**)、`noop`/`defaultIdFactory`(agent)、UTF-8/字节(删除 `shell/src/bytes.ts`、精简 `coding-agent/platform.ts`)、`numberOrZero`/`shortHash`(providers)。
-- **测试强制(§4.6 已实现)**:`platform-entrypoints.test.ts` 现在会在生产源码重新定义上述 utils helper 时 fail。
+- 路径族:`normalizePath`/`dirnamePath`/`isAbsolutePath`(shell host-fs + coding-agent platform 逐字符重复)→ `@demi/utils/paths`,删除 `coding-agent/platform.ts`。
+- 截断族:`textContentSummary`/`summaryShort`(agent)、`trimToolSummary`(web-ui)改走 `truncate`;`tailString` 已是 `tail` 薄包装;`boundedPreview` 保留(返回 `truncated` 标志、无省略号,契约不同)。
+- JSON/URL/usage:`parseJsonObject`(×3)、`parseJsonOrString`(×3)、`normalizeBaseUrl`(×2)→ `@demi/utils`;`zeroUsage`(×2)→ `@demi/core`(拥有 `TokenUsage`)。
+- 强制系数(coercions):`stringOr`/`stringOrNull`(同义不同名,5 处)、`numberOr`/`numberOrNull`(3 处)、`nonEmptyString`(3 变体)→ `@demi/utils` 的 `stringOrNull`/`numberOrNull`/`nonEmptyString`。
+- catalog→selection:`modelSelectionFromCatalog`/`thinkingCapabilitiesFromProviderModel` 进 `@demi/provider`,REPL 复用、`examples/coding-agent.ts` 与 README 走同一入口(此前每个消费者手搓 `Model`)。
+- **测试强制(§4.6 已实现 + 泛化)**:`platform-entrypoints.test.ts` 现按每个 helper 的 canonical home 校验(utils 或 core),在别处重新定义即 fail。
 
-待续:async(`delay`/`sleep`/`withTimeout`)、`tailString`→`tail`、`normalizePath`(6×)、`@demi/testkit`(`deferred`/`waitFor`/`delay`/`loadFixture`),以及 §4.4 领域 helper 归位(provider-kit,与 §5.3 合并做)。
+待续:`@demi/testkit`(`deferred`/`waitFor`/`delay`/`loadFixture`);provider 错误脚手架(`redactSecretText`/`normalizeErrorCode`/`providerErrorFromUnknown` 的 anthropic↔openai 二方合并 + 通用 `httpErrorCode`、`authStatus`/`httpError` 参数化、`withProviderId`)→ §5.3 provider-kit;usage 映射(`mergeAnthropicUsage`/`usageFromResponse`/`mapUsage`/`openAIUsage`,形状相近但输入不同);web `sleep`→`delay`(需 web→utils 依赖边);CLI 解析两套合并。
 
 ## 5. 巨型类拆分提案
 
@@ -171,7 +176,7 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - [ ] 顶层 `README` + 每包 `README`
 - [x] tsdown 构建产物(ESM `.mjs` + `.d.mts`)+ `development`(→src)/`import`(→dist)条件 exports;dev/test 仍走 src,解除 Bun 绑定
 - [ ] 包元数据 + 真实版本 + changesets
-- [ ] `examples/` 最小可跑示例
+- [x] `examples/` 最小可跑示例(`examples/coding-agent.ts`,纳入 `tsconfig` 受类型校验)
 - [ ] API 参考(typedoc)+ 扩展指南 ×3
 - [ ] lint/format + CI + 贡献者文档
 - [ ] 内部设计记录与用户文档分离
