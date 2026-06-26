@@ -176,7 +176,9 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - 纯逻辑:`compaction-support`、`provider-stream-error`(agent);`virtualDirectory`/`virtualFile` 归位 `host-fs`(shell)。
 - **整个压缩子系统 → `CompactionController` ✅**(agent,显式 `CompactionHost` 接口):`run`(选窗口→摘要→插边界→溢出重试)+ `compactToFit`(压到容纳目标模型)+ `preflight` + `generateSummary`。session 仅保留 model/provider 身份变更(`applyPendingModelSwitch`)并提供 `runWithCompactingPhase` host 钩子(phase 类型不外泄)。压缩逻辑现在可独立测试。
 
-**最终结论(逐个实测后):** 可干净分离的单元已抽完。`CompactionController` 证明编排子系统**能**经显式 host 干净抽出(真改进);但 `ActionQueue`/`ProviderTurnLoop` 是**不可再分的核心**——`pendingActions` 在 ~20 处被复杂操作(steer 先于 send 的插序、abort 拆除、消息物化),turn loop 是流式+工具执行+steer 投递的交汇点。把它们抽成 controller 等于「带巨型 back-reference 把核心搬到别处」——**是重排而非降耦,反而降可读性**。结论:**到此为止是质量最优点**;再拆需要的不是「显式 host」而是「重新设计 session 的协调模型」,属于另一个独立的设计任务,不宜在不改变行为的前提下硬拆。
+**`ProviderTurnLoop` ✅ 已抽**(agent,`provider-turn-loop.ts`,显式 `ProviderTurnLoopHost<State>` 接口):turn 执行(流式一次→应用事件→执行工具→用量近限则自动压缩+resume 循环)成为独立单元。**`session.ts` 1480→1021 行(−31%)**,agent 149(含 marathon)+ 全量 488 全绿。`parseToolInput` 退化为 `@demi/utils.parseJsonOrString`。
+
+**`ActionQueue` 的结论(实测后,不抽):** `runWorker` 每个 action 都在初始化/拆除整套 per-turn 状态机(`currentAbortController`/`activeTurnId`/`activeTurnPhase`/`activeProviderRun`/phase/steer 清理/yield 重武装)——它**就是 session 的 per-turn 心跳**,不是队列。而 `pendingActions` 有 ~10 处 session 专属操作(steer 提前插序、abort 谓词删除、消息物化按位插入)。把它抽成 `ActionQueue` 类 = 一堆数组操作的薄包装 + 把心跳搬到别处带 ~15 个 setter 回调 —— **降可读性、非降耦**,违背「质量高」。故 turn loop 抽了(有界、真改进),队列+心跳留在 session(核心)。这是质量最优的拆分边界。
 
 ### 5.3 Provider Kit(去重,与 §4 协同)
 
