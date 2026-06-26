@@ -7,6 +7,12 @@
 - Do not create or switch to new branches during routine work; stay on the current branch unless the user explicitly requests branch management.
 - Do not use subagents: never invoke the `Agent`/Task tool to spawn subagents. Perform all work directly in the main session.
 
+## Code Reuse
+
+- Put all generic, common code in `@demi/utils` (test-only helpers in `@demi/testkit`); do not scatter utility functions across packages.
+- Never re-implement, copy-paste, or create a same-purpose-but-differently-named helper; reuse the existing one and merge duplicates/similar functions instead of adding another.
+- Only truly generic code goes in `@demi/utils`; domain helpers stay in their owning package (provider wire mapping in the provider kit, `TokenUsage` helpers in `@demi/core`, etc.).
+
 ## Design Records
 
 - Keep project documentation under `docs/`.
