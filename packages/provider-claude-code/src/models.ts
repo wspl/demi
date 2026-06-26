@@ -1,4 +1,4 @@
-import { isRecord } from '@demi/utils'
+import { errorMessage, isRecord } from '@demi/utils'
 import type { ProviderModel, ProviderModelList } from '@demi/provider'
 
 export interface ClaudeCodeModelCatalogOptions {
@@ -72,7 +72,7 @@ export async function listClaudeCodeModels(options: ClaudeCodeModelCatalogOption
     const list = markModelListCache(memoryCache.list, true)
     return {
       ...cloneModelList(list),
-      warnings: [...list.warnings, `Using stale models.dev catalog: ${messageOf(error)}`],
+      warnings: [...list.warnings, `Using stale models.dev catalog: ${errorMessage(error)}`],
     }
   }
 }
@@ -253,8 +253,4 @@ function reasoningEfforts(value: unknown): ProviderModel['supportedThinkingEffor
   if (!isRecord(effortOption) || !Array.isArray(effortOption.values)) return null
   const efforts = effortOption.values.map((effort) => stringOr(effort)).filter((effort): effort is string => effort !== undefined)
   return efforts.length > 0 ? efforts : []
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

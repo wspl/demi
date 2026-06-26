@@ -1,3 +1,4 @@
+import { asError, isAbortError } from '@demi/utils'
 import type {
   Block,
   ModelSelection,
@@ -1390,10 +1391,6 @@ function summaryShort(value: unknown): string {
   return text.length > 200 ? `${text.slice(0, 200)}…` : text
 }
 
-function asError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error))
-}
-
 class ProviderStreamError extends Error {
   readonly code: string | null
 
@@ -1441,10 +1438,6 @@ class AbortError extends Error {
     super('AgentSession aborted')
     this.name = 'AbortError'
   }
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof AbortError || (error instanceof Error && error.name === 'AbortError')
 }
 
 function throwIfAborted(signal: AbortSignal): void {

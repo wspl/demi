@@ -1,4 +1,4 @@
-import { isRecord } from '@demi/utils'
+import { errorMessage, isRecord } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import { chmod, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -225,7 +225,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
       if (isNodeError(error) && error.code === 'ENOENT') {
         throw new CodexAuthError('auth_missing', `Codex auth file not found: ${this.authFile}`)
       }
-      throw new CodexAuthError('auth_invalid', `Failed to read Codex auth file ${this.authFile}: ${redactSecretText(messageOf(error))}`)
+      throw new CodexAuthError('auth_invalid', `Failed to read Codex auth file ${this.authFile}: ${redactSecretText(errorMessage(error))}`)
     }
   }
 
@@ -239,7 +239,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
         handle = await open(lockFile, 'wx', 0o600)
       } catch (error) {
         if (!isNodeError(error) || error.code !== 'EEXIST' || Date.now() - started > this.lockTimeoutMs) {
-          throw new CodexAuthError('auth_lock_failed', `Failed to lock Codex auth file: ${redactSecretText(messageOf(error))}`)
+          throw new CodexAuthError('auth_lock_failed', `Failed to lock Codex auth file: ${redactSecretText(errorMessage(error))}`)
         }
         await delay(this.lockRetryDelayMs)
       }
@@ -441,10 +441,6 @@ function stringOrNull(value: unknown): string | null {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function delay(ms: number): Promise<void> {

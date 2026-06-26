@@ -1,4 +1,4 @@
-import { isRecord } from '@demi/utils'
+import { errorMessage, isRecord } from '@demi/utils'
 import type { ProviderModel, ProviderModelList } from '@demi/provider'
 import {
   CodexAuthError,
@@ -80,7 +80,7 @@ export async function listCodexModels(options: CodexModelCatalogOptions = {}): P
       const stale = markModelListCache(cached.list, true)
       return {
         ...cloneModelList(stale),
-        warnings: [...stale.warnings, `Using stale Codex model catalog: ${messageOf(error)}`],
+        warnings: [...stale.warnings, `Using stale Codex model catalog: ${errorMessage(error)}`],
       }
     }
     throw error
@@ -292,8 +292,4 @@ function stringOr(value: unknown): string | undefined {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

@@ -9,6 +9,7 @@
     "./host-fs": "./src/host-fs.ts"
   },
   "dependencies": {
+    "@demi/utils": "workspace:*",
     "just-bash": "workspace:*",
     "zod": "^4.0.0"
   }

@@ -1,3 +1,4 @@
+import { errorMessage } from '@demi/utils'
 import { mkdir } from 'node:fs/promises'
 import process from 'node:process'
 import { createInterface } from 'node:readline/promises'
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
     if (closing) return
     if (renderer.phase && renderer.phase !== 'idle') {
       writeEventLine(process.stdout, 'state', 'aborting active turn', 'yellow')
-      void client.abort().catch((error) => writeEventLine(process.stdout, 'error', `abort failed: ${messageOf(error)}`, 'red'))
+      void client.abort().catch((error) => writeEventLine(process.stdout, 'error', `abort failed: ${errorMessage(error)}`, 'red'))
       return
     }
     closing = true
@@ -176,7 +177,7 @@ export async function runInputLoop(options: ReplInputLoop & { shouldContinue?: (
     const content: UserContentBlock[] = [{ type: 'text', text: input }]
     void options.client.send(content).catch((error) => {
       finishStream(options.renderer)
-      writeEventLine(output, 'error', `send failed: ${messageOf(error)}`, 'red')
+      writeEventLine(output, 'error', `send failed: ${errorMessage(error)}`, 'red')
     })
   }
 }
@@ -193,7 +194,7 @@ export async function handleCommand(
       return false
     case '/abort':
       writeEventLine(output, 'state', 'abort requested', 'yellow')
-      void client.abort().catch((error) => writeEventLine(output, 'error', `abort failed: ${messageOf(error)}`, 'red'))
+      void client.abort().catch((error) => writeEventLine(output, 'error', `abort failed: ${errorMessage(error)}`, 'red'))
       return false
     case '/steer': {
       const message = rest.join(' ').trim()
@@ -203,17 +204,17 @@ export async function handleCommand(
       }
       void client
         .steer([{ type: 'text', text: message }])
-        .catch((error) => writeEventLine(output, 'error', `steer failed: ${messageOf(error)}`, 'red'))
+        .catch((error) => writeEventLine(output, 'error', `steer failed: ${errorMessage(error)}`, 'red'))
       return false
     }
     case '/retry':
-      void client.retry().catch((error) => writeEventLine(output, 'error', `retry failed: ${messageOf(error)}`, 'red'))
+      void client.retry().catch((error) => writeEventLine(output, 'error', `retry failed: ${errorMessage(error)}`, 'red'))
       return false
     case '/resume':
-      void client.resume().catch((error) => writeEventLine(output, 'error', `resume failed: ${messageOf(error)}`, 'red'))
+      void client.resume().catch((error) => writeEventLine(output, 'error', `resume failed: ${errorMessage(error)}`, 'red'))
       return false
     case '/compact':
-      void client.compact().catch((error) => writeEventLine(output, 'error', `compact failed: ${messageOf(error)}`, 'red'))
+      void client.compact().catch((error) => writeEventLine(output, 'error', `compact failed: ${errorMessage(error)}`, 'red'))
       return false
     case '/input': {
       const commandId = rest.shift()
@@ -223,7 +224,7 @@ export async function handleCommand(
       }
       void client
         .shellWrite(commandId, `${rest.join(' ')}\n`)
-        .catch((error) => writeEventLine(output, 'error', `input failed: ${messageOf(error)}`, 'red'))
+        .catch((error) => writeEventLine(output, 'error', `input failed: ${errorMessage(error)}`, 'red'))
       return false
     }
     case '/exit':
@@ -666,7 +667,7 @@ export async function resolveReplModel(
   }
 
   if (!catalog) {
-    throw new Error(`Unable to load ${options.provider} model catalog: ${messageOf(catalogError)}`)
+    throw new Error(`Unable to load ${options.provider} model catalog: ${errorMessage(catalogError)}`)
   }
   if (catalog.models.length === 0) {
     throw new Error(`${options.provider} model catalog returned no models`)
@@ -866,13 +867,9 @@ function color(text: string, tone: Tone, output: ReplOutput = process.stdout): s
   return `\x1b[${open}m${text}\x1b[${close}m`
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 if (import.meta.main) {
   main().catch((error) => {
-    process.stderr.write(`fatal: ${messageOf(error)}\n`)
+    process.stderr.write(`fatal: ${errorMessage(error)}\n`)
     process.exit(1)
   })
 }

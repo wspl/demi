@@ -1,4 +1,4 @@
-import { isRecord } from '@demi/utils'
+import { isAbortError, isRecord } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
@@ -512,10 +512,6 @@ function normalizeErrorCode(code: string | null, message: string): string | null
 
 function redactSecretText(value: string, secret: string | null | undefined): string {
   return secret ? value.split(secret).join('[redacted]') : value
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === 'AbortError'
 }
 
 function withProviderId(list: ProviderModelList, providerId: string): ProviderModelList {

@@ -11,14 +11,17 @@ export function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
 }
 
-/** Extracts a human-readable message from an unknown thrown value. */
+/** Extracts a human-readable message from an unknown thrown value, falling back to `String(error)`
+ * for non-Errors and for Errors with an empty message. */
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return error instanceof Error && error.message.length > 0 ? error.message : String(error)
 }
 
-/** Reports whether an unknown thrown value represents an abort. */
+/** Reports whether an unknown thrown value represents an abort: the {@link AbortError} class, a
+ * `DOMException` from a fetch/AbortController abort, or any object with `name === 'AbortError'`. */
 export function isAbortError(error: unknown): boolean {
-  return error instanceof AbortError || (error instanceof Error && error.name === 'AbortError')
+  if (error instanceof AbortError) return true
+  return typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError'
 }
 
 /** Throws an `AbortError` if the signal is already aborted. */

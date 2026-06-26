@@ -28,6 +28,14 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: type/data contracts shared across packages.
 - Must not: contain concrete provider names, catalog source names, shell runtime details, local host details, UI concepts, transport URLs, or backend identifiers.
 
+### `@demi/utils`
+
+- Status: implemented.
+- Production deps: none.
+- Owns: generic, platform-neutral helper functions only — type guards, error/abort helpers, async primitives, byte/UTF-8 helpers, string helpers, and id generation.
+- Public boundary: pure utility functions shared across packages; no domain types or runtime services.
+- Must not: contain domain logic; transcript, provider, shell, or agent types; Node-only adapters; or any package-specific behavior.
+
 ### `@demi/provider`
 
 - Status: implemented.
@@ -41,7 +49,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/shell`
 
 - Status: implemented.
-- Production deps: `just-bash`.
+- Production deps: `just-bash`, `@demi/utils`.
 - Owns: Host contract (`defaultCwd`, `fs`, `process`, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools.
 - Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`. It does not expose model-facing AgentTool ownership.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
@@ -65,7 +73,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/agent`
 
 - Status: implemented.
-- Production deps: `@demi/core`, `@demi/provider`, `@demi/shell`.
+- Production deps: `@demi/core`, `@demi/provider`, `@demi/shell`, `@demi/utils`.
 - Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, and assembly of one harness with the standard shell runtime.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only transports from explicit subpaths such as `@demi/agent/stdio`.
 - Must not: import concrete providers, `@demi/host-local`, or UI packages.
@@ -75,7 +83,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/coding-agent`
 
 - Status: implemented.
-- Production deps: `@demi/agent`, `@demi/core`, `@demi/shell`.
+- Production deps: `@demi/agent`, `@demi/core`, `@demi/shell`, `@demi/utils`.
 - Owns: coding harness, coding prompt, coding commands, todo command, and file reference resolution.
 - Public boundary: harness and coding command construction based on Host and CommandSpec contracts.
 - Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, or LocalHost.
@@ -84,7 +92,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/provider-claude-code`
 
 - Status: implemented.
-- Production deps: `@demi/core`, `@demi/provider`.
+- Production deps: `@demi/core`, `@demi/provider`, `@demi/utils`.
 - Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, and provider-specific tests.
 - Public boundary: `createClaudeCodeProvider`, model catalog function, and public option types from root.
 - Internal boundary: CLI, JSONL, output, transport, parser, and test cache helpers stay behind implementation files.
@@ -93,7 +101,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/provider-codex`
 
 - Status: implemented.
-- Production deps: `@demi/core`, `@demi/provider`.
+- Production deps: `@demi/core`, `@demi/provider`, `@demi/utils`.
 - Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, and provider-specific tests.
 - Public boundary: `createCodexProvider`, auth status helper, model catalog function, transport mode type, and public option types from root.
 - Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, and test cache helpers stay behind implementation files.
@@ -102,7 +110,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/provider-openai-api`
 
 - Status: implemented.
-- Production deps: `@demi/core`, `@demi/provider`.
+- Production deps: `@demi/core`, `@demi/provider`, `@demi/utils`.
 - Owns: official OpenAI Responses API request mapping, explicit Chat Completions wire option for OpenAI-compatible endpoints, SSE event mapping including observed compatible reasoning delta extensions such as `choices[].delta.reasoning_content`, official OpenAI API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Codex-visible defaults unless caller-supplied models replace it, and provider-specific tests.
 - Public boundary: `createOpenAIApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`. `wireApi` defaults to `responses`; compatible endpoints can pass `wireApi: 'chat-completions'`.
@@ -113,7 +121,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/provider-anthropic-api`
 
 - Status: implemented.
-- Production deps: `@demi/core`, `@demi/provider`.
+- Production deps: `@demi/core`, `@demi/provider`, `@demi/utils`.
 - Owns: Anthropic Messages API request mapping, event-stream mapping, official Anthropic API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Claude Code defaults unless caller-supplied models replace it, and provider-specific tests.
 - Public boundary: `createAnthropicApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.anthropic.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `ANTHROPIC`.
@@ -124,7 +132,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/repl`
 
 - Status: implemented.
-- Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/provider-openai-api`, `@demi/provider-anthropic-api`, `@demi/shell`, `@demi/host-local`.
+- Production deps: `@demi/agent`, `@demi/coding-agent`, `@demi/core`, `@demi/provider`, `@demi/provider-claude-code`, `@demi/provider-codex`, `@demi/provider-openai-api`, `@demi/provider-anthropic-api`, `@demi/shell`, `@demi/host-local`, `@demi/utils`.
 - Owns: local REPL process, command-line parsing, renderer, input loop, real-provider smoke entry points, and local composition.
 - Public boundary: local application entry point and test/acceptance shell.
 - May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
@@ -133,7 +141,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demi/web-ui`
 
 - Status: planned (see `docs/web-plan.md`).
-- Production deps: `@demi/core`, `@demi/agent`.
+- Production deps: `@demi/core`, `@demi/agent`, `@demi/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
@@ -183,17 +191,18 @@ The canonical production source graph contains every Demi package and must stay 
 ```text
 just-bash -> none
 core -> none
+utils -> none
 provider -> core
-shell -> just-bash
+shell -> just-bash, utils
 host-local -> shell
-agent -> core, provider, shell
-coding-agent -> agent, core, shell
-provider-claude-code -> core, provider
-provider-codex -> core, provider
-provider-openai-api -> core, provider
-provider-anthropic-api -> core, provider
-repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, host-local
-web-ui -> agent, core
+agent -> core, provider, shell, utils
+coding-agent -> agent, core, shell, utils
+provider-claude-code -> core, provider, utils
+provider-codex -> core, provider, utils
+provider-openai-api -> core, provider, utils
+provider-anthropic-api -> core, provider, utils
+repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, host-local, utils
+web-ui -> agent, core, utils
 web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell
 agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell
 ```

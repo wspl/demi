@@ -1,3 +1,4 @@
+import { asError } from '@demi/utils'
 import type { z } from 'zod'
 import { concatBytes, decodeUtf8, encodeUtf8 } from './bytes'
 
@@ -412,8 +413,4 @@ class CapturingIO implements CommandIO {
   stdoutText(): string {
     return decodeUtf8(concatBytes(this.chunks))
   }
-}
-
-function asError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error))
 }

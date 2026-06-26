@@ -1,3 +1,4 @@
+import { errorMessage } from '@demi/utils'
 import type { Host } from '@demi/shell'
 import type { AgentReferenceResolveContext } from '@demi/agent'
 import type { UserContentBlock } from '@demi/core'
@@ -56,8 +57,4 @@ function decodeFileReferencePath(path: string): string {
 function pathValidationError(path: string): string | null {
   if (path.includes('\0')) return `File reference contains NUL byte: ${path}`
   return null
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message.length > 0 ? error.message : String(error)
 }

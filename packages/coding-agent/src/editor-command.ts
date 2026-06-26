@@ -1,3 +1,4 @@
+import { asError, errorMessage } from '@demi/utils'
 import { z } from 'zod'
 import type { CommandSpec, Host } from '@demi/shell'
 import { decodeUtf8, dirnamePath, encodeUtf8 } from './platform'
@@ -588,12 +589,4 @@ function diffLines(text: string): string[] {
 
 function diffRange(lineCount: number): string {
   return lineCount === 0 ? '0,0' : `1,${lineCount}`
-}
-
-function asError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error))
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message.length > 0 ? error.message : String(error)
 }
