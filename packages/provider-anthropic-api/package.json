@@ -10,5 +10,6 @@
     "@demi/core": "workspace:*",
     "@demi/provider": "workspace:*",
     "@demi/utils": "workspace:*"
-  }
+  },
+  "license": "Apache-2.0"
 }

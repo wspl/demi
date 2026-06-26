@@ -9,5 +9,6 @@
   },
   "dependencies": {
     "@demi/core": "workspace:*"
-  }
+  },
+  "license": "Apache-2.0"
 }
