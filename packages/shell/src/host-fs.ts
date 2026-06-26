@@ -21,6 +21,24 @@ export interface VirtualFileSystemProvider {
   lookup(path: string): Promise<VirtualFileSystemNode | null> | VirtualFileSystemNode | null
 }
 
+/** Builds a virtual directory node; entry names containing a dot are treated as files. */
+export function virtualDirectory(names: string[]): VirtualFileSystemNode {
+  return {
+    kind: 'directory',
+    entries: names.sort().map((name) => ({
+      name,
+      isFile: name.includes('.'),
+      isDirectory: !name.includes('.'),
+      isSymbolicLink: false,
+    })),
+  }
+}
+
+/** Builds a virtual file node from raw bytes. */
+export function virtualFile(content: Uint8Array): VirtualFileSystemNode {
+  return { kind: 'file', content }
+}
+
 export class HostBackedFileSystem implements IFileSystem {
   constructor(
     private readonly host: Host,

@@ -24,7 +24,7 @@ import {
 } from './environment-output'
 import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } from './environment-state'
 import type { Host } from './host'
-import { HostBackedFileSystem, type VirtualFileSystemNode } from './host-fs'
+import { HostBackedFileSystem, virtualDirectory, virtualFile, type VirtualFileSystemNode } from './host-fs'
 import { AgentSessionCommandStorage } from './storage'
 import { CommandArtifactStore } from './command-artifact-store'
 import { commandSpecToForkCommand } from './registered-command-adapter'
@@ -1298,22 +1298,6 @@ function isPersistedShellCommandArtifact(value: unknown): value is PersistedShel
     typeof record.stdout === 'string' &&
     typeof record.stderr === 'string'
   )
-}
-
-function virtualDirectory(names: string[]): VirtualFileSystemNode {
-  return {
-    kind: 'directory',
-    entries: names.sort().map((name) => ({
-      name,
-      isFile: name.includes('.'),
-      isDirectory: !name.includes('.'),
-      isSymbolicLink: false,
-    })),
-  }
-}
-
-function virtualFile(content: Uint8Array): VirtualFileSystemNode {
-  return { kind: 'file', content }
 }
 
 function tailOutputText(chunks: readonly ShellOutputRecordChunk[]): string {
