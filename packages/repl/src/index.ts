@@ -5,16 +5,14 @@ import { createInterface } from 'node:readline/promises'
 import { resolve } from 'node:path'
 import type {
   Block,
-  FileExtension,
   ModelSelection,
   SessionPhase,
-  ThinkingCapability,
   ThinkingEffort,
-  ThinkingSummary,
   TokenUsage,
   UserContentBlock,
 } from '@demi/core'
 import { createCodingAgentHarness } from '@demi/coding-agent'
+import { modelSelectionFromCatalog } from '@demi/provider'
 import type { Provider, ProviderModel, ProviderModelList, ProviderSelection } from '@demi/provider'
 import { createAnthropicApiProvider } from '@demi/provider-anthropic-api'
 import { createClaudeCodeProvider } from '@demi/provider-claude-code'
@@ -725,39 +723,12 @@ function modelSelectionFromCatalogModel(
   serviceTierId: string | null,
   model: ProviderModel | null,
 ): ModelSelection {
-  return {
-    providerId: provider,
-    model: {
-      id: modelId,
-      name: model?.displayName ?? `${providerDisplayName(provider)} ${modelId}`,
-      contextWindow: model?.contextWindow ?? 0,
-      inputLimit: null,
-      thinking: thinkingCapabilitiesFromProviderModel(model),
-      acceptedExtensions: model?.supportsAttachments ? acceptedAttachmentExtensions() : [],
-    },
+  return modelSelectionFromCatalog(provider, model, {
+    modelId,
     thinking: thinkingEffort ? { type: 'effort', effort: thinkingEffort, summary: null } : null,
     serviceTierId,
-  }
-}
-
-function thinkingCapabilitiesFromProviderModel(model: ProviderModel | null): ThinkingCapability[] {
-  if (!model) return []
-  if (model.supportsReasoning === false) return [{ type: 'disabled' as const }]
-  if (!model.supportedThinkingEfforts || model.supportedThinkingEfforts.length === 0) return []
-  const summaries: ThinkingSummary[] = ['auto', 'concise', 'detailed', 'off', 'on']
-  return [
-    {
-      type: 'effort' as const,
-      efforts: model.supportedThinkingEfforts,
-      defaultEffort: null,
-      summaries,
-      defaultSummary: null,
-    },
-  ]
-}
-
-function acceptedAttachmentExtensions(): FileExtension[] {
-  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf']
+    fallbackName: `${providerDisplayName(provider)} ${modelId}`,
+  })
 }
 
 function createReplProviders(options: ReplOptions): Provider[] {

@@ -18,12 +18,11 @@
       "just-bash/interpreter/helpers/ifs": ["./packages/just-bash/packages/just-bash/src/interpreter/helpers/ifs.ts"],
       "just-bash/parser": ["./packages/just-bash/packages/just-bash/src/parser/parser.ts"],
       "@demi/agent/stdio": ["./packages/agent/src/stdio-transport.ts"],
-      "@demi/shell/local-host": ["./packages/shell/src/local-host.ts"],
       "@demi/shell/storage": ["./packages/shell/src/storage.ts"],
-      "@demi/shell/store": ["./packages/shell/src/store.ts"],
+      "@demi/shell/host-fs": ["./packages/shell/src/host-fs.ts"],
       "@demi/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src"],
+  "include": ["packages/*/src", "examples"],
   "exclude": ["packages/web-ui", "packages/web"]
 }

@@ -1,0 +1,64 @@
+// A minimal Demi coding agent driven through an in-process client.
+//
+//   bun run examples/coding-agent.ts
+//
+// It assembles a Host, a coding harness, and a provider, then sends one turn and
+// streams the assistant's text to stdout.
+import { AgentServer } from '@demi/agent'
+import { createCodingAgentHarness } from '@demi/coding-agent'
+import { LocalHost } from '@demi/host-local'
+import { modelSelectionFromCatalog } from '@demi/provider'
+import { createClaudeCodeProvider, listClaudeCodeModels } from '@demi/provider-claude-code'
+
+async function main(): Promise<void> {
+  const cwd = process.cwd()
+
+  // A Host gives the agent a filesystem, process spawning, and a scoped store.
+  const host = new LocalHost(cwd)
+
+  // The harness supplies the system prompt, registered commands, and reference resolution.
+  const harness = createCodingAgentHarness({ host })
+
+  // One or more inference providers.
+  const providers = [createClaudeCodeProvider()]
+
+  // The server owns the session lifecycle; an in-process client speaks the same
+  // protocol the REPL and web UI use.
+  const server = new AgentServer({
+    agent: harness,
+    providers,
+    shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
+  })
+  const client = server.client()
+
+  // Resolve once the turn we send has run to completion (running -> idle).
+  let started = false
+  const done = new Promise<void>((resolve) => {
+    const unsubscribe = client.subscribe((event) => {
+      if (event.type === 'transcript_snapshot' || event.type === 'transcript_patch') {
+        for (const block of event.blocks) {
+          if (block.type === 'text') process.stdout.write(block.text)
+        }
+      } else if (event.type === 'phase') {
+        if (event.phase === 'running') started = true
+        else if (event.phase === 'idle' && started) {
+          unsubscribe()
+          resolve()
+        }
+      }
+    })
+  })
+
+  // Pick the provider's default model and turn the catalog entry into a selection.
+  const catalog = await listClaudeCodeModels()
+  const model = catalog.models.find((m) => m.id === catalog.defaultModelId) ?? catalog.models[0] ?? null
+  const selection = modelSelectionFromCatalog('claude-code', model)
+
+  await client.open({ providerId: 'claude-code', model: selection }, cwd)
+  await client.send([{ type: 'text', text: 'Create hello.txt containing "hi", then read it back.' }])
+
+  await done
+  await client.close()
+}
+
+void main()

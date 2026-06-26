@@ -52,6 +52,7 @@ Assemble a coding agent and drive it through an in-process client:
 import { AgentServer } from '@demi/agent'
 import { createCodingAgentHarness } from '@demi/coding-agent'
 import { LocalHost } from '@demi/host-local'
+import { modelSelectionFromCatalog } from '@demi/provider'
 import { createClaudeCodeProvider, listClaudeCodeModels } from '@demi/provider-claude-code'
 
 // 1. A Host gives the agent a filesystem, process spawning, and a scoped store.
@@ -79,8 +80,9 @@ client.subscribe((event) => {
 })
 
 // 6. Open a session with a model from the provider's catalog, then send a turn.
-const [model] = await listClaudeCodeModels()
-await client.open({ providerId: 'claude-code', model: { providerId: 'claude-code', model, thinking: null } }, process.cwd())
+const catalog = await listClaudeCodeModels()
+const model = catalog.models.find((m) => m.id === catalog.defaultModelId) ?? catalog.models[0] ?? null
+await client.open({ providerId: 'claude-code', model: modelSelectionFromCatalog('claude-code', model) }, process.cwd())
 await client.send([{ type: 'text', text: 'Create hello.txt with "hi", then read it back.' }])
 ```
 
