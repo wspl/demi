@@ -1,3 +1,5 @@
+import { truncate } from '@demi/utils'
+
 export const STANDARD_TOOL_NAMES = ['shell_exec', 'shell_status', 'shell_write', 'shell_abort', 'yield'] as const
 
 export type StandardToolName = (typeof STANDARD_TOOL_NAMES)[number]
@@ -45,8 +47,7 @@ export function standardToolTitle(toolName: StandardToolName, input: Record<stri
 }
 
 export function trimToolSummary(text: string, maxLength = 120): string {
-  const compact = text.replace(/\s+/g, ' ').trim()
-  return compact.length > maxLength ? `${compact.slice(0, maxLength - 3)}...` : compact
+  return truncate(text.replace(/\s+/g, ' ').trim(), maxLength, '...')
 }
 
 function optionalNonEmptyString(value: unknown): string | null {

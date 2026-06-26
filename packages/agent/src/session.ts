@@ -1,4 +1,4 @@
-import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAborted } from '@demi/utils'
+import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAborted, truncate } from '@demi/utils'
 import type {
   Block,
   ModelSelection,
@@ -1330,7 +1330,7 @@ function textContentSummary(content: UserContentBlock[]): string {
     .map((block) => (block.type === 'text' ? block.text : `[${block.type}]`))
     .join('\n')
     .trim()
-  return text.length > 120 ? `${text.slice(0, 117)}...` : text
+  return truncate(text, 120, '...')
 }
 
 function estimateTokens(text: string): number {
@@ -1382,7 +1382,7 @@ function summaryShort(value: unknown): string {
   } catch {
     text = String(value)
   }
-  return text.length > 200 ? `${text.slice(0, 200)}…` : text
+  return truncate(text, 200)
 }
 
 class ProviderStreamError extends Error {
