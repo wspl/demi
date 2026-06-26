@@ -26,6 +26,7 @@ import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } 
 import type { Host } from './host'
 import { HostBackedFileSystem, type VirtualFileSystemNode } from './host-fs'
 import { AgentSessionCommandStorage } from './storage'
+import { CommandArtifactStore } from './command-artifact-store'
 import { commandSpecToForkCommand } from './registered-command-adapter'
 
 export interface BashEnvironmentOptions {
@@ -252,11 +253,11 @@ export class BashEnvironment {
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
   private readonly commandsById = new Map<string, ShellCommandRecord>()
-  private readonly artifactStorageByScope = new Map<string, AgentSessionCommandStorage>()
-  private readonly releasedCommandArtifacts = new Set<string>()
+  private readonly artifacts: CommandArtifactStore
 
   constructor(options: BashEnvironmentOptions) {
     this.host = options.host
+    this.artifacts = new CommandArtifactStore(this.host.store)
     this.commands = options.commands ?? new CommandRegistry()
     this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
@@ -320,8 +321,7 @@ export class BashEnvironment {
     const record = this.commandsById.get(commandId)
     if (!record || record.status === 'running') return false
     this.commandsById.delete(commandId)
-    this.releasedCommandArtifacts.add(this.releasedCommandKey(record.commandScopeId, commandId))
-    await this.artifactStorage(record.commandScopeId).delete(`commands/${commandId}/artifact.json`).catch(() => {})
+    await this.artifacts.release(record.commandScopeId, commandId)
     return true
   }
 
@@ -1098,52 +1098,33 @@ export class BashEnvironment {
   private async commandArtifactIds(scopeId: string): Promise<string[]> {
     const ids = new Set<string>()
     for (const record of this.commandsById.values()) {
-      if (record.commandScopeId === scopeId && !this.isCommandReleased(scopeId, record.id)) ids.add(record.id)
+      if (record.commandScopeId === scopeId && !this.artifacts.isReleased(scopeId, record.id)) ids.add(record.id)
     }
-    const storage = this.artifactStorage(scopeId)
+    const storage = this.artifacts.storageFor(scopeId)
     const keys = await storage.list('commands').catch(() => [])
     for (const key of keys) {
       const match = /^commands\/([^/]+)\/artifact\.json$/.exec(key)
-      if (match && !this.isCommandReleased(scopeId, match[1]!)) ids.add(match[1]!)
+      if (match && !this.artifacts.isReleased(scopeId, match[1]!)) ids.add(match[1]!)
     }
     return [...ids]
   }
 
   private async commandArtifact(scopeId: string, commandId: string): Promise<PersistedShellCommandArtifact | null> {
-    if (this.isCommandReleased(scopeId, commandId)) return null
+    if (this.artifacts.isReleased(scopeId, commandId)) return null
     const record = this.commandsById.get(commandId)
     if (record?.commandScopeId === scopeId) {
       this.syncRunningRecord(record)
       return persistedArtifactFromRecord(record)
     }
-    const value = await this.artifactStorage(scopeId)
+    const value = await this.artifacts
+      .storageFor(scopeId)
       .readJson<PersistedShellCommandArtifact>(`commands/${commandId}/artifact.json`)
       .catch(() => null)
     return isPersistedShellCommandArtifact(value) ? value : null
   }
 
-  private artifactStorage(scopeId: string): AgentSessionCommandStorage {
-    const existing = this.artifactStorageByScope.get(scopeId)
-    if (existing) return existing
-    const storage = new AgentSessionCommandStorage(this.host.store, scopeId)
-    this.artifactStorageByScope.set(scopeId, storage)
-    return storage
-  }
-
   private persistCommandArtifact(record: ShellCommandRecord): void {
-    if (this.isCommandReleased(record.commandScopeId, record.id)) return
-    const artifact = persistedArtifactFromRecord(record)
-    void this.artifactStorage(record.commandScopeId)
-      .writeJson(`commands/${record.id}/artifact.json`, artifact)
-      .catch(() => {})
-  }
-
-  private isCommandReleased(scopeId: string, commandId: string): boolean {
-    return this.releasedCommandArtifacts.has(this.releasedCommandKey(scopeId, commandId))
-  }
-
-  private releasedCommandKey(scopeId: string, commandId: string): string {
-    return `${scopeId}\0${commandId}`
+    this.artifacts.persist(record.commandScopeId, record.id, persistedArtifactFromRecord(record))
   }
 
   private syncRunningRecord(record: ShellCommandRecord): void {
