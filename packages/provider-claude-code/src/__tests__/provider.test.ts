@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { waitFor } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demi/agent'
 import { BashEnvironment } from '@demi/shell'
@@ -951,12 +952,4 @@ function isSdkInitializeRequest(value: unknown): value is { request_id: string }
     isRecord(value.request) &&
     value.request.subtype === 'initialize'
   )
-}
-
-async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 1))
-  }
-  throw new Error('condition was not met')
 }

@@ -2,7 +2,7 @@ import { access, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { deferred } from '@demi/utils'
+import { deferred, waitFor } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import type { AgentHarness, AgentSessionSnapshot } from '@demi/agent'
 import type { BashEnvironmentOptions } from '@demi/shell'
@@ -1098,14 +1098,6 @@ function latestQueueTexts(events: ClientSessionEvent[]): string[] {
     if (event?.type === 'queue') return event.queue.map((message) => message.text)
   }
   return []
-}
-
-async function waitFor(predicate: () => boolean): Promise<void> {
-  const startedAt = Date.now()
-  while (!predicate()) {
-    if (Date.now() - startedAt > 1_000) throw new Error('Timed out waiting for predicate')
-    await new Promise((resolve) => setTimeout(resolve, 1))
-  }
 }
 
 function delay(ms: number): Promise<void> {

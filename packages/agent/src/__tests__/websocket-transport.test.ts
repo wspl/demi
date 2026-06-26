@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { deferred } from '@demi/utils'
+import { deferred, waitFor } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
@@ -197,14 +197,6 @@ function runtimeProvider(id: string, provider: AgentProvider | (() => AgentProvi
     displayName: id,
     createRuntime: () => (typeof provider === 'function' ? provider() : provider),
   })
-}
-
-async function waitFor(predicate: () => boolean): Promise<void> {
-  const startedAt = Date.now()
-  while (!predicate()) {
-    if (Date.now() - startedAt > 1_000) throw new Error('Timed out waiting for predicate')
-    await new Promise((resolve) => setTimeout(resolve, 1))
-  }
 }
 
 class WebSocketScenarioProvider implements AgentProvider {

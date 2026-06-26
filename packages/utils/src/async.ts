@@ -24,6 +24,27 @@ export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Polls `predicate` until it returns `true`, or rejects once `timeoutMs` elapses.
+ * `describe` (optional) supplies extra context for the timeout error.
+ */
+export async function waitFor(
+  predicate: () => boolean,
+  describe?: () => string,
+  options: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 1_000
+  const intervalMs = options.intervalMs ?? 1
+  const startedAt = Date.now()
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      const detail = describe?.().trim()
+      throw new Error(`Timed out waiting for condition${detail ? `: ${detail}` : ''}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
+
 /** Rejects with `Error(message)` if `promise` does not settle within `ms` milliseconds. */
 export function withTimeout<T>(promise: Promise<T>, ms: number, message = `Timed out after ${ms}ms`): Promise<T> {
   return new Promise<T>((resolve, reject) => {

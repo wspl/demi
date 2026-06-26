@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { deferred } from '@demi/utils'
+import { deferred, waitFor } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
@@ -308,21 +308,6 @@ function latestUserText(request: InferenceRequest): string {
   if (latest?.type !== 'user_message') return ''
   const textBlock = [...latest.content].reverse().find((block) => block.type === 'text')
   return textBlock?.type === 'text' ? textBlock.text : ''
-}
-
-async function waitForWithError(predicate: () => boolean, errorDetails: () => string): Promise<void> {
-  const startedAt = Date.now()
-  while (!predicate()) {
-    if (Date.now() - startedAt > 1_000) {
-      const details = errorDetails().trim()
-      throw new Error(`Timed out waiting for predicate${details ? `: ${details}` : ''}`)
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1))
-  }
-}
-
-function waitFor(predicate: () => boolean, errorDetails?: () => string): Promise<void> {
-  return errorDetails ? waitForWithError(predicate, errorDetails) : waitForWithError(predicate, () => '')
 }
 
 function withTimeout<T>(promise: Promise<T>, label: string, errorDetails: () => string): Promise<T> {

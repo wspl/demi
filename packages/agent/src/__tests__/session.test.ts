@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { deferred, type Deferred } from '@demi/utils'
+import { deferred, waitFor, type Deferred } from '@demi/utils'
 import type { ModelSelection, UserContentBlock } from '@demi/core'
 import type { AgentProvider, InferenceRequest, InferenceSteer, ProviderEvent, ProviderRun } from '@demi/provider'
 import { StubProvider, createProviderRun, events } from '@demi/provider/testing'
@@ -1732,14 +1732,6 @@ class MemorySessionStore<State> {
 
   saveSnapshot(snapshot: AgentSessionSnapshot<State>): void {
     this.snapshots.push(snapshot)
-  }
-}
-
-async function waitFor(predicate: () => boolean): Promise<void> {
-  const startedAt = Date.now()
-  while (!predicate()) {
-    if (Date.now() - startedAt > 1_000) throw new Error('Timed out waiting for predicate')
-    await new Promise((resolve) => setTimeout(resolve, 1))
   }
 }
 

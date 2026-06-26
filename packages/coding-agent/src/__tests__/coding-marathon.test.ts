@@ -2,6 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
+import { waitFor } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import {
   AgentSession,
@@ -493,14 +494,4 @@ function transcriptSummary(session: AgentSession<Record<string, never>> | null):
       return block.type
     })
     .join(' | ')
-}
-
-async function waitFor(predicate: () => boolean, debug?: () => string): Promise<void> {
-  const startedAt = Date.now()
-  while (!predicate()) {
-    if (Date.now() - startedAt > 1_000) {
-      throw new Error(`Timed out waiting for predicate${debug ? `: ${debug()}` : ''}`)
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1))
-  }
 }
