@@ -5,6 +5,7 @@
 - Prefer direct final-state changes over transitional layers; remove obsolete code instead of keeping shims.
 - Prefer protocol, API, or file-state integrations over spawning external CLIs; keep external processes limited to intentional provider transports.
 - Do not create or switch to new branches during routine work; stay on the current branch unless the user explicitly requests branch management.
+- Do not use subagents: never invoke the `Agent`/Task tool to spawn subagents. Perform all work directly in the main session.
 
 ## Design Records
 
