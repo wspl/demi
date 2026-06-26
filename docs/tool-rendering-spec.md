@@ -2,98 +2,113 @@
 
 | | |
 |---|---|
-| 日期 | 2026-06-25 |
-| 状态 | 最终规范 |
-| 范围 | 标准 agent tools 在 Web / REPL / 其他壳子里的展示规则 |
+| Date | 2026-06-25 |
+| Status | Final specification |
+| Scope | How the standard agent tools render across the Web UI, the REPL, and other shells |
 
-## 1. 目标
+## 1. Goals
 
-Demi 的底层 transcript 和事件协议已经足够表达工具调用：`@demi/core` 定义
-`Block`，`@demi/agent` 定义 `ClientSessionEvent`。工具展示不需要也不应该引入新的
-model/render-model 包。
+Demi's underlying transcript and event protocol already express tool calls fully:
+`@demi/core` defines `Block`, and `@demi/agent` defines `ClientSessionEvent`. Tool
+rendering neither needs nor should introduce a new model / render-model package.
 
-标准工具展示的原则是：
+The principles for rendering the standard tools:
 
-1. `tool_call` 是持久 transcript 的 envelope，不是展示类型。
-2. 壳子先按 `block.type` 分发；遇到 `type === "tool_call"` 后必须按具体
-   `block.toolName` 分发。
-3. Demi 标准工具 `shell_exec` / `shell_status` / `shell_write` / `shell_abort` /
-   `yield` 都必须有一等展示，不允许落到普通 generic tool card。
-4. Generic tool 展示只用于未知外部工具或未来扩展工具，不用于标准工具。
-5. Web 和 REPL 可以各自实现 DOM / terminal UI，但必须消费同一套 `Block` 与
-   `ClientSessionEvent` 数据，不复制协议或引入平行数据模型。
+1. `tool_call` is the persistent transcript envelope, not a render type.
+2. A shell dispatches first on `block.type`; once it sees `type === "tool_call"` it
+   must then dispatch on the concrete `block.toolName`.
+3. The Demi standard tools — `shell_exec` / `shell_status` / `shell_write` /
+   `shell_abort` / `yield` — must each have a first-class rendering; they must never
+   fall through to the generic tool card.
+4. The generic tool rendering is only for unknown external tools or future extension
+   tools, never for the standard tools.
+5. The Web UI and the REPL may each implement their own DOM / terminal UI, but they
+   must consume the same `Block` and `ClientSessionEvent` data — never copy the
+   protocol or introduce a parallel data model.
 
-## 2. 共享协议边界
+## 2. Shared protocol boundary
 
-持久历史以 `Block` 为准：
+Persistent history is governed by `Block`:
 
-- `Block.type === "tool_call"` 表示模型发起了一次工具调用。
-- `toolName` 是标准工具展示分发键。
-- `input` 是 provider 传入的 JSON 字符串；渲染层负责解析。
-- `status` 是 `executing | completed | error`。
-- `streamingOutput` / `output` 是工具输出文本或媒体块。
-- `metadata` 可携带 `ShellCommandSnapshot` 等结构化运行时状态，渲染层可以用它增强展示，
-  但不能把它当作唯一来源。
+- `Block.type === "tool_call"` means the model issued a tool call.
+- `toolName` is the dispatch key for standard-tool rendering.
+- `input` is the JSON string the provider supplied; the render layer parses it.
+- `status` is `executing | completed | error`.
+- `streamingOutput` / `output` is the tool's output text or media blocks.
+- `metadata` may carry structured runtime state such as a `ShellCommandSnapshot`; the
+  render layer may use it to enrich the display, but must not treat it as the sole source.
 
-实时事件以 `ClientSessionEvent` 为准：
+Real-time events are governed by `ClientSessionEvent`:
 
-- `transcript_snapshot` / `transcript_patch` 是持久 UI 的主输入。
-- `shell_output` / `tool_progress` 可以给正在执行的标准工具补实时 stdout/stderr 或状态。
-- `shell_write_result` / `abort_result` 是用户控制动作 ack，不替代 transcript 里的
-  `tool_call` 展示。
-- `audit` 可以在 `shell_exec` 卡片内展示注册命令或系统命令明细，但不能改变标准工具分发键。
+- `transcript_snapshot` / `transcript_patch` are the primary input for the persistent UI.
+- `shell_output` / `tool_progress` may add live stdout/stderr or status to a standard
+  tool that is currently executing.
+- `shell_write_result` / `abort_result` are acknowledgements of user control actions;
+  they do not replace the `tool_call` rendering in the transcript.
+- `audit` may surface registered-command or system-command detail inside the
+  `shell_exec` card, but must not change the standard-tool dispatch key.
 
-因此，Web、REPL 和未来壳子可以共享协议和事件结构，但不共享一个抽象 UI model 包。
+So the Web UI, the REPL, and future shells share the protocol and event structures, but
+not a single abstract UI-model package.
 
-## 3. Description 约定
+## 3. The `description` convention
 
-所有标准工具的 input schema 都必须允许可选 `description?: string`。
+Every standard tool's input schema must allow an optional `description?: string`.
 
-`description` 是短的用户可见意图标题，要让用户看懂这一步想让哪些具体用户可见
-状态或结果出现、被确认或继续推进，而不是工具机制。
+`description` is a short, user-visible intent title. It should let the user understand
+which concrete user-visible state or result this step is meant to surface, confirm, or
+advance — not the tool mechanics.
 
-渲染规则：
+Rendering rules:
 
-1. 非空 `description` 是工具 block 的首选标题。
-2. 没有 `description` 时，渲染层使用各工具的确定性 fallback。
-3. `description` 只影响展示，不改变 shell runtime、tool result 或模型 replay 语义。
-4. `description` 不应该描述等待、暂停或工具机制，不应该是泛化操作名或单纯事物名，
-   也不应该塞入长脚本、完整 stdout/stderr、协议状态、step 编号、toolName、
-   commandId、内部标签或原因说明。
+1. A non-empty `description` is the preferred title for the tool block.
+2. With no `description`, the render layer uses each tool's deterministic fallback.
+3. `description` affects display only; it changes neither the shell runtime, the tool
+   result, nor model-replay semantics.
+4. `description` should not describe waiting, pausing, or tool mechanics; should not be a
+   generic action name or a bare noun; and should not be stuffed with long scripts, full
+   stdout/stderr, protocol state, step numbers, the toolName, the commandId, internal
+   labels, or rationale.
 
-## 4. 标准工具展示
+## 4. Standard-tool rendering
 
-| 工具 | 展示形态 | 标题 fallback | 关键内容 | 执行中状态 |
+| Tool | Render form | Title fallback | Key content | In-progress state |
 |---|---|---|---|---|
-| `shell_exec` | 终端命令 block | `input.script` | script、按到达顺序交错的 stdout/stderr terminal output | 扫光 loading，支持展开输出 |
-| `shell_status` | 命令状态 inline block | `Check <commandId>` | status、runningMs、idleMs、bytes、artifact 路径；不展示输出正文；不提供展开面板 | 扫光 loading，不能伪装成 shell_exec |
-| `shell_write` | stdin 写入 inline block | `Send input to <commandId>` | 首选标题说明要推进的用户可见结果；不提供展开面板 | 扫光 loading，成功不等于命令完成 |
-| `shell_abort` | 停止命令 inline block | `Stop <commandId>` | 首选标题说明要收敛的用户可见状态；不提供展开面板 | 扫光 loading，completed/aborted 都不是 UI 错误 |
-| `yield` | 等待唤醒 inline block | `Wait <durationMs>ms` | 首选标题说明下一次要观察或确认的用户可见状态；不提供展开面板 | 等待中使用和 thinking 一致的扫光 |
+| `shell_exec` | Terminal command block | `input.script` | The script, plus stdout/stderr terminal output interleaved in arrival order | Sweep loading; output is expandable |
+| `shell_status` | Command-status inline block | `Check <commandId>` | status, runningMs, idleMs, bytes, artifact paths; no output body; no expand panel | Sweep loading; must not masquerade as shell_exec |
+| `shell_write` | stdin-write inline block | `Send input to <commandId>` | Preferred title states the user-visible result being advanced; no expand panel | Sweep loading; success ≠ command completion |
+| `shell_abort` | Stop-command inline block | `Stop <commandId>` | Preferred title states the user-visible state being settled; no expand panel | Sweep loading; completed/aborted are not UI errors |
+| `yield` | Wait-for-wakeup inline block | `Wait <durationMs>ms` | Preferred title states the user-visible state to observe or confirm next; no expand panel | Sweep loading consistent with thinking |
 
-这些工具可以共用一个基础 `ToolCard` 外壳，但内容区域、标题 fallback 和状态文案必须按
-工具名区分。`shell_exec` / `shell_status` / `shell_write` / `shell_abort` 都使用 terminal
-图标，`yield` 使用 clock/timer。
-标准工具执行中状态统一使用和 thinking 一致的扫光 loading，不使用独立 spinner。
+These tools may share one base `ToolCard` shell, but the content area, title fallback, and
+status copy must be differentiated by tool name. `shell_exec` / `shell_status` /
+`shell_write` / `shell_abort` all use the terminal icon; `yield` uses a clock/timer. The
+in-progress state for every standard tool uses the same sweep loading as thinking — never
+a separate spinner.
 
-Web 中只有 `shell_exec` 工具块和 `thinking` block 可展开。`shell_status` / `shell_write` /
-`shell_abort` / `yield` 以及未知 generic tool 都必须保持不可展开的 inline 呈现；错误信息如需
-展示，只能作为 badge 或行内摘要出现，不能通过 disclosure 展开。
+In the Web UI, only the `shell_exec` tool block and the `thinking` block are expandable.
+`shell_status` / `shell_write` / `shell_abort` / `yield` and unknown generic tools must
+stay as non-expandable inline renderings; if an error needs to be shown, it appears only as
+a badge or an inline summary, never behind a disclosure.
 
-`shell_exec` 展开内容只展示命令和用户可见 terminal output。terminal output 来自 runtime/progress
-里的交错输出流或自动预算 preview，按 stdout/stderr 到达顺序合并成一条 transcript；这只是 UI/runtime
-呈现，不作为 `/@` 文件保存。最终模型可见完整输出读取接口是
-`/@/commands/<commandId>/stdout.txt` 和 `stderr.txt`，不是 `shell_status`。旧 transcript
-缺少交错输出时可以退回为 stdout 后 stderr，但不能只展示 stderr，也不能展示
-`status`、`shellId`、`commandId`、path、offset、bytes、truncation 等协议字段。
+The `shell_exec` expanded content shows only the command and the user-visible terminal
+output. That terminal output comes from the interleaved output stream in runtime/progress
+or from the auto-budgeted preview, merged into a single transcript in stdout/stderr arrival
+order; this is purely a UI/runtime rendering and is not saved as a `/@` file. The
+authoritative full-output read path the model sees is
+`/@/commands/<commandId>/stdout.txt` and `stderr.txt` — not `shell_status`. When an older
+transcript lacks interleaved output it may fall back to stdout-then-stderr, but it must not
+show stderr alone, nor show protocol fields such as `status`, `shellId`, `commandId`, path,
+offset, bytes, or truncation.
 
-`shell_status` 只能展示命令状态摘要。即使 metadata 带有 artifact 路径、byte counter 或 preview，
-它也不能被渲染成可展开终端输出块；需要输出内容的用户路径是查看对应 `shell_exec` block 或让
-模型用 shell 文本命令读取 `/@` artifact。
+`shell_status` may show only a command-status summary. Even when its metadata carries
+artifact paths, byte counters, or a preview, it must not be rendered as an expandable
+terminal-output block; the user path to output content is to view the corresponding
+`shell_exec` block or to have the model read the `/@` artifact with a shell text command.
 
-## 5. Web 规范
+## 5. Web specification
 
-Web 的 `ToolCallBlock` 必须显式分发：
+The Web UI's `ToolCallBlock` must dispatch explicitly:
 
 ```text
 shell_exec    -> shell exec renderer
@@ -104,49 +119,55 @@ yield         -> yield renderer
 unknown       -> generic renderer
 ```
 
-`AgentMessageVirtualBlock` 继续按 `block.type` 做第一层分发；`ToolCallBlock` 承担第二层
-`toolName` 分发。虚拟列表、sticky user block、自动滚动、tail loading 等仍然是 Web 私有 UI
-实现细节，不进入共享协议层。
+`AgentMessageVirtualBlock` still does the first-level dispatch on `block.type`;
+`ToolCallBlock` carries the second-level `toolName` dispatch. The virtual list, sticky user
+block, auto-scroll, tail loading, and so on remain Web-private UI implementation details
+and do not enter the shared protocol layer.
 
-Web 需要避免两类错误：
+The Web UI must avoid two mistakes:
 
-- 不要因为 `type === "tool_call"` 就把标准工具统一渲染成 generic card。
-- 不要把 `shell_status` / `shell_write` / `shell_abort` / `yield` 伪装成
-  `shell_exec` 的命令输出；它们是不同控制动作。
+- Do not render the standard tools as a generic card just because `type === "tool_call"`.
+- Do not disguise `shell_status` / `shell_write` / `shell_abort` / `yield` as `shell_exec`
+  command output; they are distinct control actions.
 
-## 6. REPL 规范
+## 6. REPL specification
 
-REPL 继续消费同样的 `Block` 和 `ClientSessionEvent`，但输出是 terminal 行。
+The REPL consumes the same `Block` and `ClientSessionEvent`, but its output is terminal lines.
 
-最低要求：
+Minimum requirements:
 
-- `shell_exec` 输出 `tool> shell_exec ...`，并展示 script fallback。
-- `shell_status` 输出 commandId 和状态结果摘要；不输出 stdout/stderr 正文。
-- `shell_write` 输出 commandId 和 stdin 影响摘要；stdin 内容可截断。
-- `shell_abort` 输出 commandId 和停止结果摘要。
-- `yield` 输出 durationMs 和唤醒结果摘要。
-- `description` 存在时优先用于摘要；没有时使用第 4 节 fallback。
+- `shell_exec` prints `tool> shell_exec ...` and shows the script fallback.
+- `shell_status` prints the commandId and a status-result summary; no stdout/stderr body.
+- `shell_write` prints the commandId and a summary of the stdin's effect; stdin content may
+  be truncated.
+- `shell_abort` prints the commandId and a stop-result summary.
+- `yield` prints the durationMs and a wakeup-result summary.
+- When `description` is present it takes precedence for the summary; otherwise use the
+  §4 fallback.
 
-REPL 不需要复用 Web 组件，也不应该引入 DOM-oriented render model。它只需要和 Web 遵循同一份
-工具名到展示语义的映射。
+The REPL need not reuse Web components and should not introduce a DOM-oriented render model.
+It only needs to follow the same tool-name → rendering-semantics mapping as the Web UI.
 
-## 7. 验收与测试
+## 7. Acceptance & testing
 
-必须覆盖：
+Must cover:
 
-1. 标准工具 schema：五个工具都允许 `description`，且标准工具集合仍然精确为
-   `shell_exec/shell_status/shell_write/shell_abort/yield`。
-2. Web 分发：`ToolCallBlock` 对五个标准工具都有专门 renderer，未知工具才进入 generic。
-3. Web 展示：五个标准工具都优先显示 `description`，没有时使用第 4 节 fallback。
-4. REPL 展示：五个标准工具的 terminal 摘要都优先显示 `description`，没有时使用第 4 节
-   fallback，并避免 patch replay 重复输出。
-5. 协议稳定性：`transcript_patch` 更新同一个 `tool_call` 的 status/output/metadata 时，Web 和
-   REPL 都能更新同一展示块，而不是新增一条错误的重复块。
+1. Standard-tool schema: all five tools allow `description`, and the standard-tool set is
+   still exactly `shell_exec/shell_status/shell_write/shell_abort/yield`.
+2. Web dispatch: `ToolCallBlock` has a dedicated renderer for each of the five standard
+   tools; only unknown tools fall through to generic.
+3. Web rendering: all five standard tools prefer `description`, falling back to §4 when absent.
+4. REPL rendering: the terminal summaries for all five standard tools prefer `description`,
+   fall back to §4 when absent, and avoid duplicate output on patch replay.
+5. Protocol stability: when `transcript_patch` updates the status/output/metadata of the
+   same `tool_call`, both the Web UI and the REPL update the same render block rather than
+   appending an erroneous duplicate.
 
-真实模型验收需要至少覆盖一次长命令流程：
+Real-model acceptance must cover at least one long-command flow:
 
 ```text
-shell_exec -> yield -> shell_status -> shell_write 或 shell_abort
+shell_exec -> yield -> shell_status -> shell_write or shell_abort
 ```
 
-验收时应确认 Web 和 REPL 都能看清每个控制动作分别在做什么，而不是只看到一组泛化的 tool call。
+Acceptance should confirm that both the Web UI and the REPL make clear what each control
+action is doing, rather than showing one undifferentiated group of tool calls.
