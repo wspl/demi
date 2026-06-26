@@ -166,10 +166,10 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 
 ## 6. 开源就绪检查清单
 
-- [ ] **`@demi/utils` + `@demi/testkit` 建好,所有重复/同义函数合并迁入,测试强制不回潮(§4)**
-- [ ] `LICENSE`(并解决 `just-bash` 许可证/来源)
+- [x] `@demi/utils` 建好、主要重复/同义函数合并迁入、测试强制(§4.7);`@demi/testkit` 待做
+- [x] `LICENSE` + `NOTICE`(Apache-2.0)+ 各包 `license` 字段;`just-bash` 独立发包待做
 - [ ] 顶层 `README` + 每包 `README`
-- [ ] 构建产物(ESM `.js` + `.d.ts`)+ 正确 `exports`,解除 Bun 绑定
+- [x] tsdown 构建产物(ESM `.mjs` + `.d.mts`)+ `development`(→src)/`import`(→dist)条件 exports;dev/test 仍走 src,解除 Bun 绑定
 - [ ] 包元数据 + 真实版本 + changesets
 - [ ] `examples/` 最小可跑示例
 - [ ] API 参考(typedoc)+ 扩展指南 ×3
