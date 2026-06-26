@@ -1,0 +1,22 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "packages/utils/src/index.ts",
+    "packages/core/src/index.ts",
+    "packages/provider/src/index.ts",
+    "packages/shell/src/index.ts",
+    "packages/host-local/src/index.ts",
+    "packages/agent/src/index.ts",
+    "packages/coding-agent/src/index.ts",
+    "packages/provider-claude-code/src/index.ts",
+    "packages/provider-codex/src/index.ts",
+    "packages/provider-anthropic-api/src/index.ts",
+    "packages/provider-openai-api/src/index.ts"
+  ],
+  "out": "docs/api",
+  "tsconfig": "tsconfig.json",
+  "readme": "none",
+  "excludeExternals": true,
+  "skipErrorChecking": true,
+  "githubPages": false
+}

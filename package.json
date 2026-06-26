@@ -24,6 +24,7 @@
     "typecheck": "node node_modules/.bin/tsgo --noEmit",
     "typecheck:web": "bun --filter @demi/web-ui typecheck && bun --filter @demi/web typecheck",
     "build": "bun --filter '@demi/*' build",
+    "docs:api": "typedoc",
     "web:dev": "bun --filter @demi/web dev",
     "web:server": "bun run packages/web/src/server/index.ts",
     "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/host-local/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/repl/src packages/web-ui/src packages/web/src",
@@ -34,7 +35,8 @@
     "@types/bun": "^1.3.14",
     "@typescript/native-preview": "^7.0.0-dev.20260618.1",
     "oxc-parser": "^0.137.0",
-    "tsdown": "^0.22.3"
+    "tsdown": "^0.22.3",
+    "typedoc": "^0.28.19"
   },
   "license": "Apache-2.0"
 }
