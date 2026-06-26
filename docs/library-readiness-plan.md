@@ -155,7 +155,7 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 
 - **`ActionQueue`/`TurnWorker`**:`pendingActions`/`queued`/`enqueue`/`runWorker`/`executeAction`/队列操作/idle resolvers。
 - **`ProviderTurnLoop`**:`executeProviderTurn`/`streamProviderOnce`/`executePendingTools`/`providerEvents`/`buildInferenceRequest`/auto-recover。
-- **`SteerController`**:`steer`/`steerInternal`/`steerDelivery`/`pendingSteers`/`materialize*`/`cancelPendingSteer`。
+- **`SteerController`**:steer 状态容器 ✅ 已抽(`pending-steer-queue.ts`:`pending`/`canceledIds`/`continuation` + `add`/`removePending`/`markCanceled`/`takeCanceled`/`takeForTurn`);投递与物化决策(`steer`/`steerInternal`/`steerDelivery`/`materialize*`,及依赖 session 状态的 cancel 分支)留在 session。
 - **`CompactionController`**:`executeCompaction`/`generateCompactionSummary`/preflight/`compactToFitModel`/`applyPendingModelSwitch`。
 - **`YieldScheduler`** ✅ 已抽(`yield-scheduler.ts`):唤醒注册表 + 定时器生命周期(`schedule`/`arm`/`take`/`cancelOne`/`clear`);session 经 `onFire` 回调保留 `deliverYieldWakeup` 的投递决策。
 - **分层 abort helper**:`abort`/`activeAbortTarget`/`abortQueuedAction`/`recordAbort`。
@@ -166,7 +166,14 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - **`ForegroundController`**:`hostSpawn`/`raceForeground`/`waitForBoundary`/`write`/`abort`/boundary。
 - **`CommandRecordStore`**:records/snapshot/release/exit 收敛。
 - **`CommandArtifactStore`** ✅ 已抽(`command-artifact-store.ts`):per-scope 存储缓存 + released 集合 + `persist`/`release`/`isReleased`;`BashEnvironment` 保留需读内存 record 的 `/@` lookup,委托存储/释放侧。`VirtualCommandFs`(纯 lookup)待续。
+- **`CommandRecordStore`** 评估结论:`requireCommand` 还做 foreground→record 同步(需 `shells`),纯抽 `commandsById` Map 只剩空壳,价值低,暂缓。
 - 背景 job 独立;`BashEnvironment` 变 facade,保留 `exec`/`status`/`write`/`abort`。
+
+### 5.x 进度小结(本轮)
+
+**可干净分离的「状态容器」已抽完(3 个,均行为保持、全量测试绿):** `CommandArtifactStore`(shell)、`YieldScheduler`、`PendingSteerQueue`(agent)。模式统一:容器持有自洽状态 + 纯操作,原类经回调/查询保留决策逻辑。
+
+**剩余单元是「行为交织」型**(`ProviderTurnLoop`/`ActionQueue`/`CompactionController`,以及 shell 的 record↔session↔foreground 同步):它们的状态贯穿整个 turn/exec 生命周期,拆分需要先**设计回调 seam**(暴露 `activeTurnId`/`activeTurnPhase`/`transcriptLog`/`currentRun`/foreground 等),是更大的一次性手术,建议放在能全神贯注的专门会话做,避免在核心 runtime 引入隐蔽回归。
 
 ### 5.3 Provider Kit(去重,与 §4 协同)
 
