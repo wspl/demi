@@ -5,6 +5,10 @@ import { zeroUsage } from '@demi/core'
 import type { ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import {
   defineProvider,
+  httpErrorCode,
+  normalizeErrorCode,
+  providerErrorFromUnknown,
+  redactSecretText,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -929,31 +933,6 @@ async function httpError(response: Response, apiKey: string | null | undefined):
   const text = await response.text().catch(() => '')
   const message = redactSecretText(`OpenAI API request failed with HTTP ${response.status}${text ? `: ${text}` : ''}`, apiKey)
   return { type: 'error', message, code: httpErrorCode(response.status, message) }
-}
-
-function providerErrorFromUnknown(error: unknown, apiKey: string | null | undefined): ProviderEvent {
-  const message = error instanceof Error ? error.message : String(error)
-  return { type: 'error', message: redactSecretText(message, apiKey), code: normalizeErrorCode(null, message) }
-}
-
-function httpErrorCode(status: number, message: string): string | null {
-  if (status === 401 || status === 403) return 'auth_expired'
-  if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return 'rate_limit'
-  if (status === 400 && /context|too long|token/i.test(message)) return 'context_length_exceeded'
-  return null
-}
-
-function normalizeErrorCode(code: string | null, message: string): string | null {
-  const value = `${code ?? ''} ${message}`.toLowerCase()
-  if (/context|too long|max.*token/.test(value)) return 'context_length_exceeded'
-  if (/rate|quota|billing|limit/.test(value)) return 'rate_limit'
-  if (/auth|unauth|invalid.*key|expired/.test(value)) return 'auth_expired'
-  if (/overload|unavailable|timeout/.test(value)) return 'overloaded'
-  return code
-}
-
-function redactSecretText(value: string, secret: string | null | undefined): string {
-  return secret ? value.split(secret).join('[redacted]') : value
 }
 
 function withProviderId(list: ProviderModelList, providerId: string): ProviderModelList {

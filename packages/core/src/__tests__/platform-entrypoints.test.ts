@@ -282,6 +282,9 @@ test('generic helpers provided by shared packages are not re-implemented in prod
     ...utilsHelperNames.map((name) => ({ name, home: 'packages/utils/', pkg: '@demi/utils' })),
     // zeroUsage returns core's TokenUsage, so its canonical home is @demi/core (utils cannot depend on core).
     { name: 'zeroUsage', home: 'packages/core/', pkg: '@demi/core' },
+    // httpErrorCode is identical across the HTTP providers; its home is @demi/provider. (redactSecretText /
+    // normalizeErrorCode / providerErrorFromUnknown are NOT banned: codex ships intentionally different variants.)
+    { name: 'httpErrorCode', home: 'packages/provider/', pkg: '@demi/provider' },
   ]
   const files = await listSourceFiles(resolveRepoPath('packages'))
   const violations: string[] = []

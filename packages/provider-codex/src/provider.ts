@@ -2,6 +2,7 @@ import { isRecord } from '@demi/utils'
 import {
   applyModelPolicy,
   defineProvider,
+  httpErrorCode,
   type AgentProvider,
   type InferenceRequest,
   type ModelPolicy,
@@ -223,13 +224,6 @@ function providerErrorFromUnknown(error: unknown): ProviderEvent {
   }
   const message = error instanceof Error ? error.message : String(error)
   return { type: 'error', message: redactSecretText(message), code: null }
-}
-
-function httpErrorCode(status: number, message: string): string | null {
-  if (status === 401 || status === 403) return 'auth_expired'
-  if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return 'rate_limit'
-  if (status === 400 && /context|too long|token/i.test(message)) return 'context_length_exceeded'
-  return null
 }
 
 function isRetryableHttpStatus(status: number): boolean {

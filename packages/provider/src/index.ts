@@ -6,3 +6,4 @@ export {
   thinkingCapabilitiesFromProviderModel,
   type ModelSelectionFromCatalogOptions,
 } from './model-selection'
+export { httpErrorCode, normalizeErrorCode, providerErrorFromUnknown, redactSecretText } from './http'
