@@ -4,11 +4,14 @@ import process from 'node:process'
 import { zeroUsage } from '@demi/core'
 import type { ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import {
+  authStatusFromKey,
   defineProvider,
   httpErrorCode,
+  httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
   redactSecretText,
+  withProviderId,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -91,7 +94,7 @@ export class OpenAIChatCompletionsProvider implements AgentProvider {
         signal: request.cancel,
       })
       if (!response.ok) {
-        yield await httpError(response, apiKey)
+        yield await httpRequestFailedEvent(response, apiKey, 'OpenAI')
         return
       }
       yield* mapOpenAIChatCompletionStream(readServerSentEvents(response.body, request.cancel), request.cancel)
@@ -144,7 +147,7 @@ export class OpenAIResponsesProvider implements AgentProvider {
         signal: request.cancel,
       })
       if (!response.ok) {
-        yield await httpError(response, apiKey)
+        yield await httpRequestFailedEvent(response, apiKey, 'OpenAI')
         return
       }
       yield* mapOpenAIResponseStream(readServerSentEvents(response.body, request.cancel), request.cancel)
@@ -189,7 +192,7 @@ export function createOpenAIApiProvider(options: OpenAIApiProviderOptions = {}):
   return defineProvider({
     id,
     displayName,
-    auth: { status: () => authStatus(apiKey, options.headers, 'authorization') },
+    auth: { status: () => authStatusFromKey(apiKey, options.headers, 'authorization', 'OpenAI') },
     state: () => ({
       status: 'ready',
       message: wireApi === 'responses' ? 'Uses the OpenAI Responses API' : 'Uses the OpenAI Chat Completions API',
@@ -918,28 +921,6 @@ function openAIUsage(usage: Record<string, unknown>) {
     outputTokens,
     cacheReadTokens: cachedTokens,
     cacheWriteTokens: 0,
-  }
-}
-
-async function authStatus(apiKey: OpenAIApiSecretResolver, headersResolver: OpenAIApiHeadersResolver | undefined, authHeader: string) {
-  const [key, headers] = await Promise.all([apiKey(), headersResolver?.()])
-  if (key || (headers && Object.keys(headers).some((name) => name.toLowerCase() === authHeader))) {
-    return { status: 'authenticated' as const }
-  }
-  return { status: 'unauthenticated' as const, message: 'OpenAI API key is missing' }
-}
-
-async function httpError(response: Response, apiKey: string | null | undefined): Promise<ProviderEvent> {
-  const text = await response.text().catch(() => '')
-  const message = redactSecretText(`OpenAI API request failed with HTTP ${response.status}${text ? `: ${text}` : ''}`, apiKey)
-  return { type: 'error', message, code: httpErrorCode(response.status, message) }
-}
-
-function withProviderId(list: ProviderModelList, providerId: string): ProviderModelList {
-  return {
-    ...list,
-    providerId,
-    models: list.models.map((model) => ({ ...model, providerId })),
   }
 }
 

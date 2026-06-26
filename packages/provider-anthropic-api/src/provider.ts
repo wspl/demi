@@ -4,11 +4,14 @@ import process from 'node:process'
 import { zeroUsage } from '@demi/core'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import {
+  authStatusFromKey,
   defineProvider,
   httpErrorCode,
+  httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
   redactSecretText,
+  withProviderId,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -91,7 +94,7 @@ export class AnthropicApiProvider implements AgentProvider {
         signal: request.cancel,
       })
       if (!response.ok) {
-        yield await httpError(response, apiKey)
+        yield await httpRequestFailedEvent(response, apiKey, 'Anthropic')
         return
       }
       yield* mapAnthropicMessageStream(readServerSentEvents(response.body, request.cancel), request.cancel)
@@ -137,7 +140,7 @@ export function createAnthropicApiProvider(options: AnthropicApiProviderOptions 
   return defineProvider({
     id,
     displayName,
-    auth: { status: () => authStatus(apiKey, options.headers, 'x-api-key') },
+    auth: { status: () => authStatusFromKey(apiKey, options.headers, 'x-api-key', 'Anthropic') },
     state: () => ({ status: 'ready', message: 'Uses the Anthropic Messages API' }),
     listModels: modelList,
     createRuntime: (_selection: ProviderSelection) => new AnthropicApiProvider(runtimeOptions),
@@ -442,20 +445,6 @@ function anthropicMessagesUrl(baseUrl: string): string {
   return normalized.endsWith('/messages') ? normalized : `${normalized}/messages`
 }
 
-async function authStatus(apiKey: AnthropicApiSecretResolver, headersResolver: AnthropicApiHeadersResolver | undefined, authHeader: string) {
-  const [key, headers] = await Promise.all([apiKey(), headersResolver?.()])
-  if (key || (headers && Object.keys(headers).some((name) => name.toLowerCase() === authHeader))) {
-    return { status: 'authenticated' as const }
-  }
-  return { status: 'unauthenticated' as const, message: 'Anthropic API key is missing' }
-}
-
-async function httpError(response: Response, apiKey: string | null | undefined): Promise<ProviderEvent> {
-  const text = await response.text().catch(() => '')
-  const message = redactSecretText(`Anthropic API request failed with HTTP ${response.status}${text ? `: ${text}` : ''}`, apiKey)
-  return { type: 'error', message, code: httpErrorCode(response.status, message) }
-}
-
 function mergeAnthropicUsage(current: TokenUsage, usage: Record<string, unknown>): TokenUsage {
   const inputTokens = numberOrZero(usage.input_tokens)
   const outputTokens = numberOrZero(usage.output_tokens)
@@ -466,14 +455,6 @@ function mergeAnthropicUsage(current: TokenUsage, usage: Record<string, unknown>
     outputTokens: outputTokens || current.outputTokens,
     cacheReadTokens: cacheReadTokens || current.cacheReadTokens,
     cacheWriteTokens: cacheWriteTokens || current.cacheWriteTokens,
-  }
-}
-
-function withProviderId(list: ProviderModelList, providerId: string): ProviderModelList {
-  return {
-    ...list,
-    providerId,
-    models: list.models.map((model) => ({ ...model, providerId })),
   }
 }
 

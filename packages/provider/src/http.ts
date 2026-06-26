@@ -1,7 +1,10 @@
 // Shared building blocks for HTTP-based provider adapters: secret redaction and
 // coarse error-code classification. Provider implementations import these instead
 // of re-deriving the same status/keyword tables.
-import type { ProviderEvent } from './types'
+import type { ProviderAuthState, ProviderEvent } from './types'
+
+type SecretResolver = () => string | Promise<string> | null | undefined
+type HeadersResolver = () => Record<string, string> | Promise<Record<string, string>>
 
 /** Replaces every occurrence of `secret` in `value` with a redaction marker. */
 export function redactSecretText(value: string, secret: string | null | undefined): string {
@@ -30,4 +33,32 @@ export function normalizeErrorCode(code: string | null, message: string): string
 export function providerErrorFromUnknown(error: unknown, secret: string | null | undefined): ProviderEvent {
   const message = error instanceof Error ? error.message : String(error)
   return { type: 'error', message: redactSecretText(message, secret), code: normalizeErrorCode(null, message) }
+}
+
+/** Resolves auth state from an API key or a matching custom auth header. */
+export async function authStatusFromKey(
+  resolveKey: SecretResolver,
+  resolveHeaders: HeadersResolver | undefined,
+  authHeader: string,
+  providerLabel: string,
+): Promise<ProviderAuthState> {
+  const [key, headers] = await Promise.all([resolveKey(), resolveHeaders?.()])
+  if (key || (headers && Object.keys(headers).some((name) => name.toLowerCase() === authHeader))) {
+    return { status: 'authenticated' }
+  }
+  return { status: 'unauthenticated', message: `${providerLabel} API key is missing` }
+}
+
+/** Builds a redacted provider `error` event from a failed HTTP response. */
+export async function httpRequestFailedEvent(
+  response: Response,
+  secret: string | null | undefined,
+  providerLabel: string,
+): Promise<ProviderEvent> {
+  const text = await response.text().catch(() => '')
+  const message = redactSecretText(
+    `${providerLabel} API request failed with HTTP ${response.status}${text ? `: ${text}` : ''}`,
+    secret,
+  )
+  return { type: 'error', message, code: httpErrorCode(response.status, message) }
 }

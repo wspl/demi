@@ -4,6 +4,14 @@ export {
   DEFAULT_ATTACHMENT_EXTENSIONS,
   modelSelectionFromCatalog,
   thinkingCapabilitiesFromProviderModel,
+  withProviderId,
   type ModelSelectionFromCatalogOptions,
 } from './model-selection'
-export { httpErrorCode, normalizeErrorCode, providerErrorFromUnknown, redactSecretText } from './http'
+export {
+  authStatusFromKey,
+  httpErrorCode,
+  httpRequestFailedEvent,
+  normalizeErrorCode,
+  providerErrorFromUnknown,
+  redactSecretText,
+} from './http'

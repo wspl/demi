@@ -8,7 +8,16 @@ import type {
   ThinkingConfig,
   ThinkingSummary,
 } from '@demi/core'
-import type { ProviderModel } from './types'
+import type { ProviderModel, ProviderModelList } from './types'
+
+/** Stamps `providerId` onto a model catalog and every model in it. */
+export function withProviderId(list: ProviderModelList, providerId: string): ProviderModelList {
+  return {
+    ...list,
+    providerId,
+    models: list.models.map((model) => ({ ...model, providerId })),
+  }
+}
 
 /** Attachment file types a model is offered when it reports attachment support. */
 export const DEFAULT_ATTACHMENT_EXTENSIONS: readonly FileExtension[] = [
