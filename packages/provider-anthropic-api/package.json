@@ -1,5 +1,6 @@
 {
   "name": "@demi/provider-anthropic-api",
+  "description": "Anthropic API provider adapter for Demi.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

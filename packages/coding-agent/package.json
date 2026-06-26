@@ -1,5 +1,6 @@
 {
   "name": "@demi/coding-agent",
+  "description": "Coding-agent harness, commands, and reference resolution for Demi.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

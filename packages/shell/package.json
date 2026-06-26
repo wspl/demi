@@ -1,5 +1,6 @@
 {
   "name": "@demi/shell",
+  "description": "Sandboxable bash engine and Host contract for Demi.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

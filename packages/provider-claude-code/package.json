@@ -1,5 +1,6 @@
 {
   "name": "@demi/provider-claude-code",
+  "description": "Claude Code provider adapter for Demi.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

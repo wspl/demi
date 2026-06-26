@@ -1,5 +1,6 @@
 {
   "name": "@demi/agent",
+  "description": "Session runtime and transport-neutral client and server protocol for Demi.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

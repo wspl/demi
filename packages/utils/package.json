@@ -1,5 +1,6 @@
 {
   "name": "@demi/utils",
+  "description": "Shared zero-dependency utilities for Demi (type guards, errors, async, bytes, strings, paths, JSON).",
   "version": "0.0.0",
   "private": true,
   "type": "module",

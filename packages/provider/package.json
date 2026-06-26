@@ -1,5 +1,6 @@
 {
   "name": "@demi/provider",
+  "description": "Provider contract and shared building blocks for Demi inference adapters.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

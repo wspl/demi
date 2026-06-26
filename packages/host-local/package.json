@@ -1,5 +1,6 @@
 {
   "name": "@demi/host-local",
+  "description": "Node Host adapter for the Demi shell.",
   "version": "0.0.0",
   "private": true,
   "type": "module",
