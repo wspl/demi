@@ -1,25 +1,12 @@
 import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAborted, truncate } from '@demi/utils'
-import type {
-  Block,
-  ModelSelection,
-  QueuedMessage,
-  SessionPhase,
-  TokenUsage,
-  UserContentBlock,
-} from '@demi/core'
-import type {
-  AgentProvider,
-  InferenceItem,
-  InferenceRequest,
-  ProviderEvent,
-  ProviderRun,
-  ToolDefinition,
-} from '@demi/provider'
+import type { Block, ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demi/core'
+import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demi/provider'
 import { Transcript, type TranscriptOptions } from './transcript'
 import { YieldScheduler } from './yield-scheduler'
 import { PendingSteerQueue, type PendingSteer } from './pending-steer-queue'
 import { CompactionController, type CompactionHost } from './compaction-controller'
 import { ProviderStreamError } from './provider-stream-error'
+import { ProviderTurnLoop, type ProviderTurnLoopHost } from './provider-turn-loop'
 import type {
   AgentHarnessRuntime,
   AgentSessionOptions,
@@ -37,11 +24,6 @@ import type {
 
 const DEFAULT_KEEP_RECENT_TOKENS = 4_000
 const DEFAULT_PREFLIGHT_THRESHOLD_RATIO = 0.8
-// Hard cap on usage-triggered compactions within a single turn. One compaction normally drops
-// the context far below threshold; needing more means the recent window itself is over the limit
-// (a misconfigured/too-low threshold), where compacting further just summarizes our own summaries
-// and piles up resume turns. The cap stops that storm.
-const MAX_AUTO_COMPACTIONS_PER_TURN = 3
 
 type PendingAction =
   | {
@@ -60,7 +42,7 @@ type PendingAction =
 
 type PendingSendAction = Extract<PendingAction, { type: 'send' }>
 
-type ActiveTurnPhase = 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing'
+export type ActiveTurnPhase = 'provider_streaming' | 'tool_executing' | 'compacting' | 'finalizing'
 
 interface TakenQueuedSend {
   message: QueuedMessage
@@ -96,6 +78,7 @@ export class AgentSession<State> {
   private readonly steerQueue = new PendingSteerQueue()
   private readonly yields: YieldScheduler
   private readonly compaction: CompactionController
+  private readonly turnLoop: ProviderTurnLoop<State>
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
 
@@ -178,6 +161,55 @@ export class AgentSession<State> {
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
     }
     this.compaction = new CompactionController(compactionHost)
+
+    const turnLoopHost: ProviderTurnLoopHost<State> = {
+      get transcript() {
+        return self.transcriptLog
+      },
+      get model() {
+        return self.model
+      },
+      get provider() {
+        return self.provider
+      },
+      get runtime() {
+        return self.runtime
+      },
+      get agentSessionId() {
+        return self.agentSessionId
+      },
+      get cwd() {
+        return self.cwd
+      },
+      get agentState() {
+        return self.agentState
+      },
+      get thresholdRatio() {
+        return self.compactionThresholdRatio
+      },
+      get steerContinuationCount() {
+        return self.steerQueue.continuationCount
+      },
+      currentSignal: () => self.currentSignal(),
+      currentTurnId: () => self.currentTurnId(),
+      nextRequestId: () => self.idFactory(),
+      promptContext: () => self.promptContext(),
+      getActiveTurnPhase: () => self.activeTurnPhase,
+      setActiveTurnPhase: (phase) => {
+        self.activeTurnPhase = phase
+      },
+      getActiveProviderRun: () => self.activeProviderRun,
+      setActiveProviderRun: (run) => {
+        self.activeProviderRun = run
+      },
+      streamProvider: (request, run) => self.providerEvents(request, run),
+      runCompaction: () => self.compaction.run(),
+      runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
+      commitTranscript: () => self.commitTranscript(),
+      emit: (event) => self.emit(event),
+      materializeSteersArrivedSince: (count) => self.materializePendingSteersArrivedSince(count),
+    }
+    this.turnLoop = new ProviderTurnLoop(turnLoopHost)
   }
 
   send(content: UserContentBlock[], options: { id?: string } = {}): Promise<void> {
@@ -729,7 +761,7 @@ export class AgentSession<State> {
     await this.commitTranscript()
 
     await this.compaction.preflight()
-    await this.executeProviderTurn()
+    await this.turnLoop.run()
   }
 
   private async resolveReferences(content: UserContentBlock[]): Promise<UserContentBlock[]> {
@@ -779,7 +811,7 @@ export class AgentSession<State> {
 
     await this.applyPendingModelSwitch()
     await this.compaction.preflight()
-    await this.executeProviderTurn()
+    await this.turnLoop.run()
   }
 
   private async executeResume(): Promise<void> {
@@ -788,176 +820,7 @@ export class AgentSession<State> {
     this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
     await this.commitTranscript()
     await this.compaction.preflight()
-    await this.executeProviderTurn()
-  }
-
-  private async executeProviderTurn(): Promise<void> {
-    let autoCompactions = 0
-    while (true) {
-      throwIfAborted(this.currentSignal())
-      const steerContinuationBeforeStream = this.steerQueue.continuationCount
-      const shouldAutoRecover = await this.streamProviderOnce()
-      throwIfAborted(this.currentSignal())
-
-      if (!shouldAutoRecover) {
-        await this.materializePendingSteersArrivedSince(steerContinuationBeforeStream)
-      }
-      const toolExecution = await this.executePendingTools({
-        deferSteerMaterialization: shouldAutoRecover,
-      })
-      if (shouldAutoRecover && autoCompactions < MAX_AUTO_COMPACTIONS_PER_TURN) {
-        const tokensBefore = this.transcriptLog.estimateContextTokens()
-        const compacted = await this.runWithCompactingPhase(() => this.compaction.run())
-        // Only loop if compaction actually shrank the transcript. Otherwise we'd keep compacting
-        // our own summaries and pile up resume turns (a storm) until the model rejects the history.
-        if (compacted && this.transcriptLog.estimateContextTokens() < tokensBefore) {
-          autoCompactions += 1
-          this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
-          await this.commitTranscript()
-          continue
-        }
-      }
-      if (toolExecution.stopAfterToolResult) return
-      if (this.steerQueue.continuationCount > steerContinuationBeforeStream) {
-        await this.materializePendingSteersArrivedSince(steerContinuationBeforeStream)
-        continue
-      }
-      if (!toolExecution.executed) return
-    }
-  }
-
-  private async streamProviderOnce(): Promise<boolean> {
-    const request = this.buildInferenceRequest()
-    const run = this.provider.run(request)
-    let shouldAutoRecover = false
-    this.activeProviderRun = run
-    this.activeTurnPhase = 'provider_streaming'
-    try {
-      for await (const event of this.providerEvents(request, run)) {
-        throwIfAborted(request.cancel)
-        if (event.type === 'abort') throw new AbortError()
-        await this.applyProviderEvent(event)
-        if (event.type === 'error') throw new ProviderStreamError(event.message, event.code)
-        if (event.type === 'response' && this.isUsageNearLimit(event.usage)) {
-          shouldAutoRecover = true
-        }
-      }
-    } finally {
-      if (this.activeProviderRun === run) this.activeProviderRun = null
-      if (this.activeTurnPhase === 'provider_streaming') this.activeTurnPhase = null
-    }
-    return shouldAutoRecover
-  }
-
-  private async executePendingTools(
-    options: { deferSteerMaterialization?: boolean } = {},
-  ): Promise<{ executed: boolean; stopAfterToolResult: boolean }> {
-    const pending = this.transcriptLog.pendingToolCalls()
-    if (pending.length === 0) return { executed: false, stopAfterToolResult: false }
-
-    const tools = this.currentTools()
-    const toolsByName = new Map(tools.map((tool) => [tool.name, tool]))
-    let stopAfterToolResult = false
-    const previousActivePhase = this.activeTurnPhase
-    this.activeTurnPhase = 'tool_executing'
-
-    try {
-      for (const toolCall of pending) {
-        throwIfAborted(this.currentSignal())
-        const steerContinuationBeforeTool = this.steerQueue.continuationCount
-
-        const tool = toolsByName.get(toolCall.toolName)
-        if (!tool) {
-          this.transcriptLog.completeToolCall(
-            toolCall.toolUseId,
-            [{ type: 'text', text: `Tool not found: ${toolCall.toolName}` }],
-            true,
-          )
-          await this.commitTranscript()
-          if (!options.deferSteerMaterialization) {
-            await this.materializePendingSteersArrivedSince(steerContinuationBeforeTool)
-          }
-          continue
-        }
-
-        const input = parseToolInput(toolCall.input)
-        const result = await this.invokeToolAsResult(tool, toolCall.toolUseId, input)
-        this.transcriptLog.completeToolCall(
-          toolCall.toolUseId,
-          result.output,
-          result.isError ?? false,
-          result.metadata ?? result.continuation ?? null,
-        )
-        await this.runtime.lifecycle?.({
-          type: 'after_tool_call',
-          agentSessionId: this.agentSessionId,
-          state: this.agentState,
-          transcript: this.transcriptLog,
-          toolCallId: toolCall.toolUseId,
-          toolName: toolCall.toolName,
-          result,
-        })
-        await this.commitTranscript()
-        if (!options.deferSteerMaterialization) {
-          await this.materializePendingSteersArrivedSince(steerContinuationBeforeTool)
-        }
-        stopAfterToolResult ||= result.stopAfterToolResult === true
-      }
-    } finally {
-      this.activeTurnPhase = previousActivePhase
-    }
-
-    return { executed: true, stopAfterToolResult }
-  }
-
-  private async invokeTool(
-    tool: AgentTool<State>,
-    toolCallId: string,
-    input: unknown,
-  ): Promise<AgentToolInvokeResult> {
-    const signal = this.currentSignal()
-    return abortable(
-      Promise.resolve(
-        tool.invoke(
-          {
-            agentSessionId: this.agentSessionId,
-            state: this.agentState,
-            cwd: this.cwd,
-            model: this.model,
-            toolCallId,
-            signal,
-            emitProgress: (progress) => {
-              this.emit({
-                type: 'tool_progress',
-                toolCallId,
-                toolName: tool.name,
-                progress,
-              })
-            },
-          },
-          input,
-        ),
-      ),
-      signal,
-    )
-  }
-
-  private async invokeToolAsResult(
-    tool: AgentTool<State>,
-    toolCallId: string,
-    input: unknown,
-  ): Promise<AgentToolInvokeResult> {
-    try {
-      return await this.invokeTool(tool, toolCallId, input)
-    } catch (error) {
-      if (isAbortError(error)) throw error
-      const normalized = asError(error)
-      return {
-        output: [{ type: 'text', text: `Tool failed: ${normalized.message}` }],
-        isError: true,
-        metadata: { error: normalized.message },
-      }
-    }
+    await this.turnLoop.run()
   }
 
   private async *providerEvents(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent> {
@@ -977,28 +840,6 @@ export class AgentSession<State> {
     }
   }
 
-  private buildInferenceRequest(): InferenceRequest {
-    const tools = this.currentTools().map(toToolDefinition)
-    return {
-      sessionId: this.agentSessionId,
-      turnId: this.currentTurnId(),
-      requestId: this.idFactory(),
-      modelId: this.model.model.id,
-      systemPrompt: this.runtime.systemPrompt(this.promptContext()),
-      cwd: this.cwd,
-      items: this.transcriptLog.collectInferenceItems(),
-      tools,
-      thinking: this.model.thinking,
-      serviceTierId: this.model.serviceTierId ?? null,
-      cancel: this.currentSignal(),
-    }
-  }
-
-  private async applyProviderEvent(event: ProviderEvent): Promise<void> {
-    const block = this.transcriptLog.applyProviderEvent(this.model, event)
-    if (block) await this.commitTranscript()
-  }
-
   private promptContext(): {
     agentSessionId: string
     state: State
@@ -1011,17 +852,6 @@ export class AgentSession<State> {
       cwd: this.cwd,
       transcript: this.transcriptLog,
     }
-  }
-
-  private currentTools(): AgentTool<State>[] {
-    return this.runtime.tools({ agentSessionId: this.agentSessionId, state: this.agentState, cwd: this.cwd })
-  }
-
-  private isUsageNearLimit(usage: TokenUsage): boolean {
-    const contextWindow = this.model.model.contextWindow
-    if (contextWindow <= 0) return false
-    const usedTokens = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
-    return usedTokens >= Math.floor(contextWindow * this.compactionThresholdRatio)
   }
 
   private currentSignal(): AbortSignal {
@@ -1146,27 +976,11 @@ export class AgentSession<State> {
   }
 }
 
-function toToolDefinition(tool: AgentTool<unknown>): ToolDefinition {
-  return {
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-  }
-}
-
 function findLastUserTurnIndex(blocks: Array<{ type: string }>): number | null {
   for (let i = blocks.length - 1; i >= 0; i -= 1) {
     if (blocks[i].type === 'user') return i
   }
   return null
-}
-
-function parseToolInput(input: string): unknown {
-  try {
-    return JSON.parse(input)
-  } catch {
-    return input
-  }
 }
 
 function textContentSummary(content: UserContentBlock[]): string {
