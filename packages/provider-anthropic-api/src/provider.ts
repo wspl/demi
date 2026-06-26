@@ -1,4 +1,4 @@
-import { isAbortError, isRecord } from '@demi/utils'
+import { isAbortError, isRecord, numberOrZero } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
@@ -528,8 +528,4 @@ function stringOr(value: unknown): string | null {
 
 function numberOr(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function numberOrZero(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }

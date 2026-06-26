@@ -1,4 +1,4 @@
-import { isRecord } from '@demi/utils'
+import { isRecord, numberOrZero, shortHash } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demi/core'
 import type { InferenceItem, InferenceRequest, ProviderEvent, ToolDefinition } from '@demi/provider'
@@ -394,15 +394,6 @@ function clampPromptCacheKey(value: string): string {
   return value.length <= 64 ? value : `session_${shortHash(value)}`
 }
 
-function shortHash(value: string): string {
-  let hash = 2166136261
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-  return (hash >>> 0).toString(16)
-}
-
 function newStreamState(): StreamState {
   return {
     currentReasoning: null,
@@ -422,10 +413,6 @@ function isMessageItem(item: unknown): item is CodexMessageItem {
 
 function isFunctionCallItem(item: unknown): item is CodexFunctionCallItem {
   return isRecord(item) && item.type === 'function_call'
-}
-
-function numberOrZero(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
 function stringOrNull(value: unknown): string | null {

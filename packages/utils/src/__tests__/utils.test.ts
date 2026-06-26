@@ -16,6 +16,7 @@ import {
   isAbortError,
   isRecord,
   numberOrZero,
+  shortHash,
   tail,
   throwIfAborted,
   truncate,
@@ -84,6 +85,8 @@ test('strings', () => {
   expect(truncate('hello', 10)).toBe('hello')
   expect(truncate('hello world', 8)).toBe('hello w…')
   expect(tail('hello world', 5)).toBe('world')
+  expect(shortHash('abc')).toBe(shortHash('abc'))
+  expect(shortHash('abc')).not.toBe(shortHash('abd'))
 })
 
 test('createId is unique-ish', () => {

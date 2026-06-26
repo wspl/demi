@@ -1,4 +1,4 @@
-import { isAbortError, isRecord } from '@demi/utils'
+import { isAbortError, isRecord, numberOrZero, shortHash } from '@demi/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import type { ToolResultContentBlock, UserContentBlock } from '@demi/core'
@@ -924,15 +924,6 @@ function clampPromptCacheKey(value: string): string {
   return value.length <= 64 ? value : `session_${shortHash(value)}`
 }
 
-function shortHash(value: string): string {
-  let hash = 2166136261
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return (hash >>> 0).toString(16)
-}
-
 function openAIUsage(usage: Record<string, unknown>) {
   const inputTokens = numberOrZero(usage.prompt_tokens)
   const outputTokens = numberOrZero(usage.completion_tokens)
@@ -999,8 +990,4 @@ function withProviderId(list: ProviderModelList, providerId: string): ProviderMo
 
 function stringOr(value: unknown): string | null {
   return typeof value === 'string' ? value : null
-}
-
-function numberOrZero(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
