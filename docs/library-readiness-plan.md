@@ -131,6 +131,14 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - `AGENTS.md` 加硬规则:**通用 helper 一律进 `@demi/utils`/`@demi/testkit`,禁止内联重写或新造同义函数**。
 - 扩展 `platform-entrypoints.test.ts`:维护一份"已在 utils 提供"的清单(如 `isRecord`/`asError`/`errorMessage`/`isAbortError`/`encodeUtf8` …),**扫描生产源码若发现重新内联定义则 fail**。复用像边界一样被测试强制。
 
+### 4.7 进度(已落地、全量测试通过)
+
+- `@demi/utils`(独立 leaf 包):type guards / error+abort / async / bytes / strings(含 `shortHash`)/ id,带 TSDoc 与单测;已登记进 `package-boundaries.md` 注册表+图 与 `platform-entrypoints.test.ts` 图。
+- 合并迁移:`isRecord`(14→1)、error 家族(`asError`/`messageOf`/`errorMessage`/`isAbortError`,13→3,**删除 `messageOf`**)、`noop`/`defaultIdFactory`(agent)、UTF-8/字节(删除 `shell/src/bytes.ts`、精简 `coding-agent/platform.ts`)、`numberOrZero`/`shortHash`(providers)。
+- **测试强制(§4.6 已实现)**:`platform-entrypoints.test.ts` 现在会在生产源码重新定义上述 utils helper 时 fail。
+
+待续:async(`delay`/`sleep`/`withTimeout`)、`tailString`→`tail`、`normalizePath`(6×)、`@demi/testkit`(`deferred`/`waitFor`/`delay`/`loadFixture`),以及 §4.4 领域 helper 归位(provider-kit,与 §5.3 合并做)。
+
 ## 5. 巨型类拆分提案
 
 ### 5.1 `AgentSession`(`session.ts` 1480 行)
