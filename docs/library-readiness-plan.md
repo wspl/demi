@@ -142,7 +142,10 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - catalog→selection:`modelSelectionFromCatalog`/`thinkingCapabilitiesFromProviderModel` 进 `@demi/provider`,REPL 复用、`examples/coding-agent.ts` 与 README 走同一入口(此前每个消费者手搓 `Model`)。
 - **测试强制(§4.6 已实现 + 泛化)**:`platform-entrypoints.test.ts` 现按每个 helper 的 canonical home 校验(utils 或 core),在别处重新定义即 fail。
 
-待续:`@demi/testkit`(`deferred`/`waitFor`/`delay`/`loadFixture`);provider 错误脚手架(`redactSecretText`/`normalizeErrorCode`/`providerErrorFromUnknown` 的 anthropic↔openai 二方合并 + 通用 `httpErrorCode`、`authStatus`/`httpError` 参数化、`withProviderId`)→ §5.3 provider-kit;usage 映射(`mergeAnthropicUsage`/`usageFromResponse`/`mapUsage`/`openAIUsage`,形状相近但输入不同);web `sleep`→`delay`(需 web→utils 依赖边);CLI 解析两套合并。
+- 测试 helper:`deferred`(8 文件)、`waitFor`(6 文件)→ `@demi/utils`(deferred 复用既有实现,waitFor 新增 canonical)。**`@demi/testkit` 决定**:折叠进 `@demi/utils` —— 6 个消费包里 5 个已依赖 utils,单独建包只为一个 helper 不划算;若要 dev-only 隔离可后续再拆。
+- provider 错误脚手架:`redactSecretText`/`normalizeErrorCode`/`providerErrorFromUnknown`(anthropic↔openai)+ 通用 `httpErrorCode` + `authStatusFromKey`/`httpRequestFailedEvent` 参数化 + `withProviderId` → `@demi/provider`(codex 的 OAuth 变体保留)。
+
+待续:usage 映射(`mergeAnthropicUsage`/`usageFromResponse`/`mapUsage`/`openAIUsage`,形状相近但输入不同);web `sleep`→`delay`、web/real-codex e2e 的 `deferred`/`waitFor`(均需 web→utils 依赖边或属有意变体);CLI 解析两套合并。
 
 ## 5. 巨型类拆分提案
 
@@ -154,7 +157,7 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - **`ProviderTurnLoop`**:`executeProviderTurn`/`streamProviderOnce`/`executePendingTools`/`providerEvents`/`buildInferenceRequest`/auto-recover。
 - **`SteerController`**:`steer`/`steerInternal`/`steerDelivery`/`pendingSteers`/`materialize*`/`cancelPendingSteer`。
 - **`CompactionController`**:`executeCompaction`/`generateCompactionSummary`/preflight/`compactToFitModel`/`applyPendingModelSwitch`。
-- **`YieldScheduler`**:`scheduleYieldWakeup`/`armPendingYieldWakeups`/`deliverYieldWakeup`/`enqueueHiddenSend`/wakeup 清理。
+- **`YieldScheduler`** ✅ 已抽(`yield-scheduler.ts`):唤醒注册表 + 定时器生命周期(`schedule`/`arm`/`take`/`cancelOne`/`clear`);session 经 `onFire` 回调保留 `deliverYieldWakeup` 的投递决策。
 - **分层 abort helper**:`abort`/`activeAbortTarget`/`abortQueuedAction`/`recordAbort`。
 
 ### 5.2 `BashEnvironment`(`environment.ts` 1367 行)
@@ -162,7 +165,7 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 - **`ShellSessionManager`**:sessions/创建/销毁/默认 shell 选择。
 - **`ForegroundController`**:`hostSpawn`/`raceForeground`/`waitForBoundary`/`write`/`abort`/boundary。
 - **`CommandRecordStore`**:records/snapshot/release/exit 收敛。
-- **`CommandArtifactStore`+`VirtualCommandFs`**:持久化 + `/@` overlay。
+- **`CommandArtifactStore`** ✅ 已抽(`command-artifact-store.ts`):per-scope 存储缓存 + released 集合 + `persist`/`release`/`isReleased`;`BashEnvironment` 保留需读内存 record 的 `/@` lookup,委托存储/释放侧。`VirtualCommandFs`(纯 lookup)待续。
 - 背景 job 独立;`BashEnvironment` 变 facade,保留 `exec`/`status`/`write`/`abort`。
 
 ### 5.3 Provider Kit(去重,与 §4 协同)
