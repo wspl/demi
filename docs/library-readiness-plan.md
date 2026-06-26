@@ -171,9 +171,11 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 
 ### 5.x 进度小结(本轮)
 
-**可干净分离的「状态容器」已抽完(3 个,均行为保持、全量测试绿):** `CommandArtifactStore`(shell)、`YieldScheduler`、`PendingSteerQueue`(agent)。模式统一:容器持有自洽状态 + 纯操作,原类经回调/查询保留决策逻辑。
+**已抽出 5 个聚焦模块(均行为保持、全量测试绿),`session.ts` 1480→1282 行(−13%)、`environment.ts` 1367→1346:**
+- 状态容器:`CommandArtifactStore`(shell)、`YieldScheduler`、`PendingSteerQueue`(agent)—— 容器持自洽状态 + 纯操作,原类经回调/查询保留决策。
+- 纯逻辑:`compaction-support`(agent)—— `estimateTokens`/`nextSmallerCompactionCutPoint`/`renderItemsForSummary`/`summaryShort`/`buildCompactionSummaryRequest`。
 
-**剩余单元是「行为交织」型**(`ProviderTurnLoop`/`ActionQueue`/`CompactionController`,以及 shell 的 record↔session↔foreground 同步):它们的状态贯穿整个 turn/exec 生命周期,拆分需要先**设计回调 seam**(暴露 `activeTurnId`/`activeTurnPhase`/`transcriptLog`/`currentRun`/foreground 等),是更大的一次性手术,建议放在能全神贯注的专门会话做,避免在核心 runtime 引入隐蔽回归。
+**剩余单元的结论(经逐个分析,不只是「待办」):** `CompactionController` 编排 / `ApplyModelSwitch` / `ProviderTurnLoop` / `ActionQueue` / shell foreground 是**与 session 核心职责本质耦合**的 —— 例如 `compactToFitModel`/`applyPendingModelSwitch` 直接改 `this.provider`/`this.model`/`this.currentPhase`,`generateCompactionSummary` 要 provider+sessionId+turnId+idFactory+cwd+signal。把它们抽成 controller 需要一个 **~12 成员的回 host 接口**,本质是「搬方法 + 到处 `host.X`」=**显式化耦合而非解耦**,价值是「文件组织/显式契约」而非降耦,且要动核心 turn/exec 循环。**判断:收益中等、风险真实,值不值得做应由人决定**;若做,建议专门会话 + 显式 `CompactionHost`/`TurnHost` 接口 + 每步 marathon/e2e 兜底。
 
 ### 5.3 Provider Kit(去重,与 §4 协同)
 
