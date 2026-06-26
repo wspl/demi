@@ -25,6 +25,9 @@
     "typecheck:web": "bun --filter @demi/web-ui typecheck && bun --filter @demi/web typecheck",
     "build": "bun --filter '@demi/*' build",
     "docs:api": "typedoc",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "changeset:publish": "bun run build && changeset publish",
@@ -40,7 +43,8 @@
     "@typescript/native-preview": "^7.0.0-dev.20260618.1",
     "oxc-parser": "^0.137.0",
     "tsdown": "^0.22.3",
-    "typedoc": "^0.28.19"
+    "typedoc": "^0.28.19",
+    "vitepress": "^1.6.4"
   },
   "license": "Apache-2.0"
 }

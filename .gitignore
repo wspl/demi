@@ -19,6 +19,8 @@ coverage/
 # Bundler / tooling caches
 .vite/
 .cache/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
 
 # Packaging artifacts (`npm pack` / `bun pm pack`)
 *.tgz
