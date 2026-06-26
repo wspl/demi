@@ -2,6 +2,7 @@ import { access, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { deferred } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import type { AgentHarness, AgentSessionSnapshot } from '@demi/agent'
 import type { BashEnvironmentOptions } from '@demi/shell'
@@ -1051,14 +1052,6 @@ class AbortAwareProvider implements AgentProvider {
     this.started.resolve()
     await new Promise(() => {})
   }
-}
-
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
 }
 
 function createTextHarness(): AgentHarness<Record<string, never>> {

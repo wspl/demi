@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { deferred } from '@demi/utils'
 import type { InferenceRequest, ProviderEvent } from '@demi/provider'
 import { events } from '@demi/provider/testing'
 import { AgentSession, Transcript } from '../index'
@@ -327,12 +328,4 @@ function latestUserText(request: InferenceRequest): string {
   const textBlock = [...latest.content].reverse().find((block) => block.type === 'text')
   if (textBlock?.type !== 'text') throw new Error('missing text content')
   return textBlock.text
-}
-
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
 }

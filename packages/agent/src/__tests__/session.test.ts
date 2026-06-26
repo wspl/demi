@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { deferred, type Deferred } from '@demi/utils'
 import type { ModelSelection, UserContentBlock } from '@demi/core'
 import type { AgentProvider, InferenceRequest, InferenceSteer, ProviderEvent, ProviderRun } from '@demi/provider'
 import { StubProvider, createProviderRun, events } from '@demi/provider/testing'
@@ -1732,22 +1733,6 @@ class MemorySessionStore<State> {
   saveSnapshot(snapshot: AgentSessionSnapshot<State>): void {
     this.snapshots.push(snapshot)
   }
-}
-
-interface Deferred<T> {
-  promise: Promise<T>
-  resolve(value: T): void
-  reject(error: unknown): void
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  let reject!: (error: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

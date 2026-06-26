@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { deferred, type Deferred } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demi/agent'
 import { providerRuntime, type InferenceRequest, type ProviderSelection } from '@demi/provider'
@@ -517,17 +518,4 @@ class NonClosingCompletedWebSocket {
   private emit(type: string, event: unknown): void {
     for (const listener of this.listeners[type] ?? []) listener(event)
   }
-}
-
-interface Deferred<T> {
-  promise: Promise<T>
-  resolve: (value: T) => void
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
 }

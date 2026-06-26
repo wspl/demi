@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { deferred } from '@demi/utils'
 import type { Block, ModelSelection, UserContentBlock } from '@demi/core'
 import { defineProvider, type AgentProvider, type Provider, type ProviderModelList, type ProviderSelection } from '@demi/provider'
 import { StubProvider, events } from '@demi/provider/testing'
@@ -682,14 +683,6 @@ function promptQueue(values: string[]): { ask: () => Promise<string>; consumed: 
     },
     consumed: () => index,
   }
-}
-
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
 }
 
 function waitForMicrotasks(): Promise<void> {

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { deferred } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import type { AgentHarness } from '@demi/agent'
 import { LocalHost } from '@demi/host-local'
@@ -307,14 +308,6 @@ function latestUserText(request: InferenceRequest): string {
   if (latest?.type !== 'user_message') return ''
   const textBlock = [...latest.content].reverse().find((block) => block.type === 'text')
   return textBlock?.type === 'text' ? textBlock.text : ''
-}
-
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
 }
 
 async function waitForWithError(predicate: () => boolean, errorDetails: () => string): Promise<void> {

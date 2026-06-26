@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { deferred } from '@demi/utils'
 import type { ModelSelection } from '@demi/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demi/provider'
 import { events } from '@demi/provider/testing'
@@ -1153,14 +1154,6 @@ class HangingSummaryProvider implements AgentProvider {
       )
     })
   }
-}
-
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
 }
 
 function throwingProviderError(message: string, code: string): AsyncIterable<ProviderEvent> {
