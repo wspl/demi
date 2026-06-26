@@ -1,4 +1,4 @@
-import { isRecord } from '@demi/utils'
+import { isRecord, noop } from '@demi/utils'
 import { AgentSession } from './session'
 import {
   BashEnvironment,
@@ -548,8 +548,6 @@ function errorCode(error: unknown): string | undefined {
   if (!isRecord(error) || typeof error.code !== 'string') return undefined
   return error.code
 }
-
-function noop(): void {}
 
 function createProviderMap(providers: Provider[]): Map<string, Provider> {
   const map = new Map<string, Provider>()

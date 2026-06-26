@@ -1,3 +1,4 @@
+import { createId } from '@demi/utils'
 import type {
   Block,
   ModelSelection,
@@ -29,7 +30,7 @@ export class Transcript implements CoreTranscript {
 
   constructor(blocks: Block[] = [], options: TranscriptOptions = {}) {
     this.blocks = [...blocks]
-    this.idFactory = options.idFactory ?? defaultIdFactory
+    this.idFactory = options.idFactory ?? createId
     this.now = options.now ?? (() => new Date().toISOString())
   }
 
@@ -418,10 +419,6 @@ function findPendingToolCall(blocks: Block[], toolUseId: string): Extract<Block,
     if (block.type === 'tool_call' && block.status === 'executing' && block.toolUseId === toolUseId) return block
   }
   return null
-}
-
-function defaultIdFactory(): string {
-  return globalThis.crypto.randomUUID()
 }
 
 function stringifyToolInput(input: unknown): string {

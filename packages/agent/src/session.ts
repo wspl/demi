@@ -1,4 +1,4 @@
-import { asError, isAbortError } from '@demi/utils'
+import { asError, createId, isAbortError, noop } from '@demi/utils'
 import type {
   Block,
   ModelSelection,
@@ -141,8 +141,8 @@ export class AgentSession<State> {
     this.cwd = params.cwd
     this.runtime = params.runtime
     this.agentState = params.state === undefined ? params.runtime.initialState() : structuredClone(params.state)
-    this.agentSessionId = options.agentSessionId ?? defaultIdFactory()
-    this.idFactory = options.idFactory ?? defaultIdFactory
+    this.agentSessionId = options.agentSessionId ?? createId()
+    this.idFactory = options.idFactory ?? createId
     this.store = options.store
     this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens ?? DEFAULT_KEEP_RECENT_TOKENS
     this.compactionThresholdRatio =
@@ -1342,12 +1342,6 @@ function nextSmallerCompactionCutPoint(startIndex: number, cutPoint: number): nu
   if (compactedBlockCount <= 1) return null
   return startIndex + Math.max(1, Math.floor(compactedBlockCount / 2))
 }
-
-function defaultIdFactory(): string {
-  return globalThis.crypto.randomUUID()
-}
-
-function noop(): void {}
 
 /** Renders normalized inference items into plain, delimited text for a compaction summary prompt. */
 function renderItemsForSummary(items: InferenceItem[]): string {
