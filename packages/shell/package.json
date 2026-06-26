@@ -4,14 +4,35 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./storage": "./src/storage.ts",
-    "./host-fs": "./src/host-fs.ts"
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./storage": {
+      "development": "./src/storage.ts",
+      "types": "./dist/storage.d.mts",
+      "import": "./dist/storage.mjs"
+    },
+    "./host-fs": {
+      "development": "./src/host-fs.ts",
+      "types": "./dist/host-fs.d.mts",
+      "import": "./dist/host-fs.mjs"
+    }
   },
   "dependencies": {
     "@demi/utils": "workspace:*",
     "just-bash": "workspace:*",
     "zod": "^4.0.0"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  }
 }
