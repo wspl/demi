@@ -578,10 +578,15 @@ test('AgentSession yield wakeup is a terminal tool result and starts a later idl
     [events.toolCall('yield-1', 'yield_tool', {}), events.response()],
     (request) => {
       expect(request.items.map((item) => item.type)).toEqual(['user_message', 'tool_use', 'tool_result', 'user_message'])
-      const resume = request.items.at(-1)
-      expect(resume).toMatchObject({
+      const wakeup = request.items.at(-1)
+      expect(wakeup).toMatchObject({
         type: 'user_message',
-        content: [{ type: 'text', text: 'Continue from where you left off.' }],
+        content: [
+          {
+            type: 'text',
+            text: 'Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.',
+          },
+        ],
       })
       return [events.text('woke'), events.response()]
     },
@@ -607,10 +612,12 @@ test('AgentSession yield wakeup is a terminal tool result and starts a later idl
     'user',
     'tool_call',
     'response',
-    'resume',
+    'user',
     'text',
     'response',
   ])
+  // The idle wakeup is a hidden send: a user turn the model replays but the UI never renders.
+  expect(session.transcript().blocks[3]).toMatchObject({ type: 'user', hidden: true })
 })
 
 test('AgentSession yield wakeup steers into an active turn instead of queueing', async () => {
@@ -646,6 +653,8 @@ test('AgentSession yield wakeup steers into an active turn instead of queueing',
     'text',
     'response',
   ])
+  // The active wakeup is a hidden steer: present for the model, never rendered.
+  expect(session.transcript().blocks[4]).toMatchObject({ type: 'steer', hidden: true })
 })
 
 test('AgentSession abort cancels pending yield wakeup as the final layer', async () => {

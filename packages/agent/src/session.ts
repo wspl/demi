@@ -43,13 +43,15 @@ type PendingAction =
       type: 'send'
       id: string
       content: UserContentBlock[]
+      // Internal yield-wakeup sends carry hidden: true so the new turn's user block is replayed
+      // to the model but never rendered. Real user sends leave it unset.
+      hidden?: boolean
       resolve: () => void
       reject: (error: unknown) => void
     }
   | { type: 'retry'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'resume'; resolve: () => void; reject: (error: unknown) => void }
   | { type: 'compact'; resolve: () => void; reject: (error: unknown) => void }
-  | { type: 'yield_wakeup'; id: string; resolve: () => void; reject: (error: unknown) => void }
 
 type PendingSendAction = Extract<PendingAction, { type: 'send' }>
 
@@ -60,6 +62,7 @@ interface PendingSteer {
   turnId: string
   model: ModelSelection
   content: UserContentBlock[]
+  hidden?: boolean
 }
 
 interface PendingYieldWakeup {
@@ -459,7 +462,7 @@ export class AgentSession<State> {
       return 'queued_message'
     }
     action.resolve()
-    return action.type === 'yield_wakeup' ? 'pending_yield_wakeup' : 'queued_action'
+    return 'queued_action'
   }
 
   private canAbortAgain(): boolean {
@@ -513,16 +516,18 @@ export class AgentSession<State> {
       },
     ]
 
+    // Active session: interject the hidden wakeup as a steer into the current turn (never queued).
     if (this.canAcceptInternalSteer()) {
       try {
-        await this.steerInternal(content, wakeup.id)
+        await this.steerInternal(content, wakeup.id, true)
         return
       } catch (error) {
         this.emit({ type: 'error', error: asError(error) })
       }
     }
 
-    this.enqueueInternalYieldWakeup(wakeup.id)
+    // Idle session: deliver the hidden wakeup as a normal send that starts a new turn.
+    this.enqueueHiddenSend(content)
   }
 
   private takePendingYieldWakeup(wakeupId: string): PendingYieldWakeup | null {
@@ -543,7 +548,7 @@ export class AgentSession<State> {
     }
   }
 
-  private async steerInternal(content: UserContentBlock[], id: string): Promise<void> {
+  private async steerInternal(content: UserContentBlock[], id: string, hidden = false): Promise<void> {
     const delivery = this.steerDelivery()
     const turnId = this.currentTurnId()
     if (delivery.type === 'provider') {
@@ -553,7 +558,7 @@ export class AgentSession<State> {
         turnId,
         content,
       })
-      this.transcriptLog.pushSteer(turnId, this.model, content, id)
+      this.transcriptLog.pushSteer(turnId, this.model, content, id, hidden)
       await this.commitTranscript()
       return
     }
@@ -563,18 +568,20 @@ export class AgentSession<State> {
       turnId,
       model: this.model,
       content,
+      hidden,
     })
     this.pendingSteerContinuationCount += 1
   }
 
-  private enqueueInternalYieldWakeup(id: string): void {
-    this.pendingActions.push({
-      type: 'yield_wakeup',
-      id,
+  private enqueueHiddenSend(content: UserContentBlock[]): void {
+    void this.enqueue({
+      type: 'send',
+      id: this.idFactory(),
+      content,
+      hidden: true,
       resolve: noop,
       reject: noop,
-    })
-    this.kickWorker()
+    }).catch(noop)
   }
 
   private steerDelivery():
@@ -679,7 +686,7 @@ export class AgentSession<State> {
     switch (action.type) {
       case 'send':
         this.setPhase('running')
-        await this.executeSend(action.content)
+        await this.executeSend(action.content, action.hidden ?? false)
         return
       case 'retry':
         this.setPhase('running')
@@ -693,10 +700,6 @@ export class AgentSession<State> {
         this.setPhase('compacting')
         this.activeTurnPhase = 'compacting'
         await this.executeCompaction()
-        return
-      case 'yield_wakeup':
-        this.setPhase('running')
-        await this.executeYieldWakeup()
         return
     }
   }
@@ -742,7 +745,7 @@ export class AgentSession<State> {
     }
   }
 
-  private async executeSend(content: UserContentBlock[]): Promise<void> {
+  private async executeSend(content: UserContentBlock[], hidden = false): Promise<void> {
     await this.runtime.lifecycle?.({
       type: 'before_round_start',
       agentSessionId: this.agentSessionId,
@@ -753,9 +756,9 @@ export class AgentSession<State> {
 
     const resolvedContent = await this.resolveReferences(content)
     await this.applyPendingModelSwitch()
-    const promptContext = this.promptContext()
-    const preamble = this.runtime.preamble?.(promptContext) ?? null
-    this.transcriptLog.pushUserTurn(this.currentTurnId(), this.model, resolvedContent, preamble)
+    // Hidden internal turns (yield wakeups) are not user rounds, so they don't carry the preamble.
+    const preamble = hidden ? null : (this.runtime.preamble?.(this.promptContext()) ?? null)
+    this.transcriptLog.pushUserTurn(this.currentTurnId(), this.model, resolvedContent, preamble, hidden)
     await this.commitTranscript()
 
     await this.executePreflightCompaction()
@@ -815,14 +818,6 @@ export class AgentSession<State> {
   private async executeResume(): Promise<void> {
     await this.applyPendingModelSwitch()
     this.transcriptLog.markLatestAbortResumed()
-    this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
-    await this.commitTranscript()
-    await this.executePreflightCompaction()
-    await this.executeProviderTurn()
-  }
-
-  private async executeYieldWakeup(): Promise<void> {
-    await this.applyPendingModelSwitch()
     this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
     await this.commitTranscript()
     await this.executePreflightCompaction()
@@ -1200,7 +1195,7 @@ export class AgentSession<State> {
     const steers = this.takePendingSteersForTurn(this.activeTurnId)
     if (steers.length === 0) return false
     for (const steer of steers) {
-      this.transcriptLog.pushSteer(steer.turnId, steer.model, steer.content, steer.id)
+      this.transcriptLog.pushSteer(steer.turnId, steer.model, steer.content, steer.id, steer.hidden ?? false)
     }
     await this.commitTranscript()
     return true

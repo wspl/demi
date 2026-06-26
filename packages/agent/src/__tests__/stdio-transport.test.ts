@@ -145,7 +145,7 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
         [
           events.toolCall('tool-1', 'shell_exec', {
             script: 'sh -c "sleep 0.2; printf leaked > stdio-leaked.txt"',
-            yieldAfterMs: 1,
+            timeoutMs: 1,
           }),
         ],
         [events.text('running'), events.response()],

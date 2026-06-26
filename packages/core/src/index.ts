@@ -101,6 +101,9 @@ export type Block =
       model: ModelSelection
       content: UserContentBlock[]
       preamble: string | null
+      // When true, this user turn is an internal input (e.g. a yield wakeup): replayed to the
+      // model like any user_message, but never rendered to the user. Absent/false for real input.
+      hidden?: boolean
     }
   | { type: 'resume'; id: string; turnId: string; createdAt: string; model: ModelSelection }
   | {
@@ -110,6 +113,9 @@ export type Block =
       createdAt: string
       model: ModelSelection
       content: UserContentBlock[]
+      // When true, this steer is an internal input (e.g. a yield wakeup): replayed as user_steer
+      // but never rendered. Absent/false for real user steers.
+      hidden?: boolean
     }
   | {
       type: 'thinking'

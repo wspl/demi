@@ -225,7 +225,7 @@ test('WebSocketCodexResponsesTransport finishes when a response.completed event 
 test('CodexProvider integrates with AgentSession and shell tools for function calls', async () => {
   const transport = new FakeCodexTransport([
     [
-      { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'shell_exec', arguments: '{"script":"printf demi-codex","yieldAfterMs":1000}' } },
+      { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'shell_exec', arguments: '{"script":"printf demi-codex","timeoutMs":1000}' } },
       { type: 'response.completed', response: { usage: { input_tokens: 4, output_tokens: 2 } } },
     ],
     [

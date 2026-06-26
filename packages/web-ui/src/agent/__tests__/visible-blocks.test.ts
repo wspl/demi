@@ -32,6 +32,18 @@ test('visible blocks hide resume blocks because web has no resume row renderer',
   expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['yield-1', 'status-1'])
 })
 
+test('visible blocks hide hidden user/steer turns (internal yield wakeups) but keep real ones', () => {
+  const blocks = [
+    user('user-1', false),
+    tool('exec-1', 'shell_exec'),
+    user('wakeup-send', true),
+    steer('wakeup-steer', true),
+    steer('real-steer', false),
+  ]
+
+  expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(['user-1', 'exec-1', 'real-steer'])
+})
+
 function tool(id: string, toolName: string): Extract<Block, { type: 'tool_call' }> {
   return {
     type: 'tool_call',
@@ -70,6 +82,31 @@ function resume(id: string): Extract<Block, { type: 'resume' }> {
     turnId: id,
     createdAt: '1970-01-01T00:00:00.000Z',
     model,
+  }
+}
+
+function user(id: string, hidden: boolean): Extract<Block, { type: 'user' }> {
+  return {
+    type: 'user',
+    id,
+    turnId: id,
+    createdAt: '1970-01-01T00:00:00.000Z',
+    model,
+    content: [{ type: 'text', text: id }],
+    preamble: null,
+    ...(hidden ? { hidden: true } : {}),
+  }
+}
+
+function steer(id: string, hidden: boolean): Extract<Block, { type: 'steer' }> {
+  return {
+    type: 'steer',
+    id,
+    turnId: id,
+    createdAt: '1970-01-01T00:00:00.000Z',
+    model,
+    content: [{ type: 'text', text: id }],
+    ...(hidden ? { hidden: true } : {}),
   }
 }
 

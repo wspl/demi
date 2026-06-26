@@ -22,7 +22,6 @@ export interface WebServerHandle {
 export function startWebServer(providers: Provider[], options: ServerOptions): WebServerHandle {
   const hub = new AgentHub(providers, {
     initialEnv: { PATH: process.env.PATH ?? '' },
-    yieldAfterMs: options.yieldAfterMs,
   })
   const control = new ControlServer(providers, options)
 

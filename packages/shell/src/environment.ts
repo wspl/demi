@@ -34,7 +34,6 @@ export interface BashEnvironmentOptions {
   shellIdFactory?: () => string
   commandIdFactory?: () => string
   initialEnv?: Record<string, string>
-  yieldAfterMs?: number
   maxOutputBytes?: number
 }
 
@@ -42,7 +41,7 @@ export interface ShellExecInput {
   script: string
   shellId?: string
   agentSessionId?: string
-  yieldAfterMs?: number
+  timeoutMs?: number
   maxOutputBytes?: number
   signal?: AbortSignal
 }
@@ -183,9 +182,12 @@ interface PersistedShellCommandArtifact {
   stderr: string
 }
 
-const DEFAULT_YIELD_AFTER_MS = 10_000
+// Fallback observation window for direct exec() calls that omit timeoutMs (internal instant
+// commands like editor/todo). The model-facing shell_exec tool requires timeoutMs, so the model
+// controls it per call — there is intentionally no configurable global default.
+const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
-const MAX_YIELD_AFTER_MS = 600_000
+const MAX_TIMEOUT_MS = 600_000
 const DEMI_PORTABLE_COMMANDS: CommandName[] = [
   'cat',
   'ls',
@@ -246,7 +248,6 @@ export class BashEnvironment {
   private readonly shellIdFactory: () => string
   private readonly commandIdFactory: () => string
   private readonly initialEnv: Record<string, string>
-  private readonly defaultYieldAfterMs: number
   private readonly defaultOutputLimitBytes: number
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
@@ -260,7 +261,6 @@ export class BashEnvironment {
     this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}
-    this.defaultYieldAfterMs = options.yieldAfterMs ?? DEFAULT_YIELD_AFTER_MS
     this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
   }
 
@@ -278,7 +278,7 @@ export class BashEnvironment {
   }
 
   async exec(input: ShellExecInput): Promise<ShellCommandSnapshot> {
-    const yieldAfterMs = normalizeYieldAfterMs(input.yieldAfterMs ?? this.defaultYieldAfterMs)
+    const timeoutMs = normalizeTimeoutMs(input.timeoutMs ?? DEFAULT_TIMEOUT_MS)
     const session = input.shellId ? this.requireShell(input.shellId) : this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
     if (session.pendingExec || session.foreground) {
@@ -286,7 +286,7 @@ export class BashEnvironment {
       throw new Error(`Shell session "${session.id}" is already running command "${commandId}"`)
     }
 
-    return this.runScript(session, input.script, { ...input, yieldAfterMs })
+    return this.runScript(session, input.script, { ...input, timeoutMs })
   }
 
   async status(input: ShellStatusInput): Promise<ShellCommandSnapshot> {
@@ -536,7 +536,7 @@ export class BashEnvironment {
   private async runScript(
     session: ShellSession,
     script: string,
-    input: ShellExecInput & { yieldAfterMs: number },
+    input: ShellExecInput & { timeoutMs: number },
   ): Promise<ShellCommandSnapshot> {
     const record = this.createCommandRecord(session, script)
     let ast: ScriptNode
@@ -701,9 +701,9 @@ export class BashEnvironment {
     record: ShellCommandRecord,
     foreground: ForegroundProcess | undefined,
     execPromise: Promise<ForkExecResult | Error>,
-    input: { yieldAfterMs: number; signal?: AbortSignal; maxOutputBytes?: number },
+    input: { timeoutMs: number; signal?: AbortSignal; maxOutputBytes?: number },
   ): Promise<ShellCommandSnapshot> {
-    const yieldAfterMs = normalizeYieldAfterMs(input.yieldAfterMs)
+    const timeoutMs = normalizeTimeoutMs(input.timeoutMs)
     const operationStartedAt = Date.now()
 
     while (true) {
@@ -714,7 +714,7 @@ export class BashEnvironment {
         session,
         foreground,
         operationStartedAt,
-        yieldAfterMs,
+        timeoutMs,
         input.signal,
       )
 
@@ -732,7 +732,7 @@ export class BashEnvironment {
         foreground = outcome.foreground
         continue
       }
-      if (outcome.kind === 'yield') {
+      if (outcome.kind === 'timeout') {
         return this.snapshotCommand(record, input)
       }
       if (outcome.kind === 'aborted') {
@@ -747,7 +747,7 @@ export class BashEnvironment {
     session: ShellSession,
     foreground: ForegroundProcess | undefined,
     operationStartedAt: number,
-    yieldAfterMs: number,
+    timeoutMs: number,
     externalSignal?: AbortSignal,
   ): { promise: Promise<BoundaryOutcome>; cancel: () => void } {
     const timers: Array<() => void> = []
@@ -767,8 +767,8 @@ export class BashEnvironment {
             return
           }
           const now = Date.now()
-          const yieldIn = Math.max(0, yieldAfterMs - (now - operationStartedAt))
-          const t = setTimeout(() => resolve({ kind: 'yield' }), yieldIn)
+          const timeoutIn = Math.max(0, timeoutMs - (now - operationStartedAt))
+          const t = setTimeout(() => resolve({ kind: 'timeout' }), timeoutIn)
           timers.push(() => clearTimeout(t))
           const onForeground = (nextForeground: ForegroundProcess): void => {
             resolve({ kind: 'foreground_appeared', foreground: nextForeground })
@@ -793,9 +793,9 @@ export class BashEnvironment {
       }
 
       const now = Date.now()
-      const yieldIn = Math.max(0, yieldAfterMs - (now - operationStartedAt))
+      const timeoutIn = Math.max(0, timeoutMs - (now - operationStartedAt))
 
-      const t = setTimeout(() => resolve({ kind: 'yield' }), yieldIn)
+      const t = setTimeout(() => resolve({ kind: 'timeout' }), timeoutIn)
       timers.push(() => clearTimeout(t))
 
       const onAbort = (): void => resolve({ kind: 'aborted' })
@@ -1175,9 +1175,9 @@ function createPortableCommands(session: ShellSession): ForkCommand[] {
   }))
 }
 
-function normalizeYieldAfterMs(value: number): number {
-  if (!Number.isFinite(value) || value < 1 || value > MAX_YIELD_AFTER_MS) {
-    throw new Error(`yieldAfterMs must be between 1 and ${MAX_YIELD_AFTER_MS}`)
+function normalizeTimeoutMs(value: number): number {
+  if (!Number.isFinite(value) || value < 1 || value > MAX_TIMEOUT_MS) {
+    throw new Error(`timeoutMs must be between 1 and ${MAX_TIMEOUT_MS}`)
   }
   return Math.floor(value)
 }

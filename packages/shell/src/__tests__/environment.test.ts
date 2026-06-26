@@ -1396,7 +1396,7 @@ test('BashEnvironment applies file redirections without handing scripts to a sys
   const large = await env.exec({
     shellId: write.shellId,
     script: String.raw`sh -c "yes x | tr -d '\n' | head -c 262144; sleep 0.03" > large.txt`,
-    yieldAfterMs: 1,
+    timeoutMs: 1,
     maxOutputBytes: 512 * 1024,
   })
   expect(large.status).toBe('running')
@@ -1536,7 +1536,7 @@ test('BashEnvironment supports negated pipelines and commands', async () => {
   const running = await env.exec({
     shellId: trueResult.shellId,
     script: '! sh -c "sleep 0.03; exit 0"',
-    yieldAfterMs: 1,
+    timeoutMs: 1,
   })
   expect(running.status).toBe('running')
   if (running.status !== 'running') throw new Error('expected running result')
@@ -2077,7 +2077,7 @@ test('BashEnvironment reports system command spawn failures without hanging', as
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
-  const result = await env.exec({ script: 'demi-command-that-does-not-exist', yieldAfterMs: 1 })
+  const result = await env.exec({ script: 'demi-command-that-does-not-exist', timeoutMs: 1 })
 
   expect(result.status).toBe('exited')
   if (result.status !== 'exited') throw new Error('expected exited result')
@@ -2092,7 +2092,7 @@ test('BashEnvironment supports running/yield then shell_status', async () => {
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
-  const first = await env.exec({ script: 'sh -c "sleep 0.03; printf done"', yieldAfterMs: 1 })
+  const first = await env.exec({ script: 'sh -c "sleep 0.03; printf done"', timeoutMs: 1 })
 
   expect(first.status).toBe('running')
   await delay(60)
@@ -2116,7 +2116,7 @@ test('BashEnvironment runs shell_exec without shellId in an auxiliary shell when
   const foreground = await env.exec({
     agentSessionId: 'agent-busy-default',
     script: 'sh -c "sleep 10"',
-    yieldAfterMs: 1,
+    timeoutMs: 1,
   })
   expect(foreground.status).toBe('running')
   if (foreground.status !== 'running') throw new Error('expected running result')
@@ -2153,7 +2153,7 @@ test('BashEnvironment returns bounded output deltas by maxOutputBytes', async ()
 
   const first = await env.exec({
     script: 'sh -c "printf 1234567890; sleep 0.03; printf done"',
-    yieldAfterMs: 1,
+    timeoutMs: 1,
     maxOutputBytes: 5,
   })
 
@@ -2180,7 +2180,7 @@ test('BashEnvironment records visible stdout and stderr in arrival order', async
 
   const result = await env.exec({
     script: 'sh -c "printf out1; sleep 0.03; printf err1 >&2; sleep 0.03; printf out2; sleep 0.03; printf err2 >&2"',
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
 
   expect(result.status).toBe('exited')
@@ -2203,7 +2203,7 @@ test('BashEnvironment output preview includes stdout from sequential foreground 
 
   const result = await env.exec({
     script: 'echo SHORT-OUT; echo SHORT-ERR >&2',
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
 
   expect(result.status).toBe('exited')
@@ -2230,7 +2230,7 @@ test('BashEnvironment exposes complete split command artifacts through /@ and Ho
   const produced = await env.exec({
     agentSessionId: 'agent-command-artifact',
     script: 'printf "out1\\nout2\\n"; printf "err1\\nerr2\\n" >&2',
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
   expect(produced.status).toBe('exited')
   const commandId = produced.commandId
@@ -2240,14 +2240,14 @@ test('BashEnvironment exposes complete split command artifacts through /@ and Ho
   const stdout = await env.exec({
     agentSessionId: 'agent-command-artifact',
     script: `cat /@/commands/${commandId}/stdout.txt`,
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
   expect(stdout.stdout.delta).toBe('out1\nout2\n')
 
   const stderr = await env.exec({
     agentSessionId: 'agent-command-artifact',
     script: `cat /@/commands/${commandId}/stderr.txt`,
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
   expect(stderr.stdout.delta).toBe('err1\nerr2\n')
 
@@ -2257,14 +2257,14 @@ test('BashEnvironment exposes complete split command artifacts through /@ and Ho
       `tail -n 1 /@/commands/${commandId}/stdout.txt; ` +
       `grep -n err2 /@/commands/${commandId}/stderr.txt; ` +
       `if cat /@/commands/${commandId}/output.txt >/dev/null 2>&1; then printf bad; else printf missing; fi`,
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
   expect(selected.stdout.delta).toBe('out2\n2:err2\nmissing')
 
   const meta = await env.exec({
     agentSessionId: 'agent-command-artifact',
     script: `cat /@/commands/${commandId}/meta.json`,
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
   expect(JSON.parse(meta.stdout.delta)).toMatchObject({
     status: 'exited',
@@ -2296,7 +2296,7 @@ test('BashEnvironment releaseCommand removes completed command handle and virtua
   const produced = await env.exec({
     agentSessionId: 'agent-command-release',
     script: 'printf "out\\n"; printf "err\\n" >&2',
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
   expect(produced.status).toBe('exited')
   expect(await env.releaseCommand(produced.commandId)).toBe(true)
@@ -2306,7 +2306,7 @@ test('BashEnvironment releaseCommand removes completed command handle and virtua
   const artifactProbe = await env.exec({
     agentSessionId: 'agent-command-release',
     script: `if cat /@/commands/${produced.commandId}/stdout.txt >/dev/null 2>&1; then printf found; else printf missing; fi`,
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
   })
   expect(artifactProbe.stdout.delta).toBe('missing')
 })
@@ -2320,7 +2320,7 @@ test('BashEnvironment supports shell_write for a foreground process', async () =
 
   const first = await env.exec({
     script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
-    yieldAfterMs: 1,
+    timeoutMs: 1,
   })
   expect(first.status).toBe('running')
 
@@ -2340,7 +2340,7 @@ test('BashEnvironment writes shell_write exactly and line readers wait for a new
 
   const first = await env.exec({
     script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
-    yieldAfterMs: 1,
+    timeoutMs: 1,
   })
   expect(first.status).toBe('running')
 
@@ -2365,7 +2365,7 @@ test('BashEnvironment keeps idle foreground processes running by default', async
 
   const first = await env.exec({
     script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
-    yieldAfterMs: 1,
+    timeoutMs: 1,
   })
   expect(first.status).toBe('running')
 
@@ -2388,7 +2388,7 @@ test('BashEnvironment shell_status is nonblocking for running commands', async (
 
   const first = await env.exec({
     script: 'sh -c "sleep 0.2; printf done"',
-    yieldAfterMs: 1,
+    timeoutMs: 1,
   })
   expect(first.status).toBe('running')
 
@@ -2407,7 +2407,7 @@ test('BashEnvironment supports shell_abort for a foreground process', async () =
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
-  const first = await env.exec({ script: 'sleep 10', yieldAfterMs: 1 })
+  const first = await env.exec({ script: 'sleep 10', timeoutMs: 1 })
   expect(first.status).toBe('running')
 
   const aborted = await env.abort({ commandId: first.commandId })
@@ -2424,7 +2424,7 @@ test('BashEnvironment flushes redirected foreground output on shell_abort', asyn
 
   const first = await env.exec({
     script: 'sh -c "printf aborted; sleep 10" > aborted.txt',
-    yieldAfterMs: 1_000,
+    timeoutMs: 1_000,
     maxOutputBytes: 1,
   })
   expect(first.status).toBe('running')
@@ -2449,7 +2449,7 @@ test('BashEnvironment disposeShell kills a foreground process and removes the se
 
   const running = await env.exec({
     script: 'sh -c "sleep 0.2; printf leaked > foreground-leaked.txt"',
-    yieldAfterMs: 1,
+    timeoutMs: 1,
   })
   expect(running.status).toBe('running')
   expect(env.getShell(running.shellId)).not.toBeNull()
@@ -2505,14 +2505,14 @@ test('BashEnvironment disposeAllShells removes every shell session', async () =>
   expect(env.getShell(second.shellId)).toBeNull()
 })
 
-test('BashEnvironment does not implicitly kill commands after yieldAfterMs', async () => {
+test('BashEnvironment does not implicitly kill commands after timeoutMs', async () => {
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     shellIdFactory: () => 'shell-no-timeout',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
-  const result = await env.exec({ script: 'sleep 10', yieldAfterMs: 1 })
+  const result = await env.exec({ script: 'sleep 10', timeoutMs: 1 })
 
   expect(result.status).toBe('running')
   expect(result.stdout.delta).toBe('')
@@ -2528,7 +2528,7 @@ test('BashEnvironment reuses a shell after abort without leaking abort state', a
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
-  const running = await env.exec({ script: 'sleep 10', yieldAfterMs: 1 })
+  const running = await env.exec({ script: 'sleep 10', timeoutMs: 1 })
   expect(running.status).toBe('running')
   const aborted = await env.abort({ commandId: running.commandId })
   expect(aborted.status).toBe('aborted')

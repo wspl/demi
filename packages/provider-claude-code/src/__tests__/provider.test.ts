@@ -687,7 +687,7 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
       type: 'control_request',
       id: 'call-1',
       method: 'tools/call',
-      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf demi-provider', yieldAfterMs: 1_000 } },
+      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf demi-provider', timeoutMs: 1_000 } },
     },
     { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } },
     { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
@@ -723,7 +723,7 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
   expect(callResponse.response.isError).toBe(false)
   const shellResult = String(callResponse.response.content)
   expect(shellResult).toContain('status: exited')
-  expect(shellResult).toContain('stdout:\ndemi-provider')
+  expect(shellResult).toContain('preview:\ndemi-provider')
 })
 
 test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession', async () => {
@@ -733,13 +733,13 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
       type: 'control_request',
       id: '0',
       method: 'tools/call',
-      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf first-tool', yieldAfterMs: 1_000 } },
+      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf first-tool', timeoutMs: 1_000 } },
     },
     {
       type: 'control_request',
       id: '0',
       method: 'tools/call',
-      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf second-tool', yieldAfterMs: 1_000 } },
+      params: { name: 'mcp__main__shell_exec', arguments: { script: 'printf second-tool', timeoutMs: 1_000 } },
     },
     { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } },
     { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
@@ -772,8 +772,8 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
   expect(new Set(toolBlocks.map((block) => block.toolUseId)).size).toBe(2)
   expect(toolBlocks.map((block) => block.status)).toEqual(['completed', 'completed'])
   expect(toolBlocks.map((block) => block.input)).toEqual([
-    JSON.stringify({ script: 'printf first-tool', yieldAfterMs: 1_000 }),
-    JSON.stringify({ script: 'printf second-tool', yieldAfterMs: 1_000 }),
+    JSON.stringify({ script: 'printf first-tool', timeoutMs: 1_000 }),
+    JSON.stringify({ script: 'printf second-tool', timeoutMs: 1_000 }),
   ])
 
   const responses = transport.writes.filter((write): write is { type: string; id: string; response: Record<string, unknown> } => {

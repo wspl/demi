@@ -40,11 +40,11 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_exec',
       description:
-        'Start a shell script. yieldAfterMs observes briefly and never kills. Completed short output is returned directly; running or truncated output returns a command handle.',
+        'Start a shell script and observe it for up to timeoutMs. timeoutMs is an observation window, not a kill deadline: at timeoutMs the command keeps running and a command handle (commandId) is returned. Completed short output is returned directly. shell_exec never ends the turn or schedules a wakeup on its own.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
-        required: ['script', 'yieldAfterMs'],
+        required: ['script', 'timeoutMs'],
         properties: {
           script: { type: 'string' },
           description: {
@@ -52,7 +52,7 @@ export function createStandardAgentTools<State = unknown>(
             description: TOOL_DESCRIPTION_FIELD,
           },
           shellId: { type: 'string' },
-          yieldAfterMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
+          timeoutMs: { type: 'number', minimum: 1, maximum: MAX_DELAY_MS },
         },
       },
       invoke: async (ctx, input) => {
@@ -193,7 +193,7 @@ function parseShellExecInput(input: unknown): ShellExecInput {
   return {
     script: record.script,
     shellId: optionalString(record.shellId),
-    yieldAfterMs: requiredDelay(record.yieldAfterMs, 'shell_exec field "yieldAfterMs"'),
+    timeoutMs: requiredDelay(record.timeoutMs, 'shell_exec field "timeoutMs"'),
   }
 }
 
@@ -291,7 +291,9 @@ function formatShellToolResult(result: ShellCommandSnapshot, options: ShellToolR
   }
 
   if (result.status === 'running') {
-    lines.push('next: command is still running; use yield to pause this turn, then shell_status with commandId.')
+    lines.push(
+      'next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it.',
+    )
   } else if (result.status === 'aborted') {
     lines.push('next: command was intentionally stopped.')
   } else if (exposeCommandHandle) {

@@ -24,8 +24,6 @@ Useful options:
 ```sh
 bun run repl -- --help
 bun run repl -- --model claude-opus-4-8
-bun run repl -- --yield-after-ms 250
-bun run repl -- --timeout-ms 120000
 ```
 
 Omit `--model` to use the provider catalog default.

@@ -22,7 +22,6 @@ export interface ServerOptions {
   codexHome?: string
   baseUrl?: string
   transport: CodexTransportMode
-  yieldAfterMs: number
 }
 
 export function parseServerOptions(args: string[]): ServerOptions {
@@ -40,7 +39,6 @@ export function parseServerOptions(args: string[]): ServerOptions {
     openAIWireApi: parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses'),
     codexHome: process.env.CODEX_HOME,
     transport: 'auto',
-    yieldAfterMs: 10_000,
   }
 
   for (let index = 0; index < args.length; index++) {
@@ -64,7 +62,6 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else if (arg === '--codex-home') options.codexHome = required(args, ++index, '--codex-home')
     else if (arg === '--base-url') options.baseUrl = required(args, ++index, '--base-url')
     else if (arg === '--transport') options.transport = parseTransport(required(args, ++index, '--transport'))
-    else if (arg === '--yield-after-ms') options.yieldAfterMs = Number(required(args, ++index, '--yield-after-ms'))
     else throw new Error(`Unknown option: ${arg}`)
   }
 

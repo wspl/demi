@@ -53,10 +53,10 @@ input.on('line', (line) => {
             name: 'shell_exec',
             arguments:
               mode === 'input'
-                ? { script: 'sh -c \'IFS= read -r line; printf "fixture-input:%s" "$line"\'', yieldAfterMs: 1 }
+                ? { script: 'sh -c \'IFS= read -r line; printf "fixture-input:%s" "$line"\'', timeoutMs: 1 }
                 : mode === 'flood'
-                  ? { script: floodScript(), yieldAfterMs: 10_000 }
-                : { script: 'printf fixture-shell', yieldAfterMs: 1_000 },
+                  ? { script: floodScript(), timeoutMs: 10_000 }
+                : { script: 'printf fixture-shell', timeoutMs: 1_000 },
           },
         },
       },

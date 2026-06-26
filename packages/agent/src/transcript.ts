@@ -37,7 +37,13 @@ export class Transcript implements CoreTranscript {
     return { blocks: structuredClone(this.blocks) }
   }
 
-  pushUserTurn(turnId: string, model: ModelSelection, content: UserContentBlock[], preamble: string | null = null): Block {
+  pushUserTurn(
+    turnId: string,
+    model: ModelSelection,
+    content: UserContentBlock[],
+    preamble: string | null = null,
+    hidden = false,
+  ): Block {
     const block: Block = {
       type: 'user',
       id: this.idFactory(),
@@ -46,6 +52,7 @@ export class Transcript implements CoreTranscript {
       model,
       content,
       preamble,
+      ...(hidden ? { hidden: true } : {}),
     }
     this.blocks.push(block)
     return block
@@ -63,7 +70,13 @@ export class Transcript implements CoreTranscript {
     return block
   }
 
-  pushSteer(turnId: string, model: ModelSelection, content: UserContentBlock[], id = this.idFactory()): Block {
+  pushSteer(
+    turnId: string,
+    model: ModelSelection,
+    content: UserContentBlock[],
+    id = this.idFactory(),
+    hidden = false,
+  ): Block {
     const block: Block = {
       type: 'steer',
       id,
@@ -71,6 +84,7 @@ export class Transcript implements CoreTranscript {
       createdAt: this.now(),
       model,
       content,
+      ...(hidden ? { hidden: true } : {}),
     }
     this.blocks.push(block)
     return block

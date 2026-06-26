@@ -38,7 +38,6 @@ export interface ReplOptions {
   codexHome?: string
   baseUrl?: string
   transport: CodexTransportMode
-  yieldAfterMs: number
 }
 
 export interface ReplOutput {
@@ -121,7 +120,6 @@ async function main(): Promise<void> {
     providers,
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
-      yieldAfterMs: options.yieldAfterMs,
     },
   })
   const client = server.client()
@@ -330,6 +328,8 @@ export function attachRenderer(source: ReplEventSource, state: RenderState): () 
 
 function renderBlocks(state: RenderState, blocks: Block[]): void {
   for (const block of blocks) {
+    // Hidden user/steer turns (internal yield wakeups) drive the model but are not shown.
+    if ((block.type === 'user' || block.type === 'steer') && block.hidden) continue
     if (block.type === 'user') {
       if (!state.seenUserIds.has(block.id)) state.seenUserIds.add(block.id)
       continue
@@ -548,7 +548,6 @@ function parseArgs(args: string[]): ReplOptions {
   let baseUrl: string | undefined
   let openAIWireApi = parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses')
   let transport: CodexTransportMode = 'auto'
-  let yieldAfterMs = 10_000
 
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
@@ -574,7 +573,6 @@ function parseArgs(args: string[]): ReplOptions {
     else if (arg === '--base-url') baseUrl = requiredValue(args, ++index, '--base-url')
     else if (arg === '--openai-wire-api') openAIWireApi = parseOpenAIWireApi(requiredValue(args, ++index, '--openai-wire-api'))
     else if (arg === '--transport') transport = parseCodexTransport(requiredValue(args, ++index, '--transport'))
-    else if (arg === '--yield-after-ms') yieldAfterMs = Number(requiredValue(args, ++index, '--yield-after-ms'))
     else if (!arg.startsWith('-')) cwd = arg
     else throw new Error(`Unknown option: ${arg}`)
   }
@@ -592,7 +590,6 @@ function parseArgs(args: string[]): ReplOptions {
     codexHome,
     baseUrl,
     transport,
-    yieldAfterMs,
   }
 }
 
@@ -824,7 +821,6 @@ Options:
   --base-url <url>         Override the selected HTTP provider base URL.
   --openai-wire-api <api>  OpenAI wire API: responses, chat-completions. Defaults to responses.
   --transport <mode>       Codex transport: auto, sse, websocket. Defaults to auto.
-  --yield-after-ms <n>     Shell yield interval. Defaults to 10000.
 
 ${helpText}`)
 }

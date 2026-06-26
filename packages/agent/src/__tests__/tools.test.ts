@@ -60,7 +60,7 @@ test('completed short shell_exec hides and releases the command handle', async (
   const shellExec = tools.find((tool) => tool.name === 'shell_exec')
   if (!shellExec) throw new Error('missing shell_exec')
 
-  const result = await shellExec.invoke(toolContext(), { script: 'printf done', yieldAfterMs: 1 })
+  const result = await shellExec.invoke(toolContext(), { script: 'printf done', timeoutMs: 1 })
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
 
   expect(text).toContain('status: exited')
@@ -89,7 +89,7 @@ test('completed truncated shell_exec keeps the command handle for artifacts', as
   const shellExec = tools.find((tool) => tool.name === 'shell_exec')
   if (!shellExec) throw new Error('missing shell_exec')
 
-  const result = await shellExec.invoke(toolContext(), { script: 'printf long', yieldAfterMs: 1 })
+  const result = await shellExec.invoke(toolContext(), { script: 'printf long', timeoutMs: 1 })
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
 
   expect(text).toContain('commandId: cmd-1')

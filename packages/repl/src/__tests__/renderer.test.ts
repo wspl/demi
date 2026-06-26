@@ -310,7 +310,6 @@ test('REPL model resolver selects from provider catalog when no full model id is
     serviceTierId: null,
     openAIWireApi: 'responses' as const,
     transport: 'auto',
-    yieldAfterMs: 10,
   })
 
   expect(resolved.selection.model).toMatchObject({
@@ -365,7 +364,6 @@ test('REPL model resolver rejects explicit thinking efforts not advertised by ca
     serviceTierId: null,
     openAIWireApi: 'responses' as const,
     transport: 'auto',
-    yieldAfterMs: 10,
   })).rejects.toThrow('does not support thinking effort "medium"')
 })
 
@@ -402,7 +400,6 @@ test('REPL model resolver accepts provider-advertised future thinking effort ids
     serviceTierId: null,
     openAIWireApi: 'responses',
     transport: 'auto',
-    yieldAfterMs: 10,
   })
 
   expect(resolved.selection.model.thinking).toMatchObject([{ type: 'effort', efforts: ['ultra'], defaultEffort: null }])
@@ -444,7 +441,6 @@ test('REPL model resolver validates provider-advertised service tier ids', async
     serviceTierId: 'priority',
     openAIWireApi: 'responses',
     transport: 'auto',
-    yieldAfterMs: 10,
   })
 
   expect(resolved.selection.serviceTierId).toBe('priority')
@@ -456,7 +452,6 @@ test('REPL model resolver validates provider-advertised service tier ids', async
     serviceTierId: 'fast',
     openAIWireApi: 'responses',
     transport: 'auto',
-    yieldAfterMs: 10,
   })).rejects.toThrow('does not support service tier "fast"')
 })
 
@@ -473,7 +468,7 @@ test('REPL model resolver rejects aliases and does not call model catalog for ex
     serviceTierId: null,
     openAIWireApi: 'responses' as const,
     transport: 'auto' as const,
-    yieldAfterMs: 10,
+    timeoutMs: 10,
   }
 
   await expect(resolveReplModel(provider, { ...baseOptions, modelId: 'opus' })).rejects.toThrow('not alias "opus"')
@@ -499,7 +494,6 @@ test('REPL model resolver allows Anthropic-compatible explicit model ids', async
     serviceTierId: null,
     openAIWireApi: 'responses',
     transport: 'auto',
-    yieldAfterMs: 10,
   })
 
   expect(listCalls).toBe(0)

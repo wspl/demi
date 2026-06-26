@@ -163,8 +163,6 @@ function spawnReplFixture(workspace: string): ReturnType<typeof spawn> {
       'claude-opus-4-8',
       '--thinking',
       'medium',
-      '--yield-after-ms',
-      '5',
     ],
     {
       cwd: process.cwd(),
@@ -185,7 +183,6 @@ function spawnReplFixtureInPty(workspace: string): ReturnType<typeof spawn> {
     '--claude-path "$DEMI_REPL_CLAUDE_PATH"',
     '--model claude-opus-4-8',
     '--thinking medium',
-    '--yield-after-ms 5',
   ].join(' ')
   return spawn(
     'sh',

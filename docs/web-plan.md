@@ -185,7 +185,7 @@ applies unchanged to Demi.
 agent-gui dispatches `tool_call` by rich tool names —
 `Read/Write/Edit/Delete/Shell/Grep/Glob/List/ExitPlanMode/TodoWrite/Skill/mcp_*` — each
 with a bespoke block (`ToolCallBlock.vue`). **Demi's standard agent tools are the shell/yield family**
-(`createStandardAgentTools`): `shell_exec {script, shellId?, yieldAfterMs}`,
+(`createStandardAgentTools`): `shell_exec {script, shellId?, timeoutMs}`,
 `shell_status {commandId}`, `shell_write`, `shell_abort`, `yield`. Everything else (cat/ls/grep/edit, the `editor`
 and `todo` registered commands) runs *through bash inside `shell_exec`*, and Demi reports
 structured `audit` events (`registered-command` / `system-command` with name/args/exitCode).
@@ -360,7 +360,7 @@ features dropped — §10).
 - One shared `Provider[]` (claude-code + codex created once).
 - `getOrCreateAgentServer(cwd)`: cached `Map<cwd, AgentServer>`; each builds
   `new LocalHost(cwd)` + `createCodingAgentHarness({ host })` +
-  `new AgentServer({ agent, providers, shell:{ initialEnv:{PATH}, yieldAfterMs } })`.
+  `new AgentServer({ agent, providers, shell:{ initialEnv:{PATH} } })`.
   Conversations sharing a cwd share an `AgentServer` (multiple transports, independent
   sessions). (Alternative: a cwd-dynamic harness whose `host(ctx)` derives from `ctx.cwd`,
   letting one `AgentServer` serve all cwds; requires a small `@demi/coding-agent` option.

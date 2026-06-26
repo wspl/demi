@@ -51,8 +51,6 @@ async function runRealReplSmokeOnce(): Promise<string> {
       'claude-opus-4-8',
       '--thinking',
       'medium',
-      '--yield-after-ms',
-      '250',
     ],
     { cwd: process.cwd(), env: process.env, stdio: ['pipe', 'pipe', 'pipe'] },
   )
@@ -102,8 +100,6 @@ async function runRealReplFuzzyShellOnce(): Promise<string> {
       'claude-opus-4-8',
       '--thinking',
       'medium',
-      '--yield-after-ms',
-      '250',
     ],
     { cwd: process.cwd(), env: process.env, stdio: ['pipe', 'pipe', 'pipe'] },
   )

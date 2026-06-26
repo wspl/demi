@@ -95,7 +95,6 @@ export interface ForegroundSink {
 
 export type BoundaryOutcome =
   | { kind: 'foreground_appeared'; foreground: ForegroundProcess }
-  | { kind: 'yield' }
   | { kind: 'output_limit' }
   | { kind: 'timeout' }
   | { kind: 'aborted' }
