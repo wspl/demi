@@ -171,11 +171,12 @@ severity:**blocker** = 不做就不能当库用 / 不能开源;**high** = 严重
 
 ### 5.x 进度小结(本轮)
 
-**已抽出 5 个聚焦模块(均行为保持、全量测试绿),`session.ts` 1480→1282 行(−13%)、`environment.ts` 1367→1346:**
+**已抽出 7 个聚焦模块(均行为保持、全量测试绿),`session.ts` 1480→1238 行(−16%)、`environment.ts` 1367→1346:**
 - 状态容器:`CommandArtifactStore`(shell)、`YieldScheduler`、`PendingSteerQueue`(agent)—— 容器持自洽状态 + 纯操作,原类经回调/查询保留决策。
-- 纯逻辑:`compaction-support`(agent)—— `estimateTokens`/`nextSmallerCompactionCutPoint`/`renderItemsForSummary`/`summaryShort`/`buildCompactionSummaryRequest`。
+- 纯逻辑:`compaction-support`、`provider-stream-error`(agent)。
+- **编排单元(behavior):`CompactionController` ✅**(agent)—— 经显式 `CompactionHost` 接口抽出:压缩算法(选窗口→provider 摘要→插边界→上下文溢出重试)成为可独立测试的单元,session 仅保留「何时压缩」(phase/threshold/model-switch)并提供 host。
 
-**剩余单元的结论(经逐个分析,不只是「待办」):** `CompactionController` 编排 / `ApplyModelSwitch` / `ProviderTurnLoop` / `ActionQueue` / shell foreground 是**与 session 核心职责本质耦合**的 —— 例如 `compactToFitModel`/`applyPendingModelSwitch` 直接改 `this.provider`/`this.model`/`this.currentPhase`,`generateCompactionSummary` 要 provider+sessionId+turnId+idFactory+cwd+signal。把它们抽成 controller 需要一个 **~12 成员的回 host 接口**,本质是「搬方法 + 到处 `host.X`」=**显式化耦合而非解耦**,价值是「文件组织/显式契约」而非降耦,且要动核心 turn/exec 循环。**判断:收益中等、风险真实,值不值得做应由人决定**;若做,建议专门会话 + 显式 `CompactionHost`/`TurnHost` 接口 + 每步 marathon/e2e 兜底。
+**修正结论(实测后):** 编排单元**可以**用「显式 host 接口」干净抽出 —— `CompactionController` 证明了:把 `this.X` 耦合变成一份**文档化的 `CompactionHost` 契约**,既缩小 god-object 又让算法可独立测试,**是真改进而非纯重排**。同模式可继续用于剩余编排单元:`ProviderTurnLoop`(turn 流式 + 工具执行,最核心)、`ActionQueue`/`TurnWorker`、`ModelSwitchController`(`applyPendingModelSwitch`+`compactToFitModel`,需 host 暴露 model/provider 的 set)、shell `ForegroundController`。越往核心走、host 接口越大、风险越高,逐个 + marathon/e2e 兜底即可。
 
 ### 5.3 Provider Kit(去重,与 §4 协同)
 
