@@ -807,17 +807,7 @@ export class AgentSession<State> {
       })
       if (shouldAutoRecover && autoCompactions < MAX_AUTO_COMPACTIONS_PER_TURN) {
         const tokensBefore = this.transcriptLog.estimateContextTokens()
-        const previousPhase = this.currentPhase
-        const previousActivePhase = this.activeTurnPhase
-        this.setPhase('compacting')
-        this.activeTurnPhase = 'compacting'
-        let compacted = false
-        try {
-          compacted = await this.compaction.run()
-        } finally {
-          this.activeTurnPhase = previousActivePhase
-          this.setPhase(previousPhase)
-        }
+        const compacted = await this.runWithCompactingPhase(() => this.compaction.run())
         // Only loop if compaction actually shrank the transcript. Otherwise we'd keep compacting
         // our own summaries and pile up resume turns (a storm) until the model rejects the history.
         if (compacted && this.transcriptLog.estimateContextTokens() < tokensBefore) {
