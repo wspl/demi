@@ -259,6 +259,9 @@ test('generic helpers provided by @demi/utils are not re-implemented in producti
     'errorMessage',
     'messageOf',
     'isAbortError',
+    'AbortError',
+    'throwIfAborted',
+    'abortable',
     'noop',
     'encodeUtf8',
     'decodeUtf8',
@@ -273,8 +276,8 @@ test('generic helpers provided by @demi/utils are not re-implemented in producti
   for (const file of files) {
     const source = await readFile(file, 'utf8')
     for (const name of utilsProvidedHelpers) {
-      // Match a function definition only (not local variables that happen to share the name).
-      const definition = new RegExp(`\\b(?:export\\s+)?(?:async\\s+)?function ${name}\\b`)
+      // Match a function or class definition (not local variables that happen to share the name).
+      const definition = new RegExp(`\\b(?:export\\s+)?(?:async\\s+)?function ${name}\\b|\\b(?:export\\s+)?(?:abstract\\s+)?class ${name}\\b`)
       if (definition.test(source)) violations.push(`${formatPath(file)} re-implements "${name}" (import it from @demi/utils)`)
     }
   }

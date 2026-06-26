@@ -1,4 +1,4 @@
-import { asError, createId, isAbortError, noop } from '@demi/utils'
+import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAborted } from '@demi/utils'
 import type {
   Block,
   ModelSelection,
@@ -1427,41 +1427,3 @@ function providerErrorCode(error: unknown): string | null {
   return null
 }
 
-class AbortError extends Error {
-  constructor() {
-    super('AgentSession aborted')
-    this.name = 'AbortError'
-  }
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw new AbortError()
-}
-
-function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(new AbortError())
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const onAbort = (): void => {
-      if (settled) return
-      settled = true
-      signal.removeEventListener('abort', onAbort)
-      reject(new AbortError())
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-    promise.then(
-      (value) => {
-        if (settled) return
-        settled = true
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        if (settled) return
-        settled = true
-        signal.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
-  })
-}
