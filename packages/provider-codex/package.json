@@ -1,0 +1,43 @@
+{
+  "name": "@demicodes/provider-codex",
+  "description": "Codex provider adapter for Demi.",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "dependencies": {
+    "@demicodes/core": "workspace:*",
+    "@demicodes/provider": "workspace:*",
+    "@demicodes/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@demicodes/agent": "workspace:*",
+    "@demicodes/shell": "workspace:*"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/provider-codex"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/provider-codex#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

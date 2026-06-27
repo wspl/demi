@@ -1,0 +1,16 @@
+import process from 'node:process'
+import { resolveWireLogDir } from '@demicodes/provider-claude-code'
+import { createWebProviders } from './providers'
+import { killListeningPort } from './port-cleanup'
+import { parseServerOptions } from './server-options'
+import { startWebServer } from './serve'
+
+const options = parseServerOptions(process.argv.slice(2))
+await killListeningPort(options.port)
+
+const providers = createWebProviders(options)
+
+const handle = startWebServer(providers, options)
+process.stdout.write(`demi web listening on ${handle.url} — cwd ${options.cwd}, provider ${options.provider}\n`)
+const wireLogDir = resolveWireLogDir()
+process.stdout.write(`claude wire log: ${wireLogDir ?? '(disabled)'}\n`)

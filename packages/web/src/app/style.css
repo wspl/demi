@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@import "@demicodes/web-ui/styles/base.css";
+
+@source "../../../web-ui/src";

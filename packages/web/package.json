@@ -1,0 +1,37 @@
+{
+  "name": "@demicodes/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/dev.ts",
+    "server": "bun run src/server/index.ts",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json"
+  },
+  "dependencies": {
+    "@demicodes/agent": "workspace:*",
+    "@demicodes/coding-agent": "workspace:*",
+    "@demicodes/core": "workspace:*",
+    "@demicodes/host-local": "workspace:*",
+    "@demicodes/provider": "workspace:*",
+    "@demicodes/utils": "workspace:*",
+    "@demicodes/provider-anthropic-api": "workspace:*",
+    "@demicodes/provider-claude-code": "workspace:*",
+    "@demicodes/provider-codex": "workspace:*",
+    "@demicodes/provider-openai-api": "workspace:*",
+    "@demicodes/shell": "workspace:*",
+    "@demicodes/web-ui": "workspace:*",
+    "katex": "^0.17.0",
+    "vue": "^3.5.21"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.1",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/tsconfig": "^0.9.1",
+    "tailwindcss": "^4.3.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vue-tsc": "^3.3.5"
+  },
+  "license": "Apache-2.0"
+}

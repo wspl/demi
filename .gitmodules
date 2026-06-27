@@ -1,0 +1,3 @@
+[submodule "packages/just-bash"]
+	path = packages/just-bash
+	url = https://github.com/wspl/just-bash.git

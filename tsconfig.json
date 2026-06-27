@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "paths": {
+      "@demicodes/just-bash/ast/types": ["./packages/just-bash/packages/just-bash/src/ast/types.ts"],
+      "@demicodes/just-bash/interpreter/helpers/ifs": ["./packages/just-bash/packages/just-bash/src/interpreter/helpers/ifs.ts"],
+      "@demicodes/just-bash/parser": ["./packages/just-bash/packages/just-bash/src/parser/parser.ts"],
+      "@demicodes/agent/stdio": ["./packages/agent/src/stdio-transport.ts"],
+      "@demicodes/shell/storage": ["./packages/shell/src/storage.ts"],
+      "@demicodes/shell/host-fs": ["./packages/shell/src/host-fs.ts"],
+      "@demicodes/*": ["./packages/*/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src", "examples"],
+  "exclude": ["packages/web-ui", "packages/web"]
+}

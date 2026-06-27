@@ -1,0 +1,18 @@
+# Normalize all text files to LF in the repo and on checkout, so line endings stay
+# consistent across platforms (this is a Bun/TypeScript codebase — LF everywhere).
+* text=auto eol=lf
+
+# The Bun lockfile is generated: collapse it in diffs and don't attempt to merge it.
+bun.lock linguist-generated=true -diff
+
+# Binary assets — never normalize or attempt to diff.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
