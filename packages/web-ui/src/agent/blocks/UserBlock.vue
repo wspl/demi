@@ -53,7 +53,7 @@ useResizeObserver(contentRef, () => {
 
 <template>
   <div
-    class="relative z-10 flex flex-col items-end bg-surface px-8 pb-2 pt-1.5"
+    class="relative z-10 flex flex-col items-end bg-surface px-[var(--agent-pad-x,2rem)] pb-2 pt-1.5"
     :class="forceStuck ? 'user-sticky' : ''"
   >
     <div

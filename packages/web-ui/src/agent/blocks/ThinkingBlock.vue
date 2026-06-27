@@ -67,7 +67,7 @@ function formatDuration(ms: number): string {
 </script>
 
 <template>
-  <div class="px-8">
+  <div class="px-[var(--agent-pad-x,2rem)]">
     <FunctionalBlock
       v-model:open="isOpen"
       :expandable="hasContent"
