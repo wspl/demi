@@ -2624,3 +2624,26 @@ async function waitForStoreJson<T>(read: () => Promise<T | null>): Promise<T> {
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+test('BashEnvironment decodes byte-string command output back to UTF-8', async () => {
+  // Built-in commands (cat, head, ...) emit stdout as a latin1 byte string for
+  // binary transparency. The boundary must decode it back to Unicode, or CJK
+  // and emoji surface as mojibake. Regression for the cat/head encoding bug.
+  const root = await mkdtemp(join(tmpdir(), 'demi-bash-utf8-'))
+  const text = '# 林夏·主角\n顾深 — 反派 🎬\n'
+  await writeFile(join(root, 'note.md'), text)
+  const env = new BashEnvironment({
+    host: new LocalHost(root),
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const cat = await env.exec({ script: 'cat note.md' })
+  expect(cat.stdout.delta).toBe(text)
+
+  const head = await env.exec({ shellId: cat.shellId, script: 'head -1 note.md' })
+  expect(head.stdout.delta).toBe('# 林夏·主角\n')
+
+  // sed already emits decoded text — it must keep working unchanged.
+  const sed = await env.exec({ shellId: cat.shellId, script: 'sed -n 2p note.md' })
+  expect(sed.stdout.delta).toBe('顾深 — 反派 🎬\n')
+})
