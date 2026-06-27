@@ -6,6 +6,9 @@ import type { ConversationStatus } from './conversation-status'
 import ProviderIcon from './providers/ProviderIcon.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import ConversationStatusDot from './ConversationStatusDot.vue'
+import { useAgentUiOptions } from './ui-options'
+
+const uiOptions = useAgentUiOptions()
 
 const TAB_TRANSITION = 'max-width 200ms ease-out, min-width 200ms ease-out, padding 200ms ease-out, opacity 150ms ease, background-color 150ms ease, color 150ms ease'
 const DRAG_TRANSITION = 'transform 120ms ease'
@@ -91,7 +94,10 @@ const tabStyle = computed(() => {
     @transitionend="emit('transitionend', $event)"
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
-    <span class="relative ml-1.5 flex shrink-0 items-center justify-center">
+    <span
+      v-if="uiOptions.showTabIcon"
+      class="relative ml-1.5 flex shrink-0 items-center justify-center"
+    >
       <ProviderIcon
         v-if="providerIconId"
         :provider-id="providerIconId"
