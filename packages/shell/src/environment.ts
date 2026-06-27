@@ -3,6 +3,7 @@ import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, 
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
 import { createLazyCommands, type CommandName } from '@demicodes/just-bash/commands'
+import { decodeBytesToUtf8 } from '@demicodes/just-bash/encoding'
 import { parse } from '@demicodes/just-bash/parser'
 import { ParseException } from '@demicodes/just-bash/parser/types'
 import { LexerError } from '@demicodes/just-bash/parser/lexer'
@@ -921,10 +922,12 @@ export class BashEnvironment {
       if (resultOrError instanceof ExitError) {
         session.exited = true
         const err = resultOrError as unknown as { stdout: string; stderr: string; exitCode: number }
-        session.accumulator.stdout += err.stdout
-        session.accumulator.stderr += err.stderr
-        appendRecordOutput(record, 'stdout', err.stdout)
-        appendRecordOutput(record, 'stderr', err.stderr)
+        const outText = decodeBytesToUtf8(err.stdout)
+        const errText = decodeBytesToUtf8(err.stderr)
+        session.accumulator.stdout += outText
+        session.accumulator.stderr += errText
+        appendRecordOutput(record, 'stdout', outText)
+        appendRecordOutput(record, 'stderr', errText)
         return this.finishExited(session, record, err.exitCode, input)
       }
       if (resultOrError instanceof ExecutionLimitError) {
@@ -953,13 +956,23 @@ export class BashEnvironment {
       return this.finishExited(session, record, 1, input)
     }
 
-    session.accumulator.stdout += foreground ? resultOrError.stdout.slice(foreground.lastStdoutSnapshot) : resultOrError.stdout
-    session.accumulator.stderr += foreground ? resultOrError.stderr.slice(foreground.lastStderrSnapshot) : resultOrError.stderr
+    // The interpreter carries built-in command stdout as a latin1 byte string
+    // (each char = one raw byte, for binary transparency). Foreground output
+    // streamed from host-spawned processes is already decoded to Unicode (see
+    // recordForegroundChunk). Decode the byte-string result at this boundary —
+    // the same conversion Bash.exec applies — so UTF-8 text (CJK, emoji) reads
+    // back correctly instead of as mojibake. decodeBytesToUtf8 leaves already-
+    // Unicode and pure-ASCII strings untouched, and preserves invalid-UTF-8
+    // binary as-is.
+    const stdoutText = foreground ? resultOrError.stdout.slice(foreground.lastStdoutSnapshot) : decodeBytesToUtf8(resultOrError.stdout)
+    const stderrText = foreground ? resultOrError.stderr.slice(foreground.lastStderrSnapshot) : decodeBytesToUtf8(resultOrError.stderr)
+    session.accumulator.stdout += stdoutText
+    session.accumulator.stderr += stderrText
     if (foreground) {
       record.outputChunks = [...foreground.outputChunks]
     } else if (record.outputChunks.length === 0) {
-      appendRecordOutput(record, 'stdout', resultOrError.stdout)
-      appendRecordOutput(record, 'stderr', resultOrError.stderr)
+      appendRecordOutput(record, 'stdout', stdoutText)
+      appendRecordOutput(record, 'stderr', stderrText)
     }
     return this.finishExited(session, record, resultOrError.exitCode, input)
   }
