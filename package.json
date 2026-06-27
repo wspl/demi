@@ -41,5 +41,11 @@
     "oxc-parser": "^0.137.0",
     "tsdown": "^0.22.3"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git"
+  },
+  "homepage": "https://github.com/wspl/demi#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
 }

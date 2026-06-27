@@ -28,5 +28,12 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/provider-openai-api"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/provider-openai-api#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
 }

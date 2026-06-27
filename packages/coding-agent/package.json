@@ -33,5 +33,12 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/coding-agent"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/coding-agent#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
 }

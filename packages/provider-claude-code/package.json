@@ -32,5 +32,12 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/provider-claude-code"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/provider-claude-code#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
 }

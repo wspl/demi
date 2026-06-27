@@ -23,5 +23,12 @@
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/utils"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/utils#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
 }

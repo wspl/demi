@@ -23,5 +23,12 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/core#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
 }

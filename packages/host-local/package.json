@@ -26,5 +26,12 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/host-local"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/host-local#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
 }
