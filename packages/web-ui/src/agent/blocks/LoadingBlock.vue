@@ -1,5 +1,5 @@
 <template>
-  <div class="flex items-center px-8 py-2">
+  <div class="flex items-center px-[var(--agent-pad-x,2rem)] py-2">
     <div class="loading-dots flex gap-1">
       <span class="size-1.5 rounded-full bg-fg-subtle" />
       <span class="size-1.5 rounded-full bg-fg-subtle" />

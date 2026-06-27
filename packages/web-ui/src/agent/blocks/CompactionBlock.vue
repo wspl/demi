@@ -21,7 +21,7 @@ const label = computed(() => {
 </script>
 
 <template>
-  <div class="flex items-center gap-3 px-8">
+  <div class="flex items-center gap-3 px-[var(--agent-pad-x,2rem)]">
     <div class="h-px flex-1 bg-overlay/6" />
     <span
       v-if="isCompacting"

@@ -60,10 +60,10 @@ const attrs = useAttrs()
       v-else-if="block.type === 'text'"
       :content="block.text"
     />
-    <div v-else-if="block.type === 'tool_call'" class="overflow-hidden px-8">
+    <div v-else-if="block.type === 'tool_call'" class="overflow-hidden px-[var(--agent-pad-x,2rem)]">
       <ToolCallBlock :block="block" :conversation-id="props.conversationId" :is-streaming="block.status === 'executing'" />
     </div>
-    <div v-else-if="block.type === 'error'" class="px-8">
+    <div v-else-if="block.type === 'error'" class="px-[var(--agent-pad-x,2rem)]">
       <ErrorBlock
         :message="block.message"
         :code="block.code"
@@ -71,7 +71,7 @@ const attrs = useAttrs()
         @retry="emit('retry')"
       />
     </div>
-    <div v-else-if="block.type === 'abort'" class="px-8">
+    <div v-else-if="block.type === 'abort'" class="px-[var(--agent-pad-x,2rem)]">
       <AbortedBlock
         @continue="emit('continue')"
         @retry="emit('retry')"
