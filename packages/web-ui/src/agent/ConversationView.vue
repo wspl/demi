@@ -61,7 +61,7 @@ function onRetry() {
       @retry="onRetry"
       @delete-pending-steer="(steerId) => workspace.deletePendingSteer(conversationId, steerId)"
     />
-    <div class="absolute bottom-0 left-0 right-0 z-10 px-5 pb-4">
+    <div class="absolute bottom-0 left-0 right-0 z-10 px-3 pb-3">
       <div ref="bottomAreaRef" class="relative">
         <MessageQueueBar
           v-if="queuedMessages.length"

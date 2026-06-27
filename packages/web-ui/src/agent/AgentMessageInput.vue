@@ -80,7 +80,7 @@ defineExpose({
       :class="isFocused ? 'bg-surface-raised outline-line-focus' : 'bg-surface-raised outline-line'"
     >
       <EditorContent v-if="editor" :editor="editor" />
-      <div class="flex items-center justify-between px-3 pb-3">
+      <div class="flex items-center justify-between px-2.5 pb-2.5">
         <div class="flex items-center gap-1">
           <ModelSelector
             :providers="workspace.providers.value"
