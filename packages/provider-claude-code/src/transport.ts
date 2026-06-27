@@ -1,8 +1,22 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { statSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import type { InferenceRequest } from '@demicodes/provider'
 import { buildClaudeArgs, buildClaudeEnv } from './cli'
 import { createClaudeWireLog, type ClaudeWireLog } from './wire-log'
+
+// The session cwd is a logical workspace id for some hosts (e.g. a virtual
+// filesystem), not a real directory. The CLI's tools come from the agent, not
+// the process's working directory, so spawn in a real directory rather than
+// letting posix_spawn fail with ENOENT on a non-existent cwd.
+function resolveSpawnCwd(cwd: string): string {
+  try {
+    if (statSync(cwd).isDirectory()) return cwd
+  } catch {
+    // not a real directory — fall through
+  }
+  return process.cwd()
+}
 
 export interface ClaudeTransport {
   writeJson(value: unknown): Promise<void>
@@ -42,7 +56,7 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
       args,
     })
     const child = spawn(this.claudePath, args, {
-      cwd: request.cwd,
+      cwd: resolveSpawnCwd(request.cwd),
       env: buildClaudeEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
     }) as ChildProcessWithoutNullStreams
