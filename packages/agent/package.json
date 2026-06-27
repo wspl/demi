@@ -1,0 +1,50 @@
+{
+  "name": "@demicodes/agent",
+  "description": "Session runtime and transport-neutral client and server protocol for Demi.",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./client": {
+      "development": "./src/client-entry.ts",
+      "types": "./dist/client-entry.d.mts",
+      "import": "./dist/client-entry.mjs"
+    },
+    "./stdio": {
+      "development": "./src/stdio-transport.ts",
+      "types": "./dist/stdio-transport.d.mts",
+      "import": "./dist/stdio-transport.mjs"
+    }
+  },
+  "dependencies": {
+    "@demicodes/core": "workspace:*",
+    "@demicodes/provider": "workspace:*",
+    "@demicodes/shell": "workspace:*",
+    "@demicodes/utils": "workspace:*"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/agent"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/agent#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@demicodes/web-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*.vue": "./src/*.vue",
+    "./*.css": "./src/*.css",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@demicodes/agent": "workspace:*",
+    "@demicodes/core": "workspace:*",
+    "@demicodes/utils": "workspace:*",
+    "@floating-ui/vue": "^2.0.0",
+    "@mingcute/vue": "^1.4.1",
+    "@tanstack/vue-virtual": "^3.13.29",
+    "@tiptap/extension-placeholder": "^3.27.1",
+    "@tiptap/pm": "^3.27.1",
+    "@tiptap/starter-kit": "^3.27.1",
+    "@tiptap/vue-3": "^3.27.1",
+    "@vueuse/core": "^14.3.0",
+    "ansi-to-html": "^0.7.2",
+    "dayjs": "^1.11.21",
+    "dompurify": "^3.4.11",
+    "katex": "^0.17.0",
+    "marked": "^18.0.5",
+    "marked-katex-extension": "^5.1.10",
+    "partial-json": "^0.1.7",
+    "pathe": "^2.0.3",
+    "shiki": "^4.2.0",
+    "vue": "^3.5.38"
+  },
+  "devDependencies": {
+    "@vue/tsconfig": "^0.9.1",
+    "typescript": "^6.0.3",
+    "vue-tsc": "^3.3.5"
+  },
+  "license": "Apache-2.0"
+}

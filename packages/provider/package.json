@@ -1,0 +1,42 @@
+{
+  "name": "@demicodes/provider",
+  "description": "Provider contract and shared building blocks for Demi inference adapters.",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
+    }
+  },
+  "dependencies": {
+    "@demicodes/core": "workspace:*"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/provider"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/provider#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

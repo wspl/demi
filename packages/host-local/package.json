@@ -1,0 +1,37 @@
+{
+  "name": "@demicodes/host-local",
+  "description": "Node Host adapter for the Demi shell.",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "dependencies": {
+    "@demicodes/shell": "workspace:*"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/host-local"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/host-local#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

@@ -1,0 +1,34 @@
+{
+  "name": "@demicodes/core",
+  "description": "Core data types and shared domain primitives for the Demi agent toolkit.",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/core#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

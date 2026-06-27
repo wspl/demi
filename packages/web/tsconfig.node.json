@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src/dev.ts", "src/dev-ports.ts", "src/server", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
