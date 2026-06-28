@@ -3,7 +3,7 @@ import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, 
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
 import { createLazyCommands, type CommandName } from '@demicodes/just-bash/commands'
-import { decodeBytesToUtf8 } from '@demicodes/just-bash/encoding'
+import { decodeBytesToUtf8, unsafeBytesFromLatin1 } from '@demicodes/just-bash/encoding'
 import { parse } from '@demicodes/just-bash/parser'
 import { ParseException } from '@demicodes/just-bash/parser/types'
 import { LexerError } from '@demicodes/just-bash/parser/lexer'
@@ -922,8 +922,8 @@ export class BashEnvironment {
       if (resultOrError instanceof ExitError) {
         session.exited = true
         const err = resultOrError as unknown as { stdout: string; stderr: string; exitCode: number }
-        const outText = decodeBytesToUtf8(err.stdout)
-        const errText = decodeBytesToUtf8(err.stderr)
+        const outText = decodeBytesToUtf8(unsafeBytesFromLatin1(err.stdout))
+        const errText = decodeBytesToUtf8(unsafeBytesFromLatin1(err.stderr))
         session.accumulator.stdout += outText
         session.accumulator.stderr += errText
         appendRecordOutput(record, 'stdout', outText)
@@ -964,8 +964,8 @@ export class BashEnvironment {
     // back correctly instead of as mojibake. decodeBytesToUtf8 leaves already-
     // Unicode and pure-ASCII strings untouched, and preserves invalid-UTF-8
     // binary as-is.
-    const stdoutText = foreground ? resultOrError.stdout.slice(foreground.lastStdoutSnapshot) : decodeBytesToUtf8(resultOrError.stdout)
-    const stderrText = foreground ? resultOrError.stderr.slice(foreground.lastStderrSnapshot) : decodeBytesToUtf8(resultOrError.stderr)
+    const stdoutText = foreground ? resultOrError.stdout.slice(foreground.lastStdoutSnapshot) : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stdout))
+    const stderrText = foreground ? resultOrError.stderr.slice(foreground.lastStderrSnapshot) : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
     session.accumulator.stdout += stdoutText
     session.accumulator.stderr += stderrText
     if (foreground) {
