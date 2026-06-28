@@ -9,6 +9,14 @@ import type { ProviderSelection } from '@demicodes/provider'
 import type { AbortResult } from './types'
 import type { BashAuditEvent, ShellCommandSnapshot } from '@demicodes/shell'
 
+/** A persisted conversation in a workspace (cwd), for the resume/history list. */
+export interface ConversationSummary {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type ClientFrame =
   | { type: 'open'; provider: ProviderSelection; cwd: string; sessionId: string }
   | { type: 'send'; messageId: string; content: UserContentBlock[] }
@@ -24,6 +32,7 @@ export type ClientFrame =
   | { type: 'resume' }
   | { type: 'compact' }
   | { type: 'shell_write'; commandId: string; stdin: string }
+  | { type: 'list_conversations'; cwd: string }
   | { type: 'close' }
 
 export type ServerFrame =
@@ -40,6 +49,7 @@ export type ServerFrame =
   | { type: 'shell_output'; shellId: string; commandId: string; snapshot: ShellCommandSnapshotLike }
   | { type: 'shell_write_result'; commandId: string; output: ToolResultContentBlock[] }
   | { type: 'audit'; events: BashAuditEvent[] }
+  | { type: 'conversations'; conversations: ConversationSummary[] }
   | { type: 'error'; message: string; code?: string }
   | { type: 'closed' }
 

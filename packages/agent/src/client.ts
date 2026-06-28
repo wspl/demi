@@ -1,7 +1,7 @@
 import type { Block, SessionPhase, UserContentBlock } from '@demicodes/core'
 import { applyTranscriptPatches } from './patch'
 import type { ProviderSelection } from '@demicodes/provider'
-import type { ClientFrame, ClientSessionEvent, ServerFrame } from './frames'
+import type { ClientFrame, ClientSessionEvent, ConversationSummary, ServerFrame } from './frames'
 import type { AgentClientTransport } from './transport'
 import type { AbortResult } from './types'
 
@@ -33,6 +33,7 @@ export class AgentClient {
   private readonly pendingActionWaiters: ActionWaiter[] = []
   private readonly pendingSteerWaiters = new Map<string, SteerWaiter>()
   private readonly pendingAbortWaiters: AbortWaiter[] = []
+  private readonly pendingConversationWaiters: ((conversations: ConversationSummary[]) => void)[] = []
   private readonly queuedMessageIds = new Set<string>()
   private blocks: Block[] = []
   private phase: SessionPhase | null = null
@@ -50,6 +51,15 @@ export class AgentClient {
     const wait = this.waitForFrame('opened')
     this.sendFrame({ type: 'open', provider, cwd, sessionId })
     return wait
+  }
+
+  // List the persisted conversations for a workspace (cwd) from the server,
+  // newest first. Does not require an open session.
+  listConversations(cwd: string): Promise<ConversationSummary[]> {
+    return new Promise((resolve) => {
+      this.pendingConversationWaiters.push(resolve)
+      this.sendFrame({ type: 'list_conversations', cwd })
+    })
   }
 
   sendMessage(content: UserContentBlock[]): Promise<void> {
@@ -212,6 +222,9 @@ export class AgentClient {
       case 'shell_write_result':
       case 'audit':
         this.emit(frame)
+        return
+      case 'conversations':
+        this.pendingConversationWaiters.shift()?.(frame.conversations)
         return
       case 'rejected':
         this.emit(frame)

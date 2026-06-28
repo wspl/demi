@@ -158,6 +158,39 @@ test('AgentServer resumes a conversation by session id and restores its transcri
   await fresh.close()
 })
 
+test('AgentServer lists persisted conversations for a workspace, server-side', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-agent-list-'))
+  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+  const harness: AgentHarness<Record<string, never>> = {
+    name: 'listable',
+    initialState: () => ({}),
+    host: () => host,
+    systemPrompt: () => 'system',
+  }
+  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('ok'), events.response()]]
+  const { client, server } = createAgentClientHarness({ harness, providerTurns: turns })
+
+  await client.open(providerConfig(turns), root, 'c1')
+  await client.send([{ type: 'text', text: 'first conversation' }])
+  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
+  await client.close()
+
+  const c2 = server.client()
+  await c2.open(providerConfig(turns), root, 'c2')
+  await c2.send([{ type: 'text', text: 'second conversation' }])
+  await waitFor(() => c2.transcript().blocks.some((block) => block.type === 'response'))
+  await c2.close()
+
+  // Listing reads from the store, not from any client — no open session needed.
+  const lister = server.client()
+  const conversations = await lister.listConversations(root)
+  expect(conversations.map((conversation) => conversation.id).sort()).toEqual(['c1', 'c2'])
+  expect(conversations.find((conversation) => conversation.id === 'c1')?.title).toBe('first conversation')
+  expect(conversations.find((conversation) => conversation.id === 'c2')?.title).toBe('second conversation')
+  expect(await lister.listConversations('/elsewhere')).toEqual([])
+  await lister.close()
+})
+
 test('AgentServer forwards provider error codes once and preserves the transcript error block', async () => {
   const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.error('auth failed', 'auth')]]
   const { client } = createAgentClientHarness({ providerTurns: turns })

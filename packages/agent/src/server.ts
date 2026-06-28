@@ -11,7 +11,7 @@ import type { Block, ToolResultContentBlock } from '@demicodes/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { AgentClient } from './client'
 import { cloneBlocks, diffTranscriptBlocks } from './patch'
-import type { ClientFrame, ServerFrame, ShellCommandSnapshotLike } from './frames'
+import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandSnapshotLike } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
 import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
 import { createStandardAgentTools } from './tools'
@@ -211,6 +211,9 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         case 'shell_write':
           await this.handleShellWrite(frame)
           return
+        case 'list_conversations':
+          await this.listConversations(frame.cwd)
+          return
         case 'close':
           await this.closeSession()
           this.send({ type: 'closed' })
@@ -362,6 +365,23 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     }
   }
 
+  // List the persisted conversations for a workspace (cwd), newest first, read
+  // straight from Host.store — independent of any client-side state, so history
+  // survives a cleared browser / a different device.
+  private async listConversations(cwd: string): Promise<void> {
+    const host = this.agent.host({ state: this.agent.initialState(), cwd })
+    const keys = await host.store.list('agent-sessions/')
+    const conversations: ConversationSummary[] = []
+    for (const key of keys) {
+      if (!key.endsWith('/snapshot.json')) continue
+      const snapshot = await host.store.readJson<AgentSessionSnapshot<unknown>>(key)
+      if (!snapshot || snapshot.cwd !== cwd) continue
+      conversations.push(summarizeConversation(key.slice('agent-sessions/'.length, -'/snapshot.json'.length), snapshot))
+    }
+    conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    this.send({ type: 'conversations', conversations })
+  }
+
   private async handleShellWrite(frame: Extract<ClientFrame, { type: 'shell_write' }>): Promise<void> {
     const session = this.sessionFor('shell_write')
     if (!session || !this.currentEnvironment || !this.currentCwd) return
@@ -447,6 +467,25 @@ class HostAgentSessionStore<State> implements AgentSessionStore<State> {
   loadSnapshot(): Promise<AgentSessionSnapshot<State> | null> {
     return this.store.readJson<AgentSessionSnapshot<State>>(`agent-sessions/${this.agentSessionId}/snapshot.json`)
   }
+}
+
+function summarizeConversation(id: string, snapshot: AgentSessionSnapshot<unknown>): ConversationSummary {
+  const blocks = snapshot.transcript.blocks
+  const first = blocks[0]
+  const last = blocks[blocks.length - 1]
+  return {
+    id,
+    title: conversationTitle(blocks),
+    createdAt: first?.createdAt ?? '',
+    updatedAt: last?.createdAt ?? first?.createdAt ?? '',
+  }
+}
+
+function conversationTitle(blocks: Block[]): string {
+  const user = blocks.find((block): block is Extract<Block, { type: 'user' }> => block.type === 'user')
+  const text = user?.content.find((item): item is { type: 'text'; text: string } => item.type === 'text')?.text
+  const title = (text ?? '').replace(/\s+/g, ' ').trim()
+  return title ? title.slice(0, 80) : 'Untitled conversation'
 }
 
 function progressToOutput(progress: unknown): ToolResultContentBlock[] {
