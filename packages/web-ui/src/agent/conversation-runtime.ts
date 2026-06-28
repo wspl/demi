@@ -138,6 +138,12 @@ export class ConversationRuntime {
     if (client) await client.close().catch(() => {})
   }
 
+  // Open the connection now (without sending), so a restored conversation
+  // fetches its transcript snapshot and is ready to use.
+  connect(): Promise<void> {
+    return this.ensureOpen().then(() => undefined)
+  }
+
   private ensureOpen(): Promise<AgentClient> {
     if (this.client) return Promise.resolve(this.client)
     this.opening ??= this.openSession()

@@ -69,6 +69,13 @@ export class AgentWorkspace {
     // fresh one when nothing is persisted.
     const restored = this.restorePersisted()
     if (!restored) this.createConversation()
+    // Connect the visible conversation so a restored transcript loads on open.
+    this.connectActive()
+  }
+
+  private connectActive(): void {
+    const id = this.activeId.value
+    if (id) void this.runtimes.get(id)?.connect().catch(() => {})
   }
 
   async loadCatalog(): Promise<void> {
@@ -143,6 +150,7 @@ export class AgentWorkspace {
     this.activeId.value = id
     const state = this.sessions[id]
     if (state) state.isResultSeen = true
+    this.connectActive()
     this.persist()
   }
 
