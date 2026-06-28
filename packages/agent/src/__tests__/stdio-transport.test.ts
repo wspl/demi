@@ -76,7 +76,7 @@ test('StdioTransport carries the same AgentClient/AgentServer frames over NDJSON
   server.attachTransport(createStdioServerTransport(clientToServer, serverToClient))
   const client = new AgentClient(createStdioClientTransport(serverToClient, clientToServer))
 
-  await client.open(providerSelectionForText('over stdio'), '/workspace')
+  await client.open(providerSelectionForText('over stdio'), '/workspace', globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'hello' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -99,7 +99,7 @@ test('StdioTransport preserves complex AgentClient action convergence over NDJSO
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('stdio-scenario'), '/workspace')
+  await client.open(providerSelection('stdio-scenario'), '/workspace', globalThis.crypto.randomUUID())
   const first = client.send([{ type: 'text', text: 'first ' + 'x'.repeat(20_000) }])
   await provider.firstStarted.promise
   const second = client.send([{ type: 'text', text: 'second' }])
@@ -163,7 +163,7 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
   server.attachTransport(createStdioServerTransport(clientToServer, serverToClient))
   const client = new AgentClient(createStdioClientTransport(serverToClient, clientToServer))
 
-  await client.open(providerSelection('stdio-shell'), root)
+  await client.open(providerSelection('stdio-shell'), root, globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'start long command' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -186,7 +186,7 @@ test('StdioTransport carries AgentClient frames to a child-process AgentServer',
 
   const client = new AgentClient(createStdioClientTransport(child.stdout, child.stdin))
   try {
-    await withTimeout(client.open(childProviderSelection('from child'), '/workspace'), 'open child session', () => stderr)
+    await withTimeout(client.open(childProviderSelection('from child'), '/workspace', globalThis.crypto.randomUUID()), 'open child session', () => stderr)
     await client.send([{ type: 'text', text: 'hello child' }])
     await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'), () => stderr)
 
