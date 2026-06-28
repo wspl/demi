@@ -50,7 +50,7 @@ test('AgentClient.open and send run through InProcessTransport and emit transcri
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerConfig(turns), '/workspace')
+  await client.open(providerConfig(turns), '/workspace', globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'hi' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -82,7 +82,7 @@ test('AgentClient clears its local transcript view when the session is closed', 
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerConfig([[events.text('hello'), events.response()]]), '/workspace')
+  await client.open(providerConfig([[events.text('hello'), events.response()]]), '/workspace', globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'hi' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -105,7 +105,7 @@ test('AgentServer persists session snapshots through Host.store', async () => {
   const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('stored'), events.response()]]
   const { client } = createAgentClientHarness({ harness, providerTurns: turns })
 
-  await client.open(providerConfig(turns), root)
+  await client.open(providerConfig(turns), root, globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'persist me' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -164,7 +164,7 @@ test('AgentServer forwards provider error codes once and preserves the transcrip
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerConfig(turns), '/workspace')
+  await client.open(providerConfig(turns), '/workspace', globalThis.crypto.randomUUID())
   await expect(client.send([{ type: 'text', text: 'hi' }])).rejects.toThrow('auth failed')
   await waitFor(() => seen.some((event) => event.type === 'error'))
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'error'))
@@ -199,6 +199,7 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
       [events.text('done'), events.response()],
     ]),
     process.cwd(),
+    globalThis.crypto.randomUUID(),
   )
   await client.send([{ type: 'text', text: 'run shell' }])
   await waitFor(() => seen.some((event) => event.type === 'shell_output'))
@@ -243,6 +244,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
       [events.text('waiting'), events.response()],
     ]),
     process.cwd(),
+    globalThis.crypto.randomUUID(),
   )
   await client.send([{ type: 'text', text: 'start process' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
@@ -304,7 +306,7 @@ test('AgentClient.shellWrite waits for shell_write_result and rejects when no se
     ],
     [events.text('waiting'), events.response()],
   ]
-  await client.open(providerConfig(turns), process.cwd())
+  await client.open(providerConfig(turns), process.cwd(), globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'start process' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -346,6 +348,7 @@ test('AgentServer emits transcript patches with removals on retry', async () => 
       },
     ]),
     '/workspace',
+    globalThis.crypto.randomUUID(),
   )
   await client.send([{ type: 'text', text: 'question' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
@@ -375,7 +378,7 @@ test('AgentServer queues send frames while the session is busy and drains them i
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('delayed'), '/workspace')
+  await client.open(providerSelection('delayed'), '/workspace', globalThis.crypto.randomUUID())
   let firstSettled = false
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     firstSettled = true
@@ -416,7 +419,7 @@ test('AgentClient.steer resolves correlated accepted acks and receives transcrip
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('server-steerable'), '/workspace')
+  await client.open(providerSelection('server-steerable'), '/workspace', globalThis.crypto.randomUUID())
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.waitForRun(0)
   seen.length = 0
@@ -468,7 +471,7 @@ test('AgentClient.steer accepts active provider without native steer and materia
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('server-no-native-steer'), '/workspace')
+  await client.open(providerSelection('server-no-native-steer'), '/workspace', globalThis.crypto.randomUUID())
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.waitForRun(0)
   seen.length = 0
@@ -520,7 +523,7 @@ test('AgentClient.cancelPendingSteer removes an accepted steer before transcript
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('server-cancel-pending-steer'), '/workspace')
+  await client.open(providerSelection('server-cancel-pending-steer'), '/workspace', globalThis.crypto.randomUUID())
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.waitForRun(0)
   seen.length = 0
@@ -574,7 +577,7 @@ test('AgentServer rejects retry, resume, and compact frames while the session is
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('delayed-rejects'), '/workspace')
+  await client.open(providerSelection('delayed-rejects'), '/workspace', globalThis.crypto.randomUUID())
   const sending = client.send([{ type: 'text', text: 'first' }])
   await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
 
@@ -604,7 +607,7 @@ test('AgentClient resolves each queued send promise on its own phase cycle', asy
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('sequenced-delayed'), '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
   const settlements: string[] = []
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     settlements.push('first')
@@ -656,7 +659,7 @@ test('AgentClient.dequeueMessage resolves the removed queued send without runnin
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('sequenced-delayed'), '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
   const firstSend = client.send([{ type: 'text', text: 'first' }])
   await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
 
@@ -695,7 +698,7 @@ test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle'
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('sequenced-delayed'), '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
   const settlements: string[] = []
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     settlements.push('first')
@@ -746,7 +749,7 @@ test('AgentClient.steerQueuedMessage converts a queued send into an active steer
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('sequenced-delayed'), '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
   const settlements: string[] = []
   const firstSend = client.send([{ type: 'text', text: 'first' }]).then(() => {
     settlements.push('first')
@@ -796,7 +799,7 @@ test('AgentClient.clearMessageQueue resolves queued sends without canceling the 
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('sequenced-delayed'), '/workspace')
+  await client.open(providerSelection('sequenced-delayed'), '/workspace', globalThis.crypto.randomUUID())
   const firstSend = client.send([{ type: 'text', text: 'first' }])
   await waitFor(() => seen.some((event) => event.type === 'phase' && event.phase === 'running'))
 
@@ -840,7 +843,7 @@ test('AgentClient rejects only the active action when queued sends continue afte
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('error-then-delayed'), '/workspace')
+  await client.open(providerSelection('error-then-delayed'), '/workspace', globalThis.crypto.randomUUID())
   let firstError = ''
   const firstSend = client.send([{ type: 'text', text: 'first' }]).catch((error) => {
     firstError = error instanceof Error ? error.message : String(error)
@@ -873,7 +876,7 @@ test('AgentClient.abort returns false while idle and true after aborting active 
   })
   const client = server.client()
 
-  await client.open(providerSelection('abort-aware'), '/workspace')
+  await client.open(providerSelection('abort-aware'), '/workspace', globalThis.crypto.randomUUID())
   expect(await client.abort()).toMatchObject({ aborted: false })
 
   const sending = client.send([{ type: 'text', text: 'start' }])
@@ -893,7 +896,7 @@ test('AgentServer aborts the active session when a close frame is received', asy
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('abort-aware'), '/workspace')
+  await client.open(providerSelection('abort-aware'), '/workspace', globalThis.crypto.randomUUID())
   const sending = client.send([{ type: 'text', text: 'start' }])
   await provider.started.promise
 
@@ -934,6 +937,7 @@ test('AgentServer disposes shell resources when a close frame is received', asyn
       [events.text('waiting'), events.response()],
     ]),
     root,
+    globalThis.crypto.randomUUID(),
   )
   await client.send([{ type: 'text', text: 'start shell' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
@@ -960,7 +964,7 @@ test('AgentServer.close disposes harness resources directly', async () => {
     providerTurns: [],
   })
 
-  await client.open(providerConfig([]), '/workspace')
+  await client.open(providerConfig([]), '/workspace', globalThis.crypto.randomUUID())
   await server.close()
 
   expect(disposed).toBe(true)

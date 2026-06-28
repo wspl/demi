@@ -251,7 +251,7 @@ test('REPL renderer receives AgentClient subscription events end to end', async 
 
   const selection: ProviderSelection = { providerId: 'stub', model: { ...model, providerId: 'stub' } }
 
-  await client.open(selection, '/tmp/demi-repl-test')
+  await client.open(selection, '/tmp/demi-repl-test', globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'hello' }])
   await client.close()
   await server.close()

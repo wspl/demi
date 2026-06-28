@@ -108,7 +108,7 @@ test('WebSocket transports carry AgentClient and AgentServer traffic end to end'
   server.attachTransport(createWebSocketServerTransport(serverSocket))
   const client = new AgentClient(createWebSocketClientTransport(clientSocket))
 
-  await client.open(providerSelectionForText('over websocket'), '/workspace')
+  await client.open(providerSelectionForText('over websocket'), '/workspace', globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'hello' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
@@ -132,7 +132,7 @@ test('WebSocket transports preserve complex AgentClient action convergence', asy
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
 
-  await client.open(providerSelection('ws-scenario'), '/workspace')
+  await client.open(providerSelection('ws-scenario'), '/workspace', globalThis.crypto.randomUUID())
   const first = client.send([{ type: 'text', text: 'first' }])
   await provider.firstStarted.promise
   const second = client.send([{ type: 'text', text: 'second ' + 'x'.repeat(20_000) }])
