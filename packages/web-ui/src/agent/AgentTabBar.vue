@@ -123,8 +123,17 @@ function handleRenameTab(conversationId: string, newTitle: string) {
   workspace.renameConversation(conversationId, newTitle)
 }
 
+// The history menu shows every persisted conversation (from the server) plus
+// any open tab not yet persisted; selecting one opens it (resuming if needed).
+const historyConversations = computed(() => {
+  const byId = new Map<string, { id: string; title: string; createdAt: string }>()
+  for (const summary of workspace.serverConversations.value) byId.set(summary.id, summary)
+  for (const tab of props.allConversations) if (!byId.has(tab.id)) byId.set(tab.id, tab)
+  return [...byId.values()]
+})
+
 function handleOpenConversation(conversationId: string) {
-  workspace.setActive(conversationId)
+  workspace.openConversation({ id: conversationId })
 }
 
 // ── Context menu ──
@@ -382,7 +391,7 @@ function finishSettle() {
     </Tooltip>
     <span class="titlebar-no-drag ml-auto">
       <ConversationListDropdown
-        :conversations="allConversations"
+        :conversations="historyConversations"
         :active-tab-id="activeTabId"
         @select="handleOpenConversation"
       />

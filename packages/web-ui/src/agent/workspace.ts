@@ -1,6 +1,8 @@
 import { computed, inject, provide, reactive, ref, type ComputedRef, type InjectionKey } from 'vue'
 import type { UserContentBlock } from '@demicodes/core'
+import type { ConversationSummary } from '@demicodes/agent'
 import type { ControlApi, ModelInfo, ProviderInfo } from '../transport/protocol'
+import { agentSocketUrl, connectAgentClient } from '../transport/agent-socket'
 import { ConversationRuntime } from './conversation-runtime'
 import type { ConversationState, ModelIntent } from './types'
 
@@ -36,6 +38,9 @@ export class AgentWorkspace {
   readonly activeId = ref<string | null>(null)
   readonly providers = ref<ProviderInfo[]>([])
   readonly models = reactive<Record<string, ModelInfo[]>>({})
+  // All persisted conversations for this cwd, from the server (the history list,
+  // independent of which tabs are open or of localStorage).
+  readonly serverConversations = ref<ConversationSummary[]>([])
 
   readonly tabs: ComputedRef<ConversationState[]> = computed(() =>
     this.order.value.map((id) => this.sessions[id]).filter((state): state is ConversationState => !!state),
@@ -68,9 +73,50 @@ export class AgentWorkspace {
     // the server on connect, keyed by the conversation id). Fall back to a
     // fresh one when nothing is persisted.
     const restored = this.restorePersisted()
-    if (!restored) this.createConversation()
+    // The server owns the full conversation list (survives a cleared browser).
+    this.serverConversations.value = await this.loadServerConversations()
+    if (!restored) {
+      // Nothing remembered locally — recover the most recent conversation from
+      // the server, or start fresh if there is none.
+      const recent = this.serverConversations.value[0]
+      if (recent) this.openConversation(recent)
+      else this.createConversation()
+    }
     // Connect the visible conversation so a restored transcript loads on open.
     this.connectActive()
+  }
+
+  /** Re-fetch the server conversation list (e.g. when the history menu opens). */
+  async refreshServerConversations(): Promise<void> {
+    this.serverConversations.value = await this.loadServerConversations()
+  }
+
+  /** Open a conversation by id (an existing tab, or one from the history list). */
+  openConversation(summary: { id: string; title?: string }): void {
+    if (!this.sessions[summary.id]) {
+      this.materializeConversation({
+        id: summary.id,
+        title: summary.title || this.nextTitle(),
+        createdAt: new Date().toISOString(),
+        model: this.defaultModel ?? this.fallbackModel(),
+      })
+      this.persist()
+    }
+    this.setActive(summary.id)
+    this.connectActive()
+  }
+
+  private async loadServerConversations(): Promise<ConversationSummary[]> {
+    try {
+      const client = await connectAgentClient(agentSocketUrl(this.baseUrl, this.cwd))
+      try {
+        return await client.listConversations(this.cwd)
+      } finally {
+        await client.close().catch(() => {})
+      }
+    } catch {
+      return this.serverConversations.value
+    }
   }
 
   private connectActive(): void {
