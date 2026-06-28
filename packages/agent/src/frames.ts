@@ -10,7 +10,7 @@ import type { AbortResult } from './types'
 import type { BashAuditEvent, ShellCommandSnapshot } from '@demicodes/shell'
 
 export type ClientFrame =
-  | { type: 'open'; provider: ProviderSelection; cwd: string }
+  | { type: 'open'; provider: ProviderSelection; cwd: string; sessionId: string }
   | { type: 'send'; messageId: string; content: UserContentBlock[] }
   | { type: 'dequeue_message'; messageId: string }
   | { type: 'send_queued_message'; messageId: string }

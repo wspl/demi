@@ -1650,6 +1650,10 @@ class BlockingSteerStore implements AgentSessionStore<{ toolCalls: number }> {
     }
   }
 
+  async loadSnapshot(): Promise<AgentSessionSnapshot<{ toolCalls: number }> | null> {
+    return null
+  }
+
   waitForSteerSnapshot(): Promise<void> {
     return this.started.promise
   }
@@ -1732,6 +1736,10 @@ class MemorySessionStore<State> {
 
   saveSnapshot(snapshot: AgentSessionSnapshot<State>): void {
     this.snapshots.push(snapshot)
+  }
+
+  loadSnapshot(): Promise<AgentSessionSnapshot<State> | null> {
+    return Promise.resolve(this.snapshots[this.snapshots.length - 1] ?? null)
   }
 }
 

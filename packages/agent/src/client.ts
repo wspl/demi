@@ -43,9 +43,11 @@ export class AgentClient {
     this.unsubscribeTransport = transport.onFrame((frame) => this.handleServerFrame(frame))
   }
 
-  open(provider: ProviderSelection, cwd: string): Promise<void> {
+  // sessionId is the conversation's stable id: pass a persisted one to resume
+  // that conversation, or omit it to start a fresh one.
+  open(provider: ProviderSelection, cwd: string, sessionId: string = globalThis.crypto.randomUUID()): Promise<void> {
     const wait = this.waitForFrame('opened')
-    this.sendFrame({ type: 'open', provider, cwd })
+    this.sendFrame({ type: 'open', provider, cwd, sessionId })
     return wait
   }
 
