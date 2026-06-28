@@ -154,7 +154,9 @@ export class ConversationRuntime {
       thinkingEffort: intent.thinkingEffort,
       serviceTierId: intent.serviceTierId,
     })
-    await client.open(providerConfig, this.state.cwd)
+    // The conversation id is the stable session id — reconnecting with it
+    // resumes this conversation's transcript instead of starting blank.
+    await client.open(providerConfig, this.state.cwd, this.state.id)
     this.client = client
     return client
   }
