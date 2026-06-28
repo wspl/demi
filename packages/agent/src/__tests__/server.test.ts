@@ -121,6 +121,43 @@ test('AgentServer persists session snapshots through Host.store', async () => {
   expect(snapshot?.transcript.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 
+test('AgentServer resumes a conversation by session id and restores its transcript', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-agent-server-resume-'))
+  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+  const harness: AgentHarness<Record<string, never>> = {
+    name: 'resumable',
+    initialState: () => ({}),
+    host: () => host,
+    systemPrompt: () => 'system',
+  }
+  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('remembered'), events.response()]]
+  const { client, server } = createAgentClientHarness({ harness, providerTurns: turns })
+
+  await client.open(providerConfig(turns), root, 'conv-1')
+  await client.send([{ type: 'text', text: 'remember this' }])
+  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
+  const before = client.transcript().blocks.map((block) => block.type)
+  expect(before).toEqual(['user', 'text', 'response'])
+  await client.close()
+
+  // Reconnecting with the same session id restores the prior transcript.
+  const resumed = server.client()
+  const seen: ClientSessionEvent[] = []
+  resumed.subscribe((event) => seen.push(event))
+  await resumed.open(providerConfig(turns), root, 'conv-1')
+  await waitFor(() => resumed.transcript().blocks.length > 0)
+  expect(resumed.transcript().blocks.map((block) => block.type)).toEqual(before)
+  const snapshotEvent = seen.find((event) => event.type === 'transcript_snapshot')
+  expect(snapshotEvent?.type === 'transcript_snapshot' ? snapshotEvent.blocks.length : 0).toBe(3)
+  await resumed.close()
+
+  // A different session id starts empty.
+  const fresh = server.client()
+  await fresh.open(providerConfig(turns), root, 'conv-2')
+  expect(fresh.transcript().blocks.length).toBe(0)
+  await fresh.close()
+})
+
 test('AgentServer forwards provider error codes once and preserves the transcript error block', async () => {
   const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.error('auth failed', 'auth')]]
   const { client } = createAgentClientHarness({ providerTurns: turns })

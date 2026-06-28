@@ -257,31 +257,30 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       lifecycle: (event) => agent.lifecycle?.(event),
       tools: () => tools,
     }
-    const agentSessionId = globalThis.crypto.randomUUID()
-    const session = new AgentSession(
-      {
-        provider,
-        model: frame.provider.model,
-        cwd: frame.cwd,
-        runtime,
-        state,
-      },
-      {
-        agentSessionId,
-        store: new HostAgentSessionStore(host.store, agentSessionId),
-      },
-    )
+    // The session id is client-owned: it keys the snapshot, so a reconnect with
+    // the same id resumes the conversation rather than starting a new one.
+    const agentSessionId = frame.sessionId
+    const store = new HostAgentSessionStore(host.store, agentSessionId)
+    const snapshot = await store.loadSnapshot()
+    const session =
+      snapshot && snapshot.harnessName === runtime.harnessName
+        ? AgentSession.fromSnapshot({ provider, runtime, snapshot }, { agentSessionId, store })
+        : new AgentSession({ provider, model: frame.provider.model, cwd: frame.cwd, runtime, state }, { agentSessionId, store })
     sessionRef = session
     this.session = session
     this.currentAgent = agent
     this.currentEnvironment = environment
     this.currentCwd = frame.cwd
     this.currentProviderId = frame.provider.providerId
-    this.lastTranscriptBlocks = []
+    // A resumed session restores its model from the snapshot; align it with the
+    // model the client opened with (which may differ from when it was saved).
+    if (snapshot) await session.updateModel(null, frame.provider.model)
+    const restoredBlocks = session.transcript().blocks
+    this.lastTranscriptBlocks = cloneBlocks(restoredBlocks)
     this.unsubscribeSession = this.session.subscribe((event) => this.handleSessionEvent(event))
 
     this.send({ type: 'opened' })
-    this.send({ type: 'transcript_snapshot', blocks: [] })
+    this.send({ type: 'transcript_snapshot', blocks: cloneBlocks(restoredBlocks) })
     this.send({ type: 'phase', phase: this.session.phase() })
     this.send({ type: 'queue', queue: this.session.queuedMessages() })
   }
@@ -443,6 +442,10 @@ class HostAgentSessionStore<State> implements AgentSessionStore<State> {
 
   saveSnapshot(snapshot: AgentSessionSnapshot<State>): Promise<void> {
     return this.store.writeJson(`agent-sessions/${this.agentSessionId}/snapshot.json`, snapshot)
+  }
+
+  loadSnapshot(): Promise<AgentSessionSnapshot<State> | null> {
+    return this.store.readJson<AgentSessionSnapshot<State>>(`agent-sessions/${this.agentSessionId}/snapshot.json`)
   }
 }
 
