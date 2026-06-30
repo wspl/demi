@@ -13,6 +13,7 @@ import {
   MemorySessionStore,
   model,
   RecordingProvider,
+  type TestState,
   text,
 } from './helpers'
 
@@ -1059,7 +1060,7 @@ test('auto compaction counts cache usage as context pressure', async () => {
 })
 
 test('compaction boundary and marker survive snapshot reconstruction', async () => {
-  const store = new MemorySessionStore()
+  const store = new MemorySessionStore<TestState>()
   const transcript = oldAndRecentTranscript()
   const provider = new RecordingProvider([[events.text('persisted summary'), events.response()]])
   const session = createSession(provider, createRuntime(), transcript, model, { store })

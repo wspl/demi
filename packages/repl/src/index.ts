@@ -130,7 +130,7 @@ async function main(): Promise<void> {
     model: model.selection,
   }
 
-  await client.open(providerSelection, options.cwd)
+  await client.open(providerSelection, options.cwd, globalThis.crypto.randomUUID())
   writeEventLine(process.stdout, 'state', 'session opened; type /help for commands, /exit to quit', 'dim')
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })

@@ -80,7 +80,7 @@ async function main(): Promise<void> {
 
   // No catalog needed — build a selection directly for the custom model id.
   const selection = modelSelectionFromCatalog('scripted', null, { modelId: 'scripted-1', fallbackName: 'Scripted' })
-  await client.open({ providerId: 'scripted', model: selection }, cwd)
+  await client.open({ providerId: 'scripted', model: selection }, cwd, globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'hello from a custom provider' }])
 
   await done

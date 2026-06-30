@@ -156,6 +156,8 @@ export interface AgentSessionSnapshot<State> {
 
 export interface AgentSessionStore<State = unknown> {
   saveSnapshot(snapshot: AgentSessionSnapshot<State>): Promise<void> | void
+  /** Load a previously saved snapshot for this session, or null if none exists. */
+  loadSnapshot(): Promise<AgentSessionSnapshot<State> | null>
 }
 
 export interface AgentSessionRestoreParams<State> {

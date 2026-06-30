@@ -138,6 +138,12 @@ export class ConversationRuntime {
     if (client) await client.close().catch(() => {})
   }
 
+  // Open the connection now (without sending), so a restored conversation
+  // fetches its transcript snapshot and is ready to use.
+  connect(): Promise<void> {
+    return this.ensureOpen().then(() => undefined)
+  }
+
   private ensureOpen(): Promise<AgentClient> {
     if (this.client) return Promise.resolve(this.client)
     this.opening ??= this.openSession()
@@ -154,7 +160,9 @@ export class ConversationRuntime {
       thinkingEffort: intent.thinkingEffort,
       serviceTierId: intent.serviceTierId,
     })
-    await client.open(providerConfig, this.state.cwd)
+    // The conversation id is the stable session id — reconnecting with it
+    // resumes this conversation's transcript instead of starting blank.
+    await client.open(providerConfig, this.state.cwd, this.state.id)
     this.client = client
     return client
   }

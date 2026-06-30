@@ -82,6 +82,10 @@ export class MemorySessionStore<State> {
   saveSnapshot(snapshot: AgentSessionSnapshot<State>): void {
     this.snapshots.push(snapshot)
   }
+
+  loadSnapshot(): Promise<AgentSessionSnapshot<State> | null> {
+    return Promise.resolve(this.snapshots[this.snapshots.length - 1] ?? null)
+  }
 }
 
 export class RecordingProvider implements AgentProvider {
