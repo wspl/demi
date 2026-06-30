@@ -4,7 +4,7 @@
 - Do not preserve historical baggage or compatibility paths when they conflict with the intended final design.
 - Prefer direct final-state changes over transitional layers; remove obsolete code instead of keeping shims.
 - Prefer protocol, API, or file-state integrations over spawning external CLIs; keep external processes limited to intentional provider transports.
-- Do not create or switch to new branches during routine work; stay on the current branch unless the user explicitly requests branch management.
+- Branch out per requirement: create a dedicated branch off `main` for each requirement or feature, and do not commit feature work directly to `main`.
 - Do not use subagents: never invoke the `Agent`/Task tool to spawn subagents. Perform all work directly in the main session.
 
 ## Code Reuse
@@ -29,4 +29,5 @@
 ## Commits
 
 - Commit completed checkpoints automatically with appropriate Conventional Commit subjects.
+- Push immediately after every commit; never leave committed work unpushed.
 - Commit every `AGENTS.md` update immediately.

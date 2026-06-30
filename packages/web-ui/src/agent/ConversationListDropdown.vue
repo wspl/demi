@@ -4,7 +4,6 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { HistoryLine } from '@mingcute/vue/history'
 import { Chat1Line } from '@mingcute/vue/chat-1'
-import type { ConversationState } from './types'
 
 dayjs.extend(relativeTime)
 import { t } from '@demicodes/web-ui/infra/i18n'
@@ -12,8 +11,15 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import SelectDropdown from '@demicodes/web-ui/ui/SelectDropdown.vue'
 
+// Open tabs and server-side history summaries both satisfy this shape.
+interface ConversationListItem {
+  id: string
+  title: string
+  createdAt: string
+}
+
 const props = defineProps<{
-  conversations: ConversationState[]
+  conversations: ConversationListItem[]
   activeTabId: string | null
 }>()
 
@@ -22,7 +28,7 @@ const emit = defineEmits<{
 }>()
 
 const items = computed(() =>
-  props.conversations.map(c => ({ ...c, label: c.title })),
+  props.conversations.map((c) => ({ id: c.id, label: c.title, createdAt: c.createdAt })),
 )
 
 function formatTime(iso: string): string {

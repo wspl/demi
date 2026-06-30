@@ -10,6 +10,7 @@ import {
   createSession,
   MemorySessionStore,
   RecordingProvider,
+  type TestState,
   text,
 } from './helpers'
 
@@ -127,7 +128,7 @@ test('AgentSession marathon keeps requests and transcript consistent across long
 })
 
 test('restored session continues from snapshot without re-executing completed tools', async () => {
-  const store = new MemorySessionStore()
+  const store = new MemorySessionStore<TestState>()
   const firstProvider = new RecordingProvider([
     [events.toolCall('tool-1', 'write_once', { path: 'file.txt' }), events.response()],
     [events.text('wrote file'), events.response()],
@@ -255,7 +256,7 @@ test('AgentSession.fromSnapshot restores state and model context with a fresh id
 })
 
 test('AgentSession.fromSnapshot rejects mismatched runtimes', async () => {
-  const store = new MemorySessionStore()
+  const store = new MemorySessionStore<TestState>()
   const provider = new RecordingProvider([[events.text('answer'), events.response()]])
   const runtime = createRuntime()
   const session = createSession(provider, runtime, undefined, undefined, { store })
@@ -275,7 +276,7 @@ test('AgentSession.fromSnapshot rejects mismatched runtimes', async () => {
 })
 
 test('restored session after provider error does not duplicate completed tool results', async () => {
-  const store = new MemorySessionStore()
+  const store = new MemorySessionStore<TestState>()
   const firstProvider = new RecordingProvider([
     [events.toolCall('tool-1', 'write_once', { path: 'file.txt' }), events.response()],
     [events.text('wrote file'), events.response()],

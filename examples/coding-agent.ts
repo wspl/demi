@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   const model = catalog.models.find((m) => m.id === catalog.defaultModelId) ?? catalog.models[0] ?? null
   const selection = modelSelectionFromCatalog('claude-code', model)
 
-  await client.open({ providerId: 'claude-code', model: selection }, cwd)
+  await client.open({ providerId: 'claude-code', model: selection }, cwd, globalThis.crypto.randomUUID())
   await client.send([{ type: 'text', text: 'Create hello.txt containing "hi", then read it back.' }])
 
   await done
