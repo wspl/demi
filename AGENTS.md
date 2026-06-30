@@ -17,7 +17,6 @@
 
 - Keep project documentation under `docs/`.
 - Verify runnable paths and external interfaces before writing concrete design plans.
-- Update `docs/internal/agent-rewrite-plan.md` before implementing architecture or workflow changes.
 - Document test modules and their intended coverage under `docs/`.
 
 ## Submodules
