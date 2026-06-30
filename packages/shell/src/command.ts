@@ -52,9 +52,13 @@ export interface CommandStdin {
   text: string
 }
 
+/** A non-text content item a command emits to the model, peer to stdout text. */
+export type CommandAsset = { type: 'image'; mediaType: string; data: string }
+
 export interface CommandIO {
   stdout(data: string | Uint8Array): Promise<void> | void
   stderr(data: string | Uint8Array): Promise<void> | void
+  asset(asset: CommandAsset): Promise<void> | void
 }
 
 export interface CommandStorage {
@@ -407,6 +411,10 @@ class CapturingIO implements CommandIO {
 
   async stderr(data: string | Uint8Array): Promise<void> {
     await this.target.stderr(data)
+  }
+
+  async asset(asset: CommandAsset): Promise<void> {
+    await this.target.asset(asset)
   }
 
   stdoutText(): string {

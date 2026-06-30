@@ -1,6 +1,6 @@
 import { concatBytes, decodeUtf8, encodeUtf8 } from '@demicodes/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
-import { runRegisteredCommand, type CommandIO, type CommandSpec } from './command'
+import { runRegisteredCommand, type CommandAsset, type CommandIO, type CommandSpec } from './command'
 import type { ShellSession } from './environment-state'
 import type { AgentSessionCommandStorage } from './storage'
 
@@ -45,6 +45,8 @@ export function commandSpecToForkCommand(session: ShellSession, spec: CommandSpe
           exitCode: 1,
         })
         return { stdout: io.stdoutText(), stderr: `${io.stderrText()}${spec.name}: ${message}\n`, exitCode: 1 }
+      } finally {
+        if (io.assets().length > 0) session.accumulator.assets.push(...io.assets())
       }
     },
   }
@@ -53,6 +55,7 @@ export function commandSpecToForkCommand(session: ShellSession, spec: CommandSpe
 class ForwardingIO implements CommandIO {
   private readonly stdoutChunks: Uint8Array[] = []
   private readonly stderrChunks: Uint8Array[] = []
+  private readonly assetItems: CommandAsset[] = []
 
   async stdout(data: string | Uint8Array): Promise<void> {
     this.stdoutChunks.push(typeof data === 'string' ? encodeUtf8(data) : data)
@@ -62,12 +65,20 @@ class ForwardingIO implements CommandIO {
     this.stderrChunks.push(typeof data === 'string' ? encodeUtf8(data) : data)
   }
 
+  asset(asset: CommandAsset): void {
+    this.assetItems.push(asset)
+  }
+
   stdoutText(): string {
     return decodeUtf8(concatBytes(this.stdoutChunks))
   }
 
   stderrText(): string {
     return decodeUtf8(concatBytes(this.stderrChunks))
+  }
+
+  assets(): CommandAsset[] {
+    return this.assetItems
   }
 }
 

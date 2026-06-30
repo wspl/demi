@@ -3,12 +3,14 @@ import type { CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResu
 import type { HostSpawnHandle } from './host'
 import type { HostBackedFileSystem } from './host-fs'
 import type { BashAuditEvent, CommandMetadataRecord, ShellOutputRecordChunk } from './environment'
+import type { CommandAsset } from './command'
 
 export interface ExecAccumulator {
   stdout: string
   stderr: string
   audit: BashAuditEvent[]
   commandMetadata: CommandMetadataRecord[]
+  assets: CommandAsset[]
 }
 
 export interface ShellSession {

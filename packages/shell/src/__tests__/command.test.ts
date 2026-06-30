@@ -5,6 +5,7 @@ import {
   parseCommandInput,
   renderCommandPrompt,
   runRegisteredCommand,
+  type CommandAsset,
   type CommandIO,
   type CommandSpec,
   type CommandStorage,
@@ -299,6 +300,7 @@ const reservedCommandNames = [
 class MemoryIO implements CommandIO {
   private readonly stdoutChunks: Uint8Array[] = []
   private readonly stderrChunks: Uint8Array[] = []
+  private readonly assetItems: CommandAsset[] = []
 
   stdout(data: string | Uint8Array): void {
     this.stdoutChunks.push(typeof data === 'string' ? Buffer.from(data) : data)
@@ -308,12 +310,20 @@ class MemoryIO implements CommandIO {
     this.stderrChunks.push(typeof data === 'string' ? Buffer.from(data) : data)
   }
 
+  asset(asset: CommandAsset): void {
+    this.assetItems.push(asset)
+  }
+
   stdoutText(): string {
     return Buffer.concat(this.stdoutChunks).toString('utf8')
   }
 
   stderrText(): string {
     return Buffer.concat(this.stderrChunks).toString('utf8')
+  }
+
+  assets(): CommandAsset[] {
+    return this.assetItems
   }
 }
 
