@@ -36,6 +36,14 @@ export interface BashEnvironmentOptions {
   shellIdFactory?: () => string
   commandIdFactory?: () => string
   initialEnv?: Record<string, string>
+  /**
+   * Per-exec env injection for agent-owned shells. Evaluated on every exec with
+   * the owning agent session id; returned vars are set and exported, so both
+   * registered commands (ctx.env) and spawned external processes observe them.
+   * Lets a product harness expose session-scoped context (identity, routing)
+   * that changes between execs, which static initialEnv cannot express.
+   */
+  execEnv?: (agentSessionId: string) => Record<string, string>
   maxOutputBytes?: number
 }
 
@@ -252,6 +260,7 @@ export class BashEnvironment {
   private readonly shellIdFactory: () => string
   private readonly commandIdFactory: () => string
   private readonly initialEnv: Record<string, string>
+  private readonly execEnv?: (agentSessionId: string) => Record<string, string>
   private readonly defaultOutputLimitBytes: number
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
@@ -265,6 +274,7 @@ export class BashEnvironment {
     this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}
+    this.execEnv = options.execEnv
     this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
   }
 
@@ -288,7 +298,18 @@ export class BashEnvironment {
     // Expose the owning agent session id to registered commands through the shell env,
     // so per-conversation tools can resolve their caller/context (a product harness keys
     // its identity/routing maps off this). Absent for anonymous execs.
-    if (input.agentSessionId) session.state.env.set('DEMI_AGENT_SESSION_ID', input.agentSessionId)
+    if (input.agentSessionId) {
+      session.state.env.set('DEMI_AGENT_SESSION_ID', input.agentSessionId)
+      const extraEnv = this.execEnv?.(input.agentSessionId)
+      if (extraEnv) {
+        const exported = session.state.exportedVars ?? new Set<string>()
+        session.state.exportedVars = exported
+        for (const [key, value] of Object.entries(extraEnv)) {
+          session.state.env.set(key, value)
+          exported.add(key)
+        }
+      }
+    }
     if (session.pendingExec || session.foreground) {
       const commandId = session.activeCommandId ?? session.foreground?.commandId ?? 'unknown'
       throw new Error(`Shell session "${session.id}" is already running command "${commandId}"`)
