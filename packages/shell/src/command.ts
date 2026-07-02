@@ -3,10 +3,22 @@ import type { z } from 'zod'
 
 export type CommandInputSpec = Record<string, z.ZodType>
 
+/**
+ * A command is a tree of arbitrary depth, matching standard CLI semantics
+ * (cobra/click): group nodes (`CommandSpec`) route and render help, leaf nodes
+ * (`CommandSubcommandSpec`) carry the input schema and the executable. The
+ * registry registers root groups; `<path...> prompt` renders help at any group.
+ */
 export interface CommandSpec {
   name: string
   summary: string
-  subcommands: CommandSubcommandSpec[]
+  subcommands: CommandNode[]
+}
+
+export type CommandNode = CommandSpec | CommandSubcommandSpec
+
+export function isCommandGroup(node: CommandNode): node is CommandSpec {
+  return 'subcommands' in node
 }
 
 export interface CommandSubcommandSpec {
@@ -28,7 +40,13 @@ export interface CommandOutputSpec {
 }
 
 export interface ParsedCommandInput {
+  /** Leaf subcommand name, or 'prompt' for the help pseudo-subcommand. */
   subcommand: string
+  /**
+   * Segments after the root command name: group names down to the leaf. For
+   * 'prompt' it is the path of the group the help applies to (empty = root).
+   */
+  path: string[]
   values: Record<string, unknown>
   json: boolean
 }
@@ -151,6 +169,7 @@ export class CommandRegistry {
     if (this.commands.has(spec.name)) {
       throw new Error(`CommandRegistry: command "${spec.name}" is already registered`)
     }
+    validateCommandTree(spec, spec.name)
     this.commands.set(spec.name, spec)
   }
 
@@ -163,7 +182,9 @@ export class CommandRegistry {
   }
 
   renderPrompt(): string {
-    return this.list().map(renderCommandPrompt).join('\n\n')
+    return this.list()
+      .map((spec) => renderCommandPrompt(spec))
+      .join('\n\n')
   }
 }
 
@@ -171,22 +192,42 @@ export function parseCommandInput(spec: CommandSpec, argv: string[], stdin: Comm
   if (argv[0] !== spec.name) {
     throw new Error(`Expected command "${spec.name}", received "${argv[0] ?? ''}"`)
   }
-  const subcommandName = argv[1]
-  if (!subcommandName) throw new Error(`Command "${spec.name}" requires a subcommand`)
 
-  if (subcommandName === 'prompt') {
-    return { subcommand: 'prompt', values: {}, json: false }
+  let group: CommandSpec = spec
+  const path: string[] = []
+  let index = 1
+  while (true) {
+    const segment = argv[index]
+    if (!segment) throw new Error(`Command "${[spec.name, ...path].join(' ')}" requires a subcommand`)
+    if (segment === 'prompt') {
+      return { subcommand: 'prompt', path, values: {}, json: false }
+    }
+    const child = group.subcommands.find((candidate) => candidate.name === segment)
+    if (!child) throw new Error(`Unknown subcommand "${[spec.name, ...path, segment].join(' ')}"`)
+    path.push(child.name)
+    index += 1
+    if (isCommandGroup(child)) {
+      group = child
+      continue
+    }
+    return parseLeafInput(child, [spec.name, ...path].join(' '), path, argv, index, stdin)
   }
+}
 
-  const subcommand = spec.subcommands.find((candidate) => candidate.name === subcommandName)
-  if (!subcommand) throw new Error(`Unknown subcommand "${spec.name} ${subcommandName}"`)
-
+function parseLeafInput(
+  subcommand: CommandSubcommandSpec,
+  displayPath: string,
+  path: string[],
+  argv: string[],
+  startIndex: number,
+  stdin: CommandStdin,
+): ParsedCommandInput {
   const input = subcommand.input ?? {}
   const values: Record<string, unknown> = {}
   let json = false
   let positionalIndex = 0
 
-  for (let i = 2; i < argv.length; i += 1) {
+  for (let i = startIndex; i < argv.length; i += 1) {
     const token = argv[i]
     if (token === '--json') {
       json = true
@@ -196,7 +237,7 @@ export function parseCommandInput(spec: CommandSpec, argv: string[], stdin: Comm
     if (token.startsWith('--')) {
       const field = token.slice(2)
       const schema = input[field]
-      if (!schema) throw new Error(`Unknown option "--${field}" for "${spec.name} ${subcommand.name}"`)
+      if (!schema) throw new Error(`Unknown option "--${field}" for "${displayPath}"`)
 
       const next = argv[i + 1]
       const takesImplicitBoolean = isBooleanSchema(schema) && (next === undefined || next.startsWith('--'))
@@ -219,9 +260,21 @@ export function parseCommandInput(spec: CommandSpec, argv: string[], stdin: Comm
 
   return {
     subcommand: subcommand.name,
+    path,
     values: validateInput(input, values),
     json,
   }
+}
+
+function resolveCommandNode(spec: CommandSpec, path: string[]): CommandNode {
+  let node: CommandNode = spec
+  for (const segment of path) {
+    if (!isCommandGroup(node)) throw new Error(`"${node.name}" has no subcommand "${segment}"`)
+    const child: CommandNode | undefined = node.subcommands.find((candidate) => candidate.name === segment)
+    if (!child) throw new Error(`Unknown subcommand "${segment}" under "${node.name}"`)
+    node = child
+  }
+  return node
 }
 
 export async function runRegisteredCommand(spec: CommandSpec, ctx: CommandExecutionContext): Promise<CommandRunResult> {
@@ -229,14 +282,17 @@ export async function runRegisteredCommand(spec: CommandSpec, ctx: CommandExecut
   const parsed = parseCommandInput(spec, ctx.argv, stdin)
 
   if (parsed.subcommand === 'prompt') {
-    await ctx.io.stdout(`${renderCommandPrompt(spec)}\n`)
+    // The parser only accepts 'prompt' at group boundaries, so the node is a group.
+    const node = resolveCommandNode(spec, parsed.path) as CommandSpec
+    const parentPath = [spec.name, ...parsed.path.slice(0, -1)].join(' ')
+    await ctx.io.stdout(`${renderCommandPrompt(node, parsed.path.length > 0 ? parentPath : '')}\n`)
     return { exitCode: 0 }
   }
 
-  const subcommand = spec.subcommands.find((candidate) => candidate.name === parsed.subcommand)
-  if (!subcommand) throw new Error(`Unknown subcommand "${spec.name} ${parsed.subcommand}"`)
+  const subcommand = resolveCommandNode(spec, parsed.path)
+  if (isCommandGroup(subcommand)) throw new Error(`"${[spec.name, ...parsed.path].join(' ')}" is not runnable`)
   if (parsed.json && !subcommand.output?.json) {
-    throw new Error(`Subcommand "${spec.name} ${subcommand.name}" does not define JSON output`)
+    throw new Error(`Subcommand "${[spec.name, ...parsed.path].join(' ')}" does not define JSON output`)
   }
 
   const capture = new CapturingIO(ctx.io)
@@ -256,12 +312,12 @@ export async function runRegisteredCommand(spec: CommandSpec, ctx: CommandExecut
     try {
       json = JSON.parse(raw)
     } catch (error) {
-      throw new Error(`Invalid JSON output for "${spec.name} ${subcommand.name}": ${asError(error).message}`)
+      throw new Error(`Invalid JSON output for "${[spec.name, ...parsed.path].join(' ')}": ${asError(error).message}`)
     }
     const validation = subcommand.output?.json?.safeParse(json)
     if (!validation?.success) {
       const issue = validation?.error.issues[0]
-      throw new Error(`JSON output failed validation for "${spec.name} ${subcommand.name}": ${issue?.message}`)
+      throw new Error(`JSON output failed validation for "${[spec.name, ...parsed.path].join(' ')}": ${issue?.message}`)
     }
     await ctx.io.stdout(raw)
   }
@@ -269,42 +325,64 @@ export async function runRegisteredCommand(spec: CommandSpec, ctx: CommandExecut
   return result
 }
 
-export function renderCommandPrompt(spec: CommandSpec): string {
-  const lines = [`${spec.name}: ${spec.summary}`, '', 'Subcommands:']
+export function renderCommandPrompt(spec: CommandSpec, parentPath = ''): string {
+  const path = parentPath ? `${parentPath} ${spec.name}` : spec.name
+  const leaves = spec.subcommands.filter((node): node is CommandSubcommandSpec => !isCommandGroup(node))
+  const groups = spec.subcommands.filter(isCommandGroup)
 
-  for (const subcommand of spec.subcommands) {
-    lines.push('', `  ${spec.name} ${subcommand.name}`)
-    lines.push(`    ${subcommand.summary}`)
-    lines.push(`    Effects: ${subcommand.effects ?? 'not specified'}`)
-    lines.push(`    Success output: ${subcommand.successOutput ?? defaultSuccessOutput(subcommand)}`)
-    lines.push(`    Failure output: ${subcommand.failureOutput ?? 'writes an error message to stderr and exits non-zero'}`)
+  const lines = [`${path}: ${spec.summary}`]
+  if (leaves.length > 0) {
+    lines.push('', 'Subcommands:')
+    for (const subcommand of leaves) {
+      lines.push('', `  ${path} ${subcommand.name}`)
+      lines.push(`    ${subcommand.summary}`)
+      lines.push(`    Effects: ${subcommand.effects ?? 'not specified'}`)
+      lines.push(`    Success output: ${subcommand.successOutput ?? defaultSuccessOutput(subcommand)}`)
+      lines.push(`    Failure output: ${subcommand.failureOutput ?? 'writes an error message to stderr and exits non-zero'}`)
 
-    const fields = Object.entries(subcommand.input ?? {})
-    if (fields.length > 0) {
-      lines.push('    Parameters:')
-      for (const [field, schema] of fields) {
-        const positional = subcommand.positionals?.includes(field) ?? false
-        const stdin = subcommand.stdinField === field
-        lines.push(`      ${formatField(field, schema, positional, stdin)}`)
+      const fields = Object.entries(subcommand.input ?? {})
+      if (fields.length > 0) {
+        lines.push('    Parameters:')
+        for (const [field, schema] of fields) {
+          const positional = subcommand.positionals?.includes(field) ?? false
+          const stdin = subcommand.stdinField === field
+          lines.push(`      ${formatField(field, schema, positional, stdin)}`)
+        }
       }
-    }
 
-    if (subcommand.stdinField) {
-      lines.push(`    stdin/heredoc: ${subcommand.stdinField}`)
-    }
-    if (subcommand.output?.json) {
-      lines.push('    --json: emits machine-readable JSON for this subcommand')
-    } else {
-      lines.push('    --json: accepted only when this subcommand defines JSON output')
-    }
+      if (subcommand.stdinField) {
+        lines.push(`    stdin/heredoc: ${subcommand.stdinField}`)
+      }
+      if (subcommand.output?.json) {
+        lines.push('    --json: emits machine-readable JSON for this subcommand')
+      } else {
+        lines.push('    --json: accepted only when this subcommand defines JSON output')
+      }
 
-    if (subcommand.examples.length > 0) {
-      lines.push('    Examples:')
-      for (const example of subcommand.examples) lines.push(indent(example, 6))
+      if (subcommand.examples.length > 0) {
+        lines.push('    Examples:')
+        for (const example of subcommand.examples) lines.push(indent(example, 6))
+      }
     }
   }
 
-  return lines.join('\n')
+  const blocks = [lines.join('\n')]
+  for (const group of groups) blocks.push(renderCommandPrompt(group, path))
+  return blocks.join('\n\n')
+}
+
+function validateCommandTree(node: CommandSpec, path: string): void {
+  const seen = new Set<string>()
+  for (const child of node.subcommands) {
+    if (child.name === 'prompt') {
+      throw new Error(`CommandRegistry: "${path} prompt" is reserved for the help pseudo-subcommand`)
+    }
+    if (seen.has(child.name)) {
+      throw new Error(`CommandRegistry: duplicate subcommand "${path} ${child.name}"`)
+    }
+    seen.add(child.name)
+    if (isCommandGroup(child)) validateCommandTree(child, `${path} ${child.name}`)
+  }
 }
 
 function defaultSuccessOutput(subcommand: CommandSubcommandSpec): string {
