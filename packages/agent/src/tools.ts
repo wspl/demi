@@ -7,6 +7,7 @@ import type {
   ShellWriteInput,
   StreamArtifact,
 } from '@demicodes/shell'
+import type { ToolResultContentBlock } from '@demicodes/core'
 import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from './types'
 
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
@@ -171,8 +172,14 @@ export function toShellToolResult(
   toolCallId = '',
   options: ShellToolResultOptions = {},
 ): AgentToolInvokeResult {
+  const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
+  if (result.status === 'exited' && result.assets) {
+    for (const asset of result.assets) {
+      output.push({ type: 'image', source: { mediaType: asset.mediaType, data: asset.data } })
+    }
+  }
   return {
-    output: [{ type: 'text', text: formatShellToolResult(result, options) }],
+    output,
     isError: false,
     metadata: result,
     continuation:

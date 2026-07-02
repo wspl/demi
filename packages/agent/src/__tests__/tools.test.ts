@@ -104,6 +104,28 @@ test('shell command handles are required only for running or over-budget output'
   expect(shellCommandHandleRequired(shellSnapshot('x'.repeat(4_001)), 1_000)).toBe(true)
 })
 
+test('shell tool result appends command assets as image content blocks after the text', () => {
+  const snapshot = {
+    ...shellSnapshot('captured\n'),
+    assets: [{ type: 'image' as const, mediaType: 'image/png', data: 'AAAA' }],
+  }
+  const result = toShellToolResult(snapshot, 'tool-1', { includePreview: true, previewBudgetTokens: 1_000 })
+
+  expect(result.output).toHaveLength(2)
+  expect(result.output[0]?.type).toBe('text')
+  expect(result.output[1]).toEqual({ type: 'image', source: { mediaType: 'image/png', data: 'AAAA' } })
+
+  const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
+  expect(text).toContain('preview:')
+  expect(text).toContain('captured')
+})
+
+test('shell tool result without assets stays text-only', () => {
+  const result = toShellToolResult(shellSnapshot('done\n'), 'tool-1', { includePreview: true })
+  expect(result.output).toHaveLength(1)
+  expect(result.output[0]?.type).toBe('text')
+})
+
 function shellSnapshot(output: string): Extract<ShellCommandSnapshot, { status: 'exited' }> {
   const bytes = new TextEncoder().encode(output).byteLength
   return {
