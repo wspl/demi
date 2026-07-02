@@ -1,13 +1,13 @@
 import { concatBytes, decodeUtf8, encodeUtf8 } from '@demicodes/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
-import { runRegisteredCommand, type CommandAsset, type CommandIO, type CommandSpec } from './command'
+import { isCommandGroup, runRegisteredCommand, type CommandAsset, type CommandIO, type CommandSpec } from './command'
 import type { ShellSession } from './environment-state'
 import type { AgentSessionCommandStorage } from './storage'
 
 export function commandSpecToForkCommand(session: ShellSession, spec: CommandSpec, storage: AgentSessionCommandStorage): ForkCommand {
   return {
     name: spec.name,
-    consumesStdin: spec.subcommands.some((subcommand) => Boolean(subcommand.stdinField)),
+    consumesStdin: treeConsumesStdin(spec),
     execute: async (args, ctx): Promise<ForkExecResult> => {
       const stdinText = decodeForkStdin(ctx.stdin)
       const io = createForwardingIO()
@@ -84,6 +84,10 @@ class ForwardingIO implements CommandIO {
 
 function createForwardingIO(): ForwardingIO {
   return new ForwardingIO()
+}
+
+function treeConsumesStdin(spec: CommandSpec): boolean {
+  return spec.subcommands.some((node) => (isCommandGroup(node) ? treeConsumesStdin(node) : Boolean(node.stdinField)))
 }
 
 function mapToRecord(map: Map<string, string>): Record<string, string> {
