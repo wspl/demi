@@ -285,6 +285,10 @@ export class BashEnvironment {
     const timeoutMs = normalizeTimeoutMs(input.timeoutMs ?? DEFAULT_TIMEOUT_MS)
     const session = input.shellId ? this.requireShell(input.shellId) : this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
+    // Expose the owning agent session id to registered commands through the shell env,
+    // so per-conversation tools can resolve their caller/context (a product harness keys
+    // its identity/routing maps off this). Absent for anonymous execs.
+    if (input.agentSessionId) session.state.env.set('DEMI_AGENT_SESSION_ID', input.agentSessionId)
     if (session.pendingExec || session.foreground) {
       const commandId = session.activeCommandId ?? session.foreground?.commandId ?? 'unknown'
       throw new Error(`Shell session "${session.id}" is already running command "${commandId}"`)

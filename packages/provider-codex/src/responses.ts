@@ -109,6 +109,7 @@ interface StreamState {
   currentFunctionCall: CodexFunctionCallItem | null
   functionArguments: Map<string, string>
   reasoningDeltaSeen: boolean
+  textDeltaSeen: boolean
 }
 
 export function buildCodexResponsesRequestBody(request: InferenceRequest): CodexResponsesRequestBody {
@@ -137,6 +138,7 @@ export async function* mapCodexResponseEvents(events: AsyncIterable<CodexRespons
     currentFunctionCall: null,
     functionArguments: new Map(),
     reasoningDeltaSeen: false,
+    textDeltaSeen: false,
   }
 
   for await (const event of events) {
@@ -165,7 +167,10 @@ export function* mapCodexResponseEvent(event: CodexResponseStreamEvent, state: S
       }
       return
     case 'response.output_text.delta':
-      if (typeof event.delta === 'string') yield { type: 'text_delta', text: event.delta }
+      if (typeof event.delta === 'string') {
+        state.textDeltaSeen = true
+        yield { type: 'text_delta', text: event.delta }
+      }
       return
     case 'response.function_call_arguments.delta': {
       const key = event.item_id ?? state.currentFunctionCall?.id
@@ -190,8 +195,14 @@ export function* mapCodexResponseEvent(event: CodexResponseStreamEvent, state: S
         if (state.currentReasoning === item) state.currentReasoning = null
         state.reasoningDeltaSeen = false
       } else if (isMessageItem(item)) {
-        const text = messageText(item)
-        if (text) yield { type: 'text_delta', text }
+        // Only emit the full message text on done when no streaming delta arrived
+        // (non-streaming fallback); otherwise the deltas already carried the whole
+        // text and emitting again would duplicate it. Mirrors the reasoning path.
+        if (!state.textDeltaSeen) {
+          const text = messageText(item)
+          if (text) yield { type: 'text_delta', text }
+        }
+        state.textDeltaSeen = false
       } else if (isFunctionCallItem(item)) {
         const itemId = item.id ?? event.item_id
         const callId = item.call_id ?? event.call_id
@@ -393,6 +404,7 @@ function newStreamState(): StreamState {
     currentFunctionCall: null,
     functionArguments: new Map(),
     reasoningDeltaSeen: false,
+    textDeltaSeen: false,
   }
 }
 
