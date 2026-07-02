@@ -9,7 +9,7 @@ import { ParseException } from '@demicodes/just-bash/parser/types'
 import { LexerError } from '@demicodes/just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from '@demicodes/just-bash/types'
 import { resolveLimits } from '@demicodes/just-bash/limits'
-import { CommandRegistry, type CommandSpec } from './command'
+import { CommandRegistry, type CommandAsset, type CommandSpec } from './command'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
   buildBashopts,
@@ -132,6 +132,7 @@ export type ShellCommandSnapshot =
       idleMs: number
       audit: BashAuditEvent[]
       commandMetadata?: CommandMetadataRecord[]
+      assets?: CommandAsset[]
     }
   | {
       status: 'running'
@@ -171,6 +172,7 @@ interface ShellCommandRecord {
   exitCode?: number
   audit: BashAuditEvent[]
   commandMetadata: CommandMetadataRecord[]
+  assets: CommandAsset[]
 }
 
 interface PersistedShellCommandArtifact {
@@ -490,7 +492,7 @@ export class BashEnvironment {
       fs,
       interpreter: undefined as unknown as Interpreter,
       forkCommands,
-      accumulator: { stdout: '', stderr: '', audit: [], commandMetadata: [] },
+      accumulator: { stdout: '', stderr: '', audit: [], commandMetadata: [], assets: [] },
       startStdoutBytes: 0,
       startStderrBytes: 0,
       totalStdoutBytes: 0,
@@ -556,7 +558,7 @@ export class BashEnvironment {
       }
       throw error
     }
-    session.accumulator = { stdout: '', stderr: '', audit: [], commandMetadata: [] }
+    session.accumulator = { stdout: '', stderr: '', audit: [], commandMetadata: [], assets: [] }
     session.startStdoutBytes = session.totalStdoutBytes
     session.startStderrBytes = session.totalStderrBytes
     session.abortController = new AbortController()
@@ -606,6 +608,7 @@ export class BashEnvironment {
       outputOffset: 0,
       audit: [],
       commandMetadata: [],
+      assets: [],
     }
     this.commandsById.set(id, record)
     return record
@@ -996,6 +999,7 @@ export class BashEnvironment {
     record.exitCode = exitCode
     record.audit = [...session.accumulator.audit]
     record.commandMetadata = [...session.accumulator.commandMetadata]
+    record.assets = [...session.accumulator.assets]
     session.pendingExec = undefined
     if (session.activeCommandId === record.id) session.activeCommandId = undefined
     return this.snapshotCommand(record, input)
@@ -1079,6 +1083,7 @@ export class BashEnvironment {
         audit: record.audit,
       }
       if (record.commandMetadata.length > 0) result.commandMetadata = record.commandMetadata
+      if (record.assets.length > 0) result.assets = record.assets
       return result
     }
     if (record.status === 'aborted') return { ...base, status: 'aborted' }

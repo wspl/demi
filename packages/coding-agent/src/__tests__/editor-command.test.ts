@@ -377,6 +377,7 @@ function commandOutput(): { io: CommandIO; stdout: () => string; stderr: () => s
       stderr: async (data) => {
         stderr.push(text(data))
       },
+      asset: async () => {},
     },
     stdout: () => stdout.join(''),
     stderr: () => stderr.join(''),
