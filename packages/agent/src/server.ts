@@ -251,10 +251,12 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         return sessionRef.scheduleYieldWakeup(durationMs)
       },
     })
+    // Commands are fixed for the session's lifetime, so the rendered help is too.
+    const commandsPrompt = commandRegistry.renderPrompt()
     const runtime: AgentHarnessRuntime<unknown> = {
       harnessName: agent.name,
       initialState: () => state,
-      systemPrompt: (ctx) => agent.systemPrompt(ctx),
+      systemPrompt: (ctx) => agent.systemPrompt({ ...ctx, commandsPrompt }),
       preamble: (ctx) => agent.preamble?.(ctx) ?? null,
       resolveReferences: (ctx, content) => agent.resolveReferences?.(ctx, content) ?? content,
       lifecycle: (event) => agent.lifecycle?.(event),
