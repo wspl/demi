@@ -36,8 +36,7 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
     initialState: () => ({}),
     host: () => options.host,
     commands: () => [...commands],
-    systemPrompt: () => {
-      const commandPrompt = renderCommandList(commands)
+    systemPrompt: (ctx) => {
       const sections = [
         'You are a coding agent. Use shell session tools to inspect, edit, test, and verify the workspace.',
         'Treat cwd as the task workspace. Create, edit, and verify task files there by default; do not create a separate project directory under /tmp or another absolute path unless the user asks for it or the workspace is unusable.',
@@ -60,7 +59,7 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
         ].join('\n'),
         'File references attached by the client are expanded before provider calls.',
       ]
-      if (commandPrompt.trim()) sections.push(`Registered commands:\n\n${commandPrompt}`)
+      if (ctx.commandsPrompt.trim()) sections.push(`Registered commands:\n\n${ctx.commandsPrompt}`)
       return sections.join('\n\n')
     },
     resolveReferences,
@@ -69,14 +68,4 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
 
 function defaultCodingCommands(editorHost: Host): CommandSpec[] {
   return [createEditorCommand(editorHost), createTodoCommand()]
-}
-
-function renderCommandList(commands: CommandSpec[]): string {
-  return commands.map((command) => commandPromptText(command)).join('\n\n')
-}
-
-function commandPromptText(command: CommandSpec): string {
-  const registry = new CommandRegistry()
-  registry.register(command)
-  return registry.renderPrompt()
 }

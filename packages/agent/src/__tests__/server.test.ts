@@ -158,6 +158,38 @@ test('AgentServer resumes a conversation by session id and restores its transcri
   await fresh.close()
 })
 
+test('AgentServer renders registered command help into the harness system prompt context', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-agent-commands-prompt-'))
+  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+  let seenCommandsPrompt: string | null = null
+  const harness: AgentHarness<Record<string, never>> = {
+    name: 'command-prompt',
+    initialState: () => ({}),
+    host: () => host,
+    commands: () => [
+      {
+        name: 'greet',
+        summary: 'Greets the caller.',
+        subcommands: [{ name: 'hello', summary: 'Say hello.', examples: ['greet hello'], run: () => ({ exitCode: 0 }) }],
+      },
+    ],
+    systemPrompt: (ctx) => {
+      seenCommandsPrompt = ctx.commandsPrompt
+      return `system\n${ctx.commandsPrompt}`
+    },
+  }
+  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('ok'), events.response()]]
+  const { client } = createAgentClientHarness({ harness, providerTurns: turns })
+
+  await client.open(providerConfig(turns), root, globalThis.crypto.randomUUID())
+  await client.send([{ type: 'text', text: 'hi' }])
+  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
+
+  expect(seenCommandsPrompt ?? '').toContain('greet: Greets the caller.')
+  expect(seenCommandsPrompt ?? '').toContain('greet hello')
+  await client.close()
+})
+
 test('AgentServer lists persisted conversations for a workspace, server-side', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-agent-list-'))
   const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })

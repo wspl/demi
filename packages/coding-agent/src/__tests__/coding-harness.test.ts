@@ -9,6 +9,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import {
   BashEnvironment,
   CommandRegistry,
+  type CommandSpec,
   type Host,
   type HostDirent,
   type HostFileSystem,
@@ -56,6 +57,7 @@ test('coding agent harness exposes shell session tools and registered command pr
     state,
     cwd: process.cwd(),
     transcript: {} as never,
+    commandsPrompt: renderCommandsPrompt(commands),
   })
   expect(prompt).toContain('editor: Create, edit, and patch files.')
   expect(prompt).toContain('Treat cwd as the task workspace')
@@ -224,7 +226,7 @@ function createRuntimeFromHarness(
   const runtime: AgentHarnessRuntime<Record<string, never>> = {
     harnessName: harness.name,
     initialState: () => state,
-    systemPrompt: (ctx) => harness.systemPrompt(ctx),
+    systemPrompt: (ctx) => harness.systemPrompt({ ...ctx, commandsPrompt: registry.renderPrompt() }),
     preamble: (ctx) => harness.preamble?.(ctx) ?? null,
     resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
     lifecycle: (event) => harness.lifecycle?.(event),
@@ -238,6 +240,12 @@ function createRuntimeFromHarness(
       }),
   }
   return { environment, runtime, state }
+}
+
+function renderCommandsPrompt(commands: readonly CommandSpec[]): string {
+  const registry = new CommandRegistry()
+  for (const command of commands) registry.register(command)
+  return registry.renderPrompt()
 }
 
 class RecordingHost implements Host {
