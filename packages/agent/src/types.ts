@@ -17,6 +17,16 @@ export interface AgentPromptContext<State> {
   transcript: Transcript
 }
 
+export interface AgentSystemPromptContext<State> extends AgentPromptContext<State> {
+  /**
+   * Rendered help for every registered command (summary, subcommands, parameters,
+   * stdin fields, examples), produced by the server from the session's actual
+   * CommandRegistry. Harnesses embed it wherever their system prompt wants the
+   * command reference; empty string when no commands are registered.
+   */
+  commandsPrompt: string
+}
+
 export interface AgentToolContext<State> {
   agentSessionId: string
   state: State
@@ -48,7 +58,7 @@ export interface AgentHarness<State = unknown> {
   initialState(): State
   host(ctx: AgentHarnessContext<State>): Host
   commands?(ctx: AgentHarnessContext<State>): CommandSpec[]
-  systemPrompt(ctx: AgentPromptContext<State>): string
+  systemPrompt(ctx: AgentSystemPromptContext<State>): string
   preamble?(ctx: AgentPromptContext<State>): string | null
   resolveReferences?(
     ctx: AgentReferenceResolveContext<State>,

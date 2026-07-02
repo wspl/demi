@@ -413,7 +413,7 @@ function createRuntimeFromHarness(
   const runtime: AgentHarnessRuntime<Record<string, never>> = {
     harnessName: harness.name,
     initialState: () => state,
-    systemPrompt: (ctx) => harness.systemPrompt(ctx),
+    systemPrompt: (ctx) => harness.systemPrompt({ ...ctx, commandsPrompt: registry.renderPrompt() }),
     preamble: (ctx) => harness.preamble?.(ctx) ?? null,
     resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
     lifecycle: (event) => harness.lifecycle?.(event),
