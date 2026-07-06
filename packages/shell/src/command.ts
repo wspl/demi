@@ -1,5 +1,6 @@
 import { asError, concatBytes, decodeUtf8, encodeUtf8 } from '@demicodes/utils'
 import type { z } from 'zod'
+import { RESERVED_COMMAND_NAMES } from './portable-commands'
 
 export type CommandInputSpec = Record<string, z.ZodType>
 
@@ -94,70 +95,6 @@ export interface CommandExecutionContext {
   io: CommandIO
   storage: CommandStorage
 }
-
-const RESERVED_COMMAND_NAMES = new Set([
-  '.',
-  'awk',
-  'bash',
-  'break',
-  'bun',
-  'cargo',
-  'cat',
-  'cd',
-  'chmod',
-  'command',
-  'continue',
-  'cp',
-  'cut',
-  'docker',
-  'du',
-  'echo',
-  'exit',
-  'export',
-  'file',
-  'find',
-  'git',
-  'grep',
-  'head',
-  'jobs',
-  'jq',
-  'local',
-  'ls',
-  'mkdir',
-  'mv',
-  'nl',
-  'node',
-  'npm',
-  'pnpm',
-  'popd',
-  'printf',
-  'pushd',
-  'python',
-  'read',
-  'return',
-  'rg',
-  'rm',
-  'sed',
-  'set',
-  'sh',
-  'shift',
-  'sort',
-  'source',
-  'stat',
-  'tail',
-  'tee',
-  'test',
-  'touch',
-  'tree',
-  'tr',
-  'uniq',
-  'unset',
-  'wait',
-  'wc',
-  'xargs',
-  'yarn',
-  'yq',
-])
 
 export class CommandRegistry {
   private readonly commands = new Map<string, CommandSpec>()
