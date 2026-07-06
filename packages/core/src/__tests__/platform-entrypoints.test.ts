@@ -44,7 +44,7 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/core', []],
   ['@demicodes/provider', ['@demicodes/core']],
   ['@demicodes/shell', ['@demicodes/utils']],
-  ['@demicodes/host-local', ['@demicodes/shell']],
+  ['@demicodes/host-local', ['@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/agent', ['@demicodes/core', '@demicodes/provider', '@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/coding-agent', ['@demicodes/agent', '@demicodes/core', '@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/provider-claude-code', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],

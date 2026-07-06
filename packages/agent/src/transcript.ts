@@ -1,4 +1,4 @@
-import { createId } from '@demicodes/utils'
+import { createId, safeJsonStringify } from '@demicodes/utils'
 import type {
   Block,
   ModelSelection,
@@ -547,22 +547,7 @@ function estimateBlockText(block: Block): string {
 
 function safeStringify(value: unknown, fallback: string): string {
   if (typeof value === 'string') return value
-  const seen = new WeakSet<object>()
-  try {
-    const text = JSON.stringify(value, (_key, nested) => {
-      if (typeof nested === 'bigint') return nested.toString()
-      if (typeof nested === 'symbol') return String(nested)
-      if (typeof nested === 'function') return `[Function ${nested.name || 'anonymous'}]`
-      if (nested !== null && typeof nested === 'object') {
-        if (seen.has(nested)) return '[Circular]'
-        seen.add(nested)
-      }
-      return nested
-    })
-    return text ?? fallback
-  } catch {
-    return fallback
-  }
+  return safeJsonStringify(value) ?? fallback
 }
 
 function stringifyUserContent(content: UserContentBlock): string {

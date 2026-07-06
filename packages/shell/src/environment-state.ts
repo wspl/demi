@@ -21,13 +21,6 @@ export interface ShellSession {
   interpreter: Interpreter
   forkCommands: ForkCommandRegistry
   accumulator: ExecAccumulator
-  startStdoutBytes: number
-  startStderrBytes: number
-  totalStdoutBytes: number
-  totalStderrBytes: number
-  stdoutTail: string
-  stderrTail: string
-  truncated: boolean
   foreground?: ForegroundProcess
   activeCommandId?: string
   backgroundJobs: Map<number, BackgroundJob>
@@ -60,31 +53,23 @@ export interface ForegroundProcess {
   handle: HostSpawnHandle
   startedAt: number
   lastOutputAt: number
+  /** Everything the process wrote, including redirected output — this is what
+   * the interpreter observes as the command's stdout/stderr. */
   rawStdoutBuffer: string
   rawStderrBuffer: string
+  /** Output routed to the visible sinks only (redirections excluded) — this is
+   * what command records and model previews show. */
   stdoutBuffer: string
   stderrBuffer: string
+  /** Interleaved visible chunks with running byte offsets, for merged replay. */
   outputChunks: ShellOutputRecordChunk[]
   outputBytes: number
-  lastStdoutSnapshot: number
-  lastStderrSnapshot: number
-  lastRawStdoutBytesSnapshot: number
-  lastRawStderrBytesSnapshot: number
-  lastStdoutBytesSnapshot: number
-  lastStderrBytesSnapshot: number
-  rawStdoutBytes: number
-  rawStderrBytes: number
-  totalStdoutBytes: number
-  totalStderrBytes: number
   audit: BashAuditEvent[]
   stdoutPump: Promise<void>
   stderrPump: Promise<void>
   exitPromise: Promise<{ exitCode: number | null; signal?: string }>
   outputSinks: Record<1 | 2, ForegroundSink>
   abortController: AbortController
-  outputLimitWaiters: Set<() => void>
-  redirectedStdoutBytes: number
-  redirectedStderrBytes: number
 }
 
 export interface ForegroundSink {
@@ -97,6 +82,5 @@ export interface ForegroundSink {
 
 export type BoundaryOutcome =
   | { kind: 'foreground_appeared'; foreground: ForegroundProcess }
-  | { kind: 'output_limit' }
   | { kind: 'timeout' }
   | { kind: 'aborted' }

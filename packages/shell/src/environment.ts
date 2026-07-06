@@ -1,8 +1,8 @@
-import { decodeUtf8, encodeUtf8, tail } from '@demicodes/utils'
-import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterContext, type InterpreterState } from '@demicodes/just-bash/interpreter'
+import { decodeUtf8, encodeUtf8, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
+import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
-import { createLazyCommands, type CommandName } from '@demicodes/just-bash/commands'
+import { createLazyCommands } from '@demicodes/just-bash/commands'
 import { decodeBytesToUtf8, unsafeBytesFromLatin1 } from '@demicodes/just-bash/encoding'
 import { parse } from '@demicodes/just-bash/parser'
 import { ParseException } from '@demicodes/just-bash/parser/types'
@@ -10,6 +10,7 @@ import { LexerError } from '@demicodes/just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from '@demicodes/just-bash/types'
 import { resolveLimits } from '@demicodes/just-bash/limits'
 import { CommandRegistry, type CommandAsset, type CommandSpec } from './command'
+import { DEMI_PORTABLE_COMMANDS } from './portable-commands'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
   buildBashopts,
@@ -20,8 +21,6 @@ import {
   pumpOutputStream,
   pumpStream,
   recordForegroundChunk,
-  snapshotFromAccumulator,
-  snapshotFromForeground,
 } from './environment-output'
 import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } from './environment-state'
 import type { Host } from './host'
@@ -74,16 +73,6 @@ export interface ShellWriteInput {
 export interface ShellAbortInput {
   commandId: string
   maxOutputBytes?: number
-}
-
-export interface OutputSnapshot {
-  stdoutDelta: string
-  stderrDelta: string
-  stdoutTail: string
-  stderrTail: string
-  totalStdoutBytes: number
-  totalStderrBytes: number
-  truncated: boolean
 }
 
 export interface StreamArtifact {
@@ -181,6 +170,7 @@ interface ShellCommandRecord {
   audit: BashAuditEvent[]
   commandMetadata: CommandMetadataRecord[]
   assets: CommandAsset[]
+  persistedFingerprint?: string
 }
 
 interface PersistedShellCommandArtifact {
@@ -200,60 +190,6 @@ interface PersistedShellCommandArtifact {
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
 const MAX_TIMEOUT_MS = 600_000
-const DEMI_PORTABLE_COMMANDS: CommandName[] = [
-  'cat',
-  'ls',
-  'mkdir',
-  'rmdir',
-  'touch',
-  'rm',
-  'cp',
-  'mv',
-  'ln',
-  'chmod',
-  'readlink',
-  'head',
-  'tail',
-  'wc',
-  'stat',
-  'grep',
-  'fgrep',
-  'egrep',
-  'rg',
-  'sed',
-  'awk',
-  'sort',
-  'uniq',
-  'comm',
-  'cut',
-  'paste',
-  'tr',
-  'rev',
-  'nl',
-  'fold',
-  'expand',
-  'unexpand',
-  'strings',
-  'column',
-  'join',
-  'tee',
-  'find',
-  'basename',
-  'dirname',
-  'tree',
-  'du',
-  'jq',
-  'base64',
-  'diff',
-  'seq',
-  'expr',
-  'md5sum',
-  'sha1sum',
-  'sha256sum',
-  'file',
-  'tac',
-  'od',
-]
 export class BashEnvironment {
   private readonly host: Host
   private readonly commands: CommandRegistry
@@ -518,13 +454,6 @@ export class BashEnvironment {
       interpreter: undefined as unknown as Interpreter,
       forkCommands,
       accumulator: { stdout: '', stderr: '', audit: [], commandMetadata: [], assets: [] },
-      startStdoutBytes: 0,
-      startStderrBytes: 0,
-      totalStdoutBytes: 0,
-      totalStderrBytes: 0,
-      stdoutTail: '',
-      stderrTail: '',
-      truncated: false,
       foregroundWaiters: new Set(),
       backgroundJobs: new Map(),
       nextBackgroundJobId: 1,
@@ -584,8 +513,6 @@ export class BashEnvironment {
       throw error
     }
     session.accumulator = { stdout: '', stderr: '', audit: [], commandMetadata: [], assets: [] }
-    session.startStdoutBytes = session.totalStdoutBytes
-    session.startStderrBytes = session.totalStderrBytes
     session.abortController = new AbortController()
     session.activeCommandId = record.id
 
@@ -874,25 +801,12 @@ export class BashEnvironment {
       stderrBuffer: '',
       outputChunks: [],
       outputBytes: 0,
-      lastStdoutSnapshot: 0,
-      lastStderrSnapshot: 0,
-      lastRawStdoutBytesSnapshot: 0,
-      lastRawStderrBytesSnapshot: 0,
-      lastStdoutBytesSnapshot: 0,
-      lastStderrBytesSnapshot: 0,
-      rawStdoutBytes: 0,
-      rawStderrBytes: 0,
-      totalStdoutBytes: 0,
-      totalStderrBytes: 0,
       audit: [{ kind: 'system-command', name: command, args, cwd: opts.cwd, exitCode: 0 }],
       stdoutPump: Promise.resolve(),
       stderrPump: Promise.resolve(),
       exitPromise: handle.wait(),
       outputSinks: createOutputSinks(session.fs, opts.cwd, opts.redirections),
       abortController,
-      outputLimitWaiters: new Set(),
-      redirectedStdoutBytes: 0,
-      redirectedStderrBytes: 0,
     }
     session.foreground = foreground
     notifyForegroundWaiters(session.foregroundWaiters, foreground)
@@ -906,12 +820,12 @@ export class BashEnvironment {
 
     if (handle.output) {
       foreground.stdoutPump = pumpOutputStream(handle.output, (chunk) => {
-        recordForegroundChunk(session, foreground, chunk.stream === 'stdout' ? 1 : 2, chunk.chunk)
+        recordForegroundChunk(foreground, chunk.stream === 'stdout' ? 1 : 2, chunk.chunk)
       })
       foreground.stderrPump = Promise.resolve()
     } else {
-      foreground.stdoutPump = pumpStream(handle.stdout, (chunk) => recordForegroundChunk(session, foreground, 1, chunk))
-      foreground.stderrPump = pumpStream(handle.stderr, (chunk) => recordForegroundChunk(session, foreground, 2, chunk))
+      foreground.stdoutPump = pumpStream(handle.stdout, (chunk) => recordForegroundChunk(foreground, 1, chunk))
+      foreground.stderrPump = pumpStream(handle.stderr, (chunk) => recordForegroundChunk(foreground, 2, chunk))
     }
 
     const exit = await foreground.exitPromise
@@ -992,8 +906,8 @@ export class BashEnvironment {
     // back correctly instead of as mojibake. decodeBytesToUtf8 leaves already-
     // Unicode and pure-ASCII strings untouched, and preserves invalid-UTF-8
     // binary as-is.
-    const stdoutText = foreground ? resultOrError.stdout.slice(foreground.lastStdoutSnapshot) : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stdout))
-    const stderrText = foreground ? resultOrError.stderr.slice(foreground.lastStderrSnapshot) : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
+    const stdoutText = foreground ? resultOrError.stdout : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stdout))
+    const stderrText = foreground ? resultOrError.stderr : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
     session.accumulator.stdout += stdoutText
     session.accumulator.stderr += stderrText
     if (foreground) {
@@ -1011,9 +925,8 @@ export class BashEnvironment {
     exitCode: number,
     input: { stdoutOffset?: number; stderrOffset?: number; outputOffset?: number; maxOutputBytes?: number },
   ): ShellCommandSnapshot {
-    const snapshot = snapshotFromAccumulator(session, session.accumulator)
-    record.stdout = snapshot.stdoutTail.length === snapshot.stdoutDelta.length ? snapshot.stdoutDelta : session.accumulator.stdout
-    record.stderr = snapshot.stderrTail.length === snapshot.stderrDelta.length ? snapshot.stderrDelta : session.accumulator.stderr
+    record.stdout = session.accumulator.stdout
+    record.stderr = session.accumulator.stderr
     if (record.outputChunks.length === 0) {
       appendRecordOutput(record, 'stdout', record.stdout)
       appendRecordOutput(record, 'stderr', record.stderr)
@@ -1040,7 +953,6 @@ export class BashEnvironment {
     foreground.abortController.abort()
     foreground.handle.kill('SIGTERM').catch(() => {})
     await flushForegroundSinks(session, foreground)
-    const snapshot = snapshotFromForeground(session, foreground)
     record.stdout = foreground.stdoutBuffer
     record.stderr = foreground.stderrBuffer
     record.outputChunks = [...foreground.outputChunks]
@@ -1049,7 +961,6 @@ export class BashEnvironment {
     session.foreground = undefined
     session.pendingExec = undefined
     if (session.activeCommandId === record.id) session.activeCommandId = undefined
-    void snapshot
     return this.snapshotCommand(record, input)
   }
 
@@ -1062,9 +973,8 @@ export class BashEnvironment {
     session.abortController?.abort()
     session.pendingExec = undefined
     if (session.activeCommandId === record.id) session.activeCommandId = undefined
-    const snapshot = snapshotFromAccumulator(session, session.accumulator)
-    record.stdout = snapshot.stdoutDelta
-    record.stderr = snapshot.stderrDelta
+    record.stdout = session.accumulator.stdout
+    record.stderr = session.accumulator.stderr
     if (record.outputChunks.length === 0) {
       appendRecordOutput(record, 'stdout', record.stdout)
       appendRecordOutput(record, 'stderr', record.stderr)
@@ -1167,6 +1077,9 @@ export class BashEnvironment {
   }
 
   private persistCommandArtifact(record: ShellCommandRecord): void {
+    const fingerprint = `${record.status}:${record.exitCode ?? ''}:${record.stdout.length}:${record.stderr.length}`
+    if (record.persistedFingerprint === fingerprint) return
+    record.persistedFingerprint = fingerprint
     this.artifacts.persist(record.commandScopeId, record.id, persistedArtifactFromRecord(record))
   }
 
@@ -1183,7 +1096,7 @@ export class BashEnvironment {
 }
 
 function createPortableCommands(session: ShellSession): ForkCommand[] {
-  return createLazyCommands(DEMI_PORTABLE_COMMANDS).map((command) => ({
+  return createLazyCommands([...DEMI_PORTABLE_COMMANDS]).map((command) => ({
     ...command,
     execute: async (args, ctx) => {
       const result = await command.execute(args, ctx)
@@ -1357,17 +1270,6 @@ function clampOffset(value: number, max: number): number {
   return Math.min(Math.floor(value), max)
 }
 
-function utf8Bytes(text: string): number {
-  return encodeUtf8(text).byteLength
-}
-
-function utf8Slice(text: string, start: number, end: number): string {
-  if (start <= 0 && end >= utf8Bytes(text)) return text
-  return decodeUtf8(encodeUtf8(text).slice(start, end))
-}
-
 function tailString(value: string): string {
   return tail(value, 4096)
 }
-
-void (undefined as unknown as InterpreterContext)
