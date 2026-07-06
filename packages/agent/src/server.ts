@@ -31,6 +31,7 @@ export class AgentServer {
   private readonly providers: Map<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly bindings = new Set<AgentTransportBindingImpl>()
+  private readonly sessionOwnership = new SessionOwnershipRegistry()
 
   constructor(options: AgentServerOptions) {
     this.agent = options.agent
@@ -50,6 +51,7 @@ export class AgentServer {
       agent: this.agent,
       providers: this.providers,
       shell: this.shellOptions,
+      sessions: this.sessionOwnership,
     })
     this.bindings.add(binding)
     return binding
@@ -62,11 +64,32 @@ export class AgentServer {
   }
 }
 
+/**
+ * Tracks which transport binding currently owns each client-provided session
+ * id. Opening a session id that is already owned takes it over: the previous
+ * binding's session is closed (flushing its snapshot) before the new open
+ * proceeds, so two connections never write the same snapshot key concurrently.
+ */
+class SessionOwnershipRegistry {
+  private readonly holders = new Map<string, AgentTransportBindingImpl>()
+
+  async claim(sessionId: string, binding: AgentTransportBindingImpl): Promise<void> {
+    const previous = this.holders.get(sessionId)
+    if (previous && previous !== binding) await previous.handleTakeover()
+    this.holders.set(sessionId, binding)
+  }
+
+  release(sessionId: string, binding: AgentTransportBindingImpl): void {
+    if (this.holders.get(sessionId) === binding) this.holders.delete(sessionId)
+  }
+}
+
 interface AgentTransportBindingOptions {
   transport: AgentServerTransport
   agent: AgentHarness<unknown>
   providers: ReadonlyMap<string, Provider>
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  sessions: SessionOwnershipRegistry
 }
 
 class AgentTransportBindingImpl implements AgentTransportBinding {
@@ -74,11 +97,13 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly agent: AgentHarness<unknown>
   private readonly providers: ReadonlyMap<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  private readonly sessions: SessionOwnershipRegistry
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
   private currentEnvironment: BashEnvironment | null = null
   private currentCwd: string | null = null
   private currentProviderId: string | null = null
+  private currentSessionId: string | null = null
   private unsubscribeSession: (() => void) | null = null
   private unsubscribeTransport: (() => void) | null = null
   private closed = false
@@ -88,9 +113,20 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.agent = options.agent
     this.providers = options.providers
     this.shellOptions = options.shell ?? {}
+    this.sessions = options.sessions
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
     })
+  }
+
+  /** Called by the ownership registry when another connection opens this session id. */
+  async handleTakeover(): Promise<void> {
+    try {
+      await this.closeSession()
+    } catch (error) {
+      this.sendError(error)
+    }
+    this.send({ type: 'closed' })
   }
 
   async close(): Promise<void> {
@@ -237,12 +273,30 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
 
     const agent = this.agent
     const provider = await this.createRuntime(frame.provider)
-    const state = agent.initialState()
+    // The session id is client-owned: it keys the snapshot, so a reconnect with
+    // the same id resumes the conversation rather than starting a new one. If
+    // another connection currently owns the id, this open takes it over.
+    const agentSessionId = frame.sessionId
+    await this.sessions.claim(agentSessionId, this)
+    this.currentSessionId = agentSessionId
+
+    // The snapshot lives in Host.store, so a Host is needed before the restored
+    // state exists. Harnesses must tolerate host() being called with initial
+    // state for store access (listConversations does the same).
+    const initialState = agent.initialState()
+    const provisionalHost = agent.host({ state: initialState, cwd: frame.cwd })
+    const store = new HostAgentSessionStore(provisionalHost.store, agentSessionId)
+    const snapshot = await store.loadSnapshot()
+    const restoring = snapshot !== null && snapshot.harnessName === agent.name
+
+    // One live state object, shared by the harness closures (host, commands,
+    // prompts) and the session itself. On restore it carries the saved state.
+    const state = restoring ? structuredClone(snapshot.state) : initialState
     const harnessContext = { state, cwd: frame.cwd }
+    const host = restoring ? agent.host(harnessContext) : provisionalHost
     const commands = agent.commands?.(harnessContext) ?? []
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
-    const host = agent.host(harnessContext)
     const environment = new BashEnvironment({
       ...this.shellOptions,
       host,
@@ -260,22 +314,16 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const commandsPrompt = commandRegistry.renderPrompt()
     const runtime: AgentHarnessRuntime<unknown> = {
       harnessName: agent.name,
-      initialState: () => state,
+      initialState: () => agent.initialState(),
       systemPrompt: (ctx) => agent.systemPrompt({ ...ctx, commandsPrompt }),
       preamble: (ctx) => agent.preamble?.(ctx) ?? null,
       resolveReferences: (ctx, content) => agent.resolveReferences?.(ctx, content) ?? content,
       lifecycle: (event) => agent.lifecycle?.(event),
       tools: () => tools,
     }
-    // The session id is client-owned: it keys the snapshot, so a reconnect with
-    // the same id resumes the conversation rather than starting a new one.
-    const agentSessionId = frame.sessionId
-    const store = new HostAgentSessionStore(host.store, agentSessionId)
-    const snapshot = await store.loadSnapshot()
-    const session =
-      snapshot && snapshot.harnessName === runtime.harnessName
-        ? AgentSession.fromSnapshot({ provider, runtime, snapshot }, { agentSessionId, store })
-        : new AgentSession({ provider, model: frame.provider.model, cwd: frame.cwd, runtime, state }, { agentSessionId, store })
+    const session = restoring
+      ? AgentSession.fromSnapshot({ provider, runtime, snapshot: { ...snapshot, state } }, { agentSessionId, store })
+      : new AgentSession({ provider, model: frame.provider.model, cwd: frame.cwd, runtime, state }, { agentSessionId, store })
     sessionRef = session
     this.session = session
     this.currentAgent = agent
@@ -284,7 +332,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.currentProviderId = frame.provider.providerId
     // A resumed session restores its model from the snapshot; align it with the
     // model the client opened with (which may differ from when it was saved).
-    if (snapshot) await session.updateModel(null, frame.provider.model)
+    if (restoring) session.updateModel(null, frame.provider.model)
     this.unsubscribeSession = this.session.subscribe((event) => this.handleSessionEvent(event))
 
     this.send({ type: 'opened' })
@@ -367,6 +415,10 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       this.currentEnvironment = null
       this.currentCwd = null
       this.currentProviderId = null
+      if (this.currentSessionId) {
+        this.sessions.release(this.currentSessionId, this)
+        this.currentSessionId = null
+      }
     }
   }
 

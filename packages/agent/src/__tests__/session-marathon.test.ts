@@ -221,11 +221,13 @@ test('AgentSession.fromSnapshot restores state and model context with a fresh id
       return [events.text('restored write complete'), events.response()]
     },
   ])
+  // fromSnapshot adopts the snapshot by reference (ownership transfer), so a
+  // caller that keeps mutating its copy must hand over a clone.
   const restored = AgentSession.fromSnapshot(
     {
       provider: restoredProvider,
       runtime,
-      snapshot,
+      snapshot: structuredClone(snapshot),
     },
     {
       idFactory: (() => {
