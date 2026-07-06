@@ -7,6 +7,7 @@ import { PendingSteerQueue, type PendingSteer } from './pending-steer-queue'
 import { CompactionController, type CompactionHost } from './compaction-controller'
 import { ProviderStreamError } from './provider-stream-error'
 import { ProviderTurnLoop, type ProviderTurnLoopHost } from './provider-turn-loop'
+import { resolveRetryPolicy, type TurnRetryPolicy } from './retry-policy'
 import type {
   AgentHarnessRuntime,
   AgentSessionOptions,
@@ -83,6 +84,7 @@ export class AgentSession<State> {
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
   private readonly persistIntervalMs: number
+  private readonly retryPolicy: TurnRetryPolicy
   private persistTimer: ReturnType<typeof setTimeout> | null = null
   private persistDirty = false
 
@@ -130,6 +132,7 @@ export class AgentSession<State> {
     })
     this.store = options.store
     this.persistIntervalMs = options.persistIntervalMs ?? DEFAULT_PERSIST_INTERVAL_MS
+    this.retryPolicy = resolveRetryPolicy(options.retry)
     this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens ?? DEFAULT_KEEP_RECENT_TOKENS
     this.compactionThresholdRatio =
       options.compaction?.preflightThresholdRatio ?? DEFAULT_PREFLIGHT_THRESHOLD_RATIO
@@ -166,12 +169,16 @@ export class AgentSession<State> {
       get thresholdRatio() {
         return self.compactionThresholdRatio
       },
+      get retryPolicy() {
+        return self.retryPolicy
+      },
       nextRequestId: () => self.idFactory(),
       currentTurnId: () => self.currentTurnId(),
       currentSignal: () => self.currentSignal(),
       streamProvider: (request, run) => self.providerEvents(request, run),
       commitTranscript: () => self.commitTranscript(),
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
+      emit: (event) => self.emit(event),
     }
     this.compaction = new CompactionController(compactionHost)
 
@@ -202,6 +209,9 @@ export class AgentSession<State> {
       },
       get steerContinuationCount() {
         return self.steerQueue.continuationCount
+      },
+      get retryPolicy() {
+        return self.retryPolicy
       },
       currentSignal: () => self.currentSignal(),
       currentTurnId: () => self.currentTurnId(),

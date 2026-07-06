@@ -63,6 +63,9 @@ export function createSession(
       idFactory: () => `id-${++id}`,
       now: () => '2026-06-17T00:00:00.000Z',
       compaction: { keepRecentTokens: 1 },
+      // Single-shot by default so scripted provider errors surface
+      // deterministically; retry tests opt in with an explicit `retry`.
+      retry: { maxAttempts: 1 },
       ...options,
     },
   )

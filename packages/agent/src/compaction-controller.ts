@@ -1,4 +1,4 @@
-import { AbortError, throwIfAborted } from '@demicodes/utils'
+import { AbortError, abortable, delay, throwIfAborted } from '@demicodes/utils'
 import type { Block, ModelSelection } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
 import { Transcript } from './transcript'
@@ -9,6 +9,8 @@ import {
   renderItemsForSummary,
 } from './compaction-support'
 import { ProviderStreamError, isContextLengthExceeded } from './provider-stream-error'
+import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
+import type { SessionEvent } from './types'
 
 /**
  * What CompactionController needs from its owning session. The coupling to the
@@ -24,6 +26,7 @@ export interface CompactionHost {
   readonly sessionId: string
   readonly cwd: string
   readonly thresholdRatio: number
+  readonly retryPolicy: TurnRetryPolicy
   nextRequestId(): string
   currentTurnId(): string
   currentSignal(): AbortSignal
@@ -31,6 +34,7 @@ export interface CompactionHost {
   commitTranscript(): Promise<void>
   /** Runs `fn` with the session marked as compacting, restoring the prior phase afterwards. */
   runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T>
+  emit(event: SessionEvent): void
 }
 
 /**
@@ -103,23 +107,39 @@ export class CompactionController {
     // instructions buried in it (e.g. "only reply X") instead of summarizing.
     const compactTranscript = new Transcript(blocks)
     const rendered = renderItemsForSummary(compactTranscript.collectInferenceItems())
-    const request = buildCompactionSummaryRequest(rendered, {
-      sessionId: this.host.sessionId,
-      turnId: this.host.currentTurnId(),
-      requestId: this.host.nextRequestId(),
-      modelId: this.host.model.model.id,
-      cwd: this.host.cwd,
-      serviceTierId: this.host.model.serviceTierId ?? null,
-      cancel: this.host.currentSignal(),
-    })
+    const policy = this.host.retryPolicy
 
-    let summary = ''
-    for await (const event of this.host.streamProvider(request, this.host.provider.run(request))) {
-      throwIfAborted(request.cancel)
-      if (event.type === 'text_delta') summary += event.text
-      if (event.type === 'abort') throw new AbortError()
-      if (event.type === 'error') throw new ProviderStreamError(event.message, event.code)
+    for (let attempt = 1; ; attempt += 1) {
+      const request = buildCompactionSummaryRequest(rendered, {
+        sessionId: this.host.sessionId,
+        turnId: this.host.currentTurnId(),
+        requestId: this.host.nextRequestId(),
+        modelId: this.host.model.model.id,
+        cwd: this.host.cwd,
+        serviceTierId: this.host.model.serviceTierId ?? null,
+        cancel: this.host.currentSignal(),
+      })
+
+      let summary = ''
+      let transient: { code: string | null; retryAfterMs: number | null } | null = null
+      for await (const event of this.host.streamProvider(request, this.host.provider.run(request))) {
+        throwIfAborted(request.cancel)
+        if (event.type === 'text_delta') summary += event.text
+        if (event.type === 'abort') throw new AbortError()
+        if (event.type === 'error') {
+          // Summary requests have no partial side effects, so transient failures
+          // retry under the same policy as the turn loop.
+          const retryable = summary.length === 0 && attempt < policy.maxAttempts && isRetryableCode(policy, event.code)
+          if (!retryable) throw new ProviderStreamError(event.message, event.code)
+          transient = { code: event.code, retryAfterMs: event.retryAfterMs ?? null }
+          break
+        }
+      }
+      if (!transient) return summary.trim()
+
+      const delayMs = retryDelayMs(policy, attempt, transient.retryAfterMs)
+      this.host.emit({ type: 'retry_scheduled', attempt, delayMs, code: transient.code })
+      await abortable(delay(delayMs), request.cancel)
     }
-    return summary.trim()
   }
 }

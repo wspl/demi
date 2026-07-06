@@ -77,7 +77,13 @@ export type ProviderEvent =
       input: unknown
     }
   | { type: 'response'; usage: TokenUsage }
-  | { type: 'error'; message: string; code: string | null }
+  | {
+      type: 'error'
+      message: string
+      code: string | null
+      /** Server-suggested retry delay (e.g. from a Retry-After header), if any. */
+      retryAfterMs?: number
+    }
   | { type: 'abort' }
 
 // ── provider ────────────────────────────────────────────────────────

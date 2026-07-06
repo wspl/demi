@@ -9,6 +9,7 @@ import type {
 import type { AgentProvider, ToolDefinition } from '@demicodes/provider'
 import type { CommandSpec, Host } from '@demicodes/shell'
 import type { TranscriptPatch } from './frames'
+import type { TurnRetryPolicy } from './retry-policy'
 import type { Transcript } from './transcript'
 
 export interface AgentPromptContext<State> {
@@ -192,6 +193,8 @@ export interface AgentSessionOptions<State = unknown> {
    * bounds staleness during streaming. Default 1000ms.
    */
   persistIntervalMs?: number
+  /** Overrides for the transient-failure retry policy (see TurnRetryPolicy). */
+  retry?: Partial<TurnRetryPolicy>
 }
 
 export type SessionEvent =
@@ -199,6 +202,7 @@ export type SessionEvent =
   | { type: 'phase_changed'; phase: SessionPhase }
   | { type: 'queue_changed'; queue: QueuedMessage[] }
   | { type: 'tool_progress'; toolCallId: string; toolName: string; progress: unknown }
+  | { type: 'retry_scheduled'; attempt: number; delayMs: number; code: string | null }
   | { type: 'error'; error: Error }
 
 export type SessionEventListener = (event: SessionEvent) => void

@@ -53,6 +53,8 @@ export type ServerFrame =
   | { type: 'shell_write_result'; commandId: string; output: ToolResultContentBlock[] }
   | { type: 'audit'; events: BashAuditEvent[] }
   | { type: 'conversations'; conversations: ConversationSummary[] }
+  // A transient provider failure is being retried with backoff; informational.
+  | { type: 'retry_scheduled'; attempt: number; delayMs: number; code: string | null }
   | { type: 'error'; message: string; code?: string }
   | { type: 'closed' }
 
@@ -83,6 +85,7 @@ export type ClientSessionEvent =
   | { type: 'shell_output'; shellId: string; commandId: string; snapshot: ShellCommandSnapshotLike }
   | { type: 'shell_write_result'; commandId: string; output: ToolResultContentBlock[] }
   | { type: 'audit'; events: BashAuditEvent[] }
+  | { type: 'retry_scheduled'; attempt: number; delayMs: number; code: string | null }
   | { type: 'rejected'; command: string; reason: string }
   | { type: 'error'; message: string; code?: string }
   | { type: 'opened' }
