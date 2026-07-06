@@ -339,7 +339,7 @@ function boundedPreview(text: string, budgetTokens: number): { text: string; tru
   return { text: text.slice(0, maxChars), truncated: true }
 }
 
-async function finishShellToolResult<State>(
+export async function finishShellToolResult<State>(
   environment: BashEnvironment,
   result: ShellCommandSnapshot,
   ctx: AgentToolInvokeContext<State>,
