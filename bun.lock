@@ -21,6 +21,9 @@
         "@demicodes/shell": "workspace:*",
         "@demicodes/utils": "workspace:*",
       },
+      "devDependencies": {
+        "zod": "^4.0.0",
+      },
     },
     "packages/coding-agent": {
       "name": "@demicodes/coding-agent",
