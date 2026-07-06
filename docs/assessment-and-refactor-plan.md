@@ -15,10 +15,10 @@
 | 4 shell 记账清理 | `refactor/shell-stream-accounting` | 已合并（死状态整层删除而非封装——原 24 字段中约 15 个为只写状态；保留名改为推导式；助手函数并入 utils） |
 | 5 命令双投影 | `feat/command-native-tool-projection` | 已合并（RegisteredCommandOperation + AgentServerOptions.commandTools，默认关闭） |
 | 6 估算与默认值 | `fix/token-estimate-and-defaults` | 已合并（usage 锚定估算、多模态计权、anthropic effort→budget 映射与 max_tokens 派生、store 目录迁 XDG、replay 截断可配） |
-| 7a agent-eval | — | 未启动（按 §5.7 与既有内部计划推进；双投影跑分依赖它给出 commandTools 默认值结论） |
+| 7a agent-eval | `feat/agent-eval` | 已合并核心（case schema、fixture/oracle/diff、ScriptedEvaluator 监督循环、干预计分、metrics、artifact、CLI 与 gated 真实 provider 冒烟；llm evaluator driver 与 steer-queue/long-context suite 为后续增量） |
 | 7b fork 治理 | `docs/fork-policy-and-execution-status` | 已合并（`docs/just-bash-fork-policy.md`） |
 
-其余未执行项：repl/index.ts 拆分（§5.6-4，纯整理，无行为变化）。§5.8-3 的 submodule 指针核实为工作区落后而非超前，已通过 `git submodule update` 对齐，无需落账。
+其余未执行项：repl/index.ts 拆分已完成（`refactor/repl-split`）。§5.8-3 的 submodule 指针核实为工作区落后而非超前，已通过 `git submodule update` 对齐，无需落账。
 
 ---
 

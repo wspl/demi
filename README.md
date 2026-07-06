@@ -31,6 +31,7 @@ agent                  session runtime + protocol   -> core, provider, shell, ut
 coding-agent           coding harness + commands    -> agent, core, shell, utils
 provider-*             concrete providers           -> core, provider, utils
 repl / web / web-ui    apps (leaves)
+agent-eval             benchmark harness (leaf)
 ```
 
 The boundary contract is [docs/package-boundaries.md](docs/package-boundaries.md);
@@ -110,6 +111,7 @@ bun install
 bun run typecheck      # type-check all packages
 bun run typecheck:web  # type-check the Vue UI packages
 bun run test           # run the test suite
+bun run agent-eval     # run agent benchmarks (see packages/agent-eval)
 bun run build          # build every library package to dist/ (tsdown)
 bun run llms           # regenerate llms-full.txt from the docs
 ```
