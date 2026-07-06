@@ -1,0 +1,28 @@
+{
+  "id": "coding.fix-failing-test.small",
+  "title": "Fix the failing add() test",
+  "category": "coding",
+  "difficulty": "small",
+  "fixture": { "source": "../../fixtures/fix-failing-test", "copyMode": "fresh-copy" },
+  "worker": { "provider": "claude-code" },
+  "evaluator": {
+    "driver": "scripted",
+    "rubric": ["bun test passes", "only src/math.ts changes"],
+    "interventionPolicy": {
+      "ladder": [
+        { "type": "nudge", "message": "The acceptance test still fails. Run bun test and fix the failure." },
+        { "type": "oracle_evidence", "message": "The test suite is still failing." }
+      ]
+    }
+  },
+  "task": {
+    "prompt": "The test in src/math.test.ts fails. Fix the implementation so bun test passes. Do not change the test.",
+    "successCriteria": ["bun test exits 0", "src/math.test.ts is unchanged"]
+  },
+  "budgets": { "maxWallMs": 300000, "maxEvaluatorChecks": 5, "maxInterventions": 2 },
+  "gate": { "env": "DEMI_CLAUDE_CODE_EVAL" },
+  "oracle": [
+    { "type": "command", "name": "bun-test", "command": ["bun", "test"], "timeoutMs": 60000 },
+    { "type": "diff", "forbiddenPaths": ["src/math.test.ts"] }
+  ]
+}

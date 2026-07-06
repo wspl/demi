@@ -1,0 +1,5 @@
+{
+  "name": "claude-code-smoke",
+  "cases": ["../cases/coding/fix-failing-test.json"],
+  "passThreshold": 1
+}
