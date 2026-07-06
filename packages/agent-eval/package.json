@@ -1,0 +1,24 @@
+{
+  "name": "@demicodes/agent-eval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@demicodes/agent": "workspace:*",
+    "@demicodes/coding-agent": "workspace:*",
+    "@demicodes/core": "workspace:*",
+    "@demicodes/host-local": "workspace:*",
+    "@demicodes/provider": "workspace:*",
+    "@demicodes/provider-anthropic-api": "workspace:*",
+    "@demicodes/provider-claude-code": "workspace:*",
+    "@demicodes/provider-codex": "workspace:*",
+    "@demicodes/provider-openai-api": "workspace:*",
+    "@demicodes/shell": "workspace:*",
+    "@demicodes/utils": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "license": "Apache-2.0"
+}
