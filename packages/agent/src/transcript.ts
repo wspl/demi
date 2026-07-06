@@ -9,13 +9,23 @@ import type {
 import type { InferenceItem, ProviderEvent } from '@demicodes/provider'
 import type { TranscriptPatch } from './frames'
 
-const MODEL_TEXT_HEAD_CHARS = 8_000
-const MODEL_TEXT_TAIL_CHARS = 8_000
-const MODEL_TEXT_MAX_CHARS = MODEL_TEXT_HEAD_CHARS + MODEL_TEXT_TAIL_CHARS
+const DEFAULT_MODEL_TEXT_HEAD_CHARS = 8_000
+const DEFAULT_MODEL_TEXT_TAIL_CHARS = 8_000
+// Conservative weights for non-text content in the context estimate. Images
+// cost tokens regardless of their text rendering; before these weights an
+// image-heavy history estimated near zero and never triggered compaction.
+const IMAGE_BASE_TOKENS = 1_600
+const IMAGE_BYTES_PER_TOKEN = 1_000
+const DOCUMENT_BYTES_PER_TOKEN = 4
 
 export interface TranscriptOptions {
   idFactory?: () => string
   now?: () => string
+  /**
+   * Per-text-block bounds applied when replaying to the model (head+tail with
+   * an elision marker). Defaults to 8000/8000 characters.
+   */
+  replayTextBounds?: { headChars: number; tailChars: number }
 }
 
 export interface CompactionWindow {
@@ -38,11 +48,15 @@ export class Transcript implements CoreTranscript {
   // time because live blocks keep mutating (streaming text appends).
   private journal: TranscriptPatch[] = []
   private revisionCounter = 0
+  private readonly replayHeadChars: number
+  private readonly replayTailChars: number
 
   constructor(blocks: Block[] = [], options: TranscriptOptions = {}) {
     this.blocks = [...blocks]
     this.idFactory = options.idFactory ?? createId
     this.now = options.now ?? (() => new Date().toISOString())
+    this.replayHeadChars = options.replayTextBounds?.headChars ?? DEFAULT_MODEL_TEXT_HEAD_CHARS
+    this.replayTailChars = options.replayTextBounds?.tailChars ?? DEFAULT_MODEL_TEXT_TAIL_CHARS
   }
 
   snapshot(): CoreTranscript {
@@ -366,8 +380,12 @@ export class Transcript implements CoreTranscript {
             type: 'user_message',
             content:
               block.preamble === null
-                ? boundUserContent(block.content)
-                : boundUserContent([{ type: 'text', text: block.preamble }, ...block.content]),
+                ? boundUserContent(block.content, this.replayHeadChars, this.replayTailChars)
+                : boundUserContent(
+                    [{ type: 'text', text: block.preamble }, ...block.content],
+                    this.replayHeadChars,
+                    this.replayTailChars,
+                  ),
           })
           break
         case 'resume':
@@ -380,14 +398,14 @@ export class Transcript implements CoreTranscript {
           items.push({
             type: 'user_steer',
             turnId: block.turnId,
-            content: boundUserContent(block.content),
+            content: boundUserContent(block.content, this.replayHeadChars, this.replayTailChars),
           })
           break
         case 'thinking':
           items.push({
             type: 'assistant_thinking',
             modelId: block.model.model.id,
-            text: boundText(block.text),
+            text: boundText(block.text, this.replayHeadChars, this.replayTailChars),
             signature: block.signature,
           })
           break
@@ -395,11 +413,11 @@ export class Transcript implements CoreTranscript {
           items.push({
             type: 'assistant_redacted_thinking',
             modelId: block.model.model.id,
-            data: boundText(block.data),
+            data: boundText(block.data, this.replayHeadChars, this.replayTailChars),
           })
           break
         case 'text':
-          items.push({ type: 'assistant_text', modelId: block.model.model.id, text: boundText(block.text) })
+          items.push({ type: 'assistant_text', modelId: block.model.model.id, text: boundText(block.text, this.replayHeadChars, this.replayTailChars) })
           break
         case 'tool_call':
           items.push({
@@ -413,7 +431,7 @@ export class Transcript implements CoreTranscript {
             items.push({
               type: 'tool_result',
               toolUseId: block.toolUseId,
-              output: boundToolResultContent(block.output),
+              output: boundToolResultContent(block.output, this.replayHeadChars, this.replayTailChars),
               isError: block.status === 'error',
             })
           }
@@ -424,7 +442,7 @@ export class Transcript implements CoreTranscript {
             content: [
               {
                 type: 'text',
-                text: boundText(`Previous conversation summary:\n${block.summary}`),
+                text: boundText(`Previous conversation summary:\n${block.summary}`, this.replayHeadChars, this.replayTailChars),
               },
             ],
           })
@@ -434,8 +452,40 @@ export class Transcript implements CoreTranscript {
     return items
   }
 
+  /**
+   * Estimates the next request's context size. When a provider-reported usage
+   * exists after the last compaction (the most recent real measurement of this
+   * history), it anchors the estimate and only blocks streamed after it are
+   * char-estimated; otherwise the whole replay window is estimated at ~4
+   * chars/token with fixed weights for images and documents.
+   */
   estimateContextTokens(): number {
-    return this.replayableBlocks().reduce((total, block) => total + estimateBlockTokens(block), 0)
+    const anchor = this.usageAnchor()
+    if (anchor === null) {
+      return this.replayableBlocks().reduce((total, block) => total + estimateBlockTokens(block), 0)
+    }
+    let total = anchor.tokens
+    for (let i = anchor.blockIndex + 1; i < this.blocks.length; i += 1) {
+      total += estimateBlockTokens(this.blocks[i])
+    }
+    return total
+  }
+
+  /**
+   * The latest response block's usage, valid only when no compaction happened
+   * after it (compaction shrinks the history the usage was measured against).
+   */
+  private usageAnchor(): { blockIndex: number; tokens: number } | null {
+    for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
+      const block = this.blocks[i]
+      if (block.type === 'compaction_boundary' || block.type === 'compaction_marker') return null
+      if (block.type !== 'response') continue
+      const usage = block.usage
+      const tokens = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+      if (tokens <= 0) continue
+      return { blockIndex: i, tokens }
+    }
+    return null
   }
 
   private appendText(model: ModelSelection, text: string): Block {
@@ -511,7 +561,43 @@ function parseToolInput(input: string): unknown {
 }
 
 function estimateBlockTokens(block: Block): number {
-  return Math.ceil(estimateBlockText(block).length / 4)
+  return Math.ceil(estimateBlockText(block).length / 4) + estimateBlockMediaTokens(block)
+}
+
+/** Char-based per-block estimate, exported for compaction metrics. */
+export function estimateTranscriptBlockTokens(block: Block): number {
+  return estimateBlockTokens(block)
+}
+
+function estimateBlockMediaTokens(block: Block): number {
+  switch (block.type) {
+    case 'user':
+    case 'steer':
+      return block.content.reduce((total, content) => total + userContentMediaTokens(content), 0)
+    case 'tool_call':
+      return block.output.reduce((total, content) => total + toolResultMediaTokens(content), 0)
+    default:
+      return 0
+  }
+}
+
+function userContentMediaTokens(content: UserContentBlock): number {
+  if (content.type === 'image') {
+    if (content.source.type === 'binary') {
+      return Math.max(IMAGE_BASE_TOKENS, Math.ceil(content.source.data.byteLength / IMAGE_BYTES_PER_TOKEN))
+    }
+    return IMAGE_BASE_TOKENS
+  }
+  if (content.type === 'document') {
+    return Math.ceil(content.source.data.byteLength / DOCUMENT_BYTES_PER_TOKEN)
+  }
+  return 0
+}
+
+function toolResultMediaTokens(content: ToolResultContentBlock): number {
+  if (content.type !== 'image') return 0
+  const bytes = Math.floor((content.source.data.length * 3) / 4)
+  return Math.max(IMAGE_BASE_TOKENS, Math.ceil(bytes / IMAGE_BYTES_PER_TOKEN))
 }
 
 function estimateBlockText(block: Block): string {
@@ -572,24 +658,29 @@ function stringifyToolResult(content: ToolResultContentBlock): string {
   }
 }
 
-function boundUserContent(content: UserContentBlock[]): UserContentBlock[] {
+function boundUserContent(content: UserContentBlock[], headChars: number, tailChars: number): UserContentBlock[] {
   return content.map((block) => {
     if (block.type !== 'text') return block
-    const text = boundText(block.text)
+    const text = boundText(block.text, headChars, tailChars)
     return text === block.text ? block : { ...block, text }
   })
 }
 
-function boundToolResultContent(content: ToolResultContentBlock[]): ToolResultContentBlock[] {
+function boundToolResultContent(
+  content: ToolResultContentBlock[],
+  headChars: number,
+  tailChars: number,
+): ToolResultContentBlock[] {
   return content.map((block) => {
     if (block.type !== 'text') return block
-    const text = boundText(block.text)
+    const text = boundText(block.text, headChars, tailChars)
     return text === block.text ? block : { ...block, text }
   })
 }
 
-function boundText(text: string): string {
-  if (text.length <= MODEL_TEXT_MAX_CHARS) return text
-  const omitted = text.length - MODEL_TEXT_MAX_CHARS
-  return `${text.slice(0, MODEL_TEXT_HEAD_CHARS)}\n\n[... truncated ${omitted} characters ...]\n\n${text.slice(-MODEL_TEXT_TAIL_CHARS)}`
+function boundText(text: string, headChars: number, tailChars: number): string {
+  const maxChars = headChars + tailChars
+  if (text.length <= maxChars) return text
+  const omitted = text.length - maxChars
+  return `${text.slice(0, headChars)}\n\n[... truncated ${omitted} characters ...]\n\n${text.slice(-tailChars)}`
 }
