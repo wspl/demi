@@ -26,7 +26,7 @@ Packages depend strictly downward (enforced by a boundary test):
 utils, core            shared helpers + data types (zero deps)
 provider               abstract inference contract  -> core
 shell                  bash engine + Host contract  -> just-bash, utils
-host-local             Node Host adapter            -> shell
+host-local             Node Host adapter            -> shell, utils
 agent                  session runtime + protocol   -> core, provider, shell, utils
 coding-agent           coding harness + commands    -> agent, core, shell, utils
 provider-*             concrete providers           -> core, provider, utils
