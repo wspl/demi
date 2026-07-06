@@ -274,7 +274,7 @@ export function commandTreeToAgentTools(
 
 ### 5.8 阶段 7b：just-bash fork 治理
 
-1. 新增 `docs/internal/just-bash-fork-policy.md`：记录 fork 点、自有提交清单、上游 remote、同步节奏（建议按需 + 每季度评估）、冲突处理原则（fork 只做"暴露内部接口/裁剪产物"类改动，不改语义，降低合并成本）。
+1. 新增 `docs/just-bash-fork-policy.md`（`docs/internal/` 不入库，治理策略需要入库）：记录 fork 点、自有提交清单、上游 remote、同步节奏（建议按需 + 每季度评估）、冲突处理原则（fork 只做"暴露内部接口/裁剪产物"类改动，不改语义，降低合并成本）。
 2. 裁剪评估：`src/commands` 91 个命令 5.1MB，`DEMI_PORTABLE_COMMANDS` 只启用 ~55 个；评估将未启用命令从构建产物剔除（保留源码，靠 `createLazyCommands` 的按需加载确认 tree-shaking 是否已足够——若已足够则只需文档说明，不动代码）。
 3. 将当前未提交的 submodule 指针前移（496c3d7 → ea06eb1）按仓库规则在独立提交中落账。
 
