@@ -1,3 +1,4 @@
+import { asRecord, asString } from '@demicodes/utils'
 import type {
   BashEnvironment,
   ShellAbortInput,
@@ -195,17 +196,17 @@ export function toShellToolResult(
 }
 
 function parseShellExecInput(input: unknown): ShellExecInput {
-  const record = asRecord(input)
+  const record = asRecord(input, 'agent tool input must be an object')
   if (typeof record.script !== 'string') throw new Error('shell_exec requires string field "script"')
   return {
     script: record.script,
-    shellId: optionalString(record.shellId),
+    shellId: asString(record.shellId),
     timeoutMs: requiredDelay(record.timeoutMs, 'shell_exec field "timeoutMs"'),
   }
 }
 
 function parseShellStatusInput(input: unknown): ShellStatusInput {
-  const record = asRecord(input)
+  const record = asRecord(input, 'agent tool input must be an object')
   if (typeof record.commandId !== 'string') throw new Error('shell_status requires string field "commandId"')
   return {
     commandId: record.commandId,
@@ -213,7 +214,7 @@ function parseShellStatusInput(input: unknown): ShellStatusInput {
 }
 
 function parseShellWriteInput(input: unknown): ShellWriteInput {
-  const record = asRecord(input)
+  const record = asRecord(input, 'agent tool input must be an object')
   if (typeof record.commandId !== 'string') throw new Error('shell_write requires string field "commandId"')
   if (typeof record.stdin !== 'string') throw new Error('shell_write requires string field "stdin"')
   if (record.stdin.length === 0) throw new Error('shell_write field "stdin" must not be empty; use shell_status to poll')
@@ -224,13 +225,13 @@ function parseShellWriteInput(input: unknown): ShellWriteInput {
 }
 
 function parseShellAbortInput(input: unknown): ShellAbortInput {
-  const record = asRecord(input)
+  const record = asRecord(input, 'agent tool input must be an object')
   if (typeof record.commandId !== 'string') throw new Error('shell_abort requires string field "commandId"')
   return { commandId: record.commandId }
 }
 
 function parseYieldDuration(input: unknown): number {
-  const record = asRecord(input)
+  const record = asRecord(input, 'agent tool input must be an object')
   return requiredDelay(record.durationMs, 'yield field "durationMs"')
 }
 
@@ -367,13 +368,4 @@ export function shellCommandHandleRequired(result: ShellCommandSnapshot, budgetT
   )
 }
 
-function asRecord(input: unknown): Record<string, unknown> {
-  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-    throw new Error('agent tool input must be an object')
-  }
-  return input as Record<string, unknown>
-}
 
-function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
-}

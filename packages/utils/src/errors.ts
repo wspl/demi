@@ -60,3 +60,12 @@ export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<
     )
   })
 }
+
+/** Reports whether an unknown thrown value is a file-not-found error (ENOENT). */
+export function isFileNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === 'ENOENT'
+  )
+}
