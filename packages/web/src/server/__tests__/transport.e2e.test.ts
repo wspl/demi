@@ -47,7 +47,7 @@ test('web transport round-trips open/send/stream over websocket', async () => {
       }
     })
 
-    await client.open(providerSelection, cwd)
+    await client.open(providerSelection, cwd, globalThis.crypto.randomUUID())
     await client.send([{ type: 'text', text: 'hi' }])
 
     expect(seenText.some((text) => text.includes('Hello from the stub provider.'))).toBe(true)
