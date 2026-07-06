@@ -1,5 +1,6 @@
 export * from './transcript'
 export * from './types'
+export * from './retry-policy'
 export * from './session'
 export * from './client'
 export * from './frames'
