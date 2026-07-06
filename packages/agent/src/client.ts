@@ -236,6 +236,7 @@ export class AgentClient {
       case 'shell_output':
       case 'shell_write_result':
       case 'audit':
+      case 'retry_scheduled':
         this.emit(frame)
         return
       case 'conversations':
