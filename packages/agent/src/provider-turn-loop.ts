@@ -1,8 +1,9 @@
-import { AbortError, abortable, asError, isAbortError, parseJsonOrString, throwIfAborted } from '@demicodes/utils'
+import { AbortError, abortable, asError, delay, isAbortError, parseJsonOrString, throwIfAborted } from '@demicodes/utils'
 import type { ModelSelection, TokenUsage } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolDefinition } from '@demicodes/provider'
 import { Transcript } from './transcript'
 import { ProviderStreamError } from './provider-stream-error'
+import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
 import type { ActiveTurnPhase } from './session'
 import type { AgentHarnessRuntime, AgentTool, AgentToolInvokeResult, SessionEvent } from './types'
 
@@ -24,6 +25,7 @@ export interface ProviderTurnLoopHost<State> {
   readonly agentState: State
   readonly thresholdRatio: number
   readonly steerContinuationCount: number
+  readonly retryPolicy: TurnRetryPolicy
   currentSignal(): AbortSignal
   currentTurnId(): string
   nextRequestId(): string
@@ -81,27 +83,72 @@ export class ProviderTurnLoop<State> {
     }
   }
 
+  /**
+   * Streams one provider response, silently retrying transient failures
+   * (rate_limit/overloaded) with backoff — but only while the attempt has
+   * produced no transcript content, so a retry can never duplicate output.
+   * The turn stays in provider_streaming across backoff waits so steers keep
+   * queueing instead of being rejected.
+   */
   private async streamProviderOnce(): Promise<boolean> {
+    const policy = this.host.retryPolicy
+    this.host.setActiveTurnPhase('provider_streaming')
+    try {
+      for (let attempt = 1; ; attempt += 1) {
+        const outcome = await this.streamAttempt(attempt, policy)
+        if (outcome.type === 'done') return outcome.shouldAutoRecover
+        this.host.emit({
+          type: 'retry_scheduled',
+          attempt: outcome.attempt,
+          delayMs: outcome.delayMs,
+          code: outcome.code,
+        })
+        await abortable(delay(outcome.delayMs), this.host.currentSignal())
+      }
+    } finally {
+      if (this.host.getActiveTurnPhase() === 'provider_streaming') this.host.setActiveTurnPhase(null)
+    }
+  }
+
+  private async streamAttempt(
+    attempt: number,
+    policy: TurnRetryPolicy,
+  ): Promise<
+    | { type: 'done'; shouldAutoRecover: boolean }
+    | { type: 'retry'; attempt: number; delayMs: number; code: string | null }
+  > {
     const request = this.buildInferenceRequest()
     const run = this.host.provider.run(request)
     let shouldAutoRecover = false
+    let produced = false
     this.host.setActiveProviderRun(run)
-    this.host.setActiveTurnPhase('provider_streaming')
     try {
       for await (const event of this.host.streamProvider(request, run)) {
         throwIfAborted(request.cancel)
         if (event.type === 'abort') throw new AbortError()
+        if (event.type === 'error') {
+          const retryable = !produced && attempt < policy.maxAttempts && isRetryableCode(policy, event.code)
+          if (retryable) {
+            return {
+              type: 'retry',
+              attempt,
+              delayMs: retryDelayMs(policy, attempt, event.retryAfterMs ?? null),
+              code: event.code,
+            }
+          }
+          await this.applyProviderEvent(event)
+          throw new ProviderStreamError(event.message, event.code)
+        }
         await this.applyProviderEvent(event)
-        if (event.type === 'error') throw new ProviderStreamError(event.message, event.code)
+        produced = true
         if (event.type === 'response' && this.isUsageNearLimit(event.usage)) {
           shouldAutoRecover = true
         }
       }
     } finally {
       if (this.host.getActiveProviderRun() === run) this.host.setActiveProviderRun(null)
-      if (this.host.getActiveTurnPhase() === 'provider_streaming') this.host.setActiveTurnPhase(null)
     }
-    return shouldAutoRecover
+    return { type: 'done', shouldAutoRecover }
   }
 
   private async executePendingTools(

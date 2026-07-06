@@ -14,12 +14,21 @@ import { cloneBlocks } from './patch'
 import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandSnapshotLike } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
 import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
+import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
+
+/** Session tuning forwarded to every AgentSession this server creates. */
+export interface AgentServerSessionOptions {
+  retry?: Partial<TurnRetryPolicy>
+  compaction?: { keepRecentTokens?: number; preflightThresholdRatio?: number }
+  persistIntervalMs?: number
+}
 
 export interface AgentServerOptions {
   agent: AgentHarness<unknown>
   providers: Provider[]
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  session?: AgentServerSessionOptions
 }
 
 export interface AgentTransportBinding {
@@ -30,6 +39,7 @@ export class AgentServer {
   private readonly agent: AgentHarness<unknown>
   private readonly providers: Map<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  private readonly sessionOptions: AgentServerSessionOptions
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -37,6 +47,7 @@ export class AgentServer {
     this.agent = options.agent
     this.providers = createProviderMap(options.providers)
     this.shellOptions = options.shell ?? {}
+    this.sessionOptions = options.session ?? {}
   }
 
   client(): AgentClient {
@@ -51,6 +62,7 @@ export class AgentServer {
       agent: this.agent,
       providers: this.providers,
       shell: this.shellOptions,
+      session: this.sessionOptions,
       sessions: this.sessionOwnership,
     })
     this.bindings.add(binding)
@@ -89,6 +101,7 @@ interface AgentTransportBindingOptions {
   agent: AgentHarness<unknown>
   providers: ReadonlyMap<string, Provider>
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  session?: AgentServerSessionOptions
   sessions: SessionOwnershipRegistry
 }
 
@@ -97,6 +110,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly agent: AgentHarness<unknown>
   private readonly providers: ReadonlyMap<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  private readonly sessionOptions: AgentServerSessionOptions
   private readonly sessions: SessionOwnershipRegistry
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
@@ -113,6 +127,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.agent = options.agent
     this.providers = options.providers
     this.shellOptions = options.shell ?? {}
+    this.sessionOptions = options.session ?? {}
     this.sessions = options.sessions
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
@@ -322,8 +337,14 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       tools: () => tools,
     }
     const session = restoring
-      ? AgentSession.fromSnapshot({ provider, runtime, snapshot: { ...snapshot, state } }, { agentSessionId, store })
-      : new AgentSession({ provider, model: frame.provider.model, cwd: frame.cwd, runtime, state }, { agentSessionId, store })
+      ? AgentSession.fromSnapshot(
+          { provider, runtime, snapshot: { ...snapshot, state } },
+          { agentSessionId, store, ...this.sessionOptions },
+        )
+      : new AgentSession(
+          { provider, model: frame.provider.model, cwd: frame.cwd, runtime, state },
+          { agentSessionId, store, ...this.sessionOptions },
+        )
     sessionRef = session
     this.session = session
     this.currentAgent = agent
@@ -361,6 +382,9 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         this.sendToolProgress(event.toolCallId, event.toolName, event.progress)
         return
       }
+      case 'retry_scheduled':
+        this.send({ type: 'retry_scheduled', attempt: event.attempt, delayMs: event.delayMs, code: event.code })
+        return
       case 'error':
         this.sendError(event.error)
         return
