@@ -5,6 +5,21 @@
 - 验证状态：`bun run typecheck` 干净；`bun run test` 510 pass / 11 skip / 0 fail
 - 定位：本文档是一次全量代码审读的结论与后续改造的总纲。每个改造阶段动工前，以本文档对应章节为设计输入；若实现与本文冲突，先修订本文再继续。
 
+## 执行状态（2026-07-06 更新）
+
+| 阶段 | 分支 | 状态 |
+| --- | --- | --- |
+| 1 转录 patch 管线 | `feat/transcript-patch-pipeline` | 已合并（journal patch、append_text op、revision 同步、落盘节流） |
+| 2 恢复一致性 + 接管 | `fix/session-restore-and-takeover` | 已合并（单一 state 对象、SessionOwnershipRegistry 接管语义） |
+| 3 回合级重试 | `feat/turn-retry-policy` | 已合并（TurnRetryPolicy、retry_scheduled 事件、Retry-After 采纳、压缩摘要复用） |
+| 4 shell 记账清理 | `refactor/shell-stream-accounting` | 已合并（死状态整层删除而非封装——原 24 字段中约 15 个为只写状态；保留名改为推导式；助手函数并入 utils） |
+| 5 命令双投影 | `feat/command-native-tool-projection` | 已合并（RegisteredCommandOperation + AgentServerOptions.commandTools，默认关闭） |
+| 6 估算与默认值 | `fix/token-estimate-and-defaults` | 已合并（usage 锚定估算、多模态计权、anthropic effort→budget 映射与 max_tokens 派生、store 目录迁 XDG、replay 截断可配） |
+| 7a agent-eval | — | 未启动（按 §5.7 与既有内部计划推进；双投影跑分依赖它给出 commandTools 默认值结论） |
+| 7b fork 治理 | `docs/fork-policy-and-execution-status` | 已合并（`docs/just-bash-fork-policy.md`） |
+
+其余未执行项：repl/index.ts 拆分（§5.6-4，纯整理，无行为变化）。§5.8-3 的 submodule 指针核实为工作区落后而非超前，已通过 `git submodule update` 对齐，无需落账。
+
 ---
 
 ## 1. 总体评估
