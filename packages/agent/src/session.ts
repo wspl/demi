@@ -86,6 +86,12 @@ export class AgentSession<State> {
   private persistTimer: ReturnType<typeof setTimeout> | null = null
   private persistDirty = false
 
+  /**
+   * Restores a session from a snapshot. Ownership of the snapshot (including
+   * `state`) transfers to the session: the caller must not mutate it afterwards.
+   * Passing state by reference — not a clone — lets the caller share the same
+   * object with harness closures (host/commands), keeping one live state.
+   */
   static fromSnapshot<State>(
     params: AgentSessionRestoreParams<State>,
     options: AgentSessionOptions<State> = {},
@@ -95,7 +101,7 @@ export class AgentSession<State> {
         `AgentSession: snapshot harness "${params.snapshot.harnessName}" does not match "${params.runtime.harnessName}"`,
       )
     }
-    const snapshot = structuredClone(params.snapshot)
+    const snapshot = params.snapshot
     return new AgentSession(
       {
         provider: params.provider,
@@ -114,7 +120,9 @@ export class AgentSession<State> {
     this.model = params.model
     this.cwd = params.cwd
     this.runtime = params.runtime
-    this.agentState = params.state === undefined ? params.runtime.initialState() : structuredClone(params.state)
+    // Adopted by reference (ownership transfer): the creator may share this
+    // object with harness closures so both sides observe the same live state.
+    this.agentState = params.state === undefined ? params.runtime.initialState() : params.state
     this.agentSessionId = options.agentSessionId ?? createId()
     this.idFactory = options.idFactory ?? createId
     this.yields = new YieldScheduler(this.idFactory, (wakeupId) => {
