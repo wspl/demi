@@ -1,59 +1,8 @@
-import { concatBytes, decodeUtf8, tail, utf8Bytes } from '@demicodes/utils'
+import { concatBytes, decodeUtf8 } from '@demicodes/utils'
 import type { HostSpawnRedirection, ShellOptions, ShoptOptions } from '@demicodes/just-bash/interpreter'
-import type { ExecAccumulator, ForegroundProcess, ForegroundSink, ShellSession } from './environment-state'
-import type { OutputSnapshot } from './environment'
+import type { ForegroundProcess, ForegroundSink, ShellSession } from './environment-state'
 import type { HostProcessOutputChunk } from './host'
 import type { HostBackedFileSystem } from './host-fs'
-
-const TAIL_SIZE = 4096
-
-export function emptySnapshot(): OutputSnapshot {
-  return {
-    stdoutDelta: '',
-    stderrDelta: '',
-    stdoutTail: '',
-    stderrTail: '',
-    totalStdoutBytes: 0,
-    totalStderrBytes: 0,
-    truncated: false,
-  }
-}
-
-export function snapshotFromAccumulator(session: ShellSession, accumulator: ExecAccumulator): OutputSnapshot {
-  const stdoutDelta = accumulator.stdout
-  const stderrDelta = accumulator.stderr
-  session.totalStdoutBytes = session.startStdoutBytes + utf8Bytes(stdoutDelta)
-  session.totalStderrBytes = session.startStderrBytes + utf8Bytes(stderrDelta)
-  return {
-    stdoutDelta,
-    stderrDelta,
-    stdoutTail: tailString(stdoutDelta),
-    stderrTail: tailString(stderrDelta),
-    totalStdoutBytes: session.totalStdoutBytes,
-    totalStderrBytes: session.totalStderrBytes,
-    truncated: false,
-  }
-}
-
-export function snapshotFromForeground(_session: ShellSession, foreground: ForegroundProcess): OutputSnapshot {
-  const stdoutDelta = foreground.stdoutBuffer.slice(foreground.lastStdoutSnapshot)
-  const stderrDelta = foreground.stderrBuffer.slice(foreground.lastStderrSnapshot)
-  foreground.lastStdoutSnapshot = foreground.stdoutBuffer.length
-  foreground.lastStderrSnapshot = foreground.stderrBuffer.length
-  foreground.lastRawStdoutBytesSnapshot = foreground.rawStdoutBytes
-  foreground.lastRawStderrBytesSnapshot = foreground.rawStderrBytes
-  foreground.lastStdoutBytesSnapshot = foreground.totalStdoutBytes
-  foreground.lastStderrBytesSnapshot = foreground.totalStderrBytes
-  return {
-    stdoutDelta,
-    stderrDelta,
-    stdoutTail: tailString(foreground.stdoutBuffer),
-    stderrTail: tailString(foreground.stderrBuffer),
-    totalStdoutBytes: foreground.totalStdoutBytes,
-    totalStderrBytes: foreground.totalStderrBytes,
-    truncated: false,
-  }
-}
 
 export function createOutputSinks(
   fs: HostBackedFileSystem,
@@ -114,33 +63,19 @@ export function createOutputSinks(
   return routes
 }
 
-export function recordForegroundChunk(
-  session: ShellSession,
-  foreground: ForegroundProcess,
-  sourceFd: 1 | 2,
-  chunk: Uint8Array,
-): void {
+export function recordForegroundChunk(foreground: ForegroundProcess, sourceFd: 1 | 2, chunk: Uint8Array): void {
   const text = decodeUtf8(chunk)
   foreground.lastOutputAt = Date.now()
-  if (sourceFd === 1) {
-    foreground.rawStdoutBuffer += text
-    foreground.rawStdoutBytes += chunk.byteLength
-  } else {
-    foreground.rawStderrBuffer += text
-    foreground.rawStderrBytes += chunk.byteLength
-  }
+  if (sourceFd === 1) foreground.rawStdoutBuffer += text
+  else foreground.rawStderrBuffer += text
 
   const sink = foreground.outputSinks[sourceFd]
   if (sink.kind === 'file' || sink.kind === 'null') {
     sink.bytes.push(chunk)
-    if (sourceFd === 1) foreground.redirectedStdoutBytes += chunk.byteLength
-    else foreground.redirectedStderrBytes += chunk.byteLength
-    notifyWaiters(foreground.outputLimitWaiters)
     return
   }
 
-  appendVisibleChunk(session, foreground, sink.fd ?? sourceFd, text, chunk.byteLength)
-  notifyWaiters(foreground.outputLimitWaiters)
+  appendVisibleChunk(foreground, sink.fd ?? sourceFd, text, chunk.byteLength)
 }
 
 export async function flushForegroundSinks(session: ShellSession, foreground: ForegroundProcess): Promise<void> {
@@ -230,13 +165,7 @@ function targetSink(fs: HostBackedFileSystem, cwd: string, target: string, appen
   return { kind: 'file', path: fs.resolvePath(cwd, target), append, bytes: [] }
 }
 
-function appendVisibleChunk(
-  session: ShellSession,
-  foreground: ForegroundProcess,
-  targetFd: 1 | 2,
-  text: string,
-  byteLength: number,
-): void {
+function appendVisibleChunk(foreground: ForegroundProcess, targetFd: 1 | 2, text: string, byteLength: number): void {
   foreground.outputChunks.push({
     stream: targetFd === 1 ? 'stdout' : 'stderr',
     text,
@@ -245,23 +174,6 @@ function appendVisibleChunk(
   })
   foreground.outputBytes += byteLength
 
-  if (targetFd === 1) {
-    foreground.stdoutBuffer += text
-    foreground.totalStdoutBytes += byteLength
-    session.totalStdoutBytes += byteLength
-    session.stdoutTail = tailString(session.stdoutTail + text)
-  } else {
-    foreground.stderrBuffer += text
-    foreground.totalStderrBytes += byteLength
-    session.totalStderrBytes += byteLength
-    session.stderrTail = tailString(session.stderrTail + text)
-  }
-}
-
-function tailString(value: string): string {
-  return tail(value, TAIL_SIZE)
-}
-
-function notifyWaiters(waiters: Set<() => void>): void {
-  for (const waiter of waiters) waiter()
+  if (targetFd === 1) foreground.stdoutBuffer += text
+  else foreground.stderrBuffer += text
 }

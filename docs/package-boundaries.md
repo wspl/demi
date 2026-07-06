@@ -64,7 +64,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/host-local`
 
 - Status: implemented.
-- Production deps: `@demicodes/shell`.
+- Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: local Node Host adapter, specifically `LocalHost.defaultCwd`, `LocalHost.fs`, `LocalHost.process`, and `LocalHost.store`.
 - Public boundary: one Node-only local Host implementation. Store is a Host facet, not a separate adapter family.
 - May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, and process-group signaling.
@@ -194,7 +194,7 @@ core -> none
 utils -> none
 provider -> core
 shell -> just-bash, utils
-host-local -> shell
+host-local -> shell, utils
 agent -> core, provider, shell, utils
 coding-agent -> agent, core, shell, utils
 provider-claude-code -> core, provider, utils

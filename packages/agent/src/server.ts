@@ -1,4 +1,4 @@
-import { isRecord, noop } from '@demicodes/utils'
+import { isRecord, noop, safeJsonStringify } from '@demicodes/utils'
 import { AgentSession } from './session'
 import {
   BashEnvironment,
@@ -578,25 +578,7 @@ function progressToText(progress: unknown): string {
   if (typeof progress === 'bigint') return progress.toString()
   if (typeof progress === 'symbol') return String(progress)
   if (typeof progress === 'function') return `[Function ${progress.name || 'anonymous'}]`
-  try {
-    return safeStringify(progress) ?? String(progress)
-  } catch {
-    return String(progress)
-  }
-}
-
-function safeStringify(value: unknown): string | undefined {
-  const seen = new WeakSet<object>()
-  return JSON.stringify(value, (_key, nested) => {
-    if (typeof nested === 'bigint') return nested.toString()
-    if (typeof nested === 'symbol') return String(nested)
-    if (typeof nested === 'function') return `[Function ${nested.name || 'anonymous'}]`
-    if (nested !== null && typeof nested === 'object') {
-      if (seen.has(nested)) return '[Circular]'
-      seen.add(nested)
-    }
-    return nested
-  })
+  return safeJsonStringify(progress) ?? String(progress)
 }
 
 function progressToShellOutput(

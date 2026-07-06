@@ -1,3 +1,4 @@
+import { isFileNotFoundError } from '@demicodes/utils'
 import type { Dirent } from 'node:fs'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
@@ -15,7 +16,7 @@ export class LocalHostStore implements HostStore {
       const content = await readFile(this.pathForKey(key), 'utf8')
       return JSON.parse(content) as T
     } catch (error) {
-      if (isNotFound(error)) return null
+      if (isFileNotFoundError(error)) return null
       throw error
     }
   }
@@ -54,7 +55,7 @@ async function collectJsonFiles(path: string, root: string, found: string[]): Pr
   try {
     entries = await readdir(path, { withFileTypes: true })
   } catch (error) {
-    if (isNotFound(error)) return
+    if (isFileNotFoundError(error)) return
     throw error
   }
 
@@ -66,10 +67,6 @@ async function collectJsonFiles(path: string, root: string, found: string[]): Pr
       found.push(relative(root, fullPath))
     }
   }
-}
-
-function isNotFound(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT'
 }
 
 function validateHostStoreKey(key: string): void {

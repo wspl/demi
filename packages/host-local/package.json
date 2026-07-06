@@ -12,7 +12,8 @@
     }
   },
   "dependencies": {
-    "@demicodes/shell": "workspace:*"
+    "@demicodes/shell": "workspace:*",
+    "@demicodes/utils": "workspace:*"
   },
   "license": "Apache-2.0",
   "main": "./dist/index.mjs",
