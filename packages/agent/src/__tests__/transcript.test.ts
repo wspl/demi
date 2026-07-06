@@ -310,3 +310,48 @@ test('Transcript token estimates tolerate non-JSON extension state', () => {
 
   expect(transcript.estimateContextTokens()).toBeGreaterThan(0)
 })
+
+test('context estimate anchors on the latest provider-reported usage', () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'x'.repeat(40_000) }])
+  transcript.applyProviderEvent(model, { type: 'text_delta', text: 'reply' })
+  transcript.applyProviderEvent(model, {
+    type: 'response',
+    usage: { inputTokens: 1_234, outputTokens: 50, cacheReadTokens: 100, cacheWriteTokens: 0 },
+  })
+
+  // Anchored: the reported usage replaces the (much larger) char estimate.
+  expect(transcript.estimateContextTokens()).toBe(1_384)
+
+  // Blocks streamed after the anchor add their char estimate on top.
+  transcript.pushUserTurn('turn-2', model, [{ type: 'text', text: 'y'.repeat(4_000) }])
+  expect(transcript.estimateContextTokens()).toBe(1_384 + 1_000)
+})
+
+test('compaction after the last response invalidates the usage anchor', () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'x'.repeat(8_000) }])
+  transcript.applyProviderEvent(model, {
+    type: 'response',
+    usage: { inputTokens: 999_999, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  })
+  const boundary = transcript.insertCompactionBoundary(0, model, 'short summary', 4)
+  transcript.appendCompactionMarker(model, boundary.id, 2_000)
+
+  // The stale usage measured pre-compaction history; fall back to estimation
+  // of the replay window (boundary summary + kept blocks).
+  expect(transcript.estimateContextTokens()).toBeLessThan(10_000)
+})
+
+test('images and documents contribute to the unanchored context estimate', () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('turn-1', model, [
+    { type: 'text', text: 'look' },
+    { type: 'image', source: { type: 'binary', data: new Uint8Array(3_000_000), mediaType: 'image/png' } },
+    { type: 'document', source: { data: new Uint8Array(40_000), mediaType: 'application/pdf', fileName: 'doc.pdf' } },
+  ])
+
+  const estimate = transcript.estimateContextTokens()
+  // 3MB image ~= 3000 tokens, 40KB document ~= 10000 tokens.
+  expect(estimate).toBeGreaterThan(12_000)
+})

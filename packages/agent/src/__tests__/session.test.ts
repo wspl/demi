@@ -90,11 +90,14 @@ function createYieldRuntime(
 class RecordingProvider implements AgentProvider {
   readonly runModelIds: string[] = []
   disposed = false
-  constructor(private readonly reply: string) {}
+  constructor(
+    private readonly reply: string,
+    private readonly usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  ) {}
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.runModelIds.push(request.modelId)
     yield { type: 'text_delta', text: this.reply }
-    yield { type: 'response', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } }
+    yield { type: 'response', usage: this.usage }
   }
   async dispose(): Promise<void> {
     this.disposed = true
@@ -126,7 +129,14 @@ test('updateModel swaps the provider, disposes the old one, and the next turn us
 })
 
 test('switching to a smaller-window model defers compaction to the next turn, done by the OLD model', async () => {
-  const big = new RecordingProvider('summary from the big model')
+  // Realistic usage: the estimate anchors on reported usage, so the history
+  // must actually measure as large for the small model to require compaction.
+  const big = new RecordingProvider('summary from the big model', {
+    inputTokens: 5_000,
+    outputTokens: 20,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  })
   const small = new RecordingProvider('small reply')
   const bigModel: ModelSelection = { ...model, model: { ...model.model, id: 'big', contextWindow: 100_000 } }
   // Tiny window so the accumulated history is over threshold for the target model.

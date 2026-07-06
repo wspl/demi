@@ -270,3 +270,36 @@ async function withEnv(env: Record<string, string>, run: () => Promise<void>): P
 function zeroUsage() {
   return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
 }
+
+test('effort and adaptive thinking configs map onto budget tokens instead of being dropped', () => {
+  const base = request({ items: [{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }] })
+
+  // high maps to 32768 but clamps below the default 32000 max_tokens.
+  const effort = buildAnthropicMessagesBody({ ...base, thinking: { type: 'effort', effort: 'high', summary: null } }, undefined)
+  expect(effort.thinking).toEqual({ type: 'enabled', budget_tokens: 32_000 - 1_024 })
+
+  const adaptive = buildAnthropicMessagesBody({ ...base, thinking: { type: 'adaptive', effort: 'low' } }, undefined)
+  expect(adaptive.thinking).toEqual({ type: 'enabled', budget_tokens: 4_096 })
+
+  const custom = buildAnthropicMessagesBody(
+    { ...base, thinking: { type: 'effort', effort: 'high', summary: null } },
+    { effortBudgetTokens: { high: 2_048 } },
+  )
+  expect(custom.thinking).toEqual({ type: 'enabled', budget_tokens: 2_048 })
+
+  const disabled = buildAnthropicMessagesBody({ ...base, thinking: { type: 'disabled' } }, undefined)
+  expect(disabled.thinking).toBeUndefined()
+})
+
+test('thinking budgets clamp below max_tokens and max_tokens defaults are agent-sized', () => {
+  const base = request({ items: [{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }] })
+
+  const clamped = buildAnthropicMessagesBody(
+    { ...base, thinking: { type: 'budget', budgetTokens: 999_999 } },
+    { maxTokens: 8_192 },
+  )
+  expect(clamped.thinking).toEqual({ type: 'enabled', budget_tokens: 8_192 - 1_024 })
+
+  const defaulted = buildAnthropicMessagesBody(base, undefined)
+  expect(defaulted.max_tokens).toBe(32_000)
+})

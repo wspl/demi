@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import {
   appendFile,
@@ -263,9 +263,22 @@ class LocalHostFileSystem implements HostFileSystem {
   }
 }
 
+// The store persists conversations and shell artifacts, so it lives in the
+// platform data directory, not tmpdir (which evaporates on reboot/cleanup).
 function defaultStoreRoot(defaultCwd: string): string {
   const key = createHash('sha256').update(defaultCwd).digest('hex').slice(0, 16)
-  return join(tmpdir(), 'demi-host-local-store', key)
+  return join(dataHome(), 'demi', 'host-local', key)
+}
+
+function dataHome(): string {
+  const xdg = process.env.XDG_DATA_HOME
+  if (xdg && xdg.trim()) return xdg
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA
+    if (localAppData && localAppData.trim()) return localAppData
+    return join(homedir(), 'AppData', 'Local')
+  }
+  return join(homedir(), '.local', 'share')
 }
 
 function toHostFileStat(value: Stats): HostFileStat {

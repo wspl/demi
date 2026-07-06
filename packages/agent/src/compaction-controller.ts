@@ -1,7 +1,7 @@
 import { AbortError, abortable, delay, throwIfAborted } from '@demicodes/utils'
 import type { Block, ModelSelection } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
-import { Transcript } from './transcript'
+import { Transcript, estimateTranscriptBlockTokens } from './transcript'
 import {
   buildCompactionSummaryRequest,
   estimateTokens,
@@ -78,9 +78,7 @@ export class CompactionController {
     let cutPoint = window.cutPoint
     while (cutPoint > window.startIndex) {
       const compactedBlocks = transcript.blocks.slice(window.startIndex, cutPoint)
-      const compactedTokens = compactedBlocks.reduce((total, block) => {
-        return total + new Transcript([block]).estimateContextTokens()
-      }, 0)
+      const compactedTokens = compactedBlocks.reduce((total, block) => total + estimateTranscriptBlockTokens(block), 0)
 
       try {
         const summary = await this.generateSummary(compactedBlocks)
