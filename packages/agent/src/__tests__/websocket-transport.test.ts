@@ -67,6 +67,7 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
   const clientSnapshotFrame = nextFrame<ServerFrame>(client)
   server.send({
     type: 'transcript_snapshot',
+    revision: 1,
     blocks: [
       {
         type: 'user',
