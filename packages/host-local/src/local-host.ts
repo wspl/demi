@@ -22,6 +22,7 @@ import {
 } from 'node:fs/promises'
 import type { Dirent, Stats } from 'node:fs'
 import type { Readable } from 'node:stream'
+import { isFileNotFoundError } from '@demicodes/utils'
 import type {
   Host,
   HostDirent,
@@ -193,7 +194,7 @@ class LocalHostFileSystem implements HostFileSystem {
       await lstat(this.resolvePath(path, options?.cwd))
       return true
     } catch (error) {
-      if (isNotFound(error)) return false
+      if (isFileNotFoundError(error)) return false
       throw error
     }
   }
@@ -285,10 +286,6 @@ function toHostDirent(value: Dirent): HostDirent {
     isDirectory: value.isDirectory(),
     isSymbolicLink: value.isSymbolicLink(),
   }
-}
-
-function isNotFound(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 'ENOENT'
 }
 
 async function* streamBytes(stream: Readable | null): AsyncIterable<Uint8Array> {

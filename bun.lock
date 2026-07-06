@@ -45,6 +45,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@demicodes/shell": "workspace:*",
+        "@demicodes/utils": "workspace:*",
       },
     },
     "packages/just-bash/packages/just-bash": {
