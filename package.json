@@ -16,6 +16,7 @@
     "packages/shell",
     "packages/repl",
     "packages/web-ui",
+    "packages/agent-eval",
     "packages/web",
     "packages/just-bash/packages/just-bash"
   ],
@@ -30,9 +31,10 @@
     "changeset:publish": "bun run build && changeset publish",
     "web:dev": "bun --filter @demicodes/web dev",
     "web:server": "bun run packages/web/src/server/index.ts",
-    "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/host-local/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/repl/src packages/web-ui/src packages/web/src",
+    "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/host-local/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/repl/src packages/web-ui/src packages/web/src packages/agent-eval/src",
     "test:just-bash-core": "bun test packages/just-bash/packages/just-bash/src/syntax/parser-protection.test.ts packages/just-bash/packages/just-bash/src/syntax/parser-edge-cases.test.ts packages/just-bash/packages/just-bash/src/syntax/parse-errors.test.ts",
-    "repl": "bun run packages/repl/src/index.ts"
+    "repl": "bun run packages/repl/src/index.ts",
+    "agent-eval": "bun run packages/agent-eval/src/cli.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
