@@ -1,4 +1,5 @@
-// demi core types — 对照 Rust alloy-generated / types.g.ts
+// Shared data contracts for every Demi package: content blocks, model
+// selection, transcript blocks, and session state. No runtime behavior.
 
 // ── 基础内容块 ───────────────────────────────────────────────────────
 
