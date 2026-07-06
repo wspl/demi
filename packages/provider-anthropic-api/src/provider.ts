@@ -32,7 +32,14 @@ export type AnthropicApiHeadersResolver = () => Record<string, string> | Promise
 export type AnthropicApiFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
 export interface AnthropicApiRequestOptions {
+  /** Overrides the derived max_tokens (default: the model's outputLimit, else 32000). */
   maxTokens?: number
+  /**
+   * Budget tokens used when an effort/adaptive thinking config is mapped onto
+   * the Messages API's budget knob. Merged over the built-in ladder
+   * (low 4k / medium 16k / high 32k / xhigh 64k / max 96k).
+   */
+  effortBudgetTokens?: Record<string, number>
   extraBody?: Record<string, unknown>
 }
 
@@ -61,7 +68,17 @@ interface AnthropicApiRuntimeOptions {
 
 const DEFAULT_ANTHROPIC_API_BASE_URL = 'https://api.anthropic.com/v1'
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01'
-const DEFAULT_MAX_TOKENS = 4096
+// Agent turns routinely stream long tool-heavy responses; 4k-class defaults
+// truncate them. Used only when the catalog has no outputLimit for the model.
+const DEFAULT_MAX_TOKENS = 32_000
+const MIN_THINKING_BUDGET_TOKENS = 1_024
+const DEFAULT_EFFORT_BUDGET_TOKENS: Record<string, number> = {
+  low: 4_096,
+  medium: 16_384,
+  high: 32_768,
+  xhigh: 65_536,
+  max: 98_304,
+}
 
 export class AnthropicApiProvider implements AgentProvider {
   constructor(private readonly options: AnthropicApiRuntimeOptions) {}
@@ -143,7 +160,16 @@ export function createAnthropicApiProvider(options: AnthropicApiProviderOptions 
     auth: { status: () => authStatusFromKey(apiKey, options.headers, 'x-api-key', 'Anthropic') },
     state: () => ({ status: 'ready', message: 'Uses the Anthropic Messages API' }),
     listModels: modelList,
-    createRuntime: (_selection: ProviderSelection) => new AnthropicApiProvider(runtimeOptions),
+    createRuntime: (selection: ProviderSelection) => {
+      // max_tokens defaults to the selected model's catalog outputLimit; an
+      // explicit request.maxTokens still wins.
+      const outputLimit = modelList().models.find((model) => model.id === selection.model.model.id)?.outputLimit ?? null
+      const request: AnthropicApiRequestOptions = {
+        ...options.request,
+        maxTokens: options.request?.maxTokens ?? outputLimit ?? undefined,
+      }
+      return new AnthropicApiProvider({ ...runtimeOptions, request })
+    },
   })
 }
 
@@ -184,20 +210,44 @@ export function buildAnthropicMessagesBody(
   request: InferenceRequest,
   options: AnthropicApiRequestOptions | undefined,
 ): AnthropicMessagesRequestBody {
+  const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
   const body: AnthropicMessagesRequestBody = {
     model: request.modelId,
     messages: inferenceItemsToAnthropicMessages(request.items),
-    max_tokens: options?.maxTokens ?? DEFAULT_MAX_TOKENS,
+    max_tokens: maxTokens,
     stream: true,
   }
   if (request.systemPrompt.trim()) body.system = request.systemPrompt
   if (request.tools.length > 0) body.tools = request.tools.map(toolToAnthropicTool)
-  if (request.thinking?.type === 'budget') {
-    body.thinking = { type: 'enabled', budget_tokens: request.thinking.budgetTokens }
+  const budgetTokens = thinkingBudgetTokens(request.thinking, maxTokens, options?.effortBudgetTokens)
+  if (budgetTokens !== null) {
+    body.thinking = { type: 'enabled', budget_tokens: budgetTokens }
   }
   if (request.serviceTierId) body.service_tier = request.serviceTierId
   if (options?.extraBody) Object.assign(body, options.extraBody)
   return body
+}
+
+/**
+ * Maps any thinking config onto the Messages API budget knob: budget configs
+ * pass through, effort/adaptive configs resolve through the effort ladder
+ * (caller-overridable). Budgets clamp below max_tokens and to the API minimum;
+ * nothing is silently dropped.
+ */
+export function thinkingBudgetTokens(
+  thinking: InferenceRequest['thinking'],
+  maxTokens: number,
+  effortBudgets: Record<string, number> | undefined,
+): number | null {
+  if (!thinking || thinking.type === 'disabled') return null
+  const requested =
+    thinking.type === 'budget'
+      ? thinking.budgetTokens
+      : (effortBudgets?.[thinking.effort] ??
+        DEFAULT_EFFORT_BUDGET_TOKENS[thinking.effort] ??
+        DEFAULT_EFFORT_BUDGET_TOKENS.medium!)
+  const cap = Math.max(MIN_THINKING_BUDGET_TOKENS, maxTokens - MIN_THINKING_BUDGET_TOKENS)
+  return Math.max(MIN_THINKING_BUDGET_TOKENS, Math.min(requested, cap))
 }
 
 export async function* mapAnthropicMessageStream(
