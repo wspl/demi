@@ -428,7 +428,8 @@ test('AgentServer emits transcript patches with removals on retry', async () => 
   const patches = seen
     .filter((event) => event.type === 'transcript_patch')
     .flatMap((event) => (event.type === 'transcript_patch' ? event.patches : []))
-  expect(patches.some((patch) => patch.op === 'remove')).toBe(true)
+  // Retry rewrites the transcript in bulk, which replicates as a full replace.
+  expect(patches.some((patch) => patch.op === 'replace')).toBe(true)
   expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 

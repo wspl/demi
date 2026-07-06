@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
-import { applyTranscriptPatches, diffTranscriptBlocks } from '../index'
+import { Transcript, applyTranscriptPatches } from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -15,71 +15,80 @@ const model: ModelSelection = {
   thinking: null,
 }
 
-test('transcript patches update tool_call blocks whose status and metadata changed in place', () => {
-  const previous = [userBlock(), toolCallBlock({ status: 'executing', metadata: null })]
-  const next = [
-    userBlock(),
-    toolCallBlock({
-      status: 'completed',
-      output: [{ type: 'text', text: 'done' }],
-      metadata: { result: 'ok' },
-    }),
-  ]
+test('journal patches replicate appended blocks and streaming text deltas', () => {
+  const transcript = new Transcript()
+  const replica: Block[] = []
 
-  const patches = diffTranscriptBlocks(previous, next)
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'hello' }])
+  transcript.applyProviderEvent(model, { type: 'text_delta', text: 'Hi ' })
+  transcript.applyProviderEvent(model, { type: 'text_delta', text: 'there' })
 
-  expect(patches.map((patch) => patch.op)).toEqual(['remove', 'add'])
-  expect(applyTranscriptPatches(previous, patches)).toEqual(next)
+  const drained = transcript.takePatches()
+  expect(drained).not.toBeNull()
+  expect(drained!.revision).toBe(1)
+  // Consecutive deltas to the same block coalesce into the add (first delta
+  // creates the block) plus one append_text.
+  expect(drained!.patches.map((patch) => patch.op)).toEqual(['add', 'add', 'append_text'])
+
+  const applied = applyTranscriptPatches(replica, drained!.patches)
+  expect(applied).toEqual(transcript.snapshot().blocks)
 })
 
-test('transcript diff handles non-JSON metadata without throwing', () => {
-  const previous = [userBlock(), toolCallBlock({ status: 'completed', metadata: { count: 1n } })]
-  const next = [userBlock(), toolCallBlock({ status: 'completed', metadata: { count: 2n } })]
-
-  const patches = diffTranscriptBlocks(previous, next)
-
-  expect(applyTranscriptPatches(previous, patches)).toEqual(next)
-})
-
-test('transcript diff handles cyclic metadata without throwing', () => {
-  const previousMetadata: Record<string, unknown> = { label: 'previous' }
-  previousMetadata.self = previousMetadata
-  const nextMetadata: Record<string, unknown> = { label: 'next' }
-  nextMetadata.self = nextMetadata
-  const previous = [userBlock(), toolCallBlock({ status: 'completed', metadata: previousMetadata })]
-  const next = [userBlock(), toolCallBlock({ status: 'completed', metadata: nextMetadata })]
-
-  const patches = diffTranscriptBlocks(previous, next)
-
-  expect(patches.map((patch) => patch.op)).toEqual(['remove', 'add'])
-  expect(applyTranscriptPatches(previous, patches)).toEqual(next)
-})
-
-function userBlock(): Block {
-  return {
-    type: 'user',
-    id: 'user-1',
-    turnId: 'turn-1',
-    createdAt: '2026-06-17T00:00:00.000Z',
-    model,
-    content: [{ type: 'text', text: 'hello' }],
-    preamble: null,
-  }
-}
-
-function toolCallBlock(overrides: Partial<Extract<Block, { type: 'tool_call' }>> = {}): Extract<Block, { type: 'tool_call' }> {
-  return {
-    type: 'tool_call',
-    id: 'tool-1',
-    createdAt: '2026-06-17T00:00:01.000Z',
-    model,
+test('journal patches replicate tool completion as a block replace', () => {
+  const transcript = new Transcript()
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'run' }])
+  transcript.applyProviderEvent(model, {
+    type: 'tool_call_requested',
     toolUseId: 'call-1',
     toolName: 'shell_exec',
-    input: '{}',
-    status: 'executing',
-    streamingOutput: [],
-    output: [],
-    metadata: null,
-    ...overrides,
-  }
-}
+    input: { script: 'ls' },
+  })
+  let replica = applyTranscriptPatches([], transcript.takePatches()!.patches)
+
+  transcript.completeToolCall('call-1', [{ type: 'text', text: 'done' }], false, { result: 'ok' })
+  const drained = transcript.takePatches()!
+  expect(drained.revision).toBe(2)
+  expect(drained.patches.map((patch) => patch.op)).toEqual(['replace_block'])
+
+  replica = applyTranscriptPatches(replica, drained.patches)
+  expect(replica).toEqual(transcript.snapshot().blocks)
+  expect(replica[1]).toMatchObject({ type: 'tool_call', status: 'completed' })
+})
+
+test('journal add values are snapshots, unaffected by later mutation of the live block', () => {
+  const transcript = new Transcript()
+  transcript.applyProviderEvent(model, { type: 'text_delta', text: 'first' })
+  const drained = transcript.takePatches()!
+  // Mutate the live block after draining; the drained patch must not change.
+  transcript.applyProviderEvent(model, { type: 'text_delta', text: ' second' })
+
+  const applied = applyTranscriptPatches([], drained.patches)
+  expect(applied[0]).toMatchObject({ type: 'text', text: 'first' })
+})
+
+test('rewind for retry emits a full replace and drops finer-grained history', () => {
+  const transcript = new Transcript()
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'try' }])
+  transcript.pushSteer('turn-1', model, [{ type: 'text', text: 'also this' }])
+  transcript.applyProviderEvent(model, { type: 'text_delta', text: 'partial answer' })
+  const replica = applyTranscriptPatches([], transcript.takePatches()!.patches)
+
+  const userBlock = transcript.rewindToLastUserTurn()
+  expect(userBlock?.turnId).toBe('turn-1')
+
+  const drained = transcript.takePatches()!
+  expect(drained.patches.map((patch) => patch.op)).toEqual(['replace'])
+  const applied = applyTranscriptPatches(replica, drained.patches)
+  expect(applied.map((block) => block.type)).toEqual(['user', 'steer'])
+  expect(applied).toEqual(transcript.snapshot().blocks)
+})
+
+test('takePatches returns null when nothing changed and revisions stay monotonic', () => {
+  const transcript = new Transcript()
+  expect(transcript.takePatches()).toBeNull()
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'a' }])
+  expect(transcript.takePatches()!.revision).toBe(1)
+  expect(transcript.takePatches()).toBeNull()
+  transcript.pushAbort(model)
+  expect(transcript.takePatches()!.revision).toBe(2)
+})
