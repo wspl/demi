@@ -8,6 +8,7 @@ import type {
 } from '@demicodes/core'
 import type { AgentProvider, ToolDefinition } from '@demicodes/provider'
 import type { CommandSpec, Host } from '@demicodes/shell'
+import type { TranscriptPatch } from './frames'
 import type { Transcript } from './transcript'
 
 export interface AgentPromptContext<State> {
@@ -185,10 +186,16 @@ export interface AgentSessionOptions<State = unknown> {
     keepRecentTokens?: number
     preflightThresholdRatio?: number
   }
+  /**
+   * Maximum interval between snapshot writes while a turn is streaming. Writes
+   * always flush at action boundaries (turn end, abort, dispose); this only
+   * bounds staleness during streaming. Default 1000ms.
+   */
+  persistIntervalMs?: number
 }
 
 export type SessionEvent =
-  | { type: 'transcript_changed'; transcript: CoreTranscript }
+  | { type: 'transcript_changed'; patches: TranscriptPatch[]; revision: number }
   | { type: 'phase_changed'; phase: SessionPhase }
   | { type: 'queue_changed'; queue: QueuedMessage[] }
   | { type: 'tool_progress'; toolCallId: string; toolName: string; progress: unknown }

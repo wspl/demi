@@ -406,7 +406,8 @@ test('AgentSession store snapshots are insulated from later state mutations', as
 
   await session.send(text('count once'))
 
-  expect(store.snapshots[0]?.state).toEqual({ toolCalls: 0 })
+  // Persistence is throttled with a boundary flush, so the action resolves with
+  // the final state already written.
   expect(store.snapshots.at(-1)?.state).toEqual({ toolCalls: 1 })
 
   if (!store.snapshots[0]) throw new Error('missing first snapshot')

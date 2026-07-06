@@ -36,6 +36,8 @@ export class AgentClient {
   private readonly pendingConversationWaiters: ((conversations: ConversationSummary[]) => void)[] = []
   private readonly queuedMessageIds = new Set<string>()
   private blocks: Block[] = []
+  private revision: number | null = null
+  private awaitingResync = false
   private phase: SessionPhase | null = null
   private unsubscribeTransport: () => void
 
@@ -179,14 +181,27 @@ export class AgentClient {
     switch (frame.type) {
       case 'transcript_snapshot':
         this.blocks = [...frame.blocks]
+        this.revision = frame.revision
+        this.awaitingResync = false
         this.emit({ type: 'transcript_snapshot', blocks: this.blocks })
         return
       case 'transcript_patch':
+        if (this.awaitingResync) return
+        // Transports are ordered, so a gap means a dropped frame somewhere in
+        // the pipeline — fall back to a full snapshot instead of diverging.
+        if (this.revision !== null && frame.revision !== this.revision + 1) {
+          this.awaitingResync = true
+          this.sendFrame({ type: 'sync_transcript' })
+          return
+        }
+        this.revision = frame.revision
         this.blocks = applyTranscriptPatches(this.blocks, frame.patches)
         this.emit({ type: 'transcript_patch', patches: frame.patches, blocks: this.blocks })
         return
       case 'closed':
         this.blocks = []
+        this.revision = null
+        this.awaitingResync = false
         this.phase = null
         this.queuedMessageIds.clear()
         this.emit(frame)

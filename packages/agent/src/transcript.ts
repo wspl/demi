@@ -7,6 +7,7 @@ import type {
   UserContentBlock,
 } from '@demicodes/core'
 import type { InferenceItem, ProviderEvent } from '@demicodes/provider'
+import type { TranscriptPatch } from './frames'
 
 const MODEL_TEXT_HEAD_CHARS = 8_000
 const MODEL_TEXT_TAIL_CHARS = 8_000
@@ -22,11 +23,21 @@ export interface CompactionWindow {
   cutPoint: number
 }
 
+export interface DrainedTranscriptPatches {
+  revision: number
+  patches: TranscriptPatch[]
+}
+
 export class Transcript implements CoreTranscript {
   readonly blocks: Block[]
 
   private readonly idFactory: () => string
   private readonly now: () => string
+  // Mutation journal: every mutating method records the wire patch describing
+  // it, so replication never has to diff snapshots. Values are cloned at record
+  // time because live blocks keep mutating (streaming text appends).
+  private journal: TranscriptPatch[] = []
+  private revisionCounter = 0
 
   constructor(blocks: Block[] = [], options: TranscriptOptions = {}) {
     this.blocks = [...blocks]
@@ -36,6 +47,46 @@ export class Transcript implements CoreTranscript {
 
   snapshot(): CoreTranscript {
     return { blocks: structuredClone(this.blocks) }
+  }
+
+  /** Monotonic revision, advanced once per drained patch batch. */
+  get revision(): number {
+    return this.revisionCounter
+  }
+
+  /**
+   * Drains the patches recorded since the last drain, advancing the revision.
+   * Returns null when nothing changed.
+   */
+  takePatches(): DrainedTranscriptPatches | null {
+    if (this.journal.length === 0) return null
+    this.revisionCounter += 1
+    return { revision: this.revisionCounter, patches: this.journal.splice(0) }
+  }
+
+  private record(patch: TranscriptPatch): void {
+    if (patch.op === 'append_text') {
+      const last = this.journal[this.journal.length - 1]
+      if (last?.op === 'append_text' && last.path[1] === patch.path[1]) {
+        last.delta += patch.delta
+        return
+      }
+    }
+    this.journal.push(patch)
+  }
+
+  private recordAdd(index: number, block: Block): void {
+    this.record({ op: 'add', path: ['blocks', index], value: structuredClone(block) })
+  }
+
+  private recordBlockReplace(index: number): void {
+    this.record({ op: 'replace_block', path: ['blocks', index], value: structuredClone(this.blocks[index]) })
+  }
+
+  private recordReplaceAll(): void {
+    // A bulk rewrite invalidates any finer-grained patches recorded before it.
+    this.journal = []
+    this.record({ op: 'replace', path: ['blocks'], value: structuredClone(this.blocks) })
   }
 
   pushUserTurn(
@@ -55,8 +106,7 @@ export class Transcript implements CoreTranscript {
       preamble,
       ...(hidden ? { hidden: true } : {}),
     }
-    this.blocks.push(block)
-    return block
+    return this.appendBlock(block)
   }
 
   pushResumeTurn(turnId: string, model: ModelSelection): Block {
@@ -67,8 +117,7 @@ export class Transcript implements CoreTranscript {
       createdAt: this.now(),
       model,
     }
-    this.blocks.push(block)
-    return block
+    return this.appendBlock(block)
   }
 
   pushSteer(
@@ -87,8 +136,7 @@ export class Transcript implements CoreTranscript {
       content,
       ...(hidden ? { hidden: true } : {}),
     }
-    this.blocks.push(block)
-    return block
+    return this.appendBlock(block)
   }
 
   pushAbort(model: ModelSelection, isResumed = false): Block {
@@ -99,8 +147,7 @@ export class Transcript implements CoreTranscript {
       model,
       isResumed,
     }
-    this.blocks.push(block)
-    return block
+    return this.appendBlock(block)
   }
 
   markLatestAbortResumed(): boolean {
@@ -108,10 +155,32 @@ export class Transcript implements CoreTranscript {
       const block = this.blocks[i]
       if (block.type === 'abort') {
         block.isResumed = true
+        this.recordBlockReplace(i)
         return true
       }
     }
     return false
+  }
+
+  /**
+   * Rewrites the transcript for a retry: drops everything after the last user
+   * turn except that turn's steers (which are replayed to the new attempt).
+   * Returns the user block, or null when there is no user turn to retry.
+   */
+  rewindToLastUserTurn(): Extract<Block, { type: 'user' }> | null {
+    for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
+      const block = this.blocks[i]
+      if (block.type !== 'user') continue
+      const preservedSteers = this.blocks
+        .slice(i + 1)
+        .filter((candidate): candidate is Extract<Block, { type: 'steer' }> => {
+          return candidate.type === 'steer' && candidate.turnId === block.turnId
+        })
+      this.blocks.splice(i + 1, this.blocks.length - i - 1, ...preservedSteers)
+      this.recordReplaceAll()
+      return block
+    }
+    return null
   }
 
   applyProviderEvent(model: ModelSelection, event: ProviderEvent): Block | null {
@@ -174,13 +243,15 @@ export class Transcript implements CoreTranscript {
     isError = false,
     metadata: unknown | null = null,
   ): Block | null {
-    const block = findPendingToolCall(this.blocks, toolUseId)
-    if (!block) return null
+    const index = findPendingToolCallIndex(this.blocks, toolUseId)
+    if (index === null) return null
+    const block = this.blocks[index] as Extract<Block, { type: 'tool_call' }>
 
     block.status = isError ? 'error' : 'completed'
     block.output = output
     block.streamingOutput = []
     block.metadata = metadata
+    this.recordBlockReplace(index)
     return block
   }
 
@@ -200,6 +271,7 @@ export class Transcript implements CoreTranscript {
       const block = this.blocks[i]
       if (block.type !== 'tool_call' || block.status !== 'executing') continue
       removed.unshift(...this.blocks.splice(i, 1))
+      this.record({ op: 'remove', path: ['blocks', i] })
     }
     return removed
   }
@@ -246,6 +318,7 @@ export class Transcript implements CoreTranscript {
       summaryTokens,
     }
     this.blocks.splice(index, 0, block)
+    this.recordAdd(index, block)
     return block
   }
 
@@ -369,6 +442,7 @@ export class Transcript implements CoreTranscript {
     const previous = this.blocks[this.blocks.length - 1]
     if (previous?.type === 'text') {
       previous.text += text
+      this.record({ op: 'append_text', path: ['blocks', this.blocks.length - 1], delta: text })
       return previous
     }
     return this.appendBlock({
@@ -384,6 +458,7 @@ export class Transcript implements CoreTranscript {
     const previous = this.blocks[this.blocks.length - 1]
     if (previous?.type === 'thinking') {
       previous.text += text
+      this.record({ op: 'append_text', path: ['blocks', this.blocks.length - 1], delta: text })
       return previous
     }
     return this.appendBlock({
@@ -401,6 +476,7 @@ export class Transcript implements CoreTranscript {
       const block = this.blocks[i]
       if (block.type === 'thinking') {
         block.signature = signature
+        this.recordBlockReplace(i)
         return block
       }
     }
@@ -409,14 +485,15 @@ export class Transcript implements CoreTranscript {
 
   private appendBlock(block: Block): Block {
     this.blocks.push(block)
+    this.recordAdd(this.blocks.length - 1, block)
     return block
   }
 }
 
-function findPendingToolCall(blocks: Block[], toolUseId: string): Extract<Block, { type: 'tool_call' }> | null {
+function findPendingToolCallIndex(blocks: Block[], toolUseId: string): number | null {
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const block = blocks[index]
-    if (block.type === 'tool_call' && block.status === 'executing' && block.toolUseId === toolUseId) return block
+    if (block.type === 'tool_call' && block.status === 'executing' && block.toolUseId === toolUseId) return index
   }
   return null
 }
