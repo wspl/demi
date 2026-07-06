@@ -10,7 +10,7 @@ import {
 import type { Block, ToolResultContentBlock } from '@demicodes/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { AgentClient } from './client'
-import { cloneBlocks, diffTranscriptBlocks } from './patch'
+import { cloneBlocks } from './patch'
 import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandSnapshotLike } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
 import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
@@ -80,7 +80,6 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private currentCwd: string | null = null
   private currentProviderId: string | null = null
   private unsubscribeSession: (() => void) | null = null
-  private lastTranscriptBlocks: Block[] = []
   private unsubscribeTransport: (() => void) | null = null
   private closed = false
 
@@ -214,6 +213,12 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         case 'list_conversations':
           await this.listConversations(frame.cwd)
           return
+        case 'sync_transcript': {
+          const session = this.sessionFor('sync_transcript')
+          if (!session) return
+          this.sendTranscriptSnapshot(session)
+          return
+        }
         case 'close':
           await this.closeSession()
           this.send({ type: 'closed' })
@@ -280,25 +285,24 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     // A resumed session restores its model from the snapshot; align it with the
     // model the client opened with (which may differ from when it was saved).
     if (snapshot) await session.updateModel(null, frame.provider.model)
-    const restoredBlocks = session.transcript().blocks
-    this.lastTranscriptBlocks = cloneBlocks(restoredBlocks)
     this.unsubscribeSession = this.session.subscribe((event) => this.handleSessionEvent(event))
 
     this.send({ type: 'opened' })
-    this.send({ type: 'transcript_snapshot', blocks: cloneBlocks(restoredBlocks) })
+    this.sendTranscriptSnapshot(session)
     this.send({ type: 'phase', phase: this.session.phase() })
     this.send({ type: 'queue', queue: this.session.queuedMessages() })
   }
 
+  private sendTranscriptSnapshot(session: AgentSession<unknown>): void {
+    const transcript = session.transcript()
+    this.send({ type: 'transcript_snapshot', blocks: cloneBlocks(transcript.blocks), revision: transcript.revision })
+  }
+
   private handleSessionEvent(event: SessionEvent): void {
     switch (event.type) {
-      case 'transcript_changed': {
-        const next = event.transcript.blocks
-        const patches = diffTranscriptBlocks(this.lastTranscriptBlocks, next)
-        this.lastTranscriptBlocks = cloneBlocks(next)
-        if (patches.length > 0) this.send({ type: 'transcript_patch', patches })
+      case 'transcript_changed':
+        this.send({ type: 'transcript_patch', patches: event.patches, revision: event.revision })
         return
-      }
       case 'phase_changed':
         this.send({ type: 'phase', phase: event.phase })
         return
@@ -363,7 +367,6 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       this.currentEnvironment = null
       this.currentCwd = null
       this.currentProviderId = null
-      this.lastTranscriptBlocks = []
     }
   }
 

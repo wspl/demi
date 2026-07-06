@@ -1,5 +1,5 @@
 import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAborted, truncate } from '@demicodes/utils'
-import type { Block, ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
 import { Transcript, type TranscriptOptions } from './transcript'
 import { YieldScheduler } from './yield-scheduler'
@@ -24,6 +24,7 @@ import type {
 
 const DEFAULT_KEEP_RECENT_TOKENS = 4_000
 const DEFAULT_PREFLIGHT_THRESHOLD_RATIO = 0.8
+const DEFAULT_PERSIST_INTERVAL_MS = 1_000
 
 type PendingAction =
   | {
@@ -81,6 +82,9 @@ export class AgentSession<State> {
   private readonly turnLoop: ProviderTurnLoop<State>
   private abortRecorded = false
   private idleResolvers: Array<() => void> = []
+  private readonly persistIntervalMs: number
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
+  private persistDirty = false
 
   static fromSnapshot<State>(
     params: AgentSessionRestoreParams<State>,
@@ -117,6 +121,7 @@ export class AgentSession<State> {
       void this.deliverYieldWakeup(wakeupId)
     })
     this.store = options.store
+    this.persistIntervalMs = options.persistIntervalMs ?? DEFAULT_PERSIST_INTERVAL_MS
     this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens ?? DEFAULT_KEEP_RECENT_TOKENS
     this.compactionThresholdRatio =
       options.compaction?.preflightThresholdRatio ?? DEFAULT_PREFLIGHT_THRESHOLD_RATIO
@@ -361,6 +366,7 @@ export class AgentSession<State> {
     await this.abort()
     this.clearPendingActions()
     this.yields.clear()
+    await this.flushPersist().catch(noop)
     const pending = this.pendingModelSwitch?.provider ?? null
     this.pendingModelSwitch = null
     await this.provider.dispose?.()
@@ -653,10 +659,14 @@ export class AgentSession<State> {
 
         try {
           await this.executeAction(action)
+          await this.flushPersist()
           action.resolve()
         } catch (error) {
           if (isAbortError(error)) {
             await this.recordAbort()
+            await this.flushPersist().catch((flushError: unknown) => {
+              this.emit({ type: 'error', error: asError(flushError) })
+            })
             action.resolve()
           } else {
             const normalized = asError(error)
@@ -665,6 +675,9 @@ export class AgentSession<State> {
             } catch (materializeError) {
               this.emit({ type: 'error', error: asError(materializeError) })
             }
+            await this.flushPersist().catch((flushError: unknown) => {
+              this.emit({ type: 'error', error: asError(flushError) })
+            })
             this.emit({ type: 'error', error: normalized })
             action.reject(normalized)
           }
@@ -787,19 +800,9 @@ export class AgentSession<State> {
   }
 
   private async executeRetry(): Promise<void> {
-    const lastUserIndex = findLastUserTurnIndex(this.transcriptLog.blocks)
-    if (lastUserIndex === null) throw new Error('AgentSession: cannot retry without a user turn')
-
-    const userBlock = this.transcriptLog.blocks[lastUserIndex]
-    if (userBlock.type !== 'user') throw new Error('AgentSession: latest user turn is malformed')
+    const userBlock = this.transcriptLog.rewindToLastUserTurn()
+    if (!userBlock) throw new Error('AgentSession: cannot retry without a user turn')
     this.activeTurnId = userBlock.turnId
-    const preservedSteers = this.transcriptLog.blocks
-      .slice(lastUserIndex + 1)
-      .filter((block): block is Extract<Block, { type: 'steer' }> => {
-        return block.type === 'steer' && block.turnId === userBlock.turnId
-      })
-    this.transcriptLog.blocks.splice(lastUserIndex + 1)
-    this.transcriptLog.blocks.splice(lastUserIndex + 1, 0, ...preservedSteers)
     await this.runtime.lifecycle?.({
       type: 'after_transcript_rewrite',
       agentSessionId: this.agentSessionId,
@@ -951,11 +954,34 @@ export class AgentSession<State> {
     this.emit({ type: 'queue_changed', queue: this.queuedMessages() })
   }
 
+  /**
+   * Publishes transcript changes: drains the mutation journal into a patch
+   * event (O(changed content), not O(transcript)) and schedules a throttled
+   * snapshot write. Boundaries (action end, abort, dispose) flush the write.
+   */
   private async commitTranscript(): Promise<void> {
-    const transcript = this.transcriptLog.snapshot()
-    this.emit({ type: 'transcript_changed', transcript })
-    await this.store?.saveSnapshot({
-      transcript: structuredClone(transcript),
+    const drained = this.transcriptLog.takePatches()
+    if (drained) this.emit({ type: 'transcript_changed', patches: drained.patches, revision: drained.revision })
+    this.schedulePersist()
+  }
+
+  private schedulePersist(): void {
+    if (!this.store) return
+    this.persistDirty = true
+    if (this.persistTimer) return
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null
+      void this.persistSnapshot().catch((error: unknown) => {
+        this.emit({ type: 'error', error: asError(error) })
+      })
+    }, this.persistIntervalMs)
+  }
+
+  private async persistSnapshot(): Promise<void> {
+    if (!this.store || !this.persistDirty) return
+    this.persistDirty = false
+    await this.store.saveSnapshot({
+      transcript: this.transcriptLog.snapshot(),
       state: structuredClone(this.agentState),
       phase: this.currentPhase,
       queue: structuredClone(this.queuedMessages()),
@@ -963,6 +989,14 @@ export class AgentSession<State> {
       model: structuredClone(this.model),
       harnessName: this.runtime.harnessName,
     })
+  }
+
+  private async flushPersist(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer)
+      this.persistTimer = null
+    }
+    await this.persistSnapshot()
   }
 
   private emit(event: SessionEvent): void {
@@ -974,13 +1008,6 @@ export class AgentSession<State> {
     this.idleResolvers = []
     for (const resolve of waiters) resolve()
   }
-}
-
-function findLastUserTurnIndex(blocks: Array<{ type: string }>): number | null {
-  for (let i = blocks.length - 1; i >= 0; i -= 1) {
-    if (blocks[i].type === 'user') return i
-  }
-  return null
 }
 
 function textContentSummary(content: UserContentBlock[]): string {
