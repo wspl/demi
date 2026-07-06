@@ -49,6 +49,16 @@ export async function authStatusFromKey(
   return { status: 'unauthenticated', message: `${providerLabel} API key is missing` }
 }
 
+/** Parses a Retry-After header (delta-seconds or HTTP-date) into milliseconds. */
+export function retryAfterMsFromHeader(value: string | null): number | undefined {
+  if (!value) return undefined
+  const seconds = Number(value)
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.floor(seconds * 1000)
+  const dateMs = Date.parse(value)
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now())
+  return undefined
+}
+
 /** Builds a redacted provider `error` event from a failed HTTP response. */
 export async function httpRequestFailedEvent(
   response: Response,
@@ -60,5 +70,8 @@ export async function httpRequestFailedEvent(
     `${providerLabel} API request failed with HTTP ${response.status}${text ? `: ${text}` : ''}`,
     secret,
   )
-  return { type: 'error', message, code: httpErrorCode(response.status, message) }
+  const retryAfterMs = retryAfterMsFromHeader(response.headers.get('retry-after'))
+  const event: ProviderEvent = { type: 'error', message, code: httpErrorCode(response.status, message) }
+  if (retryAfterMs !== undefined) event.retryAfterMs = retryAfterMs
+  return event
 }
