@@ -25,6 +25,24 @@
         "zod": "^4.0.0",
       },
     },
+    "packages/agent-eval": {
+      "name": "@demicodes/agent-eval",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/agent": "workspace:*",
+        "@demicodes/coding-agent": "workspace:*",
+        "@demicodes/core": "workspace:*",
+        "@demicodes/host-local": "workspace:*",
+        "@demicodes/provider": "workspace:*",
+        "@demicodes/provider-anthropic-api": "workspace:*",
+        "@demicodes/provider-claude-code": "workspace:*",
+        "@demicodes/provider-codex": "workspace:*",
+        "@demicodes/provider-openai-api": "workspace:*",
+        "@demicodes/shell": "workspace:*",
+        "@demicodes/utils": "workspace:*",
+        "zod": "^4.0.0",
+      },
+    },
     "packages/coding-agent": {
       "name": "@demicodes/coding-agent",
       "version": "0.1.0",
@@ -289,6 +307,8 @@
     "@changesets/write": ["@changesets/write@0.4.0", "", { "dependencies": { "@changesets/types": "^6.1.0", "fs-extra": "^7.0.1", "human-id": "^4.1.1", "prettier": "^2.7.1" } }, "sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q=="],
 
     "@demicodes/agent": ["@demicodes/agent@workspace:packages/agent"],
+
+    "@demicodes/agent-eval": ["@demicodes/agent-eval@workspace:packages/agent-eval"],
 
     "@demicodes/coding-agent": ["@demicodes/coding-agent@workspace:packages/coding-agent"],
 

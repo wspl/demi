@@ -171,10 +171,10 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/agent-eval`
 
-- Status: planned.
+- Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`,
   `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
-  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/shell`.
+  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: agent benchmark case loading, fixture setup, Evaluator supervision/judging loop,
   oracle execution, metrics aggregation, run artifacts, reports, and gated real-provider
   evaluation entry points.
@@ -204,7 +204,7 @@ provider-anthropic-api -> core, provider, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, host-local, utils
 web-ui -> agent, core, utils
 web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell
-agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell
+agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, utils
 ```
 
 `web-ui` and `web` are browser/product packages built with Vite/Vue; their internal source

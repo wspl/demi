@@ -22,6 +22,7 @@ const workspaceEntries = new Map<string, string>([
   ['@demicodes/provider-anthropic-api', 'packages/provider-anthropic-api/src/index.ts'],
   ['@demicodes/host-local', 'packages/host-local/src/index.ts'],
   ['@demicodes/repl', 'packages/repl/src/index.ts'],
+  ['@demicodes/agent-eval', 'packages/agent-eval/src/index.ts'],
 ])
 
 const productionPackageDirectories = new Map<string, string>([
@@ -37,6 +38,7 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demicodes/provider-openai-api', 'packages/provider-openai-api'],
   ['@demicodes/provider-anthropic-api', 'packages/provider-anthropic-api'],
   ['@demicodes/repl', 'packages/repl'],
+  ['@demicodes/agent-eval', 'packages/agent-eval'],
 ])
 
 const productionDependencyGraph = new Map<string, readonly string[]>([
@@ -53,6 +55,22 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/provider-anthropic-api', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   [
     '@demicodes/repl',
+    [
+      '@demicodes/agent',
+      '@demicodes/coding-agent',
+      '@demicodes/core',
+      '@demicodes/host-local',
+      '@demicodes/provider',
+      '@demicodes/provider-anthropic-api',
+      '@demicodes/provider-claude-code',
+      '@demicodes/provider-codex',
+      '@demicodes/provider-openai-api',
+      '@demicodes/shell',
+      '@demicodes/utils',
+    ],
+  ],
+  [
+    '@demicodes/agent-eval',
     [
       '@demicodes/agent',
       '@demicodes/coding-agent',
