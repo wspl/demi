@@ -305,6 +305,7 @@ interface OpenAIResponseStreamState {
   currentFunctionCall: OpenAIResponseFunctionCallItem | null
   functionArguments: Map<string, string>
   reasoningDeltaSeen: boolean
+  textDeltaSeen: boolean
 }
 
 export function buildOpenAIResponsesBody(
@@ -382,7 +383,10 @@ export function* mapOpenAIResponseEvent(
       }
       return
     case 'response.output_text.delta':
-      if (typeof event.delta === 'string') yield { type: 'text_delta', text: event.delta }
+      if (typeof event.delta === 'string') {
+        state.textDeltaSeen = true
+        yield { type: 'text_delta', text: event.delta }
+      }
       return
     case 'response.function_call_arguments.delta': {
       const key = event.item_id ?? state.currentFunctionCall?.id
@@ -407,8 +411,14 @@ export function* mapOpenAIResponseEvent(
         if (state.currentReasoning === item) state.currentReasoning = null
         state.reasoningDeltaSeen = false
       } else if (isOpenAIResponseMessageItem(item)) {
-        const text = openAIResponseMessageText(item)
-        if (text) yield { type: 'text_delta', text }
+        // Only emit the full message text on done when no streaming delta arrived
+        // (non-streaming fallback); otherwise the deltas already carried the whole
+        // text and emitting again would duplicate it. Mirrors the reasoning path.
+        if (!state.textDeltaSeen) {
+          const text = openAIResponseMessageText(item)
+          if (text) yield { type: 'text_delta', text }
+        }
+        state.textDeltaSeen = false
       } else if (isOpenAIResponseFunctionCallItem(item)) {
         const itemId = item.id ?? event.item_id
         const callId = item.call_id ?? event.call_id
@@ -817,6 +827,7 @@ function newOpenAIResponseStreamState(): OpenAIResponseStreamState {
     currentFunctionCall: null,
     functionArguments: new Map(),
     reasoningDeltaSeen: false,
+    textDeltaSeen: false,
   }
 }
 
