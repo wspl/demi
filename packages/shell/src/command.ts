@@ -119,11 +119,18 @@ export class CommandRegistry {
   }
 
   renderPrompt(): string {
-    return this.list()
+    const rendered = this.list()
       .map((spec) => renderCommandPrompt(spec))
       .join('\n\n')
+    if (!rendered) return rendered
+    return `${COMMAND_PROMPT_DEFAULTS}\n\n${rendered}`
   }
 }
+
+// Stated once for the whole registry so per-subcommand renders only carry
+// deviations — with dozens of leaves, repeating the defaults costs real prompt budget.
+export const COMMAND_PROMPT_DEFAULTS =
+  'Unless a subcommand states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero.'
 
 export function parseCommandInput(spec: CommandSpec, argv: string[], stdin: CommandStdin = { text: '' }): ParsedCommandInput {
   if (argv[0] !== spec.name) {
@@ -273,9 +280,10 @@ export function renderCommandPrompt(spec: CommandSpec, parentPath = ''): string 
     for (const subcommand of leaves) {
       lines.push('', `  ${path} ${subcommand.name}`)
       lines.push(`    ${subcommand.summary}`)
-      lines.push(`    Effects: ${subcommand.effects ?? 'not specified'}`)
-      lines.push(`    Success output: ${subcommand.successOutput ?? defaultSuccessOutput(subcommand)}`)
-      lines.push(`    Failure output: ${subcommand.failureOutput ?? 'writes an error message to stderr and exits non-zero'}`)
+      if (subcommand.effects) lines.push(`    Effects: ${subcommand.effects}`)
+      if (subcommand.successOutput) lines.push(`    Success output: ${subcommand.successOutput}`)
+      else if (subcommand.output?.json) lines.push('    Success output: raw text by default; machine-readable JSON when --json is passed')
+      if (subcommand.failureOutput) lines.push(`    Failure output: ${subcommand.failureOutput}`)
 
       const fields = Object.entries(subcommand.input ?? {})
       if (fields.length > 0) {
@@ -320,11 +328,6 @@ function validateCommandTree(node: CommandSpec, path: string): void {
     seen.add(child.name)
     if (isCommandGroup(child)) validateCommandTree(child, `${path} ${child.name}`)
   }
-}
-
-function defaultSuccessOutput(subcommand: CommandSubcommandSpec): string {
-  if (subcommand.output?.json) return 'raw text by default; machine-readable JSON when --json is passed'
-  return 'raw text on stdout'
 }
 
 function setParsedValue(values: Record<string, unknown>, field: string, value: unknown): void {
