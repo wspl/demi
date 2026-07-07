@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import {
+  COMMAND_PROMPT_DEFAULTS,
   CommandRegistry,
   parseCommandInput,
   renderCommandPrompt,
@@ -142,7 +143,7 @@ test('renderCommandPrompt uses CommandSpec as the single source of command help'
   expect(prompt).toContain('<path> - Target file path')
   expect(prompt).toContain('--old - Exact text to replace')
   expect(prompt).toContain('stdin/heredoc: content')
-  expect(prompt).toContain('Effects: not specified')
+  expect(prompt).not.toContain('Effects: not specified')
   expect(prompt).toContain('Success output: raw text by default; machine-readable JSON when --json is passed')
   expect(prompt).toContain('editor list --json --verbose --tag changed --tag staged')
 })
@@ -153,7 +154,7 @@ test('CommandRegistry registers commands and renders all prompts', () => {
 
   expect(registry.get('editor')).toBe(editorSpec)
   expect(registry.list()).toEqual([editorSpec])
-  expect(registry.renderPrompt()).toBe(renderCommandPrompt(editorSpec))
+  expect(registry.renderPrompt()).toBe(`${COMMAND_PROMPT_DEFAULTS}\n\n${renderCommandPrompt(editorSpec)}`)
   expect(() => registry.register(editorSpec)).toThrow('already registered')
 })
 
