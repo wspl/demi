@@ -41,7 +41,7 @@ upstream and cherry-pick the upstream commit.
 ## Version scheme
 
 The fork publishes as `<upstream-version>-demi.<N>` (current:
-`3.0.1-demi.1`), keeping the upstream semver visible while marking the
+`3.0.1-demi.2`), keeping the upstream semver visible while marking the
 artifact as fork-modified:
 
 - `<upstream-version>` is the upstream version the fork base is rebased onto
@@ -54,6 +54,11 @@ artifact as fork-modified:
   commit that adds the fork-only change (or the rebase commit that updates
   the base), so the version and "Fork-only commits" list above stay in
   sync.
+- The `-demi.N` suffix makes npm/semver treat every published version as a
+  prerelease. `npm publish` therefore requires an explicit `--tag latest`
+  (npm refuses to default a prerelease to `latest`) — always pass it when
+  publishing this package, otherwise `npm install @demicodes/just-bash`
+  with no version resolves to nothing.
 
 ## Upstream sync
 
