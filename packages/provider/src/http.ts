@@ -1,10 +1,19 @@
 // Shared building blocks for HTTP-based provider adapters: secret redaction and
 // coarse error-code classification. Provider implementations import these instead
 // of re-deriving the same status/keyword tables.
+import { shortHash } from '@demicodes/utils'
 import type { ProviderAuthState, ProviderEvent } from './types'
 
 type SecretResolver = () => string | Promise<string> | null | undefined
 type HeadersResolver = () => Record<string, string> | Promise<Record<string, string>>
+
+/**
+ * Clamps a session identifier to the 64-character limit the OpenAI Responses
+ * API enforces on `prompt_cache_key` (and on the headers it derives it from).
+ */
+export function clampPromptCacheKey(value: string): string {
+  return value.length <= 64 ? value : `session_${shortHash(value)}`
+}
 
 /** Replaces every occurrence of `secret` in `value` with a redaction marker. */
 export function redactSecretText(value: string, secret: string | null | undefined): string {
