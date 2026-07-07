@@ -28,13 +28,30 @@ upstream and cherry-pick the upstream commit.
   pointer; see `git submodule status`).
 - Fork base: upstream `main` at `9481331` ("fix(head/tail): read file
   arguments byte-clean").
-- Fork-only commits (11, all within the allowed categories):
+- Fork-only commits (12, all within the allowed categories):
   `f3645ee` parser hooks · `5e925b7` hostSpawn hook · `4e2ab29` registered
   command dispatch order · `c7f1be5` test typing · `cabfc0f` session hooks ·
   `cc10d4f` trim artifacts · `9576ef2` reject trailing operators (parser
   protection used by Demi) · `f38734a` expose command registry · `8122ac3`
   package rename · `ea06eb1` export encoding module · `496c3d7` dual-condition
-  subpath exports.
+  subpath exports · `e798f00` adopt the version suffix scheme below.
+
+## Version scheme
+
+The fork publishes as `<upstream-version>-demi.<N>` (current:
+`3.0.1-demi.1`), keeping the upstream semver visible while marking the
+artifact as fork-modified:
+
+- `<upstream-version>` is the upstream version the fork base is rebased onto
+  (see "Fork base" above). It only changes when the fork rebases onto a
+  newer upstream release.
+- `<N>` starts at `1` when the fork base changes, and increments by one each
+  time a fork-only commit in the allowed categories above lands on top of
+  it.
+- Bump `packages/just-bash/package.json`'s `version` field in the same
+  commit that adds the fork-only change (or the rebase commit that updates
+  the base), so the version and "Fork-only commits" list above stay in
+  sync.
 
 ## Upstream sync
 
