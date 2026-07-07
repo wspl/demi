@@ -1,4 +1,4 @@
-import { isAbortError, isRecord, normalizeBaseUrl, numberOrZero, parseJsonObject, parseJsonOrString, shortHash, stringOrNull } from '@demicodes/utils'
+import { isAbortError, isRecord, normalizeBaseUrl, numberOrZero, parseJsonObject, parseJsonOrString, stringOrNull } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import { zeroUsage } from '@demicodes/core'
@@ -222,7 +222,7 @@ export interface OpenAIResponsesRequestBody {
 }
 
 export type OpenAIResponseInputItem =
-  | { type: 'message'; role: 'assistant'; content: Array<{ type: 'output_text'; text: string; annotations: unknown[] }>; id?: string; status?: 'completed' }
+  | { type: 'message'; role: 'assistant'; content: Array<{ type: 'output_text'; text: string; annotations: unknown[] }> }
   | { role: 'user'; content: OpenAIResponseUserContent[] }
   | { type: 'reasoning'; id?: string; summary?: Array<{ type?: string; text: string }>; content?: Array<{ type?: string; text: string }>; encrypted_content?: string }
   | { type: 'function_call'; id?: string; call_id: string; name: string; arguments: string }
@@ -702,13 +702,13 @@ function inferenceItemToOpenAIResponseInput(item: InferenceItem, index: number):
     case 'user_steer':
       return [{ role: 'user', content: userContentToOpenAIResponses(item.content) }]
     case 'assistant_text':
+      // 最小 item 形状：不带 id/status —— 严格校验的网关（relay 桥接）会把它们当未知参数拒绝，
+      // 无状态回放也不需要它们。
       return [
         {
           type: 'message',
           role: 'assistant',
           content: [{ type: 'output_text', text: item.text, annotations: [] }],
-          id: `msg_${shortHash(`${index}:${item.modelId}:${item.text}`)}`,
-          status: 'completed',
         },
       ]
     case 'assistant_thinking': {
@@ -774,7 +774,16 @@ function parseOpenAIReasoningSignature(signature: string | null): OpenAIResponse
   if (!signature) return null
   try {
     const parsed = JSON.parse(signature)
-    return isOpenAIResponseReasoningItem(parsed) ? parsed : null
+    if (!isOpenAIResponseReasoningItem(parsed)) return null
+    // 上游返回的 reasoning item 带 status 等回放不需要的字段，严格校验的网关会拒绝
+    const { id, summary, content, encrypted_content } = parsed as { id?: string; summary?: Array<{ type?: string; text: string }>; content?: Array<{ type?: string; text: string }>; encrypted_content?: string }
+    return {
+      type: 'reasoning',
+      ...(id ? { id } : {}),
+      ...(summary ? { summary } : {}),
+      ...(content ? { content } : {}),
+      ...(encrypted_content ? { encrypted_content } : {}),
+    }
   } catch {
     return null
   }
