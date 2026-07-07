@@ -28,13 +28,15 @@ upstream and cherry-pick the upstream commit.
   pointer; see `git submodule status`).
 - Fork base: upstream `main` at `9481331` ("fix(head/tail): read file
   arguments byte-clean").
-- Fork-only commits (12, all within the allowed categories):
+- Fork-only commits (14, all within the allowed categories):
   `f3645ee` parser hooks · `5e925b7` hostSpawn hook · `4e2ab29` registered
   command dispatch order · `c7f1be5` test typing · `cabfc0f` session hooks ·
   `cc10d4f` trim artifacts · `9576ef2` reject trailing operators (parser
   protection used by Demi) · `f38734a` expose command registry · `8122ac3`
   package rename · `ea06eb1` export encoding module · `496c3d7` dual-condition
-  subpath exports · `e798f00` adopt the version suffix scheme below.
+  subpath exports · `e798f00` adopt the version suffix scheme below · `54975fb`
+  drop leading `./` from `bin` paths (npm silently strips it, which broke the
+  published CLI bins) · `395774b` bump to `3.0.1-demi.2` for that fix.
 
 ## Version scheme
 
