@@ -137,11 +137,11 @@ test('OpenAI Responses request body maps text, tools, tool replay, service tier,
     prompt_cache_key: 'session-1',
   })
   expect(body.input[0]).toEqual({ role: 'user', content: [{ type: 'input_text', text: 'hello' }] })
-  expect(body.input[1]).toMatchObject({
+  // 回放的 assistant 消息用最小 item 形状——不带 id/status，严格校验的网关会拒绝未知参数
+  expect(body.input[1]).toEqual({
     type: 'message',
     role: 'assistant',
     content: [{ type: 'output_text', text: 'Use tool', annotations: [] }],
-    status: 'completed',
   })
   expect(body.input[2]).toEqual({
     type: 'function_call',
