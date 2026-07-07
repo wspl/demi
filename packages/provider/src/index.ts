@@ -9,6 +9,7 @@ export {
 } from './model-selection'
 export {
   authStatusFromKey,
+  clampPromptCacheKey,
   httpErrorCode,
   httpRequestFailedEvent,
   normalizeErrorCode,

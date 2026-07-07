@@ -1,6 +1,7 @@
 import { isRecord } from '@demicodes/utils'
 import {
   applyModelPolicy,
+  clampPromptCacheKey,
   defineProvider,
   httpErrorCode,
   type AgentProvider,
@@ -197,8 +198,11 @@ export function buildCodexHeaders(
   headers.set('OpenAI-Beta', 'responses=experimental')
   headers.set('accept', 'text/event-stream')
   headers.set('content-type', 'application/json')
-  headers.set('session-id', request.sessionId)
-  headers.set('thread-id', request.sessionId)
+  // The backend reads the session identity from these headers (overriding the
+  // body's prompt_cache_key), so they need the same 64-character clamp.
+  const sessionId = clampPromptCacheKey(request.sessionId)
+  headers.set('session-id', sessionId)
+  headers.set('thread-id', sessionId)
   headers.set('x-client-request-id', request.requestId)
   return headers
 }
