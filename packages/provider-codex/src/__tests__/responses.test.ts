@@ -150,6 +150,8 @@ test('mapCodexResponseEvents maps failed and incomplete responses to provider er
     { type: 'response.failed', response: { error: { code: 'context_length_exceeded', message: 'too long' } } },
     { type: 'response.incomplete', response: { incomplete_details: { reason: 'max_output_tokens' } } },
     { type: 'error', code: 'server_error', message: 'backend failed' },
+    { type: 'error', error: { type: 'invalid_request_error', message: 'Invalid prompt_cache_key' }, status: 400 },
+    { type: 'error' },
   ]))) {
     events.push(event)
   }
@@ -158,6 +160,8 @@ test('mapCodexResponseEvents maps failed and incomplete responses to provider er
     { type: 'error', message: 'too long', code: 'context_length_exceeded' },
     { type: 'error', message: 'Incomplete response returned, reason: max_output_tokens', code: 'context_length_exceeded' },
     { type: 'error', message: 'backend failed', code: 'server_error' },
+    { type: 'error', message: 'Invalid prompt_cache_key', code: 'invalid_request_error' },
+    { type: 'error', message: 'Codex stream error', code: null },
   ])
 })
 

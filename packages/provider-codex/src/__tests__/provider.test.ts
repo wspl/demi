@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { deferred, type Deferred } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demicodes/agent'
-import { providerRuntime, type InferenceRequest, type ProviderSelection } from '@demicodes/provider'
+import { clampPromptCacheKey, providerRuntime, type InferenceRequest, type ProviderSelection } from '@demicodes/provider'
 import { BashEnvironment } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
 import { StaticCodexAuthStore, type CodexResolvedAuth } from '../auth'
@@ -82,6 +82,14 @@ test('buildCodexHeaders and responsesUrlForAuth follow Codex auth routing', () =
   expect(headers.get('thread-id')).toBe('session-1')
   expect(headers.get('x-client-request-id')).toBe('request-1')
   expect(headers.get('User-Agent')).toBe('demi-test/1.0')
+
+  // The backend derives prompt_cache_key from these headers and rejects
+  // values over 64 characters, so long session ids must arrive clamped.
+  const longSessionId = `chat-${'x'.repeat(80)}`
+  const clamped = buildCodexHeaders(chatgptAuth, { ...makeRequest(), sessionId: longSessionId }, { userAgent: 'demi-test/1.0' })
+  expect(clamped.get('session-id')).toBe(clampPromptCacheKey(longSessionId))
+  expect(clamped.get('session-id')?.length).toBeLessThanOrEqual(64)
+  expect(clamped.get('thread-id')).toBe(clamped.get('session-id'))
 
   expect(responsesUrlForAuth(chatgptAuth)).toBe('https://chatgpt.com/backend-api/codex/responses')
   expect(

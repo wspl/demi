@@ -1,7 +1,7 @@
 import { isRecord, numberOrZero, parseJsonOrString, shortHash, stringOrNull } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
-import type { InferenceItem, InferenceRequest, ProviderEvent, ToolDefinition } from '@demicodes/provider'
+import { clampPromptCacheKey, type InferenceItem, type InferenceRequest, type ProviderEvent, type ToolDefinition } from '@demicodes/provider'
 
 export interface CodexResponsesRequestBody {
   model: string
@@ -233,9 +233,18 @@ export function* mapCodexResponseEvent(event: CodexResponseStreamEvent, state: S
         code: incompleteReason(event.response) === 'max_output_tokens' ? 'context_length_exceeded' : 'incomplete',
       }
       return
-    case 'error':
-      yield { type: 'error', message: event.message ?? 'Codex stream error', code: event.code ?? null }
+    case 'error': {
+      // Over the WebSocket transport the backend nests request failures as
+      // {type:'error', error:{type, message, code}, status} instead of the
+      // flat SSE shape, so read both before falling back to the generic text.
+      const nested = isRecord(event.error) ? event.error : null
+      yield {
+        type: 'error',
+        message: event.message ?? stringOrNull(nested?.message) ?? 'Codex stream error',
+        code: event.code ?? stringOrNull(nested?.code) ?? stringOrNull(nested?.type) ?? null,
+      }
       return
+    }
   }
 }
 
@@ -394,9 +403,6 @@ function incompleteReason(response: unknown): string {
   return 'unknown'
 }
 
-function clampPromptCacheKey(value: string): string {
-  return value.length <= 64 ? value : `session_${shortHash(value)}`
-}
 
 function newStreamState(): StreamState {
   return {

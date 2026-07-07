@@ -7,6 +7,7 @@ import {
   authStatusFromKey,
   defineProvider,
   httpErrorCode,
+  clampPromptCacheKey,
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
@@ -905,10 +906,6 @@ function thinkingToReasoningEffort(request: InferenceRequest): string | undefine
 
 function stringifyToolArguments(input: unknown): string {
   return typeof input === 'string' ? input : JSON.stringify(input ?? {})
-}
-
-function clampPromptCacheKey(value: string): string {
-  return value.length <= 64 ? value : `session_${shortHash(value)}`
 }
 
 function openAIUsage(usage: Record<string, unknown>) {
