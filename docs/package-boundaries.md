@@ -39,7 +39,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/provider`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`.
+- Production deps: `@demicodes/core`, `@demicodes/utils`.
 - Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, and model catalog shape.
 - Public boundary: provider contract, direct `Provider[]` composition types, and provider test helpers only from `@demicodes/provider/testing`.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
