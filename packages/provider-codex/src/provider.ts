@@ -46,6 +46,7 @@ export interface CodexProviderOptions extends CodexProviderConfig {
   id?: string
   displayName?: string
   models?: ModelPolicy
+  authStore?: CodexAuthStore
 }
 
 export interface CodexRuntimeOptions extends CodexProviderConfig {
@@ -131,6 +132,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
   const id = options.id ?? 'codex'
   const displayName = options.displayName ?? 'Codex'
   const runtimeOptions: CodexRuntimeOptions = {
+    authStore: options.authStore,
     codexHome: options.codexHome,
     baseUrl: options.baseUrl,
     transport: options.transport,
@@ -147,7 +149,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
   return defineProvider({
     id,
     displayName,
-    auth: { status: () => new FileCodexAuthStore({ codexHome: options.codexHome }).status() },
+    auth: { status: () => (options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })).status() },
     state: () => ({ status: 'ready', message: 'Uses official Codex auth storage' }),
     listModels: async () => {
       const catalog = await listCodexModels(runtimeOptions)
@@ -185,7 +187,7 @@ export function parseCodexProviderConfig(config: unknown): CodexProviderConfig {
 
 export function buildCodexHeaders(
   auth: CodexResolvedAuth,
-  request: InferenceRequest,
+  request: Pick<InferenceRequest, 'sessionId' | 'requestId'>,
   config: Pick<CodexProviderConfig, 'headers' | 'userAgent'>,
 ): Headers {
   const headers = new Headers(config.headers)
