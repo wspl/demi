@@ -30,6 +30,11 @@ export interface HostProcess {
   spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
 }
 
+/**
+ * Keyed JSON state storage. Implementations must round-trip `Uint8Array` and
+ * `bigint` values (e.g. via the portable JSON codec in `@demicodes/utils`),
+ * since stored values such as agent session snapshots carry binary content.
+ */
 export interface HostStore {
   readJson<T>(key: string): Promise<T | null>
   writeJson<T>(key: string, value: T): Promise<void>

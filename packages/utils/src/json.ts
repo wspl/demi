@@ -1,3 +1,4 @@
+import { base64ToBytes, bytesToBase64 } from './bytes'
 import { isRecord } from './guards'
 
 /** Parses JSON, returning the value, or the original string if it is not valid JSON. */
@@ -40,4 +41,55 @@ export function safeJsonStringify(value: unknown): string | undefined {
   } catch {
     return undefined
   }
+}
+
+const BINARY_MARKER = '__demiUint8Array'
+const BIGINT_MARKER = '__demiBigInt'
+
+/**
+ * JSON.stringify that round-trips values plain JSON cannot: `Uint8Array` is
+ * encoded as a `__demiUint8Array`-marked base64 object and `bigint` as a
+ * `__demiBigInt`-marked string. Decode with `parsePortableJson`.
+ */
+export function stringifyPortableJson(value: unknown, space?: number): string {
+  return JSON.stringify(
+    value,
+    (_key, nested) => {
+      if (nested instanceof Uint8Array) {
+        return {
+          [BINARY_MARKER]: true,
+          base64: bytesToBase64(nested),
+        }
+      }
+      if (typeof nested === 'bigint') {
+        return {
+          [BIGINT_MARKER]: true,
+          value: nested.toString(),
+        }
+      }
+      return nested
+    },
+    space,
+  )
+}
+
+/** Parses JSON produced by `stringifyPortableJson`, reviving marked `Uint8Array` and `bigint` values. */
+export function parsePortableJson<T>(text: string): T {
+  return JSON.parse(text, (_key, nested) => {
+    if (isEncodedUint8Array(nested)) {
+      return base64ToBytes(nested.base64)
+    }
+    if (isEncodedBigInt(nested)) {
+      return BigInt(nested.value)
+    }
+    return nested
+  }) as T
+}
+
+function isEncodedUint8Array(value: unknown): value is { base64: string } {
+  return isRecord(value) && value[BINARY_MARKER] === true && typeof value.base64 === 'string'
+}
+
+function isEncodedBigInt(value: unknown): value is { value: string } {
+  return isRecord(value) && value[BIGINT_MARKER] === true && typeof value.value === 'string'
 }

@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
 import type { ClientFrame, ServerFrame } from './frames'
-import { parseAgentJson, stringifyAgentJson } from './json-codec'
+import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
 import type { AgentTransport, AgentClientTransport, AgentServerTransport } from './transport'
 
 export function createStdioClientTransport(readable: Readable, writable: Writable): AgentClientTransport {
@@ -24,14 +24,14 @@ class JsonLineTransport<SendFrame, ReceiveFrame> implements AgentTransport<SendF
     this.readline = createInterface({ input: readable })
     this.readline.on('line', (line) => {
       if (this.closed || line.trim() === '') return
-      const frame = parseAgentJson<ReceiveFrame>(line)
+      const frame = parsePortableJson<ReceiveFrame>(line)
       for (const handler of this.handlers) handler(frame)
     })
   }
 
   send(frame: SendFrame): void {
     if (this.closed) throw new Error('Agent transport is closed')
-    this.writable.write(`${stringifyAgentJson(frame)}\n`)
+    this.writable.write(`${stringifyPortableJson(frame)}\n`)
   }
 
   onFrame(handler: (frame: ReceiveFrame) => void): () => void {
