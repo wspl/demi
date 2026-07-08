@@ -2054,7 +2054,11 @@ test('BashEnvironment records system command audit events', async () => {
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
-  const result = await env.exec({ script: 'printf hi' })
+  // printf is a portable command now (see DEMI_PORTABLE_COMMANDS), so it no
+  // longer exercises the system-command (real spawn) audit path this test is
+  // actually about — node is in SYSTEM_TOOL_NAMES and never portable, so it
+  // stays a reliable stand-in for "a real, non-portable system command".
+  const result = await env.exec({ script: `node -e "process.stdout.write('hi')"` })
 
   expect(result.status).toBe('exited')
   if (result.status !== 'exited') throw new Error('expected exited result')
@@ -2062,8 +2066,8 @@ test('BashEnvironment records system command audit events', async () => {
   expect(result.audit).toEqual([
     {
       kind: 'system-command',
-      name: 'printf',
-      args: ['hi'],
+      name: 'node',
+      args: ['-e', "process.stdout.write('hi')"],
       cwd: process.cwd(),
       exitCode: 0,
     },
