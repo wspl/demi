@@ -1,4 +1,4 @@
-import { isFileNotFoundError } from '@demicodes/utils'
+import { isFileNotFoundError, parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
 import type { Dirent } from 'node:fs'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
@@ -14,7 +14,7 @@ export class LocalHostStore implements HostStore {
   async readJson<T>(key: string): Promise<T | null> {
     try {
       const content = await readFile(this.pathForKey(key), 'utf8')
-      return JSON.parse(content) as T
+      return parsePortableJson<T>(content)
     } catch (error) {
       if (isFileNotFoundError(error)) return null
       throw error
@@ -24,7 +24,7 @@ export class LocalHostStore implements HostStore {
   async writeJson<T>(key: string, value: T): Promise<void> {
     const path = this.pathForKey(key)
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, JSON.stringify(value, null, 2), 'utf8')
+    await writeFile(path, stringifyPortableJson(value, 2), 'utf8')
   }
 
   async delete(key: string): Promise<void> {

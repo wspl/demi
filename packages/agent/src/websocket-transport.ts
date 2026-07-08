@@ -1,5 +1,5 @@
 import type { ClientFrame, ServerFrame } from './frames'
-import { parseAgentJson, stringifyAgentJson } from './json-codec'
+import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
 import type { AgentTransport, AgentClientTransport, AgentServerTransport } from './transport'
 
 export interface JsonWebSocket {
@@ -21,7 +21,7 @@ class WebSocketJsonTransport<SendFrame, ReceiveFrame> implements AgentTransport<
   private readonly handlers = new Set<(frame: ReceiveFrame) => void>()
   private readonly onMessage = (event: { data: unknown }): void => {
     const text = typeof event.data === 'string' ? event.data : String(event.data)
-    const frame = parseAgentJson<ReceiveFrame>(text)
+    const frame = parsePortableJson<ReceiveFrame>(text)
     for (const handler of this.handlers) handler(frame)
   }
 
@@ -30,7 +30,7 @@ class WebSocketJsonTransport<SendFrame, ReceiveFrame> implements AgentTransport<
   }
 
   send(frame: SendFrame): void {
-    this.socket.send(stringifyAgentJson(frame))
+    this.socket.send(stringifyPortableJson(frame))
   }
 
   onFrame(handler: (frame: ReceiveFrame) => void): () => void {

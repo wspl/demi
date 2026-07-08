@@ -32,7 +32,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: none.
-- Owns: generic, platform-neutral helper functions only — type guards, error/abort helpers, async primitives, byte/UTF-8 helpers, string helpers, and id generation.
+- Owns: generic, platform-neutral helper functions only — type guards, error/abort helpers, async primitives, byte/UTF-8/base64 helpers, string helpers, the portable JSON codec (`Uint8Array`/`bigint` round-trip used by agent transports and HostStore implementations), and id generation.
 - Public boundary: pure utility functions shared across packages; no domain types or runtime services.
 - Must not: contain domain logic; transcript, provider, shell, or agent types; Node-only adapters; or any package-specific behavior.
 

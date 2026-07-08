@@ -36,6 +36,19 @@ test('LocalHostStore works with agent-session-scoped command storage', async () 
   expect(await store.list('')).toEqual(['session-a/todos.json', 'session-b/todos.json'])
 })
 
+test('LocalHostStore round-trips Uint8Array values inside stored JSON', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
+  const store = new LocalHostStore(root)
+
+  await store.writeJson('session/snapshot.json', {
+    content: [{ type: 'image', source: { type: 'binary', data: new Uint8Array([137, 80, 78, 71]), mediaType: 'image/png' } }],
+  })
+
+  const restored = await store.readJson<{ content: Array<{ source: { data: Uint8Array } }> }>('session/snapshot.json')
+  expect(restored?.content[0].source.data).toBeInstanceOf(Uint8Array)
+  expect([...(restored?.content[0].source.data ?? [])]).toEqual([137, 80, 78, 71])
+})
+
 test('LocalHostStore rejects keys that are not relative store paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
   const store = new LocalHostStore(root)
