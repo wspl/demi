@@ -18,6 +18,7 @@ import {
   type CodexResolvedAuth,
 } from './auth'
 import { listCodexModels } from './models'
+import { createCodexQuota } from './quota'
 import { buildCodexResponsesRequestBody, mapCodexResponseEvents } from './responses'
 import {
   CodexHttpError,
@@ -146,10 +147,19 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     clientVersion: options.clientVersion,
   }
 
+  const authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
+  runtimeOptions.authStore = authStore
   return defineProvider({
     id,
     displayName,
-    auth: { status: () => (options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })).status() },
+    auth: { status: () => authStore.status() },
+    quota: createCodexQuota({
+      providerId: id,
+      codexHome: options.codexHome,
+      baseUrl: options.baseUrl,
+      authStore,
+      userAgent: options.userAgent,
+    }),
     state: () => ({ status: 'ready', message: 'Uses official Codex auth storage' }),
     listModels: async () => {
       const catalog = await listCodexModels(runtimeOptions)
