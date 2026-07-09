@@ -114,6 +114,41 @@ test('selectAuthEntry prefers OIDC entries on auth.x.ai', () => {
   expect(selected?.entryKey).toBe('https://auth.x.ai::cli')
 })
 
+test('FileGrokAuthStore steals abandoned Grok CLI auth.json.lock and refreshes', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-stale-lock-'))
+  const now = new Date('2026-06-19T00:00:00.000Z')
+  const oldAccess = jwt({ exp: Math.floor((now.getTime() + 30_000) / 1000) })
+  const newAccess = jwt({ exp: Math.floor((now.getTime() + 3_600_000) / 1000) })
+  const entryKey = 'https://auth.x.ai::client-1'
+  try {
+    await writeFile(
+      join(dir, 'auth.json'),
+      JSON.stringify({
+        [entryKey]: {
+          key: oldAccess,
+          auth_mode: 'oidc',
+          refresh_token: 'refresh-old',
+          expires_at: new Date(now.getTime() + 30_000).toISOString(),
+          oidc_issuer: 'https://auth.x.ai',
+          oidc_client_id: 'client-1',
+        },
+      }),
+    )
+    // Dead pid + old timestamp — the shape Grok CLI leaves behind after a crash.
+    await writeFile(join(dir, 'auth.json.lock'), '999999:1000')
+
+    const store = new FileGrokAuthStore({
+      grokHome: dir,
+      now: () => now,
+      refresh: async () => ({ access_token: newAccess, refresh_token: 'refresh-new', expires_in: 3600 }),
+    })
+    const auth = await store.resolveAuth()
+    expect(auth.accessToken).toBe(newAccess)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 function jwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
