@@ -2,7 +2,6 @@ export * from './types'
 export { applyModelPolicy, defineProvider, providerRuntime } from './provider'
 export {
   DEFAULT_ATTACHMENT_EXTENSIONS,
-  VIDEO_ATTACHMENT_EXTENSIONS,
   modelSelectionFromCatalog,
   thinkingCapabilitiesFromProviderModel,
   withProviderId,

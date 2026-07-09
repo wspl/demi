@@ -3,7 +3,7 @@ import { Buffer } from 'node:buffer'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { FileGrokAuthStore, selectAuthEntry, redactSecretText } from '../auth'
+import { FileGrokAuthStore, isAbandonedGrokAuthLock, selectAuthEntry, redactSecretText } from '../auth'
 
 test('FileGrokAuthStore resolves OIDC session from Grok CLI auth.json shape', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'demi-grok-auth-'))
@@ -144,6 +144,17 @@ test('FileGrokAuthStore steals abandoned Grok CLI auth.json.lock and refreshes',
     })
     const auth = await store.resolveAuth()
     expect(auth.accessToken).toBe(newAccess)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('a live Grok auth lock is never abandoned because of age alone', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-live-lock-'))
+  const lockFile = join(dir, 'auth.json.lock')
+  try {
+    await writeFile(lockFile, `${process.pid}:1000`)
+    expect(await isAbandonedGrokAuthLock(lockFile, new Date('2026-06-19T00:00:00.000Z'))).toBe(false)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

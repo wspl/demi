@@ -20,6 +20,7 @@ export function commandToForkCommand(session: ShellSession, command: Command, st
           cwd: ctx.cwd,
           io,
           storage,
+          supportedAssetTypes: [...session.supportedAssetTypes],
         })
         session.accumulator.audit.push({
           kind: 'registered-command',

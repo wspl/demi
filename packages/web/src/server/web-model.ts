@@ -1,14 +1,17 @@
-import type { FileExtension, ModelSelection, ThinkingCapability, ThinkingSummary } from '@demicodes/core'
-import type { ProviderModel } from '@demicodes/provider'
+import {
+  VIDEO_FILE_EXTENSIONS,
+  type FileExtension,
+  type ModelSelection,
+  type ThinkingCapability,
+  type ThinkingSummary,
+} from '@demicodes/core'
+import { DEFAULT_ATTACHMENT_EXTENSIONS, type ProviderModel } from '@demicodes/provider'
 import type { ModelInfo } from '@demicodes/web-ui/transport/protocol'
-
-const ATTACHMENT_EXTENSIONS: FileExtension[] = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf']
-const VIDEO_EXTENSIONS: FileExtension[] = ['mp4', 'mov', 'webm', 'm4v']
 
 function acceptedExtensionsFor(model: ProviderModel | null): FileExtension[] {
   return [
-    ...(model?.supportsAttachments ? ATTACHMENT_EXTENSIONS : []),
-    ...(model?.supportsVideo ? VIDEO_EXTENSIONS : []),
+    ...(model?.supportsAttachments ? DEFAULT_ATTACHMENT_EXTENSIONS : []),
+    ...(model?.supportsVideo ? VIDEO_FILE_EXTENSIONS : []),
   ]
 }
 
