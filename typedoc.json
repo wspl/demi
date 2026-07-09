@@ -11,6 +11,7 @@
     "packages/provider-claude-code/src/index.ts",
     "packages/provider-codex/src/index.ts",
     "packages/provider-anthropic-api/src/index.ts",
+    "packages/provider-grok-build/src/index.ts",
     "packages/provider-openai-api/src/index.ts"
   ],
   "out": "docs/api",

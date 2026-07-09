@@ -4,7 +4,7 @@ import type { CodexTransportMode } from '@demicodes/provider-codex'
 import type { OpenAIApiWireApi } from '@demicodes/provider-openai-api'
 import { WEB_BACKEND_PORT } from '../dev-ports'
 
-export type ProviderId = 'claude-code' | 'codex' | 'openai' | 'anthropic'
+export type ProviderId = 'claude-code' | 'codex' | 'openai' | 'anthropic' | 'grok-build'
 
 export interface ServerOptions {
   port: number
@@ -20,6 +20,7 @@ export interface ServerOptions {
   openAIWireApi: OpenAIApiWireApi
   claudePath?: string
   codexHome?: string
+  grokHome?: string
   baseUrl?: string
   transport: CodexTransportMode
 }
@@ -38,6 +39,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
     serviceTierId: null,
     openAIWireApi: parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses'),
     codexHome: process.env.CODEX_HOME,
+    grokHome: process.env.GROK_HOME,
     transport: 'auto',
   }
 
@@ -60,6 +62,7 @@ export function parseServerOptions(args: string[]): ServerOptions {
     else if (arg === '--openai-wire-api') options.openAIWireApi = parseOpenAIWireApi(required(args, ++index, '--openai-wire-api'))
     else if (arg === '--claude-path') options.claudePath = required(args, ++index, '--claude-path')
     else if (arg === '--codex-home') options.codexHome = required(args, ++index, '--codex-home')
+    else if (arg === '--grok-home') options.grokHome = required(args, ++index, '--grok-home')
     else if (arg === '--base-url') options.baseUrl = required(args, ++index, '--base-url')
     else if (arg === '--transport') options.transport = parseTransport(required(args, ++index, '--transport'))
     else throw new Error(`Unknown option: ${arg}`)
@@ -78,8 +81,8 @@ export function parseServerOptions(args: string[]): ServerOptions {
 }
 
 function parseProvider(value: string): ProviderId {
-  if (value === 'claude-code' || value === 'codex' || value === 'openai' || value === 'anthropic') return value
-  throw new Error('--provider must be one of: claude-code, codex, openai, anthropic')
+  if (value === 'claude-code' || value === 'codex' || value === 'openai' || value === 'anthropic' || value === 'grok-build') return value
+  throw new Error('--provider must be one of: claude-code, codex, openai, anthropic, grok-build')
 }
 
 function parseOpenAIWireApi(value: string): OpenAIApiWireApi {

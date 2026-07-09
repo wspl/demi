@@ -130,10 +130,21 @@ Test code may depend upward for integration coverage. Production code must not.
 - Internal boundary: Messages body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
+### `@demicodes/provider-grok-build`
+
+- Status: implemented.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, provider event mapping, and provider-specific tests.
+- Public boundary: `createGrokBuildProvider`, auth status helper, model catalog function, and public option types from root.
+- Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session only (no independent login flow, no API-key product path).
+- Secret boundary: session tokens, refresh tokens, and raw auth file contents stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
+- Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+
 ### `@demicodes/repl`
 
 - Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`, `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/shell`, `@demicodes/host-local`, `@demicodes/utils`.
+- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`, `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`, `@demicodes/shell`, `@demicodes/host-local`, `@demicodes/utils`.
 - Owns: local REPL process, command-line parsing, renderer, input loop, real-provider smoke entry points, and local composition.
 - Public boundary: local application entry point and test/acceptance shell.
 - May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
@@ -160,7 +171,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: planned.
 - Production deps: `@demicodes/web-ui`, `@demicodes/agent`, `@demicodes/host-local`, `@demicodes/coding-agent`,
   `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
-  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/shell`.
+  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`,
+  `@demicodes/shell`.
 - Owns: the Demi web product — the Vite-dev-only browser app plus its embedded Node/Bun
   backend. The server serves only the WebSocket/API endpoints (per-session `/agent` + a
   `/control` RPC), assembling shared public providers and a per-cwd `AgentServer` over
@@ -175,7 +187,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`,
   `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
-  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/shell`, `@demicodes/utils`.
+  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`,
+  `@demicodes/shell`, `@demicodes/utils`.
 - Owns: agent benchmark case loading, fixture setup, Evaluator supervision/judging loop,
   oracle execution, metrics aggregation, run artifacts, reports, and gated real-provider
   evaluation entry points.
@@ -202,10 +215,11 @@ provider-claude-code -> core, provider, utils
 provider-codex -> core, provider, utils
 provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
-repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, host-local, utils
+provider-grok-build -> core, provider, utils
+repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils
 web-ui -> agent, core, utils
-web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell
-agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, utils
+web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell
+agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
 ```
 
 `web-ui` and `web` are browser/product packages built with Vite/Vue; their internal source

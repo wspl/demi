@@ -6,6 +6,7 @@ import type { Provider } from '@demicodes/provider'
 import { createAnthropicApiProvider } from '@demicodes/provider-anthropic-api'
 import { createClaudeCodeProvider } from '@demicodes/provider-claude-code'
 import { createCodexProvider } from '@demicodes/provider-codex'
+import { createGrokBuildProvider } from '@demicodes/provider-grok-build'
 import { createOpenAIApiProvider } from '@demicodes/provider-openai-api'
 import { buildSuiteSummary, writeAttemptArtifacts, writeSuiteSummary } from './artifacts'
 import { EvalCaseError, loadEvalCase, parseEvalSuite, type AgentEvalCase } from './case-schema'
@@ -116,6 +117,7 @@ function createEvalProviders(): Provider[] {
     createCodexProvider({}),
     createOpenAIApiProvider(),
     createAnthropicApiProvider(),
+    createGrokBuildProvider(),
   ]
 }
 
