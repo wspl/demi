@@ -84,6 +84,13 @@ export class RunCommandLineSessionNotFoundError extends Error {
   }
 }
 
+export class RunCommandLineCommandNotRegisteredError extends Error {
+  constructor(readonly commandName: string) {
+    super(`runCommandLine: command "${commandName}" is not registered for this session`)
+    this.name = 'RunCommandLineCommandNotRegisteredError'
+  }
+}
+
 export class RunCommandLineTimeoutError extends Error {
   constructor(
     readonly commandId: string,
@@ -203,6 +210,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private currentCwd: string | null = null
   private currentProviderId: string | null = null
   private currentSessionId: string | null = null
+  private currentCommandNames: ReadonlySet<string> = new Set()
   private unsubscribeSession: (() => void) | null = null
   private unsubscribeTransport: (() => void) | null = null
   private closed = false
@@ -398,11 +406,12 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const commands = agent.commands?.(harnessContext) ?? []
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
+    const commandNames = commandRegistry.list().map((command) => command.name)
     const shellOptions = this.prepareSessionShell
       ? await this.prepareSessionShell({
           agentSessionId,
           host,
-          commandNames: commandRegistry.list().map((command) => command.name),
+          commandNames,
           shell: this.shellOptions,
         })
       : this.shellOptions
@@ -445,6 +454,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.currentEnvironment = environment
     this.currentCwd = frame.cwd
     this.currentProviderId = frame.provider.providerId
+    this.currentCommandNames = new Set(commandNames)
     // A resumed session restores its model from the snapshot; align it with the
     // model the client opened with (which may differ from when it was saved).
     if (restoring) session.updateModel(null, frame.provider.model)
@@ -533,6 +543,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       this.currentEnvironment = null
       this.currentCwd = null
       this.currentProviderId = null
+      this.currentCommandNames = new Set()
       if (this.currentSessionId) {
         this.sessions.release(this.currentSessionId, this)
         this.currentSessionId = null
@@ -573,6 +584,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const environment = this.currentEnvironment
     const agentSessionId = this.currentSessionId
     if (!environment || !agentSessionId) throw new Error('runCommandLine: session has no active shell environment')
+    if (!this.currentCommandNames.has(name)) throw new RunCommandLineCommandNotRegisteredError(name)
 
     const words = [name, ...args].map(shellQuote).join(' ')
     let script = words

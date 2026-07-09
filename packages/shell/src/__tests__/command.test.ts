@@ -299,6 +299,20 @@ test('CommandRegistry rejects names reserved for shell and system commands', () 
   }
 })
 
+test('CommandRegistry rejects command names that are unsafe as CLI path segments', () => {
+  const registry = new CommandRegistry()
+  for (const name of ['../escape', '/absolute', '..', 'package.json', 'has space']) {
+    expect(() => registry.register({ ...editorSpec, name })).toThrow('has invalid name')
+  }
+  expect(() =>
+    registry.register({
+      name: 'safe-root',
+      summary: 'x',
+      subcommands: [{ name: '../escape', summary: 'x', examples: [], run: () => ({ exitCode: 0 }) }],
+    }),
+  ).toThrow('has invalid name')
+})
+
 test('CommandRegistry rejects empty nodes, dead fields, and reserved prompt children', () => {
   const registry = new CommandRegistry()
   expect(() => registry.register({ name: 'empty', summary: 'x' })).toThrow('must have run() and/or subcommands')

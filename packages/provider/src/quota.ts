@@ -181,13 +181,14 @@ export function createProviderQuota(options: CreateProviderQuotaOptions): Provid
     partial: ProviderQuotaProbeResult,
     source: Exclude<ProviderQuotaSource, 'cache'>,
   ): ProviderQuotaSnapshot => {
+    const previous = source === 'observation' ? latest : null
     const snapshot: ProviderQuotaSnapshot = {
       providerId: options.providerId,
       observedAt: new Date().toISOString(),
       source,
-      plan: partial.plan ?? null,
-      accountLabel: partial.accountLabel ?? null,
-      windows: partial.windows,
+      plan: partial.plan === undefined ? previous?.plan ?? null : partial.plan,
+      accountLabel: partial.accountLabel === undefined ? previous?.accountLabel ?? null : partial.accountLabel,
+      windows: previous ? mergeQuotaWindows(previous.windows, partial.windows) : partial.windows,
       raw: partial.raw,
     }
     latest = snapshot
@@ -214,6 +215,19 @@ export function createProviderQuota(options: CreateProviderQuotaOptions): Provid
   }
 
   return quota
+}
+
+function mergeQuotaWindows(
+  previous: readonly ProviderQuotaWindow[],
+  observed: readonly ProviderQuotaWindow[],
+): ProviderQuotaWindow[] {
+  const observedById = new Map(observed.map((window) => [window.id, window]))
+  const merged = previous.map((window) => observedById.get(window.id) ?? window)
+  const previousIds = new Set(previous.map((window) => window.id))
+  for (const window of observed) {
+    if (!previousIds.has(window.id)) merged.push(window)
+  }
+  return merged
 }
 
 /** Clamp percent into 0–100 or null. */

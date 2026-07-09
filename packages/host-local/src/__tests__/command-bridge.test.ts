@@ -103,6 +103,22 @@ test('materializeCommandBridgeShims writes under stateDir/bridge-bin, not worksp
   expect(await readlink(join(shimDir, 'fail'))).toBe('.dispatch')
 })
 
+test('materializeCommandBridgeShims rejects session ids that escape or alias the shim directory', async () => {
+  const { cwd, stateDir } = await shortDirs('unsafe-session')
+  const host = new LocalHost(cwd)
+  for (const agentSessionId of ['.', '..', '../escape', 'bad\0id']) {
+    await expect(
+      materializeCommandBridgeShims({
+        host,
+        agentSessionId,
+        commandNames: ['greet'],
+        shimSource: '#!/usr/bin/env node\n',
+        stateDir,
+      }),
+    ).rejects.toThrow('not safe to use as a path segment')
+  }
+})
+
 test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine', async () => {
   const { cwd, stateDir, socketPath } = await shortDirs('http')
   const sessionId = globalThis.crypto.randomUUID()

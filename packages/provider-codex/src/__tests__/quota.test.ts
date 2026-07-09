@@ -104,3 +104,38 @@ test('Codex SSE inference observes x-codex headers into provider.quota.latest', 
   expect(provider.quota?.latest()?.source).toBe('observation')
   expect(provider.quota?.latest()?.windows[0]?.usedPercent).toBe(41)
 })
+
+test('Codex inference is not interrupted when quota observation throws', async () => {
+  const quota = createCodexQuota({ authStore: staticStore() })
+  quota.observeResponse = () => {
+    throw new Error('broken observer')
+  }
+  const transport = new FetchCodexResponsesTransport({
+    fetch: (async () =>
+      new Response('event: response.completed\ndata: {"type":"response.completed","response":{"id":"r1"}}\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream', 'x-codex-primary-used-percent': '41' },
+      })) as unknown as typeof fetch,
+  })
+  const { CodexProvider } = await import('../provider')
+  const runtime = new CodexProvider({ authStore: staticStore(), transportImpl: transport, quota })
+  const events = []
+
+  for await (const event of runtime.run({
+    requestId: 'r1',
+    turnId: 't1',
+    sessionId: 's1',
+    modelId: 'gpt-5.4',
+    systemPrompt: 'sys',
+    cwd: '/tmp',
+    items: [{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }],
+    tools: [],
+    thinking: null,
+    cancel: new AbortController().signal,
+  })) {
+    events.push(event)
+  }
+
+  expect(events.some((event) => event.type === 'response')).toBe(true)
+  expect(events.some((event) => event.type === 'error')).toBe(false)
+})

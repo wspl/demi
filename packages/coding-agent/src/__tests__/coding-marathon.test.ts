@@ -270,7 +270,7 @@ test('coding agent controls a long foreground command with status and abort', as
     [
       events.toolCall('start-long', 'shell_exec', {
         script: "sh -c 'printf ready; sleep 10'",
-        timeoutMs: 20,
+        timeoutMs: 1_000,
       }),
     ],
     (request: InferenceRequest) => {

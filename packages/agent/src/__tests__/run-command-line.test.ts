@@ -8,7 +8,12 @@ import type { Command } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
 import { defineProvider, type Provider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { AgentServer, RunCommandLineSessionNotFoundError, type AgentHarness } from '../index'
+import {
+  AgentServer,
+  RunCommandLineCommandNotRegisteredError,
+  RunCommandLineSessionNotFoundError,
+  type AgentHarness,
+} from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -113,6 +118,22 @@ test('AgentServer.runCommandLine rejects unknown sessions', async () => {
     RunCommandLineSessionNotFoundError,
   )
 
+  await server.close()
+})
+
+test('AgentServer.runCommandLine rejects commands not registered for the session', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-unregistered-'))
+  const harness = harnessWithCommands(cwd, () => [greetCommand()])
+  const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
+  const client = server.client()
+  const sessionId = globalThis.crypto.randomUUID()
+  await client.open(selection, cwd, sessionId)
+
+  await expect(server.runCommandLine(sessionId, 'sh', ['-c', 'echo bypassed'], { cwd, stdin: '' })).rejects.toBeInstanceOf(
+    RunCommandLineCommandNotRegisteredError,
+  )
+
+  await client.close()
   await server.close()
 })
 

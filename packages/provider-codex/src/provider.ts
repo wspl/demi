@@ -111,14 +111,14 @@ export class CodexProvider implements AgentProvider {
           websocketConnectTimeoutMs: this.config.websocketConnectTimeoutMs,
           streamIdleTimeoutMs: this.config.streamIdleTimeoutMs || undefined,
           onHttpResponse: (response) => {
-            this.quota?.observeResponse?.({ headers: response.headers, status: response.status })
+            this.observeQuotaResponse({ headers: response.headers, status: response.status })
           },
         })
         yield* mapCodexResponseEvents(stream)
         return
       } catch (error) {
         if (error instanceof CodexHttpError) {
-          this.quota?.observeResponse?.({ headers: error.headers, status: error.status })
+          this.observeQuotaResponse({ headers: error.headers, status: error.status })
         }
         if (request.cancel.aborted) {
           yield { type: 'abort' }
@@ -136,6 +136,14 @@ export class CodexProvider implements AgentProvider {
         yield providerErrorFromUnknown(error)
         return
       }
+    }
+  }
+
+  private observeQuotaResponse(input: { headers: Headers; status: number }): void {
+    try {
+      this.quota?.observeResponse?.(input)
+    } catch {
+      // Quota observation must never break inference.
     }
   }
 }
