@@ -64,6 +64,8 @@ export type ImageFileExtension = 'png' | 'jpg' | 'jpeg' | 'gif' | 'webp'
 export type VideoFileExtension = 'mp4' | 'mov' | 'webm' | 'm4v'
 export type FileExtension = ImageFileExtension | VideoFileExtension | 'pdf'
 
+export const VIDEO_FILE_EXTENSIONS: readonly VideoFileExtension[] = ['mp4', 'mov', 'webm', 'm4v']
+
 export type ThinkingEffort = string
 
 export type ThinkingSummary = 'auto' | 'concise' | 'detailed' | 'off' | 'on'
@@ -98,6 +100,10 @@ export interface Model {
   inputLimit: number | null
   thinking: ThinkingCapability[]
   acceptedExtensions: FileExtension[]
+}
+
+export function modelAcceptsVideo(model: Model): boolean {
+  return VIDEO_FILE_EXTENSIONS.some((extension) => model.acceptedExtensions.includes(extension))
 }
 
 export interface ModelSelection {

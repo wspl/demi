@@ -31,6 +31,18 @@ test('pending steer accepts queued content from reactive state', () => {
   expect(pending.content).not.toBe(content)
 })
 
+test('pending steer clones and reconciles native video content', () => {
+  const data = new Uint8Array([1, 2, 3])
+  const content: UserContentBlock[] = [{ type: 'video', source: { type: 'binary', mediaType: 'video/mp4', data } }]
+  const pending = createPendingSteerMessage('local-video', content, [])
+
+  expect(pending.content).toEqual(content)
+  expect(pending.content).not.toBe(content)
+  const source = content[0]?.type === 'video' ? content[0].source : null
+  expect((pending.content[0] as Extract<UserContentBlock, { type: 'video' }>).source).not.toBe(source)
+  expect(reconcilePendingSteers([videoSteerBlock('materialized', new Uint8Array([1, 2, 3]))], [pending])).toEqual([])
+})
+
 test('reconcile keeps pending steer when only baseline steer blocks exist', () => {
   const baseline = [steerBlock('existing', 'same text')]
   const pending = createPendingSteerMessage('local-1', text('same text'), baseline)
@@ -72,5 +84,16 @@ function steerBlock(id: string, value: string): Block {
     createdAt: '2026-06-23T00:00:00.000Z',
     model: null,
     content: text(value),
+  } as unknown as Block
+}
+
+function videoSteerBlock(id: string, data: Uint8Array): Block {
+  return {
+    type: 'steer',
+    id,
+    turnId: 'turn-1',
+    createdAt: '2026-06-23T00:00:00.000Z',
+    model: null,
+    content: [{ type: 'video', source: { type: 'binary', mediaType: 'video/mp4', data } }],
   } as unknown as Block
 }

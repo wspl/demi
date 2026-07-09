@@ -18,7 +18,7 @@ export function createDemiCommand(host: Host): Command {
         },
         positionals: ['path'],
         examples: ['demi read src/foo.ts', 'demi read assets/frame.png'],
-        run: async ({ parsed, cwd, io }) => {
+        run: async ({ parsed, cwd, io, supportedAssetTypes }) => {
           const path = String(parsed.values.path)
           const pathError = pathValidationError(path)
           if (pathError) {
@@ -28,6 +28,10 @@ export function createDemiCommand(host: Host): Command {
 
           const media = mediaForPath(path)
           if (media) {
+            if (media.kind === 'video' && !supportedAssetTypes.has('video')) {
+              await io.stderr('Current model does not support video input.\n')
+              return { exitCode: 1 }
+            }
             let bytes: Uint8Array
             try {
               bytes = await host.fs.readFile(path, { cwd })

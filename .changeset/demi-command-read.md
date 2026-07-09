@@ -11,6 +11,7 @@ framework's built-in workspace tools rather than an edit-only "editor". The new
 (png/jpeg/webp/gif) are returned as a viewable image block, and videos
 (mp4/mov/webm/m4v) are returned as a native video block — all via
 `CommandIO.asset` — so the model can actually see the media a read surfaces
-(video reaches only models whose catalog marks video support). The
+(video reaches only models whose catalog marks video support; unsupported
+models return an error before the file is read). The
 `coding-harness` option `editorHost` is now `demiHost`, and file-diff metadata
 is `file_diffs`.

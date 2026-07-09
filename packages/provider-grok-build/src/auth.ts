@@ -225,9 +225,11 @@ export class FileGrokAuthStore implements GrokAuthStore {
         }
         // Grok CLI writes `auth.json.lock` as `pid:unix_ts` and may leave it behind
         // after a crash. Steal only abandoned locks; wait if another live process holds it.
-        if (!brokeStaleLock && (await isAbandonedGrokAuthLock(lockFile, this.now()))) {
-          await rm(lockFile, { force: true }).catch(() => undefined)
-          brokeStaleLock = true
+        const staleIdentity = brokeStaleLock ? null : await fileIdentity(lockFile)
+        if (staleIdentity && (await isAbandonedGrokAuthLock(lockFile, this.now()))) {
+          if (await removeLockFileIfSame(lockFile, staleIdentity)) {
+            brokeStaleLock = true
+          }
           continue
         }
         if (Date.now() - started > this.lockTimeoutMs) {
@@ -245,8 +247,9 @@ export class FileGrokAuthStore implements GrokAuthStore {
       await writeFile(lockFile, `${process.pid}:${Math.floor(this.now().getTime() / 1000)}`, { mode: 0o600 })
       return await fn()
     } finally {
+      const ownedIdentity = await handle.stat().then(toFileIdentity).catch(() => null)
       await handle.close().catch(() => undefined)
-      await rm(lockFile, { force: true }).catch(() => undefined)
+      if (ownedIdentity) await removeLockFileIfSame(lockFile, ownedIdentity)
     }
   }
 }
@@ -379,7 +382,7 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error
 }
 
-/** Grok CLI lock format is `pid:unix_seconds`. Steal only when the owner is dead or very stale. */
+/** Grok CLI lock format is `pid:unix_seconds`. A valid live PID always owns its lock. */
 export async function isAbandonedGrokAuthLock(lockFile: string, now: Date, maxAgeMs = 30_000): Promise<boolean> {
   try {
     const raw = (await readFile(lockFile, 'utf8')).trim()
@@ -387,7 +390,7 @@ export async function isAbandonedGrokAuthLock(lockFile: string, now: Date, maxAg
     if (match) {
       const pid = Number(match[1])
       const tsSec = Number(match[2])
-      if (Number.isFinite(pid) && pid > 0 && !isProcessAlive(pid)) return true
+      if (Number.isFinite(pid) && pid > 0) return !isProcessAlive(pid)
       if (Number.isFinite(tsSec) && now.getTime() - tsSec * 1000 > maxAgeMs) return true
       return false
     }
@@ -397,6 +400,25 @@ export async function isAbandonedGrokAuthLock(lockFile: string, now: Date, maxAg
   } catch {
     return true
   }
+}
+
+interface FileIdentity {
+  dev: number | bigint
+  ino: number | bigint
+}
+
+function toFileIdentity(info: { dev: number | bigint; ino: number | bigint }): FileIdentity {
+  return { dev: info.dev, ino: info.ino }
+}
+
+async function fileIdentity(path: string): Promise<FileIdentity | null> {
+  return stat(path).then(toFileIdentity).catch(() => null)
+}
+
+async function removeLockFileIfSame(lockFile: string, expected: FileIdentity): Promise<boolean> {
+  const current = await fileIdentity(lockFile)
+  if (!current || current.dev !== expected.dev || current.ino !== expected.ino) return false
+  return rm(lockFile).then(() => true).catch(() => false)
 }
 
 function isProcessAlive(pid: number): boolean {

@@ -53,6 +53,7 @@ export interface CommandRunContext {
   cwd: string
   io: CommandIO
   storage: CommandStorage
+  supportedAssetTypes: ReadonlySet<CommandAssetType>
 }
 
 export interface CommandRunResult {
@@ -66,7 +67,8 @@ export interface CommandStdin {
 
 /** A non-text content item a command emits to the model, peer to stdout text.
  *  `data` is base64. Video assets only reach models whose catalog marks video support. */
-export type CommandAsset = { type: 'image' | 'video'; mediaType: string; data: string }
+export type CommandAssetType = 'image' | 'video'
+export type CommandAsset = { type: CommandAssetType; mediaType: string; data: string }
 
 export interface CommandIO {
   stdout(data: string | Uint8Array): Promise<void> | void
@@ -88,6 +90,7 @@ export interface CommandExecutionContext {
   cwd: string
   io: CommandIO
   storage: CommandStorage
+  supportedAssetTypes?: readonly CommandAssetType[]
 }
 
 const EXECUTION_ONLY_FIELDS = [
@@ -265,6 +268,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
     cwd: ctx.cwd,
     io: parsed.json ? capture : ctx.io,
     storage: ctx.storage,
+    supportedAssetTypes: new Set(ctx.supportedAssetTypes),
   })
 
   if (parsed.json && result.exitCode === 0) {

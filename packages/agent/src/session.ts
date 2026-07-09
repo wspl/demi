@@ -68,6 +68,10 @@ export class AgentSession<State> {
   private readonly pendingActions: PendingAction[] = []
   private readonly queued: QueuedMessage[] = []
 
+  get modelSelection(): ModelSelection {
+    return this.model
+  }
+
   private readonly transcriptLog: Transcript
   private readonly agentState: State
   private currentPhase: SessionPhase = 'idle'
@@ -1063,4 +1067,3 @@ function providerErrorCode(error: unknown): string | null {
   }
   return null
 }
-
