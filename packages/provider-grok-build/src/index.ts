@@ -12,3 +12,8 @@ export {
   observeGrokRateLimitHeaders,
   type GrokBuildQuotaOptions,
 } from './quota'
+export {
+  createGrokBuildCredentials,
+  openGrokCredentialPool,
+  PoolAwareGrokAuthStore,
+} from './credentials'
