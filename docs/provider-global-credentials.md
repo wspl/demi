@@ -28,7 +28,7 @@ Three subscription providers reuse vendor CLI / desktop login material:
 - After switch: `auth.status`, `quota` (probe/observe/latest), and subsequent inference use the new active material.
 - Secrets never cross AgentClient / browser-visible frames.
 - Zero-config default: if demi has no pool yet, behavior matches today (read vendor default path / env / keychain as the sole active credential).
-- **Invoke vendor login** (唤起登录): product can ask demi to start the vendor’s own login flow (CLI / browser the vendor already uses). Demi does **not** complete OAuth or mint tokens itself.
+- **Invoke vendor login**: product can ask demi to start the vendor’s own login flow (CLI / browser the vendor already uses). Demi does **not** complete OAuth or mint tokens itself.
 - **Import** vendor material into the pool and receive a stable `credentialId` (login itself does not return an id).
 
 ### Non-goals
@@ -60,18 +60,18 @@ Three subscription providers reuse vendor CLI / desktop login material:
 [unauthenticated or wrong account]
         │
         ▼
- credentials.beginLogin()     ← 只「唤起」厂商登录（CLI/浏览器），不解析 OAuth
+ credentials.beginLogin()     ← invoke vendor login only (no OAuth completion in demi)
         │
         │  user completes login in vendor tool
         │  material lands in ~/.codex | ~/.grok | keychain/env
         ▼
- credentials.importDefault()  ← snapshot 进 demi 池，返回 { id, label, … }
+ credentials.importDefault()  ← snapshot into demi pool; returns { id, label, … }
         │
         ▼
- credentials.setActive(id)    ← 全局切换（若 import 时未自动设为 active）
+ credentials.setActive(id)    ← process-global switch (if import did not already activate)
         │
         ▼
- auth / quota / inference 使用 active
+ auth / quota / inference use active
 ```
 
 Adding a **second** account: beginLogin again (user logs into the other account in the vendor tool) → importDefault again → second id → setActive as needed. Product may need to warn that vendor default path is single-slot; import snapshots before overwriting.
