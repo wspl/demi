@@ -8,6 +8,7 @@ import type {
   ThinkingConfig,
   ThinkingSummary,
 } from '@demicodes/core'
+import { VIDEO_FILE_EXTENSIONS } from '@demicodes/core'
 import type { ProviderModel, ProviderModelList } from './types'
 
 /** Stamps `providerId` onto a model catalog and every model in it. */
@@ -28,9 +29,6 @@ export const DEFAULT_ATTACHMENT_EXTENSIONS: readonly FileExtension[] = [
   'webp',
   'pdf',
 ]
-
-/** Extensions added to a model's accepted set only when it marks native video support. */
-export const VIDEO_ATTACHMENT_EXTENSIONS: readonly FileExtension[] = ['mp4', 'mov', 'webm', 'm4v']
 
 /** Derive the thinking capabilities a UI can offer from a catalog model. */
 export function thinkingCapabilitiesFromProviderModel(model: ProviderModel | null): ThinkingCapability[] {
@@ -83,7 +81,7 @@ export function modelSelectionFromCatalog(
       thinking: thinkingCapabilitiesFromProviderModel(model),
       acceptedExtensions: [
         ...(model?.supportsAttachments ? accepted : []),
-        ...(model?.supportsVideo ? VIDEO_ATTACHMENT_EXTENSIONS : []),
+        ...(model?.supportsVideo ? VIDEO_FILE_EXTENSIONS : []),
       ],
     },
     thinking: options.thinking ?? null,

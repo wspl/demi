@@ -3,7 +3,7 @@ import type { CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResu
 import type { HostSpawnHandle } from './host'
 import type { HostBackedFileSystem } from './host-fs'
 import type { BashAuditEvent, CommandMetadataRecord, ShellOutputRecordChunk } from './environment'
-import type { CommandAsset } from './command'
+import type { CommandAsset, CommandAssetType } from './command'
 
 export interface ExecAccumulator {
   stdout: string
@@ -21,6 +21,7 @@ export interface ShellSession {
   interpreter: Interpreter
   forkCommands: ForkCommandRegistry
   accumulator: ExecAccumulator
+  supportedAssetTypes: ReadonlySet<CommandAssetType>
   foreground?: ForegroundProcess
   activeCommandId?: string
   backgroundJobs: Map<number, BackgroundJob>

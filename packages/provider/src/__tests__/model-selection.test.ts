@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
+import { VIDEO_FILE_EXTENSIONS } from '@demicodes/core'
 import {
   DEFAULT_ATTACHMENT_EXTENSIONS,
-  VIDEO_ATTACHMENT_EXTENSIONS,
   modelSelectionFromCatalog,
   thinkingCapabilitiesFromProviderModel,
 } from '../index'
@@ -50,13 +50,13 @@ describe('modelSelectionFromCatalog', () => {
     const withVideo = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true, supportsVideo: true }))
     expect(withVideo.model.acceptedExtensions).toEqual([
       ...DEFAULT_ATTACHMENT_EXTENSIONS,
-      ...VIDEO_ATTACHMENT_EXTENSIONS,
+      ...VIDEO_FILE_EXTENSIONS,
     ])
   })
 
   it('accepts video-only models (video without other attachments)', () => {
     const selection = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: false, supportsVideo: true }))
-    expect(selection.model.acceptedExtensions).toEqual([...VIDEO_ATTACHMENT_EXTENSIONS])
+    expect(selection.model.acceptedExtensions).toEqual([...VIDEO_FILE_EXTENSIONS])
   })
 
   it('respects an attachment-extension override', () => {

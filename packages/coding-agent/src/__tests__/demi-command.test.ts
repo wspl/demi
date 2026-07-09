@@ -39,12 +39,28 @@ test('demi read returns an image file as a base64 image asset', async () => {
 test('demi read returns a video file as a native base64 video asset', async () => {
   const { env } = await createDemiEnvironment()
   const created = await env.exec({ script: "demi create clip.mp4 <<'EOF'\nMP4DATA\nEOF" })
-  const read = await env.exec({ shellId: created.shellId, script: 'demi read clip.mp4' })
+  const read = await env.exec({
+    shellId: created.shellId,
+    script: 'demi read clip.mp4',
+    supportedAssetTypes: ['image', 'video'],
+  })
   if (read.status !== 'exited') throw new Error('expected exited result')
   expect(read.assets).toEqual([
     { type: 'video', mediaType: 'video/mp4', data: bytesToBase64(encodeUtf8('MP4DATA\n')) },
   ])
   expect(read.stdout.delta).toContain('Read video clip.mp4 (video/mp4,')
+})
+
+test('demi read rejects video before reading when the current model does not support it', async () => {
+  const { env } = await createDemiEnvironment()
+  const created = await env.exec({ script: "demi create clip.mp4 <<'EOF'\nMP4DATA\nEOF" })
+  const read = await env.exec({ shellId: created.shellId, script: 'demi read clip.mp4' })
+
+  expect(read.status).toBe('exited')
+  if (read.status !== 'exited') throw new Error('expected exited result')
+  expect(read.exitCode).toBe(1)
+  expect(read.assets).toBeUndefined()
+  expect(read.stderr.delta).toBe('Current model does not support video input.\n')
 })
 
 test('demi create writes a new file from heredoc content', async () => {
@@ -355,6 +371,7 @@ test('demi patch rolls back files when a later write fails', async () => {
     cwd: '/workspace',
     io: output.io,
     storage: noopStorage,
+    supportedAssetTypes: new Set(),
   })
 
   expect(result.exitCode).toBe(1)

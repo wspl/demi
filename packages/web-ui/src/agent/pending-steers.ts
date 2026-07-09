@@ -1,4 +1,4 @@
-import type { Block, UserContentBlock } from '@demicodes/core'
+import type { Block, ImageSource, UserContentBlock } from '@demicodes/core'
 import type { PendingSteerMessage } from './types'
 
 export interface PendingSteerRenderBlock {
@@ -69,6 +69,7 @@ function normalizeContentBlock(block: UserContentBlock): unknown {
     case 'reference':
       return { type: block.type, reference: block.reference }
     case 'image':
+    case 'video':
       return {
         type: block.type,
         source:
@@ -102,14 +103,12 @@ function cloneUserContent(content: readonly UserContentBlock[]): UserContentBloc
       case 'image':
         return {
           type: 'image',
-          source:
-            block.source.type === 'url'
-              ? { type: 'url', url: block.source.url }
-              : {
-                  type: 'binary',
-                  mediaType: block.source.mediaType,
-                  data: new Uint8Array(Array.from(block.source.data)),
-                },
+          source: cloneMediaSource(block.source),
+        }
+      case 'video':
+        return {
+          type: 'video',
+          source: cloneMediaSource(block.source),
         }
       case 'document':
         return {
@@ -122,4 +121,14 @@ function cloneUserContent(content: readonly UserContentBlock[]): UserContentBloc
         }
     }
   })
+}
+
+function cloneMediaSource(source: ImageSource): ImageSource {
+  return source.type === 'url'
+    ? { type: 'url', url: source.url }
+    : {
+        type: 'binary',
+        mediaType: source.mediaType,
+        data: new Uint8Array(Array.from(source.data)),
+      }
 }
