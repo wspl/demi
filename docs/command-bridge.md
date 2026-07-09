@@ -242,16 +242,36 @@ The model sees only the outer tool (e.g. a `node` script’s output). Nested bri
 
 ---
 
+## Browser, custom hosts, and opt-in safety
+
+Demi must keep working with **custom Hosts** (including pure-browser or non-local backends). Command bridge must not change that.
+
+| Mode | Behavior |
+|------|----------|
+| `commandBridge` **omitted** (default) | No shim directory, no PATH rewrite, no socket env, no listener required. `open()` is identical to a server without the feature. Safe for browser-backed Hosts and any custom Host. |
+| `commandBridge` **set** | Product asserts a **co-located** Host: `Host.fs` paths are the same real filesystem that `Host.process` children see (today: `LocalHost`), and the agent process can host a unix domain socket (Node). |
+
+Rules:
+
+1. **Never** import `@demicodes/host-local` from agent. Bridge code talks only to `Host` / `BashEnvironment`.
+2. **Never** start a listener from platform-neutral agent root. Node-only subpath is opt-in at assembly time.
+3. Products that target the browser (or a remote Host without shared FS) **must not** pass `commandBridge`.
+4. Enabling the option on an unsuitable Host is a product misconfiguration; it may fail at materialize/exec time, but must not be required for normal session open.
+
+“Local only” is a **runtime precondition of enabling the option**, not a package dependency on `host-local`.
+
+---
+
 ## Package responsibilities
 
 | Package | Responsibility |
 |---------|----------------|
 | `@demicodes/shell` | `Command` tree, registry, `runRegisteredCommand`, quoting helpers, `BashEnvironment.exec` / abort / snapshots. No sockets. |
-| `@demicodes/agent` (platform-neutral root) | Optional bridge config on the server; materialize shim directory via `Host.fs` on open; inject PATH/env; `runCommandLine` (or equivalent) on the server using session ownership + environment. Shim **source text** is not authored here if that forces Node-only APIs into the neutral package. |
+| `@demicodes/agent` (platform-neutral root) | Optional bridge config on the server; **only when set**, materialize shim directory via `Host.fs` on open; inject PATH/env; `runCommandLine` using session ownership + environment. Shim **source text** is not authored here. |
 | `@demicodes/agent/command-bridge` (Node-only subpath) | Owns shim script source; starts UDS listener; HTTP parse; calls into the server’s run API; process lifecycle of the listener. |
-| Product / host assembly (e.g. web, REPL) | Creates socket path, starts listener, passes options into `AgentServer`. |
+| Product / host assembly (e.g. Node web server, REPL + `LocalHost`) | Creates socket path, starts listener, passes options into `AgentServer` **only** for co-located local Hosts. |
 
-Dependency direction stays: shell ← agent ← products. Host-local gains nothing bridge-specific unless a future host needs custom socket placement.
+Dependency direction stays: shell ← agent ← products. **`host-local` does not own bridge code.** Assembly that uses `LocalHost` may enable the feature; agent never depends on host-local.
 
 ---
 
