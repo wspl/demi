@@ -88,7 +88,8 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
   })
 }
 
-export function mapCodexRateLimitHeaders(headers: Headers): ProviderQuotaProbeResult | null {
+export function mapCodexRateLimitHeaders(headers: Headers | undefined): ProviderQuotaProbeResult | null {
+  if (!headers) return null
   const primary = parseCodexWindow(headers, 'primary')
   const secondary = parseCodexWindow(headers, 'secondary')
   const windows = [primary, secondary].filter((w): w is ProviderQuotaWindow => w !== null)

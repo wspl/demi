@@ -9,6 +9,7 @@ import {
   type ModelPolicy,
   type Provider,
   type ProviderEvent,
+  type ProviderQuota,
 } from '@demicodes/provider'
 import {
   CodexAuthError,
@@ -53,6 +54,8 @@ export interface CodexProviderOptions extends CodexProviderConfig {
 export interface CodexRuntimeOptions extends CodexProviderConfig {
   authStore?: CodexAuthStore
   transportImpl?: CodexResponsesTransport
+  /** Shared with the public Provider shell so inference can passively update quota. */
+  quota?: ProviderQuota
 }
 
 const DEFAULT_CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api'
@@ -67,6 +70,7 @@ export class CodexProvider implements AgentProvider {
     Pick<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers' | 'clientVersion'>
   private readonly authStore: CodexAuthStore
   private readonly transport: CodexResponsesTransport
+  private readonly quota: ProviderQuota | null
 
   constructor(options: CodexRuntimeOptions = {}) {
     this.config = {
@@ -84,6 +88,7 @@ export class CodexProvider implements AgentProvider {
     }
     this.authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
     this.transport = options.transportImpl ?? createCodexTransport(this.config.transport)
+    this.quota = options.quota ?? null
   }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
@@ -105,10 +110,16 @@ export class CodexProvider implements AgentProvider {
           headerTimeoutMs: this.config.headerTimeoutMs,
           websocketConnectTimeoutMs: this.config.websocketConnectTimeoutMs,
           streamIdleTimeoutMs: this.config.streamIdleTimeoutMs || undefined,
+          onHttpResponse: (response) => {
+            this.quota?.observeResponse?.({ headers: response.headers, status: response.status })
+          },
         })
         yield* mapCodexResponseEvents(stream)
         return
       } catch (error) {
+        if (error instanceof CodexHttpError) {
+          this.quota?.observeResponse?.({ headers: error.headers, status: error.status })
+        }
         if (request.cancel.aborted) {
           yield { type: 'abort' }
           return
@@ -149,17 +160,19 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
 
   const authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
   runtimeOptions.authStore = authStore
+  const quota = createCodexQuota({
+    providerId: id,
+    codexHome: options.codexHome,
+    baseUrl: options.baseUrl,
+    authStore,
+    userAgent: options.userAgent,
+  })
+  runtimeOptions.quota = quota
   return defineProvider({
     id,
     displayName,
     auth: { status: () => authStore.status() },
-    quota: createCodexQuota({
-      providerId: id,
-      codexHome: options.codexHome,
-      baseUrl: options.baseUrl,
-      authStore,
-      userAgent: options.userAgent,
-    }),
+    quota,
     state: () => ({ status: 'ready', message: 'Uses official Codex auth storage' }),
     listModels: async () => {
       const catalog = await listCodexModels(runtimeOptions)
