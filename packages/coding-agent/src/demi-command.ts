@@ -5,19 +5,19 @@ import type { Command, CommandAsset, Host } from '@demicodes/shell'
 export function createDemiCommand(host: Host): Command {
   return {
     name: 'demi',
-    summary: 'Read, create, edit, and patch workspace files (text and images).',
+    summary: 'Read, create, edit, and patch workspace files (text, images, and native video).',
     subcommands: [
       {
         name: 'read',
-        summary: 'Read a file. Text is returned as text; images are returned as viewable images.',
+        summary: 'Read a file. Text is returned as text; images and supported videos are returned as viewable media.',
         effects: 'reads one file; does not modify anything',
-        successOutput: 'prints text file contents to stdout, or returns an image file as a viewable image',
+        successOutput: 'prints text file contents to stdout, or returns an image/video file as viewable media',
         failureOutput: 'writes the reason to stderr and exits non-zero if the path is missing or unreadable',
         input: {
           path: z.string().describe('File path to read'),
         },
         positionals: ['path'],
-        examples: ['demi read src/foo.ts', 'demi read assets/frame.png'],
+        examples: ['demi read src/foo.ts', 'demi read assets/frame.png', 'demi read assets/clip.mp4'],
         run: async ({ parsed, cwd, io, supportedAssetTypes }) => {
           const path = String(parsed.values.path)
           const pathError = pathValidationError(path)

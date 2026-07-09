@@ -11,7 +11,14 @@ const DISPATCH_PACKAGE_JSON = '{"type":"commonjs"}\n'
  * component under Host.fs, so it is validated here rather than trusted.
  */
 function assertPathSafeSessionId(agentSessionId: string): void {
-  if (agentSessionId.length === 0 || agentSessionId.includes('/') || agentSessionId.includes('\\') || agentSessionId === '..') {
+  if (
+    agentSessionId.length === 0 ||
+    agentSessionId.includes('\0') ||
+    agentSessionId.includes('/') ||
+    agentSessionId.includes('\\') ||
+    agentSessionId === '.' ||
+    agentSessionId === '..'
+  ) {
     throw new Error(`Command bridge: agentSessionId "${agentSessionId}" is not safe to use as a path segment`)
   }
 }
