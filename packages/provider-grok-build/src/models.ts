@@ -25,7 +25,7 @@ export function grokBuildFallbackModels(providerId = 'grok-build'): ProviderMode
     contextWindow: 500_000,
     outputLimit: null,
     supportsTools: true,
-    supportsAttachments: supportsAttachmentsForModel('grok-4.5'),
+    supportsAttachments: capabilitiesForModel('grok-4.5').supportsAttachments,
     supportsReasoning: true,
     supportedThinkingEfforts: ['low', 'medium', 'high'],
     defaultThinkingEffort: 'high',
@@ -92,7 +92,7 @@ export function modelListFromGrokModelsPayload(payload: unknown, providerId: str
       contextWindow: positiveOrDefault(numberOrNull(item.context_window), 200_000),
       outputLimit: null,
       supportsTools: true,
-      supportsAttachments: supportsAttachmentsForModel(id),
+      supportsAttachments: capabilitiesForModel(id).supportsAttachments,
       supportsReasoning: item.supports_reasoning_effort === true || reasoningEfforts.length > 0 ? true : null,
       supportedThinkingEfforts: reasoningEfforts.length > 0 ? reasoningEfforts : null,
       defaultThinkingEffort: defaultReasoningEffort(item, reasoningEfforts),
@@ -116,15 +116,30 @@ export function modelListFromGrokModelsPayload(payload: unknown, providerId: str
   }
 }
 
+/** Capabilities the cli-chat-proxy catalog omits. Keyed by exact model id. */
+export interface GrokModelCapabilities {
+  supportsAttachments: boolean
+}
+
+const DEFAULT_MODEL_CAPABILITIES: GrokModelCapabilities = {
+  supportsAttachments: false,
+}
+
 /**
- * cli-chat-proxy /v1/models does not advertise vision. Hardcode known Grok Build models.
- * Verified: grok-4.5 accepts image_url; grok-composer-* rejects image inputs.
+ * Known Grok Build models. Extend this table when the proxy adds ids;
+ * do not invent prefix heuristics here.
  */
+const KNOWN_MODEL_CAPABILITIES: Readonly<Record<string, GrokModelCapabilities>> = {
+  'grok-4.5': { supportsAttachments: true },
+  'grok-composer-2.5-fast': { supportsAttachments: false },
+}
+
+export function capabilitiesForModel(modelId: string): GrokModelCapabilities {
+  return KNOWN_MODEL_CAPABILITIES[modelId] ?? DEFAULT_MODEL_CAPABILITIES
+}
+
 export function supportsAttachmentsForModel(modelId: string): boolean {
-  if (modelId.startsWith('grok-composer')) return false
-  if (modelId === 'grok-4.5' || modelId.startsWith('grok-4.5-')) return true
-  if (modelId.startsWith('grok-4.') || modelId.startsWith('grok-build')) return true
-  return false
+  return capabilitiesForModel(modelId).supportsAttachments
 }
 
 function modelsUrl(baseUrl: string): string {
