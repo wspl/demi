@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
-import { BashEnvironment, CommandRegistry, type CommandSpec, type HostProcess } from '../index'
+import { BashEnvironment, CommandRegistry, type Command, type HostProcess } from '../index'
 import { LocalHost } from '@demicodes/host-local'
 
 test('BashEnvironment keeps cwd and env state across shell_exec calls', async () => {
@@ -986,7 +986,7 @@ test('BashEnvironment source args temporarily replace positional parameters', as
 
 test('BashEnvironment dispatches registered commands before system commands and records audit', async () => {
   const registry = new CommandRegistry()
-  registry.register(echoCommandSpec())
+  registry.register(echoCommand())
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     commands: registry,
@@ -1021,7 +1021,7 @@ test('BashEnvironment supports command builtin lookup and system execution', asy
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-command-builtin-'))
   await mkdir(join(root, 'next'))
   const registry = new CommandRegistry()
-  registry.register(echoCommandSpec())
+  registry.register(echoCommand())
   const env = new BashEnvironment({
     host: new LocalHost(root),
     commands: registry,
@@ -1124,7 +1124,7 @@ test('BashEnvironment supports command builtin lookup and system execution', asy
 test('BashEnvironment type builtin reports session command resolution', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-type-builtin-'))
   const registry = new CommandRegistry()
-  registry.register(echoCommandSpec())
+  registry.register(echoCommand())
   const env = new BashEnvironment({
     host: new LocalHost(root),
     commands: registry,
@@ -1162,7 +1162,7 @@ test('BashEnvironment type builtin reports session command resolution', async ()
 
 test('BashEnvironment scopes registered command storage by agent session with shell fallback', async () => {
   const registry = new CommandRegistry()
-  registry.register(counterCommandSpec())
+  registry.register(counterCommand())
   let nextShell = 0
   const root = await mkdtemp(join(tmpdir(), 'demi-command-storage-'))
   const env = new BashEnvironment({
@@ -1189,7 +1189,7 @@ test('BashEnvironment scopes registered command storage by agent session with sh
 
 test('BashEnvironment passes heredoc content to registered commands via stdinField', async () => {
   const registry = new CommandRegistry()
-  registry.register(stdinCommandSpec())
+  registry.register(stdinCommand())
   const env = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     commands: registry,
@@ -1254,7 +1254,7 @@ test('BashEnvironment applies file redirections without handing scripts to a sys
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-redir-'))
   await writeFile(join(root, 'input.txt'), 'from-file')
   const registry = new CommandRegistry()
-  registry.register(echoCommandSpec())
+  registry.register(echoCommand())
   const env = new BashEnvironment({
     host: new LocalHost(root),
     commands: registry,
@@ -1954,7 +1954,7 @@ test('BashEnvironment applies input redirections to compound commands', async ()
     shellIdFactory: () => 'shell-compound-input-redir',
     initialEnv: { PATH: process.env.PATH ?? '', NAME: 'world' },
   })
-  env.registerCommand(stdinCommandSpec())
+  env.registerCommand(stdinCommand())
 
   const group = await env.exec({ script: '{ true; cat; printf "|"; cat; } < input.txt' })
   expect(group.status).toBe('exited')
@@ -2538,7 +2538,7 @@ test('BashEnvironment reuses a shell after abort without leaking abort state', a
   expect(afterAbort.stdout.delta).toBe('after-abort')
 })
 
-function echoCommandSpec(): CommandSpec {
+function echoCommand(): Command {
   return {
     name: 'echo-cmd',
     summary: 'Test registered command.',
@@ -2559,7 +2559,7 @@ function echoCommandSpec(): CommandSpec {
   }
 }
 
-function counterCommandSpec(): CommandSpec {
+function counterCommand(): Command {
   return {
     name: 'counter',
     summary: 'Session-scoped counter command.',
@@ -2580,10 +2580,10 @@ function counterCommandSpec(): CommandSpec {
   }
 }
 
-function stdinCommandSpec(): CommandSpec {
+function stdinCommand(): Command {
   return {
     name: 'stdin-cmd',
-    summary: 'Reads stdin through CommandSpec.',
+    summary: 'Reads stdin through Command.',
     subcommands: [
       {
         name: 'write',
