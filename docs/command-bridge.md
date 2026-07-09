@@ -25,7 +25,7 @@ const { server, close } = createLocalAgentServer({
 await close()
 ```
 
-No product-side socket/shim assembly.
+No product-side socket/shim assembly. Bin paths and UDS are **not** user-facing options — they are internal to LocalHost assembly (`stateDir` layout only).
 
 ---
 
@@ -60,19 +60,31 @@ No product-side socket/shim assembly.
 3. Fixed `bridge-bin` under stateDir.
 4. Same `Command` execution path as in-shell registered commands.
 5. Off switch: `commandBridge: false` only.
+6. **AgentServer never knows about UDS or bin dirs** — only host-agnostic hooks/APIs.
 
 ---
 
 ## Architecture
 
 ```text
-createLocalAgentServer
+createLocalAgentServer (host-local)
   stateDir = resolveDemiHome(options.stateDir)
   socket   = stateDir/bridges/<id>.sock
-  AgentServer.commandBridge = { socketPath, shimSource, stateDir }
-  startCommandBridge(server)
-  open() → materialize stateDir/bridge-bin/<sessionId>/
+  AgentServer({
+    prepareSessionShell → materialize stateDir/bridge-bin/<sessionId>/
+                          inject PATH + DEMI_COMMAND_BRIDGE_SOCK
+  })
+  startCommandBridge(server) → UDS POST /run → server.runCommandLine(...)
 ```
+
+### Layering
+
+| Layer | Knows about |
+|-------|-------------|
+| `@demicodes/agent` `AgentServer` | `prepareSessionShell` hook; `runCommandLine` for a live session. **No** socket, shim, or bin layout. |
+| `@demicodes/host-local` | UDS listener, `.dispatch` shim, `bridge-bin/`, `bridges/`, default-on assembly. |
+
+`AgentServer` is intentionally transport-agnostic: a browser Host could supply a different `prepareSessionShell` / IPC without AgentServer growing LocalHost concepts.
 
 ---
 
@@ -81,16 +93,15 @@ createLocalAgentServer
 | Package | Role |
 |---------|------|
 | `@demicodes/shell` | Command tree, exec, quoting. |
-| `@demicodes/agent` | Low-level `commandBridge: { socketPath, shimSource, stateDir }`; materialize; `runCommandLine`. |
-| `@demicodes/agent/command-bridge` | Shim source + UDS listener. |
-| `@demicodes/host-local` | `LocalHost`, `resolveDemiHome`, `createLocalAgentServer`. |
+| `@demicodes/agent` | `prepareSessionShell`; `runCommandLine` (session-scoped registered command exec). |
+| `@demicodes/host-local` | `LocalHost`, `resolveDemiHome`, shim materialize, UDS bridge, `createLocalAgentServer`. |
 
 ---
 
 ## Protocol / exec / stdin
 
 - UDS `POST /run` → `{ commandScopeId, name, args, cwd, stdin }` → `{ exitCode, stdout, stderr }`
-- Exec: `cd … && name args…` (+ heredoc if stdin non-empty)
+- Exec: `cd … && name args…` (+ heredoc if stdin non-empty) via `AgentServer.runCommandLine`
 - Stdin: 300ms grace to first byte, then read to EOF
 
 ---
@@ -101,6 +112,7 @@ createLocalAgentServer
 |----------|--------|
 | State root | `~/.demi` / `$DEMI_HOME` / `stateDir` |
 | Shim path | **Fixed** `<stateDir>/bridge-bin/<sessionId>` |
-| Custom bin dir | **Not supported** |
+| Custom bin dir | **Not supported** (not user-facing) |
 | Socket | `<stateDir>/bridges/<id>.sock` (path override only) |
 | Default bridge | **On** for `createLocalAgentServer` |
+| AgentServer bridge awareness | **None** — hook + `runCommandLine` only |

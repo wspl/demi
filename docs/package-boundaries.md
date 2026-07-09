@@ -65,21 +65,21 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: local Node Host adapter (`LocalHost`) **and** open-box local agent assembly (`createLocalAgentServer`) with command bridge **on by default**.
-- Public boundary: Node-only local Host + local AgentServer factory. Store is a Host facet, not a separate adapter family.
-- May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, process-group signaling, and `@demicodes/agent` / `@demicodes/agent/command-bridge` for assembly.
+- Owns: local Node Host adapter (`LocalHost`); open-box local agent assembly (`createLocalAgentServer`) with command bridge **on by default**; command-bridge UDS listener, PATH shim materialization, and `~/.demi` / `$DEMI_HOME` state layout (`bridges/`, `bridge-bin/`).
+- Public boundary: Node-only local Host + local AgentServer factory + command-bridge primitives. Store is a Host facet, not a separate adapter family.
+- May use: `node:child_process`, `node:fs`, `node:http`, `node:net`, `node:path`, `process.env`, Node streams, Buffer, process-group signaling, and `@demicodes/agent` for assembly.
 - Must not: depend on concrete providers, `@demicodes/coding-agent`, or `@demicodes/repl`.
-- Assembly rule: products that run on LocalHost should use `createLocalAgentServer` rather than hand-wiring command-bridge sockets.
+- Assembly rule: products that run on LocalHost should use `createLocalAgentServer` rather than hand-wiring command-bridge sockets. Bin dirs and UDS are LocalHost-internal, not user-facing product options.
 
 ### `@demicodes/agent`
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, low-level optional command-bridge hooks on AgentServer, and assembly of one harness with the standard shell runtime.
-- Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpaths such as `@demicodes/agent/stdio` and `@demicodes/agent/command-bridge`.
-- Must not: import concrete providers, `@demicodes/host-local`, or UI packages.
+- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, host-agnostic `prepareSessionShell` and `runCommandLine` on AgentServer, and assembly of one harness with the standard shell runtime.
+- Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpath `@demicodes/agent/stdio` for stdio transport only.
+- Must not: import concrete providers, `@demicodes/host-local`, or UI packages; must not own UDS sockets, PATH shim materialization, or `bridge-bin` layout.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
-- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. Local open-box assembly (bridge default on) lives in `@demicodes/host-local` via `createLocalAgentServer`.
+- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, optional `prepareSessionShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. Local open-box assembly (bridge default on, UDS + shims) lives entirely in `@demicodes/host-local` via `createLocalAgentServer`.
 
 ### `@demicodes/coding-agent`
 

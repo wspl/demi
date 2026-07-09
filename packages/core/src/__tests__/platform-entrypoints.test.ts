@@ -96,7 +96,6 @@ const allowedWorkspaceSubpaths = new Map<string, string>([
 
 const nodeOnlySubpaths = new Map<string, string>([
   ['@demicodes/agent/stdio', 'packages/agent/src/stdio-transport.ts'],
-  ['@demicodes/agent/command-bridge', 'packages/agent/src/command-bridge.ts'],
 ])
 
 const forbiddenSourcePatterns = [

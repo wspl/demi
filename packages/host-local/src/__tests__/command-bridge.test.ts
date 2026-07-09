@@ -1,17 +1,20 @@
 import { execFile, spawn } from 'node:child_process'
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdtemp, mkdir, readFile, readlink, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, test } from 'bun:test'
-import { z } from 'zod'
 import type { ModelSelection } from '@demicodes/core'
+import type { AgentHarness } from '@demicodes/agent'
 import type { Command } from '@demicodes/shell'
-import { LocalHost } from '@demicodes/host-local'
 import { defineProvider, type Provider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { AgentServer, type AgentHarness } from '../index'
-import { COMMAND_BRIDGE_SHIM_SOURCE, startCommandBridge } from '../command-bridge'
+import {
+  COMMAND_BRIDGE_SHIM_SOURCE,
+  LocalHost,
+  createLocalAgentServer,
+  materializeCommandBridgeShims,
+  startCommandBridge,
+} from '../index'
 
 const execFileAsync = promisify(execFile)
 
@@ -44,12 +47,10 @@ function echoCommand(): Command {
     subcommands: [
       {
         name: 'run',
-        summary: 'echoes its argument',
-        positionals: ['arg'],
-        input: { arg: z.string() },
+        summary: 'echoes a fixed token and optional stdin',
         examples: [],
         run: async (ctx) => {
-          await ctx.io.stdout(`echoed:${ctx.parsed.values.arg ?? ''}\n`)
+          await ctx.io.stdout('echoed:ok\n')
           if (ctx.stdin.text) await ctx.io.stdout(`stdin:${ctx.stdin.text}`)
           return { exitCode: 0 }
         },
@@ -58,9 +59,21 @@ function echoCommand(): Command {
   }
 }
 
-async function layout(name: string) {
-  const cwd = await mkdtemp(join(tmpdir(), `demi-bridge-${name}-cwd-`))
-  const stateDir = await mkdtemp(join(tmpdir(), `demi-bridge-${name}-state-`))
+function harness(host: LocalHost, commands: () => Command[]): AgentHarness<Record<string, never>> {
+  return {
+    name: 'bridge-test',
+    initialState: () => ({}),
+    host: () => host,
+    systemPrompt: () => 'test',
+    commands: () => commands(),
+  }
+}
+
+/** Short paths under /tmp — macOS AF_UNIX path limit is ~104 bytes. */
+async function shortDirs(tag: string) {
+  const cwd = await mkdtemp(join('/tmp', `dc-${tag}-`))
+  const stateDir = join('/tmp', `ds-${tag}-${Date.now().toString(36)}`)
+  await mkdir(stateDir, { recursive: true })
   return {
     cwd,
     stateDir,
@@ -68,31 +81,47 @@ async function layout(name: string) {
   }
 }
 
+test('materializeCommandBridgeShims writes under stateDir/bridge-bin, not workspace cwd', async () => {
+  const { cwd, stateDir } = await shortDirs('shim')
+  const host = new LocalHost(cwd)
+  const shimSource = '#!/usr/bin/env node\nconsole.log("stub")\n'
+
+  const shimDir = await materializeCommandBridgeShims({
+    host,
+    agentSessionId: 'sess-1',
+    commandNames: ['greet', 'fail'],
+    shimSource,
+    stateDir,
+  })
+
+  expect(shimDir.includes(join(stateDir, 'bridge-bin'))).toBe(true)
+  await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
+  await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
+
+  expect(await readFile(join(shimDir, '.dispatch'), 'utf8')).toBe(shimSource)
+  expect(await readlink(join(shimDir, 'greet'))).toBe('.dispatch')
+  expect(await readlink(join(shimDir, 'fail'))).toBe('.dispatch')
+})
+
 test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine', async () => {
-  const { cwd, stateDir, socketPath } = await layout('http')
+  const { cwd, stateDir, socketPath } = await shortDirs('http')
   const sessionId = globalThis.crypto.randomUUID()
   const host = new LocalHost(cwd)
-  const harness: AgentHarness<Record<string, never>> = {
-    name: 'bridge-transport-test',
-    initialState: () => ({}),
-    host: () => host,
-    systemPrompt: () => 'test',
-    commands: () => [echoCommand()],
-  }
-  const server = new AgentServer({
-    agent: harness,
+  const { server, close } = createLocalAgentServer({
+    host,
+    agent: harness(host, () => [echoCommand()]),
     providers: [stubProvider()],
-    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE, stateDir },
+    stateDir,
+    commandBridgeSocketPath: socketPath,
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
-  const bridge = startCommandBridge(server, { socketPath })
 
   try {
     const body = JSON.stringify({
       commandScopeId: sessionId,
       name: 'echo-args',
-      args: ['run', 'hi'],
+      args: ['run'],
       cwd,
       stdin: '',
     })
@@ -112,38 +141,30 @@ test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine
     expect(response.status).toBe(200)
     const parsed = JSON.parse(response.body) as { exitCode: number; stdout: string }
     expect(parsed.exitCode).toBe(0)
-    expect(parsed.stdout).toContain('echoed:hi')
+    expect(parsed.stdout).toContain('echoed:ok')
   } finally {
-    await bridge.close()
     await client.close()
-    await server.close()
+    await close()
   }
 })
 
 test('a real Node child can bareword-invoke a registered command through the shim PATH', async () => {
-  const { cwd, stateDir, socketPath } = await layout('child')
+  const { cwd, stateDir, socketPath } = await shortDirs('child')
   const sessionId = globalThis.crypto.randomUUID()
   const host = new LocalHost(cwd)
-  const harness: AgentHarness<Record<string, never>> = {
-    name: 'bridge-child-test',
-    initialState: () => ({}),
-    host: () => host,
-    systemPrompt: () => 'test',
-    commands: () => [echoCommand()],
-  }
-  const server = new AgentServer({
-    agent: harness,
+  const { server, close } = createLocalAgentServer({
+    host,
+    agent: harness(host, () => [echoCommand()]),
     providers: [stubProvider()],
-    shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
-    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE, stateDir },
+    stateDir,
+    commandBridgeSocketPath: socketPath,
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
-  const bridge = startCommandBridge(server, { socketPath })
 
   try {
     const shimDir = join(stateDir, 'bridge-bin', sessionId)
-    const { stdout } = await execFileAsync(join(shimDir, 'echo-args'), ['run', 'from-child'], {
+    const { stdout } = await execFileAsync(join(shimDir, 'echo-args'), ['run'], {
       cwd,
       env: {
         ...process.env,
@@ -153,38 +174,30 @@ test('a real Node child can bareword-invoke a registered command through the shi
       },
       encoding: 'utf8',
     })
-    expect(stdout).toContain('echoed:from-child')
+    expect(stdout).toContain('echoed:ok')
   } finally {
-    await bridge.close()
     await client.close()
-    await server.close()
+    await close()
   }
 })
 
 test('stdin piped to the shim is delivered to the registered command', async () => {
-  const { cwd, stateDir, socketPath } = await layout('stdin')
+  const { cwd, stateDir, socketPath } = await shortDirs('stdin')
   const sessionId = globalThis.crypto.randomUUID()
   const host = new LocalHost(cwd)
-  const harness: AgentHarness<Record<string, never>> = {
-    name: 'bridge-stdin-test',
-    initialState: () => ({}),
-    host: () => host,
-    systemPrompt: () => 'test',
-    commands: () => [echoCommand()],
-  }
-  const server = new AgentServer({
-    agent: harness,
+  const { server, close } = createLocalAgentServer({
+    host,
+    agent: harness(host, () => [echoCommand()]),
     providers: [stubProvider()],
-    shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
-    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE, stateDir },
+    stateDir,
+    commandBridgeSocketPath: socketPath,
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
-  const bridge = startCommandBridge(server, { socketPath })
 
   try {
     const shimDir = join(stateDir, 'bridge-bin', sessionId)
-    const child = spawn(join(shimDir, 'echo-args'), ['run', 'x'], {
+    const child = spawn(join(shimDir, 'echo-args'), ['run'], {
       cwd,
       env: {
         ...process.env,
@@ -205,8 +218,50 @@ test('stdin piped to the shim is delivered to the registered command', async () 
         else reject(new Error(`exit ${code}`))
       })
     })
-    expect(stdout).toContain('echoed:x')
+    expect(stdout).toContain('echoed:ok')
     expect(stdout).toContain('stdin:hello-stdin')
+  } finally {
+    await client.close()
+    await close()
+  }
+})
+
+test('startCommandBridge alone can be wired without createLocalAgentServer materialize', async () => {
+  // Direct unit path: materialize + prepareSessionShell + startCommandBridge
+  // without the factory (still all host-local).
+  const { cwd, stateDir, socketPath } = await shortDirs('manual')
+  const sessionId = globalThis.crypto.randomUUID()
+  const host = new LocalHost(cwd)
+  const { AgentServer } = await import('@demicodes/agent')
+  const server = new AgentServer({
+    agent: harness(host, () => [echoCommand()]),
+    providers: [stubProvider()],
+    shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
+    prepareSessionShell: async ({ host: sessionHost, agentSessionId, commandNames, shell }) => {
+      const shimDir = await materializeCommandBridgeShims({
+        host: sessionHost,
+        agentSessionId,
+        commandNames,
+        shimSource: COMMAND_BRIDGE_SHIM_SOURCE,
+        stateDir,
+      })
+      return {
+        ...shell,
+        initialEnv: {
+          ...shell.initialEnv,
+          DEMI_COMMAND_BRIDGE_SOCK: socketPath,
+          PATH: `${shimDir}:${shell.initialEnv?.PATH ?? ''}`,
+        },
+      }
+    },
+  })
+  const client = server.client()
+  await client.open(selection, cwd, sessionId)
+  const bridge = startCommandBridge(server, { socketPath })
+  try {
+    expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'echo-args'))).toBe('.dispatch')
+    const result = await server.runCommandLine(sessionId, 'echo-args', ['run'], { cwd, stdin: '' })
+    expect(result.stdout).toContain('echoed:ok')
   } finally {
     await bridge.close()
     await client.close()
