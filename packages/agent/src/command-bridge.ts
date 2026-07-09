@@ -1,4 +1,5 @@
-import { existsSync, unlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Server } from 'node:net'
 import { errorMessage } from '@demicodes/utils'
@@ -144,6 +145,7 @@ interface RunRequestBody {
  * Each POST /run is dispatched to `AgentServer.runCommandLine`.
  */
 export function startCommandBridge(server: AgentServer, options: CommandBridgeOptions): CommandBridgeHandle {
+  mkdirSync(dirname(options.socketPath), { recursive: true })
   if (existsSync(options.socketPath)) unlinkSync(options.socketPath)
 
   const httpServer = createServer((req, res) => {
@@ -238,15 +240,14 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 function closeServer(httpServer: Server, socketPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    httpServer.close((error) => {
+  return new Promise((resolve) => {
+    httpServer.close(() => {
       try {
         if (existsSync(socketPath)) unlinkSync(socketPath)
       } catch {
         // best-effort cleanup of the filesystem socket
       }
-      if (error) reject(error)
-      else resolve()
+      resolve()
     })
   })
 }

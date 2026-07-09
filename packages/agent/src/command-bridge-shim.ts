@@ -1,7 +1,7 @@
 import { encodeUtf8 } from '@demicodes/utils'
 import type { Host } from '@demicodes/shell'
 
-const SHIM_ROOT = '.demi-bin'
+const BRIDGE_BIN = 'bridge-bin'
 const DISPATCH_FILE = '.dispatch'
 const DISPATCH_PACKAGE_JSON = '{"type":"commonjs"}\n'
 
@@ -16,18 +16,35 @@ function assertPathSafeSessionId(agentSessionId: string): void {
   }
 }
 
+export interface MaterializeCommandBridgeShimsOptions {
+  host: Host
+  agentSessionId: string
+  commandNames: readonly string[]
+  shimSource: string
+  /**
+   * Absolute Demi state root (`~/.demi` or `$DEMI_HOME` / `stateDir`).
+   * Shims always go to `<stateDir>/bridge-bin/<agentSessionId>/`.
+   */
+  stateDir: string
+}
+
+/** Fixed relative layout under stateDir. */
+export function bridgeBinDirFor(stateDir: string): string {
+  return `${stateDir.replace(/\/+$/, '')}/${BRIDGE_BIN}`
+}
+
 /**
  * Writes the command bridge shim directory for one session and returns its
  * resolved absolute path for PATH injection. Idempotent: safe on every open().
  */
-export async function materializeCommandBridgeShims(
-  host: Host,
-  agentSessionId: string,
-  commandNames: readonly string[],
-  shimSource: string,
-): Promise<string> {
+export async function materializeCommandBridgeShims(options: MaterializeCommandBridgeShimsOptions): Promise<string> {
+  const { host, agentSessionId, commandNames, shimSource, stateDir } = options
   assertPathSafeSessionId(agentSessionId)
-  const dir = `${SHIM_ROOT}/${agentSessionId}`
+  if (!stateDir || stateDir.includes('\0')) {
+    throw new Error('Command bridge: stateDir must be a non-empty absolute path')
+  }
+
+  const dir = `${bridgeBinDirFor(stateDir)}/${agentSessionId}`
   await host.fs.mkdir(dir, { recursive: true })
   await host.fs.writeFile(`${dir}/package.json`, encodeUtf8(DISPATCH_PACKAGE_JSON))
   await host.fs.writeFile(`${dir}/${DISPATCH_FILE}`, encodeUtf8(shimSource))
