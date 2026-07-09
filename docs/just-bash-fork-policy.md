@@ -24,11 +24,12 @@ upstream and cherry-pick the upstream commit.
 
 ## Current fork state
 
-- Fork branch: `codex/just-bash-mvp-cleanup` (pinned by the root submodule
+- Fork branch: `codex/migrate-just-bash-to-bun` (pinned by the root submodule
   pointer; see `git submodule status`).
 - Fork base: upstream `main` at `9481331` ("fix(head/tail): read file
   arguments byte-clean").
-- Fork-only commits (14, all within the allowed categories):
+- Fork-only commits (17, all supporting the allowed integration and packaging
+  surface):
   `f3645ee` parser hooks · `5e925b7` hostSpawn hook · `4e2ab29` registered
   command dispatch order · `c7f1be5` test typing · `cabfc0f` session hooks ·
   `cc10d4f` trim artifacts · `9576ef2` reject trailing operators (parser
@@ -36,20 +37,22 @@ upstream and cherry-pick the upstream commit.
   package rename · `ea06eb1` export encoding module · `496c3d7` dual-condition
   subpath exports · `e798f00` adopt the version suffix scheme below · `54975fb`
   drop leading `./` from `bin` paths (npm silently strips it, which broke the
-  published CLI bins) · `395774b` bump to `3.0.1-demi.2` for that fix.
+  published CLI bins) · `395774b` bump to `3.0.1-demi.2` for that fix ·
+  `b2c9b0a` standardize development instructions on Bun · `fefb210` align
+  workspace consumers with the scoped package · `26c5d38` migrate the
+  submodule workspace, CI, lockfile, and release flow from pnpm to Bun.
 
 ## Version scheme
 
 The fork publishes as `<upstream-version>-demi.<N>` (current:
-`3.0.1-demi.2`), keeping the upstream semver visible while marking the
+`3.0.1-demi.4`), keeping the upstream semver visible while marking the
 artifact as fork-modified:
 
 - `<upstream-version>` is the upstream version the fork base is rebased onto
   (see "Fork base" above). It only changes when the fork rebases onto a
   newer upstream release.
-- `<N>` starts at `1` when the fork base changes, and increments by one each
-  time a fork-only commit in the allowed categories above lands on top of
-  it.
+- `<N>` starts at `1` when the fork base changes, and increments by one for
+  each package-affecting fork change in the allowed categories above.
 - Bump `packages/just-bash/package.json`'s `version` field in the same
   commit that adds the fork-only change (or the rebase commit that updates
   the base), so the version and "Fork-only commits" list above stay in
