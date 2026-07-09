@@ -14,6 +14,7 @@ import {
 import { coldStartInputMessages, controlResponse, inferenceItemToClaudeMessage, toolResultsToClaudeMessage } from './jsonl'
 import { listClaudeCodeModels } from './models'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
+import { createClaudeCodeQuota } from './quota'
 import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
 
 export interface ClaudeCodeProviderOptions {
@@ -421,6 +422,7 @@ export function createClaudeCodeProvider(options: ClaudeCodeProviderOptions = {}
     id,
     displayName,
     auth: { status: () => ({ status: 'unknown', message: 'Auth is checked when a Claude Code request runs' }) },
+    quota: createClaudeCodeQuota({ providerId: id }),
     state: () => ({ status: 'unknown', message: 'Runtime is checked when a Claude Code request runs' }),
     listModels: async () => {
       const catalog = await listClaudeCodeModels()

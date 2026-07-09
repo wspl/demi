@@ -40,8 +40,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/utils`.
-- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, and model catalog shape.
-- Public boundary: provider contract, direct `Provider[]` composition types, and provider test helpers only from `@demicodes/provider/testing`.
+- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`), and model catalog shape.
+- Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`), and provider test helpers only from `@demicodes/provider/testing`.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
 - Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or REPL.
@@ -94,8 +94,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, and provider-specific tests.
-- Public boundary: `createClaudeCodeProvider`, model catalog function, and public option types from root.
+- Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, OAuth usage quota probe (`/api/oauth/usage`), and provider-specific tests.
+- Public boundary: `createClaudeCodeProvider`, model catalog function, quota helpers, and public option types from root.
 - Internal boundary: CLI, JSONL, output, transport, parser, and test cache helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
@@ -103,8 +103,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, and provider-specific tests.
-- Public boundary: `createCodexProvider`, auth status helper, model catalog function, transport mode type, and public option types from root.
+- Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, rate-limit quota probe (`x-codex-*` headers), and provider-specific tests.
+- Public boundary: `createCodexProvider`, auth status helper, model catalog function, quota helpers, transport mode type, and public option types from root.
 - Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, and test cache helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
@@ -134,8 +134,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, provider event mapping, and provider-specific tests.
-- Public boundary: `createGrokBuildProvider`, auth status helper, model catalog function, and public option types from root.
+- Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, billing/subscription quota probe (`/v1/billing`, `/v1/user?include=subscription`), provider event mapping, and provider-specific tests.
+- Public boundary: `createGrokBuildProvider`, auth status helper, model catalog function, quota helpers, and public option types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session only (no independent login flow, no API-key product path).
 - Secret boundary: session tokens, refresh tokens, and raw auth file contents stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.

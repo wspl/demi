@@ -6,6 +6,7 @@ import type {
   ToolResultContentBlock,
   UserContentBlock,
 } from '@demicodes/core'
+import type { ProviderQuota } from './quota'
 
 // ── tool definition ─────────────────────────────────────────────────
 
@@ -135,6 +136,8 @@ export interface Provider {
   id: string
   displayName: string
   auth?: ProviderAuth
+  /** Optional subscription / rate-limit quota surface (`@demicodes/provider` quota helpers). */
+  quota?: ProviderQuota
   state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
   listModels?(): Promise<ProviderModelList> | ProviderModelList
 }

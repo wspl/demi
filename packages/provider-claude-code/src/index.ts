@@ -4,3 +4,10 @@ export {
   type ClaudeCodeProviderOptions,
 } from './provider'
 export { resolveWireLogDir } from './wire-log'
+export {
+  createClaudeCodeQuota,
+  mapClaudeUsagePayload,
+  observeClaudeRateLimitHeaders,
+  type ClaudeCodeQuotaOptions,
+} from './quota'
+export { resolveClaudeCodeOAuthAccess, type ClaudeCodeOAuthAccess } from './oauth'
