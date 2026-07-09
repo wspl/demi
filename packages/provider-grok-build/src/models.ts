@@ -8,6 +8,7 @@ export interface GrokBuildModelCatalogOptions {
   providerId?: string
   grokHome?: string
   baseUrl?: string
+  clientVersion?: string
   authStore?: GrokAuthStore
   fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 }
@@ -54,7 +55,10 @@ export async function listGrokBuildModels(options: GrokBuildModelCatalogOptions 
     const auth = await authStore.resolveAuth()
     const response = await fetchImpl(modelsUrl(baseUrl), {
       method: 'GET',
-      headers: buildGrokBuildHeaders(auth),
+      headers: buildGrokBuildHeaders(auth, undefined, {
+        clientVersion: options.clientVersion,
+        grokHome: options.grokHome,
+      }),
     })
     if (!response.ok) {
       const fallback = grokBuildFallbackModels(providerId)

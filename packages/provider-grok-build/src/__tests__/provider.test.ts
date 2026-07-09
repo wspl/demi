@@ -35,6 +35,7 @@ test('Grok Build provider posts chat completions with CLI session headers', asyn
   expect(requests[0]?.headers.get('authorization')).toBe('Bearer session-token')
   expect(requests[0]?.headers.get('X-XAI-Token-Auth')).toBe('xai-grok-cli')
   expect(requests[0]?.headers.get('x-grok-client-surface')).toBe('grok-build')
+  expect(requests[0]?.headers.get('x-grok-client-version')).toBeTruthy()
   expect(requests[0]?.headers.get('x-grok-model-override')).toBe('grok-4.5')
   expect(requests[0]?.headers.get('x-grok-session-id')).toBe('session-1')
 })
