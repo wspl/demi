@@ -54,6 +54,9 @@ test('createProviderQuota probes and caches latest', async () => {
 
   await ensureQuota(quota, { prefer: 'probe' })
   expect(probes).toBe(2)
+
+  quota.clearLatest?.()
+  expect(quota.latest()).toBeNull()
 })
 
 test('probe throws when unsupported', async () => {

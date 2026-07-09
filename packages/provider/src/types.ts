@@ -126,6 +126,99 @@ export interface ProviderAuth {
   status(): Promise<ProviderAuthState> | ProviderAuthState
 }
 
+/** Public metadata only — never tokens, cookies, or raw auth files. */
+export interface ProviderCredentialInfo {
+  /** Stable id within this provider (not globally unique across providers). */
+  id: string
+  /** Human label: email, account id, or import tag. */
+  label: string
+  /** Optional secondary display (plan name, issuer, …). */
+  detail?: string | null
+  /** ISO-8601 when this entry was last imported or refreshed in the pool. */
+  updatedAt?: string | null
+}
+
+export interface ProviderCredentialActive {
+  credentialId: string | null
+  /** Same shape as auth status, for the active credential. */
+  status: ProviderAuthState
+}
+
+export interface ProviderCredentialLoginOptions {
+  /** Abort the spawned login process. */
+  signal?: AbortSignal
+  /** Prefer browser vs device/CLI when the vendor supports both; best-effort. */
+  preferBrowser?: boolean
+}
+
+/**
+ * Login invoke result — status of the *vendor* process only, not a pool id.
+ * Demi does not complete OAuth; product should `importDefault` afterwards.
+ */
+export type ProviderCredentialLoginResult =
+  | { status: 'completed' }
+  | { status: 'cancelled' }
+  | { status: 'unavailable'; message: string }
+  | { status: 'failed'; message: string }
+
+/**
+ * Provider-specific add payloads. Concrete packages document accepted variants.
+ * Do not put secrets on browser-visible control protocols.
+ */
+export type ProviderCredentialAddInput = {
+  [key: string]: unknown
+}
+
+export type ProviderCredentialsCapability =
+  | { mode: 'none' }
+  | {
+      mode: 'supported'
+      /** Can spawn / open vendor login (`beginLogin`). */
+      canBeginLogin?: boolean
+      /** Can import from the vendor default location into the pool. */
+      canImportDefault?: boolean
+      /** Can register externally supplied material (`add`). */
+      canAdd?: boolean
+      /** Pool can hold more than one credential. */
+      multi?: boolean
+    }
+
+/**
+ * Multi-credential pool + process-global active switch.
+ * See `docs/provider-global-credentials.md`.
+ */
+export interface ProviderCredentials {
+  capability(): ProviderCredentialsCapability
+
+  list(): Promise<ProviderCredentialInfo[]> | ProviderCredentialInfo[]
+
+  getActive(): Promise<ProviderCredentialActive> | ProviderCredentialActive
+
+  /**
+   * Make `credentialId` the process-global active credential for this provider.
+   * Subsequent auth / quota / inference use it.
+   */
+  setActive(credentialId: string): Promise<ProviderCredentialActive> | ProviderCredentialActive
+
+  /**
+   * Invoke the vendor’s own login flow. Does not complete OAuth inside demi
+   * and does not return a credential id.
+   */
+  beginLogin?(options?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult>
+
+  /**
+   * Snapshot current vendor-default material into the demi pool.
+   * Assigns a stable `id` and returns public metadata (no secrets).
+   */
+  importDefault?(): Promise<ProviderCredentialInfo>
+
+  /** Register material supplied by the product. */
+  add?(input: ProviderCredentialAddInput): Promise<ProviderCredentialInfo>
+
+  /** Remove a pool entry. */
+  remove?(credentialId: string): Promise<void>
+}
+
 export type ProviderRuntimeState =
   | { status: 'unknown'; message?: string }
   | { status: 'ready'; message?: string }
@@ -138,6 +231,8 @@ export interface Provider {
   auth?: ProviderAuth
   /** Optional subscription / rate-limit quota surface (`@demicodes/provider` quota helpers). */
   quota?: ProviderQuota
+  /** Optional multi-credential pool + global active switch. */
+  credentials?: ProviderCredentials
   state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
   listModels?(): Promise<ProviderModelList> | ProviderModelList
 }
