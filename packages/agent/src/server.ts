@@ -3,8 +3,12 @@ import { AgentSession } from './session'
 import {
   BashEnvironment,
   CommandRegistry,
+  MAX_TIMEOUT_MS,
+  heredocDelimiter,
+  shellQuote,
   type BashAuditEvent,
   type BashEnvironmentOptions,
+  type Host,
   type HostStore,
 } from '@demicodes/shell'
 import type { Block, ToolResultContentBlock } from '@demicodes/core'
@@ -16,7 +20,6 @@ import { createInProcessTransportPair, type AgentServerTransport } from './trans
 import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
 import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
-import { createCommandProjectionTools, type CommandToolProjectionOptions } from './command-tools'
 
 /** Session tuning forwarded to every AgentSession this server creates. */
 export interface AgentServerSessionOptions {
@@ -25,21 +28,71 @@ export interface AgentServerSessionOptions {
   persistIntervalMs?: number
 }
 
+/**
+ * Host-agnostic hook invoked once per `open()` before BashEnvironment is built.
+ * LocalHost uses this to inject PATH / env for the command bridge; AgentServer
+ * itself does not know about UDS, shims, or bin directories.
+ */
+export interface PrepareSessionShellContext {
+  agentSessionId: string
+  host: Host
+  commandNames: readonly string[]
+  /** Shell options from AgentServer construction (before this hook). */
+  shell: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+}
+
+export type PrepareSessionShell = (
+  ctx: PrepareSessionShellContext,
+) =>
+  | Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  | Promise<Omit<BashEnvironmentOptions, 'host' | 'commands'>>
+
 export interface AgentServerOptions {
   agent: AgentHarness<unknown>
   providers: Provider[]
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
   /**
-   * When set, registered command leaves are ALSO exposed as native tools (the
-   * second projection of the same CommandSpec implementations). Off by default:
-   * the shell form alone keeps the smallest tool surface.
+   * Optional host-side shell prep (env, PATH, etc.). Implementation-agnostic —
+   * command bridge wiring lives in `@demicodes/host-local`, not here.
    */
-  commandTools?: CommandToolProjectionOptions
+  prepareSessionShell?: PrepareSessionShell
 }
 
 export interface AgentTransportBinding {
   close(): Promise<void>
+}
+
+/** Options for {@link AgentServer.runCommandLine}. */
+export interface RunCommandLineOptions {
+  cwd: string
+  stdin: string
+  signal?: AbortSignal
+}
+
+/** Result of {@link AgentServer.runCommandLine}. */
+export interface RunCommandLineResult {
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
+export class RunCommandLineSessionNotFoundError extends Error {
+  constructor(readonly agentSessionId: string) {
+    super(`runCommandLine: no session "${agentSessionId}" is open in this process`)
+    this.name = 'RunCommandLineSessionNotFoundError'
+  }
+}
+
+export class RunCommandLineTimeoutError extends Error {
+  constructor(
+    readonly commandId: string,
+    readonly partialStdout: string,
+    readonly partialStderr: string,
+  ) {
+    super(`runCommandLine: command "${commandId}" exceeded the ${MAX_TIMEOUT_MS}ms ceiling and was aborted`)
+    this.name = 'RunCommandLineTimeoutError'
+  }
 }
 
 export class AgentServer {
@@ -47,7 +100,7 @@ export class AgentServer {
   private readonly providers: Map<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
-  private readonly commandToolOptions: CommandToolProjectionOptions | null
+  private readonly prepareSessionShell: PrepareSessionShell | null
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -56,7 +109,7 @@ export class AgentServer {
     this.providers = createProviderMap(options.providers)
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
-    this.commandToolOptions = options.commandTools ?? null
+    this.prepareSessionShell = options.prepareSessionShell ?? null
   }
 
   client(): AgentClient {
@@ -72,7 +125,7 @@ export class AgentServer {
       providers: this.providers,
       shell: this.shellOptions,
       session: this.sessionOptions,
-      commandTools: this.commandToolOptions,
+      prepareSessionShell: this.prepareSessionShell,
       sessions: this.sessionOwnership,
     })
     this.bindings.add(binding)
@@ -83,6 +136,22 @@ export class AgentServer {
     const bindings = [...this.bindings]
     this.bindings.clear()
     await Promise.all(bindings.map((binding) => binding.close()))
+  }
+
+  /**
+   * Runs one registered-command invocation to completion for a live session.
+   * Transport-agnostic: callers (e.g. LocalHost command bridge) supply their
+   * own IPC; AgentServer only knows how to exec against the open session shell.
+   */
+  async runCommandLine(
+    agentSessionId: string,
+    name: string,
+    args: string[],
+    opts: RunCommandLineOptions,
+  ): Promise<RunCommandLineResult> {
+    const binding = this.sessionOwnership.get(agentSessionId)
+    if (!binding) throw new RunCommandLineSessionNotFoundError(agentSessionId)
+    return binding.runCommandLine(name, args, opts)
   }
 }
 
@@ -104,6 +173,10 @@ class SessionOwnershipRegistry {
   release(sessionId: string, binding: AgentTransportBindingImpl): void {
     if (this.holders.get(sessionId) === binding) this.holders.delete(sessionId)
   }
+
+  get(sessionId: string): AgentTransportBindingImpl | undefined {
+    return this.holders.get(sessionId)
+  }
 }
 
 interface AgentTransportBindingOptions {
@@ -112,7 +185,7 @@ interface AgentTransportBindingOptions {
   providers: ReadonlyMap<string, Provider>
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
-  commandTools: CommandToolProjectionOptions | null
+  prepareSessionShell: PrepareSessionShell | null
   sessions: SessionOwnershipRegistry
 }
 
@@ -122,7 +195,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly providers: ReadonlyMap<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
-  private readonly commandToolOptions: CommandToolProjectionOptions | null
+  private readonly prepareSessionShell: PrepareSessionShell | null
   private readonly sessions: SessionOwnershipRegistry
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
@@ -140,7 +213,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.providers = options.providers
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
-    this.commandToolOptions = options.commandTools
+    this.prepareSessionShell = options.prepareSessionShell
     this.sessions = options.sessions
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
@@ -325,29 +398,29 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const commands = agent.commands?.(harnessContext) ?? []
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
+    const shellOptions = this.prepareSessionShell
+      ? await this.prepareSessionShell({
+          agentSessionId,
+          host,
+          commandNames: commandRegistry.list().map((command) => command.name),
+          shell: this.shellOptions,
+        })
+      : this.shellOptions
     const environment = new BashEnvironment({
-      ...this.shellOptions,
+      ...shellOptions,
       host,
       commands: commandRegistry,
     })
     let sessionRef: AgentSession<unknown> | null = null
-    const standardTools = createStandardAgentTools({
+    const tools = createStandardAgentTools({
       environment,
       scheduleYield: (_ctx, durationMs) => {
         if (!sessionRef) throw new Error('AgentServer: session is not ready for yield scheduling')
         return sessionRef.scheduleYieldWakeup(durationMs)
       },
     })
-    const projectedTools = this.commandToolOptions
-      ? createCommandProjectionTools(environment, this.commandToolOptions, new Set(standardTools.map((tool) => tool.name)))
-      : []
-    const tools = [...standardTools, ...projectedTools]
     // Commands are fixed for the session's lifetime, so the rendered help is too.
-    let commandsPrompt = commandRegistry.renderPrompt()
-    if (projectedTools.length > 0) {
-      const names = projectedTools.map((tool) => tool.name).join(', ')
-      commandsPrompt += `\n\nNative tool forms: ${names} — identical behavior, audit, and artifacts to the shell commands above.`
-    }
+    const commandsPrompt = commandRegistry.renderPrompt()
     const runtime: AgentHarnessRuntime<unknown> = {
       harnessName: agent.name,
       initialState: () => agent.initialState(),
@@ -493,6 +566,41 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       stdin: frame.stdin,
     })
     this.sendShellWriteResult(frame.commandId, result)
+  }
+
+  /** Backs `AgentServer.runCommandLine` — see its doc comment for the contract. */
+  async runCommandLine(name: string, args: string[], opts: RunCommandLineOptions): Promise<RunCommandLineResult> {
+    const environment = this.currentEnvironment
+    const agentSessionId = this.currentSessionId
+    if (!environment || !agentSessionId) throw new Error('runCommandLine: session has no active shell environment')
+
+    const words = [name, ...args].map(shellQuote).join(' ')
+    let script = words
+    if (opts.stdin.length > 0) {
+      const delimiter = heredocDelimiter(opts.stdin)
+      script = `${words} <<'${delimiter}'\n${opts.stdin}\n${delimiter}`
+    }
+    const cdScript = `cd ${shellQuote(opts.cwd)} && ${script}`
+
+    const result = await environment.exec({
+      agentSessionId,
+      script: cdScript,
+      timeoutMs: MAX_TIMEOUT_MS,
+      signal: opts.signal,
+    })
+
+    if (result.status === 'exited') {
+      return { exitCode: result.exitCode, stdout: result.stdout.delta, stderr: result.stderr.delta }
+    }
+    if (result.status === 'aborted') {
+      throw new Error(`runCommandLine: call for "${name}" was cancelled before it completed`)
+    }
+    const aborted = await environment.abort({ commandId: result.commandId })
+    throw new RunCommandLineTimeoutError(
+      result.commandId,
+      aborted.status === 'aborted' ? aborted.stdout.delta : '',
+      aborted.status === 'aborted' ? aborted.stderr.delta : '',
+    )
   }
 
   private sessionFor(command: string): AgentSession<unknown> | null {

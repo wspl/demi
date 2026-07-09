@@ -1,1 +1,5 @@
+export * from './command-bridge'
+export * from './command-bridge-shim'
+export * from './demi-home'
 export * from './local-host'
+export * from './local-agent-server'
