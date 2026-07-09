@@ -17,9 +17,12 @@ interface Provider {
   id: string
   displayName: string
   auth?: ProviderAuth                         // optional: report authenticated/unauthenticated
+  quota?: ProviderQuota                       // optional: subscription / rate-limit windows
+  credentials?: ProviderCredentials           // optional: multi-cred pool + global setActive
   state?(): ProviderRuntimeState              // optional: report ready/unavailable
   listModels?(): Promise<ProviderModelList>   // optional: catalog for the model picker
 }
+// Subscription CLIs (codex / claude-code / grok-build): see docs/provider-global-credentials.md
 // + createRuntime(selection) => AgentProvider   (provided via defineProvider)
 ```
 
