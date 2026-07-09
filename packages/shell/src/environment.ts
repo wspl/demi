@@ -189,7 +189,8 @@ interface PersistedShellCommandArtifact {
 // controls it per call — there is intentionally no configurable global default.
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
-const MAX_TIMEOUT_MS = 600_000
+/** Upper bound for a single exec observation window (also the command-bridge wait ceiling). */
+export const MAX_TIMEOUT_MS = 600_000
 export class BashEnvironment {
   private readonly host: Host
   private readonly commands: CommandRegistry

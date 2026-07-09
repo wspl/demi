@@ -3,13 +3,18 @@ import { AgentSession } from './session'
 import {
   BashEnvironment,
   CommandRegistry,
+  MAX_TIMEOUT_MS,
+  heredocDelimiter,
+  shellQuote,
   type BashAuditEvent,
   type BashEnvironmentOptions,
+  type Host,
   type HostStore,
 } from '@demicodes/shell'
 import type { Block, ToolResultContentBlock } from '@demicodes/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { AgentClient } from './client'
+import { materializeCommandBridgeShims } from './command-bridge-shim'
 import { cloneBlocks } from './patch'
 import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandSnapshotLike } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
@@ -24,15 +29,69 @@ export interface AgentServerSessionOptions {
   persistIntervalMs?: number
 }
 
+/**
+ * Opt-in command bridge for **co-located local Hosts only** (Host.fs and
+ * Host.process share one real filesystem; agent process can bind a UDS).
+ * Today that means products assembled with `LocalHost` — not pure-browser or
+ * remote Hosts. Omit this option entirely for those environments; open() then
+ * never materializes shims or touches sockets.
+ *
+ * When set: on each `open()`, a shim directory is written via Host.fs (one
+ * symlink per top-level command name) and prepended to PATH; `socketPath` is
+ * exported as `DEMI_COMMAND_BRIDGE_SOCK`. A product must also start the
+ * Node-only listener (`@demicodes/agent/command-bridge`) at the same path.
+ */
+export interface AgentServerCommandBridgeOptions {
+  /** Absolute filesystem path for the process-wide UDS endpoint. */
+  socketPath: string
+  /** Dispatch script body (from `@demicodes/agent/command-bridge`). */
+  shimSource: string
+}
+
 export interface AgentServerOptions {
   agent: AgentHarness<unknown>
   providers: Provider[]
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
+  /**
+   * Omit (default) for browser / custom non-local Hosts.
+   * Set only when using a co-located local Host and a Node bridge listener.
+   */
+  commandBridge?: AgentServerCommandBridgeOptions
 }
 
 export interface AgentTransportBinding {
   close(): Promise<void>
+}
+
+export interface CommandBridgeRunOptions {
+  cwd: string
+  stdin: string
+  signal?: AbortSignal
+}
+
+export interface CommandBridgeResult {
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
+export class CommandBridgeSessionNotFoundError extends Error {
+  constructor(readonly agentSessionId: string) {
+    super(`Command bridge: no session "${agentSessionId}" is open in this process`)
+    this.name = 'CommandBridgeSessionNotFoundError'
+  }
+}
+
+export class CommandBridgeTimeoutError extends Error {
+  constructor(
+    readonly commandId: string,
+    readonly partialStdout: string,
+    readonly partialStderr: string,
+  ) {
+    super(`Command bridge: command "${commandId}" exceeded the ${MAX_TIMEOUT_MS}ms bridge ceiling and was aborted`)
+    this.name = 'CommandBridgeTimeoutError'
+  }
 }
 
 export class AgentServer {
@@ -40,6 +99,7 @@ export class AgentServer {
   private readonly providers: Map<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
+  private readonly commandBridgeOptions: AgentServerCommandBridgeOptions | null
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -48,6 +108,7 @@ export class AgentServer {
     this.providers = createProviderMap(options.providers)
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
+    this.commandBridgeOptions = options.commandBridge ?? null
   }
 
   client(): AgentClient {
@@ -63,6 +124,7 @@ export class AgentServer {
       providers: this.providers,
       shell: this.shellOptions,
       session: this.sessionOptions,
+      commandBridge: this.commandBridgeOptions,
       sessions: this.sessionOwnership,
     })
     this.bindings.add(binding)
@@ -73,6 +135,21 @@ export class AgentServer {
     const bindings = [...this.bindings]
     this.bindings.clear()
     await Promise.all(bindings.map((binding) => binding.close()))
+  }
+
+  /**
+   * Runs one registered-command invocation to completion for a live session —
+   * used by the command bridge shim path, not the client frame protocol.
+   */
+  async runCommandLine(
+    agentSessionId: string,
+    name: string,
+    args: string[],
+    opts: CommandBridgeRunOptions,
+  ): Promise<CommandBridgeResult> {
+    const binding = this.sessionOwnership.get(agentSessionId)
+    if (!binding) throw new CommandBridgeSessionNotFoundError(agentSessionId)
+    return binding.runCommandLine(name, args, opts)
   }
 }
 
@@ -94,6 +171,10 @@ class SessionOwnershipRegistry {
   release(sessionId: string, binding: AgentTransportBindingImpl): void {
     if (this.holders.get(sessionId) === binding) this.holders.delete(sessionId)
   }
+
+  get(sessionId: string): AgentTransportBindingImpl | undefined {
+    return this.holders.get(sessionId)
+  }
 }
 
 interface AgentTransportBindingOptions {
@@ -102,6 +183,7 @@ interface AgentTransportBindingOptions {
   providers: ReadonlyMap<string, Provider>
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
+  commandBridge: AgentServerCommandBridgeOptions | null
   sessions: SessionOwnershipRegistry
 }
 
@@ -111,6 +193,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly providers: ReadonlyMap<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
+  private readonly commandBridgeOptions: AgentServerCommandBridgeOptions | null
   private readonly sessions: SessionOwnershipRegistry
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
@@ -128,6 +211,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.providers = options.providers
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
+    this.commandBridgeOptions = options.commandBridge
     this.sessions = options.sessions
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
@@ -312,8 +396,11 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const commands = agent.commands?.(harnessContext) ?? []
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
+    const shellOptions = this.commandBridgeOptions
+      ? await this.withCommandBridgeEnv(host, agentSessionId, commandRegistry, this.commandBridgeOptions)
+      : this.shellOptions
     const environment = new BashEnvironment({
-      ...this.shellOptions,
+      ...shellOptions,
       host,
       commands: commandRegistry,
     })
@@ -472,6 +559,64 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       stdin: frame.stdin,
     })
     this.sendShellWriteResult(frame.commandId, result)
+  }
+
+  /**
+   * Materializes this session's command bridge shim directory and returns
+   * shell options with PATH prepended and DEMI_COMMAND_BRIDGE_SOCK set.
+   */
+  private async withCommandBridgeEnv(
+    host: Host,
+    agentSessionId: string,
+    commandRegistry: CommandRegistry,
+    bridge: AgentServerCommandBridgeOptions,
+  ): Promise<Omit<BashEnvironmentOptions, 'host' | 'commands'>> {
+    const commandNames = commandRegistry.list().map((command) => command.name)
+    const shimDir = await materializeCommandBridgeShims(host, agentSessionId, commandNames, bridge.shimSource)
+    const existingPath = this.shellOptions.initialEnv?.PATH
+    return {
+      ...this.shellOptions,
+      initialEnv: {
+        ...this.shellOptions.initialEnv,
+        DEMI_COMMAND_BRIDGE_SOCK: bridge.socketPath,
+        PATH: existingPath ? `${shimDir}:${existingPath}` : shimDir,
+      },
+    }
+  }
+
+  /** Backs `AgentServer.runCommandLine` — see its doc comment for the contract. */
+  async runCommandLine(name: string, args: string[], opts: CommandBridgeRunOptions): Promise<CommandBridgeResult> {
+    const environment = this.currentEnvironment
+    const agentSessionId = this.currentSessionId
+    if (!environment || !agentSessionId) throw new Error('Command bridge: session has no active shell environment')
+
+    const words = [name, ...args].map(shellQuote).join(' ')
+    let script = words
+    if (opts.stdin.length > 0) {
+      const delimiter = heredocDelimiter(opts.stdin)
+      script = `${words} <<'${delimiter}'\n${opts.stdin}\n${delimiter}`
+    }
+    const cdScript = `cd ${shellQuote(opts.cwd)} && ${script}`
+
+    const result = await environment.exec({
+      agentSessionId,
+      script: cdScript,
+      timeoutMs: MAX_TIMEOUT_MS,
+      signal: opts.signal,
+    })
+
+    if (result.status === 'exited') {
+      return { exitCode: result.exitCode, stdout: result.stdout.delta, stderr: result.stderr.delta }
+    }
+    if (result.status === 'aborted') {
+      throw new Error(`Command bridge: call for "${name}" was cancelled before it completed`)
+    }
+    const aborted = await environment.abort({ commandId: result.commandId })
+    throw new CommandBridgeTimeoutError(
+      result.commandId,
+      aborted.status === 'aborted' ? aborted.stdout.delta : '',
+      aborted.status === 'aborted' ? aborted.stderr.delta : '',
+    )
   }
 
   private sessionFor(command: string): AgentSession<unknown> | null {
