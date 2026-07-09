@@ -6,6 +6,7 @@ import type { Provider, ProviderModel, ProviderModelList } from '@demicodes/prov
 import { createAnthropicApiProvider } from '@demicodes/provider-anthropic-api'
 import { createClaudeCodeProvider } from '@demicodes/provider-claude-code'
 import { codexAuthStatus, createCodexProvider } from '@demicodes/provider-codex'
+import { createGrokBuildProvider } from '@demicodes/provider-grok-build'
 import { createOpenAIApiProvider } from '@demicodes/provider-openai-api'
 import { writeEventLine } from './output'
 import type { ReplOptions } from './options'
@@ -120,8 +121,15 @@ export function createReplProviders(options: ReplOptions): Provider[] {
   const anthropicProvider = createAnthropicApiProvider({
     baseUrl: options.provider === 'anthropic' ? options.baseUrl : undefined,
   })
+  const grokBuildProvider = createGrokBuildProvider({
+    grokHome: options.grokHome,
+    baseUrl: options.provider === 'grok-build' ? options.baseUrl : undefined,
+  })
 
-  return orderProviders([claudeCodeProvider, codexProvider, openAIProvider, anthropicProvider], options.provider)
+  return orderProviders(
+    [claudeCodeProvider, codexProvider, openAIProvider, anthropicProvider, grokBuildProvider],
+    options.provider,
+  )
 }
 
 export function providerFor(providers: Provider[], id: string): Provider {
@@ -149,5 +157,6 @@ export function providerDisplayName(provider: ReplOptions['provider']): string {
   if (provider === 'codex') return 'Codex'
   if (provider === 'openai') return 'OpenAI API'
   if (provider === 'anthropic') return 'Anthropic API'
+  if (provider === 'grok-build') return 'Grok Build'
   return 'Claude Code'
 }
