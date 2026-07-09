@@ -25,7 +25,7 @@ export function grokBuildFallbackModels(providerId = 'grok-build'): ProviderMode
     contextWindow: 500_000,
     outputLimit: null,
     supportsTools: true,
-    supportsAttachments: true,
+    supportsAttachments: supportsAttachmentsForModel('grok-4.5'),
     supportsReasoning: true,
     supportedThinkingEfforts: ['low', 'medium', 'high'],
     defaultThinkingEffort: 'high',
@@ -92,7 +92,7 @@ export function modelListFromGrokModelsPayload(payload: unknown, providerId: str
       contextWindow: positiveOrDefault(numberOrNull(item.context_window), 200_000),
       outputLimit: null,
       supportsTools: true,
-      supportsAttachments: true,
+      supportsAttachments: supportsAttachmentsForModel(id),
       supportsReasoning: item.supports_reasoning_effort === true || reasoningEfforts.length > 0 ? true : null,
       supportedThinkingEfforts: reasoningEfforts.length > 0 ? reasoningEfforts : null,
       defaultThinkingEffort: defaultReasoningEffort(item, reasoningEfforts),
@@ -114,6 +114,17 @@ export function modelListFromGrokModelsPayload(payload: unknown, providerId: str
     sourceFetchedAt,
     stale: false,
   }
+}
+
+/**
+ * cli-chat-proxy /v1/models does not advertise vision. Hardcode known Grok Build models.
+ * Verified: grok-4.5 accepts image_url; grok-composer-* rejects image inputs.
+ */
+export function supportsAttachmentsForModel(modelId: string): boolean {
+  if (modelId.startsWith('grok-composer')) return false
+  if (modelId === 'grok-4.5' || modelId.startsWith('grok-4.5-')) return true
+  if (modelId.startsWith('grok-4.') || modelId.startsWith('grok-build')) return true
+  return false
 }
 
 function modelsUrl(baseUrl: string): string {
