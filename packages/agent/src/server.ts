@@ -32,14 +32,20 @@ export interface AgentServerSessionOptions {
 /**
  * Low-level command bridge wiring on AgentServer. Prefer
  * `createLocalAgentServer` from `@demicodes/host-local` (bridge **on by default**).
- * When set: each `open()` materializes PATH shims; a Node listener must be
- * running at `socketPath` (`@demicodes/agent/command-bridge`).
+ * When set: each `open()` materializes PATH shims under
+ * `<stateDir>/bridge-bin/<sessionId>/`; a Node listener must be running at
+ * `socketPath` (`@demicodes/agent/command-bridge`).
  */
 export interface AgentServerCommandBridgeOptions {
   /** Absolute filesystem path for the process-wide UDS endpoint. */
   socketPath: string
   /** Dispatch script body (from `@demicodes/agent/command-bridge`). */
   shimSource: string
+  /**
+   * Absolute Demi state root. Shims always live at
+   * `<stateDir>/bridge-bin/<agentSessionId>/` (not configurable separately).
+   */
+  stateDir: string
 }
 
 export interface AgentServerOptions {
@@ -563,7 +569,13 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     bridge: AgentServerCommandBridgeOptions,
   ): Promise<Omit<BashEnvironmentOptions, 'host' | 'commands'>> {
     const commandNames = commandRegistry.list().map((command) => command.name)
-    const shimDir = await materializeCommandBridgeShims(host, agentSessionId, commandNames, bridge.shimSource)
+    const shimDir = await materializeCommandBridgeShims({
+      host,
+      agentSessionId,
+      commandNames,
+      shimSource: bridge.shimSource,
+      stateDir: bridge.stateDir,
+    })
     const existingPath = this.shellOptions.initialEnv?.PATH
     return {
       ...this.shellOptions,

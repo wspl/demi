@@ -1,5 +1,4 @@
-import { mkdtemp, readlink, stat } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdtemp, mkdir, readlink, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
@@ -59,50 +58,63 @@ function stubProvider() {
   })
 }
 
-test('createLocalAgentServer enables command bridge by default', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-local-box-on-'))
+/** Short paths under /tmp — macOS AF_UNIX path limit is ~104 bytes. */
+async function shortDirs(tag: string) {
+  const cwd = await mkdtemp(join('/tmp', `dc-${tag}-`))
+  const stateDir = join('/tmp', `ds-${tag}-${Date.now().toString(36)}`)
+  await mkdir(stateDir, { recursive: true })
+  return { cwd, stateDir }
+}
+
+test('createLocalAgentServer enables command bridge by default under stateDir, not cwd', async () => {
+  const { cwd, stateDir } = await shortDirs('on')
   const host = new LocalHost(cwd)
   const { server, close } = createLocalAgentServer({
     host,
     agent: harness(host),
     providers: [stubProvider()],
+    stateDir,
   })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
 
-  const shim = join(cwd, '.demi-bin', sessionId, 'pingcmd')
-  expect(await readlink(shim)).toBe('.dispatch')
+  await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
+  await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
+  expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'pingcmd'))).toBe('.dispatch')
 
   await client.close()
   await close()
 })
 
 test('createLocalAgentServer commandBridge: false leaves no shim directory', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-local-box-off-'))
+  const { cwd, stateDir } = await shortDirs('off')
   const host = new LocalHost(cwd)
   const { server, close } = createLocalAgentServer({
     host,
     agent: harness(host),
     providers: [stubProvider()],
     commandBridge: false,
+    stateDir,
   })
   const client = server.client()
   await client.open(selection, cwd, globalThis.crypto.randomUUID())
 
   await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
+  await expect(stat(join(stateDir, 'bridge-bin'))).rejects.toThrow()
 
   await client.close()
   await close()
 })
 
-test('createLocalAgentServer default bridge: bareword shim works via runCommandLine path', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-local-box-run-'))
+test('createLocalAgentServer default bridge: runCommandLine works', async () => {
+  const { cwd, stateDir } = await shortDirs('run')
   const host = new LocalHost(cwd)
   const { server, close } = createLocalAgentServer({
     host,
     agent: harness(host),
     providers: [stubProvider()],
+    stateDir,
   })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()

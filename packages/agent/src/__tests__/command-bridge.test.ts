@@ -2,6 +2,7 @@ import { mkdtemp, readFile, readlink, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { z } from 'zod'
 import type { ModelSelection } from '@demicodes/core'
 import type { Command } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
@@ -31,8 +32,6 @@ function stubProvider(): Provider {
     createRuntime: () => new StubProvider([[events.text('hi'), events.response()]]),
   })
 }
-
-import { z } from 'zod'
 
 function greetCommand(): Command {
   return {
@@ -85,19 +84,25 @@ function harnessWithCommands(cwd: string, commands: () => Command[]): AgentHarne
   }
 }
 
-test('materializeCommandBridgeShims writes an executable dispatch script and one symlink per command name', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-shim-'))
+test('materializeCommandBridgeShims writes under stateDir/bridge-bin, not workspace cwd', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-shim-cwd-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-bridge-state-'))
   const host = new LocalHost(cwd)
   const shimSource = '#!/usr/bin/env node\nconsole.log("stub")\n'
 
-  const shimDir = await materializeCommandBridgeShims(host, 'sess-1', ['greet', 'fail'], shimSource)
+  const shimDir = await materializeCommandBridgeShims({
+    host,
+    agentSessionId: 'sess-1',
+    commandNames: ['greet', 'fail'],
+    shimSource,
+    stateDir,
+  })
 
-  const dispatchPath = join(shimDir, '.dispatch')
-  const dispatchStat = await stat(dispatchPath)
-  expect(dispatchStat.mode & 0o111).not.toBe(0)
-  expect(await readFile(dispatchPath, 'utf8')).toBe(shimSource)
-  expect(await readFile(join(shimDir, 'package.json'), 'utf8')).toBe('{"type":"commonjs"}\n')
+  expect(shimDir.includes(join(stateDir, 'bridge-bin'))).toBe(true)
+  await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
+  await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
 
+  expect(await readFile(join(shimDir, '.dispatch'), 'utf8')).toBe(shimSource)
   expect(await readlink(join(shimDir, 'greet'))).toBe('.dispatch')
   expect(await readlink(join(shimDir, 'fail'))).toBe('.dispatch')
 })
@@ -135,7 +140,7 @@ test('AgentServer.runCommandLine rejects unknown sessions', async () => {
   await server.close()
 })
 
-test('open without commandBridge never materializes shim directories', async () => {
+test('open without commandBridge never materializes under cwd', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-off-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
   const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
@@ -143,34 +148,32 @@ test('open without commandBridge never materializes shim directories', async () 
   await client.open(selection, cwd, globalThis.crypto.randomUUID())
 
   await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
+  await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
 
   await client.close()
   await server.close()
 })
 
-test('open with commandBridge prepends shim dir to PATH and sets DEMI_COMMAND_BRIDGE_SOCK', async () => {
+test('open with commandBridge materializes under stateDir/bridge-bin', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-env-'))
-  const socketPath = join(cwd, 'bridge.sock')
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-state-'))
+  const socketPath = join(stateDir, 'bridges', 't.sock')
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
   const server = new AgentServer({
     agent: harness,
     providers: [stubProvider()],
     shell: { initialEnv: { PATH: '/usr/bin' } },
-    commandBridge: { socketPath, shimSource: '#!/usr/bin/env node\n' },
+    commandBridge: { socketPath, shimSource: '#!/usr/bin/env node\n', stateDir },
   })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
 
-  const env = await server.runCommandLine(sessionId, 'greet', ['hello', 'x'], {
-    cwd,
-    stdin: '',
-  })
+  const env = await server.runCommandLine(sessionId, 'greet', ['hello', 'x'], { cwd, stdin: '' })
   expect(env.exitCode).toBe(0)
 
-  // PATH materialization is verified by symlink existence under .demi-bin
-  const shimDir = join(cwd, '.demi-bin', sessionId)
-  expect(await readlink(join(shimDir, 'greet'))).toBe('.dispatch')
+  await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
+  expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'greet'))).toBe('.dispatch')
 
   await client.close()
   await server.close()
