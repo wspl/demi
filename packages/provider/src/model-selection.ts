@@ -29,6 +29,9 @@ export const DEFAULT_ATTACHMENT_EXTENSIONS: readonly FileExtension[] = [
   'pdf',
 ]
 
+/** Extensions added to a model's accepted set only when it marks native video support. */
+export const VIDEO_ATTACHMENT_EXTENSIONS: readonly FileExtension[] = ['mp4', 'mov', 'webm', 'm4v']
+
 /** Derive the thinking capabilities a UI can offer from a catalog model. */
 export function thinkingCapabilitiesFromProviderModel(model: ProviderModel | null): ThinkingCapability[] {
   if (!model) return []
@@ -78,7 +81,10 @@ export function modelSelectionFromCatalog(
       contextWindow: model?.contextWindow ?? 0,
       inputLimit: null,
       thinking: thinkingCapabilitiesFromProviderModel(model),
-      acceptedExtensions: model?.supportsAttachments ? [...accepted] : [],
+      acceptedExtensions: [
+        ...(model?.supportsAttachments ? accepted : []),
+        ...(model?.supportsVideo ? VIDEO_ATTACHMENT_EXTENSIONS : []),
+      ],
     },
     thinking: options.thinking ?? null,
     serviceTierId: options.serviceTierId ?? null,

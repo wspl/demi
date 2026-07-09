@@ -404,6 +404,8 @@ function userContentToAnthropic(content: UserContentBlock[]): AnthropicContentBl
     if (block.type === 'text') return [{ type: 'text', text: block.text }]
     if (block.type === 'reference') return [{ type: 'text', text: block.reference }]
     if (block.type === 'document') return [{ type: 'text', text: `[document:${block.source.fileName} ${block.source.mediaType}]` }]
+    // Anthropic's API has no video content type (catalog marks video unsupported); degrade defensively.
+    if (block.type === 'video') return [{ type: 'text', text: '[video]' }]
     if (block.source.type === 'url') return [{ type: 'text', text: `[image:${block.source.url}]` }]
     return [{
       type: 'image',
@@ -419,6 +421,7 @@ function userContentToAnthropic(content: UserContentBlock[]): AnthropicContentBl
 function toolResultContentToAnthropic(output: ToolResultContentBlock[]): AnthropicToolResultContent[] {
   return output.map((block) => {
     if (block.type === 'text') return { type: 'text', text: block.text }
+    if (block.type === 'video') return { type: 'text', text: `[video:${block.source.mediaType}]` }
     return {
       type: 'image',
       source: { type: 'base64', media_type: block.source.mediaType, data: block.source.data },

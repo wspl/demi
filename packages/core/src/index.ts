@@ -12,6 +12,12 @@ export type ImageSource =
   | { type: 'binary'; data: Uint8Array; mediaType: string }
   | { type: 'url'; url: string }
 
+// Native video input (not frame extraction). Only models whose catalog entry marks
+// video support accept it; providers reject it otherwise.
+export type VideoSource =
+  | { type: 'binary'; data: Uint8Array; mediaType: string }
+  | { type: 'url'; url: string }
+
 export interface DocumentSource {
   data: Uint8Array
   mediaType: string
@@ -21,6 +27,7 @@ export interface DocumentSource {
 export type UserContentBlock =
   | { type: 'text'; text: string }
   | { type: 'image'; source: ImageSource }
+  | { type: 'video'; source: VideoSource }
   | { type: 'document'; source: DocumentSource }
   | { type: 'reference'; reference: string }
 
@@ -29,9 +36,15 @@ export interface Base64ImageSource {
   data: string
 }
 
+export interface Base64VideoSource {
+  mediaType: string
+  data: string
+}
+
 export type ToolResultContentBlock =
   | { type: 'text'; text: string }
   | { type: 'image'; source: Base64ImageSource }
+  | { type: 'video'; source: Base64VideoSource }
 
 // ── token / model ───────────────────────────────────────────────────
 
@@ -47,7 +60,9 @@ export function zeroUsage(): TokenUsage {
   return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
 }
 
-export type FileExtension = 'png' | 'jpg' | 'jpeg' | 'gif' | 'webp' | 'pdf'
+export type ImageFileExtension = 'png' | 'jpg' | 'jpeg' | 'gif' | 'webp'
+export type VideoFileExtension = 'mp4' | 'mov' | 'webm' | 'm4v'
+export type FileExtension = ImageFileExtension | VideoFileExtension | 'pdf'
 
 export type ThinkingEffort = string
 
