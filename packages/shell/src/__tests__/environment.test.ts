@@ -1403,8 +1403,11 @@ test('BashEnvironment applies file redirections without handing scripts to a sys
   if (large.status !== 'running') throw new Error('expected running result')
   expect(large.stdout.delta).toBe('')
 
-  await delay(300)
-  const largeDone = await env.status({ commandId: large.commandId, maxOutputBytes: 512 * 1024 })
+  const largeDone = await waitForCommand(env, large.commandId, {
+    status: 'exited',
+    maxOutputBytes: 512 * 1024,
+    timeoutMs: 10_000,
+  })
   expect(largeDone.status).toBe('exited')
   if (largeDone.status !== 'exited') throw new Error('expected exited result')
   expect(largeDone.exitCode).toBe(0)
@@ -1541,8 +1544,7 @@ test('BashEnvironment supports negated pipelines and commands', async () => {
   expect(running.status).toBe('running')
   if (running.status !== 'running') throw new Error('expected running result')
 
-  await delay(60)
-  const waited = await env.status({ commandId: running.commandId })
+  const waited = await waitForCommand(env, running.commandId, { status: 'exited' })
   expect(waited.status).toBe('exited')
   if (waited.status !== 'exited') throw new Error('expected exited result')
   expect(waited.exitCode).toBe(1)
@@ -2099,8 +2101,7 @@ test('BashEnvironment supports running/yield then shell_status', async () => {
   const first = await env.exec({ script: 'sh -c "sleep 0.03; printf done"', timeoutMs: 1 })
 
   expect(first.status).toBe('running')
-  await delay(60)
-  const second = await env.status({ commandId: first.commandId })
+  const second = await waitForCommand(env, first.commandId, { status: 'exited' })
   expect(second.status).toBe('exited')
   if (second.status !== 'exited') throw new Error('expected exited result')
   expect(second.stdout.delta).toBe('done')
@@ -2163,13 +2164,19 @@ test('BashEnvironment returns bounded output deltas by maxOutputBytes', async ()
 
   expect(first.status).toBe('running')
   if (first.status !== 'running') throw new Error('expected running result')
-  await delay(20)
-  const firstChunk = await env.status({ commandId: first.commandId, maxOutputBytes: 5 })
+  // First bounded read: stop as soon as we observe a non-empty truncated chunk.
+  const firstChunk = await waitForCommand(env, first.commandId, {
+    maxOutputBytes: 5,
+    predicate: (result, acc) => acc.stdout.length > 0 || result.status === 'exited',
+  })
   expect(firstChunk.stdout.delta).toBe('12345')
   expect(firstChunk.stdout.truncated).toBe(true)
 
-  await delay(60)
-  const second = await env.status({ commandId: first.commandId, maxOutputBytes: 20 })
+  // Remaining bytes may arrive across several status polls while still running — accumulate.
+  const second = await waitForCommand(env, first.commandId, {
+    status: 'exited',
+    maxOutputBytes: 20,
+  })
   expect(second.status).toBe('exited')
   if (second.status !== 'exited') throw new Error('expected exited result')
   expect(second.stdout.delta).toBe('67890done')
@@ -2328,11 +2335,12 @@ test('BashEnvironment supports shell_write for a foreground process', async () =
   })
   expect(first.status).toBe('running')
 
-  await env.write({ commandId: first.commandId, stdin: 'typed\n' })
-  await delay(20)
-  const second = await env.status({ commandId: first.commandId })
-  expect(second.status).toBe('exited')
-  expect(second.stdout.delta).toBe('typed')
+  const written = await env.write({ commandId: first.commandId, stdin: 'typed\n' })
+  const stdout =
+    written.status === 'exited'
+      ? written.stdout.delta
+      : (await waitForCommand(env, first.commandId, { status: 'exited' })).stdout.delta
+  expect(stdout).toBe('typed')
 })
 
 test('BashEnvironment writes shell_write exactly and line readers wait for a newline', async () => {
@@ -2353,11 +2361,12 @@ test('BashEnvironment writes shell_write exactly and line readers wait for a new
   if (withoutNewline.status !== 'running') throw new Error('expected running result')
   expect(withoutNewline.stdout.delta).toBe('')
 
-  await env.write({ commandId: first.commandId, stdin: '\n' })
-  await delay(20)
-  const withNewline = await env.status({ commandId: first.commandId })
-  expect(withNewline.status).toBe('exited')
-  expect(withNewline.stdout.delta).toBe('typed')
+  const written = await env.write({ commandId: first.commandId, stdin: '\n' })
+  const stdout =
+    written.status === 'exited'
+      ? written.stdout.delta
+      : (await waitForCommand(env, first.commandId, { status: 'exited' })).stdout.delta
+  expect(stdout).toBe('typed')
 })
 
 test('BashEnvironment keeps idle foreground processes running by default', async () => {
@@ -2376,11 +2385,12 @@ test('BashEnvironment keeps idle foreground processes running by default', async
   const second = await env.status({ commandId: first.commandId })
   expect(second.status).toBe('running')
 
-  await env.write({ commandId: first.commandId, stdin: 'typed\n' })
-  await delay(20)
-  const third = await env.status({ commandId: first.commandId })
-  expect(third.status).toBe('exited')
-  expect(third.stdout.delta).toBe('typed')
+  const written = await env.write({ commandId: first.commandId, stdin: 'typed\n' })
+  const stdout =
+    written.status === 'exited'
+      ? written.stdout.delta
+      : (await waitForCommand(env, first.commandId, { status: 'exited' })).stdout.delta
+  expect(stdout).toBe('typed')
 })
 
 test('BashEnvironment shell_status is nonblocking for running commands', async () => {
@@ -2623,6 +2633,59 @@ async function waitForStoreJson<T>(read: () => Promise<T | null>): Promise<T> {
     await delay(5)
   }
   throw new Error('timed out waiting for Host.store JSON')
+}
+
+type ShellStatusResult = Awaited<ReturnType<BashEnvironment['status']>>
+
+/**
+ * Poll `env.status` until the command reaches a desired state or a predicate holds.
+ * Prefer this over fixed wall-clock sleeps when asserting real OS process lifecycle.
+ *
+ * Stdout/stderr deltas are accumulated across polls — intermediate status calls would
+ * otherwise swallow output that later assertions need.
+ */
+async function waitForCommand(
+  env: BashEnvironment,
+  commandId: string,
+  options: {
+    status?: 'exited' | 'aborted' | 'running'
+    maxOutputBytes?: number
+    timeoutMs?: number
+    /** Evaluated on each poll after accumulating that poll's deltas into `stdout`/`stderr`. */
+    predicate?: (result: ShellStatusResult, accumulated: { stdout: string; stderr: string }) => boolean
+  } = {},
+): Promise<ShellStatusResult> {
+  const timeoutMs = options.timeoutMs ?? 3_000
+  const startedAt = Date.now()
+  let last: ShellStatusResult | undefined
+  let stdout = ''
+  let stderr = ''
+  while (Date.now() - startedAt < timeoutMs) {
+    last = await env.status({
+      commandId,
+      ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
+    })
+    stdout += last.stdout.delta
+    stderr += last.stderr.delta
+    const matched = options.predicate
+      ? options.predicate(last, { stdout, stderr })
+      : options.status
+        ? last.status === options.status
+        : last.status === 'exited' || last.status === 'aborted'
+    if (matched) {
+      return {
+        ...last,
+        stdout: { ...last.stdout, delta: stdout },
+        stderr: { ...last.stderr, delta: stderr },
+      }
+    }
+    await delay(5)
+  }
+  throw new Error(
+    `timed out waiting for command ${commandId}` +
+      (options.status ? ` status=${options.status}` : '') +
+      `; last=${last?.status ?? 'none'}`,
+  )
 }
 
 function delay(ms: number): Promise<void> {

@@ -309,6 +309,19 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
   )
   let readerCommandId = ''
   let longCommandId = ''
+  // State machine so we poll real OS processes until they reach the expected state
+  // instead of assuming fixed yield/sleep delays.
+  type Phase =
+    | 'after-start'
+    | 'after-first-yield'
+    | 'ready-to-write'
+    | 'await-reader-exit'
+    | 'await-long-ready'
+    | 'long-checked'
+    | 'done'
+  let phase: Phase = 'after-start'
+  let poll = 0
+
   const provider = new StubProvider([
     [
       events.toolCall('start-reader', 'shell_exec', {
@@ -317,66 +330,112 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
         timeoutMs: 1,
       }),
     ],
-    (request: InferenceRequest) => {
+    ...Array.from({ length: 100 }, () => (request: InferenceRequest) => {
+      if (phase === 'after-start') {
+        const result = latestShellResult(request)
+        expect(result.status).toBe('running')
+        readerCommandId = result.commandId ?? ''
+        phase = 'after-first-yield'
+        return [events.toolCall('yield-reader', 'yield', { description: 'Wait before checking reader', durationMs: 1 })]
+      }
+      if (phase === 'after-first-yield') {
+        phase = 'ready-to-write'
+        return [
+          events.toolCall('status-reader', 'shell_status', {
+            description: 'Check reader',
+            commandId: readerCommandId,
+          }),
+        ]
+      }
+      if (phase === 'ready-to-write') {
+        const result = latestShellResult(request)
+        expect(result.commandId).toBe(readerCommandId)
+        expect(result.status).toBe('running')
+        phase = 'await-reader-exit'
+        return [
+          events.toolCall('write-reader', 'shell_write', {
+            description: 'Send reader input',
+            commandId: readerCommandId,
+            stdin: 'typed\n',
+          }),
+        ]
+      }
+      if (phase === 'await-reader-exit') {
+        const result = latestShellResult(request)
+        if (result.status === 'running') {
+          poll += 1
+          if (poll % 2 === 1) {
+            return [
+              events.toolCall(`yield-reader-${poll}`, 'yield', {
+                description: 'Wait for reader output',
+                durationMs: 15,
+              }),
+            ]
+          }
+          return [
+            events.toolCall(`status-reader-${poll}`, 'shell_status', {
+              commandId: readerCommandId,
+            }),
+          ]
+        }
+        expect(result.status).toBe('exited')
+        expect(result.stdout).toContain('DEMI_FULL_INPUT:typed')
+        phase = 'await-long-ready'
+        poll = 0
+        return [
+          events.toolCall('start-long', 'shell_exec', {
+            description: 'Start long command',
+            script: "sh -c 'printf long-ready; sleep 10'",
+            timeoutMs: 20,
+          }),
+        ]
+      }
+      if (phase === 'await-long-ready') {
+        const result = latestShellResult(request)
+        longCommandId = result.commandId ?? longCommandId
+        if (result.status === 'running' && !result.stdout.includes('long-ready')) {
+          poll += 1
+          if (poll % 2 === 1) {
+            return [
+              events.toolCall(`yield-long-${poll}`, 'yield', {
+                description: 'Wait for long-ready',
+                durationMs: 15,
+              }),
+            ]
+          }
+          return [
+            events.toolCall(`status-long-${poll}`, 'shell_status', {
+              description: 'Check long command',
+              commandId: longCommandId,
+            }),
+          ]
+        }
+        expect(result.status).toBe('running')
+        expect(result.stdout).toContain('long-ready')
+        phase = 'long-checked'
+        return [
+          events.toolCall('status-long', 'shell_status', {
+            description: 'Check long command still running',
+            commandId: longCommandId,
+          }),
+        ]
+      }
+      if (phase === 'long-checked') {
+        const result = latestShellResult(request)
+        expect(result.commandId).toBe(longCommandId)
+        expect(result.status).toBe('running')
+        phase = 'done'
+        return [
+          events.toolCall('abort-long', 'shell_abort', {
+            description: 'Stop long command',
+            commandId: longCommandId,
+          }),
+        ]
+      }
       const result = latestShellResult(request)
-      expect(result.status).toBe('running')
-      readerCommandId = result.commandId ?? ''
-      return [events.toolCall('yield-reader', 'yield', { description: 'Wait before checking reader', durationMs: 1 })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      expect(result.commandId).toBe(readerCommandId)
-      expect(result.status).toBe('running')
-      return [events.toolCall('status-reader', 'shell_status', { description: 'Check reader', commandId: readerCommandId })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      expect(result.commandId).toBe(readerCommandId)
-      expect(result.status).toBe('running')
-      return [events.toolCall('write-reader', 'shell_write', { description: 'Send reader input', commandId: readerCommandId, stdin: 'typed\n' })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      expect(result.commandId).toBe(readerCommandId)
-      return [events.toolCall('yield-reader-after-write', 'yield', { description: 'Wait for reader output', durationMs: 5 })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      expect(result.commandId).toBe(readerCommandId)
-      return [events.toolCall('status-reader-after-write', 'shell_status', { commandId: readerCommandId })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      // The reader has exited with complete output, so its handle is released — no commandId now.
-      expect(result.status).toBe('exited')
-      expect(result.stdout).toContain('DEMI_FULL_INPUT:typed')
-      return [
-        events.toolCall('start-long', 'shell_exec', {
-          description: 'Start long command',
-          script: "sh -c 'printf long-ready; sleep 10'",
-          timeoutMs: 20,
-        }),
-      ]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      expect(result.status).toBe('running')
-      expect(result.stdout).toContain('long-ready')
-      longCommandId = result.commandId ?? ''
-      return [events.toolCall('status-long', 'shell_status', { description: 'Check long command', commandId: longCommandId })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      expect(result.commandId).toBe(longCommandId)
-      expect(result.status).toBe('running')
-      return [events.toolCall('abort-long', 'shell_abort', { description: 'Stop long command', commandId: longCommandId })]
-    },
-    (request: InferenceRequest) => {
-      const result = latestShellResult(request)
-      // The aborted command's output is complete, so its handle is released — no commandId now.
       expect(result.status).toBe('aborted')
       return [events.text('full control ok'), events.response()]
-    },
+    }),
   ])
   session = new AgentSession({ provider, model, cwd: root, runtime })
 
@@ -384,6 +443,7 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
   await waitFor(
     () => session?.transcript().blocks.some((block) => block.type === 'text' && block.text.includes('full control ok')) ?? false,
     () => transcriptSummary(session),
+    { timeoutMs: 10_000 },
   )
 
   const toolNames = session.transcript().blocks.flatMap((block) => (block.type === 'tool_call' ? [block.toolName] : []))
