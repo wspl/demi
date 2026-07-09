@@ -1,6 +1,6 @@
 import { delay, errorMessage, isRecord, nonEmptyString, stringOrNull } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
-import { open, readFile, rename, rm, writeFile, mkdir, chmod } from 'node:fs/promises'
+import { open, readFile, rename, rm, writeFile, mkdir, chmod, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
@@ -215,18 +215,34 @@ export class FileGrokAuthStore implements GrokAuthStore {
     await mkdir(dirname(this.authFile), { recursive: true })
     const started = Date.now()
     let handle: Awaited<ReturnType<typeof open>> | null = null
+    let brokeStaleLock = false
     while (!handle) {
       try {
         handle = await open(lockFile, 'wx', 0o600)
       } catch (error) {
-        if (!isNodeError(error) || error.code !== 'EEXIST' || Date.now() - started > this.lockTimeoutMs) {
+        if (!isNodeError(error) || error.code !== 'EEXIST') {
           throw new GrokAuthError('auth_lock_failed', `Failed to lock Grok auth file: ${redactSecretText(errorMessage(error))}`)
+        }
+        // Grok CLI writes `auth.json.lock` as `pid:unix_ts` and may leave it behind
+        // after a crash. Steal only abandoned locks; wait if another live process holds it.
+        if (!brokeStaleLock && (await isAbandonedGrokAuthLock(lockFile, this.now()))) {
+          await rm(lockFile, { force: true }).catch(() => undefined)
+          brokeStaleLock = true
+          continue
+        }
+        if (Date.now() - started > this.lockTimeoutMs) {
+          throw new GrokAuthError(
+            'auth_lock_failed',
+            `Timed out waiting for Grok auth lock ${lockFile}. If no other Grok process is running, delete the lock file and retry.`,
+          )
         }
         await delay(this.lockRetryDelayMs)
       }
     }
 
     try {
+      // Match Grok CLI lock payload shape so concurrent tools can detect ownership.
+      await writeFile(lockFile, `${process.pid}:${Math.floor(this.now().getTime() / 1000)}`, { mode: 0o600 })
       return await fn()
     } finally {
       await handle.close().catch(() => undefined)
@@ -361,4 +377,34 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error
+}
+
+/** Grok CLI lock format is `pid:unix_seconds`. Steal only when the owner is dead or very stale. */
+export async function isAbandonedGrokAuthLock(lockFile: string, now: Date, maxAgeMs = 30_000): Promise<boolean> {
+  try {
+    const raw = (await readFile(lockFile, 'utf8')).trim()
+    const match = /^(\d+):(\d+)$/.exec(raw)
+    if (match) {
+      const pid = Number(match[1])
+      const tsSec = Number(match[2])
+      if (Number.isFinite(pid) && pid > 0 && !isProcessAlive(pid)) return true
+      if (Number.isFinite(tsSec) && now.getTime() - tsSec * 1000 > maxAgeMs) return true
+      return false
+    }
+    // Unknown lock payload: fall back to mtime age (covers empty/corrupt leftovers).
+    const info = await stat(lockFile)
+    return now.getTime() - info.mtimeMs > maxAgeMs
+  } catch {
+    return true
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'EPERM') return true
+    return false
+  }
 }
