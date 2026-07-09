@@ -63,6 +63,16 @@ test('demi read rejects video before reading when the current model does not sup
   expect(read.stderr.delta).toBe('Current model does not support video input.\n')
 })
 
+test('demi read prompt documents native video behavior', async () => {
+  const { env } = await createDemiEnvironment()
+  const result = await env.exec({ script: 'demi read prompt' })
+
+  expect(result.status).toBe('exited')
+  if (result.status !== 'exited') throw new Error('expected exited result')
+  expect(result.stdout.delta).toContain('images and supported videos')
+  expect(result.stdout.delta).toContain('demi read assets/clip.mp4')
+})
+
 test('demi create writes a new file from heredoc content', async () => {
   const { env } = await createDemiEnvironment()
 

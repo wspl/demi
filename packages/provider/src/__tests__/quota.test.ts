@@ -45,8 +45,8 @@ test('createProviderQuota probes and caches latest', async () => {
   const headers = new Headers({ 'x-used-percent': '42' })
   const observed = quota.observeResponse?.({ headers })
   expect(observed?.source).toBe('observation')
-  expect(observed?.windows[0]?.usedPercent).toBe(42)
-  expect(quota.latest()?.windows[0]?.usedPercent).toBe(42)
+  expect(observed?.windows.find((window) => window.id === 'rpm')?.usedPercent).toBe(42)
+  expect(quota.latest()?.windows.find((window) => window.id === 'rpm')?.usedPercent).toBe(42)
 
   const ensured = await ensureQuota(quota, { prefer: 'cache', maxStaleMs: 60_000 })
   expect(ensured?.source).toBe('cache')
@@ -63,6 +63,39 @@ test('probe throws when unsupported', async () => {
     probe: async () => ({ windows: [] }),
   })
   await expect(quota.probe()).rejects.toBeInstanceOf(ProviderQuotaUnsupportedError)
+})
+
+test('observations merge partial windows without dropping probed plan and quota', async () => {
+  const quota = createProviderQuota({
+    providerId: 'demo',
+    canProbe: true,
+    canObserve: true,
+    probe: async () => ({
+      plan: { id: 'pro' },
+      accountLabel: 'person@example.com',
+      windows: [
+        { id: 'monthly', usedPercent: 25, resetsAt: null },
+        { id: 'rpm', usedPercent: 10, resetsAt: null },
+      ],
+    }),
+    observe: () => ({
+      windows: [
+        { id: 'rpm', usedPercent: 40, resetsAt: null },
+        { id: 'tpm', usedPercent: 5, resetsAt: null },
+      ],
+    }),
+  })
+
+  await quota.probe()
+  const observed = quota.observeResponse?.({})
+
+  expect(observed?.plan?.id).toBe('pro')
+  expect(observed?.accountLabel).toBe('person@example.com')
+  expect(observed?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
+    ['monthly', 25],
+    ['rpm', 40],
+    ['tpm', 5],
+  ])
 })
 
 test('percent helpers', () => {

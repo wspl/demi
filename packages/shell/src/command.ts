@@ -104,6 +104,8 @@ const EXECUTION_ONLY_FIELDS = [
   'examples',
 ] as const
 
+const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
+
 export class CommandRegistry {
   private readonly commands = new Map<string, Command>()
 
@@ -350,6 +352,12 @@ export function renderCommandPrompt(command: Command, parentPath = ''): string {
 }
 
 function validateCommandTree(command: Command, path: string): void {
+  if (!COMMAND_NAME_PATTERN.test(command.name)) {
+    throw new Error(
+      `CommandRegistry: "${path}" has invalid name "${command.name}"; use letters, numbers, underscores, and hyphens`,
+    )
+  }
+
   const hasRun = typeof command.run === 'function'
   const children = command.subcommands ?? []
   if (!hasRun && children.length === 0) {
