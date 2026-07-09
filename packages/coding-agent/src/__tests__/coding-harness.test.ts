@@ -9,7 +9,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import {
   BashEnvironment,
   CommandRegistry,
-  type CommandSpec,
+  type Command,
   type Host,
   type HostDirent,
   type HostFileSystem,
@@ -242,7 +242,7 @@ function createRuntimeFromHarness(
   return { environment, runtime, state }
 }
 
-function renderCommandsPrompt(commands: readonly CommandSpec[]): string {
+function renderCommandsPrompt(commands: readonly Command[]): string {
   const registry = new CommandRegistry()
   for (const command of commands) registry.register(command)
   return registry.renderPrompt()

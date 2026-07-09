@@ -25,8 +25,9 @@ test('derived reserved names cover every portable command and the legacy list', 
 
 test('registry rejects reserved names and accepts distinct ones', () => {
   const registry = new CommandRegistry()
-  expect(() => registry.register({ name: 'grep', summary: 'x', subcommands: [] })).toThrow(/reserved/)
-  expect(() => registry.register({ name: 'go', summary: 'x', subcommands: [] })).toThrow(/reserved/)
-  registry.register({ name: 'my_tool', summary: 'x', subcommands: [] })
+  const leaf = { name: 'run', summary: 'x', examples: [] as string[], run: () => ({ exitCode: 0 }) }
+  expect(() => registry.register({ name: 'grep', summary: 'x', subcommands: [leaf] })).toThrow(/reserved/)
+  expect(() => registry.register({ name: 'go', summary: 'x', subcommands: [leaf] })).toThrow(/reserved/)
+  registry.register({ name: 'my_tool', summary: 'x', subcommands: [leaf] })
   expect(registry.get('my_tool')).not.toBeNull()
 })

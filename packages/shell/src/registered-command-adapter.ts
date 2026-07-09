@@ -1,19 +1,19 @@
 import { concatBytes, decodeUtf8, encodeUtf8 } from '@demicodes/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
-import { isCommandGroup, runRegisteredCommand, type CommandAsset, type CommandIO, type CommandSpec } from './command'
+import { runRegisteredCommand, type Command, type CommandAsset, type CommandIO } from './command'
 import type { ShellSession } from './environment-state'
 import type { AgentSessionCommandStorage } from './storage'
 
-export function commandSpecToForkCommand(session: ShellSession, spec: CommandSpec, storage: AgentSessionCommandStorage): ForkCommand {
+export function commandToForkCommand(session: ShellSession, command: Command, storage: AgentSessionCommandStorage): ForkCommand {
   return {
-    name: spec.name,
-    consumesStdin: treeConsumesStdin(spec),
+    name: command.name,
+    consumesStdin: treeConsumesStdin(command),
     execute: async (args, ctx): Promise<ForkExecResult> => {
       const stdinText = decodeForkStdin(ctx.stdin)
       const io = createForwardingIO()
-      const argv = [spec.name, ...args]
+      const argv = [command.name, ...args]
       try {
-        const result = await runRegisteredCommand(spec, {
+        const result = await runRegisteredCommand(command, {
           argv,
           stdin: { text: stdinText },
           env: mapToRecord(ctx.env),
@@ -23,14 +23,14 @@ export function commandSpecToForkCommand(session: ShellSession, spec: CommandSpe
         })
         session.accumulator.audit.push({
           kind: 'registered-command',
-          name: spec.name,
+          name: command.name,
           args,
           exitCode: result.exitCode,
         })
         if (result.metadata !== undefined) {
           session.accumulator.commandMetadata.push({
             kind: 'registered-command',
-            name: spec.name,
+            name: command.name,
             args,
             metadata: result.metadata,
           })
@@ -40,11 +40,11 @@ export function commandSpecToForkCommand(session: ShellSession, spec: CommandSpe
         const message = error instanceof Error ? error.message : String(error)
         session.accumulator.audit.push({
           kind: 'registered-command',
-          name: spec.name,
+          name: command.name,
           args,
           exitCode: 1,
         })
-        return { stdout: io.stdoutText(), stderr: `${io.stderrText()}${spec.name}: ${message}\n`, exitCode: 1 }
+        return { stdout: io.stdoutText(), stderr: `${io.stderrText()}${command.name}: ${message}\n`, exitCode: 1 }
       } finally {
         if (io.assets().length > 0) session.accumulator.assets.push(...io.assets())
       }
@@ -86,8 +86,9 @@ function createForwardingIO(): ForwardingIO {
   return new ForwardingIO()
 }
 
-function treeConsumesStdin(spec: CommandSpec): boolean {
-  return spec.subcommands.some((node) => (isCommandGroup(node) ? treeConsumesStdin(node) : Boolean(node.stdinField)))
+function treeConsumesStdin(command: Command): boolean {
+  if (command.stdinField) return true
+  return command.subcommands?.some(treeConsumesStdin) ?? false
 }
 
 function mapToRecord(map: Map<string, string>): Record<string, string> {

@@ -2,10 +2,10 @@ import { mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
-import { BashEnvironment, CommandRegistry, type CommandSpec } from '../index'
+import { BashEnvironment, CommandRegistry, type Command } from '../index'
 import { LocalHost } from '@demicodes/host-local'
 
-const screenshotSpec: CommandSpec = {
+const screenshotSpec: Command = {
   name: 'screenshot',
   summary: 'Capture a fake screenshot.',
   subcommands: [

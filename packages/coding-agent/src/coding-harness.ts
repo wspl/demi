@@ -1,5 +1,5 @@
 import type { AgentHarness } from '@demicodes/agent'
-import { CommandRegistry, type CommandSpec, type Host } from '@demicodes/shell'
+import { CommandRegistry, type Command, type Host } from '@demicodes/shell'
 import { createEditorCommand } from './editor-command'
 import { createFileReferenceResolver } from './reference-resolver'
 import { createTodoCommand } from './todo-command'
@@ -9,12 +9,12 @@ export type CodingState = Record<string, never>
 export interface CodingAgentHarnessOptions {
   host: Host
   referenceHost?: Host
-  commands?: CommandSpec[]
+  commands?: Command[]
 }
 
 export interface CodingCommandRegistryOptions {
   editorHost?: Host
-  commands?: CommandSpec[]
+  commands?: Command[]
 }
 
 export function createCodingCommandRegistry(options: CodingCommandRegistryOptions = {}): CommandRegistry {
@@ -66,6 +66,6 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
   }
 }
 
-function defaultCodingCommands(editorHost: Host): CommandSpec[] {
+function defaultCodingCommands(editorHost: Host): Command[] {
   return [createEditorCommand(editorHost), createTodoCommand()]
 }
