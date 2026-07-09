@@ -18,6 +18,7 @@ import {
 import { buildGrokChatCompletionsBody, mapGrokChatCompletionStream, readServerSentEvents } from './chat'
 import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
 import { listGrokBuildModels } from './models'
+import { createGrokBuildQuota } from './quota'
 
 export type GrokBuildFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
@@ -135,6 +136,14 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
     id,
     displayName,
     auth: { status: () => authStore.status() },
+    quota: createGrokBuildQuota({
+      providerId: id,
+      grokHome: options.grokHome,
+      baseUrl,
+      clientVersion: options.clientVersion,
+      authStore,
+      fetch: fetchImpl as GrokBuildFetch,
+    }),
     state: () => ({
       status: 'ready',
       message: 'Uses Grok CLI OAuth session (~/.grok/auth.json) via cli-chat-proxy',
