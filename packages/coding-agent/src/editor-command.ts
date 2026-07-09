@@ -1,8 +1,8 @@
 import { asError, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@demicodes/utils'
 import { z } from 'zod'
-import type { CommandSpec, Host } from '@demicodes/shell'
+import type { Command, Host } from '@demicodes/shell'
 
-export function createEditorCommand(host: Host): CommandSpec {
+export function createEditorCommand(host: Host): Command {
   return {
     name: 'editor',
     summary: 'Create, edit, and patch files.',

@@ -7,7 +7,7 @@ import type {
   UserContentBlock,
 } from '@demicodes/core'
 import type { AgentProvider, ToolDefinition } from '@demicodes/provider'
-import type { CommandSpec, Host } from '@demicodes/shell'
+import type { Command, Host } from '@demicodes/shell'
 import type { TranscriptPatch } from './frames'
 import type { TurnRetryPolicy } from './retry-policy'
 import type { Transcript } from './transcript'
@@ -59,7 +59,7 @@ export interface AgentHarness<State = unknown> {
   name: string
   initialState(): State
   host(ctx: AgentHarnessContext<State>): Host
-  commands?(ctx: AgentHarnessContext<State>): CommandSpec[]
+  commands?(ctx: AgentHarnessContext<State>): Command[]
   systemPrompt(ctx: AgentSystemPromptContext<State>): string
   preamble?(ctx: AgentPromptContext<State>): string | null
   resolveReferences?(

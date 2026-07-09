@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/host-local",
-  "description": "Node Host adapter for the Demi shell.",
+  "description": "Node LocalHost and open-box local AgentServer assembly (command bridge on by default).",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -12,6 +12,8 @@
     }
   },
   "dependencies": {
+    "@demicodes/agent": "workspace:*",
+    "@demicodes/provider": "workspace:*",
     "@demicodes/shell": "workspace:*",
     "@demicodes/utils": "workspace:*"
   },
