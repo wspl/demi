@@ -2,6 +2,7 @@ import type { Provider } from '@demicodes/provider'
 import { createAnthropicApiProvider, type AnthropicApiModelOptions } from '@demicodes/provider-anthropic-api'
 import { createClaudeCodeProvider } from '@demicodes/provider-claude-code'
 import { createCodexProvider } from '@demicodes/provider-codex'
+import { createGrokBuildProvider } from '@demicodes/provider-grok-build'
 import { createOpenAIApiProvider, type OpenAIApiModelOptions } from '@demicodes/provider-openai-api'
 import type { ProviderId, ServerOptions } from './server-options'
 
@@ -25,8 +26,15 @@ export function createWebProviders(options: ServerOptions): Provider[] {
     models: anthropicModels,
     defaultModelId: anthropicModels?.[0]?.id,
   })
+  const grokBuildProvider = createGrokBuildProvider({
+    grokHome: options.grokHome,
+    baseUrl: options.provider === 'grok-build' ? options.baseUrl : undefined,
+  })
 
-  return orderProviders([claudeCodeProvider, codexProvider, openAIProvider, anthropicProvider], options.provider)
+  return orderProviders(
+    [claudeCodeProvider, codexProvider, openAIProvider, anthropicProvider, grokBuildProvider],
+    options.provider,
+  )
 }
 
 function apiModelOptionsFor(options: ServerOptions, providerId: Extract<ProviderId, 'openai'>): OpenAIApiModelOptions[] | undefined
