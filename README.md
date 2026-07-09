@@ -35,7 +35,11 @@ agent-eval             benchmark harness (leaf)
 ```
 
 The boundary contract is [docs/package-boundaries.md](docs/package-boundaries.md);
-runtime/shell design lives under [docs/](docs/).
+runtime/shell design lives under [docs/](docs/). Notable design docs:
+
+- [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
+- [Provider global credentials](docs/provider-global-credentials.md) — multi-account pool + global `setActive`
+- [Command bridge](docs/command-bridge.md) — LocalHost PATH shims + UDS for agent tools
 
 ## Install
 
@@ -94,8 +98,9 @@ consumes an injected `AgentClient`, see `@demicodes/web-ui`.
 
 - **A new provider** — implement the `@demicodes/provider` contract (`run()` returning a
   `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
-  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md) and the runnable
-  template [examples/custom-provider.ts](examples/custom-provider.ts).
+  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md), optional
+  [quota](docs/provider-quota.md) / [credentials](docs/provider-global-credentials.md),
+  and the runnable template [examples/custom-provider.ts](examples/custom-provider.ts).
 - **A new Host** — implement `{ defaultCwd, fs, process, store }`; `@demicodes/host-local`
   is the reference for a remote/container/sandboxed backend.
   See [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md) and the

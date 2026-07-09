@@ -11,9 +11,21 @@ writing providers.
   `withProviderId`.
 - **HTTP helpers** — `redactSecretText`, `httpErrorCode`, `normalizeErrorCode`,
   `providerErrorFromUnknown`, `authStatusFromKey`, `httpRequestFailedEvent`.
+- **Quota** — optional `Provider.quota` (`ProviderQuota` / `ProviderQuotaSnapshot`),
+  `createProviderQuota`, `ensureQuota`. See
+  [docs/provider-quota.md](../../docs/provider-quota.md).
+- **Credentials** — optional `Provider.credentials` for multi-account pool + global
+  `setActive` (subscription CLIs). See
+  [docs/provider-global-credentials.md](../../docs/provider-global-credentials.md).
 
 ```ts
-import { defineProvider, zeroUsage } from '@demicodes/provider'
+import {
+  defineProvider,
+  createProviderQuota,
+  ensureQuota,
+  type ProviderCredentials,
+  type ProviderQuota,
+} from '@demicodes/provider'
 ```
 
 See [Add a Provider](../../docs/guides/add-a-provider.md). Part of
