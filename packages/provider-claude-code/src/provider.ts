@@ -476,9 +476,11 @@ function toolResultContentToText(output: ToolResultContentBlock[]): string {
 function toolResultContentToMcp(output: ToolResultContentBlock[]): Array<Record<string, unknown>> {
   return output.map((block) => {
     if (block.type === 'text') return { type: 'text', text: block.text }
+    // block.source.data is already a base64 string (Base64ImageSource); MCP image
+    // content wants base64 in `data`, so pass it through — re-encoding would double it.
     return {
       type: 'image',
-      data: Buffer.from(block.source.data).toString('base64'),
+      data: block.source.data,
       mimeType: block.source.mediaType,
     }
   })
