@@ -28,12 +28,17 @@ export function buildClaudeArgs(params: {
   return args
 }
 
-export function buildClaudeEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function buildClaudeEnv(
+  base: NodeJS.ProcessEnv = process.env,
+  options: { oauthAccessToken?: string | null } = {},
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...base,
     DISABLE_AUTO_COMPACT: '1',
     MAX_MCP_OUTPUT_TOKENS: '1000000',
   }
   delete env.CLAUDECODE
+  const token = options.oauthAccessToken?.trim()
+  if (token) env.CLAUDE_CODE_OAUTH_TOKEN = token
   return env
 }

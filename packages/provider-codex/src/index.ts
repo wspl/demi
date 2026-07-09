@@ -11,3 +11,8 @@ export {
   mapCodexRateLimitHeaders,
   type CodexQuotaOptions,
 } from './quota'
+export {
+  createCodexCredentials,
+  openCodexCredentialPool,
+  PoolAwareCodexAuthStore,
+} from './credentials'

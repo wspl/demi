@@ -4,6 +4,9 @@ import type { ModelSelection } from '@demicodes/core'
 import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demicodes/agent'
 import { BashEnvironment } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { providerRuntime, type InferenceRequest, type ProviderSelection } from '@demicodes/provider'
 import {
   ClaudeCodeProvider,
@@ -77,17 +80,18 @@ test('Claude Code public provider only accepts serializable config fields', asyn
   expect((provider as unknown as { transportFactory?: unknown }).transportFactory).not.toBe(injectedFactory)
 })
 
-test('Claude Code public provider does not preflight external CLI state', async () => {
-  const provider = createClaudeCodeProvider()
+test('Claude Code public provider reports auth via credential store and defers runtime state', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-claude-auth-'))
+  const provider = createClaudeCodeProvider({ stateDir })
 
-  expect(await provider.auth?.status()).toEqual({
-    status: 'unknown',
-    message: 'Auth is checked when a Claude Code request runs',
-  })
+  const status = await provider.auth?.status()
+  // Pool empty → vendor default; may be unauthenticated or authenticated depending on host.
+  expect(status?.status === 'authenticated' || status?.status === 'unauthenticated' || status?.status === 'error').toBe(true)
   expect(await provider.state?.()).toEqual({
     status: 'unknown',
     message: 'Runtime is checked when a Claude Code request runs',
   })
+  expect(provider.credentials).toBeDefined()
 })
 
 test('ClaudeCodeProvider streams text and response events from transport messages', async () => {

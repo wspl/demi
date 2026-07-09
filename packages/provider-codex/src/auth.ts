@@ -76,6 +76,8 @@ export async function codexAuthStatus(options: FileCodexAuthStoreOptions = {}): 
 
 export interface FileCodexAuthStoreOptions {
   codexHome?: string
+  /** Override auth.json path (e.g. demi credential pool entry). */
+  authFile?: string
   refresh?: CodexTokenRefresh
   now?: () => Date
   lockRetryDelayMs?: number
@@ -106,7 +108,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
 
   constructor(options: FileCodexAuthStoreOptions = {}) {
     this.codexHome = options.codexHome ?? defaultCodexHome()
-    this.authFile = join(this.codexHome, 'auth.json')
+    this.authFile = options.authFile ?? join(this.codexHome, 'auth.json')
     this.refreshImpl = options.refresh ?? refreshCodexToken
     this.now = options.now ?? (() => new Date())
     this.lockRetryDelayMs = options.lockRetryDelayMs ?? 25

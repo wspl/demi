@@ -12,3 +12,13 @@ export {
   type ClaudeCodeQuotaOptions,
 } from './quota'
 export { resolveClaudeCodeOAuthAccess, type ClaudeCodeOAuthAccess } from './oauth'
+export {
+  FileClaudeCodeAuthStore,
+  StaticClaudeCodeAuthStore,
+  type ClaudeCodeAuthStore,
+} from './auth'
+export {
+  createClaudeCodeCredentials,
+  openClaudeCodeCredentialPool,
+  PoolAwareClaudeCodeAuthStore,
+} from './credentials'
