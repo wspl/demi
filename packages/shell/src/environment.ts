@@ -9,7 +9,7 @@ import { ParseException } from '@demicodes/just-bash/parser/types'
 import { LexerError } from '@demicodes/just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from '@demicodes/just-bash/types'
 import { resolveLimits } from '@demicodes/just-bash/limits'
-import { CommandRegistry, type CommandAsset, type CommandSpec } from './command'
+import { CommandRegistry, type CommandAsset, type Command } from './command'
 import { DEMI_PORTABLE_COMMANDS } from './portable-commands'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
@@ -27,7 +27,7 @@ import type { Host } from './host'
 import { HostBackedFileSystem, virtualDirectory, virtualFile, type VirtualFileSystemNode } from './host-fs'
 import { AgentSessionCommandStorage } from './storage'
 import { CommandArtifactStore } from './command-artifact-store'
-import { commandSpecToForkCommand } from './registered-command-adapter'
+import { commandToForkCommand } from './registered-command-adapter'
 
 export interface BashEnvironmentOptions {
   host: Host
@@ -218,12 +218,12 @@ export class BashEnvironment {
     return this.shells.get(shellId) ?? null
   }
 
-  registerCommand(spec: CommandSpec): void {
-    if (this.commands.get(spec.name)) return
-    this.commands.register(spec)
+  registerCommand(command: Command): void {
+    if (this.commands.get(command.name)) return
+    this.commands.register(command)
   }
 
-  registeredCommands(): CommandSpec[] {
+  registeredCommands(): Command[] {
     return this.commands.list()
   }
 
@@ -463,8 +463,8 @@ export class BashEnvironment {
       forkCommands.set(command.name, command)
     }
     const storage = new AgentSessionCommandStorage(this.host.store, commandScopeId)
-    for (const spec of this.commands.list()) {
-      forkCommands.set(spec.name, commandSpecToForkCommand(session, spec, storage))
+    for (const command of this.commands.list()) {
+      forkCommands.set(command.name, commandToForkCommand(session, command, storage))
     }
     const abortController = new AbortController()
     session.abortController = abortController

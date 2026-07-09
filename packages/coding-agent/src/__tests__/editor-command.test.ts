@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import {
-  isCommandGroup,
   BashEnvironment,
   type CommandIO,
   type CommandStorage,
@@ -305,15 +304,15 @@ test('editor patch rolls back files when a later write fails', async () => {
     'second.txt': 'second\n',
   })
   const command = createEditorCommand(host)
-  const patch = command.subcommands.find((subcommand) => subcommand.name === 'patch')
-  if (!patch || isCommandGroup(patch)) throw new Error('missing editor patch command')
+  const patch = command.subcommands?.find((subcommand) => subcommand.name === 'patch')
+  if (!patch?.run) throw new Error('missing editor patch command')
   const output = commandOutput()
 
   const result = await patch.run({
     argv: ['editor', 'patch'],
     parsed: {
-      subcommand: 'patch',
-      path: ['patch'],
+      path: ['editor', 'patch'],
+      help: false,
       json: false,
       values: {
         patch:
