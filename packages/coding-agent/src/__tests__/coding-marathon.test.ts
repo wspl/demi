@@ -35,7 +35,7 @@ const model: ModelSelection = {
   thinking: null,
 }
 
-test('coding agent completes an editor/todo workflow through shell session tools', async () => {
+test('coding agent completes an demi/todo workflow through shell session tools', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-marathon-'))
   const host = new LocalHost(root)
   const harness = createCodingAgentHarness({ host })
@@ -46,7 +46,7 @@ test('coding agent completes an editor/todo workflow through shell session tools
     [
       events.toolCall('create-file', 'shell_exec', {
         timeoutMs: 1_000,
-        script: "editor create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
+        script: "demi create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
       }),
     ],
     (request: InferenceRequest) => {
@@ -63,7 +63,7 @@ test('coding agent completes an editor/todo workflow through shell session tools
         events.toolCall('edit-file', 'shell_exec', {
           shellId: result.shellId,
           timeoutMs: 1_000,
-          script: 'editor edit src/app.ts --old "1" --new "2"',
+          script: 'demi edit src/app.ts --old "1" --new "2"',
         }),
       ]
     },
@@ -103,7 +103,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
       events.toolCall('start-workflow', 'shell_exec', {
         timeoutMs: 1_000,
         script: [
-          "editor create note.txt <<'EOF'",
+          "demi create note.txt <<'EOF'",
           'first turn',
           'EOF',
           'todo add "carry state" --json',
@@ -208,8 +208,8 @@ test('coding agent iterates from a failing project test to a passing fix', async
         timeoutMs: 1_000,
         script: [
           'mkdir -p src',
-          "editor create src/todo.ts <<'EOF'\nexport function addTodo(items: string[], text: string): string[] {\n  return items\n}\nEOF",
-          "editor create src/todo.test.ts <<'EOF'\nimport { expect, test } from 'bun:test'\nimport { addTodo } from './todo'\n\ntest('adds a todo item', () => {\n  expect(addTodo([], 'ship tests')).toEqual(['ship tests'])\n})\nEOF",
+          "demi create src/todo.ts <<'EOF'\nexport function addTodo(items: string[], text: string): string[] {\n  return items\n}\nEOF",
+          "demi create src/todo.test.ts <<'EOF'\nimport { expect, test } from 'bun:test'\nimport { addTodo } from './todo'\n\ntest('adds a todo item', () => {\n  expect(addTodo([], 'ship tests')).toEqual(['ship tests'])\n})\nEOF",
         ].join('\n'),
       }),
     ],
@@ -234,7 +234,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
         events.toolCall('fix-source', 'shell_exec', {
           shellId: result.shellId,
           timeoutMs: 1_000,
-          script: 'editor edit src/todo.ts --old "return items" --new "return [...items, text]"',
+          script: 'demi edit src/todo.ts --old "return items" --new "return [...items, text]"',
         }),
       ]
     },
