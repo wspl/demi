@@ -65,16 +65,18 @@
       "name": "@demicodes/host-local",
       "version": "0.1.0",
       "dependencies": {
+        "@demicodes/agent": "workspace:*",
+        "@demicodes/provider": "workspace:*",
         "@demicodes/shell": "workspace:*",
         "@demicodes/utils": "workspace:*",
       },
     },
     "packages/just-bash/packages/just-bash": {
       "name": "@demicodes/just-bash",
-      "version": "3.0.1",
+      "version": "3.0.1-demi.2",
       "bin": {
-        "just-bash": "./dist/bin/just-bash.js",
-        "just-bash-shell": "./dist/bin/shell/shell.js",
+        "just-bash": "dist/bin/just-bash.js",
+        "just-bash-shell": "dist/bin/shell/shell.js",
       },
       "dependencies": {
         "diff": "^8.0.2",
