@@ -14,16 +14,36 @@ import {
   type HostStore,
 } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
-import { createCodingCommandRegistry, createEditorCommand } from '../index'
+import { bytesToBase64, encodeUtf8 } from '@demicodes/utils'
+import { createCodingCommandRegistry, createDemiCommand } from '../index'
 
-test('editor create writes a new file from heredoc content', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi read returns a text file as text', async () => {
+  const { env } = await createDemiEnvironment()
+  const created = await env.exec({ script: "demi create note.txt <<'EOF'\nhello world\nEOF" })
+  const read = await env.exec({ shellId: created.shellId, script: 'demi read note.txt' })
+  expect(read.stdout.delta).toBe('hello world\n')
+})
+
+test('demi read returns an image file as a base64 image asset', async () => {
+  const { env } = await createDemiEnvironment()
+  // Image detection is by extension; the content only needs to round-trip through base64.
+  const created = await env.exec({ script: "demi create shot.png <<'EOF'\nPNGDATA\nEOF" })
+  const read = await env.exec({ shellId: created.shellId, script: 'demi read shot.png' })
+  if (read.status !== 'exited') throw new Error('expected exited result')
+  expect(read.assets).toEqual([
+    { type: 'image', mediaType: 'image/png', data: bytesToBase64(encodeUtf8('PNGDATA\n')) },
+  ])
+  expect(read.stdout.delta).toContain('Read image shot.png (image/png,')
+})
+
+test('demi create writes a new file from heredoc content', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create src/foo.txt <<'EOF'\nhello\nEOF",
+    script: "demi create src/foo.txt <<'EOF'\nhello\nEOF",
   })
   expect(created.stdout.delta).toBe('Created src/foo.txt\n')
-  expect(editorDiffs(created)[0]).toMatchObject({
+  expect(fileDiffs(created)[0]).toMatchObject({
     type: 'file_diff',
     action: 'create',
     path: 'src/foo.txt',
@@ -32,27 +52,27 @@ test('editor create writes a new file from heredoc content', async () => {
     oldText: '',
     newText: 'hello\n',
   })
-  expect(String(editorDiffs(created)[0].unifiedDiff)).toContain('+++ b/src/foo.txt')
+  expect(String(fileDiffs(created)[0].unifiedDiff)).toContain('+++ b/src/foo.txt')
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat src/foo.txt' })
   expect(read.stdout.delta).toBe('hello\n')
 })
 
-test('editor allows paths outside default cwd when Host.fs allows them', async () => {
-  const parent = await mkdtemp(join(tmpdir(), 'demi-editor-boundary-'))
+test('demi allows paths outside default cwd when Host.fs allows them', async () => {
+  const parent = await mkdtemp(join(tmpdir(), 'demi-boundary-'))
   const defaultCwd = join(parent, 'default-cwd')
   await mkdir(defaultCwd)
   const host = new LocalHost(defaultCwd)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ editorHost: host }),
-    shellIdFactory: () => 'editor-boundary-shell',
+    commands: createCodingCommandRegistry({ demiHost: host }),
+    shellIdFactory: () => 'demi-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const absoluteOutside = join(parent, 'absolute-outside.txt')
   const absolute = await env.exec({
-    script: `editor create ${JSON.stringify(absoluteOutside)} <<'EOF'\nnope\nEOF`,
+    script: `demi create ${JSON.stringify(absoluteOutside)} <<'EOF'\nnope\nEOF`,
   })
   expect(absolute.status).toBe('exited')
   if (absolute.status !== 'exited') throw new Error('expected exited result')
@@ -61,7 +81,7 @@ test('editor allows paths outside default cwd when Host.fs allows them', async (
 
   const relative = await env.exec({
     shellId: absolute.shellId,
-    script: "editor create ../relative-outside.txt <<'EOF'\nnope\nEOF",
+    script: "demi create ../relative-outside.txt <<'EOF'\nnope\nEOF",
   })
   expect(relative.status).toBe('exited')
   if (relative.status !== 'exited') throw new Error('expected exited result')
@@ -69,25 +89,25 @@ test('editor allows paths outside default cwd when Host.fs allows them', async (
   await expect(readFile(join(parent, 'relative-outside.txt'), 'utf8')).resolves.toBe('nope\n')
 })
 
-test('editor patch can modify paths outside default cwd when Host.fs allows them', async () => {
-  const parent = await mkdtemp(join(tmpdir(), 'demi-editor-patch-boundary-'))
+test('demi patch can modify paths outside default cwd when Host.fs allows them', async () => {
+  const parent = await mkdtemp(join(tmpdir(), 'demi-patch-boundary-'))
   const root = join(parent, 'default-cwd')
   await mkdir(root)
   const outsidePath = join(parent, 'outside.txt')
   const host = new LocalHost(root)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ editorHost: host }),
-    shellIdFactory: () => 'editor-patch-boundary-shell',
+    commands: createCodingCommandRegistry({ demiHost: host }),
+    shellIdFactory: () => 'demi-patch-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
   const created = await env.exec({
-    script: "editor create inside.txt <<'EOF'\ninside\nEOF",
+    script: "demi create inside.txt <<'EOF'\ninside\nEOF",
   })
   const patched = await env.exec({
     shellId: created.shellId,
-    script: `editor patch <<'PATCH'\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ ${outsidePath}\n@@ -0,0 +1 @@\n+outside\nPATCH`,
+    script: `demi patch <<'PATCH'\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ ${outsidePath}\n@@ -0,0 +1 @@\n+outside\nPATCH`,
   })
 
   expect(patched.status).toBe('exited')
@@ -99,16 +119,16 @@ test('editor patch can modify paths outside default cwd when Host.fs allows them
   await expect(readFile(outsidePath, 'utf8')).resolves.toBe('outside\n')
 })
 
-test('editor edit replaces exact text and fails on ambiguous matches', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi edit replaces exact text and fails on ambiguous matches', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create file.txt <<'EOF'\none\ntwo\ntwo\nEOF",
+    script: "demi create file.txt <<'EOF'\none\ntwo\ntwo\nEOF",
   })
 
   const ambiguous = await env.exec({
     shellId: created.shellId,
-    script: 'editor edit file.txt --old two --new changed',
+    script: 'demi edit file.txt --old two --new changed',
   })
   if (ambiguous.status !== 'exited') throw new Error('expected exited result')
   expect(ambiguous.exitCode).toBe(1)
@@ -116,10 +136,10 @@ test('editor edit replaces exact text and fails on ambiguous matches', async () 
 
   const edited = await env.exec({
     shellId: created.shellId,
-    script: 'editor edit file.txt --old two --new changed --occurrence 2',
+    script: 'demi edit file.txt --old two --new changed --occurrence 2',
   })
   expect(edited.stdout.delta).toBe('Edited file.txt\n')
-  expect(editorDiffs(edited)[0]).toMatchObject({
+  expect(fileDiffs(edited)[0]).toMatchObject({
     action: 'edit',
     path: 'file.txt',
     oldText: 'one\ntwo\ntwo\n',
@@ -130,16 +150,16 @@ test('editor edit replaces exact text and fails on ambiguous matches', async () 
   expect(read.stdout.delta).toBe('one\ntwo\nchanged\n')
 })
 
-test('editor edit uses context only when it disambiguates to one nearest match', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi edit uses context only when it disambiguates to one nearest match', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create context.txt <<'EOF'\ntarget\nmiddle\ntarget\nEOF",
+    script: "demi create context.txt <<'EOF'\ntarget\nmiddle\ntarget\nEOF",
   })
 
   const ambiguous = await env.exec({
     shellId: created.shellId,
-    script: 'editor edit context.txt --old target --new changed --context 2',
+    script: 'demi edit context.txt --old target --new changed --context 2',
   })
   if (ambiguous.status !== 'exited') throw new Error('expected exited result')
   expect(ambiguous.exitCode).toBe(1)
@@ -152,7 +172,7 @@ test('editor edit uses context only when it disambiguates to one nearest match',
 
   const edited = await env.exec({
     shellId: created.shellId,
-    script: 'editor edit context.txt --old target --new changed --context 3',
+    script: 'demi edit context.txt --old target --new changed --context 3',
   })
   expect(edited.stdout.delta).toBe('Edited context.txt\n')
 
@@ -160,16 +180,16 @@ test('editor edit uses context only when it disambiguates to one nearest match',
   expect(read.stdout.delta).toBe('target\nmiddle\nchanged\n')
 })
 
-test('editor edit rejects empty old text without modifying the file', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi edit rejects empty old text without modifying the file', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create empty-old.txt <<'EOF'\ncontent\nEOF",
+    script: "demi create empty-old.txt <<'EOF'\ncontent\nEOF",
   })
 
   const failed = await env.exec({
     shellId: created.shellId,
-    script: 'editor edit empty-old.txt --old "" --new changed',
+    script: 'demi edit empty-old.txt --old "" --new changed',
   })
   expect(failed.status).toBe('exited')
   if (failed.status !== 'exited') throw new Error('expected exited result')
@@ -180,19 +200,19 @@ test('editor edit rejects empty old text without modifying the file', async () =
   expect(unchanged.stdout.delta).toBe('content\n')
 })
 
-test('editor patch applies a unified diff', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi patch applies a unified diff', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create patch.txt <<'EOF'\none\ntwo\nEOF",
+    script: "demi create patch.txt <<'EOF'\none\ntwo\nEOF",
   })
 
   const patched = await env.exec({
     shellId: created.shellId,
-    script: "editor patch <<'PATCH'\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
+    script: "demi patch <<'PATCH'\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
-  expect(editorDiffs(patched)[0]).toMatchObject({
+  expect(fileDiffs(patched)[0]).toMatchObject({
     action: 'patch',
     path: 'patch.txt',
     oldText: 'one\ntwo\n',
@@ -203,17 +223,17 @@ test('editor patch applies a unified diff', async () => {
   expect(read.stdout.delta).toBe('one\nthree\n')
 })
 
-test('editor patch accepts unified diff headers with timestamps', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi patch accepts unified diff headers with timestamps', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create timed.txt <<'EOF'\nold\nEOF",
+    script: "demi create timed.txt <<'EOF'\nold\nEOF",
   })
 
   const patched = await env.exec({
     shellId: created.shellId,
     script:
-      "editor patch <<'PATCH'\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
+      "demi patch <<'PATCH'\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
 
@@ -221,21 +241,21 @@ test('editor patch accepts unified diff headers with timestamps', async () => {
   expect(read.stdout.delta).toBe('new\n')
 })
 
-test('editor patch applies multiple files and creates new files', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi patch applies multiple files and creates new files', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create existing.txt <<'EOF'\none\nEOF",
+    script: "demi create existing.txt <<'EOF'\none\nEOF",
   })
 
   const patched = await env.exec({
     shellId: created.shellId,
     script:
-      "editor patch <<'PATCH'\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
+      "demi patch <<'PATCH'\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 2 file(s)\n')
-  expect(editorDiffs(patched)).toHaveLength(2)
-  expect(editorDiffs(patched)[1]).toMatchObject({
+  expect(fileDiffs(patched)).toHaveLength(2)
+  expect(fileDiffs(patched)[1]).toMatchObject({
     action: 'patch',
     path: 'nested/new.txt',
     oldPath: null,
@@ -250,19 +270,19 @@ test('editor patch applies multiple files and creates new files', async () => {
   expect(added.stdout.delta).toBe('new\nfile\n')
 })
 
-test('editor patch deletes files with a /dev/null target', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi patch deletes files with a /dev/null target', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create doomed.txt <<'EOF'\nremove\nEOF",
+    script: "demi create doomed.txt <<'EOF'\nremove\nEOF",
   })
 
   const patched = await env.exec({
     shellId: created.shellId,
-    script: "editor patch <<'PATCH'\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
+    script: "demi patch <<'PATCH'\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
-  expect(editorDiffs(patched)[0]).toMatchObject({
+  expect(fileDiffs(patched)[0]).toMatchObject({
     action: 'delete',
     path: 'doomed.txt',
     oldPath: 'doomed.txt',
@@ -277,17 +297,17 @@ test('editor patch deletes files with a /dev/null target', async () => {
   expect(missing.exitCode).toBe(0)
 })
 
-test('editor patch validates all files before writing any changes', async () => {
-  const { env } = await createEditorEnvironment()
+test('demi patch validates all files before writing any changes', async () => {
+  const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "editor create first.txt <<'EOF'\nfirst\nEOF\neditor create second.txt <<'EOF'\nsecond\nEOF",
+    script: "demi create first.txt <<'EOF'\nfirst\nEOF\ndemi create second.txt <<'EOF'\nsecond\nEOF",
   })
 
   const failed = await env.exec({
     shellId: created.shellId,
     script:
-      "editor patch <<'PATCH'\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-wrong\n+changed\nPATCH",
+      "demi patch <<'PATCH'\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-wrong\n+changed\nPATCH",
   })
   expect(failed.status).toBe('exited')
   if (failed.status !== 'exited') throw new Error('expected exited result')
@@ -298,20 +318,20 @@ test('editor patch validates all files before writing any changes', async () => 
   expect(first.stdout.delta).toBe('first\n')
 })
 
-test('editor patch rolls back files when a later write fails', async () => {
+test('demi patch rolls back files when a later write fails', async () => {
   const host = new FailingWriteHost('/workspace', {
     'first.txt': 'first\n',
     'second.txt': 'second\n',
   })
-  const command = createEditorCommand(host)
+  const command = createDemiCommand(host)
   const patch = command.subcommands?.find((subcommand) => subcommand.name === 'patch')
-  if (!patch?.run) throw new Error('missing editor patch command')
+  if (!patch?.run) throw new Error('missing demi patch command')
   const output = commandOutput()
 
   const result = await patch.run({
-    argv: ['editor', 'patch'],
+    argv: ['demi', 'patch'],
     parsed: {
-      path: ['editor', 'patch'],
+      path: ['demi', 'patch'],
       help: false,
       json: false,
       values: {
@@ -332,26 +352,26 @@ test('editor patch rolls back files when a later write fails', async () => {
   expect(host.read('second.txt')).toBe('second\n')
 })
 
-async function createEditorEnvironment(): Promise<{ env: BashEnvironment }> {
-  const root = await mkdtemp(join(tmpdir(), 'demi-editor-'))
+async function createDemiEnvironment(): Promise<{ env: BashEnvironment }> {
+  const root = await mkdtemp(join(tmpdir(), 'demi-scratch-'))
   const host = new LocalHost(root)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ editorHost: host }),
-    shellIdFactory: () => 'editor-shell',
+    commands: createCodingCommandRegistry({ demiHost: host }),
+    shellIdFactory: () => 'demi-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
   return { env }
 }
 
-function editorDiffs(result: { status: string; commandMetadata?: Array<{ metadata: unknown }> }): Record<string, unknown>[] {
+function fileDiffs(result: { status: string; commandMetadata?: Array<{ metadata: unknown }> }): Record<string, unknown>[] {
   if (result.status !== 'exited') throw new Error('expected exited result')
   const metadata = result.commandMetadata?.[0]?.metadata
-  if (!isRecord(metadata) || metadata.type !== 'editor_file_diffs' || !Array.isArray(metadata.diffs)) {
-    throw new Error('missing editor file diff metadata')
+  if (!isRecord(metadata) || metadata.type !== 'file_diffs' || !Array.isArray(metadata.diffs)) {
+    throw new Error('missing demi file diff metadata')
   }
   return metadata.diffs.map((diff) => {
-    if (!isRecord(diff)) throw new Error('invalid editor diff metadata')
+    if (!isRecord(diff)) throw new Error('invalid demi diff metadata')
     return diff
   })
 }
@@ -391,7 +411,7 @@ class FailingWriteHost implements Host {
   readonly store: HostStore = new MemoryHostStore()
   readonly process: HostProcess = {
     spawn: async (): Promise<never> => {
-      throw new Error('Host.process.spawn must not be used by editor file operations')
+      throw new Error('Host.process.spawn must not be used by demi file operations')
     },
   }
 

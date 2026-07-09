@@ -64,7 +64,7 @@ test('e2e accept: LocalHost bridge materializes under stateDir; OS child + runCo
     await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
     await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
     expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'todo'))).toBe('.dispatch')
-    expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'editor'))).toBe('.dispatch')
+    expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'demi'))).toBe('.dispatch')
 
     const list = await server.runCommandLine(sessionId, 'todo', ['list'], { cwd, stdin: '' })
     expect(list.exitCode).toBe(0)
