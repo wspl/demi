@@ -19,6 +19,7 @@
     "@demicodes/provider-claude-code": "workspace:*",
     "@demicodes/provider-codex": "workspace:*",
     "@demicodes/provider-openai-api": "workspace:*",
+    "@demicodes/provider-grok-build": "workspace:*",
     "@demicodes/shell": "workspace:*",
     "@demicodes/web-ui": "workspace:*",
     "katex": "^0.17.0",

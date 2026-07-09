@@ -37,6 +37,7 @@
         "@demicodes/provider-anthropic-api": "workspace:*",
         "@demicodes/provider-claude-code": "workspace:*",
         "@demicodes/provider-codex": "workspace:*",
+        "@demicodes/provider-grok-build": "workspace:*",
         "@demicodes/provider-openai-api": "workspace:*",
         "@demicodes/shell": "workspace:*",
         "@demicodes/utils": "workspace:*",
@@ -157,6 +158,15 @@
         "@demicodes/shell": "workspace:*",
       },
     },
+    "packages/provider-grok-build": {
+      "name": "@demicodes/provider-grok-build",
+      "version": "0.1.0",
+      "dependencies": {
+        "@demicodes/core": "workspace:*",
+        "@demicodes/provider": "workspace:*",
+        "@demicodes/utils": "workspace:*",
+      },
+    },
     "packages/provider-openai-api": {
       "name": "@demicodes/provider-openai-api",
       "version": "0.1.0",
@@ -178,6 +188,7 @@
         "@demicodes/provider-anthropic-api": "workspace:*",
         "@demicodes/provider-claude-code": "workspace:*",
         "@demicodes/provider-codex": "workspace:*",
+        "@demicodes/provider-grok-build": "workspace:*",
         "@demicodes/provider-openai-api": "workspace:*",
         "@demicodes/shell": "workspace:*",
         "@demicodes/utils": "workspace:*",
@@ -208,6 +219,7 @@
         "@demicodes/provider-anthropic-api": "workspace:*",
         "@demicodes/provider-claude-code": "workspace:*",
         "@demicodes/provider-codex": "workspace:*",
+        "@demicodes/provider-grok-build": "workspace:*",
         "@demicodes/provider-openai-api": "workspace:*",
         "@demicodes/shell": "workspace:*",
         "@demicodes/utils": "workspace:*",
@@ -328,6 +340,8 @@
     "@demicodes/provider-claude-code": ["@demicodes/provider-claude-code@workspace:packages/provider-claude-code"],
 
     "@demicodes/provider-codex": ["@demicodes/provider-codex@workspace:packages/provider-codex"],
+
+    "@demicodes/provider-grok-build": ["@demicodes/provider-grok-build@workspace:packages/provider-grok-build"],
 
     "@demicodes/provider-openai-api": ["@demicodes/provider-openai-api@workspace:packages/provider-openai-api"],
 

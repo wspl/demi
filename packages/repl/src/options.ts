@@ -7,7 +7,7 @@ import { helpText } from './input-loop'
 import { writeLine } from './output'
 
 export interface ReplOptions {
-  provider: 'claude-code' | 'codex' | 'openai' | 'anthropic'
+  provider: 'claude-code' | 'codex' | 'openai' | 'anthropic' | 'grok-build'
   cwd: string
   modelId: string | null
   thinkingEffort: ThinkingEffort | null
@@ -15,6 +15,7 @@ export interface ReplOptions {
   openAIWireApi: OpenAIApiWireApi
   claudePath?: string
   codexHome?: string
+  grokHome?: string
   baseUrl?: string
   transport: CodexTransportMode
 }
@@ -28,6 +29,7 @@ export function parseArgs(args: string[]): ReplOptions {
   let serviceTierId: string | null = null
   let claudePath: string | undefined
   let codexHome: string | undefined = process.env.CODEX_HOME
+  let grokHome: string | undefined = process.env.GROK_HOME
   let baseUrl: string | undefined
   let openAIWireApi = parseOpenAIWireApi(process.env.DEMI_OPENAI_WIRE_API ?? 'responses')
   let transport: CodexTransportMode = 'auto'
@@ -53,6 +55,7 @@ export function parseArgs(args: string[]): ReplOptions {
     else if (arg === '--service-tier') serviceTierId = requiredValue(args, ++index, '--service-tier')
     else if (arg === '--claude-path') claudePath = requiredValue(args, ++index, '--claude-path')
     else if (arg === '--codex-home') codexHome = requiredValue(args, ++index, '--codex-home')
+    else if (arg === '--grok-home') grokHome = requiredValue(args, ++index, '--grok-home')
     else if (arg === '--base-url') baseUrl = requiredValue(args, ++index, '--base-url')
     else if (arg === '--openai-wire-api') openAIWireApi = parseOpenAIWireApi(requiredValue(args, ++index, '--openai-wire-api'))
     else if (arg === '--transport') transport = parseCodexTransport(requiredValue(args, ++index, '--transport'))
@@ -71,6 +74,7 @@ export function parseArgs(args: string[]): ReplOptions {
     openAIWireApi,
     claudePath,
     codexHome,
+    grokHome,
     baseUrl,
     transport,
   }
@@ -80,6 +84,7 @@ function envThinkingValue(provider: ReplOptions['provider']): string | null {
   if (provider === 'codex') return process.env.DEMI_CODEX_THINKING ?? process.env.DEMI_CLAUDE_CODE_THINKING ?? null
   if (provider === 'openai') return process.env.DEMI_OPENAI_THINKING ?? null
   if (provider === 'anthropic') return process.env.DEMI_ANTHROPIC_THINKING ?? null
+  if (provider === 'grok-build') return process.env.DEMI_GROK_BUILD_THINKING ?? null
   return process.env.DEMI_CLAUDE_CODE_THINKING ?? null
 }
 
@@ -87,12 +92,13 @@ function envThinkingSource(provider: ReplOptions['provider']): string {
   if (provider === 'codex' && process.env.DEMI_CODEX_THINKING !== undefined) return 'DEMI_CODEX_THINKING'
   if (provider === 'openai') return 'DEMI_OPENAI_THINKING'
   if (provider === 'anthropic') return 'DEMI_ANTHROPIC_THINKING'
+  if (provider === 'grok-build') return 'DEMI_GROK_BUILD_THINKING'
   return 'DEMI_CLAUDE_CODE_THINKING'
 }
 
 function parseProvider(value: string): ReplOptions['provider'] {
-  if (value === 'claude-code' || value === 'codex' || value === 'openai' || value === 'anthropic') return value
-  throw new Error('--provider must be one of: claude-code, codex, openai, anthropic')
+  if (value === 'claude-code' || value === 'codex' || value === 'openai' || value === 'anthropic' || value === 'grok-build') return value
+  throw new Error('--provider must be one of: claude-code, codex, openai, anthropic, grok-build')
 }
 
 function parseOpenAIWireApi(value: string): OpenAIApiWireApi {
@@ -124,13 +130,14 @@ export function printUsage(): void {
 
 Options:
   --cwd <path>             Working directory. Defaults to current directory.
-  --provider <id>          Provider: claude-code, codex, openai, anthropic. Defaults to claude-code.
+  --provider <id>          Provider: claude-code, codex, openai, anthropic, grok-build. Defaults to claude-code.
   --model <id>             Full model id. Defaults to the provider model catalog selection.
   --thinking <effort>      Provider-supported thinking effort id.
   --no-thinking            Do not request an explicit thinking effort. This is the default.
   --service-tier <id>      Provider-supported service tier id.
   --claude-path <path>     Path to claude CLI. Defaults to claude on PATH.
   --codex-home <path>      Codex home containing auth.json. Defaults to CODEX_HOME or ~/.codex.
+  --grok-home <path>       Grok home containing auth.json. Defaults to GROK_HOME or ~/.grok.
   --base-url <url>         Override the selected HTTP provider base URL.
   --openai-wire-api <api>  OpenAI wire API: responses, chat-completions. Defaults to responses.
   --transport <mode>       Codex transport: auto, sse, websocket. Defaults to auto.

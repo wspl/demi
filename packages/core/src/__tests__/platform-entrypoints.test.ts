@@ -20,6 +20,7 @@ const workspaceEntries = new Map<string, string>([
   ['@demicodes/provider-codex', 'packages/provider-codex/src/index.ts'],
   ['@demicodes/provider-openai-api', 'packages/provider-openai-api/src/index.ts'],
   ['@demicodes/provider-anthropic-api', 'packages/provider-anthropic-api/src/index.ts'],
+  ['@demicodes/provider-grok-build', 'packages/provider-grok-build/src/index.ts'],
   ['@demicodes/host-local', 'packages/host-local/src/index.ts'],
   ['@demicodes/repl', 'packages/repl/src/index.ts'],
   ['@demicodes/agent-eval', 'packages/agent-eval/src/index.ts'],
@@ -37,6 +38,7 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demicodes/provider-codex', 'packages/provider-codex'],
   ['@demicodes/provider-openai-api', 'packages/provider-openai-api'],
   ['@demicodes/provider-anthropic-api', 'packages/provider-anthropic-api'],
+  ['@demicodes/provider-grok-build', 'packages/provider-grok-build'],
   ['@demicodes/repl', 'packages/repl'],
   ['@demicodes/agent-eval', 'packages/agent-eval'],
 ])
@@ -53,6 +55,7 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/provider-codex', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   ['@demicodes/provider-openai-api', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   ['@demicodes/provider-anthropic-api', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
+  ['@demicodes/provider-grok-build', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   [
     '@demicodes/repl',
     [
@@ -64,6 +67,7 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
       '@demicodes/provider-anthropic-api',
       '@demicodes/provider-claude-code',
       '@demicodes/provider-codex',
+      '@demicodes/provider-grok-build',
       '@demicodes/provider-openai-api',
       '@demicodes/shell',
       '@demicodes/utils',
@@ -80,6 +84,7 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
       '@demicodes/provider-anthropic-api',
       '@demicodes/provider-claude-code',
       '@demicodes/provider-codex',
+      '@demicodes/provider-grok-build',
       '@demicodes/provider-openai-api',
       '@demicodes/shell',
       '@demicodes/utils',
@@ -106,11 +111,11 @@ const forbiddenSourcePatterns = [
 ] as const
 
 const neutralPackageLeakPatterns = [
-  ['concrete provider package reference', /@demicodes\/provider-(?:claude-code|codex|openai-api|anthropic-api)\b|provider-(?:claude-code|codex|openai-api|anthropic-api)/i],
-  ['concrete provider implementation class', /\b(?:ClaudeCodeProvider|CodexProvider|OpenAIApiProvider|AnthropicApiProvider)\b/],
+  ['concrete provider package reference', /@demicodes\/provider-(?:claude-code|codex|openai-api|anthropic-api|grok-build)\b|provider-(?:claude-code|codex|openai-api|anthropic-api|grok-build)/i],
+  ['concrete provider implementation class', /\b(?:ClaudeCodeProvider|CodexProvider|OpenAIApiProvider|AnthropicApiProvider|GrokBuildProvider)\b/],
   ['concrete catalog source label', /\b(?:codex-backend|models\.dev)\b/i],
-  ['provider backend identifier', /\b(?:backend-api|chatgpt\.com|api\.openai\.com|responses_websockets)\b/i],
-  ['concrete provider product name', /\bClaude Code\b|\bOpenAI Codex\b/i],
+  ['provider backend identifier', /\b(?:backend-api|chatgpt\.com|api\.openai\.com|cli-chat-proxy\.grok\.com|responses_websockets)\b/i],
+  ['concrete provider product name', /\bClaude Code\b|\bOpenAI Codex\b|\bGrok Build\b/i],
 ] as const
 
 const staticSpecifierPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g
@@ -198,6 +203,7 @@ test('package manifests preserve layering boundaries', async () => {
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-codex')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-openai-api')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-anthropic-api')
+    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-grok-build')
   }
 
   const claudeProviderDependencies = packageDependencyNames(manifests.get('@demicodes/provider-claude-code'))
@@ -212,6 +218,7 @@ test('package manifests preserve layering boundaries', async () => {
     '@demicodes/provider-codex',
     '@demicodes/provider-openai-api',
     '@demicodes/provider-anthropic-api',
+    '@demicodes/provider-grok-build',
     '@demicodes/repl',
     '@demicodes/web',
   ]) {
@@ -361,6 +368,15 @@ test('public root exports do not expose provider internals or testing helpers', 
       [
         ['wildcard export', /\bexport\s+\*\s+from\b/],
         ['provider class export', /\bAnthropicApiProvider\b/],
+      ],
+    ],
+    [
+      'packages/provider-grok-build/src/index.ts',
+      [
+        ['wildcard export', /\bexport\s+\*\s+from\b/],
+        ['internal module export', /['"]\.\/(?:chat|headers)['"]/],
+        ['provider class export', /\bGrokBuildProvider\b/],
+        ['auth store helper export', /\b(?:FileGrokAuthStore\b|StaticGrokAuthStore\b|GrokAuthStore\b|buildGrokBuildHeaders)\b/],
       ],
     ],
   ] as const
