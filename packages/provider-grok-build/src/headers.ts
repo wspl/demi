@@ -42,7 +42,7 @@ function readGrokCliVersion(grokHome: string): string | null {
   try {
     const parsed = JSON.parse(readFileSync(join(grokHome, 'version.json'), 'utf8')) as unknown
     if (!isRecord(parsed)) return null
-    return nonEmptyString(parsed.version)
+    return nonEmptyString(parsed.version) ?? null
   } catch {
     return null
   }
