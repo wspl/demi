@@ -1,12 +1,55 @@
-import { asError, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@demicodes/utils'
+import { asError, bytesToBase64, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@demicodes/utils'
 import { z } from 'zod'
-import type { Command, Host } from '@demicodes/shell'
+import type { Command, CommandAsset, Host } from '@demicodes/shell'
 
-export function createEditorCommand(host: Host): Command {
+export function createDemiCommand(host: Host): Command {
   return {
-    name: 'editor',
-    summary: 'Create, edit, and patch files.',
+    name: 'demi',
+    summary: 'Read, create, edit, and patch workspace files (text and images).',
     subcommands: [
+      {
+        name: 'read',
+        summary: 'Read a file. Text is returned as text; images are returned as viewable images.',
+        effects: 'reads one file; does not modify anything',
+        successOutput: 'prints text file contents to stdout, or returns an image file as a viewable image',
+        failureOutput: 'writes the reason to stderr and exits non-zero if the path is missing or unreadable',
+        input: {
+          path: z.string().describe('File path to read'),
+        },
+        positionals: ['path'],
+        examples: ['demi read src/foo.ts', 'demi read assets/frame.png'],
+        run: async ({ parsed, cwd, io }) => {
+          const path = String(parsed.values.path)
+          const pathError = pathValidationError(path)
+          if (pathError) {
+            await io.stderr(`${pathError}\n`)
+            return { exitCode: 1 }
+          }
+
+          const mediaType = imageMediaTypeForPath(path)
+          if (mediaType) {
+            let bytes: Uint8Array
+            try {
+              bytes = await host.fs.readFile(path, { cwd })
+            } catch (error) {
+              await io.stderr(`${errorMessage(error)}\n`)
+              return { exitCode: 1 }
+            }
+            const asset: CommandAsset = { type: 'image', mediaType, data: bytesToBase64(bytes) }
+            await io.asset(asset)
+            await io.stdout(`Read image ${path} (${mediaType}, ${bytes.length} bytes)\n`)
+            return { exitCode: 0 }
+          }
+
+          const read = await readFile(host, cwd, path)
+          if (read.exitCode !== 0) {
+            await io.stderr(read.stderr)
+            return { exitCode: read.exitCode }
+          }
+          await io.stdout(read.stdout)
+          return { exitCode: 0 }
+        },
+      },
       {
         name: 'create',
         summary: 'Create a new file. Fails if the file exists.',
@@ -20,8 +63,8 @@ export function createEditorCommand(host: Host): Command {
         positionals: ['path'],
         stdinField: 'content',
         examples: [
-          "editor create src/foo.ts <<'EOF'\nexport const foo = 1\nEOF",
-          "editor create README.md <<'EOF'\n# Project\nEOF",
+          "demi create src/foo.ts <<'EOF'\nexport const foo = 1\nEOF",
+          "demi create README.md <<'EOF'\n# Project\nEOF",
         ],
         run: async ({ parsed, cwd, io }) => {
           const path = String(parsed.values.path)
@@ -51,7 +94,7 @@ export function createEditorCommand(host: Host): Command {
           await io.stdout(`Created ${path}\n`)
           return {
             exitCode: 0,
-            metadata: editorDiffMetadata([fileDiffMetadata('create', null, path, '', content)]),
+            metadata: fileDiffsMetadata([fileDiffMetadata('create', null, path, '', content)]),
           }
         },
       },
@@ -70,8 +113,8 @@ export function createEditorCommand(host: Host): Command {
         },
         positionals: ['path'],
         examples: [
-          'editor edit src/foo.ts --old foo --new bar',
-          'editor edit src/foo.ts --old "old text" --new "new text" --occurrence 2',
+          'demi edit src/foo.ts --old foo --new bar',
+          'demi edit src/foo.ts --old "old text" --new "new text" --occurrence 2',
         ],
         run: async ({ parsed, cwd, io }) => {
           const path = String(parsed.values.path)
@@ -109,7 +152,7 @@ export function createEditorCommand(host: Host): Command {
           await io.stdout(`Edited ${path}\n`)
           return {
             exitCode: 0,
-            metadata: editorDiffMetadata([fileDiffMetadata('edit', path, path, read.stdout, content)]),
+            metadata: fileDiffsMetadata([fileDiffMetadata('edit', path, path, read.stdout, content)]),
           }
         },
       },
@@ -124,8 +167,8 @@ export function createEditorCommand(host: Host): Command {
         },
         stdinField: 'patch',
         examples: [
-          "editor patch <<'PATCH'\n--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new\nPATCH",
-          "editor patch <<'PATCH'\n--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1 @@\n+export const created = true\nPATCH",
+          "demi patch <<'PATCH'\n--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new\nPATCH",
+          "demi patch <<'PATCH'\n--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1 @@\n+export const created = true\nPATCH",
         ],
         run: async ({ parsed, cwd, io }) => {
           let patches: FilePatch[]
@@ -146,7 +189,7 @@ export function createEditorCommand(host: Host): Command {
           await io.stdout(`Patched ${patches.length} file(s)\n`)
           return {
             exitCode: 0,
-            metadata: editorDiffMetadata(operations.map(operationDiffMetadata)),
+            metadata: fileDiffsMetadata(operations.map(operationDiffMetadata)),
           }
         },
       },
@@ -492,6 +535,20 @@ function pathValidationError(path: string): string | null {
   return null
 }
 
+const IMAGE_MEDIA_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+}
+
+// Images `demi read` returns as viewable image blocks; everything else is read as text.
+function imageMediaTypeForPath(path: string): string | null {
+  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+  return IMAGE_MEDIA_TYPES[ext] ?? null
+}
+
 function stripDiffPathMetadata(rawPath: string): string {
   const trimmed = rawPath.trim()
   const tabIndex = trimmed.indexOf('\t')
@@ -519,12 +576,12 @@ function arraysEqual(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
-interface EditorCommandMetadata {
-  type: 'editor_file_diffs'
-  diffs: EditorFileDiffMetadata[]
+interface FileDiffsMetadata {
+  type: 'file_diffs'
+  diffs: FileDiffMetadata[]
 }
 
-interface EditorFileDiffMetadata {
+interface FileDiffMetadata {
   type: 'file_diff'
   action: 'create' | 'edit' | 'patch' | 'delete'
   path: string
@@ -535,11 +592,11 @@ interface EditorFileDiffMetadata {
   unifiedDiff: string
 }
 
-function editorDiffMetadata(diffs: EditorFileDiffMetadata[]): EditorCommandMetadata {
-  return { type: 'editor_file_diffs', diffs }
+function fileDiffsMetadata(diffs: FileDiffMetadata[]): FileDiffsMetadata {
+  return { type: 'file_diffs', diffs }
 }
 
-function operationDiffMetadata(operation: PatchOperation): EditorFileDiffMetadata {
+function operationDiffMetadata(operation: PatchOperation): FileDiffMetadata {
   if (operation.type === 'delete') {
     return fileDiffMetadata('delete', operation.oldPath, null, operation.original, '')
   }
@@ -547,12 +604,12 @@ function operationDiffMetadata(operation: PatchOperation): EditorFileDiffMetadat
 }
 
 function fileDiffMetadata(
-  action: EditorFileDiffMetadata['action'],
+  action: FileDiffMetadata['action'],
   oldPath: string | null,
   newPath: string | null,
   oldText: string,
   newText: string,
-): EditorFileDiffMetadata {
+): FileDiffMetadata {
   const path = newPath ?? oldPath
   if (!path) throw new Error('Missing diff path')
   return {
