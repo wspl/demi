@@ -642,6 +642,8 @@ function stringifyUserContent(content: UserContentBlock): string {
       return content.text
     case 'image':
       return content.source.type === 'url' ? content.source.url : content.source.mediaType
+    case 'video':
+      return content.source.type === 'url' ? content.source.url : content.source.mediaType
     case 'document':
       return `${content.source.fileName} ${content.source.mediaType}`
     case 'reference':
@@ -654,6 +656,8 @@ function stringifyToolResult(content: ToolResultContentBlock): string {
     case 'text':
       return content.text
     case 'image':
+      return content.source.mediaType
+    case 'video':
       return content.source.mediaType
   }
 }

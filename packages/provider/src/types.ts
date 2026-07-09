@@ -174,6 +174,10 @@ export interface ProviderModel {
   outputLimit: number | null
   supportsTools: boolean | null
   supportsAttachments: boolean | null
+  /** Whether the model accepts native video input (not frame extraction). Most models
+   *  (all current Anthropic/Claude Code models) do not — their API has no video block.
+   *  Optional: unset/undefined means "no video", so existing catalogs need no change. */
+  supportsVideo?: boolean | null
   supportsReasoning: boolean | null
   supportedThinkingEfforts: ThinkingEffort[] | null
   defaultThinkingEffort: ThinkingEffort | null

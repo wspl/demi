@@ -190,6 +190,9 @@ function userContentToClaude(content: UserContentBlock[]): unknown[] {
   return content.map((block) => {
     if (block.type === 'text') return { type: 'text', text: block.text }
     if (block.type === 'image') return { type: 'image', source: imageSourceToClaude(block.source) }
+    // Claude's API has no video content type; the model catalog marks video unsupported so
+    // videos never get attached here, but degrade defensively rather than emit a bad block.
+    if (block.type === 'video') return { type: 'text', text: '[video]' }
     if (block.type === 'document') return documentSourceToClaude(block.source)
     return { type: 'text', text: block.reference }
   })
@@ -222,6 +225,8 @@ function toolResultToClaudeContent(item: Extract<InferenceItem, { type: 'tool_re
 
 function toolResultBlockToClaude(block: ToolResultContentBlock): unknown {
   if (block.type === 'text') return { type: 'text', text: block.text }
+  // Claude has no video content type (catalog marks it unsupported); degrade defensively.
+  if (block.type === 'video') return { type: 'text', text: `[video:${block.source.mediaType}]` }
   return { type: 'image', source: { type: 'base64', media_type: block.source.mediaType, data: block.source.data } }
 }
 
@@ -247,7 +252,7 @@ function documentSourceToClaude(source: DocumentSource): unknown {
 }
 
 function toolResultToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[image:${block.source.mediaType}]`)).join('\n')
+  return output.map((block) => (block.type === 'text' ? block.text : `[${block.type}:${block.source.mediaType}]`)).join('\n')
 }
 
 function bytesToBase64(data: Uint8Array): string {
