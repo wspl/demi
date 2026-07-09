@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { createInterface } from 'node:readline'
+import process from 'node:process'
 import type { InferenceRequest } from '@demicodes/provider'
 import { buildClaudeArgs, buildClaudeEnv } from './cli'
 import { createClaudeWireLog, type ClaudeWireLog } from './wire-log'
@@ -32,16 +33,21 @@ export interface ClaudeTransportFactory {
 
 export interface ClaudeCliTransportFactoryOptions {
   claudePath?: string
+  /** Resolve OAuth token for CLAUDE_CODE_OAUTH_TOKEN env overlay (multi-cred). */
+  resolveOAuthAccessToken?: () => Promise<string | null>
 }
 
 export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   private readonly claudePath: string
+  private readonly resolveOAuthAccessToken: (() => Promise<string | null>) | null
 
   constructor(options: ClaudeCliTransportFactoryOptions | string = {}) {
     if (typeof options === 'string') {
       this.claudePath = options
+      this.resolveOAuthAccessToken = null
     } else {
       this.claudePath = options.claudePath ?? 'claude'
+      this.resolveOAuthAccessToken = options.resolveOAuthAccessToken ?? null
     }
   }
 
@@ -55,9 +61,10 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
       cwd: request.cwd,
       args,
     })
+    const oauthAccessToken = this.resolveOAuthAccessToken ? await this.resolveOAuthAccessToken() : null
     const child = spawn(this.claudePath, args, {
       cwd: resolveSpawnCwd(request.cwd),
-      env: buildClaudeEnv(),
+      env: buildClaudeEnv(process.env, { oauthAccessToken }),
       stdio: ['pipe', 'pipe', 'pipe'],
     }) as ChildProcessWithoutNullStreams
 
