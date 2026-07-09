@@ -176,7 +176,8 @@ export function toShellToolResult(
   const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
   if (result.status === 'exited' && result.assets) {
     for (const asset of result.assets) {
-      output.push({ type: 'image', source: { mediaType: asset.mediaType, data: asset.data } })
+      const source = { mediaType: asset.mediaType, data: asset.data }
+      output.push(asset.type === 'video' ? { type: 'video', source } : { type: 'image', source })
     }
   }
   return {

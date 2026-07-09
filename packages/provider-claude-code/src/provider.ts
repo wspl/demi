@@ -470,12 +470,14 @@ function isControlResponseFor(value: unknown, requestId: string): boolean {
 }
 
 function toolResultContentToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[image:${block.source.mediaType}]`)).join('\n')
+  return output.map((block) => (block.type === 'text' ? block.text : `[${block.type}:${block.source.mediaType}]`)).join('\n')
 }
 
 function toolResultContentToMcp(output: ToolResultContentBlock[]): Array<Record<string, unknown>> {
   return output.map((block) => {
     if (block.type === 'text') return { type: 'text', text: block.text }
+    // Claude/MCP has no video content type; degrade defensively (catalog marks video unsupported).
+    if (block.type === 'video') return { type: 'text', text: `[video:${block.source.mediaType}]` }
     // block.source.data is already a base64 string (Base64ImageSource); MCP image
     // content wants base64 in `data`, so pass it through — re-encoding would double it.
     return {
