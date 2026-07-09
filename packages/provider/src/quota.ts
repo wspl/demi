@@ -71,8 +71,14 @@ export interface ProviderQuotaProbeOptions {
 }
 
 export interface ProviderQuotaObserveInput {
-  headers: Headers
+  /** HTTP response headers when the vendor exposes quota there. */
+  headers?: Headers
   status?: number
+  /**
+   * Vendor-specific envelope (e.g. Claude stream-json message with `rate_limits`).
+   * Used when there is no raw HTTP Response (CLI transport).
+   */
+  body?: unknown
 }
 
 export interface ProviderQuota {

@@ -8,6 +8,7 @@ export {
   createClaudeCodeQuota,
   mapClaudeUsagePayload,
   observeClaudeRateLimitHeaders,
+  observeClaudeStreamBody,
   type ClaudeCodeQuotaOptions,
 } from './quota'
 export { resolveClaudeCodeOAuthAccess, type ClaudeCodeOAuthAccess } from './oauth'

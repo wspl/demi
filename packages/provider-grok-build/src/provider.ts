@@ -7,6 +7,7 @@ import {
   type InferenceRequest,
   type Provider,
   type ProviderEvent,
+  type ProviderQuota,
   type ProviderSelection,
 } from '@demicodes/provider'
 import {
@@ -40,6 +41,7 @@ interface GrokBuildRuntimeOptions {
   authStore: GrokAuthStore
   headers?: Record<string, string>
   fetch: GrokBuildFetch
+  quota?: ProviderQuota
 }
 
 export class GrokBuildHttpError extends Error {
@@ -94,6 +96,12 @@ export class GrokBuildProvider implements AgentProvider {
           signal: request.cancel,
         })
 
+        try {
+          this.options.quota?.observeResponse?.({ headers: response.headers, status: response.status })
+        } catch {
+          // Quota observation must never break inference.
+        }
+
         if (response.status === 401 && !forceRefresh) {
           forceRefresh = true
           continue
@@ -123,6 +131,14 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
   const authStore = options.authStore ?? new FileGrokAuthStore({ grokHome: options.grokHome })
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_GROK_BUILD_BASE_URL)
   const fetchImpl = options.fetch ?? fetch
+  const quota = createGrokBuildQuota({
+    providerId: id,
+    grokHome: options.grokHome,
+    baseUrl,
+    clientVersion: options.clientVersion,
+    authStore,
+    fetch: fetchImpl as GrokBuildFetch,
+  })
   const runtimeOptions: GrokBuildRuntimeOptions = {
     baseUrl,
     grokHome: options.grokHome,
@@ -130,20 +146,14 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
     authStore,
     headers: options.headers,
     fetch: fetchImpl,
+    quota,
   }
 
   return defineProvider({
     id,
     displayName,
     auth: { status: () => authStore.status() },
-    quota: createGrokBuildQuota({
-      providerId: id,
-      grokHome: options.grokHome,
-      baseUrl,
-      clientVersion: options.clientVersion,
-      authStore,
-      fetch: fetchImpl as GrokBuildFetch,
-    }),
+    quota,
     state: () => ({
       status: 'ready',
       message: 'Uses Grok CLI OAuth session (~/.grok/auth.json) via cli-chat-proxy',

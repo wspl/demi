@@ -10,6 +10,7 @@ import {
   type ModelPolicy,
   type Provider,
   type ProviderEvent,
+  type ProviderQuota,
 } from '@demicodes/provider'
 import { coldStartInputMessages, controlResponse, inferenceItemToClaudeMessage, toolResultsToClaudeMessage } from './jsonl'
 import { listClaudeCodeModels } from './models'
@@ -27,6 +28,8 @@ export interface ClaudeCodeProviderOptions {
 export interface ClaudeCodeRuntimeOptions {
   transportFactory?: ClaudeTransportFactory
   claudePath?: string
+  /** Shared with the public Provider shell so stream messages can update quota. */
+  quota?: ProviderQuota
 }
 
 export interface ClaudeCodeProviderConfig {
@@ -55,11 +58,21 @@ interface ActiveClaudeRun {
 
 export class ClaudeCodeProvider implements AgentProvider {
   private readonly transportFactory: ClaudeTransportFactory
+  private readonly quota: ProviderQuota | null
   private active: ActiveClaudeRun | null = null
 
   constructor(options: ClaudeCodeRuntimeOptions = {}) {
     this.transportFactory =
       options.transportFactory ?? new ClaudeCliTransportFactory({ claudePath: options.claudePath })
+    this.quota = options.quota ?? null
+  }
+
+  private observeQuotaFromMessage(message: unknown): void {
+    try {
+      this.quota?.observeResponse?.({ body: message })
+    } catch {
+      // Quota observation must never break inference.
+    }
   }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
@@ -102,6 +115,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         }
 
         const raw = next.value
+        this.observeQuotaFromMessage(raw)
         const ignoreAssistantContent = active.hasStreamed && isMessageType(raw, 'assistant')
         const mapped = mapClaudeStdoutMessage(raw, {
           ignoreAssistantContent,
@@ -414,15 +428,17 @@ export class ClaudeCodeProvider implements AgentProvider {
 export function createClaudeCodeProvider(options: ClaudeCodeProviderOptions = {}): Provider {
   const id = options.id ?? 'claude-code'
   const displayName = options.displayName ?? 'Claude Code'
+  const quota = createClaudeCodeQuota({ providerId: id })
   const runtimeOptions: ClaudeCodeRuntimeOptions = {
     claudePath: options.claudePath,
+    quota,
   }
 
   return defineProvider({
     id,
     displayName,
     auth: { status: () => ({ status: 'unknown', message: 'Auth is checked when a Claude Code request runs' }) },
-    quota: createClaudeCodeQuota({ providerId: id }),
+    quota,
     state: () => ({ status: 'unknown', message: 'Runtime is checked when a Claude Code request runs' }),
     listModels: async () => {
       const catalog = await listClaudeCodeModels()

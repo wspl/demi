@@ -58,8 +58,29 @@ export function createClaudeCodeQuota(options: ClaudeCodeQuotaOptions = {}): Pro
       const payload = await response.json()
       return mapClaudeUsagePayload(payload, access)
     },
-    observe: ({ headers }) => observeClaudeRateLimitHeaders(headers),
+    observe: ({ headers, body }) => {
+      if (headers) {
+        const fromHeaders = observeClaudeRateLimitHeaders(headers)
+        if (fromHeaders) return fromHeaders
+      }
+      if (body !== undefined) return observeClaudeStreamBody(body)
+      return null
+    },
   })
+}
+
+/** Claude CLI stream-json / status envelopes that embed `rate_limits`. */
+export function observeClaudeStreamBody(body: unknown): ProviderQuotaProbeResult | null {
+  if (!isRecord(body)) return null
+  const rateLimits = isRecord(body.rate_limits)
+    ? body.rate_limits
+    : isRecord(body.message) && isRecord(body.message.rate_limits)
+      ? body.message.rate_limits
+      : null
+  if (!rateLimits) return null
+  // Reuse payload mapper shape: five_hour / seven_day on the rate_limits object.
+  const partial = mapClaudeUsagePayload(rateLimits)
+  return partial.windows.length > 0 ? { windows: partial.windows, raw: rateLimits } : null
 }
 
 export function mapClaudeUsagePayload(
@@ -111,7 +132,8 @@ export function mapClaudeUsagePayload(
 }
 
 /** Map anthropic-ratelimit-unified-* headers into a coarse snapshot. */
-export function observeClaudeRateLimitHeaders(headers: Headers): ProviderQuotaProbeResult | null {
+export function observeClaudeRateLimitHeaders(headers: Headers | undefined): ProviderQuotaProbeResult | null {
+  if (!headers) return null
   const status = headers.get('anthropic-ratelimit-unified-status')
   const reset = headers.get('anthropic-ratelimit-unified-reset')
   const claim = headers.get('anthropic-ratelimit-unified-representative-claim')

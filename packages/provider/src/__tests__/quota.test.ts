@@ -24,7 +24,7 @@ test('createProviderQuota probes and caches latest', async () => {
       }
     },
     observe: ({ headers }) => {
-      const used = headers.get('x-used-percent')
+      const used = headers?.get('x-used-percent')
       if (used == null) return null
       return {
         windows: [{ id: 'rpm', usedPercent: Number(used), resetsAt: null }],

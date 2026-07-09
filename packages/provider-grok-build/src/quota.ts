@@ -108,7 +108,8 @@ export function mapGrokQuotaProbe(
 }
 
 /** Short-window chat ratelimits — not subscription monthly quota. */
-export function observeGrokRateLimitHeaders(headers: Headers): ProviderQuotaProbeResult | null {
+export function observeGrokRateLimitHeaders(headers: Headers | undefined): ProviderQuotaProbeResult | null {
+  if (!headers) return null
   const remReq = numberHeader(headers, 'x-ratelimit-remaining-requests')
   const limReq = numberHeader(headers, 'x-ratelimit-limit-requests')
   const remTok = numberHeader(headers, 'x-ratelimit-remaining-tokens')
