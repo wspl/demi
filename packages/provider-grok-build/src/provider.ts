@@ -26,6 +26,7 @@ export interface GrokBuildProviderOptions {
   displayName?: string
   grokHome?: string
   baseUrl?: string
+  clientVersion?: string
   authStore?: GrokAuthStore
   headers?: Record<string, string>
   fetch?: GrokBuildFetch
@@ -33,6 +34,8 @@ export interface GrokBuildProviderOptions {
 
 interface GrokBuildRuntimeOptions {
   baseUrl: string
+  grokHome?: string
+  clientVersion?: string
   authStore: GrokAuthStore
   headers?: Record<string, string>
   fetch: GrokBuildFetch
@@ -75,7 +78,11 @@ export class GrokBuildProvider implements AgentProvider {
       }
 
       try {
-        const headers = buildGrokBuildHeaders(auth, request, this.options.headers)
+        const headers = buildGrokBuildHeaders(auth, request, {
+          extra: this.options.headers,
+          clientVersion: this.options.clientVersion,
+          grokHome: this.options.grokHome,
+        })
         headers.set('accept', 'text/event-stream')
         headers.set('content-type', 'application/json')
 
@@ -117,6 +124,8 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
   const fetchImpl = options.fetch ?? fetch
   const runtimeOptions: GrokBuildRuntimeOptions = {
     baseUrl,
+    grokHome: options.grokHome,
+    clientVersion: options.clientVersion,
     authStore,
     headers: options.headers,
     fetch: fetchImpl,
@@ -135,6 +144,7 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
         providerId: id,
         grokHome: options.grokHome,
         baseUrl,
+        clientVersion: options.clientVersion,
         authStore,
         fetch: fetchImpl,
       }),
