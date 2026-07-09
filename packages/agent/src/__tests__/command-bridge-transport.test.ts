@@ -58,15 +58,19 @@ function echoCommand(): Command {
   }
 }
 
-async function socketPathFor(name: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'demi-bridge-sock-'))
-  return join(dir, `${name}.sock`)
+async function layout(name: string) {
+  const cwd = await mkdtemp(join(tmpdir(), `demi-bridge-${name}-cwd-`))
+  const stateDir = await mkdtemp(join(tmpdir(), `demi-bridge-${name}-state-`))
+  return {
+    cwd,
+    stateDir,
+    socketPath: join(stateDir, 'bridges', 'b.sock'),
+  }
 }
 
 test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-http-'))
+  const { cwd, stateDir, socketPath } = await layout('http')
   const sessionId = globalThis.crypto.randomUUID()
-  const socketPath = await socketPathFor('raw')
   const host = new LocalHost(cwd)
   const harness: AgentHarness<Record<string, never>> = {
     name: 'bridge-transport-test',
@@ -78,7 +82,7 @@ test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine
   const server = new AgentServer({
     agent: harness,
     providers: [stubProvider()],
-    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE },
+    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE, stateDir },
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
@@ -117,9 +121,8 @@ test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine
 })
 
 test('a real Node child can bareword-invoke a registered command through the shim PATH', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-child-'))
+  const { cwd, stateDir, socketPath } = await layout('child')
   const sessionId = globalThis.crypto.randomUUID()
-  const socketPath = await socketPathFor('child')
   const host = new LocalHost(cwd)
   const harness: AgentHarness<Record<string, never>> = {
     name: 'bridge-child-test',
@@ -132,15 +135,14 @@ test('a real Node child can bareword-invoke a registered command through the shi
     agent: harness,
     providers: [stubProvider()],
     shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
-    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE },
+    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE, stateDir },
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
   const bridge = startCommandBridge(server, { socketPath })
 
   try {
-    // Invoke the session shim the same way a nested node process would: PATH + env from the session open.
-    const shimDir = join(cwd, '.demi-bin', sessionId)
+    const shimDir = join(stateDir, 'bridge-bin', sessionId)
     const { stdout } = await execFileAsync(join(shimDir, 'echo-args'), ['run', 'from-child'], {
       cwd,
       env: {
@@ -160,9 +162,8 @@ test('a real Node child can bareword-invoke a registered command through the shi
 })
 
 test('stdin piped to the shim is delivered to the registered command', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-stdin-'))
+  const { cwd, stateDir, socketPath } = await layout('stdin')
   const sessionId = globalThis.crypto.randomUUID()
-  const socketPath = await socketPathFor('stdin')
   const host = new LocalHost(cwd)
   const harness: AgentHarness<Record<string, never>> = {
     name: 'bridge-stdin-test',
@@ -175,14 +176,14 @@ test('stdin piped to the shim is delivered to the registered command', async () 
     agent: harness,
     providers: [stubProvider()],
     shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
-    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE },
+    commandBridge: { socketPath, shimSource: COMMAND_BRIDGE_SHIM_SOURCE, stateDir },
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
   const bridge = startCommandBridge(server, { socketPath })
 
   try {
-    const shimDir = join(cwd, '.demi-bin', sessionId)
+    const shimDir = join(stateDir, 'bridge-bin', sessionId)
     const child = spawn(join(shimDir, 'echo-args'), ['run', 'x'], {
       cwd,
       env: {
