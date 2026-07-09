@@ -28,12 +28,15 @@ Three subscription providers reuse vendor CLI / desktop login material:
 - After switch: `auth.status`, `quota` (probe/observe/latest), and subsequent inference use the new active material.
 - Secrets never cross AgentClient / browser-visible frames.
 - Zero-config default: if demi has no pool yet, behavior matches today (read vendor default path / env / keychain as the sole active credential).
+- **Invoke vendor login** (唤起登录): product can ask demi to start the vendor’s own login flow (CLI / browser the vendor already uses). Demi does **not** complete OAuth or mint tokens itself.
+- **Import** vendor material into the pool and receive a stable `credentialId` (login itself does not return an id).
 
 ### Non-goals
 
 - Multi-instance `Provider` ids for accounts.
 - Per-session or per-turn credential override on `ProviderSelection` / agent frames.
-- Demi-owned OAuth login UI / device-code flows (import and/or external write into the pool is enough).
+- Demi-owned OAuth client, device-code UI, or token endpoint handling (that stays with Codex / Grok / Claude CLIs or official tools).
+- Login API returning a new `credentialId` (id appears only after **import** / **add**).
 - API-key providers (`openai`, `anthropic`) in this design (they already take explicit keys; out of scope unless a later product wants the same pool shape).
 - Bidirectional continuous sync with vendor CLIs as a product feature (import is one-shot or explicit; optional export is not required).
 
@@ -44,10 +47,34 @@ Three subscription providers reuse vendor CLI / desktop login material:
 | Switch granularity | **Process-global active** per provider id |
 | How products switch accounts | Call `provider.credentials.setActive(id)` (or control RPC wrapping it) |
 | How products switch backends | Existing `ProviderSelection` / `set_provider` |
+| How a new account enters the system | **Invoke vendor login** → user finishes in vendor tool → **import** default (or `add`) → pool entry + `id` |
+| Does login return an id? | **No** — only import/add returns `ProviderCredentialInfo` with `id` |
 | Where non-active material lives | Demi-managed pool under `$DEMI_HOME` / `~/.demi` |
 | What inference reads | Always the **active** material via existing AuthStore / env resolution path |
 | Concurrent sessions | All sessions on that provider share the same active account |
 | In-flight turns | Keep using credentials resolved at request start; new active applies on the **next** `resolveAuth` / CLI spawn / quota probe |
+
+### 3.1 Credential lifecycle (product view)
+
+```text
+[unauthenticated or wrong account]
+        │
+        ▼
+ credentials.beginLogin()     ← 只「唤起」厂商登录（CLI/浏览器），不解析 OAuth
+        │
+        │  user completes login in vendor tool
+        │  material lands in ~/.codex | ~/.grok | keychain/env
+        ▼
+ credentials.importDefault()  ← snapshot 进 demi 池，返回 { id, label, … }
+        │
+        ▼
+ credentials.setActive(id)    ← 全局切换（若 import 时未自动设为 active）
+        │
+        ▼
+ auth / quota / inference 使用 active
+```
+
+Adding a **second** account: beginLogin again (user logs into the other account in the vendor tool) → importDefault again → second id → setActive as needed. Product may need to warn that vendor default path is single-slot; import snapshots before overwriting.
 
 ## 4. Public contract (`@demicodes/provider`)
 
@@ -86,18 +113,76 @@ export interface ProviderCredentials {
    * Throws if id unknown or material unusable.
    */
   setActive(credentialId: string): Promise<ProviderCredentialActive> | ProviderCredentialActive
+
+  /**
+   * Invoke the vendor’s own login flow (e.g. spawn `codex login` / `grok login` /
+   * `claude auth login` with inherited TTY or documented browser handoff).
+   * Does **not** complete OAuth inside demi and does **not** return a credential id.
+   * When the process exits successfully, vendor default material may be updated;
+   * product should call `importDefault` (or re-auth status) afterwards.
+   */
+  beginLogin?(options?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult>
+
+  /**
+   * Snapshot current vendor-default material into the demi pool.
+   * Assigns a stable `id` and returns public metadata (no secrets).
+   * Typically used after `beginLogin` or after the user logged in outside demi.
+   */
+  importDefault?(): Promise<ProviderCredentialInfo>
+
+  /**
+   * Register material supplied by the product (path or already-read payload).
+   * Shape is provider-specific via a narrow tagged input; never accept browser-posted raw tokens
+   * on a public web control method without an explicit trusted product path.
+   */
+  add?(input: ProviderCredentialAddInput): Promise<ProviderCredentialInfo>
+
+  /** Remove a pool entry. If it was active, active becomes null or another entry per implementation policy. */
+  remove?(credentialId: string): Promise<void>
+}
+
+export interface ProviderCredentialLoginOptions {
+  /** Abort the spawned login process. */
+  signal?: AbortSignal
+  /** Prefer browser vs device/CLI when the vendor supports both; best-effort. */
+  preferBrowser?: boolean
+}
+
+/**
+ * Login invoke result — status of the *vendor* process only, not a pool id.
+ */
+export type ProviderCredentialLoginResult =
+  | { status: 'completed' } // vendor CLI exited 0; material may now be importable
+  | { status: 'cancelled' }
+  | { status: 'unavailable'; message: string } // no CLI / unsupported host
+  | { status: 'failed'; message: string }
+
+/** Provider-specific add payloads; widen per kit without putting secrets on the shared type surface. */
+export type ProviderCredentialAddInput = {
+  /** Implementation-defined; concrete packages document accepted variants. */
+  [key: string]: unknown
 }
 
 export type ProviderCredentialsCapability =
   | { mode: 'none' }
   | {
       mode: 'supported'
+      /** Can spawn / open vendor login (`beginLogin`). */
+      canBeginLogin?: boolean
       /** Can import from the vendor default location into the pool. */
       canImportDefault?: boolean
+      /** Can register externally supplied material (`add`). */
+      canAdd?: boolean
       /** Pool can hold more than one credential. */
       multi?: boolean
     }
 ```
+
+**Id rules**
+
+- `beginLogin` → **no** id.
+- `importDefault` / `add` → **mint** stable id (e.g. content hash of account identity claims, or uuid if unknown); return in `ProviderCredentialInfo`.
+- Re-importing the same account should ideally upsert the same id (match on account email / accountId / entryKey) rather than duplicate rows.
 
 ### 4.2 `Provider` shell
 
@@ -273,8 +358,12 @@ Add control methods (names illustrative):
 - `listCredentials` `{ providerId }` → `ProviderCredentialInfo[]`
 - `getActiveCredential` `{ providerId }` → `ProviderCredentialActive`
 - `setActiveCredential` `{ providerId, credentialId }` → `ProviderCredentialActive`
+- `beginCredentialLogin` `{ providerId }` → `ProviderCredentialLoginResult` (no id; may be long-running / local-only)
+- `importDefaultCredential` `{ providerId }` → `ProviderCredentialInfo`
 
 Wire to `provider.credentials`. **Never** return secret fields.
+
+`beginCredentialLogin` is inherently **local host** (needs TTY/browser); remote multi-tenant servers may report `unavailable`.
 
 Web UI is optional follow-on; protocol types live with existing control protocol in web-ui transport.
 
@@ -351,6 +440,9 @@ Land as coherent commits; each slice leaves main green:
 |---|---|
 | New provider per account? | **No** |
 | Switch mechanism? | **Global `credentials.setActive`** |
+| Create OAuth inside demi? | **No** |
+| Invoke vendor login? | **Yes** — `beginLogin` (no id) |
+| How does an id appear? | **`importDefault` / `add`** after material exists |
 | Where do extras live? | **`$DEMI_HOME/credentials/<providerId>/`** |
 | What does inference use? | **Active only**, via AuthStore / env |
 | Agent protocol change? | **None** |
