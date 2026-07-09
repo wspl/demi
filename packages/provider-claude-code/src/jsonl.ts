@@ -208,12 +208,21 @@ function assistantItemToClaudeContent(
 }
 
 function toolResultToClaudeContent(item: Extract<InferenceItem, { type: 'tool_result' }>): unknown {
+  // Plain text results stay a string (the common case); as soon as an image is
+  // present, send the full block array so the image rides through to the model
+  // instead of being flattened to a `[image:…]` placeholder.
+  const hasImage = item.output.some((block) => block.type !== 'text')
   return {
     type: 'tool_result',
     tool_use_id: item.toolUseId,
     is_error: item.isError,
-    content: toolResultToText(item.output),
+    content: hasImage ? item.output.map(toolResultBlockToClaude) : toolResultToText(item.output),
   }
+}
+
+function toolResultBlockToClaude(block: ToolResultContentBlock): unknown {
+  if (block.type === 'text') return { type: 'text', text: block.text }
+  return { type: 'image', source: { type: 'base64', media_type: block.source.mediaType, data: block.source.data } }
 }
 
 function imageSourceToClaude(source: ImageSource): unknown {

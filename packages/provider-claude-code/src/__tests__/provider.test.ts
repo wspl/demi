@@ -295,6 +295,48 @@ test('ClaudeCodeProvider handles SDK MCP control_request tool calls across run c
   ])
 })
 
+test('ClaudeCodeProvider forwards tool_result images to the SDK MCP response as passthrough base64', async () => {
+  const transport = new FakeClaudeTransport([
+    sdkMcpRequest('list-sdk', 'list-1', 'tools/list'),
+    sdkMcpRequest('call-sdk', 'call-1', 'tools/call', { name: 'shell_exec', arguments: { script: 'shot' } }),
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'saw it' }] } },
+    { type: 'result', usage: { input_tokens: 1, output_tokens: 1 } },
+  ])
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+
+  const firstEvents = []
+  for await (const event of provider.run(makeRequest([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]))) {
+    firstEvents.push(event)
+  }
+  const toolUseId = firstEvents[0]?.type === 'tool_call_requested' ? firstEvents[0].toolUseId : ''
+
+  for await (const _event of provider.run(
+    makeRequest([
+      {
+        type: 'tool_result',
+        toolUseId,
+        isError: false,
+        output: [
+          { type: 'text', text: 'captured' },
+          { type: 'image', source: { mediaType: 'image/png', data: 'AQID' } },
+        ],
+      },
+    ]),
+  )) {
+    void _event
+  }
+
+  // The image rides through as MCP image content; `data` stays the exact base64
+  // string it came in as (no double-encoding).
+  expect(findSdkMcpResponse(transport.writes, 'call-sdk').result).toEqual({
+    content: [
+      { type: 'text', text: 'captured' },
+      { type: 'image', data: 'AQID', mimeType: 'image/png' },
+    ],
+    isError: false,
+  })
+})
+
 test('ClaudeCodeProvider renders prior tool calls as text on a cold start, never as structured tool_use', async () => {
   const transport = new FakeClaudeTransport([
     { type: 'assistant', message: { content: [{ type: 'text', text: 'ready' }] } },

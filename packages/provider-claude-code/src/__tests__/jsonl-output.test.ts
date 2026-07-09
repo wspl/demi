@@ -224,7 +224,12 @@ test('requestToInputMessages preserves unicode, long fields, and mixed tool resu
           type: 'tool_result',
           tool_use_id: 'tool-1',
           is_error: true,
-          content: `${unicode}\n[image:image/png]`,
+          // The image rides through as a real image block (the Claude CLI ingests
+          // images inside tool_result content), not a flattened `[image:...]` string.
+          content: [
+            { type: 'text', text: unicode },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AQID' } },
+          ],
         },
       ],
     },
