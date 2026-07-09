@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { CommandSpec, CommandStorage } from '@demicodes/shell'
+import type { Command, CommandStorage } from '@demicodes/shell'
 
 const TODO_STORAGE_KEY = 'todos.json'
 
@@ -15,7 +15,7 @@ const TodoListSchema = z.array(TodoItemSchema)
 
 type TodoItem = z.infer<typeof TodoItemSchema>
 
-export function createTodoCommand(): CommandSpec {
+export function createTodoCommand(): Command {
   return {
     name: 'todo',
     summary: 'Manage an agent-session-scoped task list for coding work.',

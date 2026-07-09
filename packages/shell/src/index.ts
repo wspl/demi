@@ -1,5 +1,4 @@
 export * from './command'
-export * from './command-projection'
 export * from './environment'
 export * from './host'
 export * from './host-fs'
