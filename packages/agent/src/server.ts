@@ -30,16 +30,10 @@ export interface AgentServerSessionOptions {
 }
 
 /**
- * Opt-in command bridge for **co-located local Hosts only** (Host.fs and
- * Host.process share one real filesystem; agent process can bind a UDS).
- * Today that means products assembled with `LocalHost` — not pure-browser or
- * remote Hosts. Omit this option entirely for those environments; open() then
- * never materializes shims or touches sockets.
- *
- * When set: on each `open()`, a shim directory is written via Host.fs (one
- * symlink per top-level command name) and prepended to PATH; `socketPath` is
- * exported as `DEMI_COMMAND_BRIDGE_SOCK`. A product must also start the
- * Node-only listener (`@demicodes/agent/command-bridge`) at the same path.
+ * Low-level command bridge wiring on AgentServer. Prefer
+ * `createLocalAgentServer` from `@demicodes/host-local` (bridge **on by default**).
+ * When set: each `open()` materializes PATH shims; a Node listener must be
+ * running at `socketPath` (`@demicodes/agent/command-bridge`).
  */
 export interface AgentServerCommandBridgeOptions {
   /** Absolute filesystem path for the process-wide UDS endpoint. */
@@ -53,10 +47,7 @@ export interface AgentServerOptions {
   providers: Provider[]
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
-  /**
-   * Omit (default) for browser / custom non-local Hosts.
-   * Set only when using a co-located local Host and a Node bridge listener.
-   */
+  /** Low-level; products should use `createLocalAgentServer` instead. */
   commandBridge?: AgentServerCommandBridgeOptions
 }
 

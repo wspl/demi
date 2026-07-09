@@ -1,20 +1,20 @@
 import { resolve } from 'node:path'
 import {
-  AgentServer,
   createWebSocketServerTransport,
+  type AgentServer,
   type AgentTransportBinding,
   type JsonWebSocket,
 } from '@demicodes/agent'
 import { createCodingAgentHarness } from '@demicodes/coding-agent'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost, createLocalAgentServer, type LocalAgentServerHandle } from '@demicodes/host-local'
 import type { Provider } from '@demicodes/provider'
 import type { BashEnvironmentOptions } from '@demicodes/shell'
 
 export type AgentHubShellOptions = Omit<BashEnvironmentOptions, 'host' | 'commands'>
 
-/** Holds one AgentServer per workspace cwd. Conversations in the same cwd share a server. */
+/** Holds one local AgentServer per workspace cwd (command bridge on by default). */
 export class AgentHub {
-  private readonly servers = new Map<string, AgentServer>()
+  private readonly handles = new Map<string, LocalAgentServerHandle>()
 
   constructor(
     private readonly providers: Provider[],
@@ -27,18 +27,25 @@ export class AgentHub {
 
   private serverFor(cwd: string): AgentServer {
     const key = resolve(cwd)
-    const existing = this.servers.get(key)
-    if (existing) return existing
+    const existing = this.handles.get(key)
+    if (existing) return existing.server
+
     const host = new LocalHost(key)
     const harness = createCodingAgentHarness({ host })
-    const server = new AgentServer({ agent: harness, providers: this.providers, shell: this.shellOptions })
-    this.servers.set(key, server)
-    return server
+    const handle = createLocalAgentServer({
+      host,
+      agent: harness,
+      providers: this.providers,
+      shell: this.shellOptions,
+      // commandBridge defaults to true inside createLocalAgentServer
+    })
+    this.handles.set(key, handle)
+    return handle.server
   }
 
   async close(): Promise<void> {
-    const servers = [...this.servers.values()]
-    this.servers.clear()
-    await Promise.all(servers.map((server) => server.close()))
+    const handles = [...this.handles.values()]
+    this.handles.clear()
+    await Promise.all(handles.map((handle) => handle.close()))
   }
 }
