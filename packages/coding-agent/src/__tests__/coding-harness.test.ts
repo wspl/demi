@@ -39,7 +39,7 @@ test('coding agent harness exposes shell session tools and registered command pr
   const { environment, runtime } = createRuntimeFromHarness(harness, process.cwd())
 
   expect(harness.name).toBe('coding')
-  expect(commands.map((command) => command.name)).toEqual(['editor', 'todo'])
+  expect(commands.map((command) => command.name)).toEqual(['demi', 'todo'])
   const tools = runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() })
   expect(tools.map((tool) => tool.name)).toEqual([
     'shell_exec',
@@ -59,10 +59,10 @@ test('coding agent harness exposes shell session tools and registered command pr
     transcript: {} as never,
     commandsPrompt: renderCommandsPrompt(commands),
   })
-  expect(prompt).toContain('editor: Create, edit, and patch files.')
+  expect(prompt).toContain('demi: Read, create, edit, and patch workspace files (text and images).')
   expect(prompt).toContain('Treat cwd as the task workspace')
   expect(prompt).toContain('do not create a separate project directory under /tmp')
-  expect(prompt).toContain('editor create')
+  expect(prompt).toContain('demi create')
   expect(prompt).toContain('Effects: modifies files by creating a new file')
   expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
   expect(prompt).toContain('Failure output: writes the reason to stderr and exits non-zero')
@@ -81,10 +81,10 @@ test('coding agent harness exposes shell session tools and registered command pr
 
   const todo = await environment.exec({ script: 'todo add "Verify default registration"' })
   expect(todo.stdout.delta).toBe('[ ] T1 Verify default registration\n')
-  const editorPrompt = await environment.exec({ shellId: todo.shellId, script: 'editor prompt' })
-  expect(editorPrompt.stdout.delta).toContain('editor create')
-  expect(editorPrompt.stdout.delta).toContain('Effects: modifies files by creating a new file')
-  expect(editorPrompt.stdout.delta).toContain('Success output: writes "Created <path>" to stdout')
+  const demiPrompt = await environment.exec({ shellId: todo.shellId, script: 'demi prompt' })
+  expect(demiPrompt.stdout.delta).toContain('demi create')
+  expect(demiPrompt.stdout.delta).toContain('Effects: modifies files by creating a new file')
+  expect(demiPrompt.stdout.delta).toContain('Success output: writes "Created <path>" to stdout')
 })
 
 test('coding agent resolves file references through Host.fs', async () => {
