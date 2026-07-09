@@ -9,7 +9,7 @@ import { ParseException } from '@demicodes/just-bash/parser/types'
 import { LexerError } from '@demicodes/just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from '@demicodes/just-bash/types'
 import { resolveLimits } from '@demicodes/just-bash/limits'
-import { CommandRegistry, type CommandAsset, type Command } from './command'
+import { CommandRegistry, type CommandAsset, type CommandAssetType, type Command } from './command'
 import { DEMI_PORTABLE_COMMANDS } from './portable-commands'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
@@ -53,6 +53,7 @@ export interface ShellExecInput {
   timeoutMs?: number
   maxOutputBytes?: number
   signal?: AbortSignal
+  supportedAssetTypes?: readonly CommandAssetType[]
 }
 
 export interface ShellStatusInput {
@@ -251,6 +252,8 @@ export class BashEnvironment {
       const commandId = session.activeCommandId ?? session.foreground?.commandId ?? 'unknown'
       throw new Error(`Shell session "${session.id}" is already running command "${commandId}"`)
     }
+
+    session.supportedAssetTypes = new Set(input.supportedAssetTypes)
 
     return this.runScript(session, input.script, { ...input, timeoutMs })
   }
@@ -455,6 +458,7 @@ export class BashEnvironment {
       interpreter: undefined as unknown as Interpreter,
       forkCommands,
       accumulator: { stdout: '', stderr: '', audit: [], commandMetadata: [], assets: [] },
+      supportedAssetTypes: new Set(),
       foregroundWaiters: new Set(),
       backgroundJobs: new Map(),
       nextBackgroundJobId: 1,
