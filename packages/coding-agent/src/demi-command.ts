@@ -26,8 +26,8 @@ export function createDemiCommand(host: Host): Command {
             return { exitCode: 1 }
           }
 
-          const mediaType = imageMediaTypeForPath(path)
-          if (mediaType) {
+          const media = mediaForPath(path)
+          if (media) {
             let bytes: Uint8Array
             try {
               bytes = await host.fs.readFile(path, { cwd })
@@ -35,9 +35,9 @@ export function createDemiCommand(host: Host): Command {
               await io.stderr(`${errorMessage(error)}\n`)
               return { exitCode: 1 }
             }
-            const asset: CommandAsset = { type: 'image', mediaType, data: bytesToBase64(bytes) }
+            const asset: CommandAsset = { type: media.kind, mediaType: media.mediaType, data: bytesToBase64(bytes) }
             await io.asset(asset)
-            await io.stdout(`Read image ${path} (${mediaType}, ${bytes.length} bytes)\n`)
+            await io.stdout(`Read ${media.kind} ${path} (${media.mediaType}, ${bytes.length} bytes)\n`)
             return { exitCode: 0 }
           }
 
@@ -535,18 +535,23 @@ function pathValidationError(path: string): string | null {
   return null
 }
 
-const IMAGE_MEDIA_TYPES: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  webp: 'image/webp',
-  gif: 'image/gif',
+// `demi read` returns images/videos as native viewable blocks; everything else as text.
+// (Video only actually reaches models whose catalog marks video support; others reject it.)
+const MEDIA_TYPES: Record<string, { kind: 'image' | 'video'; mediaType: string }> = {
+  png: { kind: 'image', mediaType: 'image/png' },
+  jpg: { kind: 'image', mediaType: 'image/jpeg' },
+  jpeg: { kind: 'image', mediaType: 'image/jpeg' },
+  webp: { kind: 'image', mediaType: 'image/webp' },
+  gif: { kind: 'image', mediaType: 'image/gif' },
+  mp4: { kind: 'video', mediaType: 'video/mp4' },
+  mov: { kind: 'video', mediaType: 'video/quicktime' },
+  webm: { kind: 'video', mediaType: 'video/webm' },
+  m4v: { kind: 'video', mediaType: 'video/x-m4v' },
 }
 
-// Images `demi read` returns as viewable image blocks; everything else is read as text.
-function imageMediaTypeForPath(path: string): string | null {
+function mediaForPath(path: string): { kind: 'image' | 'video'; mediaType: string } | null {
   const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
-  return IMAGE_MEDIA_TYPES[ext] ?? null
+  return MEDIA_TYPES[ext] ?? null
 }
 
 function stripDiffPathMetadata(rawPath: string): string {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { DEFAULT_ATTACHMENT_EXTENSIONS, modelSelectionFromCatalog, thinkingCapabilitiesFromProviderModel } from '../index'
+import {
+  DEFAULT_ATTACHMENT_EXTENSIONS,
+  VIDEO_ATTACHMENT_EXTENSIONS,
+  modelSelectionFromCatalog,
+  thinkingCapabilitiesFromProviderModel,
+} from '../index'
 import type { ProviderModel } from '../types'
 
 function providerModel(overrides: Partial<ProviderModel> = {}): ProviderModel {
@@ -36,6 +41,22 @@ describe('modelSelectionFromCatalog', () => {
   it('omits attachment extensions when the model does not support them', () => {
     const selection = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: false }))
     expect(selection.model.acceptedExtensions).toEqual([])
+  })
+
+  it('adds video extensions only when the model marks native video support', () => {
+    const noVideo = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true }))
+    expect(noVideo.model.acceptedExtensions).toEqual([...DEFAULT_ATTACHMENT_EXTENSIONS])
+
+    const withVideo = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: true, supportsVideo: true }))
+    expect(withVideo.model.acceptedExtensions).toEqual([
+      ...DEFAULT_ATTACHMENT_EXTENSIONS,
+      ...VIDEO_ATTACHMENT_EXTENSIONS,
+    ])
+  })
+
+  it('accepts video-only models (video without other attachments)', () => {
+    const selection = modelSelectionFromCatalog('p', providerModel({ supportsAttachments: false, supportsVideo: true }))
+    expect(selection.model.acceptedExtensions).toEqual([...VIDEO_ATTACHMENT_EXTENSIONS])
   })
 
   it('respects an attachment-extension override', () => {

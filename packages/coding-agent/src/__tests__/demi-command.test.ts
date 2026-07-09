@@ -36,6 +36,17 @@ test('demi read returns an image file as a base64 image asset', async () => {
   expect(read.stdout.delta).toContain('Read image shot.png (image/png,')
 })
 
+test('demi read returns a video file as a native base64 video asset', async () => {
+  const { env } = await createDemiEnvironment()
+  const created = await env.exec({ script: "demi create clip.mp4 <<'EOF'\nMP4DATA\nEOF" })
+  const read = await env.exec({ shellId: created.shellId, script: 'demi read clip.mp4' })
+  if (read.status !== 'exited') throw new Error('expected exited result')
+  expect(read.assets).toEqual([
+    { type: 'video', mediaType: 'video/mp4', data: bytesToBase64(encodeUtf8('MP4DATA\n')) },
+  ])
+  expect(read.stdout.delta).toContain('Read video clip.mp4 (video/mp4,')
+})
+
 test('demi create writes a new file from heredoc content', async () => {
   const { env } = await createDemiEnvironment()
 

@@ -64,8 +64,9 @@ export interface CommandStdin {
   text: string
 }
 
-/** A non-text content item a command emits to the model, peer to stdout text. */
-export type CommandAsset = { type: 'image'; mediaType: string; data: string }
+/** A non-text content item a command emits to the model, peer to stdout text.
+ *  `data` is base64. Video assets only reach models whose catalog marks video support. */
+export type CommandAsset = { type: 'image' | 'video'; mediaType: string; data: string }
 
 export interface CommandIO {
   stdout(data: string | Uint8Array): Promise<void> | void

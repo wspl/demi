@@ -3,6 +3,14 @@ import type { ProviderModel } from '@demicodes/provider'
 import type { ModelInfo } from '@demicodes/web-ui/transport/protocol'
 
 const ATTACHMENT_EXTENSIONS: FileExtension[] = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf']
+const VIDEO_EXTENSIONS: FileExtension[] = ['mp4', 'mov', 'webm', 'm4v']
+
+function acceptedExtensionsFor(model: ProviderModel | null): FileExtension[] {
+  return [
+    ...(model?.supportsAttachments ? ATTACHMENT_EXTENSIONS : []),
+    ...(model?.supportsVideo ? VIDEO_EXTENSIONS : []),
+  ]
+}
 
 export function toModelInfo(model: ProviderModel): ModelInfo {
   return {
@@ -10,7 +18,7 @@ export function toModelInfo(model: ProviderModel): ModelInfo {
     name: model.displayName,
     contextWindow: model.contextWindow,
     inputLimit: null,
-    acceptedExtensions: model.supportsAttachments ? [...ATTACHMENT_EXTENSIONS] : [],
+    acceptedExtensions: acceptedExtensionsFor(model),
     reasoning:
       model.supportedThinkingEfforts && model.supportedThinkingEfforts.length > 0
         ? {
@@ -37,7 +45,7 @@ export function buildModelSelection(
       contextWindow: model?.contextWindow ?? 0,
       inputLimit: null,
       thinking: thinkingCapabilities(model),
-      acceptedExtensions: model?.supportsAttachments ? [...ATTACHMENT_EXTENSIONS] : [],
+      acceptedExtensions: acceptedExtensionsFor(model),
     },
     thinking: thinkingEffort ? { type: 'effort', effort: thinkingEffort, summary: null } : null,
     serviceTierId,
