@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readlink, stat } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -8,8 +8,7 @@ import type { Command } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
 import { defineProvider, type Provider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { AgentServer, CommandBridgeSessionNotFoundError, type AgentHarness } from '../index'
-import { materializeCommandBridgeShims } from '../command-bridge-shim'
+import { AgentServer, RunCommandLineSessionNotFoundError, type AgentHarness } from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -76,7 +75,7 @@ function failingCommand(): Command {
 function harnessWithCommands(cwd: string, commands: () => Command[]): AgentHarness<Record<string, never>> {
   const host = new LocalHost(cwd)
   return {
-    name: 'bridge-test',
+    name: 'run-command-line-test',
     initialState: () => ({}),
     host: () => host,
     systemPrompt: () => 'test',
@@ -84,31 +83,8 @@ function harnessWithCommands(cwd: string, commands: () => Command[]): AgentHarne
   }
 }
 
-test('materializeCommandBridgeShims writes under stateDir/bridge-bin, not workspace cwd', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-shim-cwd-'))
-  const stateDir = await mkdtemp(join(tmpdir(), 'demi-bridge-state-'))
-  const host = new LocalHost(cwd)
-  const shimSource = '#!/usr/bin/env node\nconsole.log("stub")\n'
-
-  const shimDir = await materializeCommandBridgeShims({
-    host,
-    agentSessionId: 'sess-1',
-    commandNames: ['greet', 'fail'],
-    shimSource,
-    stateDir,
-  })
-
-  expect(shimDir.includes(join(stateDir, 'bridge-bin'))).toBe(true)
-  await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
-  await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
-
-  expect(await readFile(join(shimDir, '.dispatch'), 'utf8')).toBe(shimSource)
-  expect(await readlink(join(shimDir, 'greet'))).toBe('.dispatch')
-  expect(await readlink(join(shimDir, 'fail'))).toBe('.dispatch')
-})
-
 test('AgentServer.runCommandLine runs a registered command with full stdout/stderr', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-run-'))
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-run-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand(), failingCommand()])
   const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
   const client = server.client()
@@ -129,51 +105,44 @@ test('AgentServer.runCommandLine runs a registered command with full stdout/stde
 })
 
 test('AgentServer.runCommandLine rejects unknown sessions', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-missing-'))
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-missing-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
   const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
 
   await expect(server.runCommandLine('no-such-session', 'greet', [], { cwd, stdin: '' })).rejects.toBeInstanceOf(
-    CommandBridgeSessionNotFoundError,
+    RunCommandLineSessionNotFoundError,
   )
 
   await server.close()
 })
 
-test('open without commandBridge never materializes under cwd', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-off-'))
+test('prepareSessionShell can inject env without AgentServer knowing about bridges', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-prep-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
-  const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
-  const client = server.client()
-  await client.open(selection, cwd, globalThis.crypto.randomUUID())
-
-  await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
-  await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
-
-  await client.close()
-  await server.close()
-})
-
-test('open with commandBridge materializes under stateDir/bridge-bin', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'demi-bridge-env-'))
-  const stateDir = await mkdtemp(join(tmpdir(), 'demi-state-'))
-  const socketPath = join(stateDir, 'bridges', 't.sock')
-  const harness = harnessWithCommands(cwd, () => [greetCommand()])
+  let seenNames: readonly string[] = []
   const server = new AgentServer({
     agent: harness,
     providers: [stubProvider()],
-    shell: { initialEnv: { PATH: '/usr/bin' } },
-    commandBridge: { socketPath, shimSource: '#!/usr/bin/env node\n', stateDir },
+    shell: { initialEnv: { PATH: '/usr/bin', MARKER: 'base' } },
+    prepareSessionShell: ({ commandNames, shell }) => {
+      seenNames = commandNames
+      return {
+        ...shell,
+        initialEnv: {
+          ...shell.initialEnv,
+          MARKER: 'prepared',
+          EXTRA: 'from-hook',
+        },
+      }
+    },
   })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
 
+  expect(seenNames).toContain('greet')
   const env = await server.runCommandLine(sessionId, 'greet', ['hello', 'x'], { cwd, stdin: '' })
   expect(env.exitCode).toBe(0)
-
-  await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
-  expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'greet'))).toBe('.dispatch')
 
   await client.close()
   await server.close()

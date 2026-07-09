@@ -6,9 +6,10 @@ import {
   type AgentServerOptions,
   type AgentServerSessionOptions,
 } from '@demicodes/agent'
-import { COMMAND_BRIDGE_SHIM_SOURCE, startCommandBridge, type CommandBridgeHandle } from '@demicodes/agent/command-bridge'
 import type { Provider } from '@demicodes/provider'
 import type { BashEnvironmentOptions } from '@demicodes/shell'
+import { COMMAND_BRIDGE_SHIM_SOURCE, startCommandBridge, type CommandBridgeHandle } from './command-bridge'
+import { materializeCommandBridgeShims } from './command-bridge-shim'
 import { defaultBridgeSocketPath, resolveDemiHome } from './demi-home'
 import type { LocalHost } from './local-host'
 
@@ -47,6 +48,10 @@ export interface LocalAgentServerHandle {
  * Open-box local agent assembly: `LocalHost` + `AgentServer` with command
  * bridge **on by default**.
  *
+ * Owns the Node-only bridge transport (UDS + PATH shims under `stateDir`).
+ * AgentServer only receives a generic `prepareSessionShell` hook and exposes
+ * `runCommandLine` — it never sees bin dirs or sockets.
+ *
  * Default layout under `stateDir` (`~/.demi` or `$DEMI_HOME`):
  * ```
  * bridges/<id>.sock
@@ -79,10 +84,25 @@ export function createLocalAgentServer(options: CreateLocalAgentServerOptions): 
   }
 
   if (bridgeEnabled && socketPath && stateDir) {
-    serverOptions.commandBridge = {
-      socketPath,
-      shimSource: COMMAND_BRIDGE_SHIM_SOURCE,
-      stateDir,
+    const bridgeStateDir = stateDir
+    const bridgeSocketPath = socketPath
+    serverOptions.prepareSessionShell = async ({ host, agentSessionId, commandNames, shell }) => {
+      const shimDir = await materializeCommandBridgeShims({
+        host,
+        agentSessionId,
+        commandNames,
+        shimSource: COMMAND_BRIDGE_SHIM_SOURCE,
+        stateDir: bridgeStateDir,
+      })
+      const existingPath = shell.initialEnv?.PATH
+      return {
+        ...shell,
+        initialEnv: {
+          ...shell.initialEnv,
+          DEMI_COMMAND_BRIDGE_SOCK: bridgeSocketPath,
+          PATH: existingPath ? `${shimDir}:${existingPath}` : shimDir,
+        },
+      }
     }
   }
 

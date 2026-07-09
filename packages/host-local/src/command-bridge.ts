@@ -2,12 +2,12 @@ import { existsSync, mkdirSync, unlinkSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Server } from 'node:net'
-import { errorMessage } from '@demicodes/utils'
 import {
-  CommandBridgeSessionNotFoundError,
-  CommandBridgeTimeoutError,
+  RunCommandLineSessionNotFoundError,
+  RunCommandLineTimeoutError,
   type AgentServer,
-} from './server'
+} from '@demicodes/agent'
+import { errorMessage } from '@demicodes/utils'
 
 /**
  * Dispatch script shared by every generated command-name symlink.
@@ -200,8 +200,8 @@ async function handleRun(server: AgentServer, req: IncomingMessage, res: ServerR
 }
 
 function statusForError(error: unknown): number {
-  if (error instanceof CommandBridgeSessionNotFoundError) return 404
-  if (error instanceof CommandBridgeTimeoutError) return 504
+  if (error instanceof RunCommandLineSessionNotFoundError) return 404
+  if (error instanceof RunCommandLineTimeoutError) return 504
   return 500
 }
 

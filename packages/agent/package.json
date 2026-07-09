@@ -19,11 +19,6 @@
       "development": "./src/stdio-transport.ts",
       "types": "./dist/stdio-transport.d.mts",
       "import": "./dist/stdio-transport.mjs"
-    },
-    "./command-bridge": {
-      "development": "./src/command-bridge.ts",
-      "types": "./dist/command-bridge.d.mts",
-      "import": "./dist/command-bridge.mjs"
     }
   },
   "dependencies": {
