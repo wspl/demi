@@ -203,6 +203,11 @@ test('model catalog maps Grok /v1/models payload', () => {
     contextWindow: 500_000,
     supportedThinkingEfforts: ['high', 'medium', 'low'],
     defaultThinkingEffort: 'high',
+    supportsAttachments: true,
+  })
+  expect(catalog.models[1]).toMatchObject({
+    id: 'grok-composer-2.5-fast',
+    supportsAttachments: false,
   })
 })
 
