@@ -3,10 +3,10 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
-import { BashEnvironment, CommandRegistry, type CommandSpec } from '../index'
+import { BashEnvironment, CommandRegistry, type Command } from '../index'
 import { LocalHost } from '@demicodes/host-local'
 
-const nestedSpec: CommandSpec = {
+const nestedSpec: Command = {
   name: 'larkclaw',
   summary: 'Unified entry for platform capabilities.',
   subcommands: [
