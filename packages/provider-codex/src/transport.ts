@@ -12,6 +12,11 @@ export interface CodexTransportRequest {
   headerTimeoutMs?: number
   websocketConnectTimeoutMs?: number
   streamIdleTimeoutMs?: number
+  /**
+   * Invoked once an HTTP Responses response is available (SSE path), including
+   * non-2xx, so callers can observe rate-limit headers for quota.
+   */
+  onHttpResponse?: (response: { headers: Headers; status: number }) => void
 }
 
 export interface CodexResponsesTransport {
@@ -45,8 +50,14 @@ export class FetchCodexResponsesTransport implements CodexResponsesTransport {
       combined.cleanup()
     }
 
+    try {
+      request.onHttpResponse?.({ headers: response.headers, status: response.status })
+    } catch {
+      // Quota observation must never break inference.
+    }
+
     if (!response.ok) {
-      throw new CodexHttpError(response.status, response.statusText, await response.text())
+      throw new CodexHttpError(response.status, response.statusText, await response.text(), response.headers)
     }
     if (!response.body) throw new Error('Codex response did not include a body')
 
@@ -178,6 +189,7 @@ export class CodexHttpError extends Error {
     readonly status: number,
     statusText: string,
     readonly responseText: string,
+    readonly headers: Headers = new Headers(),
   ) {
     super(codexHttpErrorMessage(status, statusText, responseText))
     this.name = 'CodexHttpError'
