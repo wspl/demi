@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Server } from 'node:net'
 import {
+  RunCommandLineCommandNotRegisteredError,
   RunCommandLineSessionNotFoundError,
   RunCommandLineTimeoutError,
   type AgentServer,
@@ -201,6 +202,7 @@ async function handleRun(server: AgentServer, req: IncomingMessage, res: ServerR
 
 function statusForError(error: unknown): number {
   if (error instanceof RunCommandLineSessionNotFoundError) return 404
+  if (error instanceof RunCommandLineCommandNotRegisteredError) return 404
   if (error instanceof RunCommandLineTimeoutError) return 504
   return 500
 }
