@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
-import type { AgentHarness, AgentSessionSnapshot } from '@demicodes/agent'
+import type { AgentHarness, AgentSessionCheckpoint } from '@demicodes/agent'
 import type { BashEnvironmentOptions } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
 import {
@@ -70,7 +70,7 @@ test('AgentClient.open and send run through InProcessTransport and emit transcri
       usage: { inputTokens: 11, outputTokens: 7, cacheReadTokens: 5, cacheWriteTokens: 3 },
     },
   })
-  expect(seen.map((event) => event.type)).toContain('transcript_snapshot')
+  expect(seen.map((event) => event.type)).toContain('transcript_reset')
   expect(seen.map((event) => event.type)).toContain('transcript_patch')
   expect(seen).toContainEqual({ type: 'phase', phase: 'idle' })
 })
@@ -111,8 +111,8 @@ test('AgentServer persists session snapshots through Host.store', async () => {
 
   const keys = await host.store.list('agent-sessions')
   expect(keys).toHaveLength(1)
-  expect(keys[0]).toEndWith('/snapshot.json')
-  const snapshot = await host.store.readJson<AgentSessionSnapshot<Record<string, never>>>(keys[0])
+  expect(keys[0]).toEndWith('/checkpoint.json')
+  const snapshot = await host.store.readJson<AgentSessionCheckpoint<Record<string, never>>>(keys[0])
   expect(snapshot).toMatchObject({
     cwd: root,
     harnessName: 'stored-session',
@@ -147,8 +147,8 @@ test('AgentServer resumes a conversation by session id and restores its transcri
   await resumed.open(providerConfig(turns), root, 'conv-1')
   await waitFor(() => resumed.transcript().blocks.length > 0)
   expect(resumed.transcript().blocks.map((block) => block.type)).toEqual(before)
-  const snapshotEvent = seen.find((event) => event.type === 'transcript_snapshot')
-  expect(snapshotEvent?.type === 'transcript_snapshot' ? snapshotEvent.blocks.length : 0).toBe(3)
+  const snapshotEvent = seen.find((event) => event.type === 'transcript_reset')
+  expect(snapshotEvent?.type === 'transcript_reset' ? snapshotEvent.blocks.length : 0).toBe(3)
   await resumed.close()
 
   // A different session id starts empty.
@@ -274,7 +274,7 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
     type: 'shell_output',
     shellId: 'agent-shell',
     commandId: expect.any(String),
-    snapshot: { stdout: { delta: 'hi' } },
+    status: { stdout: { delta: 'hi' } },
   })
   expect(seen.some((event) => event.type === 'audit')).toBe(true)
 })
@@ -322,7 +322,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
     type: 'shell_output',
     shellId: 'agent-input-shell',
     commandId: 'agent-input-command',
-    snapshot: {
+    status: {
       status: 'running',
       shellId: 'agent-input-shell',
       commandId: 'agent-input-command',

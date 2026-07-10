@@ -2332,7 +2332,7 @@ test('BashEnvironment exposes complete split command artifacts through /@ and Ho
   })
 
   const persisted = await waitForStoreJson<{ stdout: string; stderr: string }>(
-    () => host.store.readJson(`agent-command-artifact/commands/${commandId}/artifact.json`),
+    () => host.store.readJson(`agent-sessions/agent-command-artifact/commands/${commandId}/artifact.json`),
   )
   expect(persisted).toMatchObject({
     stdout: 'out1\nout2\n',
