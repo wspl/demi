@@ -129,6 +129,39 @@ test('AgentServer.runCommandLine delivers newline-terminated stdin byte-identica
   await server.close()
 })
 
+test('AgentServer.runCommandLine returns binary stdout as base64', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-binary-'))
+  const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe])
+  const binaryCommand: Command = {
+    name: 'blob',
+    summary: 'emit binary',
+    subcommands: [
+      {
+        name: 'emit',
+        summary: 'write raw bytes to stdout',
+        examples: [],
+        run: async (ctx) => {
+          await ctx.io.stdout(bytes)
+          return { exitCode: 0 }
+        },
+      },
+    ],
+  }
+  const harness = harnessWithCommands(cwd, () => [binaryCommand])
+  const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
+  const client = server.client()
+  const sessionId = globalThis.crypto.randomUUID()
+  await client.open(selection, cwd, sessionId)
+
+  const result = await server.runCommandLine(sessionId, 'blob', ['emit'], { cwd, stdin: '' })
+  expect(result.exitCode).toBe(0)
+  expect(result.stdoutEncoding).toBe('base64')
+  expect(Uint8Array.from(Buffer.from(result.stdout, 'base64'))).toEqual(bytes)
+
+  await client.close()
+  await server.close()
+})
+
 test('AgentServer.runCommandLine rejects unknown sessions', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-missing-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])

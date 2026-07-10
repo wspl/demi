@@ -66,8 +66,12 @@ export function createOutputSinks(
 export function recordForegroundChunk(foreground: ForegroundProcess, sourceFd: 1 | 2, chunk: Uint8Array): void {
   const text = decodeUtf8(chunk)
   foreground.lastOutputAt = Date.now()
-  if (sourceFd === 1) foreground.rawStdoutBuffer += text
-  else foreground.rawStderrBuffer += text
+  if (sourceFd === 1) {
+    foreground.rawStdoutBuffer += text
+    foreground.rawStdoutBytes.push(chunk)
+  } else {
+    foreground.rawStderrBuffer += text
+  }
 
   const sink = foreground.outputSinks[sourceFd]
   if (sink.kind === 'file' || sink.kind === 'null') {
