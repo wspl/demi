@@ -110,7 +110,19 @@ for (const { dir, manifest } of packages) {
     continue
   }
   const env = { ...process.env, ...(process.env.NPM_TOKEN ? { NPM_CONFIG_TOKEN: process.env.NPM_TOKEN } : {}) }
-  await $`bun publish ${tarball} --access public`.cwd(dir).env(env)
+  try {
+    await $`bun publish ${tarball} --access public`.cwd(dir).env(env)
+  } catch (error) {
+    // A freshly created package can lag in the registry metadata endpoint (404)
+    // while the version already exists server-side; treat the resulting
+    // "publish over previous" rejection as already-published, not a failure.
+    const stderr = (error as { stderr?: unknown }).stderr?.toString() ?? ''
+    if (stderr.includes('cannot publish over the previously published versions')) {
+      console.log(`skip    ${manifest.name}@${manifest.version} (already on registry; metadata lagging)`)
+      continue
+    }
+    throw error
+  }
   console.log(`publish ${manifest.name}@${manifest.version}`)
   published += 1
 }
