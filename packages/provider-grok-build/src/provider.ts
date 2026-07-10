@@ -103,6 +103,7 @@ export class GrokBuildProvider implements AgentProvider {
         }
 
         if (response.status === 401 && !forceRefresh) {
+          await response.body?.cancel().catch(() => {})
           forceRefresh = true
           continue
         }
