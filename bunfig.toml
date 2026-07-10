@@ -1,2 +1,7 @@
 [install]
 registry = "https://registry.npmjs.org/"
+
+[run]
+# Run node-shebang bins (tsdown, tsgo, vue-tsc, tsc, esbuild, changeset) on the
+# Bun runtime so the toolchain has no system-Node dependency.
+bun = true

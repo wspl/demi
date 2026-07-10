@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "check:registry": "bun run scripts/check-public-registry.ts",
-    "typecheck": "node node_modules/.bin/tsgo --noEmit",
+    "typecheck": "tsgo --noEmit",
     "typecheck:web": "bun --filter @demicodes/web-ui typecheck && bun --filter @demicodes/web typecheck",
     "build": "bun --filter '@demicodes/*' build",
     "llms": "bun run scripts/build-llms.ts",
