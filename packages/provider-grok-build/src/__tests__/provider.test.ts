@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { zeroUsage } from '@demicodes/core'
 import { providerRuntime, type InferenceRequest, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StaticGrokAuthStore, type GrokResolvedAuth } from '../auth'
-import { buildGrokChatCompletionsBody, mapGrokChatCompletionStream, type ServerSentEvent } from '../chat'
+import { buildGrokChatCompletionsBody, mapGrokChatCompletionStream, readServerSentEvents, type ServerSentEvent } from '../chat'
 import { modelListFromGrokModelsPayload } from '../models'
 import { createGrokBuildProvider } from '../provider'
 
@@ -116,46 +116,67 @@ test('chat body maps tools, tool replay, and reasoning effort', () => {
   expect(body.messages[3]).toEqual({ role: 'tool', tool_call_id: 'call-1', content: 'contents' })
 })
 
+test('chat body degrades video blocks to text instead of image_url', () => {
+  const body = buildGrokChatCompletionsBody(
+    request({
+      items: [
+        {
+          type: 'user_message',
+          content: [
+            { type: 'text', text: 'look' },
+            { type: 'video', source: { type: 'binary', mediaType: 'video/mp4', data: new Uint8Array([1, 2]) } },
+            { type: 'image', source: { type: 'url', url: 'https://example.com/shot.png' } },
+          ],
+        },
+      ],
+    }),
+  )
+
+  const parts = body.messages[0]
+  expect(parts).toEqual({
+    role: 'user',
+    content: [
+      { type: 'text', text: 'look' },
+      { type: 'text', text: '[video:video/mp4]' },
+      { type: 'image_url', image_url: { url: 'https://example.com/shot.png', detail: 'auto' } },
+    ],
+  })
+})
+
 test('chat stream maps reasoning_content and tool calls', async () => {
   const events = await collect(
     mapGrokChatCompletionStream(
       (async function* (): AsyncIterable<ServerSentEvent> {
         yield {
           event: null,
-          data: [
-            JSON.stringify({
-              choices: [{ delta: { reasoning_content: 'think', role: 'assistant' } }],
-            }),
-          ],
+          data: JSON.stringify({
+            choices: [{ delta: { reasoning_content: 'think', role: 'assistant' } }],
+          }),
         }
         yield {
           event: null,
-          data: [
-            JSON.stringify({
-              choices: [
-                {
-                  delta: {
-                    tool_calls: [{ index: 0, id: 'c1', function: { name: 'shell_exec', arguments: '{"cmd"' } }],
-                  },
+          data: JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [{ index: 0, id: 'c1', function: { name: 'shell_exec', arguments: '{"cmd"' } }],
                 },
-              ],
-            }),
-          ],
+              },
+            ],
+          }),
         }
         yield {
           event: null,
-          data: [
-            JSON.stringify({
-              choices: [
-                {
-                  delta: { tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }] },
-                  finish_reason: 'tool_calls',
-                },
-              ],
-            }),
-          ],
+          data: JSON.stringify({
+            choices: [
+              {
+                delta: { tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }] },
+                finish_reason: 'tool_calls',
+              },
+            ],
+          }),
         }
-        yield { event: null, data: ['[DONE]'] }
+        yield { event: null, data: '[DONE]' }
       })(),
     ),
   )
@@ -164,6 +185,35 @@ test('chat stream maps reasoning_content and tool calls', async () => {
     { type: 'thinking_start' },
     { type: 'thinking_delta', text: 'think' },
     { type: 'tool_call_requested', toolUseId: 'c1', toolName: 'shell_exec', input: { cmd: 'ls' } },
+    { type: 'response', usage: zeroUsage() },
+  ])
+})
+
+test('readServerSentEvents joins multi-line data fields per the SSE spec', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode('data: {"choices":\ndata: [{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'),
+      )
+      controller.close()
+    },
+  })
+  const events: ServerSentEvent[] = []
+  for await (const event of readServerSentEvents(stream)) events.push(event)
+  expect(events).toEqual([
+    { event: null, data: '{"choices":\n[{"delta":{"content":"hi"}}]}' },
+    { event: null, data: '[DONE]' },
+  ])
+
+  const mapped = await collect(
+    mapGrokChatCompletionStream(
+      (async function* (): AsyncIterable<ServerSentEvent> {
+        for (const event of events) yield event
+      })(),
+    ),
+  )
+  expect(mapped).toEqual([
+    { type: 'text_delta', text: 'hi' },
     { type: 'response', usage: zeroUsage() },
   ])
 })
