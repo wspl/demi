@@ -54,6 +54,13 @@ export interface ShellExecInput {
   maxOutputBytes?: number
   signal?: AbortSignal
   supportedAssetTypes?: readonly CommandAssetType[]
+  /**
+   * Run in a dedicated one-shot shell instead of the session default shell, so
+   * cd/env side effects never leak into other execs sharing the session. The
+   * caller owns the shell and should `disposeShell(snapshot.shellId)` when done.
+   * Mutually exclusive with `shellId`.
+   */
+  ephemeral?: boolean
 }
 
 export interface ShellStatusInput {
@@ -231,7 +238,14 @@ export class BashEnvironment {
 
   async exec(input: ShellExecInput): Promise<ShellCommandSnapshot> {
     const timeoutMs = normalizeTimeoutMs(input.timeoutMs ?? DEFAULT_TIMEOUT_MS)
-    const session = input.shellId ? this.requireShell(input.shellId) : this.availableDefaultShell(input.agentSessionId)
+    if (input.shellId && input.ephemeral) {
+      throw new Error('ShellExecInput: "shellId" and "ephemeral" are mutually exclusive')
+    }
+    const session = input.shellId
+      ? this.requireShell(input.shellId)
+      : input.ephemeral
+        ? this.createShell(input.agentSessionId)
+        : this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
     // Expose the owning agent session id to registered commands through the shell env,
     // so per-conversation tools can resolve their caller/context (a product harness keys
