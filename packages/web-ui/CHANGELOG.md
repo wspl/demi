@@ -1,5 +1,13 @@
 # @demicodes/web-ui
 
+## 0.3.1
+
+### Minor Changes
+
+- First published release, aligned with the 0.3.1 public-package set. Source-form
+  package: `.vue`/`.ts` exports compiled by the consumer's bundler (Vue SFC +
+  TypeScript required). Replaces `link:`-based consumption from external products.
+
 ## 0.1.0
 
 ### Minor Changes
