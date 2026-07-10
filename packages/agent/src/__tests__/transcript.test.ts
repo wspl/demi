@@ -328,6 +328,18 @@ test('context estimate anchors on the latest provider-reported usage', () => {
   expect(transcript.estimateContextTokens()).toBe(1_384 + 1_000)
 })
 
+test('context estimate rejects a provider usage anchor larger than the model window', () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'small question' }])
+  transcript.applyProviderEvent(model, { type: 'text_delta', text: 'small reply' })
+  transcript.applyProviderEvent(model, {
+    type: 'response',
+    usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 1_000_000, cacheWriteTokens: 0 },
+  })
+
+  expect(transcript.estimateContextTokens(100_000)).toBeLessThan(100)
+})
+
 test('compaction after the last response invalidates the usage anchor', () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'x'.repeat(8_000) }])

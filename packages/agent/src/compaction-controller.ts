@@ -50,9 +50,13 @@ export class CompactionController {
     const contextWindow = targetModel.model.contextWindow
     if (contextWindow <= 0) return
     const threshold = Math.floor(contextWindow * this.host.thresholdRatio)
-    if (this.host.transcript.estimateContextTokens() < threshold) return
+    if (this.host.transcript.estimateContextTokens(contextWindow) < threshold) return
     await this.host.runWithCompactingPhase(async () => {
-      for (let attempt = 0; attempt < 8 && this.host.transcript.estimateContextTokens() >= threshold; attempt += 1) {
+      for (
+        let attempt = 0;
+        attempt < 8 && this.host.transcript.estimateContextTokens(contextWindow) >= threshold;
+        attempt += 1
+      ) {
         if (!(await this.run())) break
       }
     })
@@ -63,7 +67,7 @@ export class CompactionController {
     const contextWindow = this.host.model.model.contextWindow
     if (contextWindow <= 0) return
     const threshold = Math.floor(contextWindow * this.host.thresholdRatio)
-    if (this.host.transcript.estimateContextTokens() < threshold) return
+    if (this.host.transcript.estimateContextTokens(contextWindow) < threshold) return
     await this.host.runWithCompactingPhase(() => this.run())
   }
 
