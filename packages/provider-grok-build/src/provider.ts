@@ -17,6 +17,7 @@ import {
   type GrokResolvedAuth,
 } from './auth'
 import { buildGrokChatCompletionsBody, mapGrokChatCompletionStream, readServerSentEvents } from './chat'
+import { createGrokBuildCredentials, openGrokCredentialPool, PoolAwareGrokAuthStore } from './credentials'
 import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
 import { listGrokBuildModels } from './models'
 import { createGrokBuildQuota } from './quota'
@@ -32,6 +33,10 @@ export interface GrokBuildProviderOptions {
   authStore?: GrokAuthStore
   headers?: Record<string, string>
   fetch?: GrokBuildFetch
+  /** Demi state root for credential pool (`$DEMI_HOME` / `~/.demi`). */
+  stateDir?: string
+  /** When true (default if `authStore` unset), attach multi-credential pool. */
+  credentials?: boolean
 }
 
 interface GrokBuildRuntimeOptions {
@@ -129,7 +134,13 @@ export class GrokBuildProvider implements AgentProvider {
 export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}): Provider {
   const id = options.id ?? 'grok-build'
   const displayName = options.displayName ?? 'Grok Build'
-  const authStore = options.authStore ?? new FileGrokAuthStore({ grokHome: options.grokHome })
+  const enableCredentials = options.credentials ?? options.authStore === undefined
+  const pool = !options.authStore && enableCredentials ? openGrokCredentialPool({ stateDir: options.stateDir }) : null
+  const authStore =
+    options.authStore ??
+    (pool
+      ? new PoolAwareGrokAuthStore(pool, { grokHome: options.grokHome })
+      : new FileGrokAuthStore({ grokHome: options.grokHome }))
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_GROK_BUILD_BASE_URL)
   const fetchImpl = options.fetch ?? fetch
   const quota = createGrokBuildQuota({
@@ -140,6 +151,9 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
     authStore,
     fetch: fetchImpl as GrokBuildFetch,
   })
+  const credentialsApi = pool
+    ? createGrokBuildCredentials(pool, authStore, { grokHome: options.grokHome, quota })
+    : undefined
   const runtimeOptions: GrokBuildRuntimeOptions = {
     baseUrl,
     grokHome: options.grokHome,
@@ -155,9 +169,12 @@ export function createGrokBuildProvider(options: GrokBuildProviderOptions = {}):
     displayName,
     auth: { status: () => authStore.status() },
     quota,
+    ...(credentialsApi ? { credentials: credentialsApi } : {}),
     state: () => ({
       status: 'ready',
-      message: 'Uses Grok CLI OAuth session (~/.grok/auth.json) via cli-chat-proxy',
+      message: credentialsApi
+        ? 'Uses Grok CLI OAuth + demi credential pool via cli-chat-proxy'
+        : 'Uses Grok CLI OAuth session (~/.grok/auth.json) via cli-chat-proxy',
     }),
     listModels: () =>
       listGrokBuildModels({
