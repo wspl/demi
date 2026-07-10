@@ -198,7 +198,7 @@ interface PersistedShellCommandArtifact {
 }
 
 // Fallback observation window for direct exec() calls that omit timeoutMs (internal instant
-// commands like editor/todo). The model-facing shell_exec tool requires timeoutMs, so the model
+// commands like demi/todo). The model-facing shell_exec tool requires timeoutMs, so the model
 // controls it per call — there is intentionally no configurable global default.
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024

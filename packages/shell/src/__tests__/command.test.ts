@@ -12,8 +12,8 @@ import {
   type CommandStorage,
 } from '../index'
 
-const editorSpec: Command = {
-  name: 'editor',
+const filerSpec: Command = {
+  name: 'filer',
   summary: 'Create, edit, and patch files.',
   subcommands: [
     {
@@ -28,7 +28,7 @@ const editorSpec: Command = {
       },
       positionals: ['path'],
       stdinField: 'content',
-      examples: ["editor create src/foo.ts <<'EOF'\nexport const foo = 1\nEOF"],
+      examples: ["filer create src/foo.ts <<'EOF'\nexport const foo = 1\nEOF"],
       run: () => ({ exitCode: 0 }),
     },
     {
@@ -41,12 +41,12 @@ const editorSpec: Command = {
         occurrence: z.number().optional().describe('1-based occurrence to replace'),
       },
       positionals: ['path'],
-      examples: ['editor edit src/foo.ts --old foo --new bar'],
+      examples: ['filer edit src/foo.ts --old foo --new bar'],
       run: () => ({ exitCode: 0 }),
     },
     {
       name: 'list',
-      summary: 'List files tracked by editor state.',
+      summary: 'List files tracked by filer state.',
       input: {
         verbose: z.boolean().optional().describe('Include details'),
         tag: z.array(z.string()).optional().describe('Filter by repeated tag'),
@@ -54,7 +54,7 @@ const editorSpec: Command = {
       output: {
         json: z.object({ files: z.array(z.string()) }),
       },
-      examples: ['editor list --json --verbose --tag changed --tag staged'],
+      examples: ['filer list --json --verbose --tag changed --tag staged'],
       run: async ({ io }) => {
         await io.stdout(JSON.stringify({ files: ['src/foo.ts'] }))
         return { exitCode: 0 }
@@ -153,12 +153,12 @@ const dualMode: Command = {
 }
 
 test('parseCommandInput maps positionals, flags, and stdin fields', () => {
-  const parsed = parseCommandInput(editorSpec, ['editor', 'create', 'src/foo.ts'], {
+  const parsed = parseCommandInput(filerSpec, ['filer', 'create', 'src/foo.ts'], {
     text: 'export const foo = 1\n',
   })
 
   expect(parsed).toEqual({
-    path: ['editor', 'create'],
+    path: ['filer', 'create'],
     help: false,
     values: {
       path: 'src/foo.ts',
@@ -169,8 +169,8 @@ test('parseCommandInput maps positionals, flags, and stdin fields', () => {
 })
 
 test('parseCommandInput validates long options and coerces numbers', () => {
-  const parsed = parseCommandInput(editorSpec, [
-    'editor',
+  const parsed = parseCommandInput(filerSpec, [
+    'filer',
     'edit',
     'src/foo.ts',
     '--old',
@@ -181,7 +181,7 @@ test('parseCommandInput validates long options and coerces numbers', () => {
     '2',
   ])
 
-  expect(parsed.path).toEqual(['editor', 'edit'])
+  expect(parsed.path).toEqual(['filer', 'edit'])
   expect(parsed.values).toEqual({
     path: 'src/foo.ts',
     old: 'foo',
@@ -191,8 +191,8 @@ test('parseCommandInput validates long options and coerces numbers', () => {
 })
 
 test('parseCommandInput handles --json, booleans, and repeated array options', () => {
-  const parsed = parseCommandInput(editorSpec, [
-    'editor',
+  const parsed = parseCommandInput(filerSpec, [
+    'filer',
     'list',
     '--json',
     '--verbose',
@@ -203,7 +203,7 @@ test('parseCommandInput handles --json, booleans, and repeated array options', (
   ])
 
   expect(parsed).toEqual({
-    path: ['editor', 'list'],
+    path: ['filer', 'list'],
     help: false,
     values: {
       verbose: true,
@@ -214,11 +214,11 @@ test('parseCommandInput handles --json, booleans, and repeated array options', (
 })
 
 test('parseCommandInput rejects unknown options and invalid values', () => {
-  expect(() => parseCommandInput(editorSpec, ['editor', 'edit', 'src/foo.ts', '--missing', 'x'])).toThrow(
+  expect(() => parseCommandInput(filerSpec, ['filer', 'edit', 'src/foo.ts', '--missing', 'x'])).toThrow(
     'Unknown option',
   )
   expect(() =>
-    parseCommandInput(editorSpec, ['editor', 'edit', 'src/foo.ts', '--old', 'a', '--new', 'b', '--occurrence', 'NaN']),
+    parseCommandInput(filerSpec, ['filer', 'edit', 'src/foo.ts', '--old', 'a', '--new', 'b', '--occurrence', 'NaN']),
   ).toThrow('Invalid value for "occurrence"')
 })
 
@@ -259,11 +259,11 @@ test('parseCommandInput dual-mode: child name wins over parent args', () => {
 
 test('parseCommandInput treats "prompt" as help only at routing nodes', () => {
   // Nodes with subcommands: 'prompt' is the help pseudo-subcommand.
-  expect(parseCommandInput(editorSpec, ['editor', 'prompt']).help).toBe(true)
+  expect(parseCommandInput(filerSpec, ['filer', 'prompt']).help).toBe(true)
   expect(parseCommandInput(dualMode, ['tool', 'prompt']).help).toBe(true)
 
   // Pure run nodes: an ordinary argument (e.g. a file literally named "prompt").
-  const leaf = parseCommandInput(editorSpec, ['editor', 'edit', 'prompt', '--old', 'a', '--new', 'b'])
+  const leaf = parseCommandInput(filerSpec, ['filer', 'edit', 'prompt', '--old', 'a', '--new', 'b'])
   expect(leaf.help).toBe(false)
   expect(leaf.values.path).toBe('prompt')
 
@@ -282,10 +282,10 @@ test('parseCommandInput reports full paths for nested errors', () => {
 })
 
 test('renderCommandPrompt documents the tree', () => {
-  const prompt = renderCommandPrompt(editorSpec)
+  const prompt = renderCommandPrompt(filerSpec)
 
-  expect(prompt).toContain('editor: Create, edit, and patch files.')
-  expect(prompt).toContain('editor create')
+  expect(prompt).toContain('filer: Create, edit, and patch files.')
+  expect(prompt).toContain('filer create')
   expect(prompt).toContain('Effects: modifies files')
   expect(prompt).toContain('Success output: writes Created <path> to stdout')
   expect(prompt).toContain('Failure output: writes the error reason to stderr and exits non-zero')
@@ -293,30 +293,30 @@ test('renderCommandPrompt documents the tree', () => {
   expect(prompt).toContain('--old - Exact text to replace')
   expect(prompt).toContain('stdin/heredoc: content')
   expect(prompt).toContain('Success output: raw text by default; machine-readable JSON when --json is passed')
-  expect(prompt).toContain('editor list --json --verbose --tag changed --tag staged')
+  expect(prompt).toContain('filer list --json --verbose --tag changed --tag staged')
 })
 
 test('CommandRegistry registers commands and renders all prompts', () => {
   const registry = new CommandRegistry()
-  registry.register(editorSpec)
+  registry.register(filerSpec)
 
-  expect(registry.get('editor')).toBe(editorSpec)
-  expect(registry.list()).toEqual([editorSpec])
-  expect(registry.renderPrompt()).toBe(`${COMMAND_PROMPT_DEFAULTS}\n\n${renderCommandPrompt(editorSpec)}`)
-  expect(() => registry.register(editorSpec)).toThrow('already registered')
+  expect(registry.get('filer')).toBe(filerSpec)
+  expect(registry.list()).toEqual([filerSpec])
+  expect(registry.renderPrompt()).toBe(`${COMMAND_PROMPT_DEFAULTS}\n\n${renderCommandPrompt(filerSpec)}`)
+  expect(() => registry.register(filerSpec)).toThrow('already registered')
 })
 
 test('CommandRegistry rejects names reserved for shell and system commands', () => {
   const registry = new CommandRegistry()
   for (const name of reservedCommandNames) {
-    expect(() => registry.register({ ...editorSpec, name })).toThrow('reserved for shell/system commands')
+    expect(() => registry.register({ ...filerSpec, name })).toThrow('reserved for shell/system commands')
   }
 })
 
 test('CommandRegistry rejects command names that are unsafe as CLI path segments', () => {
   const registry = new CommandRegistry()
   for (const name of ['../escape', '/absolute', '..', 'package.json', 'has space']) {
-    expect(() => registry.register({ ...editorSpec, name })).toThrow('has invalid name')
+    expect(() => registry.register({ ...filerSpec, name })).toThrow('has invalid name')
   }
   expect(() =>
     registry.register({
@@ -357,8 +357,8 @@ test('CommandRegistry rejects empty nodes, dead fields, and reserved prompt chil
 test('runRegisteredCommand implements prompt from the same renderer', async () => {
   const io = new MemoryIO()
 
-  const result = await runRegisteredCommand(editorSpec, {
-    argv: ['editor', 'prompt'],
+  const result = await runRegisteredCommand(filerSpec, {
+    argv: ['filer', 'prompt'],
     env: {},
     cwd: '/workspace',
     io,
@@ -366,7 +366,7 @@ test('runRegisteredCommand implements prompt from the same renderer', async () =
   })
 
   expect(result.exitCode).toBe(0)
-  expect(io.stdoutText()).toBe(`${renderCommandPrompt(editorSpec)}\n`)
+  expect(io.stdoutText()).toBe(`${renderCommandPrompt(filerSpec)}\n`)
 })
 
 test('runRegisteredCommand executes nested leaves and renders prompt at any group', async () => {
@@ -429,8 +429,8 @@ test('runRegisteredCommand runs bare roots and dual-mode parents', async () => {
 test('runRegisteredCommand validates JSON output when --json is set', async () => {
   const io = new MemoryIO()
 
-  const result = await runRegisteredCommand(editorSpec, {
-    argv: ['editor', 'list', '--json'],
+  const result = await runRegisteredCommand(filerSpec, {
+    argv: ['filer', 'list', '--json'],
     env: {},
     cwd: '/workspace',
     io,
@@ -444,26 +444,26 @@ test('runRegisteredCommand validates JSON output when --json is set', async () =
 test('runRegisteredCommand rejects invalid JSON mode output', async () => {
   const invalidJsonIO = new MemoryIO()
   await expect(
-    runRegisteredCommand(editorSpecWithListOutput('not json'), {
-      argv: ['editor', 'list', '--json'],
+    runRegisteredCommand(filerSpecWithListOutput('not json'), {
+      argv: ['filer', 'list', '--json'],
       env: {},
       cwd: '/workspace',
       io: invalidJsonIO,
       storage: memoryStorage(),
     }),
-  ).rejects.toThrow('Invalid JSON output for "editor list"')
+  ).rejects.toThrow('Invalid JSON output for "filer list"')
   expect(invalidJsonIO.stdoutText()).toBe('')
 
   const schemaMismatchIO = new MemoryIO()
   await expect(
-    runRegisteredCommand(editorSpecWithListOutput(JSON.stringify({ files: [1] })), {
-      argv: ['editor', 'list', '--json'],
+    runRegisteredCommand(filerSpecWithListOutput(JSON.stringify({ files: [1] })), {
+      argv: ['filer', 'list', '--json'],
       env: {},
       cwd: '/workspace',
       io: schemaMismatchIO,
       storage: memoryStorage(),
     }),
-  ).rejects.toThrow('JSON output failed validation for "editor list"')
+  ).rejects.toThrow('JSON output failed validation for "filer list"')
   expect(schemaMismatchIO.stdoutText()).toBe('')
 })
 
@@ -471,8 +471,8 @@ test('runRegisteredCommand rejects JSON mode when the command has no JSON output
   const io = new MemoryIO()
 
   await expect(
-    runRegisteredCommand(editorSpec, {
-      argv: ['editor', 'create', 'src/foo.ts', '--json'],
+    runRegisteredCommand(filerSpec, {
+      argv: ['filer', 'create', 'src/foo.ts', '--json'],
       stdin: { text: '' },
       env: {},
       cwd: '/workspace',
@@ -590,10 +590,10 @@ function memoryStorage(): CommandStorage {
   }
 }
 
-function editorSpecWithListOutput(output: string): Command {
+function filerSpecWithListOutput(output: string): Command {
   return {
-    ...editorSpec,
-    subcommands: editorSpec.subcommands!.map((subcommand) =>
+    ...filerSpec,
+    subcommands: filerSpec.subcommands!.map((subcommand) =>
       subcommand.name === 'list'
         ? {
             ...subcommand,

@@ -60,6 +60,13 @@ export type GrokTokenRefresh = (
   signal?: AbortSignal,
 ) => Promise<GrokRefreshTokenResponse>
 
+/** Grok auth.json stores the access token under `key`; redact it alongside the standard fields. */
+const SECRET_FIELD_PATTERNS = ['\\bkey\\b']
+
+function redactGrokSecretText(text: string): string {
+  return redactCredentialText(text, SECRET_FIELD_PATTERNS)
+}
+
 const DEFAULT_TOKEN_ENDPOINT = 'https://auth.x.ai/oauth2/token'
 const REFRESH_EXPIRY_SKEW_MS = 5 * 60 * 1000
 
@@ -95,7 +102,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
       if (error instanceof GrokAuthError && error.code === 'auth_missing') {
         return { status: 'unauthenticated', message: error.message }
       }
-      return { status: 'error', message: redactSecretText(error instanceof Error ? error.message : String(error)) }
+      return { status: 'error', message: redactGrokSecretText(error instanceof Error ? error.message : String(error)) }
     }
   }
 
@@ -228,7 +235,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
       }
       throw new GrokAuthError(
         'auth_invalid',
-        `Failed to read Grok auth file ${this.authFile}: ${redactSecretText(errorMessage(error))}`,
+        `Failed to read Grok auth file ${this.authFile}: ${redactGrokSecretText(errorMessage(error))}`,
       )
     }
   }
@@ -244,7 +251,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
         handle = await open(lockFile, 'wx', 0o600)
       } catch (error) {
         if (errorCode(error) !== 'EEXIST') {
-          throw new GrokAuthError('auth_lock_failed', `Failed to lock Grok auth file: ${redactSecretText(errorMessage(error))}`)
+          throw new GrokAuthError('auth_lock_failed', `Failed to lock Grok auth file: ${redactGrokSecretText(errorMessage(error))}`)
         }
         // Grok CLI writes `auth.json.lock` as `pid:unix_ts` and may leave it behind
         // after a crash. Steal only abandoned locks; wait if another live process holds it.
@@ -341,9 +348,6 @@ export async function refreshGrokOidcToken(
   return (await response.json()) as GrokRefreshTokenResponse
 }
 
-export function redactSecretText(text: string): string {
-  return redactCredentialText(text, ['\\bkey\\b'])
-}
 
 export function parseJwtExpiration(jwt: string): Date | null {
   const payload = decodeJwtPayload(jwt)
