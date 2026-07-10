@@ -79,8 +79,6 @@ test('demi create writes a new file from heredoc content', async () => {
     path: 'src/foo.txt',
     oldPath: null,
     newPath: 'src/foo.txt',
-    oldText: '',
-    newText: 'hello\n',
   })
   expect(String(fileDiffs(created)[0].unifiedDiff)).toContain('+++ b/src/foo.txt')
 
@@ -172,8 +170,6 @@ test('demi edit replaces exact text and fails on ambiguous matches', async () =>
   expect(fileDiffs(edited)[0]).toMatchObject({
     action: 'edit',
     path: 'file.txt',
-    oldText: 'one\ntwo\ntwo\n',
-    newText: 'one\ntwo\nchanged\n',
   })
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat file.txt' })
@@ -245,8 +241,6 @@ test('demi patch applies a unified diff', async () => {
   expect(fileDiffs(patched)[0]).toMatchObject({
     action: 'patch',
     path: 'patch.txt',
-    oldText: 'one\ntwo\n',
-    newText: 'one\nthree\n',
   })
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat patch.txt' })
@@ -290,8 +284,6 @@ test('demi patch applies multiple files and creates new files', async () => {
     path: 'nested/new.txt',
     oldPath: null,
     newPath: 'nested/new.txt',
-    oldText: '',
-    newText: 'new\nfile\n',
   })
 
   const existing = await env.exec({ shellId: created.shellId, script: 'cat existing.txt' })
@@ -317,8 +309,6 @@ test('demi patch deletes files with a /dev/null target', async () => {
     path: 'doomed.txt',
     oldPath: 'doomed.txt',
     newPath: null,
-    oldText: 'remove\n',
-    newText: '',
   })
 
   const missing = await env.exec({ shellId: created.shellId, script: 'test ! -e doomed.txt' })

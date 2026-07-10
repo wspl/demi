@@ -66,7 +66,7 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
       return
     case 'shell_output':
       finishStream(state)
-      renderShellOutput(state, event.commandId, event.snapshot.stdout.delta, event.snapshot.stderr.delta)
+      renderShellOutput(state, event.commandId, event.status.stdout.delta, event.status.stderr.delta)
       return
     case 'audit':
       finishStream(state)
@@ -121,7 +121,7 @@ export function renderEvent(state: RenderState, event: ClientSessionEvent): void
       finishStream(state)
       writeEventLine(state.output, 'state', 'closed', 'dim')
       return
-    case 'transcript_snapshot':
+    case 'transcript_reset':
       renderBlocks(state, event.blocks)
       return
     case 'transcript_patch':

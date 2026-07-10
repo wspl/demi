@@ -12,7 +12,7 @@ test('AgentSessionCommandStorage prefixes keys by agent session id and exposes s
   expect(await first.readJson<Array<{ text: string }>>('todos.json')).toEqual([{ text: 'a' }])
   expect(await second.readJson<Array<{ text: string }>>('todos.json')).toEqual([{ text: 'b' }])
   expect(await first.list('')).toEqual(['todos.json'])
-  expect(await store.list('')).toEqual(['session-a/todos.json', 'session-b/todos.json'])
+  expect(await store.list('')).toEqual(['agent-sessions/session-a/todos.json', 'agent-sessions/session-b/todos.json'])
 })
 
 test('AgentSessionCommandStorage rejects keys and agent session ids that escape the session prefix', async () => {

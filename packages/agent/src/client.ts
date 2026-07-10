@@ -179,16 +179,16 @@ export class AgentClient {
 
   private handleServerFrame(frame: ServerFrame): void {
     switch (frame.type) {
-      case 'transcript_snapshot':
+      case 'transcript_reset':
         this.blocks = [...frame.blocks]
         this.revision = frame.revision
         this.awaitingResync = false
-        this.emit({ type: 'transcript_snapshot', blocks: this.blocks })
+        this.emit({ type: 'transcript_reset', blocks: this.blocks })
         return
       case 'transcript_patch':
         if (this.awaitingResync) return
         // Transports are ordered, so a gap means a dropped frame somewhere in
-        // the pipeline — fall back to a full snapshot instead of diverging.
+        // the pipeline — fall back to a full transcript reset instead of diverging.
         if (this.revision !== null && frame.revision !== this.revision + 1) {
           this.awaitingResync = true
           this.sendFrame({ type: 'sync_transcript' })

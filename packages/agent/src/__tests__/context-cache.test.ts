@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { events } from '@demicodes/provider/testing'
-import { Transcript } from '../index'
+import { TranscriptLog } from '../index'
 import {
   createRuntime,
   createSession,
@@ -216,7 +216,7 @@ test('provider request is built from effective transcript without internal block
   await session.send(text('new question'))
 })
 
-test('retry and resume provider requests match Transcript.collectInferenceItems', async () => {
+test('retry and resume provider requests match TranscriptLog.collectInferenceItems', async () => {
   let session = createSession(new RecordingProvider([]))
   const provider = new RecordingProvider([
     [events.text('old answer'), events.response()],
@@ -313,7 +313,7 @@ test('snapshot reconstruction preserves model-visible context exactly', async ()
   transcript.pushUserTurn('test-turn', model, text('recent'))
   transcript.appendCompactionMarker(model, boundary.id, 12)
 
-  const restored = new Transcript(transcript.snapshot().blocks)
+  const restored = new TranscriptLog(transcript.toJSON().blocks)
 
   expect(restored.collectInferenceItems()).toEqual(transcript.collectInferenceItems())
 })
