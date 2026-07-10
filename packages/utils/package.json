@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/utils",
   "description": "Shared zero-dependency utilities for Demi (type guards, errors, async, bytes, strings, paths, JSON).",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": false,
   "type": "module",
   "main": "./dist/index.mjs",
