@@ -729,7 +729,29 @@ function inferenceItemToOpenAIResponseInput(item: InferenceItem, index: number):
     }
     case 'tool_result': {
       const { callId } = splitOpenAIResponseToolUseId(item.toolUseId)
-      return [{ type: 'function_call_output', call_id: callId, output: toolResultContentToText(item.output) }]
+      const items: OpenAIResponseInputItem[] = [
+        { type: 'function_call_output', call_id: callId, output: toolResultContentToText(item.output) },
+      ]
+      // Images cannot ride function_call_output (gateways drop or reject them);
+      // the standard pattern is a follow-up user message carrying the media.
+      // The agent layer only attaches media the model's catalog accepts.
+      const images = item.output.filter((block) => block.type === 'image')
+      if (images.length > 0) {
+        items.push({
+          role: 'user',
+          content: [
+            { type: 'input_text', text: `[media returned by tool call ${callId}]` },
+            ...images.map(
+              (block): OpenAIResponseUserContent => ({
+                type: 'input_image',
+                image_url: `data:${block.source.mediaType};base64,${block.source.data}`,
+                detail: 'auto',
+              }),
+            ),
+          ],
+        })
+      }
+      return items
     }
   }
 }
