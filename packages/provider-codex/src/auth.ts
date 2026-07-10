@@ -90,6 +90,13 @@ export interface RefreshTokenResponse {
 
 export type CodexTokenRefresh = (refreshToken: string, signal?: AbortSignal) => Promise<RefreshTokenResponse>
 
+/** Codex error text may embed the env-provided API key by name; redact it alongside the standard fields. */
+const SECRET_FIELD_PATTERNS = ['OPENAI_API_KEY']
+
+export function redactCodexSecretText(text: string): string {
+  return redactCredentialText(text, SECRET_FIELD_PATTERNS)
+}
+
 const TOKEN_REFRESH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const TOKEN_REFRESH_URL = 'https://auth.openai.com/oauth/token'
 const REFRESH_EXPIRY_SKEW_MS = 5 * 60 * 1000
@@ -125,7 +132,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
     } catch (error) {
       if (error instanceof CodexAuthError && error.code === 'auth_missing') return { status: 'unauthenticated', message: error.message }
       if (error instanceof CodexAuthError && error.code === 'auth_unsupported') return { status: 'error', message: error.message }
-      return { status: 'error', message: redactSecretText(error instanceof Error ? error.message : String(error)) }
+      return { status: 'error', message: redactCodexSecretText(error instanceof Error ? error.message : String(error)) }
     }
   }
 
@@ -225,7 +232,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
       if (errorCode(error) === 'ENOENT') {
         throw new CodexAuthError('auth_missing', `Codex auth file not found: ${this.authFile}`)
       }
-      throw new CodexAuthError('auth_invalid', `Failed to read Codex auth file ${this.authFile}: ${redactSecretText(errorMessage(error))}`)
+      throw new CodexAuthError('auth_invalid', `Failed to read Codex auth file ${this.authFile}: ${redactCodexSecretText(errorMessage(error))}`)
     }
   }
 
@@ -239,7 +246,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
         handle = await open(lockFile, 'wx', 0o600)
       } catch (error) {
         if (errorCode(error) !== 'EEXIST' || Date.now() - started > this.lockTimeoutMs) {
-          throw new CodexAuthError('auth_lock_failed', `Failed to lock Codex auth file: ${redactSecretText(errorMessage(error))}`)
+          throw new CodexAuthError('auth_lock_failed', `Failed to lock Codex auth file: ${redactCodexSecretText(errorMessage(error))}`)
         }
         await delay(this.lockRetryDelayMs)
       }
@@ -346,9 +353,6 @@ export async function refreshCodexToken(refreshToken: string, signal?: AbortSign
   return (await response.json()) as RefreshTokenResponse
 }
 
-export function redactSecretText(text: string): string {
-  return redactCredentialText(text, ['OPENAI_API_KEY'])
-}
 
 function resolveChatGptAuthFromFile(auth: CodexAuthDotJson, authFile: string): CodexResolvedAuth {
   const tokens = auth.tokens

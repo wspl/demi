@@ -29,7 +29,7 @@ export interface Command {
   positionals?: string[]
   stdinField?: string
   output?: CommandOutputSpec
-  /** Required when `run` is set (may be empty for fixtures). */
+  /** Required when `run` is set; an empty array renders no examples section. */
   examples?: string[]
 }
 

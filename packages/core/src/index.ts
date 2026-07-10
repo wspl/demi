@@ -106,6 +106,11 @@ export function modelAcceptsVideo(model: Model): boolean {
   return VIDEO_FILE_EXTENSIONS.some((extension) => model.acceptedExtensions.includes(extension))
 }
 
+/** Media asset kinds a command may emit to this model (images always; video per catalog). */
+export function supportedAssetTypesFor(model: Model): ('image' | 'video')[] {
+  return modelAcceptsVideo(model) ? ['image', 'video'] : ['image']
+}
+
 export interface ModelSelection {
   providerId: string
   model: Model

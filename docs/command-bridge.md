@@ -45,7 +45,7 @@ No product-side socket/shim assembly. Bin paths and UDS are **not** user-facing 
     <sessionId>/
       package.json
       .dispatch
-      editor -> .dispatch
+      demi -> .dispatch
 ```
 
 - Workspace **cwd** is only for project files / shell PWD.
