@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   let started = false
   const done = new Promise<void>((resolve) => {
     const unsubscribe = client.subscribe((event) => {
-      if (event.type === 'transcript_snapshot' || event.type === 'transcript_patch') {
+      if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
         render(event.blocks)
       } else if (event.type === 'phase') {
         if (event.phase === 'running') started = true

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
-import { AgentSession, Transcript } from '../index'
+import { AgentSession, TranscriptLog } from '../index'
 import {
   assertNoOrphanToolItems,
   assertTranscriptInvariants,
@@ -166,7 +166,7 @@ test('restored session continues from snapshot without re-executing completed to
       return [events.text('restored follow-up'), events.response()]
     },
   ])
-  const restored = createSession(restoredProvider, runtime, snapshot ? new Transcript(snapshot.transcript.blocks) : undefined)
+  const restored = createSession(restoredProvider, runtime, snapshot ? new TranscriptLog(snapshot.transcript.blocks) : undefined)
 
   await restored.send(text('continue after restore'))
 
@@ -174,7 +174,7 @@ test('restored session continues from snapshot without re-executing completed to
   expect(restored.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
-test('AgentSession.fromSnapshot restores state and model context with a fresh idle runtime', async () => {
+test('AgentSession.fromCheckpoint restores state and model context with a fresh idle runtime', async () => {
   const store = new MemorySessionStore<{ toolCalls: number }>()
   const firstProvider = new RecordingProvider([
     [events.toolCall('tool-1', 'write_once', { path: 'file.txt' }), events.response()],
@@ -221,13 +221,13 @@ test('AgentSession.fromSnapshot restores state and model context with a fresh id
       return [events.text('restored write complete'), events.response()]
     },
   ])
-  // fromSnapshot adopts the snapshot by reference (ownership transfer), so a
+  // fromCheckpoint adopts the snapshot by reference (ownership transfer), so a
   // caller that keeps mutating its copy must hand over a clone.
-  const restored = AgentSession.fromSnapshot(
+  const restored = AgentSession.fromCheckpoint(
     {
       provider: restoredProvider,
       runtime,
-      snapshot: structuredClone(snapshot),
+      checkpoint: structuredClone(snapshot),
     },
     {
       idFactory: (() => {
@@ -257,7 +257,7 @@ test('AgentSession.fromSnapshot restores state and model context with a fresh id
   expect(restoredProvider.requests).toHaveLength(2)
 })
 
-test('AgentSession.fromSnapshot rejects mismatched runtimes', async () => {
+test('AgentSession.fromCheckpoint rejects mismatched runtimes', async () => {
   const store = new MemorySessionStore<TestState>()
   const provider = new RecordingProvider([[events.text('answer'), events.response()]])
   const runtime = createRuntime()
@@ -269,12 +269,12 @@ test('AgentSession.fromSnapshot rejects mismatched runtimes', async () => {
   if (!snapshot) throw new Error('missing snapshot')
 
   expect(() => {
-    AgentSession.fromSnapshot({
+    AgentSession.fromCheckpoint({
       provider: new RecordingProvider([]),
       runtime: createRuntime({ harnessName: 'other-agent' }),
-      snapshot,
+      checkpoint: snapshot,
     })
-  }).toThrow('snapshot harness "test-agent" does not match "other-agent"')
+  }).toThrow('checkpoint harness "test-agent" does not match "other-agent"')
 })
 
 test('restored session after provider error does not duplicate completed tool results', async () => {
@@ -313,7 +313,7 @@ test('restored session after provider error does not duplicate completed tool re
       return [events.text('recovered after restore'), events.response()]
     },
   ])
-  const restored = createSession(restoredProvider, runtime, snapshot ? new Transcript(snapshot.transcript.blocks) : undefined)
+  const restored = createSession(restoredProvider, runtime, snapshot ? new TranscriptLog(snapshot.transcript.blocks) : undefined)
 
   await restored.send(text('recover after error'))
 

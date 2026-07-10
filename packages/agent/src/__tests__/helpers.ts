@@ -3,10 +3,10 @@ import type { Block, ModelSelection, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import {
   AgentSession,
-  Transcript,
+  TranscriptLog,
   type AgentHarnessRuntime,
   type AgentSessionOptions,
-  type AgentSessionSnapshot,
+  type AgentSessionCheckpoint,
 } from '../index'
 
 export interface TestState {
@@ -46,7 +46,7 @@ export function createRuntime(
 export function createSession(
   provider: AgentProvider,
   runtime: AgentHarnessRuntime<TestState> = createRuntime(),
-  transcript?: Transcript,
+  transcript?: TranscriptLog,
   selection: ModelSelection = model,
   options: Partial<AgentSessionOptions<TestState>> = {},
 ): AgentSession<TestState> {
@@ -71,22 +71,22 @@ export function createSession(
   )
 }
 
-export function makeTranscript(): Transcript {
+export function makeTranscript(): TranscriptLog {
   let id = 0
-  return new Transcript([], {
+  return new TranscriptLog([], {
     idFactory: () => `seed-${++id}`,
     now: () => '2026-06-17T00:00:00.000Z',
   })
 }
 
 export class MemorySessionStore<State> {
-  readonly snapshots: Array<AgentSessionSnapshot<State>> = []
+  readonly snapshots: Array<AgentSessionCheckpoint<State>> = []
 
-  saveSnapshot(snapshot: AgentSessionSnapshot<State>): void {
+  saveCheckpoint(snapshot: AgentSessionCheckpoint<State>): void {
     this.snapshots.push(snapshot)
   }
 
-  loadSnapshot(): Promise<AgentSessionSnapshot<State> | null> {
+  loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null> {
     return Promise.resolve(this.snapshots[this.snapshots.length - 1] ?? null)
   }
 }

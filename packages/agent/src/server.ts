@@ -15,9 +15,9 @@ import type { Block, ToolResultContentBlock } from '@demicodes/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { AgentClient } from './client'
 import { cloneBlocks } from './patch'
-import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandSnapshotLike } from './frames'
+import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandStatusLike } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
-import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
+import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionCheckpoint, SessionEvent } from './types'
 import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
 
@@ -167,8 +167,8 @@ export class AgentServer {
 /**
  * Tracks which transport binding currently owns each client-provided session
  * id. Opening a session id that is already owned takes it over: the previous
- * binding's session is closed (flushing its snapshot) before the new open
- * proceeds, so two connections never write the same snapshot key concurrently.
+ * binding's session is closed (flushing its checkpoint) before the new open
+ * proceeds, so two connections never write the same checkpoint key concurrently.
  */
 class SessionOwnershipRegistry {
   private readonly holders = new Map<string, AgentTransportBindingImpl>()
@@ -363,7 +363,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         case 'sync_transcript': {
           const session = this.sessionFor('sync_transcript')
           if (!session) return
-          this.sendTranscriptSnapshot(session)
+          this.sendTranscriptReset(session)
           return
         }
         case 'close':
@@ -384,25 +384,25 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
 
     const agent = this.agent
     const provider = await this.createRuntime(frame.provider)
-    // The session id is client-owned: it keys the snapshot, so a reconnect with
+    // The session id is client-owned: it keys the checkpoint, so a reconnect with
     // the same id resumes the conversation rather than starting a new one. If
     // another connection currently owns the id, this open takes it over.
     const agentSessionId = frame.sessionId
     await this.sessions.claim(agentSessionId, this)
     this.currentSessionId = agentSessionId
 
-    // The snapshot lives in Host.store, so a Host is needed before the restored
+    // The checkpoint lives in Host.store, so a Host is needed before the restored
     // state exists. Harnesses must tolerate host() being called with initial
     // state for store access (listConversations does the same).
     const initialState = agent.initialState()
     const provisionalHost = agent.host({ state: initialState, cwd: frame.cwd })
     const store = new HostAgentSessionStore(provisionalHost.store, agentSessionId)
-    const snapshot = await store.loadSnapshot()
-    const restoring = snapshot !== null && snapshot.harnessName === agent.name
+    const checkpoint = await store.loadCheckpoint()
+    const restoring = checkpoint !== null && checkpoint.harnessName === agent.name
 
     // One live state object, shared by the harness closures (host, commands,
     // prompts) and the session itself. On restore it carries the saved state.
-    const state = restoring ? structuredClone(snapshot.state) : initialState
+    const state = restoring ? structuredClone(checkpoint.state) : initialState
     const harnessContext = { state, cwd: frame.cwd }
     const host = restoring ? agent.host(harnessContext) : provisionalHost
     const commands = agent.commands?.(harnessContext) ?? []
@@ -442,8 +442,8 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       tools: () => tools,
     }
     const session = restoring
-      ? AgentSession.fromSnapshot(
-          { provider, runtime, snapshot: { ...snapshot, state } },
+      ? AgentSession.fromCheckpoint(
+          { provider, runtime, checkpoint: { ...checkpoint, state } },
           { agentSessionId, store, ...this.sessionOptions },
         )
       : new AgentSession(
@@ -457,20 +457,20 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.currentCwd = frame.cwd
     this.currentProviderId = frame.provider.providerId
     this.currentCommandNames = new Set(commandNames)
-    // A resumed session restores its model from the snapshot; align it with the
+    // A resumed session restores its model from the checkpoint; align it with the
     // model the client opened with (which may differ from when it was saved).
     if (restoring) session.updateModel(null, frame.provider.model)
     this.unsubscribeSession = this.session.subscribe((event) => this.handleSessionEvent(event))
 
     this.send({ type: 'opened' })
-    this.sendTranscriptSnapshot(session)
+    this.sendTranscriptReset(session)
     this.send({ type: 'phase', phase: this.session.phase() })
     this.send({ type: 'queue', queue: this.session.queuedMessages() })
   }
 
-  private sendTranscriptSnapshot(session: AgentSession<unknown>): void {
+  private sendTranscriptReset(session: AgentSession<unknown>): void {
     const transcript = session.transcript()
-    this.send({ type: 'transcript_snapshot', blocks: cloneBlocks(transcript.blocks), revision: transcript.revision })
+    this.send({ type: 'transcript_reset', blocks: cloneBlocks(transcript.blocks), revision: transcript.revision })
   }
 
   private handleSessionEvent(event: SessionEvent): void {
@@ -561,10 +561,10 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const keys = await host.store.list('agent-sessions/')
     const conversations: ConversationSummary[] = []
     for (const key of keys) {
-      if (!key.endsWith('/snapshot.json')) continue
-      const snapshot = await host.store.readJson<AgentSessionSnapshot<unknown>>(key)
-      if (!snapshot || snapshot.cwd !== cwd) continue
-      conversations.push(summarizeConversation(key.slice('agent-sessions/'.length, -'/snapshot.json'.length), snapshot))
+      if (!key.endsWith('/checkpoint.json')) continue
+      const checkpoint = await host.store.readJson<AgentSessionCheckpoint<unknown>>(key)
+      if (!checkpoint || checkpoint.cwd !== cwd) continue
+      conversations.push(summarizeConversation(key.slice('agent-sessions/'.length, -'/checkpoint.json'.length), checkpoint))
     }
     conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     this.send({ type: 'conversations', conversations })
@@ -664,7 +664,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         type: 'shell_output',
         shellId: shell.shellId,
         commandId: shell.commandId,
-        snapshot: shell.snapshot,
+        status: shell.status,
       })
     }
     const audit = progressToAudit(progress)
@@ -678,7 +678,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         type: 'shell_output',
         shellId: shell.shellId,
         commandId: shell.commandId,
-        snapshot: shell.snapshot,
+        status: shell.status,
       })
     }
     const audit = progressToAudit(progress)
@@ -707,17 +707,17 @@ class HostAgentSessionStore<State> implements AgentSessionStore<State> {
     private readonly agentSessionId: string,
   ) {}
 
-  saveSnapshot(snapshot: AgentSessionSnapshot<State>): Promise<void> {
-    return this.store.writeJson(`agent-sessions/${this.agentSessionId}/snapshot.json`, snapshot)
+  saveCheckpoint(checkpoint: AgentSessionCheckpoint<State>): Promise<void> {
+    return this.store.writeJson(`agent-sessions/${this.agentSessionId}/checkpoint.json`, checkpoint)
   }
 
-  loadSnapshot(): Promise<AgentSessionSnapshot<State> | null> {
-    return this.store.readJson<AgentSessionSnapshot<State>>(`agent-sessions/${this.agentSessionId}/snapshot.json`)
+  loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null> {
+    return this.store.readJson<AgentSessionCheckpoint<State>>(`agent-sessions/${this.agentSessionId}/checkpoint.json`)
   }
 }
 
-function summarizeConversation(id: string, snapshot: AgentSessionSnapshot<unknown>): ConversationSummary {
-  const blocks = snapshot.transcript.blocks
+function summarizeConversation(id: string, checkpoint: AgentSessionCheckpoint<unknown>): ConversationSummary {
+  const blocks = checkpoint.transcript.blocks
   const first = blocks[0]
   const last = blocks[blocks.length - 1]
   return {
@@ -749,7 +749,7 @@ function progressToText(progress: unknown): string {
 
 function progressToShellOutput(
   progress: unknown,
-): { shellId: string; commandId: string; snapshot: ShellCommandSnapshotLike } | null {
+): { shellId: string; commandId: string; status: ShellCommandStatusLike } | null {
   if (!isRecord(progress)) return null
   if (typeof progress.shellId !== 'string' || typeof progress.commandId !== 'string') return null
   if (progress.status !== 'running' && progress.status !== 'exited' && progress.status !== 'aborted') return null
@@ -757,8 +757,8 @@ function progressToShellOutput(
   const stdout = progress.stdout
   const stderr = progress.stderr
   if (
-    !isStreamArtifact(stdout) ||
-    !isStreamArtifact(stderr) ||
+    !isShellStreamView(stdout) ||
+    !isShellStreamView(stderr) ||
     typeof progress.runningMs !== 'number' ||
     typeof progress.idleMs !== 'number'
   ) {
@@ -767,11 +767,11 @@ function progressToShellOutput(
   return {
     shellId: progress.shellId,
     commandId: progress.commandId,
-    snapshot: progress as unknown as ShellCommandSnapshotLike,
+    status: progress as unknown as ShellCommandStatusLike,
   }
 }
 
-function isStreamArtifact(value: Record<string, unknown>): boolean {
+function isShellStreamView(value: Record<string, unknown>): boolean {
   return (
     typeof value.path === 'string' &&
     typeof value.offset === 'number' &&

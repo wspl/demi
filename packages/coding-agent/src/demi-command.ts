@@ -559,8 +559,7 @@ interface FileDiffMetadata {
   path: string
   oldPath: string | null
   newPath: string | null
-  oldText: string
-  newText: string
+  /** The only stored encoding of the change — enough to render a diff without duplicating file bodies. */
   unifiedDiff: string
 }
 
@@ -590,8 +589,6 @@ function fileDiffMetadata(
     path,
     oldPath,
     newPath,
-    oldText,
-    newText,
     unifiedDiff: unifiedDiff(oldPath, newPath, oldText, newText),
   }
 }

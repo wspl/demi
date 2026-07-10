@@ -3,7 +3,7 @@ import { deferred } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
-import { Transcript } from '../index'
+import { TranscriptLog } from '../index'
 import {
   assertNoOrphanToolItems,
   assertTranscriptInvariants,
@@ -193,14 +193,14 @@ test('resume triggers preflight compaction before continuing an aborted long con
 
 test('compaction summary provider errors do not leave boundary or marker blocks', async () => {
   const transcript = oldAndRecentTranscript()
-  const before = transcript.snapshot()
+  const before = transcript.toJSON()
   const provider = new RecordingProvider([[events.error('summary failed', 'rate_limit')]])
   const session = createSession(provider, createRuntime(), transcript)
 
   await expect(session.compact()).rejects.toThrow('summary failed')
 
   expect(session.phase()).toBe('idle')
-  expect(session.transcript().snapshot()).toEqual(before)
+  expect(session.transcript().toJSON()).toEqual(before)
   expect(provider.requests).toHaveLength(1)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_marker')).toBe(false)
@@ -208,7 +208,7 @@ test('compaction summary provider errors do not leave boundary or marker blocks'
 
 test('aborting a hanging compaction summary does not leave boundary or marker blocks', async () => {
   const transcript = oldAndRecentTranscript()
-  const before = transcript.snapshot()
+  const before = transcript.toJSON()
   const provider = new HangingSummaryProvider()
   const session = createSession(provider, createRuntime(), transcript)
 
@@ -300,7 +300,7 @@ test('compaction summary context overflow errors are atomic and classified when 
   const transcript = makeTranscript()
   transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
   transcript.pushUserTurn('test-turn', model, text('recent question'))
-  const before = transcript.snapshot()
+  const before = transcript.toJSON()
   const provider = new RecordingProvider([
     [events.error('summary context overflow', 'context_length_exceeded')],
     (request) => {
@@ -323,7 +323,7 @@ test('compaction summary context overflow errors are atomic and classified when 
 
   await expect(session.compact()).rejects.toThrow('summary context overflow')
 
-  expect(session.transcript().snapshot()).toEqual(before)
+  expect(session.transcript().toJSON()).toEqual(before)
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
   expect(errors).toHaveLength(1)
   expect(errors[0]).toMatchObject({ message: 'summary context overflow', code: 'context_length_exceeded' })
@@ -1072,7 +1072,7 @@ test('compaction boundary and marker survive snapshot reconstruction', async () 
   expect(snapshot?.transcript.blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
   expect(snapshot?.transcript.blocks.some((block) => block.type === 'compaction_marker')).toBe(true)
 
-  const restoredTranscript = new Transcript(snapshot?.transcript.blocks)
+  const restoredTranscript = new TranscriptLog(snapshot?.transcript.blocks)
   const restoredProvider = new RecordingProvider([
     (request) => {
       expect(request.items).toEqual([
@@ -1096,7 +1096,7 @@ test('compaction boundary and marker survive snapshot reconstruction', async () 
   expect(restoredProvider.requests).toHaveLength(1)
 })
 
-function oldAndRecentTranscript(): Transcript {
+function oldAndRecentTranscript(): TranscriptLog {
   const transcript = makeTranscript()
   transcript.pushUserTurn('test-turn', model, text('old question'))
   transcript.applyProviderEvent(model, events.text('old answer'))

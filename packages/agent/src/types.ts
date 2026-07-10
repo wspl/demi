@@ -10,13 +10,13 @@ import type { AgentProvider, ToolDefinition } from '@demicodes/provider'
 import type { Command, Host } from '@demicodes/shell'
 import type { TranscriptPatch } from './frames'
 import type { TurnRetryPolicy } from './retry-policy'
-import type { Transcript } from './transcript'
+import type { TranscriptLog } from './transcript'
 
 export interface AgentPromptContext<State> {
   agentSessionId: string
   state: State
   cwd: string
-  transcript: Transcript
+  transcript: TranscriptLog
 }
 
 export interface AgentSystemPromptContext<State> extends AgentPromptContext<State> {
@@ -39,14 +39,14 @@ export interface AgentDisposeContext<State> {
   agentSessionId: string
   state: State
   cwd: string
-  transcript: Transcript
+  transcript: TranscriptLog
 }
 
 export interface AgentReferenceResolveContext<State> {
   agentSessionId: string
   state: State
   cwd: string
-  transcript: Transcript
+  transcript: TranscriptLog
   signal: AbortSignal
 }
 
@@ -83,16 +83,9 @@ export interface AgentToolInvokeContext<State> {
 export interface AgentToolInvokeResult {
   output: ToolResultContentBlock[]
   isError?: boolean
-  metadata?: unknown | null
-  continuation?: ToolContinuation
+  /** Bounded UI-facing view data stored on the tool_call block; see the core Block contract. */
+  view?: unknown | null
   stopAfterToolResult?: boolean
-}
-
-export interface ToolContinuation {
-  toolCallId: string
-  shellId: string
-  commandId: string
-  status: 'running'
 }
 
 export type AbortTarget =
@@ -119,19 +112,19 @@ export type AgentLifecycleEvent<State> =
       type: 'before_round_start'
       agentSessionId: string
       state: State
-      transcript: Transcript
+      transcript: TranscriptLog
       content: UserContentBlock[]
     }
   | {
       type: 'after_tool_call'
       agentSessionId: string
       state: State
-      transcript: Transcript
+      transcript: TranscriptLog
       toolCallId: string
       toolName: string
       result: AgentToolInvokeResult
     }
-  | { type: 'after_transcript_rewrite'; agentSessionId: string; state: State; transcript: Transcript; reason: 'retry' }
+  | { type: 'after_transcript_rewrite'; agentSessionId: string; state: State; transcript: TranscriptLog; reason: 'retry' }
 
 export interface AgentHarnessRuntime<State> {
   harnessName: string
@@ -152,11 +145,11 @@ export interface AgentSessionParams<State> {
   model: ModelSelection
   cwd: string
   runtime: AgentHarnessRuntime<State>
-  transcript?: CoreTranscript | Transcript
+  transcript?: CoreTranscript | TranscriptLog
   state?: State
 }
 
-export interface AgentSessionSnapshot<State> {
+export interface AgentSessionCheckpoint<State> {
   transcript: CoreTranscript
   state: State
   phase: SessionPhase
@@ -167,15 +160,15 @@ export interface AgentSessionSnapshot<State> {
 }
 
 export interface AgentSessionStore<State = unknown> {
-  saveSnapshot(snapshot: AgentSessionSnapshot<State>): Promise<void> | void
-  /** Load a previously saved snapshot for this session, or null if none exists. */
-  loadSnapshot(): Promise<AgentSessionSnapshot<State> | null>
+  saveCheckpoint(checkpoint: AgentSessionCheckpoint<State>): Promise<void> | void
+  /** Load a previously saved checkpoint for this session, or null if none exists. */
+  loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null>
 }
 
 export interface AgentSessionRestoreParams<State> {
   provider: AgentProvider
   runtime: AgentHarnessRuntime<State>
-  snapshot: AgentSessionSnapshot<State>
+  checkpoint: AgentSessionCheckpoint<State>
 }
 
 export interface AgentSessionOptions<State = unknown> {
@@ -188,7 +181,7 @@ export interface AgentSessionOptions<State = unknown> {
     preflightThresholdRatio?: number
   }
   /**
-   * Maximum interval between snapshot writes while a turn is streaming. Writes
+   * Maximum interval between checkpoint writes while a turn is streaming. Writes
    * always flush at action boundaries (turn end, abort, dispose); this only
    * bounds staleness during streaming. Default 1000ms.
    */

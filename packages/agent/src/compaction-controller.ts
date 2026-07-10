@@ -1,7 +1,7 @@
 import { AbortError, abortable, delay, throwIfAborted } from '@demicodes/utils'
 import type { Block, ModelSelection } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
-import { Transcript, estimateTranscriptBlockTokens } from './transcript'
+import { TranscriptLog, estimateTranscriptBlockTokens } from './transcript'
 import {
   buildCompactionSummaryRequest,
   estimateTokens,
@@ -19,7 +19,7 @@ import type { SessionEvent } from './types'
  * lets the compaction algorithm be exercised in isolation.
  */
 export interface CompactionHost {
-  readonly transcript: Transcript
+  readonly transcript: TranscriptLog
   readonly model: ModelSelection
   readonly provider: AgentProvider
   readonly keepRecentTokens: number
@@ -103,7 +103,7 @@ export class CompactionController {
     // Present the to-compact history as INERT, delimited material inside a single user turn — not as
     // a replayed conversation. Replaying it makes the model "continue" the conversation and obey
     // instructions buried in it (e.g. "only reply X") instead of summarizing.
-    const compactTranscript = new Transcript(blocks)
+    const compactTranscript = new TranscriptLog(blocks)
     const rendered = renderItemsForSummary(compactTranscript.collectInferenceItems())
     const policy = this.host.retryPolicy
 

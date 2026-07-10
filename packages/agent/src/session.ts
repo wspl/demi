@@ -1,7 +1,7 @@
 import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAborted, truncate } from '@demicodes/utils'
 import type { ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
-import { Transcript, type TranscriptOptions } from './transcript'
+import { TranscriptLog, type TranscriptOptions } from './transcript'
 import { YieldScheduler } from './yield-scheduler'
 import { PendingSteerQueue, type PendingSteer } from './pending-steer-queue'
 import { CompactionController, type CompactionHost } from './compaction-controller'
@@ -72,7 +72,7 @@ export class AgentSession<State> {
     return this.model
   }
 
-  private readonly transcriptLog: Transcript
+  private readonly transcriptLog: TranscriptLog
   private readonly agentState: State
   private currentPhase: SessionPhase = 'idle'
   private workerRunning = false
@@ -93,29 +93,29 @@ export class AgentSession<State> {
   private persistDirty = false
 
   /**
-   * Restores a session from a snapshot. Ownership of the snapshot (including
+   * Restores a session from a checkpoint. Ownership of the checkpoint (including
    * `state`) transfers to the session: the caller must not mutate it afterwards.
    * Passing state by reference — not a clone — lets the caller share the same
    * object with harness closures (host/commands), keeping one live state.
    */
-  static fromSnapshot<State>(
+  static fromCheckpoint<State>(
     params: AgentSessionRestoreParams<State>,
     options: AgentSessionOptions<State> = {},
   ): AgentSession<State> {
-    if (params.snapshot.harnessName !== params.runtime.harnessName) {
+    if (params.checkpoint.harnessName !== params.runtime.harnessName) {
       throw new Error(
-        `AgentSession: snapshot harness "${params.snapshot.harnessName}" does not match "${params.runtime.harnessName}"`,
+        `AgentSession: checkpoint harness "${params.checkpoint.harnessName}" does not match "${params.runtime.harnessName}"`,
       )
     }
-    const snapshot = params.snapshot
+    const checkpoint = params.checkpoint
     return new AgentSession(
       {
         provider: params.provider,
-        model: snapshot.model,
-        cwd: snapshot.cwd,
+        model: checkpoint.model,
+        cwd: checkpoint.cwd,
         runtime: params.runtime,
-        transcript: snapshot.transcript,
-        state: snapshot.state,
+        transcript: checkpoint.transcript,
+        state: checkpoint.state,
       },
       options,
     )
@@ -146,9 +146,9 @@ export class AgentSession<State> {
       now: options.now,
     }
     this.transcriptLog =
-      params.transcript instanceof Transcript
+      params.transcript instanceof TranscriptLog
         ? params.transcript
-        : new Transcript(params.transcript?.blocks ?? [], transcriptOptions)
+        : new TranscriptLog(params.transcript?.blocks ?? [], transcriptOptions)
 
     const self = this
     const compactionHost: CompactionHost = {
@@ -308,7 +308,7 @@ export class AgentSession<State> {
       model: this.model,
       content: resolvedContent,
     })
-    // Transcript-backed steering is materialized after the current sampling/tool boundary,
+    // TranscriptLog-backed steering is materialized after the current sampling/tool boundary,
     // matching Codex pending input semantics.
   }
 
@@ -364,7 +364,7 @@ export class AgentSession<State> {
           text: [`yield scheduled`, `wakeupId: ${wakeupId}`, `durationMs: ${durationMs}`].join('\n'),
         },
       ],
-      metadata: {
+      view: {
         kind: 'yield_wakeup',
         wakeupId,
         durationMs,
@@ -395,7 +395,7 @@ export class AgentSession<State> {
     if (pending && pending !== this.provider) await pending.dispose?.()
   }
 
-  transcript(): Transcript {
+  transcript(): TranscriptLog {
     return this.transcriptLog
   }
 
@@ -869,7 +869,7 @@ export class AgentSession<State> {
     agentSessionId: string
     state: State
     cwd: string
-    transcript: Transcript
+    transcript: TranscriptLog
   } {
     return {
       agentSessionId: this.agentSessionId,
@@ -979,7 +979,7 @@ export class AgentSession<State> {
   /**
    * Publishes transcript changes: drains the mutation journal into a patch
    * event (O(changed content), not O(transcript)) and schedules a throttled
-   * snapshot write. Boundaries (action end, abort, dispose) flush the write.
+   * checkpoint write. Boundaries (action end, abort, dispose) flush the write.
    */
   private async commitTranscript(): Promise<void> {
     const drained = this.transcriptLog.takePatches()
@@ -993,17 +993,17 @@ export class AgentSession<State> {
     if (this.persistTimer) return
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null
-      void this.persistSnapshot().catch((error: unknown) => {
+      void this.persistCheckpoint().catch((error: unknown) => {
         this.emit({ type: 'error', error: asError(error) })
       })
     }, this.persistIntervalMs)
   }
 
-  private async persistSnapshot(): Promise<void> {
+  private async persistCheckpoint(): Promise<void> {
     if (!this.store || !this.persistDirty) return
     this.persistDirty = false
-    await this.store.saveSnapshot({
-      transcript: this.transcriptLog.snapshot(),
+    await this.store.saveCheckpoint({
+      transcript: this.transcriptLog.toJSON(),
       state: structuredClone(this.agentState),
       phase: this.currentPhase,
       queue: structuredClone(this.queuedMessages()),
@@ -1018,7 +1018,7 @@ export class AgentSession<State> {
       clearTimeout(this.persistTimer)
       this.persistTimer = null
     }
-    await this.persistSnapshot()
+    await this.persistCheckpoint()
   }
 
   private emit(event: SessionEvent): void {

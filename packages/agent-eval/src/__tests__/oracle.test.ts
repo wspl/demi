@@ -28,7 +28,7 @@ function toolCallBlock(toolName: string): Block {
     status: 'completed',
     streamingOutput: [],
     output: [{ type: 'text', text: 'ok' }],
-    metadata: null,
+    view: null,
   }
 }
 

@@ -34,15 +34,7 @@ export function toolOutputText(block: ToolCallBlock): string {
 }
 
 export function shellTerminalOutputChunks(block: ToolCallBlock): ShellTerminalOutputChunk[] {
-  const chunks = outputChunks(block.metadata)
-  if (chunks.length > 0) return chunks
-
-  const stdout = artifactDelta(block.metadata, 'stdout') || stdoutSection(toolOutputText(block))
-  const stderr = artifactDelta(block.metadata, 'stderr') || stderrSection(toolOutputText(block))
-  return [
-    ...(stdout ? [{ stream: 'stdout' as const, text: stdout }] : []),
-    ...(stderr ? [{ stream: 'stderr' as const, text: stderr }] : []),
-  ]
+  return outputChunks(block.view)
 }
 
 export function parseToolInput(raw: string): Record<string, unknown> {
@@ -55,57 +47,13 @@ export function parseToolInput(raw: string): Record<string, unknown> {
   }
 }
 
-function artifactDelta(metadata: unknown, name: 'stdout' | 'stderr'): string {
-  if (!isRecord(metadata)) return ''
-  const artifact = metadata[name]
-  if (!isRecord(artifact)) return ''
-  const delta = artifact['delta']
-  if (typeof delta === 'string' && delta.length > 0) return delta
-  const tail = artifact['tail']
-  return typeof tail === 'string' ? tail : ''
-}
-
-function outputChunks(metadata: unknown): ShellTerminalOutputChunk[] {
-  if (!isRecord(metadata)) return []
-  const output = metadata['output']
-  if (!isRecord(output) || !Array.isArray(output['chunks'])) return []
-  return output['chunks'].flatMap((chunk): ShellTerminalOutputChunk[] => {
+function outputChunks(view: unknown): ShellTerminalOutputChunk[] {
+  if (!isRecord(view) || !Array.isArray(view['chunks'])) return []
+  return view['chunks'].flatMap((chunk): ShellTerminalOutputChunk[] => {
     if (!isRecord(chunk)) return []
     const stream = chunk['stream']
     const text = chunk['text']
     if ((stream !== 'stdout' && stream !== 'stderr') || typeof text !== 'string' || text.length === 0) return []
     return [{ stream, text }]
   })
-}
-
-function stdoutSection(text: string): string {
-  return namedSection(text, 'stdout', ['stderr:'])
-}
-
-function stderrSection(text: string): string {
-  return namedSection(text, 'stderr', ['next:'])
-}
-
-function namedSection(text: string, name: 'stdout' | 'stderr', nextNames: string[]): string {
-  const header = `${name}:\n`
-  const marker = `\n${header}`
-  const start = text.startsWith(header) ? 0 : text.indexOf(marker)
-  if (start < 0) return ''
-  const bodyStart = start + (start === 0 ? header.length : marker.length)
-  const lines = text.slice(bodyStart).split('\n')
-  const section: string[] = []
-  for (const line of lines) {
-    if (
-      line.startsWith(`${name}Path:`)
-      || line.startsWith(`${name}Offset:`)
-      || line.startsWith(`${name}Bytes:`)
-      || line === `${name}: truncated`
-      || nextNames.some((nextName) => line === nextName || line.startsWith(nextName))
-    ) {
-      break
-    }
-    section.push(line)
-  }
-  const result = section.join('\n').trimEnd()
-  return result === '(empty)' ? '' : result
 }
