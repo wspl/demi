@@ -218,15 +218,21 @@ class LocalHostFileSystem implements HostFileSystem {
   }
 
   async mkdir(path: string, options?: { cwd?: string; recursive?: boolean }): Promise<void> {
-    await mkdir(this.resolvePath(path, options?.cwd), { recursive: options?.recursive })
+    // Node rejects `{ recursive: undefined }` (must be boolean or omitted).
+    await mkdir(this.resolvePath(path, options?.cwd), { recursive: options?.recursive === true })
   }
 
   async rm(path: string, options?: { cwd?: string; recursive?: boolean; force?: boolean }): Promise<void> {
-    await rm(this.resolvePath(path, options?.cwd), { recursive: options?.recursive, force: options?.force })
+    await rm(this.resolvePath(path, options?.cwd), {
+      recursive: options?.recursive === true,
+      force: options?.force === true,
+    })
   }
 
   async cp(path: string, destination: string, options?: { cwd?: string; recursive?: boolean }): Promise<void> {
-    await cp(this.resolvePath(path, options?.cwd), this.resolvePath(destination, options?.cwd), { recursive: options?.recursive })
+    await cp(this.resolvePath(path, options?.cwd), this.resolvePath(destination, options?.cwd), {
+      recursive: options?.recursive === true,
+    })
   }
 
   async mv(path: string, destination: string, options?: { cwd?: string }): Promise<void> {
