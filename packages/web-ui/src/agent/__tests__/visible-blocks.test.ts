@@ -56,7 +56,7 @@ function tool(id: string, toolName: string): Extract<Block, { type: 'tool_call' 
     status: 'completed',
     streamingOutput: [],
     output: [],
-    metadata: null,
+    view: null,
   }
 }
 

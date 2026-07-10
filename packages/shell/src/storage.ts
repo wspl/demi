@@ -9,7 +9,9 @@ export class AgentSessionCommandStorage implements CommandStorage {
     agentSessionId: string,
   ) {
     validateAgentSessionId(agentSessionId)
-    this.agentSessionPrefix = `${agentSessionId}/`
+    // Everything a session persists (checkpoint, command artifacts, blobs)
+    // lives under the one agent-sessions/<id>/ prefix.
+    this.agentSessionPrefix = `agent-sessions/${agentSessionId}/`
   }
 
   readJson<T>(key: string): Promise<T | null> {

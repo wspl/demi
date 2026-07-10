@@ -1,7 +1,7 @@
 import { AbortError, abortable, asError, delay, isAbortError, parseJsonOrString, throwIfAborted } from '@demicodes/utils'
 import type { ModelSelection, TokenUsage } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolDefinition } from '@demicodes/provider'
-import { Transcript } from './transcript'
+import { TranscriptLog } from './transcript'
 import { ProviderStreamError } from './provider-stream-error'
 import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
 import type { ActiveTurnPhase } from './session'
@@ -16,7 +16,7 @@ const MAX_AUTO_COMPACTIONS_PER_TURN = 3
  * against the session's live turn state — exposed here as an explicit contract.
  */
 export interface ProviderTurnLoopHost<State> {
-  readonly transcript: Transcript
+  readonly transcript: TranscriptLog
   readonly model: ModelSelection
   readonly provider: AgentProvider
   readonly runtime: AgentHarnessRuntime<State>
@@ -29,7 +29,7 @@ export interface ProviderTurnLoopHost<State> {
   currentSignal(): AbortSignal
   currentTurnId(): string
   nextRequestId(): string
-  promptContext(): { agentSessionId: string; state: State; cwd: string; transcript: Transcript }
+  promptContext(): { agentSessionId: string; state: State; cwd: string; transcript: TranscriptLog }
   getActiveTurnPhase(): ActiveTurnPhase | null
   setActiveTurnPhase(phase: ActiveTurnPhase | null): void
   getActiveProviderRun(): ProviderRun | null
@@ -188,7 +188,7 @@ export class ProviderTurnLoop<State> {
           toolCall.toolUseId,
           result.output,
           result.isError ?? false,
-          result.metadata ?? result.continuation ?? null,
+          result.view ?? null,
         )
         await this.host.runtime.lifecycle?.({
           type: 'after_tool_call',
@@ -248,7 +248,7 @@ export class ProviderTurnLoop<State> {
       return {
         output: [{ type: 'text', text: `Tool failed: ${normalized.message}` }],
         isError: true,
-        metadata: { error: normalized.message },
+        view: { kind: 'tool_error', error: normalized.message },
       }
     }
   }

@@ -66,7 +66,7 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
 
   const clientSnapshotFrame = nextFrame<ServerFrame>(client)
   server.send({
-    type: 'transcript_snapshot',
+    type: 'transcript_reset',
     revision: 1,
     blocks: [
       {
@@ -90,7 +90,7 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
     ],
   })
   const snapshot = await clientSnapshotFrame
-  if (snapshot.type !== 'transcript_snapshot') throw new Error('expected transcript snapshot')
+  if (snapshot.type !== 'transcript_reset') throw new Error('expected transcript snapshot')
   const block = snapshot.blocks[0]
   if (block?.type !== 'user') throw new Error('expected user block')
   const receivedContent = block.content[0]

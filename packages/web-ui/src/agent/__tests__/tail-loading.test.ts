@@ -105,7 +105,7 @@ function toolCallBlock(status: ToolCallStatus): MessageListBlock {
     status,
     streamingOutput: [],
     output: [],
-    metadata: null,
+    view: null,
   }
 }
 

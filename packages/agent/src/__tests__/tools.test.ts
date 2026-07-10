@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { Model, ModelSelection } from '@demicodes/core'
-import type { BashEnvironment, ShellCommandSnapshot } from '@demicodes/shell'
+import type { BashEnvironment, ShellCommandStatus } from '@demicodes/shell'
 import type { AgentToolInvokeContext } from '../types'
 import { createStandardAgentTools, shellCommandHandleRequired, shellPreviewBudgetTokens, toShellToolResult } from '../tools'
 
@@ -30,7 +30,7 @@ test('shell preview budget follows the 800k context threshold', () => {
 
 test('shell tool result exposes artifact refs and bounded preview without stdout body sections', () => {
   const longOutput = `${'x'.repeat(4_200)}tail`
-  const result = toShellToolResult(shellSnapshot(longOutput), 'tool-1', {
+  const result = toShellToolResult(shellSnapshot(longOutput), {
     includePreview: true,
     previewBudgetTokens: 1_000,
   })
@@ -124,7 +124,7 @@ test('a sniffed binary stream the model accepts is attached as a media block', (
     ...shellSnapshot('<binary stdout: 12 bytes>\n'),
     binaryStdout: { data: PNG_STREAM, truncated: false, totalBytes: PNG_STREAM.length },
   }
-  const result = toShellToolResult(snapshot, 'tool-1', { includePreview: true, model: imageModel() })
+  const result = toShellToolResult(snapshot, { includePreview: true, model: imageModel() })
 
   expect(result.output).toHaveLength(3)
   expect(result.output[1]).toEqual({
@@ -140,7 +140,7 @@ test('a media stream the model does not accept explains why nothing was attached
     ...shellSnapshot('<binary stdout: 14 bytes>\n'),
     binaryStdout: { data: MP4_STREAM, truncated: false, totalBytes: MP4_STREAM.length },
   }
-  const result = toShellToolResult(snapshot, 'tool-1', { includePreview: true, model: imageModel() })
+  const result = toShellToolResult(snapshot, { includePreview: true, model: imageModel() })
   expect(result.output).toHaveLength(2)
   const note = result.output[1]?.type === 'text' ? result.output[1].text : ''
   expect(note).toContain('video/mp4')
@@ -150,7 +150,6 @@ test('a media stream the model does not accept explains why nothing was attached
 test('unknown binary and truncated streams stay placeholder-only with a reason', () => {
   const opaque = toShellToolResult(
     { ...shellSnapshot('<binary stdout: 12 bytes>\n'), binaryStdout: { data: OPAQUE_STREAM, truncated: false, totalBytes: 12 } },
-    'tool-1',
     { includePreview: true, model: imageModel() },
   )
   const opaqueNote = opaque.output[1]?.type === 'text' ? opaque.output[1].text : ''
@@ -162,7 +161,6 @@ test('unknown binary and truncated streams stay placeholder-only with a reason',
       ...shellSnapshot('<binary stdout: 999 bytes, exceeds the 12-byte output limit>\n'),
       binaryStdout: { data: PNG_STREAM, truncated: true, totalBytes: 999 },
     },
-    'tool-1',
     { includePreview: true, model: imageModel() },
   )
   const truncNote = truncated.output[1]?.type === 'text' ? truncated.output[1].text : ''
@@ -172,12 +170,12 @@ test('unknown binary and truncated streams stay placeholder-only with a reason',
 })
 
 test('shell tool result without binary stdout stays text-only', () => {
-  const result = toShellToolResult(shellSnapshot('done\n'), 'tool-1', { includePreview: true })
+  const result = toShellToolResult(shellSnapshot('done\n'), { includePreview: true })
   expect(result.output).toHaveLength(1)
   expect(result.output[0]?.type).toBe('text')
 })
 
-function shellSnapshot(output: string): Extract<ShellCommandSnapshot, { status: 'exited' }> {
+function shellSnapshot(output: string): Extract<ShellCommandStatus, { status: 'exited' }> {
   const bytes = new TextEncoder().encode(output).byteLength
   return {
     status: 'exited',
@@ -215,7 +213,7 @@ function shellSnapshot(output: string): Extract<ShellCommandSnapshot, { status: 
   }
 }
 
-function runningShellSnapshot(output: string): Extract<ShellCommandSnapshot, { status: 'running' }> {
+function runningShellSnapshot(output: string): Extract<ShellCommandStatus, { status: 'running' }> {
   const bytes = new TextEncoder().encode(output).byteLength
   return {
     status: 'running',

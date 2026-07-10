@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { events } from '@demicodes/provider/testing'
-import { Transcript } from '../index'
+import { TranscriptLog } from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -16,15 +16,15 @@ const model: ModelSelection = {
   thinking: null,
 }
 
-function makeTranscript(): Transcript {
+function makeTranscript(): TranscriptLog {
   let id = 0
-  return new Transcript([], {
+  return new TranscriptLog([], {
     idFactory: () => `b${++id}`,
     now: () => '2026-06-17T00:00:00.000Z',
   })
 }
 
-test('Transcript appends user turns and provider text/response events', () => {
+test('TranscriptLog appends user turns and provider text/response events', () => {
   const transcript = makeTranscript()
 
   transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'hello' }], 'preamble')
@@ -45,7 +45,7 @@ test('Transcript appends user turns and provider text/response events', () => {
   ])
 })
 
-test('Transcript appends steer blocks and replays them in turn order', () => {
+test('TranscriptLog appends steer blocks and replays them in turn order', () => {
   const transcript = makeTranscript()
 
   transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'start' }], 'preamble')
@@ -73,7 +73,7 @@ test('Transcript appends steer blocks and replays them in turn order', () => {
   ])
 })
 
-test('Transcript completes pending tool calls and emits exact tool inference items', () => {
+test('TranscriptLog completes pending tool calls and emits exact tool inference items', () => {
   const transcript = makeTranscript()
 
   transcript.applyProviderEvent(
@@ -123,7 +123,7 @@ test('Transcript completes pending tool calls and emits exact tool inference ite
   ])
 })
 
-test('Transcript completes the pending tool call when tool ids repeat', () => {
+test('TranscriptLog completes the pending tool call when tool ids repeat', () => {
   const transcript = makeTranscript()
 
   transcript.applyProviderEvent(model, events.toolCall('tool-1', 'shell_exec', { script: 'printf first' }))
@@ -140,7 +140,7 @@ test('Transcript completes the pending tool call when tool ids repeat', () => {
   expect(transcript.pendingToolCalls()).toHaveLength(0)
 })
 
-test('Transcript replays thinking signatures and redacted thinking in provider order', () => {
+test('TranscriptLog replays thinking signatures and redacted thinking in provider order', () => {
   const transcript = makeTranscript()
 
   transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'think through this' }])
@@ -160,7 +160,7 @@ test('Transcript replays thinking signatures and redacted thinking in provider o
   ])
 })
 
-test('Transcript safely stores non-JSON tool inputs', () => {
+test('TranscriptLog safely stores non-JSON tool inputs', () => {
   const transcript = makeTranscript()
   const circular: Record<string, unknown> = { id: 1n }
   circular.self = circular
@@ -175,7 +175,7 @@ test('Transcript safely stores non-JSON tool inputs', () => {
   ])
 })
 
-test('Transcript removes dangling executing tool calls', () => {
+test('TranscriptLog removes dangling executing tool calls', () => {
   const transcript = makeTranscript()
 
   transcript.applyProviderEvent(model, events.toolCall('done', 'shell_exec', { script: 'true' }))
@@ -189,7 +189,7 @@ test('Transcript removes dangling executing tool calls', () => {
   expect(transcript.blocks[0]).toMatchObject({ type: 'tool_call', toolUseId: 'done' })
 })
 
-test('Transcript inserts compaction boundary and replays from the latest boundary', () => {
+test('TranscriptLog inserts compaction boundary and replays from the latest boundary', () => {
   const transcript = makeTranscript()
 
   transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'old question' }])
@@ -219,7 +219,7 @@ test('Transcript inserts compaction boundary and replays from the latest boundar
   expect(items.map((item) => item.type)).toEqual(['user_message', 'assistant_text'])
 })
 
-test('Transcript snapshot survives JSON roundtrip without changing replay or metadata', () => {
+test('TranscriptLog snapshot survives JSON roundtrip without changing replay or metadata', () => {
   const transcript = makeTranscript()
 
   transcript.pushUserTurn('test-turn', model, [{ type: 'text', text: 'old question' }], 'preamble')
@@ -247,22 +247,22 @@ test('Transcript snapshot survives JSON roundtrip without changing replay or met
   transcript.appendCompactionMarker(model, boundary.id, 123)
   transcript.pushResumeTurn('test-turn', model)
 
-  const snapshot = transcript.snapshot()
+  const snapshot = transcript.toJSON()
   const parsed = JSON.parse(JSON.stringify(snapshot)) as typeof snapshot
-  const restored = new Transcript(parsed.blocks)
+  const restored = new TranscriptLog(parsed.blocks)
 
   expect(parsed).toEqual(snapshot)
-  expect(restored.snapshot()).toEqual(snapshot)
+  expect(restored.toJSON()).toEqual(snapshot)
   expect(restored.blocks.map((block) => block.type)).toEqual(transcript.blocks.map((block) => block.type))
   expect(restored.collectInferenceItems()).toEqual(transcript.collectInferenceItems())
   expect(restored.latestExtensionStateSnapshot('todo')).toEqual(transcript.latestExtensionStateSnapshot('todo'))
 })
 
-test('Transcript snapshot is insulated from later live block mutations', () => {
+test('TranscriptLog snapshot is insulated from later live block mutations', () => {
   const transcript = makeTranscript()
 
   transcript.applyProviderEvent(model, events.toolCall('tool-snapshot', 'shell_exec', { script: 'printf hi' }))
-  const snapshot = transcript.snapshot()
+  const snapshot = transcript.toJSON()
 
   transcript.completeToolCall('tool-snapshot', [{ type: 'text', text: 'hi' }])
 
@@ -283,7 +283,7 @@ test('Transcript snapshot is insulated from later live block mutations', () => {
   })
 })
 
-test('Transcript returns the latest extension state snapshot', () => {
+test('TranscriptLog returns the latest extension state snapshot', () => {
   const transcript = makeTranscript()
 
   transcript.appendExtensionStateSnapshot('todo', { count: 1 })
@@ -301,7 +301,7 @@ test('Transcript returns the latest extension state snapshot', () => {
   })
 })
 
-test('Transcript token estimates tolerate non-JSON extension state', () => {
+test('TranscriptLog token estimates tolerate non-JSON extension state', () => {
   const transcript = makeTranscript()
   const state: Record<string, unknown> = { count: 1n }
   state.self = state

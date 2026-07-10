@@ -58,7 +58,7 @@ test('REPL renderer prints transcript deltas, tool state, and cache usage withou
     status: 'executing',
     streamingOutput: [],
     output: [],
-    metadata: null,
+    view: null,
   })
   const toolError = block({
     type: 'tool_call',
@@ -71,7 +71,7 @@ test('REPL renderer prints transcript deltas, tool state, and cache usage withou
     status: 'error',
     streamingOutput: [],
     output: [{ type: 'text', text: 'Repeated identical shell_exec suppressed.\nUse a different command.' }],
-    metadata: null,
+    view: null,
   })
   const response = block({
     type: 'response',
@@ -96,7 +96,7 @@ test('REPL renderer prints transcript deltas, tool state, and cache usage withou
     isResumed: false,
   })
 
-  renderEvent(renderer, { type: 'transcript_snapshot', blocks: [thinking, steer, text, tool, toolError, response, error, abort] })
+  renderEvent(renderer, { type: 'transcript_reset', blocks: [thinking, steer, text, tool, toolError, response, error, abort] })
 
   expect(output.text()).toContain('thinking> plan')
   expect(output.text()).toContain('steer> keep it concise')
@@ -148,7 +148,7 @@ test('REPL renderer prints phase, queue, shell output, audit, and progress frame
     type: 'shell_output',
     shellId: 'shell-1',
     commandId: 'command-1',
-    snapshot: {
+    status: {
       status: 'running',
       shellId: 'shell-1',
       commandId: 'command-1',
@@ -217,7 +217,7 @@ test('REPL renderer summarizes every standard tool with description or fallback'
     toolBlock('tool-unknown', 'unknown_tool', { value: 'raw' }),
   ]
 
-  renderEvent(renderer, { type: 'transcript_snapshot', blocks: toolBlocks })
+  renderEvent(renderer, { type: 'transcript_reset', blocks: toolBlocks })
 
   const text = output.text()
   expect(text).toContain('tool> shell_exec executing -- Run project tests')
@@ -598,7 +598,7 @@ function toolBlock(
     status,
     streamingOutput: [],
     output: [],
-    metadata: null,
+    view: null,
   })
 }
 
