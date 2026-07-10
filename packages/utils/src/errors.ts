@@ -61,11 +61,14 @@ export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<
   })
 }
 
+/** Returns the string `code` of an errno-style error (`ENOENT`, `EEXIST`, …), or null. */
+export function errorCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null) return null
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' ? code : null
+}
+
 /** Reports whether an unknown thrown value is a file-not-found error (ENOENT). */
 export function isFileNotFoundError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: unknown }).code === 'ENOENT'
-  )
+  return errorCode(error) === 'ENOENT'
 }
