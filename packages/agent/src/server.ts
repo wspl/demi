@@ -590,7 +590,10 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     let script = words
     if (opts.stdin.length > 0) {
       const delimiter = heredocDelimiter(opts.stdin)
-      script = `${words} <<'${delimiter}'\n${opts.stdin}\n${delimiter}`
+      // A heredoc body always ends with a newline; add one only when the piped
+      // stdin lacks it, so newline-terminated input arrives byte-identical.
+      const body = opts.stdin.endsWith('\n') ? opts.stdin : `${opts.stdin}\n`
+      script = `${words} <<'${delimiter}'\n${body}${delimiter}`
     }
     const cdScript = `cd ${shellQuote(opts.cwd)} && ${script}`
 
