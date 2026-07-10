@@ -257,6 +257,20 @@ test('parseCommandInput dual-mode: child name wins over parent args', () => {
   expect(child).toEqual({ path: ['tool', 'sub'], help: false, values: { y: 2 }, json: false })
 })
 
+test('parseCommandInput treats "prompt" as help only at routing nodes', () => {
+  // Nodes with subcommands: 'prompt' is the help pseudo-subcommand.
+  expect(parseCommandInput(editorSpec, ['editor', 'prompt']).help).toBe(true)
+  expect(parseCommandInput(dualMode, ['tool', 'prompt']).help).toBe(true)
+
+  // Pure run nodes: an ordinary argument (e.g. a file literally named "prompt").
+  const leaf = parseCommandInput(editorSpec, ['editor', 'edit', 'prompt', '--old', 'a', '--new', 'b'])
+  expect(leaf.help).toBe(false)
+  expect(leaf.values.path).toBe('prompt')
+
+  const bare = parseCommandInput(bareLeaf, ['kcenv', 'prompt'])
+  expect(bare).toEqual({ path: ['kcenv'], help: false, values: { key: 'prompt' }, json: false })
+})
+
 test('parseCommandInput reports full paths for nested errors', () => {
   expect(() => parseCommandInput(nestedSpec, ['larkclaw', 'watch'])).toThrow('Command "larkclaw watch" requires a subcommand')
   expect(() => parseCommandInput(nestedSpec, ['larkclaw', 'watch', 'missing'])).toThrow(
