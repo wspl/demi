@@ -61,6 +61,11 @@ export interface ShellExecInput {
    * Mutually exclusive with `shellId`.
    */
   ephemeral?: boolean
+  /**
+   * Initial working directory of the shell this exec creates. Requires
+   * `ephemeral` — a persistent shell owns its cwd (that is what `cd` is for).
+   */
+  cwd?: string
 }
 
 export interface ShellStatusInput {
@@ -241,17 +246,24 @@ export class BashEnvironment {
     if (input.shellId && input.ephemeral) {
       throw new Error('ShellExecInput: "shellId" and "ephemeral" are mutually exclusive')
     }
+    if (input.cwd !== undefined && !input.ephemeral) {
+      throw new Error('ShellExecInput: "cwd" requires "ephemeral"; a persistent shell owns its cwd')
+    }
+    if (input.cwd !== undefined) {
+      const stat = await this.host.fs.stat(input.cwd).catch(() => null)
+      if (!stat?.isDirectory) throw new Error(`Shell exec cwd is not a directory: ${input.cwd}`)
+    }
     const session = input.shellId
       ? this.requireShell(input.shellId)
       : input.ephemeral
-        ? this.createShell(input.agentSessionId)
+        ? this.createShell(input.agentSessionId, input.cwd)
         : this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
-    // Expose the owning agent session id to registered commands through the shell env,
-    // so per-conversation tools can resolve their caller/context (a product harness keys
-    // its identity/routing maps off this). Absent for anonymous execs.
+    // The command scope id is already exposed to registered commands and spawned
+    // processes as DEMI_SESSION_ID (exported at shell creation); per-conversation
+    // tools key their identity/routing maps off that. Here we only refresh the
+    // per-exec extra env a product harness may inject.
     if (input.agentSessionId) {
-      session.state.env.set('DEMI_AGENT_SESSION_ID', input.agentSessionId)
       const extraEnv = this.execEnv?.(input.agentSessionId)
       if (extraEnv) {
         const exported = session.state.exportedVars ?? new Set<string>()
@@ -385,10 +397,10 @@ export class BashEnvironment {
     return this.createShell(agentSessionId)
   }
 
-  private createShell(agentSessionId: string | undefined): ShellSession {
+  private createShell(agentSessionId: string | undefined, initialCwd?: string): ShellSession {
     const id = this.shellIdFactory()
     const commandScopeId = agentSessionId ?? id
-    const cwd = this.host.defaultCwd
+    const cwd = initialCwd ?? this.host.defaultCwd
     const fs = new HostBackedFileSystem(this.host, {
       lookup: (path) => this.lookupVirtualArtifact(commandScopeId, path),
     })
