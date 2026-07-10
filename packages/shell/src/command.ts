@@ -53,7 +53,6 @@ export interface CommandRunContext {
   cwd: string
   io: CommandIO
   storage: CommandStorage
-  supportedAssetTypes: ReadonlySet<CommandAssetType>
 }
 
 export interface CommandRunResult {
@@ -62,18 +61,19 @@ export interface CommandRunResult {
 }
 
 export interface CommandStdin {
+  /** Stdin decoded as UTF-8 text (lossy for non-text input). */
   text: string
+  /** Raw stdin bytes, byte-identical to what the pipe delivered. */
+  bytes: Uint8Array
 }
 
-/** A non-text content item a command emits to the model, peer to stdout text.
- *  `data` is base64. Video assets only reach models whose catalog marks video support. */
-export type CommandAssetType = 'image' | 'video'
-export type CommandAsset = { type: CommandAssetType; mediaType: string; data: string }
+export function emptyStdin(): CommandStdin {
+  return { text: '', bytes: new Uint8Array(0) }
+}
 
 export interface CommandIO {
   stdout(data: string | Uint8Array): Promise<void> | void
   stderr(data: string | Uint8Array): Promise<void> | void
-  asset(asset: CommandAsset): Promise<void> | void
 }
 
 export interface CommandStorage {
@@ -90,7 +90,6 @@ export interface CommandExecutionContext {
   cwd: string
   io: CommandIO
   storage: CommandStorage
-  supportedAssetTypes?: readonly CommandAssetType[]
 }
 
 const EXECUTION_ONLY_FIELDS = [
@@ -141,7 +140,7 @@ export class CommandRegistry {
 export const COMMAND_HELP_DEFAULTS =
   'Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command\'s documentation.'
 
-export function parseCommandInput(root: Command, argv: string[], stdin: CommandStdin = { text: '' }): ParsedCommandInput {
+export function parseCommandInput(root: Command, argv: string[], stdin: CommandStdin = emptyStdin()): ParsedCommandInput {
   if (argv[0] !== root.name) {
     throw new Error(`Expected command "${root.name}", received "${argv[0] ?? ''}"`)
   }
@@ -250,7 +249,7 @@ function resolveCommand(root: Command, path: string[]): Command {
 }
 
 export async function runRegisteredCommand(root: Command, ctx: CommandExecutionContext): Promise<CommandRunResult> {
-  const stdin = ctx.stdin ?? { text: '' }
+  const stdin = ctx.stdin ?? emptyStdin()
   const parsed = parseCommandInput(root, ctx.argv, stdin)
   const displayPath = parsed.path.join(' ')
 
@@ -276,7 +275,6 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
     cwd: ctx.cwd,
     io: parsed.json ? capture : ctx.io,
     storage: ctx.storage,
-    supportedAssetTypes: new Set(ctx.supportedAssetTypes),
   })
 
   if (parsed.json && result.exitCode === 0) {
@@ -503,10 +501,6 @@ class CapturingIO implements CommandIO {
 
   async stderr(data: string | Uint8Array): Promise<void> {
     await this.target.stderr(data)
-  }
-
-  async asset(asset: CommandAsset): Promise<void> {
-    await this.target.asset(asset)
   }
 
   stdoutText(): string {
