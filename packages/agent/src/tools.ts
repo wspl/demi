@@ -10,7 +10,6 @@ import type {
 } from '@demicodes/shell'
 import { modelAcceptsVideo, type ToolResultContentBlock } from '@demicodes/core'
 import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from './types'
-import { compactShellToolMetadata } from './shell-tool-metadata'
 
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
 const REPEAT_WINDOW_MS = 60_000
@@ -185,7 +184,7 @@ export function toShellToolResult(
   return {
     output,
     isError: false,
-    metadata: compactShellToolMetadata(result),
+    metadata: result,
     continuation:
       result.status === 'running'
         ? {
@@ -370,3 +369,4 @@ export function shellCommandHandleRequired(result: ShellCommandSnapshot, budgetT
     result.stderr.truncated
   )
 }
+

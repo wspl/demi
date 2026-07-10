@@ -63,12 +63,11 @@ export class ProviderTurnLoop<State> {
       }
       const toolExecution = await this.executePendingTools({ deferSteerMaterialization: shouldAutoRecover })
       if (shouldAutoRecover && autoCompactions < MAX_AUTO_COMPACTIONS_PER_TURN) {
-        const contextWindow = this.host.model.model.contextWindow
-        const tokensBefore = this.host.transcript.estimateContextTokens(contextWindow)
+        const tokensBefore = this.host.transcript.estimateContextTokens()
         const compacted = await this.host.runWithCompactingPhase(() => this.host.runCompaction())
         // Only loop if compaction actually shrank the transcript. Otherwise we'd keep compacting
         // our own summaries and pile up resume turns (a storm) until the model rejects the history.
-        if (compacted && this.host.transcript.estimateContextTokens(contextWindow) < tokensBefore) {
+        if (compacted && this.host.transcript.estimateContextTokens() < tokensBefore) {
           autoCompactions += 1
           this.host.transcript.pushResumeTurn(this.host.currentTurnId(), this.host.model)
           await this.host.commitTranscript()
@@ -288,12 +287,6 @@ export class ProviderTurnLoop<State> {
     const contextWindow = this.host.model.model.contextWindow
     if (contextWindow <= 0) return false
     const usedTokens = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
-    if (usedTokens > contextWindow) {
-      return (
-        this.host.transcript.estimateContextTokens(contextWindow) >=
-        Math.floor(contextWindow * this.host.thresholdRatio)
-      )
-    }
     return usedTokens >= Math.floor(contextWindow * this.host.thresholdRatio)
   }
 }
