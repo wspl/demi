@@ -234,6 +234,10 @@ function userContentToParts(content: UserContentBlock[]): string | GrokUserConte
     else if (block.type === 'reference') parts.push({ type: 'text', text: block.reference })
     else if (block.type === 'document') {
       parts.push({ type: 'text', text: `[document:${block.source.fileName} ${block.source.mediaType}]` })
+    } else if (block.type === 'video') {
+      // The chat-completions surface has no video content type (catalog marks
+      // video unsupported); degrade defensively instead of mislabeling it as an image.
+      parts.push({ type: 'text', text: `[video:${block.source.type === 'url' ? block.source.url : block.source.mediaType}]` })
     } else if (block.source.type === 'url') {
       parts.push({ type: 'image_url', image_url: { url: block.source.url, detail: 'auto' } })
     } else {
@@ -251,7 +255,7 @@ function userContentToParts(content: UserContentBlock[]): string | GrokUserConte
 }
 
 function toolResultContentToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[image:${block.source.mediaType}]`)).join('\n')
+  return output.map((block) => (block.type === 'text' ? block.text : `[${block.type}:${block.source.mediaType}]`)).join('\n')
 }
 
 function toolToGrokTool(tool: ToolDefinition): GrokChatTool {
