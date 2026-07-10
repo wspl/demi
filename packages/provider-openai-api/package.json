@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/provider-openai-api",
   "description": "OpenAI API provider adapter for Demi.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": false,
   "type": "module",
   "exports": {

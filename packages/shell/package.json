@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/shell",
   "description": "Sandboxable bash engine and Host contract for Demi.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": false,
   "type": "module",
   "exports": {
