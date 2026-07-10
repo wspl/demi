@@ -1,0 +1,38 @@
+# @demicodes/provider-anthropic-api
+
+## 0.2.0
+
+### Minor Changes
+
+- Align the workspace on 0.2.0: byte-clean binary pipelines with a model-media
+  boundary, the --help flag replacing the prompt pseudo-subcommand, hardened
+  command bridge execution (ephemeral shells, byte-identical stdin), unified
+  provider quota surfaces, the multi-credential pool with a global active
+  switch, and tool-result media delivery for OpenAI-compatible and Claude Code
+  transports.
+
+### Patch Changes
+
+- 10dbc6b: Native video input support (no frame extraction) plus a per-model modality marker.
+
+  - `core` gains `video` content blocks (`UserContentBlock` / `ToolResultContentBlock`,
+    with `VideoSource` / `Base64VideoSource`), video file extensions on
+    `FileExtension`, and the shared video capability helpers.
+  - `provider` gains `ProviderModel.supportsVideo` — the marker for whether a model
+    accepts native video. A model's `acceptedExtensions` now includes the shared
+    core video extensions only when it marks video support.
+  - `shell` `CommandAsset` and `agent`'s tool-result mapping carry video assets end to end,
+    so a command can emit a video the same way it emits an image.
+  - Providers whose API has no video content type (Claude Code, Anthropic) degrade video
+    blocks defensively; the marker keeps video from being attached to them in the first place.
+
+- Updated dependencies [8b7b981]
+- Updated dependencies [966c530]
+- Updated dependencies [0bcb313]
+- Updated dependencies [10dbc6b]
+- Updated dependencies [18a72d1]
+- Updated dependencies
+- Updated dependencies [2af7114]
+  - @demicodes/utils@0.2.0
+  - @demicodes/core@0.2.0
+  - @demicodes/provider@0.2.0
