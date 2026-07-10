@@ -2,6 +2,7 @@
 - Treat package boundaries in `docs/package-boundaries.md` as the highest architecture constraint.
 - Work toward final-state designs; avoid framing architecture decisions as MVP stages.
 - Do not preserve historical baggage or compatibility paths when they conflict with the intended final design.
+- Do not add legacy-data detection, migration, cleanup, or normalization paths; fix the final-state read/write contract directly and leave historical artifacts outside runtime code.
 - Prefer direct final-state changes over transitional layers; remove obsolete code instead of keeping shims.
 - Prefer protocol, API, or file-state integrations over spawning external CLIs; keep external processes limited to intentional provider transports.
 - Branch out per requirement: create a dedicated branch off `main` for each requirement or feature, and do not commit feature work directly to `main`.
