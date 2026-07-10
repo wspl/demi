@@ -1,8 +1,8 @@
 import { isRecord, numberOrZero, parseJsonObject, parseJsonOrString, stringOrNull } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import { zeroUsage } from '@demicodes/core'
-import type { ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
-import { normalizeErrorCode, type InferenceItem, type InferenceRequest, type ProviderEvent, type ToolDefinition } from '@demicodes/provider'
+import type { UserContentBlock } from '@demicodes/core'
+import { normalizeErrorCode, toolResultContentToText, type InferenceItem, type InferenceRequest, type ProviderEvent, type ToolDefinition } from '@demicodes/provider'
 
 export interface GrokChatCompletionsRequestBody {
   model: string
@@ -254,9 +254,6 @@ function userContentToParts(content: UserContentBlock[]): string | GrokUserConte
   return parts
 }
 
-function toolResultContentToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[${block.type}:${block.source.mediaType}]`)).join('\n')
-}
 
 function toolToGrokTool(tool: ToolDefinition): GrokChatTool {
   return {

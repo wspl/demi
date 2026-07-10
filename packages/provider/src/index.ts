@@ -1,4 +1,5 @@
 export * from './types'
+export { toolResultContentToText } from './content'
 export { applyModelPolicy, defineProvider, providerRuntime } from './provider'
 export {
   DEFAULT_ATTACHMENT_EXTENSIONS,
@@ -13,6 +14,8 @@ export {
   httpErrorCode,
   httpRequestFailedEvent,
   normalizeErrorCode,
+  numberHeader,
+  redactCredentialText,
   providerErrorFromUnknown,
   redactSecretText,
   retryAfterMsFromHeader,

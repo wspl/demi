@@ -1,9 +1,9 @@
-import { delay, errorMessage, isRecord, nonEmptyString, stringOrNull } from '@demicodes/utils'
+import { delay, errorCode, errorMessage, isRecord, nonEmptyString, stringOrNull } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import { chmod, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { ProviderAuthState } from '@demicodes/provider'
+import { redactCredentialText, type ProviderAuthState } from '@demicodes/provider'
 
 export type CodexAuthMode =
   | 'apiKey'
@@ -222,7 +222,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
     try {
       return JSON.parse(await readFile(this.authFile, 'utf8')) as CodexAuthDotJson
     } catch (error) {
-      if (isNodeError(error) && error.code === 'ENOENT') {
+      if (errorCode(error) === 'ENOENT') {
         throw new CodexAuthError('auth_missing', `Codex auth file not found: ${this.authFile}`)
       }
       throw new CodexAuthError('auth_invalid', `Failed to read Codex auth file ${this.authFile}: ${redactSecretText(errorMessage(error))}`)
@@ -238,7 +238,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
       try {
         handle = await open(lockFile, 'wx', 0o600)
       } catch (error) {
-        if (!isNodeError(error) || error.code !== 'EEXIST' || Date.now() - started > this.lockTimeoutMs) {
+        if (errorCode(error) !== 'EEXIST' || Date.now() - started > this.lockTimeoutMs) {
           throw new CodexAuthError('auth_lock_failed', `Failed to lock Codex auth file: ${redactSecretText(errorMessage(error))}`)
         }
         await delay(this.lockRetryDelayMs)
@@ -347,9 +347,7 @@ export async function refreshCodexToken(refreshToken: string, signal?: AbortSign
 }
 
 export function redactSecretText(text: string): string {
-  return text
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [REDACTED]')
-    .replace(/(access_token|refresh_token|id_token|OPENAI_API_KEY)["'=:\s]+[A-Za-z0-9._~+/=-]+/gi, '$1=[REDACTED]')
+  return redactCredentialText(text, ['OPENAI_API_KEY'])
 }
 
 function resolveChatGptAuthFromFile(auth: CodexAuthDotJson, authFile: string): CodexResolvedAuth {
@@ -431,6 +429,3 @@ function parseDate(value: unknown): Date | null {
   return Number.isFinite(ms) ? new Date(ms) : null
 }
 
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && 'code' in error
-}

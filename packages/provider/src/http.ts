@@ -20,6 +20,14 @@ export function redactSecretText(value: string, secret: string | null | undefine
   return secret ? value.split(secret).join('[redacted]') : value
 }
 
+/** Masks bearer tokens and named credential fields in free-form auth error text. */
+export function redactCredentialText(text: string, extraFieldPatterns: readonly string[] = []): string {
+  const fields = ['access_token', 'refresh_token', 'id_token', ...extraFieldPatterns]
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [REDACTED]')
+    .replace(new RegExp(`(${fields.join('|')})["'=:\\s]+[A-Za-z0-9._~+/=-]+`, 'gi'), '$1=[REDACTED]')
+}
+
 /** Maps an HTTP status (and response text) to a coarse provider error code. */
 export function httpErrorCode(status: number, message: string): string | null {
   if (status === 401 || status === 403) return 'auth_expired'
@@ -66,6 +74,14 @@ export function retryAfterMsFromHeader(value: string | null): number | undefined
   const dateMs = Date.parse(value)
   if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now())
   return undefined
+}
+
+/** Reads a header as a finite number, or null when absent/blank/non-numeric. */
+export function numberHeader(headers: Headers, name: string): number | null {
+  const raw = headers.get(name)
+  if (raw == null || raw === '') return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
 }
 
 /** Builds a redacted provider `error` event from a failed HTTP response. */

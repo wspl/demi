@@ -1,10 +1,10 @@
-import { delay, errorMessage, isRecord, nonEmptyString, stringOrNull } from '@demicodes/utils'
+import { delay, errorCode, errorMessage, isRecord, nonEmptyString, stringOrNull } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import { open, readFile, rename, rm, writeFile, mkdir, chmod, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
-import type { ProviderAuthState } from '@demicodes/provider'
+import { redactCredentialText, type ProviderAuthState } from '@demicodes/provider'
 
 /** One credential entry as written by the Grok CLI (`~/.grok/auth.json`). */
 export interface GrokAuthEntry {
@@ -223,7 +223,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
       return parsed as GrokAuthDotJson
     } catch (error) {
       if (error instanceof GrokAuthError) throw error
-      if (isNodeError(error) && error.code === 'ENOENT') {
+      if (errorCode(error) === 'ENOENT') {
         throw new GrokAuthError('auth_missing', `Grok auth file not found: ${this.authFile}. Run \`grok login\` first.`)
       }
       throw new GrokAuthError(
@@ -243,7 +243,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
       try {
         handle = await open(lockFile, 'wx', 0o600)
       } catch (error) {
-        if (!isNodeError(error) || error.code !== 'EEXIST') {
+        if (errorCode(error) !== 'EEXIST') {
           throw new GrokAuthError('auth_lock_failed', `Failed to lock Grok auth file: ${redactSecretText(errorMessage(error))}`)
         }
         // Grok CLI writes `auth.json.lock` as `pid:unix_ts` and may leave it behind
@@ -342,9 +342,7 @@ export async function refreshGrokOidcToken(
 }
 
 export function redactSecretText(text: string): string {
-  return text
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [REDACTED]')
-    .replace(/(access_token|refresh_token|id_token|\bkey\b)["'=:\s]+[A-Za-z0-9._~+/=-]+/gi, '$1=[REDACTED]')
+  return redactCredentialText(text, ['\\bkey\\b'])
 }
 
 export function parseJwtExpiration(jwt: string): Date | null {
@@ -401,9 +399,6 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   }
 }
 
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && 'code' in error
-}
 
 /** Grok CLI lock format is `pid:unix_seconds`. A valid live PID always owns its lock. */
 export async function isAbandonedGrokAuthLock(lockFile: string, now: Date, maxAgeMs = 30_000): Promise<boolean> {
@@ -449,7 +444,7 @@ function isProcessAlive(pid: number): boolean {
     process.kill(pid, 0)
     return true
   } catch (error) {
-    if (isNodeError(error) && error.code === 'EPERM') return true
+    if (errorCode(error) === 'EPERM') return true
     return false
   }
 }
