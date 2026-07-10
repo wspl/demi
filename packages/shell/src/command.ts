@@ -158,7 +158,10 @@ export function parseCommandInput(root: Command, argv: string[], stdin: CommandS
 
     const token = argv[index]
 
-    if (token === 'prompt') {
+    // 'prompt' is the help pseudo-subcommand only where routing happens (like
+    // any reserved child name); at a pure run node it stays an ordinary
+    // argument, so e.g. a file literally named "prompt" remains addressable.
+    if (token === 'prompt' && (node.subcommands?.length ?? 0) > 0) {
       return { path: [...path], help: true, values: {}, json: false }
     }
 
