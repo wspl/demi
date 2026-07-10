@@ -1,5 +1,33 @@
 # @demicodes/provider-claude-code
 
+## 0.3.0
+
+### Minor Changes
+
+- Align all public packages on 0.3.0. Highlights of this release: correct
+  Claude Code context-usage reporting (no more spurious compaction on long
+  tool-heavy sessions) and session storage phase 1 — role-based
+  Status/View/Checkpoint/Artifact naming and bounded tool views that shrink
+  session checkpoints from tens of MB to content-proportional size.
+
+### Patch Changes
+
+- dd69eb0: Report single-request usage instead of turn-cumulative totals from Claude Code.
+
+  The CLI's `result.usage` sums every API call inside a turn, which inflated the
+  agent's context estimation 2–3× and triggered spurious compaction on long
+  tool-heavy sessions. The provider now maps the last `usage.iterations[]` entry
+  (the final request's real usage) as the response usage, the provider `response`
+  event documents the single-request contract, and `estimateContextTokens`
+  discards anchors larger than the context window as physically impossible.
+
+- Updated dependencies [dd69eb0]
+- Updated dependencies
+- Updated dependencies [c352335]
+  - @demicodes/provider@0.3.0
+  - @demicodes/core@0.3.0
+  - @demicodes/utils@0.3.0
+
 ## 0.2.1
 
 ### Patch Changes
