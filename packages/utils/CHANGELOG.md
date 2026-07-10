@@ -1,5 +1,15 @@
 # @demicodes/utils
 
+## 0.3.1
+
+### Patch Changes
+
+- Republish with resolved internal dependency ranges. The 0.3.0 tarballs shipped
+  literal `workspace:^` ranges because the release went through `changeset
+publish` (npm does not rewrite the workspace protocol); 0.3.0 is deprecated.
+  The release pipeline now packs and publishes with bun and validates every
+  tarball's manifest before anything is pushed to the registry.
+
 ## 0.3.0
 
 ### Minor Changes
