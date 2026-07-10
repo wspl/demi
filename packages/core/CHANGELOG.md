@@ -1,5 +1,16 @@
 # @demicodes/core
 
+## 0.3.2
+
+### Patch Changes
+
+- ca71716: Publish tarballs without the `development` export condition. The condition
+  resolves to ./src for in-repo workspace resolution, but dist-only tarballs do
+  not ship src — and dev-mode bundlers (Vite) enable the development condition
+  by default, so consumers resolved exports to files that do not exist. The
+  release pipeline now strips the condition at pack time and validates that
+  every packed export target actually exists in the tarball.
+
 ## 0.3.1
 
 ### Patch Changes
