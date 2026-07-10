@@ -1,7 +1,7 @@
 # @demicodes/coding-agent
 
 A ready-made coding-agent harness for Demi: the system prompt, registered commands
-(an `editor` for file edits, plus shell control), and reference resolution, wired
+(a `demi` command for file reads/edits, plus shell control), and reference resolution, wired
 to a `Host`. Drop it into an `AgentServer`.
 
 ```ts
