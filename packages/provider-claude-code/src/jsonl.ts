@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import type { InferenceItem, InferenceRequest, ToolDefinition } from '@demicodes/provider'
+import { toolResultContentToText, type InferenceItem, type InferenceRequest, type ToolDefinition } from '@demicodes/provider'
 import type { DocumentSource, ImageSource, ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
 
 export interface ClaudeInputMessage {
@@ -126,7 +126,7 @@ function renderToolUseText(toolName: string, input: unknown): string {
 }
 
 function renderToolResultText(toolName: string | undefined, item: Extract<InferenceItem, { type: 'tool_result' }>): string {
-  const body = toolResultToText(item.output)
+  const body = toolResultContentToText(item.output)
   const suffix = toolName ? ` from ${toolName}` : ''
   return item.isError ? `It returned an error${suffix}: ${body}]` : `It returned${suffix}: ${body}]`
 }
@@ -219,7 +219,7 @@ function toolResultToClaudeContent(item: Extract<InferenceItem, { type: 'tool_re
     type: 'tool_result',
     tool_use_id: item.toolUseId,
     is_error: item.isError,
-    content: hasImage ? item.output.map(toolResultBlockToClaude) : toolResultToText(item.output),
+    content: hasImage ? item.output.map(toolResultBlockToClaude) : toolResultContentToText(item.output),
   }
 }
 
@@ -251,9 +251,6 @@ function documentSourceToClaude(source: DocumentSource): unknown {
   }
 }
 
-function toolResultToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[${block.type}:${block.source.mediaType}]`)).join('\n')
-}
 
 function bytesToBase64(data: Uint8Array): string {
   return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64')
