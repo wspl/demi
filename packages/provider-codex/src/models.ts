@@ -3,7 +3,7 @@ import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
 import {
   CodexAuthError,
   FileCodexAuthStore,
-  redactSecretText,
+  redactCodexSecretText,
   type CodexAuthStore,
   type CodexResolvedAuth,
 } from './auth'
@@ -277,7 +277,7 @@ class CodexModelCatalogHttpError extends Error {
     readonly status: number,
     message: string,
   ) {
-    super(redactSecretText(message))
+    super(redactCodexSecretText(message))
     this.name = 'CodexModelCatalogHttpError'
   }
 }

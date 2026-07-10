@@ -8,7 +8,7 @@ import type {
   ShellWriteInput,
   StreamArtifact,
 } from '@demicodes/shell'
-import { modelAcceptsVideo, type ToolResultContentBlock } from '@demicodes/core'
+import { supportedAssetTypesFor, type ToolResultContentBlock } from '@demicodes/core'
 import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from './types'
 
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
@@ -65,7 +65,7 @@ export function createStandardAgentTools<State = unknown>(
           ...parsed,
           agentSessionId: ctx.agentSessionId,
           signal: ctx.signal,
-          supportedAssetTypes: modelAcceptsVideo(ctx.model.model) ? ['image', 'video'] : ['image'],
+          supportedAssetTypes: supportedAssetTypesFor(ctx.model.model),
         })
         ctx.emitProgress(result)
         return finishShellToolResult(environment, result, ctx)
