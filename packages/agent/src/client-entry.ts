@@ -9,6 +9,6 @@ export type {
   ServerFrame,
   ClientSessionEvent,
   TranscriptPatch,
-  ShellCommandSnapshotLike,
+  ShellCommandStatusLike,
 } from './frames'
 export type { ProviderSelection } from '@demicodes/provider'

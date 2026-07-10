@@ -41,7 +41,7 @@ test('web transport round-trips open/send/stream over websocket', async () => {
     const client = await connectAgentClient(agentSocketUrl(handle.url, cwd))
     const seenText: string[] = []
     client.subscribe((event) => {
-      if (event.type !== 'transcript_snapshot' && event.type !== 'transcript_patch') return
+      if (event.type !== 'transcript_reset' && event.type !== 'transcript_patch') return
       for (const block of event.blocks) {
         if (block.type === 'text') seenText.push(block.text)
       }
