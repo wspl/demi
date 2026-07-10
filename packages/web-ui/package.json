@@ -12,9 +12,9 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@demicodes/agent": "workspace:*",
-    "@demicodes/core": "workspace:*",
-    "@demicodes/utils": "workspace:*",
+    "@demicodes/agent": "workspace:^",
+    "@demicodes/core": "workspace:^",
+    "@demicodes/utils": "workspace:^",
     "@floating-ui/vue": "^2.0.0",
     "@mingcute/vue": "^1.4.1",
     "@tanstack/vue-virtual": "^3.13.29",

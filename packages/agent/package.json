@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/agent",
   "description": "Session runtime and transport-neutral client and server protocol for Demi.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": false,
   "type": "module",
   "exports": {
@@ -22,10 +22,10 @@
     }
   },
   "dependencies": {
-    "@demicodes/core": "workspace:*",
-    "@demicodes/provider": "workspace:*",
-    "@demicodes/shell": "workspace:*",
-    "@demicodes/utils": "workspace:*"
+    "@demicodes/core": "workspace:^",
+    "@demicodes/provider": "workspace:^",
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/utils": "workspace:^"
   },
   "license": "Apache-2.0",
   "main": "./dist/index.mjs",
