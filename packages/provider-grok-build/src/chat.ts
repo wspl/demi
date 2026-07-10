@@ -45,7 +45,8 @@ export interface GrokChatToolCall {
 
 export interface ServerSentEvent {
   event: string | null
-  data: string[]
+  /** Event payload: multi-line `data:` fields joined with '\n' per the SSE spec. */
+  data: string
 }
 
 export function buildGrokChatCompletionsBody(request: InferenceRequest): GrokChatCompletionsRequestBody {
@@ -77,44 +78,43 @@ export async function* mapGrokChatCompletionStream(
       yield { type: 'abort' }
       return
     }
-    for (const data of event.data) {
-      if (data === '[DONE]') {
-        yield* flushToolCalls(toolCalls)
-        yield { type: 'response', usage }
-        return
+    const data = event.data
+    if (data === '[DONE]') {
+      yield* flushToolCalls(toolCalls)
+      yield { type: 'response', usage }
+      return
+    }
+    const chunk = parseJsonObject(data)
+    if (!chunk) continue
+    const error = isRecord(chunk.error) ? chunk.error : null
+    if (error) {
+      const message = stringOrNull(error.message) ?? 'Grok Build stream error'
+      yield {
+        type: 'error',
+        message,
+        code: normalizeErrorCode(stringOrNull(error.code) ?? stringOrNull(error.type), message),
       }
-      const chunk = parseJsonObject(data)
-      if (!chunk) continue
-      const error = isRecord(chunk.error) ? chunk.error : null
-      if (error) {
-        const message = stringOrNull(error.message) ?? 'Grok Build stream error'
-        yield {
-          type: 'error',
-          message,
-          code: normalizeErrorCode(stringOrNull(error.code) ?? stringOrNull(error.type), message),
-        }
-        return
-      }
-      if (isRecord(chunk.usage)) usage = grokUsage(chunk.usage)
-      const choices = Array.isArray(chunk.choices) ? chunk.choices : []
-      for (const choice of choices) {
-        if (!isRecord(choice)) continue
-        const delta = isRecord(choice.delta) ? choice.delta : null
-        if (delta) {
-          const reasoning = stringOrNull(delta.reasoning_content)
-          if (reasoning) {
-            if (!thinkingStarted) {
-              thinkingStarted = true
-              yield { type: 'thinking_start' }
-            }
-            yield { type: 'thinking_delta', text: reasoning }
+      return
+    }
+    if (isRecord(chunk.usage)) usage = grokUsage(chunk.usage)
+    const choices = Array.isArray(chunk.choices) ? chunk.choices : []
+    for (const choice of choices) {
+      if (!isRecord(choice)) continue
+      const delta = isRecord(choice.delta) ? choice.delta : null
+      if (delta) {
+        const reasoning = stringOrNull(delta.reasoning_content)
+        if (reasoning) {
+          if (!thinkingStarted) {
+            thinkingStarted = true
+            yield { type: 'thinking_start' }
           }
-          const content = stringOrNull(delta.content)
-          if (content) yield { type: 'text_delta', text: content }
-          if (Array.isArray(delta.tool_calls)) collectToolCalls(delta.tool_calls, toolCalls)
+          yield { type: 'thinking_delta', text: reasoning }
         }
-        if (choice.finish_reason === 'tool_calls') yield* flushToolCalls(toolCalls)
+        const content = stringOrNull(delta.content)
+        if (content) yield { type: 'text_delta', text: content }
+        if (Array.isArray(delta.tool_calls)) collectToolCalls(delta.tool_calls, toolCalls)
       }
+      if (choice.finish_reason === 'tool_calls') yield* flushToolCalls(toolCalls)
     }
   }
 
@@ -131,13 +131,13 @@ export async function* readServerSentEvents(
   const decoder = new TextDecoder()
   let buffer = ''
   let eventName: string | null = null
-  let data: string[] = []
+  let dataLines: string[] = []
 
   const flush = function* (): Iterable<ServerSentEvent> {
-    if (data.length === 0) return
-    yield { event: eventName, data }
+    if (dataLines.length === 0) return
+    yield { event: eventName, data: dataLines.join('\n') }
     eventName = null
-    data = []
+    dataLines = []
   }
 
   try {
@@ -156,7 +156,7 @@ export async function* readServerSentEvents(
         } else if (line.startsWith('event:')) {
           eventName = line.slice('event:'.length).trim()
         } else if (line.startsWith('data:')) {
-          data.push(line.slice('data:'.length).trimStart())
+          dataLines.push(line.slice('data:'.length).trimStart())
         }
         newline = buffer.indexOf('\n')
       }
@@ -164,7 +164,7 @@ export async function* readServerSentEvents(
     buffer += decoder.decode()
     if (buffer) {
       const line = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
-      if (line.startsWith('data:')) data.push(line.slice('data:'.length).trimStart())
+      if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).trimStart())
       else if (line.startsWith('event:')) eventName = line.slice('event:'.length).trim()
     }
     yield* flush()
@@ -234,6 +234,10 @@ function userContentToParts(content: UserContentBlock[]): string | GrokUserConte
     else if (block.type === 'reference') parts.push({ type: 'text', text: block.reference })
     else if (block.type === 'document') {
       parts.push({ type: 'text', text: `[document:${block.source.fileName} ${block.source.mediaType}]` })
+    } else if (block.type === 'video') {
+      // The chat-completions surface has no video content type (catalog marks
+      // video unsupported); degrade defensively instead of mislabeling it as an image.
+      parts.push({ type: 'text', text: `[video:${block.source.type === 'url' ? block.source.url : block.source.mediaType}]` })
     } else if (block.source.type === 'url') {
       parts.push({ type: 'image_url', image_url: { url: block.source.url, detail: 'auto' } })
     } else {
@@ -251,7 +255,7 @@ function userContentToParts(content: UserContentBlock[]): string | GrokUserConte
 }
 
 function toolResultContentToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[image:${block.source.mediaType}]`)).join('\n')
+  return output.map((block) => (block.type === 'text' ? block.text : `[${block.type}:${block.source.mediaType}]`)).join('\n')
 }
 
 function toolToGrokTool(tool: ToolDefinition): GrokChatTool {
