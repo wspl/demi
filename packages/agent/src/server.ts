@@ -595,16 +595,16 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       const body = opts.stdin.endsWith('\n') ? opts.stdin : `${opts.stdin}\n`
       script = `${words} <<'${delimiter}'\n${body}${delimiter}`
     }
-    const cdScript = `cd ${shellQuote(opts.cwd)} && ${script}`
 
-    // Ephemeral shell: the bridge caller's cd/env must never leak into the
-    // model's persistent session shell (and vice versa).
+    // Ephemeral shell born in the caller's cwd: the bridge caller's directory
+    // and env must never leak into the model's persistent session shell.
     const result = await environment.exec({
       agentSessionId,
-      script: cdScript,
+      script,
       timeoutMs: MAX_TIMEOUT_MS,
       signal: opts.signal,
       ephemeral: true,
+      cwd: opts.cwd,
       supportedAssetTypes: this.session && modelAcceptsVideo(this.session.modelSelection.model)
         ? ['image', 'video']
         : ['image'],
