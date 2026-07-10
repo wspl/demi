@@ -1,4 +1,4 @@
-import { concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
+import { base64ToBytes, bytesToBase64, concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
@@ -206,6 +206,8 @@ interface PersistedShellCommandArtifact {
   exitCode: number | null
   stdout: string
   stderr: string
+  /** Base64 raw bytes of a binary final stream (served as stdout.bin). */
+  stdoutBinary?: { base64: string; truncated: boolean; totalBytes: number }
 }
 
 // Fallback observation window for direct exec() calls that omit timeoutMs (internal instant
@@ -964,7 +966,9 @@ export class BashEnvironment {
         const cap = record.outputLimitBytes
         const truncated = bytes.length > cap
         binary = { data: truncated ? bytes.slice(0, cap) : bytes, truncated, totalBytes: bytes.length }
-        stdoutText = `<binary stdout: ${bytes.length} bytes${truncated ? `, exceeds the ${cap}-byte output limit` : ''}>\n`
+        stdoutText = `<binary stdout: ${bytes.length} bytes${
+          truncated ? `, exceeds the ${cap}-byte output limit` : ''
+        }; raw bytes at /@/commands/${record.id}/stdout.bin>\n`
       }
     }
     const stderrText = foreground ? resultOrError.stderr : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
@@ -1100,7 +1104,9 @@ export class BashEnvironment {
     if (parts.length === 3 && parts[0] === '@' && parts[1] === 'commands') {
       const artifact = await this.commandArtifact(scopeId, parts[2]!)
       if (!artifact) return null
-      return virtualDirectory(['meta.json', 'stderr.txt', 'stdout.txt'])
+      const entries = ['meta.json', 'stderr.txt', 'stdout.txt']
+      if (artifact.stdoutBinary) entries.push('stdout.bin')
+      return virtualDirectory(entries)
     }
     if (parts.length !== 4 || parts[0] !== '@' || parts[1] !== 'commands') return null
 
@@ -1109,6 +1115,9 @@ export class BashEnvironment {
 
     const fileName = parts[3]
     if (fileName === 'stdout.txt') return virtualFile(encodeUtf8(artifact.stdout))
+    if (fileName === 'stdout.bin' && artifact.stdoutBinary) {
+      return virtualFile(base64ToBytes(artifact.stdoutBinary.base64))
+    }
     if (fileName === 'stderr.txt') return virtualFile(encodeUtf8(artifact.stderr))
     if (fileName === 'meta.json') return virtualFile(encodeUtf8(`${JSON.stringify(commandArtifactMeta(artifact), null, 2)}\n`))
     return null
@@ -1143,7 +1152,7 @@ export class BashEnvironment {
   }
 
   private persistCommandArtifact(record: ShellCommandRecord): void {
-    const fingerprint = `${record.status}:${record.exitCode ?? ''}:${record.stdout.length}:${record.stderr.length}`
+    const fingerprint = `${record.status}:${record.exitCode ?? ''}:${record.stdout.length}:${record.stderr.length}:${record.binaryStdout?.totalBytes ?? ''}`
     if (record.persistedFingerprint === fingerprint) return
     record.persistedFingerprint = fingerprint
     this.artifacts.persist(record.commandScopeId, record.id, persistedArtifactFromRecord(record))
@@ -1295,6 +1304,15 @@ function persistedArtifactFromRecord(record: ShellCommandRecord): PersistedShell
     exitCode: record.exitCode ?? null,
     stdout: record.stdout,
     stderr: record.stderr,
+    ...(record.binaryStdout
+      ? {
+          stdoutBinary: {
+            base64: bytesToBase64(record.binaryStdout.data),
+            truncated: record.binaryStdout.truncated,
+            totalBytes: record.binaryStdout.totalBytes,
+          },
+        }
+      : {}),
   }
 }
 
@@ -1312,6 +1330,15 @@ function commandArtifactMeta(artifact: PersistedShellCommandArtifact): Record<st
     exitCode: artifact.exitCode,
     stdout: { path: stdoutPath, bytes: utf8Bytes(artifact.stdout) },
     stderr: { path: stderrPath, bytes: utf8Bytes(artifact.stderr) },
+    ...(artifact.stdoutBinary
+      ? {
+          stdoutBinary: {
+            path: `/@/commands/${artifact.commandId}/stdout.bin`,
+            bytes: artifact.stdoutBinary.totalBytes,
+            truncated: artifact.stdoutBinary.truncated,
+          },
+        }
+      : {}),
   }
 }
 
