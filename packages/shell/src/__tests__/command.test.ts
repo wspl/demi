@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
+import { encodeUtf8 } from '@demicodes/utils'
 import {
   COMMAND_HELP_DEFAULTS,
   CommandRegistry,
@@ -7,10 +8,14 @@ import {
   renderCommandHelp,
   runRegisteredCommand,
   type Command,
-  type CommandAsset,
   type CommandIO,
+  type CommandStdin,
   type CommandStorage,
 } from '../index'
+
+function stdinOf(text: string): CommandStdin {
+  return { text, bytes: encodeUtf8(text) }
+}
 
 const filerSpec: Command = {
   name: 'filer',
@@ -153,9 +158,7 @@ const dualMode: Command = {
 }
 
 test('parseCommandInput maps positionals, flags, and stdin fields', () => {
-  const parsed = parseCommandInput(filerSpec, ['filer', 'create', 'src/foo.ts'], {
-    text: 'export const foo = 1\n',
-  })
+  const parsed = parseCommandInput(filerSpec, ['filer', 'create', 'src/foo.ts'], stdinOf('export const foo = 1\n'))
 
   expect(parsed).toEqual({
     path: ['filer', 'create'],
@@ -223,7 +226,7 @@ test('parseCommandInput rejects unknown options and invalid values', () => {
 })
 
 test('parseCommandInput walks nested groups down to a leaf', () => {
-  const parsed = parseCommandInput(nestedSpec, ['larkclaw', 'watch', 'create', 'my-id'], { text: '{"a":1}' })
+  const parsed = parseCommandInput(nestedSpec, ['larkclaw', 'watch', 'create', 'my-id'], stdinOf('{"a":1}'))
   expect(parsed).toEqual({
     path: ['larkclaw', 'watch', 'create'],
     help: false,
@@ -380,7 +383,7 @@ test('runRegisteredCommand executes nested leaves and renders help at any group'
     const io = new MemoryIO()
     const result = await runRegisteredCommand(nestedSpec, {
       argv,
-      stdin: { text: stdin },
+      stdin: stdinOf(stdin),
       env: {},
       cwd: '/workspace',
       io,
@@ -479,7 +482,7 @@ test('runRegisteredCommand rejects JSON mode when the command has no JSON output
   await expect(
     runRegisteredCommand(filerSpec, {
       argv: ['filer', 'create', 'src/foo.ts', '--json'],
-      stdin: { text: '' },
+      stdin: stdinOf(''),
       env: {},
       cwd: '/workspace',
       io,
@@ -555,7 +558,6 @@ const reservedCommandNames = [
 class MemoryIO implements CommandIO {
   private readonly stdoutChunks: Uint8Array[] = []
   private readonly stderrChunks: Uint8Array[] = []
-  private readonly assetItems: CommandAsset[] = []
 
   stdout(data: string | Uint8Array): void {
     this.stdoutChunks.push(typeof data === 'string' ? Buffer.from(data) : data)
@@ -565,20 +567,12 @@ class MemoryIO implements CommandIO {
     this.stderrChunks.push(typeof data === 'string' ? Buffer.from(data) : data)
   }
 
-  asset(asset: CommandAsset): void {
-    this.assetItems.push(asset)
-  }
-
   stdoutText(): string {
     return Buffer.concat(this.stdoutChunks).toString('utf8')
   }
 
   stderrText(): string {
     return Buffer.concat(this.stderrChunks).toString('utf8')
-  }
-
-  assets(): CommandAsset[] {
-    return this.assetItems
   }
 }
 
