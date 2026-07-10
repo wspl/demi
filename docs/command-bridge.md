@@ -101,8 +101,9 @@ createLocalAgentServer (host-local)
 ## Protocol / exec / stdin
 
 - UDS `POST /run` → `{ commandScopeId, name, args, cwd, stdin }` → `{ exitCode, stdout, stderr }`
-- Exec: `cd … && name args…` (+ heredoc if stdin non-empty) via `AgentServer.runCommandLine`,
-  always in an ephemeral shell — bridge calls never share (or mutate) the model's session shell
+- Exec: `name args…` (+ heredoc if stdin non-empty) via `AgentServer.runCommandLine`,
+  always in an ephemeral shell born in the caller's cwd — bridge calls never
+  share (or mutate) the model's session shell
 - Stdin: 300ms grace to first byte, then read to EOF; newline-terminated stdin arrives
   byte-identical, stdin without a trailing newline gains exactly one (heredoc normalization)
 
