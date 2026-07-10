@@ -1,4 +1,4 @@
-import { decodeUtf8, encodeUtf8, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
+import { concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
@@ -9,7 +9,7 @@ import { ParseException } from '@demicodes/just-bash/parser/types'
 import { LexerError } from '@demicodes/just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from '@demicodes/just-bash/types'
 import { resolveLimits } from '@demicodes/just-bash/limits'
-import { CommandRegistry, type CommandAsset, type CommandAssetType, type Command } from './command'
+import { CommandRegistry, type Command } from './command'
 import { DEMI_PORTABLE_COMMANDS } from './portable-commands'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
@@ -53,7 +53,6 @@ export interface ShellExecInput {
   timeoutMs?: number
   maxOutputBytes?: number
   signal?: AbortSignal
-  supportedAssetTypes?: readonly CommandAssetType[]
   /**
    * Run in a dedicated one-shot shell instead of the session default shell, so
    * cd/env side effects never leak into other execs sharing the session. The
@@ -129,6 +128,15 @@ export interface CommandMetadataRecord {
   metadata: unknown
 }
 
+/** Final stdout stream that is not valid UTF-8: raw bytes for the boundary above. */
+export interface BinaryStdout {
+  data: Uint8Array
+  /** True when the stream exceeded the exec's output limit; data is capped. */
+  truncated: boolean
+  /** Total byte count of the un-capped stream. */
+  totalBytes: number
+}
+
 export type ShellCommandSnapshot =
   | {
       status: 'exited'
@@ -142,7 +150,8 @@ export type ShellCommandSnapshot =
       idleMs: number
       audit: BashAuditEvent[]
       commandMetadata?: CommandMetadataRecord[]
-      assets?: CommandAsset[]
+      /** Present when the final stream was binary (bytes that are not valid UTF-8). */
+      binaryStdout?: BinaryStdout
     }
   | {
       status: 'running'
@@ -182,7 +191,9 @@ interface ShellCommandRecord {
   exitCode?: number
   audit: BashAuditEvent[]
   commandMetadata: CommandMetadataRecord[]
-  assets: CommandAsset[]
+  binaryStdout?: BinaryStdout
+  /** Output limit of the exec that started this command (binary carry cap). */
+  outputLimitBytes: number
   persistedFingerprint?: string
 }
 
@@ -278,8 +289,6 @@ export class BashEnvironment {
       const commandId = session.activeCommandId ?? session.foreground?.commandId ?? 'unknown'
       throw new Error(`Shell session "${session.id}" is already running command "${commandId}"`)
     }
-
-    session.supportedAssetTypes = new Set(input.supportedAssetTypes)
 
     return this.runScript(session, input.script, { ...input, timeoutMs })
   }
@@ -483,8 +492,7 @@ export class BashEnvironment {
       fs,
       interpreter: undefined as unknown as Interpreter,
       forkCommands,
-      accumulator: { stdout: '', stderr: '', audit: [], commandMetadata: [], assets: [] },
-      supportedAssetTypes: new Set(),
+      accumulator: { stdout: '', stderr: '', audit: [], commandMetadata: [] },
       foregroundWaiters: new Set(),
       backgroundJobs: new Map(),
       nextBackgroundJobId: 1,
@@ -527,6 +535,7 @@ export class BashEnvironment {
     input: ShellExecInput & { timeoutMs: number },
   ): Promise<ShellCommandSnapshot> {
     const record = this.createCommandRecord(session, script)
+    record.outputLimitBytes = input.maxOutputBytes ?? this.defaultOutputLimitBytes
     let ast: ScriptNode
     try {
       ast = parse(script)
@@ -543,7 +552,7 @@ export class BashEnvironment {
       }
       throw error
     }
-    session.accumulator = { stdout: '', stderr: '', audit: [], commandMetadata: [], assets: [] }
+    session.accumulator = { stdout: '', stderr: '', audit: [], commandMetadata: [] }
     session.abortController = new AbortController()
     session.activeCommandId = record.id
 
@@ -591,7 +600,7 @@ export class BashEnvironment {
       outputOffset: 0,
       audit: [],
       commandMetadata: [],
-      assets: [],
+      outputLimitBytes: this.defaultOutputLimitBytes,
     }
     this.commandsById.set(id, record)
     return record
@@ -827,6 +836,7 @@ export class BashEnvironment {
       startedAt,
       lastOutputAt: startedAt,
       rawStdoutBuffer: '',
+      rawStdoutBytes: [],
       rawStderrBuffer: '',
       stdoutBuffer: '',
       stderrBuffer: '',
@@ -843,7 +853,9 @@ export class BashEnvironment {
     notifyForegroundWaiters(session.foregroundWaiters, foreground)
 
     if (opts.stdin && opts.stdin.length > 0) {
-      await handle.writeStdin(encodeUtf8(opts.stdin))
+      // The interpreter hands pipe stdin over latin1-packed (string char = raw
+      // byte); write those bytes, not a UTF-8 re-encode of them.
+      await handle.writeStdin(encodeLatin1(opts.stdin))
     }
     if (opts.stdinProvided) {
       await handle.closeStdin()
@@ -862,7 +874,10 @@ export class BashEnvironment {
     const exit = await foreground.exitPromise
     await Promise.allSettled([foreground.stdoutPump, foreground.stderrPump])
 
-    const stdout = foreground.rawStdoutBuffer
+    // Return raw output bytes (latin1-packed, stdoutKind 'bytes') so real-
+    // process output pipes onward losslessly; the streamed text view on the
+    // record remains the lossy render for live observation.
+    const stdout = decodeLatin1(concatBytes(foreground.rawStdoutBytes))
     const exitCode = exit.exitCode ?? 127
     const stderr =
       exit.exitCode === null && foreground.rawStderrBuffer.length === 0
@@ -880,7 +895,7 @@ export class BashEnvironment {
     }
     session.foreground = undefined
 
-    return { stdout, stderr, exitCode }
+    return { stdout, stdoutKind: 'bytes', stderr, exitCode }
   }
 
   private collectExited(
@@ -929,20 +944,41 @@ export class BashEnvironment {
       return this.finishExited(session, record, 1, input)
     }
 
-    // The interpreter carries built-in command stdout as a latin1 byte string
-    // (each char = one raw byte, for binary transparency). Foreground output
-    // streamed from host-spawned processes is already decoded to Unicode (see
-    // recordForegroundChunk). Decode the byte-string result at this boundary —
-    // the same conversion Bash.exec applies — so UTF-8 text (CJK, emoji) reads
-    // back correctly instead of as mojibake. decodeBytesToUtf8 leaves already-
-    // Unicode and pure-ASCII strings untouched, and preserves invalid-UTF-8
-    // binary as-is.
-    const stdoutText = foreground ? resultOrError.stdout : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stdout))
+    // Final-stream boundary. The interpreter's script-level stdout is either a
+    // latin1-packed byte string (each char = one raw byte; the pipe convention)
+    // or an already-decoded Unicode string (any char > 0xFF). Valid UTF-8
+    // becomes text; anything else stays raw bytes on the record (binaryStdout)
+    // with a placeholder in the text channel — raw binary never enters the
+    // text render.
+    const raw = resultOrError.stdout
+    let stdoutText: string
+    let binary: BinaryStdout | undefined
+    if (hasWideChar(raw)) {
+      stdoutText = raw
+    } else {
+      const bytes = encodeLatin1(raw)
+      const strict = decodeUtf8Strict(bytes)
+      if (strict !== null) {
+        stdoutText = strict
+      } else {
+        const cap = record.outputLimitBytes
+        const truncated = bytes.length > cap
+        binary = { data: truncated ? bytes.slice(0, cap) : bytes, truncated, totalBytes: bytes.length }
+        stdoutText = `<binary stdout: ${bytes.length} bytes${truncated ? `, exceeds the ${cap}-byte output limit` : ''}>\n`
+      }
+    }
     const stderrText = foreground ? resultOrError.stderr : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
     session.accumulator.stdout += stdoutText
     session.accumulator.stderr += stderrText
-    if (foreground) {
+    if (binary) record.binaryStdout = binary
+    if (foreground && !binary) {
       record.outputChunks = [...foreground.outputChunks]
+    } else if (binary) {
+      // Drop any streamed (mojibake) view of a binary stream at exit; the
+      // placeholder is the canonical text render.
+      record.outputChunks = []
+      appendRecordOutput(record, 'stdout', stdoutText)
+      appendRecordOutput(record, 'stderr', stderrText)
     } else if (record.outputChunks.length === 0) {
       appendRecordOutput(record, 'stdout', stdoutText)
       appendRecordOutput(record, 'stderr', stderrText)
@@ -968,7 +1004,6 @@ export class BashEnvironment {
     record.exitCode = exitCode
     record.audit = [...session.accumulator.audit]
     record.commandMetadata = [...session.accumulator.commandMetadata]
-    record.assets = [...session.accumulator.assets]
     session.pendingExec = undefined
     if (session.activeCommandId === record.id) session.activeCommandId = undefined
     return this.snapshotCommand(record, input)
@@ -1049,7 +1084,7 @@ export class BashEnvironment {
         audit: record.audit,
       }
       if (record.commandMetadata.length > 0) result.commandMetadata = record.commandMetadata
-      if (record.assets.length > 0) result.assets = record.assets
+      if (record.binaryStdout) result.binaryStdout = record.binaryStdout
       return result
     }
     if (record.status === 'aborted') return { ...base, status: 'aborted' }
@@ -1141,6 +1176,14 @@ function createPortableCommands(session: ShellSession): ForkCommand[] {
       return result
     },
   }))
+}
+
+/** True when the string contains a char > 0xFF, i.e. already-decoded Unicode text. */
+function hasWideChar(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    if (value.charCodeAt(i) > 0xff) return true
+  }
+  return false
 }
 
 function normalizeTimeoutMs(value: number): number {

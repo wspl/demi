@@ -1,6 +1,6 @@
-import { concatBytes, decodeUtf8, encodeUtf8 } from '@demicodes/utils'
+import { concatBytes, decodeLatin1, decodeUtf8, encodeLatin1, encodeUtf8 } from '@demicodes/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
-import { runRegisteredCommand, type Command, type CommandAsset, type CommandIO } from './command'
+import { runRegisteredCommand, type Command, type CommandIO, type CommandStdin } from './command'
 import type { ShellSession } from './environment-state'
 import type { AgentSessionCommandStorage } from './storage'
 
@@ -9,18 +9,17 @@ export function commandToForkCommand(session: ShellSession, command: Command, st
     name: command.name,
     consumesStdin: treeConsumesStdin(command),
     execute: async (args, ctx): Promise<ForkExecResult> => {
-      const stdinText = decodeForkStdin(ctx.stdin)
+      const stdin = decodeForkStdin(ctx.stdin)
       const io = createForwardingIO()
       const argv = [command.name, ...args]
       try {
         const result = await runRegisteredCommand(command, {
           argv,
-          stdin: { text: stdinText },
+          stdin,
           env: mapToRecord(ctx.env),
           cwd: ctx.cwd,
           io,
           storage,
-          supportedAssetTypes: [...session.supportedAssetTypes],
         })
         session.accumulator.audit.push({
           kind: 'registered-command',
@@ -36,7 +35,7 @@ export function commandToForkCommand(session: ShellSession, command: Command, st
             metadata: result.metadata,
           })
         }
-        return { stdout: io.stdoutText(), stderr: io.stderrText(), exitCode: result.exitCode }
+        return { stdout: io.stdoutLatin1(), stdoutKind: 'bytes', stderr: io.stderrText(), exitCode: result.exitCode }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         session.accumulator.audit.push({
@@ -45,18 +44,21 @@ export function commandToForkCommand(session: ShellSession, command: Command, st
           args,
           exitCode: 1,
         })
-        return { stdout: io.stdoutText(), stderr: `${io.stderrText()}${command.name}: ${message}\n`, exitCode: 1 }
-      } finally {
-        if (io.assets().length > 0) session.accumulator.assets.push(...io.assets())
+        return {
+          stdout: io.stdoutLatin1(),
+          stdoutKind: 'bytes',
+          stderr: `${io.stderrText()}${command.name}: ${message}\n`,
+          exitCode: 1,
+        }
       }
     },
   }
 }
 
+/** Collects command output as raw bytes; stdout stays byte-clean for the pipe. */
 class ForwardingIO implements CommandIO {
   private readonly stdoutChunks: Uint8Array[] = []
   private readonly stderrChunks: Uint8Array[] = []
-  private readonly assetItems: CommandAsset[] = []
 
   async stdout(data: string | Uint8Array): Promise<void> {
     this.stdoutChunks.push(typeof data === 'string' ? encodeUtf8(data) : data)
@@ -66,20 +68,12 @@ class ForwardingIO implements CommandIO {
     this.stderrChunks.push(typeof data === 'string' ? encodeUtf8(data) : data)
   }
 
-  asset(asset: CommandAsset): void {
-    this.assetItems.push(asset)
-  }
-
-  stdoutText(): string {
-    return decodeUtf8(concatBytes(this.stdoutChunks))
+  stdoutLatin1(): string {
+    return decodeLatin1(concatBytes(this.stdoutChunks))
   }
 
   stderrText(): string {
     return decodeUtf8(concatBytes(this.stderrChunks))
-  }
-
-  assets(): CommandAsset[] {
-    return this.assetItems
   }
 }
 
@@ -98,19 +92,22 @@ function mapToRecord(map: Map<string, string>): Record<string, string> {
   return record
 }
 
-function decodeForkStdin(stdin: ForkCommandContext['stdin']): string {
-  if (!stdin) return ''
-  if (stdin instanceof Uint8Array) return decodeUtf8(stdin)
+/** Pipes hand stdin over as a latin1-packed byte string; expose bytes and a UTF-8 text view. */
+function decodeForkStdin(stdin: ForkCommandContext['stdin']): CommandStdin {
+  if (!stdin) return { text: '', bytes: new Uint8Array(0) }
+  if (stdin instanceof Uint8Array) return { text: decodeUtf8(stdin), bytes: stdin }
   const latin1 = stdin as unknown as string
-  if (!latin1) return ''
+  if (!latin1) return { text: '', bytes: new Uint8Array(0) }
+  const bytes = encodeLatin1(latin1)
   let hasHighByte = false
+  let hasWideChar = false
   for (let i = 0; i < latin1.length; i += 1) {
     const code = latin1.charCodeAt(i)
-    if (code > 0xff) return latin1
-    if (code > 0x7f) hasHighByte = true
+    if (code > 0xff) hasWideChar = true
+    else if (code > 0x7f) hasHighByte = true
   }
-  if (!hasHighByte) return latin1
-  const bytes = new Uint8Array(latin1.length)
-  for (let i = 0; i < latin1.length; i += 1) bytes[i] = latin1.charCodeAt(i)
-  return decodeUtf8(bytes)
+  // Already-Unicode text (wide chars) passes through; latin1-packed UTF-8 decodes.
+  if (hasWideChar) return { text: latin1, bytes: encodeUtf8(latin1) }
+  if (!hasHighByte) return { text: latin1, bytes }
+  return { text: decodeUtf8(bytes), bytes }
 }

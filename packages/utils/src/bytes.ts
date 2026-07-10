@@ -16,6 +16,32 @@ export function utf8Bytes(text: string): number {
   return encoder.encode(text).byteLength
 }
 
+/** Packs a latin1 byte-string (each char = one byte, 0–255) into bytes. */
+export function encodeLatin1(text: string): Uint8Array {
+  const out = new Uint8Array(text.length)
+  for (let i = 0; i < text.length; i += 1) out[i] = text.charCodeAt(i) & 0xff
+  return out
+}
+
+/** Unpacks bytes into a latin1 byte-string (each char = one byte). */
+export function decodeLatin1(bytes: Uint8Array): string {
+  let out = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    out += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return out
+}
+
+/** Strictly decodes UTF-8; returns null when the bytes are not valid UTF-8. */
+export function decodeUtf8Strict(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return null
+  }
+}
+
 /** Slices a string by UTF-8 byte offsets, returning the decoded substring. */
 export function utf8Slice(text: string, start: number, end: number): string {
   if (start <= 0 && end >= utf8Bytes(text)) return text

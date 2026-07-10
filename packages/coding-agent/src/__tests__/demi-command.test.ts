@@ -24,52 +24,31 @@ test('demi read returns a text file as text', async () => {
   expect(read.stdout.delta).toBe('hello world\n')
 })
 
-test('demi read returns an image file as a base64 image asset', async () => {
-  const { env } = await createDemiEnvironment()
-  // Image detection is by extension; the content only needs to round-trip through base64.
-  const created = await env.exec({ script: "demi create shot.png <<'EOF'\nPNGDATA\nEOF" })
-  const read = await env.exec({ shellId: created.shellId, script: 'demi read shot.png' })
+test('demi read emits raw bytes; binary files surface as binaryStdout at the boundary', async () => {
+  const { env, host } = await createDemiEnvironment()
+  // A real (invalid-UTF-8) binary payload written through Host.fs directly.
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe])
+  await host.fs.writeFile('shot.png', png, { cwd: host.defaultCwd })
+
+  const read = await env.exec({ script: 'demi read shot.png' })
   if (read.status !== 'exited') throw new Error('expected exited result')
-  expect(read.assets).toEqual([
-    { type: 'image', mediaType: 'image/png', data: bytesToBase64(encodeUtf8('PNGDATA\n')) },
-  ])
-  expect(read.stdout.delta).toContain('Read image shot.png (image/png,')
+  expect(read.exitCode).toBe(0)
+  expect(read.binaryStdout?.data).toEqual(png)
+  expect(read.stdout.delta).toBe(`<binary stdout: ${png.length} bytes>\n`)
+
+  // Bytes pipe cleanly into downstream commands.
+  const counted = await env.exec({ shellId: read.shellId, script: 'demi read shot.png | wc -c' })
+  if (counted.status !== 'exited') throw new Error('expected exited result')
+  expect(counted.stdout.delta.trim()).toBe(String(png.length))
 })
 
-test('demi read returns a video file as a native base64 video asset', async () => {
-  const { env } = await createDemiEnvironment()
-  const created = await env.exec({ script: "demi create clip.mp4 <<'EOF'\nMP4DATA\nEOF" })
-  const read = await env.exec({
-    shellId: created.shellId,
-    script: 'demi read clip.mp4',
-    supportedAssetTypes: ['image', 'video'],
-  })
-  if (read.status !== 'exited') throw new Error('expected exited result')
-  expect(read.assets).toEqual([
-    { type: 'video', mediaType: 'video/mp4', data: bytesToBase64(encodeUtf8('MP4DATA\n')) },
-  ])
-  expect(read.stdout.delta).toContain('Read video clip.mp4 (video/mp4,')
-})
-
-test('demi read rejects video before reading when the current model does not support it', async () => {
-  const { env } = await createDemiEnvironment()
-  const created = await env.exec({ script: "demi create clip.mp4 <<'EOF'\nMP4DATA\nEOF" })
-  const read = await env.exec({ shellId: created.shellId, script: 'demi read clip.mp4' })
-
-  expect(read.status).toBe('exited')
-  if (read.status !== 'exited') throw new Error('expected exited result')
-  expect(read.exitCode).toBe(1)
-  expect(read.assets).toBeUndefined()
-  expect(read.stderr.delta).toBe('Current model does not support video input.\n')
-})
-
-test('demi --help documents native video behavior, and any word stays usable as a file name', async () => {
+test('demi --help documents byte-stream reads, and any word stays usable as a file name', async () => {
   const { env } = await createDemiEnvironment()
   const help = await env.exec({ script: 'demi --help' })
 
   expect(help.status).toBe('exited')
   if (help.status !== 'exited') throw new Error('expected exited result')
-  expect(help.stdout.delta).toContain('images and supported videos')
+  expect(help.stdout.delta).toContain('shown to you as viewable media')
   expect(help.stdout.delta).toContain('demi read assets/clip.mp4')
 
   const leafHelp = await env.exec({ shellId: help.shellId, script: 'demi read --help' })
@@ -390,12 +369,11 @@ test('demi patch rolls back files when a later write fails', async () => {
           '--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-second\n+changed\n',
       },
     },
-    stdin: { text: '' },
+    stdin: { text: '', bytes: new Uint8Array(0) },
     env: {},
     cwd: '/workspace',
     io: output.io,
     storage: noopStorage,
-    supportedAssetTypes: new Set(),
   })
 
   expect(result.exitCode).toBe(1)
@@ -404,7 +382,7 @@ test('demi patch rolls back files when a later write fails', async () => {
   expect(host.read('second.txt')).toBe('second\n')
 })
 
-async function createDemiEnvironment(): Promise<{ env: BashEnvironment }> {
+async function createDemiEnvironment(): Promise<{ env: BashEnvironment; host: LocalHost }> {
   const root = await mkdtemp(join(tmpdir(), 'demi-scratch-'))
   const host = new LocalHost(root)
   const env = new BashEnvironment({
@@ -413,7 +391,7 @@ async function createDemiEnvironment(): Promise<{ env: BashEnvironment }> {
     shellIdFactory: () => 'demi-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
-  return { env }
+  return { env, host }
 }
 
 function fileDiffs(result: { status: string; commandMetadata?: Array<{ metadata: unknown }> }): Record<string, unknown>[] {
@@ -450,7 +428,6 @@ function commandOutput(): { io: CommandIO; stdout: () => string; stderr: () => s
       stderr: async (data) => {
         stderr.push(text(data))
       },
-      asset: async () => {},
     },
     stdout: () => stdout.join(''),
     stderr: () => stderr.join(''),

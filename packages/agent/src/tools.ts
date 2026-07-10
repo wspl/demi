@@ -8,7 +8,8 @@ import type {
   ShellWriteInput,
   StreamArtifact,
 } from '@demicodes/shell'
-import { supportedAssetTypesFor, type ToolResultContentBlock } from '@demicodes/core'
+import { bytesToBase64 } from '@demicodes/utils'
+import { modelAcceptsMediaType, sniffModelMediaType, type Model, type ToolResultContentBlock } from '@demicodes/core'
 import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from './types'
 
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
@@ -65,7 +66,6 @@ export function createStandardAgentTools<State = unknown>(
           ...parsed,
           agentSessionId: ctx.agentSessionId,
           signal: ctx.signal,
-          supportedAssetTypes: supportedAssetTypesFor(ctx.model.model),
         })
         ctx.emitProgress(result)
         return finishShellToolResult(environment, result, ctx)
@@ -163,6 +163,8 @@ export interface ShellToolResultOptions {
   includePreview?: boolean
   previewBudgetTokens?: number
   exposeCommandHandle?: boolean
+  /** Model receiving this result; gates binary-stream media attachment. */
+  model?: Model
 }
 
 export function shellPreviewBudgetTokens(contextWindow: number): number {
@@ -175,11 +177,10 @@ export function toShellToolResult(
   options: ShellToolResultOptions = {},
 ): AgentToolInvokeResult {
   const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
-  if (result.status === 'exited' && result.assets) {
-    for (const asset of result.assets) {
-      const source = { mediaType: asset.mediaType, data: asset.data }
-      output.push(asset.type === 'video' ? { type: 'video', source } : { type: 'image', source })
-    }
+  if (result.status === 'exited' && result.binaryStdout) {
+    const verdict = binaryStreamVerdict(result.binaryStdout, options.model)
+    if (verdict.block) output.push(verdict.block)
+    if (verdict.note) output.push({ type: 'text', text: verdict.note })
   }
   return {
     output,
@@ -194,6 +195,36 @@ export function toShellToolResult(
             status: 'running',
           }
         : undefined,
+  }
+}
+
+/**
+ * Boundary decision for a binary final stream: attach as native media when the
+ * magic matches the closed model-media set, the model accepts the type, and
+ * the stream was not truncated; otherwise explain why nothing was attached.
+ */
+function binaryStreamVerdict(
+  binary: NonNullable<Extract<ShellCommandSnapshot, { status: 'exited' }>['binaryStdout']>,
+  model: Model | undefined,
+): { block?: ToolResultContentBlock; note?: string } {
+  const media = sniffModelMediaType(binary.data)
+  if (binary.truncated) {
+    return {
+      note: `Binary stdout was truncated at the output limit (${binary.data.length} of ${binary.totalBytes} bytes)${
+        media ? ` and looks like ${media.mediaType}` : ''
+      }; it was not attached. Re-run with a higher timeoutMs/output limit or write to a file instead.`,
+    }
+  }
+  if (!media) {
+    return { note: 'Binary stdout does not match any model-viewable media type; write it to a file to process it further.' }
+  }
+  if (!model || !modelAcceptsMediaType(model, media.mediaType)) {
+    return { note: `Binary stdout is ${media.mediaType}, which this model does not accept natively; it was not attached.` }
+  }
+  const source = { mediaType: media.mediaType, data: bytesToBase64(binary.data) }
+  return {
+    block: media.kind === 'video' ? { type: 'video', source } : { type: 'image', source },
+    note: `Attached stdout as ${media.mediaType} (${binary.totalBytes} bytes).`,
   }
 }
 
@@ -352,6 +383,7 @@ export async function finishShellToolResult<State>(
     includePreview: true,
     previewBudgetTokens,
     exposeCommandHandle,
+    model: ctx.model.model,
   })
   if (!exposeCommandHandle) await environment.releaseCommand(result.commandId)
   return toolResult
