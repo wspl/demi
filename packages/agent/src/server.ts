@@ -1,4 +1,4 @@
-import { isRecord, noop, safeJsonStringify } from '@demicodes/utils'
+import { bytesToBase64, isRecord, noop, safeJsonStringify } from '@demicodes/utils'
 import { AgentSession } from './session'
 import {
   BashEnvironment,
@@ -11,7 +11,7 @@ import {
   type Host,
   type HostStore,
 } from '@demicodes/shell'
-import { supportedAssetTypesFor, type Block, type ToolResultContentBlock } from '@demicodes/core'
+import type { Block, ToolResultContentBlock } from '@demicodes/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { AgentClient } from './client'
 import { cloneBlocks } from './patch'
@@ -73,7 +73,9 @@ export interface RunCommandLineOptions {
 /** Result of {@link AgentServer.runCommandLine}. */
 export interface RunCommandLineResult {
   exitCode: number
+  /** UTF-8 text, or base64 when `stdoutEncoding` is 'base64'. */
   stdout: string
+  stdoutEncoding?: 'base64'
   stderr: string
 }
 
@@ -605,11 +607,20 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       signal: opts.signal,
       ephemeral: true,
       cwd: opts.cwd,
-      supportedAssetTypes: this.session ? supportedAssetTypesFor(this.session.modelSelection.model) : ['image'],
     })
 
     try {
       if (result.status === 'exited') {
+        // Binary final streams cross the bridge as base64; the shim writes the
+        // raw bytes to its OS stdout, keeping external pipes byte-clean.
+        if (result.binaryStdout) {
+          return {
+            exitCode: result.exitCode,
+            stdout: bytesToBase64(result.binaryStdout.data),
+            stdoutEncoding: 'base64',
+            stderr: result.stderr.delta,
+          }
+        }
         return { exitCode: result.exitCode, stdout: result.stdout.delta, stderr: result.stderr.delta }
       }
       if (result.status === 'aborted') {
