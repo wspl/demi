@@ -154,13 +154,15 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web-ui`
 
-- Status: planned.
+- Status: implemented; published to npm as a source-form package (no build step — `.vue`/`.ts`
+  source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
-  by supplying an `AgentClient` and a control client.
+  by supplying an `AgentClient` and a control client. External products consume the published
+  package (registry semver), not `link:` paths into this repo.
 - Must not: import Node, `@demicodes/host-local`, `@demicodes/shell`, `@demicodes/coding-agent`, concrete
   providers, `@demicodes/web`, or `@demicodes/repl`. It may import the `@demicodes/agent` client surface
   only (`AgentClient`, WebSocket client transport, frame/event/block types).
