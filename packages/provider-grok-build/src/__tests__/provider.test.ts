@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { zeroUsage } from '@demicodes/core'
 import { providerRuntime, type InferenceRequest, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StaticGrokAuthStore, type GrokResolvedAuth } from '../auth'
-import { buildGrokChatCompletionsBody, mapGrokChatCompletionStream, type ServerSentEvent } from '../chat'
+import { buildGrokChatCompletionsBody, mapGrokChatCompletionStream, readServerSentEvents, type ServerSentEvent } from '../chat'
 import { modelListFromGrokModelsPayload } from '../models'
 import { createGrokBuildProvider } from '../provider'
 
@@ -149,40 +149,34 @@ test('chat stream maps reasoning_content and tool calls', async () => {
       (async function* (): AsyncIterable<ServerSentEvent> {
         yield {
           event: null,
-          data: [
-            JSON.stringify({
-              choices: [{ delta: { reasoning_content: 'think', role: 'assistant' } }],
-            }),
-          ],
+          data: JSON.stringify({
+            choices: [{ delta: { reasoning_content: 'think', role: 'assistant' } }],
+          }),
         }
         yield {
           event: null,
-          data: [
-            JSON.stringify({
-              choices: [
-                {
-                  delta: {
-                    tool_calls: [{ index: 0, id: 'c1', function: { name: 'shell_exec', arguments: '{"cmd"' } }],
-                  },
+          data: JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [{ index: 0, id: 'c1', function: { name: 'shell_exec', arguments: '{"cmd"' } }],
                 },
-              ],
-            }),
-          ],
+              },
+            ],
+          }),
         }
         yield {
           event: null,
-          data: [
-            JSON.stringify({
-              choices: [
-                {
-                  delta: { tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }] },
-                  finish_reason: 'tool_calls',
-                },
-              ],
-            }),
-          ],
+          data: JSON.stringify({
+            choices: [
+              {
+                delta: { tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }] },
+                finish_reason: 'tool_calls',
+              },
+            ],
+          }),
         }
-        yield { event: null, data: ['[DONE]'] }
+        yield { event: null, data: '[DONE]' }
       })(),
     ),
   )
@@ -191,6 +185,35 @@ test('chat stream maps reasoning_content and tool calls', async () => {
     { type: 'thinking_start' },
     { type: 'thinking_delta', text: 'think' },
     { type: 'tool_call_requested', toolUseId: 'c1', toolName: 'shell_exec', input: { cmd: 'ls' } },
+    { type: 'response', usage: zeroUsage() },
+  ])
+})
+
+test('readServerSentEvents joins multi-line data fields per the SSE spec', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode('data: {"choices":\ndata: [{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'),
+      )
+      controller.close()
+    },
+  })
+  const events: ServerSentEvent[] = []
+  for await (const event of readServerSentEvents(stream)) events.push(event)
+  expect(events).toEqual([
+    { event: null, data: '{"choices":\n[{"delta":{"content":"hi"}}]}' },
+    { event: null, data: '[DONE]' },
+  ])
+
+  const mapped = await collect(
+    mapGrokChatCompletionStream(
+      (async function* (): AsyncIterable<ServerSentEvent> {
+        for (const event of events) yield event
+      })(),
+    ),
+  )
+  expect(mapped).toEqual([
+    { type: 'text_delta', text: 'hi' },
     { type: 'response', usage: zeroUsage() },
   ])
 })
