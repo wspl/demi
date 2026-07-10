@@ -11,7 +11,7 @@ import {
   type Host,
   type HostStore,
 } from '@demicodes/shell'
-import { modelAcceptsVideo, type Block, type ToolResultContentBlock } from '@demicodes/core'
+import { supportedAssetTypesFor, type Block, type ToolResultContentBlock } from '@demicodes/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { AgentClient } from './client'
 import { cloneBlocks } from './patch'
@@ -605,9 +605,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       signal: opts.signal,
       ephemeral: true,
       cwd: opts.cwd,
-      supportedAssetTypes: this.session && modelAcceptsVideo(this.session.modelSelection.model)
-        ? ['image', 'video']
-        : ['image'],
+      supportedAssetTypes: this.session ? supportedAssetTypesFor(this.session.modelSelection.model) : ['image'],
     })
 
     try {

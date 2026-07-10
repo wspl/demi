@@ -14,7 +14,7 @@ import {
 import {
   CodexAuthError,
   FileCodexAuthStore,
-  redactSecretText,
+  redactCodexSecretText,
   type CodexAuthStore,
   type CodexResolvedAuth,
 } from './auth'
@@ -251,16 +251,16 @@ function openAiResponsesUrl(baseUrl: string): string {
 }
 
 function providerErrorFromUnknown(error: unknown): ProviderEvent {
-  if (error instanceof CodexAuthError) return { type: 'error', message: redactSecretText(error.message), code: error.code }
+  if (error instanceof CodexAuthError) return { type: 'error', message: redactCodexSecretText(error.message), code: error.code }
   if (error instanceof CodexHttpError) {
     return {
       type: 'error',
-      message: redactSecretText(error.message),
+      message: redactCodexSecretText(error.message),
       code: httpErrorCode(error.status, error.message),
     }
   }
   const message = error instanceof Error ? error.message : String(error)
-  return { type: 'error', message: redactSecretText(message), code: null }
+  return { type: 'error', message: redactCodexSecretText(message), code: null }
 }
 
 function isRetryableHttpStatus(status: number): boolean {

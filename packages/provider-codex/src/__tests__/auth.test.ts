@@ -1,3 +1,4 @@
+import { redactCredentialText } from '@demicodes/provider'
 import { expect, test } from 'bun:test'
 import { Buffer } from 'node:buffer'
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
@@ -7,7 +8,6 @@ import {
   FileCodexAuthStore,
   parseChatGptClaims,
   parseJwtExpiration,
-  redactSecretText,
   resolvedAuthMode,
   StaticCodexAuthStore,
 } from '../auth'
@@ -157,7 +157,7 @@ test('auth mode resolution and redaction follow official auth.json precedence', 
   expect(resolvedAuthMode({ personal_access_token: 'pat' })).toBe('personalAccessToken')
   expect(resolvedAuthMode({ OPENAI_API_KEY: 'sk' })).toBe('apiKey')
   expect(resolvedAuthMode({ tokens: {} })).toBe('chatgpt')
-  expect(redactSecretText('Authorization: Bearer abc.def.ghi access_token: secret')).not.toContain('abc.def.ghi')
+  expect(redactCredentialText('Authorization: Bearer abc.def.ghi access_token: secret')).not.toContain('abc.def.ghi')
 
   const staticStore = new StaticCodexAuthStore({
     kind: 'apiKey',
