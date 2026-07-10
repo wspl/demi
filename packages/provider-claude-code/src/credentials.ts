@@ -20,7 +20,7 @@ import {
   credentialIdFromIdentity,
   runVendorLoginCommand,
   type CredentialEntryMeta,
-} from './credentials-pool'
+} from '@demicodes/provider/credentials-pool'
 import type { ClaudeCodeOAuthAccess } from './oauth'
 
 export class PoolAwareClaudeCodeAuthStore implements ClaudeCodeAuthStore {

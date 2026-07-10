@@ -2,12 +2,12 @@
  * Demi multi-credential pool on disk:
  *   <stateDir>/credentials/<providerKey>/{active,entries/<id>/{meta.json,secret}}
  */
-import { isRecord, nonEmptyString } from '@demicodes/utils'
+import { errorCode, isRecord, nonEmptyString } from '@demicodes/utils'
 import { createHash, randomUUID } from 'node:crypto'
-import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { ProviderCredentialInfo } from '@demicodes/provider'
+import type { ProviderCredentialInfo } from './types'
 
 export interface CredentialEntryMeta {
   id: string
@@ -28,7 +28,11 @@ export interface FileCredentialPoolOptions {
   secretFileName: string
 }
 
-export function resolveDemiStateDir(explicit?: string): string {
+/**
+ * Demi local state root (`$DEMI_HOME` / `~/.demi`). Canonical copy — host-local
+ * re-exports this for its bridge layout.
+ */
+export function resolveDemiHome(explicit?: string): string {
   if (explicit && explicit.trim()) return resolve(explicit.trim())
   const fromEnv = process.env.DEMI_HOME
   if (fromEnv && fromEnv.trim()) return resolve(fromEnv.trim())
@@ -50,7 +54,7 @@ export class FileCredentialPool {
   readonly secretFileName: string
 
   constructor(options: FileCredentialPoolOptions) {
-    const stateDir = resolveDemiStateDir(options.stateDir)
+    const stateDir = resolveDemiHome(options.stateDir)
     this.root = join(stateDir, 'credentials', options.providerKey)
     this.secretFileName = options.secretFileName
   }
@@ -140,10 +144,11 @@ export class FileCredentialPool {
     } catch {
       throw new CredentialPoolError('credential_not_found', `Credential "${id}" has no secret material`)
     }
-    await mkdir(this.root, { recursive: true, mode: 0o700 })
-    const tmp = `${this.activePath()}.${process.pid}.tmp`
-    await writeFile(tmp, `${id}\n`, { mode: 0o600 })
-    await rename(tmp, this.activePath())
+    await this.withWriteLock(async () => {
+      const tmp = this.tmpPath(this.activePath())
+      await writeFile(tmp, `${id}\n`, { mode: 0o600 })
+      await rename(tmp, this.activePath())
+    })
   }
 
   async clearActive(): Promise<void> {
@@ -151,16 +156,18 @@ export class FileCredentialPool {
   }
 
   async writeEntry(meta: CredentialEntryMeta, secretText: string): Promise<CredentialEntryMeta> {
-    const dir = this.entryDir(meta.id)
-    await mkdir(dir, { recursive: true, mode: 0o700 })
-    const secretTmp = `${this.secretPath(meta.id)}.tmp`
-    const metaTmp = `${this.metaPath(meta.id)}.tmp`
-    await writeFile(secretTmp, secretText, { mode: 0o600 })
-    await chmod(secretTmp, 0o600).catch(() => undefined)
-    await rename(secretTmp, this.secretPath(meta.id))
-    await writeFile(metaTmp, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
-    await rename(metaTmp, this.metaPath(meta.id))
-    return meta
+    return this.withWriteLock(async () => {
+      const dir = this.entryDir(meta.id)
+      await mkdir(dir, { recursive: true, mode: 0o700 })
+      const secretTmp = this.tmpPath(this.secretPath(meta.id))
+      const metaTmp = this.tmpPath(this.metaPath(meta.id))
+      await writeFile(secretTmp, secretText, { mode: 0o600 })
+      await chmod(secretTmp, 0o600).catch(() => undefined)
+      await rename(secretTmp, this.secretPath(meta.id))
+      await writeFile(metaTmp, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
+      await rename(metaTmp, this.metaPath(meta.id))
+      return meta
+    })
   }
 
   async readSecretText(id: string): Promise<string> {
@@ -168,9 +175,47 @@ export class FileCredentialPool {
   }
 
   async remove(id: string): Promise<void> {
-    const active = await this.getActiveId()
-    await rm(this.entryDir(id), { recursive: true, force: true })
-    if (active === id) await this.clearActive()
+    await this.withWriteLock(async () => {
+      const active = await this.getActiveId()
+      await rm(this.entryDir(id), { recursive: true, force: true })
+      if (active === id) await this.clearActive()
+    })
+  }
+
+  private tmpPath(target: string): string {
+    return `${target}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`
+  }
+
+  /**
+   * Serializes pool mutations across processes with a create-exclusive lock
+   * file; stale locks (mtime older than 30s) are removed.
+   */
+  private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    await mkdir(this.root, { recursive: true, mode: 0o700 })
+    const lockPath = join(this.root, '.lock')
+    const started = Date.now()
+    while (true) {
+      try {
+        await writeFile(lockPath, `${process.pid}\n`, { flag: 'wx', mode: 0o600 })
+        break
+      } catch (error) {
+        if (errorCode(error) !== 'EEXIST') throw error
+        const info = await stat(lockPath).catch(() => null)
+        if (info && Date.now() - info.mtimeMs > 30_000) {
+          await rm(lockPath, { force: true }).catch(() => undefined)
+          continue
+        }
+        if (Date.now() - started > 5_000) {
+          throw new CredentialPoolError('credential_invalid', `Timed out waiting for credential pool lock ${lockPath}`)
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      }
+    }
+    try {
+      return await fn()
+    } finally {
+      await rm(lockPath, { force: true }).catch(() => undefined)
+    }
   }
 
   async findByIdentityKey(identityKey: string): Promise<CredentialEntryMeta | null> {
@@ -236,7 +281,7 @@ export async function runVendorLoginCommand(
     child.on('error', (error) => {
       options.signal?.removeEventListener('abort', onAbort)
       const msg = error instanceof Error ? error.message : String(error)
-      if ('code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (errorCode(error) === 'ENOENT') {
         resolvePromise({ status: 'unavailable', message: `Command not found: ${command}` })
         return
       }

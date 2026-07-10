@@ -26,7 +26,7 @@ import {
   credentialIdFromIdentity,
   runVendorLoginCommand,
   type CredentialEntryMeta,
-} from './credentials-pool'
+} from '@demicodes/provider/credentials-pool'
 
 export class PoolAwareGrokAuthStore implements GrokAuthStore {
   private readonly pool: FileCredentialPool
@@ -181,25 +181,18 @@ export function createGrokBuildCredentials(
       } catch {
         throw new GrokAuthError('auth_missing', `No Grok auth at ${authFile}. Run grok login or beginLogin first.`)
       }
-      // Prefer highest-scored entry as the returned importDefault result; still import all.
+      // Import all entries, then activate the vendor-preferred one. Entries are
+      // upserted by identityKey (= map entry key), so the preferred entry is
+      // found deterministically by that key — no label/detail guessing.
       const all = await importFromAuthJsonText(text, `vendor:${authFile}`)
-      let file: GrokAuthDotJson
-      try {
-        file = JSON.parse(text) as GrokAuthDotJson
-      } catch {
-        return all[0]!
-      }
-      const preferred = selectAuthEntry(file)
+      const preferred = selectAuthEntry(JSON.parse(text) as GrokAuthDotJson)
       if (preferred) {
-        const match = all.find((e) => e.detail === preferred.entry.auth_mode || e.label === preferred.entry.email)
-        // Prefer entry whose identity matches preferred key
         const byKey = (await pool.listMeta()).find((m) => m.identityKey === preferred.entryKey)
         if (byKey) {
           await pool.setActiveId(byKey.id)
           options.quota?.clearLatest?.()
           return { id: byKey.id, label: byKey.label, detail: byKey.detail, updatedAt: byKey.updatedAt }
         }
-        if (match) return match
       }
       return all[0]!
     },
