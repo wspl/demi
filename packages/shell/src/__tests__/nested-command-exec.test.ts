@@ -57,10 +57,10 @@ test('nested command leaves execute through the interpreter with heredoc stdin',
   expect(result.stdout.delta).toBe('created my-id body={"a":1}\n')
 })
 
-test('group-level prompt renders subtree help through the interpreter', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-nested-prompt-'))
+test('group-level --help renders subtree help through the interpreter', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-nested-help-'))
   const env = makeEnv(root)
-  const result = await env.exec({ script: 'larkclaw watch prompt', agentSessionId: 'conv-nested-prompt' })
+  const result = await env.exec({ script: 'larkclaw watch --help', agentSessionId: 'conv-nested-help' })
   expect(result.status).toBe('exited')
   if (result.status !== 'exited') throw new Error('expected exited')
   expect(result.exitCode).toBe(0)

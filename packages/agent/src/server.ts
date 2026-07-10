@@ -429,7 +429,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       },
     })
     // Commands are fixed for the session's lifetime, so the rendered help is too.
-    const commandsPrompt = commandRegistry.renderPrompt()
+    const commandsPrompt = commandRegistry.renderHelp()
     const runtime: AgentHarnessRuntime<unknown> = {
       harnessName: agent.name,
       initialState: () => agent.initialState(),
