@@ -29,7 +29,7 @@
     "llms": "bun run scripts/build-llms.ts",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "bun run build && changeset publish",
+    "release": "bun run scripts/release.ts",
     "web:dev": "bun --filter @demicodes/web dev",
     "web:server": "bun run packages/web/src/server/index.ts",
     "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/host-local/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/provider-grok-build/src packages/repl/src packages/web-ui/src packages/web/src packages/agent-eval/src",
