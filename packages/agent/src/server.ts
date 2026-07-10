@@ -614,11 +614,14 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         // Binary final streams cross the bridge as base64; the shim writes the
         // raw bytes to its OS stdout, keeping external pipes byte-clean.
         if (result.binaryStdout) {
+          const truncationNote = result.binaryStdout.truncated
+            ? `command bridge: binary stdout truncated at the output limit (${result.binaryStdout.data.length} of ${result.binaryStdout.totalBytes} bytes)\n`
+            : ''
           return {
             exitCode: result.exitCode,
             stdout: bytesToBase64(result.binaryStdout.data),
             stdoutEncoding: 'base64',
-            stderr: result.stderr.delta,
+            stderr: `${result.stderr.delta}${truncationNote}`,
           }
         }
         return { exitCode: result.exitCode, stdout: result.stdout.delta, stderr: result.stderr.delta }
