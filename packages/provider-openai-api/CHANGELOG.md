@@ -1,5 +1,19 @@
 # @demicodes/provider-openai-api
 
+## 0.2.1
+
+### Patch Changes
+
+- Republish with a runnable dependency closure: `@demicodes/just-bash`
+  3.0.1-demi.5 ships the full dist its deep-path exports point at (0.2.0
+  installed but could not run), and intra-workspace dependencies publish as
+  caret ranges instead of exact pins so future patch releases do not require
+  republishing every dependent.
+- Updated dependencies
+  - @demicodes/utils@0.2.1
+  - @demicodes/core@0.2.1
+  - @demicodes/provider@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
