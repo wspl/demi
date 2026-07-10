@@ -106,9 +106,69 @@ export function modelAcceptsVideo(model: Model): boolean {
   return VIDEO_FILE_EXTENSIONS.some((extension) => model.acceptedExtensions.includes(extension))
 }
 
-/** Media asset kinds a command may emit to this model (images always; video per catalog). */
-export function supportedAssetTypesFor(model: Model): ('image' | 'video')[] {
-  return modelAcceptsVideo(model) ? ['image', 'video'] : ['image']
+// ── model media (closed set) ────────────────────────────────────────
+//
+// The only binary types a model can receive natively. Detection is by magic
+// bytes over this closed set — never open-ended content-type guessing.
+
+export type ModelMediaKind = 'image' | 'video'
+
+export interface ModelMediaType {
+  mediaType: string
+  kind: ModelMediaKind
+  extension: ImageFileExtension | VideoFileExtension
+}
+
+const MODEL_MEDIA_TYPES: readonly ModelMediaType[] = [
+  { mediaType: 'image/png', kind: 'image', extension: 'png' },
+  { mediaType: 'image/jpeg', kind: 'image', extension: 'jpeg' },
+  { mediaType: 'image/gif', kind: 'image', extension: 'gif' },
+  { mediaType: 'image/webp', kind: 'image', extension: 'webp' },
+  { mediaType: 'video/mp4', kind: 'video', extension: 'mp4' },
+  { mediaType: 'video/x-m4v', kind: 'video', extension: 'm4v' },
+  { mediaType: 'video/quicktime', kind: 'video', extension: 'mov' },
+  { mediaType: 'video/webm', kind: 'video', extension: 'webm' },
+]
+
+export function modelMediaTypeFor(mediaType: string): ModelMediaType | null {
+  return MODEL_MEDIA_TYPES.find((entry) => entry.mediaType === mediaType) ?? null
+}
+
+/** Whether this model accepts the given media type natively (per its catalog extensions). */
+export function modelAcceptsMediaType(model: Model, mediaType: string): boolean {
+  const entry = modelMediaTypeFor(mediaType)
+  if (!entry) return false
+  if (model.acceptedExtensions.includes(entry.extension)) return true
+  // jpg/jpeg are the same format under two extension spellings.
+  return entry.extension === 'jpeg' && model.acceptedExtensions.includes('jpg')
+}
+
+/**
+ * Detect a model-media type from a byte stream's magic numbers. Returns null
+ * for anything outside the closed set — callers must not guess further.
+ */
+export function sniffModelMediaType(bytes: Uint8Array): ModelMediaType | null {
+  if (bytes.length < 12) return null
+  const at = (index: number): number => bytes[index] ?? 0
+  const ascii = (start: number, length: number): string => {
+    let out = ''
+    for (let i = start; i < start + length && i < bytes.length; i += 1) out += String.fromCharCode(at(i))
+    return out
+  }
+
+  if (at(0) === 0x89 && ascii(1, 3) === 'PNG') return modelMediaTypeFor('image/png')
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return modelMediaTypeFor('image/jpeg')
+  if (ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a') return modelMediaTypeFor('image/gif')
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') return modelMediaTypeFor('image/webp')
+  // EBML header — Matroska family; WebM is the model-relevant container.
+  if (at(0) === 0x1a && at(1) === 0x45 && at(2) === 0xdf && at(3) === 0xa3) return modelMediaTypeFor('video/webm')
+  if (ascii(4, 4) === 'ftyp') {
+    const brand = ascii(8, 4)
+    if (brand === 'qt  ') return modelMediaTypeFor('video/quicktime')
+    if (brand.startsWith('M4V')) return modelMediaTypeFor('video/x-m4v')
+    return modelMediaTypeFor('video/mp4')
+  }
+  return null
 }
 
 export interface ModelSelection {

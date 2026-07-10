@@ -1,56 +1,38 @@
-import { asError, bytesToBase64, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@demicodes/utils'
+import { asError, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@demicodes/utils'
 import { z } from 'zod'
-import type { Command, CommandAsset, Host } from '@demicodes/shell'
+import type { Command, Host } from '@demicodes/shell'
 
 export function createDemiCommand(host: Host): Command {
   return {
     name: 'demi',
-    summary: 'Read, create, edit, and patch workspace files (text, images, and native video).',
+    summary: 'Read, create, edit, and patch workspace files (text, images, and video).',
     subcommands: [
       {
         name: 'read',
-        summary: 'Read a file. Text is returned as text; images and supported videos are returned as viewable media.',
+        summary:
+          'Read a file. Text files print as text; image and video files are shown to you as viewable media. Output is the raw file bytes, so it also pipes cleanly into other commands (e.g. ffmpeg).',
         effects: 'reads one file; does not modify anything',
-        successOutput: 'prints text file contents to stdout, or returns an image/video file as viewable media',
+        successOutput:
+          'writes the raw file bytes to stdout; an image or video result is presented to you as viewable media',
         failureOutput: 'writes the reason to stderr and exits non-zero if the path is missing or unreadable',
         input: {
           path: z.string().describe('File path to read'),
         },
         positionals: ['path'],
         examples: ['demi read src/foo.ts', 'demi read assets/frame.png', 'demi read assets/clip.mp4'],
-        run: async ({ parsed, cwd, io, supportedAssetTypes }) => {
+        run: async ({ parsed, cwd, io }) => {
           const path = String(parsed.values.path)
           const pathError = pathValidationError(path)
           if (pathError) {
             await io.stderr(`${pathError}\n`)
             return { exitCode: 1 }
           }
-
-          const media = mediaForPath(path)
-          if (media) {
-            if (media.kind === 'video' && !supportedAssetTypes.has('video')) {
-              await io.stderr('Current model does not support video input.\n')
-              return { exitCode: 1 }
-            }
-            let bytes: Uint8Array
-            try {
-              bytes = await host.fs.readFile(path, { cwd })
-            } catch (error) {
-              await io.stderr(`${errorMessage(error)}\n`)
-              return { exitCode: 1 }
-            }
-            const asset: CommandAsset = { type: media.kind, mediaType: media.mediaType, data: bytesToBase64(bytes) }
-            await io.asset(asset)
-            await io.stdout(`Read ${media.kind} ${path} (${media.mediaType}, ${bytes.length} bytes)\n`)
-            return { exitCode: 0 }
+          try {
+            await io.stdout(await host.fs.readFile(path, { cwd }))
+          } catch (error) {
+            await io.stderr(`${errorMessage(error)}\n`)
+            return { exitCode: 1 }
           }
-
-          const read = await readFile(host, cwd, path)
-          if (read.exitCode !== 0) {
-            await io.stderr(read.stderr)
-            return { exitCode: read.exitCode }
-          }
-          await io.stdout(read.stdout)
           return { exitCode: 0 }
         },
       },
@@ -537,25 +519,6 @@ function assertValidPath(path: string): void {
 function pathValidationError(path: string): string | null {
   if (path.includes('\0')) return `Path contains NUL byte: ${path}`
   return null
-}
-
-// `demi read` returns images/videos as native viewable blocks; everything else as text.
-// (Video only actually reaches models whose catalog marks video support; others reject it.)
-const MEDIA_TYPES: Record<string, { kind: 'image' | 'video'; mediaType: string }> = {
-  png: { kind: 'image', mediaType: 'image/png' },
-  jpg: { kind: 'image', mediaType: 'image/jpeg' },
-  jpeg: { kind: 'image', mediaType: 'image/jpeg' },
-  webp: { kind: 'image', mediaType: 'image/webp' },
-  gif: { kind: 'image', mediaType: 'image/gif' },
-  mp4: { kind: 'video', mediaType: 'video/mp4' },
-  mov: { kind: 'video', mediaType: 'video/quicktime' },
-  webm: { kind: 'video', mediaType: 'video/webm' },
-  m4v: { kind: 'video', mediaType: 'video/x-m4v' },
-}
-
-function mediaForPath(path: string): { kind: 'image' | 'video'; mediaType: string } | null {
-  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
-  return MEDIA_TYPES[ext] ?? null
 }
 
 function stripDiffPathMetadata(rawPath: string): string {

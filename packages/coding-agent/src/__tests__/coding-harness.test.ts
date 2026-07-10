@@ -59,7 +59,7 @@ test('coding agent harness exposes shell session tools and registered command pr
     transcript: {} as never,
     commandsPrompt: renderCommandsPrompt(commands),
   })
-  expect(prompt).toContain('demi: Read, create, edit, and patch workspace files (text, images, and native video).')
+  expect(prompt).toContain('demi: Read, create, edit, and patch workspace files (text, images, and video).')
   expect(prompt).toContain('Treat cwd as the task workspace')
   expect(prompt).toContain('do not create a separate project directory under /tmp')
   expect(prompt).toContain('demi create')

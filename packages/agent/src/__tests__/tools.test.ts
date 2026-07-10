@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import type { ModelSelection } from '@demicodes/core'
+import type { Model, ModelSelection } from '@demicodes/core'
 import type { BashEnvironment, ShellCommandSnapshot } from '@demicodes/shell'
 import type { AgentToolInvokeContext } from '../types'
 import { createStandardAgentTools, shellCommandHandleRequired, shellPreviewBudgetTokens, toShellToolResult } from '../tools'
@@ -104,23 +104,74 @@ test('shell command handles are required only for running or over-budget output'
   expect(shellCommandHandleRequired(shellSnapshot('x'.repeat(4_001)), 1_000)).toBe(true)
 })
 
-test('shell tool result appends command assets as image content blocks after the text', () => {
-  const snapshot = {
-    ...shellSnapshot('captured\n'),
-    assets: [{ type: 'image' as const, mediaType: 'image/png', data: 'AAAA' }],
+const PNG_STREAM = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01])
+const MP4_STREAM = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0xff, 0xfe])
+const OPAQUE_STREAM = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0xff, 0xfe, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05])
+
+function imageModel(): Model {
+  return {
+    id: 'm',
+    name: 'M',
+    contextWindow: 100_000,
+    inputLimit: null,
+    thinking: [],
+    acceptedExtensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
   }
-  const result = toShellToolResult(snapshot, 'tool-1', { includePreview: true, previewBudgetTokens: 1_000 })
+}
 
-  expect(result.output).toHaveLength(2)
-  expect(result.output[0]?.type).toBe('text')
-  expect(result.output[1]).toEqual({ type: 'image', source: { mediaType: 'image/png', data: 'AAAA' } })
+test('a sniffed binary stream the model accepts is attached as a media block', () => {
+  const snapshot = {
+    ...shellSnapshot('<binary stdout: 12 bytes>\n'),
+    binaryStdout: { data: PNG_STREAM, truncated: false, totalBytes: PNG_STREAM.length },
+  }
+  const result = toShellToolResult(snapshot, 'tool-1', { includePreview: true, model: imageModel() })
 
-  const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
-  expect(text).toContain('preview:')
-  expect(text).toContain('captured')
+  expect(result.output).toHaveLength(3)
+  expect(result.output[1]).toEqual({
+    type: 'image',
+    source: { mediaType: 'image/png', data: Buffer.from(PNG_STREAM).toString('base64') },
+  })
+  const note = result.output[2]?.type === 'text' ? result.output[2].text : ''
+  expect(note).toContain('Attached stdout as image/png')
 })
 
-test('shell tool result without assets stays text-only', () => {
+test('a media stream the model does not accept explains why nothing was attached', () => {
+  const snapshot = {
+    ...shellSnapshot('<binary stdout: 14 bytes>\n'),
+    binaryStdout: { data: MP4_STREAM, truncated: false, totalBytes: MP4_STREAM.length },
+  }
+  const result = toShellToolResult(snapshot, 'tool-1', { includePreview: true, model: imageModel() })
+  expect(result.output).toHaveLength(2)
+  const note = result.output[1]?.type === 'text' ? result.output[1].text : ''
+  expect(note).toContain('video/mp4')
+  expect(note).toContain('does not accept')
+})
+
+test('unknown binary and truncated streams stay placeholder-only with a reason', () => {
+  const opaque = toShellToolResult(
+    { ...shellSnapshot('<binary stdout: 12 bytes>\n'), binaryStdout: { data: OPAQUE_STREAM, truncated: false, totalBytes: 12 } },
+    'tool-1',
+    { includePreview: true, model: imageModel() },
+  )
+  const opaqueNote = opaque.output[1]?.type === 'text' ? opaque.output[1].text : ''
+  expect(opaque.output).toHaveLength(2)
+  expect(opaqueNote).toContain('does not match any model-viewable media type')
+
+  const truncated = toShellToolResult(
+    {
+      ...shellSnapshot('<binary stdout: 999 bytes, exceeds the 12-byte output limit>\n'),
+      binaryStdout: { data: PNG_STREAM, truncated: true, totalBytes: 999 },
+    },
+    'tool-1',
+    { includePreview: true, model: imageModel() },
+  )
+  const truncNote = truncated.output[1]?.type === 'text' ? truncated.output[1].text : ''
+  expect(truncated.output).toHaveLength(2)
+  expect(truncNote).toContain('truncated at the output limit')
+  expect(truncNote).toContain('image/png')
+})
+
+test('shell tool result without binary stdout stays text-only', () => {
   const result = toShellToolResult(shellSnapshot('done\n'), 'tool-1', { includePreview: true })
   expect(result.output).toHaveLength(1)
   expect(result.output[0]?.type).toBe('text')

@@ -3,14 +3,12 @@ import type { CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResu
 import type { HostSpawnHandle } from './host'
 import type { HostBackedFileSystem } from './host-fs'
 import type { BashAuditEvent, CommandMetadataRecord, ShellOutputRecordChunk } from './environment'
-import type { CommandAsset, CommandAssetType } from './command'
 
 export interface ExecAccumulator {
   stdout: string
   stderr: string
   audit: BashAuditEvent[]
   commandMetadata: CommandMetadataRecord[]
-  assets: CommandAsset[]
 }
 
 export interface ShellSession {
@@ -21,7 +19,6 @@ export interface ShellSession {
   interpreter: Interpreter
   forkCommands: ForkCommandRegistry
   accumulator: ExecAccumulator
-  supportedAssetTypes: ReadonlySet<CommandAssetType>
   foreground?: ForegroundProcess
   activeCommandId?: string
   backgroundJobs: Map<number, BackgroundJob>
@@ -57,6 +54,8 @@ export interface ForegroundProcess {
   /** Everything the process wrote, including redirected output — this is what
    * the interpreter observes as the command's stdout/stderr. */
   rawStdoutBuffer: string
+  /** Raw stdout byte chunks for byte-clean pipeline continuation. */
+  rawStdoutBytes: Uint8Array[]
   rawStderrBuffer: string
   /** Output routed to the visible sinks only (redirections excluded) — this is
    * what command records and model previews show. */
