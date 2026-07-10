@@ -596,8 +596,6 @@ interface FileDiffMetadata {
   path: string
   oldPath: string | null
   newPath: string | null
-  oldText: string
-  newText: string
   unifiedDiff: string
 }
 
@@ -627,8 +625,6 @@ function fileDiffMetadata(
     path,
     oldPath,
     newPath,
-    oldText,
-    newText,
     unifiedDiff: unifiedDiff(oldPath, newPath, oldText, newText),
   }
 }
