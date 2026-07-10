@@ -18,6 +18,7 @@ import {
   type CodexAuthStore,
   type CodexResolvedAuth,
 } from './auth'
+import { createCodexCredentials, openCodexCredentialPool, PoolAwareCodexAuthStore } from './credentials'
 import { listCodexModels } from './models'
 import { createCodexQuota } from './quota'
 import { buildCodexResponsesRequestBody, mapCodexResponseEvents } from './responses'
@@ -49,6 +50,13 @@ export interface CodexProviderOptions extends CodexProviderConfig {
   displayName?: string
   models?: ModelPolicy
   authStore?: CodexAuthStore
+  /** Demi state root for credential pool (`$DEMI_HOME` / `~/.demi`). */
+  stateDir?: string
+  /**
+   * When true (default if `authStore` is not provided), attach multi-credential
+   * pool + global switch under `provider.credentials`.
+   */
+  credentials?: boolean
 }
 
 export interface CodexRuntimeOptions extends CodexProviderConfig {
@@ -151,8 +159,17 @@ export class CodexProvider implements AgentProvider {
 export function createCodexProvider(options: CodexProviderOptions = {}): Provider {
   const id = options.id ?? 'codex'
   const displayName = options.displayName ?? 'Codex'
+  const enableCredentials = options.credentials ?? options.authStore === undefined
+  const pool = !options.authStore && enableCredentials ? openCodexCredentialPool({ stateDir: options.stateDir }) : null
+
+  const authStore: CodexAuthStore =
+    options.authStore ??
+    (pool
+      ? new PoolAwareCodexAuthStore(pool, { codexHome: options.codexHome })
+      : new FileCodexAuthStore({ codexHome: options.codexHome }))
+
   const runtimeOptions: CodexRuntimeOptions = {
-    authStore: options.authStore,
+    authStore,
     codexHome: options.codexHome,
     baseUrl: options.baseUrl,
     transport: options.transport,
@@ -165,9 +182,6 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     streamIdleTimeoutMs: options.streamIdleTimeoutMs,
     clientVersion: options.clientVersion,
   }
-
-  const authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
-  runtimeOptions.authStore = authStore
   const quota = createCodexQuota({
     providerId: id,
     codexHome: options.codexHome,
@@ -176,12 +190,23 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     userAgent: options.userAgent,
   })
   runtimeOptions.quota = quota
+
+  const credentialsApi = pool
+    ? createCodexCredentials(pool, authStore, { codexHome: options.codexHome, quota })
+    : undefined
+
   return defineProvider({
     id,
     displayName,
     auth: { status: () => authStore.status() },
     quota,
-    state: () => ({ status: 'ready', message: 'Uses official Codex auth storage' }),
+    ...(credentialsApi ? { credentials: credentialsApi } : {}),
+    state: () => ({
+      status: 'ready',
+      message: credentialsApi
+        ? 'Uses Codex auth + demi credential pool'
+        : 'Uses official Codex auth storage',
+    }),
     listModels: async () => {
       const catalog = await listCodexModels(runtimeOptions)
       return applyModelPolicy(catalog, id, options.models)

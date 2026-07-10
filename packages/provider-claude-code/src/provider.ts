@@ -13,6 +13,8 @@ import {
   toolResultContentToText,
   type ProviderQuota,
 } from '@demicodes/provider'
+import { FileClaudeCodeAuthStore } from './auth'
+import { createClaudeCodeCredentials, openClaudeCodeCredentialPool, PoolAwareClaudeCodeAuthStore } from './credentials'
 import { coldStartInputMessages, controlResponse, inferenceItemToClaudeMessage, toolResultsToClaudeMessage } from './jsonl'
 import { listClaudeCodeModels } from './models'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
@@ -24,6 +26,11 @@ export interface ClaudeCodeProviderOptions {
   displayName?: string
   claudePath?: string
   models?: ModelPolicy
+  /** Demi state root for credential pool (`$DEMI_HOME` / `~/.demi`). */
+  stateDir?: string
+  /** When true (default), attach multi-credential pool + global switch. */
+  credentials?: boolean
+  authStore?: import('./auth').ClaudeCodeAuthStore
 }
 
 export interface ClaudeCodeRuntimeOptions {
@@ -31,6 +38,9 @@ export interface ClaudeCodeRuntimeOptions {
   claudePath?: string
   /** Shared with the public Provider shell so stream messages can update quota. */
   quota?: ProviderQuota
+  authStore?: import('./auth').ClaudeCodeAuthStore
+  /** Returns active credential id for process reuse checks. */
+  getActiveCredentialId?: () => Promise<string | null>
 }
 
 export interface ClaudeCodeProviderConfig {
@@ -51,6 +61,8 @@ interface ActiveClaudeRun {
    *  (both `--model` and `--effort` are fixed per process). */
   modelId: string
   thinkingSig: string
+  /** Active credential id when the process was spawned (null = vendor default). */
+  credentialId: string | null
   /** How many `user_message` items have been delivered to this process so far. */
   sentUserMessageCount: number
   /** Signature of the first user message, used to detect a rewritten transcript (compaction). */
@@ -60,12 +72,27 @@ interface ActiveClaudeRun {
 export class ClaudeCodeProvider implements AgentProvider {
   private readonly transportFactory: ClaudeTransportFactory
   private readonly quota: ProviderQuota | null
+  private readonly getActiveCredentialId: (() => Promise<string | null>) | null
   private active: ActiveClaudeRun | null = null
 
   constructor(options: ClaudeCodeRuntimeOptions = {}) {
     this.transportFactory =
-      options.transportFactory ?? new ClaudeCliTransportFactory({ claudePath: options.claudePath })
+      options.transportFactory ??
+      new ClaudeCliTransportFactory({
+        claudePath: options.claudePath,
+        resolveOAuthAccessToken: options.authStore
+          ? async () => {
+              try {
+                const access = await options.authStore!.resolveAccess()
+                return access.accessToken
+              } catch {
+                return null
+              }
+            }
+          : undefined,
+      })
     this.quota = options.quota ?? null
+    this.getActiveCredentialId = options.getActiveCredentialId ?? null
   }
 
   private observeQuotaFromMessage(message: unknown): void {
@@ -185,12 +212,14 @@ export class ClaudeCodeProvider implements AgentProvider {
    * the session changed, or the transcript was rewritten underneath us (compaction).
    */
   private async ensureActiveForRequest(request: InferenceRequest): Promise<ActiveClaudeRun> {
+    const credentialId = this.getActiveCredentialId ? await this.getActiveCredentialId() : null
     const existing = this.active
     if (
       existing &&
       existing.sessionId === request.sessionId &&
       existing.modelId === request.modelId &&
-      existing.thinkingSig === thinkingSignature(request)
+      existing.thinkingSig === thinkingSignature(request) &&
+      existing.credentialId === credentialId
     ) {
       const hasPendingToolCall =
         existing.pendingControlRequest !== null || existing.pendingToolUseIds.length > 0
@@ -200,10 +229,10 @@ export class ClaudeCodeProvider implements AgentProvider {
       }
     }
     if (existing) await this.disposeActive(existing)
-    return this.coldStart(request)
+    return this.coldStart(request, credentialId)
   }
 
-  private async coldStart(request: InferenceRequest): Promise<ActiveClaudeRun> {
+  private async coldStart(request: InferenceRequest, credentialId: string | null): Promise<ActiveClaudeRun> {
     const transport = await this.transportFactory.start(request)
     const iterator = transport.messages()[Symbol.asyncIterator]()
     const active: ActiveClaudeRun = {
@@ -217,6 +246,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       sessionId: request.sessionId,
       modelId: request.modelId,
       thinkingSig: thinkingSignature(request),
+      credentialId,
       sentUserMessageCount: 0,
       firstUserSig: null,
     }
@@ -429,17 +459,40 @@ export class ClaudeCodeProvider implements AgentProvider {
 export function createClaudeCodeProvider(options: ClaudeCodeProviderOptions = {}): Provider {
   const id = options.id ?? 'claude-code'
   const displayName = options.displayName ?? 'Claude Code'
-  const quota = createClaudeCodeQuota({ providerId: id })
+  const enableCredentials = options.credentials ?? options.authStore === undefined
+  const pool = !options.authStore && enableCredentials ? openClaudeCodeCredentialPool({ stateDir: options.stateDir }) : null
+  const authStore =
+    options.authStore ??
+    (pool ? new PoolAwareClaudeCodeAuthStore(pool) : new FileClaudeCodeAuthStore())
+
+  const quota = createClaudeCodeQuota({
+    providerId: id,
+    resolveAccess: async () => {
+      try {
+        return await authStore.resolveAccess()
+      } catch {
+        return null
+      }
+    },
+  })
+
+  const credentialsApi = pool
+    ? createClaudeCodeCredentials(pool, authStore, { quota })
+    : undefined
+
   const runtimeOptions: ClaudeCodeRuntimeOptions = {
     claudePath: options.claudePath,
     quota,
+    authStore,
+    getActiveCredentialId: pool ? () => pool.getActiveId() : undefined,
   }
 
   return defineProvider({
     id,
     displayName,
-    auth: { status: () => ({ status: 'unknown', message: 'Auth is checked when a Claude Code request runs' }) },
+    auth: { status: () => authStore.status() },
     quota,
+    ...(credentialsApi ? { credentials: credentialsApi } : {}),
     state: () => ({ status: 'unknown', message: 'Runtime is checked when a Claude Code request runs' }),
     listModels: async () => {
       const catalog = await listClaudeCodeModels()
