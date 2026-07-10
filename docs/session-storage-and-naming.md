@@ -74,11 +74,18 @@ One word per role, applied across the session/transcript/shell domains:
 | `AgentSessionSnapshot` | `AgentSessionCheckpoint` | |
 | `AgentSessionStore.saveSnapshot/loadSnapshot` | `saveCheckpoint/loadCheckpoint` | |
 | `AgentSessionRestoreParams.snapshot` | `.checkpoint` | |
+| `AgentSession.fromSnapshot()` | `fromCheckpoint()` | |
 | `AgentSession.persistSnapshot()` (private) | `persistCheckpoint()` | |
 | store key `agent-sessions/<id>/snapshot.json` | `agent-sessions/<id>/checkpoint.json` | |
 | frames: `ShellCommandSnapshotLike`, field `snapshot:` | `ShellCommandStatusLike`, field `status:` | Protocol frame rename; touches `client-entry.ts`, `@demicodes/web` agent hub, REPL. |
+| frame `transcript_snapshot` | `transcript_reset` | The full-sync frame replacing client transcript state; "reset" says what it does to the receiver. |
 | `AgentToolInvokeResult.metadata` | `.view` | |
+| `AgentToolInvokeResult.continuation` / `ToolContinuation` | **delete** | Vestigial: written into block metadata as a fallback, never read back. `ShellToolView.status/shellId/commandId` carries the same information. |
 | `toShellToolResult` `metadata: result` (full status dump) | builds a `ShellToolView` | Shape below. |
+
+Other `view` payloads produced by the agent all carry a `kind` discriminant:
+`{ kind: 'yield_wakeup', wakeupId, durationMs }`,
+`{ kind: 'tool_error', error }`, `{ kind: 'repeated_shell_exec', script, count }`.
 
 ### `@demicodes/coding-agent`
 
@@ -123,7 +130,7 @@ interface ShellToolView {
   exitCode?: number
   runningMs: number
   idleMs: number
-  /** Bounded render window: tail of the merged chunks, capped at VIEW_MAX_CHARS. */
+  /** Bounded render window: tail of the merged chunks, capped at SHELL_VIEW_MAX_CHARS. */
   chunks: ShellOutputChunk[]
   /** True when chunks were capped; the artifact has the full output. */
   viewTruncated: boolean
@@ -132,7 +139,7 @@ interface ShellToolView {
 }
 ```
 
-`VIEW_MAX_CHARS = 32_768` (tail-biased: keep the newest chunks). The repeated-
+`SHELL_VIEW_MAX_CHARS = 32_768` (tail-biased: keep the newest chunks). The repeated-
 exec guard result becomes `{ kind: 'repeated_shell_exec', script, count }`.
 `provider-turn-loop` stops using `metadata` as a continuation fallback
 (`result.metadata ?? result.continuation` today); continuation stays its own
@@ -216,14 +223,14 @@ one session. Unified as above; `commandScopeId` must equal the agent session id.
 
 Independent branches off `main`, in order of value:
 
-1. **`fix/claude-code-turn-usage`** — unrelated to storage but highest urgency:
+1. **`fix/claude-code-turn-usage`** (implemented, pushed) — unrelated to storage but highest urgency:
    claude-code provider reports turn-cumulative usage as the `response` event
    usage, inflating context estimation 2–3× and triggering spurious compaction.
    Fix: map the last `result.usage.iterations[]` entry (real per-request usage)
    with fallback to top-level usage; document the single-request contract on
    the `response` provider event; sanity-guard `estimateContextTokens` (anchor
    > context window ⇒ fall back to char estimation).
-2. **Phase 1: view slimming + renames** — everything in the rename inventory
+2. **Phase 1: view slimming + renames** (implemented on `refactor/session-storage-phase1`) — everything in the rename inventory
    except blobs/journal; `ShellToolView`; storage prefix unification;
    `checkpoint.json`. Kills the 47.8 MB class of bloat except inline media in
    `output` blocks.
@@ -238,7 +245,7 @@ Independent branches off `main`, in order of value:
 | --- | --- |
 | `provider-claude-code/__tests__/jsonl-output.test.ts` | `result.usage.iterations` → last entry mapped as response usage; missing `iterations` → top-level usage fallback. |
 | `agent/__tests__/transcript.test.ts` | anchor > context window falls back to char estimation; normal anchor path unchanged. |
-| `agent/__tests__/tools.test.ts` | `ShellToolView` shape: chunks capped at `VIEW_MAX_CHARS` (tail kept), no `stdout`/`stderr`/`output.text`/`binaryStdout` in the view; repeated-exec view shape. |
+| `agent/__tests__/tools.test.ts` | `ShellToolView` shape: chunks capped at `SHELL_VIEW_MAX_CHARS` (tail kept), no `stdout`/`stderr`/`output.text`/`binaryStdout` in the view; repeated-exec view shape. |
 | `agent/__tests__/session-persistence.test.ts` (new) | checkpoint round-trip via `AgentSessionStore`; restored session replays identically; checkpoint contains no unbounded payloads (guard: serialized size of a media-heavy fixture). |
 | `shell/__tests__/command.test.ts` | `ShellCommandStatus` rename; artifact completeness unchanged (full stdout/binary base64 round-trip). |
 | `shell/__tests__/blob-store.test.ts` (new, phase 2) | put/get round-trip, content-address dedupe, session-scoped listing/deletion. |
