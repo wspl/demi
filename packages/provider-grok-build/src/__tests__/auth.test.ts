@@ -149,6 +149,52 @@ test('FileGrokAuthStore steals abandoned Grok CLI auth.json.lock and refreshes',
   }
 })
 
+test('FileGrokAuthStore adopts a token refreshed by another process instead of refreshing again', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'demi-grok-lock-race-'))
+  const now = new Date('2026-06-19T00:00:00.000Z')
+  const oldAccess = jwt({ exp: Math.floor((now.getTime() + 30_000) / 1000) })
+  const freshAccess = jwt({ exp: Math.floor((now.getTime() + 3_600_000) / 1000) })
+  const entryKey = 'https://auth.x.ai::client-1'
+  const lockFile = join(dir, 'auth.json.lock')
+  const entry = (key: string, expiresAtMs: number) => ({
+    [entryKey]: {
+      key,
+      auth_mode: 'oidc',
+      refresh_token: 'refresh-old',
+      expires_at: new Date(expiresAtMs).toISOString(),
+      oidc_issuer: 'https://auth.x.ai',
+      oidc_client_id: 'client-1',
+    },
+  })
+  try {
+    await writeFile(join(dir, 'auth.json'), JSON.stringify(entry(oldAccess, now.getTime() + 30_000)))
+    // A live process holds the lock (this test's own pid → never stolen).
+    await writeFile(lockFile, `${process.pid}:${Math.floor(now.getTime() / 1000)}`)
+
+    let refreshCalls = 0
+    const store = new FileGrokAuthStore({
+      grokHome: dir,
+      now: () => now,
+      lockRetryDelayMs: 10,
+      refresh: async () => {
+        refreshCalls += 1
+        return { access_token: 'should-not-be-used', expires_in: 3600 }
+      },
+    })
+    const pending = store.resolveAuth()
+    // The lock holder finishes its refresh: writes the new token, releases the lock.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await writeFile(join(dir, 'auth.json'), JSON.stringify(entry(freshAccess, now.getTime() + 3_600_000)))
+    await rm(lockFile)
+
+    const auth = await pending
+    expect(auth.accessToken).toBe(freshAccess)
+    expect(refreshCalls).toBe(0)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('a live Grok auth lock is never abandoned because of age alone', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'demi-grok-live-lock-'))
   const lockFile = join(dir, 'auth.json.lock')
