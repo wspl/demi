@@ -58,6 +58,24 @@ test('BashEnvironment ephemeral exec never touches the session default shell', a
   )
 })
 
+test('BashEnvironment ephemeral exec starts in the requested cwd', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-bash-ephemeral-cwd-'))
+  await mkdir(join(root, 'pkg'))
+  const env = new BashEnvironment({
+    host: new LocalHost(root),
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const inPkg = await env.exec({ script: 'pwd', ephemeral: true, cwd: join(root, 'pkg') })
+  expect(inPkg.status).toBe('exited')
+  if (inPkg.status === 'exited') expect(inPkg.stdout.delta).toBe(`${join(root, 'pkg')}\n`)
+
+  await expect(env.exec({ script: 'pwd', cwd: join(root, 'pkg') })).rejects.toThrow('requires "ephemeral"')
+  await expect(env.exec({ script: 'pwd', ephemeral: true, cwd: join(root, 'missing') })).rejects.toThrow(
+    'not a directory',
+  )
+})
+
 test('BashEnvironment applies stateful builtins before expanding later commands in the same script', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-inline-state-'))
   await mkdir(join(root, 'pkg'))
