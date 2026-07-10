@@ -169,7 +169,7 @@ export class ConversationRuntime {
 
   private applyEvent(event: ClientSessionEvent): void {
     switch (event.type) {
-      case 'transcript_snapshot':
+      case 'transcript_reset':
       case 'transcript_patch':
         this.applyTranscriptBlocks(event.blocks)
         return

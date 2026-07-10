@@ -1,12 +1,15 @@
 import { asRecord, asString } from '@demicodes/utils'
 import type {
+  BashAuditEvent,
   BashEnvironment,
+  CommandMetadataRecord,
   ShellAbortInput,
-  ShellCommandSnapshot,
+  ShellCommandStatus,
   ShellExecInput,
+  ShellOutputChunk,
   ShellStatusInput,
   ShellWriteInput,
-  StreamArtifact,
+  ShellStreamView,
 } from '@demicodes/shell'
 import { bytesToBase64 } from '@demicodes/utils'
 import { modelAcceptsMediaType, sniffModelMediaType, type Model, type ToolResultContentBlock } from '@demicodes/core'
@@ -172,8 +175,7 @@ export function shellPreviewBudgetTokens(contextWindow: number): number {
 }
 
 export function toShellToolResult(
-  result: ShellCommandSnapshot,
-  toolCallId = '',
+  result: ShellCommandStatus,
   options: ShellToolResultOptions = {},
 ): AgentToolInvokeResult {
   const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
@@ -185,17 +187,75 @@ export function toShellToolResult(
   return {
     output,
     isError: false,
-    metadata: result,
-    continuation:
-      result.status === 'running'
-        ? {
-            toolCallId,
-            shellId: result.shellId,
-            commandId: result.commandId,
-            status: 'running',
-          }
-        : undefined,
+    view: shellToolView(result),
   }
+}
+
+/** Character budget for a shell view's render window (tail-biased). */
+export const SHELL_VIEW_MAX_CHARS = 32_768
+
+/**
+ * Bounded UI view of a shell command stored on the tool_call block. Full
+ * output lives in the command artifact (`/@/commands/<commandId>/…`), keyed by
+ * `commandId`; the view carries only the tail render window and never embeds
+ * raw or base64 bytes.
+ */
+export interface ShellToolView {
+  kind: 'shell'
+  status: 'running' | 'exited' | 'aborted'
+  shellId: string
+  commandId: string
+  exitCode?: number
+  runningMs: number
+  idleMs: number
+  /** Tail of the merged output, capped at SHELL_VIEW_MAX_CHARS. */
+  chunks: ShellOutputChunk[]
+  /** True when chunks were capped; the artifact has the full output. */
+  viewTruncated: boolean
+  audit?: BashAuditEvent[]
+  commandMeta?: CommandMetadataRecord[]
+}
+
+function shellToolView(result: ShellCommandStatus): ShellToolView {
+  const window = tailChunkWindow(result.output.chunks, SHELL_VIEW_MAX_CHARS)
+  const view: ShellToolView = {
+    kind: 'shell',
+    status: result.status,
+    shellId: result.shellId,
+    commandId: result.commandId,
+    runningMs: result.runningMs,
+    idleMs: result.idleMs,
+    chunks: window.chunks,
+    viewTruncated: window.truncated || result.output.truncated,
+  }
+  if (result.status === 'exited') {
+    view.exitCode = result.exitCode
+    if (result.audit.length > 0) view.audit = result.audit
+    if (result.commandMetadata && result.commandMetadata.length > 0) view.commandMeta = result.commandMetadata
+  }
+  return view
+}
+
+function tailChunkWindow(
+  chunks: ShellOutputChunk[],
+  maxChars: number,
+): { chunks: ShellOutputChunk[]; truncated: boolean } {
+  const kept: ShellOutputChunk[] = []
+  let total = 0
+  for (let i = chunks.length - 1; i >= 0; i -= 1) {
+    const chunk = chunks[i]!
+    if (chunk.text.length === 0) continue
+    const remaining = maxChars - total
+    if (remaining <= 0) return { chunks: kept, truncated: true }
+    if (chunk.text.length <= remaining) {
+      kept.unshift({ stream: chunk.stream, text: chunk.text })
+      total += chunk.text.length
+    } else {
+      kept.unshift({ stream: chunk.stream, text: chunk.text.slice(chunk.text.length - remaining) })
+      return { chunks: kept, truncated: true }
+    }
+  }
+  return { chunks: kept, truncated: false }
 }
 
 /**
@@ -204,7 +264,7 @@ export function toShellToolResult(
  * the stream was not truncated; otherwise explain why nothing was attached.
  */
 function binaryStreamVerdict(
-  binary: NonNullable<Extract<ShellCommandSnapshot, { status: 'exited' }>['binaryStdout']>,
+  binary: NonNullable<Extract<ShellCommandStatus, { status: 'exited' }>['binaryStdout']>,
   commandId: string,
   model: Model | undefined,
 ): { block?: ToolResultContentBlock; note?: string } {
@@ -309,15 +369,15 @@ function repeatedShellExecResult(
       },
     ],
     isError: true,
-    metadata: {
-      kind: 'repeated_identical_shell_exec',
+    view: {
+      kind: 'repeated_shell_exec',
       script,
       count,
     },
   }
 }
 
-function formatShellToolResult(result: ShellCommandSnapshot, options: ShellToolResultOptions): string {
+function formatShellToolResult(result: ShellCommandStatus, options: ShellToolResultOptions): string {
   const exposeCommandHandle = options.exposeCommandHandle ?? true
   const lines = [`status: ${result.status}`]
 
@@ -350,12 +410,12 @@ function formatShellToolResult(result: ShellCommandSnapshot, options: ShellToolR
   return lines.join('\n')
 }
 
-function appendArtifact(lines: string[], label: string, artifact: StreamArtifact): void {
+function appendArtifact(lines: string[], label: string, artifact: ShellStreamView): void {
   lines.push(`${label}Path: ${artifact.path}`)
   lines.push(`${label}Bytes: ${artifact.bytes}`)
 }
 
-function appendPreview(lines: string[], result: ShellCommandSnapshot, budgetTokens: number): void {
+function appendPreview(lines: string[], result: ShellCommandStatus, budgetTokens: number): void {
   const preview = boundedPreview(result.output.text, budgetTokens)
   lines.push(`previewBudgetTokens: ${budgetTokens}`)
   if (preview.text.length === 0) {
@@ -380,12 +440,12 @@ function boundedPreview(text: string, budgetTokens: number): { text: string; tru
 
 export async function finishShellToolResult<State>(
   environment: BashEnvironment,
-  result: ShellCommandSnapshot,
+  result: ShellCommandStatus,
   ctx: AgentToolInvokeContext<State>,
 ): Promise<AgentToolInvokeResult> {
   const previewBudgetTokens = shellPreviewBudgetTokens(ctx.model.model.contextWindow)
   const exposeCommandHandle = shellCommandHandleRequired(result, previewBudgetTokens)
-  const toolResult = toShellToolResult(result, ctx.toolCallId, {
+  const toolResult = toShellToolResult(result, {
     includePreview: true,
     previewBudgetTokens,
     exposeCommandHandle,
@@ -395,7 +455,7 @@ export async function finishShellToolResult<State>(
   return toolResult
 }
 
-export function shellCommandHandleRequired(result: ShellCommandSnapshot, budgetTokens: number): boolean {
+export function shellCommandHandleRequired(result: ShellCommandStatus, budgetTokens: number): boolean {
   if (result.status === 'running') return true
   const preview = boundedPreview(result.output.text, budgetTokens)
   const maxChars = Math.max(0, Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN))
