@@ -116,6 +116,33 @@ test('chat body maps tools, tool replay, and reasoning effort', () => {
   expect(body.messages[3]).toEqual({ role: 'tool', tool_call_id: 'call-1', content: 'contents' })
 })
 
+test('chat body degrades video blocks to text instead of image_url', () => {
+  const body = buildGrokChatCompletionsBody(
+    request({
+      items: [
+        {
+          type: 'user_message',
+          content: [
+            { type: 'text', text: 'look' },
+            { type: 'video', source: { type: 'binary', mediaType: 'video/mp4', data: new Uint8Array([1, 2]) } },
+            { type: 'image', source: { type: 'url', url: 'https://example.com/shot.png' } },
+          ],
+        },
+      ],
+    }),
+  )
+
+  const parts = body.messages[0]
+  expect(parts).toEqual({
+    role: 'user',
+    content: [
+      { type: 'text', text: 'look' },
+      { type: 'text', text: '[video:video/mp4]' },
+      { type: 'image_url', image_url: { url: 'https://example.com/shot.png', detail: 'auto' } },
+    ],
+  })
+})
+
 test('chat stream maps reasoning_content and tool calls', async () => {
   const events = await collect(
     mapGrokChatCompletionStream(
