@@ -597,28 +597,35 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     }
     const cdScript = `cd ${shellQuote(opts.cwd)} && ${script}`
 
+    // Ephemeral shell: the bridge caller's cd/env must never leak into the
+    // model's persistent session shell (and vice versa).
     const result = await environment.exec({
       agentSessionId,
       script: cdScript,
       timeoutMs: MAX_TIMEOUT_MS,
       signal: opts.signal,
+      ephemeral: true,
       supportedAssetTypes: this.session && modelAcceptsVideo(this.session.modelSelection.model)
         ? ['image', 'video']
         : ['image'],
     })
 
-    if (result.status === 'exited') {
-      return { exitCode: result.exitCode, stdout: result.stdout.delta, stderr: result.stderr.delta }
+    try {
+      if (result.status === 'exited') {
+        return { exitCode: result.exitCode, stdout: result.stdout.delta, stderr: result.stderr.delta }
+      }
+      if (result.status === 'aborted') {
+        throw new Error(`runCommandLine: call for "${name}" was cancelled before it completed`)
+      }
+      const aborted = await environment.abort({ commandId: result.commandId })
+      throw new RunCommandLineTimeoutError(
+        result.commandId,
+        aborted.status === 'aborted' ? aborted.stdout.delta : '',
+        aborted.status === 'aborted' ? aborted.stderr.delta : '',
+      )
+    } finally {
+      await environment.disposeShell(result.shellId).catch(() => {})
     }
-    if (result.status === 'aborted') {
-      throw new Error(`runCommandLine: call for "${name}" was cancelled before it completed`)
-    }
-    const aborted = await environment.abort({ commandId: result.commandId })
-    throw new RunCommandLineTimeoutError(
-      result.commandId,
-      aborted.status === 'aborted' ? aborted.stdout.delta : '',
-      aborted.status === 'aborted' ? aborted.stderr.delta : '',
-    )
   }
 
   private sessionFor(command: string): AgentSession<unknown> | null {
