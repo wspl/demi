@@ -63,14 +63,24 @@ test('demi read rejects video before reading when the current model does not sup
   expect(read.stderr.delta).toBe('Current model does not support video input.\n')
 })
 
-test('demi read prompt documents native video behavior', async () => {
+test('demi prompt documents native video behavior, and "prompt" stays readable as a file name', async () => {
   const { env } = await createDemiEnvironment()
-  const result = await env.exec({ script: 'demi read prompt' })
+  // Leaf docs are part of the root help render ('prompt' routes to help only
+  // at nodes with subcommands, so a file named "prompt" stays addressable).
+  const help = await env.exec({ script: 'demi prompt' })
 
-  expect(result.status).toBe('exited')
-  if (result.status !== 'exited') throw new Error('expected exited result')
-  expect(result.stdout.delta).toContain('images and supported videos')
-  expect(result.stdout.delta).toContain('demi read assets/clip.mp4')
+  expect(help.status).toBe('exited')
+  if (help.status !== 'exited') throw new Error('expected exited result')
+  expect(help.stdout.delta).toContain('images and supported videos')
+  expect(help.stdout.delta).toContain('demi read assets/clip.mp4')
+
+  const created = await env.exec({ shellId: help.shellId, script: "demi create prompt <<'EOF'\nnot help\nEOF" })
+  expect(created.status).toBe('exited')
+  const read = await env.exec({ shellId: help.shellId, script: 'demi read prompt' })
+  expect(read.status).toBe('exited')
+  if (read.status !== 'exited') throw new Error('expected exited result')
+  expect(read.exitCode).toBe(0)
+  expect(read.stdout.delta).toBe('not help\n')
 })
 
 test('demi create writes a new file from heredoc content', async () => {
