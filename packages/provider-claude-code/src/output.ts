@@ -45,7 +45,7 @@ export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMa
       const errorMessage = resultErrorMessage(message)
       events.push({ type: 'error', message: errorMessage, code: classifyProviderError(errorMessage) })
     }
-    events.push({ type: 'response', usage: mapUsage(message.usage) })
+    events.push({ type: 'response', usage: mapResultUsage(message.usage) })
     return { events, terminal: true }
   }
 
@@ -144,6 +144,22 @@ function parseControlRequest(message: Record<string, unknown>): ClaudeControlReq
   const method = typeof message.method === 'string' ? message.method : undefined
   if (id === undefined || !method) return null
   return { protocol: 'legacy', id, method, params: message.params }
+}
+
+/**
+ * Usage for the response event from a `result` message. The top-level
+ * `result.usage` sums every API call the CLI made within the turn (initial call
+ * plus one per tool result), so its input/cache counts can exceed the context
+ * window itself and must not be reported as request usage. `usage.iterations`
+ * lists the per-call usage; the last entry is the final request — the one the
+ * response contract requires.
+ */
+function mapResultUsage(usage: unknown): TokenUsage {
+  if (isRecord(usage) && Array.isArray(usage.iterations)) {
+    const last = usage.iterations[usage.iterations.length - 1]
+    if (isRecord(last)) return mapUsage(last)
+  }
+  return mapUsage(usage)
 }
 
 function mapUsage(usage: unknown): TokenUsage {

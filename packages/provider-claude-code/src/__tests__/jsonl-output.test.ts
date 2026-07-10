@@ -278,6 +278,37 @@ test('mapClaudeStdoutMessage maps assistant content, stream deltas, tool calls, 
   })
 })
 
+test('mapClaudeStdoutMessage reports the last iteration as response usage, not the turn total', () => {
+  // result.usage totals every API call of the turn; iterations[] carries the
+  // per-call usage and the last entry is the final request's real usage.
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'result',
+      usage: {
+        input_tokens: 30,
+        output_tokens: 300,
+        cache_read_input_tokens: 1_089_277,
+        cache_creation_input_tokens: 90_000,
+        iterations: [
+          { input_tokens: 10, output_tokens: 100, cache_read_input_tokens: 400_000, cache_creation_input_tokens: 50_000, type: 'message' },
+          { input_tokens: 20, output_tokens: 200, cache_read_input_tokens: 689_277, cache_creation_input_tokens: 40_000, type: 'message' },
+        ],
+      },
+    }),
+  ).toEqual({
+    events: [{ type: 'response', usage: { inputTokens: 20, outputTokens: 200, cacheReadTokens: 689_277, cacheWriteTokens: 40_000 } }],
+    terminal: true,
+  })
+
+  // Empty or malformed iterations fall back to the top-level usage.
+  expect(
+    mapClaudeStdoutMessage({
+      type: 'result',
+      usage: { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 3, cache_creation_input_tokens: 4, iterations: [] },
+    }).events,
+  ).toEqual([{ type: 'response', usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 } }])
+})
+
 test('mapClaudeStdoutMessage handles empty content and thinking boundary events', () => {
   expect(mapClaudeStdoutMessage({ type: 'assistant', message: { content: [] } })).toEqual({
     events: [],

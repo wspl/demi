@@ -77,6 +77,14 @@ export type ProviderEvent =
       toolName: string
       input: unknown
     }
+  /**
+   * End of a model response. `usage` MUST be the usage of a single API request
+   * — the final one when the provider made several internally (e.g. a CLI turn
+   * with tool calls). The agent anchors its context-size estimation on it
+   * (input + output + cache reads/writes ≈ the context the next request will
+   * carry), so a turn-cumulative total here inflates the estimate and triggers
+   * spurious compaction.
+   */
   | { type: 'response'; usage: TokenUsage }
   | {
       type: 'error'
