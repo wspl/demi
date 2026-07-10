@@ -39,7 +39,7 @@ export interface ParsedCommandInput {
    * For help: path of the node help was requested for.
    */
   path: string[]
-  /** True when the invocation was `<path…> prompt`. */
+  /** True when the invocation requested `--help`. */
   help: boolean
   values: Record<string, unknown>
   json: boolean
@@ -128,18 +128,18 @@ export class CommandRegistry {
     return [...this.commands.values()]
   }
 
-  renderPrompt(): string {
+  renderHelp(): string {
     const rendered = this.list()
-      .map((command) => renderCommandPrompt(command))
+      .map((command) => renderCommandHelp(command))
       .join('\n\n')
     if (!rendered) return rendered
-    return `${COMMAND_PROMPT_DEFAULTS}\n\n${rendered}`
+    return `${COMMAND_HELP_DEFAULTS}\n\n${rendered}`
   }
 }
 
 // Stated once for the whole registry so per-command renders only carry deviations.
-export const COMMAND_PROMPT_DEFAULTS =
-  'Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero.'
+export const COMMAND_HELP_DEFAULTS =
+  'Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command\'s documentation.'
 
 export function parseCommandInput(root: Command, argv: string[], stdin: CommandStdin = { text: '' }): ParsedCommandInput {
   if (argv[0] !== root.name) {
@@ -158,10 +158,10 @@ export function parseCommandInput(root: Command, argv: string[], stdin: CommandS
 
     const token = argv[index]
 
-    // 'prompt' is the help pseudo-subcommand only where routing happens (like
-    // any reserved child name); at a pure run node it stays an ordinary
-    // argument, so e.g. a file literally named "prompt" remains addressable.
-    if (token === 'prompt' && (node.subcommands?.length ?? 0) > 0) {
+    // --help renders this node's documentation. A flag can never collide
+    // with subcommand names (leading '-' is not a valid name) or positional
+    // values, so no reservation or routing precedence is needed.
+    if (token === '--help') {
       return { path: [...path], help: true, values: {}, json: false }
     }
 
@@ -195,6 +195,9 @@ function parseArgs(
 
   for (let i = startIndex; i < argv.length; i += 1) {
     const token = argv[i]
+    if (token === '--help') {
+      return { path: [...path], help: true, values: {}, json: false }
+    }
     if (token === '--json') {
       json = true
       continue
@@ -254,7 +257,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
   if (parsed.help) {
     const node = resolveCommand(root, parsed.path)
     const parentPath = parsed.path.length > 1 ? parsed.path.slice(0, -1).join(' ') : ''
-    await ctx.io.stdout(`${renderCommandPrompt(node, parentPath)}\n`)
+    await ctx.io.stdout(`${renderCommandHelp(node, parentPath)}\n`)
     return { exitCode: 0 }
   }
 
@@ -295,7 +298,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
   return result
 }
 
-export function renderCommandPrompt(command: Command, parentPath = ''): string {
+export function renderCommandHelp(command: Command, parentPath = ''): string {
   const path = parentPath ? `${parentPath} ${command.name}` : command.name
   const blocks: string[] = []
 
@@ -348,7 +351,7 @@ export function renderCommandPrompt(command: Command, parentPath = ''): string {
   blocks.push(lines.join('\n'))
 
   for (const child of children) {
-    blocks.push(renderCommandPrompt(child, path))
+    blocks.push(renderCommandHelp(child, path))
   }
 
   return blocks.join('\n\n')
@@ -393,9 +396,6 @@ function validateCommandTree(command: Command, path: string): void {
 
   const seen = new Set<string>()
   for (const child of children) {
-    if (child.name === 'prompt') {
-      throw new Error(`CommandRegistry: "${path} prompt" is reserved for the help pseudo-subcommand`)
-    }
     if (seen.has(child.name)) {
       throw new Error(`CommandRegistry: duplicate subcommand "${path} ${child.name}"`)
     }
