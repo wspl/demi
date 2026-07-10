@@ -45,7 +45,8 @@ For the final stream of an exited exec:
 4. anything else → placeholder text stating byte count, sniffed type when
    known, and the reason no media was attached (truncated by the output
    limit / model does not accept the type / unknown binary). Raw bytes never
-   enter the transcript.
+   enter the transcript; they stay addressable at
+   `/@/commands/<commandId>/stdout.bin` for further shell processing.
 
 The shell layer only detects and reports (`binaryStdout: { data, mediaType,
 truncated }` on exited snapshots plus a placeholder text render); model
@@ -61,4 +62,5 @@ the fix is to not mix streams.
 
 The UDS `/run` result carries `stdoutEncoding: 'base64'` when the final
 stream is binary; the shim decodes and writes raw bytes to its OS stdout, so
-`demi read a.png | ffmpeg -i - …` works in external shells too.
+`demi read a.png | ffmpeg -i - …` works in external shells too. A truncated
+binary stream is reported on stderr alongside the capped payload.

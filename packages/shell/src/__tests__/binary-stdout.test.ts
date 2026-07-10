@@ -55,7 +55,17 @@ test('a binary final stream surfaces as binaryStdout with a placeholder text ren
   expect(result.binaryStdout?.data).toEqual(PNG_BYTES)
   expect(result.binaryStdout?.truncated).toBe(false)
   expect(result.binaryStdout?.totalBytes).toBe(PNG_BYTES.length)
-  expect(result.stdout.delta).toBe(`<binary stdout: ${PNG_BYTES.length} bytes>\n`)
+  expect(result.stdout.delta).toBe(
+    `<binary stdout: ${PNG_BYTES.length} bytes; raw bytes at /@/commands/${result.commandId}/stdout.bin>\n`,
+  )
+
+  // The raw bytes stay addressable through the /@ virtual filesystem.
+  const counted = await env.exec({
+    shellId: result.shellId,
+    script: `wc -c < /@/commands/${result.commandId}/stdout.bin`,
+  })
+  if (counted.status !== 'exited') throw new Error('expected exited result')
+  expect(counted.stdout.delta.trim()).toBe(String(PNG_BYTES.length))
 })
 
 test('byte output that is valid UTF-8 stays text, byte-identical through the pipe', async () => {
