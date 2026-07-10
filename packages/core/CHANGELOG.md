@@ -1,5 +1,34 @@
 # @demicodes/core
 
+## 0.3.0
+
+### Minor Changes
+
+- Align all public packages on 0.3.0. Highlights of this release: correct
+  Claude Code context-usage reporting (no more spurious compaction on long
+  tool-heavy sessions) and session storage phase 1 — role-based
+  Status/View/Checkpoint/Artifact naming and bounded tool views that shrink
+  session checkpoints from tens of MB to content-proportional size.
+- c352335: Session storage phase 1: role-based naming and bounded tool views (see
+  docs/session-storage-and-naming.md).
+
+  Renames — one word per role, "snapshot" retired: `ShellCommandSnapshot` →
+  `ShellCommandStatus`, `StreamArtifact`/`ShellOutputArtifact` →
+  `ShellStreamView`/`ShellOutputView`, `PersistedShellCommandArtifact` →
+  `CommandArtifact`, `AgentSessionSnapshot` → `AgentSessionCheckpoint`
+  (`checkpoint.json`, `saveCheckpoint`/`loadCheckpoint`,
+  `AgentSession.fromCheckpoint`), agent class `Transcript` → `TranscriptLog`
+  (with `toJSON()`), frames `transcript_snapshot` → `transcript_reset` and
+  `shell_output.snapshot` → `.status`, tool_call block `metadata` → `view`.
+
+  Bounded views — `toShellToolResult` no longer dumps the whole command status
+  into the block: it stores a `ShellToolView` (commandId reference plus a
+  32 KiB tail render window) instead of 3–4 duplicate stdout encodings, raw
+  binary bytes, and triple diff encodings. `demi` file diffs keep `unifiedDiff`
+  only. The vestigial `ToolContinuation` channel is removed. Command storage
+  moves under the unified `agent-sessions/<id>/` prefix. Fixes multi-MB session
+  checkpoints (measured 47.8 MB for a session whose content was ~hundreds of KB).
+
 ## 0.2.1
 
 ### Patch Changes
