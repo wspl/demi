@@ -42,6 +42,13 @@ export interface GrokAuthStore {
 
 export interface FileGrokAuthStoreOptions {
   grokHome?: string
+  /** Override auth.json path (e.g. demi credential pool entry). */
+  authFile?: string
+  /**
+   * Prefer this map key when the auth file has multiple OIDC entries.
+   * When unset, uses {@link selectAuthEntry} scoring.
+   */
+  entryKey?: string
   refresh?: GrokTokenRefresh
   now?: () => Date
   lockRetryDelayMs?: number
@@ -77,6 +84,7 @@ export async function grokBuildAuthStatus(options: FileGrokAuthStoreOptions = {}
 export class FileGrokAuthStore implements GrokAuthStore {
   readonly grokHome: string
   readonly authFile: string
+  readonly entryKey: string | null
 
   private readonly refreshImpl: GrokTokenRefresh
   private readonly now: () => Date
@@ -85,7 +93,8 @@ export class FileGrokAuthStore implements GrokAuthStore {
 
   constructor(options: FileGrokAuthStoreOptions = {}) {
     this.grokHome = options.grokHome ?? defaultGrokHome()
-    this.authFile = join(this.grokHome, 'auth.json')
+    this.authFile = options.authFile ?? join(this.grokHome, 'auth.json')
+    this.entryKey = nonEmptyString(options.entryKey) ?? null
     this.refreshImpl = options.refresh ?? refreshGrokOidcToken
     this.now = options.now ?? (() => new Date())
     this.lockRetryDelayMs = options.lockRetryDelayMs ?? 25
@@ -108,11 +117,15 @@ export class FileGrokAuthStore implements GrokAuthStore {
 
   async resolveAuth(options: { forceRefresh?: boolean } = {}): Promise<GrokResolvedAuth> {
     const file = await this.readAuthFile()
-    const selected = selectAuthEntry(file)
+    const selected = this.entryKey
+      ? selectAuthEntryByKey(file, this.entryKey)
+      : selectAuthEntry(file)
     if (!selected) {
       throw new GrokAuthError(
         'auth_missing',
-        `No Grok OAuth session found in ${this.authFile}. Run \`grok login\` first.`,
+        this.entryKey
+          ? `No Grok OAuth entry "${this.entryKey}" in ${this.authFile}`
+          : `No Grok OAuth session found in ${this.authFile}. Run \`grok login\` first.`,
       )
     }
 
@@ -325,6 +338,17 @@ export function selectAuthEntry(file: GrokAuthDotJson): { entryKey: string; entr
   }
   candidates.sort((a, b) => b.score - a.score || a.entryKey.localeCompare(b.entryKey))
   return candidates[0] ?? null
+}
+
+export function selectAuthEntryByKey(
+  file: GrokAuthDotJson,
+  entryKey: string,
+): { entryKey: string; entry: GrokAuthEntry } | null {
+  const value = file[entryKey]
+  if (!isRecord(value)) return null
+  const entry = value as GrokAuthEntry
+  if (!nonEmptyString(entry.key)) return null
+  return { entryKey, entry }
 }
 
 export async function refreshGrokOidcToken(

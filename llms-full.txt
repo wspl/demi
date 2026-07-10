@@ -47,7 +47,11 @@ agent-eval             benchmark harness (leaf)
 ```
 
 The boundary contract is [docs/package-boundaries.md](docs/package-boundaries.md);
-runtime/shell design lives under [docs/](docs/).
+runtime/shell design lives under [docs/](docs/). Notable design docs:
+
+- [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
+- [Provider global credentials](docs/provider-global-credentials.md) — multi-account pool + global `setActive`
+- [Command bridge](docs/command-bridge.md) — LocalHost PATH shims + UDS for agent tools
 
 ## Install
 
@@ -106,8 +110,9 @@ consumes an injected `AgentClient`, see `@demicodes/web-ui`.
 
 - **A new provider** — implement the `@demicodes/provider` contract (`run()` returning a
   `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
-  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md) and the runnable
-  template [examples/custom-provider.ts](examples/custom-provider.ts).
+  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md), optional
+  [quota](docs/provider-quota.md) / [credentials](docs/provider-global-credentials.md),
+  and the runnable template [examples/custom-provider.ts](examples/custom-provider.ts).
 - **A new Host** — implement `{ defaultCwd, fs, process, store }`; `@demicodes/host-local`
   is the reference for a remote/container/sandboxed backend.
   See [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md) and the
@@ -160,10 +165,16 @@ interface Provider {
   id: string
   displayName: string
   auth?: ProviderAuth                         // optional: report authenticated/unauthenticated
+  quota?: ProviderQuota                       // optional: subscription / rate-limit windows
+  credentials?: ProviderCredentials           // optional: multi-cred pool + global setActive
   state?(): ProviderRuntimeState              // optional: report ready/unavailable
   listModels?(): Promise<ProviderModelList>   // optional: catalog for the model picker
 }
 // + createRuntime(selection) => AgentProvider   (provided via defineProvider)
+//
+// Subscription CLIs (codex / claude-code / grok-build):
+//   - quota:       docs/provider-quota.md
+//   - credentials: docs/provider-global-credentials.md
 ```
 
 The runtime is where a turn actually runs:
@@ -228,11 +239,71 @@ re-implementing several of these:
   selections / stamp the provider id.
 - `redactSecretText`, `httpErrorCode`, `normalizeErrorCode`, `providerErrorFromUnknown`,
   `authStatusFromKey`, `httpRequestFailedEvent` — for HTTP backends.
+- `createProviderQuota`, `ensureQuota`, percent/severity helpers — subscription rate-limit
+  surface (`docs/provider-quota.md`).
 - `zeroUsage` (from `@demicodes/core`) — a zeroed `TokenUsage`.
 - `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero` (from `@demicodes/utils`).
 
 See `packages/provider-anthropic-api` (HTTP) and `packages/provider-codex` (CLI/OAuth)
 for full references.
+
+## Optional: quota
+
+For subscription or rate-limited backends, attach `quota` on the public provider shell:
+
+```ts
+import { createProviderQuota, defineProvider } from '@demicodes/provider'
+
+const quota = createProviderQuota({
+  providerId: 'acme',
+  canProbe: true,
+  canObserve: true,
+  probeCost: 'free',
+  probe: async ({ signal }) => {
+    // fetch vendor usage API → { plan, accountLabel, windows }
+    return { windows: [], plan: null, accountLabel: null }
+  },
+  observe: ({ headers }) => {
+    // map response headers → windows, or return null
+    return null
+  },
+})
+
+return defineProvider({
+  id: 'acme',
+  displayName: 'Acme',
+  quota,
+  createRuntime: () => ({
+    run(request) {
+      // During inference, call quota.observeResponse?.({ headers }) when useful.
+      // …
+    },
+  }),
+})
+```
+
+Products read `provider.quota?.latest()` or `ensureQuota(provider.quota)`. Agent frames
+never carry secrets or raw vendor billing payloads.
+
+Full design: [docs/provider-quota.md](../provider-quota.md).
+
+## Optional: multi-credential (global active)
+
+Subscription CLIs often have one vendor login slot. Demi still supports multiple stored
+credentials under `$DEMI_HOME/credentials/<providerId>/` with a **process-global**
+active pointer:
+
+```ts
+await provider.credentials?.beginLogin?.()   // invoke vendor CLI login (no id)
+const entry = await provider.credentials?.importDefault?.() // snapshot → id
+await provider.credentials?.setActive(entry!.id)
+```
+
+Do **not** mint a new `Provider` id per account. Switching is `credentials.setActive`,
+not multi-instance providers. After switch, call `quota.clearLatest()` (kits already do
+this when wired together).
+
+Full design: [docs/provider-global-credentials.md](../provider-global-credentials.md).
 
 ## Register it
 
@@ -473,16 +544,16 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: none.
-- Owns: generic, platform-neutral helper functions only — type guards, error/abort helpers, async primitives, byte/UTF-8 helpers, string helpers, and id generation.
+- Owns: generic, platform-neutral helper functions only — type guards, error/abort helpers, async primitives, byte/UTF-8/base64 helpers, string helpers, the portable JSON codec (`Uint8Array`/`bigint` round-trip used by agent transports and HostStore implementations), and id generation.
 - Public boundary: pure utility functions shared across packages; no domain types or runtime services.
 - Must not: contain domain logic; transcript, provider, shell, or agent types; Node-only adapters; or any package-specific behavior.
 
 ### `@demicodes/provider`
 
 - Status: implemented.
-- Production deps: `@demicodes/core`.
-- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, and model catalog shape.
-- Public boundary: provider contract, direct `Provider[]` composition types, and provider test helpers only from `@demicodes/provider/testing`.
+- Production deps: `@demicodes/core`, `@demicodes/utils`.
+- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), and model catalog shape.
+- Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`), credential public types, and provider test helpers only from `@demicodes/provider/testing`.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
 - Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or REPL.
@@ -505,28 +576,29 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/host-local`
 
 - Status: implemented.
-- Production deps: `@demicodes/shell`, `@demicodes/utils`.
-- Owns: local Node Host adapter, specifically `LocalHost.defaultCwd`, `LocalHost.fs`, `LocalHost.process`, and `LocalHost.store`.
-- Public boundary: one Node-only local Host implementation. Store is a Host facet, not a separate adapter family.
-- May use: `node:child_process`, `node:fs`, `node:path`, `process.env`, Node streams, Buffer, and process-group signaling.
-- Must not: depend on `@demicodes/agent`, `@demicodes/provider`, concrete providers, `@demicodes/coding-agent`, or `@demicodes/repl`.
+- Production deps: `@demicodes/agent`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
+- Owns: local Node Host adapter (`LocalHost`); open-box local agent assembly (`createLocalAgentServer`) with command bridge **on by default**; command-bridge UDS listener, PATH shim materialization, and `~/.demi` / `$DEMI_HOME` state layout (`bridges/`, `bridge-bin/`).
+- Public boundary: Node-only local Host + local AgentServer factory + command-bridge primitives. Store is a Host facet, not a separate adapter family.
+- May use: `node:child_process`, `node:fs`, `node:http`, `node:net`, `node:path`, `process.env`, Node streams, Buffer, process-group signaling, and `@demicodes/agent` for assembly.
+- Must not: depend on concrete providers, `@demicodes/coding-agent`, or `@demicodes/repl`.
+- Assembly rule: products that run on LocalHost should use `createLocalAgentServer` rather than hand-wiring command-bridge sockets. Bin dirs and UDS are LocalHost-internal, not user-facing product options.
 
 ### `@demicodes/agent`
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, and assembly of one harness with the standard shell runtime.
-- Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only transports from explicit subpaths such as `@demicodes/agent/stdio`.
-- Must not: import concrete providers, `@demicodes/host-local`, or UI packages.
+- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, host-agnostic `prepareSessionShell` and `runCommandLine` on AgentServer, and assembly of one harness with the standard shell runtime.
+- Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpath `@demicodes/agent/stdio` for stdio transport only.
+- Must not: import concrete providers, `@demicodes/host-local`, or UI packages; must not own UDS sockets, PATH shim materialization, or `bridge-bin` layout.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
-- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface.
+- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, optional `prepareSessionShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. Local open-box assembly (bridge default on, UDS + shims) lives entirely in `@demicodes/host-local` via `createLocalAgentServer`.
 
 ### `@demicodes/coding-agent`
 
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: coding harness, coding prompt, coding commands, todo command, and file reference resolution.
-- Public boundary: harness and coding command construction based on Host and CommandSpec contracts.
+- Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, or LocalHost.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate BashEnvironment/tool runtime.
 
@@ -534,18 +606,20 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, and provider-specific tests.
-- Public boundary: `createClaudeCodeProvider`, model catalog function, and public option types from root.
-- Internal boundary: CLI, JSONL, output, transport, parser, and test cache helpers stay behind implementation files.
+- Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, OAuth usage quota probe (`/api/oauth/usage`), active OAuth resolution for CLI env overlay, demi credential pool for global multi-credential switch (see `docs/provider-global-credentials.md`), and provider-specific tests.
+- Public boundary: `createClaudeCodeProvider`, model catalog function, quota helpers, and public option types from root.
+- Secret boundary: OAuth tokens and pool secret files stay inside the provider creator/auth resolver and must not cross AgentClient/Web browser-visible frames.
+- Internal boundary: CLI, JSONL, output, transport, parser, credential pool IO, and test cache helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
 ### `@demicodes/provider-codex`
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, and provider-specific tests.
-- Public boundary: `createCodexProvider`, auth status helper, model catalog function, transport mode type, and public option types from root.
-- Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, and test cache helpers stay behind implementation files.
+- Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, rate-limit quota probe (`x-codex-*` headers), demi credential pool for global multi-credential switch (see `docs/provider-global-credentials.md`), and provider-specific tests.
+- Public boundary: `createCodexProvider`, auth status helper, model catalog function, quota helpers, transport mode type, and public option types from root.
+- Secret boundary: auth.json material and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
+- Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, credential pool IO, and test cache helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
 ### `@demicodes/provider-openai-api`
@@ -570,10 +644,21 @@ Test code may depend upward for integration coverage. Production code must not.
 - Internal boundary: Messages body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
+### `@demicodes/provider-grok-build`
+
+- Status: implemented.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, billing/subscription quota probe (`/v1/billing`, `/v1/user?include=subscription`), demi credential pool for global multi-credential switch (see `docs/provider-global-credentials.md`), provider event mapping, and provider-specific tests.
+- Public boundary: `createGrokBuildProvider`, auth status helper, model catalog function, quota helpers, and public option types from root.
+- Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session only (no independent login flow, no API-key product path).
+- Secret boundary: session tokens, refresh tokens, raw auth file contents, and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
+- Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+
 ### `@demicodes/repl`
 
 - Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`, `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/shell`, `@demicodes/host-local`, `@demicodes/utils`.
+- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`, `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`, `@demicodes/shell`, `@demicodes/host-local`, `@demicodes/utils`.
 - Owns: local REPL process, command-line parsing, renderer, input loop, real-provider smoke entry points, and local composition.
 - Public boundary: local application entry point and test/acceptance shell.
 - May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
@@ -600,7 +685,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: planned.
 - Production deps: `@demicodes/web-ui`, `@demicodes/agent`, `@demicodes/host-local`, `@demicodes/coding-agent`,
   `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
-  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/shell`.
+  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`,
+  `@demicodes/shell`.
 - Owns: the Demi web product — the Vite-dev-only browser app plus its embedded Node/Bun
   backend. The server serves only the WebSocket/API endpoints (per-session `/agent` + a
   `/control` RPC), assembling shared public providers and a per-cwd `AgentServer` over
@@ -615,7 +701,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`,
   `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
-  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/shell`, `@demicodes/utils`.
+  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`,
+  `@demicodes/shell`, `@demicodes/utils`.
 - Owns: agent benchmark case loading, fixture setup, Evaluator supervision/judging loop,
   oracle execution, metrics aggregation, run artifacts, reports, and gated real-provider
   evaluation entry points.
@@ -635,17 +722,18 @@ core -> none
 utils -> none
 provider -> core
 shell -> just-bash, utils
-host-local -> shell, utils
+host-local -> agent, provider, shell, utils
 agent -> core, provider, shell, utils
 coding-agent -> agent, core, shell, utils
 provider-claude-code -> core, provider, utils
 provider-codex -> core, provider, utils
 provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
-repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, host-local, utils
+provider-grok-build -> core, provider, utils
+repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils
 web-ui -> agent, core, utils
-web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell
-agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, shell, utils
+web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell
+agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
 ```
 
 `web-ui` and `web` are browser/product packages built with Vite/Vue; their internal source
@@ -676,6 +764,797 @@ Existing boundary coverage:
 - The same test builds the production source package graph and fails on cycles or edges outside the enforced graph.
 - The same test checks that production workspace imports are declared in package `dependencies`.
 - The same test checks public provider root exports so internal transport, parser, protocol, auth-store, stream, and testing helpers do not leak through by accident.
+
+---
+
+# Reference: Provider Quota
+<!-- source: docs/provider-quota.md -->
+
+# Provider quota (subscription / rate-limit surface)
+
+Final-state design for the unified **quota** API on subscription-style providers
+(`codex`, `claude-code`, `grok-build`). Complements multi-credential switching in
+[provider-global-credentials.md](./provider-global-credentials.md).
+
+## 1. Problem
+
+Each vendor exposes usage and rate-limit data differently:
+
+| Provider | Active probe | Passive observation |
+|---|---|---|
+| Codex | Minimal Responses request (headers only) | `x-codex-*` on live Responses |
+| Claude Code | `GET /api/oauth/usage` | Stream-json `rate_limits` / unified rate-limit headers |
+| Grok Build | `/v1/billing` + `/v1/user?include=subscription` | Short-window `x-ratelimit-*` on chat |
+
+Products need **one snapshot shape** and two fill paths (probe vs observe), without
+vendor-specific UI branches for every header name.
+
+## 2. Goals and non-goals
+
+### Goals
+
+- Shared types: `ProviderQuota`, `ProviderQuotaSnapshot`, `ProviderQuotaWindow`.
+- Two fill paths: **active** `probe()` and **passive** `observeResponse()`.
+- In-memory `latest()` cache with optional `clearLatest()` (required after credential switch).
+- Helper `ensureQuota()` for “cache if fresh, else probe”.
+- Wire observation into live inference so quota stays warm without extra probes when possible.
+
+### Non-goals
+
+- Billing UI or payment flows.
+- Cross-provider aggregate “total remaining” product metrics (products can compose snapshots).
+- Free unlimited probing when the vendor only offers a paid/minimal inference sniff (Codex).
+
+## 3. Public contract (`@demicodes/provider`)
+
+### 3.1 Snapshot
+
+```ts
+interface ProviderQuotaSnapshot {
+  providerId: string
+  observedAt: string              // ISO-8601
+  source: 'probe' | 'observation' | 'cache'
+  plan?: ProviderQuotaPlan | null
+  accountLabel?: string | null    // follows active credential when known
+  windows: ProviderQuotaWindow[]
+  raw?: unknown                   // vendor payload for debugging only
+}
+
+interface ProviderQuotaWindow {
+  id: string                      // e.g. five_hour, seven_day, primary, monthly
+  label?: string
+  usedPercent: number | null      // 0–100 when known
+  used?: number | null
+  limit?: number | null
+  unit?: ProviderQuotaWindowUnit  // percent | credits | tokens | …
+  resetsAt: string | null         // ISO-8601
+  severity?: 'normal' | 'warning' | 'critical' | null
+  scope?: { kind: string; label?: string } | null
+}
+```
+
+### 3.2 `ProviderQuota`
+
+```ts
+interface ProviderQuota {
+  capability(): ProviderQuotaCapability
+  probe(options?: { signal?: AbortSignal; force?: boolean }): Promise<ProviderQuotaSnapshot>
+  latest(): ProviderQuotaSnapshot | null
+  clearLatest?(): void
+  observeResponse?(input: {
+    headers?: Headers
+    status?: number
+    body?: unknown   // CLI envelopes without HTTP Response
+  }): ProviderQuotaSnapshot | null
+}
+```
+
+Capability:
+
+```ts
+type ProviderQuotaCapability =
+  | { mode: 'none' }
+  | {
+      mode: 'supported'
+      canProbe: boolean
+      canObserve: boolean
+      probeCost?: 'free' | 'minimal_request'
+      staleAfterMs?: number
+    }
+```
+
+- **`free`**: dedicated usage API (Claude, Grok billing).
+- **`minimal_request`**: probe burns a tiny inference / streamed request (Codex).
+
+### 3.3 Helpers
+
+| Helper | Role |
+|---|---|
+| `createProviderQuota({…})` | Wires probe/observe, holds `latest`, implements `clearLatest` |
+| `ensureQuota(quota, { prefer, maxStaleMs, signal })` | Return fresh cache or probe when allowed |
+| `clampUsedPercent`, `usedPercentFromRatio`, `severityFromUsedPercent`, `unixSecondsToIso` | Shared numeric/time mapping |
+
+### 3.4 On the `Provider` shell
+
+```ts
+interface Provider {
+  // …
+  quota?: ProviderQuota
+}
+```
+
+Agent runtime does **not** call quota. Products (web control, REPL, dashboards) do.
+
+## 4. Per-provider mapping
+
+### 4.1 Codex (`@demicodes/provider-codex`)
+
+| Path | Behavior |
+|---|---|
+| **probe** | Auth from active store → minimal streamed Responses → parse `x-codex-primary-*` / `x-codex-secondary-*` → cancel body. `probeCost: 'minimal_request'`. |
+| **observe** | Same headers on any live Responses HTTP response (`onHttpResponse` in the provider). |
+| **Windows** | Typically `primary` and `secondary` with percent + reset. |
+
+There is no free Codex “usage only” HTTP API in this stack; passive observe on SSE is the preferred steady-state path.
+
+### 4.2 Claude Code (`@demicodes/provider-claude-code`)
+
+| Path | Behavior |
+|---|---|
+| **probe** | Active OAuth token → `GET https://api.anthropic.com/api/oauth/usage` with oauth beta header. `probeCost: 'free'`. |
+| **observe** | Stream-json message `rate_limits` via `observeResponse({ body })`, and/or unified Anthropic rate-limit headers when present. |
+| **Windows** | e.g. `five_hour`, `seven_day` (and related plan windows when the payload provides them). |
+
+Token resolution follows the same auth path as inference (credential pool active entry, else env / keychain).
+
+### 4.3 Grok Build (`@demicodes/provider-grok-build`)
+
+| Path | Behavior |
+|---|---|
+| **probe** | Active session → `GET /v1/user?include=subscription` + `GET /v1/billing`. `probeCost: 'free'`. |
+| **observe** | Short-window `x-ratelimit-*` style headers on chat responses (separate from monthly subscription windows). |
+| **Windows** | e.g. `monthly` (billing) plus optional short RPM/TPM-style windows from headers. |
+
+## 5. Relationship to credentials
+
+- Quota always reflects the **global active** credential for that provider.
+- On `credentials.setActive`, implementations **must** call `quota.clearLatest()` so UI does not show the previous account’s windows.
+- `ProviderQuotaSnapshot.accountLabel` should match the active account label when known.
+
+See [provider-global-credentials.md](./provider-global-credentials.md).
+
+## 6. Product usage
+
+```ts
+import { ensureQuota } from '@demicodes/provider'
+import { createCodexProvider } from '@demicodes/provider-codex'
+
+const provider = createCodexProvider()
+
+// After a turn, observation may already have filled latest via the transport.
+const cached = provider.quota?.latest()
+
+// Or explicitly:
+const snap = provider.quota
+  ? await ensureQuota(provider.quota, { prefer: 'cache' })
+  : null
+
+// Force a network probe (respect probeCost — Codex is not free):
+const probed = await provider.quota?.probe({ force: true })
+```
+
+Guidance:
+
+1. Prefer **observation** during active chat (zero extra cost when headers/body carry windows).
+2. Call **probe** for dashboard open / refresh, or when `latest()` is null/stale.
+3. For Codex, avoid polling `probe()` on a tight timer; use observe + sparse probe.
+
+## 7. Implementation notes
+
+- Concrete packages own vendor mappers (`mapCodexRateLimitHeaders`, `mapClaudeUsagePayload`, …).
+- Secrets never appear on `ProviderQuotaSnapshot` public fields.
+- Observation must never throw into the inference stream; provider kits wrap `observeResponse` in try/catch at call sites.
+- `createProviderQuota` materializes `providerId`, `observedAt`, and `source` so kits only return plan/windows/account/raw.
+
+## 8. Testing
+
+| Area | Coverage |
+|---|---|
+| `@demicodes/provider` | `createProviderQuota` cache/observe/`clearLatest`; `ensureQuota` |
+| Each kit | Mapper unit tests; optional live probe gated by env |
+| Credentials | setActive clears quota cache (kit-level) |
+
+## 9. Summary
+
+| Question | Answer |
+|---|---|
+| One snapshot type for all three? | **Yes** |
+| Free probe for all? | **No** — Codex is `minimal_request` |
+| Primary steady-state path? | **observe** on live inference where possible |
+| Agent protocol change? | **None** |
+| Tied to multi-cred? | **Yes** — active credential + `clearLatest` on switch |
+
+---
+
+# Reference: Provider Global Credentials
+<!-- source: docs/provider-global-credentials.md -->
+
+# Provider global credentials (codex / claude-code / grok-build)
+
+Final-state design for multi-credential support with a **global active** switch.
+
+## 1. Problem
+
+Three subscription providers reuse vendor CLI / desktop login material:
+
+| Provider | Default material | Nature |
+|---|---|---|
+| `codex` | `~/.codex/auth.json` (or `$CODEX_HOME`) | Single-file session; refresh writes back |
+| `grok-build` | `~/.grok/auth.json` (or `$GROK_HOME`) | Multi-entry file, but runtime auto-picks one |
+| `claude-code` | `CLAUDE_CODE_OAUTH_TOKEN` or macOS Keychain item | Single active OAuth for CLI + quota |
+
+**Reality:** each backend is effectively one **process-global active login**, not N isolated injectables by default.
+
+**Rejected approach:** multi-`Provider` instances per account (`codex:a`, `codex:b`). Without per-instance injectable material, instances share the same fixed path and only multiply shells. Concurrent different accounts per session is also not how these vendors work.
+
+**Chosen approach:** keep **one** `Provider` id per backend; expose a **credentials** surface that lists known credentials and **switches the global active**. Selection of backend stays `ProviderSelection.providerId`; selection of account is orthogonal and global.
+
+## 2. Goals and non-goals
+
+### Goals
+
+- Unified, host-agnostic **credentials API** on the public `Provider` shell (optional, like `auth` / `quota`).
+- Support **multiple stored credentials** per provider family and **one global active** at a time.
+- `setActive` is the only switch; **no** auto-rotation, health-based failover, or product “active switching system”.
+- After switch: `auth.status`, `quota` (probe/observe/latest), and subsequent inference use the new active material.
+- Secrets never cross AgentClient / browser-visible frames.
+- Zero-config default: if demi has no pool yet, behavior matches today (read vendor default path / env / keychain as the sole active credential).
+- **Invoke vendor login**: product can ask demi to start the vendor’s own login flow (CLI / browser the vendor already uses). Demi does **not** complete OAuth or mint tokens itself.
+- **Import** vendor material into the pool and receive a stable `credentialId` (login itself does not return an id).
+
+### Non-goals
+
+- Multi-instance `Provider` ids for accounts.
+- Per-session or per-turn credential override on `ProviderSelection` / agent frames.
+- Demi-owned OAuth client, device-code UI, or token endpoint handling (that stays with Codex / Grok / Claude CLIs or official tools).
+- Login API returning a new `credentialId` (id appears only after **import** / **add**).
+- API-key providers (`openai`, `anthropic`) in this design (they already take explicit keys; out of scope unless a later product wants the same pool shape).
+- Bidirectional continuous sync with vendor CLIs as a product feature (import is one-shot or explicit; optional export is not required).
+
+## 3. Core decisions
+
+| Decision | Choice |
+|---|---|
+| Switch granularity | **Process-global active** per provider id |
+| How products switch accounts | Call `provider.credentials.setActive(id)` (or control RPC wrapping it) |
+| How products switch backends | Existing `ProviderSelection` / `set_provider` |
+| How a new account enters the system | **Invoke vendor login** → user finishes in vendor tool → **import** default (or `add`) → pool entry + `id` |
+| Does login return an id? | **No** — only import/add returns `ProviderCredentialInfo` with `id` |
+| Where non-active material lives | Demi-managed pool under `$DEMI_HOME` / `~/.demi` |
+| What inference reads | Always the **active** material via existing AuthStore / env resolution path |
+| Concurrent sessions | All sessions on that provider share the same active account |
+| In-flight turns | Keep using credentials resolved at request start; new active applies on the **next** `resolveAuth` / CLI spawn / quota probe |
+
+### 3.1 Credential lifecycle (product view)
+
+```text
+[unauthenticated or wrong account]
+        │
+        ▼
+ credentials.beginLogin()     ← invoke vendor login only (no OAuth completion in demi)
+        │
+        │  user completes login in vendor tool
+        │  material lands in ~/.codex | ~/.grok | keychain/env
+        ▼
+ credentials.importDefault()  ← snapshot into demi pool; returns { id, label, … }
+        │
+        ▼
+ credentials.setActive(id)    ← process-global switch (if import did not already activate)
+        │
+        ▼
+ auth / quota / inference use active
+```
+
+Adding a **second** account: beginLogin again (user logs into the other account in the vendor tool) → importDefault again → second id → setActive as needed. Product may need to warn that vendor default path is single-slot; import snapshots before overwriting.
+
+## 4. Public contract (`@demicodes/provider`)
+
+### 4.1 Types
+
+```ts
+/** Public metadata only — never tokens, cookies, or raw auth files. */
+export interface ProviderCredentialInfo {
+  /** Stable id within this provider (not globally unique across providers). */
+  id: string
+  /** Human label: email, account id, or import tag. */
+  label: string
+  /** Optional secondary display (plan name, issuer, …). */
+  detail?: string | null
+  /** ISO-8601 when this entry was last imported or refreshed in the pool. */
+  updatedAt?: string | null
+}
+
+export interface ProviderCredentialActive {
+  credentialId: string | null
+  /** Same shape as today's auth status, for the active credential. */
+  status: ProviderAuthState
+}
+
+export interface ProviderCredentials {
+  /** Whether this provider supports a multi-credential pool + global switch. */
+  capability(): ProviderCredentialsCapability
+
+  list(): Promise<ProviderCredentialInfo[]> | ProviderCredentialInfo[]
+
+  getActive(): Promise<ProviderCredentialActive> | ProviderCredentialActive
+
+  /**
+   * Make `credentialId` the process-global active credential for this provider.
+   * Subsequent auth / quota / inference use it.
+   * Throws if id unknown or material unusable.
+   */
+  setActive(credentialId: string): Promise<ProviderCredentialActive> | ProviderCredentialActive
+
+  /**
+   * Invoke the vendor’s own login flow (e.g. spawn `codex login` / `grok login` /
+   * `claude auth login` with inherited TTY or documented browser handoff).
+   * Does **not** complete OAuth inside demi and does **not** return a credential id.
+   * When the process exits successfully, vendor default material may be updated;
+   * product should call `importDefault` (or re-auth status) afterwards.
+   */
+  beginLogin?(options?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult>
+
+  /**
+   * Snapshot current vendor-default material into the demi pool.
+   * Assigns a stable `id` and returns public metadata (no secrets).
+   * Typically used after `beginLogin` or after the user logged in outside demi.
+   */
+  importDefault?(): Promise<ProviderCredentialInfo>
+
+  /**
+   * Register material supplied by the product (path or already-read payload).
+   * Shape is provider-specific via a narrow tagged input; never accept browser-posted raw tokens
+   * on a public web control method without an explicit trusted product path.
+   */
+  add?(input: ProviderCredentialAddInput): Promise<ProviderCredentialInfo>
+
+  /** Remove a pool entry. If it was active, active becomes null or another entry per implementation policy. */
+  remove?(credentialId: string): Promise<void>
+}
+
+export interface ProviderCredentialLoginOptions {
+  /** Abort the spawned login process. */
+  signal?: AbortSignal
+  /** Prefer browser vs device/CLI when the vendor supports both; best-effort. */
+  preferBrowser?: boolean
+}
+
+/**
+ * Login invoke result — status of the *vendor* process only, not a pool id.
+ */
+export type ProviderCredentialLoginResult =
+  | { status: 'completed' } // vendor CLI exited 0; material may now be importable
+  | { status: 'cancelled' }
+  | { status: 'unavailable'; message: string } // no CLI / unsupported host
+  | { status: 'failed'; message: string }
+
+/** Provider-specific add payloads; widen per kit without putting secrets on the shared type surface. */
+export type ProviderCredentialAddInput = {
+  /** Implementation-defined; concrete packages document accepted variants. */
+  [key: string]: unknown
+}
+
+export type ProviderCredentialsCapability =
+  | { mode: 'none' }
+  | {
+      mode: 'supported'
+      /** Can spawn / open vendor login (`beginLogin`). */
+      canBeginLogin?: boolean
+      /** Can import from the vendor default location into the pool. */
+      canImportDefault?: boolean
+      /** Can register externally supplied material (`add`). */
+      canAdd?: boolean
+      /** Pool can hold more than one credential. */
+      multi?: boolean
+    }
+```
+
+**Id rules**
+
+- `beginLogin` → **no** id.
+- `importDefault` / `add` → **mint** stable id (e.g. content hash of account identity claims, or uuid if unknown); return in `ProviderCredentialInfo`.
+- Re-importing the same account should ideally upsert the same id (match on account email / accountId / entryKey) rather than duplicate rows.
+
+### 4.2 `Provider` shell
+
+```ts
+export interface Provider {
+  id: string
+  displayName: string
+  auth?: ProviderAuth
+  quota?: ProviderQuota
+  /** Optional multi-credential pool + global active switch. */
+  credentials?: ProviderCredentials
+  state?(): ...
+  listModels?(): ...
+}
+```
+
+### 4.3 Relationship to `auth`
+
+- `auth.status()` **always** reflects the **active** credential (or unauthenticated if none).
+- `credentials.getActive().status` is the same information as `auth.status()` when a credentials surface exists; products may use either.
+- Providers without a pool omit `credentials` (`capability` effectively `none`); `auth` may still exist.
+
+### 4.4 Relationship to `quota`
+
+- `quota.probe` / `observeResponse` / `latest` always bind to the **active** credential.
+- On successful `setActive`, implementations **must** clear in-memory quota cache for that provider (`latest` becomes null / stale) so the next `ensureQuota` does not show the previous account.
+- `ProviderQuotaSnapshot.accountLabel` should match the active credential label when known.
+
+### 4.5 Relationship to agent protocol
+
+- **No** change to `ProviderSelection`, `open`, or `set_provider`.
+- Agent runtime does not know about credential ids.
+- Switching accounts is a **control-plane** concern (REPL flag, web control method, embedding host API), not a transcript/frame concern.
+
+## 5. Storage layout (demi pool)
+
+Authoritative multi-credential pool lives under demi state root (same root as command-bridge layout):
+
+```text
+$DEMI_HOME|~/.demi/
+  credentials/
+    codex/
+      active          # utf-8 credential id + trailing newline
+      entries/
+        <credentialId>/
+          meta.json   # { id, label, detail?, updatedAt, source }
+          auth.json   # Codex auth.json shape (secret)
+    grok-build/
+      active
+      entries/
+        <credentialId>/
+          meta.json
+          auth.json   # single-entry or full Grok auth map slice
+    claude-code/
+      active
+      entries/
+        <credentialId>/
+          meta.json
+          oauth.json  # { accessToken, refreshToken?, … } secret
+```
+
+Rules:
+
+- `meta.json` is listable; secret files are never returned from public APIs.
+- `active` missing or pointing at a deleted entry → treat as unauthenticated / fall back to vendor default import path once (see §6).
+- File mode `0600` for secret files; directories `0700` when created by demi.
+- Credential ids: opaque stable strings (e.g. `import-<hash>` or product-supplied slug). Labels are display-only and may change.
+
+**Not** under workspace cwd. Use `resolveDemiHome()` / `$DEMI_HOME` (host-local already owns this concept for bridges; credential pool path helpers may live in each provider kit or a small shared path helper in `utils` only if truly generic — prefer provider-local layout constants next to each auth store to avoid a new package).
+
+## 6. Per-provider behavior
+
+### 6.1 Common runtime pattern
+
+Each of the three packages owns:
+
+1. **Pool store** — list / read meta / read secret / write / setActive pointer.
+2. **Active AuthStore** (or equivalent resolver) — `resolveAuth()` loads **only** the active entry’s material; refresh writes back into **that entry’s** secret file (and updates `meta.updatedAt`).
+3. **`ProviderCredentials` adapter** wired on `create*Provider`.
+4. **Import default** (optional helper, not automatic on every boot unless pool empty — see bootstrap).
+
+Bootstrap (final-state default):
+
+1. If pool has entries → use `active` (or first entry if `active` invalid, and repair `active`).
+2. If pool empty → **read-through** vendor default (today’s path). Do **not** silently invent pool entries unless the product calls `importDefault` / `importFromPath` / explicit add.
+3. Product that wants multi-cred: import A, import B, `setActive`.
+
+Optional public helpers per package (root or documented internal used by products):
+
+- `importDefaultCodexCredential(pool)` — copy current `~/.codex/auth.json` into pool, set active if first.
+- Same for grok / claude-code.
+
+### 6.2 Codex
+
+| Concern | Behavior |
+|---|---|
+| Active resolve | Read `credentials/codex/entries/<active>/auth.json` via `FileCodexAuthStore`-like logic with `authFile` override; or pool-backed store implementing `CodexAuthStore` |
+| Refresh | Write back to **that entry’s** `auth.json`, not necessarily `~/.codex/auth.json` |
+| Vendor default | If pool empty: existing `FileCodexAuthStore({ codexHome })` |
+| Import | Snapshot `auth.json` (+ derive label from email / accountId) |
+| Multi-entry native | N/A — vendor file is single session; pool holds N snapshots |
+
+`createCodexProvider` always constructs one provider id `codex` (override still allowed). Credentials surface is attached when a pool is enabled (default **on** with demi home, or always on with lazy empty pool).
+
+### 6.3 Grok Build
+
+| Concern | Behavior |
+|---|---|
+| Active resolve | Pool entry secret is either a full `auth.json` map with one preferred key, or a single entry payload + `entryKey` |
+| Refresh | Update that entry in the pool secret file |
+| Vendor default | If pool empty: today’s `FileGrokAuthStore` + `selectAuthEntry` |
+| Import | For each OIDC entry in `~/.grok/auth.json`, or import selected entry only — product chooses; recommended **import-all-entries** as separate pool credentials |
+| Native multi-entry | Vendor file can feed the pool; **runtime no longer auto-picks for multi-cred mode** — active pointer wins |
+
+When pool is empty, keep current auto-pick for backward compatibility.
+
+### 6.4 Claude Code
+
+| Concern | Behavior |
+|---|---|
+| Active resolve | Pool entry `oauth.json` → access token |
+| Inference | CLI child env: set `CLAUDE_CODE_OAUTH_TOKEN` from active entry (override process env for that spawn). Extend `buildClaudeEnv` / transport factory to accept token or env overlay from the active resolver |
+| Quota probe | `resolveClaudeCodeOAuthAccess` becomes pool-aware (active entry first; else env; else keychain) |
+| Vendor default | If pool empty: today’s env / keychain |
+| Import | Snapshot token from env or Keychain into pool |
+| CLI constraint | Claude Code CLI still must accept token via env; if a future CLI ignores env, this path needs a different transport — out of scope until proven |
+
+Claude is the weakest link today (no AuthStore abstraction). Final-state requires:
+
+- `ClaudeCodeAuthStore` (or `resolveAccess(): Promise<ClaudeCodeOAuthAccess>`) injectable into provider + quota + transport.
+- Transport **must not** only call bare `buildClaudeEnv()` without active token overlay when a store is configured.
+
+## 7. Switch semantics
+
+### 7.1 `setActive(id)`
+
+1. Validate entry exists and secret file parses.
+2. Write `active` pointer (atomic replace).
+3. Invalidate quota cache for this provider.
+4. Return `getActive()` (re-resolved status).
+5. Do **not** abort in-flight provider runs.
+6. Do **not** rewrite `ProviderSelection` or restart AgentSession.
+
+### 7.2 Visibility
+
+| Surface | After `setActive` |
+|---|---|
+| Next inference `resolveAuth` / CLI spawn | New credential |
+| In-flight stream | Old credential until that run ends |
+| `auth.status()` | New |
+| `quota.latest` | Cleared; next probe/observe is new account |
+| Long-lived Claude CLI process (session reuse) | **Must restart** on next `run` if active credential id changed since process start (compare stored `credentialId` on `ActiveClaudeRun`) |
+
+### 7.3 Errors
+
+- Unknown id → throw typed error (`credential_not_found`).
+- Corrupt secret → `auth` status `error`; `setActive` fails.
+- Empty pool + no vendor default → `unauthenticated`.
+
+## 8. Product / control plane
+
+### 8.1 Library consumers
+
+```ts
+const provider = providers.find(p => p.id === 'codex')
+await provider.credentials?.setActive('work')
+```
+
+### 8.2 Web control server (when product wants it)
+
+Add control methods (names illustrative):
+
+- `listCredentials` `{ providerId }` → `ProviderCredentialInfo[]`
+- `getActiveCredential` `{ providerId }` → `ProviderCredentialActive`
+- `setActiveCredential` `{ providerId, credentialId }` → `ProviderCredentialActive`
+- `beginCredentialLogin` `{ providerId }` → `ProviderCredentialLoginResult` (no id; may be long-running / local-only)
+- `importDefaultCredential` `{ providerId }` → `ProviderCredentialInfo`
+
+Wire to `provider.credentials`. **Never** return secret fields.
+
+`beginCredentialLogin` is inherently **local host** (needs TTY/browser); remote multi-tenant servers may report `unavailable`.
+
+Web UI is optional follow-on; protocol types live with existing control protocol in web-ui transport.
+
+### 8.3 REPL / CLI
+
+Optional flags or subcommands later (`--credential`, `demi auth use`); not required for library completeness.
+
+## 9. Package boundaries
+
+| Package | Owns |
+|---|---|
+| `@demicodes/provider` | `ProviderCredentials*` types; optional tiny helpers if any (none required beyond types); document on `Provider` |
+| `@demicodes/provider-codex` | Codex pool layout, import, `CodexAuthStore` pool implementation, wire `credentials` on `createCodexProvider` |
+| `@demicodes/provider-grok-build` | Same for Grok |
+| `@demicodes/provider-claude-code` | Auth resolver abstraction, env overlay on CLI spawn, pool, wire `credentials` |
+| `@demicodes/host-local` | Unchanged for assembly; may document that `$DEMI_HOME/credentials` is reserved. Does **not** own provider secrets |
+| `@demicodes/agent` | **No** credential APIs |
+| `@demicodes/web` / web-ui | Optional control RPC + UI; secrets stay server-side |
+
+Secret boundary (existing rule, reaffirmed): raw tokens and auth file bodies stay inside provider creators / auth stores; not in frames, not in `ProviderCredentialInfo`.
+
+Public roots: export credentials types from `@demicodes/provider`; export import helpers and status helpers from each concrete provider root only if products need them; keep pool file IO behind implementation files if possible, or export a single `create*CredentialsPool` factory deliberately.
+
+## 10. Factory wiring (illustrative)
+
+```ts
+// createCodexProvider — conceptual
+const pool = options.credentialsPool ?? openCodexCredentialsPool({ stateDir: options.stateDir })
+const authStore = options.authStore ?? createPoolBackedCodexAuthStore(pool)
+const quota = createCodexQuota({ authStore })
+return defineProvider({
+  id: 'codex',
+  displayName: 'Codex',
+  auth: { status: () => authStore.status() },
+  quota,
+  credentials: createCodexCredentialsApi(pool, authStore, quota),
+  listModels: () => listCodexModels({ authStore }),
+  createRuntime: () => new CodexProvider({ authStore, quota, ... }),
+})
+```
+
+`stateDir` defaults via `DEMI_HOME` / `~/.demi` (same resolution story as host-local; duplicate a 5-line resolver in each package or share a non-host helper in `utils` only if we already have path helpers — avoid depending on `host-local` from providers).
+
+## 11. Testing
+
+| Area | Coverage |
+|---|---|
+| `@demicodes/provider` | Type/export surface only if helpers added |
+| Codex / Grok / Claude unit | Pool list / setActive / active resolve; refresh writes to entry not vendor home; quota cache cleared on switch |
+| Claude unit | Spawn env contains active token; process restart when active id changes mid-session |
+| Import | Snapshot from fixture auth.json / oauth fixture |
+| Boundary | No secret fields on public credential info; platform-entrypoints if new exports |
+| E2E (optional) | Real multi-file pool switch then probe quota / one short inference — gated by env |
+
+## 12. Migration / compatibility
+
+- Existing single-login users: pool empty → identical to current File/env/keychain behavior.
+- No change to `ProviderSelection` or transcripts.
+- Existing `authStore` injection remains: if caller passes `authStore`, that store is authoritative; `credentials` may be omitted or limited to `mode: 'none'` unless the store itself implements multi-cred.
+
+## 13. Implementation order (final-state slices, not MVP product stages)
+
+Land as coherent commits; each slice leaves main green:
+
+1. **Contract** — types on `@demicodes/provider` + docs (`package-boundaries`, this file, add-a-provider note).
+2. **Codex pool + credentials API** — highest leverage; AuthStore already clean.
+3. **Grok pool + credentials API** — multi-entry import maps cleanly.
+4. **Claude auth abstraction + env overlay + pool + credentials API** — required for real multi-cred on CLI path.
+5. **Web control methods** (if product wants remote switch) + optional UI.
+
+## 14. Summary
+
+| Question | Answer |
+|---|---|
+| New provider per account? | **No** |
+| Switch mechanism? | **Global `credentials.setActive`** |
+| Create OAuth inside demi? | **No** |
+| Invoke vendor login? | **Yes** — `beginLogin` (no id) |
+| How does an id appear? | **`importDefault` / `add`** after material exists |
+| Where do extras live? | **`$DEMI_HOME/credentials/<providerId>/`** |
+| What does inference use? | **Active only**, via AuthStore / env |
+| Agent protocol change? | **None** |
+| Auto switch? | **No** — interface only |
+| Three providers? | **Yes**, same contract; Claude needs auth inject first |
+
+This is the complete library/product-boundary design. Implementation follows §13.
+
+---
+
+# Reference: Command Bridge
+<!-- source: docs/command-bridge.md -->
+
+# Command Bridge
+
+Make every top-level registered `Command` available as a normal OS executable to subprocesses under a **local** agent session (`LocalHost` + Node).
+
+Depends on the recursive `Command` model in `@demicodes/shell`. Bridge does not reimplement parse/run.
+
+---
+
+## Product shape (open box)
+
+**Default: on** via `createLocalAgentServer` from `@demicodes/host-local`.
+
+```ts
+import { LocalHost, createLocalAgentServer } from '@demicodes/host-local'
+
+const host = new LocalHost(cwd)
+const { server, close } = createLocalAgentServer({
+  host,
+  agent: harness,
+  providers,
+  // commandBridge: true   ← default
+  // commandBridge: false  ← only way to turn off
+  // stateDir: '…'         ← optional; default ~/.demi or $DEMI_HOME
+})
+await close()
+```
+
+No product-side socket/shim assembly. Bin paths and UDS are **not** user-facing options — they are internal to LocalHost assembly (`stateDir` layout only).
+
+---
+
+## State layout (fixed under `stateDir`, not workspace cwd)
+
+| | Default |
+|--|---------|
+| State root | `$DEMI_HOME` or `~/.demi` (`stateDir` option) |
+| Socket | **always** `<stateDir>/bridges/<id>.sock` (or `commandBridgeSocketPath` override for the socket file only) |
+| Command shims | **always** `<stateDir>/bridge-bin/<sessionId>/` — **not** separately configurable |
+
+```text
+~/.demi/                         # stateDir
+  bridges/
+    <serverId>.sock
+  bridge-bin/                    # fixed name under stateDir
+    <sessionId>/
+      package.json
+      .dispatch
+      editor -> .dispatch
+```
+
+- Workspace **cwd** is only for project files / shell PWD.
+- There is **no** `bridgeBinDir` option — bin root is fixed as `bridge-bin` under `stateDir`.
+
+---
+
+## Goals
+
+1. Open box on LocalHost; bridge **on** by default.
+2. State under home (or `stateDir`), not project cwd.
+3. Fixed `bridge-bin` under stateDir.
+4. Same `Command` execution path as in-shell registered commands.
+5. Off switch: `commandBridge: false` only.
+6. **AgentServer never knows about UDS or bin dirs** — only host-agnostic hooks/APIs.
+
+---
+
+## Architecture
+
+```text
+createLocalAgentServer (host-local)
+  stateDir = resolveDemiHome(options.stateDir)
+  socket   = stateDir/bridges/<id>.sock
+  AgentServer({
+    prepareSessionShell → materialize stateDir/bridge-bin/<sessionId>/
+                          inject PATH + DEMI_COMMAND_BRIDGE_SOCK
+  })
+  startCommandBridge(server) → UDS POST /run → server.runCommandLine(...)
+```
+
+### Layering
+
+| Layer | Knows about |
+|-------|-------------|
+| `@demicodes/agent` `AgentServer` | `prepareSessionShell` hook; `runCommandLine` for a live session. **No** socket, shim, or bin layout. |
+| `@demicodes/host-local` | UDS listener, `.dispatch` shim, `bridge-bin/`, `bridges/`, default-on assembly. |
+
+`AgentServer` is intentionally transport-agnostic: a browser Host could supply a different `prepareSessionShell` / IPC without AgentServer growing LocalHost concepts.
+
+---
+
+## Package responsibilities
+
+| Package | Role |
+|---------|------|
+| `@demicodes/shell` | Command tree, exec, quoting. |
+| `@demicodes/agent` | `prepareSessionShell`; `runCommandLine` (session-scoped registered command exec). |
+| `@demicodes/host-local` | `LocalHost`, `resolveDemiHome`, shim materialize, UDS bridge, `createLocalAgentServer`. |
+
+---
+
+## Protocol / exec / stdin
+
+- UDS `POST /run` → `{ commandScopeId, name, args, cwd, stdin }` → `{ exitCode, stdout, stderr }`
+- Exec: `cd … && name args…` (+ heredoc if stdin non-empty) via `AgentServer.runCommandLine`
+- Stdin: 300ms grace to first byte, then read to EOF
+
+---
+
+## Key decisions
+
+| Decision | Choice |
+|----------|--------|
+| State root | `~/.demi` / `$DEMI_HOME` / `stateDir` |
+| Shim path | **Fixed** `<stateDir>/bridge-bin/<sessionId>` |
+| Custom bin dir | **Not supported** (not user-facing) |
+| Socket | `<stateDir>/bridges/<id>.sock` (path override only) |
+| Default bridge | **On** for `createLocalAgentServer` |
+| AgentServer bridge awareness | **None** — hook + `runCommandLine` only |
 
 ---
 
