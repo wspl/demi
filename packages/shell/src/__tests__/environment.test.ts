@@ -29,6 +29,35 @@ test('BashEnvironment keeps cwd and env state across shell_exec calls', async ()
   expect(third.stdout.delta).toBe('kept')
 })
 
+test('BashEnvironment ephemeral exec never touches the session default shell', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-bash-ephemeral-'))
+  await mkdir(join(root, 'pkg'))
+  const env = new BashEnvironment({
+    host: new LocalHost(root),
+    initialEnv: { PATH: process.env.PATH ?? '' },
+  })
+
+  const agentSessionId = 'session-ephemeral'
+  const first = await env.exec({ agentSessionId, script: 'pwd' })
+  expect(first.status).toBe('exited')
+
+  const ephemeral = await env.exec({ agentSessionId, script: 'cd pkg && pwd', ephemeral: true })
+  expect(ephemeral.status).toBe('exited')
+  expect(ephemeral.shellId).not.toBe(first.shellId)
+  if (ephemeral.status === 'exited') expect(ephemeral.stdout.delta).toBe(`${join(root, 'pkg')}\n`)
+
+  // The default shell is untouched: same shell, same cwd.
+  const second = await env.exec({ agentSessionId, script: 'pwd' })
+  expect(second.shellId).toBe(first.shellId)
+  if (second.status === 'exited') expect(second.stdout.delta).toBe(`${root}\n`)
+
+  expect(await env.disposeShell(ephemeral.shellId)).toBe(true)
+
+  await expect(env.exec({ shellId: first.shellId, script: 'pwd', ephemeral: true })).rejects.toThrow(
+    'mutually exclusive',
+  )
+})
+
 test('BashEnvironment applies stateful builtins before expanding later commands in the same script', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-inline-state-'))
   await mkdir(join(root, 'pkg'))
