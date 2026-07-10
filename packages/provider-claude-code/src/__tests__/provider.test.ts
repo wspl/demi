@@ -112,27 +112,16 @@ test('ClaudeCodeProvider streams text and response events from transport message
   expect(transport.killed).toBe(false)
 })
 
-test('ClaudeCodeProvider reports the latest per-request assistant usage instead of cumulative result usage', async () => {
+test('ClaudeCodeProvider preserves cache usage fields from result messages', async () => {
   const transport = new FakeClaudeTransport([
-    {
-      type: 'assistant',
-      message: {
-        content: [{ type: 'text', text: 'cached' }],
-        usage: {
-          input_tokens: 10,
-          output_tokens: 2,
-          cache_read_input_tokens: 7,
-          cache_creation_input_tokens: 3,
-        },
-      },
-    },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'cached' }] } },
     {
       type: 'result',
       usage: {
-        input_tokens: 1_000_000,
-        output_tokens: 20,
-        cache_read_input_tokens: 2_000_000,
-        cache_creation_input_tokens: 30,
+        input_tokens: 10,
+        output_tokens: 2,
+        cache_read_input_tokens: 7,
+        cache_creation_input_tokens: 3,
       },
     },
   ])
@@ -511,17 +500,10 @@ test('ClaudeCodeProvider handles assistant tool_use messages across run calls', 
           { type: 'text', text: 'before tool' },
           { type: 'tool_use', id: 'native-tool-1', name: 'mcp__main__shell_exec', input: { script: 'pwd' } },
         ],
-        usage: { input_tokens: 10, output_tokens: 1 },
       },
     },
-    {
-      type: 'assistant',
-      message: {
-        content: [{ type: 'text', text: 'after native tool' }],
-        usage: { input_tokens: 20, output_tokens: 3 },
-      },
-    },
-    { type: 'result', usage: { input_tokens: 30, output_tokens: 4 } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'after native tool' }] } },
+    { type: 'result', usage: { input_tokens: 2, output_tokens: 3 } },
   ])
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
 
@@ -558,7 +540,7 @@ test('ClaudeCodeProvider handles assistant tool_use messages across run calls', 
   })
   expect(secondEvents).toEqual([
     { type: 'text_delta', text: 'after native tool' },
-    { type: 'response', usage: { inputTokens: 20, outputTokens: 3, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+    { type: 'response', usage: { inputTokens: 2, outputTokens: 3, cacheReadTokens: 0, cacheWriteTokens: 0 } },
   ])
 })
 

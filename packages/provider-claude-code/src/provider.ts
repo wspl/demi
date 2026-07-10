@@ -1,6 +1,6 @@
 import { isRecord } from '@demicodes/utils'
 import { randomUUID } from 'node:crypto'
-import type { TokenUsage, ToolResultContentBlock } from '@demicodes/core'
+import type { ToolResultContentBlock } from '@demicodes/core'
 import {
   applyModelPolicy,
   defineProvider,
@@ -14,12 +14,7 @@ import {
 } from '@demicodes/provider'
 import { coldStartInputMessages, controlResponse, inferenceItemToClaudeMessage, toolResultsToClaudeMessage } from './jsonl'
 import { listClaudeCodeModels } from './models'
-import {
-  claudeAssistantUsage,
-  controlRequestToToolCall,
-  mapClaudeStdoutMessage,
-  type ClaudeControlRequest,
-} from './output'
+import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
 import { createClaudeCodeQuota } from './quota'
 import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
 
@@ -59,8 +54,6 @@ interface ActiveClaudeRun {
   sentUserMessageCount: number
   /** Signature of the first user message, used to detect a rewritten transcript (compaction). */
   firstUserSig: string | null
-  /** Latest single API-call usage, retained across tool continuations until the turn result. */
-  lastAssistantUsage: TokenUsage | null
 }
 
 export class ClaudeCodeProvider implements AgentProvider {
@@ -123,12 +116,10 @@ export class ClaudeCodeProvider implements AgentProvider {
 
         const raw = next.value
         this.observeQuotaFromMessage(raw)
-        active.lastAssistantUsage = claudeAssistantUsage(raw) ?? active.lastAssistantUsage
         const ignoreAssistantContent = active.hasStreamed && isMessageType(raw, 'assistant')
         const mapped = mapClaudeStdoutMessage(raw, {
           ignoreAssistantContent,
           ignoreAssistantToolUse: active.sdkMcpEnabled,
-          responseUsage: active.lastAssistantUsage,
         })
         if (isMessageType(raw, 'stream_event')) active.hasStreamed = true
         if (mapped.controlRequest) {
@@ -153,7 +144,6 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (toolUseIds.length > 0) return
 
         if (mapped.terminal) {
-          active.lastAssistantUsage = null
           // End of a model turn. The CLI process stays alive in streaming-input mode, keeping
           // the full conversation (and the live SDK-MCP session) in its own native context, so
           // the next turn only needs to send the new user message — no restart, no replay.
@@ -228,7 +218,6 @@ export class ClaudeCodeProvider implements AgentProvider {
       thinkingSig: thinkingSignature(request),
       sentUserMessageCount: 0,
       firstUserSig: null,
-      lastAssistantUsage: null,
     }
     this.active = active
 

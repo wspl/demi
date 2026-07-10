@@ -458,11 +458,9 @@ export class Transcript implements CoreTranscript {
    * history), it anchors the estimate and only blocks streamed after it are
    * char-estimated; otherwise the whole replay window is estimated at ~4
    * chars/token with fixed weights for images and documents.
-   * Usage above `maxUsageAnchorTokens` is treated as a cumulative provider
-   * counter and rejected as an impossible single-request anchor.
    */
-  estimateContextTokens(maxUsageAnchorTokens = Number.POSITIVE_INFINITY): number {
-    const anchor = this.usageAnchor(maxUsageAnchorTokens)
+  estimateContextTokens(): number {
+    const anchor = this.usageAnchor()
     if (anchor === null) {
       return this.replayableBlocks().reduce((total, block) => total + estimateBlockTokens(block), 0)
     }
@@ -477,7 +475,7 @@ export class Transcript implements CoreTranscript {
    * The latest response block's usage, valid only when no compaction happened
    * after it (compaction shrinks the history the usage was measured against).
    */
-  private usageAnchor(maxTokens: number): { blockIndex: number; tokens: number } | null {
+  private usageAnchor(): { blockIndex: number; tokens: number } | null {
     for (let i = this.blocks.length - 1; i >= 0; i -= 1) {
       const block = this.blocks[i]
       if (block.type === 'compaction_boundary' || block.type === 'compaction_marker') return null
@@ -485,9 +483,6 @@ export class Transcript implements CoreTranscript {
       const usage = block.usage
       const tokens = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
       if (tokens <= 0) continue
-      // Provider usage is expected to describe one request. Some transports expose a turn-wide
-      // cumulative counter instead; values beyond the model window cannot be a valid anchor.
-      if (tokens > maxTokens) return null
       return { blockIndex: i, tokens }
     }
     return null

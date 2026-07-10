@@ -1059,25 +1059,6 @@ test('auto compaction counts cache usage as context pressure', async () => {
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
-test('impossible cumulative provider usage does not trigger auto compaction', async () => {
-  const smallModel: ModelSelection = {
-    ...model,
-    model: { ...model.model, contextWindow: 100 },
-  }
-  const provider = new RecordingProvider([
-    [
-      events.text('short answer'),
-      events.response({ inputTokens: 1, outputTokens: 1, cacheReadTokens: 1_000, cacheWriteTokens: 0 }),
-    ],
-  ])
-  const session = createSession(provider, createRuntime({ preamble: () => null }), undefined, smallModel)
-
-  await session.send(text('short question'))
-
-  expect(provider.requests).toHaveLength(1)
-  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
-})
-
 test('compaction boundary and marker survive snapshot reconstruction', async () => {
   const store = new MemorySessionStore<TestState>()
   const transcript = oldAndRecentTranscript()

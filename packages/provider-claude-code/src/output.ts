@@ -21,8 +21,6 @@ export interface ClaudeControlRequest {
 export interface ClaudeOutputMapOptions {
   ignoreAssistantContent?: boolean
   ignoreAssistantToolUse?: boolean
-  /** Per-request usage captured from the latest assistant message. */
-  responseUsage?: TokenUsage | null
 }
 
 export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMapOptions = {}): OutputMapping {
@@ -47,7 +45,7 @@ export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMa
       const errorMessage = resultErrorMessage(message)
       events.push({ type: 'error', message: errorMessage, code: classifyProviderError(errorMessage) })
     }
-    events.push({ type: 'response', usage: options.responseUsage ?? mapUsage(message.usage) })
+    events.push({ type: 'response', usage: mapUsage(message.usage) })
     return { events, terminal: true }
   }
 
@@ -57,12 +55,6 @@ export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMa
   }
 
   return { events, terminal: false }
-}
-
-/** Claude Code result usage is cumulative across a tool-heavy turn; assistant usage is per API call. */
-export function claudeAssistantUsage(message: unknown): TokenUsage | null {
-  if (!isRecord(message) || message.type !== 'assistant' || !isRecord(message.message)) return null
-  return isRecord(message.message.usage) ? mapUsage(message.message.usage) : null
 }
 
 export function controlRequestToToolCall(request: ClaudeControlRequest): ProviderEvent | null {

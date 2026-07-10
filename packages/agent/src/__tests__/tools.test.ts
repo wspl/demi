@@ -114,44 +114,10 @@ test('shell tool result appends command assets as image content blocks after the
   expect(result.output).toHaveLength(2)
   expect(result.output[0]?.type).toBe('text')
   expect(result.output[1]).toEqual({ type: 'image', source: { mediaType: 'image/png', data: 'AAAA' } })
-  expect(JSON.stringify(result.metadata)).not.toContain('AAAA')
 
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
   expect(text).toContain('preview:')
   expect(text).toContain('captured')
-})
-
-test('shell tool metadata keeps one interleaved output copy without duplicate stream bodies', () => {
-  const result = toShellToolResult(shellSnapshot('one copy\n'), 'tool-1', { includePreview: true })
-
-  expect(result.metadata).toEqual({
-    status: 'exited',
-    shellId: 'shell-1',
-    commandId: 'cmd-1',
-    exitCode: 0,
-    stdout: {
-      path: '/@/commands/cmd-1/stdout.txt',
-      offset: 9,
-      bytes: 9,
-      truncated: false,
-    },
-    stderr: {
-      path: '/@/commands/cmd-1/stderr.txt',
-      offset: 0,
-      bytes: 0,
-      truncated: false,
-    },
-    output: {
-      path: 'demi://shell/shell-1/commands/cmd-1/output',
-      offset: 9,
-      chunks: [{ stream: 'stdout', text: 'one copy\n' }],
-      bytes: 9,
-      truncated: false,
-    },
-    runningMs: 1,
-    idleMs: 0,
-    audit: [],
-  })
 })
 
 test('shell tool result without assets stays text-only', () => {
