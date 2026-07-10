@@ -86,6 +86,11 @@ export interface ProviderQuota {
   probe(options?: ProviderQuotaProbeOptions): Promise<ProviderQuotaSnapshot>
   latest(): ProviderQuotaSnapshot | null
   /**
+   * Drop the in-memory latest snapshot (e.g. after credentials.setActive so the
+   * next ensureQuota/probe does not show the previous account).
+   */
+  clearLatest?(): void
+  /**
    * Optional passive update from a vendor HTTP response (headers, etc.).
    * Returns the new snapshot when observation succeeded; otherwise null.
    */
@@ -198,6 +203,9 @@ export function createProviderQuota(options: CreateProviderQuotaOptions): Provid
   const quota: ProviderQuota = {
     capability,
     latest: () => latest,
+    clearLatest: () => {
+      latest = null
+    },
     async probe(probeOptions = {}) {
       if (!options.canProbe) throw new ProviderQuotaUnsupportedError(options.providerId)
       const partial = await options.probe(probeOptions)
