@@ -82,7 +82,9 @@ export class FileGrokAuthStore implements GrokAuthStore {
     this.refreshImpl = options.refresh ?? refreshGrokOidcToken
     this.now = options.now ?? (() => new Date())
     this.lockRetryDelayMs = options.lockRetryDelayMs ?? 25
-    this.lockTimeoutMs = options.lockTimeoutMs ?? 5_000
+    // Must cover the lock holder's full token refresh (a network round-trip),
+    // not just a file write — contenders wait for the result instead of failing.
+    this.lockTimeoutMs = options.lockTimeoutMs ?? 30_000
   }
 
   async status(): Promise<ProviderAuthState> {
@@ -121,7 +123,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
       options.forceRefresh === true || expiresWithin(expiresAt, this.now(), REFRESH_EXPIRY_SKEW_MS)
 
     if (shouldRefresh && refreshToken && clientId) {
-      return this.refreshAndResolve(file, entryKey, {
+      return this.refreshAndResolve(accessToken, entryKey, {
         refreshToken,
         clientId,
         tokenEndpoint: tokenEndpointForIssuer(issuer),
@@ -141,7 +143,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
   }
 
   private async refreshAndResolve(
-    _file: GrokAuthDotJson,
+    staleAccessToken: string,
     entryKey: string,
     refreshInput: { refreshToken: string; clientId: string; tokenEndpoint: string },
   ): Promise<GrokResolvedAuth> {
@@ -154,6 +156,27 @@ export class FileGrokAuthStore implements GrokAuthStore {
       const refreshToken = nonEmptyString(latestEntry.refresh_token) ?? refreshInput.refreshToken
       const clientId = nonEmptyString(latestEntry.oidc_client_id) ?? refreshInput.clientId
       const issuer = nonEmptyString(latestEntry.oidc_issuer) ?? parseIssuerFromEntryKey(entryKey)
+
+      // Another process may have refreshed while we waited for the lock. If the
+      // token changed and is no longer near expiry, use it — refreshing again
+      // wastes a round-trip and needlessly rotates the refresh token.
+      const latestAccessToken = nonEmptyString(latestEntry.key)
+      if (latestAccessToken && latestAccessToken !== staleAccessToken) {
+        const latestExpiresAt = parseExpiresAt(latestEntry.expires_at) ?? parseJwtExpiration(latestAccessToken)
+        if (!expiresWithin(latestExpiresAt, this.now(), REFRESH_EXPIRY_SKEW_MS)) {
+          return {
+            accessToken: latestAccessToken,
+            refreshToken: nonEmptyString(latestEntry.refresh_token) ?? null,
+            expiresAt: latestExpiresAt,
+            email: stringOrNull(latestEntry.email),
+            issuer,
+            clientId,
+            entryKey,
+            authFile: this.authFile,
+          }
+        }
+      }
+
       const response = await this.refreshImpl({
         refreshToken,
         clientId,
