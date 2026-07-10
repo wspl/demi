@@ -458,9 +458,17 @@ export class Transcript implements CoreTranscript {
    * history), it anchors the estimate and only blocks streamed after it are
    * char-estimated; otherwise the whole replay window is estimated at ~4
    * chars/token with fixed weights for images and documents.
+   *
+   * When `contextWindow` is given, an anchor larger than the window is
+   * discarded: a single request's usage physically cannot exceed the window,
+   * so such a value is a provider violation of the response-usage contract
+   * (e.g. a turn-cumulative total) and would poison the estimate.
    */
-  estimateContextTokens(): number {
-    const anchor = this.usageAnchor()
+  estimateContextTokens(contextWindow?: number): number {
+    let anchor = this.usageAnchor()
+    if (anchor !== null && contextWindow !== undefined && contextWindow > 0 && anchor.tokens > contextWindow) {
+      anchor = null
+    }
     if (anchor === null) {
       return this.replayableBlocks().reduce((total, block) => total + estimateBlockTokens(block), 0)
     }
