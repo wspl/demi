@@ -1,7 +1,7 @@
 // Shared data contracts for every Demi package: content blocks, model
 // selection, transcript blocks, and session state. No runtime behavior.
 
-// ── 基础内容块 ───────────────────────────────────────────────────────
+// ── content blocks ─────────────────────────────────────────────────
 
 export interface BlockMeta {
   id: string

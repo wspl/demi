@@ -700,8 +700,8 @@ function inferenceItemToOpenAIResponseInput(item: InferenceItem, index: number):
     case 'user_steer':
       return [{ role: 'user', content: userContentToOpenAIResponses(item.content) }]
     case 'assistant_text':
-      // 最小 item 形状：不带 id/status —— 严格校验的网关（relay 桥接）会把它们当未知参数拒绝，
-      // 无状态回放也不需要它们。
+      // Minimal item shape: no id/status — strict gateways (relay bridges)
+      // reject them as unknown parameters, and stateless replay never needs them.
       return [
         {
           type: 'message',
@@ -795,7 +795,7 @@ function parseOpenAIReasoningSignature(signature: string | null): OpenAIResponse
   try {
     const parsed = JSON.parse(signature)
     if (!isOpenAIResponseReasoningItem(parsed)) return null
-    // 上游返回的 reasoning item 带 status 等回放不需要的字段，严格校验的网关会拒绝
+    // Upstream reasoning items carry status and other replay-irrelevant fields that strict gateways reject.
     const { id, summary, content, encrypted_content } = parsed as { id?: string; summary?: Array<{ type?: string; text: string }>; content?: Array<{ type?: string; text: string }>; encrypted_content?: string }
     return {
       type: 'reasoning',
