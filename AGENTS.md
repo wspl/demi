@@ -6,6 +6,7 @@
 - Prefer protocol, API, or file-state integrations over spawning external CLIs; keep external processes limited to intentional provider transports.
 - Branch out per requirement: create a dedicated branch off `main` for each requirement or feature, and do not commit feature work directly to `main`.
 - Do not use subagents: never invoke the `Agent`/Task tool to spawn subagents. Perform all work directly in the main session.
+- Write all code comments in English only.
 
 ## Code Reuse
 
