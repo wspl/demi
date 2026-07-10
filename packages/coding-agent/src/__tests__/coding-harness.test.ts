@@ -81,10 +81,10 @@ test('coding agent harness exposes shell session tools and registered command pr
 
   const todo = await environment.exec({ script: 'todo add "Verify default registration"' })
   expect(todo.stdout.delta).toBe('[ ] T1 Verify default registration\n')
-  const demiPrompt = await environment.exec({ shellId: todo.shellId, script: 'demi prompt' })
-  expect(demiPrompt.stdout.delta).toContain('demi create')
-  expect(demiPrompt.stdout.delta).toContain('Effects: modifies files by creating a new file')
-  expect(demiPrompt.stdout.delta).toContain('Success output: writes "Created <path>" to stdout')
+  const demiHelp = await environment.exec({ shellId: todo.shellId, script: 'demi --help' })
+  expect(demiHelp.stdout.delta).toContain('demi create')
+  expect(demiHelp.stdout.delta).toContain('Effects: modifies files by creating a new file')
+  expect(demiHelp.stdout.delta).toContain('Success output: writes "Created <path>" to stdout')
 })
 
 test('coding agent resolves file references through Host.fs', async () => {
@@ -226,7 +226,7 @@ function createRuntimeFromHarness(
   const runtime: AgentHarnessRuntime<Record<string, never>> = {
     harnessName: harness.name,
     initialState: () => state,
-    systemPrompt: (ctx) => harness.systemPrompt({ ...ctx, commandsPrompt: registry.renderPrompt() }),
+    systemPrompt: (ctx) => harness.systemPrompt({ ...ctx, commandsPrompt: registry.renderHelp() }),
     preamble: (ctx) => harness.preamble?.(ctx) ?? null,
     resolveReferences: (ctx, content) => harness.resolveReferences?.(ctx, content) ?? content,
     lifecycle: (event) => harness.lifecycle?.(event),
@@ -245,7 +245,7 @@ function createRuntimeFromHarness(
 function renderCommandsPrompt(commands: readonly Command[]): string {
   const registry = new CommandRegistry()
   for (const command of commands) registry.register(command)
-  return registry.renderPrompt()
+  return registry.renderHelp()
 }
 
 class RecordingHost implements Host {
