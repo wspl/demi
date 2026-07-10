@@ -1,5 +1,15 @@
 # @demicodes/utils
 
+## 0.3.0
+
+### Minor Changes
+
+- Align all public packages on 0.3.0. Highlights of this release: correct
+  Claude Code context-usage reporting (no more spurious compaction on long
+  tool-heavy sessions) and session storage phase 1 — role-based
+  Status/View/Checkpoint/Artifact naming and bounded tool views that shrink
+  session checkpoints from tens of MB to content-proportional size.
+
 ## 0.2.1
 
 ### Patch Changes
