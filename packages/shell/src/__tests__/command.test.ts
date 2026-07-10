@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import {
-  COMMAND_PROMPT_DEFAULTS,
+  COMMAND_HELP_DEFAULTS,
   CommandRegistry,
   parseCommandInput,
-  renderCommandPrompt,
+  renderCommandHelp,
   runRegisteredCommand,
   type Command,
   type CommandAsset,
@@ -257,16 +257,22 @@ test('parseCommandInput dual-mode: child name wins over parent args', () => {
   expect(child).toEqual({ path: ['tool', 'sub'], help: false, values: { y: 2 }, json: false })
 })
 
-test('parseCommandInput treats "prompt" as help only at routing nodes', () => {
-  // Nodes with subcommands: 'prompt' is the help pseudo-subcommand.
-  expect(parseCommandInput(filerSpec, ['filer', 'prompt']).help).toBe(true)
-  expect(parseCommandInput(dualMode, ['tool', 'prompt']).help).toBe(true)
+test('parseCommandInput treats --help as help at every node', () => {
+  // Groups, dual-mode parents, leaves, and bare run-only roots all render help.
+  expect(parseCommandInput(filerSpec, ['filer', '--help']).help).toBe(true)
+  expect(parseCommandInput(dualMode, ['tool', '--help']).help).toBe(true)
+  expect(parseCommandInput(bareLeaf, ['kcenv', '--help'])).toEqual({
+    path: ['kcenv'],
+    help: true,
+    values: {},
+    json: false,
+  })
 
-  // Pure run nodes: an ordinary argument (e.g. a file literally named "prompt").
-  const leaf = parseCommandInput(filerSpec, ['filer', 'edit', 'prompt', '--old', 'a', '--new', 'b'])
-  expect(leaf.help).toBe(false)
-  expect(leaf.values.path).toBe('prompt')
+  // --help wins wherever it appears among a run node's arguments.
+  const leaf = parseCommandInput(filerSpec, ['filer', 'edit', 'src/foo.ts', '--old', 'a', '--help'])
+  expect(leaf).toEqual({ path: ['filer', 'edit'], help: true, values: {}, json: false })
 
+  // A positional named like the old pseudo-subcommand is just a value.
   const bare = parseCommandInput(bareLeaf, ['kcenv', 'prompt'])
   expect(bare).toEqual({ path: ['kcenv'], help: false, values: { key: 'prompt' }, json: false })
 })
@@ -281,8 +287,8 @@ test('parseCommandInput reports full paths for nested errors', () => {
   )
 })
 
-test('renderCommandPrompt documents the tree', () => {
-  const prompt = renderCommandPrompt(filerSpec)
+test('renderCommandHelp documents the tree', () => {
+  const prompt = renderCommandHelp(filerSpec)
 
   expect(prompt).toContain('filer: Create, edit, and patch files.')
   expect(prompt).toContain('filer create')
@@ -302,7 +308,7 @@ test('CommandRegistry registers commands and renders all prompts', () => {
 
   expect(registry.get('filer')).toBe(filerSpec)
   expect(registry.list()).toEqual([filerSpec])
-  expect(registry.renderPrompt()).toBe(`${COMMAND_PROMPT_DEFAULTS}\n\n${renderCommandPrompt(filerSpec)}`)
+  expect(registry.renderHelp()).toBe(`${COMMAND_HELP_DEFAULTS}\n\n${renderCommandHelp(filerSpec)}`)
   expect(() => registry.register(filerSpec)).toThrow('already registered')
 })
 
@@ -327,7 +333,7 @@ test('CommandRegistry rejects command names that are unsafe as CLI path segments
   ).toThrow('has invalid name')
 })
 
-test('CommandRegistry rejects empty nodes, dead fields, and reserved prompt children', () => {
+test('CommandRegistry rejects empty nodes and dead fields', () => {
   const registry = new CommandRegistry()
   expect(() => registry.register({ name: 'empty', summary: 'x' })).toThrow('must have run() and/or subcommands')
   expect(() =>
@@ -340,25 +346,25 @@ test('CommandRegistry rejects empty nodes, dead fields, and reserved prompt chil
   ).toThrow('sets effects without run()')
   expect(() =>
     registry.register({
-      name: 'badprompt',
-      summary: 'x',
-      subcommands: [{ name: 'prompt', summary: 'no', examples: [], run: () => ({ exitCode: 0 }) }],
-    }),
-  ).toThrow('reserved for the help pseudo-subcommand')
-  expect(() =>
-    registry.register({
       name: 'norunexamples',
       summary: 'x',
       run: () => ({ exitCode: 0 }),
     }),
   ).toThrow('missing examples[]')
+  // With help moved to --help, 'prompt' is an ordinary (legal) child name.
+  registry.register({
+    name: 'okprompt',
+    summary: 'x',
+    subcommands: [{ name: 'prompt', summary: 'fine', examples: [], run: () => ({ exitCode: 0 }) }],
+  })
+  expect(registry.get('okprompt')).not.toBeNull()
 })
 
-test('runRegisteredCommand implements prompt from the same renderer', async () => {
+test('runRegisteredCommand implements --help from the same renderer', async () => {
   const io = new MemoryIO()
 
   const result = await runRegisteredCommand(filerSpec, {
-    argv: ['filer', 'prompt'],
+    argv: ['filer', '--help'],
     env: {},
     cwd: '/workspace',
     io,
@@ -366,10 +372,10 @@ test('runRegisteredCommand implements prompt from the same renderer', async () =
   })
 
   expect(result.exitCode).toBe(0)
-  expect(io.stdoutText()).toBe(`${renderCommandPrompt(filerSpec)}\n`)
+  expect(io.stdoutText()).toBe(`${renderCommandHelp(filerSpec)}\n`)
 })
 
-test('runRegisteredCommand executes nested leaves and renders prompt at any group', async () => {
+test('runRegisteredCommand executes nested leaves and renders help at any group', async () => {
   const run = async (argv: string[], stdin = '') => {
     const io = new MemoryIO()
     const result = await runRegisteredCommand(nestedSpec, {
@@ -387,7 +393,7 @@ test('runRegisteredCommand executes nested leaves and renders prompt at any grou
   expect(created.result.exitCode).toBe(0)
   expect(created.io.stdoutText()).toBe('created my-id body={"a":1}')
 
-  const help = await run(['larkclaw', 'watch', 'prompt'])
+  const help = await run(['larkclaw', 'watch', '--help'])
   expect(help.result.exitCode).toBe(0)
   expect(help.io.stdoutText()).toContain('larkclaw watch: Background pollers.')
   expect(help.io.stdoutText()).toContain('larkclaw watch create')
