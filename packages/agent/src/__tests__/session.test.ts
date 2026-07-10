@@ -5,11 +5,11 @@ import type { AgentProvider, InferenceRequest, InferenceSteer, ProviderEvent, Pr
 import { StubProvider, createProviderRun, events } from '@demicodes/provider/testing'
 import {
   AgentSession,
-  Transcript,
+  TranscriptLog,
   type AgentHarnessRuntime,
   type AgentSessionOptions,
   type AgentSessionStore,
-  type AgentSessionSnapshot,
+  type AgentSessionCheckpoint,
   type AgentToolInvokeResult,
   type SessionEvent,
 } from '../index'
@@ -45,7 +45,7 @@ function createRuntime(overrides: Partial<AgentHarnessRuntime<{ toolCalls: numbe
 function createSession(
   provider: AgentProvider,
   runtime: AgentHarnessRuntime<{ toolCalls: number }> = createRuntime(),
-  transcript?: Transcript,
+  transcript?: TranscriptLog,
   selection: ModelSelection = model,
   options: Partial<AgentSessionOptions<{ toolCalls: number }>> = {},
 ): AgentSession<{ toolCalls: number }> {
@@ -356,7 +356,7 @@ test('AgentSession dispose resolves queued actions after aborting active work', 
 
 test('AgentSession abort is not blocked by a hanging compaction summary provider', async () => {
   const provider = new HangingProvider()
-  const transcript = new Transcript([], {
+  const transcript = new TranscriptLog([], {
     idFactory: (() => {
       let id = 0
       return () => `seed-${++id}`
@@ -613,7 +613,7 @@ test('AgentSession yield wakeup is a terminal tool result and starts a later idl
   expect(toolBlock).toMatchObject({
     type: 'tool_call',
     status: 'completed',
-    metadata: { kind: 'yield_wakeup', durationMs: 5 },
+    view: { kind: 'yield_wakeup', durationMs: 5 },
   })
   const outputText =
     toolBlock?.type === 'tool_call' && toolBlock.output[0]?.type === 'text' ? toolBlock.output[0].text : ''
@@ -764,7 +764,7 @@ test('AgentSession records thrown tool invocations as error tool results and con
     toolUseId: 'tool-1',
     status: 'error',
     output: [{ type: 'text', text: 'Tool failed: broken tool' }],
-    metadata: { error: 'broken tool' },
+    view: { kind: 'tool_error', error: 'broken tool' },
   })
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
@@ -1297,7 +1297,7 @@ test('AgentSession retry truncates the last assistant response and reruns the la
 })
 
 test('AgentSession retry preserves accepted steers for the retried turn', async () => {
-  const transcript = new Transcript([], {
+  const transcript = new TranscriptLog([], {
     idFactory: (() => {
       let id = 0
       return () => `seed-${++id}`
@@ -1333,7 +1333,7 @@ test('AgentSession retry preserves accepted steers for the retried turn', async 
 
 test('AgentSession resume marks abort as resumed and adds a resume turn', async () => {
   const provider = new StubProvider([[events.text('continued'), events.response()]])
-  const transcript = new Transcript([], {
+  const transcript = new TranscriptLog([], {
     idFactory: () => 'seed-id',
     now: () => '2026-06-17T00:00:00.000Z',
   })
@@ -1358,7 +1358,7 @@ test('AgentSession resume replays accepted steers from the aborted turn', async 
       return [events.text('continued'), events.response()]
     },
   ])
-  const transcript = new Transcript([], {
+  const transcript = new TranscriptLog([], {
     idFactory: () => 'seed-id',
     now: () => '2026-06-17T00:00:00.000Z',
   })
@@ -1466,7 +1466,7 @@ test('AgentSession completes pending tool calls as errors before resuming after 
 
 test('AgentSession compact inserts boundary and marker without deleting old blocks', async () => {
   const provider = new StubProvider([[events.text('summary'), events.response()]])
-  const transcript = new Transcript([], {
+  const transcript = new TranscriptLog([], {
     idFactory: (() => {
       let id = 0
       return () => `seed-${++id}`
@@ -1653,7 +1653,7 @@ class BlockingSteerStore implements AgentSessionStore<{ toolCalls: number }> {
   private readonly releaseSave = deferred<void>()
   private blocked = false
 
-  async saveSnapshot(snapshot: AgentSessionSnapshot<{ toolCalls: number }>): Promise<void> {
+  async saveCheckpoint(snapshot: AgentSessionCheckpoint<{ toolCalls: number }>): Promise<void> {
     if (!this.blocked && snapshot.transcript.blocks.some((block) => block.type === 'steer')) {
       this.blocked = true
       this.started.resolve(undefined)
@@ -1661,7 +1661,7 @@ class BlockingSteerStore implements AgentSessionStore<{ toolCalls: number }> {
     }
   }
 
-  async loadSnapshot(): Promise<AgentSessionSnapshot<{ toolCalls: number }> | null> {
+  async loadCheckpoint(): Promise<AgentSessionCheckpoint<{ toolCalls: number }> | null> {
     return null
   }
 
@@ -1743,13 +1743,13 @@ class ThrowingProvider implements AgentProvider {
 }
 
 class MemorySessionStore<State> {
-  readonly snapshots: Array<AgentSessionSnapshot<State>> = []
+  readonly snapshots: Array<AgentSessionCheckpoint<State>> = []
 
-  saveSnapshot(snapshot: AgentSessionSnapshot<State>): void {
+  saveCheckpoint(snapshot: AgentSessionCheckpoint<State>): void {
     this.snapshots.push(snapshot)
   }
 
-  loadSnapshot(): Promise<AgentSessionSnapshot<State> | null> {
+  loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null> {
     return Promise.resolve(this.snapshots[this.snapshots.length - 1] ?? null)
   }
 }

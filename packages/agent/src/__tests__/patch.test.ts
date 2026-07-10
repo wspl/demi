@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
-import { Transcript, applyTranscriptPatches } from '../index'
+import { TranscriptLog, applyTranscriptPatches } from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -16,7 +16,7 @@ const model: ModelSelection = {
 }
 
 test('journal patches replicate appended blocks and streaming text deltas', () => {
-  const transcript = new Transcript()
+  const transcript = new TranscriptLog()
   const replica: Block[] = []
 
   transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'hello' }])
@@ -31,11 +31,11 @@ test('journal patches replicate appended blocks and streaming text deltas', () =
   expect(drained!.patches.map((patch) => patch.op)).toEqual(['add', 'add', 'append_text'])
 
   const applied = applyTranscriptPatches(replica, drained!.patches)
-  expect(applied).toEqual(transcript.snapshot().blocks)
+  expect(applied).toEqual(transcript.toJSON().blocks)
 })
 
 test('journal patches replicate tool completion as a block replace', () => {
-  const transcript = new Transcript()
+  const transcript = new TranscriptLog()
   transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'run' }])
   transcript.applyProviderEvent(model, {
     type: 'tool_call_requested',
@@ -51,12 +51,12 @@ test('journal patches replicate tool completion as a block replace', () => {
   expect(drained.patches.map((patch) => patch.op)).toEqual(['replace_block'])
 
   replica = applyTranscriptPatches(replica, drained.patches)
-  expect(replica).toEqual(transcript.snapshot().blocks)
+  expect(replica).toEqual(transcript.toJSON().blocks)
   expect(replica[1]).toMatchObject({ type: 'tool_call', status: 'completed' })
 })
 
 test('journal add values are snapshots, unaffected by later mutation of the live block', () => {
-  const transcript = new Transcript()
+  const transcript = new TranscriptLog()
   transcript.applyProviderEvent(model, { type: 'text_delta', text: 'first' })
   const drained = transcript.takePatches()!
   // Mutate the live block after draining; the drained patch must not change.
@@ -67,7 +67,7 @@ test('journal add values are snapshots, unaffected by later mutation of the live
 })
 
 test('rewind for retry emits a full replace and drops finer-grained history', () => {
-  const transcript = new Transcript()
+  const transcript = new TranscriptLog()
   transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'try' }])
   transcript.pushSteer('turn-1', model, [{ type: 'text', text: 'also this' }])
   transcript.applyProviderEvent(model, { type: 'text_delta', text: 'partial answer' })
@@ -80,11 +80,11 @@ test('rewind for retry emits a full replace and drops finer-grained history', ()
   expect(drained.patches.map((patch) => patch.op)).toEqual(['replace'])
   const applied = applyTranscriptPatches(replica, drained.patches)
   expect(applied.map((block) => block.type)).toEqual(['user', 'steer'])
-  expect(applied).toEqual(transcript.snapshot().blocks)
+  expect(applied).toEqual(transcript.toJSON().blocks)
 })
 
 test('takePatches returns null when nothing changed and revisions stay monotonic', () => {
-  const transcript = new Transcript()
+  const transcript = new TranscriptLog()
   expect(transcript.takePatches()).toBeNull()
   transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'a' }])
   expect(transcript.takePatches()!.revision).toBe(1)

@@ -2,9 +2,9 @@ import { expect, test } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { waitFor } from '@demicodes/utils'
-import { AgentClient, Transcript, applyTranscriptPatches, createInProcessTransportPair } from '../index'
+import { AgentClient, TranscriptLog, applyTranscriptPatches, createInProcessTransportPair } from '../index'
 import { AgentSession } from '../session'
-import type { AgentHarnessRuntime, AgentSessionSnapshot, AgentSessionStore } from '../types'
+import type { AgentHarnessRuntime, AgentSessionCheckpoint, AgentSessionStore } from '../types'
 import type { ClientFrame } from '../frames'
 
 const model: ModelSelection = {
@@ -31,14 +31,14 @@ function createRuntime(): AgentHarnessRuntime<Record<string, never>> {
 
 class CountingStore implements AgentSessionStore<Record<string, never>> {
   saves = 0
-  last: AgentSessionSnapshot<Record<string, never>> | null = null
+  last: AgentSessionCheckpoint<Record<string, never>> | null = null
 
-  saveSnapshot(snapshot: AgentSessionSnapshot<Record<string, never>>): void {
+  saveCheckpoint(snapshot: AgentSessionCheckpoint<Record<string, never>>): void {
     this.saves += 1
     this.last = snapshot
   }
 
-  loadSnapshot(): Promise<AgentSessionSnapshot<Record<string, never>> | null> {
+  loadCheckpoint(): Promise<AgentSessionCheckpoint<Record<string, never>> | null> {
     return Promise.resolve(null)
   }
 }
@@ -55,7 +55,7 @@ test('streaming delta cost does not scale with transcript length', () => {
         text: 'previous assistant output line with some content in it',
       })
     }
-    const transcript = new Transcript(history)
+    const transcript = new TranscriptLog(history)
     const startedAt = performance.now()
     for (let i = 0; i < deltas; i += 1) {
       transcript.applyProviderEvent(model, { type: 'text_delta', text: `delta ${i} ` })
@@ -126,7 +126,7 @@ test('client resyncs with a snapshot when the patch revision stream has a gap', 
     text,
   })
 
-  pair.server.send({ type: 'transcript_snapshot', revision: 1, blocks: [blockAt('a', 'one')] })
+  pair.server.send({ type: 'transcript_reset', revision: 1, blocks: [blockAt('a', 'one')] })
   await waitFor(() => client.transcript().blocks.length === 1)
 
   // Deliver revision 3 with revision 2 missing: the client must not apply it.
@@ -140,7 +140,7 @@ test('client resyncs with a snapshot when the patch revision stream has a gap', 
 
   // The server answers the resync with an authoritative snapshot.
   pair.server.send({
-    type: 'transcript_snapshot',
+    type: 'transcript_reset',
     revision: 3,
     blocks: [blockAt('a', 'one'), blockAt('b', 'two'), blockAt('c', 'three')],
   })
