@@ -178,7 +178,7 @@ export function toShellToolResult(
 ): AgentToolInvokeResult {
   const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
   if (result.status === 'exited' && result.binaryStdout) {
-    const verdict = binaryStreamVerdict(result.binaryStdout, options.model)
+    const verdict = binaryStreamVerdict(result.binaryStdout, result.commandId, options.model)
     if (verdict.block) output.push(verdict.block)
     if (verdict.note) output.push({ type: 'text', text: verdict.note })
   }
@@ -205,21 +205,27 @@ export function toShellToolResult(
  */
 function binaryStreamVerdict(
   binary: NonNullable<Extract<ShellCommandSnapshot, { status: 'exited' }>['binaryStdout']>,
+  commandId: string,
   model: Model | undefined,
 ): { block?: ToolResultContentBlock; note?: string } {
   const media = sniffModelMediaType(binary.data)
+  const binPath = `/@/commands/${commandId}/stdout.bin`
   if (binary.truncated) {
     return {
       note: `Binary stdout was truncated at the output limit (${binary.data.length} of ${binary.totalBytes} bytes)${
         media ? ` and looks like ${media.mediaType}` : ''
-      }; it was not attached. Re-run with a higher timeoutMs/output limit or write to a file instead.`,
+      }; it was not attached. Redirect to a file or raise the output limit and re-run.`,
     }
   }
   if (!media) {
-    return { note: 'Binary stdout does not match any model-viewable media type; write it to a file to process it further.' }
+    return {
+      note: `Binary stdout does not match any model-viewable media type; the raw bytes remain readable at ${binPath}.`,
+    }
   }
   if (!model || !modelAcceptsMediaType(model, media.mediaType)) {
-    return { note: `Binary stdout is ${media.mediaType}, which this model does not accept natively; it was not attached.` }
+    return {
+      note: `Binary stdout is ${media.mediaType}, which this model does not accept natively; the raw bytes remain readable at ${binPath}.`,
+    }
   }
   const source = { mediaType: media.mediaType, data: bytesToBase64(binary.data) }
   return {
