@@ -4,21 +4,27 @@
  * and ships `workspace:^` literals verbatim (npm does not understand the
  * workspace protocol — the 0.3.0 release shipped broken tarballs this way).
  *
- * Pipeline per package: `bun pm pack` (rewrites workspace ranges from the
- * lockfile) → validate the packed manifest → `bun publish <tarball>`.
+ * Pipeline per package: strip development export conditions → `bun pm pack`
+ * (rewrites workspace ranges from the lockfile) → validate the packed
+ * manifest → `bun publish <tarball>`.
  *
- * Two failure modes are guarded against:
+ * Three failure modes are guarded against:
  *  - workspace protocol leaking into the tarball (the npm-publish bug);
  *  - bun rewriting against a stale lockfile (bun resolves workspace versions
  *    from bun.lock, and `bun install` does not refresh it after a version-only
  *    bump — so the lockfile is regenerated up front, and the validator then
- *    asserts every internal dep matches the live workspace version).
+ *    asserts every internal dep matches the live workspace version);
+ *  - exports pointing at files the tarball does not ship (the 0.3.1 bug:
+ *    `development` conditions referenced ./src in dist-only packages, which
+ *    dev-mode bundlers like Vite resolve by default — the condition is
+ *    stripped at pack time and every packed export target is verified to
+ *    exist in the tarball).
  *
  * Auth: a registry token from $NPM_TOKEN (Bun auto-loads .env) or an already
  * configured .npmrc. Usage: bun run release [--dry-run]
  */
 import { $ } from 'bun'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -31,6 +37,7 @@ interface PackageManifest {
   name: string
   version: string
   private?: boolean
+  exports?: unknown
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
@@ -55,6 +62,58 @@ async function publishedVersions(name: string): Promise<Set<string>> {
   if (!response.ok) throw new Error(`Registry lookup for ${name} failed: ${response.status}`)
   const body = (await response.json()) as { versions?: Record<string, unknown> }
   return new Set(Object.keys(body.versions ?? {}))
+}
+
+/**
+ * Recursively drops the `development` condition from an exports map. The
+ * condition points at TypeScript source for in-repo workspace resolution
+ * (tests run with `--conditions development`), but most tarballs ship dist
+ * only — leaving it in sends dev-mode bundlers (Vite enables the development
+ * condition by default) to files that do not exist in the published package.
+ */
+function stripDevelopmentConditions(node: unknown): unknown {
+  if (typeof node !== 'object' || node === null || Array.isArray(node)) return node
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'development') continue
+    out[key] = stripDevelopmentConditions(value)
+  }
+  return out
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Asserts the packed exports map is self-consistent with the tarball: no
+ * development condition survived the strip, and every export target (including
+ * wildcard patterns) resolves to at least one shipped file. This is the
+ * invariant the 0.3.1 tarballs violated.
+ */
+function validatePackedExports(packedExports: unknown, entries: string[]): string[] {
+  const problems: string[] = []
+  const visit = (node: unknown, path: string) => {
+    if (typeof node === 'string') {
+      if (!node.startsWith('./')) return
+      const target = `package/${node.slice(2)}`
+      const matches = node.includes('*')
+        ? entries.some((entry) => new RegExp(`^${target.split('*').map(escapeRegExp).join('.*')}$`).test(entry))
+        : entries.includes(target)
+      if (!matches) problems.push(`exports${path} -> "${node}" matches nothing in the tarball`)
+      return
+    }
+    if (typeof node !== 'object' || node === null) return
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'development') {
+        problems.push(`exports${path} still contains a development condition`)
+        continue
+      }
+      visit(value, `${path}.${key}`)
+    }
+  }
+  visit(packedExports, '')
+  return problems
 }
 
 function validatePackedManifest(packed: PackageManifest): string[] {
@@ -93,12 +152,26 @@ for (const { dir, manifest } of packages) {
     continue
   }
 
+  // Pack against a manifest with the development conditions stripped — they
+  // are an in-repo resolution device and must not reach the registry. The
+  // on-disk manifest is restored right after packing.
+  const manifestPath = join(dir, 'package.json')
+  const originalManifestText = readFileSync(manifestPath, 'utf8')
+  const publishManifest = JSON.parse(originalManifestText) as PackageManifest
+  if (publishManifest.exports !== undefined) publishManifest.exports = stripDevelopmentConditions(publishManifest.exports)
+
   const dest = await mkdtemp(join(tmpdir(), 'demi-release-'))
-  await $`bun pm pack --destination ${dest}`.cwd(dir).quiet()
+  writeFileSync(manifestPath, `${JSON.stringify(publishManifest, null, 2)}\n`)
+  try {
+    await $`bun pm pack --destination ${dest}`.cwd(dir).quiet()
+  } finally {
+    writeFileSync(manifestPath, originalManifestText)
+  }
   const tarball = join(dest, (await readdir(dest)).find((f) => f.endsWith('.tgz'))!)
   const packed = JSON.parse(await $`tar -xOf ${tarball} package/package.json`.text()) as PackageManifest
+  const entries = (await $`tar -tf ${tarball}`.text()).split('\n').filter(Boolean)
 
-  const problems = validatePackedManifest(packed)
+  const problems = [...validatePackedManifest(packed), ...validatePackedExports(packed.exports, entries)]
   if (problems.length > 0) {
     failures.push(`${manifest.name}@${manifest.version}:\n  ${problems.join('\n  ')}`)
     console.error(`INVALID ${manifest.name}@${manifest.version}`)
