@@ -26,7 +26,7 @@ import {
   credentialIdFromIdentity,
   runVendorLoginCommand,
   type CredentialEntryMeta,
-} from './credentials-pool'
+} from '@demicodes/provider/credentials-pool'
 
 export interface CodexCredentialsOptions {
   stateDir?: string
