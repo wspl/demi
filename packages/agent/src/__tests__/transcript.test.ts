@@ -328,6 +328,32 @@ test('context estimate anchors on the latest provider-reported usage', () => {
   expect(transcript.estimateContextTokens()).toBe(1_384 + 1_000)
 })
 
+test('an anchor exceeding the context window is discarded as a contract violation', () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'x'.repeat(40_000) }])
+  transcript.applyProviderEvent(model, { type: 'text_delta', text: 'reply' })
+  // A single request cannot read more than the window; this is a cumulative
+  // total misreported by a provider (e.g. a CLI turn summing internal calls).
+  transcript.applyProviderEvent(model, {
+    type: 'response',
+    usage: { inputTokens: 5_000, outputTokens: 5_000, cacheReadTokens: 1_089_277, cacheWriteTokens: 0 },
+  })
+
+  // Without the window the anchor is trusted as-is.
+  expect(transcript.estimateContextTokens()).toBe(1_099_277)
+  // With the window, the impossible anchor falls back to char estimation.
+  const charEstimate = transcript.estimateContextTokens(1_000_000)
+  expect(charEstimate).toBeLessThan(20_000)
+  expect(charEstimate).toBeGreaterThan(0)
+
+  // A plausible anchor is still used when the window is given.
+  transcript.applyProviderEvent(model, {
+    type: 'response',
+    usage: { inputTokens: 1_234, outputTokens: 50, cacheReadTokens: 100, cacheWriteTokens: 0 },
+  })
+  expect(transcript.estimateContextTokens(1_000_000)).toBe(1_384)
+})
+
 test('compaction after the last response invalidates the usage anchor', () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn('turn-1', model, [{ type: 'text', text: 'x'.repeat(8_000) }])
