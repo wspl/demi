@@ -1,6 +1,7 @@
 import { isRecord, stringOrNull } from '@demicodes/utils'
 import {
   createProviderQuota,
+  numberHeader,
   severityFromUsedPercent,
   usedPercentFromRatio,
   type ProviderQuota,
@@ -172,12 +173,5 @@ function moneyVal(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (isRecord(value) && typeof value.val === 'number' && Number.isFinite(value.val)) return value.val
   return null
-}
-
-function numberHeader(headers: Headers, name: string): number | null {
-  const raw = headers.get(name)
-  if (raw == null || raw === '') return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : null
 }
 
