@@ -17,11 +17,18 @@ export class ConversationRuntime {
   private readonly canceledPendingSteers = new Set<string>()
   private readonly activePendingSteerRequests = new Set<string>()
 
-  constructor(
-    private readonly state: ConversationState,
-    private readonly baseUrl: string,
-    private readonly control: ControlApi,
-  ) {}
+  private readonly state: ConversationState
+  private readonly baseUrl: string
+  private readonly control: ControlApi
+
+  // Explicit field assignments instead of constructor parameter properties:
+  // this package ships as source, and parameter properties are rejected by
+  // consumers compiling with erasableSyntaxOnly.
+  constructor(state: ConversationState, baseUrl: string, control: ControlApi) {
+    this.state = state
+    this.baseUrl = baseUrl
+    this.control = control
+  }
 
   async send(content: UserContentBlock[]): Promise<void> {
     const client = await this.ensureOpen()

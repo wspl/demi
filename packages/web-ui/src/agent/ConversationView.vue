@@ -20,7 +20,6 @@ const pendingSteers = computed(() => session.value?.pendingSteers ?? [])
 const phase = computed(() => session.value?.phase ?? 'idle')
 
 const bottomAreaRef = ref<HTMLDivElement>()
-const messageInputRef = ref<InstanceType<typeof AgentMessageInput>>()
 const { height: bottomAreaHeight } = useElementSize(bottomAreaRef)
 
 function handleEmptySubmit() {
@@ -71,7 +70,6 @@ function onRetry() {
           @clear-all="workspace.clearMessageQueue(conversationId)"
         />
         <AgentMessageInput
-          ref="messageInputRef"
           class="relative z-10"
           :conversation-id="conversationId"
           @empty-submit="handleEmptySubmit"
