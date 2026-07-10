@@ -1,26 +1,19 @@
 import { getCommandNames, type CommandName } from '@demicodes/just-bash/commands'
 
 /**
- * Individually excluded even though just-bash calls them portable: each
- * regresses a real, already-passing test elsewhere in this monorepo when
- * dispatched through this package's fork-command wrapping specifically
- * (isolated just-bash unit tests for these same commands pass fine, so the
- * break is in how @demicodes/shell wraps them, not in just-bash itself):
+ * Deliberately routed to real OS processes (Host.process.spawn) even though
+ * just-bash ships portable versions. This is a semantics decision, not a
+ * missing feature:
  *
- * - `bash`, `sh`: nested "run a script string through the interpreter again".
- *   Their stdout never reaches the caller here — `sh -c "printf hi"` and
- *   `bash -c "echo hi"` both exit 0 with empty output, while the exact same
- *   scripts run un-nested work fine. This package's own `AgentServer` test
- *   spawns `sh -c` for real and asserts on the real output.
- * - `sleep`: just-bash's version is a plain timer, not a real backgroundable,
- *   abortable OS process. This package's own environment tests use `sleep 10`
- *   specifically as a long-running foreground process to exercise abort/
- *   timeout handling (`env.abort()` / status-while-`running`), which needs a
- *   real process to abort.
- *
- * Keeping these three off the list preserves their pre-existing
- * fall-through to Host.process.spawn, same as before this list started
- * tracking just-bash's registry.
+ * - `bash`, `sh`: scripts in real repositories expect a real interpreter
+ *   (full bash semantics, real coreutils, real subprocess behavior). Routing
+ *   them into just-bash's simulated interpreter would silently downgrade
+ *   every `bash script.sh` a model runs. (The fork's nested-interpreter
+ *   stdout also does not forward through this package's wrapping — but even
+ *   with that fixed, real spawn stays the right routing.)
+ * - `sleep`: must be a real, abortable OS process so foreground abort and
+ *   timeout semantics (`env.abort()` while `running`) genuinely interrupt
+ *   it; just-bash's version is a plain in-process timer.
  */
 const REAL_SPAWN_DEPENDENT_COMMANDS = new Set(['bash', 'sh', 'sleep'])
 
