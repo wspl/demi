@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/provider-openai-api",
   "description": "OpenAI API provider adapter for Demi.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": false,
   "type": "module",
   "exports": {
@@ -12,9 +12,9 @@
     }
   },
   "dependencies": {
-    "@demicodes/core": "workspace:*",
-    "@demicodes/provider": "workspace:*",
-    "@demicodes/utils": "workspace:*"
+    "@demicodes/core": "workspace:^",
+    "@demicodes/provider": "workspace:^",
+    "@demicodes/utils": "workspace:^"
   },
   "license": "Apache-2.0",
   "main": "./dist/index.mjs",

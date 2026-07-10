@@ -7,18 +7,18 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@demicodes/agent": "workspace:*",
-    "@demicodes/coding-agent": "workspace:*",
-    "@demicodes/core": "workspace:*",
-    "@demicodes/host-local": "workspace:*",
-    "@demicodes/provider": "workspace:*",
-    "@demicodes/provider-anthropic-api": "workspace:*",
-    "@demicodes/provider-claude-code": "workspace:*",
-    "@demicodes/provider-codex": "workspace:*",
-    "@demicodes/provider-openai-api": "workspace:*",
-    "@demicodes/provider-grok-build": "workspace:*",
-    "@demicodes/shell": "workspace:*",
-    "@demicodes/utils": "workspace:*"
+    "@demicodes/agent": "workspace:^",
+    "@demicodes/coding-agent": "workspace:^",
+    "@demicodes/core": "workspace:^",
+    "@demicodes/host-local": "workspace:^",
+    "@demicodes/provider": "workspace:^",
+    "@demicodes/provider-anthropic-api": "workspace:^",
+    "@demicodes/provider-claude-code": "workspace:^",
+    "@demicodes/provider-codex": "workspace:^",
+    "@demicodes/provider-openai-api": "workspace:^",
+    "@demicodes/provider-grok-build": "workspace:^",
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/utils": "workspace:^"
   },
   "license": "Apache-2.0"
 }
