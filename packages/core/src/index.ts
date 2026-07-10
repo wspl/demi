@@ -236,7 +236,13 @@ export type Block =
       status: ToolCallStatus
       streamingOutput: ToolResultContentBlock[]
       output: ToolResultContentBlock[]
-      metadata: unknown | null
+      /**
+       * Bounded UI-facing enhancement data, typed by the tool's owning layer.
+       * Never replayed to the model. Must not embed unbounded payloads (full
+       * command output, file bodies, raw or base64 bytes) — anything unbounded
+       * lives in a command artifact or blob and is referenced by id.
+       */
+      view: unknown | null
     }
   | {
       type: 'response'
@@ -290,10 +296,4 @@ export interface QueuedMessage {
 
 export interface Transcript {
   blocks: Block[]
-}
-
-export interface AgentSessionCoreState {
-  transcript: Transcript
-  phase: SessionPhase
-  queue: QueuedMessage[]
 }

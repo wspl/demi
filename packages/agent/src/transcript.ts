@@ -38,13 +38,13 @@ export interface DrainedTranscriptPatches {
   patches: TranscriptPatch[]
 }
 
-export class Transcript implements CoreTranscript {
+export class TranscriptLog implements CoreTranscript {
   readonly blocks: Block[]
 
   private readonly idFactory: () => string
   private readonly now: () => string
   // Mutation journal: every mutating method records the wire patch describing
-  // it, so replication never has to diff snapshots. Values are cloned at record
+  // it, so replication never has to diff whole transcripts. Values are cloned at record
   // time because live blocks keep mutating (streaming text appends).
   private journal: TranscriptPatch[] = []
   private revisionCounter = 0
@@ -59,7 +59,7 @@ export class Transcript implements CoreTranscript {
     this.replayTailChars = options.replayTextBounds?.tailChars ?? DEFAULT_MODEL_TEXT_TAIL_CHARS
   }
 
-  snapshot(): CoreTranscript {
+  toJSON(): CoreTranscript {
     return { blocks: structuredClone(this.blocks) }
   }
 
@@ -227,7 +227,7 @@ export class Transcript implements CoreTranscript {
           status: 'executing',
           streamingOutput: [],
           output: [],
-          metadata: null,
+          view: null,
         })
       case 'response':
         return this.appendBlock({
@@ -255,7 +255,7 @@ export class Transcript implements CoreTranscript {
     toolUseId: string,
     output: ToolResultContentBlock[],
     isError = false,
-    metadata: unknown | null = null,
+    view: unknown | null = null,
   ): Block | null {
     const index = findPendingToolCallIndex(this.blocks, toolUseId)
     if (index === null) return null
@@ -264,7 +264,7 @@ export class Transcript implements CoreTranscript {
     block.status = isError ? 'error' : 'completed'
     block.output = output
     block.streamingOutput = []
-    block.metadata = metadata
+    block.view = view
     this.recordBlockReplace(index)
     return block
   }

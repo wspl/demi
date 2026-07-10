@@ -2,30 +2,15 @@ import { expect, test } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
 import { shellTerminalOutputChunks } from '../block-helpers'
 
-test('shell terminal output prefers structured interleaved metadata chunks', () => {
+test('shell terminal output renders the view chunks', () => {
   const block = tool({
-    outputText: [
-      'status: exited',
-      'stdout:',
-      'visible stdout',
-      'stderr:',
-      'fallback stderr',
-      'stderrPath: demi://stderr',
-    ].join('\n'),
-    metadata: {
-      output: {
-        chunks: [
-          { stream: 'stdout', text: 'first stdout\n' },
-          { stream: 'stderr', text: 'first stderr\n' },
-          { stream: 'stdout', text: 'second stdout\n' },
-        ],
-      },
-      stdout: {
-        delta: 'metadata stdout\n',
-      },
-      stderr: {
-        delta: 'metadata stderr\n',
-      },
+    view: {
+      kind: 'shell',
+      chunks: [
+        { stream: 'stdout', text: 'first stdout\n' },
+        { stream: 'stderr', text: 'first stderr\n' },
+        { stream: 'stdout', text: 'second stdout\n' },
+      ],
     },
   })
 
@@ -36,44 +21,28 @@ test('shell terminal output prefers structured interleaved metadata chunks', () 
   ])
 })
 
-test('shell terminal output falls back to stdout then stderr sections', () => {
+test('shell terminal output skips empty and malformed chunks', () => {
   const block = tool({
-    outputText: [
-      'status: exited',
-      'stdout:',
-      'visible stdout',
-      'stdoutPath: demi://stdout',
-      'stderr:',
-      'first stderr line',
-      'second stderr line',
-      'stderrPath: demi://stderr',
-      'stderrOffset: 42',
-    ].join('\n'),
+    view: {
+      kind: 'shell',
+      chunks: [
+        { stream: 'stdout', text: '' },
+        { stream: 'other', text: 'not a stream' },
+        'garbage',
+        { stream: 'stderr', text: 'kept\n' },
+      ],
+    },
   })
 
-  expect(shellTerminalOutputChunks(block)).toEqual([
-    { stream: 'stdout', text: 'visible stdout' },
-    { stream: 'stderr', text: 'first stderr line\nsecond stderr line' },
-  ])
+  expect(shellTerminalOutputChunks(block)).toEqual([{ stream: 'stderr', text: 'kept\n' }])
 })
 
-test('shell terminal output hides empty sections', () => {
-  const block = tool({
-    outputText: [
-      'status: exited',
-      'stdout:',
-      '(empty)',
-      'stdoutPath: demi://stdout',
-      'stderr:',
-      '(empty)',
-      'stderrPath: demi://stderr',
-    ].join('\n'),
-  })
-
-  expect(shellTerminalOutputChunks(block)).toEqual([])
+test('shell terminal output is empty without a chunked view', () => {
+  expect(shellTerminalOutputChunks(tool({}))).toEqual([])
+  expect(shellTerminalOutputChunks(tool({ view: { kind: 'yield_wakeup' } }))).toEqual([])
 })
 
-function tool(options: { outputText: string; metadata?: unknown }): Extract<Block, { type: 'tool_call' }> {
+function tool(options: { view?: unknown }): Extract<Block, { type: 'tool_call' }> {
   return {
     type: 'tool_call',
     id: 'tool-1',
@@ -84,8 +53,8 @@ function tool(options: { outputText: string; metadata?: unknown }): Extract<Bloc
     input: '{}',
     status: 'completed',
     streamingOutput: [],
-    output: [{ type: 'text', text: options.outputText }],
-    metadata: options.metadata ?? null,
+    output: [{ type: 'text', text: 'status: exited' }],
+    view: options.view ?? null,
   }
 }
 
