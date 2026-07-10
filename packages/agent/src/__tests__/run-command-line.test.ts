@@ -109,6 +109,26 @@ test('AgentServer.runCommandLine runs a registered command with full stdout/stde
   await server.close()
 })
 
+test('AgentServer.runCommandLine delivers newline-terminated stdin byte-identical', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-stdin-'))
+  const harness = harnessWithCommands(cwd, () => [greetCommand()])
+  const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
+  const client = server.client()
+  const sessionId = globalThis.crypto.randomUUID()
+  await client.open(selection, cwd, sessionId)
+
+  // What a real pipe delivers: `printf 'line1\nline2\n' | greet hello x`.
+  const piped = await server.runCommandLine(sessionId, 'greet', ['hello', 'x'], { cwd, stdin: 'line1\nline2\n' })
+  expect(piped.stdout).toBe('hello x\nstdin:line1\nline2\n')
+
+  // Stdin without a trailing newline gains exactly one (heredoc normalization).
+  const bare = await server.runCommandLine(sessionId, 'greet', ['hello', 'x'], { cwd, stdin: 'abc' })
+  expect(bare.stdout).toBe('hello x\nstdin:abc\n')
+
+  await client.close()
+  await server.close()
+})
+
 test('AgentServer.runCommandLine rejects unknown sessions', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-missing-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
