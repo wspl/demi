@@ -162,6 +162,40 @@ test('OpenAI Responses request body maps text, tools, tool replay, service tier,
   expect(body.stream_options).toBeUndefined()
 })
 
+test('responses tool results with images add a follow-up user message carrying the media', () => {
+  const body = buildOpenAIResponsesBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'view it' }] },
+        { type: 'tool_use', modelId: 'gpt-test', toolUseId: 'call-1|fc-1', toolName: 'shell_exec', input: { script: 'demi read shot.png' } },
+        {
+          type: 'tool_result',
+          toolUseId: 'call-1|fc-1',
+          isError: false,
+          output: [
+            { type: 'text', text: '<binary stdout: 75 bytes>' },
+            { type: 'image', source: { mediaType: 'image/png', data: 'QUFBQQ==' } },
+          ],
+        },
+      ],
+    }),
+    undefined,
+  )
+
+  expect(body.input[2]).toEqual({
+    type: 'function_call_output',
+    call_id: 'call-1',
+    output: '<binary stdout: 75 bytes>\n[image:image/png]',
+  })
+  expect(body.input[3]).toEqual({
+    role: 'user',
+    content: [
+      { type: 'input_text', text: '[media returned by tool call call-1]' },
+      { type: 'input_image', image_url: 'data:image/png;base64,QUFBQQ==', detail: 'auto' },
+    ],
+  })
+})
+
 test('OpenAI Responses stream maps thinking, split text, tool call arguments, and usage', async () => {
   const reasoning = { type: 'reasoning' as const, id: 'rs-1', encrypted_content: 'enc' }
   const events = await collect(mapOpenAIResponseStream(eventsFromData([
