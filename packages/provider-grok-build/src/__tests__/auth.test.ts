@@ -3,7 +3,8 @@ import { Buffer } from 'node:buffer'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { FileGrokAuthStore, isAbandonedGrokAuthLock, selectAuthEntry, redactSecretText } from '../auth'
+import { redactCredentialText } from '@demicodes/provider'
+import { FileGrokAuthStore, isAbandonedGrokAuthLock, selectAuthEntry } from '../auth'
 
 test('FileGrokAuthStore resolves OIDC session from Grok CLI auth.json shape', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'demi-grok-auth-'))
@@ -95,7 +96,7 @@ test('FileGrokAuthStore reports missing auth without leaking secrets', async () 
   try {
     const store = new FileGrokAuthStore({ grokHome: dir })
     expect(await store.status()).toMatchObject({ status: 'unauthenticated' })
-    expect(redactSecretText('Bearer super-secret-token-value')).toBe('Bearer [REDACTED]')
+    expect(redactCredentialText('Bearer super-secret-token-value')).toBe('Bearer [REDACTED]')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

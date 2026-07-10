@@ -2,6 +2,7 @@ import { isRecord, stringOrNull } from '@demicodes/utils'
 import {
   clampUsedPercent,
   createProviderQuota,
+  numberHeader,
   severityFromUsedPercent,
   unixSecondsToIso,
   type ProviderQuota,
@@ -140,7 +141,7 @@ export function observeClaudeRateLimitHeaders(headers: Headers | undefined): Pro
   const overageUtil = headers.get('anthropic-ratelimit-unified-overage-period-channel-utilization')
   if (!status && !reset && !claim && !overageUtil) return null
 
-  const usedPercent = clampUsedPercent(overageUtil != null ? Number(overageUtil) : null)
+  const usedPercent = clampUsedPercent(numberHeader(headers, 'anthropic-ratelimit-unified-overage-period-channel-utilization'))
   const windows: ProviderQuotaWindow[] = [
     {
       id: 'unified',

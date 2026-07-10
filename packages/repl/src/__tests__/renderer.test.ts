@@ -173,7 +173,7 @@ test('REPL renderer prints phase, queue, shell output, audit, and progress frame
   renderEvent(renderer, {
     type: 'audit',
     events: [
-      { kind: 'registered-command', name: 'editor', args: ['list'], exitCode: 0 },
+      { kind: 'registered-command', name: 'demi', args: ['read'], exitCode: 0 },
       { kind: 'system-command', name: 'bun', args: ['test'], cwd: '/tmp/project', exitCode: 1 },
     ],
   })
@@ -196,7 +196,7 @@ test('REPL renderer prints phase, queue, shell output, audit, and progress frame
   expect(text).toContain('queue> 1 pending')
   expect(text).toContain('shell[command-1] stdout> out')
   expect(text).toContain('shell[command-1] stderr> err')
-  expect(text).toContain('audit> registered editor list -> 0')
+  expect(text).toContain('audit> registered demi read -> 0')
   expect(text).toContain('audit> system bun test -> 1')
   expect(text).toContain('progress> shell[shell-1] running (yield)')
   expect(text).toContain('progress> plain progress')
