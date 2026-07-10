@@ -247,11 +247,11 @@ export class BashEnvironment {
         ? this.createShell(input.agentSessionId)
         : this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
-    // Expose the owning agent session id to registered commands through the shell env,
-    // so per-conversation tools can resolve their caller/context (a product harness keys
-    // its identity/routing maps off this). Absent for anonymous execs.
+    // The command scope id is already exposed to registered commands and spawned
+    // processes as DEMI_SESSION_ID (exported at shell creation); per-conversation
+    // tools key their identity/routing maps off that. Here we only refresh the
+    // per-exec extra env a product harness may inject.
     if (input.agentSessionId) {
-      session.state.env.set('DEMI_AGENT_SESSION_ID', input.agentSessionId)
       const extraEnv = this.execEnv?.(input.agentSessionId)
       if (extraEnv) {
         const exported = session.state.exportedVars ?? new Set<string>()

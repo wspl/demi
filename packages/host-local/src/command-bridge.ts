@@ -93,8 +93,9 @@ function postRun(socketPath, body) {
 
 async function main() {
   const socketPath = process.env.DEMI_COMMAND_BRIDGE_SOCK
-  // Shell sessions export DEMI_SESSION_ID as the agent session id (command scope).
-  const commandScopeId = process.env.DEMI_AGENT_SESSION_ID || process.env.DEMI_SESSION_ID
+  // Shell sessions export DEMI_SESSION_ID as the command scope id (the agent
+  // session id for agent-owned shells).
+  const commandScopeId = process.env.DEMI_SESSION_ID
   if (!socketPath || !commandScopeId) {
     process.stderr.write('command bridge: DEMI_COMMAND_BRIDGE_SOCK / session id not set in this shell\\n')
     process.exit(1)
