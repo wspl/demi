@@ -12,6 +12,7 @@ import {
   normalizeErrorCode,
   providerErrorFromUnknown,
   redactSecretText,
+  toolResultContentToText,
   withProviderId,
   type AgentProvider,
   type InferenceItem,
@@ -652,9 +653,6 @@ function userContentToOpenAI(content: UserContentBlock[]): string | OpenAIUserCo
   return parts
 }
 
-function toolResultContentToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[image:${block.source.mediaType}]`)).join('\n')
-}
 
 function toolToOpenAITool(tool: ToolDefinition): OpenAIChatTool {
   return {

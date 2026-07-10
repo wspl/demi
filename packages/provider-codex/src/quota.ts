@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { isRecord } from '@demicodes/utils'
 import {
   clampUsedPercent,
+  numberHeader,
   createProviderQuota,
   severityFromUsedPercent,
   unixSecondsToIso,
@@ -132,12 +133,5 @@ function headerBag(headers: Headers, kind: 'primary' | 'secondary'): Record<stri
     windowMinutes: headers.get(`x-codex-${kind}-window-minutes`),
     resetAt: headers.get(`x-codex-${kind}-reset-at`),
   }
-}
-
-function numberHeader(headers: Headers, name: string): number | null {
-  const raw = headers.get(name)
-  if (raw == null || raw === '') return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : null
 }
 

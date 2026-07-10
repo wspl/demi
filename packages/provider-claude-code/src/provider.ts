@@ -10,6 +10,7 @@ import {
   type ModelPolicy,
   type Provider,
   type ProviderEvent,
+  toolResultContentToText,
   type ProviderQuota,
 } from '@demicodes/provider'
 import { coldStartInputMessages, controlResponse, inferenceItemToClaudeMessage, toolResultsToClaudeMessage } from './jsonl'
@@ -469,9 +470,6 @@ function isControlResponseFor(value: unknown, requestId: string): boolean {
   return value.response.request_id === requestId && value.response.subtype === 'success'
 }
 
-function toolResultContentToText(output: ToolResultContentBlock[]): string {
-  return output.map((block) => (block.type === 'text' ? block.text : `[${block.type}:${block.source.mediaType}]`)).join('\n')
-}
 
 function toolResultContentToMcp(output: ToolResultContentBlock[]): Array<Record<string, unknown>> {
   return output.map((block) => {
