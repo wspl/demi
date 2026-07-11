@@ -109,6 +109,7 @@ watch(
               :conversation-id="props.conversationId"
               :is-thinking-streaming="isStreamingThinkingAt(item.index)"
               :thinking-ended-at="thinkingEndedAt(item.index)"
+              :recoverable="item.index === renderBlocks.length - 1 && props.phase === 'idle'"
               @continue="emit('continue')"
               @retry="emit('retry')"
               @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
