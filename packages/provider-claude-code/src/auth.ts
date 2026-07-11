@@ -49,7 +49,7 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
 
   async resolveAccess(): Promise<ClaudeCodeOAuthAccess> {
     if (this.accessToken) {
-      return { accessToken: this.accessToken }
+      return { accessToken: this.accessToken, source: 'static' }
     }
     if (this.oauthFile) {
       try {
@@ -59,6 +59,7 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
         if (!accessToken) throw new ClaudeCodeAuthError('auth_missing', `No accessToken in ${this.oauthFile}`)
         return {
           accessToken,
+          source: 'file',
           subscriptionType: nonEmptyString(raw.subscriptionType) ?? null,
           rateLimitTier: nonEmptyString(raw.rateLimitTier) ?? null,
         }
@@ -72,7 +73,7 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     }
 
     const fromEnv = nonEmptyString(process.env.CLAUDE_CODE_OAUTH_TOKEN)
-    if (fromEnv) return { accessToken: fromEnv }
+    if (fromEnv) return { accessToken: fromEnv, source: 'env' }
 
     if (process.platform === 'darwin') {
       try {
@@ -91,6 +92,7 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
         if (!accessToken) throw new ClaudeCodeAuthError('auth_missing', 'Claude Code keychain missing accessToken')
         return {
           accessToken,
+          source: 'keychain',
           subscriptionType: nonEmptyString(oauth.subscriptionType) ?? null,
           rateLimitTier: nonEmptyString(oauth.rateLimitTier) ?? null,
         }
