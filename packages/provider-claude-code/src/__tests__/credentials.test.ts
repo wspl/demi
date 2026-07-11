@@ -10,6 +10,7 @@ import {
 } from '../credentials'
 import { StaticClaudeCodeAuthStore } from '../auth'
 import { buildClaudeEnv } from '../cli'
+import { injectableCliToken } from '../oauth'
 
 test('claude credentials add/setActive and pool-aware resolve', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-claude-cred-'))
@@ -35,6 +36,13 @@ test('claude credentials add/setActive and pool-aware resolve', async () => {
   }
 })
 
+test('injectableCliToken never injects keychain-sourced tokens', () => {
+  expect(injectableCliToken({ accessToken: 'tok', source: 'keychain' })).toBeNull()
+  expect(injectableCliToken({ accessToken: 'tok', source: 'static' })).toBe('tok')
+  expect(injectableCliToken({ accessToken: 'tok', source: 'file' })).toBe('tok')
+  expect(injectableCliToken({ accessToken: 'tok', source: 'env' })).toBe('tok')
+})
+
 test('buildClaudeEnv overlays CLAUDE_CODE_OAUTH_TOKEN', () => {
   const env = buildClaudeEnv({ PATH: '/bin' }, { oauthAccessToken: 'sk-test' })
   expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-test')
@@ -56,7 +64,7 @@ test('createClaudeCodeProvider wires credentials and auth status', async () => {
 
 test('custom authStore skips credentials surface', () => {
   const provider = createClaudeCodeProvider({
-    authStore: new StaticClaudeCodeAuthStore({ accessToken: 'x' }),
+    authStore: new StaticClaudeCodeAuthStore({ accessToken: 'x', source: 'static' }),
   })
   expect(provider.credentials).toBeUndefined()
 })
