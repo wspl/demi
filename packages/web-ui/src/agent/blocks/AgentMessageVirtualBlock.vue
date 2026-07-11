@@ -16,6 +16,10 @@ const props = defineProps<{
   conversationId: string
   isThinkingStreaming: boolean
   thinkingEndedAt?: string | null
+  /** Whether this block may offer recovery actions (Continue) — true only for
+   * the conversation's tail block while the session is idle, so stale error
+   * blocks never present a second, competing recovery entry point. */
+  recoverable: boolean
 }>()
 
 const emit = defineEmits<{
@@ -67,12 +71,14 @@ const attrs = useAttrs()
       <ErrorBlock
         :message="block.message"
         :code="block.code"
+        :recoverable="props.recoverable"
         @continue="emit('continue')"
         @retry="emit('retry')"
       />
     </div>
     <div v-else-if="block.type === 'abort'" class="px-[var(--agent-pad-x,2rem)]">
       <AbortedBlock
+        :recoverable="props.recoverable"
         @continue="emit('continue')"
         @retry="emit('retry')"
       />
