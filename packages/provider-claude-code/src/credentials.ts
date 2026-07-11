@@ -148,6 +148,7 @@ export function createClaudeCodeCredentials(
         return importAccess(
           {
             accessToken: input.accessToken,
+            source: 'static',
             subscriptionType: typeof input.subscriptionType === 'string' ? input.subscriptionType : null,
             rateLimitTier: typeof input.rateLimitTier === 'string' ? input.rateLimitTier : null,
           },
@@ -159,6 +160,7 @@ export function createClaudeCodeCredentials(
         return importAccess(
           {
             accessToken: oauth.accessToken as string,
+            source: 'static',
             subscriptionType: typeof oauth.subscriptionType === 'string' ? oauth.subscriptionType : null,
             rateLimitTier: typeof oauth.rateLimitTier === 'string' ? oauth.rateLimitTier : null,
           },

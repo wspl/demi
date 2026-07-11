@@ -17,6 +17,7 @@ import { FileClaudeCodeAuthStore } from './auth'
 import { createClaudeCodeCredentials, openClaudeCodeCredentialPool, PoolAwareClaudeCodeAuthStore } from './credentials'
 import { coldStartInputMessages, controlResponse, inferenceItemToClaudeMessage, toolResultsToClaudeMessage } from './jsonl'
 import { listClaudeCodeModels } from './models'
+import { injectableCliToken } from './oauth'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
 import { createClaudeCodeQuota } from './quota'
 import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
@@ -83,8 +84,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         resolveOAuthAccessToken: options.authStore
           ? async () => {
               try {
-                const access = await options.authStore!.resolveAccess()
-                return access.accessToken
+                return injectableCliToken(await options.authStore!.resolveAccess())
               } catch {
                 return null
               }
