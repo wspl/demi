@@ -129,7 +129,18 @@ export class ConversationRuntime {
   }
 
   async resume(): Promise<void> {
-    await (await this.ensureOpen()).resume()
+    const client = await this.ensureOpen()
+    // Optimistic: the server only reports `running` after a round-trip, which
+    // reads as a dead Continue button in the meantime. Flip immediately; the
+    // next phase_changed event carries the real phase either way, and a failed
+    // resume rolls back so the recovery action reappears.
+    this.state.phase = 'running'
+    try {
+      await client.resume()
+    } catch (error) {
+      this.state.phase = 'idle'
+      throw error
+    }
   }
 
   async compact(): Promise<void> {
