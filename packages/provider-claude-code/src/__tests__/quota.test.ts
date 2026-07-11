@@ -23,7 +23,7 @@ test('mapClaudeUsagePayload maps five_hour and seven_day', () => {
         },
       ],
     },
-    { accessToken: 'tok', subscriptionType: 'max', rateLimitTier: 'default_claude_max_20x' },
+    { accessToken: 'tok', source: 'static' as const, subscriptionType: 'max', rateLimitTier: 'default_claude_max_20x' },
   )
   expect(snap.plan?.id).toBe('max')
   expect(snap.windows.find((w) => w.id === 'five_hour')?.usedPercent).toBe(4)
@@ -33,7 +33,7 @@ test('mapClaudeUsagePayload maps five_hour and seven_day', () => {
 
 test('createClaudeCodeQuota probes with mock fetch', async () => {
   const quota = createClaudeCodeQuota({
-    resolveAccess: async () => ({ accessToken: 'tok', subscriptionType: 'pro' }),
+    resolveAccess: async () => ({ accessToken: 'tok', source: 'static' as const, subscriptionType: 'pro' }),
     fetch: async () =>
       new Response(
         JSON.stringify({
