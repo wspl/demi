@@ -17,3 +17,9 @@ export {
   openGrokCredentialPool,
   PoolAwareGrokAuthStore,
 } from './credentials'
+export {
+  runGrokDeviceLogin,
+  type GrokDeviceLoginOptions,
+  type GrokDeviceLoginPending,
+  type GrokDeviceLoginResult,
+} from './device-login'
