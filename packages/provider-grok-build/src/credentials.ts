@@ -8,7 +8,7 @@ import type {
   ProviderCredentialsCapability,
   ProviderQuota,
 } from '@demicodes/provider'
-import { isRecord, nonEmptyString } from '@demicodes/utils'
+import { errorMessage, isRecord, nonEmptyString } from '@demicodes/utils'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -21,10 +21,10 @@ import {
   type GrokAuthEntry,
   type GrokAuthStore,
 } from './auth'
+import { runGrokDeviceLogin } from './device-login'
 import {
   FileCredentialPool,
   credentialIdFromIdentity,
-  runVendorLoginCommand,
   type CredentialEntryMeta,
 } from '@demicodes/provider/credentials-pool'
 
@@ -83,14 +83,12 @@ export function createGrokBuildCredentials(
   authStore: GrokAuthStore,
   options: {
     grokHome?: string
-    loginCommand?: string
-    loginArgs?: string[]
     quota?: ProviderQuota | null
+    /** Injectable fetch for the device-code login flow (tests). */
+    loginFetch?: typeof fetch
   } = {},
 ): ProviderCredentials {
   const vendorHome = options.grokHome ?? defaultGrokHome()
-  const loginCommand = options.loginCommand ?? 'grok'
-  const loginArgs = options.loginArgs ?? ['login']
 
   const capability = (): ProviderCredentialsCapability => ({
     mode: 'supported',
@@ -166,12 +164,21 @@ export function createGrokBuildCredentials(
     list: () => pool.list(),
     getActive,
     setActive,
+    // Native RFC 8628 device flow: pending material streams out via onPending, the completed
+    // entry never touches the vendor home and is imported straight into the pool.
     beginLogin: async (loginOptions?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult> => {
-      const result = await runVendorLoginCommand(loginCommand, loginArgs, { signal: loginOptions?.signal })
-      if (result.status === 'completed') return { status: 'completed' }
-      if (result.status === 'cancelled') return { status: 'cancelled' }
-      if (result.status === 'unavailable') return { status: 'unavailable', message: result.message ?? 'Login unavailable' }
-      return { status: 'failed', message: result.message ?? 'Login failed' }
+      try {
+        const { entryKey, entry } = await runGrokDeviceLogin({
+          signal: loginOptions?.signal,
+          onPending: loginOptions?.onPending,
+          fetch: options.loginFetch,
+        })
+        const info = await importEntry(entryKey, entry, 'login:device')
+        return { status: 'completed', credentialId: info.id }
+      } catch (error) {
+        if (loginOptions?.signal?.aborted) return { status: 'cancelled' }
+        return { status: 'failed', message: errorMessage(error) }
+      }
     },
     importDefault: async () => {
       const authFile = join(vendorHome, 'auth.json')
