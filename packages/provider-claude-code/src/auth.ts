@@ -1,7 +1,7 @@
 import type { ProviderAuthState } from '@demicodes/provider'
 import { isRecord, nonEmptyString } from '@demicodes/utils'
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import process from 'node:process'
 import type { ClaudeCodeOAuthAccess } from './oauth'
@@ -13,11 +13,18 @@ export interface ClaudeCodeAuthStore {
   resolveAccess(options?: { forceRefresh?: boolean }): Promise<ClaudeCodeOAuthAccess>
 }
 
+/** Renews a pool oauth secret (wired to `refreshClaudeCodeSecret`; injectable in tests). */
+export type ClaudeCodeSecretRefresh = (secret: Record<string, unknown>) => Promise<Record<string, unknown>>
+
+const OAUTH_EXPIRY_SKEW_MS = 5 * 60 * 1000
+
 export interface FileClaudeCodeAuthStoreOptions {
   /** Optional path to oauth.json (pool entry). */
   oauthFile?: string
   /** Prefer this token over env/keychain when set (tests / static). */
   accessToken?: string | null
+  /** Renews the oauth file when its access token nears expiry. */
+  refresh?: ClaudeCodeSecretRefresh
 }
 
 /**
@@ -26,10 +33,12 @@ export interface FileClaudeCodeAuthStoreOptions {
 export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
   private readonly oauthFile: string | null
   private readonly accessToken: string | null
+  private readonly refresh: ClaudeCodeSecretRefresh | null
 
   constructor(options: FileClaudeCodeAuthStoreOptions = {}) {
     this.oauthFile = options.oauthFile ?? null
     this.accessToken = nonEmptyString(options.accessToken) ?? null
+    this.refresh = options.refresh ?? null
   }
 
   async status(): Promise<ProviderAuthState> {
@@ -53,7 +62,14 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     }
     if (this.oauthFile) {
       try {
-        const raw = JSON.parse(await readFile(this.oauthFile, 'utf8')) as unknown
+        let raw = JSON.parse(await readFile(this.oauthFile, 'utf8')) as unknown
+        if (!isRecord(raw)) throw new ClaudeCodeAuthError('auth_invalid', `Invalid OAuth file: ${this.oauthFile}`)
+        const expiresAt = nonEmptyString(raw.expiresAt)
+        const isExpiring = expiresAt !== undefined && Date.parse(expiresAt) - Date.now() < OAUTH_EXPIRY_SKEW_MS
+        if (isExpiring && nonEmptyString(raw.refreshToken) && this.refresh) {
+          raw = await this.refresh(raw)
+          await writeFile(this.oauthFile, `${JSON.stringify(raw, null, 2)}\n`)
+        }
         if (!isRecord(raw)) throw new ClaudeCodeAuthError('auth_invalid', `Invalid OAuth file: ${this.oauthFile}`)
         const accessToken = nonEmptyString(raw.accessToken) ?? nonEmptyString(raw.access_token)
         if (!accessToken) throw new ClaudeCodeAuthError('auth_missing', `No accessToken in ${this.oauthFile}`)
