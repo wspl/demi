@@ -28,15 +28,15 @@ Three subscription providers reuse vendor CLI / desktop login material:
 - After switch: `auth.status`, `quota` (probe/observe/latest), and subsequent inference use the new active material.
 - Secrets never cross AgentClient / browser-visible frames.
 - Zero-config default: if demi has no pool yet, behavior matches today (read vendor default path / env / keychain as the sole active credential).
-- **Invoke vendor login**: product can ask demi to start the vendor’s own login flow (CLI / browser the vendor already uses). Demi does **not** complete OAuth or mint tokens itself.
+- **Invoke vendor login**: product can ask demi to start a login flow. For codex the flow is demi-native device-code login (public protocol: user confirms at `auth.openai.com/codex/device` from any browser on any device; pending URL + one-time code stream out via `onPending`, the completed material imports straight into the pool and returns its `credentialId`). grok-build uses the same native pattern over auth.x.ai's standard RFC 8628 device grant. claude-code uses a copy-back OAuth flow: `onPending` carries the authorize URL (`requiresCodeInput: true`), the product collects the pasted "code#state" string via `promptForCode`, and demi finishes the PKCE exchange; pool entries carry the refresh token and renew on expiry.
 - **Import** vendor material into the pool and receive a stable `credentialId` (login itself does not return an id).
 
 ### Non-goals
 
 - Multi-instance `Provider` ids for accounts.
 - Per-session or per-turn credential override on `ProviderSelection` / agent frames.
-- Demi-owned OAuth client, device-code UI, or token endpoint handling (that stays with Codex / Grok / Claude CLIs or official tools).
-- Login API returning a new `credentialId` (id appears only after **import** / **add**).
+- Demi-owned OAuth **registration** (client ids are the vendors' public clients). All three providers drive their public login protocols natively — headless and remote hosts cannot run a vendor browser login, so demi never spawns vendor CLIs for login anymore.
+- (removed) all native login flows import into the pool and return the `credentialId` directly; `importDefault` / `add` remain for material created outside demi.
 - API-key providers (`openai`, `anthropic`) in this design (they already take explicit keys; out of scope unless a later product wants the same pool shape).
 - Bidirectional continuous sync with vendor CLIs as a product feature (import is one-shot or explicit; optional export is not required).
 
@@ -47,7 +47,7 @@ Three subscription providers reuse vendor CLI / desktop login material:
 | Switch granularity | **Process-global active** per provider id |
 | How products switch accounts | Call `provider.credentials.setActive(id)` (or control RPC wrapping it) |
 | How products switch backends | Existing `ProviderSelection` / `set_provider` |
-| How a new account enters the system | **Invoke vendor login** → user finishes in vendor tool → **import** default (or `add`) → pool entry + `id` |
+| How a new account enters the system | `beginLogin` native flow (codex / grok-build: device code; claude-code: copy-back code via `promptForCode`) → pool entry + `id` returned directly; **import** default / `add` for material created outside demi |
 | Does login return an id? | **No** — only import/add returns `ProviderCredentialInfo` with `id` |
 | Where non-active material lives | Demi-managed pool under `$DEMI_HOME` / `~/.demi` |
 | What inference reads | Always the **active** material via existing AuthStore / env resolution path |

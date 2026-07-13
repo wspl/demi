@@ -22,3 +22,9 @@ export {
   openClaudeCodeCredentialPool,
   PoolAwareClaudeCodeAuthStore,
 } from './credentials'
+export {
+  runClaudeCodeLogin,
+  refreshClaudeCodeSecret,
+  type ClaudeCodeLoginOptions,
+  type ClaudeCodeOAuthSecret,
+} from './login'

@@ -152,19 +152,43 @@ export interface ProviderCredentialActive {
   status: ProviderAuthState
 }
 
+/**
+ * User-facing material issued mid-flow by a device-code login: the product
+ * relays it to the user, who completes login from any browser on any device.
+ */
+export interface ProviderCredentialLoginPending {
+  /** URL the user opens to confirm the login. */
+  verificationUrl: string
+  /** One-time code the user enters at the verification URL (device-code flows). */
+  userCode?: string | null
+  /** ISO-8601 expiry of the code, when the vendor exposes one. */
+  expiresAt?: string | null
+  /**
+   * True when the vendor displays a code AFTER approval that the user must
+   * bring back; the product collects it via `promptForCode`.
+   */
+  requiresCodeInput?: boolean
+}
+
 export interface ProviderCredentialLoginOptions {
-  /** Abort the spawned login process. */
+  /** Abort the login flow. */
   signal?: AbortSignal
+  /** Fires once when the flow issues user-facing material (device-code login). */
+  onPending?: (pending: ProviderCredentialLoginPending) => void
+  /** Collects the code the user copied back from the vendor page (`requiresCodeInput` flows). */
+  promptForCode?: () => Promise<string>
   /** Prefer browser vs device/CLI when the vendor supports both; best-effort. */
   preferBrowser?: boolean
 }
 
 /**
- * Login invoke result — status of the *vendor* process only, not a pool id.
- * Demi does not complete OAuth; product should `importDefault` afterwards.
+ * Login invoke result. Providers with a public device-code protocol (codex)
+ * complete the flow natively, import the material into the pool, and return
+ * the pool `credentialId`. CLI-spawning providers report vendor process status
+ * only; the product should `importDefault` afterwards.
  */
 export type ProviderCredentialLoginResult =
-  | { status: 'completed' }
+  | { status: 'completed'; credentialId?: string }
   | { status: 'cancelled' }
   | { status: 'unavailable'; message: string }
   | { status: 'failed'; message: string }
