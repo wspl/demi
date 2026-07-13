@@ -28,15 +28,14 @@ Three subscription providers reuse vendor CLI / desktop login material:
 - After switch: `auth.status`, `quota` (probe/observe/latest), and subsequent inference use the new active material.
 - Secrets never cross AgentClient / browser-visible frames.
 - Zero-config default: if demi has no pool yet, behavior matches today (read vendor default path / env / keychain as the sole active credential).
-- **Invoke vendor login**: product can ask demi to start a login flow. For codex the flow is demi-native device-code login (public protocol: user confirms at `auth.openai.com/codex/device` from any browser on any device; pending URL + one-time code stream out via `onPending`, the completed material imports straight into the pool and returns its `credentialId`). grok-build uses the same native pattern over auth.x.ai's standard RFC 8628 device grant. claude-code uses a copy-back OAuth flow: `onPending` carries the authorize URL (`requiresCodeInput: true`), the product collects the pasted "code#state" string via `promptForCode`, and demi finishes the PKCE exchange; pool entries carry the refresh token and renew on expiry.
-- **Import** vendor material into the pool and receive a stable `credentialId` (login itself does not return an id).
+- **Native login**: product can ask demi to run a login flow. For codex the flow is demi-native device-code login (public protocol: user confirms at `auth.openai.com/codex/device` from any browser on any device; pending URL + one-time code stream out via `onPending`, the completed material imports straight into the pool and returns its `credentialId`). grok-build uses the same native pattern over auth.x.ai's standard RFC 8628 device grant. claude-code uses a copy-back OAuth flow: `onPending` carries the authorize URL (`requiresCodeInput: true`), the product collects the pasted "code#state" string via `promptForCode`, and demi finishes the PKCE exchange; pool entries carry the refresh token and renew on expiry.
+- **Import** material created outside demi into the pool (`importDefault` snapshots the vendor default path / keychain; `add` registers product-supplied material). Both mint a stable `credentialId`.
 
 ### Non-goals
 
 - Multi-instance `Provider` ids for accounts.
 - Per-session or per-turn credential override on `ProviderSelection` / agent frames.
-- Demi-owned OAuth **registration** (client ids are the vendors' public clients). All three providers drive their public login protocols natively — headless and remote hosts cannot run a vendor browser login, so demi never spawns vendor CLIs for login anymore.
-- (removed) all native login flows import into the pool and return the `credentialId` directly; `importDefault` / `add` remain for material created outside demi.
+- Demi-owned OAuth **registration** (client ids are the vendors' public clients). All three providers drive their public login protocols natively — headless and remote hosts cannot run a vendor browser login, so demi never spawns vendor CLIs for login.
 - API-key providers (`openai`, `anthropic`) in this design (they already take explicit keys; out of scope unless a later product wants the same pool shape).
 - Bidirectional continuous sync with vendor CLIs as a product feature (import is one-shot or explicit; optional export is not required).
 
@@ -47,8 +46,7 @@ Three subscription providers reuse vendor CLI / desktop login material:
 | Switch granularity | **Process-global active** per provider id |
 | How products switch accounts | Call `provider.credentials.setActive(id)` (or control RPC wrapping it) |
 | How products switch backends | Existing `ProviderSelection` / `set_provider` |
-| How a new account enters the system | `beginLogin` native flow (codex / grok-build: device code; claude-code: copy-back code via `promptForCode`) → pool entry + `id` returned directly; **import** default / `add` for material created outside demi |
-| Does login return an id? | **No** — only import/add returns `ProviderCredentialInfo` with `id` |
+| How a new account enters the system | `beginLogin` native flow (codex / grok-build: device code; claude-code: copy-back code via `promptForCode`) → pool entry + `credentialId` returned directly; `importDefault` / `add` for material created outside demi |
 | Where non-active material lives | Demi-managed pool under `$DEMI_HOME` / `~/.demi` |
 | What inference reads | Always the **active** material via existing AuthStore / env resolution path |
 | Concurrent sessions | All sessions on that provider share the same active account |
@@ -60,21 +58,22 @@ Three subscription providers reuse vendor CLI / desktop login material:
 [unauthenticated or wrong account]
         │
         ▼
- credentials.beginLogin()     ← invoke vendor login only (no OAuth completion in demi)
+ credentials.beginLogin({ onPending, promptForCode? })
         │
-        │  user completes login in vendor tool
-        │  material lands in ~/.codex | ~/.grok | keychain/env
+        │  onPending → product relays verificationUrl (+ userCode) to the user,
+        │  who confirms from any browser on any device;
+        │  copy-back flows collect the pasted code via promptForCode
         ▼
- credentials.importDefault()  ← snapshot into demi pool; returns { id, label, … }
+ { status: 'completed', credentialId }   ← material imported into the pool
         │
         ▼
- credentials.setActive(id)    ← process-global switch (if import did not already activate)
+ credentials.setActive(id)    ← process-global switch (first login auto-activates)
         │
         ▼
  auth / quota / inference use active
 ```
 
-Adding a **second** account: beginLogin again (user logs into the other account in the vendor tool) → importDefault again → second id → setActive as needed. Product may need to warn that vendor default path is single-slot; import snapshots before overwriting.
+Adding a **second** account: beginLogin again (user confirms with the other account) → second `credentialId` → setActive as needed. `importDefault` / `add` cover material created outside demi (vendor CLI logins, env tokens, keychain).
 
 ## 4. Public contract (`@demicodes/provider`)
 
@@ -115,18 +114,16 @@ export interface ProviderCredentials {
   setActive(credentialId: string): Promise<ProviderCredentialActive> | ProviderCredentialActive
 
   /**
-   * Invoke the vendor’s own login flow (e.g. spawn `codex login` / `grok login` /
-   * `claude auth login` with inherited TTY or documented browser handoff).
-   * Does **not** complete OAuth inside demi and does **not** return a credential id.
-   * When the process exits successfully, vendor default material may be updated;
-   * product should call `importDefault` (or re-auth status) afterwards.
+   * Run the vendor's public login protocol natively (device code or copy-back
+   * OAuth), surfacing user-facing material via `onPending`. On completion the
+   * material is imported into the pool and its `credentialId` is returned.
    */
   beginLogin?(options?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult>
 
   /**
    * Snapshot current vendor-default material into the demi pool.
    * Assigns a stable `id` and returns public metadata (no secrets).
-   * Typically used after `beginLogin` or after the user logged in outside demi.
+   * For material created outside demi (vendor CLI login, env, keychain).
    */
   importDefault?(): Promise<ProviderCredentialInfo>
 
@@ -141,20 +138,29 @@ export interface ProviderCredentials {
   remove?(credentialId: string): Promise<void>
 }
 
-export interface ProviderCredentialLoginOptions {
-  /** Abort the spawned login process. */
-  signal?: AbortSignal
-  /** Prefer browser vs device/CLI when the vendor supports both; best-effort. */
-  preferBrowser?: boolean
+/** User-facing material issued mid-flow; the product relays it to the user. */
+export interface ProviderCredentialLoginPending {
+  verificationUrl: string
+  /** One-time code the user enters at the verification URL (device-code flows). */
+  userCode?: string | null
+  expiresAt?: string | null
+  /** True when the user must bring a code back (`promptForCode` flows). */
+  requiresCodeInput?: boolean
 }
 
-/**
- * Login invoke result — status of the *vendor* process only, not a pool id.
- */
+export interface ProviderCredentialLoginOptions {
+  /** Abort the login flow. */
+  signal?: AbortSignal
+  /** Fires once when the flow issues user-facing material. */
+  onPending?: (pending: ProviderCredentialLoginPending) => void
+  /** Collects the code the user copied back from the vendor page. */
+  promptForCode?: () => Promise<string>
+}
+
 export type ProviderCredentialLoginResult =
-  | { status: 'completed' } // vendor CLI exited 0; material may now be importable
+  | { status: 'completed'; credentialId: string } // material imported into the pool
   | { status: 'cancelled' }
-  | { status: 'unavailable'; message: string } // no CLI / unsupported host
+  | { status: 'unavailable'; message: string }
   | { status: 'failed'; message: string }
 
 /** Provider-specific add payloads; widen per kit without putting secrets on the shared type surface. */
@@ -167,7 +173,7 @@ export type ProviderCredentialsCapability =
   | { mode: 'none' }
   | {
       mode: 'supported'
-      /** Can spawn / open vendor login (`beginLogin`). */
+      /** Can run the vendor's native login flow (`beginLogin`). */
       canBeginLogin?: boolean
       /** Can import from the vendor default location into the pool. */
       canImportDefault?: boolean
@@ -180,9 +186,8 @@ export type ProviderCredentialsCapability =
 
 **Id rules**
 
-- `beginLogin` → **no** id.
-- `importDefault` / `add` → **mint** stable id (e.g. content hash of account identity claims, or uuid if unknown); return in `ProviderCredentialInfo`.
-- Re-importing the same account should ideally upsert the same id (match on account email / accountId / entryKey) rather than duplicate rows.
+- `beginLogin` / `importDefault` / `add` all **mint** a stable id (e.g. content hash of account identity claims, or uuid if unknown).
+- Re-importing or re-logging-in the same account should upsert the same id (match on account email / accountId / entryKey) rather than duplicate rows.
 
 ### 4.2 `Provider` shell
 
@@ -358,12 +363,12 @@ Add control methods (names illustrative):
 - `listCredentials` `{ providerId }` → `ProviderCredentialInfo[]`
 - `getActiveCredential` `{ providerId }` → `ProviderCredentialActive`
 - `setActiveCredential` `{ providerId, credentialId }` → `ProviderCredentialActive`
-- `beginCredentialLogin` `{ providerId }` → `ProviderCredentialLoginResult` (no id; may be long-running / local-only)
+- `beginCredentialLogin` `{ providerId }` → `ProviderCredentialLoginResult` (long-running; pending material streams to the product via `onPending`)
 - `importDefaultCredential` `{ providerId }` → `ProviderCredentialInfo`
 
 Wire to `provider.credentials`. **Never** return secret fields.
 
-`beginCredentialLogin` is inherently **local host** (needs TTY/browser); remote multi-tenant servers may report `unavailable`.
+`beginCredentialLogin` works on headless and remote hosts: the user completes the vendor confirmation from any browser on any device.
 
 Web UI is optional follow-on; protocol types live with existing control protocol in web-ui transport.
 
@@ -440,9 +445,8 @@ Land as coherent commits; each slice leaves main green:
 |---|---|
 | New provider per account? | **No** |
 | Switch mechanism? | **Global `credentials.setActive`** |
-| Create OAuth inside demi? | **No** |
-| Invoke vendor login? | **Yes** — `beginLogin` (no id) |
-| How does an id appear? | **`importDefault` / `add`** after material exists |
+| Login inside demi? | **Yes** — native public protocols (device code / copy-back OAuth); no vendor CLI spawn |
+| How does an id appear? | **`beginLogin` / `importDefault` / `add`** all return one |
 | Where do extras live? | **`$DEMI_HOME/credentials/<providerId>/`** |
 | What does inference use? | **Active only**, via AuthStore / env |
 | Agent protocol change? | **None** |
