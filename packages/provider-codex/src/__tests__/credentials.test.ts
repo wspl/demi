@@ -106,3 +106,56 @@ test('createCodexProvider with custom authStore omits credentials by default', a
   })
   expect(provider.credentials).toBeUndefined()
 })
+
+test('beginLogin runs the device-code flow, surfaces pending material, and imports into the pool', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-cred-login-'))
+  const codexHome = await mkdtemp(join(tmpdir(), 'demi-codex-login-'))
+  try {
+    const access = jwt({
+      email: 'device@example.com',
+      'https://api.openai.com/auth': { chatgpt_account_id: 'acct-device' },
+    })
+    const id = jwt({ email: 'device@example.com' })
+    let polls = 0
+    const loginFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      const jsonResponse = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+      if (url.endsWith('/deviceauth/usercode')) {
+        return jsonResponse(200, { device_auth_id: 'dev_1', user_code: 'CODE-0001', interval: '0' })
+      }
+      if (url.endsWith('/deviceauth/token')) {
+        polls += 1
+        if (polls === 1) return jsonResponse(403, {})
+        return jsonResponse(200, { authorization_code: 'authz', code_challenge: 'c', code_verifier: 'v' })
+      }
+      if (url.endsWith('/oauth/token')) {
+        return jsonResponse(200, { id_token: id, access_token: access, refresh_token: 'rt' })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    const pool = openCodexCredentialPool({ stateDir })
+    const authStore = new PoolAwareCodexAuthStore(pool, { codexHome })
+    const credentials = createCodexCredentials(pool, authStore, { codexHome, loginFetch })
+
+    const pendings: Array<{ verificationUrl: string; userCode?: string | null }> = []
+    const result = await credentials.beginLogin!({ onPending: (p) => pendings.push(p) })
+
+    expect(pendings).toHaveLength(1)
+    expect(pendings[0]!.verificationUrl).toBe('https://auth.openai.com/codex/device')
+    expect(pendings[0]!.userCode).toBe('CODE-0001')
+
+    expect(result.status).toBe('completed')
+    if (result.status !== 'completed') throw new Error('unreachable')
+    expect(result.credentialId).toBeTruthy()
+
+    const list = await credentials.list()
+    expect(list.some((c) => c.id === result.credentialId && c.label === 'device@example.com')).toBe(true)
+    const active = await credentials.getActive()
+    expect(active.credentialId).toBe(result.credentialId!)
+  } finally {
+    await rm(stateDir, { recursive: true, force: true })
+    await rm(codexHome, { recursive: true, force: true })
+  }
+})
