@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/provider-codex",
   "description": "Codex provider adapter for Demi.",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": false,
   "type": "module",
   "exports": {

@@ -1,5 +1,19 @@
 # @demicodes/web
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [0a3936f]
+  - @demicodes/provider@0.4.0
+  - @demicodes/provider-codex@0.4.0
+  - @demicodes/provider-grok-build@0.4.0
+  - @demicodes/provider-claude-code@0.4.0
+  - @demicodes/agent@0.3.3
+  - @demicodes/host-local@0.3.3
+  - @demicodes/provider-anthropic-api@0.3.3
+  - @demicodes/provider-openai-api@0.3.3
+
 ## 0.0.2
 
 ### Patch Changes
