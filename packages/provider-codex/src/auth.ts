@@ -99,8 +99,13 @@ export function redactCodexSecretText(text: string): string {
   return redactCredentialText(text, SECRET_FIELD_PATTERNS)
 }
 
-const TOKEN_REFRESH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
+const CODEX_OAUTH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const TOKEN_REFRESH_URL = 'https://auth.openai.com/oauth/token'
+
+/** OAuth client id shared by token refresh and device-code login. */
+export function codexOauthClientId(): string {
+  return process.env.CODEX_APP_SERVER_LOGIN_CLIENT_ID || CODEX_OAUTH_CLIENT_ID
+}
 const REFRESH_EXPIRY_SKEW_MS = 5 * 60 * 1000
 const REFRESH_STALENESS_MS = 8 * 24 * 60 * 60 * 1000
 
@@ -282,6 +287,7 @@ export class CodexAuthError extends Error {
       | 'auth_invalid'
       | 'auth_unsupported'
       | 'auth_refresh_failed'
+      | 'auth_login_failed'
       | 'auth_lock_failed',
     message: string,
   ) {
@@ -343,7 +349,7 @@ export async function refreshCodexToken(refreshToken: string, signal?: AbortSign
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      client_id: process.env.CODEX_APP_SERVER_LOGIN_CLIENT_ID || TOKEN_REFRESH_CLIENT_ID,
+      client_id: codexOauthClientId(),
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
     }),

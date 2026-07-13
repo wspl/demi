@@ -16,3 +16,8 @@ export {
   openCodexCredentialPool,
   PoolAwareCodexAuthStore,
 } from './credentials'
+export {
+  runCodexDeviceLogin,
+  type CodexDeviceLoginOptions,
+  type CodexDeviceLoginPending,
+} from './device-login'
