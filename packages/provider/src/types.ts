@@ -177,18 +177,15 @@ export interface ProviderCredentialLoginOptions {
   onPending?: (pending: ProviderCredentialLoginPending) => void
   /** Collects the code the user copied back from the vendor page (`requiresCodeInput` flows). */
   promptForCode?: () => Promise<string>
-  /** Prefer browser vs device/CLI when the vendor supports both; best-effort. */
-  preferBrowser?: boolean
 }
 
 /**
- * Login invoke result. Providers with a public device-code protocol (codex)
- * complete the flow natively, import the material into the pool, and return
- * the pool `credentialId`. CLI-spawning providers report vendor process status
- * only; the product should `importDefault` afterwards.
+ * Login invoke result. Every login flow runs the vendor's public protocol
+ * natively, imports the resulting material into the pool, and returns the
+ * pool `credentialId`.
  */
 export type ProviderCredentialLoginResult =
-  | { status: 'completed'; credentialId?: string }
+  | { status: 'completed'; credentialId: string }
   | { status: 'cancelled' }
   | { status: 'unavailable'; message: string }
   | { status: 'failed'; message: string }
@@ -205,7 +202,7 @@ export type ProviderCredentialsCapability =
   | { mode: 'none' }
   | {
       mode: 'supported'
-      /** Can spawn / open vendor login (`beginLogin`). */
+      /** Can run the vendor's native login flow (`beginLogin`). */
       canBeginLogin?: boolean
       /** Can import from the vendor default location into the pool. */
       canImportDefault?: boolean
@@ -233,8 +230,9 @@ export interface ProviderCredentials {
   setActive(credentialId: string): Promise<ProviderCredentialActive> | ProviderCredentialActive
 
   /**
-   * Invoke the vendor’s own login flow. Does not complete OAuth inside demi
-   * and does not return a credential id.
+   * Run the vendor's public login protocol natively (device code or copy-back
+   * OAuth), surfacing user-facing material via `onPending`. On completion the
+   * material is imported into the pool and its `credentialId` is returned.
    */
   beginLogin?(options?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult>
 
