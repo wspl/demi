@@ -139,7 +139,7 @@ test('beginLogin runs the device-code flow, surfaces pending material, and impor
     const authStore = new PoolAwareCodexAuthStore(pool, { codexHome })
     const credentials = createCodexCredentials(pool, authStore, { codexHome, loginFetch })
 
-    const pendings: Array<{ verificationUrl: string; userCode: string }> = []
+    const pendings: Array<{ verificationUrl: string; userCode?: string | null }> = []
     const result = await credentials.beginLogin!({ onPending: (p) => pendings.push(p) })
 
     expect(pendings).toHaveLength(1)

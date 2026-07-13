@@ -159,10 +159,15 @@ export interface ProviderCredentialActive {
 export interface ProviderCredentialLoginPending {
   /** URL the user opens to confirm the login. */
   verificationUrl: string
-  /** One-time code the user enters at the verification URL. */
-  userCode: string
+  /** One-time code the user enters at the verification URL (device-code flows). */
+  userCode?: string | null
   /** ISO-8601 expiry of the code, when the vendor exposes one. */
   expiresAt?: string | null
+  /**
+   * True when the vendor displays a code AFTER approval that the user must
+   * bring back; the product collects it via `promptForCode`.
+   */
+  requiresCodeInput?: boolean
 }
 
 export interface ProviderCredentialLoginOptions {
@@ -170,6 +175,8 @@ export interface ProviderCredentialLoginOptions {
   signal?: AbortSignal
   /** Fires once when the flow issues user-facing material (device-code login). */
   onPending?: (pending: ProviderCredentialLoginPending) => void
+  /** Collects the code the user copied back from the vendor page (`requiresCodeInput` flows). */
+  promptForCode?: () => Promise<string>
   /** Prefer browser vs device/CLI when the vendor supports both; best-effort. */
   preferBrowser?: boolean
 }
