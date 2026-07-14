@@ -34,6 +34,15 @@ describe('normalizeErrorCode', () => {
     expect(normalizeErrorCode(null, 'service unavailable')).toBe('overloaded')
     expect(normalizeErrorCode('custom', 'something else')).toBe('custom')
   })
+
+  it('classifies transport-level transient failures as overloaded', () => {
+    expect(normalizeErrorCode(null, 'Codex SSE response headers timed out after 20000ms')).toBe('overloaded')
+    expect(normalizeErrorCode(null, 'connect timeout')).toBe('overloaded')
+    expect(normalizeErrorCode(null, 'fetch failed')).toBe('overloaded')
+    expect(normalizeErrorCode(null, 'socket hang up')).toBe('overloaded')
+    expect(normalizeErrorCode(null, 'read ECONNRESET')).toBe('overloaded')
+    expect(normalizeErrorCode(null, 'insufficient balance')).toBe('rate_limit')
+  })
 })
 
 describe('providerErrorFromUnknown', () => {
