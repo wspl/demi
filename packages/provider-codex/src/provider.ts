@@ -4,6 +4,7 @@ import {
   clampPromptCacheKey,
   defineProvider,
   httpErrorCode,
+  normalizeErrorCode,
   type AgentProvider,
   type InferenceRequest,
   type ModelPolicy,
@@ -285,7 +286,7 @@ function providerErrorFromUnknown(error: unknown): ProviderEvent {
     }
   }
   const message = error instanceof Error ? error.message : String(error)
-  return { type: 'error', message: redactCodexSecretText(message), code: null }
+  return { type: 'error', message: redactCodexSecretText(message), code: normalizeErrorCode(null, message) }
 }
 
 function isRetryableHttpStatus(status: number): boolean {

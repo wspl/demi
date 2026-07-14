@@ -1,7 +1,7 @@
 import { isRecord, numberOrZero, parseJsonOrString, shortHash, stringOrNull } from '@demicodes/utils'
 import { Buffer } from 'node:buffer'
 import type { TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
-import { clampPromptCacheKey, type InferenceItem, type InferenceRequest, type ProviderEvent, type ToolDefinition } from '@demicodes/provider'
+import { clampPromptCacheKey, normalizeErrorCode, type InferenceItem, type InferenceRequest, type ProviderEvent, type ToolDefinition } from '@demicodes/provider'
 
 export interface CodexResponsesRequestBody {
   model: string
@@ -385,15 +385,6 @@ function errorEventFromFailedResponse(response: unknown): ProviderEvent {
     message,
     code: normalizeErrorCode(rawCode, message),
   }
-}
-
-function normalizeErrorCode(code: string | null, message: string): string | null {
-  const value = `${code ?? ''} ${message}`.toLowerCase()
-  if (/context|maximum context|too long|max.*token/.test(value)) return 'context_length_exceeded'
-  if (/rate|quota|usage|limit|billing|balance/.test(value)) return 'rate_limit'
-  if (/unauth|auth|expired|invalid.*token/.test(value)) return 'auth_expired'
-  if (/overload|unavailable|timeout/.test(value)) return 'overloaded'
-  return code
 }
 
 function incompleteReason(response: unknown): string {

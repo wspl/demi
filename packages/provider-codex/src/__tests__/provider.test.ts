@@ -159,6 +159,21 @@ test('CodexProvider refreshes auth once after a 401 response and retries the req
   ])
 })
 
+test('CodexProvider classifies transport timeouts as retryable overloaded errors', async () => {
+  const transport = new FakeCodexTransport([new Error('Codex SSE response headers timed out after 20000ms')])
+  const provider = new CodexProvider({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    transportImpl: transport,
+    maxRetries: 0,
+  })
+  const events = []
+  for await (const event of provider.run(makeRequest())) events.push(event)
+
+  expect(events).toEqual([
+    { type: 'error', message: 'Codex SSE response headers timed out after 20000ms', code: 'overloaded' },
+  ])
+})
+
 test('AutoCodexResponsesTransport falls back to SSE only before WebSocket has emitted events', async () => {
   const beforeStart = new AutoCodexResponsesTransport(
     new FakeCodexTransport([new Error('connect failed')]),
