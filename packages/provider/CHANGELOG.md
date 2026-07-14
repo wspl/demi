@@ -1,5 +1,11 @@
 # @demicodes/provider
 
+## 0.4.2
+
+### Patch Changes
+
+- Classify transport-level transient failures (header/connect/idle timeouts, dropped sockets, DNS/connect errors) as retryable `overloaded` errors so the turn retry policy handles them instead of failing the round. The Codex provider now routes unknown thrown errors through the shared `normalizeErrorCode` instead of hardcoding `code: null`.
+
 ## 0.4.1
 
 ### Patch Changes
