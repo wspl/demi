@@ -1,5 +1,11 @@
 # @demicodes/agent
 
+## 0.3.4
+
+### Patch Changes
+
+- Steers arriving while a turn is compacting now queue (like during streaming/tool phases) and materialize on the post-compaction continuation instead of being rejected. A standalone compact action materializes queued steers into the transcript so the next turn carries them. Only the finalizing phase still rejects steering.
+
 ## 0.3.3
 
 ### Patch Changes
