@@ -235,6 +235,7 @@ export class AgentSession<State> {
       commitTranscript: () => self.commitTranscript(),
       emit: (event) => self.emit(event),
       materializeSteersArrivedSince: (count) => self.materializePendingSteersArrivedSince(count),
+      materializePendingSteers: () => self.materializePendingSteersForCurrentTurn(),
     }
     this.turnLoop = new ProviderTurnLoop(turnLoopHost)
   }
@@ -625,14 +626,20 @@ export class AgentSession<State> {
       throw new Error('AgentSession: no active turn to steer')
     }
     if (this.currentAbortController.signal.aborted) throw new Error('AgentSession: active turn is aborted')
-    if (this.activeTurnPhase === 'compacting' || this.activeTurnPhase === 'finalizing') {
-      throw new Error(`AgentSession: active turn cannot accept steering while ${this.activeTurnPhase}`)
+    if (this.activeTurnPhase === 'finalizing') {
+      throw new Error('AgentSession: active turn cannot accept steering while finalizing')
     }
     const run = this.activeProviderRun
     if (run?.steer) {
       return { type: 'provider', run: run as ProviderRun & { steer: NonNullable<ProviderRun['steer']> } }
     }
-    if (this.activeTurnPhase === 'tool_executing' || this.activeTurnPhase === 'provider_streaming') {
+    // Compaction is an internal pause within the turn: steers queue like they do during
+    // streaming/tool phases and materialize on the post-compaction continuation.
+    if (
+      this.activeTurnPhase === 'tool_executing' ||
+      this.activeTurnPhase === 'provider_streaming' ||
+      this.activeTurnPhase === 'compacting'
+    ) {
       return { type: 'next_provider_continuation' }
     }
     throw new Error('AgentSession: active turn cannot accept steering now')
@@ -741,6 +748,9 @@ export class AgentSession<State> {
         this.setPhase('compacting')
         this.activeTurnPhase = 'compacting'
         await this.compaction.run()
+        // Steers accepted during a standalone compaction have no continuation to ride;
+        // append them to the transcript so the next turn's request carries them.
+        await this.materializePendingSteersForCurrentTurn()
         return
     }
   }
