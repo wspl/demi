@@ -3,7 +3,7 @@ import { deferred } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
-import { TranscriptLog } from '../index'
+import { TranscriptLog, type AgentSession } from '../index'
 import {
   assertNoOrphanToolItems,
   assertTranscriptInvariants,
@@ -1216,5 +1216,66 @@ test('auto compaction is bounded per turn — no storm when usage stays over a t
   const boundaries = session.transcript().blocks.filter((block) => block.type === 'compaction_boundary')
   expect(boundaries.length).toBeGreaterThan(0)
   expect(boundaries.length).toBeLessThanOrEqual(4)
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
+test('steer during preflight compaction queues and lands on the same turn request', async () => {
+  const smallModel: ModelSelection = { ...model, model: { ...model.model, contextWindow: 100 } }
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('test-turn', smallModel, text('old question'))
+  transcript.applyProviderEvent(smallModel, events.text('old answer'))
+  transcript.applyProviderEvent(smallModel, events.response())
+
+  let session!: AgentSession<TestState>
+  const provider = new RecordingProvider([
+    async (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      // Injected mid-compaction: must queue instead of throwing.
+      await session.steer(text('mid-compaction note'))
+      return [events.text('old summary'), events.response()]
+    },
+    (request) => {
+      expect(JSON.stringify(request.items)).toContain('mid-compaction note')
+      return [events.text('answer'), events.response()]
+    },
+  ])
+  session = createSession(provider, createRuntime(), transcript, smallModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.01 },
+  })
+
+  await session.send(text('new question'))
+
+  expect(provider.requests).toHaveLength(2)
+  const steers = session.transcript().blocks.filter((block) => block.type === 'steer')
+  expect(steers).toHaveLength(1)
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
+test('steer during a standalone compaction materializes and the next turn carries it', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('test-turn', model, text('old question'))
+  transcript.applyProviderEvent(model, events.text('old answer'))
+  transcript.applyProviderEvent(model, events.response())
+
+  let session!: AgentSession<TestState>
+  const provider = new RecordingProvider([
+    async (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      await session.steer(text('mid-compaction note'))
+      return [events.text('old summary'), events.response()]
+    },
+    (request) => {
+      expect(JSON.stringify(request.items)).toContain('mid-compaction note')
+      return [events.text('answer'), events.response()]
+    },
+  ])
+  session = createSession(provider, createRuntime(), transcript)
+
+  await session.compact()
+  const steers = session.transcript().blocks.filter((block) => block.type === 'steer')
+  expect(steers).toHaveLength(1)
+
+  await session.send(text('next question'))
+  expect(provider.requests).toHaveLength(2)
   assertTranscriptInvariants(session.transcript().blocks)
 })

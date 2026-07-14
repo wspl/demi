@@ -40,6 +40,7 @@ export interface ProviderTurnLoopHost<State> {
   commitTranscript(): Promise<void>
   emit(event: SessionEvent): void
   materializeSteersArrivedSince(continuationCount: number): Promise<boolean>
+  materializePendingSteers(): Promise<boolean>
 }
 
 /**
@@ -54,6 +55,9 @@ export class ProviderTurnLoop<State> {
     let autoCompactions = 0
     while (true) {
       throwIfAborted(this.host.currentSignal())
+      // Drain steers that queued while no stream was live (preflight compaction, the gap
+      // after an auto-compaction) so the next request carries them.
+      await this.host.materializePendingSteers()
       const steerContinuationBeforeStream = this.host.steerContinuationCount
       const shouldAutoRecover = await this.streamProviderOnce()
       throwIfAborted(this.host.currentSignal())
