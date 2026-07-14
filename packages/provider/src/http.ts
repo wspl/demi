@@ -40,9 +40,12 @@ export function httpErrorCode(status: number, message: string): string | null {
 export function normalizeErrorCode(code: string | null, message: string): string | null {
   const value = `${code ?? ''} ${message}`.toLowerCase()
   if (/context|too long|max.*token/.test(value)) return 'context_length_exceeded'
-  if (/rate|quota|billing|limit/.test(value)) return 'rate_limit'
-  if (/auth|unauth|invalid.*key|expired/.test(value)) return 'auth_expired'
-  if (/overload|unavailable|timeout/.test(value)) return 'overloaded'
+  if (/rate|quota|usage|billing|balance|limit/.test(value)) return 'rate_limit'
+  if (/auth|invalid.*(key|token)|expired/.test(value)) return 'auth_expired'
+  // Transport-level transient failures (header/connect/idle timeouts, dropped
+  // sockets, DNS/connect errors) classify as overloaded so the turn retry
+  // policy treats them like a 503 instead of surfacing a terminal error.
+  if (/overload|unavailable|timed?\s?out|fetch failed|network|socket|econn/.test(value)) return 'overloaded'
   return code
 }
 
