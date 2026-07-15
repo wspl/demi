@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
-import type { AgentHarness } from '@demicodes/agent'
+import type { AgentClient, AgentHarness } from '@demicodes/agent'
 import type { Command } from '@demicodes/shell'
 import { defineProvider, type Provider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
@@ -36,8 +36,21 @@ function stubProvider(): Provider {
   return defineProvider({
     id: 'stub',
     displayName: 'Stub',
-    createRuntime: () => new StubProvider([[events.text('hi'), events.response()]]),
+    createRuntime: () =>
+      new StubProvider([
+        [events.toolCall('create-shell', 'shell_exec', { script: 'printf ready', timeoutMs: 1_000 })],
+        [events.text('ready'), events.response()],
+      ]),
   })
+}
+
+async function createShell(client: AgentClient): Promise<void> {
+  await client.send([{ type: 'text', text: 'create shell' }])
+}
+
+function shellIds(first: string): () => string {
+  let index = 0
+  return () => (index++ === 0 ? first : `${first}-${index}`)
 }
 
 function echoCommand(): Command {
@@ -122,6 +135,7 @@ test('materializeCommandBridgeShims rejects session ids that escape or alias the
 test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine', async () => {
   const { cwd, stateDir, socketPath } = await shortDirs('http')
   const sessionId = globalThis.crypto.randomUUID()
+  const shellId = 'bridge-http-shell'
   const host = new LocalHost(cwd)
   const { server, close } = createLocalAgentServer({
     host,
@@ -129,13 +143,15 @@ test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine
     providers: [stubProvider()],
     stateDir,
     commandBridgeSocketPath: socketPath,
+    shell: { shellIdFactory: shellIds(shellId) },
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
 
   try {
     const body = JSON.stringify({
-      commandScopeId: sessionId,
+      shellId,
       name: 'echo-args',
       args: ['run'],
       cwd,
@@ -167,6 +183,7 @@ test('startCommandBridge answers a raw POST /run like AgentServer.runCommandLine
 test('a real Node child can bareword-invoke a registered command through the shim PATH', async () => {
   const { cwd, stateDir, socketPath } = await shortDirs('child')
   const sessionId = globalThis.crypto.randomUUID()
+  const shellId = 'bridge-child-shell'
   const host = new LocalHost(cwd)
   const { server, close } = createLocalAgentServer({
     host,
@@ -174,9 +191,11 @@ test('a real Node child can bareword-invoke a registered command through the shi
     providers: [stubProvider()],
     stateDir,
     commandBridgeSocketPath: socketPath,
+    shell: { shellIdFactory: shellIds(shellId) },
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
 
   try {
     const shimDir = join(stateDir, 'bridge-bin', sessionId)
@@ -186,7 +205,7 @@ test('a real Node child can bareword-invoke a registered command through the shi
         ...process.env,
         PATH: `${shimDir}:${process.env.PATH ?? ''}`,
         DEMI_COMMAND_BRIDGE_SOCK: socketPath,
-        DEMI_SESSION_ID: sessionId,
+        DEMI_SHELL_ID: shellId,
       },
       encoding: 'utf8',
     })
@@ -200,6 +219,7 @@ test('a real Node child can bareword-invoke a registered command through the shi
 test('stdin piped to the shim is delivered to the registered command', async () => {
   const { cwd, stateDir, socketPath } = await shortDirs('stdin')
   const sessionId = globalThis.crypto.randomUUID()
+  const shellId = 'bridge-stdin-shell'
   const host = new LocalHost(cwd)
   const { server, close } = createLocalAgentServer({
     host,
@@ -207,9 +227,11 @@ test('stdin piped to the shim is delivered to the registered command', async () 
     providers: [stubProvider()],
     stateDir,
     commandBridgeSocketPath: socketPath,
+    shell: { shellIdFactory: shellIds(shellId) },
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
 
   try {
     const shimDir = join(stateDir, 'bridge-bin', sessionId)
@@ -219,7 +241,7 @@ test('stdin piped to the shim is delivered to the registered command', async () 
         ...process.env,
         PATH: `${shimDir}:${process.env.PATH ?? ''}`,
         DEMI_COMMAND_BRIDGE_SOCK: socketPath,
-        DEMI_SESSION_ID: sessionId,
+        DEMI_SHELL_ID: shellId,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
@@ -243,17 +265,18 @@ test('stdin piped to the shim is delivered to the registered command', async () 
 })
 
 test('startCommandBridge alone can be wired without createLocalAgentServer materialize', async () => {
-  // Direct unit path: materialize + prepareSessionShell + startCommandBridge
+  // Direct unit path: materialize + prepareShell + startCommandBridge
   // without the factory (still all host-local).
   const { cwd, stateDir, socketPath } = await shortDirs('manual')
   const sessionId = globalThis.crypto.randomUUID()
+  const shellId = 'bridge-manual-shell'
   const host = new LocalHost(cwd)
   const { AgentServer } = await import('@demicodes/agent')
   const server = new AgentServer({
     agent: harness(host, () => [echoCommand()]),
     providers: [stubProvider()],
-    shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
-    prepareSessionShell: async ({ host: sessionHost, agentSessionId, commandNames, shell }) => {
+    shell: { initialEnv: { PATH: process.env.PATH ?? '' }, shellIdFactory: shellIds(shellId) },
+    prepareShell: async ({ host: sessionHost, agentSessionId, commandNames, shell }) => {
       const shimDir = await materializeCommandBridgeShims({
         host: sessionHost,
         agentSessionId,
@@ -273,10 +296,11 @@ test('startCommandBridge alone can be wired without createLocalAgentServer mater
   })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
   const bridge = startCommandBridge(server, { socketPath })
   try {
     expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'echo-args'))).toBe('.dispatch')
-    const result = await server.runCommandLine(sessionId, 'echo-args', ['run'], { cwd, stdin: '' })
+    const result = await server.runCommandLine(shellId, 'echo-args', ['run'], { cwd, stdin: '' })
     expect(result.stdout).toContain('echoed:ok')
   } finally {
     await bridge.close()
