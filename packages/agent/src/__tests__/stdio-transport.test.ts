@@ -42,6 +42,7 @@ test('StdioTransport preserves Uint8Array fields through JSON frames', async () 
   client.send({
     type: 'send',
     messageId: 'stdio-send-1',
+    metadata: { tenantId: 'tenant-a', token: new Uint8Array([9, 8, 7]) },
     content: [
       {
         type: 'image',
@@ -56,6 +57,7 @@ test('StdioTransport preserves Uint8Array fields through JSON frames', async () 
 
   const frame = await received
   if (frame.type !== 'send') throw new Error('expected send frame')
+  expect(frame.metadata).toEqual({ tenantId: 'tenant-a', token: new Uint8Array([9, 8, 7]) })
   const content = frame.content[0]
   if (content?.type !== 'image' || content.source.type !== 'binary') throw new Error('expected binary image')
   expect(content.source.data).toBeInstanceOf(Uint8Array)
