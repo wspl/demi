@@ -1,5 +1,18 @@
 # @demicodes/provider-claude-code
 
+## 0.5.0
+
+### Minor Changes
+
+- ca617e1: Align all first-party packages on one shared version so consumers and repository workspaces use one coherent Demi release without reconciling independent package versions.
+
+### Patch Changes
+
+- Updated dependencies [ca617e1]
+  - @demicodes/core@0.5.0
+  - @demicodes/provider@0.5.0
+  - @demicodes/utils@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes
