@@ -257,6 +257,59 @@ test('AgentSession.fromCheckpoint restores state and model context with a fresh 
   expect(restoredProvider.requests).toHaveLength(2)
 })
 
+test('AgentSession.fromCheckpoint completes tool calls left executing by a process death', async () => {
+  const store = new MemorySessionStore<TestState>()
+  const firstProvider = new RecordingProvider([
+    [events.toolCall('tool-1', 'write_once', { path: 'file.txt' }), events.response()],
+    [events.text('wrote file'), events.response()],
+  ])
+  const runtime = createRuntime({
+    tools: (ctx) => [
+      {
+        name: 'write_once',
+        description: 'Represents a non-idempotent write.',
+        inputSchema: { type: 'object' },
+        invoke: () => {
+          ctx.state.toolCalls += 1
+          return { output: [{ type: 'text', text: 'created file.txt' }] }
+        },
+      },
+    ],
+  })
+  const first = createSession(firstProvider, runtime, undefined, undefined, { store })
+
+  await first.send(text('write file'))
+
+  const snapshot = structuredClone(store.snapshots.at(-1))
+  if (!snapshot) throw new Error('missing snapshot')
+  // Simulate a process death mid-tool: the persisted call never got its result.
+  const persistedCall = snapshot.transcript.blocks.find((block) => block.type === 'tool_call')
+  if (!persistedCall || persistedCall.type !== 'tool_call') throw new Error('missing tool call block')
+  persistedCall.status = 'executing'
+  persistedCall.output = []
+  snapshot.phase = 'running'
+
+  const restoredProvider = new RecordingProvider([
+    (request) => {
+      assertNoOrphanToolItems(request.items)
+      const result = request.items.find(
+        (item) => item.type === 'tool_result' && item.toolUseId === persistedCall.toolUseId,
+      )
+      expect(JSON.stringify(result)).toContain('Tool call interrupted: write_once')
+      return [events.text('recovered'), events.response()]
+    },
+  ])
+  const restored = AgentSession.fromCheckpoint({ provider: restoredProvider, runtime, checkpoint: snapshot })
+
+  expect(restored.transcript().pendingToolCalls()).toHaveLength(0)
+  expect(restored.transcript().blocks.find((block) => block.type === 'tool_call')).toMatchObject({ status: 'error' })
+
+  await restored.send(text('continue after crash'))
+
+  expect(restoredProvider.requests).toHaveLength(1)
+  assertTranscriptInvariants(restored.transcript().blocks)
+})
+
 test('AgentSession.fromCheckpoint rejects mismatched runtimes', async () => {
   const store = new MemorySessionStore<TestState>()
   const provider = new RecordingProvider([[events.text('answer'), events.response()]])
