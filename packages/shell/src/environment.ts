@@ -35,14 +35,6 @@ export interface BashEnvironmentOptions {
   shellIdFactory?: () => string
   commandIdFactory?: () => string
   initialEnv?: Record<string, string>
-  /**
-   * Per-exec env injection for agent-owned shells. Evaluated on every exec with
-   * the owning agent session id; returned vars are set and exported, so both
-   * registered commands (ctx.env) and spawned external processes observe them.
-   * Lets a product harness expose session-scoped context (identity, routing)
-   * that changes between execs, which static initialEnv cannot express.
-   */
-  execEnv?: (agentSessionId: string) => Record<string, string>
   maxOutputBytes?: number
 }
 
@@ -177,7 +169,7 @@ export type ShellCommandStatus =
 interface ShellCommandRecord {
   id: string
   shellId: string
-  commandScopeId: string
+  commandStorageId: string
   script: string
   startedAt: number
   lastOutputAt: number
@@ -223,7 +215,6 @@ export class BashEnvironment {
   private readonly shellIdFactory: () => string
   private readonly commandIdFactory: () => string
   private readonly initialEnv: Record<string, string>
-  private readonly execEnv?: (agentSessionId: string) => Record<string, string>
   private readonly defaultOutputLimitBytes: number
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
@@ -237,12 +228,15 @@ export class BashEnvironment {
     this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}
-    this.execEnv = options.execEnv
     this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
   }
 
   getShell(shellId: string): ShellSession | null {
     return this.shells.get(shellId) ?? null
+  }
+
+  hasCommand(commandId: string): boolean {
+    return this.commandsById.has(commandId)
   }
 
   registerCommand(command: Command): void {
@@ -272,21 +266,6 @@ export class BashEnvironment {
         ? this.createShell(input.agentSessionId, input.cwd)
         : this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
-    // The command scope id is already exposed to registered commands and spawned
-    // processes as DEMI_SESSION_ID (exported at shell creation); per-conversation
-    // tools key their identity/routing maps off that. Here we only refresh the
-    // per-exec extra env a product harness may inject.
-    if (input.agentSessionId) {
-      const extraEnv = this.execEnv?.(input.agentSessionId)
-      if (extraEnv) {
-        const exported = session.state.exportedVars ?? new Set<string>()
-        session.state.exportedVars = exported
-        for (const [key, value] of Object.entries(extraEnv)) {
-          session.state.env.set(key, value)
-          exported.add(key)
-        }
-      }
-    }
     if (session.pendingExec || session.foreground) {
       const commandId = session.activeCommandId ?? session.foreground?.commandId ?? 'unknown'
       throw new Error(`Shell session "${session.id}" is already running command "${commandId}"`)
@@ -326,7 +305,7 @@ export class BashEnvironment {
     const record = this.commandsById.get(commandId)
     if (!record || record.status === 'running') return false
     this.commandsById.delete(commandId)
-    await this.artifacts.release(record.commandScopeId, commandId)
+    await this.artifacts.release(record.commandStorageId, commandId)
     return true
   }
 
@@ -410,21 +389,22 @@ export class BashEnvironment {
 
   private createShell(agentSessionId: string | undefined, initialCwd?: string): ShellSession {
     const id = this.shellIdFactory()
-    const commandScopeId = agentSessionId ?? id
+    const commandStorageId = agentSessionId ?? id
     const cwd = initialCwd ?? this.host.defaultCwd
     const fs = new HostBackedFileSystem(this.host, {
-      lookup: (path) => this.lookupVirtualArtifact(commandScopeId, path),
+      lookup: (path) => this.lookupVirtualArtifact(commandStorageId, path),
     })
     const env = new Map<string, string>()
     for (const [key, value] of Object.entries(this.initialEnv)) env.set(key, value)
     env.set('PWD', cwd)
-    env.set('DEMI_SESSION_ID', commandScopeId)
+    if (agentSessionId) env.set('DEMI_SESSION_ID', agentSessionId)
     env.set('DEMI_SHELL_ID', id)
     if (!env.has('IFS')) env.set('IFS', ' \t\n')
     if (!env.has('PS1')) env.set('PS1', '')
     if (!env.has('PS2')) env.set('PS2', '> ')
     if (!env.has('SHLVL')) env.set('SHLVL', '1')
-    const exportedVars = new Set<string>(['PWD', 'DEMI_SESSION_ID', 'DEMI_SHELL_ID'])
+    const exportedVars = new Set<string>(['PWD', 'DEMI_SHELL_ID'])
+    if (agentSessionId) exportedVars.add('DEMI_SESSION_ID')
     for (const key of env.keys()) {
       if (key !== key.toLowerCase()) exportedVars.add(key)
     }
@@ -489,7 +469,8 @@ export class BashEnvironment {
     const forkCommands: ForkCommandRegistry = new Map()
     const session: ShellSession = {
       id,
-      commandScopeId,
+      agentSessionId: agentSessionId ?? null,
+      commandStorageId,
       state,
       fs,
       interpreter: undefined as unknown as Interpreter,
@@ -503,9 +484,9 @@ export class BashEnvironment {
     for (const command of createPortableCommands(session)) {
       forkCommands.set(command.name, command)
     }
-    const storage = new AgentSessionCommandStorage(this.host.store, commandScopeId)
+    const storage = new AgentSessionCommandStorage(this.host.store, commandStorageId)
     for (const command of this.commands.list()) {
-      forkCommands.set(command.name, commandToForkCommand(session, command, storage))
+      forkCommands.set(command.name, commandToForkCommand(session, command, storage, this.host))
     }
     const abortController = new AbortController()
     session.abortController = abortController
@@ -589,7 +570,7 @@ export class BashEnvironment {
     const record: ShellCommandRecord = {
       id,
       shellId: session.id,
-      commandScopeId: session.commandScopeId,
+      commandStorageId: session.commandStorageId,
       script,
       startedAt: now,
       lastOutputAt: now,
@@ -1095,14 +1076,14 @@ export class BashEnvironment {
     return { ...base, status: 'running' }
   }
 
-  private async lookupVirtualArtifact(scopeId: string, path: string): Promise<VirtualFileSystemNode | null> {
+  private async lookupVirtualArtifact(commandStorageId: string, path: string): Promise<VirtualFileSystemNode | null> {
     const parts = path.split('/').filter(Boolean)
     if (parts.length === 1 && parts[0] === '@') return virtualDirectory(['commands'])
     if (parts.length === 2 && parts[0] === '@' && parts[1] === 'commands') {
-      return virtualDirectory(await this.commandArtifactIds(scopeId))
+      return virtualDirectory(await this.commandArtifactIds(commandStorageId))
     }
     if (parts.length === 3 && parts[0] === '@' && parts[1] === 'commands') {
-      const artifact = await this.commandArtifact(scopeId, parts[2]!)
+      const artifact = await this.commandArtifact(commandStorageId, parts[2]!)
       if (!artifact) return null
       const entries = ['meta.json', 'stderr.txt', 'stdout.txt']
       if (artifact.stdoutBinary) entries.push('stdout.bin')
@@ -1110,7 +1091,7 @@ export class BashEnvironment {
     }
     if (parts.length !== 4 || parts[0] !== '@' || parts[1] !== 'commands') return null
 
-    const artifact = await this.commandArtifact(scopeId, parts[2]!)
+    const artifact = await this.commandArtifact(commandStorageId, parts[2]!)
     if (!artifact) return null
 
     const fileName = parts[3]
@@ -1123,29 +1104,29 @@ export class BashEnvironment {
     return null
   }
 
-  private async commandArtifactIds(scopeId: string): Promise<string[]> {
+  private async commandArtifactIds(commandStorageId: string): Promise<string[]> {
     const ids = new Set<string>()
     for (const record of this.commandsById.values()) {
-      if (record.commandScopeId === scopeId && !this.artifacts.isReleased(scopeId, record.id)) ids.add(record.id)
+      if (record.commandStorageId === commandStorageId && !this.artifacts.isReleased(commandStorageId, record.id)) ids.add(record.id)
     }
-    const storage = this.artifacts.storageFor(scopeId)
+    const storage = this.artifacts.storageFor(commandStorageId)
     const keys = await storage.list('commands').catch(() => [])
     for (const key of keys) {
       const match = /^commands\/([^/]+)\/artifact\.json$/.exec(key)
-      if (match && !this.artifacts.isReleased(scopeId, match[1]!)) ids.add(match[1]!)
+      if (match && !this.artifacts.isReleased(commandStorageId, match[1]!)) ids.add(match[1]!)
     }
     return [...ids]
   }
 
-  private async commandArtifact(scopeId: string, commandId: string): Promise<CommandArtifact | null> {
-    if (this.artifacts.isReleased(scopeId, commandId)) return null
+  private async commandArtifact(commandStorageId: string, commandId: string): Promise<CommandArtifact | null> {
+    if (this.artifacts.isReleased(commandStorageId, commandId)) return null
     const record = this.commandsById.get(commandId)
-    if (record?.commandScopeId === scopeId) {
+    if (record?.commandStorageId === commandStorageId) {
       this.syncRunningRecord(record)
       return commandArtifactFromRecord(record)
     }
     const value = await this.artifacts
-      .storageFor(scopeId)
+      .storageFor(commandStorageId)
       .readJson<CommandArtifact>(`commands/${commandId}/artifact.json`)
       .catch(() => null)
     return isCommandArtifact(value) ? value : null
@@ -1155,7 +1136,7 @@ export class BashEnvironment {
     const fingerprint = `${record.status}:${record.exitCode ?? ''}:${record.stdout.length}:${record.stderr.length}:${record.binaryStdout?.totalBytes ?? ''}`
     if (record.persistedFingerprint === fingerprint) return
     record.persistedFingerprint = fingerprint
-    this.artifacts.persist(record.commandScopeId, record.id, commandArtifactFromRecord(record))
+    this.artifacts.persist(record.commandStorageId, record.id, commandArtifactFromRecord(record))
   }
 
   private syncRunningRecord(record: ShellCommandRecord): void {

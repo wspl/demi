@@ -7,7 +7,7 @@ import { LocalHost } from '@demicodes/host-local'
 
 const echoSessionSpec: Command = {
   name: 'sessionid',
-  summary: 'Echo the command scope id from the shell env.',
+  summary: 'Echo the agent session id from the shell env.',
   subcommands: [
     {
       name: 'show',
@@ -41,11 +41,11 @@ test('registered commands see the agent session id as DEMI_SESSION_ID', async ()
   expect(result.stdout.delta).toBe('conv-abc-123')
 })
 
-test('anonymous exec scopes DEMI_SESSION_ID to the shell id', async () => {
+test('anonymous exec does not invent an agent session id', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-session-env-none-'))
   const env = makeEnv(root, 'shell-session-env-none')
   const result = await env.exec({ script: 'sessionid show' })
   expect(result.status).toBe('exited')
   if (result.status !== 'exited') throw new Error('expected exited')
-  expect(result.stdout.delta).toBe('shell-session-env-none')
+  expect(result.stdout.delta).toBe('(none)')
 })

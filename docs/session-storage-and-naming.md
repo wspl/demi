@@ -164,9 +164,9 @@ Everything a session persists lives under one `HostStore` prefix:
     blobs/<sha256>                     # phase 2: content-addressed media/binary bytes
 ```
 
-(Today command artifacts live under a bare `<sessionId>/commands/...` prefix
-while checkpoints live under `agent-sessions/<sessionId>/...` — two prefixes for
-one session. Unified as above; `commandScopeId` must equal the agent session id.)
+Agent-owned shells store command artifacts under their actual agent session id.
+Anonymous shells have no `DEMI_SESSION_ID` and use their shell id only as the
+internal command-artifact storage key.
 
 ### Roles
 

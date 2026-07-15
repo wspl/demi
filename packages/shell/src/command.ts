@@ -1,6 +1,7 @@
 import { asError, concatBytes, decodeUtf8, encodeUtf8 } from '@demicodes/utils'
 import type { z } from 'zod'
 import { RESERVED_COMMAND_NAMES } from './portable-commands'
+import type { Host } from './host'
 
 export type CommandInputSpec = Record<string, z.ZodType>
 
@@ -53,6 +54,8 @@ export interface CommandRunContext {
   cwd: string
   io: CommandIO
   storage: CommandStorage
+  /** Host of the BashEnvironment executing this command. */
+  host: Host
 }
 
 export interface CommandRunResult {
@@ -90,6 +93,7 @@ export interface CommandExecutionContext {
   cwd: string
   io: CommandIO
   storage: CommandStorage
+  host: Host
 }
 
 const EXECUTION_ONLY_FIELDS = [
@@ -275,6 +279,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
     cwd: ctx.cwd,
     io: parsed.json ? capture : ctx.io,
     storage: ctx.storage,
+    host: ctx.host,
   })
 
   if (parsed.json && result.exitCode === 0) {
