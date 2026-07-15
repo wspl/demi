@@ -35,8 +35,18 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
   const server = createWebSocketServerTransport(serverSocket)
 
   const serverFrame = nextFrame<ClientFrame>(server)
-  client.send({ type: 'send', messageId: 'ws-send-1', content: [{ type: 'text', text: 'hello' }] })
-  expect(await serverFrame).toEqual({ type: 'send', messageId: 'ws-send-1', content: [{ type: 'text', text: 'hello' }] })
+  client.send({
+    type: 'send',
+    messageId: 'ws-send-1',
+    content: [{ type: 'text', text: 'hello' }],
+    metadata: { tenantId: 'tenant-a', sequence: 1n },
+  })
+  expect(await serverFrame).toEqual({
+    type: 'send',
+    messageId: 'ws-send-1',
+    content: [{ type: 'text', text: 'hello' }],
+    metadata: { tenantId: 'tenant-a', sequence: 1n },
+  })
 
   const clientFrame = nextFrame<ServerFrame>(client)
   server.send({ type: 'phase', phase: 'running' })

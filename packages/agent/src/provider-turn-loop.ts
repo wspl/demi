@@ -5,7 +5,7 @@ import { TranscriptLog } from './transcript'
 import { ProviderStreamError } from './provider-stream-error'
 import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
 import type { ActiveTurnPhase } from './session'
-import type { AgentHarnessRuntime, AgentTool, AgentToolInvokeResult, SessionEvent } from './types'
+import type { AgentHarnessRuntime, AgentMetadata, AgentTool, AgentToolInvokeResult, SessionEvent } from './types'
 
 const MAX_AUTO_COMPACTIONS_PER_TURN = 3
 
@@ -26,10 +26,17 @@ export interface ProviderTurnLoopHost<State> {
   readonly thresholdRatio: number
   readonly steerContinuationCount: number
   readonly retryPolicy: TurnRetryPolicy
+  readonly metadata: AgentMetadata | null
   currentSignal(): AbortSignal
   currentTurnId(): string
   nextRequestId(): string
-  promptContext(): { agentSessionId: string; state: State; cwd: string; transcript: TranscriptLog }
+  promptContext(): {
+    agentSessionId: string
+    state: State
+    cwd: string
+    transcript: TranscriptLog
+    metadata: AgentMetadata | null
+  }
   getActiveTurnPhase(): ActiveTurnPhase | null
   setActiveTurnPhase(phase: ActiveTurnPhase | null): void
   getActiveProviderRun(): ProviderRun | null
@@ -202,6 +209,7 @@ export class ProviderTurnLoop<State> {
           toolCallId: toolCall.toolUseId,
           toolName: toolCall.toolName,
           result,
+          metadata: this.host.metadata,
         })
         await this.host.commitTranscript()
         if (!options.deferSteerMaterialization) {
@@ -228,6 +236,7 @@ export class ProviderTurnLoop<State> {
             model: this.host.model,
             toolCallId,
             signal,
+            metadata: this.host.metadata,
             emitProgress: (progress) => {
               this.host.emit({ type: 'tool_progress', toolCallId, toolName: tool.name, progress })
             },
@@ -262,6 +271,7 @@ export class ProviderTurnLoop<State> {
       agentSessionId: this.host.agentSessionId,
       state: this.host.agentState,
       cwd: this.host.cwd,
+      metadata: this.host.metadata,
     })
   }
 

@@ -263,7 +263,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         case 'send': {
           const session = this.sessionFor('send')
           if (!session) return
-          this.observeSessionAction(session.send(frame.content, { id: frame.messageId }))
+          this.observeSessionAction(session.send(frame.content, { id: frame.messageId, metadata: frame.metadata }))
           return
         }
         case 'dequeue_message': {
@@ -332,19 +332,19 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         case 'retry': {
           const session = this.sessionFor('retry')
           if (!session || this.rejectIfBusy(session, 'retry')) return
-          this.observeSessionAction(session.retry())
+          this.observeSessionAction(session.retry({ metadata: frame.metadata }))
           return
         }
         case 'resume': {
           const session = this.sessionFor('resume')
           if (!session || this.rejectIfBusy(session, 'resume')) return
-          this.observeSessionAction(session.resume())
+          this.observeSessionAction(session.resume({ metadata: frame.metadata }))
           return
         }
         case 'compact': {
           const session = this.sessionFor('compact')
           if (!session || this.rejectIfBusy(session, 'compact')) return
-          this.observeSessionAction(session.compact())
+          this.observeSessionAction(session.compact({ metadata: frame.metadata }))
           return
         }
         case 'abort': {
@@ -425,9 +425,9 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     let sessionRef: AgentSession<unknown> | null = null
     const tools = createStandardAgentTools({
       environment,
-      scheduleYield: (_ctx, durationMs) => {
+      scheduleYield: (ctx, durationMs) => {
         if (!sessionRef) throw new Error('AgentServer: session is not ready for yield scheduling')
-        return sessionRef.scheduleYieldWakeup(durationMs)
+        return sessionRef.scheduleYieldWakeup(durationMs, ctx.metadata)
       },
     })
     // Commands are fixed for the session's lifetime, so the rendered help is too.

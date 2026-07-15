@@ -8,15 +8,20 @@ import type {
 } from '@demicodes/core'
 import type { AgentProvider, ToolDefinition } from '@demicodes/provider'
 import type { Command, Host } from '@demicodes/shell'
+import type { PortableJsonValue } from '@demicodes/utils'
 import type { TranscriptPatch } from './frames'
 import type { TurnRetryPolicy } from './retry-policy'
 import type { TranscriptLog } from './transcript'
+
+/** Caller-defined data carried with one agent action. Demi transports it without interpreting it. */
+export type AgentMetadata = Readonly<Record<string, PortableJsonValue>>
 
 export interface AgentPromptContext<State> {
   agentSessionId: string
   state: State
   cwd: string
   transcript: TranscriptLog
+  metadata: AgentMetadata | null
 }
 
 export interface AgentSystemPromptContext<State> extends AgentPromptContext<State> {
@@ -33,6 +38,7 @@ export interface AgentToolContext<State> {
   agentSessionId: string
   state: State
   cwd: string
+  metadata: AgentMetadata | null
 }
 
 export interface AgentDisposeContext<State> {
@@ -48,6 +54,7 @@ export interface AgentReferenceResolveContext<State> {
   cwd: string
   transcript: TranscriptLog
   signal: AbortSignal
+  metadata: AgentMetadata | null
 }
 
 export interface AgentHarnessContext<State> {
@@ -77,6 +84,7 @@ export interface AgentToolInvokeContext<State> {
   model: ModelSelection
   toolCallId: string
   signal: AbortSignal
+  metadata: AgentMetadata | null
   emitProgress(progress: unknown): void
 }
 
@@ -114,6 +122,7 @@ export type AgentLifecycleEvent<State> =
       state: State
       transcript: TranscriptLog
       content: UserContentBlock[]
+      metadata: AgentMetadata | null
     }
   | {
       type: 'after_tool_call'
@@ -123,8 +132,16 @@ export type AgentLifecycleEvent<State> =
       toolCallId: string
       toolName: string
       result: AgentToolInvokeResult
+      metadata: AgentMetadata | null
     }
-  | { type: 'after_transcript_rewrite'; agentSessionId: string; state: State; transcript: TranscriptLog; reason: 'retry' }
+  | {
+      type: 'after_transcript_rewrite'
+      agentSessionId: string
+      state: State
+      transcript: TranscriptLog
+      reason: 'retry'
+      metadata: AgentMetadata | null
+    }
 
 export interface AgentHarnessRuntime<State> {
   harnessName: string
