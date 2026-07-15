@@ -11,7 +11,10 @@ import {
   type CommandIO,
   type CommandStdin,
   type CommandStorage,
+  type Host,
 } from '../index'
+
+const testHost = {} as Host
 
 function stdinOf(text: string): CommandStdin {
   return { text, bytes: encodeUtf8(text) }
@@ -372,6 +375,7 @@ test('runRegisteredCommand implements --help from the same renderer', async () =
     cwd: '/workspace',
     io,
     storage: memoryStorage(),
+    host: testHost,
   })
 
   expect(result.exitCode).toBe(0)
@@ -388,6 +392,7 @@ test('runRegisteredCommand executes nested leaves and renders help at any group'
       cwd: '/workspace',
       io,
       storage: memoryStorage(),
+      host: testHost,
     })
     return { result, io }
   }
@@ -410,6 +415,7 @@ test('runRegisteredCommand runs bare roots and dual-mode parents', async () => {
     cwd: '/',
     io: bareIO,
     storage: memoryStorage(),
+    host: testHost,
   })
   expect(bare.exitCode).toBe(0)
   expect(bareIO.stdoutText()).toBe('HOME')
@@ -421,6 +427,7 @@ test('runRegisteredCommand runs bare roots and dual-mode parents', async () => {
     cwd: '/',
     io: parentIO,
     storage: memoryStorage(),
+    host: testHost,
   })
   expect(parentIO.stdoutText()).toBe('parent x=3')
 
@@ -431,6 +438,7 @@ test('runRegisteredCommand runs bare roots and dual-mode parents', async () => {
     cwd: '/',
     io: childIO,
     storage: memoryStorage(),
+    host: testHost,
   })
   expect(childIO.stdoutText()).toBe('child y=4')
 })
@@ -444,6 +452,7 @@ test('runRegisteredCommand validates JSON output when --json is set', async () =
     cwd: '/workspace',
     io,
     storage: memoryStorage(),
+    host: testHost,
   })
 
   expect(result.exitCode).toBe(0)
@@ -459,6 +468,7 @@ test('runRegisteredCommand rejects invalid JSON mode output', async () => {
       cwd: '/workspace',
       io: invalidJsonIO,
       storage: memoryStorage(),
+      host: testHost,
     }),
   ).rejects.toThrow('Invalid JSON output for "filer list"')
   expect(invalidJsonIO.stdoutText()).toBe('')
@@ -471,6 +481,7 @@ test('runRegisteredCommand rejects invalid JSON mode output', async () => {
       cwd: '/workspace',
       io: schemaMismatchIO,
       storage: memoryStorage(),
+      host: testHost,
     }),
   ).rejects.toThrow('JSON output failed validation for "filer list"')
   expect(schemaMismatchIO.stdoutText()).toBe('')
@@ -487,6 +498,7 @@ test('runRegisteredCommand rejects JSON mode when the command has no JSON output
       cwd: '/workspace',
       io,
       storage: memoryStorage(),
+      host: testHost,
     }),
   ).rejects.toThrow('does not define JSON output')
 })

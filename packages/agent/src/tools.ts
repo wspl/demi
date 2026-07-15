@@ -34,14 +34,18 @@ interface ShellExecRepeatState {
 const execRepeatStates = new WeakMap<BashEnvironment, Map<string, ShellExecRepeatState>>()
 
 export interface StandardAgentToolOptions<State = unknown> {
-  environment: BashEnvironment
+  environment:
+    | BashEnvironment
+    | ((
+        ctx: AgentToolInvokeContext<State>,
+        handle: { shellId?: string; commandId?: string },
+      ) => BashEnvironment | Promise<BashEnvironment>)
   scheduleYield(ctx: AgentToolInvokeContext<State>, durationMs: number): AgentToolInvokeResult
 }
 
 export function createStandardAgentTools<State = unknown>(
   options: StandardAgentToolOptions<State>,
 ): AgentTool<State>[] {
-  const { environment } = options
   return [
     {
       name: 'shell_exec',
@@ -63,6 +67,7 @@ export function createStandardAgentTools<State = unknown>(
       },
       invoke: async (ctx, input) => {
         const parsed = parseShellExecInput(input)
+        const environment = await resolveEnvironment(options.environment, ctx, { shellId: parsed.shellId })
         const repeatGuard = repeatedShellExecResult(environment, ctx.agentSessionId, parsed.script)
         if (repeatGuard) return repeatGuard
         const result = await environment.exec({
@@ -91,7 +96,9 @@ export function createStandardAgentTools<State = unknown>(
         },
       },
       invoke: async (ctx, input) => {
-        const result = await environment.status(parseShellStatusInput(input))
+        const parsed = parseShellStatusInput(input)
+        const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
+        const result = await environment.status(parsed)
         ctx.emitProgress(result)
         return finishShellToolResult(environment, result, ctx)
       },
@@ -114,7 +121,9 @@ export function createStandardAgentTools<State = unknown>(
         },
       },
       invoke: async (ctx, input) => {
-        const result = await environment.write({ ...parseShellWriteInput(input), signal: ctx.signal })
+        const parsed = parseShellWriteInput(input)
+        const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
+        const result = await environment.write({ ...parsed, signal: ctx.signal })
         ctx.emitProgress(result)
         return finishShellToolResult(environment, result, ctx)
       },
@@ -136,7 +145,9 @@ export function createStandardAgentTools<State = unknown>(
         },
       },
       invoke: async (ctx, input) => {
-        const result = await environment.abort(parseShellAbortInput(input))
+        const parsed = parseShellAbortInput(input)
+        const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
+        const result = await environment.abort(parsed)
         ctx.emitProgress(result)
         return { ...(await finishShellToolResult(environment, result, ctx)), isError: false }
       },
@@ -160,6 +171,14 @@ export function createStandardAgentTools<State = unknown>(
       invoke: (ctx, input) => options.scheduleYield(ctx, parseYieldDuration(input)),
     },
   ]
+}
+
+function resolveEnvironment<State>(
+  source: StandardAgentToolOptions<State>['environment'],
+  ctx: AgentToolInvokeContext<State>,
+  handle: { shellId?: string; commandId?: string },
+): BashEnvironment | Promise<BashEnvironment> {
+  return typeof source === 'function' ? source(ctx, handle) : source
 }
 
 export interface ShellToolResultOptions {
@@ -467,4 +486,3 @@ export function shellCommandHandleRequired(result: ShellCommandStatus, budgetTok
     result.stderr.truncated
   )
 }
-

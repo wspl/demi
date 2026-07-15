@@ -1182,10 +1182,17 @@ class AbortAwareProvider implements AgentProvider {
 }
 
 function createTextHarness(): AgentHarness<Record<string, never>> {
+  const hosts = new Map<string, LocalHost>()
   return {
     name: 'test',
     initialState: () => ({}),
-    host: (ctx) => new LocalHost(ctx.cwd),
+    host: (ctx) => {
+      const existing = hosts.get(ctx.cwd)
+      if (existing) return existing
+      const host = new LocalHost(ctx.cwd)
+      hosts.set(ctx.cwd, host)
+      return host
+    },
     systemPrompt: () => 'system',
   }
 }

@@ -31,7 +31,7 @@ export type ClientFrame =
   | { type: 'retry'; metadata?: AgentMetadata }
   | { type: 'resume'; metadata?: AgentMetadata }
   | { type: 'compact'; metadata?: AgentMetadata }
-  | { type: 'shell_write'; commandId: string; stdin: string }
+  | { type: 'shell_write'; commandId: string; stdin: string; metadata?: AgentMetadata }
   | { type: 'list_conversations'; cwd: string }
   // Requests a fresh transcript_reset; sent by the client when it detects a
   // revision gap in the patch stream (defensive resync, transports are ordered).

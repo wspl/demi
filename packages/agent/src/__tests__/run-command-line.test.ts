@@ -11,7 +11,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import {
   AgentServer,
   RunCommandLineCommandNotRegisteredError,
-  RunCommandLineSessionNotFoundError,
+  RunCommandLineShellNotFoundError,
   type AgentHarness,
 } from '../index'
 
@@ -33,8 +33,21 @@ function stubProvider(): Provider {
   return defineProvider({
     id: 'stub',
     displayName: 'Stub',
-    createRuntime: () => new StubProvider([[events.text('hi'), events.response()]]),
+    createRuntime: () =>
+      new StubProvider([
+        [events.toolCall('create-shell', 'shell_exec', { script: 'printf ready', timeoutMs: 1_000 })],
+        [events.text('ready'), events.response()],
+      ]),
   })
+}
+
+async function createShell(client: ReturnType<AgentServer['client']>): Promise<void> {
+  await client.send([{ type: 'text', text: 'create shell' }])
+}
+
+function shellIds(first: string): () => string {
+  let index = 0
+  return () => (index++ === 0 ? first : `${first}-${index}`)
 }
 
 function greetCommand(): Command {
@@ -91,17 +104,19 @@ function harnessWithCommands(cwd: string, commands: () => Command[]): AgentHarne
 test('AgentServer.runCommandLine runs a registered command with full stdout/stderr', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-run-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand(), failingCommand()])
-  const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
+  const shellId = 'run-command-line-shell'
+  const server = new AgentServer({ agent: harness, providers: [stubProvider()], shell: { shellIdFactory: shellIds(shellId) } })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
 
-  const ok = await server.runCommandLine(sessionId, 'greet', ['hello', 'world'], { cwd, stdin: 'piped' })
+  const ok = await server.runCommandLine(shellId, 'greet', ['hello', 'world'], { cwd, stdin: 'piped' })
   expect(ok.exitCode).toBe(0)
   expect(ok.stdout).toContain('hello world')
   expect(ok.stdout).toContain('stdin:piped')
 
-  const fail = await server.runCommandLine(sessionId, 'fail', ['now'], { cwd, stdin: '' })
+  const fail = await server.runCommandLine(shellId, 'fail', ['now'], { cwd, stdin: '' })
   expect(fail.exitCode).toBe(7)
   expect(fail.stderr).toContain('boom')
 
@@ -112,17 +127,19 @@ test('AgentServer.runCommandLine runs a registered command with full stdout/stde
 test('AgentServer.runCommandLine delivers newline-terminated stdin byte-identical', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-stdin-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
-  const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
+  const shellId = 'run-command-line-stdin-shell'
+  const server = new AgentServer({ agent: harness, providers: [stubProvider()], shell: { shellIdFactory: shellIds(shellId) } })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
 
   // What a real pipe delivers: `printf 'line1\nline2\n' | greet hello x`.
-  const piped = await server.runCommandLine(sessionId, 'greet', ['hello', 'x'], { cwd, stdin: 'line1\nline2\n' })
+  const piped = await server.runCommandLine(shellId, 'greet', ['hello', 'x'], { cwd, stdin: 'line1\nline2\n' })
   expect(piped.stdout).toBe('hello x\nstdin:line1\nline2\n')
 
   // Stdin without a trailing newline gains exactly one (heredoc normalization).
-  const bare = await server.runCommandLine(sessionId, 'greet', ['hello', 'x'], { cwd, stdin: 'abc' })
+  const bare = await server.runCommandLine(shellId, 'greet', ['hello', 'x'], { cwd, stdin: 'abc' })
   expect(bare.stdout).toBe('hello x\nstdin:abc\n')
 
   await client.close()
@@ -148,12 +165,14 @@ test('AgentServer.runCommandLine returns binary stdout as base64', async () => {
     ],
   }
   const harness = harnessWithCommands(cwd, () => [binaryCommand])
-  const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
+  const shellId = 'run-command-line-binary-shell'
+  const server = new AgentServer({ agent: harness, providers: [stubProvider()], shell: { shellIdFactory: shellIds(shellId) } })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
 
-  const result = await server.runCommandLine(sessionId, 'blob', ['emit'], { cwd, stdin: '' })
+  const result = await server.runCommandLine(shellId, 'blob', ['emit'], { cwd, stdin: '' })
   expect(result.exitCode).toBe(0)
   expect(result.stdoutEncoding).toBe('base64')
   expect(Uint8Array.from(Buffer.from(result.stdout, 'base64'))).toEqual(bytes)
@@ -162,13 +181,13 @@ test('AgentServer.runCommandLine returns binary stdout as base64', async () => {
   await server.close()
 })
 
-test('AgentServer.runCommandLine rejects unknown sessions', async () => {
+test('AgentServer.runCommandLine rejects unknown shells', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-missing-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
   const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
 
-  await expect(server.runCommandLine('no-such-session', 'greet', [], { cwd, stdin: '' })).rejects.toBeInstanceOf(
-    RunCommandLineSessionNotFoundError,
+  await expect(server.runCommandLine('no-such-shell', 'greet', [], { cwd, stdin: '' })).rejects.toBeInstanceOf(
+    RunCommandLineShellNotFoundError,
   )
 
   await server.close()
@@ -177,12 +196,14 @@ test('AgentServer.runCommandLine rejects unknown sessions', async () => {
 test('AgentServer.runCommandLine rejects commands not registered for the session', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-unregistered-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
-  const server = new AgentServer({ agent: harness, providers: [stubProvider()] })
+  const shellId = 'run-command-line-unregistered-shell'
+  const server = new AgentServer({ agent: harness, providers: [stubProvider()], shell: { shellIdFactory: shellIds(shellId) } })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
 
-  await expect(server.runCommandLine(sessionId, 'sh', ['-c', 'echo bypassed'], { cwd, stdin: '' })).rejects.toBeInstanceOf(
+  await expect(server.runCommandLine(shellId, 'sh', ['-c', 'echo bypassed'], { cwd, stdin: '' })).rejects.toBeInstanceOf(
     RunCommandLineCommandNotRegisteredError,
   )
 
@@ -190,15 +211,18 @@ test('AgentServer.runCommandLine rejects commands not registered for the session
   await server.close()
 })
 
-test('prepareSessionShell can inject env without AgentServer knowing about bridges', async () => {
+test('prepareShell can inject env without AgentServer knowing about bridges', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'demi-rcl-prep-'))
   const harness = harnessWithCommands(cwd, () => [greetCommand()])
   let seenNames: readonly string[] = []
   const server = new AgentServer({
     agent: harness,
     providers: [stubProvider()],
-    shell: { initialEnv: { PATH: '/usr/bin', MARKER: 'base' } },
-    prepareSessionShell: ({ commandNames, shell }) => {
+    shell: {
+      initialEnv: { PATH: '/usr/bin', MARKER: 'base' },
+      shellIdFactory: shellIds('run-command-line-prepared-shell'),
+    },
+    prepareShell: ({ commandNames, shell }) => {
       seenNames = commandNames
       return {
         ...shell,
@@ -213,9 +237,10 @@ test('prepareSessionShell can inject env without AgentServer knowing about bridg
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
+  await createShell(client)
 
   expect(seenNames).toContain('greet')
-  const env = await server.runCommandLine(sessionId, 'greet', ['hello', 'x'], { cwd, stdin: '' })
+  const env = await server.runCommandLine('run-command-line-prepared-shell', 'greet', ['hello', 'x'], { cwd, stdin: '' })
   expect(env.exitCode).toBe(0)
 
   await client.close()

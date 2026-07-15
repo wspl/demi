@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { Server } from 'node:net'
 import {
   RunCommandLineCommandNotRegisteredError,
-  RunCommandLineSessionNotFoundError,
+  RunCommandLineShellNotFoundError,
   RunCommandLineTimeoutError,
   type AgentServer,
 } from '@demicodes/agent'
@@ -93,17 +93,15 @@ function postRun(socketPath, body) {
 
 async function main() {
   const socketPath = process.env.DEMI_COMMAND_BRIDGE_SOCK
-  // Shell sessions export DEMI_SESSION_ID as the command scope id (the agent
-  // session id for agent-owned shells).
-  const commandScopeId = process.env.DEMI_SESSION_ID
-  if (!socketPath || !commandScopeId) {
-    process.stderr.write('command bridge: DEMI_COMMAND_BRIDGE_SOCK / session id not set in this shell\\n')
+  const shellId = process.env.DEMI_SHELL_ID
+  if (!socketPath || !shellId) {
+    process.stderr.write('command bridge: DEMI_COMMAND_BRIDGE_SOCK / shell id not set in this shell\\n')
     process.exit(1)
   }
   const name = basename(process.argv[1] || '')
   const args = process.argv.slice(2)
   const stdin = await readStdin()
-  const body = JSON.stringify({ commandScopeId, name, args, cwd: process.cwd(), stdin })
+  const body = JSON.stringify({ shellId, name, args, cwd: process.cwd(), stdin })
 
   const response = await postRun(socketPath, body)
   if (response.statusCode !== 200) {
@@ -139,7 +137,7 @@ export interface CommandBridgeHandle {
 }
 
 interface RunRequestBody {
-  commandScopeId: string
+  shellId: string
   name: string
   args: string[]
   cwd: string
@@ -178,7 +176,7 @@ async function handleRun(server: AgentServer, req: IncomingMessage, res: ServerR
     return
   }
   if (!isRunRequestBody(body)) {
-    sendJson(res, 400, { error: 'bad request: expected { commandScopeId, name, args, cwd, stdin }' })
+    sendJson(res, 400, { error: 'bad request: expected { shellId, name, args, cwd, stdin }' })
     return
   }
 
@@ -190,7 +188,7 @@ async function handleRun(server: AgentServer, req: IncomingMessage, res: ServerR
   req.on('close', onClosedEarly)
 
   try {
-    const result = await server.runCommandLine(body.commandScopeId, body.name, body.args, {
+    const result = await server.runCommandLine(body.shellId, body.name, body.args, {
       cwd: body.cwd,
       stdin: body.stdin,
       signal: controller.signal,
@@ -206,7 +204,7 @@ async function handleRun(server: AgentServer, req: IncomingMessage, res: ServerR
 }
 
 function statusForError(error: unknown): number {
-  if (error instanceof RunCommandLineSessionNotFoundError) return 404
+  if (error instanceof RunCommandLineShellNotFoundError) return 404
   if (error instanceof RunCommandLineCommandNotRegisteredError) return 404
   if (error instanceof RunCommandLineTimeoutError) return 504
   return 500
@@ -216,7 +214,7 @@ function isRunRequestBody(value: unknown): value is RunRequestBody {
   if (value === null || typeof value !== 'object') return false
   const record = value as Record<string, unknown>
   return (
-    typeof record.commandScopeId === 'string' &&
+    typeof record.shellId === 'string' &&
     typeof record.name === 'string' &&
     Array.isArray(record.args) &&
     record.args.every((arg) => typeof arg === 'string') &&

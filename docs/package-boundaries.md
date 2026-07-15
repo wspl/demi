@@ -55,6 +55,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
+- Registered `Command.run` receives the `BashEnvironment` Host in its execution context; command implementations use that Host instead of closing over an assembly-time Host.
 - Runtime state such as command JSON state and agent session snapshots goes through `Host.store`; do not keep a separate top-level store adapter boundary.
 - HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, virtual, or policy-restricted hosts.
 - BashEnvironment must register fork portable commands before falling back to `Host.process.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
@@ -75,11 +76,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: AgentSession, AgentServer, AgentClient, action-scoped caller metadata, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, host-agnostic `prepareSessionShell` and `runCommandLine` on AgentServer, and assembly of one harness with the standard shell runtime.
+- Owns: AgentSession, AgentServer, AgentClient, action-scoped caller metadata, transcript replay, compaction, transport frames, transcript patches, action-aware Host resolution, per-Host BashEnvironment reuse and shell-handle ownership checks, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, host-agnostic `prepareShell` and shell-origin `runCommandLine` on AgentServer, and assembly of one harness with the standard shell runtime.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpath `@demicodes/agent/stdio` for stdio transport only.
 - Must not: import concrete providers, `@demicodes/host-local`, or UI packages; must not own UDS sockets, PATH shim materialization, or `bridge-bin` layout.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
-- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, optional `prepareSessionShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. Local open-box assembly (bridge default on, UDS + shims) lives entirely in `@demicodes/host-local` via `createLocalAgentServer`.
+- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, optional `prepareShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target. Local open-box assembly (bridge default on, UDS + shims) lives entirely in `@demicodes/host-local` via `createLocalAgentServer`.
 
 ### `@demicodes/coding-agent`
 

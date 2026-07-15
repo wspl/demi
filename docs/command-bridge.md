@@ -71,7 +71,7 @@ createLocalAgentServer (host-local)
   stateDir = resolveDemiHome(options.stateDir)
   socket   = stateDir/bridges/<id>.sock
   AgentServer({
-    prepareSessionShell → materialize stateDir/bridge-bin/<sessionId>/
+    prepareShell → materialize stateDir/bridge-bin/<sessionId>/
                           inject PATH + DEMI_COMMAND_BRIDGE_SOCK
   })
   startCommandBridge(server) → UDS POST /run → server.runCommandLine(...)
@@ -81,10 +81,10 @@ createLocalAgentServer (host-local)
 
 | Layer | Knows about |
 |-------|-------------|
-| `@demicodes/agent` `AgentServer` | `prepareSessionShell` hook; `runCommandLine` for a live session. **No** socket, shim, or bin layout. |
+| `@demicodes/agent` `AgentServer` | `prepareShell` hook; `runCommandLine` for a live shell. **No** socket, shim, or bin layout. |
 | `@demicodes/host-local` | UDS listener, `.dispatch` shim, `bridge-bin/`, `bridges/`, default-on assembly. |
 
-`AgentServer` is intentionally transport-agnostic: a browser Host could supply a different `prepareSessionShell` / IPC without AgentServer growing LocalHost concepts.
+`AgentServer` is intentionally transport-agnostic: another Host can supply a different `prepareShell` / IPC without AgentServer growing LocalHost concepts.
 
 ---
 
@@ -93,14 +93,17 @@ createLocalAgentServer (host-local)
 | Package | Role |
 |---------|------|
 | `@demicodes/shell` | Command tree, exec, quoting. |
-| `@demicodes/agent` | `prepareSessionShell`; `runCommandLine` (session-scoped registered command exec). |
+| `@demicodes/agent` | `prepareShell`; `runCommandLine` (shell-origin registered command exec). |
 | `@demicodes/host-local` | `LocalHost`, `resolveDemiHome`, shim materialize, UDS bridge, `createLocalAgentServer`. |
 
 ---
 
 ## Protocol / exec / stdin
 
-- UDS `POST /run` → `{ commandScopeId, name, args, cwd, stdin }` → `{ exitCode, stdout, stderr }`
+- UDS `POST /run` → `{ shellId, name, args, cwd, stdin }` → `{ exitCode, stdout, stderr }`
+- The shim reads `shellId` from `DEMI_SHELL_ID`. It sends neither action metadata
+  nor `agentSessionId`; the shell id locates the live binding and originating
+  `BashEnvironment` directly.
 - Exec: `name args…` (+ heredoc if stdin non-empty) via `AgentServer.runCommandLine`,
   always in an ephemeral shell born in the caller's cwd — bridge calls never
   share (or mutate) the model's session shell
@@ -119,3 +122,7 @@ createLocalAgentServer (host-local)
 | Socket | `<stateDir>/bridges/<id>.sock` (path override only) |
 | Default bridge | **On** for `createLocalAgentServer` |
 | AgentServer bridge awareness | **None** — hook + `runCommandLine` only |
+
+The current action may already use another Host when a child process calls the
+bridge. Routing by the creating `shellId` keeps the invocation on its original
+Host instead of following current action metadata.

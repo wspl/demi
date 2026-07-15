@@ -13,14 +13,14 @@ export interface CodingAgentHarnessOptions {
 }
 
 export interface CodingCommandRegistryOptions {
-  demiHost?: Host
+  includeDemi?: boolean
   commands?: Command[]
 }
 
 export function createCodingCommandRegistry(options: CodingCommandRegistryOptions = {}): CommandRegistry {
   const registry = new CommandRegistry()
   const commands = options.commands ?? [
-    ...(options.demiHost ? [createDemiCommand(options.demiHost)] : []),
+    ...(options.includeDemi ? [createDemiCommand()] : []),
     createTodoCommand(),
   ]
   for (const command of commands) registry.register(command)
@@ -28,7 +28,7 @@ export function createCodingCommandRegistry(options: CodingCommandRegistryOption
 }
 
 export function createCodingAgentHarness(options: CodingAgentHarnessOptions): AgentHarness<CodingState> {
-  const commands = options.commands ?? defaultCodingCommands(options.host)
+  const commands = options.commands ?? defaultCodingCommands()
   const referenceHost = options.referenceHost ?? options.host
   const resolveReferences = createFileReferenceResolver<CodingState>(referenceHost)
   return {
@@ -66,6 +66,6 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
   }
 }
 
-function defaultCodingCommands(demiHost: Host): Command[] {
-  return [createDemiCommand(demiHost), createTodoCommand()]
+function defaultCodingCommands(): Command[] {
+  return [createDemiCommand(), createTodoCommand()]
 }

@@ -62,10 +62,17 @@ export interface AgentHarnessContext<State> {
   cwd: string
 }
 
+/** Context used when a shell operation resolves its action-specific Host. */
+export interface AgentHostContext<State> extends AgentHarnessContext<State> {
+  agentSessionId: string
+  metadata: AgentMetadata | null
+}
+
 export interface AgentHarness<State = unknown> {
   name: string
   initialState(): State
-  host(ctx: AgentHarnessContext<State>): Host
+  /** Return the same Host object for calls that target the same execution environment. */
+  host(ctx: AgentHarnessContext<State> | AgentHostContext<State>): Host | Promise<Host>
   commands?(ctx: AgentHarnessContext<State>): Command[]
   systemPrompt(ctx: AgentSystemPromptContext<State>): string
   preamble?(ctx: AgentPromptContext<State>): string | null

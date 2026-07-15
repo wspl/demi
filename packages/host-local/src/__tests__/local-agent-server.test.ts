@@ -54,7 +54,11 @@ function stubProvider() {
   return defineProvider({
     id: 'stub',
     displayName: 'Stub',
-    createRuntime: () => new StubProvider([[events.text('hi'), events.response()]]),
+    createRuntime: () =>
+      new StubProvider([
+        [events.toolCall('create-shell', 'shell_exec', { script: 'printf ready', timeoutMs: 1_000 })],
+        [events.text('ready'), events.response()],
+      ]),
   })
 }
 
@@ -78,6 +82,7 @@ test('createLocalAgentServer enables command bridge by default under stateDir, n
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
+  await client.send([{ type: 'text', text: 'create shell' }])
 
   await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
   await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
@@ -110,17 +115,21 @@ test('createLocalAgentServer commandBridge: false leaves no shim directory', asy
 test('createLocalAgentServer default bridge: runCommandLine works', async () => {
   const { cwd, stateDir } = await shortDirs('run')
   const host = new LocalHost(cwd)
+  const shellId = 'local-server-shell'
+  let shellIndex = 0
   const { server, close } = createLocalAgentServer({
     host,
     agent: harness(host),
     providers: [stubProvider()],
     stateDir,
+    shell: { shellIdFactory: () => (shellIndex++ === 0 ? shellId : `${shellId}-${shellIndex}`) },
   })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   await client.open(selection, cwd, sessionId)
+  await client.send([{ type: 'text', text: 'create shell' }])
 
-  const result = await server.runCommandLine(sessionId, 'pingcmd', ['run'], { cwd, stdin: '' })
+  const result = await server.runCommandLine(shellId, 'pingcmd', ['run'], { cwd, stdin: '' })
   expect(result.exitCode).toBe(0)
   expect(result.stdout).toContain('pong')
 

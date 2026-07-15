@@ -3,8 +3,14 @@ import type { Command as ForkCommand, CommandContext as ForkCommandContext, Exec
 import { runRegisteredCommand, type Command, type CommandIO, type CommandStdin } from './command'
 import type { ShellSession } from './environment-state'
 import type { AgentSessionCommandStorage } from './storage'
+import type { Host } from './host'
 
-export function commandToForkCommand(session: ShellSession, command: Command, storage: AgentSessionCommandStorage): ForkCommand {
+export function commandToForkCommand(
+  session: ShellSession,
+  command: Command,
+  storage: AgentSessionCommandStorage,
+  host: Host,
+): ForkCommand {
   return {
     name: command.name,
     consumesStdin: treeConsumesStdin(command),
@@ -20,6 +26,7 @@ export function commandToForkCommand(session: ShellSession, command: Command, st
           cwd: ctx.cwd,
           io,
           storage,
+          host,
         })
         session.accumulator.audit.push({
           kind: 'registered-command',

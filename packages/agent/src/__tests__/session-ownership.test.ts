@@ -60,11 +60,11 @@ test('restored sessions share one live state object between harness and session'
   const sessionId = globalThis.crypto.randomUUID()
   const hostStates: CounterState[] = []
   const turns = (): ConstructorParameters<typeof StubProvider>[0] => [
-    [events.toolCall('tool-1', 'bump', {}), events.response()],
+    [events.toolCall('tool-1', 'shell_exec', { script: 'printf ready', timeoutMs: 1_000 })],
     [events.text('done'), events.response()],
   ]
 
-  // The standard tool surface is fixed, so mutate state via lifecycle instead.
+  // Mutate state via lifecycle; shell Host resolution then observes that same live state.
   const harness: AgentHarness<CounterState> = {
     ...createStatefulHarness(cwd, hostStates),
     lifecycle: (event) => {
@@ -89,8 +89,7 @@ test('restored sessions share one live state object between harness and session'
     client2.transcript().blocks.filter((block) => block.type === 'response').length >= 1,
   )
 
-  // host() ran once with initial state (store access) and once with the
-  // restored state; the restored object is the live one the lifecycle mutated.
+  // host() receives the restored live state when the shell tool resolves its Host.
   const restored = hostStates.at(-1)
   expect(restored).toBeDefined()
   expect(restored!.count).toBeGreaterThanOrEqual(2)

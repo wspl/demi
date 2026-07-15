@@ -2,7 +2,7 @@ import { asError, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@dem
 import { z } from 'zod'
 import type { Command, Host } from '@demicodes/shell'
 
-export function createDemiCommand(host: Host): Command {
+export function createDemiCommand(): Command {
   return {
     name: 'demi',
     summary: 'Read, create, edit, and patch workspace files (text, images, and video).',
@@ -20,7 +20,7 @@ export function createDemiCommand(host: Host): Command {
         },
         positionals: ['path'],
         examples: ['demi read src/foo.ts', 'demi read assets/frame.png', 'demi read assets/clip.mp4'],
-        run: async ({ parsed, cwd, io }) => {
+        run: async ({ parsed, cwd, io, host }) => {
           const path = String(parsed.values.path)
           const pathError = pathValidationError(path)
           if (pathError) {
@@ -52,7 +52,7 @@ export function createDemiCommand(host: Host): Command {
           "demi create src/foo.ts <<'EOF'\nexport const foo = 1\nEOF",
           "demi create README.md <<'EOF'\n# Project\nEOF",
         ],
-        run: async ({ parsed, cwd, io }) => {
+        run: async ({ parsed, cwd, io, host }) => {
           const path = String(parsed.values.path)
           const content = String(parsed.values.content)
           const pathError = pathValidationError(path)
@@ -102,7 +102,7 @@ export function createDemiCommand(host: Host): Command {
           'demi edit src/foo.ts --old foo --new bar',
           'demi edit src/foo.ts --old "old text" --new "new text" --occurrence 2',
         ],
-        run: async ({ parsed, cwd, io }) => {
+        run: async ({ parsed, cwd, io, host }) => {
           const path = String(parsed.values.path)
           const read = await readFile(host, cwd, path)
           if (read.exitCode !== 0) {
@@ -156,7 +156,7 @@ export function createDemiCommand(host: Host): Command {
           "demi patch <<'PATCH'\n--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new\nPATCH",
           "demi patch <<'PATCH'\n--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1 @@\n+export const created = true\nPATCH",
         ],
-        run: async ({ parsed, cwd, io }) => {
+        run: async ({ parsed, cwd, io, host }) => {
           let patches: FilePatch[]
           let operations: PatchOperation[]
           try {

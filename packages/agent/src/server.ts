@@ -17,7 +17,14 @@ import { AgentClient } from './client'
 import { cloneBlocks } from './patch'
 import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandStatusLike } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
-import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionCheckpoint, SessionEvent } from './types'
+import type {
+  AgentHarness,
+  AgentHarnessRuntime,
+  AgentSessionStore,
+  AgentSessionCheckpoint,
+  AgentToolInvokeContext,
+  SessionEvent,
+} from './types'
 import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
 
@@ -29,11 +36,11 @@ export interface AgentServerSessionOptions {
 }
 
 /**
- * Host-agnostic hook invoked once per `open()` before BashEnvironment is built.
+ * Host-agnostic hook invoked before each resolved Host's BashEnvironment is built.
  * LocalHost uses this to inject PATH / env for the command bridge; AgentServer
  * itself does not know about UDS, shims, or bin directories.
  */
-export interface PrepareSessionShellContext {
+export interface PrepareShellContext {
   agentSessionId: string
   host: Host
   commandNames: readonly string[]
@@ -41,8 +48,8 @@ export interface PrepareSessionShellContext {
   shell: Omit<BashEnvironmentOptions, 'host' | 'commands'>
 }
 
-export type PrepareSessionShell = (
-  ctx: PrepareSessionShellContext,
+export type PrepareShell = (
+  ctx: PrepareShellContext,
 ) =>
   | Omit<BashEnvironmentOptions, 'host' | 'commands'>
   | Promise<Omit<BashEnvironmentOptions, 'host' | 'commands'>>
@@ -56,7 +63,7 @@ export interface AgentServerOptions {
    * Optional host-side shell prep (env, PATH, etc.). Implementation-agnostic —
    * command bridge wiring lives in `@demicodes/host-local`, not here.
    */
-  prepareSessionShell?: PrepareSessionShell
+  prepareShell?: PrepareShell
 }
 
 export interface AgentTransportBinding {
@@ -79,10 +86,10 @@ export interface RunCommandLineResult {
   stderr: string
 }
 
-export class RunCommandLineSessionNotFoundError extends Error {
-  constructor(readonly agentSessionId: string) {
-    super(`runCommandLine: no session "${agentSessionId}" is open in this process`)
-    this.name = 'RunCommandLineSessionNotFoundError'
+export class RunCommandLineShellNotFoundError extends Error {
+  constructor(readonly shellId: string) {
+    super(`runCommandLine: shell "${shellId}" is not open in this process`)
+    this.name = 'RunCommandLineShellNotFoundError'
   }
 }
 
@@ -109,7 +116,7 @@ export class AgentServer {
   private readonly providers: Map<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
-  private readonly prepareSessionShell: PrepareSessionShell | null
+  private readonly prepareShell: PrepareShell | null
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -118,7 +125,7 @@ export class AgentServer {
     this.providers = createProviderMap(options.providers)
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
-    this.prepareSessionShell = options.prepareSessionShell ?? null
+    this.prepareShell = options.prepareShell ?? null
   }
 
   client(): AgentClient {
@@ -134,7 +141,7 @@ export class AgentServer {
       providers: this.providers,
       shell: this.shellOptions,
       session: this.sessionOptions,
-      prepareSessionShell: this.prepareSessionShell,
+      prepareShell: this.prepareShell,
       sessions: this.sessionOwnership,
     })
     this.bindings.add(binding)
@@ -153,14 +160,15 @@ export class AgentServer {
    * own IPC; AgentServer only knows how to exec against the open session shell.
    */
   async runCommandLine(
-    agentSessionId: string,
+    shellId: string,
     name: string,
     args: string[],
     opts: RunCommandLineOptions,
   ): Promise<RunCommandLineResult> {
-    const binding = this.sessionOwnership.get(agentSessionId)
-    if (!binding) throw new RunCommandLineSessionNotFoundError(agentSessionId)
-    return binding.runCommandLine(name, args, opts)
+    const owners = [...this.bindings].filter((binding) => binding.hasShell(shellId))
+    if (owners.length === 0) throw new RunCommandLineShellNotFoundError(shellId)
+    if (owners.length > 1) throw new Error(`runCommandLine: shell id "${shellId}" is not unique`)
+    return owners[0]!.runCommandLine(shellId, name, args, opts)
   }
 }
 
@@ -194,7 +202,7 @@ interface AgentTransportBindingOptions {
   providers: ReadonlyMap<string, Provider>
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
-  prepareSessionShell: PrepareSessionShell | null
+  prepareShell: PrepareShell | null
   sessions: SessionOwnershipRegistry
 }
 
@@ -204,11 +212,13 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly providers: ReadonlyMap<string, Provider>
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
-  private readonly prepareSessionShell: PrepareSessionShell | null
+  private readonly prepareShell: PrepareShell | null
   private readonly sessions: SessionOwnershipRegistry
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
-  private currentEnvironment: BashEnvironment | null = null
+  private readonly environmentsByHost = new Map<Host, BashEnvironment>()
+  private readonly pendingEnvironmentsByHost = new Map<Host, Promise<BashEnvironment>>()
+  private currentCommandRegistry: CommandRegistry | null = null
   private currentCwd: string | null = null
   private currentProviderId: string | null = null
   private currentSessionId: string | null = null
@@ -223,7 +233,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.providers = options.providers
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
-    this.prepareSessionShell = options.prepareSessionShell
+    this.prepareShell = options.prepareShell
     this.sessions = options.sessions
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
@@ -395,7 +405,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     // state exists. Harnesses must tolerate host() being called with initial
     // state for store access (listConversations does the same).
     const initialState = agent.initialState()
-    const provisionalHost = agent.host({ state: initialState, cwd: frame.cwd })
+    const provisionalHost = await agent.host({ state: initialState, cwd: frame.cwd })
     const store = new HostAgentSessionStore(provisionalHost.store, agentSessionId)
     const checkpoint = await store.loadCheckpoint()
     const restoring = checkpoint !== null && checkpoint.harnessName === agent.name
@@ -404,27 +414,13 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     // prompts) and the session itself. On restore it carries the saved state.
     const state = restoring ? structuredClone(checkpoint.state) : initialState
     const harnessContext = { state, cwd: frame.cwd }
-    const host = restoring ? agent.host(harnessContext) : provisionalHost
     const commands = agent.commands?.(harnessContext) ?? []
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
     const commandNames = commandRegistry.list().map((command) => command.name)
-    const shellOptions = this.prepareSessionShell
-      ? await this.prepareSessionShell({
-          agentSessionId,
-          host,
-          commandNames,
-          shell: this.shellOptions,
-        })
-      : this.shellOptions
-    const environment = new BashEnvironment({
-      ...shellOptions,
-      host,
-      commands: commandRegistry,
-    })
     let sessionRef: AgentSession<unknown> | null = null
     const tools = createStandardAgentTools({
-      environment,
+      environment: (ctx, handle) => this.resolveEnvironment(ctx, handle),
       scheduleYield: (ctx, durationMs) => {
         if (!sessionRef) throw new Error('AgentServer: session is not ready for yield scheduling')
         return sessionRef.scheduleYieldWakeup(durationMs, ctx.metadata)
@@ -453,7 +449,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     sessionRef = session
     this.session = session
     this.currentAgent = agent
-    this.currentEnvironment = environment
+    this.currentCommandRegistry = commandRegistry
     this.currentCwd = frame.cwd
     this.currentProviderId = frame.provider.providerId
     this.currentCommandNames = new Set(commandNames)
@@ -528,12 +524,16 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private async closeSession(): Promise<void> {
     const session = this.session
     const agent = this.currentAgent
-    const environment = this.currentEnvironment
     const cwd = this.currentCwd
 
     try {
       if (session) await session.dispose()
-      if (environment) await environment.disposeAllShells()
+      const pendingEnvironments = await Promise.allSettled(this.pendingEnvironmentsByHost.values())
+      const environments = new Set(this.environmentsByHost.values())
+      for (const result of pendingEnvironments) {
+        if (result.status === 'fulfilled') environments.add(result.value)
+      }
+      await Promise.all([...environments].map((environment) => environment.disposeAllShells()))
       if (session && agent && cwd) {
         await agent.dispose?.({ agentSessionId: session.id(), state: session.state(), cwd, transcript: session.transcript() })
       }
@@ -542,7 +542,9 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       this.unsubscribeSession = null
       this.session = null
       this.currentAgent = null
-      this.currentEnvironment = null
+      this.environmentsByHost.clear()
+      this.pendingEnvironmentsByHost.clear()
+      this.currentCommandRegistry = null
       this.currentCwd = null
       this.currentProviderId = null
       this.currentCommandNames = new Set()
@@ -557,7 +559,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   // straight from Host.store — independent of any client-side state, so history
   // survives a cleared browser / a different device.
   private async listConversations(cwd: string): Promise<void> {
-    const host = this.agent.host({ state: this.agent.initialState(), cwd })
+    const host = await this.agent.host({ state: this.agent.initialState(), cwd })
     const keys = await host.store.list('agent-sessions/')
     const conversations: ConversationSummary[] = []
     for (const key of keys) {
@@ -572,9 +574,18 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
 
   private async handleShellWrite(frame: Extract<ClientFrame, { type: 'shell_write' }>): Promise<void> {
     const session = this.sessionFor('shell_write')
-    if (!session || !this.currentEnvironment || !this.currentCwd) return
+    if (!session || !this.currentCwd) return
 
-    const result = await this.currentEnvironment.write({
+    const environment = await this.resolveEnvironment(
+      {
+        agentSessionId: session.id(),
+        state: session.state(),
+        cwd: this.currentCwd,
+        metadata: frame.metadata ?? null,
+      },
+      { commandId: frame.commandId },
+    )
+    const result = await environment.write({
       commandId: frame.commandId,
       stdin: frame.stdin,
     })
@@ -582,8 +593,13 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   }
 
   /** Backs `AgentServer.runCommandLine` — see its doc comment for the contract. */
-  async runCommandLine(name: string, args: string[], opts: RunCommandLineOptions): Promise<RunCommandLineResult> {
-    const environment = this.currentEnvironment
+  async runCommandLine(
+    shellId: string,
+    name: string,
+    args: string[],
+    opts: RunCommandLineOptions,
+  ): Promise<RunCommandLineResult> {
+    const environment = this.environmentForShell(shellId)
     const agentSessionId = this.currentSessionId
     if (!environment || !agentSessionId) throw new Error('runCommandLine: session has no active shell environment')
     if (!this.currentCommandNames.has(name)) throw new RunCommandLineCommandNotRegisteredError(name)
@@ -638,6 +654,80 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     } finally {
       await environment.disposeShell(result.shellId).catch(() => {})
     }
+  }
+
+  hasShell(shellId: string): boolean {
+    return this.environmentForShell(shellId) !== null
+  }
+
+  private async resolveEnvironment(
+    ctx: Pick<AgentToolInvokeContext<unknown>, 'agentSessionId' | 'state' | 'cwd' | 'metadata'>,
+    handle: { shellId?: string; commandId?: string },
+  ): Promise<BashEnvironment> {
+    const agent = this.currentAgent
+    const commandRegistry = this.currentCommandRegistry
+    if (!agent || !commandRegistry) throw new Error('Shell environment is not available before session open')
+
+    const host = await agent.host({
+      agentSessionId: ctx.agentSessionId,
+      state: ctx.state,
+      cwd: ctx.cwd,
+      metadata: ctx.metadata,
+    })
+    const environment = await this.environmentForHost(host, commandRegistry)
+    const owner = handle.shellId
+      ? this.environmentForShell(handle.shellId)
+      : handle.commandId
+        ? this.environmentForCommand(handle.commandId)
+        : null
+    if (owner && owner !== environment) {
+      const id = handle.shellId ?? handle.commandId
+      throw new Error(`Shell handle "${id}" belongs to a different Host`)
+    }
+    return environment
+  }
+
+  private async environmentForHost(host: Host, commands: CommandRegistry): Promise<BashEnvironment> {
+    const existing = this.environmentsByHost.get(host)
+    if (existing) return existing
+    const pending = this.pendingEnvironmentsByHost.get(host)
+    if (pending) return pending
+    const creation = this.createEnvironment(host, commands)
+    this.pendingEnvironmentsByHost.set(host, creation)
+    try {
+      const environment = await creation
+      this.environmentsByHost.set(host, environment)
+      return environment
+    } finally {
+      this.pendingEnvironmentsByHost.delete(host)
+    }
+  }
+
+  private async createEnvironment(host: Host, commands: CommandRegistry): Promise<BashEnvironment> {
+    const agentSessionId = this.currentSessionId
+    if (!agentSessionId) throw new Error('Shell environment is not available before session open')
+    const shellOptions = this.prepareShell
+      ? await this.prepareShell({
+          agentSessionId,
+          host,
+          commandNames: commands.list().map((command) => command.name),
+          shell: this.shellOptions,
+        })
+      : this.shellOptions
+    const environment = new BashEnvironment({ ...shellOptions, host, commands })
+    return environment
+  }
+
+  private environmentForShell(shellId: string): BashEnvironment | null {
+    const matches = [...this.environmentsByHost.values()].filter((environment) => environment.getShell(shellId))
+    if (matches.length > 1) throw new Error(`Shell id "${shellId}" is not unique in this session`)
+    return matches[0] ?? null
+  }
+
+  private environmentForCommand(commandId: string): BashEnvironment | null {
+    const matches = [...this.environmentsByHost.values()].filter((environment) => environment.hasCommand(commandId))
+    if (matches.length > 1) throw new Error(`Command id "${commandId}" is not unique in this session`)
+    return matches[0] ?? null
   }
 
   private sessionFor(command: string): AgentSession<unknown> | null {
