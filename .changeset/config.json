@@ -2,7 +2,26 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.4/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [],
+  "fixed": [
+    [
+      "@demicodes/agent",
+      "@demicodes/agent-eval",
+      "@demicodes/coding-agent",
+      "@demicodes/core",
+      "@demicodes/host-local",
+      "@demicodes/provider",
+      "@demicodes/provider-anthropic-api",
+      "@demicodes/provider-claude-code",
+      "@demicodes/provider-codex",
+      "@demicodes/provider-grok-build",
+      "@demicodes/provider-openai-api",
+      "@demicodes/repl",
+      "@demicodes/shell",
+      "@demicodes/utils",
+      "@demicodes/web",
+      "@demicodes/web-ui"
+    ]
+  ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
