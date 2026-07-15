@@ -93,7 +93,7 @@ test('demi allows paths outside default cwd when Host.fs allows them', async () 
   const host = new LocalHost(defaultCwd)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ demiHost: host }),
+    commands: createCodingCommandRegistry({ includeDemi: true }),
     shellIdFactory: () => 'demi-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
@@ -125,7 +125,7 @@ test('demi patch can modify paths outside default cwd when Host.fs allows them',
   const host = new LocalHost(root)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ demiHost: host }),
+    commands: createCodingCommandRegistry({ includeDemi: true }),
     shellIdFactory: () => 'demi-patch-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
@@ -343,7 +343,7 @@ test('demi patch rolls back files when a later write fails', async () => {
     'first.txt': 'first\n',
     'second.txt': 'second\n',
   })
-  const command = createDemiCommand(host)
+  const command = createDemiCommand()
   const patch = command.subcommands?.find((subcommand) => subcommand.name === 'patch')
   if (!patch?.run) throw new Error('missing demi patch command')
   const output = commandOutput()
@@ -364,6 +364,7 @@ test('demi patch rolls back files when a later write fails', async () => {
     cwd: '/workspace',
     io: output.io,
     storage: noopStorage,
+    host,
   })
 
   expect(result.exitCode).toBe(1)
@@ -377,7 +378,7 @@ async function createDemiEnvironment(): Promise<{ env: BashEnvironment; host: Lo
   const host = new LocalHost(root)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ demiHost: host }),
+    commands: createCodingCommandRegistry({ includeDemi: true }),
     shellIdFactory: () => 'demi-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })

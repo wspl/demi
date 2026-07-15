@@ -44,10 +44,17 @@ test('e2e accept: LocalHost bridge materializes under stateDir; OS child + runCo
   const { cwd, stateDir, socketPath } = await shortDirs('bridge')
   const host = new LocalHost(cwd)
   const harness = createCodingAgentHarness({ host })
+  const shellId = 'e2e-bridge-shell'
+  let shellIndex = 0
   const stub = defineProvider({
     id: 'stub',
     displayName: 'Stub',
-    createRuntime: () => new StubProvider([[events.text('e2e-ok'), events.response()]]),
+    createRuntime: () =>
+      new StubProvider([
+        [events.toolCall('create-shell', 'shell_exec', { script: 'printf ready', timeoutMs: 1_000 })],
+        [events.text('ready'), events.response()],
+        [events.text('e2e-ok'), events.response()],
+      ]),
   })
   const { server, close } = createLocalAgentServer({
     host,
@@ -55,18 +62,20 @@ test('e2e accept: LocalHost bridge materializes under stateDir; OS child + runCo
     providers: [stub],
     stateDir,
     commandBridgeSocketPath: socketPath,
+    shell: { shellIdFactory: () => (shellIndex++ === 0 ? shellId : `${shellId}-${shellIndex}`) },
   })
   const client = server.client()
   const sessionId = globalThis.crypto.randomUUID()
   try {
     await client.open(selection, cwd, sessionId)
+    await client.send([{ type: 'text', text: 'create shell' }])
 
     await expect(stat(join(cwd, '.demi-bin'))).rejects.toThrow()
     await expect(stat(join(cwd, '.demi'))).rejects.toThrow()
     expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'todo'))).toBe('.dispatch')
     expect(await readlink(join(stateDir, 'bridge-bin', sessionId, 'demi'))).toBe('.dispatch')
 
-    const list = await server.runCommandLine(sessionId, 'todo', ['list'], { cwd, stdin: '' })
+    const list = await server.runCommandLine(shellId, 'todo', ['list'], { cwd, stdin: '' })
     expect(list.exitCode).toBe(0)
 
     const shimDir = join(stateDir, 'bridge-bin', sessionId)
@@ -76,7 +85,7 @@ test('e2e accept: LocalHost bridge materializes under stateDir; OS child + runCo
         ...process.env,
         PATH: `${shimDir}:${process.env.PATH ?? ''}`,
         DEMI_COMMAND_BRIDGE_SOCK: socketPath,
-        DEMI_SESSION_ID: sessionId,
+        DEMI_SHELL_ID: shellId,
       },
       encoding: 'utf8',
     })
@@ -88,7 +97,7 @@ test('e2e accept: LocalHost bridge materializes under stateDir; OS child + runCo
         ...process.env,
         PATH: `${shimDir}:${process.env.PATH ?? ''}`,
         DEMI_COMMAND_BRIDGE_SOCK: socketPath,
-        DEMI_SESSION_ID: sessionId,
+        DEMI_SHELL_ID: shellId,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     })

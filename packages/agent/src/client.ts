@@ -151,9 +151,9 @@ export class AgentClient {
     return wait
   }
 
-  shellWrite(commandId: string, stdin: string): Promise<void> {
+  shellWrite(commandId: string, stdin: string, options: AgentActionOptions = {}): Promise<void> {
     const wait = this.waitForShellWrite(commandId)
-    this.sendFrame({ type: 'shell_write', commandId, stdin })
+    this.sendFrame({ type: 'shell_write', commandId, stdin, metadata: options.metadata })
     return wait
   }
 
