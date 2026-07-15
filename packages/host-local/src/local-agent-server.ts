@@ -49,7 +49,7 @@ export interface LocalAgentServerHandle {
  * bridge **on by default**.
  *
  * Owns the Node-only bridge transport (UDS + PATH shims under `stateDir`).
- * AgentServer only receives a generic `prepareSessionShell` hook and exposes
+ * AgentServer only receives a generic `prepareShell` hook and exposes
  * `runCommandLine` — it never sees bin dirs or sockets.
  *
  * Default layout under `stateDir` (`~/.demi` or `$DEMI_HOME`):
@@ -86,7 +86,7 @@ export function createLocalAgentServer(options: CreateLocalAgentServerOptions): 
   if (bridgeEnabled && socketPath && stateDir) {
     const bridgeStateDir = stateDir
     const bridgeSocketPath = socketPath
-    serverOptions.prepareSessionShell = async ({ host, agentSessionId, commandNames, shell }) => {
+    serverOptions.prepareShell = async ({ host, agentSessionId, commandNames, shell }) => {
       const shimDir = await materializeCommandBridgeShims({
         host,
         agentSessionId,
