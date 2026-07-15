@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/provider",
   "description": "Provider contract and shared building blocks for Demi inference adapters.",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": false,
   "type": "module",
   "exports": {
