@@ -1,6 +1,17 @@
 import { base64ToBytes, bytesToBase64 } from './bytes'
 import { isRecord } from './guards'
 
+/** Values preserved by Demi's transport-neutral portable JSON codec. */
+export type PortableJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | bigint
+  | Uint8Array
+  | readonly PortableJsonValue[]
+  | { readonly [key: string]: PortableJsonValue }
+
 /** Parses JSON, returning the value, or the original string if it is not valid JSON. */
 export function parseJsonOrString(value: string): unknown {
   try {
