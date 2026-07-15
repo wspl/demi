@@ -10,6 +10,7 @@ import { ProviderTurnLoop, type ProviderTurnLoopHost } from './provider-turn-loo
 import { resolveRetryPolicy, type TurnRetryPolicy } from './retry-policy'
 import type {
   AgentHarnessRuntime,
+  AgentMetadata,
   AgentSessionOptions,
   AgentSessionParams,
   AgentSessionRestoreParams,
@@ -32,15 +33,16 @@ type PendingAction =
       type: 'send'
       id: string
       content: UserContentBlock[]
+      metadata: AgentMetadata | null
       // Internal yield-wakeup sends carry hidden: true so the new turn's user block is replayed
       // to the model but never rendered. Real user sends leave it unset.
       hidden?: boolean
       resolve: () => void
       reject: (error: unknown) => void
     }
-  | { type: 'retry'; resolve: () => void; reject: (error: unknown) => void }
-  | { type: 'resume'; resolve: () => void; reject: (error: unknown) => void }
-  | { type: 'compact'; resolve: () => void; reject: (error: unknown) => void }
+  | { type: 'retry'; metadata: AgentMetadata | null; resolve: () => void; reject: (error: unknown) => void }
+  | { type: 'resume'; metadata: AgentMetadata | null; resolve: () => void; reject: (error: unknown) => void }
+  | { type: 'compact'; metadata: AgentMetadata | null; resolve: () => void; reject: (error: unknown) => void }
 
 type PendingSendAction = Extract<PendingAction, { type: 'send' }>
 
@@ -81,8 +83,9 @@ export class AgentSession<State> {
   private activeTurnId: string | null = null
   private activeTurnPhase: ActiveTurnPhase | null = null
   private activeProviderRun: ProviderRun | null = null
+  private activeMetadata: AgentMetadata | null = null
   private readonly steerQueue = new PendingSteerQueue()
-  private readonly yields: YieldScheduler
+  private readonly yields: YieldScheduler<AgentMetadata | null>
   private readonly compaction: CompactionController
   private readonly turnLoop: ProviderTurnLoop<State>
   private abortRecorded = false
@@ -144,8 +147,8 @@ export class AgentSession<State> {
     this.agentState = params.state === undefined ? params.runtime.initialState() : params.state
     this.agentSessionId = options.agentSessionId ?? createId()
     this.idFactory = options.idFactory ?? createId
-    this.yields = new YieldScheduler(this.idFactory, (wakeupId) => {
-      void this.deliverYieldWakeup(wakeupId)
+    this.yields = new YieldScheduler(this.idFactory, (wakeupId, metadata) => {
+      void this.deliverYieldWakeup(wakeupId, metadata)
     })
     this.store = options.store
     this.persistIntervalMs = options.persistIntervalMs ?? DEFAULT_PERSIST_INTERVAL_MS
@@ -230,6 +233,9 @@ export class AgentSession<State> {
       get retryPolicy() {
         return self.retryPolicy
       },
+      get metadata() {
+        return self.activeMetadata
+      },
       currentSignal: () => self.currentSignal(),
       currentTurnId: () => self.currentTurnId(),
       nextRequestId: () => self.idFactory(),
@@ -253,27 +259,28 @@ export class AgentSession<State> {
     this.turnLoop = new ProviderTurnLoop(turnLoopHost)
   }
 
-  send(content: UserContentBlock[], options: { id?: string } = {}): Promise<void> {
+  send(content: UserContentBlock[], options: { id?: string; metadata?: AgentMetadata } = {}): Promise<void> {
     const id = options.id ?? this.idFactory()
     return this.enqueue({
       type: 'send',
       id,
       content,
+      metadata: cloneMetadata(options.metadata),
       resolve: noop,
       reject: noop,
     })
   }
 
-  retry(): Promise<void> {
-    return this.enqueue({ type: 'retry', resolve: noop, reject: noop })
+  retry(options: { metadata?: AgentMetadata } = {}): Promise<void> {
+    return this.enqueue({ type: 'retry', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
   }
 
-  resume(): Promise<void> {
-    return this.enqueue({ type: 'resume', resolve: noop, reject: noop })
+  resume(options: { metadata?: AgentMetadata } = {}): Promise<void> {
+    return this.enqueue({ type: 'resume', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
   }
 
-  compact(): Promise<void> {
-    return this.enqueue({ type: 'compact', resolve: noop, reject: noop })
+  compact(options: { metadata?: AgentMetadata } = {}): Promise<void> {
+    return this.enqueue({ type: 'compact', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
   }
 
   async steer(content: UserContentBlock[], options: { id?: string } = {}): Promise<void> {
@@ -369,8 +376,8 @@ export class AgentSession<State> {
     return { aborted: false, target: null, canAbortAgain: false }
   }
 
-  scheduleYieldWakeup(durationMs: number): AgentToolInvokeResult {
-    const wakeupId = this.yields.schedule(durationMs)
+  scheduleYieldWakeup(durationMs: number, metadata: AgentMetadata | null = this.activeMetadata): AgentToolInvokeResult {
+    const wakeupId = this.yields.schedule(durationMs, metadata)
     return {
       output: [
         {
@@ -563,7 +570,7 @@ export class AgentSession<State> {
     }
   }
 
-  private async deliverYieldWakeup(wakeupId: string): Promise<void> {
+  private async deliverYieldWakeup(wakeupId: string, metadata: AgentMetadata | null): Promise<void> {
     if (!this.yields.take(wakeupId)) return
 
     const content: UserContentBlock[] = [
@@ -575,7 +582,7 @@ export class AgentSession<State> {
     ]
 
     // Active session: interject the hidden wakeup as a steer into the current turn (never queued).
-    if (this.canAcceptInternalSteer()) {
+    if (metadata === this.activeMetadata && this.canAcceptInternalSteer()) {
       try {
         await this.steerInternal(content, wakeupId, true)
         return
@@ -585,7 +592,7 @@ export class AgentSession<State> {
     }
 
     // Idle session: deliver the hidden wakeup as a normal send that starts a new turn.
-    this.enqueueHiddenSend(content)
+    this.enqueueHiddenSend(content, metadata)
   }
 
   private canAcceptInternalSteer(): boolean {
@@ -621,11 +628,12 @@ export class AgentSession<State> {
     })
   }
 
-  private enqueueHiddenSend(content: UserContentBlock[]): void {
+  private enqueueHiddenSend(content: UserContentBlock[], metadata: AgentMetadata | null): void {
     void this.enqueue({
       type: 'send',
       id: this.idFactory(),
       content,
+      metadata,
       hidden: true,
       resolve: noop,
       reject: noop,
@@ -697,6 +705,7 @@ export class AgentSession<State> {
 
         this.currentAbortController = new AbortController()
         this.activeTurnId = action.type === 'send' ? action.id : this.idFactory()
+        this.activeMetadata = action.metadata
         this.abortRecorded = false
 
         try {
@@ -727,6 +736,7 @@ export class AgentSession<State> {
           this.discardPendingSteersForCurrentTurn()
           this.activeTurnPhase = 'finalizing'
           this.activeProviderRun = null
+          this.activeMetadata = null
           this.currentAbortController = null
           this.activeTurnId = null
           this.activeTurnPhase = null
@@ -809,6 +819,7 @@ export class AgentSession<State> {
       state: this.agentState,
       transcript: this.transcriptLog,
       content,
+      metadata: this.activeMetadata,
     })
 
     const resolvedContent = await this.resolveReferences(content)
@@ -835,6 +846,7 @@ export class AgentSession<State> {
             cwd: this.cwd,
             transcript: this.transcriptLog,
             signal,
+            metadata: this.activeMetadata,
           },
           content,
         ),
@@ -854,6 +866,7 @@ export class AgentSession<State> {
       state: this.agentState,
       transcript: this.transcriptLog,
       reason: 'retry',
+      metadata: this.activeMetadata,
     })
     await this.commitTranscript()
 
@@ -893,12 +906,14 @@ export class AgentSession<State> {
     state: State
     cwd: string
     transcript: TranscriptLog
+    metadata: AgentMetadata | null
   } {
     return {
       agentSessionId: this.agentSessionId,
       state: this.agentState,
       cwd: this.cwd,
       transcript: this.transcriptLog,
+      metadata: this.activeMetadata,
     }
   }
 
@@ -1061,6 +1076,10 @@ function textContentSummary(content: UserContentBlock[]): string {
     .join('\n')
     .trim()
   return truncate(text, 120, '...')
+}
+
+function cloneMetadata(metadata: AgentMetadata | undefined): AgentMetadata | null {
+  return metadata === undefined ? null : structuredClone(metadata)
 }
 
 async function readProviderIterator(
