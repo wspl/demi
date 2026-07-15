@@ -1,5 +1,13 @@
 # @demicodes/provider-codex
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [ec89b33]
+  - @demicodes/utils@0.4.0
+  - @demicodes/provider@0.4.3
+
 ## 0.4.1
 
 ### Patch Changes
