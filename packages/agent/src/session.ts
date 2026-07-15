@@ -108,7 +108,7 @@ export class AgentSession<State> {
       )
     }
     const checkpoint = params.checkpoint
-    return new AgentSession(
+    const session = new AgentSession(
       {
         provider: params.provider,
         model: checkpoint.model,
@@ -119,6 +119,19 @@ export class AgentSession<State> {
       },
       options,
     )
+    // A checkpoint can only hold an `executing` tool call if the process died
+    // mid-execution (a graceful abort completes pending calls before exit), so
+    // the result is gone for good. Complete each one with an error result:
+    // providers reject a replayed tool call that has no matching result, and
+    // the restored turn should see which call was cut short.
+    for (const toolCall of session.transcriptLog.pendingToolCalls()) {
+      session.transcriptLog.completeToolCall(
+        toolCall.toolUseId,
+        [{ type: 'text', text: `Tool call interrupted: ${toolCall.toolName} (the process died before a result was recorded)` }],
+        true,
+      )
+    }
+    return session
   }
 
   constructor(params: AgentSessionParams<State>, options: AgentSessionOptions<State> = {}) {
