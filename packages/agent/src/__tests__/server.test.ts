@@ -75,6 +75,26 @@ test('AgentClient.open and send run through InProcessTransport and emit transcri
   expect(seen).toContainEqual({ type: 'phase', phase: 'idle' })
 })
 
+test('AgentClient send metadata reaches the server-side harness context', async () => {
+  const seen: unknown[] = []
+  const harness: AgentHarness<Record<string, never>> = {
+    name: 'metadata',
+    initialState: () => ({}),
+    host: (ctx) => new LocalHost(ctx.cwd),
+    systemPrompt: (ctx) => {
+      seen.push(ctx.metadata)
+      return 'system'
+    },
+  }
+  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('done'), events.response()]]
+  const { client } = createAgentClientHarness({ harness, providerTurns: turns })
+
+  await client.open(providerConfig(turns), '/workspace', globalThis.crypto.randomUUID())
+  await client.send([{ type: 'text', text: 'hi' }], { metadata: { identityOpenId: 'user-a' } })
+
+  expect(seen).toEqual([{ identityOpenId: 'user-a' }])
+})
+
 test('AgentClient clears its local transcript view when the session is closed', async () => {
   const { client } = createAgentClientHarness({
     providerTurns: [[events.text('hello'), events.response()]],

@@ -6,7 +6,7 @@ import type {
   UserContentBlock,
 } from '@demicodes/core'
 import type { ProviderSelection } from '@demicodes/provider'
-import type { AbortResult } from './types'
+import type { AbortResult, AgentMetadata } from './types'
 import type { BashAuditEvent, ShellCommandStatus } from '@demicodes/shell'
 
 /** A persisted conversation in a workspace (cwd), for the resume/history list. */
@@ -19,7 +19,7 @@ export interface ConversationSummary {
 
 export type ClientFrame =
   | { type: 'open'; provider: ProviderSelection; cwd: string; sessionId: string }
-  | { type: 'send'; messageId: string; content: UserContentBlock[] }
+  | { type: 'send'; messageId: string; content: UserContentBlock[]; metadata?: AgentMetadata }
   | { type: 'dequeue_message'; messageId: string }
   | { type: 'send_queued_message'; messageId: string }
   | { type: 'steer_queued_message'; messageId: string; steerId: string }
@@ -28,9 +28,9 @@ export type ClientFrame =
   | { type: 'cancel_pending_steer'; steerId: string }
   | { type: 'set_provider'; provider: ProviderSelection }
   | { type: 'abort' }
-  | { type: 'retry' }
-  | { type: 'resume' }
-  | { type: 'compact' }
+  | { type: 'retry'; metadata?: AgentMetadata }
+  | { type: 'resume'; metadata?: AgentMetadata }
+  | { type: 'compact'; metadata?: AgentMetadata }
   | { type: 'shell_write'; commandId: string; stdin: string }
   | { type: 'list_conversations'; cwd: string }
   // Requests a fresh transcript_reset; sent by the client when it detects a

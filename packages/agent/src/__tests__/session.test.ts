@@ -7,6 +7,7 @@ import {
   AgentSession,
   TranscriptLog,
   type AgentHarnessRuntime,
+  type AgentMetadata,
   type AgentSessionOptions,
   type AgentSessionStore,
   type AgentSessionCheckpoint,
@@ -77,10 +78,10 @@ function createYieldRuntime(
         name: 'yield_tool',
         description: 'Schedules a yield wakeup.',
         inputSchema: { type: 'object' },
-        invoke: () => {
+        invoke: (ctx) => {
           const session = sessionRef()
           if (!session) throw new Error('session is not ready')
-          return session.scheduleYieldWakeup(durationMs)
+          return session.scheduleYieldWakeup(durationMs, ctx.metadata)
         },
       },
     ],
@@ -503,6 +504,114 @@ test('AgentSession executes requested tools and continues provider roundtrip wit
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
+test('AgentSession carries action metadata through harness and tool contexts without adding it to provider input', async () => {
+  const seen: AgentMetadata[] = []
+  const record = (metadata: AgentMetadata | null): void => {
+    if (metadata) seen.push(structuredClone(metadata))
+  }
+  const provider = new StubProvider([
+    (request) => {
+      expect('metadata' in request).toBe(false)
+      return [events.toolCall('tool-1', 'metadata_tool', {}), events.response()]
+    },
+    (request) => {
+      expect('metadata' in request).toBe(false)
+      return [events.text('done'), events.response()]
+    },
+  ])
+  const runtime = createRuntime({
+    systemPrompt: (ctx) => {
+      record(ctx.metadata)
+      return 'system prompt'
+    },
+    preamble: (ctx) => {
+      record(ctx.metadata)
+      return 'preamble'
+    },
+    resolveReferences: (ctx, content) => {
+      record(ctx.metadata)
+      return content
+    },
+    tools: (ctx) => {
+      record(ctx.metadata)
+      return [
+        {
+          name: 'metadata_tool',
+          description: 'Records action metadata.',
+          inputSchema: { type: 'object' },
+          invoke: (toolCtx) => {
+            record(toolCtx.metadata)
+            return { output: [{ type: 'text', text: 'recorded' }] }
+          },
+        },
+      ]
+    },
+    lifecycle: (event) => record(event.metadata),
+  })
+  const session = createSession(provider, runtime)
+  const metadata = { identityOpenId: 'user-a', routing: { sandbox: 'vm-a' } }
+
+  const sending = session.send(text('use metadata'), { metadata })
+  metadata.identityOpenId = 'mutated'
+  metadata.routing.sandbox = 'mutated'
+  await sending
+
+  const expected = { identityOpenId: 'user-a', routing: { sandbox: 'vm-a' } }
+  expect(seen.length).toBeGreaterThan(0)
+  expect(seen.every((value) => JSON.stringify(value) === JSON.stringify(expected))).toBe(true)
+  expect(JSON.stringify(session.transcript().toJSON())).not.toContain('identityOpenId')
+})
+
+test('AgentSession keeps metadata attached to its queued send', async () => {
+  const seen: Array<AgentMetadata | null> = []
+  const provider = new GateProvider([
+    [events.text('first'), events.response()],
+    [events.text('second'), events.response()],
+  ])
+  const session = createSession(
+    provider,
+    createRuntime({
+      systemPrompt: (ctx) => {
+        seen.push(ctx.metadata)
+        return 'system prompt'
+      },
+    }),
+  )
+
+  const first = session.send(text('first'), { metadata: { identityOpenId: 'user-a' } })
+  await provider.waitForRun(0)
+  const second = session.send(text('second'), { metadata: { identityOpenId: 'user-b' } })
+
+  provider.release(0)
+  await provider.waitForRun(1)
+  provider.release(1)
+  await Promise.all([first, second])
+
+  expect(seen).toEqual([{ identityOpenId: 'user-a' }, { identityOpenId: 'user-b' }])
+})
+
+test('AgentSession retry uses metadata supplied for the retry action', async () => {
+  const seen: Array<AgentMetadata | null> = []
+  const provider = new StubProvider([
+    [events.text('first'), events.response()],
+    [events.text('retried'), events.response()],
+  ])
+  const session = createSession(
+    provider,
+    createRuntime({
+      systemPrompt: (ctx) => {
+        seen.push(ctx.metadata)
+        return 'system prompt'
+      },
+    }),
+  )
+
+  await session.send(text('first'), { metadata: { identityOpenId: 'user-a' } })
+  await session.retry({ metadata: { identityOpenId: 'user-b' } })
+
+  expect(seen).toEqual([{ identityOpenId: 'user-a' }, { identityOpenId: 'user-b' }])
+})
+
 test('AgentSession continues when a provider pauses after a tool call without a response event', async () => {
   const provider = new StubProvider([
     [events.toolCall('tool-1', 'echo_tool', { value: 'hello' })],
@@ -667,6 +776,46 @@ test('AgentSession yield wakeup steers into an active turn instead of queueing',
   ])
   // The active wakeup is a hidden steer: present for the model, never rendered.
   expect(session.transcript().blocks[4]).toMatchObject({ type: 'steer', hidden: true })
+})
+
+test('AgentSession keeps a metadata-bearing yield wakeup separate from another active action', async () => {
+  const provider = new SteerableGateProvider([
+    [events.toolCall('yield-1', 'yield_tool', {}), events.response()],
+    [events.text('active done'), events.response()],
+    [events.text('woke'), events.response()],
+  ])
+  const seen: Array<AgentMetadata | null> = []
+  let session: AgentSession<{ toolCalls: number }> | null = null
+  const runtime = {
+    ...createYieldRuntime(() => session, 20),
+    systemPrompt: (ctx: Parameters<AgentHarnessRuntime<{ toolCalls: number }>['systemPrompt']>[0]) => {
+      seen.push(ctx.metadata)
+      return 'system prompt'
+    },
+  }
+  session = createSession(provider, runtime)
+
+  const first = session.send(text('schedule a wakeup'), { metadata: { identityOpenId: 'user-a' } })
+  await provider.waitForRun(0)
+  provider.release(0)
+  await first
+
+  const active = session.send(text('new active turn'), { metadata: { identityOpenId: 'user-b' } })
+  await provider.waitForRun(1)
+  await waitFor(() => session?.queuedMessages().length === 1)
+
+  expect(provider.steers).toEqual([])
+  provider.release(1)
+  await active
+  await provider.waitForRun(2)
+  provider.release(2)
+  await session.waitUntilDone()
+
+  expect(seen).toEqual([
+    { identityOpenId: 'user-a' },
+    { identityOpenId: 'user-b' },
+    { identityOpenId: 'user-a' },
+  ])
 })
 
 test('AgentSession abort cancels pending yield wakeup as the final layer', async () => {

@@ -1,9 +1,10 @@
-interface PendingYieldWakeup {
+interface PendingYieldWakeup<Metadata> {
   id: string
   durationMs: number
   timer: ReturnType<typeof setTimeout> | null
   dueAt: number | null
   armed: boolean
+  metadata: Metadata
 }
 
 /**
@@ -11,12 +12,12 @@ interface PendingYieldWakeup {
  * registry and timer lifecycle; the owner decides what a fired wakeup actually
  * does (interject as a steer, or start a fresh turn) via the `onFire` callback.
  */
-export class YieldScheduler {
-  private readonly pending: PendingYieldWakeup[] = []
+export class YieldScheduler<Metadata = undefined> {
+  private readonly pending: PendingYieldWakeup<Metadata>[] = []
 
   constructor(
     private readonly idFactory: () => string,
-    private readonly onFire: (wakeupId: string) => void,
+    private readonly onFire: (wakeupId: string, metadata: Metadata) => void,
   ) {}
 
   get hasPending(): boolean {
@@ -24,9 +25,9 @@ export class YieldScheduler {
   }
 
   /** Registers a new (unarmed) wakeup and returns its id. */
-  schedule(durationMs: number): string {
+  schedule(durationMs: number, metadata: Metadata): string {
     const id = this.idFactory()
-    this.pending.push({ id, durationMs, timer: null, dueAt: null, armed: false })
+    this.pending.push({ id, durationMs, timer: null, dueAt: null, armed: false, metadata })
     return id
   }
 
@@ -37,7 +38,7 @@ export class YieldScheduler {
       if (wakeup.armed) continue
       wakeup.armed = true
       wakeup.dueAt = now + wakeup.durationMs
-      wakeup.timer = setTimeout(() => this.onFire(wakeup.id), wakeup.durationMs)
+      wakeup.timer = setTimeout(() => this.onFire(wakeup.id, wakeup.metadata), wakeup.durationMs)
     }
   }
 
