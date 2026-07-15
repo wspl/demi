@@ -40,7 +40,7 @@ test('coding agent harness exposes shell session tools and registered command pr
 
   expect(harness.name).toBe('coding')
   expect(commands.map((command) => command.name)).toEqual(['demi', 'todo'])
-  const tools = runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd() })
+  const tools = runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd(), metadata: null })
   expect(tools.map((tool) => tool.name)).toEqual([
     'shell_exec',
     'shell_status',
@@ -58,6 +58,7 @@ test('coding agent harness exposes shell session tools and registered command pr
     cwd: process.cwd(),
     transcript: {} as never,
     commandsPrompt: renderCommandsPrompt(commands),
+    metadata: null,
   })
   expect(prompt).toContain('demi: Read, create, edit, and patch workspace files (text, images, and video).')
   expect(prompt).toContain('Treat cwd as the task workspace')
@@ -102,6 +103,7 @@ test('coding agent resolves file references through Host.fs', async () => {
       cwd: root,
       transcript: {} as never,
       signal: new AbortController().signal,
+      metadata: null,
     },
     [{ type: 'text', text: 'read this' }, { type: 'reference', reference: 'note.txt' }],
   )
@@ -118,6 +120,7 @@ test('coding agent resolves file references through Host.fs', async () => {
       cwd: root,
       transcript: {} as never,
       signal: new AbortController().signal,
+      metadata: null,
     },
     [{ type: 'reference', reference: `file://${spacedPath.replaceAll(' ', '%20')}` }],
   )
@@ -139,6 +142,7 @@ test('coding agent file references read through Host.fs', async () => {
       cwd: '/workspace',
       transcript: {} as never,
       signal: new AbortController().signal,
+      metadata: null,
     },
     [{ type: 'reference', reference: 'note.txt' }],
   )
@@ -196,6 +200,7 @@ test('coding agent resolves file references outside default cwd when Host.fs all
       cwd: root,
       transcript: {} as never,
       signal: new AbortController().signal,
+      metadata: null,
     },
     [{ type: 'reference', reference: outsidePath }],
   )

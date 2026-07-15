@@ -257,6 +257,7 @@ function toolContext(): AgentToolInvokeContext<unknown> {
     model,
     toolCallId: 'tool-1',
     signal: new AbortController().signal,
+    metadata: null,
     emitProgress: () => {},
   }
 }
