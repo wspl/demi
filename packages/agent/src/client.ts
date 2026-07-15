@@ -3,9 +3,13 @@ import { applyTranscriptPatches } from './patch'
 import type { ProviderSelection } from '@demicodes/provider'
 import type { ClientFrame, ClientSessionEvent, ConversationSummary, ServerFrame } from './frames'
 import type { AgentClientTransport } from './transport'
-import type { AbortResult } from './types'
+import type { AbortResult, AgentMetadata } from './types'
 
 export type AgentClientListener = (event: ClientSessionEvent) => void
+
+export interface AgentActionOptions {
+  metadata?: AgentMetadata
+}
 
 type ActionCommand = 'send' | 'retry' | 'resume' | 'compact'
 
@@ -64,15 +68,15 @@ export class AgentClient {
     })
   }
 
-  sendMessage(content: UserContentBlock[]): Promise<void> {
+  sendMessage(content: UserContentBlock[], options: AgentActionOptions = {}): Promise<void> {
     const messageId = globalThis.crypto.randomUUID()
     const wait = this.waitForAction('send', messageId)
-    this.sendFrame({ type: 'send', messageId, content })
+    this.sendFrame({ type: 'send', messageId, content, metadata: options.metadata })
     return wait
   }
 
-  send(content: UserContentBlock[]): Promise<void> {
-    return this.sendMessage(content)
+  send(content: UserContentBlock[], options: AgentActionOptions = {}): Promise<void> {
+    return this.sendMessage(content, options)
   }
 
   dequeueMessage(messageId: string): void {
@@ -123,21 +127,21 @@ export class AgentClient {
     this.sendFrame({ type: 'set_provider', provider })
   }
 
-  retry(): Promise<void> {
+  retry(options: AgentActionOptions = {}): Promise<void> {
     const wait = this.waitForAction('retry')
-    this.sendFrame({ type: 'retry' })
+    this.sendFrame({ type: 'retry', metadata: options.metadata })
     return wait
   }
 
-  resume(): Promise<void> {
+  resume(options: AgentActionOptions = {}): Promise<void> {
     const wait = this.waitForAction('resume')
-    this.sendFrame({ type: 'resume' })
+    this.sendFrame({ type: 'resume', metadata: options.metadata })
     return wait
   }
 
-  compact(): Promise<void> {
+  compact(options: AgentActionOptions = {}): Promise<void> {
     const wait = this.waitForAction('compact')
-    this.sendFrame({ type: 'compact' })
+    this.sendFrame({ type: 'compact', metadata: options.metadata })
     return wait
   }
 

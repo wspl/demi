@@ -8,6 +8,8 @@ that the REPL and web UI both consume.
 - `AgentServer` — owns sessions; `server.client()` returns an in-process client.
 - `AgentClient` — `open` / `send` / `steer` / `abort` / `close` / `subscribe`.
 - Transports: in-process, stdio (`@demicodes/agent/stdio`), or WebSocket.
+- Actions accept caller-defined `metadata` that is available to harness and
+  tool contexts without becoming transcript or provider content.
 
 ```ts
 import { AgentServer } from '@demicodes/agent'
