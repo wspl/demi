@@ -2,6 +2,8 @@
 // AgentSession, or @demicodes/shell into a frontend bundle.
 
 export { AgentClient, type AgentClientListener } from './client'
+export type { AgentActionOptions } from './client'
+export type { AgentMetadata } from './types'
 export { createWebSocketClientTransport, createWebSocketServerTransport, type JsonWebSocket } from './websocket-transport'
 export type { AgentTransport, AgentClientTransport, AgentServerTransport } from './transport'
 export type {
