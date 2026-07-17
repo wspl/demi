@@ -1,5 +1,12 @@
 # @demicodes/shell
 
+## 0.6.1
+
+### Patch Changes
+
+- Sync the bundled just-bash fork with upstream: builtin `rg` now searches piped stdin instead of recursively crawling the cwd (fixes shell commands like `X | rg PATTERN` hanging on hosts with large working directories), fd close redirections (`>&-`) follow the fd-sink delivery model, plus upstream interpreter/jq/tar/cat fixes.
+  - @demicodes/utils@0.6.1
+
 ## 0.6.0
 
 ### Minor Changes
