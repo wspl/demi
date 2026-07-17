@@ -1,5 +1,13 @@
 # @demicodes/web-ui
 
+## 0.6.1
+
+### Patch Changes
+
+- @demicodes/agent@0.6.1
+- @demicodes/core@0.6.1
+- @demicodes/utils@0.6.1
+
 ## 0.6.0
 
 ### Patch Changes
