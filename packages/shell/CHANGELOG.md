@@ -1,5 +1,15 @@
 # @demicodes/shell
 
+## 0.6.0
+
+### Minor Changes
+
+- 5b4f84f: Route shell operations to action-selected Hosts, bind command bridge calls to their originating shell, and expose the active Host to registered commands.
+
+### Patch Changes
+
+- @demicodes/utils@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes

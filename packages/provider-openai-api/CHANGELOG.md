@@ -1,5 +1,13 @@
 # @demicodes/provider-openai-api
 
+## 0.6.0
+
+### Patch Changes
+
+- @demicodes/core@0.6.0
+- @demicodes/provider@0.6.0
+- @demicodes/utils@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes
