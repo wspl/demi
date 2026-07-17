@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/agent",
   "description": "Session runtime and transport-neutral client and server protocol for Demi.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": false,
   "type": "module",
   "exports": {
