@@ -245,6 +245,7 @@ export class TranscriptLog implements CoreTranscript {
           model,
           message: event.message,
           code: event.code,
+          ...(event.diagnostics ? { diagnostics: event.diagnostics } : {}),
         })
       case 'abort':
         return this.pushAbort(model)

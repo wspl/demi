@@ -275,6 +275,7 @@ export class AgentSession<State> {
     return this.enqueue({ type: 'retry', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
   }
 
+  /** Continues from the current transcript after an abort or terminal provider error. */
   resume(options: { metadata?: AgentMetadata } = {}): Promise<void> {
     return this.enqueue({ type: 'resume', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
   }

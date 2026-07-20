@@ -1,5 +1,6 @@
 import type {
   ModelSelection,
+  ProviderErrorDiagnostics,
   QueuedMessage,
   SessionPhase,
   ToolResultContentBlock,
@@ -219,7 +220,13 @@ export type SessionEvent =
   | { type: 'phase_changed'; phase: SessionPhase }
   | { type: 'queue_changed'; queue: QueuedMessage[] }
   | { type: 'tool_progress'; toolCallId: string; toolName: string; progress: unknown }
-  | { type: 'retry_scheduled'; attempt: number; delayMs: number; code: string | null }
+  | {
+      type: 'retry_scheduled'
+      attempt: number
+      delayMs: number
+      code: string | null
+      diagnostics?: ProviderErrorDiagnostics
+    }
   | { type: 'error'; error: Error }
 
 export type SessionEventListener = (event: SessionEvent) => void

@@ -238,10 +238,18 @@ export function* mapCodexResponseEvent(event: CodexResponseStreamEvent, state: S
       // {type:'error', error:{type, message, code}, status} instead of the
       // flat SSE shape, so read both before falling back to the generic text.
       const nested = isRecord(event.error) ? event.error : null
+      const message = event.message ?? stringOrNull(nested?.message) ?? 'Codex stream error'
+      const rawCode = event.code ?? stringOrNull(nested?.code) ?? stringOrNull(nested?.type)
+      const providerRequestId = providerRequestIdFrom(nested, message)
       yield {
         type: 'error',
-        message: event.message ?? stringOrNull(nested?.message) ?? 'Codex stream error',
-        code: event.code ?? stringOrNull(nested?.code) ?? stringOrNull(nested?.type) ?? null,
+        message,
+        code: normalizeErrorCode(rawCode, message),
+        diagnostics: {
+          source: 'stream',
+          ...(rawCode ? { providerCode: rawCode } : {}),
+          ...(providerRequestId ? { providerRequestId } : {}),
+        },
       }
       return
     }
@@ -380,11 +388,25 @@ function errorEventFromFailedResponse(response: unknown): ProviderEvent {
   const error = isRecord(response) && isRecord(response.error) ? response.error : null
   const message = stringOrNull(error?.message) ?? 'Codex response failed'
   const rawCode = stringOrNull(error?.code) ?? stringOrNull(error?.type)
+  const providerRequestId = providerRequestIdFrom(error, message)
+  const providerResponseId = isRecord(response) ? stringOrNull(response.id) : null
   return {
     type: 'error',
     message,
     code: normalizeErrorCode(rawCode, message),
+    diagnostics: {
+      source: 'stream',
+      ...(rawCode ? { providerCode: rawCode } : {}),
+      ...(providerRequestId ? { providerRequestId } : {}),
+      ...(providerResponseId ? { providerResponseId } : {}),
+    },
   }
+}
+
+function providerRequestIdFrom(value: Record<string, unknown> | null, message: string): string | null {
+  const explicit = stringOrNull(value?.request_id) ?? stringOrNull(value?.requestId)
+  if (explicit) return explicit
+  return message.match(/request ID ([A-Za-z0-9-]+)/i)?.[1] ?? null
 }
 
 function incompleteReason(response: unknown): string {

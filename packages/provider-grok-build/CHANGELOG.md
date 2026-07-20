@@ -1,5 +1,14 @@
 # @demicodes/provider-grok-build
 
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies [2bb314c]
+  - @demicodes/core@0.7.0
+  - @demicodes/provider@0.7.0
+  - @demicodes/utils@0.7.0
+
 ## 0.6.1
 
 ### Patch Changes

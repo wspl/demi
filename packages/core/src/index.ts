@@ -182,6 +182,15 @@ export interface ModelSelection {
 
 export type ToolCallStatus = 'executing' | 'completed' | 'error'
 
+export interface ProviderErrorDiagnostics {
+  source: 'http' | 'stream' | 'transport' | 'unknown'
+  clientRequestId?: string
+  providerRequestId?: string
+  providerResponseId?: string
+  providerCode?: string
+  httpStatus?: number
+}
+
 // ── transcript block ────────────────────────────────────────────────
 
 export type Block =
@@ -258,6 +267,7 @@ export type Block =
       model: ModelSelection
       message: string
       code: string | null
+      diagnostics?: ProviderErrorDiagnostics
     }
   | { type: 'abort'; id: string; createdAt: string; model: ModelSelection; isResumed: boolean }
   | {
