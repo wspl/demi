@@ -1,5 +1,6 @@
 import type {
   ModelSelection,
+  ProviderErrorDiagnostics,
   ThinkingConfig,
   ThinkingEffort,
   TokenUsage,
@@ -90,6 +91,7 @@ export type ProviderEvent =
       type: 'error'
       message: string
       code: string | null
+      diagnostics?: ProviderErrorDiagnostics
       /** Server-suggested retry delay (e.g. from a Retry-After header), if any. */
       retryAfterMs?: number
     }

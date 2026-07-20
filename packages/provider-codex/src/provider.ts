@@ -1,10 +1,11 @@
-import { isRecord } from '@demicodes/utils'
+import { isRecord, parseJsonObject, stringOrNull } from '@demicodes/utils'
 import {
   applyModelPolicy,
   clampPromptCacheKey,
   defineProvider,
   httpErrorCode,
   normalizeErrorCode,
+  retryAfterMsFromHeader,
   type AgentProvider,
   type InferenceRequest,
   type ModelPolicy,
@@ -38,8 +39,6 @@ export interface CodexProviderConfig {
   transport?: CodexTransportMode
   headers?: Record<string, string>
   userAgent?: string
-  maxRetries?: number
-  retryBaseDelayMs?: number
   headerTimeoutMs?: number
   websocketConnectTimeoutMs?: number
   streamIdleTimeoutMs?: number
@@ -69,8 +68,6 @@ export interface CodexRuntimeOptions extends CodexProviderConfig {
 
 const DEFAULT_CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api'
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
-const DEFAULT_MAX_RETRIES = 2
-const DEFAULT_RETRY_BASE_DELAY_MS = 250
 const DEFAULT_SSE_HEADER_TIMEOUT_MS = 20_000
 const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 10_000
 
@@ -88,8 +85,6 @@ export class CodexProvider implements AgentProvider {
       transport: options.transport ?? 'auto',
       headers: options.headers,
       userAgent: options.userAgent ?? defaultUserAgent(),
-      maxRetries: options.maxRetries ?? DEFAULT_MAX_RETRIES,
-      retryBaseDelayMs: options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS,
       headerTimeoutMs: options.headerTimeoutMs ?? DEFAULT_SSE_HEADER_TIMEOUT_MS,
       websocketConnectTimeoutMs: options.websocketConnectTimeoutMs ?? DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS,
       streamIdleTimeoutMs: options.streamIdleTimeoutMs ?? 0,
@@ -103,9 +98,8 @@ export class CodexProvider implements AgentProvider {
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     const body = buildCodexResponsesRequestBody(request)
     let forceRefresh = false
-    let retryAttempt = 0
 
-    while (retryAttempt <= this.config.maxRetries) {
+    while (true) {
       try {
         const auth = await this.authStore.resolveAuth({ forceRefresh })
         const url = responsesUrlForAuth(auth, this.config.baseUrl)
@@ -135,11 +129,6 @@ export class CodexProvider implements AgentProvider {
         }
         if (error instanceof CodexHttpError && error.status === 401 && !forceRefresh) {
           forceRefresh = true
-          continue
-        }
-        if (error instanceof CodexHttpError && isRetryableHttpStatus(error.status) && retryAttempt < this.config.maxRetries) {
-          await sleep(this.config.retryBaseDelayMs * 2 ** retryAttempt, request.cancel)
-          retryAttempt += 1
           continue
         }
         yield providerErrorFromUnknown(error)
@@ -176,8 +165,6 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     transport: options.transport,
     headers: options.headers,
     userAgent: options.userAgent,
-    maxRetries: options.maxRetries,
-    retryBaseDelayMs: options.retryBaseDelayMs,
     headerTimeoutMs: options.headerTimeoutMs,
     websocketConnectTimeoutMs: options.websocketConnectTimeoutMs,
     streamIdleTimeoutMs: options.streamIdleTimeoutMs,
@@ -231,8 +218,6 @@ export function parseCodexProviderConfig(config: unknown): CodexProviderConfig {
   }
   if (config.headers !== undefined) parsed.headers = expectStringRecord(config.headers, 'headers')
   if (config.userAgent !== undefined) parsed.userAgent = expectString(config.userAgent, 'userAgent')
-  if (config.maxRetries !== undefined) parsed.maxRetries = expectNumber(config.maxRetries, 'maxRetries')
-  if (config.retryBaseDelayMs !== undefined) parsed.retryBaseDelayMs = expectNumber(config.retryBaseDelayMs, 'retryBaseDelayMs')
   if (config.headerTimeoutMs !== undefined) parsed.headerTimeoutMs = expectNumber(config.headerTimeoutMs, 'headerTimeoutMs')
   if (config.websocketConnectTimeoutMs !== undefined) {
     parsed.websocketConnectTimeoutMs = expectNumber(config.websocketConnectTimeoutMs, 'websocketConnectTimeoutMs')
@@ -279,18 +264,31 @@ function openAiResponsesUrl(baseUrl: string): string {
 function providerErrorFromUnknown(error: unknown): ProviderEvent {
   if (error instanceof CodexAuthError) return { type: 'error', message: redactCodexSecretText(error.message), code: error.code }
   if (error instanceof CodexHttpError) {
+    const body = parseJsonObject(error.responseText)
+    const bodyError = isRecord(body?.error) ? body.error : null
+    const providerCode = stringOrNull(bodyError?.code) ?? stringOrNull(bodyError?.type)
+    const providerRequestId = error.headers.get('x-request-id') ?? stringOrNull(body?.request_id)
+    const retryAfterMs = retryAfterMsFromHeader(error.headers.get('retry-after'))
     return {
       type: 'error',
       message: redactCodexSecretText(error.message),
       code: httpErrorCode(error.status, error.message),
+      ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+      diagnostics: {
+        source: 'http',
+        httpStatus: error.status,
+        ...(providerCode ? { providerCode } : {}),
+        ...(providerRequestId ? { providerRequestId } : {}),
+      },
     }
   }
   const message = error instanceof Error ? error.message : String(error)
-  return { type: 'error', message: redactCodexSecretText(message), code: normalizeErrorCode(null, message) }
-}
-
-function isRetryableHttpStatus(status: number): boolean {
-  return status === 408 || status === 409 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504
+  return {
+    type: 'error',
+    message: redactCodexSecretText(message),
+    code: normalizeErrorCode(null, message),
+    diagnostics: { source: 'transport' },
+  }
 }
 
 function expectString(value: unknown, field: string): string {
@@ -317,19 +315,4 @@ function expectStringRecord(value: unknown, field: string): Record<string, strin
 
 function defaultUserAgent(): string {
   return `demi-codex-provider/0.0.0 (${process.platform}; ${process.arch})`
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'))
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(resolve, ms)
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timeout)
-        reject(new DOMException('Aborted', 'AbortError'))
-      },
-      { once: true },
-    )
-  })
 }

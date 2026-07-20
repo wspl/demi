@@ -104,7 +104,7 @@ cacheE2e('CodexProvider reports provider cache usage on repeated stable-prefix r
 
 toolE2e('CodexProvider drives a real AgentSession shell tool roundtrip', async () => {
   await expectCodexAuthAvailable()
-  const provider = new CodexProvider({ transport, maxRetries: 1 })
+  const provider = new CodexProvider({ transport })
   const environment = new BashEnvironment({
     host: new LocalHost(process.cwd()),
     shellIdFactory: () => `codex-tool-e2e-shell-${randomUUID()}`,
@@ -156,7 +156,7 @@ steerE2e(
   'CodexProvider keeps a steered active turn ahead of a queued send in real AgentSession',
   async () => {
     await expectCodexAuthAvailable()
-    const provider = new CodexProvider({ transport, maxRetries: 1, streamIdleTimeoutMs: 180_000 })
+    const provider = new CodexProvider({ transport, streamIdleTimeoutMs: 180_000 })
     const toolStarted = deferred<void>()
     const releaseTool = deferred<void>()
     let waitGateCalls = 0
@@ -277,7 +277,7 @@ async function runCodexRequest(options: {
 }): Promise<ProviderEvent[]> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 90_000)
-  const provider = new CodexProvider({ transport, maxRetries: 1 })
+  const provider = new CodexProvider({ transport })
   const request: InferenceRequest = {
     sessionId: options.sessionId,
     turnId: `turn-${randomUUID()}`,
