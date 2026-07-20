@@ -11,7 +11,7 @@ import {
   type Host,
   type HostStore,
 } from '@demicodes/shell'
-import type { Block, ToolResultContentBlock } from '@demicodes/core'
+import type { Block, ProviderErrorDiagnostics, ToolResultContentBlock } from '@demicodes/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { AgentClient } from './client'
 import { cloneBlocks } from './patch'
@@ -27,6 +27,7 @@ import type {
 } from './types'
 import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
+import { ProviderStreamError } from './provider-stream-error'
 
 /** Session tuning forwarded to every AgentSession this server creates. */
 export interface AgentServerSessionOptions {
@@ -485,7 +486,13 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         return
       }
       case 'retry_scheduled':
-        this.send({ type: 'retry_scheduled', attempt: event.attempt, delayMs: event.delayMs, code: event.code })
+        this.send({
+          type: 'retry_scheduled',
+          attempt: event.attempt,
+          delayMs: event.delayMs,
+          code: event.code,
+          diagnostics: event.diagnostics,
+        })
         return
       case 'error':
         this.sendError(event.error)
@@ -787,7 +794,13 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private sendError(error: unknown): void {
     const normalized = error instanceof Error ? error : new Error(String(error))
     const code = errorCode(error)
-    this.send(code ? { type: 'error', message: normalized.message, code } : { type: 'error', message: normalized.message })
+    const diagnostics = errorDiagnostics(error)
+    this.send({
+      type: 'error',
+      message: normalized.message,
+      ...(code ? { code } : {}),
+      ...(diagnostics ? { diagnostics } : {}),
+    })
   }
 }
 
@@ -908,6 +921,11 @@ function isStringArray(value: unknown): value is string[] {
 function errorCode(error: unknown): string | undefined {
   if (!isRecord(error) || typeof error.code !== 'string') return undefined
   return error.code
+}
+
+function errorDiagnostics(error: unknown): ProviderErrorDiagnostics | undefined {
+  if (!(error instanceof ProviderStreamError)) return undefined
+  return error.diagnostics
 }
 
 function createProviderMap(providers: Provider[]): Map<string, Provider> {

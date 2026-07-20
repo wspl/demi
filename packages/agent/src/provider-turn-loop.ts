@@ -1,5 +1,5 @@
 import { AbortError, abortable, asError, delay, isAbortError, parseJsonOrString, throwIfAborted } from '@demicodes/utils'
-import type { ModelSelection, TokenUsage } from '@demicodes/core'
+import type { ModelSelection, ProviderErrorDiagnostics, TokenUsage } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolDefinition } from '@demicodes/provider'
 import { TranscriptLog } from './transcript'
 import { ProviderStreamError } from './provider-stream-error'
@@ -113,6 +113,7 @@ export class ProviderTurnLoop<State> {
           attempt: outcome.attempt,
           delayMs: outcome.delayMs,
           code: outcome.code,
+          diagnostics: outcome.diagnostics,
         })
         await abortable(delay(outcome.delayMs), this.host.currentSignal())
       }
@@ -126,29 +127,57 @@ export class ProviderTurnLoop<State> {
     policy: TurnRetryPolicy,
   ): Promise<
     | { type: 'done'; shouldAutoRecover: boolean }
-    | { type: 'retry'; attempt: number; delayMs: number; code: string | null }
+    | {
+        type: 'retry'
+        attempt: number
+        delayMs: number
+        code: string | null
+        diagnostics: ProviderErrorDiagnostics
+      }
   > {
     const request = this.buildInferenceRequest()
     const run = this.host.provider.run(request)
     let shouldAutoRecover = false
     let produced = false
+    let hasPendingThinkingStart = false
     this.host.setActiveProviderRun(run)
     try {
       for await (const event of this.host.streamProvider(request, run)) {
         throwIfAborted(request.cancel)
         if (event.type === 'abort') throw new AbortError()
+        // A provider can announce a reasoning item before emitting any content.
+        // Keep that lifecycle marker pending so a transient failure remains safe
+        // to retry and does not leave an empty thinking block in the transcript.
+        if (event.type === 'thinking_start') {
+          hasPendingThinkingStart = true
+          continue
+        }
         if (event.type === 'error') {
-          const retryable = !produced && attempt < policy.maxAttempts && isRetryableCode(policy, event.code)
+          const diagnostics: ProviderErrorDiagnostics = {
+            source: event.diagnostics?.source ?? 'unknown',
+            ...event.diagnostics,
+            clientRequestId: request.requestId,
+          }
+          const errorEvent = {
+            ...event,
+            diagnostics,
+          }
+          const retryable = !produced && attempt < policy.maxAttempts && isRetryableCode(policy, errorEvent.code)
           if (retryable) {
             return {
               type: 'retry',
               attempt,
-              delayMs: retryDelayMs(policy, attempt, event.retryAfterMs ?? null),
-              code: event.code,
+              delayMs: retryDelayMs(policy, attempt, errorEvent.retryAfterMs ?? null),
+              code: errorEvent.code,
+              diagnostics: errorEvent.diagnostics,
             }
           }
-          await this.applyProviderEvent(event)
-          throw new ProviderStreamError(event.message, event.code)
+          await this.applyProviderEvent(errorEvent)
+          throw new ProviderStreamError(errorEvent.message, errorEvent.code, errorEvent.diagnostics)
+        }
+        if (hasPendingThinkingStart) {
+          await this.applyProviderEvent({ type: 'thinking_start' })
+          hasPendingThinkingStart = false
         }
         await this.applyProviderEvent(event)
         produced = true
