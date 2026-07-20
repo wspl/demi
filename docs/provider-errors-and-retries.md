@@ -8,7 +8,7 @@ The same diagnostics travel through `retry_scheduled`, terminal transcript error
 
 `@demicodes/agent` owns transient inference retry. Providers perform one inference attempt and emit a classified error event; authentication refresh is part of credential resolution and may repeat a request once after an HTTP 401. This keeps retry counts, backoff, cancellation, transcript safety, and retry telemetry consistent across HTTP and streaming failures.
 
-The agent retries only when the failed provider attempt has emitted no transcript content. Completed tool calls from earlier provider requests remain in the transcript and are not executed again. The default policy makes four total attempts with capped full-jitter exponential backoff for `rate_limit` and `overloaded`.
+The agent retries only when the failed provider attempt has emitted no transcript content. Empty lifecycle events such as a reasoning-item start do not count as content and are not committed unless material output follows. Completed tool calls from earlier provider requests remain in the transcript and are not executed again. The default policy makes four total attempts with capped full-jitter exponential backoff for `rate_limit` and `overloaded`.
 
 `retry` and `resume` have distinct recovery semantics:
 

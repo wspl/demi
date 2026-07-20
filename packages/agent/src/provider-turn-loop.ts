@@ -139,11 +139,19 @@ export class ProviderTurnLoop<State> {
     const run = this.host.provider.run(request)
     let shouldAutoRecover = false
     let produced = false
+    let hasPendingThinkingStart = false
     this.host.setActiveProviderRun(run)
     try {
       for await (const event of this.host.streamProvider(request, run)) {
         throwIfAborted(request.cancel)
         if (event.type === 'abort') throw new AbortError()
+        // A provider can announce a reasoning item before emitting any content.
+        // Keep that lifecycle marker pending so a transient failure remains safe
+        // to retry and does not leave an empty thinking block in the transcript.
+        if (event.type === 'thinking_start') {
+          hasPendingThinkingStart = true
+          continue
+        }
         if (event.type === 'error') {
           const diagnostics: ProviderErrorDiagnostics = {
             source: event.diagnostics?.source ?? 'unknown',
@@ -166,6 +174,10 @@ export class ProviderTurnLoop<State> {
           }
           await this.applyProviderEvent(errorEvent)
           throw new ProviderStreamError(errorEvent.message, errorEvent.code, errorEvent.diagnostics)
+        }
+        if (hasPendingThinkingStart) {
+          await this.applyProviderEvent({ type: 'thinking_start' })
+          hasPendingThinkingStart = false
         }
         await this.applyProviderEvent(event)
         produced = true
