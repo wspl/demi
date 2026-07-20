@@ -1,5 +1,5 @@
 import { AbortError, abortable, asError, delay, isAbortError, parseJsonOrString, throwIfAborted } from '@demicodes/utils'
-import type { ModelSelection, TokenUsage } from '@demicodes/core'
+import type { ModelSelection, ProviderErrorDiagnostics, TokenUsage } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolDefinition } from '@demicodes/provider'
 import { TranscriptLog } from './transcript'
 import { ProviderStreamError } from './provider-stream-error'
@@ -113,6 +113,7 @@ export class ProviderTurnLoop<State> {
           attempt: outcome.attempt,
           delayMs: outcome.delayMs,
           code: outcome.code,
+          diagnostics: outcome.diagnostics,
         })
         await abortable(delay(outcome.delayMs), this.host.currentSignal())
       }
@@ -126,7 +127,13 @@ export class ProviderTurnLoop<State> {
     policy: TurnRetryPolicy,
   ): Promise<
     | { type: 'done'; shouldAutoRecover: boolean }
-    | { type: 'retry'; attempt: number; delayMs: number; code: string | null }
+    | {
+        type: 'retry'
+        attempt: number
+        delayMs: number
+        code: string | null
+        diagnostics: ProviderErrorDiagnostics
+      }
   > {
     const request = this.buildInferenceRequest()
     const run = this.host.provider.run(request)
@@ -138,17 +145,27 @@ export class ProviderTurnLoop<State> {
         throwIfAborted(request.cancel)
         if (event.type === 'abort') throw new AbortError()
         if (event.type === 'error') {
-          const retryable = !produced && attempt < policy.maxAttempts && isRetryableCode(policy, event.code)
+          const diagnostics: ProviderErrorDiagnostics = {
+            source: event.diagnostics?.source ?? 'unknown',
+            ...event.diagnostics,
+            clientRequestId: request.requestId,
+          }
+          const errorEvent = {
+            ...event,
+            diagnostics,
+          }
+          const retryable = !produced && attempt < policy.maxAttempts && isRetryableCode(policy, errorEvent.code)
           if (retryable) {
             return {
               type: 'retry',
               attempt,
-              delayMs: retryDelayMs(policy, attempt, event.retryAfterMs ?? null),
-              code: event.code,
+              delayMs: retryDelayMs(policy, attempt, errorEvent.retryAfterMs ?? null),
+              code: errorEvent.code,
+              diagnostics: errorEvent.diagnostics,
             }
           }
-          await this.applyProviderEvent(event)
-          throw new ProviderStreamError(event.message, event.code)
+          await this.applyProviderEvent(errorEvent)
+          throw new ProviderStreamError(errorEvent.message, errorEvent.code, errorEvent.diagnostics)
         }
         await this.applyProviderEvent(event)
         produced = true
