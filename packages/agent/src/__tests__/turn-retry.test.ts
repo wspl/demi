@@ -47,6 +47,22 @@ test('transient provider errors before any content are retried silently', async 
   expect(provider.consumedTurns).toBe(3)
 })
 
+test('empty thinking lifecycle does not suppress transient retry', async () => {
+  const provider = new StubProvider([
+    [{ type: 'thinking_start' }, events.error('busy', 'overloaded')],
+    [events.text('recovered'), events.response()],
+  ])
+  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
+  const emitted: SessionEvent[] = []
+  session.subscribe((event) => emitted.push(event))
+
+  await session.send(text('hello'))
+
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  expect(emitted.filter((event) => event.type === 'retry_scheduled')).toHaveLength(1)
+  expect(provider.consumedTurns).toBe(2)
+})
+
 test('non-retryable error codes surface immediately without retry', async () => {
   const provider = new StubProvider([[events.error('bad key', 'auth_expired')]])
   const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
