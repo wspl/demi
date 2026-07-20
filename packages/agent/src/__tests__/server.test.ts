@@ -21,6 +21,7 @@ import { StubProvider, createProviderRun, events } from '@demicodes/provider/tes
 import {
   AgentClient,
   AgentServer,
+  ProviderStreamError,
   type ClientSessionEvent,
 } from '../index'
 
@@ -250,13 +251,32 @@ test('AgentServer forwards provider error codes once and preserves the transcrip
   client.subscribe((event) => seen.push(event))
 
   await client.open(providerConfig(turns), '/workspace', globalThis.crypto.randomUUID())
-  await expect(client.send([{ type: 'text', text: 'hi' }])).rejects.toThrow('auth failed')
+  let rejected: Error | null = null
+  try {
+    await client.send([{ type: 'text', text: 'hi' }])
+  } catch (error) {
+    rejected = error instanceof Error ? error : new Error(String(error))
+  }
+  expect(rejected).toBeInstanceOf(ProviderStreamError)
+  if (!(rejected instanceof ProviderStreamError)) throw new Error('Expected ProviderStreamError')
+  expect(rejected.message).toBe('auth failed')
+  expect(rejected.code).toBe('auth')
+  expect(rejected.diagnostics?.source).toBe('unknown')
+  expect(typeof rejected.diagnostics?.clientRequestId).toBe('string')
   await waitFor(() => seen.some((event) => event.type === 'error'))
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'error'))
   await delay(5)
 
   const errors = seen.filter((event) => event.type === 'error')
-  expect(errors).toEqual([{ type: 'error', message: 'auth failed', code: 'auth' }])
+  expect(errors).toHaveLength(1)
+  const error = errors[0]!
+  expect(typeof error.diagnostics?.clientRequestId).toBe('string')
+  expect(error).toEqual({
+    type: 'error',
+    message: 'auth failed',
+    code: 'auth',
+    diagnostics: { source: 'unknown', clientRequestId: error.diagnostics?.clientRequestId },
+  })
   expect(client.transcript().blocks.map((block) => block.type)).toEqual(['user', 'error'])
   expect(client.transcript().blocks[1]).toMatchObject({
     type: 'error',
