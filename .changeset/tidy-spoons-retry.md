@@ -5,4 +5,4 @@
 '@demicodes/provider-codex': minor
 ---
 
-Unify transient provider recovery in the agent runtime, classify server and HTTP 5xx failures as overloaded, preserve bounded provider diagnostics, and keep completed tool progress when resuming after an exhausted provider error.
+Move transient inference retry into the agent runtime with four safe attempts and capped jitter backoff. Classify server, HTTP 5xx, timeout, network, and socket failures as overloaded; carry bounded request diagnostics through retry and terminal error frames; preserve completed tool progress on resume; and keep empty reasoning lifecycle events from suppressing retry.
