@@ -1,5 +1,5 @@
 import { AbortError, abortable, delay, throwIfAborted } from '@demicodes/utils'
-import type { Block, ModelSelection } from '@demicodes/core'
+import type { Block, ModelSelection, ProviderErrorDiagnostics } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
 import { TranscriptLog, estimateTranscriptBlockTokens } from './transcript'
 import {
@@ -119,24 +119,39 @@ export class CompactionController {
       })
 
       let summary = ''
-      let transient: { code: string | null; retryAfterMs: number | null } | null = null
+      let transient: {
+        code: string | null
+        retryAfterMs: number | null
+        diagnostics: ProviderErrorDiagnostics
+      } | null = null
       for await (const event of this.host.streamProvider(request, this.host.provider.run(request))) {
         throwIfAborted(request.cancel)
         if (event.type === 'text_delta') summary += event.text
         if (event.type === 'abort') throw new AbortError()
         if (event.type === 'error') {
+          const diagnostics: ProviderErrorDiagnostics = {
+            source: event.diagnostics?.source ?? 'unknown',
+            ...event.diagnostics,
+            clientRequestId: request.requestId,
+          }
           // Summary requests have no partial side effects, so transient failures
           // retry under the same policy as the turn loop.
           const retryable = summary.length === 0 && attempt < policy.maxAttempts && isRetryableCode(policy, event.code)
-          if (!retryable) throw new ProviderStreamError(event.message, event.code)
-          transient = { code: event.code, retryAfterMs: event.retryAfterMs ?? null }
+          if (!retryable) throw new ProviderStreamError(event.message, event.code, diagnostics)
+          transient = { code: event.code, retryAfterMs: event.retryAfterMs ?? null, diagnostics }
           break
         }
       }
       if (!transient) return summary.trim()
 
       const delayMs = retryDelayMs(policy, attempt, transient.retryAfterMs)
-      this.host.emit({ type: 'retry_scheduled', attempt, delayMs, code: transient.code })
+      this.host.emit({
+        type: 'retry_scheduled',
+        attempt,
+        delayMs,
+        code: transient.code,
+        diagnostics: transient.diagnostics,
+      })
       await abortable(delay(delayMs), request.cancel)
     }
   }

@@ -31,7 +31,8 @@ export function redactCredentialText(text: string, extraFieldPatterns: readonly 
 /** Maps an HTTP status (and response text) to a coarse provider error code. */
 export function httpErrorCode(status: number, message: string): string | null {
   if (status === 401 || status === 403) return 'auth_expired'
-  if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return 'rate_limit'
+  if (status === 429) return 'rate_limit'
+  if (status === 408 || status === 409 || status === 425 || status >= 500) return 'overloaded'
   if (status === 400 && /context|too long|token/i.test(message)) return 'context_length_exceeded'
   return null
 }
@@ -41,11 +42,19 @@ export function normalizeErrorCode(code: string | null, message: string): string
   const value = `${code ?? ''} ${message}`.toLowerCase()
   if (/context|too long|max.*token/.test(value)) return 'context_length_exceeded'
   if (/rate|quota|usage|billing|balance|limit/.test(value)) return 'rate_limit'
-  if (/auth|invalid.*(key|token)|expired/.test(value)) return 'auth_expired'
+  if (
+    /\bauth(?:entication|orization)?\b/.test(value) ||
+    /(?:invalid|expired).*(?:api|access|auth)[_\s-]*(?:key|token)/.test(value) ||
+    /(?:api|access|auth)[_\s-]*(?:key|token).*(?:invalid|expired)/.test(value)
+  ) {
+    return 'auth_expired'
+  }
   // Transport-level transient failures (header/connect/idle timeouts, dropped
   // sockets, DNS/connect errors) classify as overloaded so the turn retry
   // policy treats them like a 503 instead of surfacing a terminal error.
-  if (/overload|unavailable|timed?\s?out|fetch failed|network|socket|econn/.test(value)) return 'overloaded'
+  if (/overload|unavailable|(?:server|internal|api)[_\s-]*error|timed?\s?out|fetch failed|network|socket|econn/.test(value)) {
+    return 'overloaded'
+  }
   return code
 }
 

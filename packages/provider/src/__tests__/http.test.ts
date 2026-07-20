@@ -19,7 +19,8 @@ describe('httpErrorCode', () => {
   it('classifies by status', () => {
     expect(httpErrorCode(401, '')).toBe('auth_expired')
     expect(httpErrorCode(429, '')).toBe('rate_limit')
-    expect(httpErrorCode(500, '')).toBe('rate_limit')
+    expect(httpErrorCode(408, '')).toBe('overloaded')
+    expect(httpErrorCode(500, '')).toBe('overloaded')
     expect(httpErrorCode(400, 'context length exceeded')).toBe('context_length_exceeded')
     expect(httpErrorCode(400, 'bad request')).toBeNull()
     expect(httpErrorCode(404, '')).toBeNull()
@@ -31,7 +32,10 @@ describe('normalizeErrorCode', () => {
     expect(normalizeErrorCode(null, 'maximum context length')).toBe('context_length_exceeded')
     expect(normalizeErrorCode(null, 'rate limit reached')).toBe('rate_limit')
     expect(normalizeErrorCode(null, 'invalid api key')).toBe('auth_expired')
+    expect(normalizeErrorCode('invalid_request_error', 'Invalid prompt_cache_key')).toBe('invalid_request_error')
     expect(normalizeErrorCode(null, 'service unavailable')).toBe('overloaded')
+    expect(normalizeErrorCode('server_error', 'backend failed')).toBe('overloaded')
+    expect(normalizeErrorCode('internal-error', 'backend failed')).toBe('overloaded')
     expect(normalizeErrorCode('custom', 'something else')).toBe('custom')
   })
 
