@@ -4,6 +4,7 @@ import type { ProviderSelection } from '@demicodes/provider'
 import type { ClientFrame, ClientSessionEvent, ConversationSummary, ServerFrame } from './frames'
 import type { AgentClientTransport } from './transport'
 import type { AbortResult, AgentMetadata } from './types'
+import { ProviderStreamError } from './provider-stream-error'
 
 export type AgentClientListener = (event: ClientSessionEvent) => void
 
@@ -133,6 +134,7 @@ export class AgentClient {
     return wait
   }
 
+  /** Continues from the current transcript after an abort or terminal provider error. */
   resume(options: AgentActionOptions = {}): Promise<void> {
     const wait = this.waitForAction('resume')
     this.sendFrame({ type: 'resume', metadata: options.metadata })
@@ -253,9 +255,14 @@ export class AgentClient {
         return
       case 'error':
         this.emit(frame)
-        this.rejectErroredAction(new Error(frame.message))
-        this.rejectAllSteerWaiters(new Error(frame.message))
-        this.rejectAllAbortWaiters(new Error(frame.message))
+        {
+          const error = frame.code
+            ? new ProviderStreamError(frame.message, frame.code, frame.diagnostics)
+            : new Error(frame.message)
+          this.rejectErroredAction(error)
+          this.rejectAllSteerWaiters(error)
+          this.rejectAllAbortWaiters(error)
+        }
         return
     }
   }
