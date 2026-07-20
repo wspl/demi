@@ -157,12 +157,55 @@ test('mapCodexResponseEvents maps failed and incomplete responses to provider er
   }
 
   expect(events).toEqual([
-    { type: 'error', message: 'too long', code: 'context_length_exceeded' },
+    {
+      type: 'error',
+      message: 'too long',
+      code: 'context_length_exceeded',
+      diagnostics: { source: 'stream', providerCode: 'context_length_exceeded' },
+    },
     { type: 'error', message: 'Incomplete response returned, reason: max_output_tokens', code: 'context_length_exceeded' },
-    { type: 'error', message: 'backend failed', code: 'server_error' },
-    { type: 'error', message: 'Invalid prompt_cache_key', code: 'invalid_request_error' },
-    { type: 'error', message: 'Codex stream error', code: null },
+    {
+      type: 'error',
+      message: 'backend failed',
+      code: 'overloaded',
+      diagnostics: { source: 'stream', providerCode: 'server_error' },
+    },
+    {
+      type: 'error',
+      message: 'Invalid prompt_cache_key',
+      code: 'invalid_request_error',
+      diagnostics: { source: 'stream', providerCode: 'invalid_request_error' },
+    },
+    { type: 'error', message: 'Codex stream error', code: null, diagnostics: { source: 'stream' } },
   ])
+})
+
+test('mapCodexResponseEvents preserves request and response diagnostics', async () => {
+  const events: ProviderEvent[] = []
+  for await (const event of mapCodexResponseEvents(iter([
+    {
+      type: 'response.failed',
+      response: {
+        id: 'resp-1',
+        error: {
+          code: 'server_error',
+          message: 'Failed. Please include the request ID req-1 in your message.',
+        },
+      },
+    },
+  ]))) {
+    events.push(event)
+  }
+
+  expect(events[0]).toMatchObject({
+    code: 'overloaded',
+    diagnostics: {
+      source: 'stream',
+      providerCode: 'server_error',
+      providerRequestId: 'req-1',
+      providerResponseId: 'resp-1',
+    },
+  })
 })
 
 test('SSE parser and usage helpers handle provider wire format', () => {

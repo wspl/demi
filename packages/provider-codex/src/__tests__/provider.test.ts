@@ -144,7 +144,6 @@ test('CodexProvider refreshes auth once after a 401 response and retries the req
   const provider = new CodexProvider({
     authStore,
     transportImpl: transport,
-    maxRetries: 0,
   })
   const events = []
   for await (const event of provider.run(makeRequest())) events.push(event)
@@ -164,14 +163,87 @@ test('CodexProvider classifies transport timeouts as retryable overloaded errors
   const provider = new CodexProvider({
     authStore: new StaticCodexAuthStore(chatgptAuth),
     transportImpl: transport,
-    maxRetries: 0,
   })
   const events = []
   for await (const event of provider.run(makeRequest())) events.push(event)
 
   expect(events).toEqual([
-    { type: 'error', message: 'Codex SSE response headers timed out after 20000ms', code: 'overloaded' },
+    {
+      type: 'error',
+      message: 'Codex SSE response headers timed out after 20000ms',
+      code: 'overloaded',
+      diagnostics: { source: 'transport' },
+    },
   ])
+})
+
+test('CodexProvider preserves HTTP failure diagnostics without retrying inside the provider', async () => {
+  const headers = new Headers({ 'x-request-id': 'req-http-1', 'retry-after': '2' })
+  const transport = new FakeCodexTransport([
+    new CodexHttpError(
+      500,
+      'Internal Server Error',
+      '{"error":{"code":"server_error","message":"backend failed"}}',
+      headers,
+    ),
+    [{ type: 'response.completed', response: { usage: { input_tokens: 1 } } }],
+  ])
+  const provider = new CodexProvider({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    transportImpl: transport,
+  })
+  const events = []
+  for await (const event of provider.run(makeRequest())) events.push(event)
+
+  expect(transport.requests).toHaveLength(1)
+  expect(events).toEqual([
+    {
+      type: 'error',
+      message: 'backend failed',
+      code: 'overloaded',
+      retryAfterMs: 2_000,
+      diagnostics: {
+        source: 'http',
+        httpStatus: 500,
+        providerCode: 'server_error',
+        providerRequestId: 'req-http-1',
+      },
+    },
+  ])
+})
+
+test('AgentSession retries Codex server errors without replaying the user turn', async () => {
+  const transport = new FakeCodexTransport([
+    [
+      {
+        type: 'response.failed',
+        response: { error: { code: 'server_error', message: 'backend failed' } },
+      },
+    ],
+    [
+      { type: 'response.output_text.delta', delta: 'recovered' },
+      { type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } },
+    ],
+  ])
+  const provider = new CodexProvider({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    transportImpl: transport,
+  })
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'codex-server-error-retry-test',
+    initialState: () => ({}),
+    systemPrompt: () => 'system',
+    tools: () => [],
+  }
+  const session = new AgentSession(
+    { provider, model, cwd: process.cwd(), runtime },
+    { agentSessionId: 'agent-session-1', retry: { baseDelayMs: 0, maxDelayMs: 0 } },
+  )
+
+  await session.send([{ type: 'text', text: 'run' }])
+
+  expect(transport.requests).toHaveLength(2)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 
 test('AutoCodexResponsesTransport falls back to SSE only before WebSocket has emitted events', async () => {
