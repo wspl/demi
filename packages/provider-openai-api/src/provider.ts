@@ -624,10 +624,32 @@ function inferenceItemsToOpenAIMessages(systemPrompt: string, items: InferenceIt
           function: { name: item.toolName, arguments: stringifyToolArguments(item.input) },
         })
         break
-      case 'tool_result':
+      case 'tool_result': {
         flushAssistant()
         messages.push({ role: 'tool', tool_call_id: item.toolUseId, content: toolResultContentToText(item.output) })
+        // A tool message is text-only, so media a tool returned had nowhere to
+        // go on this wire and was silently dropped — commands that exist to
+        // SHOW the model something (render a frame, downscale an image) did
+        // nothing here, while the responses wire had handled it all along.
+        // Same remedy: a follow-up user message carrying the media.
+        // The agent layer only attaches media the model's catalog accepts.
+        const media = item.output.filter((block) => block.type !== 'text')
+        if (media.length > 0) {
+          messages.push({
+            role: 'user',
+            content: [
+              { type: 'text', text: `[media returned by tool call ${item.toolUseId}]` },
+              ...media.map(
+                (block): OpenAIUserContentPart => ({
+                  type: 'image_url',
+                  image_url: { url: `data:${block.source.mediaType};base64,${block.source.data}`, detail: 'auto' },
+                }),
+              ),
+            ],
+          })
+        }
         break
+      }
       case 'assistant_thinking':
       case 'assistant_redacted_thinking':
         break
@@ -745,10 +767,11 @@ function inferenceItemToOpenAIResponseInput(
       const items: OpenAIResponseInputItem[] = [
         { type: 'function_call_output', call_id: callId, output: toolResultContentToText(item.output) },
       ]
-      // Images cannot ride function_call_output (gateways drop or reject them);
-      // the standard pattern is a follow-up user message carrying the media.
-      // The agent layer only attaches media the model's catalog accepts.
-      const images = item.output.filter((block) => block.type === 'image')
+      // Media cannot ride function_call_output (gateways drop or reject it);
+      // the standard pattern is a follow-up user message carrying it.
+      // The agent layer only attaches media the model's catalog accepts, so a
+      // video block only reaches here when the model takes video natively.
+      const images = item.output.filter((block) => block.type !== 'text')
       if (images.length > 0) {
         items.push({
           role: 'user',
