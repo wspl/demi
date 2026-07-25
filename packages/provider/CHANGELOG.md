@@ -1,5 +1,12 @@
 # @demicodes/provider
 
+## 0.7.1
+
+### Patch Changes
+
+- @demicodes/core@0.7.1
+- @demicodes/utils@0.7.1
+
 ## 0.7.0
 
 ### Minor Changes

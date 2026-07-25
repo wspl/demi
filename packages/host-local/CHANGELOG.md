@@ -1,5 +1,14 @@
 # @demicodes/host-local
 
+## 0.7.1
+
+### Patch Changes
+
+- @demicodes/agent@0.7.1
+- @demicodes/provider@0.7.1
+- @demicodes/shell@0.7.1
+- @demicodes/utils@0.7.1
+
 ## 0.7.0
 
 ### Patch Changes
