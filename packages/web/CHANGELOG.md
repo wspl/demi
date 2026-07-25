@@ -1,5 +1,24 @@
 # @demicodes/web
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [df261c2]
+  - @demicodes/provider-openai-api@0.8.0
+  - @demicodes/agent@0.8.0
+  - @demicodes/coding-agent@0.8.0
+  - @demicodes/core@0.8.0
+  - @demicodes/host-local@0.8.0
+  - @demicodes/provider@0.8.0
+  - @demicodes/provider-anthropic-api@0.8.0
+  - @demicodes/provider-claude-code@0.8.0
+  - @demicodes/provider-codex@0.8.0
+  - @demicodes/provider-grok-build@0.8.0
+  - @demicodes/shell@0.8.0
+  - @demicodes/utils@0.8.0
+  - @demicodes/web-ui@0.8.0
+
 ## 0.7.2
 
 ### Patch Changes
