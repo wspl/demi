@@ -231,6 +231,22 @@ test('OpenAI Responses stream maps thinking, split text, tool call arguments, an
   ])
 })
 
+test('OpenAI Responses request omits reasoning.summary when the caller turns summaries off', () => {
+  const off = buildOpenAIResponsesBody(request({ thinking: { type: 'effort', effort: 'high', summary: 'off' } }), undefined)
+  // Strict OpenAI-compatible gateways reject `reasoning.summary` as an unknown field,
+  // so 'off' has to drop the key rather than send null or fall back to 'auto'.
+  expect(off.reasoning).toEqual({ effort: 'high' })
+  expect(Object.keys(off.reasoning ?? {})).not.toContain('summary')
+
+  // An unset summary still defaults to 'auto' — only an explicit 'off' opts out.
+  const unset = buildOpenAIResponsesBody(request({ thinking: { type: 'effort', effort: 'high', summary: null } }), undefined)
+  expect(unset.reasoning).toEqual({ effort: 'high', summary: 'auto' })
+
+  // An explicit summary style is passed through untouched.
+  const concise = buildOpenAIResponsesBody(request({ thinking: { type: 'effort', effort: 'low', summary: 'concise' } }), undefined)
+  expect(concise.reasoning).toEqual({ effort: 'low', summary: 'concise' })
+})
+
 test('OpenAI Chat Completions request body maps text, tools, tool replay, service tier, and reasoning effort', () => {
   const body = buildOpenAIChatCompletionsBody(
     request({
