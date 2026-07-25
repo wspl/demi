@@ -37,6 +37,13 @@ export interface OpenAIApiRequestOptions {
   maxRetries?: number
   streamOptions?: Record<string, unknown> | null
   extraBody?: Record<string, unknown>
+  /**
+   * Emit `status: 'completed'` on replayed assistant messages. Gateways that validate
+   * input against the full Responses item schema require it — Volcengine Ark rejects the
+   * item with `missing input.status` — while relay bridges reject it as an unknown
+   * parameter, so it stays off unless the provider opts in.
+   */
+  replayAssistantStatus?: boolean
 }
 
 export type OpenAIApiWireApi = 'responses' | 'chat-completions'
@@ -223,7 +230,7 @@ export interface OpenAIResponsesRequestBody {
 }
 
 export type OpenAIResponseInputItem =
-  | { type: 'message'; role: 'assistant'; content: Array<{ type: 'output_text'; text: string; annotations: unknown[] }> }
+  | { type: 'message'; role: 'assistant'; status?: 'completed'; content: Array<{ type: 'output_text'; text: string; annotations: unknown[] }> }
   | { role: 'user'; content: OpenAIResponseUserContent[] }
   | { type: 'reasoning'; id?: string; summary?: Array<{ type?: string; text: string }>; content?: Array<{ type?: string; text: string }>; encrypted_content?: string }
   | { type: 'function_call'; id?: string; call_id: string; name: string; arguments: string }
@@ -315,7 +322,7 @@ export function buildOpenAIResponsesBody(
 ): OpenAIResponsesRequestBody {
   const body: OpenAIResponsesRequestBody = {
     model: request.modelId,
-    input: request.items.flatMap((item, index) => inferenceItemToOpenAIResponseInput(item, index)),
+    input: request.items.flatMap((item, index) => inferenceItemToOpenAIResponseInput(item, index, options)),
     stream: true,
     store: false,
     include: ['reasoning.encrypted_content'],
@@ -694,18 +701,24 @@ function* flushOpenAIToolCalls(toolCalls: Map<number, MutableOpenAIToolCall>): I
   toolCalls.clear()
 }
 
-function inferenceItemToOpenAIResponseInput(item: InferenceItem, index: number): OpenAIResponseInputItem[] {
+function inferenceItemToOpenAIResponseInput(
+  item: InferenceItem,
+  index: number,
+  options: OpenAIApiRequestOptions | undefined,
+): OpenAIResponseInputItem[] {
   switch (item.type) {
     case 'user_message':
     case 'user_steer':
       return [{ role: 'user', content: userContentToOpenAIResponses(item.content) }]
     case 'assistant_text':
-      // Minimal item shape: no id/status — strict gateways (relay bridges)
-      // reject them as unknown parameters, and stateless replay never needs them.
+      // Minimal item shape: no id — strict gateways (relay bridges) reject it as an
+      // unknown parameter, and stateless replay never needs it. `status` is opt-in
+      // because gateways disagree: relay bridges reject it, Ark requires it.
       return [
         {
           type: 'message',
           role: 'assistant',
+          ...(options?.replayAssistantStatus ? { status: 'completed' as const } : {}),
           content: [{ type: 'output_text', text: item.text, annotations: [] }],
         },
       ]
