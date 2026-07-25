@@ -7,6 +7,8 @@ import { LocalHost } from '@demicodes/host-local'
 
 // Deliberately invalid UTF-8 (PNG magic) followed by opaque bytes.
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01])
+// Invalid UTF-8 that matches no media magic — the model cannot look at it.
+const OPAQUE_BYTES = new Uint8Array([0xff, 0xfe, 0xfd, 0xfc, 0xfb, 0xfa, 0xf9, 0xf8, 0xf7, 0xf6, 0xf5, 0xf4])
 
 const emitSpec: Command = {
   name: 'emit',
@@ -22,6 +24,15 @@ const emitSpec: Command = {
       },
     },
     {
+      name: 'opaque',
+      summary: 'Write raw bytes that match no media magic.',
+      examples: [],
+      run: async (ctx) => {
+        await ctx.io.stdout(OPAQUE_BYTES)
+        return { exitCode: 0 }
+      },
+    },
+    {
       name: 'text',
       summary: 'Write multibyte UTF-8 text to stdout as bytes.',
       examples: [],
@@ -33,7 +44,7 @@ const emitSpec: Command = {
   ],
 }
 
-function makeEnv(root: string, shellId: string): BashEnvironment {
+function makeEnv(root: string, shellId: string, extra: { maxBinaryBytes?: number } = {}): BashEnvironment {
   const commands = new CommandRegistry()
   commands.register(emitSpec)
   return new BashEnvironment({
@@ -41,6 +52,7 @@ function makeEnv(root: string, shellId: string): BashEnvironment {
     commands,
     shellIdFactory: () => shellId,
     initialEnv: { PATH: process.env.PATH ?? '' },
+    ...extra,
   })
 }
 
@@ -96,21 +108,32 @@ test('binary streams pipe byte-clean into downstream fork commands', async () =>
   expect(roundTripped).toEqual(PNG_BYTES)
 })
 
-test('a binary stream over the output limit is capped and marked truncated', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-binary-trunc-'))
-  const env = makeEnv(root, 'shell-binary-trunc')
+test('the text output limit does not decide whether raw bytes survive', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-binary-text-budget-'))
+  const env = makeEnv(root, 'shell-binary-text-budget')
 
-  const result = await env.exec({ script: 'emit binary', maxOutputBytes: 4 })
+  // maxOutputBytes exists to stop a log flood; bytes carried to be LOOKED at
+  // answer to their own ceiling, so a tight text budget must leave them whole.
+  const kept = await env.exec({ script: 'emit binary', maxOutputBytes: 4 })
+  if (kept.status !== 'exited') throw new Error('expected exited result')
+  expect(kept.binaryStdout?.truncated).toBe(false)
+  expect(kept.binaryStdout?.data).toEqual(PNG_BYTES)
+})
+
+test('a binary stream over the binary ceiling is capped and names that ceiling', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-binary-trunc-'))
+  const env = makeEnv(root, 'shell-binary-trunc', { maxBinaryBytes: 4 })
+
+  const result = await env.exec({ script: 'emit binary' })
   expect(result.status).toBe('exited')
   if (result.status !== 'exited') throw new Error('expected exited result')
   expect(result.binaryStdout?.truncated).toBe(true)
+  expect(result.binaryStdout?.limitBytes).toBe(4)
   expect(result.binaryStdout?.data).toEqual(PNG_BYTES.slice(0, 4))
   expect(result.binaryStdout?.totalBytes).toBe(PNG_BYTES.length)
-  // The 4-byte budget also caps the immediate view; a default-budget status
-  // read shows the full placeholder.
   const view = await env.status({ commandId: result.commandId })
   if (view.status !== 'exited') throw new Error('expected exited status')
-  expect(view.stdout.tail).toContain('exceeds the 4-byte output limit')
+  expect(view.stdout.tail).toContain('exceeds the 4-byte binary limit')
 })
 
 test('real-process (hostSpawn) output and stdin are byte-clean end to end', async () => {
