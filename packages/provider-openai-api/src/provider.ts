@@ -782,7 +782,12 @@ function thinkingToOpenAIReasoning(thinking: InferenceRequest['thinking']): { ef
   if (!thinking || thinking.type === 'disabled' || thinking.type === 'budget') return undefined
   if (thinking.type === 'adaptive') return { effort: thinking.effort, summary: 'auto' }
   if (thinking.effort === 'none') return { effort: 'none' }
-  return { effort: thinking.effort, summary: thinking.summary && thinking.summary !== 'off' ? thinking.summary : 'auto' }
+  // 'off' is an explicit request for no summary, so drop the field instead of
+  // silently downgrading it to 'auto'. Omitting also keeps strict OpenAI-compatible
+  // gateways happy: Volcengine Ark decodes the request with unknown-field rejection
+  // and 400s on `reasoning.summary` whatever its value, null included.
+  if (thinking.summary === 'off') return { effort: thinking.effort }
+  return { effort: thinking.effort, summary: thinking.summary ?? 'auto' }
 }
 
 function splitOpenAIResponseToolUseId(toolUseId: string): { callId: string; itemId: string | undefined } {
