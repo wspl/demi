@@ -196,6 +196,41 @@ test('responses tool results with images add a follow-up user message carrying t
   })
 })
 
+test('chat completions tool results carry media too, and video rides alongside images', () => {
+  // A `tool` message is text-only, so without the follow-up user message the
+  // model never sees what a command rendered — on this wire that used to be a
+  // silent drop while the responses wire handled it.
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'view it' }] },
+        { type: 'tool_use', modelId: 'gpt-test', toolUseId: 'call-1', toolName: 'shell_exec', input: { script: 'look 3.2' } },
+        {
+          type: 'tool_result',
+          toolUseId: 'call-1',
+          isError: false,
+          output: [
+            { type: 'text', text: '<binary stdout: 75 bytes>' },
+            { type: 'image', source: { mediaType: 'image/png', data: 'QUFBQQ==' } },
+            { type: 'video', source: { mediaType: 'video/mp4', data: 'TVA0' } },
+          ],
+        },
+      ],
+    }),
+    undefined,
+  )
+
+  expect(body.messages[2]).toMatchObject({ role: 'tool', tool_call_id: 'call-1' })
+  expect(body.messages[3]).toEqual({
+    role: 'user',
+    content: [
+      { type: 'text', text: '[media returned by tool call call-1]' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,QUFBQQ==', detail: 'auto' } },
+      { type: 'image_url', image_url: { url: 'data:video/mp4;base64,TVA0', detail: 'auto' } },
+    ],
+  })
+})
+
 test('OpenAI Responses stream maps thinking, split text, tool call arguments, and usage', async () => {
   const reasoning = { type: 'reasoning' as const, id: 'rs-1', encrypted_content: 'enc' }
   const events = await collect(mapOpenAIResponseStream(eventsFromData([
