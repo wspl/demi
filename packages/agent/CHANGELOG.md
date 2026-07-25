@@ -1,5 +1,14 @@
 # @demicodes/agent
 
+## 0.8.0
+
+### Patch Changes
+
+- @demicodes/core@0.8.0
+- @demicodes/provider@0.8.0
+- @demicodes/shell@0.8.0
+- @demicodes/utils@0.8.0
+
 ## 0.7.2
 
 ### Patch Changes
