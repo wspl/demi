@@ -1,5 +1,23 @@
 # @demicodes/repl
 
+## 0.9.0
+
+### Patch Changes
+
+- Updated dependencies [92e330e]
+  - @demicodes/shell@0.9.0
+  - @demicodes/agent@0.9.0
+  - @demicodes/coding-agent@0.9.0
+  - @demicodes/host-local@0.9.0
+  - @demicodes/provider-claude-code@0.9.0
+  - @demicodes/provider-codex@0.9.0
+  - @demicodes/core@0.9.0
+  - @demicodes/provider@0.9.0
+  - @demicodes/provider-anthropic-api@0.9.0
+  - @demicodes/provider-grok-build@0.9.0
+  - @demicodes/provider-openai-api@0.9.0
+  - @demicodes/utils@0.9.0
+
 ## 0.8.0
 
 ### Patch Changes
