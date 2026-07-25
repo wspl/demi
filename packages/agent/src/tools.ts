@@ -12,7 +12,7 @@ import type {
   ShellStreamView,
 } from '@demicodes/shell'
 import { bytesToBase64 } from '@demicodes/utils'
-import { modelAcceptsMediaType, sniffModelMediaType, type Model, type ToolResultContentBlock } from '@demicodes/core'
+import { modelAcceptsMediaType, sniffModelMediaType, type Model, type ModelMediaKind, type ToolResultContentBlock } from '@demicodes/core'
 import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from './types'
 
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
@@ -187,6 +187,31 @@ export interface ShellToolResultOptions {
   exposeCommandHandle?: boolean
   /** Model receiving this result; gates binary-stream media attachment. */
   model?: Model
+  /** Per-modality byte caps on attached media; unset modalities keep the defaults. */
+  maxMediaBytes?: Partial<Record<ModelMediaKind, number>>
+}
+
+/**
+ * How many bytes of each modality a tool may hand to the model.
+ *
+ * One number cannot serve both, because bytes buy wildly different amounts of
+ * context per modality — measured against a frontier model, a KiB of video
+ * costs ~2 tokens where a KiB of image costs ~50. A cap generous enough to show
+ * a five-minute clip would let a single still eat a six-figure token budget.
+ *
+ * image (4 MiB): well past any sane still — a 4000x3000 PNG lands under it — so
+ *   crossing this line is a mistake, not a use case.
+ * video (16 MiB): roughly ten minutes at a viewing-grade encoding, and
+ *   deliberately under the ~20 MB inline-payload ceiling the major APIs enforce.
+ *   A larger cap buys no reach, only a rejection further downstream where the
+ *   reason is harder to read.
+ *
+ * Bytes are a proxy, not a budget: for video they track cost reasonably at a
+ * fixed encoding, but an image's real driver is its pixel dimensions.
+ */
+export const DEFAULT_MAX_MEDIA_BYTES: Record<ModelMediaKind, number> = {
+  image: 4 * 1024 * 1024,
+  video: 16 * 1024 * 1024,
 }
 
 export function shellPreviewBudgetTokens(contextWindow: number): number {
@@ -199,7 +224,10 @@ export function toShellToolResult(
 ): AgentToolInvokeResult {
   const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
   if (result.status === 'exited' && result.binaryStdout) {
-    const verdict = binaryStreamVerdict(result.binaryStdout, result.commandId, options.model)
+    const verdict = binaryStreamVerdict(result.binaryStdout, result.commandId, options.model, {
+      ...DEFAULT_MAX_MEDIA_BYTES,
+      ...options.maxMediaBytes,
+    })
     if (verdict.block) output.push(verdict.block)
     if (verdict.note) output.push({ type: 'text', text: verdict.note })
   }
@@ -286,14 +314,15 @@ function binaryStreamVerdict(
   binary: NonNullable<Extract<ShellCommandStatus, { status: 'exited' }>['binaryStdout']>,
   commandId: string,
   model: Model | undefined,
+  maxMediaBytes: Record<ModelMediaKind, number>,
 ): { block?: ToolResultContentBlock; note?: string } {
   const media = sniffModelMediaType(binary.data)
   const binPath = `/@/commands/${commandId}/stdout.bin`
   if (binary.truncated) {
     return {
-      note: `Binary stdout was truncated at the output limit (${binary.data.length} of ${binary.totalBytes} bytes)${
-        media ? ` and looks like ${media.mediaType}` : ''
-      }; it was not attached. Redirect to a file or raise the output limit and re-run.`,
+      note: `Binary stdout (${binary.totalBytes} bytes${
+        media ? `, ${media.mediaType}` : ''
+      }) exceeded the shell's ${binary.limitBytes}-byte binary limit (maxBinaryBytes) and was not attached; the raw bytes remain readable at ${binPath}. Produce a smaller version and re-run.`,
     }
   }
   if (!media) {
@@ -304,6 +333,15 @@ function binaryStreamVerdict(
   if (!model || !modelAcceptsMediaType(model, media.mediaType)) {
     return {
       note: `Binary stdout is ${media.mediaType}, which this model does not accept natively; the raw bytes remain readable at ${binPath}.`,
+    }
+  }
+  // Per-modality cap. This is the layer that knows both what the bytes are and
+  // which model is about to receive them, so it is the layer that decides
+  // whether they are worth the context — the shell below only bounds raw size.
+  const cap = maxMediaBytes[media.kind]
+  if (binary.totalBytes > cap) {
+    return {
+      note: `Binary stdout is ${media.mediaType} (${binary.totalBytes} bytes), over the ${cap}-byte ${media.kind} cap; it was not attached and the raw bytes remain readable at ${binPath}. Produce a smaller version — for video, fewer frames or a lower resolution — and re-run.`,
     }
   }
   const source = { mediaType: media.mediaType, data: bytesToBase64(binary.data) }

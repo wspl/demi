@@ -35,7 +35,21 @@ export interface BashEnvironmentOptions {
   shellIdFactory?: () => string
   commandIdFactory?: () => string
   initialEnv?: Record<string, string>
+  /** Cap on a command's text stdout. Guards against log floods. */
   maxOutputBytes?: number
+  /**
+   * Cap on a final stdout stream that is raw bytes rather than text.
+   *
+   * Separate from `maxOutputBytes` because the two guard different risks. Text
+   * costs context roughly in proportion to its bytes, so a tight cap is what
+   * stops a stray `cat` of a log file from flooding a window. Raw bytes are
+   * carried to be looked at — a picture, a clip — and there a megabyte buys far
+   * more than a megabyte of text does, so the same number would forbid the
+   * ordinary case. This layer deliberately stops at that distinction: which
+   * modality the bytes are, and what a given model should be shown, is decided
+   * above, where models are known.
+   */
+  maxBinaryBytes?: number
 }
 
 export interface ShellExecInput {
@@ -123,10 +137,12 @@ export interface CommandMetadataRecord {
 /** Final stdout stream that is not valid UTF-8: raw bytes for the boundary above. */
 export interface BinaryStdout {
   data: Uint8Array
-  /** True when the stream exceeded the exec's output limit; data is capped. */
+  /** True when the stream exceeded the applicable cap; data is capped. */
   truncated: boolean
   /** Total byte count of the un-capped stream. */
   totalBytes: number
+  /** The byte ceiling that applied, so the boundary above can name it. */
+  limitBytes: number
 }
 
 export type ShellCommandStatus =
@@ -207,6 +223,12 @@ interface CommandArtifact {
 // controls it per call — there is intentionally no configurable global default.
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
+/**
+ * Ceiling for a raw-byte final stream. Sized so an ordinary viewing-grade clip
+ * survives the shell and reaches the layer that decides what to do with it,
+ * while still bounding a runaway producer.
+ */
+const DEFAULT_BINARY_LIMIT_BYTES = 16 * 1024 * 1024
 /** Upper bound for a single exec observation window (also the command-bridge wait ceiling). */
 export const MAX_TIMEOUT_MS = 600_000
 export class BashEnvironment {
@@ -216,6 +238,7 @@ export class BashEnvironment {
   private readonly commandIdFactory: () => string
   private readonly initialEnv: Record<string, string>
   private readonly defaultOutputLimitBytes: number
+  private readonly defaultBinaryLimitBytes: number
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
   private readonly commandsById = new Map<string, ShellCommandRecord>()
@@ -229,6 +252,7 @@ export class BashEnvironment {
     this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}
     this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
+    this.defaultBinaryLimitBytes = options.maxBinaryBytes ?? DEFAULT_BINARY_LIMIT_BYTES
   }
 
   getShell(shellId: string): ShellSession | null {
@@ -944,11 +968,19 @@ export class BashEnvironment {
       if (strict !== null) {
         stdoutText = strict
       } else {
-        const cap = record.outputLimitBytes
+        // Raw bytes answer to their own ceiling, not the text budget: this
+        // stream exists to be looked at, and the text cap is sized to stop a
+        // log flood.
+        const cap = this.defaultBinaryLimitBytes
         const truncated = bytes.length > cap
-        binary = { data: truncated ? bytes.slice(0, cap) : bytes, truncated, totalBytes: bytes.length }
+        binary = {
+          data: truncated ? bytes.slice(0, cap) : bytes,
+          truncated,
+          totalBytes: bytes.length,
+          limitBytes: cap,
+        }
         stdoutText = `<binary stdout: ${bytes.length} bytes${
-          truncated ? `, exceeds the ${cap}-byte output limit` : ''
+          truncated ? `, exceeds the ${cap}-byte binary limit` : ''
         }; raw bytes at /@/commands/${record.id}/stdout.bin>\n`
       }
     }
