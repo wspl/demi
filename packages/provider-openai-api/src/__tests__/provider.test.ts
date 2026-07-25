@@ -231,6 +231,31 @@ test('OpenAI Responses stream maps thinking, split text, tool call arguments, an
   ])
 })
 
+test('OpenAI Responses replays assistant messages with status only when opted in', () => {
+  const items = [
+    { type: 'user_message' as const, content: [{ type: 'text' as const, text: 'hello' }] },
+    { type: 'assistant_text' as const, modelId: 'gpt-test', text: 'prior reply' },
+  ]
+
+  // Default stays minimal: relay bridges reject `status` as an unknown parameter.
+  const lean = buildOpenAIResponsesBody(request({ items }), undefined)
+  expect(lean.input[1]).toEqual({
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'output_text', text: 'prior reply', annotations: [] }],
+  })
+
+  // Opted in for gateways that validate the full item schema (Volcengine Ark rejects
+  // the item with `missing input.status` otherwise).
+  const strict = buildOpenAIResponsesBody(request({ items }), { replayAssistantStatus: true })
+  expect(strict.input[1]).toEqual({
+    type: 'message',
+    role: 'assistant',
+    status: 'completed',
+    content: [{ type: 'output_text', text: 'prior reply', annotations: [] }],
+  })
+})
+
 test('OpenAI Responses request omits reasoning.summary when the caller turns summaries off', () => {
   const off = buildOpenAIResponsesBody(request({ thinking: { type: 'effort', effort: 'high', summary: 'off' } }), undefined)
   // Strict OpenAI-compatible gateways reject `reasoning.summary` as an unknown field,
