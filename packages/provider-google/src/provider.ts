@@ -66,6 +66,14 @@ interface GoogleRuntimeOptions {
 
 const DEFAULT_GOOGLE_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const DEFAULT_MAX_OUTPUT_TOKENS = 32_000
+/**
+ * Marks a thought signature as this provider's own. Transcripts outlive a
+ * provider choice — a conversation can start on one and continue on another —
+ * and each provider's signature format is private to it, so an untagged (or
+ * foreign-tagged) signature must never be replayed as if it were ours.
+ */
+const SIGNATURE_TAG = 'google:'
+
 const DEFAULT_EFFORT_BUDGET_TOKENS: Record<string, number> = {
   low: 4_096,
   medium: 16_384,
@@ -260,6 +268,9 @@ export function inferenceItemsToGoogleContents(items: InferenceItem[]): GoogleCo
   // Gemini's functionResponse needs the tool NAME, which only the matching
   // tool_use item carries; remember it as we walk forward.
   const toolNames = new Map<string, string>()
+  // Calls replayed as text because no signature of ours survived; their results
+  // must follow suit, or the API sees a response with nothing to respond to.
+  const degraded = new Set<string>()
   let pendingSignature: string | null = null
 
   const append = (role: GoogleContent['role'], parts: GooglePart[]) => {
@@ -286,24 +297,38 @@ export function inferenceItemsToGoogleContents(items: InferenceItem[]): GoogleCo
       case 'assistant_thinking':
         // Thought text is not replayed (Gemini re-derives it); only the
         // signature matters, and only for the call that follows.
-        pendingSignature = item.signature
+        pendingSignature = ownSignature(item.signature)
         break
       case 'assistant_redacted_thinking':
         break
       case 'tool_use': {
         toolNames.set(item.toolUseId, item.toolName)
-        const call: GooglePart = {
-          functionCall: { name: item.toolName, args: item.input ?? {}, id: item.toolUseId },
+        if (!pendingSignature) {
+          // No signature of ours to replay — typically history from another
+          // provider. The API rejects a functionCall part without one, so the
+          // exchange degrades to plain text: the model still sees what ran,
+          // it just is not a structured call it could be asked to resume.
+          degraded.add(item.toolUseId)
+          append('model', [{ text: `[called ${item.toolName} with ${stringifyToolInput(item.input)}]` }])
+          break
         }
-        if (pendingSignature) call.thoughtSignature = pendingSignature
-        append('model', [call])
+        append('model', [{
+          functionCall: { name: item.toolName, args: item.input ?? {}, id: item.toolUseId },
+          thoughtSignature: pendingSignature,
+        }])
         pendingSignature = null
         break
       }
-      case 'tool_result':
-        append('user', toolResultToGoogle(item.toolUseId, toolNames.get(item.toolUseId) ?? 'tool', item.output))
+      case 'tool_result': {
+        const name = toolNames.get(item.toolUseId) ?? 'tool'
+        if (degraded.has(item.toolUseId)) {
+          append('user', [{ text: `[${name} returned] ${toolResultText(item.output)}` }])
+        } else {
+          append('user', toolResultToGoogle(item.toolUseId, name, item.output))
+        }
         pendingSignature = null
         break
+      }
     }
   }
 
@@ -349,11 +374,85 @@ function toolResultToGoogle(toolUseId: string, toolName: string, output: ToolRes
   ]
 }
 
+/**
+ * Keywords Gemini's function-declaration schema accepts. Its `parameters` is an
+ * OpenAPI 3.0 subset, not JSON Schema, and it rejects the whole request on the
+ * first keyword it does not know rather than ignoring it:
+ *
+ *   Invalid JSON payload received. Unknown name "additionalProperties"
+ *   at 'tools[0].function_declarations[3].parameters': Cannot find field.
+ *
+ * `additionalProperties: false` is exactly what a careful tool author writes —
+ * demi's own shell tools all do — so passing schemas through verbatim breaks
+ * every agent that uses them.
+ */
+const GOOGLE_SCHEMA_KEYS = new Set([
+  'type',
+  'format',
+  'title',
+  'description',
+  'nullable',
+  'enum',
+  'items',
+  'properties',
+  'required',
+  'minimum',
+  'maximum',
+  'minItems',
+  'maxItems',
+  'anyOf',
+  'default',
+])
+
+/**
+ * Drops keywords Gemini does not accept, recursing through the containers that
+ * hold nested schemas. Dropping is the right failure mode here: the discarded
+ * keywords ($schema, additionalProperties, allOf…) constrain what the model may
+ * send, and a slightly loose tool schema still validates on demi's side, where
+ * the command parses its own input anyway. Rejecting or erroring would break
+ * callers over a constraint the transport merely cannot express.
+ */
+function toGoogleSchema(schema: unknown): Record<string, unknown> {
+  if (!isRecord(schema)) return {}
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(schema)) {
+    if (!GOOGLE_SCHEMA_KEYS.has(key)) continue
+    if (key === 'properties' && isRecord(value)) {
+      out.properties = Object.fromEntries(Object.entries(value).map(([name, child]) => [name, toGoogleSchema(child)]))
+    } else if (key === 'items') {
+      out.items = toGoogleSchema(value)
+    } else if (key === 'anyOf' && Array.isArray(value)) {
+      out.anyOf = value.map(toGoogleSchema)
+    } else {
+      out[key] = value
+    }
+  }
+  return out
+}
+
+/** Unwraps a signature this provider issued; anything else is not ours to replay. */
+function ownSignature(signature: string | null): string | null {
+  if (!signature || !signature.startsWith(SIGNATURE_TAG)) return null
+  return signature.slice(SIGNATURE_TAG.length) || null
+}
+
+function stringifyToolInput(input: unknown): string {
+  try {
+    return JSON.stringify(input ?? {}) ?? '{}'
+  } catch {
+    return '{}'
+  }
+}
+
+function toolResultText(output: ToolResultContentBlock[]): string {
+  return output.map((block) => (block.type === 'text' ? block.text : `[${block.source.mediaType}]`)).join('\n')
+}
+
 function toolToGoogleFunctionDeclaration(tool: ToolDefinition): GoogleFunctionDeclaration {
   return {
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputSchema,
+    parameters: toGoogleSchema(tool.inputSchema),
   }
 }
 
@@ -397,10 +496,14 @@ export async function* mapGoogleContentStream(
             if (signature) {
               // Park the signature on a thinking item so it survives into the
               // transcript directly in front of this call (see
-              // inferenceItemsToGoogleContents).
+              // inferenceItemsToGoogleContents). Tagged because a transcript is
+              // provider-agnostic while a signature is not: a conversation that
+              // started on another provider carries signatures in that
+              // provider's own format, and replaying one of those verbatim
+              // fails the request outright.
               if (!thinkingOpen) yield { type: 'thinking_start' }
               thinkingOpen = true
-              yield { type: 'thinking_signature', signature }
+              yield { type: 'thinking_signature', signature: `${SIGNATURE_TAG}${signature}` }
             }
             yield {
               type: 'tool_call_requested',
@@ -423,7 +526,7 @@ export async function* mapGoogleContentStream(
           }
 
           const signature = stringOrNull(part.thoughtSignature)
-          if (signature && thinkingOpen) yield { type: 'thinking_signature', signature }
+          if (signature && thinkingOpen) yield { type: 'thinking_signature', signature: `${SIGNATURE_TAG}${signature}` }
           if (text) {
             thinkingOpen = false
             yield { type: 'text_delta', text }
