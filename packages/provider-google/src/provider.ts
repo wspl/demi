@@ -349,11 +349,67 @@ function toolResultToGoogle(toolUseId: string, toolName: string, output: ToolRes
   ]
 }
 
+/**
+ * Keywords Gemini's function-declaration schema accepts. Its `parameters` is an
+ * OpenAPI 3.0 subset, not JSON Schema, and it rejects the whole request on the
+ * first keyword it does not know rather than ignoring it:
+ *
+ *   Invalid JSON payload received. Unknown name "additionalProperties"
+ *   at 'tools[0].function_declarations[3].parameters': Cannot find field.
+ *
+ * `additionalProperties: false` is exactly what a careful tool author writes —
+ * demi's own shell tools all do — so passing schemas through verbatim breaks
+ * every agent that uses them.
+ */
+const GOOGLE_SCHEMA_KEYS = new Set([
+  'type',
+  'format',
+  'title',
+  'description',
+  'nullable',
+  'enum',
+  'items',
+  'properties',
+  'required',
+  'minimum',
+  'maximum',
+  'minItems',
+  'maxItems',
+  'anyOf',
+  'default',
+])
+
+/**
+ * Drops keywords Gemini does not accept, recursing through the containers that
+ * hold nested schemas. Dropping is the right failure mode here: the discarded
+ * keywords ($schema, additionalProperties, allOf…) constrain what the model may
+ * send, and a slightly loose tool schema still validates on demi's side, where
+ * the command parses its own input anyway. Rejecting or erroring would break
+ * callers over a constraint the transport merely cannot express.
+ */
+function toGoogleSchema(schema: unknown): Record<string, unknown> {
+  if (!isRecord(schema)) return {}
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(schema)) {
+    if (!GOOGLE_SCHEMA_KEYS.has(key)) continue
+    if (key === 'properties' && isRecord(value)) {
+      out.properties = Object.fromEntries(Object.entries(value).map(([name, child]) => [name, toGoogleSchema(child)]))
+    } else if (key === 'items') {
+      out.items = toGoogleSchema(value)
+    } else if (key === 'anyOf' && Array.isArray(value)) {
+      out.anyOf = value.map(toGoogleSchema)
+    } else {
+      out[key] = value
+    }
+  }
+  return out
+}
+
 function toolToGoogleFunctionDeclaration(tool: ToolDefinition): GoogleFunctionDeclaration {
   return {
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputSchema,
+    parameters: toGoogleSchema(tool.inputSchema),
   }
 }
 
