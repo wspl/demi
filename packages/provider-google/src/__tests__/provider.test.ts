@@ -92,7 +92,7 @@ test('a tool call replays with the thought signature parked on the thinking item
   // thoughtSignature, so this pairing is what keeps a multi-turn agent alive.
   const contents = inferenceItemsToGoogleContents([
     { type: 'user_message', content: [{ type: 'text', text: 'list files' }] },
-    { type: 'assistant_thinking', modelId: 'gemini', text: '', signature: 'sig-abc' },
+    { type: 'assistant_thinking', modelId: 'gemini', text: '', signature: 'google:sig-abc' },
     { type: 'tool_use', modelId: 'gemini', toolUseId: 'call-1', toolName: 'shell_exec', input: { command: 'ls' } },
     { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'a.md' }], isError: false },
   ])
@@ -115,6 +115,23 @@ test('a tool call replays with the thought signature parked on the thinking item
   ])
 })
 
+test('a tool call whose signature is not ours degrades to text instead of failing the request', () => {
+  // Transcripts outlive a provider choice. A conversation that started on
+  // another provider carries signatures in that provider's format, and the API
+  // rejects both a foreign signature and a functionCall without one — so the
+  // exchange has to survive as plain text.
+  const contents = inferenceItemsToGoogleContents([
+    { type: 'user_message', content: [{ type: 'text', text: 'list files' }] },
+    { type: 'assistant_thinking', modelId: 'other', text: '', signature: '{"type":"reasoning","encrypted_content":"…"}' },
+    { type: 'tool_use', modelId: 'other', toolUseId: 'call-9', toolName: 'shell_exec', input: { command: 'ls' } },
+    { type: 'tool_result', toolUseId: 'call-9', output: [{ type: 'text', text: 'a.md' }], isError: false },
+  ])
+
+  expect(contents[1]).toEqual({ role: 'model', parts: [{ text: '[called shell_exec with {"command":"ls"}]' }] })
+  expect(contents[2]).toEqual({ role: 'user', parts: [{ text: '[shell_exec returned] a.md' }] })
+  expect(JSON.stringify(contents)).not.toContain('functionCall')
+})
+
 test('video rides as a native inline part and tool-returned media follows the function response', () => {
   const contents = inferenceItemsToGoogleContents([
     {
@@ -124,6 +141,7 @@ test('video rides as a native inline part and tool-returned media follows the fu
         { type: 'video', source: { type: 'binary', mediaType: 'video/mp4', data: new TextEncoder().encode('VID') } },
       ],
     },
+    { type: 'assistant_thinking', modelId: 'gemini', text: '', signature: 'google:sig-2' },
     { type: 'tool_use', modelId: 'gemini', toolUseId: 'call-2', toolName: 'look', input: {} },
     {
       type: 'tool_result',
@@ -176,7 +194,7 @@ test('thought parts stream as thinking and a function call emits its signature f
   expect(events).toEqual([
     { type: 'thinking_start' },
     { type: 'thinking_delta', text: 'weighing options' },
-    { type: 'thinking_signature', signature: 'sig-1' },
+    { type: 'thinking_signature', signature: 'google:sig-1' },
     { type: 'tool_call_requested', toolUseId: 'c1', toolName: 'shell_exec', input: { command: 'ls' } },
     { type: 'text_delta', text: 'done' },
     // Thinking is billed apart from the answer; both are output tokens.
