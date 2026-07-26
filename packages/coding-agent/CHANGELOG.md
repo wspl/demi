@@ -1,5 +1,14 @@
 # @demicodes/coding-agent
 
+## 0.9.1
+
+### Patch Changes
+
+- @demicodes/agent@0.9.1
+- @demicodes/core@0.9.1
+- @demicodes/shell@0.9.1
+- @demicodes/utils@0.9.1
+
 ## 0.9.0
 
 ### Patch Changes
