@@ -52,6 +52,41 @@ test('system prompt, tools and thinking budget land in the generateContent body'
   expect(disabled.generationConfig?.thinkingConfig).toEqual({ includeThoughts: false, thinkingBudget: 0 })
 })
 
+test('tool schemas are reduced to the keywords Gemini accepts', () => {
+  // Gemini rejects the entire request on the first keyword it does not know —
+  // and `additionalProperties: false` is what every careful tool author writes,
+  // demi's own shell tools included.
+  const body = buildGoogleGenerateContentBody(
+    request({
+      items: [{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }],
+      tools: [{
+        name: 'shell_exec',
+        description: 'run',
+        inputSchema: {
+          type: 'object',
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          additionalProperties: false,
+          required: ['script'],
+          properties: {
+            script: { type: 'string', minLength: 1, description: 'the script' },
+            tags: { type: 'array', items: { type: 'string', pattern: '^[a-z]+$' } },
+          },
+        },
+      }],
+    }),
+    undefined,
+  )
+
+  expect(body.tools?.[0].functionDeclarations[0]?.parameters).toEqual({
+    type: 'object',
+    required: ['script'],
+    properties: {
+      script: { type: 'string', description: 'the script' },
+      tags: { type: 'array', items: { type: 'string' } },
+    },
+  })
+})
+
 test('a tool call replays with the thought signature parked on the thinking item in front of it', () => {
   // Gemini rejects the whole request when a replayed functionCall has no
   // thoughtSignature, so this pairing is what keeps a multi-turn agent alive.
