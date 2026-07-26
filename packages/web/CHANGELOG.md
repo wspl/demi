@@ -1,5 +1,23 @@
 # @demicodes/web
 
+## 0.9.1
+
+### Patch Changes
+
+- @demicodes/agent@0.9.1
+- @demicodes/coding-agent@0.9.1
+- @demicodes/core@0.9.1
+- @demicodes/host-local@0.9.1
+- @demicodes/provider@0.9.1
+- @demicodes/provider-anthropic-api@0.9.1
+- @demicodes/provider-claude-code@0.9.1
+- @demicodes/provider-codex@0.9.1
+- @demicodes/provider-grok-build@0.9.1
+- @demicodes/provider-openai-api@0.9.1
+- @demicodes/shell@0.9.1
+- @demicodes/utils@0.9.1
+- @demicodes/web-ui@0.9.1
+
 ## 0.9.0
 
 ### Patch Changes
