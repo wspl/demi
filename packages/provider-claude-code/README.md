@@ -32,8 +32,8 @@ See [docs/provider-quota.md](../../docs/provider-quota.md).
 Claude Code's SDK-MCP control channel can hold later `tools/call` callbacks until
 the preceding callback receives a result, even when the model emitted several
 `tool_use` blocks in one response. The provider preserves the model's original
-batch and tool-use IDs, lets the Agent execute that batch concurrently, then
-matches the completed results to SDK-MCP callbacks as the CLI releases them.
+batch and tool-use IDs for the host scheduler, then matches the completed
+results to SDK-MCP callbacks as the CLI releases them.
 
 See [docs/tool-call-concurrency.md](../../docs/tool-call-concurrency.md).
 
