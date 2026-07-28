@@ -1,5 +1,15 @@
 # @demicodes/host-local
 
+## 0.10.1
+
+### Patch Changes
+
+- Updated dependencies [eb1dcaf]
+  - @demicodes/agent@0.10.1
+  - @demicodes/provider@0.10.1
+  - @demicodes/shell@0.10.1
+  - @demicodes/utils@0.10.1
+
 ## 0.10.0
 
 ### Patch Changes
