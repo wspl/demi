@@ -27,7 +27,7 @@ export function mapClaudeStdoutMessage(message: unknown, options: ClaudeOutputMa
   const events: ProviderEvent[] = []
   if (!isRecord(message)) return { events, terminal: false }
 
-  if (message.type === 'assistant' && isRecord(message.message) && !options.ignoreAssistantContent) {
+  if (message.type === 'assistant' && isRecord(message.message)) {
     events.push(...mapContentArray((message.message as { content?: unknown }).content, options))
   }
 
@@ -75,12 +75,13 @@ function mapContentArray(content: unknown, options: ClaudeOutputMapOptions): Pro
   const events: ProviderEvent[] = []
   for (const block of content) {
     if (!isRecord(block)) continue
-    if (block.type === 'text') events.push({ type: 'text_delta', text: String(block.text ?? '') })
-    else if (block.type === 'thinking') {
+    if (block.type === 'text' && !options.ignoreAssistantContent) {
+      events.push({ type: 'text_delta', text: String(block.text ?? '') })
+    } else if (block.type === 'thinking' && !options.ignoreAssistantContent) {
       events.push({ type: 'thinking_start' })
       events.push({ type: 'thinking_delta', text: String(block.thinking ?? block.text ?? '') })
       if (typeof block.signature === 'string') events.push({ type: 'thinking_signature', signature: block.signature })
-    } else if (block.type === 'redacted_thinking') {
+    } else if (block.type === 'redacted_thinking' && !options.ignoreAssistantContent) {
       events.push({ type: 'redacted_thinking', data: String(block.data ?? '') })
     } else if (block.type === 'tool_use' && !options.ignoreAssistantToolUse) {
       events.push(mapToolUseBlock(block))
@@ -135,6 +136,7 @@ function parseControlRequest(message: Record<string, unknown>): ClaudeControlReq
       outerRequestId: message.request_id,
       serverName: request.server_name,
       id,
+      toolUseId: sdkMcpToolUseId(inner.params),
       method,
       params: inner.params,
     }
@@ -144,6 +146,12 @@ function parseControlRequest(message: Record<string, unknown>): ClaudeControlReq
   const method = typeof message.method === 'string' ? message.method : undefined
   if (id === undefined || !method) return null
   return { protocol: 'legacy', id, method, params: message.params }
+}
+
+function sdkMcpToolUseId(params: unknown): string | undefined {
+  if (!isRecord(params) || !isRecord(params._meta)) return undefined
+  const value = params._meta['claudecode/toolUseId']
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 /**

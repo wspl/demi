@@ -39,6 +39,71 @@ e2e('ClaudeCodeProvider can stream a minimal response from the real claude CLI',
   expect(events.some((event) => event.type === 'response')).toBe(true)
 })
 
+e2e('ClaudeCodeProvider preserves a real parallel SDK MCP tool batch', async () => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60_000)
+  const provider = new ClaudeCodeProvider({})
+  const sessionId = `claude-parallel-e2e-${randomUUID()}`
+  const request = (items: InferenceRequest['items']): InferenceRequest => ({
+    sessionId,
+    turnId: 'claude-parallel-e2e-turn',
+    requestId: `claude-parallel-e2e-${randomUUID()}`,
+    modelId: process.env.DEMI_CLAUDE_CODE_E2E_MODEL ?? 'claude-fable-5',
+    systemPrompt: 'Follow exact tool-use requests without explaining first.',
+    cwd: process.cwd(),
+    items,
+    tools: [
+      {
+        name: 'alpha',
+        description: 'Record alpha. Independent from beta.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      },
+      {
+        name: 'beta',
+        description: 'Record beta. Independent from alpha.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      },
+    ],
+    thinking: null,
+    cancel: controller.signal,
+  })
+
+  try {
+    const first: ProviderEvent[] = []
+    for await (const event of provider.run(request([
+      {
+        type: 'user_message',
+        content: [{
+          type: 'text',
+          text: 'Call alpha and beta now in the same response. They are independent and must run in parallel.',
+        }],
+      },
+    ]))) {
+      first.push(event)
+    }
+    const calls = first.filter(
+      (event): event is Extract<ProviderEvent, { type: 'tool_call_requested' }> =>
+        event.type === 'tool_call_requested',
+    )
+    expect(calls.map((event) => event.toolName)).toEqual(['alpha', 'beta'])
+
+    const second: ProviderEvent[] = []
+    for await (const event of provider.run(request(calls.map((call) => ({
+      type: 'tool_result' as const,
+      toolUseId: call.toolUseId,
+      output: [{ type: 'text' as const, text: `${call.toolName} done` }],
+      isError: false,
+    }))))) {
+      second.push(event)
+    }
+    expect(second.filter((event) => event.type === 'error')).toEqual([])
+    expect(second.some((event) => event.type === 'response')).toBe(true)
+  } finally {
+    clearTimeout(timeout)
+    await provider.dispose()
+  }
+}, 70_000)
+
 cacheE2e('ClaudeCodeProvider reports a real provider cache hit on repeated tool-enabled requests', async () => {
   const cacheKey = `demi-cache-e2e-${randomUUID()}`
   const systemPrompt = [

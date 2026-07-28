@@ -207,29 +207,30 @@ export class ProviderTurnLoop<State> {
     const toolsByName = new Map(tools.map((tool) => [tool.name, tool]))
     let stopAfterToolResult = false
     const previousActivePhase = this.host.getActiveTurnPhase()
+    const steerContinuationBeforeBatch = this.host.steerContinuationCount
     this.host.setActiveTurnPhase('tool_executing')
 
     try {
-      for (const toolCall of pending) {
+      const completed = await Promise.all(pending.map(async (toolCall) => {
         throwIfAborted(this.host.currentSignal())
-        const steerContinuationBeforeTool = this.host.steerContinuationCount
 
         const tool = toolsByName.get(toolCall.toolName)
         if (!tool) {
-          this.host.transcript.completeToolCall(
-            toolCall.toolUseId,
-            [{ type: 'text', text: `Tool not found: ${toolCall.toolName}` }],
-            true,
-          )
-          await this.host.commitTranscript()
-          if (!options.deferSteerMaterialization) {
-            await this.host.materializeSteersArrivedSince(steerContinuationBeforeTool)
+          return {
+            toolCall,
+            result: {
+              output: [{ type: 'text' as const, text: `Tool not found: ${toolCall.toolName}` }],
+              isError: true,
+            },
           }
-          continue
         }
 
         const input = parseJsonOrString(toolCall.input)
         const result = await this.invokeToolAsResult(tool, toolCall.toolUseId, input)
+        return { toolCall, result }
+      }))
+
+      for (const { toolCall, result } of completed) {
         this.host.transcript.completeToolCall(
           toolCall.toolUseId,
           result.output,
@@ -247,10 +248,10 @@ export class ProviderTurnLoop<State> {
           metadata: this.host.metadata,
         })
         await this.host.commitTranscript()
-        if (!options.deferSteerMaterialization) {
-          await this.host.materializeSteersArrivedSince(steerContinuationBeforeTool)
-        }
         stopAfterToolResult ||= result.stopAfterToolResult === true
+      }
+      if (!options.deferSteerMaterialization) {
+        await this.host.materializeSteersArrivedSince(steerContinuationBeforeBatch)
       }
     } finally {
       this.host.setActiveTurnPhase(previousActivePhase)
