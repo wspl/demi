@@ -299,6 +299,77 @@ test('ClaudeCodeProvider handles SDK MCP control_request tool calls across run c
   ])
 })
 
+test('ClaudeCodeProvider exposes one Claude SDK MCP tool batch before replying to any call', async () => {
+  const transport = new SequentialSdkMcpTransport([
+    sdkMcpRequest('list-sdk', 'list-1', 'tools/list'),
+    streamMessageStart(),
+    assistantToolUse('tool-alpha', 'shell_exec', { script: 'printf alpha' }),
+    sdkMcpToolCall('call-alpha', 2, 'tool-alpha', 'shell_exec', { script: 'printf alpha' }),
+    assistantToolUse('tool-beta', 'shell_exec', { script: 'printf beta' }),
+    streamMessageStop(),
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'both complete' }] } },
+    { type: 'result', usage: { input_tokens: 3, output_tokens: 5 } },
+  ], {
+    afterResponseTo: 'call-alpha',
+    insert: sdkMcpToolCall('call-beta', 3, 'tool-beta', 'shell_exec', { script: 'printf beta' }),
+  })
+  const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
+
+  const firstEvents = []
+  for await (const event of provider.run(makeRequest([
+    { type: 'user_message', content: [{ type: 'text', text: 'run both' }] },
+  ]))) {
+    firstEvents.push(event)
+  }
+
+  expect(firstEvents).toEqual([
+    {
+      type: 'tool_call_requested',
+      toolUseId: 'tool-alpha',
+      toolName: 'shell_exec',
+      input: { script: 'printf alpha' },
+    },
+    {
+      type: 'tool_call_requested',
+      toolUseId: 'tool-beta',
+      toolName: 'shell_exec',
+      input: { script: 'printf beta' },
+    },
+  ])
+  expect(findSdkMcpResponses(transport.writes, 'call-alpha')).toHaveLength(0)
+  expect(findSdkMcpResponses(transport.writes, 'call-beta')).toHaveLength(0)
+
+  const secondEvents = []
+  for await (const event of provider.run(makeRequest([
+    {
+      type: 'tool_result',
+      toolUseId: 'tool-alpha',
+      output: [{ type: 'text', text: 'alpha done' }],
+      isError: false,
+    },
+    {
+      type: 'tool_result',
+      toolUseId: 'tool-beta',
+      output: [{ type: 'text', text: 'beta done' }],
+      isError: false,
+    },
+  ]))) {
+    secondEvents.push(event)
+  }
+
+  expect(findSdkMcpResponse(transport.writes, 'call-alpha').result).toEqual({
+    content: [{ type: 'text', text: 'alpha done' }],
+    isError: false,
+  })
+  expect(findSdkMcpResponse(transport.writes, 'call-beta').result).toEqual({
+    content: [{ type: 'text', text: 'beta done' }],
+    isError: false,
+  })
+  expect(secondEvents).toEqual([
+    { type: 'response', usage: { inputTokens: 3, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ])
+})
+
 test('ClaudeCodeProvider forwards tool_result images to the SDK MCP response as passthrough base64', async () => {
   const transport = new FakeClaudeTransport([
     sdkMcpRequest('list-sdk', 'list-1', 'tools/list'),
@@ -934,6 +1005,10 @@ class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
     return { done: false, value }
   }
 
+  protected prepend(value: unknown): void {
+    this.queue.splice(this.index, 0, value)
+  }
+
   async kill(): Promise<void> {
     this.killed = true
   }
@@ -945,6 +1020,22 @@ class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
 
   stderrText(): string {
     return this.options.stderr ?? ''
+  }
+}
+
+class SequentialSdkMcpTransport extends FakeClaudeTransport {
+  constructor(
+    queue: unknown[],
+    private readonly deferred: { afterResponseTo: string; insert: unknown },
+  ) {
+    super(queue)
+  }
+
+  override async writeJson(value: unknown): Promise<void> {
+    await super.writeJson(value)
+    if (isSdkMcpResponseFor(value, this.deferred.afterResponseTo)) {
+      this.prepend(this.deferred.insert)
+    }
   }
 }
 
@@ -969,6 +1060,55 @@ function sdkMcpRequest(outerId: string, id: string, method: string, params?: unk
       message: { jsonrpc: '2.0', id, method, params },
     },
   }
+}
+
+function assistantToolUse(toolUseId: string, toolName: string, input: unknown): unknown {
+  return {
+    type: 'assistant',
+    message: {
+      content: [{
+        type: 'tool_use',
+        id: toolUseId,
+        name: `mcp__main__${toolName}`,
+        input,
+      }],
+    },
+  }
+}
+
+function sdkMcpToolCall(
+  outerId: string,
+  id: string | number,
+  toolUseId: string,
+  name: string,
+  args: unknown,
+): unknown {
+  return sdkMcpRequest(outerId, String(id), 'tools/call', {
+    name,
+    arguments: args,
+    _meta: { 'claudecode/toolUseId': toolUseId },
+  })
+}
+
+function streamMessageStop(): unknown {
+  return { type: 'stream_event', event: { type: 'message_stop' } }
+}
+
+function streamMessageStart(): unknown {
+  return { type: 'stream_event', event: { type: 'message_start', message: { content: [] } } }
+}
+
+function findSdkMcpResponses(writes: unknown[], outerId: string): unknown[] {
+  return writes.filter((write) => isSdkMcpResponseFor(write, outerId))
+}
+
+function isSdkMcpResponseFor(value: unknown, outerId: string): boolean {
+  return (
+    isRecord(value) &&
+    value.type === 'control_response' &&
+    isRecord(value.response) &&
+    value.response.request_id === outerId
+  )
 }
 
 function findSdkMcpResponse(writes: unknown[], outerId: string): { result?: unknown; error?: unknown } {
