@@ -4,8 +4,8 @@
 
 ### Patch Changes
 
-- eb1dcaf: Execute tool calls from one provider response concurrently and preserve Claude
-  Code parallel tool-use batches across its sequential SDK-MCP callback channel.
+- eb1dcaf: Preserve Claude Code parallel tool-use batches across its sequential
+  SDK-MCP callback channel.
   - @demicodes/core@0.10.1
   - @demicodes/provider@0.10.1
   - @demicodes/utils@0.10.1
