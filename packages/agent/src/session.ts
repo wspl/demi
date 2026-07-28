@@ -8,6 +8,7 @@ import { CompactionController, type CompactionHost } from './compaction-controll
 import { ProviderStreamError } from './provider-stream-error'
 import { ProviderTurnLoop, type ProviderTurnLoopHost } from './provider-turn-loop'
 import { resolveRetryPolicy, type TurnRetryPolicy } from './retry-policy'
+import { findResumePoint } from './recovery'
 import type {
   AgentHarnessRuntime,
   AgentMetadata,
@@ -271,11 +272,25 @@ export class AgentSession<State> {
     })
   }
 
+  /**
+   * Discards the whole latest turn and runs it again from the user's input.
+   *
+   * This is "regenerate": it is only meaningful when the caller wants a different
+   * answer to the same question and knows the turn's effects can be repeated. It is
+   * NOT the way to recover a failed turn — use `resume`, which unwinds only as far
+   * as is safe.
+   */
   retry(options: { metadata?: AgentMetadata } = {}): Promise<void> {
     return this.enqueue({ type: 'retry', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
   }
 
-  /** Continues from the current transcript after an abort or terminal provider error. */
+  /**
+   * Finishes a turn that did not finish, after an abort or a terminal provider
+   * error. Unwinds to the turn's resume point — dropping the failed attempt's
+   * leftovers, keeping everything that already left the process — and re-infers
+   * from there. Callers do not choose the granularity and do not need to know how
+   * the turn died.
+   */
   resume(options: { metadata?: AgentMetadata } = {}): Promise<void> {
     return this.enqueue({ type: 'resume', metadata: cloneMetadata(options.metadata), resolve: noop, reject: noop })
   }
@@ -876,8 +891,21 @@ export class AgentSession<State> {
     await this.turnLoop.run()
   }
 
+  /**
+   * Finishes an unfinished turn. Unwinds to its resume point — dropping the failed
+   * attempt's leftovers, keeping everything that already left the process — and
+   * re-infers from there. When the whole turn turns out to be discardable this is
+   * a plain rerun, which spares the model a continuation boundary attached to a
+   * stub of its own aborted output.
+   */
   private async executeResume(): Promise<void> {
+    const { cut, isFullRerun } = findResumePoint(this.transcriptLog.blocks)
+    if (isFullRerun) {
+      await this.executeRetry()
+      return
+    }
     await this.applyPendingModelSwitch()
+    this.transcriptLog.truncateFrom(cut)
     this.transcriptLog.markLatestAbortResumed()
     this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
     await this.commitTranscript()
