@@ -76,7 +76,29 @@ test('non-retryable error codes surface immediately without retry', async () => 
   expect(provider.consumedTurns).toBe(1)
 })
 
-test('errors after streamed content are not retried (no duplicate output)', async () => {
+test('an error after streamed thinking is retried, and the thinking is unwound', async () => {
+  const provider = new StubProvider([
+    [
+      { type: 'thinking_start' },
+      { type: 'thinking_delta', text: 'a long first pass' },
+      events.error('busy', 'overloaded'),
+    ],
+    [events.text('recovered'), events.response()],
+  ])
+  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
+  const emitted: SessionEvent[] = []
+  session.subscribe((event) => emitted.push(event))
+
+  await session.send(text('hello'))
+
+  // Nobody acts on thinking, so the attempt is unwindable and the retry is silent.
+  // The discarded reasoning must not survive to be replayed to the model.
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  expect(emitted.filter((event) => event.type === 'retry_scheduled')).toHaveLength(1)
+  expect(provider.consumedTurns).toBe(2)
+})
+
+test('errors after streamed text are not retried (no duplicate output)', async () => {
   const provider = new StubProvider([[events.text('partial'), events.error('dropped', 'rate_limit')]])
   const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
   const emitted: SessionEvent[] = []
