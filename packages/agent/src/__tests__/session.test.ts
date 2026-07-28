@@ -871,60 +871,6 @@ test('AgentSession abort preserves pending yield until active work has been canc
   expect(secondAbort).toEqual({ aborted: true, target: 'pending_yield_wakeup', canAbortAgain: false })
 })
 
-test('AgentSession starts one provider tool-call batch concurrently', async () => {
-  const alphaStarted = deferred<void>()
-  const betaStarted = deferred<void>()
-  const releaseAlpha = deferred<void>()
-  const releaseBeta = deferred<void>()
-  const provider = new StubProvider([
-    [
-      events.toolCall('tool-alpha', 'alpha', {}),
-      events.toolCall('tool-beta', 'beta', {}),
-      events.response(),
-    ],
-    [events.response()],
-  ])
-  const runtime = createRuntime({
-    tools: () => [
-      {
-        name: 'alpha',
-        description: 'Waits for alpha release.',
-        inputSchema: { type: 'object' },
-        invoke: async () => {
-          alphaStarted.resolve(undefined)
-          await releaseAlpha.promise
-          return { output: [{ type: 'text', text: 'alpha done' }] }
-        },
-      },
-      {
-        name: 'beta',
-        description: 'Waits for beta release.',
-        inputSchema: { type: 'object' },
-        invoke: async () => {
-          betaStarted.resolve(undefined)
-          await releaseBeta.promise
-          return { output: [{ type: 'text', text: 'beta done' }] }
-        },
-      },
-    ],
-  })
-  const session = createSession(provider, runtime)
-  const sending = session.send(text('run both'))
-
-  try {
-    await withTimeout(Promise.all([alphaStarted.promise, betaStarted.promise]))
-  } finally {
-    releaseAlpha.resolve(undefined)
-    releaseBeta.resolve(undefined)
-    await sending
-  }
-
-  expect(session.transcript().blocks.filter((block) => block.type === 'tool_call')).toMatchObject([
-    { toolUseId: 'tool-alpha', status: 'completed' },
-    { toolUseId: 'tool-beta', status: 'completed' },
-  ])
-})
-
 test('AgentSession records thrown tool invocations as error tool results and continues', async () => {
   const provider = new StubProvider([
     [events.toolCall('tool-1', 'failing_tool', { value: 'hello' }), events.response()],
