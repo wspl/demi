@@ -128,13 +128,23 @@ export class AgentClient {
     this.sendFrame({ type: 'set_provider', provider })
   }
 
+  /**
+   * Discards the whole latest turn and runs it again from the user's input —
+   * "regenerate". NOT a recovery path: it drops text the turn already emitted and
+   * tool calls it already ran while their effects remain. Use `resume` to finish a
+   * turn that failed.
+   */
   retry(options: AgentActionOptions = {}): Promise<void> {
     const wait = this.waitForAction('retry')
     this.sendFrame({ type: 'retry', metadata: options.metadata })
     return wait
   }
 
-  /** Continues from the current transcript after an abort or terminal provider error. */
+  /**
+   * Finishes a turn that did not finish, after an abort or a terminal provider
+   * error. Unwinds only as far as is safe and re-infers from there; the caller
+   * does not choose the granularity.
+   */
   resume(options: AgentActionOptions = {}): Promise<void> {
     const wait = this.waitForAction('resume')
     this.sendFrame({ type: 'resume', metadata: options.metadata })
