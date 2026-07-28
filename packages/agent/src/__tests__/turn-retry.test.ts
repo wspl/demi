@@ -76,7 +76,29 @@ test('non-retryable error codes surface immediately without retry', async () => 
   expect(provider.consumedTurns).toBe(1)
 })
 
-test('errors after streamed content are not retried (no duplicate output)', async () => {
+test('an error after streamed thinking is retried, and the thinking is unwound', async () => {
+  const provider = new StubProvider([
+    [
+      { type: 'thinking_start' },
+      { type: 'thinking_delta', text: 'a long first pass' },
+      events.error('busy', 'overloaded'),
+    ],
+    [events.text('recovered'), events.response()],
+  ])
+  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
+  const emitted: SessionEvent[] = []
+  session.subscribe((event) => emitted.push(event))
+
+  await session.send(text('hello'))
+
+  // Nobody acts on thinking, so the attempt is unwindable and the retry is silent.
+  // The discarded reasoning must not survive to be replayed to the model.
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  expect(emitted.filter((event) => event.type === 'retry_scheduled')).toHaveLength(1)
+  expect(provider.consumedTurns).toBe(2)
+})
+
+test('errors after streamed text are not retried (no duplicate output)', async () => {
   const provider = new StubProvider([[events.text('partial'), events.error('dropped', 'rate_limit')]])
   const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
   const emitted: SessionEvent[] = []
@@ -187,11 +209,12 @@ test('resume preserves completed tools after an exhausted provider error', async
   expect(toolCalls).toBe(1)
   expect(resumedItems).toContain('preserved result')
   expect(resumedItems).toContain('Continue from where you left off.')
+  // The tool result and its response survive; the failed attempt's error marker is
+  // unwound with the rest of its leftovers, the same way a full rerun drops it.
   expect(session.transcript().blocks.map((block) => block.type)).toEqual([
     'user',
     'tool_call',
     'response',
-    'error',
     'resume',
     'text',
     'response',
