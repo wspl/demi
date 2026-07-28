@@ -187,11 +187,12 @@ test('resume preserves completed tools after an exhausted provider error', async
   expect(toolCalls).toBe(1)
   expect(resumedItems).toContain('preserved result')
   expect(resumedItems).toContain('Continue from where you left off.')
+  // The tool result and its response survive; the failed attempt's error marker is
+  // unwound with the rest of its leftovers, the same way a full rerun drops it.
   expect(session.transcript().blocks.map((block) => block.type)).toEqual([
     'user',
     'tool_call',
     'response',
-    'error',
     'resume',
     'text',
     'response',
