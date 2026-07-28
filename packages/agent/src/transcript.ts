@@ -197,6 +197,20 @@ export class TranscriptLog implements CoreTranscript {
     return null
   }
 
+  /**
+   * Drops the blocks from `index` onward, returning true when anything went.
+   * Used to unwind a turn to its resume point before re-inferring.
+   */
+  truncateFrom(index: number): boolean {
+    let changed = false
+    for (let i = this.blocks.length - 1; i >= index; i -= 1) {
+      this.blocks.splice(i, 1)
+      this.record({ op: 'remove', path: ['blocks', i] })
+      changed = true
+    }
+    return changed
+  }
+
   applyProviderEvent(model: ModelSelection, event: ProviderEvent): Block | null {
     switch (event.type) {
       case 'thinking_start':

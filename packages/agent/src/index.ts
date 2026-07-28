@@ -1,6 +1,7 @@
 export * from './transcript'
 export * from './types'
 export * from './retry-policy'
+export * from './recovery'
 export * from './provider-stream-error'
 export * from './session'
 export * from './client'

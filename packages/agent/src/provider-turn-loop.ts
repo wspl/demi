@@ -4,6 +4,7 @@ import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolD
 import { TranscriptLog } from './transcript'
 import { ProviderStreamError } from './provider-stream-error'
 import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
+import { findResumePoint } from './recovery'
 import type { ActiveTurnPhase } from './session'
 import type { AgentHarnessRuntime, AgentMetadata, AgentTool, AgentToolInvokeResult, SessionEvent } from './types'
 
@@ -96,8 +97,9 @@ export class ProviderTurnLoop<State> {
 
   /**
    * Streams one provider response, silently retrying transient failures
-   * (rate_limit/overloaded) with backoff — but only while the attempt has
-   * produced no transcript content, so a retry can never duplicate output.
+   * (rate_limit/overloaded) with backoff. A retry is taken only when everything
+   * the failed attempt put in the transcript can be unwound — the same question
+   * `resume` asks, so an automatic recovery and a human-driven one never disagree.
    * The turn stays in provider_streaming across backoff waits so steers keep
    * queueing instead of being rejected.
    */
@@ -136,9 +138,9 @@ export class ProviderTurnLoop<State> {
       }
   > {
     const request = this.buildInferenceRequest()
+    const attemptStart = this.host.transcript.blocks.length
     const run = this.host.provider.run(request)
     let shouldAutoRecover = false
-    let produced = false
     let hasPendingThinkingStart = false
     this.host.setActiveProviderRun(run)
     try {
@@ -146,8 +148,8 @@ export class ProviderTurnLoop<State> {
         throwIfAborted(request.cancel)
         if (event.type === 'abort') throw new AbortError()
         // A provider can announce a reasoning item before emitting any content.
-        // Keep that lifecycle marker pending so a transient failure remains safe
-        // to retry and does not leave an empty thinking block in the transcript.
+        // Keep that lifecycle marker pending so a stream that ends right after it
+        // does not leave an empty thinking block in the transcript.
         if (event.type === 'thinking_start') {
           hasPendingThinkingStart = true
           continue
@@ -162,8 +164,13 @@ export class ProviderTurnLoop<State> {
             ...event,
             diagnostics,
           }
-          const retryable = !produced && attempt < policy.maxAttempts && isRetryableCode(policy, errorEvent.code)
-          if (retryable) {
+          // Retry only if this attempt left nothing behind that anyone can have
+          // acted on: the resume point has to reach back past where it started.
+          // Otherwise the failure is terminal here and `resume` continues from the
+          // progress instead, which is the one thing a silent retry cannot do.
+          const isUnwindable = findResumePoint(this.host.transcript.blocks).cut <= attemptStart
+          if (isUnwindable && attempt < policy.maxAttempts && isRetryableCode(policy, errorEvent.code)) {
+            if (this.host.transcript.truncateFrom(attemptStart)) await this.host.commitTranscript()
             return {
               type: 'retry',
               attempt,
@@ -180,7 +187,6 @@ export class ProviderTurnLoop<State> {
           hasPendingThinkingStart = false
         }
         await this.applyProviderEvent(event)
-        produced = true
         if (event.type === 'response' && this.isUsageNearLimit(event.usage)) {
           shouldAutoRecover = true
         }
