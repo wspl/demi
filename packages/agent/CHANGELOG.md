@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.10.2
+
+### Patch Changes
+
+- Resume no longer chops a fresh compaction marker: `executeResume` truncates before applying a pending model switch (whose compaction splices a boundary and appends a marker), so the stale usage anchor cannot resurrect and trigger a duplicate compaction. Compaction also skips degenerate windows that contain nothing beyond the previous boundary/marker.
+  - @demicodes/core@0.10.2
+  - @demicodes/provider@0.10.2
+  - @demicodes/shell@0.10.2
+  - @demicodes/utils@0.10.2
+
 ## 0.10.1
 
 ### Patch Changes
