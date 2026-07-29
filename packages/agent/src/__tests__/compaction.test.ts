@@ -191,6 +191,71 @@ test('resume triggers preflight compaction before continuing an aborted long con
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
+test('resume with a pending model switch compacts once and keeps the compaction marker', async () => {
+  const preflightModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 100 },
+  }
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('test-turn', model, text(`old question ${'x'.repeat(200)}`))
+  transcript.applyProviderEvent(model, events.text(`old answer ${'y'.repeat(300)}`))
+  transcript.applyProviderEvent(model, events.response({ inputTokens: 90 }))
+  transcript.pushUserTurn('test-turn', model, text('follow-up'))
+  transcript.applyProviderEvent(model, events.text('partial answer'))
+  transcript.pushAbort(model)
+
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      return [events.text('switch summary'), events.response()]
+    },
+    (request) => {
+      expect(request.systemPrompt).toBe('system prompt')
+      return [events.text('continued after switch'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createRuntime({ preamble: () => null }), transcript, preflightModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.5 },
+  })
+
+  session.updateModel(null, preflightModel)
+  await session.resume()
+
+  const summaryRequests = provider.requests.filter((request) => {
+    return request.systemPrompt.includes('Summarize the previous conversation')
+  })
+  expect(summaryRequests).toHaveLength(1)
+  const blocks = session.transcript().blocks
+  const boundaries = blocks.filter((block) => block.type === 'compaction_boundary')
+  expect(boundaries).toHaveLength(1)
+  // The marker must survive the resume truncation: it is what invalidates the stale
+  // pre-compaction usage anchor — losing it makes the next threshold check compact again.
+  const markers = blocks.filter((block) => block.type === 'compaction_marker')
+  expect(markers).toHaveLength(1)
+  expect(markers[0]).toMatchObject({ boundaryId: boundaries[0]!.id })
+  expect(blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
+  expect(blocks.at(-2)).toMatchObject({ type: 'text', text: 'continued after switch' })
+  assertTranscriptInvariants(blocks)
+})
+
+test('compaction never re-summarizes only the previous boundary summary', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('test-turn', model, text('old question'))
+  transcript.applyProviderEvent(model, events.text('old answer'))
+  transcript.applyProviderEvent(model, events.response())
+  const boundary = transcript.insertCompactionBoundary(3, model, 'old summary', 3)
+  transcript.appendCompactionMarker(model, boundary.id, 30)
+  transcript.pushUserTurn('test-turn', model, text(`recent question ${'z'.repeat(400)}`))
+
+  const provider = new RecordingProvider([])
+  const session = createSession(provider, createRuntime(), transcript)
+
+  await session.compact()
+
+  expect(provider.requests).toHaveLength(0)
+  expect(session.transcript().blocks.filter((block) => block.type === 'compaction_boundary')).toHaveLength(1)
+})
+
 test('compaction summary provider errors do not leave boundary or marker blocks', async () => {
   const transcript = oldAndRecentTranscript()
   const before = transcript.toJSON()
