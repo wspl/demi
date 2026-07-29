@@ -904,9 +904,14 @@ export class AgentSession<State> {
       await this.executeRetry()
       return
     }
-    await this.applyPendingModelSwitch()
+    // Unwind BEFORE applying a pending model switch: the switch may run compaction, which
+    // splices a boundary into the history and appends a compaction marker at the tail.
+    // Truncating afterwards would use a cut computed against the pre-compaction block
+    // layout — and chop the fresh marker off, resurrecting the stale pre-compaction usage
+    // anchor so the following preflight compacts the same history a second time.
     this.transcriptLog.truncateFrom(cut)
     this.transcriptLog.markLatestAbortResumed()
+    await this.applyPendingModelSwitch()
     this.transcriptLog.pushResumeTurn(this.currentTurnId(), this.model)
     await this.commitTranscript()
     await this.compaction.preflight()

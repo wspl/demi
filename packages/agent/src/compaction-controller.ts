@@ -73,10 +73,20 @@ export class CompactionController {
     if (transcript.pendingToolCalls().length > 0) return false
 
     const window = transcript.findCompactionWindow(this.host.keepRecentTokens)
-    if (window === null || window.cutPoint <= window.startIndex) return false
+    if (window === null) return false
+    // The window slice starts at the previous boundary so its summary folds into the new one.
+    // It must also cover at least one content block beyond the leading boundary/marker pair —
+    // re-summarizing the previous summary alone frees nothing and only degrades it.
+    let minCutPoint = window.startIndex
+    while (minCutPoint < window.cutPoint) {
+      const type = transcript.blocks[minCutPoint]?.type
+      if (type !== 'compaction_boundary' && type !== 'compaction_marker') break
+      minCutPoint += 1
+    }
+    if (window.cutPoint <= minCutPoint) return false
 
     let cutPoint = window.cutPoint
-    while (cutPoint > window.startIndex) {
+    while (cutPoint > minCutPoint) {
       const compactedBlocks = transcript.blocks.slice(window.startIndex, cutPoint)
       const compactedTokens = compactedBlocks.reduce((total, block) => total + estimateTranscriptBlockTokens(block), 0)
 
