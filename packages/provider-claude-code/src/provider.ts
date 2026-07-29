@@ -1,4 +1,4 @@
-import { isRecord } from '@demicodes/utils'
+import { abortable, isRecord } from '@demicodes/utils'
 import { randomUUID } from 'node:crypto'
 import type { ToolResultContentBlock } from '@demicodes/core'
 import {
@@ -52,6 +52,9 @@ interface ActiveClaudeRun {
   transport: ClaudeTransport
   iterator: AsyncIterator<unknown>
   pendingControlRequest: ClaudeControlRequest | null
+  pendingSdkControlRequests: Map<string, ClaudeControlRequest>
+  pendingSdkToolCalls: ToolCallEvent[]
+  collectingSdkToolCalls: Map<string, ToolCallEvent>
   pendingToolUseIds: string[]
   bufferedMessages: unknown[]
   sdkMcpEnabled: boolean
@@ -69,6 +72,8 @@ interface ActiveClaudeRun {
   /** Signature of the first user message, used to detect a rewritten transcript (compaction). */
   firstUserSig: string | null
 }
+
+type ToolCallEvent = Extract<ProviderEvent, { type: 'tool_call_requested' }>
 
 export class ClaudeCodeProvider implements AgentProvider {
   private readonly transportFactory: ClaudeTransportFactory
@@ -147,7 +152,6 @@ export class ClaudeCodeProvider implements AgentProvider {
         const ignoreAssistantContent = active.hasStreamed && isMessageType(raw, 'assistant')
         const mapped = mapClaudeStdoutMessage(raw, {
           ignoreAssistantContent,
-          ignoreAssistantToolUse: active.sdkMcpEnabled,
         })
         if (isMessageType(raw, 'stream_event')) active.hasStreamed = true
         if (mapped.controlRequest) {
@@ -160,10 +164,41 @@ export class ClaudeCodeProvider implements AgentProvider {
             }
             return
           }
+          if (handled === 'sdk-tool-call') {
+            const pending = active.pendingSdkControlRequests.get(mapped.controlRequest.toolUseId ?? '')
+            const event = pending ? controlRequestToToolCall(pending) : null
+            if (event?.type === 'tool_call_requested') {
+              active.pendingSdkToolCalls = [event]
+              keepActiveForContinuation = true
+              yield event
+            }
+            return
+          }
           continue
         }
 
         const toolUseIds = mapped.events.filter(isToolCallRequested).map((event) => event.toolUseId)
+        if (active.sdkMcpEnabled) {
+          for (const event of mapped.events) {
+            if (event.type === 'tool_call_requested') {
+              active.collectingSdkToolCalls.set(event.toolUseId, event)
+              continue
+            }
+            yield event
+          }
+          if (isStreamMessageStop(raw) && active.collectingSdkToolCalls.size > 0) {
+            active.pendingSdkToolCalls = [...active.collectingSdkToolCalls.values()]
+            active.collectingSdkToolCalls.clear()
+            keepActiveForContinuation = true
+            for (const event of active.pendingSdkToolCalls) yield event
+            return
+          }
+          if (mapped.terminal) {
+            keepActiveForContinuation = true
+            return
+          }
+          continue
+        }
         if (toolUseIds.length > 0) active.pendingToolUseIds = toolUseIds
         for (const event of mapped.events) {
           if (event.type === 'tool_call_requested') keepActiveForContinuation = true
@@ -222,7 +257,9 @@ export class ClaudeCodeProvider implements AgentProvider {
       existing.credentialId === credentialId
     ) {
       const hasPendingToolCall =
-        existing.pendingControlRequest !== null || existing.pendingToolUseIds.length > 0
+        existing.pendingControlRequest !== null ||
+        existing.pendingSdkToolCalls.length > 0 ||
+        existing.pendingToolUseIds.length > 0
       if (hasPendingToolCall || !itemsDiverged(existing, request.items)) {
         await this.sendContinuation(existing, request)
         return existing
@@ -239,6 +276,9 @@ export class ClaudeCodeProvider implements AgentProvider {
       transport,
       iterator,
       pendingControlRequest: null,
+      pendingSdkControlRequests: new Map(),
+      pendingSdkToolCalls: [],
+      collectingSdkToolCalls: new Map(),
       pendingToolUseIds: [],
       bufferedMessages: [],
       sdkMcpEnabled: request.tools.length > 0,
@@ -271,6 +311,10 @@ export class ClaudeCodeProvider implements AgentProvider {
       await this.writeToolResults(request, active.pendingControlRequest)
       active.pendingControlRequest = null
     }
+    if (active.pendingSdkToolCalls.length > 0) {
+      await this.writeSdkMcpToolResults(active, request)
+      active.pendingSdkToolCalls = []
+    }
     if (active.pendingToolUseIds.length > 0) {
       await this.writeToolResultMessages(request, active.pendingToolUseIds)
       active.pendingToolUseIds = []
@@ -301,7 +345,7 @@ export class ClaudeCodeProvider implements AgentProvider {
     active: ActiveClaudeRun,
     request: ClaudeControlRequest,
     inference: InferenceRequest,
-  ): Promise<'handled' | 'tool-call'> {
+  ): Promise<'handled' | 'tool-call' | 'sdk-tool-call'> {
     if (request.method === 'initialize') {
       await this.writeControlResponse(active, request, {
         protocolVersion: '2024-11-05',
@@ -337,12 +381,69 @@ export class ClaudeCodeProvider implements AgentProvider {
         await this.writeControlError(active, request, 'Invalid tools/call request')
         return 'handled'
       }
+      if (request.protocol === 'sdk-mcp') {
+        request.toolUseId ??= `mcp-control-${randomUUID()}`
+        const normalized = { ...request, toolUseId: request.toolUseId }
+        active.pendingSdkControlRequests.set(normalized.toolUseId, normalized)
+        return active.hasStreamed ? 'handled' : 'sdk-tool-call'
+      }
       active.pendingControlRequest = { ...request, toolUseId: `mcp-control-${randomUUID()}` }
       return 'tool-call'
     }
 
     await this.writeControlError(active, request, `Unsupported method: ${request.method}`)
     return 'handled'
+  }
+
+  private async writeSdkMcpToolResults(
+    active: ActiveClaudeRun,
+    request: InferenceRequest,
+  ): Promise<void> {
+    const results = new Map(
+      request.items
+        .filter((item): item is Extract<InferenceItem, { type: 'tool_result' }> => item.type === 'tool_result')
+        .map((item) => [item.toolUseId, item]),
+    )
+    const expected = active.pendingSdkToolCalls.map((event) => event.toolUseId)
+    const missing = expected.filter((toolUseId) => !results.has(toolUseId))
+    if (missing.length > 0) {
+      throw new Error(`Claude Code provider missing tool_result for SDK MCP tool_use ${missing.join(', ')}`)
+    }
+
+    const remaining = new Set(expected)
+    while (remaining.size > 0) {
+      let responded = false
+      for (const toolUseId of remaining) {
+        const controlRequest = active.pendingSdkControlRequests.get(toolUseId)
+        if (!controlRequest) continue
+        await this.writeToolResults(request, controlRequest)
+        active.pendingSdkControlRequests.delete(toolUseId)
+        remaining.delete(toolUseId)
+        responded = true
+      }
+      if (remaining.size === 0) return
+      if (responded) continue
+
+      const next = await abortable(active.iterator.next(), request.cancel)
+      if (next.done) {
+        throw new Error(
+          `Claude Code exited before requesting SDK MCP tool result for ${[...remaining].join(', ')}`,
+        )
+      }
+      this.observeQuotaFromMessage(next.value)
+      const mapped = mapClaudeStdoutMessage(next.value, {
+        ignoreAssistantContent: true,
+        ignoreAssistantToolUse: true,
+      })
+      if (mapped.controlRequest) {
+        const handled = await this.handleControlRequest(active, mapped.controlRequest, request)
+        if (handled === 'tool-call') {
+          throw new Error('Claude Code emitted a legacy tool call while awaiting SDK MCP results')
+        }
+        continue
+      }
+      active.bufferedMessages.push(next.value)
+    }
   }
 
   private async writeToolResults(request: InferenceRequest, controlRequest: ClaudeControlRequest): Promise<void> {
@@ -541,6 +642,15 @@ function toolResultContentToMcp(output: ToolResultContentBlock[]): Array<Record<
 
 function isMessageType(value: unknown, type: string): boolean {
   return isRecord(value) && value.type === type
+}
+
+function isStreamMessageStop(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.type === 'stream_event' &&
+    isRecord(value.event) &&
+    value.event.type === 'message_stop'
+  )
 }
 
 function thinkingSignature(request: InferenceRequest): string {
