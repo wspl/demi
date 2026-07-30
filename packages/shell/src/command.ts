@@ -30,8 +30,6 @@ export interface Command {
   positionals?: string[]
   stdinField?: string
   output?: CommandOutputSpec
-  /** Required when `run` is set; an empty array renders no examples section. */
-  examples?: string[]
 }
 
 export interface ParsedCommandInput {
@@ -104,7 +102,6 @@ const EXECUTION_ONLY_FIELDS = [
   'positionals',
   'stdinField',
   'output',
-  'examples',
 ] as const
 
 const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
@@ -335,12 +332,6 @@ export function renderCommandHelp(command: Command, parentPath = ''): string {
     } else {
       lines.push('    --json: accepted only when this command defines JSON output')
     }
-
-    const examples = command.examples ?? []
-    if (examples.length > 0) {
-      lines.push('    Examples:')
-      for (const example of examples) lines.push(indent(example, 6))
-    }
   }
 
   const children = command.subcommands ?? []
@@ -373,11 +364,7 @@ function validateCommandTree(command: Command, path: string): void {
     throw new Error(`CommandRegistry: "${path}" must have run() and/or subcommands`)
   }
 
-  if (hasRun) {
-    if (!Array.isArray(command.examples)) {
-      throw new Error(`CommandRegistry: "${path}" defines run() but is missing examples[]`)
-    }
-  } else {
+  if (!hasRun) {
     for (const field of EXECUTION_ONLY_FIELDS) {
       if (command[field] !== undefined) {
         throw new Error(`CommandRegistry: "${path}" sets ${field} without run()`)
@@ -449,14 +436,6 @@ function formatField(field: string, schema: z.ZodType, positional: boolean, stdi
   const source = stdin ? ' (from stdin/heredoc)' : ''
   const description = schema.description ? ` - ${schema.description}` : ''
   return `${prefix}${source}${description}`
-}
-
-function indent(text: string, spaces: number): string {
-  const prefix = ' '.repeat(spaces)
-  return text
-    .split('\n')
-    .map((line) => `${prefix}${line}`)
-    .join('\n')
 }
 
 function isArraySchema(schema: z.ZodType): boolean {
