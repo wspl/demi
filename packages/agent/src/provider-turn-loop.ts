@@ -291,7 +291,7 @@ export class ProviderTurnLoop<State> {
   }
 }
 
-function toToolDefinition(tool: AgentTool<unknown>): ToolDefinition {
+export function toToolDefinition(tool: AgentTool<unknown>): ToolDefinition {
   return {
     name: tool.name,
     description: tool.description,

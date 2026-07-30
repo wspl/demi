@@ -8,6 +8,7 @@ import {
   assertTranscriptInvariants,
   createRuntime,
   createSession,
+  isSummaryRequest,
   MemorySessionStore,
   RecordingProvider,
   type TestState,
@@ -60,8 +61,9 @@ test('AgentSession marathon keeps requests and transcript consistent across long
       return [events.text('resume recovered'), events.response()]
     },
     (request) => {
-      expect(request.tools).toEqual([])
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      // Replay-style summary request: session system prompt and tools, instruction appended last.
+      expect(request.systemPrompt).toBe('system prompt')
+      expect(isSummaryRequest(request)).toBe(true)
       assertNoOrphanToolItems(request.items)
       expect(JSON.stringify(request.items)).toContain('retry recovered')
       expect(JSON.stringify(request.items)).toContain('resume recovered')

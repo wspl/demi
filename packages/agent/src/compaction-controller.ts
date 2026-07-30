@@ -1,16 +1,17 @@
 import { AbortError, abortable, delay, throwIfAborted } from '@demicodes/utils'
 import type { Block, ModelSelection } from '@demicodes/core'
-import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
+import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolDefinition } from '@demicodes/provider'
 import { Transcript, estimateTranscriptBlockTokens } from './transcript'
 import {
   buildCompactionSummaryRequest,
+  buildReplaySummaryRequest,
   estimateTokens,
   nextSmallerCompactionCutPoint,
   renderItemsForSummary,
 } from './compaction-support'
 import { ProviderStreamError, isContextLengthExceeded } from './provider-stream-error'
 import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
-import type { SessionEvent } from './types'
+import type { CompactionSummaryStyle, SessionEvent } from './types'
 
 /**
  * What CompactionController needs from its owning session. The coupling to the
@@ -27,9 +28,14 @@ export interface CompactionHost {
   readonly cwd: string
   readonly thresholdRatio: number
   readonly retryPolicy: TurnRetryPolicy
+  readonly summaryStyle: CompactionSummaryStyle
   nextRequestId(): string
   currentTurnId(): string
   currentSignal(): AbortSignal
+  /** The session's real system prompt (replay-style summary requests mirror a normal turn). */
+  systemPrompt(): string
+  /** The session's real tool list (replay-style summary requests mirror a normal turn). */
+  tools(): ToolDefinition[]
   streamProvider(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent>
   commitTranscript(): Promise<void>
   /** Runs `fn` with the session marked as compacting, restoring the prior phase afterwards. */
@@ -100,15 +106,17 @@ export class CompactionController {
   }
 
   private async generateSummary(blocks: Block[]): Promise<string> {
-    // Present the to-compact history as INERT, delimited material inside a single user turn — not as
-    // a replayed conversation. Replaying it makes the model "continue" the conversation and obey
-    // instructions buried in it (e.g. "only reply X") instead of summarizing.
     const compactTranscript = new Transcript(blocks)
-    const rendered = renderItemsForSummary(compactTranscript.collectInferenceItems())
+    const items = compactTranscript.collectInferenceItems()
     const policy = this.host.retryPolicy
+    // 'replay' mirrors a normal turn (real system prompt, structured items, real tools, summary
+    // instruction appended) so provider prefix caches hit on the history; 'reference' presents the
+    // history as INERT, delimited material inside a single user turn — not a replayed conversation —
+    // so the model summarizes it rather than obeying instructions buried in it.
+    let style = this.host.summaryStyle
 
     for (let attempt = 1; ; attempt += 1) {
-      const request = buildCompactionSummaryRequest(rendered, {
+      const context = {
         sessionId: this.host.sessionId,
         turnId: this.host.currentTurnId(),
         requestId: this.host.nextRequestId(),
@@ -116,13 +124,23 @@ export class CompactionController {
         cwd: this.host.cwd,
         serviceTierId: this.host.model.serviceTierId ?? null,
         cancel: this.host.currentSignal(),
-      })
+      }
+      const request =
+        style === 'replay'
+          ? buildReplaySummaryRequest(items, {
+              ...context,
+              systemPrompt: this.host.systemPrompt(),
+              tools: this.host.tools(),
+            })
+          : buildCompactionSummaryRequest(renderItemsForSummary(items), context)
 
       let summary = ''
+      let toolCallName: string | null = null
       let transient: { code: string | null; retryAfterMs: number | null } | null = null
       for await (const event of this.host.streamProvider(request, this.host.provider.run(request))) {
         throwIfAborted(request.cancel)
         if (event.type === 'text_delta') summary += event.text
+        if (event.type === 'tool_call_requested') toolCallName = event.toolName
         if (event.type === 'abort') throw new AbortError()
         if (event.type === 'error') {
           // Summary requests have no partial side effects, so transient failures
@@ -132,6 +150,14 @@ export class CompactionController {
           transient = { code: event.code, retryAfterMs: event.retryAfterMs ?? null }
           break
         }
+      }
+      if (toolCallName !== null && style === 'replay') {
+        // The model requested a tool against the summary instruction: discard the partial
+        // output and fall back to the inert reference-style request for this pass.
+        this.host.emit({ type: 'compaction_summary_fallback', reason: 'tool_call', toolName: toolCallName })
+        style = 'reference'
+        attempt -= 1
+        continue
       }
       if (!transient) return summary.trim()
 

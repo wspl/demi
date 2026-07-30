@@ -8,6 +8,7 @@ import {
   type AgentSessionOptions,
   type AgentSessionSnapshot,
 } from '../index'
+import { SUMMARY_INSTRUCTION } from '../compaction-support'
 
 export interface TestState {
   toolCalls: number
@@ -89,6 +90,17 @@ export class MemorySessionStore<State> {
   loadSnapshot(): Promise<AgentSessionSnapshot<State> | null> {
     return Promise.resolve(this.snapshots[this.snapshots.length - 1] ?? null)
   }
+}
+
+// The replay-style compaction summary request mirrors a normal turn (the session's own system
+// prompt, replayed structured items, real tools), so the only reliable discriminator is the
+// summary instruction appended as the final user message.
+export function isSummaryRequest(request: InferenceRequest): boolean {
+  const last = request.items.at(-1)
+  return (
+    last?.type === 'user_message' &&
+    last.content.some((block) => block.type === 'text' && block.text.includes(SUMMARY_INSTRUCTION))
+  )
 }
 
 export class RecordingProvider implements AgentProvider {

@@ -9,6 +9,7 @@ import {
   assertTranscriptInvariants,
   createRuntime,
   createSession,
+  isSummaryRequest,
   makeTranscript,
   MemorySessionStore,
   model,
@@ -17,9 +18,18 @@ import {
   text,
 } from './helpers'
 
-// The compaction summary request is a single user turn containing the to-compact transcript as
-// inert, delimited material (not a replayed conversation), with no thinking. This asserts that
-// shape and returns the rendered transcript text so tests can check it carries the right material.
+// Asserts the replay-style summary request shape and returns the replayed history (everything
+// before the trailing instruction) serialized, so tests can check it carries the right material.
+function summaryMaterial(request: InferenceRequest): string {
+  expect(isSummaryRequest(request)).toBe(true)
+  expect(request.thinking).toBeNull()
+  return JSON.stringify(request.items.slice(0, -1))
+}
+
+// The reference-style summary request is a single user turn containing the to-compact transcript
+// as inert, delimited material (not a replayed conversation), with no tools and no thinking. This
+// asserts that shape and returns the rendered transcript text so tests can check it carries the
+// right material.
 function summaryText(request: InferenceRequest): string {
   expect(request.tools).toEqual([])
   expect(request.thinking).toBeNull()
@@ -46,8 +56,10 @@ test('preflight compaction summarizes before the model request and keeps the inc
     (request) => {
       expect(request.modelId).toBe('test-model')
       expect(request.cwd).toBe('/workspace')
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      const summary = summaryText(request)
+      // Replay style: the session's own system prompt, tools, and replayed structured items.
+      expect(request.systemPrompt).toBe('system prompt')
+      expect(request.tools.map((tool) => tool.name)).toEqual(['noop_tool'])
+      const summary = summaryMaterial(request)
       expect(summary).toContain('old question')
       expect(summary).toContain('old answer')
       return [events.text('old summary'), events.response()]
@@ -120,8 +132,7 @@ test('retry triggers preflight compaction before rerunning the latest user', asy
 
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain(`old question ${'x'.repeat(200)}`)
       expect(summary).toContain(`old answer ${'y'.repeat(300)}`)
       return [events.text('retry summary'), events.response()]
@@ -161,8 +172,7 @@ test('resume triggers preflight compaction before continuing an aborted long con
 
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain(`old question ${'x'.repeat(200)}`)
       expect(summary).toContain(`partial answer ${'y'.repeat(300)}`)
       return [events.text('resume summary'), events.response()]
@@ -253,7 +263,7 @@ test('compaction summary input keeps completed tool_use and tool_result paired',
 
   const provider = new RecordingProvider([
     (request) => {
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('file content') // the tool result is carried into the summary input
       return [events.text('tool summary'), events.response()]
     },
@@ -280,7 +290,7 @@ test('compaction summary input keeps aborted text progress', async () => {
 
   const provider = new RecordingProvider([
     (request) => {
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('long task')
       expect(summary).toContain('partial progress before abort')
       return [events.text('aborted progress summary'), events.response()]
@@ -347,15 +357,13 @@ test('compaction summary context overflow retries with a smaller summary slice',
 
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('old question')
       expect(summary).toContain('middle answer')
       return [events.error('summary context overflow', 'context_length_exceeded')]
     },
     (request) => {
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('old question')
       expect(summary).not.toContain('middle question') // retried with a smaller slice
       return [events.text('trimmed summary'), events.response()]
@@ -401,15 +409,13 @@ test('compaction summary iterator context overflow retries with a smaller summar
 
   const provider = new RecordingProvider([
     (request) => {
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('old question')
       expect(summary).toContain('middle answer')
       return throwingProviderError('iterator summary context overflow', 'context_length_exceeded')
     },
     (request) => {
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('old question')
       expect(summary).not.toContain('middle question') // retried with a smaller slice
       return [events.text('iterator trimmed summary'), events.response()]
@@ -433,7 +439,7 @@ test('compaction summary iterator context overflow retries with a smaller summar
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
-test('compaction summary input carries tools and visible text but omits thinking and internal state', async () => {
+test('reference-style compaction summary input carries tools and visible text but omits thinking and internal state', async () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn('test-turn', model, text('inspect deeply'))
   transcript.applyProviderEvent(model, { type: 'thinking_start' })
@@ -447,6 +453,7 @@ test('compaction summary input carries tools and visible text but omits thinking
 
   const provider = new RecordingProvider([
     (request) => {
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
       const summary = summaryText(request)
       expect(summary).toContain('inspect deeply') // user message
       expect(summary).toContain('read_file') // tool call
@@ -458,7 +465,7 @@ test('compaction summary input carries tools and visible text but omits thinking
     },
   ])
   const session = createSession(provider, createRuntime(), transcript, model, {
-    compaction: { keepRecentTokens: 2 },
+    compaction: { keepRecentTokens: 2, summaryStyle: 'reference' },
   })
 
   await session.compact()
@@ -469,6 +476,96 @@ test('compaction summary input carries tools and visible text but omits thinking
       content: [{ type: 'text', text: 'Previous conversation summary:\ncomplex summary' }],
     },
     { type: 'assistant_text', modelId: 'test-model', text: 'recent visible text' },
+  ])
+})
+
+test('replay-style summary request replays the compacted window as structured items', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('test-turn', model, text('inspect with tool'))
+  transcript.applyProviderEvent(model, { type: 'thinking_start' })
+  transcript.applyProviderEvent(model, { type: 'thinking_delta', text: 'private chain' })
+  transcript.applyProviderEvent(model, { type: 'thinking_signature', signature: 'sig-1' })
+  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'read_file', { path: 'a.txt' }))
+  transcript.completeToolCall('tool-1', [{ type: 'text', text: 'file content' }])
+  transcript.applyProviderEvent(model, events.response())
+  transcript.pushUserTurn('test-turn', model, text('recent question'))
+
+  const provider = new RecordingProvider([
+    (request) => {
+      // Structurally identical to a normal turn: the session's own system prompt and tool list,
+      // the window replayed as real structured items (thinking included), and the summary
+      // instruction appended as the final user message.
+      expect(request.systemPrompt).toBe('system prompt')
+      expect(request.tools.map((tool) => tool.name)).toEqual(['read_file'])
+      expect(request.thinking).toBeNull()
+      expect(request.items.slice(0, -1)).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'inspect with tool' }] },
+        { type: 'assistant_thinking', modelId: 'test-model', text: 'private chain', signature: 'sig-1' },
+        { type: 'tool_use', modelId: 'test-model', toolUseId: 'tool-1', toolName: 'read_file', input: { path: 'a.txt' } },
+        { type: 'tool_result', toolUseId: 'tool-1', output: [{ type: 'text', text: 'file content' }], isError: false },
+      ])
+      const instruction = request.items.at(-1)
+      expect(instruction?.type).toBe('user_message')
+      expect(isSummaryRequest(request)).toBe(true)
+      return [events.text('replay summary'), events.response()]
+    },
+  ])
+  const runtime = createRuntime({
+    tools: () => [
+      {
+        name: 'read_file',
+        description: 'Reads a file.',
+        inputSchema: { type: 'object' },
+        invoke: () => ({ output: [{ type: 'text', text: 'ok' }] }),
+      },
+    ],
+  })
+  const session = createSession(provider, runtime, transcript)
+
+  await session.compact()
+
+  expect(provider.requests).toHaveLength(1)
+  expect(session.transcript().collectInferenceItems()).toEqual([
+    {
+      type: 'user_message',
+      content: [{ type: 'text', text: 'Previous conversation summary:\nreplay summary' }],
+    },
+    { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
+  ])
+})
+
+test('replay-style summary falls back to the reference style when the model requests a tool', async () => {
+  const transcript = oldAndRecentTranscript()
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(request.systemPrompt).toBe('system prompt')
+      expect(isSummaryRequest(request)).toBe(true)
+      return [events.toolCall('tool-1', 'read_file', { path: 'a.txt' }), events.response()]
+    },
+    (request) => {
+      // The pass retries with the inert reference-style request.
+      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      const summary = summaryText(request)
+      expect(summary).toContain('old question')
+      return [events.text('fallback summary'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createRuntime(), transcript)
+  const fallbacks: string[] = []
+  session.subscribe((event) => {
+    if (event.type === 'compaction_summary_fallback') fallbacks.push(event.toolName)
+  })
+
+  await session.compact()
+
+  expect(fallbacks).toEqual(['read_file'])
+  expect(provider.requests).toHaveLength(2)
+  expect(session.transcript().collectInferenceItems()).toEqual([
+    {
+      type: 'user_message',
+      content: [{ type: 'text', text: 'Previous conversation summary:\nfallback summary' }],
+    },
+    { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
   ])
 })
 
@@ -544,7 +641,7 @@ test('single oversized turn can be compacted at a block boundary without orphani
 
   const provider = new RecordingProvider([
     (request) => {
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('large output') // the oversized tool result is carried into the summary
       return [events.text('single turn summary'), events.response()]
     },
@@ -608,7 +705,7 @@ test('aborting during preflight compaction stops before the model request and st
   expect(aborted.aborted).toBe(true)
   await provider.cancelled.promise
   expect(provider.requests).toHaveLength(1)
-  expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')
+  expect(provider.requests[0] !== undefined && isSummaryRequest(provider.requests[0])).toBe(true)
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks.map((block) => block.type)).toEqual([
     'user',
@@ -648,7 +745,7 @@ test('aborting during retry preflight compaction stops before rerunning the mode
   expect(aborted.aborted).toBe(true)
   await provider.cancelled.promise
   expect(provider.requests).toHaveLength(1)
-  expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')
+  expect(provider.requests[0] !== undefined && isSummaryRequest(provider.requests[0])).toBe(true)
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response', 'user', 'abort'])
   expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(false)
@@ -678,7 +775,7 @@ test('aborting during resume preflight compaction stops before continuing the mo
   expect(aborted.aborted).toBe(true)
   await provider.cancelled.promise
   expect(provider.requests).toHaveLength(1)
-  expect(provider.requests[0]?.systemPrompt).toContain('Summarize the previous conversation')
+  expect(provider.requests[0] !== undefined && isSummaryRequest(provider.requests[0])).toBe(true)
   expect(session.phase()).toBe('idle')
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'abort', 'resume', 'abort'])
   expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
@@ -745,9 +842,7 @@ test('queued send during preflight compaction drains after the original send', a
   provider.summaryRelease.resolve(undefined)
   await Promise.all([first, second])
 
-  const summaryRequests = provider.requests.filter((request) => {
-    return request.systemPrompt.includes('Summarize the previous conversation')
-  })
+  const summaryRequests = provider.requests.filter(isSummaryRequest)
   expect(summaryRequests).toHaveLength(1)
   expect(provider.requests).toHaveLength(3)
   expect(session.transcript().blocks.at(-2)).toMatchObject({ type: 'text', text: 'second answer' })
@@ -804,9 +899,7 @@ test('retry queued during preflight compaction reruns the original send after it
   provider.summaryRelease.resolve(undefined)
   await Promise.all([first, retrying])
 
-  const summaryRequests = provider.requests.filter((request) => {
-    return request.systemPrompt.includes('Summarize the previous conversation')
-  })
+  const summaryRequests = provider.requests.filter(isSummaryRequest)
   expect(summaryRequests).toHaveLength(1)
   expect(provider.requests).toHaveLength(3)
   expect(session.transcript().blocks.some((block) => block.type === 'text' && block.text === 'first answer')).toBe(false)
@@ -865,9 +958,7 @@ test('resume queued during preflight compaction continues after the original sen
   provider.summaryRelease.resolve(undefined)
   await Promise.all([first, resuming])
 
-  const summaryRequests = provider.requests.filter((request) => {
-    return request.systemPrompt.includes('Summarize the previous conversation')
-  })
+  const summaryRequests = provider.requests.filter(isSummaryRequest)
   expect(summaryRequests).toHaveLength(1)
   expect(provider.requests).toHaveLength(3)
   expect(session.transcript().blocks.some((block) => block.type === 'abort' && block.isResumed)).toBe(true)
@@ -977,7 +1068,7 @@ test('auto compaction after a tool result resumes without re-executing the tool'
   const provider = new RecordingProvider([
     [events.toolCall('tool-1', 'count_tool', { value: 1 }), events.response({ inputTokens: 9 })],
     (request) => {
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('counted') // the tool result is carried into the summary input
       return [events.text('tool summary'), events.response()]
     },
@@ -1022,8 +1113,7 @@ test('auto compaction counts cache usage as context pressure', async () => {
   const provider = new RecordingProvider([
     [events.text('cached answer'), events.response({ inputTokens: 1, outputTokens: 1, cacheWriteTokens: 9 })],
     (request) => {
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
-      const summary = summaryText(request)
+      const summary = summaryMaterial(request)
       expect(summary).toContain('cache-heavy question')
       expect(summary).toContain('cached answer')
       return [events.text('cache pressure summary'), events.response()]
@@ -1115,7 +1205,7 @@ class CompactGateProvider implements AgentProvider {
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.requests.push(request)
-    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+    if (isSummaryRequest(request)) {
       this.summaryStarted.resolve(undefined)
       await this.summaryRelease.promise
       yield events.text('gated summary')
@@ -1140,7 +1230,7 @@ class HangingSummaryProvider implements AgentProvider {
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.requests.push(request)
-    if (!request.systemPrompt.includes('Summarize the previous conversation')) {
+    if (!isSummaryRequest(request)) {
       throw new Error('HangingSummaryProvider received a non-summary request')
     }
     this.summaryStarted.resolve(undefined)
@@ -1186,7 +1276,7 @@ function withTimeout<T>(promise: Promise<T>, ms = 1_000): Promise<T> {
 // what, which without a guard makes the turn compact forever.
 class AlwaysOverLimitProvider implements AgentProvider {
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+    if (isSummaryRequest(request)) {
       yield events.text('summary')
       yield events.response()
       return

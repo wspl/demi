@@ -178,6 +178,22 @@ export interface AgentSessionRestoreParams<State> {
   snapshot: AgentSessionSnapshot<State>
 }
 
+/**
+ * How the compaction summary request presents the to-compact history.
+ *
+ * 'replay' (default) replays the real structured inference items under the
+ * session's own system prompt and tool list, appending the summary
+ * instruction as the final user message. The request is then structurally
+ * identical to a normal turn, so provider prefix caches (e.g. DeepSeek disk
+ * cache) hit on the whole history prefix and divergence begins exactly at the
+ * instruction. 'reference' instead flattens the history into inert, delimited
+ * text inside a single user message with a fixed system prompt: it forfeits
+ * prefix-cache reuse, but keeps the history as pure reference material rather
+ * than a replayed conversation — the safer choice for agents processing
+ * untrusted content that may carry prompt-injection attempts.
+ */
+export type CompactionSummaryStyle = 'reference' | 'replay'
+
 export interface AgentSessionOptions<State = unknown> {
   agentSessionId?: string
   idFactory?: () => string
@@ -186,6 +202,8 @@ export interface AgentSessionOptions<State = unknown> {
   compaction?: {
     keepRecentTokens?: number
     preflightThresholdRatio?: number
+    /** Defaults to 'replay' — see CompactionSummaryStyle for the trade-off. */
+    summaryStyle?: CompactionSummaryStyle
   }
   /**
    * Maximum interval between snapshot writes while a turn is streaming. Writes
@@ -203,6 +221,8 @@ export type SessionEvent =
   | { type: 'queue_changed'; queue: QueuedMessage[] }
   | { type: 'tool_progress'; toolCallId: string; toolName: string; progress: unknown }
   | { type: 'retry_scheduled'; attempt: number; delayMs: number; code: string | null }
+  /** The replay-style summary stream requested a tool call; the pass fell back to the reference style. */
+  | { type: 'compaction_summary_fallback'; reason: 'tool_call'; toolName: string }
   | { type: 'error'; error: Error }
 
 export type SessionEventListener = (event: SessionEvent) => void

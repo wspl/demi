@@ -6,7 +6,7 @@ import { YieldScheduler } from './yield-scheduler'
 import { PendingSteerQueue, type PendingSteer } from './pending-steer-queue'
 import { CompactionController, type CompactionHost } from './compaction-controller'
 import { ProviderStreamError } from './provider-stream-error'
-import { ProviderTurnLoop, type ProviderTurnLoopHost } from './provider-turn-loop'
+import { ProviderTurnLoop, toToolDefinition, type ProviderTurnLoopHost } from './provider-turn-loop'
 import { resolveRetryPolicy, type TurnRetryPolicy } from './retry-policy'
 import type {
   AgentHarnessRuntime,
@@ -18,6 +18,7 @@ import type {
   AgentToolInvokeResult,
   AbortResult,
   AbortTarget,
+  CompactionSummaryStyle,
   ExternalMutationReservation,
   SessionEvent,
   SessionEventListener,
@@ -26,6 +27,7 @@ import type {
 const DEFAULT_KEEP_RECENT_TOKENS = 4_000
 const DEFAULT_PREFLIGHT_THRESHOLD_RATIO = 0.8
 const DEFAULT_PERSIST_INTERVAL_MS = 1_000
+const DEFAULT_COMPACTION_SUMMARY_STYLE: CompactionSummaryStyle = 'replay'
 
 type PendingAction =
   | {
@@ -64,6 +66,7 @@ export class AgentSession<State> {
   private readonly store?: AgentSessionStore<State>
   private readonly compactionKeepRecentTokens: number
   private readonly compactionThresholdRatio: number
+  private readonly compactionSummaryStyle: CompactionSummaryStyle
   private readonly listeners = new Set<SessionEventListener>()
   private readonly pendingActions: PendingAction[] = []
   private readonly queued: QueuedMessage[] = []
@@ -136,6 +139,7 @@ export class AgentSession<State> {
     this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens ?? DEFAULT_KEEP_RECENT_TOKENS
     this.compactionThresholdRatio =
       options.compaction?.preflightThresholdRatio ?? DEFAULT_PREFLIGHT_THRESHOLD_RATIO
+    this.compactionSummaryStyle = options.compaction?.summaryStyle ?? DEFAULT_COMPACTION_SUMMARY_STYLE
 
     const transcriptOptions: TranscriptOptions = {
       idFactory: this.idFactory,
@@ -172,9 +176,17 @@ export class AgentSession<State> {
       get retryPolicy() {
         return self.retryPolicy
       },
+      get summaryStyle() {
+        return self.compactionSummaryStyle
+      },
       nextRequestId: () => self.idFactory(),
       currentTurnId: () => self.currentTurnId(),
       currentSignal: () => self.currentSignal(),
+      systemPrompt: () => self.runtime.systemPrompt(self.promptContext()),
+      tools: () =>
+        self.runtime
+          .tools({ agentSessionId: self.agentSessionId, state: self.agentState, cwd: self.cwd })
+          .map(toToolDefinition),
       streamProvider: (request, run) => self.providerEvents(request, run),
       commitTranscript: () => self.commitTranscript(),
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),

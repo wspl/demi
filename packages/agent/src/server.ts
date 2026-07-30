@@ -17,14 +17,21 @@ import { AgentClient } from './client'
 import { cloneBlocks } from './patch'
 import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandSnapshotLike } from './frames'
 import { createInProcessTransportPair, type AgentServerTransport } from './transport'
-import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore, AgentSessionSnapshot, SessionEvent } from './types'
+import type {
+  AgentHarness,
+  AgentHarnessRuntime,
+  AgentSessionStore,
+  AgentSessionSnapshot,
+  CompactionSummaryStyle,
+  SessionEvent,
+} from './types'
 import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
 
 /** Session tuning forwarded to every AgentSession this server creates. */
 export interface AgentServerSessionOptions {
   retry?: Partial<TurnRetryPolicy>
-  compaction?: { keepRecentTokens?: number; preflightThresholdRatio?: number }
+  compaction?: { keepRecentTokens?: number; preflightThresholdRatio?: number; summaryStyle?: CompactionSummaryStyle }
   persistIntervalMs?: number
 }
 
@@ -478,6 +485,9 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       }
       case 'retry_scheduled':
         this.send({ type: 'retry_scheduled', attempt: event.attempt, delayMs: event.delayMs, code: event.code })
+        return
+      case 'compaction_summary_fallback':
+        // Diagnostic only; in-process subscribers observe it directly.
         return
       case 'error':
         this.sendError(event.error)

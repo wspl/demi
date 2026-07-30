@@ -18,6 +18,7 @@ import {
   type ClientFrame,
 } from '../index'
 import { createStdioClientTransport, createStdioServerTransport } from '../stdio-transport'
+import { isSummaryRequest } from './helpers'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -250,7 +251,7 @@ class StdioScenarioProvider implements AgentProvider {
   private normalCalls = 0
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+    if (isSummaryRequest(request)) {
       this.summaryRequests += 1
       yield events.text('stdio summary')
       yield events.response()

@@ -15,6 +15,7 @@ import {
   type JsonWebSocket,
   type ServerFrame,
 } from '../index'
+import { isSummaryRequest } from './helpers'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -209,7 +210,7 @@ class WebSocketScenarioProvider implements AgentProvider {
   private normalCalls = 0
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+    if (isSummaryRequest(request)) {
       this.summaryRequests += 1
       yield events.text('websocket summary')
       yield events.response()

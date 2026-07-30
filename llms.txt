@@ -33,6 +33,7 @@ TypeScript ESM with bundled `.d.ts`; install only the packages you need.
 
 - [Package boundaries](docs/package-boundaries.md): the enforced dependency graph and per-package public surface.
 - [Shell & yield control](docs/shell-yield-control-plan.md): long-running shell execution, the `/@` command-artifact filesystem, and yield wakeups.
+- [Compaction summary styles](docs/compaction-summary-styles.md): replay vs reference summary requests, prefix-cache rationale, and the injection trade-off.
 - [Tool rendering spec](docs/tool-rendering-spec.md): how a UI renders the standard tool blocks.
 
 ## Optional

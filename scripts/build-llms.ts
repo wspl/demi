@@ -15,6 +15,7 @@ const sections: Array<{ title: string; path: string }> = [
   { title: 'Guide: Embed the UI', path: 'docs/guides/embed-the-ui.md' },
   { title: 'Reference: Package Boundaries', path: 'docs/package-boundaries.md' },
   { title: 'Reference: Shell & Yield Control', path: 'docs/shell-yield-control-plan.md' },
+  { title: 'Reference: Compaction Summary Styles', path: 'docs/compaction-summary-styles.md' },
   { title: 'Reference: Tool Rendering Spec', path: 'docs/tool-rendering-spec.md' },
   { title: 'Contributing', path: 'CONTRIBUTING.md' },
 ]
