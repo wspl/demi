@@ -131,7 +131,6 @@ test('runCommandLine follows its source shell after the current action switches 
   const originCommand: Command = {
     name: 'origin',
     summary: 'print the command Host cwd',
-    examples: [],
     run: async ({ host, io }) => {
       await io.stdout(host.defaultCwd)
       return { exitCode: 0 }
