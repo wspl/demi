@@ -326,6 +326,34 @@ test('OpenAI Chat Completions reasoning_content does not leak across segment bou
   expect(body.messages).toHaveLength(6)
 })
 
+test('OpenAI Chat Completions tool_calls messages always carry reasoning_content when opted in', () => {
+  // DeepSeek thinking mode rejects tool-call continuations whose assistant message
+  // lacks the reasoning_content FIELD — even when that round produced no thinking
+  // (the model may skip reasoning on later tool rounds). Empty string satisfies it.
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'first thought', signature: null },
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
+        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+        // Second round: no thinking, straight to another tool call.
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-2', toolName: 'read_file', input: { path: 'b.ts' } },
+        { type: 'tool_result', toolUseId: 'call-2', output: [{ type: 'text', text: 'contents' }], isError: false },
+      ],
+    }),
+    { passBackReasoningContent: true },
+  )
+
+  expect(body.messages[1]).toMatchObject({ role: 'assistant', reasoning_content: 'first thought' })
+  expect(body.messages[3]).toEqual({
+    role: 'assistant',
+    content: null,
+    tool_calls: [{ id: 'call-2', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.ts"}' } }],
+    reasoning_content: '',
+  })
+})
+
 test('OpenAI Chat Completions provider sends reasoning_content for DeepSeek thinking tool loops', async () => {
   const requests: CapturedRequest[] = []
   const provider = createOpenAIApiProvider({

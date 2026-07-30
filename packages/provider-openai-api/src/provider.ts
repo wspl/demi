@@ -37,7 +37,9 @@ export interface OpenAIApiRequestOptions {
   streamOptions?: Record<string, unknown> | null
   extraBody?: Record<string, unknown>
   // Chat Completions only: pass assistant thinking back as `reasoning_content` on
-  // replayed assistant messages. Required by DeepSeek's thinking mode, rejected by
+  // replayed assistant messages. DeepSeek's thinking mode requires this — the field
+  // must be present on every assistant message that carries tool_calls, even as an
+  // empty string when the model skipped reasoning for that round. Rejected by
   // OpenAI itself — keep off unless the upstream demands it.
   passBackReasoningContent?: boolean
 }
@@ -603,7 +605,12 @@ function inferenceItemsToOpenAIMessages(
       role: 'assistant',
       content: assistant.content || null,
       ...(assistant.toolCalls.length > 0 ? { tool_calls: assistant.toolCalls } : {}),
-      ...(passBackReasoningContent && assistant.thinking ? { reasoning_content: assistant.thinking } : {}),
+      // DeepSeek thinking mode requires the reasoning_content FIELD on every
+      // assistant message that carries tool_calls — even when the model
+      // skipped reasoning for that round (empty string satisfies the check).
+      ...(passBackReasoningContent && (assistant.thinking || assistant.toolCalls.length > 0)
+        ? { reasoning_content: assistant.thinking }
+        : {}),
     })
     assistant = null
   }
