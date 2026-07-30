@@ -1,43 +1,35 @@
 /**
- * Builds a genuinely large, real long-session fixture and caches it (gzipped) next to this file.
+ * Builds a genuinely large, real long-session fixture (gzipped) next to this file.
  *
- * A single model request can never exceed the model's context window (~200k), so a "large context"
- * is a session that has already compacted several times: the cumulative transcript grows far past
- * the window while each request stays under it. `Transcript.insertCompactionBoundary` keeps the old
- * blocks (splices a boundary in, deleting nothing) and `replayableBlocks()` slices from the last
- * boundary — so the saved transcript can be huge even though each replayed request is window-bounded.
+ * Plants three secrets, then grows history under DeepSeek V4 Flash until the session
+ * has compacted a target number of generations. Prefer refreshing only when the
+ * committed fixture is intentionally replaced — verifiers reuse the existing blob.
  *
- * The build reads/explains real source files under default compaction until the session has compacted
- * a target number of GENERATIONS (default 4) — targeting generations, not a token count, so it's
- * robust regardless of how the size proxy maps to the compactor's real token estimate. Three secrets
- * are planted up front so the verifier can check they survive being re-summarized every generation.
+ *   bun run fixtures:compaction:build [targetGenerations]
  *
- *   bun run scripts/compaction-fixture/build-fixture.ts [targetGenerations]
- *
- * Calls the real Claude Code provider — needs `claude` auth, and a long build costs a few dollars.
+ * Requires `DEEPSEEK_API_KEY` in the repo-root `.env`.
  */
-import { writeFileSync } from 'node:fs'
-import { readdirSync, statSync } from 'node:fs'
+import { writeFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import { ClaudeCodeProvider } from '../../packages/provider-claude-code/src/provider'
-import { AgentSession, createStandardAgentTools } from '../../packages/agent/src/index'
-import { BashEnvironment } from '../../packages/shell/src/index'
-import { LocalHost } from '../../packages/host-local/src/index'
+import { AgentSession, createStandardAgentTools } from '../../src/index'
+import { BashEnvironment } from '@demicodes/shell'
+import { LocalHost } from '@demicodes/host-local'
+import { createDeepSeekFlash } from './deepseek'
 
-const REPO = join(import.meta.dir, '../..')
+const REPO = join(import.meta.dir, '../../../..')
 const FIXTURE = join(import.meta.dir, 'large-context-fixture.json.gz')
 const TARGET_GENERATIONS = Number(process.argv[2] ?? 4)
 const HARD_TOKEN_CAP = 2_000_000
-process.env.DEMI_CLAUDE_WIRE_LOG = '0'
+/** Small registered window so flash actually compacts while building. */
+const BUILD_CONTEXT_WINDOW = Number(process.env.COMPACTION_FIXTURE_BUILD_WINDOW ?? 100_000)
 
-const model = {
-  providerId: 'claude-code',
-  model: { id: 'sonnet', name: 'Sonnet 4.6', contextWindow: 200000, inputLimit: null, thinking: [], acceptedExtensions: [] },
-  thinking: null,
-}
-const provider = new ClaudeCodeProvider({})
-const environment = new BashEnvironment({ host: new LocalHost(REPO), shellIdFactory: () => 'fx-shell', initialEnv: { PATH: process.env.PATH ?? '' } })
+const { runtime: provider, model } = await createDeepSeekFlash(BUILD_CONTEXT_WINDOW)
+const environment = new BashEnvironment({
+  host: new LocalHost(REPO),
+  shellIdFactory: () => 'fx-shell',
+  initialEnv: { PATH: process.env.PATH ?? '' },
+})
 let sessionRef: AgentSession<Record<string, never>> | null = null
 const runtime = {
   harnessName: 'fixture',
@@ -52,12 +44,13 @@ const runtime = {
       },
     }),
 }
-// Default-ish compaction so the session compacts for real as it grows past the window.
-const session = new AgentSession({ provider, model, cwd: REPO, runtime }, { compaction: { keepRecentTokens: 6000, preflightThresholdRatio: 0.7 } })
+const session = new AgentSession(
+  { provider, model, cwd: REPO, runtime },
+  { compaction: { keepRecentTokens: 6000, preflightThresholdRatio: 0.7 } },
+)
 sessionRef = session
 
 const log = (m: string): void => process.stdout.write(`${m}\n`)
-// Size proxy over the FULL transcript (replayableBlocks is window-bounded; we want the whole thing).
 const totalTokens = (): number => Math.round(JSON.stringify(session.transcript().blocks).length / 4)
 const boundaries = (): number => session.transcript().blocks.filter((b) => b.type === 'compaction_boundary').length
 
@@ -75,7 +68,7 @@ const files = listTsFiles(join(REPO, 'packages'))
   .sort((a, b) => b.size - a.size)
   .map((x) => x.f)
 
-log(`plant secrets — target ${TARGET_GENERATIONS} compaction generations`)
+log(`plant secrets — target ${TARGET_GENERATIONS} generations on deepseek-v4-flash (window=${BUILD_CONTEXT_WINDOW})`)
 await session.send([
   {
     type: 'text',
@@ -98,15 +91,19 @@ for (let i = 0; i < files.length && boundaries() < TARGET_GENERATIONS && totalTo
   }
 }
 
-// Strip any transient `error` blocks left by build-time connection drops — they're not part of the
-// intended large-context history and would otherwise pollute a reusable fixture. (Cold-start leaves
-// no orphaned tool calls, so this is a clean removal.)
 const rawBlocks = session.transcript().blocks
 const blocks = rawBlocks.filter((b) => b.type !== 'error')
 const stripped = rawBlocks.length - blocks.length
 if (stripped > 0) log(`  stripped ${stripped} transient error block(s) from the saved transcript`)
 const builtTokens = Math.round(JSON.stringify(blocks).length / 4)
-const payload = JSON.stringify({ harnessName: 'fixture', cwd: REPO, model, blocks, builtTokens, generations: boundaries() })
+const payload = JSON.stringify({
+  harnessName: 'fixture',
+  cwd: REPO,
+  model,
+  blocks,
+  builtTokens,
+  generations: boundaries(),
+})
 writeFileSync(FIXTURE, gzipSync(payload))
 await session.dispose()
 

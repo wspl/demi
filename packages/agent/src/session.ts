@@ -176,28 +176,23 @@ export class AgentSession<State> {
       get model() {
         return self.model
       },
-      get provider() {
-        return self.provider
-      },
       get keepRecentTokens() {
         return self.compactionKeepRecentTokens
-      },
-      get sessionId() {
-        return self.agentSessionId
-      },
-      get cwd() {
-        return self.cwd
       },
       get thresholdRatio() {
         return self.compactionThresholdRatio
       },
-      get retryPolicy() {
-        return self.retryPolicy
-      },
-      nextRequestId: () => self.idFactory(),
-      currentTurnId: () => self.currentTurnId(),
       currentSignal: () => self.currentSignal(),
-      streamProvider: (request, run) => self.providerEvents(request, run),
+      clone: (transcript) =>
+        self.clone({
+          transcript,
+          options: {
+            // A compaction clone is an ephemeral summary view. It must not
+            // compact itself and recursively create another clone.
+            compaction: { preflightThresholdRatio: Number.POSITIVE_INFINITY },
+            retry: self.retryPolicy,
+          },
+        }),
       commitTranscript: () => self.commitTranscript(),
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
       emit: (event) => self.emit(event),
