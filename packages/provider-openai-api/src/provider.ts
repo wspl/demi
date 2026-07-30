@@ -75,6 +75,10 @@ const DEFAULT_OPENAI_API_BASE_URL = 'https://api.openai.com/v1'
 export class OpenAIChatCompletionsProvider implements AgentProvider {
   constructor(private readonly options: OpenAIApiRuntimeOptions) {}
 
+  clone(): AgentProvider {
+    return new OpenAIChatCompletionsProvider(this.options)
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     if (request.cancel.aborted) {
       yield { type: 'abort' }
@@ -127,6 +131,10 @@ export class OpenAIChatCompletionsProvider implements AgentProvider {
 
 export class OpenAIResponsesProvider implements AgentProvider {
   constructor(private readonly options: OpenAIApiRuntimeOptions) {}
+
+  clone(): AgentProvider {
+    return new OpenAIResponsesProvider(this.options)
+  }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     if (request.cancel.aborted) {
