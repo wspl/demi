@@ -47,6 +47,11 @@ export interface AnthropicApiProviderOptions {
   id?: string
   displayName?: string
   envPrefix?: string
+  /**
+   * Messages API base, including the version prefix (usually `/v1`).
+   * Only `/messages` is appended; values that already end with `/messages` are
+   * used as-is. Not interchangeable with Claude Code roots that omit `/v1`.
+   */
   baseUrl?: string
   apiKey?: AnthropicApiSecretResolver
   headers?: AnthropicApiHeadersResolver
