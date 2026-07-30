@@ -36,6 +36,10 @@ export interface OpenAIApiRequestOptions {
   maxRetries?: number
   streamOptions?: Record<string, unknown> | null
   extraBody?: Record<string, unknown>
+  // Chat Completions only: pass assistant thinking back as `reasoning_content` on
+  // replayed assistant messages. Required by DeepSeek's thinking mode, rejected by
+  // OpenAI itself — keep off unless the upstream demands it.
+  passBackReasoningContent?: boolean
 }
 
 export type OpenAIApiWireApi = 'responses' | 'chat-completions'
@@ -472,7 +476,7 @@ export interface OpenAIChatCompletionsRequestBody {
 export type OpenAIChatMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string | OpenAIUserContentPart[] }
-  | { role: 'assistant'; content: string | null; tool_calls?: OpenAIChatToolCall[] }
+  | { role: 'assistant'; content: string | null; tool_calls?: OpenAIChatToolCall[]; reasoning_content?: string }
   | { role: 'tool'; tool_call_id: string; content: string }
 
 export type OpenAIUserContentPart =
@@ -503,7 +507,7 @@ export function buildOpenAIChatCompletionsBody(
 ): OpenAIChatCompletionsRequestBody {
   const body: OpenAIChatCompletionsRequestBody = {
     model: request.modelId,
-    messages: inferenceItemsToOpenAIMessages(request.systemPrompt, request.items),
+    messages: inferenceItemsToOpenAIMessages(request.systemPrompt, request.items, options?.passBackReasoningContent === true),
     stream: true,
   }
   if (request.tools.length > 0) {
@@ -581,16 +585,25 @@ interface MutableOpenAIToolCall {
   arguments: string
 }
 
-function inferenceItemsToOpenAIMessages(systemPrompt: string, items: InferenceItem[]): OpenAIChatMessage[] {
+function inferenceItemsToOpenAIMessages(
+  systemPrompt: string,
+  items: InferenceItem[],
+  passBackReasoningContent = false,
+): OpenAIChatMessage[] {
   const messages: OpenAIChatMessage[] = []
-  let assistant: { content: string; toolCalls: OpenAIChatToolCall[] } | null = null
+  let assistant: { content: string; toolCalls: OpenAIChatToolCall[]; thinking: string } | null = null
+  // Thinking that arrives before its assistant segment (text/tool_calls) belongs to
+  // that segment's message; a user/tool_result boundary discards anything unclaimed.
+  let pendingThinking = ''
 
   const flushAssistant = () => {
+    pendingThinking = ''
     if (!assistant) return
     messages.push({
       role: 'assistant',
       content: assistant.content || null,
       ...(assistant.toolCalls.length > 0 ? { tool_calls: assistant.toolCalls } : {}),
+      ...(passBackReasoningContent && assistant.thinking ? { reasoning_content: assistant.thinking } : {}),
     })
     assistant = null
   }
@@ -605,11 +618,13 @@ function inferenceItemsToOpenAIMessages(systemPrompt: string, items: InferenceIt
         messages.push({ role: 'user', content: userContentToOpenAI(item.content) })
         break
       case 'assistant_text':
-        assistant ??= { content: '', toolCalls: [] }
+        assistant ??= { content: '', toolCalls: [], thinking: pendingThinking }
+        pendingThinking = ''
         assistant.content += item.text
         break
       case 'tool_use':
-        assistant ??= { content: '', toolCalls: [] }
+        assistant ??= { content: '', toolCalls: [], thinking: pendingThinking }
+        pendingThinking = ''
         assistant.toolCalls.push({
           id: item.toolUseId,
           type: 'function',
@@ -621,6 +636,11 @@ function inferenceItemsToOpenAIMessages(systemPrompt: string, items: InferenceIt
         messages.push({ role: 'tool', tool_call_id: item.toolUseId, content: toolResultContentToText(item.output) })
         break
       case 'assistant_thinking':
+        if (passBackReasoningContent) {
+          if (assistant) assistant.thinking += item.text
+          else pendingThinking += item.text
+        }
+        break
       case 'assistant_redacted_thinking':
         break
     }

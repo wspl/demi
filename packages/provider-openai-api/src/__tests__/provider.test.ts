@@ -256,6 +256,131 @@ test('OpenAI Chat Completions request body maps text, tools, tool replay, servic
   expect(body.stream_options).toEqual({ include_usage: true })
 })
 
+test('OpenAI Chat Completions request body omits reasoning_content by default', () => {
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'think first', signature: null },
+        { type: 'assistant_text', modelId: 'deepseek-v4-pro', text: 'Use tool' },
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
+        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+      ],
+    }),
+    undefined,
+  )
+
+  expect(body.messages[1]).toEqual({
+    role: 'assistant',
+    content: 'Use tool',
+    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
+  })
+})
+
+test('OpenAI Chat Completions request body passes reasoning_content back when opted in', () => {
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'think ', signature: null },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'more', signature: null },
+        { type: 'assistant_redacted_thinking', modelId: 'deepseek-v4-pro', data: 'redacted' },
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
+        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+      ],
+    }),
+    { passBackReasoningContent: true },
+  )
+
+  expect(body.messages[1]).toEqual({
+    role: 'assistant',
+    content: null,
+    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
+    reasoning_content: 'think more',
+  })
+})
+
+test('OpenAI Chat Completions reasoning_content does not leak across segment boundaries', () => {
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'first thought', signature: null },
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
+        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'second thought', signature: null },
+        { type: 'assistant_text', modelId: 'deepseek-v4-pro', text: 'done' },
+        // Trailing thinking with no following assistant segment is discarded.
+        { type: 'user_message', content: [{ type: 'text', text: 'again' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'orphan thought', signature: null },
+        { type: 'user_message', content: [{ type: 'text', text: 'third' }] },
+      ],
+    }),
+    { passBackReasoningContent: true },
+  )
+
+  expect(body.messages[1]).toMatchObject({ role: 'assistant', reasoning_content: 'first thought' })
+  expect(body.messages[3]).toEqual({ role: 'assistant', content: 'done', reasoning_content: 'second thought' })
+  expect(body.messages[4]).toEqual({ role: 'user', content: 'again' })
+  expect(body.messages[5]).toEqual({ role: 'user', content: 'third' })
+  expect(body.messages).toHaveLength(6)
+})
+
+test('OpenAI Chat Completions provider sends reasoning_content for DeepSeek thinking tool loops', async () => {
+  const requests: CapturedRequest[] = []
+  const provider = createOpenAIApiProvider({
+    id: 'deepseek',
+    wireApi: 'chat-completions',
+    baseUrl: 'https://api.deepseek.com/v1',
+    apiKey: () => 'deepseek-key',
+    models: [
+      {
+        id: 'deepseek-v4-pro',
+        displayName: 'DeepSeek V4 Pro',
+        contextWindow: 1_000_000,
+        supportsReasoning: true,
+        supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultThinkingEffort: 'medium',
+        canDisableThinking: false,
+      },
+    ],
+    defaultModelId: 'deepseek-v4-pro',
+    request: { passBackReasoningContent: true },
+    fetch: captureFetch(requests),
+  })
+  const runtime = await providerRuntime(provider, selection('deepseek', 'deepseek-v4-pro'))
+
+  await collect(
+    runtime.run(
+      request({
+        modelId: 'deepseek-v4-pro',
+        thinking: { type: 'effort', effort: 'medium', summary: null },
+        items: [
+          { type: 'user_message', content: [{ type: 'text', text: 'read a.ts' }] },
+          { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'need the file first', signature: null },
+          { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
+          { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+        ],
+        tools: [
+          {
+            name: 'read_file',
+            description: 'Read a file',
+            inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+          },
+        ],
+      }),
+    ),
+  )
+
+  const body = requests[0]?.body as { messages?: Array<Record<string, unknown>> }
+  expect(body.messages?.[1]).toEqual({
+    role: 'assistant',
+    content: null,
+    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
+    reasoning_content: 'need the file first',
+  })
+})
+
 test('OpenAI Chat Completions stream maps split text, tool call arguments, and usage', async () => {
   const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
     {
