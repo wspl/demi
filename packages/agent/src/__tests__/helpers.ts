@@ -92,17 +92,29 @@ export class MemorySessionStore<State> {
 }
 
 export class RecordingProvider implements AgentProvider {
-  readonly requests: InferenceRequest[] = []
-  private cursor = 0
+  readonly requests: InferenceRequest[]
+  private readonly scenario: { cursor: number; requests: InferenceRequest[] }
 
-  constructor(private readonly turns: TurnScript[]) {}
+  constructor(
+    private readonly turns: TurnScript[],
+    scenario: { cursor: number; requests: InferenceRequest[] } = { cursor: 0, requests: [] },
+  ) {
+    this.scenario = scenario
+    this.requests = scenario.requests
+  }
+
+  clone(): AgentProvider {
+    // The shared scenario coordinates one deterministic script across parent
+    // and clone runtimes; the runtime instances themselves remain distinct.
+    return new RecordingProvider(this.turns, this.scenario)
+  }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-    const turn = this.turns[this.cursor]
-    this.cursor += 1
+    const turn = this.turns[this.scenario.cursor]
+    this.scenario.cursor += 1
     this.requests.push(request)
     if (turn === undefined) {
-      throw new Error(`RecordingProvider: no turn scripted for call #${this.cursor}`)
+      throw new Error(`RecordingProvider: no turn scripted for call #${this.scenario.cursor}`)
     }
     const output = await (typeof turn === 'function' ? turn(request) : turn)
     if (isAsyncIterable(output)) {
