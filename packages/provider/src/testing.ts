@@ -23,6 +23,16 @@ export class StubProvider implements AgentProvider {
     this.turns = turns
   }
 
+  clone(): AgentProvider {
+    // Test scripts describe one ordered scenario across parent and clone
+    // requests, so the runtime facade is independent while the cursor remains
+    // on this deterministic controller.
+    return {
+      run: (request) => this.run(request),
+      clone: () => this.clone(),
+    }
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     const turn = this.turns[this.cursor]
     this.cursor += 1
