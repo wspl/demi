@@ -21,18 +21,20 @@ secrets planted at the start.
 
 ```sh
 bun run fixtures:compaction:build [targetGenerations]   # optional refresh; default 4
-bun run fixtures:compaction:verify                      # secret recall after many generations
+bun run fixtures:compaction:verify                      # recall (+ EXTRA_GENERATIONS forced rounds)
 bun run fixtures:compaction:verify-switch               # small↔large window switch on flash
 ```
 
-Optional env knobs (all optional):
+Tune depth by editing constants at the top of `verify-compaction.ts`
+(`EXTRA_GENERATIONS`, `KEEP_RECENT`, `VERIFY_CONTEXT_WINDOW`).
+
+Optional env knobs:
 
 | Env | Default | Meaning |
 |---|---|---|
 | `DEEPSEEK_API_KEY` | — | required |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | API base |
 | `DEEPSEEK_FLASH_MODEL` | `deepseek-v4-flash` | model id |
-| `COMPACTION_FIXTURE_CONTEXT_WINDOW` | `200000` | verify recall window |
 | `COMPACTION_FIXTURE_SMALL_WINDOW` | `8000` | switch harness small window |
 | `COMPACTION_FIXTURE_LARGE_WINDOW` | `400000` | switch harness large window |
 | `COMPACTION_FIXTURE_GROW_TARGET` | `0` | optional extra grow after compactable-window is met |
@@ -40,10 +42,10 @@ Optional env knobs (all optional):
 
 ## Verify recall
 
-`verify-compaction.ts` loads the committed fixture via `AgentSession.fromCheckpoint`
-at real default compaction thresholds (no faking), then asks flash to recall the three
-secrets. Passes when the fixture has ≥2 compaction generations, all three secrets
-recall, and there are no error blocks.
+`verify-compaction.ts` loads the committed fixture via `AgentSession.fromCheckpoint`,
+asks flash to recall the three secrets, then forces `EXTRA_GENERATIONS` more
+compaction rounds (grow → compact → recall). It prints a generation table and exits
+non-zero when recall drops below 3/3.
 
 ## Verify window switch
 
