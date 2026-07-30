@@ -113,6 +113,14 @@ export interface ProviderRun extends AsyncIterable<ProviderEvent> {
 export interface AgentProvider {
   run(request: InferenceRequest): ProviderRun
   /**
+   * Creates an independent runtime with the same provider configuration.
+   *
+   * Configuration dependencies such as auth stores and quota observers may be
+   * shared, but mutable per-session execution state (subprocesses, sockets,
+   * pending tool calls, and continuation state) must not be shared.
+   */
+  clone(): AgentProvider
+  /**
    * Releases any resources the provider holds open across turns — e.g. a long-lived CLI
    * subprocess kept alive for a whole session. Called once when the owning session closes.
    */
