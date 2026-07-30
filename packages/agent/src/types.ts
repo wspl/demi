@@ -28,7 +28,7 @@ export interface AgentPromptContext<State> {
 export interface AgentSystemPromptContext<State> extends AgentPromptContext<State> {
   /**
    * Rendered help for every registered command (summary, subcommands, parameters,
-   * stdin fields, examples), produced by the server from the session's actual
+   * stdin fields), produced by the server from the session's actual
    * CommandRegistry. Harnesses embed it wherever their system prompt wants the
    * command reference; empty string when no commands are registered.
    */
