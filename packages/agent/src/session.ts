@@ -12,6 +12,7 @@ import { findResumePoint } from './recovery'
 import type {
   AgentHarnessRuntime,
   AgentMetadata,
+  AgentSessionCloneParams,
   AgentSessionOptions,
   AgentSessionParams,
   AgentSessionRestoreParams,
@@ -175,28 +176,23 @@ export class AgentSession<State> {
       get model() {
         return self.model
       },
-      get provider() {
-        return self.provider
-      },
       get keepRecentTokens() {
         return self.compactionKeepRecentTokens
-      },
-      get sessionId() {
-        return self.agentSessionId
-      },
-      get cwd() {
-        return self.cwd
       },
       get thresholdRatio() {
         return self.compactionThresholdRatio
       },
-      get retryPolicy() {
-        return self.retryPolicy
-      },
-      nextRequestId: () => self.idFactory(),
-      currentTurnId: () => self.currentTurnId(),
       currentSignal: () => self.currentSignal(),
-      streamProvider: (request, run) => self.providerEvents(request, run),
+      clone: (transcript) =>
+        self.clone({
+          transcript,
+          options: {
+            // A compaction clone is an ephemeral summary view. It must not
+            // compact itself and recursively create another clone.
+            compaction: { preflightThresholdRatio: Number.POSITIVE_INFINITY },
+            retry: self.retryPolicy,
+          },
+        }),
       commitTranscript: () => self.commitTranscript(),
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
       emit: (event) => self.emit(event),
@@ -270,6 +266,31 @@ export class AgentSession<State> {
       resolve: noop,
       reject: noop,
     })
+  }
+
+  /**
+   * Creates an isolated session from a point-in-time copy.
+   *
+   * Model, transcript, and state are copied by default. Runtime configuration
+   * (harness runtime, cwd) is shared unless overridden. The provider is an
+   * independent runtime from `AgentProvider.clone()` unless `provider` is
+   * supplied. Parent persistence store is never inherited.
+   */
+  clone(overrides: AgentSessionCloneParams<State> = {}): AgentSession<State> {
+    return new AgentSession<State>(
+      {
+        provider: overrides.provider ?? this.provider.clone(),
+        model: structuredClone(overrides.model ?? this.model),
+        cwd: overrides.cwd ?? this.cwd,
+        runtime: overrides.runtime ?? this.runtime,
+        transcript: structuredClone(overrides.transcript ?? this.transcriptLog.toJSON()),
+        state: overrides.state !== undefined ? overrides.state : structuredClone(this.agentState),
+      },
+      {
+        retry: this.retryPolicy,
+        ...overrides.options,
+      },
+    )
   }
 
   /**

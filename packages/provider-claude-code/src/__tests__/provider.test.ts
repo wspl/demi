@@ -543,6 +543,58 @@ test('ClaudeCodeProvider keeps one process alive across turns and sends only the
   expect(replayedToolUse).toBe(false)
 })
 
+test('ClaudeCodeProvider clone owns independent live process state', async () => {
+  const parentTransport = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'parent one' }] } },
+    { type: 'result', usage: { input_tokens: 1, output_tokens: 1 } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'parent two' }] } },
+    { type: 'result', usage: { input_tokens: 1, output_tokens: 1 } },
+  ])
+  const cloneTransport = new FakeClaudeTransport([
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'clone' }] } },
+    { type: 'result', usage: { input_tokens: 1, output_tokens: 1 } },
+  ])
+  const provider = new ClaudeCodeProvider({
+    transportFactory: sequenceFactory([parentTransport, cloneTransport]),
+  })
+  const clone = provider.clone()
+
+  for await (const _event of provider.run({
+    ...makeRequest(),
+    sessionId: 'parent',
+    items: [{ type: 'user_message', content: [{ type: 'text', text: 'parent one' }] }],
+  })) {
+    // Drain the parent run.
+  }
+  for await (const _event of clone.run({
+    ...makeRequest(),
+    sessionId: 'clone',
+    items: [{ type: 'user_message', content: [{ type: 'text', text: 'clone' }] }],
+  })) {
+    // Drain the clone run.
+  }
+  for await (const _event of provider.run({
+    ...makeRequest(),
+    sessionId: 'parent',
+    items: [
+      { type: 'user_message', content: [{ type: 'text', text: 'parent one' }] },
+      { type: 'user_message', content: [{ type: 'text', text: 'parent two' }] },
+    ],
+  })) {
+    // Drain the parent continuation.
+  }
+
+  expect(parentTransport.killed).toBe(false)
+  expect(cloneTransport.killed).toBe(false)
+  expect(parentTransport.writes.filter((write) => isRecord(write) && write.type === 'user')).toHaveLength(2)
+  expect(cloneTransport.writes.filter((write) => isRecord(write) && write.type === 'user')).toHaveLength(1)
+
+  await clone.dispose?.()
+  expect(cloneTransport.killed).toBe(true)
+  expect(parentTransport.killed).toBe(false)
+  await provider.dispose()
+})
+
 test('ClaudeCodeProvider rejects malformed SDK MCP tools/call without entering pending state', async () => {
   const transport = new FakeClaudeTransport([
     sdkMcpRequest('call-sdk', 'call-1', 'tools/call', { arguments: { script: 'pwd' } }),
