@@ -23,7 +23,6 @@ const nestedSpec: Command = {
           },
           positionals: ['id'],
           stdinField: 'body',
-          examples: ["larkclaw watch create my-id <<'EOF'\n{}\nEOF"],
           run: async ({ parsed, io }) => {
             await io.stdout(`created ${parsed.values.id} body=${parsed.values.body}`)
             return { exitCode: 0 }

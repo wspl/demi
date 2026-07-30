@@ -191,7 +191,7 @@ test('AgentServer renders registered command help into the harness system prompt
       {
         name: 'greet',
         summary: 'Greets the caller.',
-        subcommands: [{ name: 'hello', summary: 'Say hello.', examples: ['greet hello'], run: () => ({ exitCode: 0 }) }],
+        subcommands: [{ name: 'hello', summary: 'Say hello.', run: () => ({ exitCode: 0 }) }],
       },
     ],
     systemPrompt: (ctx) => {
