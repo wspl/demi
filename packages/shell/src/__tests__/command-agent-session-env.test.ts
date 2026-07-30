@@ -12,7 +12,6 @@ const echoSessionSpec: Command = {
     {
       name: 'show',
       summary: 'Print DEMI_SESSION_ID.',
-      examples: [],
       run: async (ctx) => {
         await ctx.io.stdout(ctx.env.DEMI_SESSION_ID ?? '(none)')
         return { exitCode: 0 }

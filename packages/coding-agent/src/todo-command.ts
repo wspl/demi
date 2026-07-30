@@ -29,7 +29,6 @@ export function createTodoCommand(): Command {
         output: {
           json: z.object({ todos: TodoListSchema }),
         },
-        examples: ['todo list', 'todo list --json'],
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           if (parsed.json) {
@@ -55,7 +54,6 @@ export function createTodoCommand(): Command {
         output: {
           json: z.object({ todo: TodoItemSchema }),
         },
-        examples: ['todo add "Run tests"', 'todo add "Run tests" --json'],
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           const todo: TodoItem = {
@@ -85,7 +83,6 @@ export function createTodoCommand(): Command {
         output: {
           json: z.object({ todo: TodoItemSchema }),
         },
-        examples: ['todo update T1 --text "Run full test suite"', 'todo update T1 --status in_progress --json'],
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           const todo = findTodo(todos, String(parsed.values.id))
@@ -114,7 +111,6 @@ export function createTodoCommand(): Command {
         output: {
           json: z.object({ todo: TodoItemSchema }),
         },
-        examples: ['todo done T1', 'todo done T1 --json'],
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           const todo = findTodo(todos, String(parsed.values.id))

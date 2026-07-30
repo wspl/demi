@@ -2610,7 +2610,6 @@ function echoCommand(): Command {
         input: {
           value: z.string(),
         },
-        examples: ['echo-cmd run --value hello'],
         run: async ({ parsed, io }) => {
           await io.stdout(`registered:${parsed.values.value}\n`)
           return { exitCode: 0, metadata: { echoed: parsed.values.value } }
@@ -2628,7 +2627,6 @@ function counterCommand(): Command {
       {
         name: 'inc',
         summary: 'Increment counter.',
-        examples: ['counter inc'],
         run: async ({ io, storage }) => {
           const state = (await storage.readJson<{ count: number }>('counter.json')) ?? { count: 0 }
           state.count += 1
@@ -2653,7 +2651,6 @@ function stdinCommand(): Command {
           content: z.string(),
         },
         stdinField: 'content',
-        examples: ["stdin-cmd write <<'EOF'\ncontent\nEOF"],
         run: async ({ parsed, io }) => {
           await io.stdout(String(parsed.values.content))
           return { exitCode: 0 }

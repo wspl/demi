@@ -49,7 +49,7 @@ test('demi --help documents byte-stream reads, and any word stays usable as a fi
   expect(help.status).toBe('exited')
   if (help.status !== 'exited') throw new Error('expected exited result')
   expect(help.stdout.delta).toContain('shown to you as viewable media')
-  expect(help.stdout.delta).toContain('demi read assets/clip.mp4')
+  expect(help.stdout.delta).toContain('<path> - File path to read')
 
   const leafHelp = await env.exec({ shellId: help.shellId, script: 'demi read --help' })
   expect(leafHelp.status).toBe('exited')

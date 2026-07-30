@@ -19,7 +19,6 @@ export function createDemiCommand(): Command {
           path: z.string().describe('File path to read'),
         },
         positionals: ['path'],
-        examples: ['demi read src/foo.ts', 'demi read assets/frame.png', 'demi read assets/clip.mp4'],
         run: async ({ parsed, cwd, io, host }) => {
           const path = String(parsed.values.path)
           const pathError = pathValidationError(path)
@@ -48,10 +47,6 @@ export function createDemiCommand(): Command {
         },
         positionals: ['path'],
         stdinField: 'content',
-        examples: [
-          "demi create src/foo.ts <<'EOF'\nexport const foo = 1\nEOF",
-          "demi create README.md <<'EOF'\n# Project\nEOF",
-        ],
         run: async ({ parsed, cwd, io, host }) => {
           const path = String(parsed.values.path)
           const content = String(parsed.values.content)
@@ -98,10 +93,6 @@ export function createDemiCommand(): Command {
           context: z.number().int().positive().optional().describe('Line number used to choose nearest occurrence'),
         },
         positionals: ['path'],
-        examples: [
-          'demi edit src/foo.ts --old foo --new bar',
-          'demi edit src/foo.ts --old "old text" --new "new text" --occurrence 2',
-        ],
         run: async ({ parsed, cwd, io, host }) => {
           const path = String(parsed.values.path)
           const read = await readFile(host, cwd, path)
@@ -152,10 +143,6 @@ export function createDemiCommand(): Command {
           patch: z.string().describe('Unified diff content, passed via stdin/heredoc'),
         },
         stdinField: 'patch',
-        examples: [
-          "demi patch <<'PATCH'\n--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new\nPATCH",
-          "demi patch <<'PATCH'\n--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1 @@\n+export const created = true\nPATCH",
-        ],
         run: async ({ parsed, cwd, io, host }) => {
           let patches: FilePatch[]
           let operations: PatchOperation[]

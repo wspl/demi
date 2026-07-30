@@ -17,7 +17,6 @@ const emitSpec: Command = {
     {
       name: 'binary',
       summary: 'Write raw binary bytes to stdout.',
-      examples: [],
       run: async (ctx) => {
         await ctx.io.stdout(PNG_BYTES)
         return { exitCode: 0 }
@@ -26,7 +25,6 @@ const emitSpec: Command = {
     {
       name: 'opaque',
       summary: 'Write raw bytes that match no media magic.',
-      examples: [],
       run: async (ctx) => {
         await ctx.io.stdout(OPAQUE_BYTES)
         return { exitCode: 0 }
@@ -35,7 +33,6 @@ const emitSpec: Command = {
     {
       name: 'text',
       summary: 'Write multibyte UTF-8 text to stdout as bytes.',
-      examples: [],
       run: async (ctx) => {
         await ctx.io.stdout(new TextEncoder().encode('你好 emoji 🎉\n'))
         return { exitCode: 0 }
