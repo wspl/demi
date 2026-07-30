@@ -89,13 +89,28 @@ function createYieldRuntime(
 }
 
 class RecordingProvider implements AgentProvider {
-  readonly runModelIds: string[] = []
+  readonly runModelIds: string[]
+  readonly requests: InferenceRequest[]
+  readonly clones: RecordingProvider[] = []
   disposed = false
   constructor(
     private readonly reply: string,
     private readonly usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
-  ) {}
+    observations: { runModelIds: string[]; requests: InferenceRequest[] } = { runModelIds: [], requests: [] },
+  ) {
+    this.runModelIds = observations.runModelIds
+    this.requests = observations.requests
+  }
+  clone(): AgentProvider {
+    const clone = new RecordingProvider(this.reply, this.usage, {
+      runModelIds: this.runModelIds,
+      requests: this.requests,
+    })
+    this.clones.push(clone)
+    return clone
+  }
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    this.requests.push(request)
     this.runModelIds.push(request.modelId)
     yield { type: 'text_delta', text: this.reply }
     yield { type: 'response', usage: this.usage }
@@ -104,6 +119,48 @@ class RecordingProvider implements AgentProvider {
     this.disposed = true
   }
 }
+
+test('clone creates an isolated snapshot-copy session with an independent provider runtime', async () => {
+  const provider = new RecordingProvider('answer')
+  const parent = new AgentSession({
+    provider,
+    model,
+    cwd: '/workspace',
+    runtime: createRuntime(),
+  })
+
+  parent.state().toolCalls = 3
+  await parent.send(text('parent turn'))
+  const parentBlocks = parent.transcript().toJSON().blocks
+
+  const clone = parent.clone()
+  const clonedProvider = provider.clones[0]
+  expect(clone.id()).not.toBe(parent.id())
+  expect(clone.state()).toEqual({ toolCalls: 3 })
+  expect(clone.state()).not.toBe(parent.state())
+  expect(clone.transcript().toJSON().blocks).toEqual(parentBlocks)
+  expect(clone.transcript()).not.toBe(parent.transcript())
+
+  clone.state().toolCalls = 9
+  await clone.send(text('clone-only turn'))
+
+  expect(parent.state().toolCalls).toBe(3)
+  expect(parent.transcript().toJSON().blocks).toEqual(parentBlocks)
+  expect(clonedProvider?.requests.at(-1)).toMatchObject({
+    systemPrompt: 'system prompt',
+    modelId: 'test-model',
+  })
+  expect(clonedProvider?.requests.at(-1)?.items.at(-1)).toEqual({
+    type: 'user_message',
+    content: [{ type: 'text', text: 'preamble' }, { type: 'text', text: 'clone-only turn' }],
+  })
+
+  await clone.dispose()
+  expect(clonedProvider?.disposed).toBe(true)
+  expect(provider.disposed).toBe(false)
+  await parent.dispose()
+  expect(provider.disposed).toBe(true)
+})
 
 test('updateModel swaps the provider, disposes the old one, and the next turn uses the new model', async () => {
   const providerA = new RecordingProvider('from A')
@@ -832,29 +889,33 @@ test('AgentSession abort cancels pending yield wakeup as the final layer', async
 })
 
 test('AgentSession abort preserves pending yield until active work has been canceled', async () => {
-  let runCount = 0
   const activeStarted = deferred<void>()
   let activeCancelled = false
-  const provider: AgentProvider = {
-    async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-      runCount += 1
-      if (runCount === 1) {
-        yield events.toolCall('yield-1', 'yield_tool', {})
-        yield events.response()
-        return
-      }
+  const createProvider = (): AgentProvider => {
+    let runCount = 0
+    return {
+      clone: createProvider,
+      async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+        runCount += 1
+        if (runCount === 1) {
+          yield events.toolCall('yield-1', 'yield_tool', {})
+          yield events.response()
+          return
+        }
 
-      request.cancel.addEventListener(
-        'abort',
-        () => {
-          activeCancelled = true
-        },
-        { once: true },
-      )
-      activeStarted.resolve()
-      await new Promise<never>(() => {})
-    },
+        request.cancel.addEventListener(
+          'abort',
+          () => {
+            activeCancelled = true
+          },
+          { once: true },
+        )
+        activeStarted.resolve()
+        await new Promise<never>(() => {})
+      },
+    }
   }
+  const provider = createProvider()
   let session: AgentSession<{ toolCalls: number }> | null = null
   session = createSession(provider, createYieldRuntime(() => session, 1_000))
 
@@ -1728,6 +1789,13 @@ class GateProvider implements AgentProvider {
     this.gates = turns.map(() => deferred<void>())
   }
 
+  clone(): AgentProvider {
+    return {
+      clone: () => this.clone(),
+      run: (request) => this.run(request),
+    }
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     const index = this.requests.length
     this.requests.push(request)
@@ -1763,6 +1831,13 @@ class SteerableGateProvider implements AgentProvider {
   ) {
     this.turns = turns
     this.gates = turns.map(() => deferred<void>())
+  }
+
+  clone(): AgentProvider {
+    return {
+      clone: () => this.clone(),
+      run: (request) => this.run(request),
+    }
   }
 
   run(request: InferenceRequest): ProviderRun {
@@ -1827,6 +1902,13 @@ class HangingProvider implements AgentProvider {
   readonly started = deferred<void>()
   cancelled = false
 
+  clone(): AgentProvider {
+    return {
+      clone: () => this.clone(),
+      run: (request) => this.run(request),
+    }
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     request.cancel.addEventListener(
       'abort',
@@ -1842,6 +1924,10 @@ class HangingProvider implements AgentProvider {
 
 class ClosingProvider implements AgentProvider {
   returned = false
+
+  clone(): AgentProvider {
+    return new ClosingProvider()
+  }
 
   run(): AsyncIterable<ProviderEvent> {
     let index = 0
@@ -1865,6 +1951,10 @@ class ThrowingProvider implements AgentProvider {
   readonly requests: InferenceRequest[] = []
   private readonly partial = deferred<void>()
   private readonly release = deferred<void>()
+
+  clone(): AgentProvider {
+    return new ThrowingProvider()
+  }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     const index = this.requests.length

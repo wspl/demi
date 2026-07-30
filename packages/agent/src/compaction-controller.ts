@@ -1,16 +1,17 @@
-import { AbortError, abortable, delay, throwIfAborted } from '@demicodes/utils'
-import type { Block, ModelSelection, ProviderErrorDiagnostics } from '@demicodes/core'
-import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
+import { throwIfAborted } from '@demicodes/utils'
+import type { Block, ModelSelection, Transcript as CoreTranscript, UserContentBlock } from '@demicodes/core'
 import { TranscriptLog, estimateTranscriptBlockTokens } from './transcript'
-import {
-  buildCompactionSummaryRequest,
-  estimateTokens,
-  nextSmallerCompactionCutPoint,
-  renderItemsForSummary,
-} from './compaction-support'
-import { ProviderStreamError, isContextLengthExceeded } from './provider-stream-error'
-import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
-import type { SessionEvent } from './types'
+import { COMPACTION_SUMMARY_INSTRUCTION, estimateTokens, nextSmallerCompactionCutPoint } from './compaction-support'
+import { isContextLengthExceeded } from './provider-stream-error'
+import type { SessionEvent, SessionEventListener } from './types'
+
+interface CompactionClone {
+  send(content: UserContentBlock[]): Promise<void>
+  abort(): Promise<unknown>
+  dispose(): Promise<void>
+  transcript(): TranscriptLog
+  subscribe(listener: SessionEventListener): () => void
+}
 
 /**
  * What CompactionController needs from its owning session. The coupling to the
@@ -21,16 +22,10 @@ import type { SessionEvent } from './types'
 export interface CompactionHost {
   readonly transcript: TranscriptLog
   readonly model: ModelSelection
-  readonly provider: AgentProvider
   readonly keepRecentTokens: number
-  readonly sessionId: string
-  readonly cwd: string
   readonly thresholdRatio: number
-  readonly retryPolicy: TurnRetryPolicy
-  nextRequestId(): string
-  currentTurnId(): string
   currentSignal(): AbortSignal
-  streamProvider(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent>
+  clone(transcript: CoreTranscript): CompactionClone
   commitTranscript(): Promise<void>
   /** Runs `fn` with the session marked as compacting, restoring the prior phase afterwards. */
   runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T>
@@ -110,59 +105,33 @@ export class CompactionController {
   }
 
   private async generateSummary(blocks: Block[]): Promise<string> {
-    // Present the to-compact history as INERT, delimited material inside a single user turn — not as
-    // a replayed conversation. Replaying it makes the model "continue" the conversation and obey
-    // instructions buried in it (e.g. "only reply X") instead of summarizing.
-    const compactTranscript = new TranscriptLog(blocks)
-    const rendered = renderItemsForSummary(compactTranscript.collectInferenceItems())
-    const policy = this.host.retryPolicy
-
-    for (let attempt = 1; ; attempt += 1) {
-      const request = buildCompactionSummaryRequest(rendered, {
-        sessionId: this.host.sessionId,
-        turnId: this.host.currentTurnId(),
-        requestId: this.host.nextRequestId(),
-        modelId: this.host.model.model.id,
-        cwd: this.host.cwd,
-        serviceTierId: this.host.model.serviceTierId ?? null,
-        cancel: this.host.currentSignal(),
-      })
-
-      let summary = ''
-      let transient: {
-        code: string | null
-        retryAfterMs: number | null
-        diagnostics: ProviderErrorDiagnostics
-      } | null = null
-      for await (const event of this.host.streamProvider(request, this.host.provider.run(request))) {
-        throwIfAborted(request.cancel)
-        if (event.type === 'text_delta') summary += event.text
-        if (event.type === 'abort') throw new AbortError()
-        if (event.type === 'error') {
-          const diagnostics: ProviderErrorDiagnostics = {
-            source: event.diagnostics?.source ?? 'unknown',
-            ...event.diagnostics,
-            clientRequestId: request.requestId,
-          }
-          // Summary requests have no partial side effects, so transient failures
-          // retry under the same policy as the turn loop.
-          const retryable = summary.length === 0 && attempt < policy.maxAttempts && isRetryableCode(policy, event.code)
-          if (!retryable) throw new ProviderStreamError(event.message, event.code, diagnostics)
-          transient = { code: event.code, retryAfterMs: event.retryAfterMs ?? null, diagnostics }
-          break
-        }
-      }
-      if (!transient) return summary.trim()
-
-      const delayMs = retryDelayMs(policy, attempt, transient.retryAfterMs)
-      this.host.emit({
-        type: 'retry_scheduled',
-        attempt,
-        delayMs,
-        code: transient.code,
-        diagnostics: transient.diagnostics,
-      })
-      await abortable(delay(delayMs), request.cancel)
+    const clone = this.host.clone({ blocks })
+    const baseBlockCount = clone.transcript().blocks.length
+    const parentSignal = this.host.currentSignal()
+    const abortClone = () => {
+      void clone.abort()
+    }
+    const unsubscribe = clone.subscribe((event) => {
+      if (event.type === 'retry_scheduled') this.host.emit(event)
+    })
+    parentSignal.addEventListener('abort', abortClone, { once: true })
+    try {
+      throwIfAborted(parentSignal)
+      await clone.send([{ type: 'text', text: COMPACTION_SUMMARY_INSTRUCTION }])
+      throwIfAborted(parentSignal)
+      return lastAssistantText(clone.transcript(), baseBlockCount).trim()
+    } finally {
+      parentSignal.removeEventListener('abort', abortClone)
+      unsubscribe()
+      await clone.dispose()
     }
   }
+}
+
+function lastAssistantText(transcript: TranscriptLog, startIndex: number): string {
+  for (let index = transcript.blocks.length - 1; index >= startIndex; index -= 1) {
+    const block = transcript.blocks[index]
+    if (block?.type === 'text') return block.text
+  }
+  return ''
 }

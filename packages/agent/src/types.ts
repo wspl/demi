@@ -174,6 +174,11 @@ export interface AgentSessionParams<State> {
   state?: State
 }
 
+/** Overrides for an isolated snapshot-copy session clone. */
+export interface AgentSessionCloneParams {
+  transcript?: CoreTranscript
+}
+
 export interface AgentSessionCheckpoint<State> {
   transcript: CoreTranscript
   state: State

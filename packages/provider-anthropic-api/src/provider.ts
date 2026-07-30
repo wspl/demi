@@ -83,6 +83,10 @@ const DEFAULT_EFFORT_BUDGET_TOKENS: Record<string, number> = {
 export class AnthropicApiProvider implements AgentProvider {
   constructor(private readonly options: AnthropicApiRuntimeOptions) {}
 
+  clone(): AgentProvider {
+    return new AnthropicApiProvider(this.options)
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     if (request.cancel.aborted) {
       yield { type: 'abort' }
@@ -510,4 +514,3 @@ function mergeAnthropicUsage(current: TokenUsage, usage: Record<string, unknown>
     cacheWriteTokens: cacheWriteTokens || current.cacheWriteTokens,
   }
 }
-

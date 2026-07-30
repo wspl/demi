@@ -1095,6 +1095,10 @@ class DelayedProvider implements AgentProvider {
 
   constructor(private readonly release: Promise<void>) {}
 
+  clone(): AgentProvider {
+    return new DelayedProvider(this.release)
+  }
+
   async *run(): AsyncIterable<ProviderEvent> {
     this.calls += 1
     await this.release
@@ -1111,6 +1115,10 @@ class ServerGateProvider implements AgentProvider {
   private readonly started = new Map<number, { promise: Promise<void>; resolve: (value: void) => void }>()
 
   constructor(private readonly options: { supportsSteer: boolean }) {}
+
+  clone(): AgentProvider {
+    return new ServerGateProvider(this.options)
+  }
 
   run(request: InferenceRequest): ProviderRun {
     const index = this.calls
@@ -1156,6 +1164,10 @@ class SequencedDelayedProvider implements AgentProvider {
 
   constructor(private readonly releases: Promise<void>[]) {}
 
+  clone(): AgentProvider {
+    return new SequencedDelayedProvider(this.releases)
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.requests.push(request)
     const call = this.calls
@@ -1173,6 +1185,10 @@ class ErrorThenDelayedProvider implements AgentProvider {
     private readonly errorRelease: Promise<void>,
     private readonly successRelease: Promise<void>,
   ) {}
+
+  clone(): AgentProvider {
+    return new ErrorThenDelayedProvider(this.errorRelease, this.successRelease)
+  }
 
   async *run(): AsyncIterable<ProviderEvent> {
     const call = this.calls
@@ -1192,6 +1208,10 @@ class AbortAwareProvider implements AgentProvider {
   calls = 0
   readonly started = deferred<void>()
   readonly aborted = deferred<void>()
+
+  clone(): AgentProvider {
+    return new AbortAwareProvider()
+  }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.calls += 1

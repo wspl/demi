@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Block, ModelSelection, TokenUsage } from '@demicodes/core'
 import {
   AgentSession,
+  TranscriptLog,
   createStandardAgentTools,
   type AgentHarnessRuntime,
   type AgentTool,
@@ -19,6 +20,7 @@ const cacheE2e = process.env.DEMI_CODEX_CACHE_E2E === '1' ? test : test.skip
 const thinkingE2e = process.env.DEMI_CODEX_THINKING_E2E === '1' ? test : test.skip
 const toolE2e = process.env.DEMI_CODEX_TOOL_E2E === '1' ? test : test.skip
 const steerE2e = process.env.DEMI_CODEX_STEER_E2E === '1' ? test : test.skip
+const compactionE2e = process.env.DEMI_CODEX_COMPACTION_E2E === '1' ? test : test.skip
 const modelId = process.env.DEMI_CODEX_E2E_MODEL ?? 'gpt-5.4'
 const transport = parseTransport(process.env.DEMI_CODEX_TRANSPORT)
 
@@ -151,6 +153,83 @@ toolE2e('CodexProvider drives a real AgentSession shell tool roundtrip', async (
     .join('')
   expect(transcriptText).toContain('DEMI_CODEX_TOOL_DONE')
 })
+
+compactionE2e(
+  'CodexProvider clones a session for compaction and the parent continues from the summary',
+  async () => {
+    await expectCodexAuthAvailable()
+    const provider = new CodexProvider({ transport, streamIdleTimeoutMs: 180_000 })
+    const model: ModelSelection = {
+      providerId: 'codex',
+      model: {
+        id: modelId,
+        name: modelId,
+        contextWindow: 200_000,
+        inputLimit: null,
+        thinking: [],
+        acceptedExtensions: [],
+      },
+      thinking: null,
+    }
+    const transcript = new TranscriptLog()
+    transcript.pushUserTurn(
+      'seed-turn',
+      model,
+      [{ type: 'text', text: 'The project codename is PROJECT_KITE and its telemetry port is 4317.' }],
+    )
+    transcript.applyProviderEvent(model, {
+      type: 'text_delta',
+      text: 'Understood. The project codename is PROJECT_KITE and its telemetry port is 4317.',
+    })
+    transcript.applyProviderEvent(model, {
+      type: 'response',
+      usage: { inputTokens: 20, outputTokens: 18, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    })
+    transcript.pushUserTurn('seed-turn', model, [{ type: 'text', text: 'Keep those details available for later.' }])
+    const runtime: AgentHarnessRuntime<Record<string, never>> = {
+      harnessName: 'codex-real-compaction-e2e',
+      initialState: () => ({}),
+      systemPrompt: () => 'Follow the user request precisely and preserve concrete facts from the conversation.',
+      tools: () => [],
+    }
+    const session = new AgentSession(
+      { provider, model, cwd: process.cwd(), runtime, transcript },
+      {
+        agentSessionId: `codex-compaction-e2e-${randomUUID()}`,
+        compaction: { keepRecentTokens: 1 },
+      },
+    )
+
+    try {
+      await withTimeout(session.compact(), 180_000, 'Timed out waiting for real Codex compaction')
+      const boundary = session.transcript().blocks.find((block) => block.type === 'compaction_boundary')
+      expect(boundary).toBeDefined()
+      expect(boundary?.type === 'compaction_boundary' ? boundary.summary : '').toContain('PROJECT_KITE')
+      expect(boundary?.type === 'compaction_boundary' ? boundary.summary : '').toContain('4317')
+
+      await withTimeout(
+        session.send([
+          {
+            type: 'text',
+            text: 'Using the earlier project details, reply exactly in this format: CODEX_COMPACT_CONTINUED: <codename>/<port>',
+          },
+        ]),
+        180_000,
+        'Timed out waiting for the parent session to continue after compaction',
+      )
+
+      const finalText = session.transcript().blocks
+        .filter((block) => block.type === 'text')
+        .at(-1)
+      expect(finalText?.type === 'text' ? finalText.text : '').toContain(
+        'CODEX_COMPACT_CONTINUED: PROJECT_KITE/4317',
+      )
+    } finally {
+      await session.dispose()
+    }
+  },
+  360_000,
+)
 
 steerE2e(
   'CodexProvider keeps a steered active turn ahead of a queued send in real AgentSession',

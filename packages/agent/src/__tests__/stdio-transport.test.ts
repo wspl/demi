@@ -11,6 +11,7 @@ import type { AgentHarness } from '@demicodes/agent'
 import { LocalHost } from '@demicodes/host-local'
 import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
 import {
   AgentClient,
   AgentServer,
@@ -251,8 +252,19 @@ class StdioScenarioProvider implements AgentProvider {
   afterCompactRequest: InferenceRequest | null = null
   private normalCalls = 0
 
+  clone(): AgentProvider {
+    return {
+      run: (request) => this.run(request),
+      clone: () => this.clone(),
+    }
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+    const finalItem = request.items.at(-1)
+    if (
+      finalItem?.type === 'user_message' &&
+      finalItem.content.some((block) => block.type === 'text' && block.text === COMPACTION_SUMMARY_INSTRUCTION)
+    ) {
       this.summaryRequests += 1
       yield events.text('stdio summary')
       yield events.response()

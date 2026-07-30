@@ -13,6 +13,7 @@ import type {
   AgentHarnessRuntime,
   AgentMetadata,
   AgentSessionOptions,
+  AgentSessionCloneParams,
   AgentSessionParams,
   AgentSessionRestoreParams,
   AgentSessionStore,
@@ -175,28 +176,14 @@ export class AgentSession<State> {
       get model() {
         return self.model
       },
-      get provider() {
-        return self.provider
-      },
       get keepRecentTokens() {
         return self.compactionKeepRecentTokens
-      },
-      get sessionId() {
-        return self.agentSessionId
-      },
-      get cwd() {
-        return self.cwd
       },
       get thresholdRatio() {
         return self.compactionThresholdRatio
       },
-      get retryPolicy() {
-        return self.retryPolicy
-      },
-      nextRequestId: () => self.idFactory(),
-      currentTurnId: () => self.currentTurnId(),
       currentSignal: () => self.currentSignal(),
-      streamProvider: (request, run) => self.providerEvents(request, run),
+      clone: (transcript) => self.clone({ transcript }),
       commitTranscript: () => self.commitTranscript(),
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
       emit: (event) => self.emit(event),
@@ -270,6 +257,32 @@ export class AgentSession<State> {
       resolve: noop,
       reject: noop,
     })
+  }
+
+  /**
+   * Creates an isolated session from a point-in-time copy.
+   *
+   * Model, transcript, and state are copied. Runtime configuration is shared.
+   * The provider is an independent runtime created through
+   * AgentProvider.clone().
+   */
+  clone(overrides: AgentSessionCloneParams = {}): AgentSession<State> {
+    return new AgentSession<State>(
+      {
+        provider: this.provider.clone(),
+        model: structuredClone(this.model),
+        cwd: this.cwd,
+        runtime: this.runtime,
+        transcript: structuredClone(overrides.transcript ?? this.transcriptLog.toJSON()),
+        state: structuredClone(this.agentState),
+      },
+      {
+        // A clone is an ephemeral view of a chosen snapshot. It must not
+        // compact itself and recursively create another clone.
+        compaction: { preflightThresholdRatio: Number.POSITIVE_INFINITY },
+        retry: this.retryPolicy,
+      },
+    )
   }
 
   /**
