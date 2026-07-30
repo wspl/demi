@@ -34,9 +34,13 @@ The runtime is where a turn actually runs:
 ```ts
 interface AgentProvider {
   run(request: InferenceRequest): ProviderRun  // an AsyncIterable<ProviderEvent>
+  clone(): AgentProvider                       // independent runtime, same configuration
   dispose?(): void | Promise<void>             // release long-lived resources (e.g. a CLI subprocess)
 }
 ```
+
+`clone()` must return a runtime that can be disposed independently. Auth stores and
+quota observers may be shared; subprocesses, sockets, and continuation state must not.
 
 `run()` returns an async iterable of `ProviderEvent`s. Yield them as the backend
 streams:
@@ -59,26 +63,29 @@ End every successful turn with a single `response` event carrying token usage.
 ## A minimal provider
 
 ```ts
-import { defineProvider, zeroUsage } from '@demicodes/provider'
+import { defineProvider, zeroUsage, type AgentProvider, type InferenceRequest, type ProviderRun } from '@demicodes/provider'
 
 export function createEchoProvider() {
   return defineProvider({
     id: 'echo',
     displayName: 'Echo',
-    createRuntime() {
-      return {
-        run(request: InferenceRequest): ProviderRun {
-          async function* events() {
-            const lastUser = [...request.items].reverse().find((i) => i.type === 'user_message')
-            const text = lastUser?.content.map((b) => (b.type === 'text' ? b.text : '')).join('') ?? ''
-            yield { type: 'text_delta', text: `You said: ${text}` }
-            yield { type: 'response', usage: zeroUsage() }
-          }
-          return events()
-        },
-      }
-    },
+    createRuntime: createEchoRuntime,
   })
+}
+
+function createEchoRuntime(): AgentProvider {
+  return {
+    run(request: InferenceRequest): ProviderRun {
+      async function* events() {
+        const lastUser = [...request.items].reverse().find((i) => i.type === 'user_message')
+        const text = lastUser?.content.map((b) => (b.type === 'text' ? b.text : '')).join('') ?? ''
+        yield { type: 'text_delta', text: `You said: ${text}` }
+        yield { type: 'response', usage: zeroUsage() }
+      }
+      return events()
+    },
+    clone: () => createEchoRuntime(),
+  }
 }
 ```
 
@@ -125,12 +132,8 @@ return defineProvider({
   id: 'acme',
   displayName: 'Acme',
   quota,
-  createRuntime: () => ({
-    run(request) {
-      // During inference, call quota.observeResponse?.({ headers }) when useful.
-      // …
-    },
-  }),
+  // Runtime must implement AgentProvider.clone() (independent live process / continuation state).
+  createRuntime: () => new AcmeProvider({ quota }),
 })
 ```
 

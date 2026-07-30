@@ -174,6 +174,28 @@ export interface AgentSessionParams<State> {
   state?: State
 }
 
+/**
+ * Overrides for `AgentSession.clone()`.
+ *
+ * Omitted fields keep the clone defaults: an independent `provider.clone()`,
+ * structured copies of model/transcript/state, and the same cwd/runtime.
+ */
+export interface AgentSessionCloneParams<State = unknown> {
+  transcript?: CoreTranscript
+  /** Use this runtime instead of `this.provider.clone()`. */
+  provider?: AgentProvider
+  model?: ModelSelection
+  cwd?: string
+  runtime?: AgentHarnessRuntime<State>
+  /**
+   * Replace state. When omitted, state is `structuredClone`d for isolation.
+   * When provided, ownership transfers by reference (same as the constructor).
+   */
+  state?: State
+  /** Options for the clone. Parent store is never inherited. */
+  options?: AgentSessionOptions<State>
+}
+
 export interface AgentSessionCheckpoint<State> {
   transcript: CoreTranscript
   state: State
