@@ -22,6 +22,12 @@ Two layers, each with a required `.clone()`:
 Phase 2 (compaction via session clone) depends on this contract and must not land
 in the same change set.
 
+## Phase 2 status
+
+Implemented on `feat/compaction-via-session-clone`: compaction summaries run through
+`AgentSession.clone()` + `send(COMPACTION_SUMMARY_INSTRUCTION)`. See
+`docs/compaction-context-cache.md`.
+
 ## `AgentProvider.clone()`
 
 Required on every runtime. Breaking change: custom providers must implement it.
