@@ -36,7 +36,6 @@ const filerSpec: Command = {
       },
       positionals: ['path'],
       stdinField: 'content',
-      examples: ["filer create src/foo.ts <<'EOF'\nexport const foo = 1\nEOF"],
       run: () => ({ exitCode: 0 }),
     },
     {
@@ -49,7 +48,6 @@ const filerSpec: Command = {
         occurrence: z.number().optional().describe('1-based occurrence to replace'),
       },
       positionals: ['path'],
-      examples: ['filer edit src/foo.ts --old foo --new bar'],
       run: () => ({ exitCode: 0 }),
     },
     {
@@ -62,7 +60,6 @@ const filerSpec: Command = {
       output: {
         json: z.object({ files: z.array(z.string()) }),
       },
-      examples: ['filer list --json --verbose --tag changed --tag staged'],
       run: async ({ io }) => {
         await io.stdout(JSON.stringify({ files: ['src/foo.ts'] }))
         return { exitCode: 0 }
@@ -88,7 +85,6 @@ const nestedSpec: Command = {
           },
           positionals: ['id'],
           stdinField: 'body',
-          examples: ["larkclaw watch create my-id <<'EOF'\n{}\nEOF"],
           run: async ({ parsed, io }) => {
             await io.stdout(`created ${parsed.values.id} body=${parsed.values.body}`)
             return { exitCode: 0 }
@@ -103,7 +99,6 @@ const nestedSpec: Command = {
               summary: 'Read poller state.',
               input: { id: z.string().describe('Poller id') },
               positionals: ['id'],
-              examples: ['larkclaw watch state get my-id'],
               run: async ({ parsed, io }) => {
                 await io.stdout(`state of ${parsed.values.id}`)
                 return { exitCode: 0 }
@@ -116,7 +111,6 @@ const nestedSpec: Command = {
     {
       name: 'ping',
       summary: 'Liveness check.',
-      examples: ['larkclaw ping'],
       run: async ({ io }) => {
         await io.stdout('pong')
         return { exitCode: 0 }
@@ -130,7 +124,6 @@ const bareLeaf: Command = {
   summary: 'Read a key from the environment map.',
   input: { key: z.string().describe('Env key') },
   positionals: ['key'],
-  examples: ['kcenv HOME'],
   run: async ({ parsed, io }) => {
     await io.stdout(String(parsed.values.key))
     return { exitCode: 0 }
@@ -141,7 +134,6 @@ const dualMode: Command = {
   name: 'tool',
   summary: 'Dual-mode parent with a child.',
   input: { x: z.number().optional().describe('Parent flag') },
-  examples: ['tool --x 1', 'tool sub --y 2'],
   run: async ({ parsed, io }) => {
     await io.stdout(`parent x=${parsed.values.x ?? 'none'}`)
     return { exitCode: 0 }
@@ -151,7 +143,6 @@ const dualMode: Command = {
       name: 'sub',
       summary: 'Child leaf.',
       input: { y: z.number().optional().describe('Child flag') },
-      examples: ['tool sub --y 2'],
       run: async ({ parsed, io }) => {
         await io.stdout(`child y=${parsed.values.y ?? 'none'}`)
         return { exitCode: 0 }
@@ -305,7 +296,8 @@ test('renderCommandHelp documents the tree', () => {
   expect(prompt).toContain('--old - Exact text to replace')
   expect(prompt).toContain('stdin/heredoc: content')
   expect(prompt).toContain('Success output: raw text by default; machine-readable JSON when --json is passed')
-  expect(prompt).toContain('filer list --json --verbose --tag changed --tag staged')
+  expect(prompt).toContain('--verbose - Include details')
+  expect(prompt).toContain('--tag - Filter by repeated tag')
 })
 
 test('CommandRegistry registers commands and renders all prompts', () => {
@@ -334,7 +326,7 @@ test('CommandRegistry rejects command names that are unsafe as CLI path segments
     registry.register({
       name: 'safe-root',
       summary: 'x',
-      subcommands: [{ name: '../escape', summary: 'x', examples: [], run: () => ({ exitCode: 0 }) }],
+      subcommands: [{ name: '../escape', summary: 'x', run: () => ({ exitCode: 0 }) }],
     }),
   ).toThrow('has invalid name')
 })
@@ -346,22 +338,15 @@ test('CommandRegistry rejects empty nodes and dead fields', () => {
     registry.register({
       name: 'dead',
       summary: 'x',
-      subcommands: [{ name: 'c', summary: 'c', examples: [], run: () => ({ exitCode: 0 }) }],
+      subcommands: [{ name: 'c', summary: 'c', run: () => ({ exitCode: 0 }) }],
       effects: 'nope',
     }),
   ).toThrow('sets effects without run()')
-  expect(() =>
-    registry.register({
-      name: 'norunexamples',
-      summary: 'x',
-      run: () => ({ exitCode: 0 }),
-    }),
-  ).toThrow('missing examples[]')
   // With help moved to --help, 'prompt' is an ordinary (legal) child name.
   registry.register({
     name: 'okprompt',
     summary: 'x',
-    subcommands: [{ name: 'prompt', summary: 'fine', examples: [], run: () => ({ exitCode: 0 }) }],
+    subcommands: [{ name: 'prompt', summary: 'fine', run: () => ({ exitCode: 0 }) }],
   })
   expect(registry.get('okprompt')).not.toBeNull()
 })

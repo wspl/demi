@@ -61,7 +61,6 @@ function echoCommand(): Command {
       {
         name: 'run',
         summary: 'echoes a fixed token and optional stdin',
-        examples: [],
         run: async (ctx) => {
           await ctx.io.stdout('echoed:ok\n')
           if (ctx.stdin.text) await ctx.io.stdout(`stdin:${ctx.stdin.text}`)
