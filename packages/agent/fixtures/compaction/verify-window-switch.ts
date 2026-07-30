@@ -97,16 +97,6 @@ async function send(label: string, text: string): Promise<string> {
   throw lastErr
 }
 
-function listTsFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue
-    const full = join(dir, entry.name)
-    if (entry.isDirectory()) listTsFiles(full, out)
-    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) out.push(full)
-  }
-  return out
-}
-
 log(`loaded: ${fx.blocks.length} blocks, ctx≈${ctx()} replayable tokens, ${gens()} compaction generations`)
 log(`windows: small=${SMALL_WINDOW} large=${LARGE_WINDOW} growTarget=${GROW_TARGET}`)
 
