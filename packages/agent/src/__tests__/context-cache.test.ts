@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { events } from '@demicodes/provider/testing'
 import { TranscriptLog } from '../index'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
 import {
   createRuntime,
   createSession,
@@ -145,13 +146,19 @@ test('provider request prefix restabilizes after compaction replaces old history
   transcript.applyProviderEvent(model, events.response())
   const provider = new RecordingProvider([
     (request) => {
-      // The summary request is a single user turn holding the to-compact history as inert material.
-      expect(request.items).toHaveLength(1)
-      const item = request.items[0]
-      expect(item?.type).toBe('user_message')
-      const summary = item?.type === 'user_message' ? item.content.map((b) => (b.type === 'text' ? b.text : '')).join('') : ''
-      expect(summary).toContain('old question')
-      expect(summary).toContain('old answer')
+      expect(request.items.slice(0, -1)).toEqual([
+        { type: 'user_message', content: [{ type: 'text', text: 'old question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'old answer' },
+        { type: 'user_message', content: [{ type: 'text', text: 'recent question' }] },
+        { type: 'assistant_text', modelId: 'test-model', text: 'recent answer' },
+      ])
+      expect(request.items.at(-1)).toEqual({
+        type: 'user_message',
+        content: [
+          { type: 'text', text: 'preamble' },
+          { type: 'text', text: COMPACTION_SUMMARY_INSTRUCTION },
+        ],
+      })
       return [events.text('compacted summary'), events.response()]
     },
     [events.text('after compact one'), events.response()],
@@ -176,6 +183,48 @@ test('provider request prefix restabilizes after compaction replaces old history
   expect(JSON.stringify(secondPostCompact.items.slice(0, firstPostCompact.items.length))).toBe(
     JSON.stringify(firstPostCompact.items),
   )
+})
+
+test('replay compaction summary reuses the previous turn prefix for provider caches', async () => {
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('test-turn', model, text('old question'))
+  transcript.applyProviderEvent(model, events.text('old answer'))
+  transcript.applyProviderEvent(model, events.response())
+  const provider = new RecordingProvider([
+    [events.text(`first answer ${'y'.repeat(400)}`), events.response()],
+    [events.text('cache-friendly summary'), events.response()],
+  ])
+  const runtime = createRuntime({
+    tools: () => [
+      {
+        name: 'stable_tool',
+        description: 'Stable tool schema.',
+        inputSchema: { type: 'object', properties: { value: { type: 'string' } } },
+        invoke: () => ({ output: [{ type: 'text', text: 'ok' }] }),
+      },
+    ],
+  })
+  const session = createSession(provider, runtime, transcript, model, {
+    compaction: { keepRecentTokens: 50 },
+  })
+
+  await session.send(text('first'))
+  await session.compact()
+
+  const [turnRequest, summaryRequest] = provider.requests
+  if (!turnRequest || !summaryRequest) throw new Error('missing provider requests')
+  expect(summaryRequest.systemPrompt).toBe(turnRequest.systemPrompt)
+  expect(summaryRequest.tools).toEqual(turnRequest.tools)
+  const replayedItems = summaryRequest.items.slice(0, -1)
+  expect(replayedItems.length).toBeGreaterThan(0)
+  expect(turnRequest.items.slice(0, replayedItems.length)).toEqual(replayedItems)
+  expect(summaryRequest.items.at(-1)).toEqual({
+    type: 'user_message',
+    content: [
+      { type: 'text', text: 'preamble' },
+      { type: 'text', text: COMPACTION_SUMMARY_INSTRUCTION },
+    ],
+  })
 })
 
 test('provider request is built from effective transcript without internal blocks', async () => {
