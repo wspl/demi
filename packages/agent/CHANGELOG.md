@@ -1,5 +1,23 @@
 # @demicodes/agent
 
+## 0.11.0
+
+### Major Changes
+
+- 5843565: Require `AgentProvider.clone()` and add `AgentSession.clone()` for isolated session forks.
+
+  Every provider runtime must return an independently disposable clone with the same configuration but without shared live-process / continuation state. Sessions expose `.clone()` for point-in-time copies (optional provider/runtime/state/transcript overrides); parent persistence is never inherited. See `docs/provider-session-clone.md`.
+
+- 72725c8: Run compaction summaries through `AgentSession.clone()` on the normal turn path so prefix caches can reuse the conversation prefix. Removes the inert-reference summary request path.
+
+### Patch Changes
+
+- Updated dependencies [5843565]
+  - @demicodes/provider@0.11.0
+  - @demicodes/core@0.11.0
+  - @demicodes/shell@0.11.0
+  - @demicodes/utils@0.11.0
+
 ## 0.10.2
 
 ### Patch Changes

@@ -1,5 +1,24 @@
 # @demicodes/provider-openai-api
 
+## 0.11.0
+
+### Major Changes
+
+- 5843565: Require `AgentProvider.clone()` and add `AgentSession.clone()` for isolated session forks.
+
+  Every provider runtime must return an independently disposable clone with the same configuration but without shared live-process / continuation state. Sessions expose `.clone()` for point-in-time copies (optional provider/runtime/state/transcript overrides); parent persistence is never inherited. See `docs/provider-session-clone.md`.
+
+### Minor Changes
+
+- d80917e: Add opt-in `request.passBackReasoningContent` for Chat Completions: replay `assistant_thinking` as `reasoning_content`, and always include the field on tool-call assistant messages (empty string when a round had no thinking). Required for DeepSeek-style thinking + tool loops; leave off for official OpenAI.
+
+### Patch Changes
+
+- Updated dependencies [5843565]
+  - @demicodes/provider@0.11.0
+  - @demicodes/core@0.11.0
+  - @demicodes/utils@0.11.0
+
 ## 0.10.2
 
 ### Patch Changes
