@@ -38,6 +38,13 @@ export interface OpenAIApiRequestOptions {
   streamOptions?: Record<string, unknown> | null
   extraBody?: Record<string, unknown>
   /**
+   * Chat Completions only: replay model thinking as `reasoning_content` on
+   * assistant messages. DeepSeek thinking mode requires the field on tool-call
+   * continuations, including an empty string when a tool round had no thinking.
+   * OpenAI rejects this compatible extension, so it is opt-in.
+   */
+  passBackReasoningContent?: boolean
+  /**
    * Emit `status: 'completed'` on replayed assistant messages. Gateways that validate
    * input against the full Responses item schema require it — Volcengine Ark rejects the
    * item with `missing input.status` — while relay bridges reject it as an unknown
@@ -480,7 +487,7 @@ export interface OpenAIChatCompletionsRequestBody {
 export type OpenAIChatMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string | OpenAIUserContentPart[] }
-  | { role: 'assistant'; content: string | null; tool_calls?: OpenAIChatToolCall[] }
+  | { role: 'assistant'; content: string | null; tool_calls?: OpenAIChatToolCall[]; reasoning_content?: string }
   | { role: 'tool'; tool_call_id: string; content: string }
 
 export type OpenAIUserContentPart =
@@ -511,7 +518,11 @@ export function buildOpenAIChatCompletionsBody(
 ): OpenAIChatCompletionsRequestBody {
   const body: OpenAIChatCompletionsRequestBody = {
     model: request.modelId,
-    messages: inferenceItemsToOpenAIMessages(request.systemPrompt, request.items),
+    messages: inferenceItemsToOpenAIMessages(
+      request.systemPrompt,
+      request.items,
+      options?.passBackReasoningContent === true,
+    ),
     stream: true,
   }
   if (request.tools.length > 0) {
@@ -589,16 +600,25 @@ interface MutableOpenAIToolCall {
   arguments: string
 }
 
-function inferenceItemsToOpenAIMessages(systemPrompt: string, items: InferenceItem[]): OpenAIChatMessage[] {
+function inferenceItemsToOpenAIMessages(
+  systemPrompt: string,
+  items: InferenceItem[],
+  passBackReasoningContent: boolean,
+): OpenAIChatMessage[] {
   const messages: OpenAIChatMessage[] = []
-  let assistant: { content: string; toolCalls: OpenAIChatToolCall[] } | null = null
+  let assistant: { content: string; toolCalls: OpenAIChatToolCall[]; reasoningContent: string } | null = null
+  let pendingReasoningContent = ''
 
   const flushAssistant = () => {
+    pendingReasoningContent = ''
     if (!assistant) return
     messages.push({
       role: 'assistant',
       content: assistant.content || null,
       ...(assistant.toolCalls.length > 0 ? { tool_calls: assistant.toolCalls } : {}),
+      ...(passBackReasoningContent && (assistant.reasoningContent || assistant.toolCalls.length > 0)
+        ? { reasoning_content: assistant.reasoningContent }
+        : {}),
     })
     assistant = null
   }
@@ -613,11 +633,13 @@ function inferenceItemsToOpenAIMessages(systemPrompt: string, items: InferenceIt
         messages.push({ role: 'user', content: userContentToOpenAI(item.content) })
         break
       case 'assistant_text':
-        assistant ??= { content: '', toolCalls: [] }
+        assistant ??= { content: '', toolCalls: [], reasoningContent: pendingReasoningContent }
+        pendingReasoningContent = ''
         assistant.content += item.text
         break
       case 'tool_use':
-        assistant ??= { content: '', toolCalls: [] }
+        assistant ??= { content: '', toolCalls: [], reasoningContent: pendingReasoningContent }
+        pendingReasoningContent = ''
         assistant.toolCalls.push({
           id: item.toolUseId,
           type: 'function',
@@ -651,6 +673,11 @@ function inferenceItemsToOpenAIMessages(systemPrompt: string, items: InferenceIt
         break
       }
       case 'assistant_thinking':
+        if (passBackReasoningContent) {
+          if (assistant) assistant.reasoningContent += item.text
+          else pendingReasoningContent += item.text
+        }
+        break
       case 'assistant_redacted_thinking':
         break
     }
@@ -1001,4 +1028,3 @@ function openAIUsage(usage: Record<string, unknown>) {
     cacheWriteTokens: 0,
   }
 }
-

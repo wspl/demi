@@ -366,6 +366,98 @@ test('OpenAI Chat Completions request body maps text, tools, tool replay, servic
   expect(body.stream_options).toEqual({ include_usage: true })
 })
 
+test('OpenAI Chat Completions omits compatible reasoning replay by default', () => {
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'inspect first', signature: null },
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
+        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+      ],
+    }),
+    undefined,
+  )
+
+  expect(body.messages[1]).toEqual({
+    role: 'assistant',
+    content: null,
+    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
+  })
+})
+
+test('OpenAI Chat Completions replays reasoning_content for compatible thinking tool loops', () => {
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'inspect ', signature: null },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'first', signature: null },
+        { type: 'assistant_redacted_thinking', modelId: 'deepseek-v4-pro', data: 'opaque' },
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
+        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'contents' }], isError: false },
+      ],
+    }),
+    { passBackReasoningContent: true },
+  )
+
+  expect(body.messages[1]).toEqual({
+    role: 'assistant',
+    content: null,
+    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
+    reasoning_content: 'inspect first',
+  })
+})
+
+test('OpenAI Chat Completions emits empty reasoning_content for a reasoning-free tool round', () => {
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'hello' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'first thought', signature: null },
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-1', toolName: 'read_file', input: { path: 'a.ts' } },
+        { type: 'tool_result', toolUseId: 'call-1', output: [{ type: 'text', text: 'a' }], isError: false },
+        { type: 'tool_use', modelId: 'deepseek-v4-pro', toolUseId: 'call-2', toolName: 'read_file', input: { path: 'b.ts' } },
+        { type: 'tool_result', toolUseId: 'call-2', output: [{ type: 'text', text: 'b' }], isError: false },
+      ],
+    }),
+    { passBackReasoningContent: true },
+  )
+
+  expect(body.messages[1]).toMatchObject({ role: 'assistant', reasoning_content: 'first thought' })
+  expect(body.messages[3]).toEqual({
+    role: 'assistant',
+    content: null,
+    tool_calls: [{ id: 'call-2', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.ts"}' } }],
+    reasoning_content: '',
+  })
+})
+
+test('OpenAI Chat Completions keeps reasoning_content within assistant segment boundaries', () => {
+  const body = buildOpenAIChatCompletionsBody(
+    request({
+      items: [
+        { type: 'user_message', content: [{ type: 'text', text: 'first' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'thought one', signature: null },
+        { type: 'assistant_text', modelId: 'deepseek-v4-pro', text: 'answer one' },
+        { type: 'user_message', content: [{ type: 'text', text: 'second' }] },
+        { type: 'assistant_thinking', modelId: 'deepseek-v4-pro', text: 'orphaned', signature: null },
+        { type: 'user_message', content: [{ type: 'text', text: 'third' }] },
+        { type: 'assistant_text', modelId: 'deepseek-v4-pro', text: 'answer three' },
+      ],
+    }),
+    { passBackReasoningContent: true },
+  )
+
+  expect(body.messages).toEqual([
+    { role: 'user', content: 'first' },
+    { role: 'assistant', content: 'answer one', reasoning_content: 'thought one' },
+    { role: 'user', content: 'second' },
+    { role: 'user', content: 'third' },
+    { role: 'assistant', content: 'answer three' },
+  ])
+})
+
 test('OpenAI Chat Completions stream maps split text, tool call arguments, and usage', async () => {
   const events = await collect(mapOpenAIChatCompletionStream(eventsFromData([
     {
