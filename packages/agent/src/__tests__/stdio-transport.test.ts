@@ -18,6 +18,7 @@ import {
   type ClientFrame,
 } from '../index'
 import { createStdioClientTransport, createStdioServerTransport } from '../stdio-transport'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -251,8 +252,16 @@ class StdioScenarioProvider implements AgentProvider {
   afterCompactRequest: InferenceRequest | null = null
   private normalCalls = 0
 
+  clone(): AgentProvider {
+    return this
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
-    if (request.systemPrompt.includes('Summarize the previous conversation')) {
+    const finalItem = request.items.at(-1)
+    if (
+      finalItem?.type === 'user_message' &&
+      finalItem.content.some((block) => block.type === 'text' && block.text === COMPACTION_SUMMARY_INSTRUCTION)
+    ) {
       this.summaryRequests += 1
       yield events.text('stdio summary')
       yield events.response()

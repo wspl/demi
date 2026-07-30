@@ -3,6 +3,7 @@ import { deferred } from '@demicodes/utils'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { AgentSession, TranscriptLog } from '../index'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
 import {
   assertNoOrphanToolItems,
   assertTranscriptInvariants,
@@ -60,8 +61,14 @@ test('AgentSession marathon keeps requests and transcript consistent across long
       return [events.text('resume recovered'), events.response()]
     },
     (request) => {
-      expect(request.tools).toEqual([])
-      expect(request.systemPrompt).toContain('Summarize the previous conversation')
+      expect(request.systemPrompt).toBe('system prompt')
+      expect(request.items.at(-1)).toEqual({
+        type: 'user_message',
+        content: [
+          { type: 'text', text: 'preamble' },
+          { type: 'text', text: COMPACTION_SUMMARY_INSTRUCTION },
+        ],
+      })
       assertNoOrphanToolItems(request.items)
       expect(JSON.stringify(request.items)).toContain('retry recovered')
       expect(JSON.stringify(request.items)).toContain('resume recovered')

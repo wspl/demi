@@ -62,6 +62,10 @@ export class GrokBuildHttpError extends Error {
 export class GrokBuildProvider implements AgentProvider {
   constructor(private readonly options: GrokBuildRuntimeOptions) {}
 
+  clone(): AgentProvider {
+    return new GrokBuildProvider(this.options)
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     if (request.cancel.aborted) {
       yield { type: 'abort' }

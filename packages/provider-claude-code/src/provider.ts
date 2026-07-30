@@ -76,12 +76,14 @@ interface ActiveClaudeRun {
 type ToolCallEvent = Extract<ProviderEvent, { type: 'tool_call_requested' }>
 
 export class ClaudeCodeProvider implements AgentProvider {
+  private readonly cloneOptions: ClaudeCodeRuntimeOptions
   private readonly transportFactory: ClaudeTransportFactory
   private readonly quota: ProviderQuota | null
   private readonly getActiveCredentialId: (() => Promise<string | null>) | null
   private active: ActiveClaudeRun | null = null
 
   constructor(options: ClaudeCodeRuntimeOptions = {}) {
+    this.cloneOptions = options
     this.transportFactory =
       options.transportFactory ??
       new ClaudeCliTransportFactory({
@@ -98,6 +100,13 @@ export class ClaudeCodeProvider implements AgentProvider {
       })
     this.quota = options.quota ?? null
     this.getActiveCredentialId = options.getActiveCredentialId ?? null
+  }
+
+  clone(): AgentProvider {
+    return new ClaudeCodeProvider({
+      ...this.cloneOptions,
+      transportFactory: this.transportFactory,
+    })
   }
 
   private observeQuotaFromMessage(message: unknown): void {

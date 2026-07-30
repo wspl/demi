@@ -139,6 +139,10 @@ class GateProvider implements AgentProvider {
     this.gates = turns.map(() => deferred<void>())
   }
 
+  clone(): AgentProvider {
+    return this
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     const index = this.requests.length
     this.requests.push(request)

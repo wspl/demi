@@ -85,6 +85,10 @@ const DEFAULT_EFFORT_BUDGET_TOKENS: Record<string, number> = {
 export class GoogleProvider implements AgentProvider {
   constructor(private readonly options: GoogleRuntimeOptions) {}
 
+  clone(): AgentProvider {
+    return new GoogleProvider(this.options)
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     if (request.cancel.aborted) {
       yield { type: 'abort' }
