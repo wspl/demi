@@ -12,6 +12,7 @@ import { findResumePoint } from './recovery'
 import type {
   AgentHarnessRuntime,
   AgentMetadata,
+  AgentSessionCloneParams,
   AgentSessionOptions,
   AgentSessionParams,
   AgentSessionRestoreParams,
@@ -270,6 +271,31 @@ export class AgentSession<State> {
       resolve: noop,
       reject: noop,
     })
+  }
+
+  /**
+   * Creates an isolated session from a point-in-time copy.
+   *
+   * Model, transcript, and state are copied by default. Runtime configuration
+   * (harness runtime, cwd) is shared unless overridden. The provider is an
+   * independent runtime from `AgentProvider.clone()` unless `provider` is
+   * supplied. Parent persistence store is never inherited.
+   */
+  clone(overrides: AgentSessionCloneParams<State> = {}): AgentSession<State> {
+    return new AgentSession<State>(
+      {
+        provider: overrides.provider ?? this.provider.clone(),
+        model: structuredClone(overrides.model ?? this.model),
+        cwd: overrides.cwd ?? this.cwd,
+        runtime: overrides.runtime ?? this.runtime,
+        transcript: structuredClone(overrides.transcript ?? this.transcriptLog.toJSON()),
+        state: overrides.state !== undefined ? overrides.state : structuredClone(this.agentState),
+      },
+      {
+        retry: this.retryPolicy,
+        ...overrides.options,
+      },
+    )
   }
 
   /**

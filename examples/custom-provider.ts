@@ -22,24 +22,27 @@ export function createScriptedProvider(): Provider {
   return defineProvider({
     id: 'scripted',
     displayName: 'Scripted',
-    createRuntime(): AgentProvider {
-      return {
-        run(request: InferenceRequest): ProviderRun {
-          async function* events(): AsyncGenerator<ProviderEvent> {
-            const lastUser = [...request.items].reverse().find((item) => item.type === 'user_message')
-            const text =
-              lastUser?.type === 'user_message'
-                ? lastUser.content.map((block) => (block.type === 'text' ? block.text : '')).join('')
-                : ''
-            yield { type: 'text_delta', text: `echo: ${text}` }
-            // A terminal `response` event (with token usage) ends the turn.
-            yield { type: 'response', usage: zeroUsage() }
-          }
-          return events()
-        },
-      }
-    },
+    createRuntime: createScriptedRuntime,
   })
+}
+
+function createScriptedRuntime(): AgentProvider {
+  return {
+    run(request: InferenceRequest): ProviderRun {
+      async function* events(): AsyncGenerator<ProviderEvent> {
+        const lastUser = [...request.items].reverse().find((item) => item.type === 'user_message')
+        const text =
+          lastUser?.type === 'user_message'
+            ? lastUser.content.map((block) => (block.type === 'text' ? block.text : '')).join('')
+            : ''
+        yield { type: 'text_delta', text: `echo: ${text}` }
+        // A terminal `response` event (with token usage) ends the turn.
+        yield { type: 'response', usage: zeroUsage() }
+      }
+      return events()
+    },
+    clone: () => createScriptedRuntime(),
+  }
 }
 
 async function main(): Promise<void> {

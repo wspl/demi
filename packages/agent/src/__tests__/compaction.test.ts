@@ -1178,6 +1178,10 @@ class CompactGateProvider implements AgentProvider {
 
   constructor(private readonly normalTurns: Array<(request: InferenceRequest) => ProviderEvent[]> = []) {}
 
+  clone(): AgentProvider {
+    return this
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.requests.push(request)
     if (request.systemPrompt.includes('Summarize the previous conversation')) {
@@ -1202,6 +1206,10 @@ class HangingSummaryProvider implements AgentProvider {
   readonly requests: InferenceRequest[] = []
   readonly summaryStarted = deferred<void>()
   readonly cancelled = deferred<void>()
+
+  clone(): AgentProvider {
+    return this
+  }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     this.requests.push(request)
@@ -1250,6 +1258,10 @@ function withTimeout<T>(promise: Promise<T>, ms = 1_000): Promise<T> {
 // requests). With a misconfigured/too-low threshold the recent window stays "over limit" no matter
 // what, which without a guard makes the turn compact forever.
 class AlwaysOverLimitProvider implements AgentProvider {
+  clone(): AgentProvider {
+    return this
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     if (request.systemPrompt.includes('Summarize the previous conversation')) {
       yield events.text('summary')

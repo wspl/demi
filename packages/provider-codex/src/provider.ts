@@ -72,6 +72,7 @@ const DEFAULT_SSE_HEADER_TIMEOUT_MS = 20_000
 const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 10_000
 
 export class CodexProvider implements AgentProvider {
+  private readonly cloneOptions: CodexRuntimeOptions
   private readonly config: Required<Omit<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers' | 'clientVersion'>> &
     Pick<CodexProviderConfig, 'codexHome' | 'baseUrl' | 'headers' | 'clientVersion'>
   private readonly authStore: CodexAuthStore
@@ -79,6 +80,7 @@ export class CodexProvider implements AgentProvider {
   private readonly quota: ProviderQuota | null
 
   constructor(options: CodexRuntimeOptions = {}) {
+    this.cloneOptions = options
     this.config = {
       codexHome: options.codexHome,
       baseUrl: options.baseUrl,
@@ -93,6 +95,10 @@ export class CodexProvider implements AgentProvider {
     this.authStore = options.authStore ?? new FileCodexAuthStore({ codexHome: options.codexHome })
     this.transport = options.transportImpl ?? createCodexTransport(this.config.transport)
     this.quota = options.quota ?? null
+  }
+
+  clone(): AgentProvider {
+    return new CodexProvider(this.cloneOptions)
   }
 
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
