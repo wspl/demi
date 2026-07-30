@@ -251,6 +251,10 @@ class StdioScenarioProvider implements AgentProvider {
   afterCompactRequest: InferenceRequest | null = null
   private normalCalls = 0
 
+  clone(): AgentProvider {
+    return this
+  }
+
   async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
     if (request.systemPrompt.includes('Summarize the previous conversation')) {
       this.summaryRequests += 1
