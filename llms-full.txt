@@ -18,7 +18,8 @@ client/server protocol, and a ready-made coding-agent harness — composable
 packages you assemble into your own app.
 
 - **Provider-agnostic** — one inference contract (`@demicodes/provider`); ship adapters
-  for Claude Code, Codex, the Anthropic API, the OpenAI API, or your own.
+  for Claude Code, Codex, the Anthropic API, the OpenAI API, Google Gemini, Grok Build,
+  or your own.
 - **Host-abstracted** — the shell runs against a `Host` (`fs` / `process` / `store`),
   with a Node reference (`@demicodes/host-local`) and room for remote/container/sandbox backends.
 - **Transport-neutral** — drive a session in-process, over stdio, or over WebSocket;
@@ -36,9 +37,9 @@ Packages depend strictly downward (enforced by a boundary test):
 
 ```
 utils, core            shared helpers + data types (zero deps)
-provider               abstract inference contract  -> core
+provider               abstract inference contract  -> core, utils
 shell                  bash engine + Host contract  -> just-bash, utils
-host-local             Node Host adapter            -> shell, utils
+host-local             Node Host + local assembly   -> agent, provider, shell, utils
 agent                  session runtime + protocol   -> core, provider, shell, utils
 coding-agent           coding harness + commands    -> agent, core, shell, utils
 provider-*             concrete providers           -> core, provider, utils
@@ -51,7 +52,9 @@ runtime/shell design lives under [docs/](docs/). Notable design docs:
 
 - [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
 - [Provider global credentials](docs/provider-global-credentials.md) — multi-account pool + global `setActive`
+- [Provider / session clone](docs/provider-session-clone.md) — required `.clone()` for isolated forks
 - [Command bridge](docs/command-bridge.md) — LocalHost PATH shims + UDS for agent tools
+- [Provider errors & retries](docs/provider-errors-and-retries.md) — classified failures and resume recovery
 
 ## Install
 
@@ -91,15 +94,21 @@ const client = server.client()
 
 // 5. Render transcript updates (the same blocks the REPL and web UI render).
 client.subscribe((event) => {
-  if (event.type === 'transcript_snapshot' || event.type === 'transcript_patch') {
+  if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
     // event.blocks -> your UI
   }
 })
 
 // 6. Open a session with a model from the provider's catalog, then send a turn.
+// sessionId is caller-owned: reconnecting with the same id resumes that conversation.
 const catalog = await listClaudeCodeModels()
 const model = catalog.models.find((m) => m.id === catalog.defaultModelId) ?? catalog.models[0] ?? null
-await client.open({ providerId: 'claude-code', model: modelSelectionFromCatalog('claude-code', model) }, process.cwd())
+const sessionId = crypto.randomUUID()
+await client.open(
+  { providerId: 'claude-code', model: modelSelectionFromCatalog('claude-code', model) },
+  process.cwd(),
+  sessionId,
+)
 await client.send([{ type: 'text', text: 'Create hello.txt with "hi", then read it back.' }])
 ```
 
@@ -182,9 +191,13 @@ The runtime is where a turn actually runs:
 ```ts
 interface AgentProvider {
   run(request: InferenceRequest): ProviderRun  // an AsyncIterable<ProviderEvent>
+  clone(): AgentProvider                       // independent runtime, same configuration
   dispose?(): void | Promise<void>             // release long-lived resources (e.g. a CLI subprocess)
 }
 ```
+
+`clone()` must return a runtime that can be disposed independently. Auth stores and
+quota observers may be shared; subprocesses, sockets, and continuation state must not.
 
 `run()` returns an async iterable of `ProviderEvent`s. Yield them as the backend
 streams:
@@ -207,26 +220,29 @@ End every successful turn with a single `response` event carrying token usage.
 ## A minimal provider
 
 ```ts
-import { defineProvider, zeroUsage } from '@demicodes/provider'
+import { defineProvider, zeroUsage, type AgentProvider, type InferenceRequest, type ProviderRun } from '@demicodes/provider'
 
 export function createEchoProvider() {
   return defineProvider({
     id: 'echo',
     displayName: 'Echo',
-    createRuntime() {
-      return {
-        run(request: InferenceRequest): ProviderRun {
-          async function* events() {
-            const lastUser = [...request.items].reverse().find((i) => i.type === 'user_message')
-            const text = lastUser?.content.map((b) => (b.type === 'text' ? b.text : '')).join('') ?? ''
-            yield { type: 'text_delta', text: `You said: ${text}` }
-            yield { type: 'response', usage: zeroUsage() }
-          }
-          return events()
-        },
-      }
-    },
+    createRuntime: createEchoRuntime,
   })
+}
+
+function createEchoRuntime(): AgentProvider {
+  return {
+    run(request: InferenceRequest): ProviderRun {
+      async function* events() {
+        const lastUser = [...request.items].reverse().find((i) => i.type === 'user_message')
+        const text = lastUser?.content.map((b) => (b.type === 'text' ? b.text : '')).join('') ?? ''
+        yield { type: 'text_delta', text: `You said: ${text}` }
+        yield { type: 'response', usage: zeroUsage() }
+      }
+      return events()
+    },
+    clone: () => createEchoRuntime(),
+  }
 }
 ```
 
@@ -244,8 +260,8 @@ re-implementing several of these:
 - `zeroUsage` (from `@demicodes/core`) — a zeroed `TokenUsage`.
 - `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero` (from `@demicodes/utils`).
 
-See `packages/provider-anthropic-api` (HTTP) and `packages/provider-codex` (CLI/OAuth)
-for full references.
+See `packages/provider-anthropic-api` / `packages/provider-google` (HTTP) and
+`packages/provider-codex` (CLI/OAuth) for full references.
 
 ## Optional: quota
 
@@ -273,12 +289,8 @@ return defineProvider({
   id: 'acme',
   displayName: 'Acme',
   quota,
-  createRuntime: () => ({
-    run(request) {
-      // During inference, call quota.observeResponse?.({ headers }) when useful.
-      // …
-    },
-  }),
+  // Runtime must implement AgentProvider.clone() (independent live process / continuation state).
+  createRuntime: () => new AcmeProvider({ quota }),
 })
 ```
 
@@ -405,8 +417,11 @@ interface HostStore {
 }
 ```
 
-Used to persist command artifacts (the `/@` virtual filesystem). A throwaway
-in-memory map is a valid implementation for ephemeral sandboxes.
+Used for agent session checkpoints (`agent-sessions/<id>/checkpoint.json`) and
+command artifacts (the `/@` virtual filesystem). Implementations must round-trip
+`Uint8Array` and `bigint` (e.g. via `stringifyPortableJson` /
+`parsePortableJson` from `@demicodes/utils`). A throwaway in-memory map is a
+valid implementation for ephemeral sandboxes.
 
 ## Wiring it up
 
@@ -441,16 +456,18 @@ turn. You never couple to the session internals.
 An `AgentClient` wraps a transport. Pick the one that matches where the session runs:
 
 ```ts
-import { AgentClient, AgentServer, createStdioClientTransport } from '@demicodes/agent'
+import { AgentClient, AgentServer, createWebSocketClientTransport } from '@demicodes/agent'
+import { createStdioClientTransport } from '@demicodes/agent/stdio'
 
 // 1. In-process — the server runs in the same process (tests, a local app):
 const server = new AgentServer({ agent, providers })
 const client = server.client()
 
-// 2. Over stdio — the session runs in a child process:
+// 2. Over stdio — the session runs in a child process (Node-only subpath):
 const client = new AgentClient(createStdioClientTransport(child.stdout, child.stdin))
 
-// 3. Over WebSocket — the session runs on a server (see the websocket transport).
+// 3. Over WebSocket — the session runs on a server:
+const client = new AgentClient(createWebSocketClientTransport(socket))
 ```
 
 All three expose the identical surface, so your UI code is transport-agnostic.
@@ -458,14 +475,14 @@ All three expose the identical surface, so your UI code is transport-agnostic.
 ## Render from events
 
 `subscribe(listener)` returns an unsubscribe function. The listener receives
-protocol events; the two that carry the transcript are `transcript_snapshot`
-(the full block list) and `transcript_patch` (an updated block list). Render the
-`Block`s — the same blocks the REPL and web UI render:
+protocol events; the two that carry the transcript are `transcript_reset`
+(full block list replacing client state) and `transcript_patch` (incremental
+updates). Render the `Block`s — the same blocks the REPL and web UI render:
 
 ```ts
 const unsubscribe = client.subscribe((event) => {
   switch (event.type) {
-    case 'transcript_snapshot':
+    case 'transcript_reset':
     case 'transcript_patch':
       render(event.blocks)             // Block[] -> your view
       break
@@ -483,19 +500,23 @@ const unsubscribe = client.subscribe((event) => {
 Block-to-view rules (titles, output truncation, stdout/stderr interleaving, the
 `shell_exec` / `yield` blocks) are specified in
 [docs/tool-rendering-spec.md](../tool-rendering-spec.md). `@demicodes/web-ui` ships
-shared, platform-neutral helpers (e.g. `trimToolSummary`) you can reuse.
+shared, platform-neutral helpers (e.g. `trimToolSummary`) you can reuse. Tool blocks
+carry bounded UI data on `block.view` (for shell tools, a `ShellToolView` with
+`chunks`), not unbounded command status dumps.
 
 ## Drive a turn
 
 ```ts
-await client.open(selection, cwd)              // start a session (ProviderSelection + cwd)
+const sessionId = crypto.randomUUID()
+await client.open(selection, cwd, sessionId)       // ProviderSelection + cwd + caller-owned session id
 await client.send([{ type: 'text', text: 'hi' }])  // queue/run a user turn
 await client.steer([{ type: 'text', text: 'also…' }])  // interject into a running turn
-const result = await client.abort()            // interrupt
-await client.close()                           // tear down
+const result = await client.abort()                // interrupt
+await client.close()                               // tear down
 ```
 
-Build the `ProviderSelection` from a provider's catalog with
+`sessionId` is stable and caller-owned: reconnecting with the same id resumes that
+conversation. Build the `ProviderSelection` from a provider's catalog with
 `modelSelectionFromCatalog` (see [add-a-provider.md](add-a-provider.md)) rather than
 hand-assembling a `Model`.
 
@@ -504,6 +525,8 @@ hand-assembling a `Model`.
 - `@demicodes/repl` — a terminal renderer over the in-process/stdio client.
 - `@demicodes/web-ui` — a Vue UI that consumes an **injected** `AgentClient`, so the same
   components work against any transport. It is the template for a custom browser UI.
+- `@demicodes/web` — the Demi web product (Vite browser app + embedded Node/Bun backend)
+  that wires `@demicodes/web-ui` to a local `AgentServer`.
 
 ---
 
@@ -552,8 +575,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/utils`.
-- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), and model catalog shape.
-- Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`), credential public types, and provider test helpers only from `@demicodes/provider/testing`.
+- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, required `AgentProvider.clone()` for independent per-session runtimes, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), the shared node-only credential pool IO behind the `@demicodes/provider/credentials-pool` subpath (the main entry stays platform-neutral), and model catalog shape.
+- Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`), credential public types, provider test helpers only from `@demicodes/provider/testing`, and pool IO only from `@demicodes/provider/credentials-pool`.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
 - Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or REPL.
@@ -567,6 +590,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
+- Registered `Command.run` receives the `BashEnvironment` Host in its execution context; command implementations use that Host instead of closing over an assembly-time Host.
 - Runtime state such as command JSON state and agent session snapshots goes through `Host.store`; do not keep a separate top-level store adapter boundary.
 - HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, virtual, or policy-restricted hosts.
 - BashEnvironment must register fork portable commands before falling back to `Host.process.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
@@ -587,11 +611,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: AgentSession, AgentServer, AgentClient, transcript replay, compaction, transport frames, transcript patches, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, host-agnostic `prepareSessionShell` and `runCommandLine` on AgentServer, and assembly of one harness with the standard shell runtime.
+- Owns: AgentSession, AgentServer, AgentClient, action-scoped caller metadata, transcript replay, compaction, `AgentSession.clone()` for isolated snapshot copies (see `docs/provider-session-clone.md`), transport frames, transcript patches, action-aware Host resolution, per-Host BashEnvironment reuse and shell-handle ownership checks, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, host-agnostic `prepareShell` and shell-origin `runCommandLine` on AgentServer, and assembly of one harness with the standard shell runtime.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpath `@demicodes/agent/stdio` for stdio transport only.
 - Must not: import concrete providers, `@demicodes/host-local`, or UI packages; must not own UDS sockets, PATH shim materialization, or `bridge-bin` layout.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
-- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, optional `prepareSessionShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. Local open-box assembly (bridge default on, UDS + shims) lives entirely in `@demicodes/host-local` via `createLocalAgentServer`.
+- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, optional `prepareShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target. Local open-box assembly (bridge default on, UDS + shims) lives entirely in `@demicodes/host-local` via `createLocalAgentServer`.
 
 ### `@demicodes/coding-agent`
 
@@ -606,7 +630,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Claude Code provider transport, JSONL/MCP mapping, model catalog mapping, provider event mapping, OAuth usage quota probe (`/api/oauth/usage`), active OAuth resolution for CLI env overlay, demi credential pool for global multi-credential switch (see `docs/provider-global-credentials.md`), and provider-specific tests.
+- Owns: Claude Code provider transport, JSONL/MCP mapping (including preservation of model-emitted parallel tool batches across the sequential SDK-MCP callback channel; see `docs/tool-call-concurrency.md`), model catalog mapping, provider event mapping, OAuth usage quota probe (`/api/oauth/usage`), active OAuth resolution for CLI env overlay, provider glue over the shared credential pool (`@demicodes/provider/credentials-pool`; see `docs/provider-global-credentials.md`), and provider-specific tests.
 - Public boundary: `createClaudeCodeProvider`, model catalog function, quota helpers, and public option types from root.
 - Secret boundary: OAuth tokens and pool secret files stay inside the provider creator/auth resolver and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: CLI, JSONL, output, transport, parser, credential pool IO, and test cache helpers stay behind implementation files.
@@ -616,7 +640,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, rate-limit quota probe (`x-codex-*` headers), demi credential pool for global multi-credential switch (see `docs/provider-global-credentials.md`), and provider-specific tests.
+- Owns: Codex auth reuse, Responses transport, model catalog mapping, provider event mapping, rate-limit quota probe (`x-codex-*` headers), provider glue over the shared credential pool (`@demicodes/provider/credentials-pool`; see `docs/provider-global-credentials.md`), and provider-specific tests.
 - Public boundary: `createCodexProvider`, auth status helper, model catalog function, quota helpers, transport mode type, and public option types from root.
 - Secret boundary: auth.json material and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, credential pool IO, and test cache helpers stay behind implementation files.
@@ -626,7 +650,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: official OpenAI Responses API request mapping, explicit Chat Completions wire option for OpenAI-compatible endpoints, SSE event mapping including observed compatible reasoning delta extensions such as `choices[].delta.reasoning_content`, official OpenAI API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Codex-visible defaults unless caller-supplied models replace it, and provider-specific tests.
+- Owns: official OpenAI Responses API request mapping, explicit Chat Completions wire option for OpenAI-compatible endpoints, SSE event mapping including observed compatible reasoning delta extensions such as `choices[].delta.reasoning_content`, opt-in Chat Completions replay of thinking as `reasoning_content` (`request.passBackReasoningContent`, required for DeepSeek-style thinking + tool loops), official OpenAI API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Codex-visible defaults unless caller-supplied models replace it, and provider-specific tests.
 - Public boundary: `createOpenAIApiProvider`, default model catalog function, and public option/model types from root.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`. `wireApi` defaults to `responses`; compatible endpoints can pass `wireApi: 'chat-completions'`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
@@ -639,7 +663,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
 - Owns: Anthropic Messages API request mapping, event-stream mapping, official Anthropic API defaults, endpoint/env/api-key resolution, compatible endpoint options, model metadata mapping mirrored from Claude Code defaults unless caller-supplied models replace it, and provider-specific tests.
 - Public boundary: `createAnthropicApiProvider`, default model catalog function, and public option/model types from root.
-- Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.anthropic.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `ANTHROPIC`.
+- Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.anthropic.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `ANTHROPIC`. `baseUrl` must already include the API version prefix (typically `/v1`); the provider only appends `/messages` (or leaves the URL alone when it already ends with `/messages`). Claude Code / Kimi-style roots such as `https://api.kimi.com/coding/` are not drop-in values — pass `…/coding/v1` instead.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: Messages body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
@@ -655,6 +679,17 @@ Test code may depend upward for integration coverage. Production code must not.
 - Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
+### `@demicodes/provider-google`
+
+- Status: implemented.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Owns: Google Gemini `generateContent` API request mapping (native wire, not OpenAI-compatible), SSE event mapping including thought summaries / thought signatures / thinking token counts, tool-returned media as inline parts (including video), official Gemini API defaults, endpoint/env/api-key resolution, model metadata mapping, and provider-specific tests.
+- Public boundary: `createGoogleProvider`, default model catalog function, and public option/model types from root.
+- Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://generativelanguage.googleapis.com/v1beta`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `GOOGLE`.
+- Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
+- Internal boundary: generateContent body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+
 ### `@demicodes/repl`
 
 - Status: implemented.
@@ -666,13 +701,15 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web-ui`
 
-- Status: planned.
+- Status: implemented; published to npm as a source-form package (no build step — `.vue`/`.ts`
+  source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
-  by supplying an `AgentClient` and a control client.
+  by supplying an `AgentClient` and a control client. External products consume the published
+  package (registry semver), not `link:` paths into this repo.
 - Must not: import Node, `@demicodes/host-local`, `@demicodes/shell`, `@demicodes/coding-agent`, concrete
   providers, `@demicodes/web`, or `@demicodes/repl`. It may import the `@demicodes/agent` client surface
   only (`AgentClient`, WebSocket client transport, frame/event/block types).
@@ -682,11 +719,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web`
 
-- Status: planned.
+- Status: implemented.
 - Production deps: `@demicodes/web-ui`, `@demicodes/agent`, `@demicodes/host-local`, `@demicodes/coding-agent`,
   `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
   `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`,
-  `@demicodes/shell`.
+  `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the Demi web product — the Vite-dev-only browser app plus its embedded Node/Bun
   backend. The server serves only the WebSocket/API endpoints (per-session `/agent` + a
   `/control` RPC), assembling shared public providers and a per-cwd `AgentServer` over
@@ -730,9 +767,10 @@ provider-codex -> core, provider, utils
 provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
+provider-google -> core, provider, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils
 web-ui -> agent, core, utils
-web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell
+web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
 agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
 ```
 
@@ -741,7 +779,9 @@ is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not 
 production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
 enforced at the manifest level by that test; `web` is a product leaf like `repl`.
 
-The graph is a compact view of the `Production deps` fields in the package registry. A package accepted by the graph but not yet implemented is still part of the design contract.
+The graph is a compact view of the `Production deps` fields in the package registry. Every
+package in the registry is implemented; keep the registry, this graph, and the maps in
+`packages/core/src/__tests__/platform-entrypoints.test.ts` in lockstep.
 
 ## Global Boundary Rules
 
@@ -764,6 +804,56 @@ Existing boundary coverage:
 - The same test builds the production source package graph and fails on cycles or edges outside the enforced graph.
 - The same test checks that production workspace imports are declared in package `dependencies`.
 - The same test checks public provider root exports so internal transport, parser, protocol, auth-store, stream, and testing helpers do not leak through by accident.
+
+---
+
+# Reference: Package Versioning
+<!-- source: docs/package-versioning.md -->
+
+# Package Versioning
+
+Demi versions all first-party packages with one shared version. The Changesets
+configuration places these packages in a single fixed group, so any
+release-worthy change bumps the whole group together and publishes every public
+package in the group.
+
+## Release Set
+
+The fixed group contains:
+
+- `@demicodes/agent`
+- `@demicodes/agent-eval` (private)
+- `@demicodes/coding-agent`
+- `@demicodes/core`
+- `@demicodes/host-local`
+- `@demicodes/provider`
+- `@demicodes/provider-anthropic-api`
+- `@demicodes/provider-claude-code`
+- `@demicodes/provider-codex`
+- `@demicodes/provider-google`
+- `@demicodes/provider-grok-build`
+- `@demicodes/provider-openai-api`
+- `@demicodes/repl` (private)
+- `@demicodes/shell`
+- `@demicodes/utils`
+- `@demicodes/web` (private)
+- `@demicodes/web-ui`
+
+Private workspaces participate in the shared version but are not published.
+`@demicodes/just-bash` remains outside the group because its version tracks the
+upstream just-bash release plus the Demi fork revision.
+
+## Version Selection
+
+Every changeset declares the semantic impact of its change. Changesets selects
+the highest required bump for the fixed group and applies the resulting version
+to every package in the release set. Package manifests, changelogs, npm
+artifacts, and Git tags therefore expose the same Demi release version.
+
+The repository release command publishes every group package whose shared
+version is absent from the registry. It refreshes the lockfile, builds all
+packages, validates packed dependency ranges and export targets, publishes the
+tarballs, and creates one package tag per artifact.
 
 ---
 
@@ -1009,15 +1099,14 @@ Three subscription providers reuse vendor CLI / desktop login material:
 - After switch: `auth.status`, `quota` (probe/observe/latest), and subsequent inference use the new active material.
 - Secrets never cross AgentClient / browser-visible frames.
 - Zero-config default: if demi has no pool yet, behavior matches today (read vendor default path / env / keychain as the sole active credential).
-- **Invoke vendor login**: product can ask demi to start the vendor’s own login flow (CLI / browser the vendor already uses). Demi does **not** complete OAuth or mint tokens itself.
-- **Import** vendor material into the pool and receive a stable `credentialId` (login itself does not return an id).
+- **Native login**: product can ask demi to run a login flow. For codex the flow is demi-native device-code login (public protocol: user confirms at `auth.openai.com/codex/device` from any browser on any device; pending URL + one-time code stream out via `onPending`, the completed material imports straight into the pool and returns its `credentialId`). grok-build uses the same native pattern over auth.x.ai's standard RFC 8628 device grant. claude-code uses a copy-back OAuth flow: `onPending` carries the authorize URL (`requiresCodeInput: true`), the product collects the pasted "code#state" string via `promptForCode`, and demi finishes the PKCE exchange; pool entries carry the refresh token and renew on expiry.
+- **Import** material created outside demi into the pool (`importDefault` snapshots the vendor default path / keychain; `add` registers product-supplied material). Both mint a stable `credentialId`.
 
 ### Non-goals
 
 - Multi-instance `Provider` ids for accounts.
 - Per-session or per-turn credential override on `ProviderSelection` / agent frames.
-- Demi-owned OAuth client, device-code UI, or token endpoint handling (that stays with Codex / Grok / Claude CLIs or official tools).
-- Login API returning a new `credentialId` (id appears only after **import** / **add**).
+- Demi-owned OAuth **registration** (client ids are the vendors' public clients). All three providers drive their public login protocols natively — headless and remote hosts cannot run a vendor browser login, so demi never spawns vendor CLIs for login.
 - API-key providers (`openai`, `anthropic`) in this design (they already take explicit keys; out of scope unless a later product wants the same pool shape).
 - Bidirectional continuous sync with vendor CLIs as a product feature (import is one-shot or explicit; optional export is not required).
 
@@ -1028,8 +1117,7 @@ Three subscription providers reuse vendor CLI / desktop login material:
 | Switch granularity | **Process-global active** per provider id |
 | How products switch accounts | Call `provider.credentials.setActive(id)` (or control RPC wrapping it) |
 | How products switch backends | Existing `ProviderSelection` / `set_provider` |
-| How a new account enters the system | **Invoke vendor login** → user finishes in vendor tool → **import** default (or `add`) → pool entry + `id` |
-| Does login return an id? | **No** — only import/add returns `ProviderCredentialInfo` with `id` |
+| How a new account enters the system | `beginLogin` native flow (codex / grok-build: device code; claude-code: copy-back code via `promptForCode`) → pool entry + `credentialId` returned directly; `importDefault` / `add` for material created outside demi |
 | Where non-active material lives | Demi-managed pool under `$DEMI_HOME` / `~/.demi` |
 | What inference reads | Always the **active** material via existing AuthStore / env resolution path |
 | Concurrent sessions | All sessions on that provider share the same active account |
@@ -1041,21 +1129,22 @@ Three subscription providers reuse vendor CLI / desktop login material:
 [unauthenticated or wrong account]
         │
         ▼
- credentials.beginLogin()     ← invoke vendor login only (no OAuth completion in demi)
+ credentials.beginLogin({ onPending, promptForCode? })
         │
-        │  user completes login in vendor tool
-        │  material lands in ~/.codex | ~/.grok | keychain/env
+        │  onPending → product relays verificationUrl (+ userCode) to the user,
+        │  who confirms from any browser on any device;
+        │  copy-back flows collect the pasted code via promptForCode
         ▼
- credentials.importDefault()  ← snapshot into demi pool; returns { id, label, … }
+ { status: 'completed', credentialId }   ← material imported into the pool
         │
         ▼
- credentials.setActive(id)    ← process-global switch (if import did not already activate)
+ credentials.setActive(id)    ← process-global switch (first login auto-activates)
         │
         ▼
  auth / quota / inference use active
 ```
 
-Adding a **second** account: beginLogin again (user logs into the other account in the vendor tool) → importDefault again → second id → setActive as needed. Product may need to warn that vendor default path is single-slot; import snapshots before overwriting.
+Adding a **second** account: beginLogin again (user confirms with the other account) → second `credentialId` → setActive as needed. `importDefault` / `add` cover material created outside demi (vendor CLI logins, env tokens, keychain).
 
 ## 4. Public contract (`@demicodes/provider`)
 
@@ -1096,18 +1185,16 @@ export interface ProviderCredentials {
   setActive(credentialId: string): Promise<ProviderCredentialActive> | ProviderCredentialActive
 
   /**
-   * Invoke the vendor’s own login flow (e.g. spawn `codex login` / `grok login` /
-   * `claude auth login` with inherited TTY or documented browser handoff).
-   * Does **not** complete OAuth inside demi and does **not** return a credential id.
-   * When the process exits successfully, vendor default material may be updated;
-   * product should call `importDefault` (or re-auth status) afterwards.
+   * Run the vendor's public login protocol natively (device code or copy-back
+   * OAuth), surfacing user-facing material via `onPending`. On completion the
+   * material is imported into the pool and its `credentialId` is returned.
    */
   beginLogin?(options?: ProviderCredentialLoginOptions): Promise<ProviderCredentialLoginResult>
 
   /**
    * Snapshot current vendor-default material into the demi pool.
    * Assigns a stable `id` and returns public metadata (no secrets).
-   * Typically used after `beginLogin` or after the user logged in outside demi.
+   * For material created outside demi (vendor CLI login, env, keychain).
    */
   importDefault?(): Promise<ProviderCredentialInfo>
 
@@ -1122,20 +1209,29 @@ export interface ProviderCredentials {
   remove?(credentialId: string): Promise<void>
 }
 
-export interface ProviderCredentialLoginOptions {
-  /** Abort the spawned login process. */
-  signal?: AbortSignal
-  /** Prefer browser vs device/CLI when the vendor supports both; best-effort. */
-  preferBrowser?: boolean
+/** User-facing material issued mid-flow; the product relays it to the user. */
+export interface ProviderCredentialLoginPending {
+  verificationUrl: string
+  /** One-time code the user enters at the verification URL (device-code flows). */
+  userCode?: string | null
+  expiresAt?: string | null
+  /** True when the user must bring a code back (`promptForCode` flows). */
+  requiresCodeInput?: boolean
 }
 
-/**
- * Login invoke result — status of the *vendor* process only, not a pool id.
- */
+export interface ProviderCredentialLoginOptions {
+  /** Abort the login flow. */
+  signal?: AbortSignal
+  /** Fires once when the flow issues user-facing material. */
+  onPending?: (pending: ProviderCredentialLoginPending) => void
+  /** Collects the code the user copied back from the vendor page. */
+  promptForCode?: () => Promise<string>
+}
+
 export type ProviderCredentialLoginResult =
-  | { status: 'completed' } // vendor CLI exited 0; material may now be importable
+  | { status: 'completed'; credentialId: string } // material imported into the pool
   | { status: 'cancelled' }
-  | { status: 'unavailable'; message: string } // no CLI / unsupported host
+  | { status: 'unavailable'; message: string }
   | { status: 'failed'; message: string }
 
 /** Provider-specific add payloads; widen per kit without putting secrets on the shared type surface. */
@@ -1148,7 +1244,7 @@ export type ProviderCredentialsCapability =
   | { mode: 'none' }
   | {
       mode: 'supported'
-      /** Can spawn / open vendor login (`beginLogin`). */
+      /** Can run the vendor's native login flow (`beginLogin`). */
       canBeginLogin?: boolean
       /** Can import from the vendor default location into the pool. */
       canImportDefault?: boolean
@@ -1161,9 +1257,8 @@ export type ProviderCredentialsCapability =
 
 **Id rules**
 
-- `beginLogin` → **no** id.
-- `importDefault` / `add` → **mint** stable id (e.g. content hash of account identity claims, or uuid if unknown); return in `ProviderCredentialInfo`.
-- Re-importing the same account should ideally upsert the same id (match on account email / accountId / entryKey) rather than duplicate rows.
+- `beginLogin` / `importDefault` / `add` all **mint** a stable id (e.g. content hash of account identity claims, or uuid if unknown).
+- Re-importing or re-logging-in the same account should upsert the same id (match on account email / accountId / entryKey) rather than duplicate rows.
 
 ### 4.2 `Provider` shell
 
@@ -1339,12 +1434,12 @@ Add control methods (names illustrative):
 - `listCredentials` `{ providerId }` → `ProviderCredentialInfo[]`
 - `getActiveCredential` `{ providerId }` → `ProviderCredentialActive`
 - `setActiveCredential` `{ providerId, credentialId }` → `ProviderCredentialActive`
-- `beginCredentialLogin` `{ providerId }` → `ProviderCredentialLoginResult` (no id; may be long-running / local-only)
+- `beginCredentialLogin` `{ providerId }` → `ProviderCredentialLoginResult` (long-running; pending material streams to the product via `onPending`)
 - `importDefaultCredential` `{ providerId }` → `ProviderCredentialInfo`
 
 Wire to `provider.credentials`. **Never** return secret fields.
 
-`beginCredentialLogin` is inherently **local host** (needs TTY/browser); remote multi-tenant servers may report `unavailable`.
+`beginCredentialLogin` works on headless and remote hosts: the user completes the vendor confirmation from any browser on any device.
 
 Web UI is optional follow-on; protocol types live with existing control protocol in web-ui transport.
 
@@ -1421,9 +1516,8 @@ Land as coherent commits; each slice leaves main green:
 |---|---|
 | New provider per account? | **No** |
 | Switch mechanism? | **Global `credentials.setActive`** |
-| Create OAuth inside demi? | **No** |
-| Invoke vendor login? | **Yes** — `beginLogin` (no id) |
-| How does an id appear? | **`importDefault` / `add`** after material exists |
+| Login inside demi? | **Yes** — native public protocols (device code / copy-back OAuth); no vendor CLI spawn |
+| How does an id appear? | **`beginLogin` / `importDefault` / `add`** all return one |
 | Where do extras live? | **`$DEMI_HOME/credentials/<providerId>/`** |
 | What does inference use? | **Active only**, via AuthStore / env |
 | Agent protocol change? | **None** |
@@ -1431,6 +1525,183 @@ Land as coherent commits; each slice leaves main green:
 | Three providers? | **Yes**, same contract; Claude needs auth inject first |
 
 This is the complete library/product-boundary design. Implementation follows §13.
+
+---
+
+# Reference: Provider / Session Clone
+<!-- source: docs/provider-session-clone.md -->
+
+# Provider and Session Clone
+
+| | |
+|---|---|
+| Date | 2026-07-30 |
+| Status | Implemented |
+| Scope | `@demicodes/provider` `AgentProvider.clone()`, `@demicodes/agent` `AgentSession.clone()`, compaction via session clone |
+
+## Why
+
+Products need to fork a live conversation into an isolated session without sharing
+mutable provider execution state. Examples:
+
+- ephemeral recall / memory forks that inherit a transcript snapshot;
+- compaction summaries that run on a clone (see `docs/compaction-context-cache.md`).
+
+Two layers, each with a required `.clone()`:
+
+1. **Provider** — independent runtime, same configuration.
+2. **Session** — isolated point-in-time session copy; uses provider clone by default.
+
+## `AgentProvider.clone()`
+
+Required on every runtime. Breaking change: custom providers must implement it.
+
+```ts
+interface AgentProvider {
+  run(request: InferenceRequest): ProviderRun
+  clone(): AgentProvider
+  dispose?(): Promise<void> | void
+}
+```
+
+Rules:
+
+- May share configuration dependencies (auth stores, quota observers, transport factories).
+- Must not share mutable per-session execution state (CLI subprocesses, sockets,
+  pending tool calls, continuation / active-run state).
+- The clone is independently disposable; disposing it must not tear down the parent.
+
+## `AgentSession.clone()`
+
+```ts
+session.clone()
+session.clone({ transcript, provider, model, cwd, runtime, state, options })
+```
+
+Defaults when overrides are omitted:
+
+| Field | Default |
+|---|---|
+| `provider` | `this.provider.clone()` |
+| `model` | `structuredClone(this.model)` |
+| `cwd` | same reference |
+| `runtime` | same harness runtime |
+| `transcript` | `structuredClone(this.transcript().toJSON())` |
+| `state` | `structuredClone(this.state())` |
+| options | parent retry policy; no store inheritance |
+
+Override notes:
+
+- Passing `provider` skips `this.provider.clone()` — the caller owns that runtime.
+- Passing `state` transfers ownership by reference (same as the constructor).
+- Parent `store` is never inherited; pass `options.store` explicitly if needed.
+
+## Compaction
+
+Compaction summaries run through `AgentSession.clone()` +
+`send(COMPACTION_SUMMARY_INSTRUCTION)`. Details and cache-prefix guarantees live in
+`docs/compaction-context-cache.md`.
+
+## Coverage
+
+- `packages/agent/src/__tests__/session.test.ts` — snapshot isolation, provider
+  ownership / dispose, override path.
+- `packages/agent/src/__tests__/compaction.test.ts` / `context-cache.test.ts` —
+  compaction via clone.
+- `packages/provider-claude-code/src/__tests__/provider.test.ts` — independent
+  live-process state across clone.
+- First-party providers implement `clone()`; `StubProvider` shares the scripted
+  turn cursor across parent/clone facades for deterministic multi-request tests.
+
+---
+
+# Reference: Compaction Context Cache
+<!-- source: docs/compaction-context-cache.md -->
+
+# Compaction Context Cache
+
+| | |
+|---|---|
+| Date | 2026-07-30 |
+| Status | Implemented |
+| Scope | `@demicodes/agent` compaction summary requests |
+
+When a session exceeds its compaction threshold, Demi summarizes an old
+transcript window and replaces that replay window with a compaction boundary.
+Compaction performs that work through the normal session path:
+
+1. `AgentSession.clone()` copies the selected transcript snapshot, model, and
+   agent state;
+2. the clone receives an independent provider runtime with the same provider
+   configuration;
+3. the clone inherits the normal harness runtime, cwd, retry policy, system
+   prompt, preamble, tools, and thinking selection; and
+4. compaction calls the clone's normal `send()` with one summary instruction.
+
+Compaction has no system prompt of its own. It does not prepend, append, or
+rewrite the session system prompt; the only compaction-specific prompt content
+is the summary user message (`COMPACTION_SUMMARY_INSTRUCTION`).
+
+This shape preserves the token prefix of an ordinary conversation request.
+Prefix-caching providers can therefore reuse the system prompt, tools, and old
+history, with divergence beginning only at the final summary instruction.
+The clone also inherits the model's thinking configuration; compaction does not
+special-case it.
+
+The final instruction asks the model not to obey instructions in the history
+and not to call tools. If the model nevertheless requests a tool, the clone
+uses the inherited normal tool loop and its copied state. Tool-side state
+changes therefore remain isolated from the parent session.
+
+See also `docs/provider-session-clone.md`.
+
+## Coverage
+
+- `packages/agent/src/__tests__/compaction.test.ts` covers structured replay,
+  clone-state isolation, the inherited tool loop, aborts, retries, and context
+  overflow.
+- `packages/agent/src/__tests__/context-cache.test.ts` asserts that replayed
+  summary items are an exact prefix of the preceding ordinary turn request.
+- Real-provider harness (not in `bun test`):
+  `packages/agent/fixtures/compaction/` — DeepSeek Flash recall + window switch
+  on the committed large-context fixture.
+
+---
+
+# Reference: Provider Errors & Retries
+<!-- source: docs/provider-errors-and-retries.md -->
+
+# Provider Errors and Retries
+
+Provider runtimes classify vendor and transport failures into stable error codes. `rate_limit` represents quota or throttling failures, while `overloaded` represents transient service, HTTP 5xx, timeout, network, and socket failures. Authentication, invalid requests, and context-length failures remain terminal categories.
+
+Error events retain bounded diagnostics separately from the normalized policy code: failure source, client request id, provider request/response ids, raw provider code, and HTTP status when available. Products use the normalized code for recovery decisions and the diagnostics for logging, inspection, and support escalation. Arbitrary raw response bodies are not persisted.
+
+The same diagnostics travel through `retry_scheduled`, terminal transcript error blocks, server frames, and `ProviderStreamError`. Products can therefore explain an in-progress retry and retain the identifiers needed to investigate a terminal failure without parsing vendor message text.
+
+`@demicodes/agent` owns transient inference retry. Providers perform one inference attempt and emit a classified error event; authentication refresh is part of credential resolution and may repeat a request once after an HTTP 401. This keeps retry counts, backoff, cancellation, transcript safety, and retry telemetry consistent across HTTP and streaming failures.
+
+The agent retries a failed attempt when everything that attempt put in the transcript can be unwound — that is, when its resume point reaches back past where it started. Reasoning is unwound and the request reissued; text already streamed out is not, because a product may have posted it and a second attempt would post a replacement beside it. Empty lifecycle events such as a reasoning-item start are not committed unless material output follows. Completed tool calls from earlier provider requests remain in the transcript and are not executed again. The default policy makes four total attempts with capped full-jitter exponential backoff for `rate_limit` and `overloaded`.
+
+## Recovery is one mechanism
+
+A transient provider failure and a human asking to continue a dead round ask the same question — how does this turn get finished — so they run the same code. The answer depends only on what has already left the process, never on which of the two asked or on how the turn died.
+
+`resume` is that mechanism. It finds the turn's resume point, unwinds to it, and re-infers from there. Callers do not choose a granularity, and products must not branch on the failure kind: a terminal error can arrive after ten minutes of tool calls just as easily as before the first token, so mapping error to one action and abort to another picks the destructive path exactly when it is most damaging.
+
+`findResumePoint` scans back from the end over the leftovers of the attempt that did not finish — thinking, redacted thinking, the error marker, empty text — and stops at the first block that someone may already have acted on. Transcript blocks stream outward as they are produced and products turn them into effects that cannot be recalled: rendering them, posting them to a chat, executing the tool they describe. A tool call stops the scan whatever its status, because one still marked executing outlived the process running it and whether its effect landed is unknown. A `response` stops it too — it records a request that did complete, and its usage anchors the context estimate. An abort block stops it, being history the user created rather than a leftover.
+
+When the scan reaches the user turn without stopping, the whole turn was discardable and `resume` simply reruns it, sparing the model a continuation boundary attached to a stub of its own aborted output. Otherwise the leftovers are dropped, a continuation boundary is appended, and inference continues after the preserved progress.
+
+`retry` is not part of this. It discards the whole turn and runs it again from the user's input — "regenerate", for a caller who wants a different answer to the same question and knows the turn's effects can be repeated. It is never the way to recover a failure.
+
+Coverage lives in:
+
+- `packages/provider/src/__tests__/http.test.ts` for common HTTP and vendor-code classification.
+- `packages/provider-codex/src/__tests__/responses.test.ts` for Codex streaming error mapping.
+- `packages/provider-codex/src/__tests__/provider.test.ts` for Codex-to-Agent transient retry integration.
+- `packages/agent/src/__tests__/turn-retry.test.ts` for retry safety, exhaustion, tool continuation, and progress-preserving resume.
+- `packages/agent/src/__tests__/recovery.test.ts` for resume-point derivation and the unwind `resume` performs.
 
 ---
 
@@ -1484,7 +1755,7 @@ No product-side socket/shim assembly. Bin paths and UDS are **not** user-facing 
     <sessionId>/
       package.json
       .dispatch
-      editor -> .dispatch
+      demi -> .dispatch
 ```
 
 - Workspace **cwd** is only for project files / shell PWD.
@@ -1510,7 +1781,7 @@ createLocalAgentServer (host-local)
   stateDir = resolveDemiHome(options.stateDir)
   socket   = stateDir/bridges/<id>.sock
   AgentServer({
-    prepareSessionShell → materialize stateDir/bridge-bin/<sessionId>/
+    prepareShell → materialize stateDir/bridge-bin/<sessionId>/
                           inject PATH + DEMI_COMMAND_BRIDGE_SOCK
   })
   startCommandBridge(server) → UDS POST /run → server.runCommandLine(...)
@@ -1520,10 +1791,10 @@ createLocalAgentServer (host-local)
 
 | Layer | Knows about |
 |-------|-------------|
-| `@demicodes/agent` `AgentServer` | `prepareSessionShell` hook; `runCommandLine` for a live session. **No** socket, shim, or bin layout. |
+| `@demicodes/agent` `AgentServer` | `prepareShell` hook; `runCommandLine` for a live shell. **No** socket, shim, or bin layout. |
 | `@demicodes/host-local` | UDS listener, `.dispatch` shim, `bridge-bin/`, `bridges/`, default-on assembly. |
 
-`AgentServer` is intentionally transport-agnostic: a browser Host could supply a different `prepareSessionShell` / IPC without AgentServer growing LocalHost concepts.
+`AgentServer` is intentionally transport-agnostic: another Host can supply a different `prepareShell` / IPC without AgentServer growing LocalHost concepts.
 
 ---
 
@@ -1532,16 +1803,22 @@ createLocalAgentServer (host-local)
 | Package | Role |
 |---------|------|
 | `@demicodes/shell` | Command tree, exec, quoting. |
-| `@demicodes/agent` | `prepareSessionShell`; `runCommandLine` (session-scoped registered command exec). |
+| `@demicodes/agent` | `prepareShell`; `runCommandLine` (shell-origin registered command exec). |
 | `@demicodes/host-local` | `LocalHost`, `resolveDemiHome`, shim materialize, UDS bridge, `createLocalAgentServer`. |
 
 ---
 
 ## Protocol / exec / stdin
 
-- UDS `POST /run` → `{ commandScopeId, name, args, cwd, stdin }` → `{ exitCode, stdout, stderr }`
-- Exec: `cd … && name args…` (+ heredoc if stdin non-empty) via `AgentServer.runCommandLine`
-- Stdin: 300ms grace to first byte, then read to EOF
+- UDS `POST /run` → `{ shellId, name, args, cwd, stdin }` → `{ exitCode, stdout, stderr }`
+- The shim reads `shellId` from `DEMI_SHELL_ID`. It sends neither action metadata
+  nor `agentSessionId`; the shell id locates the live binding and originating
+  `BashEnvironment` directly.
+- Exec: `name args…` (+ heredoc if stdin non-empty) via `AgentServer.runCommandLine`,
+  always in an ephemeral shell born in the caller's cwd — bridge calls never
+  share (or mutate) the model's session shell
+- Stdin: 300ms grace to first byte, then read to EOF; newline-terminated stdin arrives
+  byte-identical, stdin without a trailing newline gains exactly one (heredoc normalization)
 
 ---
 
@@ -1556,6 +1833,10 @@ createLocalAgentServer (host-local)
 | Default bridge | **On** for `createLocalAgentServer` |
 | AgentServer bridge awareness | **None** — hook + `runCommandLine` only |
 
+The current action may already use another Host when a child process calls the
+bridge. Routing by the creating `shellId` keeps the invocation on its original
+Host instead of following current action metadata.
+
 ---
 
 # Reference: Shell & Yield Control
@@ -1566,7 +1847,7 @@ createLocalAgentServer (host-local)
 | | |
 |---|---|
 | Date | 2026-06-26 |
-| Status | Design (rewrite) |
+| Status | Implemented |
 | Scope | The `@demicodes/shell` control surface, `@demicodes/agent` delayed yield wakeups, and the `@demicodes/core` invisible user_message |
 
 This document is the **single source of truth** for the shell control surface and the
@@ -1911,7 +2192,9 @@ type ShellArtifactRef = {
   bytes: number
 }
 
-type ShellCommandSnapshot = {
+// Ephemeral API result from BashEnvironment.exec/status/write/abort.
+// Tool blocks persist a bounded ShellToolView on block.view instead of this full status.
+type ShellCommandStatus = {
   status: 'running' | 'exited' | 'aborted'
   shellId: string
   commandId: string
@@ -2280,7 +2563,7 @@ Acceptance criteria:
 
 | | |
 |---|---|
-| Date | 2026-06-25 |
+| Date | 2026-07-31 |
 | Status | Final specification |
 | Scope | How the standard agent tools render across the Web UI, the REPL, and other shells |
 
@@ -2313,12 +2596,14 @@ Persistent history is governed by `Block`:
 - `input` is the JSON string the provider supplied; the render layer parses it.
 - `status` is `executing | completed | error`.
 - `streamingOutput` / `output` is the tool's output text or media blocks.
-- `metadata` may carry structured runtime state such as a `ShellCommandSnapshot`; the
-  render layer may use it to enrich the display, but must not treat it as the sole source.
+- `view` may carry bounded UI enhancement data such as a `ShellToolView` (`chunks`,
+  `commandId`, status counters). The render layer may use it to enrich the display, but
+  must not treat it as the sole source of truth for full command output (that lives in
+  `/@/commands/<commandId>/…` artifacts).
 
 Real-time events are governed by `ClientSessionEvent`:
 
-- `transcript_snapshot` / `transcript_patch` are the primary input for the persistent UI.
+- `transcript_reset` / `transcript_patch` are the primary input for the persistent UI.
 - `shell_output` / `tool_progress` may add live stdout/stderr or status to a standard
   tool that is currently executing.
 - `shell_write_result` / `abort_result` are acknowledgements of user control actions;
@@ -2437,7 +2722,7 @@ Must cover:
 3. Web rendering: all five standard tools prefer `description`, falling back to §4 when absent.
 4. REPL rendering: the terminal summaries for all five standard tools prefer `description`,
    fall back to §4 when absent, and avoid duplicate output on patch replay.
-5. Protocol stability: when `transcript_patch` updates the status/output/metadata of the
+5. Protocol stability: when `transcript_patch` updates the status/output/view of the
    same `tool_call`, both the Web UI and the REPL update the same render block rather than
    appending an erroneous duplicate.
 
@@ -2449,6 +2734,376 @@ shell_exec -> yield -> shell_status -> shell_write or shell_abort
 
 Acceptance should confirm that both the Web UI and the REPL make clear what each control
 action is doing, rather than showing one undifferentiated group of tool calls.
+
+---
+
+# Reference: Session Storage & Naming
+<!-- source: docs/session-storage-and-naming.md -->
+
+# Session Storage & Naming
+
+| | |
+|---|---|
+| Date | 2026-07-31 |
+| Status | Vocabulary, views, and checkpoint naming implemented; blob store and journal remaining |
+| Scope | Persistence vocabulary, `tool_call.view`, on-disk session layout |
+
+Final-state design for (1) the persistence-domain vocabulary and (2) the on-disk
+layout of agent session data. No migration paths: old persisted sessions are
+historical artifacts and stay outside runtime code.
+
+## Motivation (why the rename happened)
+
+"snapshot" previously named three unrelated things: the durable session file,
+the ephemeral per-command status view, and `Transcript.snapshot()`. Checkpoint
+bloat came from dumping full command status into every `tool_call` — measured at
+47.8 MB for ~135K tokens of model-visible content — while the shell already
+persisted complete command output separately.
+
+## Vocabulary (current)
+
+One word per role, applied across the session/transcript/shell domains:
+
+| Word           | Role                                                        |
+| -------------- | ----------------------------------------------------------- |
+| **transcript** | conversation history (blocks)                               |
+| **status**     | ephemeral point-in-time view returned by an API             |
+| **checkpoint** | durable, restorable session state                           |
+| **artifact**   | durable per-command record (complete output)                |
+| **view**       | bounded UI-facing enhancement data on a block, never replayed to the model |
+| **blob**       | content-addressed bytes (media, binary streams) — not yet persisted |
+
+"snapshot" is retired from these domains.
+
+## Implemented naming
+
+| Area | Current name |
+| --- | --- |
+| Ephemeral command API result | `ShellCommandStatus` |
+| Ephemeral stream / merged views | `ShellStreamView`, `ShellOutputView` |
+| Durable per-command record | `CommandArtifact` / `CommandArtifactStore` |
+| Live transcript container | `TranscriptLog` with `toJSON(): Transcript` |
+| Durable session state | `AgentSessionCheckpoint`, `saveCheckpoint` / `loadCheckpoint`, `fromCheckpoint` |
+| Store key | `agent-sessions/<sessionId>/checkpoint.json` |
+| Protocol full-sync frame | `transcript_reset` |
+| Protocol status frame field | `status` (`ShellCommandStatusLike`) |
+| Tool result enhancement | `AgentToolInvokeResult.view` / `block.view` |
+| File diffs in coding-agent | `{ unifiedDiff }` only |
+
+Optional follow-up (separate change): rename `@demicodes/provider`
+`ProviderQuotaSnapshot` → `ProviderQuotaStatus` for vocabulary consistency.
+
+## `tool_call.view` contract
+
+`view` is bounded, UI/host-facing enhancement data attached to a tool_call
+block. Rules:
+
+- Never replayed to the model (`collectInferenceItems` ignores it).
+- Bounded size: it must not embed unbounded payloads (full stdout, file bodies,
+  raw/base64 bytes). Anything unbounded lives in a command artifact or blob and
+  is referenced by id.
+- Typed per tool at the owning layer. Core keeps the field `unknown | null`
+  (core must not know shell details); `@demicodes/agent` defines the shapes it
+  produces.
+
+The shell tool view (implemented):
+
+```ts
+interface ShellToolView {
+  kind: 'shell'
+  status: 'running' | 'exited' | 'aborted'
+  shellId: string
+  commandId: string          // key to commands/<id>/artifact.json for full output
+  exitCode?: number
+  runningMs: number
+  idleMs: number
+  /** Bounded render window: tail of the merged chunks, capped at SHELL_VIEW_MAX_CHARS. */
+  chunks: ShellOutputChunk[]
+  /** True when chunks were capped; the artifact has the full output. */
+  viewTruncated: boolean
+  audit?: BashAuditEvent[]
+  commandMeta?: CommandMetadataRecord[]  // e.g. file_diffs (unifiedDiff only)
+}
+```
+
+`SHELL_VIEW_MAX_CHARS = 32_768` (tail-biased: keep the newest chunks). The repeated-
+exec guard result becomes `{ kind: 'repeated_shell_exec', script, count }`.
+
+## Storage layout (final state)
+
+Everything a session persists lives under one `HostStore` prefix:
+
+```
+<hostKey>/
+  agent-sessions/<sessionId>/
+    checkpoint.json                    # transcript + state/phase/queue/model/cwd
+    journal.jsonl                      # remaining: append-only TranscriptPatch log
+    commands/<commandId>/artifact.json # complete command output (CommandArtifactStore)
+    blobs/<sha256>                     # remaining: content-addressed media/binary bytes
+```
+
+Agent-owned shells store command artifacts under their actual agent session id.
+Anonymous shells have no `DEMI_SESSION_ID` and use their shell id only as the
+internal command-artifact storage key.
+
+### Roles
+
+- **checkpoint.json** (implemented) — the restorable session state. Transcript
+  blocks carry text, tool views (bounded), and (eventually) refs. No unbounded
+  command-status dump is stored inline.
+- **commands/\<id\>/artifact.json** (implemented) — the lossless record of one
+  command: full stdout/stderr text and binary stdout. Exposed read-only at
+  `/@/commands/<id>/{meta.json,stdout.txt,stderr.txt,stdout.bin}`.
+- **blobs/\<sha256\>** (remaining) — media/binary bytes referenced from content
+  blocks (`source.ref`). Session-scoped content addressing; deleting the session
+  directory reclaims everything.
+- **journal.jsonl** (remaining) — the same `TranscriptPatch` stream that already
+  feeds live UIs (`TranscriptLog.takePatches()`), appended during streaming.
+  Restore = checkpoint + replay journal.
+
+### Write path (today vs final)
+
+- Today: throttled full-checkpoint writes (`persistIntervalMs`, default 1 s) plus
+  boundary rewrites at turn end / abort / dispose. After view slimming this is
+  ~100s of KB for ordinary sessions, not tens of MB.
+- Final with journal: append patches to `journal.jsonl` during streaming; rewrite
+  `checkpoint.json` and truncate the journal at action boundaries.
+- Command artifacts (and future blobs) are written by their owners — the
+  checkpoint never embeds them.
+
+### Restore / replay path
+
+- `AgentSession` restore loads the checkpoint (and will replay the journal once
+  that lands).
+- Remaining: model replay rehydrates `source.ref` media blocks from the blob
+  store when building the inference request; providers still receive inline
+  bytes. A missing blob degrades to a text placeholder — it must not fail the turn.
+- UI rendering uses `view.chunks` directly; "open full output" resolves
+  `commandId` against the artifact.
+
+## Remaining work
+
+Independent branches off `main`:
+
+1. **Blob store** — `BlobStore`, `source.ref` content blocks, replay rehydration.
+   Removes inline media duplication from checkpoints.
+2. **Journal** (optional) — O(delta) streaming persistence if checkpoint write
+   frequency still shows up in profiles after the blob store.
+
+## Test coverage
+
+| Module | Coverage |
+| --- | --- |
+| `provider-claude-code/__tests__/jsonl-output.test.ts` | `result.usage.iterations` → last entry mapped as response usage; missing `iterations` → top-level usage fallback. |
+| `agent/__tests__/transcript.test.ts` | anchor > context window falls back to char estimation; normal anchor path unchanged. |
+| `agent/__tests__/tools.test.ts` | `ShellToolView` shape: chunks capped at `SHELL_VIEW_MAX_CHARS` (tail kept), no unbounded status dump in the view; repeated-exec view shape. |
+| `agent/__tests__/session-persistence.test.ts` | checkpoint round-trip via `AgentSessionStore`; restored session replays identically. |
+| `shell/__tests__/command.test.ts` | `ShellCommandStatus`; artifact completeness (full stdout/binary base64 round-trip). |
+| `coding-agent/__tests__/demi-command.test.ts` | file_diffs metadata carries `unifiedDiff` only. |
+| `web-ui` block-helpers | rendering reads `view.chunks` exclusively. |
+| `shell/__tests__/blob-store.test.ts` (remaining) | put/get round-trip, content-address dedupe, session-scoped listing/deletion. |
+| `agent/__tests__/replay-rehydration.test.ts` (remaining) | `source.ref` blocks rehydrate to inline bytes; missing blob degrades without failing the turn. |
+
+---
+
+# Reference: Action Metadata
+<!-- source: docs/action-metadata.md -->
+
+# Action Metadata
+
+`@demicodes/agent` carries caller-defined metadata with one queued or active
+action. Demi transports and clones the metadata but does not interpret it.
+
+## Contract
+
+Metadata is a readonly record:
+
+```ts
+type AgentMetadata = Readonly<Record<string, PortableJsonValue>>
+```
+
+`PortableJsonValue` covers JSON values plus `bigint` and `Uint8Array`, matching
+the values preserved by every Demi agent transport.
+
+Clients attach it to actions:
+
+```ts
+await client.send(content, { metadata: { tenantId: 'tenant-a' } })
+await client.retry({ metadata: { tenantId: 'tenant-a' } })
+await client.resume({ metadata: { tenantId: 'tenant-a' } })
+await client.shellWrite(commandId, stdin, { metadata: { tenantId: 'tenant-a' } })
+```
+
+The session clones metadata when it accepts an action. Later caller mutation
+does not change a queued or running action.
+
+While an action runs, the same metadata is available from:
+
+- prompt and preamble contexts;
+- reference-resolution contexts;
+- tool construction and invocation contexts;
+- `AgentHarness.host` while resolving the Host for a shell operation;
+- lifecycle events.
+
+Absent metadata is represented as `null` in runtime contexts.
+
+## Boundaries
+
+Metadata is execution context, not conversation content:
+
+- it is never appended to the transcript;
+- Demi does not add it as a provider request field or transcript item; a harness
+  may deliberately derive prompt text or tool selection from its metadata;
+- it is not rendered in queue events;
+- it is not part of the session checkpoint;
+- Demi does not assign meaning to its keys or values.
+
+A live queued send retains its own metadata when messages are reordered. Retry
+and resume are new actions, so callers supply their metadata explicitly.
+Steering remains part of the currently active action and does not replace that
+action's metadata.
+
+The standard shell tools resolve their Host from the current action metadata.
+One agent session can therefore use different Hosts across actions. A Host must
+be a stable object for one execution target so Demi can preserve that target's
+shell state. Shell and command handles are accepted only when they belong to the
+Host selected by the current metadata. Command-bridge calls do not carry action
+metadata: `DEMI_SHELL_ID` routes a child process back to the Host that created it.
+
+Yield wakeups inherit the scheduling tool invocation's metadata. A
+metadata-bearing wakeup does not steer into a different active action; it stays
+a separate hidden send so its execution context remains intact.
+
+## Test Coverage
+
+| Module | Coverage |
+| --- | --- |
+| `agent/src/__tests__/session.test.ts` | Metadata reaches prompt, reference, tool, and lifecycle contexts; caller mutation is isolated; provider input and transcript remain clean; queued sends and retries keep their action metadata. |
+| `agent/src/__tests__/server.test.ts` | `AgentClient.send` metadata crosses the client/server transport and reaches the server-side harness context. |
+| `agent/src/__tests__/host-routing.test.ts` | Metadata switches Hosts across actions, preserves same-Host shell state, and prevents cross-Host command control. |
+| `agent/src/__tests__/stdio-transport.test.ts` | NDJSON transport preserves portable metadata values. |
+| `agent/src/__tests__/websocket-transport.test.ts` | WebSocket transport preserves portable metadata values. |
+
+---
+
+# Reference: Tool-Call Concurrency
+<!-- source: docs/tool-call-concurrency.md -->
+
+# Claude Code tool-call batching
+
+Claude Code can emit several `tool_use` blocks in one assistant message, but its
+SDK-MCP control channel can expose only the first `tools/call`. A later callback
+may remain blocked until the preceding result is returned.
+
+`@demicodes/provider-claude-code` therefore collects the assistant's original
+`tool_use` blocks through `message_stop` and yields the complete batch with the
+original `claudecode/toolUseId` values. This lets the host see the model's real
+batch instead of mistaking delayed SDK callbacks for separate model turns.
+
+When the host returns the batch results, the provider answers callbacks already
+available, continues reading the live CLI stream, and immediately matches each
+later callback to its buffered result. This keeps one Claude process and one
+SDK-MCP session; it does not add a proxy process or alternate MCP transport.
+
+## Test coverage
+
+| Module | Intended coverage |
+| --- | --- |
+| `packages/provider-claude-code/src/__tests__/provider.test.ts` | Two model-emitted tool uses are yielded in one run before any SDK-MCP response; a deferred second callback consumes its already-buffered result. |
+| `packages/provider-claude-code/src/__tests__/real-cli.e2e.test.ts` | Opt-in smoke test against the installed Claude CLI verifies a real two-tool SDK-MCP batch and continuation. |
+
+---
+
+# Reference: Binary Stream Boundary
+<!-- source: docs/binary-stream-boundary.md -->
+
+# Binary stream boundary
+
+Commands produce byte streams; the model boundary decides how the final
+stream is presented. There is no attachment side-channel: the `CommandAsset`
+/ `io.asset()` mechanism is removed, and with it every `supportedAssetTypes`
+thread through exec/session/ctx.
+
+## Verified transport contract (just-bash)
+
+- Fork pipes carry bytes packed as latin1 strings (`ByteString`); commands
+  declare `stdoutKind: 'text' | 'bytes'` on `ExecResult`.
+- The `hostSpawn` callback receives `stdin: string` in the **same latin1
+  convention** (the identical value is tagged `unsafeBytesFromLatin1` when
+  handed to registered commands), and its returned `ExecResult` participates
+  in pipeline continuation via `stdoutKind`.
+- The top-level `executeScript` result reaches `BashEnvironment.collectExited`
+  with `stdoutKind` intact — that is the single boundary where stream shape
+  is decided.
+
+## Byte fidelity fixes
+
+- `hostSpawn` stdin: write latin1 bytes to the real process (the previous
+  `encodeUtf8` mojibaked every byte > 0x7F).
+- `hostSpawn` result: return raw output bytes as latin1 + `stdoutKind:
+  'bytes'` so real-process output (ffmpeg) pipes onward losslessly. The
+  streaming observation channel keeps its lossy UTF-8 text render; file
+  redirect sinks already preserve bytes.
+- Registered-command adapter: `CommandIO.stdout(Uint8Array)` returns latin1
+  + `stdoutKind: 'bytes'` to the pipe; `CommandStdin` carries `bytes`
+  alongside `text`.
+- `demi read` is `cat`: it emits raw file bytes for every file type. Media
+  summaries and model-capability errors move to the boundary.
+
+## Boundary decision tree (agent layer, where the model is known)
+
+For the final stream of an exited exec:
+
+1. `stdoutKind: 'text'` → tool-result text (unchanged).
+2. bytes that strictly decode as UTF-8 → text (covers real-process text
+   output).
+3. bytes whose magic matches the closed model-media set (png, jpeg, gif,
+   webp, mp4/m4v, mov, webm) **and** the model accepts that media type and
+   the stream was not truncated → native image/video block, with a one-line
+   text summary in the tool result.
+4. anything else → placeholder text stating byte count, sniffed type when
+   known, and the reason no media was attached (truncated by the output
+   limit / model does not accept the type / unknown binary). Raw bytes never
+   enter the transcript; they stay addressable at
+   `/@/commands/<commandId>/stdout.bin` for further shell processing.
+
+The shell layer only detects and reports (`binaryStdout: { data, mediaType,
+truncated }` on exited snapshots plus a placeholder text render); model
+capability gating lives in the agent layer where the tool result is built.
+Sniffing a closed set by magic bytes is deterministic; there is no
+content-type guessing beyond it.
+
+Accepted edge: a mixed stream (`demi read a.png; echo done`) matches magic at
+offset 0 and ships with trailing bytes — decoders tolerate trailing data, and
+the fix is to not mix streams.
+
+## Bridge
+
+The UDS `/run` result carries `stdoutEncoding: 'base64'` when the final
+stream is binary; the shim decodes and writes raw bytes to its OS stdout, so
+`demi read a.png | ffmpeg -i - …` works in external shells too. A truncated
+binary stream is reported on stderr alongside the capped payload.
+
+---
+
+# Reference: Command Help
+<!-- source: docs/command-help.md -->
+
+# Command help
+
+Registered `Command` trees render into agent `commandsPrompt` and `--help` via
+`renderCommandHelp` in `@demicodes/shell`. Help carries summary, usage, effects,
+outputs, parameters, stdin/heredoc fields, `--json`, and subcommands.
+
+Command specs intentionally omit invocation examples. Concrete example lines
+tend to overfit the model toward copying those strings instead of composing from
+the parameter contract, so help stays declarative.
+
+## Test coverage
+
+| Module | Intended coverage |
+| --- | --- |
+| `packages/shell/src/__tests__/command.test.ts` | Help rendering and registry validation for the declarative command contract (no example fields). |
 
 ---
 
@@ -2520,10 +3175,12 @@ so violations fail CI.
 ## Extending Demi
 
 - **A new provider** — implement the `@demicodes/provider` contract (a `run()` that
-  yields `ProviderEvent`s) and export a `createXProvider()` factory. Reuse the
-  shared HTTP helpers (`redactSecretText`, `httpErrorCode`, `normalizeErrorCode`,
-  `providerErrorFromUnknown`) and `modelSelectionFromCatalog` rather than
-  re-deriving them. See `packages/provider-anthropic-api` as a reference.
+  yields `ProviderEvent`s plus required `clone()`) and export a `createXProvider()`
+  factory. Reuse the shared HTTP helpers (`redactSecretText`, `httpErrorCode`,
+  `normalizeErrorCode`, `providerErrorFromUnknown`) and `modelSelectionFromCatalog`
+  rather than re-deriving them. See `packages/provider-anthropic-api` or
+  `packages/provider-google` as references. Update `docs/package-boundaries.md`
+  and the maps in `platform-entrypoints.test.ts` in the same change.
 - **A new Host** — implement `{ defaultCwd, fs, process, store }`;
   `@demicodes/host-local` is the Node reference for a remote/container/sandbox backend.
 - **A new UI** — consume an `AgentClient` (in-process, stdio via `@demicodes/agent/stdio`,

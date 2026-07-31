@@ -13,12 +13,14 @@ test enforces this).
 - **async** — `noop`, `deferred`, `delay`, `withTimeout`, `waitFor`
 - **bytes** — `encodeUtf8`, `decodeUtf8`, `utf8Bytes`, `utf8Slice`, `concatBytes`
 - **strings** — `clamp`, `truncate`, `tail`, `shortHash`, `normalizeBaseUrl`
-- **json** — `parseJsonOrString`, `parseJsonObject`
+- **json** — `parseJsonOrString`, `parseJsonObject`, plus the portable JSON codec
+  (`stringifyPortableJson` / `parsePortableJson`) that round-trips `Uint8Array`
+  and `bigint` for agent transports and `HostStore` implementations
 - **paths** — `normalizePath`, `dirnamePath`, `isAbsolutePath`
 - **id** — `createId`
 
 ```ts
-import { errorMessage, truncate, parseJsonObject } from '@demicodes/utils'
+import { errorMessage, truncate, parseJsonObject, stringifyPortableJson } from '@demicodes/utils'
 ```
 
 Part of [Demi](../../README.md). Apache-2.0.

@@ -103,8 +103,8 @@ re-implementing several of these:
 - `zeroUsage` (from `@demicodes/core`) — a zeroed `TokenUsage`.
 - `normalizeBaseUrl`, `parseJsonObject`, `numberOrZero` (from `@demicodes/utils`).
 
-See `packages/provider-anthropic-api` (HTTP) and `packages/provider-codex` (CLI/OAuth)
-for full references.
+See `packages/provider-anthropic-api` / `packages/provider-google` (HTTP) and
+`packages/provider-codex` (CLI/OAuth) for full references.
 
 ## Optional: quota
 
