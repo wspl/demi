@@ -144,6 +144,17 @@ Test code may depend upward for integration coverage. Production code must not.
 - Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
+### `@demicodes/provider-google`
+
+- Status: implemented.
+- Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
+- Owns: Google Gemini `generateContent` API request mapping (native wire, not OpenAI-compatible), SSE event mapping including thought summaries / thought signatures / thinking token counts, tool-returned media as inline parts (including video), official Gemini API defaults, endpoint/env/api-key resolution, model metadata mapping, and provider-specific tests.
+- Public boundary: `createGoogleProvider`, default model catalog function, and public option/model types from root.
+- Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://generativelanguage.googleapis.com/v1beta`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `GOOGLE`.
+- Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
+- Internal boundary: generateContent body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+
 ### `@demicodes/repl`
 
 - Status: implemented.
@@ -173,11 +184,11 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web`
 
-- Status: planned.
+- Status: implemented.
 - Production deps: `@demicodes/web-ui`, `@demicodes/agent`, `@demicodes/host-local`, `@demicodes/coding-agent`,
   `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
   `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`,
-  `@demicodes/shell`.
+  `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the Demi web product — the Vite-dev-only browser app plus its embedded Node/Bun
   backend. The server serves only the WebSocket/API endpoints (per-session `/agent` + a
   `/control` RPC), assembling shared public providers and a per-cwd `AgentServer` over
@@ -221,9 +232,10 @@ provider-codex -> core, provider, utils
 provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
+provider-google -> core, provider, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils
 web-ui -> agent, core, utils
-web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell
+web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
 agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
 ```
 
@@ -232,7 +244,9 @@ is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not 
 production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
 enforced at the manifest level by that test; `web` is a product leaf like `repl`.
 
-The graph is a compact view of the `Production deps` fields in the package registry. A package accepted by the graph but not yet implemented is still part of the design contract.
+The graph is a compact view of the `Production deps` fields in the package registry. Every
+package in the registry is implemented; keep the registry, this graph, and the maps in
+`packages/core/src/__tests__/platform-entrypoints.test.ts` in lockstep.
 
 ## Global Boundary Rules
 

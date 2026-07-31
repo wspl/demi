@@ -6,7 +6,8 @@ client/server protocol, and a ready-made coding-agent harness — composable
 packages you assemble into your own app.
 
 - **Provider-agnostic** — one inference contract (`@demicodes/provider`); ship adapters
-  for Claude Code, Codex, the Anthropic API, the OpenAI API, or your own.
+  for Claude Code, Codex, the Anthropic API, the OpenAI API, Google Gemini, Grok Build,
+  or your own.
 - **Host-abstracted** — the shell runs against a `Host` (`fs` / `process` / `store`),
   with a Node reference (`@demicodes/host-local`) and room for remote/container/sandbox backends.
 - **Transport-neutral** — drive a session in-process, over stdio, or over WebSocket;
@@ -24,9 +25,9 @@ Packages depend strictly downward (enforced by a boundary test):
 
 ```
 utils, core            shared helpers + data types (zero deps)
-provider               abstract inference contract  -> core
+provider               abstract inference contract  -> core, utils
 shell                  bash engine + Host contract  -> just-bash, utils
-host-local             Node Host adapter            -> shell, utils
+host-local             Node Host + local assembly   -> agent, provider, shell, utils
 agent                  session runtime + protocol   -> core, provider, shell, utils
 coding-agent           coding harness + commands    -> agent, core, shell, utils
 provider-*             concrete providers           -> core, provider, utils
@@ -39,7 +40,9 @@ runtime/shell design lives under [docs/](docs/). Notable design docs:
 
 - [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
 - [Provider global credentials](docs/provider-global-credentials.md) — multi-account pool + global `setActive`
+- [Provider / session clone](docs/provider-session-clone.md) — required `.clone()` for isolated forks
 - [Command bridge](docs/command-bridge.md) — LocalHost PATH shims + UDS for agent tools
+- [Provider errors & retries](docs/provider-errors-and-retries.md) — classified failures and resume recovery
 
 ## Install
 
@@ -79,15 +82,21 @@ const client = server.client()
 
 // 5. Render transcript updates (the same blocks the REPL and web UI render).
 client.subscribe((event) => {
-  if (event.type === 'transcript_snapshot' || event.type === 'transcript_patch') {
+  if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
     // event.blocks -> your UI
   }
 })
 
 // 6. Open a session with a model from the provider's catalog, then send a turn.
+// sessionId is caller-owned: reconnecting with the same id resumes that conversation.
 const catalog = await listClaudeCodeModels()
 const model = catalog.models.find((m) => m.id === catalog.defaultModelId) ?? catalog.models[0] ?? null
-await client.open({ providerId: 'claude-code', model: modelSelectionFromCatalog('claude-code', model) }, process.cwd())
+const sessionId = crypto.randomUUID()
+await client.open(
+  { providerId: 'claude-code', model: modelSelectionFromCatalog('claude-code', model) },
+  process.cwd(),
+  sessionId,
+)
 await client.send([{ type: 'text', text: 'Create hello.txt with "hi", then read it back.' }])
 ```
 

@@ -63,10 +63,12 @@ so violations fail CI.
 ## Extending Demi
 
 - **A new provider** — implement the `@demicodes/provider` contract (a `run()` that
-  yields `ProviderEvent`s) and export a `createXProvider()` factory. Reuse the
-  shared HTTP helpers (`redactSecretText`, `httpErrorCode`, `normalizeErrorCode`,
-  `providerErrorFromUnknown`) and `modelSelectionFromCatalog` rather than
-  re-deriving them. See `packages/provider-anthropic-api` as a reference.
+  yields `ProviderEvent`s plus required `clone()`) and export a `createXProvider()`
+  factory. Reuse the shared HTTP helpers (`redactSecretText`, `httpErrorCode`,
+  `normalizeErrorCode`, `providerErrorFromUnknown`) and `modelSelectionFromCatalog`
+  rather than re-deriving them. See `packages/provider-anthropic-api` or
+  `packages/provider-google` as references. Update `docs/package-boundaries.md`
+  and the maps in `platform-entrypoints.test.ts` in the same change.
 - **A new Host** — implement `{ defaultCwd, fs, process, store }`;
   `@demicodes/host-local` is the Node reference for a remote/container/sandbox backend.
 - **A new UI** — consume an `AgentClient` (in-process, stdio via `@demicodes/agent/stdio`,

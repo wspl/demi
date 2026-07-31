@@ -12,11 +12,12 @@ mkdir -p /tmp/demi-acceptance
 bun run repl -- /tmp/demi-acceptance
 ```
 
-The REPL uses the Claude Code provider, so sending a prompt may call the real
-model:
+The REPL assembles Claude Code, Codex, OpenAI API, Anthropic API, and Grok Build
+providers. Sending a prompt may call a real model:
 
 ```sh
 bun run repl -- --cwd /tmp/demi-acceptance
+bun run repl -- --provider openai --cwd /tmp/demi-acceptance
 ```
 
 Useful options:

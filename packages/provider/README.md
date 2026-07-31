@@ -5,7 +5,8 @@ backends (APIs or CLIs) stay decoupled. Also ships the shared building blocks fo
 writing providers.
 
 - **Contract** — `Provider`, `AgentProvider` (`run()` → `ProviderRun` of
-  `ProviderEvent`s), `ProviderSelection`, `ProviderModelList`; `defineProvider`,
+  `ProviderEvent`s, required `clone()` for independent per-session runtimes),
+  `ProviderSelection`, `ProviderModelList`; `defineProvider`,
   `providerRuntime`, `applyModelPolicy`.
 - **Catalog** — `modelSelectionFromCatalog`, `thinkingCapabilitiesFromProviderModel`,
   `withProviderId`.

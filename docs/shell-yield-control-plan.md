@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-06-26 |
-| Status | Design (rewrite) |
+| Status | Implemented |
 | Scope | The `@demicodes/shell` control surface, `@demicodes/agent` delayed yield wakeups, and the `@demicodes/core` invisible user_message |
 
 This document is the **single source of truth** for the shell control surface and the
@@ -348,7 +348,9 @@ type ShellArtifactRef = {
   bytes: number
 }
 
-type ShellCommandSnapshot = {
+// Ephemeral API result from BashEnvironment.exec/status/write/abort.
+// Tool blocks persist a bounded ShellToolView on block.view instead of this full status.
+type ShellCommandStatus = {
   status: 'running' | 'exited' | 'aborted'
   shellId: string
   commandId: string
