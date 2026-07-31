@@ -6,7 +6,6 @@
 - Prefer direct final-state changes over transitional layers; remove obsolete code instead of keeping shims.
 - Prefer protocol, API, or file-state integrations over spawning external CLIs; keep external processes limited to intentional provider transports.
 - Branch out per requirement: create a dedicated branch off `main` for each requirement or feature, and do not commit feature work directly to `main`.
-- Do not use subagents: never invoke the `Agent`/Task tool to spawn subagents. Perform all work directly in the main session.
 - Write all code comments in English only.
 - Never run tests that call real models: keep the `real-*.e2e.test.ts` env gates (`DEMI_*_E2E`, `DEMI_CLAUDE_CODE_EVAL`) unset, and verify changes with scoped `bun test packages/<pkg>` runs instead of the full suite.
 
