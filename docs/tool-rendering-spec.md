@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Date | 2026-06-25 |
+| Date | 2026-07-31 |
 | Status | Final specification |
 | Scope | How the standard agent tools render across the Web UI, the REPL, and other shells |
 
@@ -35,12 +35,14 @@ Persistent history is governed by `Block`:
 - `input` is the JSON string the provider supplied; the render layer parses it.
 - `status` is `executing | completed | error`.
 - `streamingOutput` / `output` is the tool's output text or media blocks.
-- `metadata` may carry structured runtime state such as a `ShellCommandSnapshot`; the
-  render layer may use it to enrich the display, but must not treat it as the sole source.
+- `view` may carry bounded UI enhancement data such as a `ShellToolView` (`chunks`,
+  `commandId`, status counters). The render layer may use it to enrich the display, but
+  must not treat it as the sole source of truth for full command output (that lives in
+  `/@/commands/<commandId>/…` artifacts).
 
 Real-time events are governed by `ClientSessionEvent`:
 
-- `transcript_snapshot` / `transcript_patch` are the primary input for the persistent UI.
+- `transcript_reset` / `transcript_patch` are the primary input for the persistent UI.
 - `shell_output` / `tool_progress` may add live stdout/stderr or status to a standard
   tool that is currently executing.
 - `shell_write_result` / `abort_result` are acknowledgements of user control actions;
@@ -159,7 +161,7 @@ Must cover:
 3. Web rendering: all five standard tools prefer `description`, falling back to §4 when absent.
 4. REPL rendering: the terminal summaries for all five standard tools prefer `description`,
    fall back to §4 when absent, and avoid duplicate output on patch replay.
-5. Protocol stability: when `transcript_patch` updates the status/output/metadata of the
+5. Protocol stability: when `transcript_patch` updates the status/output/view of the
    same `tool_call`, both the Web UI and the REPL update the same render block rather than
    appending an erroneous duplicate.
 
