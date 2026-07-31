@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Date | 2026-07-30 |
-| Status | Implemented (Phase 1) |
-| Scope | `@demicodes/provider` `AgentProvider.clone()`, `@demicodes/agent` `AgentSession.clone()` |
+| Status | Implemented |
+| Scope | `@demicodes/provider` `AgentProvider.clone()`, `@demicodes/agent` `AgentSession.clone()`, compaction via session clone |
 
 ## Why
 
@@ -12,21 +12,12 @@ Products need to fork a live conversation into an isolated session without shari
 mutable provider execution state. Examples:
 
 - ephemeral recall / memory forks that inherit a transcript snapshot;
-- future compaction that runs a summary turn on a clone (Phase 2).
+- compaction summaries that run on a clone (see `docs/compaction-context-cache.md`).
 
 Two layers, each with a required `.clone()`:
 
 1. **Provider** — independent runtime, same configuration.
 2. **Session** — isolated point-in-time session copy; uses provider clone by default.
-
-Phase 2 (compaction via session clone) depends on this contract and must not land
-in the same change set.
-
-## Phase 2 status
-
-Implemented on `feat/compaction-via-session-clone`: compaction summaries run through
-`AgentSession.clone()` + `send(COMPACTION_SUMMARY_INSTRUCTION)`. See
-`docs/compaction-context-cache.md`.
 
 ## `AgentProvider.clone()`
 
@@ -72,10 +63,18 @@ Override notes:
 - Passing `state` transfers ownership by reference (same as the constructor).
 - Parent `store` is never inherited; pass `options.store` explicitly if needed.
 
+## Compaction
+
+Compaction summaries run through `AgentSession.clone()` +
+`send(COMPACTION_SUMMARY_INSTRUCTION)`. Details and cache-prefix guarantees live in
+`docs/compaction-context-cache.md`.
+
 ## Coverage
 
 - `packages/agent/src/__tests__/session.test.ts` — snapshot isolation, provider
   ownership / dispose, override path.
+- `packages/agent/src/__tests__/compaction.test.ts` / `context-cache.test.ts` —
+  compaction via clone.
 - `packages/provider-claude-code/src/__tests__/provider.test.ts` — independent
   live-process state across clone.
 - First-party providers implement `clone()`; `StubProvider` shares the scripted
