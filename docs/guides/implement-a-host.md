@@ -82,8 +82,11 @@ interface HostStore {
 }
 ```
 
-Used to persist command artifacts (the `/@` virtual filesystem). A throwaway
-in-memory map is a valid implementation for ephemeral sandboxes.
+Used for agent session checkpoints (`agent-sessions/<id>/checkpoint.json`) and
+command artifacts (the `/@` virtual filesystem). Implementations must round-trip
+`Uint8Array` and `bigint` (e.g. via `stringifyPortableJson` /
+`parsePortableJson` from `@demicodes/utils`). A throwaway in-memory map is a
+valid implementation for ephemeral sandboxes.
 
 ## Wiring it up
 

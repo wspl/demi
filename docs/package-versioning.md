@@ -18,6 +18,7 @@ The fixed group contains:
 - `@demicodes/provider-anthropic-api`
 - `@demicodes/provider-claude-code`
 - `@demicodes/provider-codex`
+- `@demicodes/provider-google`
 - `@demicodes/provider-grok-build`
 - `@demicodes/provider-openai-api`
 - `@demicodes/repl` (private)

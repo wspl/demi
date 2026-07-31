@@ -15,13 +15,15 @@ TypeScript ESM with bundled `.d.ts`; install only the packages you need.
 ## Packages
 
 - `@demicodes/core`: core data types and shared domain primitives (`Block`, `ModelSelection`, `TokenUsage`, `zeroUsage`).
-- `@demicodes/utils`: zero-dependency utilities — type guards, errors, async (`deferred`/`delay`/`waitFor`), bytes, strings, paths, JSON.
-- `@demicodes/provider`: the inference contract (`defineProvider`, `run()` → `ProviderEvent`) plus shared building blocks (`modelSelectionFromCatalog`, HTTP/error helpers).
+- `@demicodes/utils`: zero-dependency utilities — type guards, errors, async (`deferred`/`delay`/`waitFor`), bytes, strings, paths, portable JSON codec, id helpers.
+- `@demicodes/provider`: the inference contract (`defineProvider`, `run()` → `ProviderEvent`, required `clone()`) plus shared building blocks (`modelSelectionFromCatalog`, HTTP/error helpers, quota, credentials).
 - `@demicodes/shell`: sandboxable bash engine and the `Host` contract (`fs`/`process`/`store`); long-running shell control (`shell_exec`/`shell_status`/`yield`).
-- `@demicodes/host-local`: Node reference `Host` (`LocalHost`).
-- `@demicodes/agent`: session runtime + transport-neutral `AgentClient`/`AgentServer` protocol (in-process, stdio, WebSocket).
+- `@demicodes/host-local`: Node reference `Host` (`LocalHost`) plus `createLocalAgentServer` with command bridge on by default.
+- `@demicodes/agent`: session runtime + transport-neutral `AgentClient`/`AgentServer` protocol (in-process, stdio, WebSocket); `AgentSession.clone()`.
 - `@demicodes/coding-agent`: coding-agent harness, commands, and reference resolution (`createCodingAgentHarness`).
-- `@demicodes/provider-claude-code`, `@demicodes/provider-codex`, `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`: concrete provider adapters.
+- `@demicodes/provider-claude-code`, `@demicodes/provider-codex`, `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`, `@demicodes/provider-google`: concrete provider adapters.
+- `@demicodes/web-ui`: reusable Vue UI consuming an injected `AgentClient` (published as source-form).
+- `@demicodes/web`, `@demicodes/repl`, `@demicodes/agent-eval`: product leaves (web app, terminal REPL, benchmark harness).
 
 ## Guides
 
@@ -32,8 +34,19 @@ TypeScript ESM with bundled `.d.ts`; install only the packages you need.
 ## Reference
 
 - [Package boundaries](docs/package-boundaries.md): the enforced dependency graph and per-package public surface.
+- [Provider quota](docs/provider-quota.md): unified probe/observe for subscription rate limits.
+- [Provider global credentials](docs/provider-global-credentials.md): multi-account pool + global `setActive`.
+- [Provider / session clone](docs/provider-session-clone.md): required `.clone()` for isolated forks and compaction.
+- [Compaction context cache](docs/compaction-context-cache.md): summary turns via `AgentSession.clone()`.
+- [Provider errors & retries](docs/provider-errors-and-retries.md): classified failures and resume recovery.
+- [Command bridge](docs/command-bridge.md): LocalHost PATH shims + UDS for agent tools.
 - [Shell & yield control](docs/shell-yield-control-plan.md): long-running shell execution, the `/@` command-artifact filesystem, and yield wakeups.
 - [Tool rendering spec](docs/tool-rendering-spec.md): how a UI renders the standard tool blocks.
+- [Session storage & naming](docs/session-storage-and-naming.md): checkpoint vocabulary, `tool_call.view`, on-disk layout.
+- [Action metadata](docs/action-metadata.md): caller-defined metadata on actions.
+- [Tool-call concurrency](docs/tool-call-concurrency.md): Claude Code parallel tool batches.
+- [Binary stream boundary](docs/binary-stream-boundary.md): addressable binary final streams.
+- [Package versioning](docs/package-versioning.md): shared fixed-group versioning.
 
 ## Optional
 
