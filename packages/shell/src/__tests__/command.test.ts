@@ -27,7 +27,6 @@ const filerSpec: Command = {
     {
       name: 'create',
       summary: 'Create a new file.',
-      effects: 'modifies files',
       successOutput: 'writes Created <path> to stdout',
       failureOutput: 'writes the error reason to stderr and exits non-zero',
       input: {
@@ -289,7 +288,6 @@ test('renderCommandHelp documents the tree', () => {
 
   expect(prompt).toContain('filer: Create, edit, and patch files.')
   expect(prompt).toContain('filer create')
-  expect(prompt).toContain('Effects: modifies files')
   expect(prompt).toContain('Success output: writes Created <path> to stdout')
   expect(prompt).toContain('Failure output: writes the error reason to stderr and exits non-zero')
   expect(prompt).toContain('<path> - Target file path')
@@ -339,9 +337,9 @@ test('CommandRegistry rejects empty nodes and dead fields', () => {
       name: 'dead',
       summary: 'x',
       subcommands: [{ name: 'c', summary: 'c', run: () => ({ exitCode: 0 }) }],
-      effects: 'nope',
+      successOutput: 'nope',
     }),
-  ).toThrow('sets effects without run()')
+  ).toThrow('sets successOutput without run()')
   // With help moved to --help, 'prompt' is an ordinary (legal) child name.
   registry.register({
     name: 'okprompt',
