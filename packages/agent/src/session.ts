@@ -862,7 +862,7 @@ export class AgentSession<State> {
     const resolvedContent = await this.resolveReferences(content)
     await this.applyPendingModelSwitch()
     // Hidden internal turns (yield wakeups) are not user rounds, so they don't carry the preamble.
-    const preamble = hidden ? null : (this.runtime.preamble?.(this.promptContext()) ?? null)
+    const preamble = hidden ? null : ((await this.runtime.preamble?.(this.promptContext())) ?? null)
     this.transcriptLog.pushUserTurn(this.currentTurnId(), this.model, resolvedContent, preamble, hidden)
     await this.commitTranscript()
 
