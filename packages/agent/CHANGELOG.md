@@ -1,5 +1,18 @@
 # @demicodes/agent
 
+## 0.13.0
+
+### Minor Changes
+
+- c0ea408: Let `AgentHarness.systemPrompt`, `preamble`, and `commands` return a promise. Harness authors can now build prompts and command sets from I/O (reading workspace files, querying a store) instead of pre-computing them and closing over the result. Existing synchronous implementations keep working — the return types are widened, not replaced. `initialState` stays synchronous because `AgentSession` calls it from its constructor; async setup belongs in `host()` or a lifecycle hook.
+
+### Patch Changes
+
+- @demicodes/core@0.13.0
+- @demicodes/provider@0.13.0
+- @demicodes/shell@0.13.0
+- @demicodes/utils@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes
