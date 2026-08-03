@@ -23,7 +23,6 @@ export function createTodoCommand(): Command {
       {
         name: 'list',
         summary: 'List todos for the current agent session.',
-        effects: 'read-only; does not modify files or command storage',
         successOutput: 'writes the session todo list as raw text, or JSON matching { todos } when --json is passed',
         failureOutput: 'writes storage or validation errors to stderr and exits non-zero',
         output: {
@@ -44,7 +43,6 @@ export function createTodoCommand(): Command {
       {
         name: 'add',
         summary: 'Add a new todo.',
-        effects: 'modifies agent-session-scoped command storage; does not modify files',
         successOutput: 'writes the created todo as raw text, or JSON matching { todo } when --json is passed',
         failureOutput: 'writes validation or storage errors to stderr and exits non-zero',
         input: {
@@ -71,7 +69,6 @@ export function createTodoCommand(): Command {
       {
         name: 'update',
         summary: 'Update todo text or status.',
-        effects: 'modifies agent-session-scoped command storage; does not modify files',
         successOutput: 'writes the updated todo as raw text, or JSON matching { todo } when --json is passed',
         failureOutput: 'writes "Todo not found" or validation/storage errors to stderr and exits non-zero',
         input: {
@@ -101,7 +98,6 @@ export function createTodoCommand(): Command {
       {
         name: 'done',
         summary: 'Mark a todo as done.',
-        effects: 'modifies agent-session-scoped command storage; does not modify files',
         successOutput: 'writes the completed todo as raw text, or JSON matching { todo } when --json is passed',
         failureOutput: 'writes "Todo not found" or validation/storage errors to stderr and exits non-zero',
         input: {
