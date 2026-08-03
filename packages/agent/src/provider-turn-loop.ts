@@ -137,7 +137,7 @@ export class ProviderTurnLoop<State> {
         diagnostics: ProviderErrorDiagnostics
       }
   > {
-    const request = this.buildInferenceRequest()
+    const request = await this.buildInferenceRequest()
     const attemptStart = this.host.transcript.blocks.length
     const run = this.host.provider.run(request)
     let shouldAutoRecover = false
@@ -310,14 +310,15 @@ export class ProviderTurnLoop<State> {
     })
   }
 
-  private buildInferenceRequest(): InferenceRequest {
+  private async buildInferenceRequest(): Promise<InferenceRequest> {
     const tools = this.currentTools().map(toToolDefinition)
+    const systemPrompt = await this.host.runtime.systemPrompt(this.host.promptContext())
     return {
       sessionId: this.host.agentSessionId,
       turnId: this.host.currentTurnId(),
       requestId: this.host.nextRequestId(),
       modelId: this.host.model.model.id,
-      systemPrompt: this.host.runtime.systemPrompt(this.host.promptContext()),
+      systemPrompt,
       cwd: this.host.cwd,
       items: this.host.transcript.collectInferenceItems(),
       tools,
