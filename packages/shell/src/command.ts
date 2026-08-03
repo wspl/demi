@@ -23,7 +23,6 @@ export interface Command {
    * Execution-only fields below are only meaningful when `run` is set.
    */
   run?: (ctx: CommandRunContext) => Promise<CommandRunResult> | CommandRunResult
-  effects?: string
   successOutput?: string
   failureOutput?: string
   input?: CommandInputSpec
@@ -95,7 +94,6 @@ export interface CommandExecutionContext {
 }
 
 const EXECUTION_ONLY_FIELDS = [
-  'effects',
   'successOutput',
   'failureOutput',
   'input',
@@ -307,7 +305,6 @@ export function renderCommandHelp(command: Command, parentPath = ''): string {
   if (command.run) {
     lines.push('', 'Usage:')
     lines.push('', `  ${path}`)
-    if (command.effects) lines.push(`    Effects: ${command.effects}`)
     if (command.successOutput) lines.push(`    Success output: ${command.successOutput}`)
     else if (command.output?.json) {
       lines.push('    Success output: raw text by default; machine-readable JSON when --json is passed')
