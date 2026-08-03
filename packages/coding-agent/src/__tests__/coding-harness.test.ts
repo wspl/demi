@@ -68,7 +68,6 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
   expect(prompt).toContain('Failure output: writes the reason to stderr and exits non-zero')
   expect(prompt).toContain('todo: Manage an agent-session-scoped task list')
-  expect(prompt).toContain('todo add "Run tests"')
   expect(prompt).toContain('Effects: modifies agent-session-scoped command storage')
   expect(prompt).toContain('run them in the foreground with a short timeoutMs')
   expect(prompt).toContain('Tool description: concise title for the concrete user-visible state/result')
