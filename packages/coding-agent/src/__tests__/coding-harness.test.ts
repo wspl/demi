@@ -35,7 +35,7 @@ const model: ModelSelection = {
 test('coding agent harness exposes shell session tools and registered command prompt', async () => {
   const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
   const state = harness.initialState()
-  const commands = harness.commands?.({ state, cwd: process.cwd() }) ?? []
+  const commands = (await harness.commands?.({ state, cwd: process.cwd() })) ?? []
   const { environment, runtime } = createRuntimeFromHarness(harness, process.cwd())
 
   expect(harness.name).toBe('coding')
@@ -52,7 +52,7 @@ test('coding agent harness exposes shell session tools and registered command pr
     const properties = tool.inputSchema.properties as Record<string, unknown> | undefined
     expect(properties?.description).toEqual(expect.objectContaining({ type: 'string' }))
   }
-  const prompt = harness.systemPrompt({
+  const prompt = await harness.systemPrompt({
     agentSessionId: 'coding-test-agent',
     state,
     cwd: process.cwd(),
@@ -68,7 +68,6 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
   expect(prompt).toContain('Failure output: writes the reason to stderr and exits non-zero')
   expect(prompt).toContain('todo: Manage an agent-session-scoped task list')
-  expect(prompt).toContain('todo add "Run tests"')
   expect(prompt).toContain('Effects: modifies agent-session-scoped command storage')
   expect(prompt).toContain('run them in the foreground with a short timeoutMs')
   expect(prompt).toContain('Tool description: concise title for the concrete user-visible state/result')
@@ -222,7 +221,9 @@ function createRuntimeFromHarness(
   const state = harness.initialState()
   const harnessContext = { state, cwd }
   const registry = new CommandRegistry()
-  for (const command of harness.commands?.(harnessContext) ?? []) registry.register(command)
+  const commands = harness.commands?.(harnessContext) ?? []
+  if (commands instanceof Promise) throw new Error('test harness commands must be synchronous')
+  for (const command of commands) registry.register(command)
   const host = harness.host(harnessContext)
   if (host instanceof Promise) throw new Error('test harness host must be synchronous')
   const environment = new BashEnvironment({

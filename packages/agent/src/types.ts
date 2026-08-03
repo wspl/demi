@@ -74,9 +74,9 @@ export interface AgentHarness<State = unknown> {
   initialState(): State
   /** Return the same Host object for calls that target the same execution environment. */
   host(ctx: AgentHarnessContext<State> | AgentHostContext<State>): Host | Promise<Host>
-  commands?(ctx: AgentHarnessContext<State>): Command[]
-  systemPrompt(ctx: AgentSystemPromptContext<State>): string
-  preamble?(ctx: AgentPromptContext<State>): string | null
+  commands?(ctx: AgentHarnessContext<State>): Promise<Command[]> | Command[]
+  systemPrompt(ctx: AgentSystemPromptContext<State>): Promise<string> | string
+  preamble?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
   resolveReferences?(
     ctx: AgentReferenceResolveContext<State>,
     content: UserContentBlock[],
@@ -154,8 +154,8 @@ export type AgentLifecycleEvent<State> =
 export interface AgentHarnessRuntime<State> {
   harnessName: string
   initialState(): State
-  systemPrompt(ctx: AgentPromptContext<State>): string
-  preamble?(ctx: AgentPromptContext<State>): string | null
+  systemPrompt(ctx: AgentPromptContext<State>): Promise<string> | string
+  preamble?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
   resolveReferences?(
     ctx: AgentReferenceResolveContext<State>,
     content: UserContentBlock[],
