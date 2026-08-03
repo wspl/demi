@@ -1,5 +1,17 @@
 # @demicodes/shell
 
+## 0.14.0
+
+### Minor Changes
+
+- Remove `Command.effects` from the command contract and help renderer. Help
+  carries summary, usage, outputs, parameters, stdin/heredoc fields, `--json`,
+  and subcommands. See `docs/command-help.md`.
+
+### Patch Changes
+
+- @demicodes/utils@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

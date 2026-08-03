@@ -1,5 +1,21 @@
 # @demicodes/coding-agent
 
+## 0.14.0
+
+### Minor Changes
+
+- Remove `Command.effects` from the command contract and help renderer. Help
+  carries summary, usage, outputs, parameters, stdin/heredoc fields, `--json`,
+  and subcommands. See `docs/command-help.md`.
+
+### Patch Changes
+
+- Updated dependencies
+  - @demicodes/shell@0.14.0
+  - @demicodes/agent@0.14.0
+  - @demicodes/core@0.14.0
+  - @demicodes/utils@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes
