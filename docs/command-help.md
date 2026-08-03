@@ -1,8 +1,8 @@
 # Command help
 
 Registered `Command` trees render into agent `commandsPrompt` and `--help` via
-`renderCommandHelp` in `@demicodes/shell`. Help carries summary, usage, effects,
-outputs, parameters, stdin/heredoc fields, `--json`, and subcommands.
+`renderCommandHelp` in `@demicodes/shell`. Help carries summary, usage, outputs,
+parameters, stdin/heredoc fields, `--json`, and subcommands.
 
 Command specs intentionally omit invocation examples. Concrete example lines
 tend to overfit the model toward copying those strings instead of composing from
