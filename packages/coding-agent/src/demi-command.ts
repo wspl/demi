@@ -11,7 +11,6 @@ export function createDemiCommand(): Command {
         name: 'read',
         summary:
           'Read a file. Text files print as text; image and video files are shown to you as viewable media. Output is the raw file bytes, so it also pipes cleanly into other commands (e.g. ffmpeg).',
-        effects: 'reads one file; does not modify anything',
         successOutput:
           'writes the raw file bytes to stdout; an image or video result is presented to you as viewable media',
         failureOutput: 'writes the reason to stderr and exits non-zero if the path is missing or unreadable',
@@ -38,7 +37,6 @@ export function createDemiCommand(): Command {
       {
         name: 'create',
         summary: 'Create a new file. Fails if the file exists.',
-        effects: 'modifies files by creating a new file; does not modify command storage',
         successOutput: 'writes "Created <path>" to stdout',
         failureOutput: 'writes the reason to stderr and exits non-zero without overwriting existing files',
         input: {
@@ -82,7 +80,6 @@ export function createDemiCommand(): Command {
       {
         name: 'edit',
         summary: 'Replace exact text in an existing file.',
-        effects: 'modifies one existing file; does not modify command storage',
         successOutput: 'writes "Edited <path>" to stdout',
         failureOutput: 'writes no-match, ambiguous-match, or write errors to stderr and exits non-zero without partial writes',
         input: {
@@ -136,7 +133,6 @@ export function createDemiCommand(): Command {
       {
         name: 'patch',
         summary: 'Apply a unified diff patch to one or more files.',
-        effects: 'modifies files described by the patch; validates all patch operations before writing',
         successOutput: 'writes "Patched <n> file(s)" to stdout',
         failureOutput: 'writes parse, validation, or write errors to stderr and exits non-zero after rolling back partial writes when possible',
         input: {
