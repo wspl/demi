@@ -1,5 +1,24 @@
 # @demicodes/web
 
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @demicodes/shell@0.14.0
+  - @demicodes/coding-agent@0.14.0
+  - @demicodes/agent@0.14.0
+  - @demicodes/host-local@0.14.0
+  - @demicodes/provider-claude-code@0.14.0
+  - @demicodes/provider-codex@0.14.0
+  - @demicodes/core@0.14.0
+  - @demicodes/provider@0.14.0
+  - @demicodes/provider-anthropic-api@0.14.0
+  - @demicodes/provider-grok-build@0.14.0
+  - @demicodes/provider-openai-api@0.14.0
+  - @demicodes/utils@0.14.0
+  - @demicodes/web-ui@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes
