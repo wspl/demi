@@ -463,7 +463,9 @@ function createRuntimeFromHarness(
   const state = harness.initialState()
   const harnessContext = { state, cwd }
   const registry = new CommandRegistry()
-  for (const command of harness.commands?.(harnessContext) ?? []) registry.register(command)
+  const commands = harness.commands?.(harnessContext) ?? []
+  if (commands instanceof Promise) throw new Error('test harness commands must be synchronous')
+  for (const command of commands) registry.register(command)
   const host = harness.host(harnessContext)
   if (host instanceof Promise) throw new Error('test harness host must be synchronous')
   const environment = new BashEnvironment({

@@ -415,7 +415,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     // prompts) and the session itself. On restore it carries the saved state.
     const state = restoring ? structuredClone(checkpoint.state) : initialState
     const harnessContext = { state, cwd: frame.cwd }
-    const commands = agent.commands?.(harnessContext) ?? []
+    const commands = (await agent.commands?.(harnessContext)) ?? []
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
     const commandNames = commandRegistry.list().map((command) => command.name)
