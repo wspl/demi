@@ -1,4 +1,4 @@
-import { createId, safeJsonStringify } from '@demicodes/utils'
+import { createId, safeJsonStringify, sliceHead, sliceTail, toWellFormedText } from '@demicodes/utils'
 import type {
   Block,
   ModelSelection,
@@ -705,9 +705,13 @@ function boundToolResultContent(
   })
 }
 
+// Every replayed text passes through here, so scrubbing to well-formed
+// Unicode also heals transcripts persisted before surrogate-safe truncation.
 function boundText(text: string, headChars: number, tailChars: number): string {
   const maxChars = headChars + tailChars
-  if (text.length <= maxChars) return text
-  const omitted = text.length - maxChars
-  return `${text.slice(0, headChars)}\n\n[... truncated ${omitted} characters ...]\n\n${text.slice(-tailChars)}`
+  if (text.length <= maxChars) return toWellFormedText(text)
+  const head = sliceHead(text, headChars)
+  const tail = sliceTail(text, tailChars)
+  const omitted = text.length - head.length - tail.length
+  return toWellFormedText(`${head}\n\n[... truncated ${omitted} characters ...]\n\n${tail}`)
 }
