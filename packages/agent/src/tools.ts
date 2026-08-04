@@ -1,4 +1,4 @@
-import { asRecord, asString } from '@demicodes/utils'
+import { asRecord, asString, sliceHead } from '@demicodes/utils'
 import type {
   BashAuditEvent,
   BashEnvironment,
@@ -492,7 +492,7 @@ function boundedPreview(text: string, budgetTokens: number): { text: string; tru
   const maxChars = Math.max(0, Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN))
   if (maxChars === 0) return { text: '', truncated: text.length > 0 }
   if (text.length <= maxChars) return { text, truncated: false }
-  return { text: text.slice(0, maxChars), truncated: true }
+  return { text: sliceHead(text, maxChars), truncated: true }
 }
 
 export async function finishShellToolResult<State>(
