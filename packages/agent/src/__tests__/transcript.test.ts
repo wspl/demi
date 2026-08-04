@@ -123,6 +123,37 @@ test('TranscriptLog completes pending tool calls and emits exact tool inference 
   ])
 })
 
+test('collectInferenceItems bounds text without splitting surrogate pairs and scrubs lone surrogates', () => {
+  let id = 0
+  const transcript = new TranscriptLog([], {
+    idFactory: () => `b${++id}`,
+    now: () => '2026-06-17T00:00:00.000Z',
+    replayTextBounds: { headChars: 4, tailChars: 4 },
+  })
+
+  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'shell_exec', { script: 'run' }))
+  // The emoji straddles both the head and tail cut points; the middle one
+  // simulates a lone surrogate persisted by a pre-fix checkpoint.
+  transcript.completeToolCall('tool-1', [{ type: 'text', text: `abc🙂-\ud83d-🙂xyz` }])
+
+  const result = transcript.collectInferenceItems().find((item) => item.type === 'tool_result')
+  const text = result?.output[0]?.type === 'text' ? result.output[0].text : ''
+  expect(text.startsWith('abc\n')).toBe(true)
+  expect(text.endsWith('\nxyz')).toBe(true)
+  expect(text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/)
+})
+
+test('collectInferenceItems scrubs lone surrogates even when text fits the replay bounds', () => {
+  const transcript = makeTranscript()
+
+  transcript.applyProviderEvent(model, events.toolCall('tool-1', 'shell_exec', { script: 'run' }))
+  transcript.completeToolCall('tool-1', [{ type: 'text', text: 'card [\ud83d\npreviewTruncated: true' }])
+
+  const result = transcript.collectInferenceItems().find((item) => item.type === 'tool_result')
+  const text = result?.output[0]?.type === 'text' ? result.output[0].text : ''
+  expect(text).toBe('card [�\npreviewTruncated: true')
+})
+
 test('TranscriptLog completes the pending tool call when tool ids repeat', () => {
   const transcript = makeTranscript()
 
