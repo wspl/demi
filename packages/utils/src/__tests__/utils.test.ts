@@ -17,7 +17,10 @@ import {
   isRecord,
   numberOrZero,
   shortHash,
+  sliceHead,
+  sliceTail,
   tail,
+  toWellFormedText,
   throwIfAborted,
   truncate,
   utf8Bytes,
@@ -87,6 +90,28 @@ test('strings', () => {
   expect(tail('hello world', 5)).toBe('world')
   expect(shortHash('abc')).toBe(shortHash('abc'))
   expect(shortHash('abc')).not.toBe(shortHash('abd'))
+})
+
+test('surrogate-safe slicing', () => {
+  // '🙂' is '🙂' — two UTF-16 units.
+  expect(sliceHead('a🙂b', 2)).toBe('a')
+  expect(sliceHead('a🙂b', 3)).toBe('a🙂')
+  expect(sliceHead('a🙂b', 4)).toBe('a🙂b')
+  expect(sliceHead('abc', 0)).toBe('')
+  expect(sliceTail('a🙂b', 2)).toBe('b')
+  expect(sliceTail('a🙂b', 3)).toBe('🙂b')
+  expect(sliceTail('a🙂b', 4)).toBe('a🙂b')
+  expect(sliceTail('abc', 0)).toBe('')
+  expect(truncate('🙂🙂🙂', 4)).toBe('🙂…')
+  expect(truncate('🙂🙂🙂', 2, '')).toBe('🙂')
+  expect(tail('🙂🙂🙂', 3)).toBe('🙂')
+})
+
+test('toWellFormedText', () => {
+  expect(toWellFormedText('a🙂b')).toBe('a🙂b')
+  expect(toWellFormedText('a\ud83d')).toBe('a�')
+  expect(toWellFormedText('\ude42b')).toBe('�b')
+  expect(toWellFormedText('a\ud83d-\ude42b')).toBe('a�-�b')
 })
 
 test('createId is unique-ish', () => {
