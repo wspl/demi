@@ -45,6 +45,20 @@ test('shell tool result exposes artifact refs and bounded preview without stdout
   expect(text).not.toContain('tail')
 })
 
+test('shell preview truncation never splits a surrogate pair', () => {
+  // Budget of 1000 tokens → 4000 chars; the emoji straddles the cut point.
+  const output = `${'x'.repeat(3_999)}🙂${'y'.repeat(100)}`
+  const result = toShellToolResult(shellSnapshot(output), {
+    includePreview: true,
+    previewBudgetTokens: 1_000,
+  })
+  const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
+
+  expect(text).toContain('previewTruncated: true')
+  expect(text).toMatch(/x{3999}\n/)
+  expect(text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/)
+})
+
 test('completed short shell_exec hides and releases the command handle', async () => {
   const released: string[] = []
   const tools = createStandardAgentTools({
