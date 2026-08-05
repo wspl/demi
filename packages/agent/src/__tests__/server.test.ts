@@ -366,6 +366,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
       status: 'running',
       shellId: 'agent-input-shell',
       commandId: 'agent-input-command',
+      artifactDir: expect.any(String),
       stdout: expect.objectContaining({ delta: '', truncated: false }),
       stderr: expect.objectContaining({ delta: '', tail: '', bytes: 0, truncated: false }),
       output: expect.objectContaining({ chunks: expect.any(Array) }),

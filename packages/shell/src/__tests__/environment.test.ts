@@ -2278,7 +2278,7 @@ test('BashEnvironment output preview includes stdout from sequential foreground 
   expect(result.output.text).toBe('SHORT-OUT\nSHORT-ERR\n')
 })
 
-test('BashEnvironment exposes complete split command artifacts through /@ and Host.store', async () => {
+test('BashEnvironment writes complete split command artifacts as real files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-command-artifact-'))
   const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
   let nextCommand = 0
@@ -2296,55 +2296,47 @@ test('BashEnvironment exposes complete split command artifacts through /@ and Ho
   })
   expect(produced.status).toBe('exited')
   const commandId = produced.commandId
-  expect(produced.stdout.path).toBe(`/@/commands/${commandId}/stdout.txt`)
-  expect(produced.stderr.path).toBe(`/@/commands/${commandId}/stderr.txt`)
+  const dir = produced.artifactDir
+  expect(dir).toBe(`${host.commandArtifactsDir}/agent-command-artifact/${commandId}`)
+  expect(produced.stdout.path).toBe(`${dir}/stdout.txt`)
+  expect(produced.stderr.path).toBe(`${dir}/stderr.txt`)
+
+  // Artifacts are plain files: any tool — in-shell or a real process — reads
+  // them by ordinary path.
+  const persistedOut = await waitForStoreJson(() => readFile(`${dir}/stdout.txt`, 'utf8').catch(() => null))
+  expect(persistedOut).toBe('out1\nout2\n')
 
   const stdout = await env.exec({
     agentSessionId: 'agent-command-artifact',
-    script: `cat /@/commands/${commandId}/stdout.txt`,
+    script: `cat ${dir}/stdout.txt`,
     timeoutMs: 1_000,
   })
   expect(stdout.stdout.delta).toBe('out1\nout2\n')
 
-  const stderr = await env.exec({
-    agentSessionId: 'agent-command-artifact',
-    script: `cat /@/commands/${commandId}/stderr.txt`,
-    timeoutMs: 1_000,
-  })
-  expect(stderr.stdout.delta).toBe('err1\nerr2\n')
-
   const selected = await env.exec({
     agentSessionId: 'agent-command-artifact',
     script:
-      `tail -n 1 /@/commands/${commandId}/stdout.txt; ` +
-      `grep -n err2 /@/commands/${commandId}/stderr.txt; ` +
-      `if cat /@/commands/${commandId}/output.txt >/dev/null 2>&1; then printf bad; else printf missing; fi`,
+      `tail -n 1 ${dir}/stdout.txt; ` +
+      `grep -n err2 ${dir}/stderr.txt; ` +
+      `if cat ${dir}/output.txt >/dev/null 2>&1; then printf bad; else printf missing; fi`,
     timeoutMs: 1_000,
   })
   expect(selected.stdout.delta).toBe('out2\n2:err2\nmissing')
 
   const meta = await env.exec({
     agentSessionId: 'agent-command-artifact',
-    script: `cat /@/commands/${commandId}/meta.json`,
+    script: `cat ${dir}/meta.json`,
     timeoutMs: 1_000,
   })
   expect(JSON.parse(meta.stdout.delta)).toMatchObject({
     status: 'exited',
     commandId,
-    stdout: { path: `/@/commands/${commandId}/stdout.txt`, bytes: 10 },
-    stderr: { path: `/@/commands/${commandId}/stderr.txt`, bytes: 10 },
-  })
-
-  const persisted = await waitForStoreJson<{ stdout: string; stderr: string }>(
-    () => host.store.readJson(`agent-sessions/agent-command-artifact/commands/${commandId}/artifact.json`),
-  )
-  expect(persisted).toMatchObject({
-    stdout: 'out1\nout2\n',
-    stderr: 'err1\nerr2\n',
+    stdout: { path: `${dir}/stdout.txt`, bytes: 10 },
+    stderr: { path: `${dir}/stderr.txt`, bytes: 10 },
   })
 })
 
-test('BashEnvironment releaseCommand removes completed command handle and virtual artifacts', async () => {
+test('BashEnvironment releaseCommand removes completed command handle and artifact files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-bash-command-release-'))
   const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
   let nextCommand = 0
@@ -2367,7 +2359,7 @@ test('BashEnvironment releaseCommand removes completed command handle and virtua
 
   const artifactProbe = await env.exec({
     agentSessionId: 'agent-command-release',
-    script: `if cat /@/commands/${produced.commandId}/stdout.txt >/dev/null 2>&1; then printf found; else printf missing; fi`,
+    script: `if cat ${produced.artifactDir}/stdout.txt >/dev/null 2>&1; then printf found; else printf missing; fi`,
     timeoutMs: 1_000,
   })
   expect(artifactProbe.stdout.delta).toBe('missing')

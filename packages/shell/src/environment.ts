@@ -1,4 +1,4 @@
-import { base64ToBytes, bytesToBase64, concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
+import { concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
@@ -24,7 +24,7 @@ import {
 } from './environment-output'
 import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } from './environment-state'
 import type { Host } from './host'
-import { HostBackedFileSystem, virtualDirectory, virtualFile, type VirtualFileSystemNode } from './host-fs'
+import { HostBackedFileSystem } from './host-fs'
 import { AgentSessionCommandStorage } from './storage'
 import { CommandArtifactStore } from './command-artifact-store'
 import { commandToForkCommand } from './registered-command-adapter'
@@ -163,6 +163,8 @@ export type ShellCommandStatus =
       status: 'exited'
       shellId: string
       commandId: string
+      /** Real directory holding this command's artifact files. */
+      artifactDir: string
       exitCode: number
       stdout: ShellStreamView
       stderr: ShellStreamView
@@ -178,6 +180,7 @@ export type ShellCommandStatus =
       status: 'running'
       shellId: string
       commandId: string
+      artifactDir: string
       stdout: ShellStreamView
       stderr: ShellStreamView
       output: ShellOutputView
@@ -188,6 +191,7 @@ export type ShellCommandStatus =
       status: 'aborted'
       shellId: string
       commandId: string
+      artifactDir: string
       stdout: ShellStreamView
       stderr: ShellStreamView
       output: ShellOutputView
@@ -199,6 +203,8 @@ interface ShellCommandRecord {
   id: string
   shellId: string
   commandStorageId: string
+  /** Real directory the artifact files (stdout.txt/stderr.txt/meta.json/stdout.bin) live in. */
+  artifactDir: string
   script: string
   startedAt: number
   lastOutputAt: number
@@ -213,22 +219,11 @@ interface ShellCommandRecord {
   audit: BashAuditEvent[]
   commandMetadata: CommandMetadataRecord[]
   binaryStdout?: BinaryStdout
+  /** Full binary stream bytes awaiting their one-time write to stdout.bin. */
+  pendingBinaryArtifact?: Uint8Array
   /** Output limit of the exec that started this command (binary carry cap). */
   outputLimitBytes: number
   persistedFingerprint?: string
-}
-
-interface CommandArtifact {
-  status: 'running' | 'exited' | 'aborted'
-  shellId: string
-  commandId: string
-  startedAt: number
-  lastOutputAt: number
-  exitCode: number | null
-  stdout: string
-  stderr: string
-  /** Base64 raw bytes of a binary final stream (served as stdout.bin). */
-  stdoutBinary?: { base64: string; truncated: boolean; totalBytes: number }
 }
 
 // Fallback observation window for direct exec() calls that omit timeoutMs (internal instant
@@ -267,7 +262,7 @@ export class BashEnvironment {
 
   constructor(options: BashEnvironmentOptions) {
     this.host = options.host
-    this.artifacts = new CommandArtifactStore(this.host.store)
+    this.artifacts = new CommandArtifactStore(this.host)
     this.commands = options.commands ?? new CommandRegistry()
     this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
@@ -437,9 +432,7 @@ export class BashEnvironment {
     const id = this.shellIdFactory()
     const commandStorageId = agentSessionId ?? id
     const cwd = initialCwd ?? this.host.defaultCwd
-    const fs = new HostBackedFileSystem(this.host, {
-      lookup: (path) => this.lookupVirtualArtifact(commandStorageId, path),
-    })
+    const fs = new HostBackedFileSystem(this.host)
     const env = new Map<string, string>()
     for (const [key, value] of Object.entries(this.initialEnv)) env.set(key, value)
     env.set('PWD', cwd)
@@ -620,6 +613,7 @@ export class BashEnvironment {
       id,
       shellId: session.id,
       commandStorageId: session.commandStorageId,
+      artifactDir: this.artifacts.dirFor(session.commandStorageId, id),
       script,
       startedAt: now,
       lastOutputAt: now,
@@ -1029,7 +1023,9 @@ export class BashEnvironment {
         }
         stdoutText = `<binary stdout: ${bytes.length} bytes${
           truncated ? `, exceeds the ${cap}-byte binary limit` : ''
-        }; raw bytes at /@/commands/${record.id}/stdout.bin>\n`
+        }; raw bytes at ${record.artifactDir}/stdout.bin>\n`
+        // The full stream goes to disk regardless of the in-memory carry cap.
+        record.pendingBinaryArtifact = bytes
       }
     }
     const stderrText = foreground ? resultOrError.stderr : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
@@ -1134,6 +1130,7 @@ export class BashEnvironment {
     const base = {
       shellId: record.shellId,
       commandId: record.id,
+      artifactDir: record.artifactDir,
       stdout,
       stderr,
       output,
@@ -1156,78 +1153,18 @@ export class BashEnvironment {
     return { ...base, status: 'running' }
   }
 
-  private async lookupVirtualArtifact(commandStorageId: string, path: string): Promise<VirtualFileSystemNode | null> {
-    const parts = path.split('/').filter(Boolean)
-    if (parts.length === 1 && parts[0] === '@') return virtualDirectory(['commands'])
-    if (parts.length === 2 && parts[0] === '@' && parts[1] === 'commands') {
-      return virtualDirectory(await this.commandArtifactIds(commandStorageId))
-    }
-    if (parts.length === 3 && parts[0] === '@' && parts[1] === 'commands') {
-      const artifact = await this.commandArtifact(commandStorageId, parts[2]!)
-      if (!artifact) return null
-      const entries = ['meta.json', 'stderr.txt', 'stdout.txt']
-      if (artifact.stdoutBinary) entries.push('stdout.bin')
-      return virtualDirectory(entries)
-    }
-    if (parts.length !== 4 || parts[0] !== '@' || parts[1] !== 'commands') return null
-
-    const artifact = await this.commandArtifact(commandStorageId, parts[2]!)
-    if (!artifact) return null
-
-    const fileName = parts[3]
-    if (fileName === 'stdout.txt') return virtualFile(encodeUtf8(artifact.stdout))
-    if (fileName === 'stdout.bin' && artifact.stdoutBinary) {
-      return virtualFile(base64ToBytes(artifact.stdoutBinary.base64))
-    }
-    if (fileName === 'stderr.txt') return virtualFile(encodeUtf8(artifact.stderr))
-    if (fileName === 'meta.json') return virtualFile(encodeUtf8(`${JSON.stringify(commandArtifactMeta(artifact), null, 2)}\n`))
-    return null
-  }
-
-  private async commandArtifactIds(commandStorageId: string): Promise<string[]> {
-    const ids = new Set<string>()
-    for (const record of this.commandsById.values()) {
-      if (record.commandStorageId === commandStorageId && !this.artifacts.isReleased(commandStorageId, record.id)) ids.add(record.id)
-    }
-    const storage = this.artifacts.storageFor(commandStorageId)
-    const keys = await storage.list('commands').catch(() => [])
-    for (const key of keys) {
-      const match = /^commands\/([^/]+)\/artifact\.json$/.exec(key)
-      if (match && !this.artifacts.isReleased(commandStorageId, match[1]!)) ids.add(match[1]!)
-    }
-    return [...ids]
-  }
-
-  private async commandArtifact(commandStorageId: string, commandId: string): Promise<CommandArtifact | null> {
-    if (this.artifacts.isReleased(commandStorageId, commandId)) return null
-    const record = this.commandsById.get(commandId)
-    if (record?.commandStorageId === commandStorageId) {
-      this.syncRunningRecord(record)
-      return commandArtifactFromRecord(record)
-    }
-    const value = await this.artifacts
-      .storageFor(commandStorageId)
-      .readJson<CommandArtifact>(`commands/${commandId}/artifact.json`)
-      .catch(() => null)
-    return isCommandArtifact(value) ? value : null
-  }
-
   private persistCommandArtifact(record: ShellCommandRecord): void {
     const fingerprint = `${record.status}:${record.exitCode ?? ''}:${record.stdout.length}:${record.stderr.length}:${record.binaryStdout?.totalBytes ?? ''}`
     if (record.persistedFingerprint === fingerprint) return
     record.persistedFingerprint = fingerprint
-    this.artifacts.persist(record.commandStorageId, record.id, commandArtifactFromRecord(record))
-  }
-
-  private syncRunningRecord(record: ShellCommandRecord): void {
-    const session = this.shells.get(record.shellId)
-    const foreground = session?.foreground
-    if (record.status === 'running' && foreground?.commandId === record.id) {
-      record.stdout = foreground.stdoutBuffer
-      record.stderr = foreground.stderrBuffer
-      record.outputChunks = [...foreground.outputChunks]
-      record.lastOutputAt = foreground.lastOutputAt
-    }
+    const stdoutBin = record.pendingBinaryArtifact
+    record.pendingBinaryArtifact = undefined
+    this.artifacts.persist(record.commandStorageId, record.id, {
+      meta: `${JSON.stringify(commandArtifactMeta(record), null, 2)}\n`,
+      stdout: record.stdout,
+      stderr: record.stderr,
+      ...(stdoutBin ? { stdoutBin } : {}),
+    })
   }
 }
 
@@ -1284,7 +1221,7 @@ function streamView(
     else record.stderrOffset = nextOffset
   }
   return {
-    path: `/@/commands/${record.id}/${stream}.txt`,
+    path: `${record.artifactDir}/${stream}.txt`,
     offset: nextOffset,
     delta,
     tail: tailString(text),
@@ -1326,7 +1263,7 @@ function mergedOutputView(
   const truncated = nextOffset < totalBytes
   if (explicitOffset === undefined) record.outputOffset = nextOffset
   return {
-    path: `demi://shell/${record.shellId}/commands/${record.id}/output`,
+    path: record.artifactDir,
     offset: nextOffset,
     text,
     tail: tailOutputText(record.outputChunks),
@@ -1355,67 +1292,26 @@ function ensureRecordOutputCoverage(record: ShellCommandRecord): void {
   appendRecordOutput(record, 'stderr', record.stderr)
 }
 
-function commandArtifactFromRecord(record: ShellCommandRecord): CommandArtifact {
+function commandArtifactMeta(record: ShellCommandRecord): Record<string, unknown> {
   return {
     status: record.status,
     shellId: record.shellId,
     commandId: record.id,
+    script: record.script,
     startedAt: record.startedAt,
     lastOutputAt: record.lastOutputAt,
     exitCode: record.exitCode ?? null,
-    stdout: record.stdout,
-    stderr: record.stderr,
+    stdout: { path: `${record.artifactDir}/stdout.txt`, bytes: utf8Bytes(record.stdout) },
+    stderr: { path: `${record.artifactDir}/stderr.txt`, bytes: utf8Bytes(record.stderr) },
     ...(record.binaryStdout
       ? {
           stdoutBinary: {
-            base64: bytesToBase64(record.binaryStdout.data),
-            truncated: record.binaryStdout.truncated,
-            totalBytes: record.binaryStdout.totalBytes,
+            path: `${record.artifactDir}/stdout.bin`,
+            bytes: record.binaryStdout.totalBytes,
           },
         }
       : {}),
   }
-}
-
-function commandArtifactMeta(artifact: CommandArtifact): Record<string, unknown> {
-  const stdoutPath = `/@/commands/${artifact.commandId}/stdout.txt`
-  const stderrPath = `/@/commands/${artifact.commandId}/stderr.txt`
-  return {
-    status: artifact.status,
-    shellId: artifact.shellId,
-    commandId: artifact.commandId,
-    startedAt: artifact.startedAt,
-    lastOutputAt: artifact.lastOutputAt,
-    runningMs: Date.now() - artifact.startedAt,
-    idleMs: Date.now() - artifact.lastOutputAt,
-    exitCode: artifact.exitCode,
-    stdout: { path: stdoutPath, bytes: utf8Bytes(artifact.stdout) },
-    stderr: { path: stderrPath, bytes: utf8Bytes(artifact.stderr) },
-    ...(artifact.stdoutBinary
-      ? {
-          stdoutBinary: {
-            path: `/@/commands/${artifact.commandId}/stdout.bin`,
-            bytes: artifact.stdoutBinary.totalBytes,
-            truncated: artifact.stdoutBinary.truncated,
-          },
-        }
-      : {}),
-  }
-}
-
-function isCommandArtifact(value: unknown): value is CommandArtifact {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const record = value as Record<string, unknown>
-  return (
-    (record.status === 'running' || record.status === 'exited' || record.status === 'aborted') &&
-    typeof record.shellId === 'string' &&
-    typeof record.commandId === 'string' &&
-    typeof record.startedAt === 'number' &&
-    typeof record.lastOutputAt === 'number' &&
-    (typeof record.exitCode === 'number' || record.exitCode === null) &&
-    typeof record.stdout === 'string' &&
-    typeof record.stderr === 'string'
-  )
 }
 
 function tailOutputText(chunks: readonly ShellOutputRecordChunk[]): string {

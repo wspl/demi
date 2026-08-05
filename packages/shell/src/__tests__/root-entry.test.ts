@@ -18,6 +18,7 @@ test('root entry exposes browser-safe Host contract and HostBackedFileSystem cla
 
   const fs = new HostBackedFileSystem({
     defaultCwd: '/tmp',
+    commandArtifactsDir: '/tmp/.command-artifacts',
     fs: {} as Host['fs'],
     process: { spawn: async () => { throw new Error('not used') } },
     store: {} as Host['store'],
