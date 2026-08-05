@@ -224,7 +224,7 @@ export function toShellToolResult(
 ): AgentToolInvokeResult {
   const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
   if (result.status === 'exited' && result.binaryStdout) {
-    const verdict = binaryStreamVerdict(result.binaryStdout, result.commandId, options.model, {
+    const verdict = binaryStreamVerdict(result.binaryStdout, `${result.artifactDir}/stdout.bin`, options.model, {
       ...DEFAULT_MAX_MEDIA_BYTES,
       ...options.maxMediaBytes,
     })
@@ -243,7 +243,8 @@ export const SHELL_VIEW_MAX_CHARS = 32_768
 
 /**
  * Bounded UI view of a shell command stored on the tool_call block. Full
- * output lives in the command artifact (`/@/commands/<commandId>/…`), keyed by
+ * output lives in the command artifact directory (real files on the host
+ * filesystem, see `artifactDir`), keyed by
  * `commandId`; the view carries only the tail render window and never embeds
  * raw or base64 bytes.
  */
@@ -312,12 +313,11 @@ function tailChunkWindow(
  */
 function binaryStreamVerdict(
   binary: NonNullable<Extract<ShellCommandStatus, { status: 'exited' }>['binaryStdout']>,
-  commandId: string,
+  binPath: string,
   model: Model | undefined,
   maxMediaBytes: Record<ModelMediaKind, number>,
 ): { block?: ToolResultContentBlock; note?: string } {
   const media = sniffModelMediaType(binary.data)
-  const binPath = `/@/commands/${commandId}/stdout.bin`
   if (binary.truncated) {
     return {
       note: `Binary stdout (${binary.totalBytes} bytes${
@@ -447,7 +447,7 @@ function formatShellToolResult(result: ShellCommandStatus, options: ShellToolRes
     lines.push(`idleMs: ${result.idleMs}`)
     appendArtifact(lines, 'stdout', result.stdout)
     appendArtifact(lines, 'stderr', result.stderr)
-    lines.push(`metaPath: /@/commands/${result.commandId}/meta.json`)
+    lines.push(`metaPath: ${result.artifactDir}/meta.json`)
   }
 
   if (options.includePreview) {
@@ -483,7 +483,7 @@ function appendPreview(lines: string[], result: ShellCommandStatus, budgetTokens
   lines.push(preview.text)
   if (preview.truncated || result.output.truncated) {
     lines.push(
-      `previewTruncated: true; read /@/commands/${result.commandId}/stdout.txt or /@/commands/${result.commandId}/stderr.txt for more.`,
+      `previewTruncated: true; read ${result.artifactDir}/stdout.txt or ${result.artifactDir}/stderr.txt for more.`,
     )
   }
 }

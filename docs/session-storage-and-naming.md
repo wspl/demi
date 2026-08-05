@@ -109,9 +109,11 @@ internal command-artifact storage key.
 - **checkpoint.json** (implemented) — the restorable session state. Transcript
   blocks carry text, tool views (bounded), and (eventually) refs. No unbounded
   command-status dump is stored inline.
-- **commands/\<id\>/artifact.json** (implemented) — the lossless record of one
-  command: full stdout/stderr text and binary stdout. Exposed read-only at
-  `/@/commands/<id>/{meta.json,stdout.txt,stderr.txt,stdout.bin}`.
+- **command artifacts** (implemented) — the lossless record of one command,
+  written as plain files under `Host.commandArtifactsDir/<storageId>/<commandId>/`
+  (`meta.json`, `stdout.txt`, `stderr.txt`, `stdout.bin`): one filesystem
+  namespace shared with spawned processes, so any tool reads and searches them
+  with ordinary file operations.
 - **blobs/\<sha256\>** (remaining) — media/binary bytes referenced from content
   blocks (`source.ref`). Session-scoped content addressing; deleting the session
   directory reclaims everything.
