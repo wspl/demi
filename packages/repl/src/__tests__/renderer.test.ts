@@ -152,6 +152,7 @@ test('REPL renderer prints phase, queue, shell output, audit, and progress frame
       status: 'running',
       shellId: 'shell-1',
       commandId: 'command-1',
+      artifactDir: '/artifacts/shell-1/command-1',
       stdout: { path: 'demi://stdout', offset: 4, delta: 'out\n', tail: 'out\n', bytes: 4, truncated: false },
       stderr: { path: 'demi://stderr', offset: 4, delta: 'err\n', tail: 'err\n', bytes: 4, truncated: false },
       output: {
