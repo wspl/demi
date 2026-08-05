@@ -36,9 +36,9 @@ test('shell tool result exposes artifact refs and bounded preview without stdout
   })
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
 
-  expect(text).toContain('stdoutPath: /@/commands/cmd-1/stdout.txt')
-  expect(text).toContain('stderrPath: /@/commands/cmd-1/stderr.txt')
-  expect(text).toContain('metaPath: /@/commands/cmd-1/meta.json')
+  expect(text).toContain('stdoutPath: /artifacts/session-1/cmd-1/stdout.txt')
+  expect(text).toContain('stderrPath: /artifacts/session-1/cmd-1/stderr.txt')
+  expect(text).toContain('metaPath: /artifacts/session-1/cmd-1/meta.json')
   expect(text).toContain('previewBudgetTokens: 1000')
   expect(text).toContain('previewTruncated: true')
   expect(text).not.toContain('stdout:\n')
@@ -83,7 +83,7 @@ test('completed short shell_exec hides and releases the command handle', async (
   expect(text).toContain('done')
   expect(text).not.toContain('commandId:')
   expect(text).not.toContain('stdoutPath:')
-  expect(text).not.toContain('/@/commands/')
+  expect(text).not.toContain('/artifacts/session-1/cmd-1')
   expect(released).toEqual(['cmd-1'])
 })
 
@@ -107,7 +107,7 @@ test('completed truncated shell_exec keeps the command handle for artifacts', as
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
 
   expect(text).toContain('commandId: cmd-1')
-  expect(text).toContain('stdoutPath: /@/commands/cmd-1/stdout.txt')
+  expect(text).toContain('stdoutPath: /artifacts/session-1/cmd-1/stdout.txt')
   expect(text).toContain('previewTruncated: true')
   expect(released).toEqual([])
 })
@@ -211,9 +211,10 @@ function shellSnapshot(output: string): Extract<ShellCommandStatus, { status: 'e
     status: 'exited',
     shellId: 'shell-1',
     commandId: 'cmd-1',
+    artifactDir: '/artifacts/session-1/cmd-1',
     exitCode: 0,
     stdout: {
-      path: '/@/commands/cmd-1/stdout.txt',
+      path: '/artifacts/session-1/cmd-1/stdout.txt',
       offset: bytes,
       delta: output,
       tail: output.slice(-128),
@@ -221,7 +222,7 @@ function shellSnapshot(output: string): Extract<ShellCommandStatus, { status: 'e
       truncated: false,
     },
     stderr: {
-      path: '/@/commands/cmd-1/stderr.txt',
+      path: '/artifacts/session-1/cmd-1/stderr.txt',
       offset: 0,
       delta: '',
       tail: '',
@@ -229,7 +230,7 @@ function shellSnapshot(output: string): Extract<ShellCommandStatus, { status: 'e
       truncated: false,
     },
     output: {
-      path: 'demi://shell/shell-1/commands/cmd-1/output',
+      path: '/artifacts/session-1/cmd-1',
       offset: bytes,
       text: output,
       tail: output.slice(-128),
@@ -249,8 +250,9 @@ function runningShellSnapshot(output: string): Extract<ShellCommandStatus, { sta
     status: 'running',
     shellId: 'shell-1',
     commandId: 'cmd-1',
+    artifactDir: '/artifacts/session-1/cmd-1',
     stdout: {
-      path: '/@/commands/cmd-1/stdout.txt',
+      path: '/artifacts/session-1/cmd-1/stdout.txt',
       offset: bytes,
       delta: output,
       tail: output.slice(-128),
@@ -258,7 +260,7 @@ function runningShellSnapshot(output: string): Extract<ShellCommandStatus, { sta
       truncated: false,
     },
     stderr: {
-      path: '/@/commands/cmd-1/stderr.txt',
+      path: '/artifacts/session-1/cmd-1/stderr.txt',
       offset: 0,
       delta: '',
       tail: '',
@@ -266,7 +268,7 @@ function runningShellSnapshot(output: string): Extract<ShellCommandStatus, { sta
       truncated: false,
     },
     output: {
-      path: 'demi://shell/shell-1/commands/cmd-1/output',
+      path: '/artifacts/session-1/cmd-1',
       offset: bytes,
       text: output,
       tail: output.slice(-128),
