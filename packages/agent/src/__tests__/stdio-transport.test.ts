@@ -177,7 +177,11 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
 })
 
 test('StdioTransport carries AgentClient frames to a child-process AgentServer', async () => {
-  const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'stdio-host-fixture.ts')], {
+  // The child must resolve workspace packages from src like the test run
+  // itself does; without the development condition it would resolve dist
+  // exports that only exist after a build. (bun's execArgv is not a reliable
+  // carrier for this, so the flag is passed explicitly.)
+  const child = spawn(process.execPath, ['--conditions=development', join(dirname(fileURLToPath(import.meta.url)), 'stdio-host-fixture.ts')], {
     cwd: process.cwd(),
     env: process.env,
     stdio: ['pipe', 'pipe', 'pipe'],
