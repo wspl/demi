@@ -32,7 +32,11 @@ import { ProviderStreamError } from './provider-stream-error'
 /** Session tuning forwarded to every AgentSession this server creates. */
 export interface AgentServerSessionOptions {
   retry?: Partial<TurnRetryPolicy>
-  compaction?: { keepRecentTokens?: number; preflightThresholdRatio?: number }
+  compaction?: {
+    keepRecentTokens?: number
+    preflightThresholdRatio?: number
+    preflightThresholdTokens?: number
+  }
   persistIntervalMs?: number
 }
 

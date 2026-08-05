@@ -5,6 +5,7 @@ import { TranscriptLog } from './transcript'
 import { ProviderStreamError } from './provider-stream-error'
 import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
 import { findResumePoint } from './recovery'
+import { resolveCompactionThreshold } from './compaction-support'
 import type { ActiveTurnPhase } from './session'
 import type { AgentHarnessRuntime, AgentMetadata, AgentTool, AgentToolInvokeResult, SessionEvent } from './types'
 
@@ -25,6 +26,8 @@ export interface ProviderTurnLoopHost<State> {
   readonly cwd: string
   readonly agentState: State
   readonly thresholdRatio: number
+  /** Absolute compact threshold; null falls back to `contextWindow * thresholdRatio`. */
+  readonly thresholdTokens: number | null
   readonly steerContinuationCount: number
   readonly retryPolicy: TurnRetryPolicy
   readonly metadata: AgentMetadata | null
@@ -337,7 +340,12 @@ export class ProviderTurnLoop<State> {
     const contextWindow = this.host.model.model.contextWindow
     if (contextWindow <= 0) return false
     const usedTokens = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
-    return usedTokens >= Math.floor(contextWindow * this.host.thresholdRatio)
+    const threshold = resolveCompactionThreshold(
+      contextWindow,
+      this.host.thresholdRatio,
+      this.host.thresholdTokens,
+    )
+    return usedTokens >= threshold
   }
 }
 

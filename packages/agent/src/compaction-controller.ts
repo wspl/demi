@@ -1,7 +1,12 @@
 import { throwIfAborted } from '@demicodes/utils'
 import type { Block, ModelSelection, Transcript as CoreTranscript, UserContentBlock } from '@demicodes/core'
 import { TranscriptLog, estimateTranscriptBlockTokens } from './transcript'
-import { COMPACTION_SUMMARY_INSTRUCTION, estimateTokens, nextSmallerCompactionCutPoint } from './compaction-support'
+import {
+  COMPACTION_SUMMARY_INSTRUCTION,
+  estimateTokens,
+  nextSmallerCompactionCutPoint,
+  resolveCompactionThreshold,
+} from './compaction-support'
 import { isContextLengthExceeded } from './provider-stream-error'
 import type { SessionEvent, SessionEventListener } from './types'
 
@@ -24,6 +29,8 @@ export interface CompactionHost {
   readonly model: ModelSelection
   readonly keepRecentTokens: number
   readonly thresholdRatio: number
+  /** Absolute compact threshold; null falls back to `contextWindow * thresholdRatio`. */
+  readonly thresholdTokens: number | null
   currentSignal(): AbortSignal
   clone(transcript: CoreTranscript): CompactionClone
   commitTranscript(): Promise<void>
@@ -45,7 +52,11 @@ export class CompactionController {
   async compactToFit(targetModel: ModelSelection): Promise<void> {
     const contextWindow = targetModel.model.contextWindow
     if (contextWindow <= 0) return
-    const threshold = Math.floor(contextWindow * this.host.thresholdRatio)
+    const threshold = resolveCompactionThreshold(
+      contextWindow,
+      this.host.thresholdRatio,
+      this.host.thresholdTokens,
+    )
     if (this.host.transcript.estimateContextTokens(contextWindow) < threshold) return
     await this.host.runWithCompactingPhase(async () => {
       for (let attempt = 0; attempt < 8 && this.host.transcript.estimateContextTokens(contextWindow) >= threshold; attempt += 1) {
@@ -58,7 +69,11 @@ export class CompactionController {
   async preflight(): Promise<void> {
     const contextWindow = this.host.model.model.contextWindow
     if (contextWindow <= 0) return
-    const threshold = Math.floor(contextWindow * this.host.thresholdRatio)
+    const threshold = resolveCompactionThreshold(
+      contextWindow,
+      this.host.thresholdRatio,
+      this.host.thresholdTokens,
+    )
     if (this.host.transcript.estimateContextTokens(contextWindow) < threshold) return
     await this.host.runWithCompactingPhase(() => this.run())
   }
