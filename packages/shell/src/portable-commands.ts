@@ -37,6 +37,16 @@ export const DEMI_PORTABLE_COMMANDS: readonly CommandName[] = getCommandNames().
   (name) => !REAL_SPAWN_DEPENDENT_COMMANDS.has(name),
 ) as CommandName[]
 
+/**
+ * Portable commands routed real-binary-first (`preferHostSpawn`): recursive
+ * tree scanners whose in-process implementations read files whole and burn
+ * the embedding host's main thread for minutes on large trees. A real
+ * process runs off-thread with its output bounded by the capture limit;
+ * hosts without the binary fall back to the portable implementation on
+ * first use.
+ */
+export const HOST_PREFERRED_SCAN_COMMANDS: ReadonlySet<string> = new Set(['rg', 'grep', 'find'])
+
 /** Shell language words and builtins the interpreter itself owns. */
 const SHELL_BUILTIN_NAMES = [
   '.',
