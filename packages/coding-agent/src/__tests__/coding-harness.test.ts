@@ -255,6 +255,7 @@ function renderCommandsPrompt(commands: readonly Command[]): string {
 
 class RecordingHost implements Host {
   readonly defaultCwd: string
+  readonly commandArtifactsDir: string
   readonly fs: RecordingFileSystem
   readonly store: HostStore = new MemoryHostStore()
   processSpawnCalls = 0
@@ -270,6 +271,7 @@ class RecordingHost implements Host {
     stdoutText: string,
   ) {
     this.defaultCwd = defaultCwd
+    this.commandArtifactsDir = `${defaultCwd}/.command-artifacts`
     this.fs = new RecordingFileSystem(stdoutText)
   }
 }
