@@ -2203,13 +2203,17 @@ test('BashEnvironment returns bounded output deltas by maxOutputBytes', async ()
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
 
+  // The leading sleep keeps the first bytes out of exec's own returned view
+  // (which would otherwise consume them on a fast machine and shift every
+  // delta below); printf writes each burst atomically, so arrival is whole.
   const first = await env.exec({
-    script: 'sh -c "printf 1234567890; sleep 0.03; printf done"',
+    script: 'sh -c "sleep 0.2; printf 1234567890; sleep 0.03; printf done"',
     timeoutMs: 1,
     maxOutputBytes: 5,
   })
 
   expect(first.status).toBe('running')
+  expect(first.stdout.delta).toBe('')
   if (first.status !== 'running') throw new Error('expected running result')
   // First bounded read: stop as soon as we observe a non-empty truncated chunk.
   const firstChunk = await waitForCommand(env, first.commandId, {
