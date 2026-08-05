@@ -1,5 +1,19 @@
 # @demicodes/shell
 
+## 0.15.0
+
+### Minor Changes
+
+- 6e26ef6: Command artifacts are now plain files on the host filesystem; the `/@` virtual filesystem is gone.
+
+  `Host` gains `commandArtifactsDir` — a directory reachable through `Host.fs` and visible to processes from `Host.process.spawn` (one shared filesystem namespace). Each command writes `meta.json` / `stdout.txt` / `stderr.txt` (and full `stdout.bin` for binary streams, no longer capped or base64-wrapped) under `<dir>/<storageId>/<commandId>/`, and every status/view path (`artifactDir`, `stdout.path`, placeholders) names those real files. Any tool — a portable in-shell command, a real spawned process, or the embedder's own tooling — reads and searches artifacts with ordinary file operations; embedders on virtual hosts point `commandArtifactsDir` at their virtual disk and portable commands keep working through the same paths.
+
+- f57938e: Tree scanners (`rg` / `grep` / `find`) route to the host's real binary first. Their in-process portable implementations read files whole and burn the embedding host's main thread for minutes on large trees; a real process runs off-thread with output bounded by the capture limit. Hosts without a binary fall back to the portable implementation on first use, per shell — no configuration, no platform loss.
+
+### Patch Changes
+
+- @demicodes/utils@0.15.0
+
 ## 0.14.2
 
 ### Patch Changes
