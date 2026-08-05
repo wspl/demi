@@ -226,6 +226,12 @@ export interface AgentSessionOptions<State = unknown> {
   compaction?: {
     keepRecentTokens?: number
     preflightThresholdRatio?: number
+    /**
+     * Absolute token threshold for auto-compaction. When set, replaces the
+     * ratio-derived threshold (still clamped to the model context window).
+     * A non-finite `preflightThresholdRatio` still disables auto-compaction.
+     */
+    preflightThresholdTokens?: number
   }
   /**
    * Maximum interval between checkpoint writes while a turn is streaming. Writes

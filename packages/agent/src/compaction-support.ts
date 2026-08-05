@@ -3,6 +3,27 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
+/**
+ * Resolves the token count at which auto-compaction fires.
+ *
+ * - A non-finite `thresholdRatio` disables auto-compaction (used by summary clones).
+ * - When `thresholdTokens` is a finite number, it is used as an absolute threshold,
+ *   clamped to `[0, contextWindow]`.
+ * - Otherwise the threshold is `floor(contextWindow * thresholdRatio)`.
+ */
+export function resolveCompactionThreshold(
+  contextWindow: number,
+  thresholdRatio: number,
+  thresholdTokens: number | null | undefined,
+): number {
+  if (contextWindow <= 0) return 0
+  if (!Number.isFinite(thresholdRatio)) return Number.POSITIVE_INFINITY
+  if (thresholdTokens != null && Number.isFinite(thresholdTokens)) {
+    return Math.min(Math.max(0, Math.floor(thresholdTokens)), contextWindow)
+  }
+  return Math.floor(contextWindow * thresholdRatio)
+}
+
 /** The next (smaller) cut point to retry compaction with, or null when nothing more can be compacted. */
 export function nextSmallerCompactionCutPoint(startIndex: number, cutPoint: number): number | null {
   const compactedBlockCount = cutPoint - startIndex

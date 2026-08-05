@@ -105,6 +105,35 @@ test('preflight compaction summarizes before the model request and keeps the inc
   assertTranscriptInvariants(session.transcript().blocks)
 })
 
+test('preflight honors absolute preflightThresholdTokens over the ratio', async () => {
+  const largeWindowModel: ModelSelection = {
+    ...model,
+    model: { ...model.model, contextWindow: 100_000 },
+  }
+  const transcript = makeTranscript()
+  transcript.pushUserTurn('test-turn', largeWindowModel, text(`old question ${'x'.repeat(200)}`))
+  transcript.applyProviderEvent(largeWindowModel, events.text(`old answer ${'y'.repeat(300)}`))
+  transcript.applyProviderEvent(largeWindowModel, events.response())
+
+  const provider = new RecordingProvider([
+    (request) => {
+      expect(isSummaryRequest(request)).toBe(true)
+      return [events.text('absolute summary'), events.response()]
+    },
+    () => [events.text('new answer'), events.response()],
+  ])
+  // Ratio alone (0.8 of 100k) would not fire on this short transcript; absolute 1 does.
+  const session = createSession(provider, createRuntime(), transcript, largeWindowModel, {
+    compaction: { keepRecentTokens: 1, preflightThresholdRatio: 0.8, preflightThresholdTokens: 1 },
+  })
+
+  await session.send(text('new question'))
+
+  expect(provider.requests).toHaveLength(2)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
+  assertTranscriptInvariants(session.transcript().blocks)
+})
+
 test('retry triggers preflight compaction before rerunning the latest user', async () => {
   const preflightModel: ModelSelection = {
     ...model,
