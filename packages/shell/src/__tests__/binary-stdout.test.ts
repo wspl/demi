@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises'
+import { access, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
@@ -65,13 +65,14 @@ test('a binary final stream surfaces as binaryStdout with a placeholder text ren
   expect(result.binaryStdout?.truncated).toBe(false)
   expect(result.binaryStdout?.totalBytes).toBe(PNG_BYTES.length)
   expect(result.stdout.delta).toBe(
-    `<binary stdout: ${PNG_BYTES.length} bytes; raw bytes at /@/commands/${result.commandId}/stdout.bin>\n`,
+    `<binary stdout: ${PNG_BYTES.length} bytes; raw bytes at ${result.artifactDir}/stdout.bin>\n`,
   )
 
-  // The raw bytes stay addressable through the /@ virtual filesystem.
+  // The raw bytes stay addressable as a plain file on disk (written async).
+  await waitForFile(`${result.artifactDir}/stdout.bin`)
   const counted = await env.exec({
     shellId: result.shellId,
-    script: `wc -c < /@/commands/${result.commandId}/stdout.bin`,
+    script: `wc -c < ${result.artifactDir}/stdout.bin`,
   })
   if (counted.status !== 'exited') throw new Error('expected exited result')
   expect(counted.stdout.delta.trim()).toBe(String(PNG_BYTES.length))
@@ -159,3 +160,15 @@ test('real-process (hostSpawn) output and stdin are byte-clean end to end', asyn
   if (roundTrip.status !== 'exited') throw new Error('expected exited result')
   expect(roundTrip.binaryStdout?.data).toEqual(PNG_BYTES)
 })
+
+async function waitForFile(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      await access(path)
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+  }
+  throw new Error(`timed out waiting for artifact file ${path}`)
+}
