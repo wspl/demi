@@ -1,5 +1,18 @@
 # @demicodes/agent
 
+## 0.16.0
+
+### Minor Changes
+
+- e3ec7fc: Allow configuring auto-compaction with an absolute `preflightThresholdTokens` value. When set, it replaces the ratio-derived threshold (still clamped to the model context window); a non-finite `preflightThresholdRatio` continues to disable auto-compaction for summary clones.
+
+### Patch Changes
+
+- @demicodes/core@0.16.0
+- @demicodes/provider@0.16.0
+- @demicodes/shell@0.16.0
+- @demicodes/utils@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes
