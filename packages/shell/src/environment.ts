@@ -10,7 +10,7 @@ import { LexerError } from '@demicodes/just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from '@demicodes/just-bash/types'
 import { resolveLimits } from '@demicodes/just-bash/limits'
 import { CommandRegistry, type Command } from './command'
-import { DEMI_PORTABLE_COMMANDS } from './portable-commands'
+import { DEMI_PORTABLE_COMMANDS, HOST_PREFERRED_SCAN_COMMANDS } from './portable-commands'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
   buildBashopts,
@@ -1171,6 +1171,7 @@ export class BashEnvironment {
 function createPortableCommands(session: ShellSession): ForkCommand[] {
   return createLazyCommands([...DEMI_PORTABLE_COMMANDS]).map((command) => ({
     ...command,
+    preferHostSpawn: HOST_PREFERRED_SCAN_COMMANDS.has(command.name),
     execute: async (args, ctx) => {
       const result = await command.execute(args, ctx)
       session.accumulator.audit.push({
