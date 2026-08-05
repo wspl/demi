@@ -68,6 +68,7 @@ export class AgentSession<State> {
   private readonly store?: AgentSessionStore<State>
   private readonly compactionKeepRecentTokens: number
   private readonly compactionThresholdRatio: number
+  private readonly compactionThresholdTokens: number | null
   private readonly listeners = new Set<SessionEventListener>()
   private readonly pendingActions: PendingAction[] = []
   private readonly queued: QueuedMessage[] = []
@@ -158,6 +159,10 @@ export class AgentSession<State> {
     this.compactionKeepRecentTokens = options.compaction?.keepRecentTokens ?? DEFAULT_KEEP_RECENT_TOKENS
     this.compactionThresholdRatio =
       options.compaction?.preflightThresholdRatio ?? DEFAULT_PREFLIGHT_THRESHOLD_RATIO
+    this.compactionThresholdTokens =
+      options.compaction?.preflightThresholdTokens === undefined
+        ? null
+        : options.compaction.preflightThresholdTokens
 
     const transcriptOptions: TranscriptOptions = {
       idFactory: this.idFactory,
@@ -181,6 +186,9 @@ export class AgentSession<State> {
       },
       get thresholdRatio() {
         return self.compactionThresholdRatio
+      },
+      get thresholdTokens() {
+        return self.compactionThresholdTokens
       },
       currentSignal: () => self.currentSignal(),
       clone: (transcript) =>
@@ -223,6 +231,9 @@ export class AgentSession<State> {
       },
       get thresholdRatio() {
         return self.compactionThresholdRatio
+      },
+      get thresholdTokens() {
+        return self.compactionThresholdTokens
       },
       get steerContinuationCount() {
         return self.steerQueue.continuationCount
