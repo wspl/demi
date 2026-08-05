@@ -13,16 +13,7 @@ import type {
 } from '@demicodes/just-bash/fs/interface'
 import type { Host, HostDirent, HostFileStat } from './host'
 
-export type VirtualFileSystemNode =
-  | { kind: 'file'; content: Uint8Array; mode?: number; mtime?: Date }
-  | { kind: 'directory'; entries: DirentEntry[]; mode?: number; mtime?: Date }
-
-export interface VirtualFileSystemProvider {
-  lookup(path: string): Promise<VirtualFileSystemNode | null> | VirtualFileSystemNode | null
-}
-
 export interface HostBackedFileSystemOptions {
-  lookup?: VirtualFileSystemProvider['lookup']
   /**
    * Ceiling for a single file read through this filesystem. Portable commands
    * (cat/grep/rg/head/...) run in-process and load files whole, so one read of
@@ -36,30 +27,12 @@ export interface HostBackedFileSystemOptions {
 
 const DEFAULT_FILE_READ_LIMIT_BYTES = 64 * 1024 * 1024
 
-/** Builds a virtual directory node; entry names containing a dot are treated as files. */
-export function virtualDirectory(names: string[]): VirtualFileSystemNode {
-  return {
-    kind: 'directory',
-    entries: names.sort().map((name) => ({
-      name,
-      isFile: name.includes('.'),
-      isDirectory: !name.includes('.'),
-      isSymbolicLink: false,
-    })),
-  }
-}
-
-/** Builds a virtual file node from raw bytes. */
-export function virtualFile(content: Uint8Array): VirtualFileSystemNode {
-  return { kind: 'file', content }
-}
-
 export class HostBackedFileSystem implements IFileSystem {
   private readonly maxFileReadBytes: number
 
   constructor(
     private readonly host: Host,
-    private readonly options: HostBackedFileSystemOptions = {},
+    options: HostBackedFileSystemOptions = {},
   ) {
     this.maxFileReadBytes = options.maxFileReadBytes ?? DEFAULT_FILE_READ_LIMIT_BYTES
   }
@@ -69,11 +42,6 @@ export class HostBackedFileSystem implements IFileSystem {
   }
 
   async readFileBuffer(path: string): Promise<Uint8Array> {
-    const virtual = await this.lookupVirtual(path)
-    if (virtual) {
-      if (virtual.kind !== 'file') throw new Error(`EISDIR: illegal operation on a directory, read '${path}'`)
-      return virtual.content
-    }
     const stat = await this.host.fs.stat(path, { cwd: this.host.defaultCwd })
     if (stat.isFile && stat.size > this.maxFileReadBytes) {
       throw new Error(
@@ -85,47 +53,30 @@ export class HostBackedFileSystem implements IFileSystem {
   }
 
   async writeFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
-    this.assertWritablePath(path)
     await this.host.fs.writeFile(path, encodeContent(content, encodingFrom(options)), { cwd: this.host.defaultCwd })
   }
 
   async appendFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
-    this.assertWritablePath(path)
     await this.host.fs.appendFile(path, encodeContent(content, encodingFrom(options)), { cwd: this.host.defaultCwd })
   }
 
   async exists(path: string): Promise<boolean> {
-    if (isVirtualPath(path)) return (await this.lookupVirtual(path)) !== null
     return this.host.fs.exists(path, { cwd: this.host.defaultCwd })
   }
 
   async stat(path: string): Promise<FsStat> {
-    const virtual = await this.lookupVirtual(path)
-    if (virtual) return virtualStat(virtual)
     return toFsStat(await this.host.fs.stat(path, { cwd: this.host.defaultCwd }))
   }
 
   async lstat(path: string): Promise<FsStat> {
-    const virtual = await this.lookupVirtual(path)
-    if (virtual) return virtualStat(virtual)
     return toFsStat(await this.host.fs.lstat(path, { cwd: this.host.defaultCwd }))
   }
 
   async readdir(path: string): Promise<string[]> {
-    const virtual = await this.lookupVirtual(path)
-    if (virtual) {
-      if (virtual.kind !== 'directory') throw new Error(`ENOTDIR: not a directory, scandir '${path}'`)
-      return virtual.entries.map((entry) => entry.name)
-    }
     return this.host.fs.readdir(path, { cwd: this.host.defaultCwd })
   }
 
   async readdirWithFileTypes(path: string): Promise<DirentEntry[]> {
-    const virtual = await this.lookupVirtual(path)
-    if (virtual) {
-      if (virtual.kind !== 'directory') throw new Error(`ENOTDIR: not a directory, scandir '${path}'`)
-      return virtual.entries
-    }
     const entries = await this.host.fs.readdir(path, { cwd: this.host.defaultCwd, withFileTypes: true })
     return entries.map(toDirentEntry)
   }
@@ -140,75 +91,43 @@ export class HostBackedFileSystem implements IFileSystem {
   }
 
   async mkdir(path: string, options?: MkdirOptions): Promise<void> {
-    this.assertWritablePath(path)
     await this.host.fs.mkdir(path, { cwd: this.host.defaultCwd, recursive: options?.recursive })
   }
 
   async rm(path: string, options?: RmOptions): Promise<void> {
-    this.assertWritablePath(path)
     await this.host.fs.rm(path, { cwd: this.host.defaultCwd, recursive: options?.recursive, force: options?.force })
   }
 
   async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
-    this.assertWritablePath(dest)
-    if (isVirtualPath(src)) {
-      const virtual = await this.lookupVirtual(src)
-      if (!virtual) throw new Error(`ENOENT: no such file or directory, copyfile '${src}'`)
-      if (virtual.kind !== 'file') throw new Error(`EISDIR: illegal operation on a directory, copyfile '${src}'`)
-      await this.host.fs.writeFile(dest, virtual.content, { cwd: this.host.defaultCwd, createParents: options?.recursive })
-      return
-    }
     await this.host.fs.cp(src, dest, { cwd: this.host.defaultCwd, recursive: options?.recursive })
   }
 
   async mv(src: string, dest: string): Promise<void> {
-    this.assertWritablePath(src)
-    this.assertWritablePath(dest)
     await this.host.fs.mv(src, dest, { cwd: this.host.defaultCwd })
   }
 
   async chmod(path: string, mode: number): Promise<void> {
-    this.assertWritablePath(path)
     await this.host.fs.chmod(path, mode, { cwd: this.host.defaultCwd })
   }
 
   async symlink(target: string, linkPath: string): Promise<void> {
-    this.assertWritablePath(linkPath)
     await this.host.fs.symlink(target, linkPath, { cwd: this.host.defaultCwd })
   }
 
   async link(existingPath: string, newPath: string): Promise<void> {
-    this.assertWritablePath(existingPath)
-    this.assertWritablePath(newPath)
     await this.host.fs.link(existingPath, newPath, { cwd: this.host.defaultCwd })
   }
 
   async readlink(path: string): Promise<string> {
-    if (isVirtualPath(path)) throw new Error(`EINVAL: invalid argument, readlink '${path}'`)
     return this.host.fs.readlink(path, { cwd: this.host.defaultCwd })
   }
 
   async realpath(path: string): Promise<string> {
-    if (isVirtualPath(path)) {
-      const virtual = await this.lookupVirtual(path)
-      if (!virtual) throw new Error(`ENOENT: no such file or directory, realpath '${path}'`)
-      return normalizePath(path)
-    }
     return this.host.fs.realpath(path, { cwd: this.host.defaultCwd })
   }
 
   async utimes(path: string, atime: Date, mtime: Date): Promise<void> {
-    this.assertWritablePath(path)
     await this.host.fs.utimes(path, atime, mtime, { cwd: this.host.defaultCwd })
-  }
-
-  private async lookupVirtual(path: string): Promise<VirtualFileSystemNode | null> {
-    if (!this.options.lookup || !isVirtualPath(path)) return null
-    return (await this.options.lookup(normalizePath(path))) ?? null
-  }
-
-  private assertWritablePath(path: string): void {
-    if (isVirtualPath(path)) throw new Error(`EROFS: read-only virtual filesystem, '${path}'`)
   }
 }
 
@@ -281,31 +200,4 @@ function toDirentEntry(value: HostDirent): DirentEntry {
     isDirectory: value.isDirectory,
     isSymbolicLink: value.isSymbolicLink,
   }
-}
-
-function virtualStat(node: VirtualFileSystemNode): FsStat {
-  const now = new Date(0)
-  if (node.kind === 'directory') {
-    return {
-      isFile: false,
-      isDirectory: true,
-      isSymbolicLink: false,
-      mode: node.mode ?? 0o555,
-      size: 0,
-      mtime: node.mtime ?? now,
-    }
-  }
-  return {
-    isFile: true,
-    isDirectory: false,
-    isSymbolicLink: false,
-    mode: node.mode ?? 0o444,
-    size: node.content.byteLength,
-    mtime: node.mtime ?? now,
-  }
-}
-
-function isVirtualPath(path: string): boolean {
-  const normalized = normalizePath(path)
-  return normalized === '/@' || normalized.startsWith('/@/')
 }
