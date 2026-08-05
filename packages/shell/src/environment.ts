@@ -50,6 +50,19 @@ export interface BashEnvironmentOptions {
    * above, where models are known.
    */
   maxBinaryBytes?: number
+  /**
+   * Ceiling for the bytes a single command's output capture may ingest.
+   *
+   * Distinct from `maxOutputBytes`, which sizes the rendered view: capture is
+   * what the environment holds in memory while a command runs, and it holds
+   * several copies (raw bytes for the pipe, text renders, replay chunks). A
+   * foreground process that produces more than this is SIGKILLed and the
+   * command fails with an explicit error; a background job keeps only the most
+   * recent bytes within the ceiling. Without this ceiling one stray
+   * `rg`/`cat` over a large tree balloons the embedding process by tens of
+   * gigabytes until the kernel OOM-kills it.
+   */
+  maxCaptureBytes?: number
 }
 
 export interface ShellExecInput {
@@ -229,6 +242,13 @@ const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
  * while still bounding a runaway producer.
  */
 const DEFAULT_BINARY_LIMIT_BYTES = 16 * 1024 * 1024
+/**
+ * Ceiling for a single command's in-memory output capture. Sized to the same
+ * order as the in-shell file read limit: the execution model buffers whole
+ * command outputs (in several copies), so this is a hard memory-safety bound
+ * on the embedding process, not a view budget.
+ */
+const DEFAULT_CAPTURE_LIMIT_BYTES = 64 * 1024 * 1024
 /** Upper bound for a single exec observation window (also the command-bridge wait ceiling). */
 export const MAX_TIMEOUT_MS = 600_000
 export class BashEnvironment {
@@ -239,6 +259,7 @@ export class BashEnvironment {
   private readonly initialEnv: Record<string, string>
   private readonly defaultOutputLimitBytes: number
   private readonly defaultBinaryLimitBytes: number
+  private readonly captureLimitBytes: number
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
   private readonly commandsById = new Map<string, ShellCommandRecord>()
@@ -253,6 +274,7 @@ export class BashEnvironment {
     this.initialEnv = options.initialEnv ?? {}
     this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
     this.defaultBinaryLimitBytes = options.maxBinaryBytes ?? DEFAULT_BINARY_LIMIT_BYTES
+    this.captureLimitBytes = options.maxCaptureBytes ?? DEFAULT_CAPTURE_LIMIT_BYTES
   }
 
   getShell(shellId: string): ShellSession | null {
@@ -514,7 +536,10 @@ export class BashEnvironment {
     }
     const abortController = new AbortController()
     session.abortController = abortController
-    const limits = resolveLimits({ maxOutputSize: 1024 * 1024 * 1024, maxCommandCount: 1_000_000, maxLoopIterations: 1_000_000, maxCallDepth: 1000, maxGlobOperations: 1_000_000 })
+    // maxOutputSize aligns with the capture limit: it bounds strings the
+    // in-process (portable command) pipeline builds, the same memory-safety
+    // concern the capture limit covers for real-process output.
+    const limits = resolveLimits({ maxOutputSize: this.captureLimitBytes, maxCommandCount: 1_000_000, maxLoopIterations: 1_000_000, maxCallDepth: 1000, maxGlobOperations: 1_000_000 })
     const interpreter = new Interpreter(
       {
         fs: fs as IFileSystem,
@@ -636,15 +661,29 @@ export class BashEnvironment {
       handle,
       stdoutBuffer: '',
       stderrBuffer: '',
+      droppedStdoutChars: 0,
+      droppedStderrChars: 0,
       stdoutPump: Promise.resolve(),
       stderrPump: Promise.resolve(),
       exitPromise: handle.wait(),
     }
+    // Background jobs are legitimate long-runners (dev servers, watchers), so a
+    // chatty one is not killed; only the most recent output within the view
+    // budget is retained — `wait` is the sole consumer and it renders a view.
+    const retainLimit = this.defaultOutputLimitBytes
     job.stdoutPump = pumpStream(handle.stdout, (chunk) => {
       job.stdoutBuffer += decodeUtf8(chunk)
+      if (job.stdoutBuffer.length > retainLimit) {
+        job.droppedStdoutChars += job.stdoutBuffer.length - retainLimit
+        job.stdoutBuffer = job.stdoutBuffer.slice(-retainLimit)
+      }
     })
     job.stderrPump = pumpStream(handle.stderr, (chunk) => {
       job.stderrBuffer += decodeUtf8(chunk)
+      if (job.stderrBuffer.length > retainLimit) {
+        job.droppedStderrChars += job.stderrBuffer.length - retainLimit
+        job.stderrBuffer = job.stderrBuffer.slice(-retainLimit)
+      }
     })
     session.backgroundJobs.set(id, job)
     session.state.lastBackgroundPid = id
@@ -682,12 +721,17 @@ export class BashEnvironment {
     session.backgroundJobs.delete(id)
 
     const exitCode = exit.exitCode ?? 127
+    const stdout = job.droppedStdoutChars > 0
+      ? `[... dropped ${job.droppedStdoutChars} chars of earlier stdout over the capture limit ...]\n${job.stdoutBuffer}`
+      : job.stdoutBuffer
     const stderr =
       exit.exitCode === null && job.stderrBuffer.length === 0
         ? `${job.command}: ${exit.signal ?? 'command not found'}\n`
-        : job.stderrBuffer
+        : job.droppedStderrChars > 0
+          ? `[... dropped ${job.droppedStderrChars} chars of earlier stderr over the capture limit ...]\n${job.stderrBuffer}`
+          : job.stderrBuffer
     session.accumulator.audit.push({ kind: 'system-command', name: job.command, args: job.args, cwd: job.cwd, exitCode })
-    return { stdout: job.stdoutBuffer, stderr, exitCode }
+    return { stdout, stderr, exitCode }
   }
 
   private exportedEnv(session: ShellSession): Record<string, string> {
@@ -849,6 +893,8 @@ export class BashEnvironment {
       stderrBuffer: '',
       outputChunks: [],
       outputBytes: 0,
+      capturedBytes: 0,
+      captureOverflowed: false,
       audit: [{ kind: 'system-command', name: command, args, cwd: opts.cwd, exitCode: 0 }],
       stdoutPump: Promise.resolve(),
       stderrPump: Promise.resolve(),
@@ -870,12 +916,12 @@ export class BashEnvironment {
 
     if (handle.output) {
       foreground.stdoutPump = pumpOutputStream(handle.output, (chunk) => {
-        recordForegroundChunk(foreground, chunk.stream === 'stdout' ? 1 : 2, chunk.chunk)
+        recordForegroundChunk(foreground, chunk.stream === 'stdout' ? 1 : 2, chunk.chunk, this.captureLimitBytes)
       })
       foreground.stderrPump = Promise.resolve()
     } else {
-      foreground.stdoutPump = pumpStream(handle.stdout, (chunk) => recordForegroundChunk(foreground, 1, chunk))
-      foreground.stderrPump = pumpStream(handle.stderr, (chunk) => recordForegroundChunk(foreground, 2, chunk))
+      foreground.stdoutPump = pumpStream(handle.stdout, (chunk) => recordForegroundChunk(foreground, 1, chunk, this.captureLimitBytes))
+      foreground.stderrPump = pumpStream(handle.stderr, (chunk) => recordForegroundChunk(foreground, 2, chunk, this.captureLimitBytes))
     }
 
     const exit = await foreground.exitPromise
@@ -884,10 +930,12 @@ export class BashEnvironment {
     // Return raw output bytes (latin1-packed, stdoutKind 'bytes') so real-
     // process output pipes onward losslessly; the streamed text view on the
     // record remains the lossy render for live observation.
-    const stdout = decodeLatin1(concatBytes(foreground.rawStdoutBytes))
-    const exitCode = exit.exitCode ?? 127
-    const stderr =
-      exit.exitCode === null && foreground.rawStderrBuffer.length === 0
+    const stdout = foreground.captureOverflowed ? '' : decodeLatin1(concatBytes(foreground.rawStdoutBytes))
+    const exitCode = foreground.captureOverflowed ? 137 : (exit.exitCode ?? 127)
+    const stderr = foreground.captureOverflowed
+      ? `${command}: output exceeded the ${this.captureLimitBytes}-byte capture limit and the process was killed; ` +
+        `the shell buffers whole command outputs in memory — narrow the output at the source (filters, head, tighter paths)\n`
+      : exit.exitCode === null && foreground.rawStderrBuffer.length === 0
         ? `${command}: ${exit.signal ?? 'command not found'}\n`
         : foreground.rawStderrBuffer
 
