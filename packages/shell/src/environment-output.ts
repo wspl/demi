@@ -63,7 +63,27 @@ export function createOutputSinks(
   return routes
 }
 
-export function recordForegroundChunk(foreground: ForegroundProcess, sourceFd: 1 | 2, chunk: Uint8Array): void {
+export function recordForegroundChunk(
+  foreground: ForegroundProcess,
+  sourceFd: 1 | 2,
+  chunk: Uint8Array,
+  captureLimitBytes: number,
+): void {
+  if (foreground.captureOverflowed) return
+  if (foreground.capturedBytes + chunk.byteLength > captureLimitBytes) {
+    // The interpreter model buffers whole command outputs in memory (several
+    // copies of them), so an unbounded producer must fail loudly here instead
+    // of ballooning the embedding process until the kernel OOM-kills it. The
+    // raw (pipe) capture is dropped on the spot: the command fails, so partial
+    // pipe data has no consumer, and holding it would defeat the ceiling. The
+    // visible buffers keep what streamed so far for the command record.
+    foreground.captureOverflowed = true
+    foreground.rawStdoutBuffer = ''
+    foreground.rawStdoutBytes = []
+    void foreground.handle.kill('SIGKILL').catch(() => {})
+    return
+  }
+  foreground.capturedBytes += chunk.byteLength
   const text = decodeUtf8(chunk)
   foreground.lastOutputAt = Date.now()
   if (sourceFd === 1) {
