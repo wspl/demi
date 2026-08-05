@@ -21,6 +21,21 @@ export interface VirtualFileSystemProvider {
   lookup(path: string): Promise<VirtualFileSystemNode | null> | VirtualFileSystemNode | null
 }
 
+export interface HostBackedFileSystemOptions {
+  lookup?: VirtualFileSystemProvider['lookup']
+  /**
+   * Ceiling for a single file read through this filesystem. Portable commands
+   * (cat/grep/rg/head/...) run in-process and load files whole, so one read of
+   * an oversized file becomes resident memory in the embedding host — a broad
+   * scan over a large tree can balloon the process by gigabytes. Oversized
+   * files fail loudly instead; real-process routes (`bash -c`) stay available
+   * for genuinely large files.
+   */
+  maxFileReadBytes?: number
+}
+
+const DEFAULT_FILE_READ_LIMIT_BYTES = 64 * 1024 * 1024
+
 /** Builds a virtual directory node; entry names containing a dot are treated as files. */
 export function virtualDirectory(names: string[]): VirtualFileSystemNode {
   return {
@@ -40,10 +55,14 @@ export function virtualFile(content: Uint8Array): VirtualFileSystemNode {
 }
 
 export class HostBackedFileSystem implements IFileSystem {
+  private readonly maxFileReadBytes: number
+
   constructor(
     private readonly host: Host,
-    private readonly virtualProvider?: VirtualFileSystemProvider,
-  ) {}
+    private readonly options: HostBackedFileSystemOptions = {},
+  ) {
+    this.maxFileReadBytes = options.maxFileReadBytes ?? DEFAULT_FILE_READ_LIMIT_BYTES
+  }
 
   async readFile(path: string, options?: ReadFileOptions | BufferEncoding): Promise<string> {
     return decodeBytes(await this.readFileBuffer(path), encodingFrom(options))
@@ -54,6 +73,13 @@ export class HostBackedFileSystem implements IFileSystem {
     if (virtual) {
       if (virtual.kind !== 'file') throw new Error(`EISDIR: illegal operation on a directory, read '${path}'`)
       return virtual.content
+    }
+    const stat = await this.host.fs.stat(path, { cwd: this.host.defaultCwd })
+    if (stat.isFile && stat.size > this.maxFileReadBytes) {
+      throw new Error(
+        `EFBIG: file exceeds the ${this.maxFileReadBytes}-byte in-shell read limit (${stat.size} bytes), read '${path}'; ` +
+          `read a slice instead, or process it with a real process via 'bash -c'`,
+      )
     }
     return this.host.fs.readFile(path, { cwd: this.host.defaultCwd })
   }
@@ -177,8 +203,8 @@ export class HostBackedFileSystem implements IFileSystem {
   }
 
   private async lookupVirtual(path: string): Promise<VirtualFileSystemNode | null> {
-    if (!this.virtualProvider || !isVirtualPath(path)) return null
-    return (await this.virtualProvider.lookup(normalizePath(path))) ?? null
+    if (!this.options.lookup || !isVirtualPath(path)) return null
+    return (await this.options.lookup(normalizePath(path))) ?? null
   }
 
   private assertWritablePath(path: string): void {

@@ -138,7 +138,9 @@ test('real-process (hostSpawn) output and stdin are byte-clean end to end', asyn
   const env = makeEnv(root, 'shell-binary-spawn')
 
   // Real OS process producing invalid-UTF-8 bytes on stdout (sh is real-spawned).
-  const produced = await env.exec({ script: `sh -c "printf '\\x89PNG\\x0d\\x0a\\x1a\\x0a\\x00\\xff\\xfe'"` })
+  // Octal escapes, not \xHH: POSIX printf takes octal everywhere while \xHH is
+  // a bashism — hosts where /bin/sh is dash echo \xHH literally.
+  const produced = await env.exec({ script: `sh -c "printf '\\211PNG\\015\\012\\032\\012\\000\\377\\376'"` })
   expect(produced.status).toBe('exited')
   if (produced.status !== 'exited') throw new Error('expected exited result')
   expect(produced.binaryStdout?.data).toEqual(

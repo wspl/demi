@@ -39,6 +39,9 @@ export interface BackgroundJob {
   handle: HostSpawnHandle
   stdoutBuffer: string
   stderrBuffer: string
+  /** Chars discarded from the head of each buffer once it outgrew the capture limit. */
+  droppedStdoutChars: number
+  droppedStderrChars: number
   stdoutPump: Promise<void>
   stderrPump: Promise<void>
   exitPromise: Promise<{ exitCode: number | null; signal?: string }>
@@ -65,6 +68,10 @@ export interface ForegroundProcess {
   /** Interleaved visible chunks with running byte offsets, for merged replay. */
   outputChunks: ShellOutputRecordChunk[]
   outputBytes: number
+  /** Total bytes ingested across both streams; the capture limit judges this. */
+  capturedBytes: number
+  /** Set when the capture limit was breached: the process is killed and further chunks dropped. */
+  captureOverflowed: boolean
   audit: BashAuditEvent[]
   stdoutPump: Promise<void>
   stderrPump: Promise<void>

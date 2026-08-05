@@ -117,7 +117,9 @@ test('HostBackedFileSystem routes IFileSystem operations to Host.fs and never Ho
 
   expect(host.processSpawnCalls).toBe(0)
   expect(host.fs.calls).toEqual([
+    ['stat', '/workspace/read.txt', '/workspace'],
     ['readFile', '/workspace/read.txt', '/workspace'],
+    ['stat', '/workspace/blob.bin', '/workspace'],
     ['readFile', '/workspace/blob.bin', '/workspace'],
     ['exists', '/workspace/read.txt', '/workspace'],
     ['exists', '/workspace/missing.txt', '/workspace'],
