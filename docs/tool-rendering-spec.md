@@ -38,7 +38,7 @@ Persistent history is governed by `Block`:
 - `view` may carry bounded UI enhancement data such as a `ShellToolView` (`chunks`,
   `commandId`, status counters). The render layer may use it to enrich the display, but
   must not treat it as the sole source of truth for full command output (that lives in
-  `/@/commands/<commandId>/…` artifacts).
+  the command's artifact directory as plain files, see `artifactDir`).
 
 Real-time events are governed by `ClientSessionEvent`:
 
@@ -96,9 +96,9 @@ a badge or an inline summary, never behind a disclosure.
 The `shell_exec` expanded content shows only the command and the user-visible terminal
 output. That terminal output comes from the interleaved output stream in runtime/progress
 or from the auto-budgeted preview, merged into a single transcript in stdout/stderr arrival
-order; this is purely a UI/runtime rendering and is not saved as a `/@` file. The
+order; this is purely a UI/runtime rendering, distinct from the artifact files. The
 authoritative full-output read path the model sees is
-`/@/commands/<commandId>/stdout.txt` and `stderr.txt` — not `shell_status`. When an older
+`<artifactDir>/stdout.txt` and `stderr.txt` — not `shell_status`. When an older
 transcript lacks interleaved output it may fall back to stdout-then-stderr, but it must not
 show stderr alone, nor show protocol fields such as `status`, `shellId`, `commandId`, path,
 offset, bytes, or truncation.
@@ -106,7 +106,7 @@ offset, bytes, or truncation.
 `shell_status` may show only a command-status summary. Even when its metadata carries
 artifact paths, byte counters, or a preview, it must not be rendered as an expandable
 terminal-output block; the user path to output content is to view the corresponding
-`shell_exec` block or to have the model read the `/@` artifact with a shell text command.
+`shell_exec` block or to have the model read the artifact files with a shell text command.
 
 ## 5. Web specification
 

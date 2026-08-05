@@ -45,8 +45,8 @@ For the final stream of an exited exec:
 4. anything else → placeholder text stating byte count, sniffed type when
    known, and the reason no media was attached (truncated by the output
    limit / model does not accept the type / unknown binary). Raw bytes never
-   enter the transcript; they stay addressable at
-   `/@/commands/<commandId>/stdout.bin` for further shell processing.
+   enter the transcript; they stay addressable as a plain file at
+   `<artifactDir>/stdout.bin` for further shell processing.
 
 The shell layer only detects and reports (`binaryStdout: { data, mediaType,
 truncated }` on exited snapshots plus a placeholder text render); model

@@ -38,19 +38,24 @@ import { LocalHostStore } from './local-store'
 
 export interface LocalHostOptions {
   storeRoot?: string
+  /** Where command artifacts land as plain files; defaults next to the store. */
+  commandArtifactsDir?: string
 }
 
 export class LocalHost implements Host {
   readonly defaultCwd: string
+  readonly commandArtifactsDir: string
   readonly fs: HostFileSystem
   readonly process: HostProcess
   readonly store: HostStore
 
   constructor(defaultCwd: string, options: LocalHostOptions = {}) {
     this.defaultCwd = resolve(defaultCwd)
+    const storeRoot = options.storeRoot ?? defaultStoreRoot(this.defaultCwd)
+    this.commandArtifactsDir = resolve(options.commandArtifactsDir ?? join(storeRoot, 'command-artifacts'))
     this.fs = new LocalHostFileSystem(this.defaultCwd)
     this.process = new LocalHostProcess(this.defaultCwd)
-    this.store = new LocalHostStore(options.storeRoot ?? defaultStoreRoot(this.defaultCwd))
+    this.store = new LocalHostStore(storeRoot)
   }
 }
 

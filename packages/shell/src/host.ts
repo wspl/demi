@@ -1,5 +1,14 @@
 export interface Host {
   defaultCwd: string
+  /**
+   * Directory where command artifacts (stdout.txt / stderr.txt / stdout.bin /
+   * meta.json) are written as plain files, laid out as
+   * `<dir>/<storageId>/<commandId>/`. Contract: the path is reachable through
+   * `fs` AND visible to processes started via `process.spawn` — one shared
+   * filesystem namespace, so any tool (portable or real) can read and search
+   * artifacts with ordinary file operations.
+   */
+  commandArtifactsDir: string
   fs: HostFileSystem
   process: HostProcess
   store: HostStore

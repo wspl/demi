@@ -34,7 +34,7 @@ test('demi read emits raw bytes; binary files surface as binaryStdout at the bou
   if (read.status !== 'exited') throw new Error('expected exited result')
   expect(read.exitCode).toBe(0)
   expect(read.binaryStdout?.data).toEqual(png)
-  expect(read.stdout.delta).toContain(`<binary stdout: ${png.length} bytes; raw bytes at /@/commands/`)
+  expect(read.stdout.delta).toContain(`<binary stdout: ${png.length} bytes; raw bytes at ${read.artifactDir}/stdout.bin`)
 
   // Bytes pipe cleanly into downstream commands.
   const counted = await env.exec({ shellId: read.shellId, script: 'demi read shot.png | wc -c' })
@@ -427,6 +427,7 @@ function commandOutput(): { io: CommandIO; stdout: () => string; stderr: () => s
 
 class FailingWriteHost implements Host {
   readonly defaultCwd: string
+  readonly commandArtifactsDir: string
   readonly fs: FailingWriteFileSystem
   readonly store: HostStore = new MemoryHostStore()
   readonly process: HostProcess = {
@@ -440,6 +441,7 @@ class FailingWriteHost implements Host {
     files: Record<string, string>,
   ) {
     this.defaultCwd = defaultCwd
+    this.commandArtifactsDir = `${defaultCwd}/.command-artifacts`
     this.fs = new FailingWriteFileSystem(defaultCwd, files)
   }
 
