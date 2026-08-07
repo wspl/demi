@@ -104,6 +104,15 @@ export interface AgentToolInvokeResult {
   stopAfterToolResult?: boolean
 }
 
+/**
+ * When a recorded model/provider switch is applied:
+ * - 'next_turn' (default): the start of the next queued action — a running turn, if any,
+ *   finishes entirely on the old model.
+ * - 'immediate': the next inference boundary — mid-turn that is the next sampling/tool
+ *   continuation, so the very next request already runs on the new model.
+ */
+export type ModelSwitchApply = 'immediate' | 'next_turn'
+
 export type AbortTarget =
   | 'active_provider_stream'
   | 'active_tool'
