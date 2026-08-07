@@ -1,5 +1,18 @@
 # @demicodes/agent
 
+## 0.17.0
+
+### Minor Changes
+
+- `setProvider` / `updateModel` take an explicit apply timing: `'next_turn'` (default, the original behavior — a running turn finishes on the old model) or `'immediate'`, which applies the switch at the next mid-turn sampling/tool continuation so the very next inference request already runs on the new model. When the target model needs compaction first, the old model summarizes and a resume marker is spliced in, mirroring auto-compaction.
+
+### Patch Changes
+
+- @demicodes/core@0.17.0
+- @demicodes/provider@0.17.0
+- @demicodes/shell@0.17.0
+- @demicodes/utils@0.17.0
+
 ## 0.16.0
 
 ### Minor Changes
