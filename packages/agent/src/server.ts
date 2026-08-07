@@ -23,6 +23,7 @@ import type {
   AgentSessionStore,
   AgentSessionCheckpoint,
   AgentToolInvokeContext,
+  ModelSwitchApply,
   SessionEvent,
 } from './types'
 import type { TurnRetryPolicy } from './retry-policy'
@@ -342,7 +343,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           return
         }
         case 'set_provider':
-          await this.setProvider(frame.provider)
+          await this.setProvider(frame.provider, frame.apply)
           return
         case 'retry': {
           const session = this.sessionFor('retry')
@@ -504,7 +505,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     }
   }
 
-  private async setProvider(provider: ProviderSelection): Promise<void> {
+  private async setProvider(provider: ProviderSelection, apply?: ModelSwitchApply): Promise<void> {
     const session = this.session
     if (!session) {
       this.send({ type: 'rejected', command: 'set_provider', reason: 'No session is open on this connection' })
@@ -513,11 +514,11 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     if (provider.providerId === this.currentProviderId) {
       // Same provider id: keep the instance and only swap the model (the provider itself
       // restarts whatever it needs to when the model id changes on the next request).
-      await session.updateModel(null, provider.model)
+      session.updateModel(null, provider.model, apply)
       return
     }
     const next = await this.createRuntime(provider)
-    await session.updateModel(next, provider.model)
+    session.updateModel(next, provider.model, apply)
     this.currentProviderId = provider.providerId
   }
 
