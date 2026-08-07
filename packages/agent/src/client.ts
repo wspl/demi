@@ -121,8 +121,10 @@ export class AgentClient {
   }
 
   /**
-   * Switches the provider/model for an open session. The change takes effect on the next
-   * turn (the server applies it at a turn boundary), so this is fire-and-forget.
+   * Switches the provider/model for an open session. Fire-and-forget: the server records
+   * the switch and applies it at the next inference boundary — the start of the next turn
+   * when idle, or the next sampling/tool continuation when a turn is running — so the very
+   * next request runs on the new model.
    */
   setProvider(provider: ProviderSelection): void {
     this.sendFrame({ type: 'set_provider', provider })
