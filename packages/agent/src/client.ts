@@ -3,7 +3,7 @@ import { applyTranscriptPatches } from './patch'
 import type { ProviderSelection } from '@demicodes/provider'
 import type { ClientFrame, ClientSessionEvent, ConversationSummary, ServerFrame } from './frames'
 import type { AgentClientTransport } from './transport'
-import type { AbortResult, AgentMetadata } from './types'
+import type { AbortResult, AgentMetadata, ModelSwitchApply } from './types'
 import { ProviderStreamError } from './provider-stream-error'
 
 export type AgentClientListener = (event: ClientSessionEvent) => void
@@ -121,11 +121,14 @@ export class AgentClient {
   }
 
   /**
-   * Switches the provider/model for an open session. The change takes effect on the next
-   * turn (the server applies it at a turn boundary), so this is fire-and-forget.
+   * Switches the provider/model for an open session. Fire-and-forget: the server records
+   * the switch and applies it per `options.apply` — 'next_turn' (default) waits for the
+   * next queued action, so a running turn finishes on the old model; 'immediate' applies
+   * at the next inference boundary, so mid-turn the very next sampling/tool continuation
+   * already runs on the new model.
    */
-  setProvider(provider: ProviderSelection): void {
-    this.sendFrame({ type: 'set_provider', provider })
+  setProvider(provider: ProviderSelection, options: { apply?: ModelSwitchApply } = {}): void {
+    this.sendFrame({ type: 'set_provider', provider, apply: options.apply })
   }
 
   /**
