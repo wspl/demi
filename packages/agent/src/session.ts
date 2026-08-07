@@ -257,6 +257,7 @@ export class AgentSession<State> {
         self.activeProviderRun = run
       },
       streamProvider: (request, run) => self.providerEvents(request, run),
+      applyPendingModelSwitch: () => self.applyPendingModelSwitch(),
       runCompaction: () => self.compaction.run(),
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
       commitTranscript: () => self.commitTranscript(),
@@ -391,16 +392,17 @@ export class AgentSession<State> {
   }
 
   /**
-   * Switches the model (and optionally the provider) for the rest of the session. Queued as an
-   * action so it lands at a turn boundary, never mid-tool-continuation; the next turn uses it.
-   * A non-null `provider` replaces the current one (its predecessor is disposed); pass null to
-   * keep the same provider instance and only change the model.
-   */
-  /**
-   * Records a model/provider switch. It is applied at the next turn's preflight (see
-   * applyPendingModelSwitch): if the new model can't hold the history, compaction runs there
-   * with the current (pre-switch) model first, then the swap happens. Recording is cheap and
-   * non-blocking so it never holds up an in-flight turn or other frames.
+   * Records a model/provider switch for the rest of the session. A non-null `provider`
+   * replaces the current one (its predecessor is disposed); pass null to keep the same
+   * provider instance and only change the model.
+   *
+   * The switch is applied at the next inference boundary (see applyPendingModelSwitch):
+   * the start of the next turn when the session is idle, or — mid-turn — the next
+   * sampling/tool continuation, so the very next request already runs on the new model
+   * (the same "as soon as possible" semantics steering has). If the new model can't hold
+   * the history, compaction runs first with the current (pre-switch) model, then the swap
+   * happens. Recording is cheap and non-blocking so it never holds up an in-flight turn
+   * or other frames.
    */
   updateModel(provider: AgentProvider | null, model: ModelSelection): void {
     this.pendingModelSwitch = { provider, model }
@@ -827,24 +829,26 @@ export class AgentSession<State> {
   }
 
   /**
-   * Applies a queued model/provider switch at a turn boundary (preflight). If the new model's
-   * context window can't hold the current history, compaction runs FIRST with the current
-   * (pre-switch) model + provider — which can still load it to summarize — and only then do we
-   * swap. Doing it the other way would ask the smaller model to summarize a history it may not
-   * be able to load.
+   * Applies a queued model/provider switch at an inference boundary (turn preflight, or a
+   * mid-turn continuation via the turn loop). If the new model's context window can't hold
+   * the current history, compaction runs FIRST with the current (pre-switch) model +
+   * provider — which can still load it to summarize — and only then do we swap. Doing it
+   * the other way would ask the smaller model to summarize a history it may not be able to
+   * load. Returns whether that compaction actually ran (false when no switch was pending).
    */
-  private async applyPendingModelSwitch(): Promise<void> {
+  private async applyPendingModelSwitch(): Promise<boolean> {
     const pending = this.pendingModelSwitch
-    if (!pending) return
+    if (!pending) return false
     this.pendingModelSwitch = null
 
-    await this.compaction.compactToFit(pending.model)
+    const compacted = await this.compaction.compactToFit(pending.model)
     if (pending.provider && pending.provider !== this.provider) {
       const previous = this.provider
       this.provider = pending.provider
       await previous.dispose?.()
     }
     this.model = pending.model
+    return compacted
   }
 
   private async runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T> {
