@@ -279,6 +279,135 @@ test('switching to a same-or-larger window model does NOT compact (no unnecessar
   expect(b.runModelIds).toEqual(['b'])
 })
 
+const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }
+
+/** Emits one tool call on the first request, then plain replies — the mid-turn switch shape. */
+class ToolOnceProvider implements AgentProvider {
+  readonly runModelIds: string[] = []
+  disposed = false
+  clone(): AgentProvider {
+    return this
+  }
+  async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+    this.runModelIds.push(request.modelId)
+    if (this.runModelIds.length === 1) {
+      yield { type: 'tool_call_requested', toolUseId: 'tool-1', toolName: 'switch_tool', input: {} }
+      yield { type: 'response', usage }
+      return
+    }
+    yield { type: 'text_delta', text: 'continued' }
+    yield { type: 'response', usage }
+  }
+  async dispose(): Promise<void> {
+    this.disposed = true
+  }
+}
+
+function createSwitchToolRuntime(
+  sessionRef: { current: AgentSession<{ toolCalls: number }> | null },
+  target: () => { provider: AgentProvider | null; model: ModelSelection },
+): AgentHarnessRuntime<{ toolCalls: number }> {
+  return createRuntime({
+    tools: () => [
+      {
+        name: 'switch_tool',
+        description: 'Switches the model mid-turn.',
+        inputSchema: { type: 'object' },
+        invoke: (): AgentToolInvokeResult => {
+          const session = sessionRef.current
+          if (!session) throw new Error('session is not ready')
+          const { provider, model: nextModel } = target()
+          session.updateModel(provider, nextModel)
+          return { output: [{ type: 'text', text: 'switched' }] }
+        },
+      },
+    ],
+  })
+}
+
+test('a switch recorded mid-turn applies at the next continuation: the same turn finishes on the new model', async () => {
+  const provider = new ToolOnceProvider()
+  const modelA: ModelSelection = { ...model, model: { ...model.model, id: 'model-a' } }
+  const modelB: ModelSelection = { ...model, model: { ...model.model, id: 'model-b' } }
+  const sessionRef: { current: AgentSession<{ toolCalls: number }> | null } = { current: null }
+  const session = createSession(provider, createSwitchToolRuntime(sessionRef, () => ({ provider: null, model: modelB })), undefined, modelA)
+  sessionRef.current = session
+
+  await session.send(text('do the thing'))
+
+  // One user turn, two requests: the tool-call sampling on A, the continuation already on B.
+  expect(provider.runModelIds).toEqual(['model-a', 'model-b'])
+  expect(session.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(1)
+  // Same-window switch: no compaction, so no resume marker is spliced into the turn.
+  expect(session.transcript().blocks.some((block) => block.type === 'resume')).toBe(false)
+})
+
+test('a cross-provider mid-turn switch disposes the old provider and continues the turn on the new one', async () => {
+  const providerA = new ToolOnceProvider()
+  const providerB = new RecordingProvider('from B')
+  const modelA: ModelSelection = { ...model, model: { ...model.model, id: 'model-a' } }
+  const modelB: ModelSelection = { ...model, model: { ...model.model, id: 'model-b' } }
+  const sessionRef: { current: AgentSession<{ toolCalls: number }> | null } = { current: null }
+  const session = createSession(providerA, createSwitchToolRuntime(sessionRef, () => ({ provider: providerB, model: modelB })), undefined, modelA)
+  sessionRef.current = session
+
+  await session.send(text('do the thing'))
+
+  expect(providerA.runModelIds).toEqual(['model-a'])
+  expect(providerA.disposed).toBe(true)
+  expect(providerB.runModelIds).toEqual(['model-b'])
+  // The continuation request is the same turn: it carries the completed tool result.
+  expect(providerB.requests[0]?.items.some((item) => item.type === 'tool_result' && item.toolUseId === 'tool-1')).toBe(true)
+})
+
+test('a mid-turn switch to a smaller-window model compacts with the OLD model first, then continues on the new one', async () => {
+  const summaryModelIds: string[] = []
+  // Realistic anchor: the first response reports usage large enough that the history cannot
+  // fit the small target window, forcing the switch to compact at the continuation boundary.
+  class MidturnProvider implements AgentProvider {
+    readonly runModelIds: string[] = []
+    clone(): AgentProvider {
+      return {
+        clone(): AgentProvider {
+          return this
+        },
+        async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+          summaryModelIds.push(request.modelId)
+          yield { type: 'text_delta', text: 'summary of earlier work' }
+          yield { type: 'response', usage }
+        },
+      }
+    }
+    async *run(request: InferenceRequest): AsyncIterable<ProviderEvent> {
+      this.runModelIds.push(request.modelId)
+      if (this.runModelIds.length === 1) {
+        yield { type: 'tool_call_requested', toolUseId: 'tool-1', toolName: 'switch_tool', input: {} }
+        yield { type: 'response', usage: { inputTokens: 50_000, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 } }
+        return
+      }
+      yield { type: 'text_delta', text: 'continued on the small model' }
+      yield { type: 'response', usage }
+    }
+  }
+  const provider = new MidturnProvider()
+  const bigModel: ModelSelection = { ...model, model: { ...model.model, id: 'big', contextWindow: 100_000 } }
+  const smallModel: ModelSelection = { ...model, model: { ...model.model, id: 'small', contextWindow: 8 } }
+  const sessionRef: { current: AgentSession<{ toolCalls: number }> | null } = { current: null }
+  const session = createSession(provider, createSwitchToolRuntime(sessionRef, () => ({ provider: null, model: smallModel })), undefined, bigModel)
+  sessionRef.current = session
+
+  await session.send(text('do the thing'))
+
+  // The old (big) model summarized; the continuation ran on the small model within the same turn.
+  expect(provider.runModelIds).toEqual(['big', 'small'])
+  expect(summaryModelIds.length).toBeGreaterThan(0)
+  expect(summaryModelIds.every((id) => id === 'big')).toBe(true)
+  expect(session.transcript().blocks.some((block) => block.type === 'compaction_boundary')).toBe(true)
+  // The compacted continuation is marked like auto-compaction: a resume turn follows the boundary.
+  expect(session.transcript().blocks.some((block) => block.type === 'resume')).toBe(true)
+  expect(session.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(1)
+})
+
 test('AgentSession send writes user turn before provider request and records response', async () => {
   const requests: InferenceRequest[] = []
   const provider = new StubProvider([

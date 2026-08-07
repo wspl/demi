@@ -48,20 +48,26 @@ export interface CompactionHost {
 export class CompactionController {
   constructor(private readonly host: CompactionHost) {}
 
-  /** Compacts (up to 8 passes) until the history fits `targetModel`'s context, if over threshold. */
-  async compactToFit(targetModel: ModelSelection): Promise<void> {
+  /**
+   * Compacts (up to 8 passes) until the history fits `targetModel`'s context, if over
+   * threshold. Returns whether anything was compacted.
+   */
+  async compactToFit(targetModel: ModelSelection): Promise<boolean> {
     const contextWindow = targetModel.model.contextWindow
-    if (contextWindow <= 0) return
+    if (contextWindow <= 0) return false
     const threshold = resolveCompactionThreshold(
       contextWindow,
       this.host.thresholdRatio,
       this.host.thresholdTokens,
     )
-    if (this.host.transcript.estimateContextTokens(contextWindow) < threshold) return
-    await this.host.runWithCompactingPhase(async () => {
+    if (this.host.transcript.estimateContextTokens(contextWindow) < threshold) return false
+    return this.host.runWithCompactingPhase(async () => {
+      let compacted = false
       for (let attempt = 0; attempt < 8 && this.host.transcript.estimateContextTokens(contextWindow) >= threshold; attempt += 1) {
         if (!(await this.run())) break
+        compacted = true
       }
+      return compacted
     })
   }
 

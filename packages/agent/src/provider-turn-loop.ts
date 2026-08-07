@@ -46,6 +46,8 @@ export interface ProviderTurnLoopHost<State> {
   getActiveProviderRun(): ProviderRun | null
   setActiveProviderRun(run: ProviderRun | null): void
   streamProvider(request: InferenceRequest, run: ProviderRun): AsyncIterable<ProviderEvent>
+  /** Applies a recorded model/provider switch; returns whether it had to compact first. */
+  applyPendingModelSwitch(): Promise<boolean>
   runCompaction(): Promise<boolean>
   runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T>
   commitTranscript(): Promise<void>
@@ -66,6 +68,15 @@ export class ProviderTurnLoop<State> {
     let autoCompactions = 0
     while (true) {
       throwIfAborted(this.host.currentSignal())
+      // A model switch recorded while this turn was running applies here, at the
+      // sampling/tool continuation boundary, so the very next request already runs on the
+      // new model — the same "as soon as possible" semantics steering has. When the switch
+      // had to compact (smaller target window), mark the continuation the way
+      // auto-compaction does so the model resumes against the rewritten history.
+      if (await this.host.applyPendingModelSwitch()) {
+        this.host.transcript.pushResumeTurn(this.host.currentTurnId(), this.host.model)
+        await this.host.commitTranscript()
+      }
       // Drain steers that queued while no stream was live (preflight compaction, the gap
       // after an auto-compaction) so the next request carries them.
       await this.host.materializePendingSteers()
