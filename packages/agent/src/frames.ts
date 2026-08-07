@@ -7,7 +7,7 @@ import type {
   UserContentBlock,
 } from '@demicodes/core'
 import type { ProviderSelection } from '@demicodes/provider'
-import type { AbortResult, AgentMetadata } from './types'
+import type { AbortResult, AgentMetadata, ModelSwitchApply } from './types'
 import type { BashAuditEvent, ShellCommandStatus } from '@demicodes/shell'
 
 /** A persisted conversation in a workspace (cwd), for the resume/history list. */
@@ -27,7 +27,7 @@ export type ClientFrame =
   | { type: 'clear_message_queue' }
   | { type: 'steer'; steerId: string; content: UserContentBlock[] }
   | { type: 'cancel_pending_steer'; steerId: string }
-  | { type: 'set_provider'; provider: ProviderSelection }
+  | { type: 'set_provider'; provider: ProviderSelection; apply?: ModelSwitchApply }
   | { type: 'abort' }
   | { type: 'retry'; metadata?: AgentMetadata }
   | { type: 'resume'; metadata?: AgentMetadata }
