@@ -305,7 +305,7 @@ class ToolOnceProvider implements AgentProvider {
 
 function createSwitchToolRuntime(
   sessionRef: { current: AgentSession<{ toolCalls: number }> | null },
-  target: () => { provider: AgentProvider | null; model: ModelSelection },
+  target: () => { provider: AgentProvider | null; model: ModelSelection; apply?: 'immediate' | 'next_turn' },
 ): AgentHarnessRuntime<{ toolCalls: number }> {
   return createRuntime({
     tools: () => [
@@ -316,8 +316,8 @@ function createSwitchToolRuntime(
         invoke: (): AgentToolInvokeResult => {
           const session = sessionRef.current
           if (!session) throw new Error('session is not ready')
-          const { provider, model: nextModel } = target()
-          session.updateModel(provider, nextModel)
+          const { provider, model: nextModel, apply } = target()
+          session.updateModel(provider, nextModel, apply)
           return { output: [{ type: 'text', text: 'switched' }] }
         },
       },
@@ -325,12 +325,12 @@ function createSwitchToolRuntime(
   })
 }
 
-test('a switch recorded mid-turn applies at the next continuation: the same turn finishes on the new model', async () => {
+test("an 'immediate' switch recorded mid-turn applies at the next continuation: the same turn finishes on the new model", async () => {
   const provider = new ToolOnceProvider()
   const modelA: ModelSelection = { ...model, model: { ...model.model, id: 'model-a' } }
   const modelB: ModelSelection = { ...model, model: { ...model.model, id: 'model-b' } }
   const sessionRef: { current: AgentSession<{ toolCalls: number }> | null } = { current: null }
-  const session = createSession(provider, createSwitchToolRuntime(sessionRef, () => ({ provider: null, model: modelB })), undefined, modelA)
+  const session = createSession(provider, createSwitchToolRuntime(sessionRef, () => ({ provider: null, model: modelB, apply: 'immediate' })), undefined, modelA)
   sessionRef.current = session
 
   await session.send(text('do the thing'))
@@ -342,13 +342,29 @@ test('a switch recorded mid-turn applies at the next continuation: the same turn
   expect(session.transcript().blocks.some((block) => block.type === 'resume')).toBe(false)
 })
 
+test("the default 'next_turn' switch waits: the running turn finishes on the old model, the next turn uses the new one", async () => {
+  const provider = new ToolOnceProvider()
+  const modelA: ModelSelection = { ...model, model: { ...model.model, id: 'model-a' } }
+  const modelB: ModelSelection = { ...model, model: { ...model.model, id: 'model-b' } }
+  const sessionRef: { current: AgentSession<{ toolCalls: number }> | null } = { current: null }
+  const session = createSession(provider, createSwitchToolRuntime(sessionRef, () => ({ provider: null, model: modelB })), undefined, modelA)
+  sessionRef.current = session
+
+  await session.send(text('do the thing'))
+  // The tool recorded the switch mid-turn, but the continuation still ran on the old model.
+  expect(provider.runModelIds).toEqual(['model-a', 'model-a'])
+
+  await session.send(text('again'))
+  expect(provider.runModelIds).toEqual(['model-a', 'model-a', 'model-b'])
+})
+
 test('a cross-provider mid-turn switch disposes the old provider and continues the turn on the new one', async () => {
   const providerA = new ToolOnceProvider()
   const providerB = new RecordingProvider('from B')
   const modelA: ModelSelection = { ...model, model: { ...model.model, id: 'model-a' } }
   const modelB: ModelSelection = { ...model, model: { ...model.model, id: 'model-b' } }
   const sessionRef: { current: AgentSession<{ toolCalls: number }> | null } = { current: null }
-  const session = createSession(providerA, createSwitchToolRuntime(sessionRef, () => ({ provider: providerB, model: modelB })), undefined, modelA)
+  const session = createSession(providerA, createSwitchToolRuntime(sessionRef, () => ({ provider: providerB, model: modelB, apply: 'immediate' })), undefined, modelA)
   sessionRef.current = session
 
   await session.send(text('do the thing'))
@@ -393,7 +409,7 @@ test('a mid-turn switch to a smaller-window model compacts with the OLD model fi
   const bigModel: ModelSelection = { ...model, model: { ...model.model, id: 'big', contextWindow: 100_000 } }
   const smallModel: ModelSelection = { ...model, model: { ...model.model, id: 'small', contextWindow: 8 } }
   const sessionRef: { current: AgentSession<{ toolCalls: number }> | null } = { current: null }
-  const session = createSession(provider, createSwitchToolRuntime(sessionRef, () => ({ provider: null, model: smallModel })), undefined, bigModel)
+  const session = createSession(provider, createSwitchToolRuntime(sessionRef, () => ({ provider: null, model: smallModel, apply: 'immediate' })), undefined, bigModel)
   sessionRef.current = session
 
   await session.send(text('do the thing'))

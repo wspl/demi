@@ -22,6 +22,7 @@ import type {
   AbortResult,
   AbortTarget,
   ExternalMutationReservation,
+  ModelSwitchApply,
   SessionEvent,
   SessionEventListener,
 } from './types'
@@ -60,7 +61,7 @@ interface TakenQueuedSend {
 export class AgentSession<State> {
   private provider: AgentProvider
   private model: ModelSelection
-  private pendingModelSwitch: { provider: AgentProvider | null; model: ModelSelection } | null = null
+  private pendingModelSwitch: { provider: AgentProvider | null; model: ModelSelection; apply: ModelSwitchApply } | null = null
   private readonly cwd: string
   private readonly runtime: AgentHarnessRuntime<State>
   private readonly agentSessionId: string
@@ -257,7 +258,7 @@ export class AgentSession<State> {
         self.activeProviderRun = run
       },
       streamProvider: (request, run) => self.providerEvents(request, run),
-      applyPendingModelSwitch: () => self.applyPendingModelSwitch(),
+      applyImmediateModelSwitch: () => self.applyImmediateModelSwitch(),
       runCompaction: () => self.compaction.run(),
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
       commitTranscript: () => self.commitTranscript(),
@@ -396,16 +397,16 @@ export class AgentSession<State> {
    * replaces the current one (its predecessor is disposed); pass null to keep the same
    * provider instance and only change the model.
    *
-   * The switch is applied at the next inference boundary (see applyPendingModelSwitch):
-   * the start of the next turn when the session is idle, or — mid-turn — the next
-   * sampling/tool continuation, so the very next request already runs on the new model
-   * (the same "as soon as possible" semantics steering has). If the new model can't hold
-   * the history, compaction runs first with the current (pre-switch) model, then the swap
-   * happens. Recording is cheap and non-blocking so it never holds up an in-flight turn
-   * or other frames.
+   * `apply` picks the boundary the switch lands on: 'next_turn' (default) waits for the
+   * start of the next queued action, so a running turn finishes entirely on the old model;
+   * 'immediate' also applies mid-turn at the next sampling/tool continuation, so the very
+   * next request already runs on the new model (the same "as soon as possible" semantics
+   * steering has). Either way, if the new model can't hold the history, compaction runs
+   * first with the current (pre-switch) model, then the swap happens. Recording is cheap
+   * and non-blocking so it never holds up an in-flight turn or other frames.
    */
-  updateModel(provider: AgentProvider | null, model: ModelSelection): void {
-    this.pendingModelSwitch = { provider, model }
+  updateModel(provider: AgentProvider | null, model: ModelSelection, apply: ModelSwitchApply = 'next_turn'): void {
+    this.pendingModelSwitch = { provider, model, apply }
   }
 
   async abort(): Promise<AbortResult> {
@@ -829,12 +830,12 @@ export class AgentSession<State> {
   }
 
   /**
-   * Applies a queued model/provider switch at an inference boundary (turn preflight, or a
-   * mid-turn continuation via the turn loop). If the new model's context window can't hold
-   * the current history, compaction runs FIRST with the current (pre-switch) model +
-   * provider — which can still load it to summarize — and only then do we swap. Doing it
-   * the other way would ask the smaller model to summarize a history it may not be able to
-   * load. Returns whether that compaction actually ran (false when no switch was pending).
+   * Applies a queued model/provider switch at an action boundary (turn preflight). If the
+   * new model's context window can't hold the current history, compaction runs FIRST with
+   * the current (pre-switch) model + provider — which can still load it to summarize — and
+   * only then do we swap. Doing it the other way would ask the smaller model to summarize
+   * a history it may not be able to load. Returns whether that compaction actually ran
+   * (false when no switch was pending).
    */
   private async applyPendingModelSwitch(): Promise<boolean> {
     const pending = this.pendingModelSwitch
@@ -849,6 +850,16 @@ export class AgentSession<State> {
     }
     this.model = pending.model
     return compacted
+  }
+
+  /**
+   * Turn-loop variant for mid-turn continuation boundaries: only switches recorded with
+   * apply 'immediate' land here; 'next_turn' switches stay pending until the running turn
+   * finishes and the next action starts.
+   */
+  private async applyImmediateModelSwitch(): Promise<boolean> {
+    if (this.pendingModelSwitch?.apply !== 'immediate') return false
+    return this.applyPendingModelSwitch()
   }
 
   private async runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T> {
