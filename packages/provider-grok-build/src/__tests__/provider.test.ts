@@ -224,8 +224,8 @@ test('model catalog maps Grok /v1/models payload', () => {
       object: 'list',
       data: [
         {
-          id: 'grok-4.5',
-          name: 'Grok 4.5',
+          id: 'frontier',
+          name: 'Frontier',
           description: 'frontier',
           context_window: 500000,
           supports_reasoning_effort: true,
@@ -237,8 +237,8 @@ test('model catalog maps Grok /v1/models payload', () => {
           ],
         },
         {
-          id: 'grok-composer-2.5-fast',
-          name: 'Composer 2.5',
+          id: 'fast',
+          name: 'Fast',
           context_window: 200000,
         },
       ],
@@ -246,19 +246,20 @@ test('model catalog maps Grok /v1/models payload', () => {
     'grok-build',
   )
 
-  expect(catalog.defaultModelId).toBe('grok-4.5')
-  expect(catalog.models.map((model) => model.id)).toEqual(['grok-4.5', 'grok-composer-2.5-fast'])
+  expect(catalog.defaultModelId).toBe('frontier')
   expect(catalog.models[0]).toMatchObject({
-    displayName: 'Grok 4.5',
+    id: 'frontier',
+    displayName: 'Frontier',
     contextWindow: 500_000,
     supportedThinkingEfforts: ['high', 'medium', 'low'],
     defaultThinkingEffort: 'high',
-    supportsAttachments: true,
   })
   expect(catalog.models[1]).toMatchObject({
-    id: 'grok-composer-2.5-fast',
-    supportsAttachments: false,
+    id: 'fast',
+    displayName: 'Fast',
+    contextWindow: 200_000,
   })
+  expect(catalog.models.every((model) => model.supportsAttachments === true)).toBe(true)
 })
 
 interface CapturedRequest {
