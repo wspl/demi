@@ -1,5 +1,14 @@
 # @demicodes/provider-grok-build
 
+## 0.17.1
+
+### Patch Changes
+
+- 7809f32: Treat every Grok Build catalog model as image-capable. The cli-chat-proxy `/v1/models` payload has no modality field, and the official Grok Build client keeps native images on the stock harness instead of maintaining a per-id allowlist.
+  - @demicodes/core@0.17.1
+  - @demicodes/provider@0.17.1
+  - @demicodes/utils@0.17.1
+
 ## 0.17.0
 
 ### Patch Changes
