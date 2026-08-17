@@ -12,7 +12,7 @@ Each vendor exposes usage and rate-limit data differently:
 |---|---|---|
 | Codex | Minimal Responses request (headers only) | `x-codex-*` on live Responses |
 | Claude Code | `GET /api/oauth/usage` | Stream-json `rate_limits` / unified rate-limit headers |
-| Grok Build | `/v1/billing` + `/v1/user?include=subscription` | Short-window `x-ratelimit-*` on chat |
+| Grok Build | `/v1/billing?format=credits` + `/v1/user?include=subscription` | Short-window `x-ratelimit-*` on chat |
 
 Products need **one snapshot shape** and two fill paths (probe vs observe), without
 vendor-specific UI branches for every header name.
@@ -139,7 +139,7 @@ Token resolution follows the same auth path as inference (credential pool active
 
 | Path | Behavior |
 |---|---|
-| **probe** | Active session → `GET /v1/user?include=subscription` + `GET /v1/billing`. `probeCost: 'free'`. |
+| **probe** | Active session → `GET /v1/user?include=subscription` + `GET /v1/billing?format=credits`. `probeCost: 'free'`. |
 | **observe** | Short-window `x-ratelimit-*` style headers on chat responses (separate from monthly subscription windows). |
 | **Windows** | e.g. `monthly` (billing) plus optional short RPM/TPM-style windows from headers. |
 
