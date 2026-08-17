@@ -22,7 +22,7 @@ See [docs/provider-global-credentials.md](../../docs/provider-global-credentials
 
 ## Quota
 
-- **probe** (cost: `free`): `/v1/billing` + `/v1/user?include=subscription` on
+- **probe** (cost: `free`): `/v1/billing?format=credits` + `/v1/user?include=subscription` on
   cli-chat-proxy.
 - **observe**: short-window ratelimit headers on chat responses (separate from monthly).
 

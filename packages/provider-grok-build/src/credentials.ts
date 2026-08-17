@@ -172,6 +172,7 @@ export function createGrokBuildCredentials(
           signal: loginOptions?.signal,
           onPending: loginOptions?.onPending,
           fetch: options.loginFetch,
+          surface: 'ui',
         })
         const info = await importEntry(entryKey, entry, 'login:device')
         return { status: 'completed', credentialId: info.id }
