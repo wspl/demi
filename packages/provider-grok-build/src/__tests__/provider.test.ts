@@ -11,6 +11,9 @@ const staticAuth: GrokResolvedAuth = {
   refreshToken: 'refresh',
   expiresAt: new Date('2030-01-01T00:00:00.000Z'),
   email: 'user@example.com',
+  userId: 'user-1',
+  principalType: null,
+  principalId: null,
   issuer: 'https://auth.x.ai',
   clientId: 'client-1',
   entryKey: 'https://auth.x.ai::client-1',
@@ -34,10 +37,18 @@ test('Grok Build provider posts chat completions with CLI session headers', asyn
   expect(requests[0]?.url).toBe('https://cli-chat-proxy.example/v1/chat/completions')
   expect(requests[0]?.headers.get('authorization')).toBe('Bearer session-token')
   expect(requests[0]?.headers.get('X-XAI-Token-Auth')).toBe('xai-grok-cli')
-  expect(requests[0]?.headers.get('x-grok-client-surface')).toBe('grok-build')
+  expect(requests[0]?.headers.get('x-authenticateresponse')).toBe('authenticate-response')
+  expect(requests[0]?.headers.get('x-grok-client-identifier')).toBe('grok-shell')
+  expect(requests[0]?.headers.get('x-grok-client-mode')).toBe('interactive')
+  expect(requests[0]?.headers.get('x-grok-client-surface')).toBeNull()
   expect(requests[0]?.headers.get('x-grok-client-version')).toBeTruthy()
+  expect(requests[0]?.headers.get('x-userid')).toBe('user-1')
+  expect(requests[0]?.headers.get('x-email')).toBe('user@example.com')
+  expect(requests[0]?.headers.get('x-grok-user-id')).toBe('user-1')
   expect(requests[0]?.headers.get('x-grok-model-override')).toBe('grok-4.5')
   expect(requests[0]?.headers.get('x-grok-session-id')).toBe('session-1')
+  expect(requests[0]?.headers.get('x-grok-conv-id')).toBe('session-1')
+  expect(requests[0]?.headers.get('x-grok-turn-idx')).toBe('turn-1')
 })
 
 test('Grok Build provider refreshes once on HTTP 401 then retries', async () => {

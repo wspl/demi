@@ -22,6 +22,7 @@ test('FileGrokAuthStore resolves OIDC session from Grok CLI auth.json shape', as
           oidc_issuer: 'https://auth.x.ai',
           oidc_client_id: 'client-1',
           email: 'user@example.com',
+          user_id: 'user-1',
         },
       }),
     )
@@ -31,6 +32,7 @@ test('FileGrokAuthStore resolves OIDC session from Grok CLI auth.json shape', as
 
     expect(auth.accessToken).toBe(access)
     expect(auth.email).toBe('user@example.com')
+    expect(auth.userId).toBe('user-1')
     expect(auth.entryKey).toBe(entryKey)
     expect(auth.clientId).toBe('client-1')
     expect(await store.status()).toEqual({ status: 'authenticated', accountLabel: 'user@example.com' })
@@ -58,6 +60,8 @@ test('FileGrokAuthStore refreshes near-expiry OIDC tokens and preserves sibling 
           oidc_issuer: 'https://auth.x.ai',
           oidc_client_id: 'client-1',
           email: 'before@example.com',
+          principal_type: 'User',
+          principal_id: 'user-1',
           custom_future_field: { keep: true },
         },
       })}\n`,
@@ -71,6 +75,8 @@ test('FileGrokAuthStore refreshes near-expiry OIDC tokens and preserves sibling 
         expect(input.refreshToken).toBe('refresh-old')
         expect(input.clientId).toBe('client-1')
         expect(input.tokenEndpoint).toBe('https://auth.x.ai/oauth2/token')
+        expect(input.principalType).toBe('User')
+        expect(input.principalId).toBe('user-1')
         return {
           access_token: newAccess,
           refresh_token: 'refresh-new',

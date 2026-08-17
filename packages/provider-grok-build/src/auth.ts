@@ -16,8 +16,12 @@ export interface GrokAuthEntry {
   oidc_client_id?: string
   email?: string
   first_name?: string
+  last_name?: string
   user_id?: string
   team_id?: string
+  principal_type?: string
+  principal_id?: string
+  organization_id?: string
   [key: string]: unknown
 }
 
@@ -29,6 +33,9 @@ export interface GrokResolvedAuth {
   refreshToken: string | null
   expiresAt: Date | null
   email: string | null
+  userId: string | null
+  principalType: string | null
+  principalId: string | null
   issuer: string | null
   clientId: string | null
   entryKey: string
@@ -63,7 +70,13 @@ export interface GrokRefreshTokenResponse {
 }
 
 export type GrokTokenRefresh = (
-  input: { refreshToken: string; clientId: string; tokenEndpoint: string },
+  input: {
+    refreshToken: string
+    clientId: string
+    tokenEndpoint: string
+    principalType?: string | null
+    principalId?: string | null
+  },
   signal?: AbortSignal,
 ) => Promise<GrokRefreshTokenResponse>
 
@@ -147,25 +160,31 @@ export class FileGrokAuthStore implements GrokAuthStore {
         refreshToken,
         clientId,
         tokenEndpoint: tokenEndpointForIssuer(issuer),
+        principalType: stringOrNull(entry.principal_type),
+        principalId: stringOrNull(entry.principal_id),
       })
     }
 
-    return {
-      accessToken,
+    return resolvedAuthFromEntry(entry, accessToken, {
       refreshToken,
       expiresAt,
-      email: stringOrNull(entry.email),
       issuer,
       clientId,
       entryKey,
       authFile: this.authFile,
-    }
+    })
   }
 
   private async refreshAndResolve(
     staleAccessToken: string,
     entryKey: string,
-    refreshInput: { refreshToken: string; clientId: string; tokenEndpoint: string },
+    refreshInput: {
+      refreshToken: string
+      clientId: string
+      tokenEndpoint: string
+      principalType?: string | null
+      principalId?: string | null
+    },
   ): Promise<GrokResolvedAuth> {
     return this.withAuthFileLock(async () => {
       const latest = await this.readAuthFile()
@@ -184,16 +203,14 @@ export class FileGrokAuthStore implements GrokAuthStore {
       if (latestAccessToken && latestAccessToken !== staleAccessToken) {
         const latestExpiresAt = parseExpiresAt(latestEntry.expires_at) ?? parseJwtExpiration(latestAccessToken)
         if (!expiresWithin(latestExpiresAt, this.now(), REFRESH_EXPIRY_SKEW_MS)) {
-          return {
-            accessToken: latestAccessToken,
+          return resolvedAuthFromEntry(latestEntry, latestAccessToken, {
             refreshToken: nonEmptyString(latestEntry.refresh_token) ?? null,
             expiresAt: latestExpiresAt,
-            email: stringOrNull(latestEntry.email),
             issuer,
             clientId,
             entryKey,
             authFile: this.authFile,
-          }
+          })
         }
       }
 
@@ -201,6 +218,8 @@ export class FileGrokAuthStore implements GrokAuthStore {
         refreshToken,
         clientId,
         tokenEndpoint: tokenEndpointForIssuer(issuer) || refreshInput.tokenEndpoint,
+        principalType: stringOrNull(latestEntry.principal_type) ?? refreshInput.principalType,
+        principalId: stringOrNull(latestEntry.principal_id) ?? refreshInput.principalId,
       })
       const accessToken = nonEmptyString(response.access_token)
       if (!accessToken) {
@@ -221,16 +240,14 @@ export class FileGrokAuthStore implements GrokAuthStore {
       const nextFile: GrokAuthDotJson = { ...latest, [entryKey]: nextEntry }
       await writeAuthJsonAtomic(this.authFile, nextFile)
 
-      return {
-        accessToken,
+      return resolvedAuthFromEntry(nextEntry, accessToken, {
         refreshToken: nonEmptyString(nextEntry.refresh_token) ?? null,
         expiresAt,
-        email: stringOrNull(nextEntry.email),
         issuer,
         clientId,
         entryKey,
         authFile: this.authFile,
-      }
+      })
     })
   }
 
@@ -352,7 +369,13 @@ export function selectAuthEntryByKey(
 }
 
 export async function refreshGrokOidcToken(
-  input: { refreshToken: string; clientId: string; tokenEndpoint: string },
+  input: {
+    refreshToken: string
+    clientId: string
+    tokenEndpoint: string
+    principalType?: string | null
+    principalId?: string | null
+  },
   signal?: AbortSignal,
 ): Promise<GrokRefreshTokenResponse> {
   const body = new URLSearchParams({
@@ -360,6 +383,8 @@ export async function refreshGrokOidcToken(
     refresh_token: input.refreshToken,
     client_id: input.clientId,
   })
+  if (nonEmptyString(input.principalType)) body.set('principal_type', input.principalType)
+  if (nonEmptyString(input.principalId)) body.set('principal_id', input.principalId)
   const response = await fetch(input.tokenEndpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
@@ -372,9 +397,21 @@ export async function refreshGrokOidcToken(
   return (await response.json()) as GrokRefreshTokenResponse
 }
 
+export function peekGrokAccessTokenPrincipal(accessToken: string): {
+  principalType: string
+  principalId: string
+  teamId: string | null
+} | null {
+  const payload = decodeGrokJwtPayload(accessToken)
+  if (!payload) return null
+  const principalType = nonEmptyString(payload.principal_type) ?? nonEmptyString(payload.principalType)
+  const principalId = nonEmptyString(payload.principal_id) ?? nonEmptyString(payload.principalId)
+  if (!principalType || !principalId) return null
+  return { principalType, principalId, teamId: nonEmptyString(payload.team_id) ?? null }
+}
 
 export function parseJwtExpiration(jwt: string): Date | null {
-  const payload = decodeJwtPayload(jwt)
+  const payload = decodeGrokJwtPayload(jwt)
   const exp = payload?.exp
   return typeof exp === 'number' ? new Date(exp * 1000) : null
 }
@@ -415,7 +452,7 @@ async function writeAuthJsonAtomic(authFile: string, auth: GrokAuthDotJson): Pro
   await rename(temp, authFile)
 }
 
-function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+export function decodeGrokJwtPayload(jwt: string): Record<string, unknown> | null {
   const parts = jwt.split('.')
   if (parts.length !== 3 || !parts[1]) return null
   try {
@@ -424,6 +461,42 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
     return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>
   } catch {
     return null
+  }
+}
+
+function resolveGrokUserId(entry: GrokAuthEntry, accessToken: string): string | null {
+  return (
+    stringOrNull(entry.user_id) ??
+    peekGrokAccessTokenPrincipal(accessToken)?.principalId ??
+    stringOrNull(decodeGrokJwtPayload(accessToken)?.sub)
+  )
+}
+
+function resolvedAuthFromEntry(
+  entry: GrokAuthEntry,
+  accessToken: string,
+  rest: {
+    refreshToken: string | null
+    expiresAt: Date | null
+    issuer: string | null
+    clientId: string | null
+    entryKey: string
+    authFile: string
+  },
+): GrokResolvedAuth {
+  const peeked = peekGrokAccessTokenPrincipal(accessToken)
+  return {
+    accessToken,
+    refreshToken: rest.refreshToken,
+    expiresAt: rest.expiresAt,
+    email: stringOrNull(entry.email),
+    userId: resolveGrokUserId(entry, accessToken),
+    principalType: stringOrNull(entry.principal_type) ?? peeked?.principalType ?? null,
+    principalId: stringOrNull(entry.principal_id) ?? peeked?.principalId ?? null,
+    issuer: rest.issuer,
+    clientId: rest.clientId,
+    entryKey: rest.entryKey,
+    authFile: rest.authFile,
   }
 }
 
