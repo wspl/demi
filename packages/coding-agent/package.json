@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/coding-agent",
   "description": "Coding-agent harness, commands, and reference resolution for Demi.",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "private": false,
   "type": "module",
   "exports": {
