@@ -1,5 +1,14 @@
 # @demicodes/provider-grok-build
 
+## 0.17.2
+
+### Patch Changes
+
+- 3fc9046: Align Grok Build device login and cli-chat-proxy requests with the official CLI: frozen OAuth2 scopes including `api:access`, device-flow referrer/surface headers, proxy auth headers, and `/v1/billing?format=credits` (creditUsagePercent / currentPeriod).
+  - @demicodes/core@0.17.2
+  - @demicodes/provider@0.17.2
+  - @demicodes/utils@0.17.2
+
 ## 0.17.1
 
 ### Patch Changes

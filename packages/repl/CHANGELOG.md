@@ -1,5 +1,23 @@
 # @demicodes/repl
 
+## 0.17.2
+
+### Patch Changes
+
+- Updated dependencies [3fc9046]
+  - @demicodes/provider-grok-build@0.17.2
+  - @demicodes/agent@0.17.2
+  - @demicodes/coding-agent@0.17.2
+  - @demicodes/core@0.17.2
+  - @demicodes/host-local@0.17.2
+  - @demicodes/provider@0.17.2
+  - @demicodes/provider-anthropic-api@0.17.2
+  - @demicodes/provider-claude-code@0.17.2
+  - @demicodes/provider-codex@0.17.2
+  - @demicodes/provider-openai-api@0.17.2
+  - @demicodes/shell@0.17.2
+  - @demicodes/utils@0.17.2
+
 ## 0.17.1
 
 ### Patch Changes

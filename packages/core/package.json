@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/core",
   "description": "Core data types and shared domain primitives for the Demi agent toolkit.",
-  "version": "0.17.1",
+  "version": "0.17.2",
   "private": false,
   "type": "module",
   "exports": {
