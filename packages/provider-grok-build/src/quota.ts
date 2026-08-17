@@ -1,5 +1,6 @@
 import { isRecord, stringOrNull } from '@demicodes/utils'
 import {
+  clampUsedPercent,
   createProviderQuota,
   numberHeader,
   severityFromUsedPercent,
@@ -29,7 +30,7 @@ export interface GrokBuildQuotaOptions {
 /**
  * Active probe against cli-chat-proxy:
  * - GET /v1/user?include=subscription → tier
- * - GET /v1/billing → monthly used/limit
+ * - GET /v1/billing?format=credits → creditUsagePercent / currentPeriod
  *
  * Optional observation of short-window x-ratelimit-* headers from chat responses
  * (separate windows from monthly subscription quota).
@@ -52,7 +53,7 @@ export function createGrokBuildQuota(options: GrokBuildQuotaOptions = {}): Provi
       const auth = await authStore.resolveAuth()
       const [user, billing] = await Promise.all([
         fetchJson(fetchImpl, `${baseUrl}/user?include=subscription`, auth, { grokHome, clientVersion }, signal),
-        fetchJson(fetchImpl, `${baseUrl}/billing`, auth, { grokHome, clientVersion }, signal),
+        fetchJson(fetchImpl, `${baseUrl}/billing?format=credits`, auth, { grokHome, clientVersion }, signal),
       ])
       return mapGrokQuotaProbe(user, billing, auth)
     },
@@ -69,20 +70,23 @@ export function mapGrokQuotaProbe(
   const billingRecord = isRecord(billing) ? billing : {}
   const config = isRecord(billingRecord.config) ? billingRecord.config : {}
 
+  const period = isRecord(config.currentPeriod) ? config.currentPeriod : null
+  const isWeekly = stringOrNull(period?.type) === 'USAGE_PERIOD_TYPE_WEEKLY'
+  const resetsAt = stringOrNull(period?.end) ?? stringOrNull(config.billingPeriodEnd)
   const monthlyLimit = moneyVal(config.monthlyLimit)
   const used = moneyVal(config.used)
   const onDemandCap = moneyVal(config.onDemandCap)
-  const usedPercent = usedPercentFromRatio(used, monthlyLimit)
+  const usedPercent = clampUsedPercent(config.creditUsagePercent) ?? usedPercentFromRatio(used, monthlyLimit)
 
   const windows: ProviderQuotaWindow[] = [
     {
-      id: 'monthly',
-      label: 'Monthly credits',
+      id: isWeekly ? 'weekly' : 'monthly',
+      label: isWeekly ? 'Weekly credits' : 'Monthly credits',
       usedPercent,
       used,
       limit: monthlyLimit,
       unit: 'credits',
-      resetsAt: stringOrNull(config.billingPeriodEnd),
+      resetsAt,
       severity: severityFromUsedPercent(usedPercent),
     },
   ]
@@ -95,7 +99,7 @@ export function mapGrokQuotaProbe(
       used: null,
       limit: onDemandCap,
       unit: 'credits',
-      resetsAt: stringOrNull(config.billingPeriodEnd),
+      resetsAt,
     })
   }
 
