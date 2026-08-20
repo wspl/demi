@@ -1,5 +1,11 @@
 # @demicodes/shell
 
+## 0.17.3
+
+### Patch Changes
+
+- @demicodes/utils@0.17.3
+
 ## 0.17.2
 
 ### Patch Changes
