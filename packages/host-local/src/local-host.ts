@@ -40,6 +40,8 @@ export interface LocalHostOptions {
   storeRoot?: string
   /** Where command artifacts land as plain files; defaults next to the store. */
   commandArtifactsDir?: string
+  /** Bring-your-own persistence, e.g. to wrap or gate writes; defaults to a LocalHostStore rooted at storeRoot. */
+  store?: HostStore
 }
 
 export class LocalHost implements Host {
@@ -55,7 +57,7 @@ export class LocalHost implements Host {
     this.commandArtifactsDir = resolve(options.commandArtifactsDir ?? join(storeRoot, 'command-artifacts'))
     this.fs = new LocalHostFileSystem(this.defaultCwd)
     this.process = new LocalHostProcess(this.defaultCwd)
-    this.store = new LocalHostStore(storeRoot)
+    this.store = options.store ?? new LocalHostStore(storeRoot)
   }
 }
 
