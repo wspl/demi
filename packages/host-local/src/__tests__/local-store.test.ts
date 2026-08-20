@@ -49,6 +49,23 @@ test('LocalHostStore round-trips Uint8Array values inside stored JSON', async ()
   expect([...(restored?.content[0].source.data ?? [])]).toEqual([137, 80, 78, 71])
 })
 
+test('LocalHostStore keeps a concurrently overwritten key complete and parseable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
+  const store = new LocalHostStore(root)
+  // Payloads large enough that a torn or interleaved write could not parse back.
+  const payloads = Array.from({ length: 6 }, (_, writer) => ({ writer, filler: `${writer}`.repeat(2_000_000) }))
+
+  for (let round = 0; round < 3; round++) {
+    await Promise.all(payloads.map((payload) => store.writeJson('session/checkpoint.json', payload)))
+
+    const restored = await store.readJson<{ writer: number; filler: string }>('session/checkpoint.json')
+    if (!restored) throw new Error('checkpoint missing after concurrent writes')
+    expect(restored.filler).toBe(`${restored.writer}`.repeat(2_000_000))
+    // No temp files may survive a completed write.
+    expect(await store.list('')).toEqual(['session/checkpoint.json'])
+  }
+})
+
 test('LocalHostStore rejects keys that are not relative store paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
   const store = new LocalHostStore(root)
