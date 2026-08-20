@@ -669,6 +669,41 @@ test('AgentSession store snapshots are insulated from later state mutations', as
   expect(session.state()).toEqual({ toolCalls: 1 })
 })
 
+test('AgentSession serializes checkpoint writes so a flush cannot overlap a scheduled write', async () => {
+  const store = new SlowSessionStore()
+  const provider = new StubProvider([
+    [events.toolCall('tool-1', 'count_tool', {}), events.response()],
+    [events.text('counted'), events.response()],
+    [events.text('done'), events.response()],
+  ])
+  const runtime = createRuntime({
+    tools: () => [
+      {
+        name: 'count_tool',
+        description: 'Mutates agent state.',
+        inputSchema: { type: 'object' },
+        invoke: async (ctx) => {
+          // Real-timer pause lets the zero-interval persist timer fire mid-turn,
+          // so the action-boundary flush races an in-flight scheduled write.
+          await delay(5)
+          ctx.state.toolCalls += 1
+          return { output: [{ type: 'text', text: 'counted' }] }
+        },
+      },
+    ],
+  })
+  const session = createSession(provider, runtime, undefined, model, { store, persistIntervalMs: 0 })
+
+  await session.send(text('count once'))
+  await session.send(text('finish'))
+
+  expect(store.maxInFlight).toBe(1)
+  expect(store.snapshots.length).toBeGreaterThan(1)
+  expect(store.snapshots.at(-1)?.transcript.blocks.map((block) => block.type)).toEqual(
+    session.transcript().blocks.map((block) => block.type),
+  )
+})
+
 test('AgentSession persists extension state snapshots appended by lifecycle hooks', async () => {
   const store = new MemorySessionStore<{ toolCalls: number }>()
   const provider = new StubProvider([
@@ -2166,6 +2201,24 @@ class MemorySessionStore<State> {
 
   loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null> {
     return Promise.resolve(this.snapshots[this.snapshots.length - 1] ?? null)
+  }
+}
+
+class SlowSessionStore implements AgentSessionStore<{ toolCalls: number }> {
+  readonly snapshots: Array<AgentSessionCheckpoint<{ toolCalls: number }>> = []
+  maxInFlight = 0
+  private inFlight = 0
+
+  async saveCheckpoint(snapshot: AgentSessionCheckpoint<{ toolCalls: number }>): Promise<void> {
+    this.inFlight += 1
+    this.maxInFlight = Math.max(this.maxInFlight, this.inFlight)
+    await delay(20)
+    this.snapshots.push(snapshot)
+    this.inFlight -= 1
+  }
+
+  loadCheckpoint(): Promise<AgentSessionCheckpoint<{ toolCalls: number }> | null> {
+    return Promise.resolve(this.snapshots.at(-1) ?? null)
   }
 }
 

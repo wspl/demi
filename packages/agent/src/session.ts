@@ -98,6 +98,7 @@ export class AgentSession<State> {
   private readonly retryPolicy: TurnRetryPolicy
   private persistTimer: ReturnType<typeof setTimeout> | null = null
   private persistDirty = false
+  private persistChain: Promise<void> = Promise.resolve()
 
   /**
    * Restores a session from a checkpoint. Ownership of the checkpoint (including
@@ -1118,7 +1119,17 @@ export class AgentSession<State> {
     }, this.persistIntervalMs)
   }
 
-  private async persistCheckpoint(): Promise<void> {
+  // Serialized through persistChain: a boundary flush arriving while a
+  // scheduled write is still in flight must not start a second concurrent
+  // write of the same checkpoint, and the last completed write must carry the
+  // newest snapshot. Each caller still observes its own write's failure.
+  private persistCheckpoint(): Promise<void> {
+    const run = this.persistChain.then(() => this.writeCheckpointIfDirty())
+    this.persistChain = run.then(noop, noop)
+    return run
+  }
+
+  private async writeCheckpointIfDirty(): Promise<void> {
     if (!this.store || !this.persistDirty) return
     this.persistDirty = false
     await this.store.saveCheckpoint({
