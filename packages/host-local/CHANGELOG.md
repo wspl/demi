@@ -1,5 +1,15 @@
 # @demicodes/host-local
 
+## 0.17.4
+
+### Patch Changes
+
+- 30677b0: `LocalHostOptions.store` lets embedders bring their own `HostStore` (e.g. to wrap or gate persistence writes); `LocalHostStore` is now exported for composition. Defaults are unchanged.
+  - @demicodes/agent@0.17.4
+  - @demicodes/provider@0.17.4
+  - @demicodes/shell@0.17.4
+  - @demicodes/utils@0.17.4
+
 ## 0.17.3
 
 ### Patch Changes

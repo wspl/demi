@@ -1,5 +1,13 @@
 # @demicodes/provider-google
 
+## 0.17.4
+
+### Patch Changes
+
+- @demicodes/core@0.17.4
+- @demicodes/provider@0.17.4
+- @demicodes/utils@0.17.4
+
 ## 0.17.3
 
 ### Patch Changes
