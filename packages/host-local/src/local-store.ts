@@ -1,6 +1,7 @@
 import { isFileNotFoundError, parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
+import { randomUUID } from 'node:crypto'
 import type { Dirent } from 'node:fs'
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
 import type { HostStore } from '@demicodes/shell'
 
@@ -21,10 +22,20 @@ export class LocalHostStore implements HostStore {
     }
   }
 
+  // Same-directory temp + rename: every observable file state is a complete
+  // document, so concurrent writers (other processes included) and mid-write
+  // process death can no longer tear the stored JSON.
   async writeJson<T>(key: string, value: T): Promise<void> {
     const path = this.pathForKey(key)
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, stringifyPortableJson(value, 2), 'utf8')
+    const temp = `${path}.${randomUUID()}.tmp`
+    try {
+      await writeFile(temp, stringifyPortableJson(value, 2), 'utf8')
+      await rename(temp, path)
+    } catch (error) {
+      await rm(temp, { force: true })
+      throw error
+    }
   }
 
   async delete(key: string): Promise<void> {
