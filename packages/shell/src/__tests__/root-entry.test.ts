@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { expect, test } from 'bun:test'
-import { HostBackedFileSystem, type Host } from '../index'
+import { HostBackedFileSystem, createLogicalHostCwd, type Host } from '../index'
 
 const shellRootEntry = resolve(import.meta.dir, '../index.ts')
 const forbiddenRuntimePatterns = [
@@ -19,8 +19,12 @@ test('root entry exposes browser-safe Host contract and HostBackedFileSystem cla
   const fs = new HostBackedFileSystem({
     defaultCwd: '/tmp',
     commandArtifactsDir: '/tmp/.command-artifacts',
+    identity: { uid: 1000, gid: 1000, hostname: 'test' },
     fs: {} as Host['fs'],
-    process: { spawn: async () => { throw new Error('not used') } },
+    process: {
+      spawn: async () => { throw new Error('not used') },
+      openCwd: async (path) => createLogicalHostCwd(path),
+    },
     store: {} as Host['store'],
   })
   expect(typeof fs.resolvePath).toBe('function')
