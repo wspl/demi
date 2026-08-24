@@ -17,6 +17,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented.
 - Production deps: none.
 - Owns: forked Bash parser, interpreter, builtins, expansion, portable command registry, filesystem interface, host-spawn hook, registered command hook, output hooks, audit hooks, and core bash compatibility tests.
+- Portable command output that disagrees with GNU coreutils for the same flags (for example portable `ls -l` vs `stat`/`find` on `st_mode`) is a just-bash bug. Semantic fixes go upstream, not into Demi-fork-only commits.
+- The in-memory VM (no `hostSpawn`) may use virtual identity and a path-string cwd. That is not a license for `@demicodes/shell` to present that VM as the Host.
 - Public boundary: exposes the fork APIs consumed by `@demicodes/shell`; it is not a Demi agent runtime package.
 - Must not: import Demi runtime packages or know about AgentSession, providers, REPL, or local host adapters.
 
@@ -58,8 +60,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Registered `Command.run` receives the `BashEnvironment` Host in its execution context; command implementations use that Host instead of closing over an assembly-time Host.
 - Runtime state such as command JSON state and agent session snapshots goes through `Host.store`; do not keep a separate top-level store adapter boundary.
 - HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, virtual, or policy-restricted hosts.
-- BashEnvironment must register fork portable commands before falling back to `Host.process.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
-- Host-backed shell behavior versus GNU bash is `docs/bash-behavior.md`: portable commands exist so a Host without coreutils still works; they are not a second Unix. Invented exception paths (cwd, spawn errno, file mode) are defects.
+- BashEnvironment registers fork portable commands so a Host without coreutils still has `cat`/`ls`/`grep`; they run only when `hostSpawn` reports executable-not-found. Registering a portable Unix name when the Host has the binary is a shell defect, not a just-bash license.
+- Host-backed shell behavior versus GNU bash is `docs/bash-behavior.md`. Attribute each divergence: just-bash (portable/builtin/hook), `@demicodes/shell` (registry/`hostSpawn` mapping/`HostFileStat`), or the Host backend (`posix_spawn` cwd, env). Invented exception paths are defects in the layer that owns them.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
 - Must not: import `@demicodes/agent`, `@demicodes/provider`, concrete providers, `@demicodes/coding-agent`, `@demicodes/host-local`, `@demicodes/repl`, or own local Node adapters.
 
@@ -69,6 +71,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/agent`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: local Node Host adapter (`LocalHost`); open-box local agent assembly (`createLocalAgentServer`) with command bridge **on by default**; command-bridge UDS listener, PATH shim materialization, and `~/.demi` / `$DEMI_HOME` state layout (`bridges/`, `bridge-bin/`).
 - Public boundary: Node-only local Host + local AgentServer factory + command-bridge primitives. Store is a Host facet, not a separate adapter family.
+- Spawn `cwd` and child env are this backend, not just-bash: `cwd` is the shell working directory (not `defaultCwd` as a fallback when the path is gone); children receive the shell exported set, not `{ ...process.env, ...params.env }`.
 - May use: `node:child_process`, `node:fs`, `node:http`, `node:net`, `node:path`, `process.env`, Node streams, Buffer, process-group signaling, and `@demicodes/agent` for assembly.
 - Must not: depend on concrete providers, `@demicodes/coding-agent`, or `@demicodes/repl`.
 - Assembly rule: products that run on LocalHost should use `createLocalAgentServer` rather than hand-wiring command-bridge sockets. Bin dirs and UDS are LocalHost-internal, not user-facing product options.
