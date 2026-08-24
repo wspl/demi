@@ -2,15 +2,12 @@ import { mkdtemp, mkdir, rm, writeFile, chmod, symlink, link } from 'node:fs/pro
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
+import { oracle, runBash } from './bash-oracle-helpers'
 
 /**
  * GNU bash on Linux is the oracle for `docs/bash-behavior.md`.
- * Every bash-column claim in that document is asserted here with
- * `bash --norc --noprofile` so nobody edits the table from memory.
+ * Additional measured traps live in `bash-oracle-traps.test.ts`.
  */
-const BASH = ['bash', '--norc', '--noprofile'] as const
-
-const oracle = await probeOracle()
 
 test('oracle is GNU bash on Linux', () => {
   expect(oracle.uname).toBe('Linux')
@@ -19,12 +16,13 @@ test('oracle is GNU bash on Linux', () => {
 
 test.skipIf(!oracle.ok)('type -t: builtins vs PATH files', async () => {
   const result = await runBash(`
-    for n in cd test '[' export set source . pwd echo printf; do
+    for n in cd test '[' export set source . pwd echo printf true false command hash type; do
       printf '%s %s\\n' "\$n" "\$(type -t "\$n")"
     done
-    for n in ls cat chmod stat mkdir rm cp mv which file whoami hostname grep find; do
+    for n in ls cat chmod stat mkdir rm cp mv which file whoami hostname grep find git id readlink env printenv; do
       printf '%s %s %s\\n' "\$n" "\$(type -t "\$n")" "\$(type -P "\$n")"
     done
+    printf 'time %s\\n' "\$(type -t time)"
   `)
   expect(result.exitCode).toBe(0)
   expect(result.stdout).toContain('cd builtin')
@@ -33,10 +31,18 @@ test.skipIf(!oracle.ok)('type -t: builtins vs PATH files', async () => {
   expect(result.stdout).toContain('pwd builtin')
   expect(result.stdout).toContain('echo builtin')
   expect(result.stdout).toContain('printf builtin')
+  expect(result.stdout).toContain('true builtin')
+  expect(result.stdout).toContain('false builtin')
+  expect(result.stdout).toContain('command builtin')
+  expect(result.stdout).toContain('hash builtin')
+  expect(result.stdout).toContain('time keyword')
   expect(result.stdout).toMatch(/^ls file \/.+\/ls$/m)
   expect(result.stdout).toMatch(/^chmod file \/.+\/chmod$/m)
   expect(result.stdout).toMatch(/^whoami file \/.+\/whoami$/m)
   expect(result.stdout).toMatch(/^grep file \/.+\/grep$/m)
+  expect(result.stdout).toMatch(/^git file \/.+\/git$/m)
+  expect(result.stdout).toMatch(/^id file \/.+\/id$/m)
+  expect(result.stdout).toMatch(/^readlink file \/.+\/readlink$/m)
 })
 
 test.skipIf(!oracle.ok)('functions override builtins; posix forbids special-builtin functions', async () => {
@@ -356,42 +362,3 @@ test.skipIf(!oracle.ok)('type pwd is builtin; type ls and command -v ls are the 
   expect(result.stdout).toMatch(/^\/.+\/ls$/m)
   expect(result.stdout).toContain('/bin/ls is /bin/ls')
 })
-
-async function probeOracle(): Promise<{ ok: boolean; uname: string; bashVersion: string }> {
-  const uname = await runCommand(['uname', '-s'])
-  const bashVersion = await runCommand(['bash', '--version'])
-  return {
-    ok: uname.stdout.trim() === 'Linux' && bashVersion.stdout.includes('GNU bash'),
-    uname: uname.stdout.trim(),
-    bashVersion: bashVersion.stdout.split('\n')[0] ?? '',
-  }
-}
-
-async function runBash(
-  script: string,
-  options: { cwd?: string; env?: Record<string, string> } = {},
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return runCommand([...BASH, '-c', script], options)
-}
-
-async function runCommand(
-  argv: string[],
-  options: { cwd?: string; env?: Record<string, string> } = {},
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(argv, {
-    cwd: options.cwd,
-    env: {
-      PATH: '/usr/bin:/bin',
-      HOME: options.cwd ?? tmpdir(),
-      LC_ALL: 'C',
-      LANG: 'C',
-      ...options.env,
-    },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const stdout = await new Response(proc.stdout).text()
-  const stderr = await new Response(proc.stderr).text()
-  const exitCode = await proc.exited
-  return { stdout, stderr, exitCode }
-}
