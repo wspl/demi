@@ -6,8 +6,15 @@ whatever else is on `PATH`). Models diagnose from that Unix. A Demi shell that
 invents a different exception path produces self-consistent false evidence
 (`ls -l` vs `stat` vs `test -x` vs spawn stderr) and the model follows it.
 
-When code and this document disagree, the code is wrong: change the code, or
-narrow this document to an allowed difference listed in [Allowed
+**Do not fill a bash-column cell from memory.** Re-run GNU bash
+(`bash --norc --noprofile`) or extend
+`packages/shell/src/__tests__/bash-oracle.test.ts`, which is the living
+oracle for every bash fact in this document. When that test and this
+document disagree, the test (the measured process) wins; update the table
+to match it.
+
+When Demi code and this document disagree, the code is wrong: change the
+code, or narrow this document to an allowed difference listed in [Allowed
 differences](#allowed-differences). Do not invent a third behavior to “make
 the agent more robust.”
 
@@ -26,12 +33,23 @@ just-bash comparison tests (`packages/just-bash/.../src/comparison-tests/`)
 record real bash fixtures for parser, builtins, and portable commands against
 an in-memory fs. They do not cover `hostSpawn`, spawn `cwd`, or
 `preferHostSpawn` fallback. Host-backed behavior is owned by `@demicodes/shell`.
+The bash column of the tables below is asserted by
+`packages/shell/src/__tests__/bash-oracle.test.ts` against `bash --norc
+--noprofile` (no aliases, `LC_ALL=C`).
 
 ## Dispatch
 
-bash: special builtins → functions → regular builtins → `PATH` (then 127).
-A name that is not a builtin (`ls`, `chmod`, `stat`, `find`, `whoami`) is
-always the file `PATH` finds.
+bash (non-POSIX): aliases (interactive only) → functions → builtins → `PATH`
+(then 127). Functions override builtins, including `cd` and `echo`. A name
+that is not a builtin (`ls`, `chmod`, `stat`, `find`, `whoami`) is the file
+`PATH` finds (`type -t` is `file`). In POSIX mode, defining a function with
+the name of a special builtin (`export`, …) is an error and the shell exits
+before later commands.
+
+`type -t pwd` / `echo` / `printf` / `test` / `[` / `cd` are `builtin`.
+`type pwd` prints `pwd is a shell builtin`. `command -v pwd` prints `pwd`.
+`type ls` prints `ls is /usr/bin/ls` (or wherever `PATH` resolves).
+`command -v ls` prints that path. `type /bin/ls` prints `/bin/ls is /bin/ls`.
 
 ### just-bash (no `hostSpawn`)
 
@@ -88,17 +106,23 @@ remembered path string). `rm -rf "$PWD"` does not change the inode. Children
 `fork` and inherit it. bash does not `chdir` to the parent, to `$HOME`, or to
 the Host `defaultCwd`.
 
-| Action after `mkdir d && cd d && rm -rf "$PWD"` | bash | Host-backed shell |
+| Action after `mkdir d && cd d && rm -rf "$PWD"` | bash (measured) | Host-backed shell |
 |---|---|---|
-| `pwd` (default `-L`) | prints the old path, exit 0 | portable `pwd` prints `state.cwd` (same as `-L`) |
+| `pwd` / `pwd -L` | prints the old path, exit 0 | portable `pwd` prints `state.cwd` (same as `-L`) |
 | `echo "$PWD"` | old path | `state.env` `PWD` (same) |
-| `pwd -P` / `/bin/pwd` | `getcwd` fails: `cannot access parent directories: No such file or directory`, non-zero | portable `pwd -P` swallows `realpath` failure and prints the logical path, exit 0; `/bin/pwd` is `hostSpawn`d with the missing path as `cwd` |
-| absolute-path command (`/bin/echo ok`, `bun --version`) | succeeds | `posix_spawn` `chdir`s the path string first → `ENOENT`, mapped as command-not-found (see below) |
-| `ls .` / `ls` | fails on the directory, not as command-not-found | portable `ls` stats the path string → cannot access |
-| `cd .` | fails; directory does not exist | `cd` stats the path string → `No such file or directory` |
-| `cd ..` (default `-L`) | uses `$PWD` string, usually lands in the parent path | same string walk |
-| relative write (`echo x > f`) | creates in the unlinked inode | Host `fs` resolves against the path string (file appears under a name that no longer exists, or errors) |
-| next command’s cwd | still that inode | `spawn({ cwd: state.cwd })` with the deleted path |
+| `pwd -P` | exit 1; stderr `pwd: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory` | portable `pwd -P` swallows `realpath` failure and prints the logical path, exit 0 |
+| `/bin/pwd` (GNU pwd, default `-P`) | exit 1; stderr `/bin/pwd: couldn't find directory entry in '..' with matching i-node` | `hostSpawn`s with the missing path as `cwd` |
+| absolute-path command (`/bin/echo ok`, `/bin/true`) | succeeds, exit 0 | `posix_spawn` `chdir`s the path string first → `ENOENT`, mapped as command-not-found (see below) |
+| `ls .` / `ls` | exit 0, empty listing (the unlinked dir is empty) | portable `ls` stats the path string → cannot access |
+| `ls -ld .` | exit 0; `nlink` 0, name `.` | path-string `stat` fails |
+| `cd .` | exit 0; stderr `cd: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory`; `$PWD` becomes `$PWD/.` | `cd` stats the path string → `No such file or directory` |
+| `cd ..` immediately | exit 0; `$PWD` becomes the parent path (logical `$PWD/..`) | same string walk if `state.cwd` is still the old path |
+| relative create (`echo x > f`, `/bin/touch f`) | exit 1; `f: No such file or directory` (kernel `ENOENT` on create in a rmdir’d directory; Python `open` fails the same way) | Host `fs` resolves against the path string and errors |
+| next absolute command | still that inode; children inherit it | `spawn({ cwd: state.cwd })` with the deleted path |
+
+`pwd -P` after the rmdir leaves `$PWD` unchanged but a later `cd ..` in that
+same shell can set `$PWD` to `..` instead of the parent. Measure `cd ..` in a
+shell that has not just failed `getcwd`.
 
 `Host.defaultCwd` is only the initial cwd of a new shell (and the
 `HostBackedFileSystem` relative-path default). It is not a fallback when
@@ -117,12 +141,14 @@ dead bash process.
 
 bash classifies exec failures by what failed:
 
-| Situation | bash | Host-backed shell |
+| Situation | bash (measured) | Host-backed shell |
 |---|---|---|
-| name not on `PATH` | `bash: foo: command not found`, 127 | `hostSpawn` error → `exitCode` null → `BashEnvironment` forces 127 and stderr `` `${command}: ${signal}` `` (Bun: `posix_spawn 'foo' … ENOENT`) |
-| file exists, not executable | `bash: ./a: Permission denied`, 126 | depends on whether the name is portable-registered (often never exec’d) or `hostSpawn`d |
-| bad shebang interpreter | 127, names the interpreter | runtime-dependent |
-| cwd inode missing, binary exists | command still runs | same `ENOENT` as missing binary |
+| name not on `PATH` | stderr `bash: line N: foo: command not found` (or `file: line N:` when running a script), 127 | `hostSpawn` error → `exitCode` null → `BashEnvironment` forces 127 and stderr `` `${command}: ${signal}` `` (Bun: `posix_spawn 'foo' … ENOENT`) |
+| file exists, not executable | stderr contains `Permission denied`, 126 | depends on whether the name is portable-registered (often never exec’d) or `hostSpawn`d |
+| path is a directory | stderr contains `Is a directory`, 126 | runtime-dependent |
+| bad shebang interpreter (bash 5.2) | stderr contains `cannot execute: required file not found`, 127 | runtime-dependent |
+| hashed `PATH` entry removed | exec of the remembered pathname; stderr `…: No such file or directory`, 127 — not “command not found”. `hash -r` then re-searches `PATH` | no hash table for `hostSpawn` names; `hostSpawnUnavailable` sticks for the interpreter lifetime |
+| cwd inode missing, binary exists | command still runs (absolute path / already-resolved `PATH` lookup in this shell) | same `ENOENT` as missing binary |
 | `preferHostSpawn` probe | n/a | `isHostSpawnNotFound`: `exitCode === 127` and stderr matches `/ENOENT\|not found/i` → treat as “host has no such binary”, fall back to portable, remember forever |
 
 Required: `Host.process.spawn` / `hostSpawn` expose a **spawn-error kind**,
@@ -143,22 +169,23 @@ binary that itself prints `not found` are different events.
 bash `test` / `[` are builtins; `ls`, `stat`, `find`, `chmod` are `PATH`
 binaries. They all read the same `stat(2)` / `lstat(2)` result.
 
-| Observation | bash / GNU | just-bash portable (also what Host-backed `ls`/`chmod`/`stat`/`which` run) |
+| Observation | bash / GNU (measured) | just-bash portable (also what Host-backed `ls`/`chmod`/`stat`/`which` run) |
 |---|---|---|
-| `ls -l` mode | `st_mode` (`-rwxr-xr-x`, `lrwxrwxrwx`, setuid/sticky `s`/`S`/`t`/`T`) | files always `-rw-r--r--`, directories always `drwxr-xr-x`; `catch` fills the same fake line. `stat` / `find %M` / `tar` already use `formatMode(stat.mode)` |
-| `ls -l` type | `lstat`; symlinks are `l… -> target` | `stat` (follows); no `l`, no `->` |
-| `ls -l` owner / nlink | uid/gid names, real `nlink` | `1 user user` |
-| `ls -l` `total` | 1K-block count | entry count |
-| `ls -F` `*` | execute bits | `mode & 0111` (disagrees with `ls -l` on the same file) |
-| `chmod` | changes `st_mode` | Host `fs.chmod` actually changes the file |
-| `test -x` / `[ -x f ]` | execute bit for euid | `stat.mode & 0100` (owner bit only) |
-| `test -O` / `-G` | owned by euid/egid | true if the path exists |
-| `test -c` | character device | path allowlist (`/dev/null`, …) |
-| `test -ef` | same `st_dev`+`st_ino` | string path equality |
-| `stat -c %A` / `%a` | `st_mode` | `formatMode(stat.mode)` / octal of `stat.mode` |
+| `ls -l` mode | `st_mode`: `-rwxr-xr-x` for 0755, `-rw-r--r--` for 0644, `-rwsr-xr-x` / `-rwxr-sr-x` / `-rwxr-xr-t` for setuid/setgid/sticky | files always `-rw-r--r--`, directories always `drwxr-xr-x`; `catch` fills the same fake line. `stat` / `find %M` / `tar` already use `formatMode(stat.mode)` |
+| `ls -l` type | `lstat`; symlinks are `lrwxrwxrwx … -> target` | `stat` (follows); no `l`, no `->` |
+| `ls -l` owner / nlink | uid/gid names; hard link nlink 2 | `1 user user` |
+| `ls -l` `total` (directory listing) | allocated-block total (not the number of names) | entry count |
+| `ls -F` | `*` on execute bits, `@` on symlinks, `/` on dirs | `mode & 0111` for `*` (disagrees with portable `ls -l` on the same file) |
+| `chmod` | changes `st_mode` (`chmod 4755` shows `-rwsr-xr-x`) | Host `fs.chmod` actually changes the file |
+| `test -x` / `[ -x f ]` | `access(X_OK)`: the class that applies to euid (owner uses owner bits — a `001` file owned by you is not executable) | `stat.mode & 0100` (owner bit only) |
+| `test -O` / `-G` | owned by euid/egid (`/dev/null` is not `-O` for a non-root user) | true if the path exists |
+| `test -c` | character device (`/dev/null` is `-c`) | path allowlist (`/dev/null`, …) |
+| `test -ef` | same `st_dev`+`st_ino` after following symlinks (hard link matches; symlink matches its target) | string path equality |
+| `stat -c %A` / `%a` | `st_mode`; GNU `stat` on a symlink reports `lrwxrwxrwx` / type `symbolic link` (lstat) | `formatMode(stat.mode)` / octal of `stat.mode`; `%F` is only directory vs regular file |
 | `stat -c %u` / `%U` / `%g` / `%G` | real ids / names | `1000` / `user` / `1000` / `group` |
-| `find -perm /111` | real mode | real `stat.mode` when portable; Host-backed usually the real `find` unless the spawn probe “failed” |
-| `which` | executable files on `PATH` | `exists()` only; no execute bit |
+| `find -perm /111` | real mode (includes 0755 files, dirs, symlinks; excludes 0644) | real `stat.mode` when portable; Host-backed usually the real `find` unless the spawn probe “failed” |
+| `which` (Debian `which`) | only executable `PATH` entries (0644 → exit 1, no stdout) | `exists()` only; no execute bit |
+| `type -P` / `command -v` | print the `PATH` file even without execute bits; executing that file is still 126 | `type` uses `SHELL_BUILTINS` / registry, does not ask the Host `PATH` |
 
 `HostFileStat` carries `mode`, `size`, `mtime`, and type flags — not uid, gid,
 nlink, ino, or dev. Portable `ls -l` therefore cannot print a real owner line
@@ -178,13 +205,13 @@ just-bash in-memory: virtual user `user`, uid/gid `1000`, hostname
 Host-backed shell: the computer in front of the model. `buildExportedEnv` +
 `Host.process.spawn` must see that computer.
 
-| Name | bash on that Host | Host-backed shell |
+| Name | bash on that Host (measured) | Host-backed shell |
 |---|---|---|
-| `whoami` | `geteuid` name | portable: always `user` |
-| `hostname` | kernel hostname | portable: always `localhost` |
-| `$USER` / `$LOGNAME` | whatever the embedder exported | embedder `initialEnv` (can already be correct) |
-| `$UID` / `$EUID` | real uid | `virtualUid` `1000` |
-| GNU `id` / `stat -c %U` | real | `id` `hostSpawn`s (correct if cwd works); portable `stat` prints `user` |
+| `whoami` | same as `id -un` | portable: always `user` |
+| `hostname` | kernel hostname (`hostname` exit 0) | portable: always `localhost` |
+| `$USER` / `$LOGNAME` | inherited from the environment (unset if not exported into `bash --norc`) | embedder `initialEnv` |
+| `$UID` / `$EUID` | same as `id -u` | `virtualUid` `1000` |
+| GNU `id` / `stat -c %U` | real ids / names | `id` `hostSpawn`s (correct if cwd works); portable `stat` prints `user` |
 
 Required: on a Host-backed shell, `whoami`, `$USER`, `$UID`, and `ls -l`
 owner are the same principal as a bash child of that Host. Virtual identity
@@ -192,15 +219,16 @@ stays in just-bash without `hostSpawn`.
 
 ## `cd` / `pwd` edge cases
 
-| Topic | bash | Demi |
+| Topic | bash (measured) | Demi |
 |---|---|---|
-| `pwd -L` | `$PWD` | portable prints `ctx.cwd` |
-| `pwd -P` | `getcwd`; failure is fatal | `realpath` failure → logical path, exit 0 |
-| `cd -P` | physical path; failure is fatal | `realpath` failure → logical path |
-| `cd` to a missing path | `bash: cd: …: No such file or directory` | same wording |
-| `cd -` | `$OLDPWD`, prints the new path | same |
-| `CDPATH` | search + print | implemented |
-| `Host.defaultCwd` when `spawn` omits `cwd` | n/a | `LocalHost` uses `defaultCwd`; embedders must not treat that as “cwd was deleted” |
+| `pwd` / `pwd -L` | `$PWD` (logical) | portable prints `ctx.cwd` |
+| `pwd -P` | `getcwd`; failure is fatal (exit 1, stderr above) | `realpath` failure → logical path, exit 0 |
+| GNU `/bin/pwd` | default `-P` (physical); `-L` prints logical `$PWD` while that path still exists. After rmdir of cwd, both fail with the i-node stderr above | `hostSpawn` |
+| `Host.defaultCwd` when `spawn` omits `cwd` | n/a | `LocalHost` uses `defaultCwd`; that is not “cwd was deleted” |
+| `cd -P` to a missing path | `bash: cd: …: No such file or directory`, exit 1 | `realpath` failure → logical path |
+| `cd` to a missing path | `bash: cd: …: No such file or directory`, exit 1 | same wording |
+| `cd -` | `$OLDPWD`, prints the new directory | same |
+| `CDPATH` | search + print the resolved path | implemented |
 
 ## Environment of children
 
@@ -218,10 +246,12 @@ bash children receive **exported** variables only.
 `hostResolveCommand` exists on the interpreter and is unset in
 `BashEnvironment`, so `type` / `command -v` do not ask the Host `PATH`.
 
-| Script | bash | Host-backed shell |
+| Script | bash (measured, `bash --norc`) | Host-backed shell |
 |---|---|---|
 | `type pwd` | `pwd is a shell builtin` | builtin word from `SHELL_BUILTINS`, while execution is the portable command |
-| `type ls` | `ls is /bin/ls` (or hashed path) | registered / portable, not `/bin/ls` |
+| `command -v pwd` | `pwd` | does not ask the Host |
+| `type ls` | `ls is /usr/bin/ls` (resolved `PATH`) | registered / portable, not `/bin/ls` |
+| `command -v ls` | that same path | does not ask the Host |
 | `type /bin/ls` | `/bin/ls is /bin/ls` | file path; execution `hostSpawn`s |
 
 Required: `type`/`command -v`/`which` describe the same program dispatch will
@@ -254,20 +284,24 @@ ownership when the filesystem already has the bits, registry shadowing of
 Oracle tests run the **same script** in GNU bash and in the surface under
 test. Assert exit code and the Unix fact (mode bits, whether the command
 ran, whether stderr is `getcwd` vs `command not found`). Do not assert
-prompt strings. Do not treat Demi output as the expected value.
+prompt strings. Do not treat Demi output as the expected value. Do not
+copy a bash result from this table into a test by hand — put the `bash
+--norc --noprofile` invocation in the test and let it measure.
 
-just-bash: `src/comparison-tests/` + `runRealBash` / recorded fixtures.
-Host-backed: `@demicodes/shell` tests with `LocalHost` (real `PATH`, real
-`chmod`).
+- Bash column of this document:
+  `packages/shell/src/__tests__/bash-oracle.test.ts`
+- just-bash portable vs recorded bash fixtures:
+  `packages/just-bash/.../src/comparison-tests/` + `runRealBash`
+- Host-backed Demi vs that oracle: `@demicodes/shell` tests with `LocalHost`
 
-Minimum matrix:
+Minimum matrix (already in the oracle test, plus Host-backed counterparts):
 
 1. `chmod 755` / `chmod 644` × `ls -l` × `test -x` × `stat -c %A` × `find -perm /111` — one answer for “executable”.
 2. `ln -s` × `ls -l` × `test -L` × `readlink`.
-3. Delete cwd, then `pwd`, `pwd -P`, an absolute-path command, `ls .`, `cd .`, `cd ..`.
-4. Missing name vs non-executable file vs deleted cwd — three different errors.
-5. `type ls` vs `type pwd` vs `type` of a Host-only binary.
-6. `whoami` vs `$USER` vs `$UID` on a Host-backed shell.
+3. Delete cwd, then `pwd`, `pwd -P`, `/bin/pwd`, an absolute-path command, `ls .`, `cd .`, `cd ..`.
+4. Missing name vs non-executable file vs directory vs deleted cwd — distinct errors.
+5. `type ls` vs `type pwd` vs `command -v`.
+6. `whoami` vs `id -un` vs `$UID` vs `id -u`.
 7. `grep` with a real binary → `system-command` audit; with no binary on `PATH` → portable; with cwd deleted → **not** portable.
 
 Anti-cases (must fail the suite if they happen):
