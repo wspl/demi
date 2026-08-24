@@ -20,7 +20,10 @@ cheap:
 The fork must NOT change bash semantics (parsing, expansion, builtin
 behavior). Semantic fixes belong upstream; carrying them here turns every
 upstream sync into a conflict engine. If a semantic bug blocks Demi, submit it
-upstream and cherry-pick the upstream commit.
+upstream and cherry-pick the upstream commit. Host-backed dispatch, spawn
+`cwd`, and portable-command observation versus GNU bash are inventoried in
+`docs/bash-behavior.md` — that contract is `@demicodes/shell` / Host work, not
+fork-only commits.
 
 ## Current fork state
 
