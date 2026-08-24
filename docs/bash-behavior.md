@@ -94,6 +94,28 @@ Who changes what:
 - **Host backend:** `posix_spawn` cwd, env, and the `HostFileStat` fields
   the contract actually needs.
 
+### Upstream just-bash
+
+The submodule is `github.com/wspl/just-bash` (`3.1.0-demi.3`). Semantic
+fixes are supposed to come from `github.com/vercel-labs/just-bash` `main`
+(`just-bash@3.4.2`). Syncing that `main` does **not** retire the
+observation lies in the tables above, except `test -ef` / `-nt` / `-ot`.
+
+| just-bash lie | vercel-labs `main` | Lands by sync? |
+|---|---|---|
+| `ls -l` fake mode (`644`/`755`), fake `1 user user`, follows instead of `lstat` | still hardcoded. Issue [wrong permissions](https://github.com/vercel-labs/just-bash/issues/257) is open. Open PR [#150](https://github.com/vercel-labs/just-bash/pull/150) would use `formatMode` + uid/gid. Open PR [#363](https://github.com/vercel-labs/just-bash/pull/363) fixes operand/`-t`/`-F` and **does not** change the mode column | no |
+| `whoami`=`user`, `hostname`=`localhost`, `stat %U`=`user` / `%u`=`1000` | still virtual | no |
+| `pwd -P` / `cd -P` swallow `realpath`; unset `HOME` → `cd` to `/` | still those | no |
+| `test -O`/`-G` if exists; `-c` allowlist; `-p` always false; `-x` owner bit | still those | no |
+| `test -ef` string-path equality; `-nt`/`-ot` both-missing is false | `realpath` plus optional `FsStat.dev` / `ino` / `identity`; `-nt`/`-ot` treat a missing side as older. Inside [#307](https://github.com/vercel-labs/just-bash/pull/307) (not a standalone commit) | yes, as part of that interpreter rebase — not a one-file cherry-pick |
+| `which` is `exists()` only | still `exists()` | no |
+| `isHostSpawnNotFound` / `preferHostSpawn` | not on upstream; Demi-fork-only | n/a |
+
+Portable `grep` on that `main` also matches GNU more closely (`-L` exit,
+`-f`, `-` as stdin). Those are flag-coverage items, not the observation
+contract. Host-backed dispatch, spawn cwd, and registering portable Unix
+names stay `@demicodes/shell` / Host regardless of sync.
+
 ## Incident class
 
 The last misdiagnosis **stacked both layers**: just-bash portable `ls -l`
