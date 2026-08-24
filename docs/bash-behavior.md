@@ -2,8 +2,9 @@
 
 The oracle for shell behavior is **GNU bash on Linux** (builtins, expansion)
 plus the **real PATH binaries** it would exec (GNU coreutils and whatever
-else is on `PATH`). Models diagnose from that Unix. A Demi shell that
-invents a different exception path produces self-consistent false evidence
+else is on `PATH`). Models diagnose from that Unix. Invented exception
+paths — whether they originate in just-bash portable commands or in
+`@demicodes/shell` Host wiring — produce self-consistent false evidence
 (`ls -l` vs `stat` vs `test -x` vs spawn stderr) and the model follows it.
 
 **Do not fill a bash-column cell from memory.** Re-run GNU bash
@@ -11,8 +12,9 @@ invents a different exception path produces self-consistent false evidence
 `packages/shell/src/__tests__/bash-oracle*.test.ts`. When a test and this
 document disagree, the measured process wins; update the table to match it.
 
-When Demi code and this document disagree, the code is wrong: change the
-code, or narrow this document to an allowed difference listed in [Allowed
+When `@demicodes/shell` or just-bash and this document disagree, that code
+is wrong: change the layer named in [Ownership](#ownership), or narrow this
+document to an allowed difference listed in [Allowed
 differences](#allowed-differences). Do not invent a third behavior to “make
 the agent more robust.”
 
@@ -30,7 +32,9 @@ Related: [just-bash fork policy](./just-bash-fork-policy.md),
 just-bash comparison tests (`packages/just-bash/.../src/comparison-tests/`)
 record real bash fixtures for parser, builtins, and portable commands against
 an in-memory fs. They do not cover `hostSpawn`, spawn `cwd`, or
-`preferHostSpawn` fallback. Host-backed behavior is owned by `@demicodes/shell`.
+`preferHostSpawn` fallback. A green just-bash suite does not mean the
+Host-backed shell matches bash.
+
 The bash column of the tables below is measured by
 `packages/shell/src/__tests__/bash-oracle.test.ts` and
 `bash-oracle-traps.test.ts` against `bash --norc --noprofile` (no aliases,
@@ -39,10 +43,66 @@ The bash column of the tables below is measured by
 This document is the observation contract, not a bash manual. Job control,
 glob, trap, `set -e`, `pipefail`, and interactive aliases are out of scope.
 
+## Ownership
+
+“The shell is wrong” is not one bug. Attribute each divergence before
+changing code.
+
+| Layer | Package | Role |
+|---|---|---|
+| just-bash | `packages/just-bash` | Parser, interpreter, builtins, portable commands, `hostSpawn` / `preferHostSpawn` / `hostResolveCommand` hooks. Built for an in-memory fs. Path-string cwd and virtual identity (`user` / uid `1000` / `localhost`) are that VM. |
+| `@demicodes/shell` | `packages/shell` | `BashEnvironment`: registers portable commands into `ctx.commands`, implements `hostSpawn`, owns the Host contract. This is what a coding agent runs. |
+| Host backend | e.g. `@demicodes/host-local` | `Host.process.spawn` / `Host.fs`. `posix_spawn({ cwd: path })`, env merge, `HostFileStat` shape. |
+
+just-bash without `hostSpawn` may be a virtual Unix. The Host-backed shell
+may not. A just-bash portable lie becomes model-facing only when
+`@demicodes/shell` **registers** that command, so the Host binary never
+runs. A path-string cwd is just-bash interpreter state; `chdir` of that
+string in `posix_spawn` is the Host backend. `isHostSpawnNotFound` is
+just-bash; `@demicodes/shell` feeds it by mapping spawn `exitCode: null`
+to 127 plus an ENOENT-ish stderr.
+
+Fix the layer that owns the lie. Do not patch just-bash semantics in the
+Demi fork to hide a shell dispatch bug, and do not teach portable `ls` to
+guess at a Host that already has GNU `ls`.
+
+| Divergence | just-bash | `@demicodes/shell` / Host |
+|---|---|---|
+| `ls -l` fake mode (`644`/`755`), fake `1 user user`, follows instead of `lstat` | portable `commands/ls/ls.ts` hardcodes the line; `stat`/`find` already use `formatMode` | `createPortableCommands` registers `ls`, so GNU `ls` is never exec’d |
+| `whoami`=`user`, `hostname`=`localhost`, `stat %U`=`user` | portable `whoami` / `hostname` / `stat` | same registration |
+| `test -O`/`-G` true if the path exists; `-c` allowlist; `-p` always false; `-ef` string equality; `-x` owner bit only | interpreter `helpers/file-tests.ts` | uses that builtin; no Host override |
+| `pwd -P` swallows `realpath` failure (exit 0, logical path) | portable `commands/pwd/pwd.ts` (comment claims this matches bash; it does not) | registry shadows the `pwd` builtin |
+| `cd -P` missing path → logical path; unset `HOME` → `cd` to `/` | interpreter `builtins/cd.ts` | uses that builtin |
+| cwd is a path string, not an inode | `state.cwd: string`; `hostSpawn` options only take `cwd: string` | `BashEnvironment` passes `state.cwd`; `LocalHost` `spawn({ cwd })` `chdir`s it |
+| spawn miss → portable fallback, remembered for the interpreter lifetime | `isHostSpawnNotFound` (`exitCode === 127` and `/ENOENT\|not found/i`) + `hostSpawnUnavailable` | sets `preferHostSpawn` on `rg`/`grep`/`find`; `hostSpawn` maps `exitCode: null` to 127 and stderr `` `${command}: ${signal}` `` |
+| `type` / `command -v` do not describe Host `PATH` | `hostResolveCommand` is optional | `BashEnvironment` does not set it |
+| `$UID` / `$EUID` = `1000` | interpreter `virtualUid` | `createShell` hardcodes `virtualUid: 1000` |
+| portable `ls -l` cannot print a real owner | would need uid/gid/nlink on the fs stat | `HostFileStat` omits them; `LocalHost` `toHostFileStat` drops them |
+| child env is Node’s `process.env` | — | `LocalHost` `{ ...process.env, ...params.env }` |
+| spawn with omitted `cwd` uses `defaultCwd` | — | `LocalHost`; that is not “cwd was deleted” |
+
+Who changes what:
+
+- **Host-backed must match bash:** `@demicodes/shell` dispatch (Unix names
+  `hostSpawn` when the binary exists) and Host spawn (directory fd,
+  spawn-error kind). Portable Unix names are a fallback for
+  `executable_not_found` only.
+- **just-bash in-memory VM:** virtual identity and devices stay. Portable
+  `ls -l` disagreeing with portable `stat`/`find` on the same `stat.mode`
+  is a just-bash bug. Semantic fixes go upstream just-bash, not a
+  Demi-fork-only commit.
+- **Host backend:** `posix_spawn` cwd, env, and the `HostFileStat` fields
+  the contract actually needs.
+
 ## Incident class
 
-Future misdiagnoses look like the last one. They are not a new kind of Unix
-bug; they are one of:
+The last misdiagnosis **stacked both layers**: just-bash portable `ls -l`
+printed `644` while `find`/`stat` used real `mode`; `@demicodes/shell` +
+`LocalHost` turned a missing cwd into `posix_spawn` `ENOENT`, then
+just-bash `isHostSpawnNotFound` treated that as “no such binary.” Fixing
+one layer and leaving the other still misleads the model.
+
+Future misdiagnoses look like that stack. They are one of:
 
 1. **Two observations of one kernel fact disagree.** The model believes the
    lie that is easier to read (`ls -l` over `stat`, `$USER` over `whoami`,
@@ -88,8 +148,9 @@ There is no OS `PATH`. `type ls` / `which ls` describe that virtual world.
 
 ### Host-backed shell
 
-`executeExternalCommand` in just-bash, as Demi wires it today (diverges
-from bash where the tables say so):
+`executeExternalCommand` is just-bash. `@demicodes/shell` supplies the
+registry and the `hostSpawn` callback (diverges from bash where the
+tables say so):
 
 1. Special builtins (`export`, `unset`, `exit`, … — not `cd`).
 2. If the name is in `ctx.commands` (Demi registers the fork portable set
@@ -108,7 +169,7 @@ Consequence: `ls` and `/bin/ls` are different programs. `ls` is just-bash.
 `/bin/ls` contains `/`, is not in the registry under that string, and
 `hostSpawn`s the real binary.
 
-| Name the script uses | bash | Host-backed shell |
+| Name the script uses | bash | Host-backed (`@demicodes/shell` wiring just-bash) |
 |---|---|---|
 | `cd`, `test`, `[`, `export`, `set`, `source`, `.`, `command`, `hash`, `type` | builtin | interpreter builtin |
 | `pwd`, `echo`, `printf`, `true`, `false` | builtin | portable command (registry shadows the builtin) |
@@ -135,7 +196,11 @@ remembered path string). `rm -rf "$PWD"` does not change the inode. Children
 `fork` and inherit it. bash does not `chdir` to the parent, to `$HOME`, or to
 the Host `defaultCwd`.
 
-| Action after `mkdir d && cd d && rm -rf "$PWD"` | bash (measured) | Host-backed shell |
+just-bash `cd` / `pwd` walk `state.cwd` (a path string). Spawn of `/bin/pwd`
+and of `PATH` names is `@demicodes/shell` `hostSpawn` plus the Host
+`posix_spawn({ cwd })`.
+
+| Action after `mkdir d && cd d && rm -rf "$PWD"` | bash (measured) | Host-backed |
 |---|---|---|
 | `pwd` / `pwd -L` | prints the old path, exit 0 | portable `pwd` prints `state.cwd` (same as `-L`) |
 | `echo "$PWD"` | old path | `state.env` `PWD` (same) |
@@ -172,9 +237,14 @@ dead bash process.
 
 ## Spawn failures
 
-bash classifies exec failures by what failed:
+bash classifies exec failures by what failed.
 
-| Situation | bash (measured) | Host-backed shell |
+`@demicodes/shell` `hostSpawn` maps spawn `exitCode: null` to 127 and stderr
+`` `${command}: ${signal}` `` (Bun: `posix_spawn … ENOENT`). just-bash
+`isHostSpawnNotFound` then treats that pair as “host has no such binary.”
+The Host backend produces the `signal` string.
+
+| Situation | bash (measured) | Host-backed |
 |---|---|---|
 | name not on `PATH` (`bash -c`) | stderr `bash: line N: foo: command not found`, 127 | `hostSpawn` error → `exitCode` null → `BashEnvironment` forces 127 and stderr `` `${command}: ${signal}` `` (Bun: `posix_spawn 'foo' … ENOENT`) |
 | same, from a script file | stderr `file: line N: foo: command not found`, 127 | same mapping; the prefix is not `file:` |
@@ -209,7 +279,7 @@ bash `test` / `[` are builtins; `ls`, `stat`, `find`, `chmod`, `readlink`,
 `file` are `PATH` binaries. They all read the same `stat(2)` / `lstat(2)`
 result.
 
-| Observation | bash / GNU (measured) | just-bash portable (also what Host-backed `ls`/`chmod`/`stat`/`which` run) |
+| Observation | bash / GNU (measured) | just-bash portable (Host-backed runs these **because** `@demicodes/shell` registered them) |
 |---|---|---|
 | `ls -l` mode | `st_mode`: `-rwxr-xr-x` for 0755, `-rw-r--r--` for 0644, `-rwsr-xr-x` / `-rwxr-sr-x` / `-rwxr-xr-t` for setuid/setgid/sticky; `drwxrwxrwt` for `chmod 1777` on a dir | files always `-rw-r--r--`, directories always `drwxr-xr-x`; `catch` fills the same fake line. `stat` / `find %M` / `tar` already use `formatMode(stat.mode)` |
 | `ls -l` type | `lstat`; symlink `lrwxrwxrwx … -> target`; fifo starts with `p` | `stat` (follows); no `l`, no `->`; fifo is not a type |
@@ -249,20 +319,22 @@ in `catch`.
 ## Identity
 
 just-bash in-memory: virtual user `user`, uid/gid `1000`, hostname
-`localhost`. Security tests assert the real host is not leaked.
+`localhost`. Security tests assert the real host is not leaked. That VM
+is just-bash. Host-backed identity lies are `@demicodes/shell` registering
+portable `whoami`/`hostname`/`stat` and hardcoding `virtualUid: 1000`.
 
 Host-backed shell: the computer in front of the model. `buildExportedEnv` +
 `Host.process.spawn` must see that computer.
 
 These are **not one fact**:
 
-| Name | bash on that Host (measured) | Host-backed shell |
+| Name | bash on that Host (measured) | Host-backed |
 |---|---|---|
-| `whoami` / `id -un` | euid name; they match each other | portable `whoami`: always `user`. `id` `hostSpawn`s (correct if cwd works) |
-| `ls -l` owner / `stat -c %U` on a file you create | that same euid name | portable: `user` |
-| `$UID` / `$EUID` | readonly bash vars; same as `id -u` | `virtualUid` `1000` |
-| `$USER` / `$LOGNAME` | inherited environment only. Unset if not passed in. Assigning `USER=alice` does **not** change `whoami` | embedder `initialEnv` |
-| `hostname` / `$HOSTNAME` | kernel hostname. bash sets `$HOSTNAME` at startup even with an empty environ; it matches `hostname` | portable `hostname`: always `localhost`. just-bash also seeds `$HOSTNAME=localhost` |
+| `whoami` / `id -un` | euid name; they match each other | just-bash portable `whoami`: always `user`. `id` is not portable: shell `hostSpawn` (correct if cwd works) |
+| `ls -l` owner / `stat -c %U` on a file you create | that same euid name | just-bash portable `ls`/`stat`: `user` |
+| `$UID` / `$EUID` | readonly bash vars; same as `id -u` | just-bash `virtualUid`; shell `createShell` hardcodes `1000` |
+| `$USER` / `$LOGNAME` | inherited environment only. Unset if not passed in. Assigning `USER=alice` does **not** change `whoami` | shell `initialEnv` |
+| `hostname` / `$HOSTNAME` | kernel hostname. bash sets `$HOSTNAME` at startup even with an empty environ; it matches `hostname` | just-bash portable `hostname`: always `localhost`. `$HOSTNAME` is `initialEnv` (shell); the in-memory `Bash` constructor seeds `localhost`, `BashEnvironment` does not |
 
 Required: on a Host-backed shell, `whoami`, `id -un`, `$UID`, and `ls -l`
 owner of files the shell just created are the Host process principal.
@@ -271,21 +343,24 @@ real `whoami`. Virtual identity stays in just-bash without `hostSpawn`.
 
 ## `cd` / `pwd` edge cases
 
-| Topic | bash (measured) | Demi |
+`cd` and portable `pwd` are just-bash. GNU `/bin/pwd` and spawn-without-cwd
+are Host-backed.
+
+| Topic | bash (measured) | Layer that diverges |
 |---|---|---|
-| `pwd` / `pwd -L` | `$PWD` (logical) | portable prints `ctx.cwd` |
-| `pwd -P` | `getcwd`; failure is fatal (exit 1, stderr above) | `realpath` failure → logical path, exit 0 |
-| GNU `/bin/pwd` | default `-P` (physical); `-L` prints logical `$PWD` while that path still exists. After rmdir of cwd, **both** `-L` and default fail with the i-node stderr above | `hostSpawn` |
+| `pwd` / `pwd -L` | `$PWD` (logical) | just-bash portable prints `ctx.cwd` |
+| `pwd -P` | `getcwd`; failure is fatal (exit 1, stderr above) | just-bash portable: `realpath` failure → logical path, exit 0 |
+| GNU `/bin/pwd` | default `-P` (physical); `-L` prints logical `$PWD` while that path still exists. After rmdir of cwd, **both** `-L` and default fail with the i-node stderr above | shell `hostSpawn` with path-string cwd |
 | `Host.defaultCwd` when `spawn` omits `cwd` | n/a | `LocalHost` uses `defaultCwd`; that is not “cwd was deleted” |
-| `cd -P` to a missing path | `bash: cd: …: No such file or directory`, exit 1 | `realpath` failure → logical path |
-| `cd` to a missing path | `bash: cd: …: No such file or directory`, exit 1 | same wording |
-| `cd` to a file | `bash: cd: …: Not a directory`, exit 1 | same wording if `stat` is a file |
-| `cd` with no args | `$HOME`; prints nothing | `HOME` or `/` |
-| `cd` with `HOME` unset | `bash: cd: HOME not set`, exit 1 | `HOME` missing → `/` |
-| `cd` through a symlink, then `cd ..` | logical: `$PWD` stays on the symlink path | string walk of `cwd` |
-| `cd -P` through a symlink, then `cd ..` | physical: `$PWD` is the real parent | `realpath` then string `..` |
-| `cd -` | `$OLDPWD`, prints the new directory | same |
-| `CDPATH` | search + print the resolved path | implemented |
+| `cd -P` to a missing path | `bash: cd: …: No such file or directory`, exit 1 | just-bash `cd.ts`: `realpath` failure → logical path |
+| `cd` to a missing path | `bash: cd: …: No such file or directory`, exit 1 | just-bash (same wording) |
+| `cd` to a file | `bash: cd: …: Not a directory`, exit 1 | just-bash (same wording if `stat` is a file) |
+| `cd` with no args | `$HOME`; prints nothing | just-bash: `$HOME` or `/` |
+| `cd` with `HOME` unset | `bash: cd: HOME not set`, exit 1 | just-bash: `/` |
+| `cd` through a symlink, then `cd ..` | logical: `$PWD` stays on the symlink path | just-bash string walk |
+| `cd -P` through a symlink, then `cd ..` | physical: `$PWD` is the real parent | just-bash `realpath` then string `..` |
+| `cd -` | `$OLDPWD`, prints the new directory | just-bash (same) |
+| `CDPATH` | search + print the resolved path | just-bash (implemented) |
 
 ## Environment of children
 
@@ -299,11 +374,12 @@ bash children receive **exported** variables only.
 
 ## What `type` / `command -v` describe
 
-`type` uses `SHELL_BUILTINS` (includes `echo`, `pwd`, `ls` is not a builtin).
-`hostResolveCommand` exists on the interpreter and is unset in
-`BashEnvironment`, so `type` / `command -v` do not ask the Host `PATH`.
+`type` is just-bash (`SHELL_BUILTINS`, including `echo` / `pwd`; `ls` is
+not a builtin). `hostResolveCommand` exists on the interpreter and is
+unset in `BashEnvironment`, so `type` / `command -v` do not ask the Host
+`PATH` — that missing wire is `@demicodes/shell`.
 
-| Script | bash (measured, `bash --norc`) | Host-backed shell |
+| Script | bash (measured, `bash --norc`) | Host-backed |
 |---|---|---|
 | `type pwd` | `pwd is a shell builtin` | builtin word from `SHELL_BUILTINS`, while execution is the portable command |
 | `command -v pwd` / `command -v true` | `pwd` / `true` | does not ask the Host |
@@ -318,26 +394,33 @@ run.
 
 ## Allowed differences
 
-These are Demi product behavior, not Unix clones. They stay; they must not
-leak into Unix observation (`ls`, `stat`, spawn errno).
+These stay. They must not leak into Unix observation (`ls`, `stat`, spawn
+errno) on a Host-backed shell.
+
+`@demicodes/shell` product (not Unix):
 
 - Observation window (`timeoutMs`), output caps, binary stdout placeholder,
   command artifacts (`stdout.txt` / `stderr.txt` / `stdout.bin`).
 - `shell_exec` / `shell_status` / `shell_write` / `shell_abort` / `yield`.
 - Command bridge shims on `PATH` for registered product commands.
-- `rejectTimedPipelines`, execution limits, no 64-bit arithmetic in just-bash.
+
+just-bash interpreter limits (also used Host-backed):
+
+- `rejectTimedPipelines`, execution limits, no 64-bit arithmetic.
 - Incomplete job control (`fg`/`bg`/`disown` stubs; `%n` wait is the
   supported subset).
 - Portable command **flag coverage**: missing flags error; implemented flags
   do not contradict GNU/bash for the same invocation.
-- just-bash without `hostSpawn`: virtual identity, no real devices, no kernel
-  cwd inode.
 
-Not allowed: silent cwd repair, collapsing distinct spawn failures into
-command-not-found, portable implementations that lie about `st_mode` or
-ownership when the filesystem already has the bits, registry shadowing of
-`PATH` for Unix names when the Host has the binary, exporting a fake
-`USER`/`HOSTNAME` next to a real `whoami`/`hostname`.
+just-bash without `hostSpawn` (in-memory VM only):
+
+- Virtual identity, no real devices, no kernel cwd inode.
+
+Not allowed on the Host-backed shell: silent cwd repair, collapsing
+distinct spawn failures into command-not-found, running a portable Unix
+name when the Host has the binary, portable `ls`/`stat`/`test` disagreeing
+about `st_mode` on the same file, exporting a fake `USER`/`HOSTNAME` next
+to a real `whoami`/`hostname`.
 
 ## Tests
 
@@ -350,12 +433,13 @@ the `bash --norc --noprofile` invocation in the test and let it measure.
 - Bash column of this document:
   `packages/shell/src/__tests__/bash-oracle.test.ts`,
   `packages/shell/src/__tests__/bash-oracle-traps.test.ts`
-- just-bash portable vs recorded bash fixtures:
+- just-bash portable vs recorded bash fixtures (in-memory VM, not Host-backed):
   `packages/just-bash/.../src/comparison-tests/` + `runRealBash`
-- `grep` host-first vs empty-`PATH` portable:
+- `@demicodes/shell` `grep` host-first vs empty-`PATH` portable:
   `packages/shell/src/__tests__/scan-command-routing.test.ts`
-- Host-backed Demi vs this oracle: still required, not yet in the suite
-  (those cases fail until cwd/spawn/`ls` match this document)
+- Host-backed `@demicodes/shell` vs this oracle: still required, not yet in
+  the suite (those cases fail until dispatch/cwd/spawn/`ls` routing match
+  this document)
 
 Bash-column matrix (oracle tests):
 
