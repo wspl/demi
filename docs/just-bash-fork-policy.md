@@ -32,23 +32,17 @@ wiring bug.
 
 ## Current fork state
 
-- Fork branch: `codex/migrate-just-bash-to-bun` (pinned by the root submodule
-  pointer; see `git submodule status`).
-- Fork base: upstream `main` at `9481331` ("fix(head/tail): read file
-  arguments byte-clean").
-- Fork-only commits (17, all supporting the allowed integration and packaging
-  surface):
-  `f3645ee` parser hooks · `5e925b7` hostSpawn hook · `4e2ab29` registered
-  command dispatch order · `c7f1be5` test typing · `cabfc0f` session hooks ·
-  `cc10d4f` trim artifacts · `9576ef2` reject trailing operators (parser
-  protection used by Demi) · `f38734a` expose command registry · `8122ac3`
-  package rename · `ea06eb1` export encoding module · `496c3d7` dual-condition
-  subpath exports · `e798f00` adopt the version suffix scheme below · `54975fb`
-  drop leading `./` from `bin` paths (npm silently strips it, which broke the
-  published CLI bins) · `395774b` bump to `3.0.1-demi.2` for that fix ·
-  `b2c9b0a` standardize development instructions on Bun · `fefb210` align
-  workspace consumers with the scoped package · `26c5d38` migrate the
-  submodule workspace, CI, lockfile, and release flow from pnpm to Bun.
+- Fork branch: `main` (pinned by the root submodule pointer; see
+  `git submodule status`). Package version: `3.1.0-demi.3`.
+- Last merged upstream: `vercel-labs/just-bash` `just-bash@3.1.0`
+  (`2586623`, “seed cd dash from OLDPWD”).
+- vercel-labs `main` is `just-bash@3.4.2`. Syncing it does not fix portable
+  `ls -l` / `whoami` / `pwd -P`; it does include `test -ef` identity
+  (`FsStat.dev`/`ino`). Inventory: `docs/bash-behavior.md` (Upstream
+  just-bash).
+- Fork-only surface on top of that base: `hostSpawn` / registered-command
+  dispatch / parser hooks / packaging / Bun workspace, plus
+  `preferHostSpawn` (`e02953a`, `80c7569`).
 
 ## Version scheme
 
