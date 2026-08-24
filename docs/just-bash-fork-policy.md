@@ -20,10 +20,15 @@ cheap:
 The fork must NOT change bash semantics (parsing, expansion, builtin
 behavior). Semantic fixes belong upstream; carrying them here turns every
 upstream sync into a conflict engine. If a semantic bug blocks Demi, submit it
-upstream and cherry-pick the upstream commit. Host-backed dispatch, spawn
-`cwd`, and portable-command observation versus GNU bash are inventoried in
-`docs/bash-behavior.md` — that contract is `@demicodes/shell` / Host work, not
-fork-only commits.
+upstream and cherry-pick the upstream commit. Portable command output that
+disagrees with GNU coreutils (`ls -l` vs `stat` on `st_mode`, virtual
+`whoami`) is that class of just-bash bug.
+
+Host-backed dispatch (which names `hostSpawn`), spawn `cwd` as a directory
+fd, spawn-error kinds, and registering portable Unix names onto a real Host
+are `@demicodes/shell` / Host work, inventoried in `docs/bash-behavior.md` —
+not fork-only commits. Do not patch just-bash in the fork to hide a shell
+wiring bug.
 
 ## Current fork state
 
