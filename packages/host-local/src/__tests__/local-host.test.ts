@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { LocalHost } from '../local-host'
@@ -60,6 +60,86 @@ test('LocalHost.fs supports local file operations', async () => {
   await host.fs.rm('src/file.txt', { cwd: root, force: true })
   expect(await host.fs.exists('src/file.txt', { cwd: root })).toBe(false)
 })
+
+test('LocalHost children receive only the env passed to spawn', async () => {
+  const host = new LocalHost(process.cwd())
+  const handle = await host.process.spawn({
+    command: 'printenv',
+    args: ['HOME'],
+    env: { PATH: '/usr/bin:/bin' },
+  })
+  const [stdout, exit] = await Promise.all([collectText(handle.stdout), handle.wait()])
+  expect(exit.exitCode).toBe(1)
+  expect(stdout).toBe('')
+})
+
+test('LocalHost classifies a missing binary as executable_not_found', async () => {
+  const host = new LocalHost(process.cwd())
+  const handle = await host.process.spawn({
+    command: 'definitely-not-a-local-host-binary',
+    env: { PATH: '/usr/bin:/bin' },
+  })
+  const exit = await handle.wait()
+  expect(exit.exitCode).toBeNull()
+  expect(exit.spawnError?.kind).toBe('executable_not_found')
+})
+
+test('LocalHost classifies a missing cwd path as cwd_unusable, not a missing binary', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-local-cwd-miss-'))
+  const dir = join(root, 'gone')
+  await mkdir(dir)
+  await rm(dir, { recursive: true, force: true })
+  const host = new LocalHost(root)
+  const handle = await host.process.spawn({
+    command: '/bin/echo',
+    args: ['ok'],
+    cwd: dir,
+    env: { PATH: '/usr/bin:/bin' },
+  })
+  const exit = await handle.wait()
+  expect(exit.exitCode).toBeNull()
+  expect(exit.spawnError?.kind).toBe('cwd_unusable')
+})
+
+test('LocalHost missing binary with a live dirfd is executable_not_found', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-local-cwd-missbin-'))
+  const dir = join(root, 'keep')
+  await mkdir(dir)
+  const cwd = await hostCwd(root, dir)
+  const host = new LocalHost(root)
+  const handle = await host.process.spawn({
+    command: 'definitely-not-a-local-host-binary',
+    cwd: cwd.spawnPath(),
+    env: { PATH: '/usr/bin:/bin' },
+  })
+  const exit = await handle.wait()
+  expect(exit.spawnError?.kind).toBe('executable_not_found')
+  await cwd.close()
+})
+
+test('LocalHost spawn after unlinking cwd still runs an absolute command', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-local-cwd-'))
+  const dir = join(root, 'gone')
+  await mkdir(dir)
+  const cwd = await hostCwd(root, dir)
+  await rm(dir, { recursive: true, force: true })
+  const host = new LocalHost(root)
+  const handle = await host.process.spawn({
+    command: '/bin/echo',
+    args: ['ok'],
+    cwd: cwd.spawnPath(),
+    env: { PATH: '/usr/bin:/bin' },
+  })
+  const [stdout, exit] = await Promise.all([collectText(handle.stdout), handle.wait()])
+  expect(exit.exitCode).toBe(0)
+  expect(stdout).toBe('ok\n')
+  await cwd.close()
+})
+
+async function hostCwd(root: string, dir: string) {
+  const host = new LocalHost(root)
+  return host.process.openCwd(dir)
+}
 
 async function collectText(iterable: AsyncIterable<Uint8Array>): Promise<string> {
   const chunks: Uint8Array[] = []

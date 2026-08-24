@@ -18,6 +18,22 @@ import { getCommandNames, type CommandName } from '@demicodes/just-bash/commands
 const REAL_SPAWN_DEPENDENT_COMMANDS = new Set(['bash', 'sh', 'sleep'])
 
 /**
+ * just-bash portable names that implement bash builtins (or shell state).
+ * They stay in-process. `true`/`false` are omitted from the registry so the
+ * interpreter builtins run.
+ */
+const IN_PROCESS_PORTABLE_COMMANDS = new Set([
+  'echo',
+  'printf',
+  'pwd',
+  'alias',
+  'unalias',
+  'history',
+  'help',
+  'time',
+])
+
+/**
  * Fork portable commands BashEnvironment registers in every shell, so
  * cat/ls/grep-class tools work without local coreutils on any Host backend.
  *
@@ -25,27 +41,17 @@ const REAL_SPAWN_DEPENDENT_COMMANDS = new Set(['bash', 'sh', 'sleep'])
  * copy: `CommandName` is just-bash's own "safe to run anywhere" set — it
  * already excludes the commands that need real process/network access
  * (curl → NetworkCommandName, python3/python → PythonCommandName, js-exec/node
- * → JavaScriptCommandName all live in separate, non-portable type unions). A
- * hand-picked subset of this list drifts silently as just-bash adds commands
- * (this one was missing echo, pwd, printf, date, env, hostname, whoami, gzip,
- * tar, split, sqlite3, xan, and more — all already categorized as safe
- * upstream, just never backported here). Deriving it removes that drift
- * entirely: everything just-bash calls portable (minus the exceptions above),
- * we call portable.
+ * → JavaScriptCommandName all live in separate, non-portable type unions).
+ * Unix names `hostSpawn` first (`preferHostSpawn`); portable is fallback for
+ * `executable_not_found` only.
  */
 export const DEMI_PORTABLE_COMMANDS: readonly CommandName[] = getCommandNames().filter(
-  (name) => !REAL_SPAWN_DEPENDENT_COMMANDS.has(name),
+  (name) => !REAL_SPAWN_DEPENDENT_COMMANDS.has(name) && name !== 'true' && name !== 'false',
 ) as CommandName[]
 
-/**
- * Portable commands routed real-binary-first (`preferHostSpawn`): recursive
- * tree scanners whose in-process implementations read files whole and burn
- * the embedding host's main thread for minutes on large trees. A real
- * process runs off-thread with its output bounded by the capture limit;
- * hosts without the binary fall back to the portable implementation on
- * first use.
- */
-export const HOST_PREFERRED_SCAN_COMMANDS: ReadonlySet<string> = new Set(['rg', 'grep', 'find'])
+export function shouldPreferHostSpawn(name: string): boolean {
+  return !IN_PROCESS_PORTABLE_COMMANDS.has(name)
+}
 
 /** Shell language words and builtins the interpreter itself owns. */
 const SHELL_BUILTIN_NAMES = [
@@ -70,6 +76,8 @@ const SHELL_BUILTIN_NAMES = [
   'shift',
   'source',
   'test',
+  'true',
+  'false',
   'unset',
   'wait',
 ]
@@ -77,11 +85,9 @@ const SHELL_BUILTIN_NAMES = [
 /**
  * Ecosystem tools the model expects to reach through Host.process.spawn.
  *
- * xargs and yq are deliberately absent even though real versions exist: both
- * now have a real (non-simulated-elsewhere) implementation in just-bash's own
- * portable set above, which registers and dispatches before Host.process.spawn
- * is ever consulted — listing them here too would claim they fall through to
- * a real spawn, which no longer happens.
+ * xargs and yq stay out of this list: they are already in the portable set
+ * (`preferHostSpawn`, then the in-process implementation if the Host has no
+ * binary). Listing them here would duplicate a reserved name.
  */
 const SYSTEM_TOOL_NAMES = [
   'bun',

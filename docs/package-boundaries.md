@@ -52,7 +52,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `just-bash`, `@demicodes/utils`.
-- Owns: Host contract (`defaultCwd`, `fs`, `process`, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools.
+- Owns: Host contract (`defaultCwd`, `identity`, `fs`, `process` including `openCwd` / spawn-error kinds, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools.
 - Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`. It does not expose model-facing AgentTool ownership.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
@@ -71,7 +71,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/agent`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: local Node Host adapter (`LocalHost`); open-box local agent assembly (`createLocalAgentServer`) with command bridge **on by default**; command-bridge UDS listener, PATH shim materialization, and `~/.demi` / `$DEMI_HOME` state layout (`bridges/`, `bridge-bin/`).
 - Public boundary: Node-only local Host + local AgentServer factory + command-bridge primitives. Store is a Host facet, not a separate adapter family.
-- Spawn `cwd` and child env are this backend, not just-bash: `cwd` is the shell working directory (not `defaultCwd` as a fallback when the path is gone); children receive the shell exported set, not `{ ...process.env, ...params.env }`.
+- Spawn `cwd` and child env are this backend, not just-bash: `openCwd` holds the shell working directory as a directory fd; children receive the shell exported set, not `{ ...process.env, ...params.env }`. `HostSpawnExit.spawnError` classifies failed exec.
 - May use: `node:child_process`, `node:fs`, `node:http`, `node:net`, `node:path`, `process.env`, Node streams, Buffer, process-group signaling, and `@demicodes/agent` for assembly.
 - Must not: depend on concrete providers, `@demicodes/coding-agent`, or `@demicodes/repl`.
 - Assembly rule: products that run on LocalHost should use `createLocalAgentServer` rather than hand-wiring command-bridge sockets. Bin dirs and UDS are LocalHost-internal, not user-facing product options.

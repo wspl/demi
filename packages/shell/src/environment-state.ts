@@ -1,6 +1,6 @@
 import type { Interpreter, InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
-import type { HostSpawnHandle } from './host'
+import type { HostCwd, HostSpawnExit, HostSpawnHandle } from './host'
 import type { HostBackedFileSystem } from './host-fs'
 import type { BashAuditEvent, CommandMetadataRecord, ShellOutputRecordChunk } from './environment'
 
@@ -19,6 +19,7 @@ export interface ShellSession {
   fs: HostBackedFileSystem
   interpreter: Interpreter
   forkCommands: ForkCommandRegistry
+  cwdHandle: HostCwd
   accumulator: ExecAccumulator
   foreground?: ForegroundProcess
   activeCommandId?: string
@@ -44,7 +45,7 @@ export interface BackgroundJob {
   droppedStderrChars: number
   stdoutPump: Promise<void>
   stderrPump: Promise<void>
-  exitPromise: Promise<{ exitCode: number | null; signal?: string }>
+  exitPromise: Promise<HostSpawnExit>
 }
 
 export interface ForegroundProcess {
@@ -75,7 +76,7 @@ export interface ForegroundProcess {
   audit: BashAuditEvent[]
   stdoutPump: Promise<void>
   stderrPump: Promise<void>
-  exitPromise: Promise<{ exitCode: number | null; signal?: string }>
+  exitPromise: Promise<HostSpawnExit>
   outputSinks: Record<1 | 2, ForegroundSink>
   abortController: AbortController
 }

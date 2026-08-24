@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { homedir } from 'node:os'
+import { homedir, hostname, userInfo } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import {
   appendFile,
@@ -25,16 +25,21 @@ import type { Readable } from 'node:stream'
 import { isFileNotFoundError } from '@demicodes/utils'
 import type {
   Host,
+  HostCwd,
   HostDirent,
   HostFileStat,
   HostFileSystem,
+  HostIdentity,
   HostProcess,
   HostProcessOutputChunk,
+  HostSpawnExit,
   HostSpawnHandle,
   HostSpawnParams,
   HostStore,
+  SpawnErrorKind,
 } from '@demicodes/shell'
 import { LocalHostStore } from './local-store'
+import { LocalHostCwd } from './local-cwd'
 
 export interface LocalHostOptions {
   storeRoot?: string
@@ -50,6 +55,7 @@ export class LocalHost implements Host {
   readonly fs: HostFileSystem
   readonly process: HostProcess
   readonly store: HostStore
+  readonly identity: HostIdentity
 
   constructor(defaultCwd: string, options: LocalHostOptions = {}) {
     this.defaultCwd = resolve(defaultCwd)
@@ -58,31 +64,46 @@ export class LocalHost implements Host {
     this.fs = new LocalHostFileSystem(this.defaultCwd)
     this.process = new LocalHostProcess(this.defaultCwd)
     this.store = options.store ?? new LocalHostStore(storeRoot)
+    const info = userInfo()
+    this.identity = { uid: info.uid, gid: info.gid, hostname: hostname() }
   }
 }
 
 class LocalHostProcess implements HostProcess {
   constructor(private readonly defaultCwd: string) {}
 
+  async openCwd(path: string): Promise<HostCwd> {
+    return LocalHostCwd.open(path)
+  }
+
   async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
+    const cwd = params.cwd ?? this.defaultCwd
     const child = spawn(params.command, params.args ?? [], {
-      cwd: params.cwd ?? this.defaultCwd,
-      env: { ...process.env, ...params.env },
+      cwd,
+      ...(params.env ? { env: definedEnv(params.env) } : {}),
       detached: params.killProcessGroup === true,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 
     let settled = false
-    const waitPromise = new Promise<{ exitCode: number | null; signal?: string }>((resolve) => {
+    const waitPromise = new Promise<HostSpawnExit>((resolveWait) => {
       child.once('error', (error) => {
         if (settled) return
         settled = true
-        resolve({ exitCode: null, signal: error.message })
+        void classifySpawnFailure(error, cwd).then((kind) => {
+          resolveWait({
+            exitCode: null,
+            signal: error.message,
+            spawnError: { kind },
+          })
+        })
       })
       child.once('close', (exitCode, signal) => {
-        if (settled) return
-        settled = true
-        resolve({ exitCode, signal: signal ?? undefined })
+        setImmediate(() => {
+          if (settled) return
+          settled = true
+          resolveWait({ exitCode, signal: signal ?? undefined })
+        })
       })
     })
 
@@ -302,7 +323,36 @@ function toHostFileStat(value: Stats): HostFileStat {
     mode: value.mode,
     size: value.size,
     mtime: value.mtime,
+    uid: value.uid,
+    gid: value.gid,
+    ino: value.ino,
+    dev: value.dev,
+    nlink: value.nlink,
+    isCharacterDevice: value.isCharacterDevice(),
+    isFIFO: value.isFIFO(),
   }
+}
+
+function definedEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const defined: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) defined[key] = value
+  }
+  return defined
+}
+
+async function classifySpawnFailure(error: Error, cwd: string): Promise<SpawnErrorKind> {
+  try {
+    const cwdStat = await stat(cwd)
+    if (!cwdStat.isDirectory()) return 'cwd_unusable'
+  } catch {
+    return 'cwd_unusable'
+  }
+  const code = 'code' in error ? String((error as { code: unknown }).code) : ''
+  if (code === 'ENOENT') return 'executable_not_found'
+  if (code === 'EACCES' || code === 'EPERM') return 'permission_denied'
+  if (code === 'EISDIR') return 'is_directory'
+  return 'other'
 }
 
 function toHostDirent(value: Dirent): HostDirent {
