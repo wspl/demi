@@ -190,6 +190,13 @@ function toFsStat(value: HostFileStat): FsStat {
     mode: value.mode,
     size: value.size,
     mtime: value.mtime,
+    uid: value.uid,
+    gid: value.gid,
+    ino: value.ino,
+    dev: value.dev,
+    nlink: value.nlink,
+    isCharacterDevice: value.isCharacterDevice,
+    isFIFO: value.isFIFO,
   }
 }
 

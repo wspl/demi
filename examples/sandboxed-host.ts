@@ -16,6 +16,7 @@ export function commandAllowlistHost(inner: Host, allowed: Iterable<string>): Ho
   return {
     ...inner,
     process: {
+      ...inner.process,
       spawn: (params) => {
         if (!allow.has(params.command)) {
           throw new Error(`sandbox: command "${params.command}" is not on the allowlist`)

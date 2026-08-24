@@ -15,6 +15,7 @@ import {
   type HostFileSystem,
   type HostProcess,
   type HostStore,
+  createLogicalHostCwd,
 } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
 import { createCodingAgentHarness } from '../index'
@@ -256,6 +257,7 @@ function renderCommandsPrompt(commands: readonly Command[]): string {
 class RecordingHost implements Host {
   readonly defaultCwd: string
   readonly commandArtifactsDir: string
+  readonly identity = { uid: 1000, gid: 1000, hostname: 'test' }
   readonly fs: RecordingFileSystem
   readonly store: HostStore = new MemoryHostStore()
   processSpawnCalls = 0
@@ -264,6 +266,7 @@ class RecordingHost implements Host {
       this.processSpawnCalls += 1
       throw new Error('Host.process.spawn must not be used for file references')
     },
+    openCwd: async (path) => createLogicalHostCwd(path),
   }
 
   constructor(

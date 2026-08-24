@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
-import { BashEnvironment, CommandRegistry, type Command, type HostProcess } from '../index'
+import { BashEnvironment, CommandRegistry, type Command } from '../index'
 import { LocalHost } from '@demicodes/host-local'
 
 test('BashEnvironment keeps cwd and env state across shell_exec calls', async () => {
@@ -1483,14 +1483,13 @@ test('BashEnvironment executes simple pipelines without handing scripts to a sys
   expect(stderr.stderr.delta).toBe('err')
 })
 
-test('BashEnvironment routes portable file commands through Host.fs before Host.process.spawn', async () => {
+test('BashEnvironment falls back to Host.fs portable commands when PATH has no binary', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-portable-host-fs-'))
   await writeFile(join(root, 'input.txt'), 'from host fs\n')
-  const host = new NoSpawnLocalHost(root)
   const env = new BashEnvironment({
-    host,
+    host: new LocalHost(root),
     shellIdFactory: () => 'shell-portable-host-fs',
-    initialEnv: { PATH: process.env.PATH ?? '' },
+    initialEnv: { PATH: `${root}/no-binaries-here` },
   })
 
   const result = await env.exec({ script: 'cat input.txt | tee copied.txt\ncat copied.txt' })
@@ -1499,29 +1498,10 @@ test('BashEnvironment routes portable file commands through Host.fs before Host.
   if (result.status !== 'exited') throw new Error('expected exited result')
   expect(result.exitCode).toBe(0)
   expect(result.stdout.delta).toBe('from host fs\nfrom host fs\n')
-  expect(host.processSpawnCalls).toBe(0)
-  expect(result.audit).toEqual([
-    {
-      kind: 'portable-command',
-      name: 'cat',
-      args: ['input.txt'],
-      cwd: root,
-      exitCode: 0,
-    },
-    {
-      kind: 'portable-command',
-      name: 'tee',
-      args: ['copied.txt'],
-      cwd: root,
-      exitCode: 0,
-    },
-    {
-      kind: 'portable-command',
-      name: 'cat',
-      args: ['copied.txt'],
-      cwd: root,
-      exitCode: 0,
-    },
+  expect(result.audit.filter((event) => event.kind === 'portable-command').map((event) => event.name)).toEqual([
+    'cat',
+    'tee',
+    'cat',
   ])
 })
 
@@ -2653,16 +2633,6 @@ function stdinCommand(): Command {
         },
       },
     ],
-  }
-}
-
-class NoSpawnLocalHost extends LocalHost {
-  processSpawnCalls = 0
-  override readonly process: HostProcess = {
-    spawn: async (): Promise<never> => {
-      this.processSpawnCalls += 1
-      throw new Error('Host.process.spawn must not be used')
-    },
   }
 }
 

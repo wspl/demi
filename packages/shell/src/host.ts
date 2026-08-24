@@ -12,6 +12,13 @@ export interface Host {
   fs: HostFileSystem
   process: HostProcess
   store: HostStore
+  identity: HostIdentity
+}
+
+export interface HostIdentity {
+  uid: number
+  gid: number
+  hostname: string
 }
 
 export interface HostFileSystem {
@@ -37,6 +44,22 @@ export interface HostFileSystem {
 
 export interface HostProcess {
   spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
+  openCwd(path: string): Promise<HostCwd>
+}
+
+export type SpawnErrorKind =
+  | 'executable_not_found'
+  | 'permission_denied'
+  | 'cwd_unusable'
+  | 'is_directory'
+  | 'other'
+
+export interface HostCwd {
+  readonly path: string
+  spawnPath(): string
+  chdir(path: string): Promise<void>
+  snapshot(): Promise<{ restore(): void }>
+  close(): Promise<void>
 }
 
 /**
@@ -58,6 +81,13 @@ export interface HostFileStat {
   mode: number
   size: number
   mtime: Date
+  uid?: number
+  gid?: number
+  ino?: number
+  dev?: number
+  nlink?: number
+  isCharacterDevice?: boolean
+  isFIFO?: boolean
 }
 
 export interface HostDirent {
@@ -93,4 +123,43 @@ export interface HostProcessOutputChunk {
 export interface HostSpawnExit {
   exitCode: number | null
   signal?: string
+  spawnError?: { kind: SpawnErrorKind }
 }
+
+/** Path-string cwd for test doubles and Hosts that cannot hold a directory fd. */
+export function createLogicalHostCwd(initialPath: string): HostCwd {
+  let path = initialPath
+  return {
+    get path() {
+      return path
+    },
+    spawnPath() {
+      return path
+    },
+    async chdir(next: string) {
+      if (next === '.') return
+      path = resolveLogicalCwd(path, next)
+    },
+    async snapshot() {
+      const saved = path
+      return {
+        restore() {
+          path = saved
+        },
+      }
+    },
+    async close() {},
+  }
+}
+
+function resolveLogicalCwd(base: string, next: string): string {
+  if (next.startsWith('/')) return next
+  const parts = base.split('/').filter(Boolean)
+  for (const part of next.split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  return `/${parts.join('/')}`
+}
+
