@@ -42,6 +42,7 @@ runtime/shell design lives under [docs/](docs/). Notable design docs:
 - [Provider global credentials](docs/provider-global-credentials.md) — multi-account pool + global `setActive`
 - [Provider / session clone](docs/provider-session-clone.md) — required `.clone()` for isolated forks
 - [Command bridge](docs/command-bridge.md) — LocalHost PATH shims + UDS for agent tools
+- [Bash / just-bash behavior](docs/bash-behavior.md) — GNU bash as the Host-backed shell oracle
 - [Provider errors & retries](docs/provider-errors-and-retries.md) — classified failures and resume recovery
 
 ## Install

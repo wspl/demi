@@ -12,6 +12,8 @@ same agent can target local, container, remote, or in-memory backends.
 
 Subpaths: `@demicodes/shell/storage`, `@demicodes/shell/host-fs`.
 See [docs/shell-yield-control-plan.md](../../docs/shell-yield-control-plan.md) for
-the model-facing control surface and yield wakeups.
+the model-facing control surface and yield wakeups, and
+[docs/bash-behavior.md](../../docs/bash-behavior.md) for Host-backed behavior
+versus GNU bash.
 
 Part of [Demi](../../README.md). Apache-2.0.

@@ -71,6 +71,12 @@ If you can preserve the real interleaving of stdout/stderr, expose `output`; the
 shell uses it to render output in true order and falls back to the separate
 streams otherwise.
 
+`params.cwd` is the bash working directory of that shell, not a hint that may
+be replaced with `defaultCwd` when the path is missing. bash cwd is an inode:
+after `rm -rf "$PWD"` children still spawn in that directory. Do not `chdir` to
+the parent or to `defaultCwd`. Spawn failures must distinguish “executable not
+on `PATH`” from “cwd unusable”; see [Bash / just-bash behavior](../bash-behavior.md).
+
 ### `store` — scoped JSON KV
 
 ```ts

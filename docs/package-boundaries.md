@@ -59,6 +59,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Runtime state such as command JSON state and agent session snapshots goes through `Host.store`; do not keep a separate top-level store adapter boundary.
 - HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, virtual, or policy-restricted hosts.
 - BashEnvironment must register fork portable commands before falling back to `Host.process.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
+- Host-backed shell behavior versus GNU bash is `docs/bash-behavior.md`: portable commands exist so a Host without coreutils still works; they are not a second Unix. Invented exception paths (cwd, spawn errno, file mode) are defects.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
 - Must not: import `@demicodes/agent`, `@demicodes/provider`, concrete providers, `@demicodes/coding-agent`, `@demicodes/host-local`, `@demicodes/repl`, or own local Node adapters.
 
