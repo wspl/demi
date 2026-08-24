@@ -1,5 +1,21 @@
 # @demicodes/host-local
 
+## 0.18.0
+
+### Minor Changes
+
+- 79379f3: Host-backed shells now match GNU bash on the observation surfaces models use.
+
+  Unix names (`ls`, `grep`, `whoami`, …) spawn the PATH binary first; the portable implementation runs only when spawn reports `executable_not_found`. `Host` gains `identity` and `process.openCwd` (a directory fd on Linux) so a deleted cwd is not classified as a missing binary, children receive the exported env only, and `type` / `$UID` / `test -O` describe the Host principal. Custom Hosts must implement the new fields.
+
+### Patch Changes
+
+- Updated dependencies [79379f3]
+  - @demicodes/shell@0.18.0
+  - @demicodes/agent@0.18.0
+  - @demicodes/provider@0.18.0
+  - @demicodes/utils@0.18.0
+
 ## 0.17.4
 
 ### Patch Changes
