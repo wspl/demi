@@ -1,4 +1,4 @@
-import { concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
+import { concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, isAbsolutePath, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
@@ -10,7 +10,7 @@ import { LexerError } from '@demicodes/just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from '@demicodes/just-bash/types'
 import { resolveLimits } from '@demicodes/just-bash/limits'
 import { CommandRegistry, type Command } from './command'
-import { DEMI_PORTABLE_COMMANDS, HOST_PREFERRED_SCAN_COMMANDS } from './portable-commands'
+import { DEMI_PORTABLE_COMMANDS, shouldPreferHostSpawn } from './portable-commands'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
   buildBashopts,
@@ -23,7 +23,7 @@ import {
   recordForegroundChunk,
 } from './environment-output'
 import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } from './environment-state'
-import type { Host } from './host'
+import type { Host, SpawnErrorKind } from './host'
 import { HostBackedFileSystem } from './host-fs'
 import { AgentSessionCommandStorage } from './storage'
 import { CommandArtifactStore } from './command-artifact-store'
@@ -304,8 +304,8 @@ export class BashEnvironment {
     const session = input.shellId
       ? this.requireShell(input.shellId)
       : input.ephemeral
-        ? this.createShell(input.agentSessionId, input.cwd)
-        : this.availableDefaultShell(input.agentSessionId)
+        ? await this.createShell(input.agentSessionId, input.cwd)
+        : await this.availableDefaultShell(input.agentSessionId)
     if (session.exited) throw new Error(`Shell session "${session.id}" has exited`)
     if (session.pendingExec || session.foreground) {
       const commandId = session.activeCommandId ?? session.foreground?.commandId ?? 'unknown'
@@ -381,6 +381,7 @@ export class BashEnvironment {
       await job.exitPromise.catch(() => {})
     }
     session.backgroundJobs.clear()
+    await session.cwdHandle.close().catch(() => {})
     if (session.abortController) session.abortController.abort()
   }
 
@@ -412,23 +413,23 @@ export class BashEnvironment {
     return foreground
   }
 
-  private defaultShell(agentSessionId: string | undefined): ShellSession {
+  private async defaultShell(agentSessionId: string | undefined): Promise<ShellSession> {
     if (!agentSessionId) return this.createShell(undefined)
     const existingShellId = this.defaultShellByAgentSessionId.get(agentSessionId)
     const existing = existingShellId ? this.shells.get(existingShellId) : undefined
     if (existing && !existing.exited) return existing
-    const shell = this.createShell(agentSessionId)
+    const shell = await this.createShell(agentSessionId)
     this.defaultShellByAgentSessionId.set(agentSessionId, shell.id)
     return shell
   }
 
-  private availableDefaultShell(agentSessionId: string | undefined): ShellSession {
-    const shell = this.defaultShell(agentSessionId)
+  private async availableDefaultShell(agentSessionId: string | undefined): Promise<ShellSession> {
+    const shell = await this.defaultShell(agentSessionId)
     if (!agentSessionId || shell.exited || (!shell.pendingExec && !shell.foreground)) return shell
     return this.createShell(agentSessionId)
   }
 
-  private createShell(agentSessionId: string | undefined, initialCwd?: string): ShellSession {
+  private async createShell(agentSessionId: string | undefined, initialCwd?: string): Promise<ShellSession> {
     const id = this.shellIdFactory()
     const commandStorageId = agentSessionId ?? id
     const cwd = initialCwd ?? this.host.defaultCwd
@@ -442,12 +443,14 @@ export class BashEnvironment {
     if (!env.has('PS1')) env.set('PS1', '')
     if (!env.has('PS2')) env.set('PS2', '> ')
     if (!env.has('SHLVL')) env.set('SHLVL', '1')
+    const cwdHandle = await this.host.process.openCwd(cwd)
     const exportedVars = new Set<string>(['PWD', 'DEMI_SHELL_ID'])
     if (agentSessionId) exportedVars.add('DEMI_SESSION_ID')
     for (const key of env.keys()) {
       if (key !== key.toLowerCase()) exportedVars.add(key)
     }
     for (const key of Object.keys(this.initialEnv)) exportedVars.add(key)
+    if (!env.has('HOSTNAME')) env.set('HOSTNAME', this.host.identity.hostname)
 
     const state: InterpreterState = {
       env,
@@ -464,8 +467,8 @@ export class BashEnvironment {
       lastBackgroundPid: 0,
       virtualPid: 1,
       virtualPpid: 0,
-      virtualUid: 1000,
-      virtualGid: 1000,
+      virtualUid: this.host.identity.uid,
+      virtualGid: this.host.identity.gid,
       bashPid: 1,
       nextVirtualPid: 2,
       currentLine: 1,
@@ -514,6 +517,7 @@ export class BashEnvironment {
       fs,
       interpreter: undefined as unknown as Interpreter,
       forkCommands,
+      cwdHandle,
       accumulator: { stdout: '', stderr: '', audit: [], commandMetadata: [] },
       foregroundWaiters: new Set(),
       backgroundJobs: new Map(),
@@ -540,6 +544,11 @@ export class BashEnvironment {
         limits,
         exec: async () => ({ stdout: '', stderr: '', exitCode: 0 }),
         hostSpawn: (command, args, opts) => this.hostSpawn(session, command, args, opts),
+        hostResolveCommand: (name, env) => this.hostResolveCommand(session, name, env),
+        hostCwd: {
+          enter: (path) => session.cwdHandle.chdir(path),
+          snapshot: () => session.cwdHandle.snapshot(),
+        },
         rejectTimedPipelines: true,
         jobControl: {
           startBackground: (statement) => this.startBackgroundJob(session, statement),
@@ -640,7 +649,7 @@ export class BashEnvironment {
     const handle = await this.host.process.spawn({
       command: backgroundCommand.command,
       args: backgroundCommand.args,
-      cwd: session.state.cwd,
+      cwd: session.cwdHandle.spawnPath(),
       env: this.exportedEnv(session),
       killProcessGroup: true,
     })
@@ -861,10 +870,11 @@ export class BashEnvironment {
     if (session.foreground) {
       throw new Error(`hostSpawn: session "${session.id}" already has a foreground process`)
     }
+    const spawnCwd = session.cwdHandle.spawnPath()
     const handle = await this.host.process.spawn({
       command,
       args,
-      cwd: opts.cwd,
+      cwd: spawnCwd,
       env: opts.env,
       killProcessGroup: true,
     })
@@ -925,13 +935,18 @@ export class BashEnvironment {
     // process output pipes onward losslessly; the streamed text view on the
     // record remains the lossy render for live observation.
     const stdout = foreground.captureOverflowed ? '' : decodeLatin1(concatBytes(foreground.rawStdoutBytes))
-    const exitCode = foreground.captureOverflowed ? 137 : (exit.exitCode ?? 127)
-    const stderr = foreground.captureOverflowed
+    let exitCode = foreground.captureOverflowed ? 137 : (exit.exitCode ?? 127)
+    let stderr = foreground.captureOverflowed
       ? `${command}: output exceeded the ${this.captureLimitBytes}-byte capture limit and the process was killed; ` +
         `the shell buffers whole command outputs in memory — narrow the output at the source (filters, head, tighter paths)\n`
-      : exit.exitCode === null && foreground.rawStderrBuffer.length === 0
-        ? `${command}: ${exit.signal ?? 'command not found'}\n`
-        : foreground.rawStderrBuffer
+      : foreground.rawStderrBuffer
+    let spawnError = exit.spawnError
+    if (!foreground.captureOverflowed && exit.spawnError) {
+      exitCode = spawnErrorExitCode(exit.spawnError.kind)
+      stderr = spawnErrorStderr(command, opts.cwd, opts.env, exit.spawnError.kind)
+    } else if (!foreground.captureOverflowed && exit.exitCode === null && foreground.rawStderrBuffer.length === 0) {
+      stderr = `${command}: ${exit.signal ?? 'command not found'}\n`
+    }
 
     foreground.audit[0] = { kind: 'system-command', name: command, args, cwd: opts.cwd, exitCode }
     session.accumulator.audit.push(...foreground.audit)
@@ -944,7 +959,39 @@ export class BashEnvironment {
     }
     session.foreground = undefined
 
-    return { stdout, stdoutKind: 'bytes', stderr, exitCode }
+    return { stdout, stdoutKind: 'bytes', stderr, exitCode, ...(spawnError ? { spawnError } : {}) }
+  }
+
+  private async hostResolveCommand(
+    session: ShellSession,
+    name: string,
+    env: Record<string, string>,
+  ): Promise<{ kind: 'builtin' | 'registered' | 'function' | 'file'; value: string } | null> {
+    if (name.includes('/')) {
+      const resolved = isAbsolutePath(name) ? name : `${session.state.cwd.replace(/\/+$/, '')}/${name}`
+      try {
+        const fileStat = await this.host.fs.stat(resolved)
+        if (!fileStat.isDirectory) return { kind: 'file', value: name }
+      } catch {
+        return null
+      }
+      return null
+    }
+    const pathEnv = env.PATH ?? ''
+    for (const dir of pathEnv.split(':')) {
+      if (!dir) continue
+      const full = isAbsolutePath(dir)
+        ? `${dir.replace(/\/+$/, '')}/${name}`
+        : `${session.state.cwd.replace(/\/+$/, '')}/${dir}/${name}`
+      try {
+        const fileStat = await this.host.fs.stat(full)
+        if (fileStat.isDirectory) continue
+        return { kind: 'file', value: isAbsolutePath(dir) ? full : `${dir}/${name}` }
+      } catch {
+        continue
+      }
+    }
+    return null
   }
 
   private collectExited(
@@ -1171,7 +1218,7 @@ export class BashEnvironment {
 function createPortableCommands(session: ShellSession): ForkCommand[] {
   return createLazyCommands([...DEMI_PORTABLE_COMMANDS]).map((command) => ({
     ...command,
-    preferHostSpawn: HOST_PREFERRED_SCAN_COMMANDS.has(command.name),
+    preferHostSpawn: shouldPreferHostSpawn(command.name),
     execute: async (args, ctx) => {
       const result = await command.execute(args, ctx)
       session.accumulator.audit.push({
@@ -1187,6 +1234,27 @@ function createPortableCommands(session: ShellSession): ForkCommand[] {
 }
 
 /** True when the string contains a char > 0xFF, i.e. already-decoded Unicode text. */
+function spawnErrorExitCode(kind: SpawnErrorKind): number {
+  if (kind === 'permission_denied' || kind === 'is_directory') return 126
+  return 127
+}
+
+function spawnErrorStderr(
+  command: string,
+  cwd: string,
+  env: Record<string, string>,
+  kind: SpawnErrorKind,
+): string {
+  if (kind === 'permission_denied') return `bash: ${command}: Permission denied\n`
+  if (kind === 'is_directory') return `bash: ${command}: Is a directory\n`
+  if (kind === 'cwd_unusable') return `bash: ${cwd}: No such file or directory\n`
+  if (kind === 'executable_not_found') {
+    if (command.includes('/') || !env.PATH) return `bash: ${command}: No such file or directory\n`
+    return `bash: ${command}: command not found\n`
+  }
+  return `bash: ${command}: ${kind}\n`
+}
+
 function hasWideChar(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
     if (value.charCodeAt(i) > 0xff) return true

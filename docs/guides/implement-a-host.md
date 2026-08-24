@@ -13,8 +13,9 @@ contract it satisfies.
 ```ts
 interface Host {
   defaultCwd: string
+  identity: { uid: number; gid: number; hostname: string }
   fs: HostFileSystem      // file operations
-  process: HostProcess    // spawning
+  process: HostProcess    // spawning + openCwd
   store: HostStore        // a small key/value JSON store (scoped per agent session)
 }
 ```
@@ -54,6 +55,15 @@ File contents are always `Uint8Array` — encode/decode text with `encodeUtf8` /
 ```ts
 interface HostProcess {
   spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
+  openCwd(path: string): Promise<HostCwd>
+}
+
+interface HostCwd {
+  readonly path: string                  // logical $PWD
+  spawnPath(): string                    // posix_spawn cwd (`/proc/self/fd/N` on Linux)
+  chdir(path: string): Promise<void>     // absolute, or relative to the held directory
+  snapshot(): Promise<{ restore(): void }>
+  close(): Promise<void>
 }
 
 interface HostSpawnHandle {
@@ -63,7 +73,7 @@ interface HostSpawnHandle {
   writeStdin(data: Uint8Array): Promise<void>
   closeStdin(): Promise<void>
   kill(signal?: string): Promise<void>
-  wait(): Promise<HostSpawnExit>                  // { exitCode, signal }
+  wait(): Promise<HostSpawnExit>         // { exitCode, signal, spawnError? }
 }
 ```
 
@@ -73,9 +83,13 @@ streams otherwise.
 
 `params.cwd` is the bash working directory of that shell, not a hint that may
 be replaced with `defaultCwd` when the path is missing. bash cwd is an inode:
-after `rm -rf "$PWD"` children still spawn in that directory. Do not `chdir` to
-the parent or to `defaultCwd`. Spawn failures must distinguish “executable not
-on `PATH`” from “cwd unusable”; see [Bash / just-bash behavior](../bash-behavior.md).
+after `rm -rf "$PWD"` children still spawn in that directory. `openCwd` holds
+that inode; pass `cwd: handle.spawnPath()` into `spawn`. Do not `chdir` to
+the parent or to `defaultCwd`. `wait()` must set `spawnError.kind` when the
+binary never exec'd (`executable_not_found`, `cwd_unusable`,
+`permission_denied`, `is_directory`). Children receive `params.env` only —
+do not merge the embedder `process.env`. See [Bash / just-bash
+behavior](../bash-behavior.md).
 
 ### `store` — scoped JSON KV
 

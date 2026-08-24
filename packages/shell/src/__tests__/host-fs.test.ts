@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile as fsReadFile, writeFile } from 'node:fs/promi
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
-import type { Host, HostDirent, HostFileStat, HostFileSystem, HostStore } from '../host'
+import { createLogicalHostCwd, type Host, type HostDirent, type HostFileStat, type HostFileSystem, type HostStore } from '../host'
 import { HostBackedFileSystem } from '../host-fs'
 import { LocalHost } from '@demicodes/host-local'
 
@@ -111,6 +111,7 @@ test('HostBackedFileSystem routes IFileSystem operations to Host.fs and never Ho
 class RecordingHost implements Host {
   readonly defaultCwd: string
   readonly commandArtifactsDir: string
+  readonly identity = { uid: 1000, gid: 1000, hostname: 'test' }
   readonly fs: RecordingHostFileSystem
   readonly store: HostStore = new MemoryHostStore()
   processSpawnCalls = 0
@@ -119,6 +120,7 @@ class RecordingHost implements Host {
       this.processSpawnCalls += 1
       throw new Error('Host.process.spawn must not be used for filesystem operations')
     },
+    openCwd: async (path: string) => createLogicalHostCwd(path),
   }
 
   constructor(defaultCwd: string) {
