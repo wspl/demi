@@ -256,7 +256,14 @@ export class AgentClient {
       case 'shell_write_result':
       case 'audit':
       case 'retry_scheduled':
+      case 'subagent':
         this.emit(frame)
+        return
+      case 'subagent_transcript_reset':
+        this.emit({ type: 'subagent_transcript_reset', subagentId: frame.subagentId, blocks: frame.blocks })
+        return
+      case 'subagent_transcript_patch':
+        this.emit({ type: 'subagent_transcript_patch', subagentId: frame.subagentId, patches: frame.patches })
         return
       case 'conversations':
         this.pendingConversationWaiters.shift()?.(frame.conversations)
