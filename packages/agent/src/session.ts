@@ -484,6 +484,25 @@ export class AgentSession<State> {
     return this.currentPhase
   }
 
+  /** Granular in-turn phase for observers (null when no turn is active). */
+  turnPhase(): ActiveTurnPhase | null {
+    return this.activeTurnPhase
+  }
+
+  hasPendingYields(): boolean {
+    return this.yields.hasPending
+  }
+
+  /** Metadata of the currently executing action, if any. */
+  actionMetadata(): AgentMetadata | null {
+    return this.activeMetadata
+  }
+
+  /** Independent provider runtime with this session's configuration (for child sessions). */
+  cloneProviderRuntime(): AgentProvider {
+    return this.provider.clone()
+  }
+
   queuedMessages(): QueuedMessage[] {
     return this.queued.map((message) => ({ ...message, content: [...message.content] }))
   }
