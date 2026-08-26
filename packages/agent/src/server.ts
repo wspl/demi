@@ -28,6 +28,7 @@ import type {
 } from './types'
 import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
+import { ChildSupervisor, injectSubagentCommand } from './subagent'
 import { ProviderStreamError } from './provider-stream-error'
 
 /** Session tuning forwarded to every AgentSession this server creates. */
@@ -229,6 +230,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private currentProviderId: string | null = null
   private currentSessionId: string | null = null
   private currentCommandNames: ReadonlySet<string> = new Set()
+  private supervisor: ChildSupervisor<unknown> | null = null
   private unsubscribeSession: (() => void) | null = null
   private unsubscribeTransport: (() => void) | null = null
   private closed = false
@@ -380,6 +382,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           const session = this.sessionFor('sync_transcript')
           if (!session) return
           this.sendTranscriptReset(session)
+          this.supervisor?.replay()
           return
         }
         case 'close':
@@ -420,7 +423,21 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     // prompts) and the session itself. On restore it carries the saved state.
     const state = restoring ? structuredClone(checkpoint.state) : initialState
     const harnessContext = { state, cwd: frame.cwd }
-    const commands = (await agent.commands?.(harnessContext)) ?? []
+    const harnessCommands = (await agent.commands?.(harnessContext)) ?? []
+    const profiles = (await agent.agents?.(harnessContext)) ?? null
+    // Root sessions get the subagent surface (`demi agent`); child sessions are
+    // supervisor-built with a send-parent-only tree, so spawn is root-only.
+    const supervisor = new ChildSupervisor<unknown>({
+      agent,
+      cwd: frame.cwd,
+      profiles,
+      parentCommands: harnessCommands,
+      shellOptions: this.shellOptions,
+      prepareShell: this.prepareShell,
+      sessionOptions: this.sessionOptions,
+      emit: (subagentFrame) => this.send(subagentFrame),
+    })
+    const commands = injectSubagentCommand(harnessCommands, supervisor.rootCommandNode())
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
     const commandNames = commandRegistry.list().map((command) => command.name)
@@ -454,6 +471,8 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
         )
     sessionRef = session
     this.session = session
+    supervisor.attachParent(session)
+    this.supervisor = supervisor
     this.currentAgent = agent
     this.currentCommandRegistry = commandRegistry
     this.currentCwd = frame.cwd
@@ -539,6 +558,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const cwd = this.currentCwd
 
     try {
+      if (this.supervisor) await this.supervisor.dispose()
       if (session) await session.dispose()
       const pendingEnvironments = await Promise.allSettled(this.pendingEnvironmentsByHost.values())
       const environments = new Set(this.environmentsByHost.values())
@@ -553,6 +573,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       this.unsubscribeSession?.()
       this.unsubscribeSession = null
       this.session = null
+      this.supervisor = null
       this.currentAgent = null
       this.environmentsByHost.clear()
       this.pendingEnvironmentsByHost.clear()
@@ -611,10 +632,20 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     args: string[],
     opts: RunCommandLineOptions,
   ): Promise<RunCommandLineResult> {
-    const environment = this.environmentForShell(shellId)
-    const agentSessionId = this.currentSessionId
-    if (!environment || !agentSessionId) throw new Error('runCommandLine: session has no active shell environment')
-    if (!this.currentCommandNames.has(name)) throw new RunCommandLineCommandNotRegisteredError(name)
+    // Scope resolution doubles as the subagent boundary: a child shell resolves
+    // to its own environment and command set, which has no spawn surface.
+    const parentEnvironment = this.environmentForShell(shellId)
+    const scope =
+      parentEnvironment && this.currentSessionId
+        ? {
+            environment: parentEnvironment,
+            commandNames: this.currentCommandNames,
+            agentSessionId: this.currentSessionId,
+          }
+        : (this.supervisor?.environmentScopeForShell(shellId) ?? null)
+    if (!scope) throw new Error('runCommandLine: session has no active shell environment')
+    const { environment, agentSessionId } = scope
+    if (!scope.commandNames.has(name)) throw new RunCommandLineCommandNotRegisteredError(name)
 
     const words = [name, ...args].map(shellQuote).join(' ')
     let script = words
@@ -669,7 +700,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   }
 
   hasShell(shellId: string): boolean {
-    return this.environmentForShell(shellId) !== null
+    return this.environmentForShell(shellId) !== null || (this.supervisor?.hasShell(shellId) ?? false)
   }
 
   private async resolveEnvironment(

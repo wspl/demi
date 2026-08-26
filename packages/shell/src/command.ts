@@ -53,6 +53,13 @@ export interface CommandRunContext {
   storage: CommandStorage
   /** Host of the BashEnvironment executing this command. */
   host: Host
+  /** Aborted when the shell command is aborted (shell_abort, shell teardown). */
+  signal: AbortSignal
+  /**
+   * Stdin written after the command started: each `shell_write` call arrives
+   * as one chunk. Ends when the command's shell job is released.
+   */
+  stdinStream: AsyncIterable<Uint8Array>
 }
 
 export interface CommandRunResult {
@@ -70,6 +77,8 @@ export interface CommandStdin {
 export function emptyStdin(): CommandStdin {
   return { text: '', bytes: new Uint8Array(0) }
 }
+
+async function* emptyStdinStream(): AsyncIterable<Uint8Array> {}
 
 export interface CommandIO {
   stdout(data: string | Uint8Array): Promise<void> | void
@@ -91,6 +100,8 @@ export interface CommandExecutionContext {
   io: CommandIO
   storage: CommandStorage
   host: Host
+  signal?: AbortSignal
+  stdinStream?: AsyncIterable<Uint8Array>
 }
 
 const EXECUTION_ONLY_FIELDS = [
@@ -221,7 +232,9 @@ function parseArgs(
     positionalIndex += 1
   }
 
-  if (command.stdinField) {
+  // A field can be both positional and stdin-fed ("positional, or stdin when
+  // omitted"); an explicit positional wins over piped stdin.
+  if (command.stdinField && values[command.stdinField] === undefined) {
     values[command.stdinField] = stdin.text
   }
 
@@ -275,6 +288,8 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
     io: parsed.json ? capture : ctx.io,
     storage: ctx.storage,
     host: ctx.host,
+    signal: ctx.signal ?? new AbortController().signal,
+    stdinStream: ctx.stdinStream ?? emptyStdinStream(),
   })
 
   if (parsed.json && result.exitCode === 0) {

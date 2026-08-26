@@ -529,7 +529,7 @@ export class BashEnvironment {
     }
     const storage = new AgentSessionCommandStorage(this.host.store, commandStorageId)
     for (const command of this.commands.list()) {
-      forkCommands.set(command.name, commandToForkCommand(session, command, storage, this.host))
+      forkCommands.set(command.name, commandToForkCommand(session, command, storage, this.host, this.captureLimitBytes))
     }
     const abortController = new AbortController()
     session.abortController = abortController
