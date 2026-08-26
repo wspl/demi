@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
-import { AgentSession, createStandardAgentTools, type AgentHarness, type AgentHarnessRuntime } from '@demicodes/agent'
+import {
+  AgentSession,
+  ChildSupervisor,
+  createStandardAgentTools,
+  injectSubagentCommand,
+  type AgentHarness,
+  type AgentHarnessRuntime,
+} from '@demicodes/agent'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -203,6 +210,64 @@ test('coding agent resolves file references outside default cwd when Host.fs all
   )
 
   expect(resolved).toEqual([{ type: 'text', text: `<file path="${outsidePath}">\noutside\n\n</file>` }])
+})
+
+test('coding agent harness ships default and explore subagent profiles', async () => {
+  const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
+  const state = harness.initialState()
+  const profiles = (await harness.agents?.({ state, cwd: process.cwd() })) ?? []
+
+  expect(profiles.map((profile) => profile.name)).toEqual(['default', 'explore'])
+  const defaultProfile = profiles[0]!
+  expect(defaultProfile.systemPrompt).toBeUndefined()
+  expect(defaultProfile.readonly).toBeUndefined()
+
+  const explore = profiles[1]!
+  expect(explore.readonly).toBe(true)
+  const explorePrompt = await explore.systemPrompt!({
+    agentSessionId: 'explore-child',
+    state,
+    cwd: process.cwd(),
+    transcript: {} as never,
+    commandsPrompt: 'COMMANDS-MARKER',
+    metadata: null,
+  })
+  expect(explorePrompt).toContain('read-only exploration agent')
+  expect(explorePrompt).toContain('do not attempt to edit, create, or execute anything')
+  expect(explorePrompt).toContain('COMMANDS-MARKER')
+})
+
+test('the injected demi agent command help teaches self-contained spawn prompts', async () => {
+  const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
+  const state = harness.initialState()
+  const harnessContext = { state, cwd: process.cwd() }
+  const commands = (await harness.commands?.(harnessContext)) ?? []
+  const profiles = (await harness.agents?.(harnessContext)) ?? []
+  const supervisor = new ChildSupervisor({
+    agent: harness,
+    cwd: process.cwd(),
+    profiles,
+    parentCommands: commands,
+    shellOptions: {},
+    prepareShell: null,
+    sessionOptions: {},
+    emit: () => {},
+  })
+  const registry = new CommandRegistry()
+  for (const command of injectSubagentCommand(commands, supervisor.rootCommandNode())) registry.register(command)
+  const help = registry.renderHelp()
+
+  // Spawn is grafted under the harness's existing demi root, beside file editing.
+  expect(help).toContain('demi create')
+  expect(help).toContain('demi agent')
+  expect(help).toContain('demi agent steer')
+  expect(help).toContain('demi agent abort')
+  expect(help).toContain('demi agent list')
+  expect(help).toContain('demi agent show')
+  // The prompt field teaches that the child cannot see this conversation.
+  expect(help).toContain('cannot see this conversation')
+  expect(help).toContain('State the exact shape of the last assistant text it should return.')
+  expect(help).toContain('Available: default, explore')
 })
 
 test('coding agent harness leaves shell lifecycle to host assembly', () => {

@@ -18,6 +18,17 @@ export interface ConversationSummary {
   updatedAt: string
 }
 
+/** One child agent session as seen on the parent connection. */
+export interface SubagentJob {
+  subagentId: string
+  parentSessionId: string
+  description: string
+  profile: string | null
+  phase: 'running' | 'completed' | 'aborted' | 'error'
+  /** Present on `closed`: the child's last assistant text, at most 32 KiB. */
+  result?: string
+}
+
 export type ClientFrame =
   | { type: 'open'; provider: ProviderSelection; cwd: string; sessionId: string }
   | { type: 'send'; messageId: string; content: UserContentBlock[]; metadata?: AgentMetadata }
@@ -63,6 +74,9 @@ export type ServerFrame =
       diagnostics?: ProviderErrorDiagnostics
     }
   | { type: 'error'; message: string; code?: string; diagnostics?: ProviderErrorDiagnostics }
+  | { type: 'subagent'; event: 'started' | 'closed'; job: SubagentJob }
+  | { type: 'subagent_transcript_reset'; subagentId: string; blocks: Block[]; revision: number }
+  | { type: 'subagent_transcript_patch'; subagentId: string; patches: TranscriptPatch[]; revision: number }
   | { type: 'closed' }
 
 /**
@@ -101,5 +115,8 @@ export type ClientSessionEvent =
     }
   | { type: 'rejected'; command: string; reason: string }
   | { type: 'error'; message: string; code?: string; diagnostics?: ProviderErrorDiagnostics }
+  | { type: 'subagent'; event: 'started' | 'closed'; job: SubagentJob }
+  | { type: 'subagent_transcript_reset'; subagentId: string; blocks: Block[] }
+  | { type: 'subagent_transcript_patch'; subagentId: string; patches: TranscriptPatch[] }
   | { type: 'opened' }
   | { type: 'closed' }

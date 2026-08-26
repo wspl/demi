@@ -25,7 +25,8 @@
     "@demicodes/core": "workspace:^",
     "@demicodes/provider": "workspace:^",
     "@demicodes/shell": "workspace:^",
-    "@demicodes/utils": "workspace:^"
+    "@demicodes/utils": "workspace:^",
+    "zod": "^4.0.0"
   },
   "license": "Apache-2.0",
   "main": "./dist/index.mjs",
@@ -46,8 +47,5 @@
     "directory": "packages/agent"
   },
   "homepage": "https://github.com/wspl/demi/tree/main/packages/agent#readme",
-  "bugs": "https://github.com/wspl/demi/issues",
-  "devDependencies": {
-    "zod": "^4.0.0"
-  }
+  "bugs": "https://github.com/wspl/demi/issues"
 }

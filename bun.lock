@@ -21,8 +21,6 @@
         "@demicodes/provider": "workspace:^",
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
-      },
-      "devDependencies": {
         "zod": "^4.0.0",
       },
     },

@@ -429,16 +429,16 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
 
 ## Coverage
 
-Intended tests (not yet present):
-
-- `packages/agent/src/__tests__/subagent.test.ts` — spawn isolation, depth,
-  concurrency, recursive abort, send-parent steer/send, send-parent queued
-  while parent is blocked in that spawn, idle parent wakeup on completion /
-  abort / error, empty prompt fails, empty last text is 0, protocol frames,
-  child preamble and empty transcript, inherited vs replaced `systemPrompt`,
-  list/show snapshot bounds and finished-id miss, checkpoint restore aborts
-  live children
+- `packages/agent/src/__tests__/subagent.test.ts` — spawn isolation with the
+  child preamble on an empty transcript, depth (child tree is send-parent
+  only), the live-children ceiling, abort via `demi agent abort`, send-parent
+  steer while the parent is blocked in that spawn, idle parent wakeup on
+  completion, empty prompt fails, empty last text exits 0, `subagent*`
+  protocol frames, inherited vs replaced `systemPrompt` with unknown-profile
+  rejection, list/show snapshot bounds and finished-id miss, parent close
+  aborts live children
 - `packages/shell/src/__tests__/foreground-command.test.ts` — registered
-  command abort signal, live stdout, `shell_write` as stdin stream
-- `packages/coding-agent/src/__tests__/coding-harness.test.ts` — `demi agent`
-  prompt-field help and default profiles
+  command abort signal, live stdout, `shell_write` as stdin stream, byte-clean
+  pipes around a virtual foreground job
+- `packages/coding-agent/src/__tests__/coding-harness.test.ts` — `default` /
+  `explore` profiles and the injected `demi agent` prompt-field help
