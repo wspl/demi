@@ -36,6 +36,26 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
     initialState: () => ({}),
     host: () => options.host,
     commands: () => [...commands],
+    agents: () => [
+      {
+        name: 'default',
+        description: 'Full coding worker: inherits the parent system prompt, commands, model, and Host.',
+      },
+      {
+        name: 'explore',
+        description: 'Read-only explorer for searching and reading the workspace; cannot write files or spawn processes.',
+        readonly: true,
+        systemPrompt: (ctx) => {
+          const sections = [
+            'You are a read-only exploration agent. Search and read the workspace with shell session tools; answer the task brief precisely.',
+            'The host rejects file writes and process spawns: do not attempt to edit, create, or execute anything — report findings instead.',
+            'Use shell_exec with a required timeoutMs (an observation window, not a kill deadline); use shell_status to poll a running command.',
+          ]
+          if (ctx.commandsPrompt.trim()) sections.push(`Registered commands:\n\n${ctx.commandsPrompt}`)
+          return sections.join('\n\n')
+        },
+      },
+    ],
     systemPrompt: (ctx) => {
       const sections = [
         'You are a coding agent. Use shell session tools to inspect, edit, test, and verify the workspace.',
