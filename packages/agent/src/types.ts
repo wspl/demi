@@ -69,12 +69,34 @@ export interface AgentHostContext<State> extends AgentHarnessContext<State> {
   metadata: AgentMetadata | null
 }
 
+/**
+ * A named subagent configuration. Every field is an override on the parent's
+ * setup: omitted fields inherit the parent harness (system prompt), the
+ * parent's registered commands, the parent Host, and the parent model.
+ */
+export interface SubagentProfile<State = unknown> {
+  name: string
+  /** Shown in the spawn command help so the parent model can pick a profile. */
+  description: string
+  systemPrompt?(ctx: AgentSystemPromptContext<State>): Promise<string> | string
+  /** Derives the child's registered commands from the parent's list. */
+  commands?(parentCommands: Command[]): Command[]
+  /** Reject filesystem writes and process spawns on the child's Host. */
+  readonly?: boolean
+  model?: ModelSelection
+}
+
 export interface AgentHarness<State = unknown> {
   name: string
   initialState(): State
   /** Return the same Host object for calls that target the same execution environment. */
   host(ctx: AgentHarnessContext<State> | AgentHostContext<State>): Host | Promise<Host>
   commands?(ctx: AgentHarnessContext<State>): Promise<Command[]> | Command[]
+  /**
+   * Named subagent profiles for `demi agent`. Omitted: one implicit profile
+   * named `default` that fully inherits the parent's setup.
+   */
+  agents?(ctx: AgentHarnessContext<State>): Promise<SubagentProfile<State>[]> | SubagentProfile<State>[]
   systemPrompt(ctx: AgentSystemPromptContext<State>): Promise<string> | string
   preamble?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
   resolveReferences?(
