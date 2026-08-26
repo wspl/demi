@@ -820,6 +820,9 @@ export function injectSubagentCommand(commands: Command[], agentNode: Command): 
  * Host wrapper for read-only subagent profiles: filesystem mutation is
  * rejected outside the shell's own command-artifacts tree, and process spawn
  * is rejected outright (a real process cannot be write-restricted).
+ *
+ * Every facet delegates method by method: Host facets are class instances
+ * whose methods live on the prototype, so object spread would drop them.
  */
 export function createReadonlyHost(host: Host): Host {
   const artifactsRoot = host.commandArtifactsDir.replace(/\/+$/, '')
@@ -829,25 +832,36 @@ export function createReadonlyHost(host: Host): Host {
   }
   const deny = (operation: string): Promise<never> =>
     Promise.reject(new Error(`read-only subagent: ${operation} is not permitted on this Host`))
+  const readonlyFs: Host['fs'] = {
+    readFile: (path, options) => host.fs.readFile(path, options),
+    exists: (path, options) => host.fs.exists(path, options),
+    stat: (path, options) => host.fs.stat(path, options),
+    lstat: (path, options) => host.fs.lstat(path, options),
+    readdir: ((path: string, options?: { cwd?: string; withFileTypes?: boolean }) =>
+      host.fs.readdir(path, options as { cwd?: string; withFileTypes: true })) as Host['fs']['readdir'],
+    readlink: (path, options) => host.fs.readlink(path, options),
+    realpath: (path, options) => host.fs.realpath(path, options),
+    writeFile: (path, data, options) =>
+      isArtifactPath(path, options?.cwd) ? host.fs.writeFile(path, data, options) : deny(`write ${path}`),
+    appendFile: (path, data, options) =>
+      isArtifactPath(path, options?.cwd) ? host.fs.appendFile(path, data, options) : deny(`append ${path}`),
+    mkdir: (path, options) =>
+      isArtifactPath(path, options?.cwd) ? host.fs.mkdir(path, options) : deny(`mkdir ${path}`),
+    rm: (path) => deny(`rm ${path}`),
+    cp: (path, destination, options) =>
+      isArtifactPath(destination, options?.cwd) ? host.fs.cp(path, destination, options) : deny(`cp to ${destination}`),
+    mv: (path, destination) => deny(`mv ${path} ${destination}`),
+    chmod: (path) => deny(`chmod ${path}`),
+    symlink: (_target, path) => deny(`symlink ${path}`),
+    link: (_existingPath, path) => deny(`link ${path}`),
+    utimes: (path) => deny(`utimes ${path}`),
+  }
   return {
-    ...host,
-    fs: {
-      ...host.fs,
-      writeFile: (path, data, options) =>
-        isArtifactPath(path, options?.cwd) ? host.fs.writeFile(path, data, options) : deny(`write ${path}`),
-      appendFile: (path, data, options) =>
-        isArtifactPath(path, options?.cwd) ? host.fs.appendFile(path, data, options) : deny(`append ${path}`),
-      mkdir: (path, options) =>
-        isArtifactPath(path, options?.cwd) ? host.fs.mkdir(path, options) : deny(`mkdir ${path}`),
-      rm: (path, options) => deny(`rm ${path}`),
-      cp: (path, destination, options) =>
-        isArtifactPath(destination, options?.cwd) ? host.fs.cp(path, destination, options) : deny(`cp to ${destination}`),
-      mv: (path, destination) => deny(`mv ${path} ${destination}`),
-      chmod: (path) => deny(`chmod ${path}`),
-      symlink: (_target, path) => deny(`symlink ${path}`),
-      link: (_existingPath, path) => deny(`link ${path}`),
-      utimes: (path) => deny(`utimes ${path}`),
-    },
+    defaultCwd: host.defaultCwd,
+    commandArtifactsDir: host.commandArtifactsDir,
+    identity: host.identity,
+    store: host.store,
+    fs: readonlyFs,
     process: {
       openCwd: (path) => host.process.openCwd(path),
       spawn: () => deny('process spawn'),
