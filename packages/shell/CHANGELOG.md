@@ -1,5 +1,15 @@
 # @demicodes/shell
 
+## 0.19.0
+
+### Minor Changes
+
+- Subagents: parents spawn isolated child agent sessions through the injected `demi agent` command (blocking spawn with steer/abort/list/show, send-parent back-channel, subagent profiles including a read-only explore profile in the coding harness, and `subagent*` protocol frames on the parent client). Registered commands now run as virtual foreground jobs with an abort signal, live output, and a post-start stdin stream, so shell_write/shell_abort control them uniformly.
+
+### Patch Changes
+
+- @demicodes/utils@0.19.0
+
 ## 0.18.0
 
 ### Minor Changes
