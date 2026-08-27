@@ -66,6 +66,14 @@ export interface AgentServerOptions {
   providers: Provider[]
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
+  subagents?: {
+    /**
+     * When false, a child closing never wakes an idle parent with an automatic
+     * user send; the host app observes the `subagent closed` frame and drives
+     * the parent itself. Defaults to true.
+     */
+    notifyParentOnIdle?: boolean
+  }
   /**
    * Optional host-side shell prep (env, PATH, etc.). Implementation-agnostic —
    * command bridge wiring lives in `@demicodes/host-local`, not here.
@@ -124,6 +132,7 @@ export class AgentServer {
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
+  private readonly notifyParentOnIdle: boolean
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -133,6 +142,7 @@ export class AgentServer {
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell ?? null
+    this.notifyParentOnIdle = options.subagents?.notifyParentOnIdle ?? true
   }
 
   client(): AgentClient {
@@ -149,6 +159,7 @@ export class AgentServer {
       shell: this.shellOptions,
       session: this.sessionOptions,
       prepareShell: this.prepareShell,
+      notifyParentOnIdle: this.notifyParentOnIdle,
       sessions: this.sessionOwnership,
     })
     this.bindings.add(binding)
@@ -210,6 +221,7 @@ interface AgentTransportBindingOptions {
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
   prepareShell: PrepareShell | null
+  notifyParentOnIdle: boolean
   sessions: SessionOwnershipRegistry
 }
 
@@ -220,6 +232,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
+  private readonly notifyParentOnIdle: boolean
   private readonly sessions: SessionOwnershipRegistry
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
@@ -242,6 +255,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell
+    this.notifyParentOnIdle = options.notifyParentOnIdle
     this.sessions = options.sessions
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
@@ -435,6 +449,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       shellOptions: this.shellOptions,
       prepareShell: this.prepareShell,
       sessionOptions: this.sessionOptions,
+      notifyParentOnIdle: this.notifyParentOnIdle,
       emit: (subagentFrame) => this.send(subagentFrame),
     })
     const commands = injectSubagentCommand(harnessCommands, supervisor.rootCommandNode())
