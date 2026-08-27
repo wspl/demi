@@ -166,6 +166,15 @@ export class AgentClient {
     return wait
   }
 
+  /**
+   * Aborts every live child agent of this session (the archive is untouched).
+   * Fire-and-forget: each child settles through its own `subagent closed`
+   * frame with phase 'aborted'.
+   */
+  abortSubagents(): void {
+    this.sendFrame({ type: 'abort_subagents' })
+  }
+
   shellWrite(commandId: string, stdin: string, options: AgentActionOptions = {}): Promise<void> {
     const wait = this.waitForShellWrite(commandId)
     this.sendFrame({ type: 'shell_write', commandId, stdin, metadata: options.metadata })
