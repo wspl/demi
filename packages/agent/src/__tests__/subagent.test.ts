@@ -13,6 +13,7 @@ import {
   createReadonlyHost,
   type AgentClient,
   type AgentHarness,
+  type AgentMetadata,
   type ClientSessionEvent,
   type SubagentProfile,
 } from '../index'
@@ -37,6 +38,8 @@ const selection: ProviderSelection = { providerId: 'stub', model }
 async function openHarness(options: {
   turns: TurnScript[]
   agents?: SubagentProfile<Record<string, never>>[]
+  notifyParentOnIdle?: boolean
+  metadataLog?: (AgentMetadata | null)[]
 }): Promise<{ client: AgentClient; seen: ClientSessionEvent[]; root: string }> {
   const root = await mkdtemp(join(tmpdir(), 'demi-subagent-'))
   const hosts = new Map<string, LocalHost>()
@@ -50,13 +53,17 @@ async function openHarness(options: {
       hosts.set(ctx.cwd, host)
       return host
     },
-    systemPrompt: () => 'parent-system-marker',
+    systemPrompt: (ctx) => {
+      options.metadataLog?.push(ctx.metadata)
+      return 'parent-system-marker'
+    },
     ...(options.agents ? { agents: () => options.agents! } : {}),
   }
   const server = new AgentServer({
     agent: harness,
     providers: [defineProvider({ id: 'stub', displayName: 'stub', createRuntime: () => new StubProvider(options.turns) })],
     shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
+    ...(options.notifyParentOnIdle === undefined ? {} : { subagents: { notifyParentOnIdle: options.notifyParentOnIdle } }),
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
@@ -236,6 +243,56 @@ test('a child finishing after the parent went idle wakes it with a user message'
 
   expect(wakeText).toContain('completed')
   expect(wakeText).toContain('bg result')
+  await client.close()
+})
+
+test('the idle wakeup carries the metadata of the round that spawned the child', async () => {
+  const metadataLog: (AgentMetadata | null)[] = []
+  const { client } = await openHarness({
+    metadataLog,
+    turns: [
+      [spawnCall('t1', "demi agent 'long background task' --description bg", 50)],
+      [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.25', timeoutMs: 5_000 })],
+      [events.text('spawned, going idle'), events.response()],
+      [events.text('bg result'), events.response()],
+      [events.text('acknowledged'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }], { metadata: { identityOpenId: 'u-spawner' } })
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'acknowledged'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+
+  expect(metadataLog.at(-1)).toEqual({ identityOpenId: 'u-spawner' })
+  await client.close()
+})
+
+test('notifyParentOnIdle: false leaves the idle parent untouched when a child closes', async () => {
+  const { client, seen } = await openHarness({
+    notifyParentOnIdle: false,
+    turns: [
+      [spawnCall('t1', "demi agent 'long background task' --description bg", 50)],
+      [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.25', timeoutMs: 5_000 })],
+      [events.text('spawned, going idle'), events.response()],
+      [events.text('bg result'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => seen.some((event) => event.type === 'subagent' && event.event === 'closed'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+  await new Promise((resolve) => setTimeout(resolve, 200))
+
+  const lastText = [...client.transcript().blocks].reverse().find((block) => block.type === 'text')
+  expect(lastText?.type === 'text' ? lastText.text : '').toBe('spawned, going idle')
+  const lastPhase = [...seen].reverse().find((event) => event.type === 'phase')
+  expect(lastPhase?.type === 'phase' ? lastPhase.phase : '').toBe('idle')
   await client.close()
 })
 

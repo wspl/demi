@@ -83,6 +83,8 @@ export interface ChildSupervisorOptions<State> {
   shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   prepareShell: PrepareShell | null
   sessionOptions: AgentServerSessionOptions
+  /** When false, a child closing never wakes an idle parent; the host app orchestrates the wakeup from the `subagent closed` frame. */
+  notifyParentOnIdle: boolean
   emit(frame: ServerFrame): void
 }
 
@@ -497,7 +499,7 @@ export class ChildSupervisor<State = unknown> {
 
   /** Wakes an idle parent with a user send; a parent blocked in the spawn gets the tool result instead. */
   private notifyIdleParent(job: ChildJob<State>, close: SubagentClose): void {
-    if (this.isDisposed) return
+    if (this.isDisposed || !this.options.notifyParentOnIdle) return
     const parent = this.parentSession
     if (!parent || parent.phase() !== 'idle') return
     const label = `subagent ${job.id}${job.description ? ` — ${job.description}` : ''}`
@@ -507,7 +509,8 @@ export class ChildSupervisor<State = unknown> {
         : close.phase === 'aborted'
           ? `[${label}] aborted.`
           : `[${label}] failed: ${close.failure ?? 'unknown error'}`
-    void parent.send([{ type: 'text', text: body }]).catch(noop)
+    // The wakeup round runs on behalf of the round that spawned the child, so it carries that round's metadata.
+    void parent.send([{ type: 'text', text: body }], job.metadata ? { metadata: job.metadata } : {}).catch(noop)
   }
 
   private createChildAgentNode(childId: string, description: string): Command {
@@ -545,13 +548,15 @@ export class ChildSupervisor<State = unknown> {
     if (!parent || this.isDisposed) return
     const text = `[subagent ${childId}${description ? ` — ${description}` : ''}] ${message}`
     const content: UserContentBlock[] = [{ type: 'text', text }]
+    const metadata = this.jobs.get(childId)?.metadata ?? null
+    const sendOptions = metadata ? { metadata } : {}
     if (parent.phase() !== 'idle') {
       void parent.steer(content).catch(() => {
-        void parent.send(content).catch(noop)
+        void parent.send(content, sendOptions).catch(noop)
       })
       return
     }
-    void parent.send(content).catch(noop)
+    void parent.send(content, sendOptions).catch(noop)
   }
 
   private async childEnvironment(
