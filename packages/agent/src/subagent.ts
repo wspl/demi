@@ -5,6 +5,7 @@ import {
   CommandRegistry,
   type BashEnvironmentOptions,
   type Command,
+  type CommandIO,
   type Host,
   type HostStore,
 } from '@demicodes/shell'
@@ -15,6 +16,7 @@ import type {
   AgentHarness,
   AgentHarnessRuntime,
   AgentMetadata,
+  AgentSessionCheckpoint,
   AgentSessionStore,
   AgentToolInvokeContext,
   SubagentProfile,
@@ -23,6 +25,7 @@ import { createStandardAgentTools } from './tools'
 import type { AgentServerSessionOptions, PrepareShell } from './server'
 
 export const MAX_LIVE_SUBAGENTS = 8
+export const MAX_ARCHIVED_SUBAGENTS = 16
 export const SUBAGENT_RESULT_MAX_BYTES = 32 * 1024
 const SHOW_RECENT_TOOLS = 8
 
@@ -92,12 +95,19 @@ export interface ChildSupervisorOptions<State> {
   emit(frame: ServerFrame): void
 }
 
-/** The on-store shape of a live child (`.../subagents/<id>/job.json`); its checkpoint sits beside it. */
+/**
+ * The on-store shape of a child (`.../subagents/<id>/job.json`); its checkpoint
+ * sits beside it. Without `closedPhase` the child is live (a parent restore
+ * resumes it); with `closedPhase` it is archived — finished but revivable with
+ * `demi agent resume`, skipped by restore, pruned oldest-first past the cap.
+ */
 interface PersistedSubagentJob {
   description: string
   profileName: string | null
   metadata: AgentMetadata | null
   spawnedAt: number
+  closedPhase?: SubagentClose['phase']
+  closedAt?: number
 }
 
 /**
@@ -107,7 +117,8 @@ interface PersistedSubagentJob {
  * on the parent connection. Children persist exactly like the parent: each
  * live child keeps a checkpoint and job record under the parent's session
  * directory, and reopening the parent restores and resumes them (`restore`).
- * A closed child leaves nothing behind.
+ * A closed child moves to the archive: its transcript checkpoint stays on
+ * store and `demi agent resume` revives it with a new user message.
  */
 export class ChildSupervisor<State = unknown> {
   private readonly options: ChildSupervisorOptions<State>
@@ -164,29 +175,7 @@ export class ChildSupervisor<State = unknown> {
           await io.stderr(`demi agent: ${errorMessage(error)}\n`)
           return { exitCode: 1 }
         }
-        await io.stderr(`subagentId: ${job.id}\n`)
-
-        const onAbort = (): void => {
-          void this.abortSubtree(job.id).catch(noop)
-        }
-        if (signal.aborted) onAbort()
-        else signal.addEventListener('abort', onAbort, { once: true })
-        void this.pumpStdinSteers(job.id, stdinStream)
-
-        const close = await job.closed
-        signal.removeEventListener('abort', onAbort)
-        if (close.phase === 'completed') {
-          const text = close.result ?? ''
-          if (parsed.json) await io.stdout(`${JSON.stringify({ subagentId: job.id, text })}\n`)
-          else if (text.length > 0) await io.stdout(text.endsWith('\n') ? text : `${text}\n`)
-          return { exitCode: 0 }
-        }
-        if (close.phase === 'aborted') {
-          await io.stderr(`demi agent: subagent ${job.id} aborted\n`)
-          return { exitCode: 130 }
-        }
-        await io.stderr(`demi agent: subagent ${job.id} failed: ${close.failure ?? 'unknown error'}\n`)
-        return { exitCode: 1 }
+        return this.attendChild(job, { io, isJson: parsed.json === true, signal, stdinStream })
       },
       subcommands: [
         {
@@ -234,21 +223,63 @@ export class ChildSupervisor<State = unknown> {
           },
         },
         {
+          name: 'resume',
+          summary:
+            'Revive an archived (finished) child with a new user message on top of its preserved transcript. Behaves like the spawn command afterwards: stays running until the child ends again, stdout is its new last assistant text, shell_write steers, shell_abort aborts. Archived ids are in `demi agent list`.',
+          input: {
+            id: z.string().describe('subagentId of an archived child'),
+            message: z.string().optional().describe('The reviving user message; positional, or stdin/heredoc when omitted.'),
+          },
+          positionals: ['id', 'message'],
+          stdinField: 'message',
+          output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
+          run: async ({ parsed, io, signal, stdinStream }) => {
+            const id = String(parsed.values.id)
+            const message = String(parsed.values.message ?? '').trim()
+            if (!message) {
+              await io.stderr('demi agent resume: message must not be empty\n')
+              return { exitCode: 1 }
+            }
+            let job: ChildJob<State>
+            try {
+              job = await this.resumeArchived(id, message)
+            } catch (error) {
+              await io.stderr(`demi agent resume: ${errorMessage(error)}\n`)
+              return { exitCode: 1 }
+            }
+            return this.attendChild(job, { io, isJson: parsed.json === true, signal, stdinStream })
+          },
+        },
+        {
           name: 'list',
           summary:
-            'Snapshot roster of this session\'s running children (finished children are absent). One line per child with ages relative to now. A read, not a wait — not for polling loops.',
-          output: { json: z.object({ agents: z.array(z.unknown()) }) },
+            'Snapshot roster of this session\'s running children, then its archived (finished, revivable via resume) children. One line per child with ages relative to now. A read, not a wait — not for polling loops.',
+          output: { json: z.object({ agents: z.array(z.unknown()), archived: z.array(z.unknown()) }) },
           run: async ({ parsed, io }) => {
             const jobs = [...this.jobs.values()]
+            const archived = await this.listArchivedJobs()
             if (parsed.json) {
-              await io.stdout(`${JSON.stringify({ agents: jobs.map((job) => this.snapshot(job, false)) })}\n`)
+              await io.stdout(`${JSON.stringify({
+                agents: jobs.map((job) => this.snapshot(job, false)),
+                archived: archived.map(({ id, meta }) => ({
+                  subagentId: id,
+                  description: meta.description,
+                  profile: meta.profileName,
+                  phase: meta.closedPhase,
+                  closedAgoMs: meta.closedAt === undefined ? null : Date.now() - meta.closedAt,
+                })),
+              })}\n`)
               return { exitCode: 0 }
             }
-            if (jobs.length === 0) {
-              await io.stdout('no running subagents\n')
-              return { exitCode: 0 }
-            }
+            if (jobs.length === 0) await io.stdout('no running subagents\n')
             for (const job of jobs) await io.stdout(`${this.renderListLine(job)}\n`)
+            if (archived.length > 0) {
+              await io.stdout('archived (revivable with `demi agent resume <id>`):\n')
+              for (const { id, meta } of archived) {
+                const closedAgo = meta.closedAt === undefined ? '' : `  closed ${formatDuration(Date.now() - meta.closedAt)} ago`
+                await io.stdout(`  ${id}  ${meta.closedPhase}${closedAgo}  ${meta.description ? `"${meta.description}"` : '(no description)'}\n`)
+              }
+            }
             return { exitCode: 0 }
           },
         },
@@ -352,8 +383,22 @@ export class ChildSupervisor<State = unknown> {
     const parent = this.parentSession
     if (!parent) return
     const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
+    // Archived children are finished: only `demi agent resume` revives them.
+    if (meta?.closedPhase) return
     const checkpoint = await this.childSessionStore(id).loadCheckpoint()
     if (!meta || !checkpoint) throw new Error('incomplete persisted subagent')
+    const job = this.reassembleJob(id, meta, checkpoint)
+    // A live persisted job is by definition unfinished (closeJob archives it),
+    // so always resume: findResumePoint decides how far to unwind, exactly like
+    // an interrupted parent session. A child that had already produced its final
+    // text re-infers one turn and closes through the normal quiescence path.
+    void this.watchTurn(job, job.session.resume(meta.metadata ? { metadata: meta.metadata } : {}))
+  }
+
+  /** Shared by restore and resume: rebuild a persisted child's job and session from its checkpoint. */
+  private reassembleJob(id: string, meta: PersistedSubagentJob, checkpoint: AgentSessionCheckpoint<State>): ChildJob<State> {
+    const parent = this.parentSession
+    if (!parent) throw new Error('subagent supervisor has no parent session')
     const profile = this.resolveProfile(meta.profileName ?? undefined)
     const { job, runtime } = this.assembleJob({
       id,
@@ -368,11 +413,60 @@ export class ChildSupervisor<State = unknown> {
       { agentSessionId: id, store: this.childSessionStore(id), ...this.options.sessionOptions },
     )
     this.attachSession(job, session)
-    // A persisted job is by definition unfinished (closeJob deletes it), so always
-    // resume: findResumePoint decides how far to unwind, exactly like an
-    // interrupted parent session. A child that had already produced its final
-    // text re-infers one turn and closes through the normal quiescence path.
-    void this.watchTurn(job, session.resume(meta.metadata ? { metadata: meta.metadata } : {}))
+    return job
+  }
+
+  /**
+   * Revives an archived child: its job record turns live again (this round's
+   * metadata, a fresh spawnedAt), the session rebuilds from the preserved
+   * checkpoint, and the message opens its next turn on top of the old
+   * transcript.
+   */
+  private async resumeArchived(id: string, message: string): Promise<ChildJob<State>> {
+    const parent = this.parentSession
+    if (!parent) throw new Error('subagent supervisor has no parent session')
+    if (this.isDisposed) throw new Error('parent session is closing')
+    if (this.jobs.has(id)) throw new Error(`subagent "${id}" is still running; steer it instead`)
+    if (this.jobs.size >= MAX_LIVE_SUBAGENTS) {
+      throw new Error(`at most ${MAX_LIVE_SUBAGENTS} running subagents per session; abort one or wait for a result`)
+    }
+    const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
+    if (!meta?.closedPhase) throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
+    const checkpoint = await this.childSessionStore(id).loadCheckpoint()
+    if (!checkpoint) throw new Error(`archived subagent "${id}" has no checkpoint left`)
+    const liveMeta: PersistedSubagentJob = {
+      description: meta.description,
+      profileName: meta.profileName,
+      metadata: parent.actionMetadata(),
+      spawnedAt: Date.now(),
+    }
+    await this.options.store.writeJson(this.childStoreKey(id, 'job.json'), liveMeta)
+    const job = this.reassembleJob(id, liveMeta, checkpoint)
+    void this.watchTurn(job, job.session.send([{ type: 'text', text: message }], liveMeta.metadata ? { metadata: liveMeta.metadata } : {}))
+    return job
+  }
+
+  /** Every archived (finished, revivable) child of this parent, newest first. */
+  private async listArchivedJobs(): Promise<{ id: string; meta: PersistedSubagentJob }[]> {
+    const parent = this.parentSession
+    if (!parent) return []
+    const prefix = `agent-sessions/${parent.id()}/subagents/`
+    const keys = await this.options.store.list(prefix).catch(() => [] as string[])
+    const ids = [...new Set(keys.map((key) => key.slice(prefix.length).split('/')[0] ?? '').filter(Boolean))]
+    const archived: { id: string; meta: PersistedSubagentJob }[] = []
+    for (const id of ids) {
+      if (this.jobs.has(id)) continue
+      const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
+      if (meta?.closedPhase) archived.push({ id, meta })
+    }
+    return archived.sort((a, b) => (b.meta.closedAt ?? 0) - (a.meta.closedAt ?? 0))
+  }
+
+  private async pruneArchive(): Promise<void> {
+    const archived = await this.listArchivedJobs()
+    for (const stale of archived.slice(MAX_ARCHIVED_SUBAGENTS)) {
+      await this.deletePersistedJob(stale.id)
+    }
   }
 
   async abortSubtree(id: string): Promise<void> {
@@ -533,6 +627,37 @@ export class ChildSupervisor<State = unknown> {
     await this.options.store.delete(this.childStoreKey(id, 'job.json')).catch(noop)
   }
 
+  /** Shared spawn/resume foreground behaviour: announce the id, wire abort and stdin steers, wait for close, report the outcome. */
+  private async attendChild(
+    job: ChildJob<State>,
+    ctx: { io: CommandIO; isJson: boolean; signal: AbortSignal; stdinStream: AsyncIterable<Uint8Array> },
+  ): Promise<{ exitCode: number }> {
+    const { io, isJson, signal, stdinStream } = ctx
+    await io.stderr(`subagentId: ${job.id}\n`)
+
+    const onAbort = (): void => {
+      void this.abortSubtree(job.id).catch(noop)
+    }
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+    void this.pumpStdinSteers(job.id, stdinStream)
+
+    const close = await job.closed
+    signal.removeEventListener('abort', onAbort)
+    if (close.phase === 'completed') {
+      const text = close.result ?? ''
+      if (isJson) await io.stdout(`${JSON.stringify({ subagentId: job.id, text })}\n`)
+      else if (text.length > 0) await io.stdout(text.endsWith('\n') ? text : `${text}\n`)
+      return { exitCode: 0 }
+    }
+    if (close.phase === 'aborted') {
+      await io.stderr(`demi agent: subagent ${job.id} aborted\n`)
+      return { exitCode: 130 }
+    }
+    await io.stderr(`demi agent: subagent ${job.id} failed: ${close.failure ?? 'unknown error'}\n`)
+    return { exitCode: 1 }
+  }
+
   /** Delivers one steer to a child: mid-turn as a steer, idle as a new user turn. */
   private async steerChild(job: ChildJob<State>, message: string): Promise<void> {
     const content: UserContentBlock[] = [{ type: 'text', text: message }]
@@ -608,9 +733,21 @@ export class ChildSupervisor<State = unknown> {
     this.jobs.delete(job.id)
 
     const result = phase === 'completed' ? boundedResultText(lastAssistantText(job.session.transcript().blocks)) : undefined
+    // dispose() flushes the final checkpoint; the archived job record beside it
+    // marks the child finished-but-revivable.
     await job.session.dispose().catch(noop)
     await this.disposeJobShells(job)
-    await this.deletePersistedJob(job.id)
+    await this.options.store
+      .writeJson<PersistedSubagentJob>(this.childStoreKey(job.id, 'job.json'), {
+        description: job.description,
+        profileName: job.profileName,
+        metadata: job.metadata,
+        spawnedAt: job.spawnedAt,
+        closedPhase: phase,
+        closedAt: Date.now(),
+      })
+      .catch(noop)
+    await this.pruneArchive().catch(noop)
 
     const close: SubagentClose = {
       phase,
