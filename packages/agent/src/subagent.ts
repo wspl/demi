@@ -476,6 +476,11 @@ export class ChildSupervisor<State = unknown> {
     await this.closeJob(job, 'aborted')
   }
 
+  /** Aborts every live child; the archive is untouched. */
+  async abortAll(): Promise<void> {
+    for (const id of [...this.jobs.keys()]) await this.abortSubtree(id)
+  }
+
   private async spawn(input: {
     prompt: string
     profileName: string | undefined

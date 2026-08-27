@@ -299,6 +299,34 @@ test('notifyParentOnIdle: false leaves the idle parent untouched when a child cl
   await client.close()
 })
 
+test('client abortSubagents aborts every live child without touching the parent turn', async () => {
+  const { client, seen } = await openHarness({
+    notifyParentOnIdle: false,
+    turns: [
+      [spawnCall('t1', "demi agent 'stuck task' --description stuck", 50)],
+      [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
+      [events.text('spawned, going idle'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => seen.some((event) => event.type === 'subagent' && event.event === 'started'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+  client.abortSubagents()
+  await waitFor(
+    () => seen.some((event) => event.type === 'subagent' && event.event === 'closed'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+
+  const closedFrame = seen.find((event) => event.type === 'subagent' && event.event === 'closed')
+  expect(closedFrame?.type === 'subagent' ? closedFrame.job.phase : '').toBe('aborted')
+  await client.close()
+})
+
 test('demi agent abort tears the child down and fails the pending spawn command', async () => {
   let abortResultText = ''
   const { client, seen } = await openHarness({
