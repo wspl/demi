@@ -1,5 +1,18 @@
 # @demicodes/agent
 
+## 0.20.0
+
+### Minor Changes
+
+- Add a client-side `abortSubagents()` that aborts every live child of the session via the new `abort_subagents` frame, so host apps can offer "abort everything" alongside aborting just the parent turn.
+
+### Patch Changes
+
+- @demicodes/core@0.20.0
+- @demicodes/provider@0.20.0
+- @demicodes/shell@0.20.0
+- @demicodes/utils@0.20.0
+
 ## 0.19.3
 
 ### Patch Changes

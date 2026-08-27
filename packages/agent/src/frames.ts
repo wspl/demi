@@ -42,6 +42,7 @@ export type ClientFrame =
   | { type: 'cancel_pending_steer'; steerId: string }
   | { type: 'set_provider'; provider: ProviderSelection; apply?: ModelSwitchApply }
   | { type: 'abort' }
+  | { type: 'abort_subagents' }
   | { type: 'retry'; metadata?: AgentMetadata }
   | { type: 'resume'; metadata?: AgentMetadata }
   | { type: 'compact'; metadata?: AgentMetadata }
