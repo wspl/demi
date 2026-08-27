@@ -450,6 +450,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       prepareShell: this.prepareShell,
       sessionOptions: this.sessionOptions,
       notifyParentOnIdle: this.notifyParentOnIdle,
+      store: provisionalHost.store,
       emit: (subagentFrame) => this.send(subagentFrame),
     })
     const commands = injectSubagentCommand(harnessCommands, supervisor.rootCommandNode())
@@ -502,6 +503,10 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.sendTranscriptReset(session)
     this.send({ type: 'phase', phase: this.session.phase() })
     this.send({ type: 'queue', queue: this.session.queuedMessages() })
+    // Children persisted by a previous process of this parent come back after the
+    // open handshake, so the client sees them exactly like a replay: started +
+    // transcript_reset frames, then live patches as their interrupted turns resume.
+    if (restoring) await supervisor.restore()
   }
 
   private sendTranscriptReset(session: AgentSession<unknown>): void {

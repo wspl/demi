@@ -6,6 +6,7 @@ import {
   type BashEnvironmentOptions,
   type Command,
   type Host,
+  type HostStore,
 } from '@demicodes/shell'
 import type { Block, UserContentBlock } from '@demicodes/core'
 import { AgentSession } from './session'
@@ -14,6 +15,7 @@ import type {
   AgentHarness,
   AgentHarnessRuntime,
   AgentMetadata,
+  AgentSessionStore,
   AgentToolInvokeContext,
   SubagentProfile,
 } from './types'
@@ -85,15 +87,27 @@ export interface ChildSupervisorOptions<State> {
   sessionOptions: AgentServerSessionOptions
   /** When false, a child closing never wakes an idle parent; the host app orchestrates the wakeup from the `subagent closed` frame. */
   notifyParentOnIdle: boolean
+  /** Backing store for child checkpoints and job metadata, keyed under the parent's session directory. */
+  store: HostStore
   emit(frame: ServerFrame): void
+}
+
+/** The on-store shape of a live child (`.../subagents/<id>/job.json`); its checkpoint sits beside it. */
+interface PersistedSubagentJob {
+  description: string
+  profileName: string | null
+  metadata: AgentMetadata | null
+  spawnedAt: number
 }
 
 /**
  * Per-parent subagent supervisor. Owns every child `AgentSession` this parent
  * spawns: lifecycle (spawn / steer / abort / natural end), the `demi agent`
  * command tree, child shell environments, and the `subagent*` protocol frames
- * on the parent connection. Children are in-memory only: no store, no
- * checkpoint, gone with the parent.
+ * on the parent connection. Children persist exactly like the parent: each
+ * live child keeps a checkpoint and job record under the parent's session
+ * directory, and reopening the parent restores and resumes them (`restore`).
+ * A closed child leaves nothing behind.
  */
 export class ChildSupervisor<State = unknown> {
   private readonly options: ChildSupervisorOptions<State>
@@ -293,11 +307,72 @@ export class ChildSupervisor<State = unknown> {
     }
   }
 
+  /**
+   * Detaches every live child on connection teardown: aborts in-flight turns,
+   * flushes checkpoints, and keeps the persisted job so the next open of this
+   * parent restores it — the same dispose semantics as the parent session.
+   * No `closed` frame is emitted: the children are not done, just paused.
+   */
   async dispose(): Promise<void> {
     this.isDisposed = true
     for (const job of [...this.jobs.values()]) {
-      await this.closeJob(job, 'aborted')
+      job.isClosing = true
+      job.unsubscribe()
+      this.jobs.delete(job.id)
+      await job.session.dispose().catch(noop)
+      await this.disposeJobShells(job)
+      job.settleClosed({ phase: 'aborted' })
     }
+  }
+
+  /**
+   * Rebuilds every persisted live child of this parent and finishes what it was
+   * doing: an interrupted turn resumes from its resume point; an already
+   * quiescent child closes with its result. Children share the parent's
+   * persistence lifecycle — a parent restore is a child restore.
+   */
+  async restore(): Promise<void> {
+    const parent = this.parentSession
+    if (!parent || this.isDisposed) return
+    const prefix = `agent-sessions/${parent.id()}/subagents/`
+    const keys = await this.options.store.list(prefix).catch(() => [] as string[])
+    const ids = [...new Set(keys.map((key) => key.slice(prefix.length).split('/')[0] ?? '').filter(Boolean))]
+    for (const id of ids) {
+      if (this.jobs.has(id)) continue
+      try {
+        await this.restoreJob(id)
+      } catch {
+        // A half-written or profile-orphaned child cannot be rebuilt; drop its remains.
+        await this.deletePersistedJob(id)
+      }
+    }
+  }
+
+  private async restoreJob(id: string): Promise<void> {
+    const parent = this.parentSession
+    if (!parent) return
+    const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
+    const checkpoint = await this.childSessionStore(id).loadCheckpoint()
+    if (!meta || !checkpoint) throw new Error('incomplete persisted subagent')
+    const profile = this.resolveProfile(meta.profileName ?? undefined)
+    const { job, runtime } = this.assembleJob({
+      id,
+      description: meta.description,
+      profileName: meta.profileName,
+      profile,
+      metadata: meta.metadata,
+      spawnedAt: meta.spawnedAt,
+    })
+    const session = AgentSession.fromCheckpoint<State>(
+      { provider: parent.cloneProviderRuntime(), runtime, checkpoint },
+      { agentSessionId: id, store: this.childSessionStore(id), ...this.options.sessionOptions },
+    )
+    this.attachSession(job, session)
+    // A persisted job is by definition unfinished (closeJob deletes it), so always
+    // resume: findResumePoint decides how far to unwind, exactly like an
+    // interrupted parent session. A child that had already produced its final
+    // text re-infers one turn and closes through the normal quiescence path.
+    void this.watchTurn(job, session.resume(meta.metadata ? { metadata: meta.metadata } : {}))
   }
 
   async abortSubtree(id: string): Promise<void> {
@@ -321,7 +396,48 @@ export class ChildSupervisor<State = unknown> {
     const profile = this.resolveProfile(input.profileName)
     const id = createId()
     const metadata = parent.actionMetadata()
+    const profileName = input.profileName ?? (this.options.profiles ? profile.name : null)
+    const spawnedAt = Date.now()
 
+    const { job, runtime } = this.assembleJob({
+      id,
+      description: input.description,
+      profileName,
+      profile,
+      metadata,
+      spawnedAt,
+    })
+    await this.options.store.writeJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'), {
+      description: input.description,
+      profileName,
+      metadata,
+      spawnedAt,
+    })
+    const session = new AgentSession<State>(
+      {
+        provider: parent.cloneProviderRuntime(),
+        model: profile.model ?? structuredClone(parent.modelSelection),
+        cwd: this.options.cwd,
+        runtime,
+        state: this.options.agent.initialState(),
+      },
+      { agentSessionId: id, store: this.childSessionStore(id), ...this.options.sessionOptions },
+    )
+    this.attachSession(job, session)
+    this.watchChild(job, input.prompt)
+    return job
+  }
+
+  /** Everything spawn and restore share: the command tree, the harness runtime, and the job record (session attached separately). */
+  private assembleJob(input: {
+    id: string
+    description: string
+    profileName: string | null
+    profile: SubagentProfile<State>
+    metadata: AgentMetadata | null
+    spawnedAt: number
+  }): { job: ChildJob<State>; runtime: AgentHarnessRuntime<State> } {
+    const { id, profile } = input
     const agentNode = this.createChildAgentNode(id, input.description)
     const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
     const commands = injectSubagentCommand(inherited, agentNode)
@@ -339,15 +455,15 @@ export class ChildSupervisor<State = unknown> {
       id,
       description: input.description,
       profile,
-      profileName: input.profileName ?? (this.options.profiles ? profile.name : null),
-      metadata,
+      profileName: input.profileName,
+      metadata: input.metadata,
       session: null as unknown as AgentSession<State>,
       commandRegistry,
       commandNames,
       environments: new Map(),
       pendingEnvironments: new Map(),
       readonlyHosts: new WeakMap(),
-      spawnedAt: Date.now(),
+      spawnedAt: input.spawnedAt,
       lastEventAt: Date.now(),
       tools: [],
       lastAssistantTextAt: null,
@@ -375,33 +491,46 @@ export class ChildSupervisor<State = unknown> {
           scheduleYield: (ctx, durationMs) => job.session.scheduleYieldWakeup(durationMs, ctx.metadata),
         }),
     }
+    return { job, runtime }
+  }
 
-    job.session = new AgentSession<State>(
-      {
-        provider: parent.cloneProviderRuntime(),
-        model: profile.model ?? structuredClone(parent.modelSelection),
-        cwd: this.options.cwd,
-        runtime,
-        state: agent.initialState(),
-      },
-      { agentSessionId: id, ...this.options.sessionOptions },
-    )
-    job.unsubscribe = job.session.subscribe((event) => {
+  private attachSession(job: ChildJob<State>, session: AgentSession<State>): void {
+    job.session = session
+    job.unsubscribe = session.subscribe((event) => {
       if (event.type !== 'transcript_changed') return
       this.recordTelemetry(job, event.patches)
       this.options.emit({
         type: 'subagent_transcript_patch',
-        subagentId: id,
+        subagentId: job.id,
         patches: event.patches,
         revision: event.revision,
       })
     })
-    this.jobs.set(id, job)
-
+    this.jobs.set(job.id, job)
     this.options.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
-    this.options.emit({ type: 'subagent_transcript_reset', subagentId: id, blocks: [], revision: 0 })
-    this.watchChild(job, input.prompt)
-    return job
+    const transcript = session.transcript()
+    this.options.emit({
+      type: 'subagent_transcript_reset',
+      subagentId: job.id,
+      blocks: structuredClone(transcript.blocks),
+      revision: transcript.revision,
+    })
+  }
+
+  private childStoreKey(childId: string, file: string): string {
+    return `agent-sessions/${this.parentSession?.id() ?? ''}/subagents/${childId}/${file}`
+  }
+
+  private childSessionStore(childId: string): AgentSessionStore<State> {
+    return {
+      saveCheckpoint: (checkpoint) => this.options.store.writeJson(this.childStoreKey(childId, 'checkpoint.json'), checkpoint),
+      loadCheckpoint: () => this.options.store.readJson(this.childStoreKey(childId, 'checkpoint.json')),
+    }
+  }
+
+  private async deletePersistedJob(id: string): Promise<void> {
+    await this.options.store.delete(this.childStoreKey(id, 'checkpoint.json')).catch(noop)
+    await this.options.store.delete(this.childStoreKey(id, 'job.json')).catch(noop)
   }
 
   /** Delivers one steer to a child: mid-turn as a steer, idle as a new user turn. */
@@ -480,12 +609,8 @@ export class ChildSupervisor<State = unknown> {
 
     const result = phase === 'completed' ? boundedResultText(lastAssistantText(job.session.transcript().blocks)) : undefined
     await job.session.dispose().catch(noop)
-    const environments = new Set([...job.environments.values()])
-    for (const pending of job.pendingEnvironments.values()) {
-      const environment = await pending.catch(() => null)
-      if (environment) environments.add(environment)
-    }
-    for (const environment of environments) await environment.disposeAllShells().catch(noop)
+    await this.disposeJobShells(job)
+    await this.deletePersistedJob(job.id)
 
     const close: SubagentClose = {
       phase,
@@ -495,6 +620,15 @@ export class ChildSupervisor<State = unknown> {
     this.options.emit({ type: 'subagent', event: 'closed', job: this.wireJob(job, result) })
     job.settleClosed(close)
     this.notifyIdleParent(job, close)
+  }
+
+  private async disposeJobShells(job: ChildJob<State>): Promise<void> {
+    const environments = new Set([...job.environments.values()])
+    for (const pending of job.pendingEnvironments.values()) {
+      const environment = await pending.catch(() => null)
+      if (environment) environments.add(environment)
+    }
+    for (const environment of environments) await environment.disposeAllShells().catch(noop)
   }
 
   /** Wakes an idle parent with a user send; a parent blocked in the spawn gets the tool result instead. */
@@ -800,6 +934,7 @@ export class ChildSupervisor<State = unknown> {
       description: job.description,
       profile: job.profileName,
       phase: job.phase,
+      metadata: job.metadata,
       ...(result !== undefined ? { result } : {}),
     }
   }

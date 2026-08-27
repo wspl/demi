@@ -40,8 +40,10 @@ async function openHarness(options: {
   agents?: SubagentProfile<Record<string, never>>[]
   notifyParentOnIdle?: boolean
   metadataLog?: (AgentMetadata | null)[]
-}): Promise<{ client: AgentClient; seen: ClientSessionEvent[]; root: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'demi-subagent-'))
+  root?: string
+  sessionId?: string
+}): Promise<{ client: AgentClient; seen: ClientSessionEvent[]; root: string; sessionId: string }> {
+  const root = options.root ?? (await mkdtemp(join(tmpdir(), 'demi-subagent-')))
   const hosts = new Map<string, LocalHost>()
   const harness: AgentHarness<Record<string, never>> = {
     name: 'subagent-test',
@@ -68,8 +70,9 @@ async function openHarness(options: {
   const client = server.client()
   const seen: ClientSessionEvent[] = []
   client.subscribe((event) => seen.push(event))
-  await client.open(selection, root, globalThis.crypto.randomUUID())
-  return { client, seen, root }
+  const sessionId = options.sessionId ?? globalThis.crypto.randomUUID()
+  await client.open(selection, root, sessionId)
+  return { client, seen, root, sessionId }
 }
 
 function itemsText(request: InferenceRequest): string {
@@ -396,23 +399,65 @@ test('a profile systemPrompt replaces the parent prompt; an unknown profile fail
   await client.close()
 })
 
-test('closing the parent session aborts every live child', async () => {
-  const { client, seen } = await openHarness({
+test('closing the parent detaches live children; a reopened parent restores and finishes them', async () => {
+  // Phase 1: spawn a child, let it get stuck mid-tool, then tear the connection down.
+  const first = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'undying task'", 50)],
+      [spawnCall('t1', "demi agent 'undying task' --description bg", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
       [events.text('spawned, going idle'), events.response()],
     ],
   })
+  await first.client.send([{ type: 'text', text: 'go' }], { metadata: { identityOpenId: 'u-spawner' } })
+  await waitFor(
+    () => first.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'spawned, going idle'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+  expect(first.seen.some((event) => event.type === 'subagent' && event.event === 'started')).toBe(true)
 
-  await client.send([{ type: 'text', text: 'go' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'spawned, going idle'))
-  expect(seen.some((event) => event.type === 'subagent' && event.event === 'started')).toBe(true)
+  await first.client.close()
+  // Detach, not close: the child is paused, so no closed frame is emitted.
+  expect(first.seen.some((event) => event.type === 'subagent' && event.event === 'closed')).toBe(false)
 
-  await client.close()
-
-  const closedFrame = seen.find((event) => event.type === 'subagent' && event.event === 'closed')
-  expect(closedFrame?.type === 'subagent' ? closedFrame.job.phase : '').toBe('aborted')
+  // Phase 2: a fresh server process reopens the same session; the child comes
+  // back with its metadata, resumes its interrupted turn, and completes; the
+  // idle parent gets the wakeup.
+  let wakeText = ''
+  const second = await openHarness({
+    root: first.root,
+    sessionId: first.sessionId,
+    turns: [
+      [events.text('recovered result'), events.response()],
+      (request) => {
+        wakeText = itemsText(request)
+        return [events.text('acknowledged'), events.response()]
+      },
+    ],
+  })
+  // The restore frames arrive after the open ack, so wait for them.
+  await waitFor(
+    () => second.seen.some((event) => event.type === 'subagent' && event.event === 'started'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+  const restoredStart = second.seen.find((event) => event.type === 'subagent' && event.event === 'started')
+  expect(restoredStart?.type === 'subagent' ? restoredStart.job : null).toMatchObject({
+    description: 'bg',
+    metadata: { identityOpenId: 'u-spawner' },
+  })
+  await waitFor(
+    () => second.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'acknowledged'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+  const closedFrame = second.seen.find((event) => event.type === 'subagent' && event.event === 'closed')
+  expect(closedFrame?.type === 'subagent' ? closedFrame.job : null).toMatchObject({
+    phase: 'completed',
+    result: 'recovered result',
+  })
+  expect(wakeText).toContain('recovered result')
+  await second.client.close()
 })
 
 test('a readonly Host wrapped over a class-instance Host still reads; mutation and spawn are denied', async () => {
