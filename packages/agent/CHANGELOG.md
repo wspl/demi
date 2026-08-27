@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.19.2
+
+### Patch Changes
+
+- 316969e: Subagents now persist exactly like their parent: each live child keeps a checkpoint and job record under the parent's session directory, closing the parent connection detaches children (flush, no `closed` frame) instead of aborting them, and reopening the parent restores every persisted child and resumes its interrupted turn. `SubagentJob` frames carry the spawn round's `metadata`.
+  - @demicodes/core@0.19.2
+  - @demicodes/provider@0.19.2
+  - @demicodes/shell@0.19.2
+  - @demicodes/utils@0.19.2
+
 ## 0.19.1
 
 ### Patch Changes
