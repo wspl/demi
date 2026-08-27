@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.19.3
+
+### Patch Changes
+
+- a675924: Finished subagents move to an archive instead of being deleted: their transcript checkpoints stay on store (capped, pruned oldest-first), `demi agent list` shows an archived section, and the new `demi agent resume <id> <message>` revives an archived child on top of its preserved transcript. Parent restores still skip archived children.
+  - @demicodes/core@0.19.3
+  - @demicodes/provider@0.19.3
+  - @demicodes/shell@0.19.3
+  - @demicodes/utils@0.19.3
+
 ## 0.19.2
 
 ### Patch Changes
