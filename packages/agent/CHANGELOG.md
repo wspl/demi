@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.19.1
+
+### Patch Changes
+
+- baa14d3: The idle-parent wakeup and send-parent delivery now carry the metadata of the round that spawned the child, so harness hooks (host, systemPrompt, preamble) see the same action metadata as the spawn round. New `subagents.notifyParentOnIdle` server option lets a host app disable the automatic wakeup and orchestrate the parent itself from the `subagent closed` frame.
+  - @demicodes/core@0.19.1
+  - @demicodes/provider@0.19.1
+  - @demicodes/shell@0.19.1
+  - @demicodes/utils@0.19.1
+
 ## 0.19.0
 
 ### Minor Changes
