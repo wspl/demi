@@ -1,5 +1,12 @@
 # @demicodes/provider
 
+## 0.19.1
+
+### Patch Changes
+
+- @demicodes/core@0.19.1
+- @demicodes/utils@0.19.1
+
 ## 0.19.0
 
 ### Patch Changes
