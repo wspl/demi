@@ -1,5 +1,11 @@
 # @demicodes/shell
 
+## 0.19.1
+
+### Patch Changes
+
+- @demicodes/utils@0.19.1
+
 ## 0.19.0
 
 ### Minor Changes
