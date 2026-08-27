@@ -251,6 +251,8 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
     shellOptions: {},
     prepareShell: null,
     sessionOptions: {},
+    notifyParentOnIdle: true,
+    store: new LocalHost(process.cwd()).store,
     emit: () => {},
   })
   const registry = new CommandRegistry()
