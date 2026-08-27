@@ -1,5 +1,15 @@
 # @demicodes/host-local
 
+## 0.19.2
+
+### Patch Changes
+
+- Updated dependencies [316969e]
+  - @demicodes/agent@0.19.2
+  - @demicodes/provider@0.19.2
+  - @demicodes/shell@0.19.2
+  - @demicodes/utils@0.19.2
+
 ## 0.19.1
 
 ### Patch Changes
