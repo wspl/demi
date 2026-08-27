@@ -386,6 +386,10 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           this.send({ type: 'abort_result', result })
           return
         }
+        case 'abort_subagents': {
+          await this.supervisor?.abortAll()
+          return
+        }
         case 'shell_write':
           await this.handleShellWrite(frame)
           return
