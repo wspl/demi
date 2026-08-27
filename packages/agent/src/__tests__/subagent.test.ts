@@ -460,6 +460,101 @@ test('closing the parent detaches live children; a reopened parent restores and 
   await second.client.close()
 })
 
+test('a finished child is archived: list shows it and resume revives it on top of its old transcript', async () => {
+  let childId = ''
+  let listText = ''
+  let revivedRequest: InferenceRequest | null = null
+  let resumeToolText = ''
+  const { client, seen } = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent 'first task' --description arc", 5_000)],
+      [events.text('first result'), events.response()],
+      (request) => {
+        childId = subagentIdFrom(request)
+        return [spawnCall('t2', 'demi agent list', 5_000)]
+      },
+      (request) => {
+        listText = itemsText(request)
+        return [spawnCall('t3', `demi agent resume ${childId} 'continue the task'`, 5_000)]
+      },
+      (request) => {
+        revivedRequest = request
+        return [events.text('second result'), events.response()]
+      },
+      (request) => {
+        resumeToolText = itemsText(request)
+        return [events.text('parent done'), events.response()]
+      },
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  // The archive is visible after the child finished.
+  expect(listText).toContain('archived')
+  expect(listText).toContain(childId)
+  expect(listText).toContain('completed')
+
+  // The revived child continues its own transcript: old brief, old result, new message.
+  expect(revivedRequest).not.toBeNull()
+  expect(itemsText(revivedRequest!)).toContain('first task')
+  expect(itemsText(revivedRequest!)).toContain('first result')
+  expect(itemsText(revivedRequest!)).toContain('continue the task')
+
+  // The resume command reports the new result, and the lifecycle ran twice.
+  expect(resumeToolText).toContain('second result')
+  const lifecycle = seen.filter((event) => event.type === 'subagent').map((event) => (event.type === 'subagent' ? event.event : ''))
+  expect(lifecycle).toEqual(['started', 'closed', 'started', 'closed'])
+  await client.close()
+})
+
+test('a parent restore skips archived children; the archive stays revivable', async () => {
+  const first = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent 'finish fast'", 5_000)],
+      [events.text('done already'), events.response()],
+      [events.text('parent idle'), events.response()],
+    ],
+  })
+  await first.client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => first.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent idle'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+  expect(first.seen.some((event) => event.type === 'subagent' && event.event === 'closed')).toBe(true)
+  await first.client.close()
+
+  let listText = ''
+  const second = await openHarness({
+    root: first.root,
+    sessionId: first.sessionId,
+    turns: [
+      [spawnCall('t2', 'demi agent list', 5_000)],
+      (request) => {
+        listText = itemsText(request)
+        return [events.text('checked'), events.response()]
+      },
+    ],
+  })
+  await second.client.send([{ type: 'text', text: 'list them' }])
+  await waitFor(
+    () => second.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'checked'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+  // No restore fired for the archived child, but it is still listed as revivable.
+  expect(second.seen.some((event) => event.type === 'subagent')).toBe(false)
+  expect(listText).toContain('archived')
+  expect(listText).toContain('completed')
+  await second.client.close()
+})
+
 test('a readonly Host wrapped over a class-instance Host still reads; mutation and spawn are denied', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-readonly-host-'))
   const inner = new LocalHost(root)
@@ -474,9 +569,7 @@ test('a readonly Host wrapped over a class-instance Host still reads; mutation a
 
   await expect(host.fs.writeFile('evil.txt', new Uint8Array(), { cwd: root })).rejects.toThrow('read-only subagent')
   await expect(host.fs.rm('note.txt', { cwd: root })).rejects.toThrow('read-only subagent')
-  await expect(
-    host.process.spawn({ command: 'true', args: [], cwd: await host.process.openCwd(root), env: {} }),
-  ).rejects.toThrow('read-only subagent')
+  await expect(host.process.spawn({ command: 'true', args: [], cwd: root, env: {} })).rejects.toThrow('read-only subagent')
 
   const artifactPath = `${host.commandArtifactsDir}/probe.txt`
   await host.fs.mkdir(host.commandArtifactsDir, { recursive: true })
