@@ -405,9 +405,9 @@ for two reasons, in this order of importance:
 
 The category itself — "drive my own machine from a hosted web UI" — is
 months old; an unoccupied quadrant in a young category is not a verdict.
-Where others hesitate, this design places explicit answers: a measurement
-gate with a fallback plan on the latency risk, and self-hosting plus a thin
-frozen runner on the trust risk.
+Where others hesitate, this design places explicit answers: command-granular
+routing plus named optimizations on the latency risk, and self-hosting plus a
+thin frozen runner on the trust risk.
 
 ## Verified facts (2026-08-31, code reading + local mocks only)
 
