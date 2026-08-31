@@ -101,6 +101,52 @@ Conclusions for M4's product implementation:
   spawn shape types therefore live in their own `./spawn` module
   (`2059dab`) — transport stays internal.
 
-## M1+
+## M1 — Backend skeleton + virtual default (A) / Runner protocol core (B)
 
-Not started.
+Status: **in progress** (started 2026-08-31). No parallel work — tracks run
+sequentially, B first per the risk-first ordering principle (the only
+greenfield contract).
+
+### Track B — runner protocol core
+
+Status: **done** (`58bbfaf`, `02154de`).
+
+What landed:
+
+- `@demicodes/runner-protocol` (platform-neutral, certified by the
+  entrypoints boundary test): wire messages, portable frame codec,
+  backend-side `RemoteHost`, runner-side `HostRpcServer`.
+- `@demicodes/runner`: `RunnerClient` (outbound WS, reconnect/backoff,
+  claim handshake client, ping/pong), `RunnerState` (`runner.json` +
+  `runner-token` 0600), `demi-runner` CLI entry.
+- M1-B acceptance test passes end-to-end over a real WebSocket: real
+  cat/tee/spawn on the runner, mid-command runner death → ordinary tool
+  error + session continues, auto-reconnect → next command succeeds.
+
+Wire decisions beyond the design table (the table said the op set is fixed
+when the package lands):
+
+- `hello` carries a `protocol` version integer — the backend must be able
+  to tell an incompatible runner from a broken one.
+- `spawn_stdin_end` added (wire form of `closeStdin`).
+- fs errors carry `{message, code}` and the proxy rethrows with `code`
+  intact — errno codes (ENOENT…) drive shell behavior and must survive the
+  wire.
+- Trailing `undefined` fs args are trimmed so the wire carries real arity.
+
+Pitfalls:
+
+- **`Buffer.toJSON` broke the portable codec** (pre-existing): `toJSON`
+  runs before the `JSON.stringify` replacer, so Buffers (and Dates)
+  arrived as plain objects. Fixed in utils by recovering originals from
+  the replacer's holder (`this[key]`). Same trick was needed for the new
+  Date support.
+- The platform-entrypoints test scans source *text* — even a comment
+  containing the word "Buffer" fails a platform-neutral package.
+- Long-running silent commands emit no `shell_output` frames while
+  running, so tests can't use events to detect "command started";
+  `RemoteHost.activeSpawnCount` was added as the honest diagnostic.
+
+### Track A — backend skeleton + virtual default
+
+Status: in progress.
