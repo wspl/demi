@@ -110,9 +110,12 @@ section below. The same binary in a container image is the **docker runner**
 
 ### Virtual execution (default entry)
 
-`@demicodes/host-virtual`: a platform-neutral in-memory `Host` (fs + store;
-`process.spawn` fails with an actionable "virtual environment — upgrade to a
-device to run real programs" message). Sessions default to it: zero setup,
+`@demicodes/host-virtual`: a platform-neutral in-memory `Host` (fs + store).
+Its `process.spawn` must resolve with `spawnError.kind = 'executable_not_found'`
+— the portable-command fallback engages only on that error kind
+(`packages/shell/src/portable-commands.ts`), so anything else would break even
+`cat` — and the shell surfaces an actionable "virtual environment — upgrade
+to a device to run real programs" message. Sessions default to it: zero setup,
 chat and portable-command tool use work immediately (`BashEnvironment` routes
 portable commands through `Host.fs` with zero spawns —
 `packages/shell/src/__tests__/environment.test.ts:1485`), and because the
@@ -143,11 +146,15 @@ and the migrate/upgrade flow.
   surface as ordinary tool errors and the turn continues or ends — the session
   itself is never lost. Offline targets leave the session fully readable and
   chattable (switch to virtual), just unable to touch that machine.
-- **Persistence** is backend-local through `Host.store` exactly as today
-  (`agent-sessions/<id>/checkpoint.json`,
-  `packages/agent/src/server.ts:807`). The `journal.jsonl` incremental design
-  from `docs/session-storage-and-naming.md` remains a storage optimization,
-  no longer a network necessity.
+- **Persistence** splits along the existing contract line: conversation state
+  (checkpoints, subagent records) goes through `Host.store` and is
+  backend-local; **command artifacts are real files on the execution target**
+  (since the `/@` virtual-fs replacement, `Host.commandArtifactsDir` lives in
+  the fs namespace), so full command output follows the target and is
+  unavailable while that runner is offline — the transcript's bounded tool
+  views in the checkpoint remain always readable. The `journal.jsonl`
+  incremental design from `docs/session-storage-and-naming.md` remains a
+  storage optimization, no longer a network necessity.
 - **Browser refresh / disconnect** is inherently safe: turns run server-side;
   the client reattaches with `open` + `sync_transcript`
   (`packages/agent/src/client.ts:200`). Verify during implementation that a
@@ -221,7 +228,7 @@ Claim/auth handshake:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| r → b | `hello { deviceToken?, runner: { name, platform, version } }` | authenticate (token absent on an unclaimed first start) |
+| r → b | `hello { deviceToken?, runner: { name, platform, version, identity: { uid, gid, hostname } } }` | authenticate (token absent on an unclaimed first start); `identity` because `HostIdentity` is read synchronously at shell creation, so the proxy Host must have it before it is handed out |
 | b → r | `hello_ok { deviceId }` | accepted (claimed device) |
 | b → r | `claim_pending { claimToken }` | unclaimed: runner prints the token, keeps the socket open |
 | b → r | `claimed { deviceToken }` | user entered the token in the web UI; runner persists and is live |
@@ -243,11 +250,28 @@ backend-local):
 | b → r | `control_call { id, method, params }` | control RPC request |
 | r → b | `control_result { id, ok, result \| error }` | control RPC response |
 
-The exact `fs_call` op set mirrors `HostFileSystem` and is fixed when the
-protocol package lands. Known cost to accept: filesystem operations are
-per-op round trips (the backend-side bash interpreter reading a runner file
-pays network latency per read). Batching/caching are later optimizations,
-introduced only when measurements demand them.
+The exact `fs_call` op set mirrors `HostFileSystem` (18 async, plain-data
+methods; `Uint8Array`/`Date` ride the portable JSON codec) and is fixed when
+the protocol package lands. Proxy-side notes from the Host portability audit:
+
+- **Cwd**: the proxy Host uses `createLogicalHostCwd`
+  (`packages/shell/src/host.ts:130`) — the contract's own path-string fallback
+  for Hosts that cannot hold a directory fd. `LocalHostCwd`'s
+  `/proc/self/fd/N` spawn anchors and sync `snapshot().restore()` never cross
+  the wire.
+- **Spawn streams**: the runner pushes one ordered, stream-tagged chunk
+  sequence per spawn; the proxy derives the handle's `stdout`/`stderr`/merged
+  `output` views from it (three independent iterables must not double-count).
+- **Artifacts**: `Host.commandArtifactsDir` is part of the fs namespace —
+  command artifact files live on the execution target and are written through
+  `fs_call` like any other file.
+- Known cost to accept: fs operations are per-op round trips. The merged
+  scan-routing change helps a lot — `cat`/`grep`/`rg`/`find`/`ls` are
+  `preferHostSpawn` and run as a single remote spawn on real runners. Known
+  hot spots to measure before optimizing: PATH resolution (one `stat` per
+  PATH entry per command — a proxy-side cache is the likely fix), the
+  stat+read pair per file read, and the 3–4 sequential artifact writes per
+  command status change.
 
 Disconnect semantics: when the socket drops, in-flight spawns on the runner
 are killed and pending fs calls fail; the backend surfaces the failure into
@@ -341,6 +365,34 @@ contacted (a local deny-proxy caught escape attempts).
   force-completes executing tool calls (`packages/agent/src/session.ts:106`);
   session ids are client-owned with takeover semantics
   (`packages/agent/src/server.ts:398`).
+
+### Host portability audit (current code, post-0.19.3)
+
+- The `Host` contract is wire-ready: all `HostFileSystem` methods are async
+  with plain-data inputs/outputs (`HostFileStat` is de-Node-ified; the
+  portable JSON codec covers `Uint8Array`/`Date`), spawn params/exit are
+  plain data, `kill` takes a string signal by boundary rule. The two
+  non-wire-safe spots have designed answers: `HostCwd` fd anchors → the
+  contract's own `createLogicalHostCwd` fallback; sync `Host.identity` →
+  carried in the runner `hello`.
+- **Multi-Host-per-session is an existing, tested mechanism**:
+  `AgentHarness.host(action metadata)` with per-Host `BashEnvironment` reuse
+  and cross-Host shell-handle ownership checks
+  (`packages/agent/src/__tests__/host-routing.test.ts`). Target switching
+  builds on it; only the product harness (today fixed-host in
+  `coding-agent`) needs a routing implementation in the backend. Action
+  metadata is not checkpointed — the target comes from the backend session
+  registry per action, as designed.
+- **No remote Host / RPC exists anywhere in the repo** — the runner protocol
+  is greenfield, as planned.
+- Scan routing (`preferHostSpawn`) makes real-runner remoting cheap for the
+  heavy commands (single spawn instead of per-file fs calls); the chatty
+  residue (PATH resolution, globs, redirections, `test`, artifact writes) is
+  listed in the Runner program section as measure-first hot spots.
+- The DB-backed `HostStore` must re-provide the atomicity `LocalHostStore`
+  now guarantees for `writeJson` (callers rely on it since the
+  atomic-checkpoint change) and should serve `list` + bulk reads efficiently
+  (`listConversations` is read-per-key today).
 
 ### Storage pluggability (audited: DB-backed backend needs no interface changes)
 
