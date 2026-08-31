@@ -32,8 +32,8 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 
 - Browser ↔ backend: Demi's agent protocol (`ClientFrame`/`ServerFrame`) plus
   the Web API (everything the page calls that is not the per-conversation
-  agent socket) — evolving the same surfaces `@demicodes/web` uses today,
-  served multi-user.
+  agent socket) — designed from scratch, inheriting nothing from
+  `@demicodes/web`'s demo endpoints.
 - Backend ↔ LLM providers: the official wire protocols, spoken by the real
   provider runtimes (`createAnthropicApiProvider`, `createCodexProvider`, …)
   instantiated **inside the backend** with vault credentials at their native
@@ -195,7 +195,8 @@ connection and uses the connectionId as its providerId.
 ### User system (minimal final state)
 
 Username + password (modern hash), cookie session (httpOnly, sliding
-expiry); the `/agent` WebSocket and the Web API authenticate by the same
+expiry); the conversation stream WebSocket and the Web API authenticate by
+the same
 same-origin cookie. **No self-registration and no password recovery of any
 kind** — zero mail/SMTP dependency. Accounts are managed entirely from an
 admin page:
@@ -296,31 +297,38 @@ targets.
 
 ### Web API (browser ↔ backend)
 
-Everything the web app calls that is not the per-conversation `/agent`
-socket: auth, conversations, devices, connections, settings, uploads. It
-absorbs and replaces today's `/control` (the four existing methods fold in;
-the old name does not survive). Transport split by nature, not fashion:
-login/logout (cookie setting), the two uploads (large payloads, progress),
-and cold-history reads (cacheable) are plain HTTP; everything else stays
-small JSON request/response on the existing WS RPC shape
-(`{id, method, params}` → `{id, ok, result | error: {code, message}}`, error
-codes as stable strings). One Web API WS connection per logged-in page plus
-one `/agent` socket per open conversation; no server push in v1 — pages poll
-on open and on an interval (a push event can be added to the WS later
-without redesign).
+Designed from scratch — nothing is inherited from `@demicodes/web`'s demo
+`/control` WS RPC or its `/agent?cwd=` addressing, both of which do not
+survive. The product API has exactly two kinds of traffic:
 
-Grouped by module — this is the concrete scope fed into the roadmap:
+1. **Application data — plain HTTP REST.** Auth, conversations metadata,
+   devices, connections, models, usage, users, settings, uploads: all
+   resource CRUD. Cookie auth, standard status codes, cacheable reads,
+   upload progress for free. Errors: HTTP status + `{code, message}` body,
+   codes as stable strings. No `/v1` prefix — frontend and backend ship
+   together in a self-hosted instance; version negotiation is speculative.
+2. **The live conversation stream — one WebSocket per open conversation**,
+   `WS /api/conversations/:id/stream`, carrying Demi's agent frame protocol
+   (`ClientFrame`/`ServerFrame` — a real contract of `@demicodes/agent`, not
+   a demo artifact). The execution target/cwd is resolved server-side from
+   the conversation record; the browser never names a cwd.
 
-| Group | Methods (shape, not final names) | Lands in |
+`@demicodes/web-ui` is unaffected: it consumes a transport-agnostic client
+interface, which the product shell backs with fetch instead of the demo WS
+RPC. No server push in v1 — pages poll on open and on an interval.
+
+Resource layout (concrete scope fed into the roadmap):
+
+| Resource | Endpoints | Lands in |
 |---|---|---|
-| auth | login, logout, me | M1 stub → M5 real |
-| conversations | list, create, rename, archive, unarchive | M1 |
-| models | listProviders, listModels, prepareSession (existing shapes) | M1 |
-| targets | listDevices, claimDevice, revokeDevice, browseDirectory | M2 |
-| connections | list, addKey, startSubscriptionLogin, pollSubscriptionLogin, delete, quota | M3 |
-| usage | summary per user/conversation | M3 |
-| admin | user management (create user, reset password, grant admin — master only for grants), instance mode get/set | M5 |
-| attachments | uploadAttachment (HTTP, returns reference id), uploadToWorkspace (HTTP, writes target fs) | M4 |
+| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M1 stub → M5 real |
+| conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript` (cold history); `WS /api/conversations/:id/stream` | M1 |
+| models | `GET /api/models` (aggregated catalog, grouped by connection) | M1 |
+| devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…` (directory browse) | M2 |
+| connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` (poll) | M3 |
+| usage | `GET /api/usage` | M3 |
+| attachments | `POST /api/attachments` (returns reference id), `POST /api/conversations/:id/workspace-files` | M4 |
+| admin | `GET/POST/PATCH /api/users` (create, reset password; grant admin — master only), `GET/PUT /api/settings` (instance mode) | M5 |
 
 ## Runner program
 
@@ -659,7 +667,8 @@ surface last. Each item is its own branch off `main`.
 **M1 — Two parallel tracks (no dependency between them)**
 
 *Track A — Backend skeleton + virtual default (first demoable node).*
-`@demicodes/backend` serving `/agent` + the Web API multi-user-shaped (stub
+`@demicodes/backend` serving the conversation stream + the Web API
+multi-user-shaped (stub
 user), conversation persistence in the backend store, session index,
 `host-virtual` as the default target. Providers are **operator-assembled**
 exactly like `@demicodes/web` today (env keys / operator logins) — the vault
