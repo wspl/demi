@@ -73,26 +73,35 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 
 ### Backend (`@demicodes/backend`, product leaf)
 
-One deployable with two internal planes — self-host runs both in a single
-Bun process; large multi-user deployments scale by topology, not by a second
-architecture (serverless hosting stays out of scope so its constraints cannot
-leak into the interfaces):
+One program, one architecture. Scaling is running more copies of the same
+program, never splitting it into roles (serverless hosting stays out of
+scope so its constraints cannot leak into the interfaces):
 
-- **Application plane** (Web API, auth, session index, vault, ledger, device
-  registry): stateless against the shared database; replicable.
-- **Conversation plane** (session workers): stateful, **sharded by user** —
-  a user's sessions, virtual Hosts, runner sockets, and CLI processes all
-  live on that user's worker. The affinity is natural: conversations,
-  devices, and (isolated mode) connections are all user-owned, so no
-  stateful interaction ever crosses workers; a runner's socket is routed to
-  its owner's worker after `hello`. Self-host: one worker, in-process, no
-  router. Scaled: replicated application plane + a userId→worker routing
-  layer + a worker pool. The "sessions have exactly one home" invariant is
-  unchanged — only the number of homes grows.
+```
+Self-host (one instance):
 
-v1 milestones implement the single-process topology only; the scaled
-topology is a deployment change enabled by the data layer below, not new
-application code paths.
+  browser ─────────┐
+                   ├──►  demi-backend  ──►  SQLite (one file)
+  runner ──────────┘     (complete: Web API + sessions + vault + runner mgmt)
+
+
+Scaled (same program × N):
+
+                        ┌──►  demi-backend #1 (everything for users a,b) ──┐
+  browsers ──►  router  ├──►  demi-backend #2 (everything for users c,d) ──┼──►  Postgres (shared)
+  runners  ──►  (pins   ├──►  demi-backend #3 (everything for users e,f) ──┘
+                by user) └──►  …
+```
+
+Every instance is a **complete** backend for its assigned users — user x's
+HTTP, conversation sockets, runner socket, virtual Hosts, and CLI processes
+are all pinned to instance `hash(x)`. The affinity is natural because
+conversations, devices, and (isolated mode) connections are all user-owned,
+so nothing stateful ever crosses instances. The router is a pure ops
+component with no business logic (cookie-hash in a reverse proxy suffices);
+self-host is the N=1 degenerate form with no router at all. The "sessions
+have exactly one home" invariant is unchanged — only the number of homes
+grows. v1 milestones implement N=1 only.
 
 Spoken of as modules, not separate services:
 
@@ -306,17 +315,16 @@ search are explicitly out.
 ### Database
 
 Two dialects are final state, matching the two topologies: **SQLite**
-(`bun:sqlite`, one file, WAL) as the single-process default — zero
-dependencies, backup is copying a file — and **Postgres** for scaled
-deployments, where a shared database is what makes the application plane
-replicable. Because both are declared targets, a thin schema layer is a
-requirement, not speculation: schema-as-code with a typed query layer
-(Drizzle-class — one schema definition, both dialects, generated migrations,
-no runtime magic; no heavyweight ORM). All persistent concerns (users,
-conversation index, connections/vault, ledger, the DB-backed `HostStore`)
-are structured data; transactions in either dialect provide the `writeJson`
-atomicity the checkpoint path relies on. v1 runs SQLite only. Command
-artifacts stay on execution targets.
+(`bun:sqlite`, one file, WAL) for N=1 — zero dependencies, backup is copying
+a file — and **Postgres** for N>1, where the shared database is what the
+instances have in common. **No ORM, no query builder**: a hand-rolled thin
+storage module with hand-written SQL kept to the two dialects' common subset,
+two drivers (`bun:sqlite` / a postgres client), per-statement dialect
+handling only where unavoidable, and numbered `.sql` migration files. All
+persistent concerns (users, conversation index, connections/vault, ledger,
+the DB-backed `HostStore`) are structured data; transactions in either
+dialect provide the `writeJson` atomicity the checkpoint path relies on. v1
+runs SQLite only. Command artifacts stay on execution targets.
 
 ### Web API (browser ↔ backend)
 
