@@ -217,9 +217,10 @@ assets ship inside the backend image and `@demicodes/backend` serves them
 alongside `/api`; development: Vite dev server proxying `/api`.
 
 Naming: the existing dev-only `@demicodes/web` product is renamed
-`web-demo` when the new package is scaffolded (M5 — the frontend is built in
-one concentrated phase after all systems beneath it are test-accepted),
-lives on as a deprecated demo, and gets deleted once the product covers it.
+`web-demo` when the new package is scaffolded (M6 — the UI is its own
+dedicated milestone, last among feature work, built against the frozen API
+so completed functionality never forces UI rework), lives on as a deprecated
+demo, and gets deleted once the product covers it.
 
 Layout and information architecture:
 
@@ -879,23 +880,29 @@ drop (Host RPC `writeFile`). Accept: switch, upgrade, and offline flows each
 covered by integration tests; an uploaded image round-trips through a
 StubProvider turn and the checkpoint.
 
-**M5 — Multi-user product shell (all frontend, in one concentrated phase)**
+**M5 — Multi-user systems (API-level, no UI)**
 Real auth (username/password, cookie sessions, master/admin/user roles, no
-registration, no recovery); the **entire `@demicodes/web` package** built
-here per the layout design — scaffold, workspace-grouped sidebar, chat view
-on web-ui, settings dialogs (devices, connections, usage, user management,
-instance settings), target picker — with the old dev product renamed
-`web-demo` at this point; **shared/isolated instance-mode enforcement**
-(admin-only connections in shared mode); tenant-isolation authz matrix.
-Frontend deliberately arrives only after every system beneath it is
-test-accepted — no scattered UI work across earlier milestones.
+registration, no recovery); user-management and instance-settings endpoints;
+**shared/isolated instance-mode enforcement** (admin-only connections in
+shared mode); tenant-isolation authz matrix. Everything test-accepted
+against the API — at the end of M5 the entire API surface is complete and
+frozen.
 
-**M6 — Deployment packaging**
+**M6 — Web UI (its own dedicated milestone, last among feature work)**
+The **entire `@demicodes/web` package** built in one concentrated phase per
+the layout design — scaffold, workspace-grouped sidebar, chat view on
+web-ui, settings dialogs (devices, connections, usage, user management,
+instance settings), target picker — with the old dev product renamed
+`web-demo` at this point. UI is deliberately last so that completed,
+frozen functionality never forces UI rework; it consumes the M5-frozen API
+and adds no new backend surface.
+
+**M7 — Deployment packaging**
 Docker images for runner and backend (backend image carries the built web
 assets); end-to-end acceptance. Pure hosting work after interfaces are
 frozen.
 
-**M7 — Scaled deployment (post-v1)**
+**M8 — Scaled deployment (post-v1)**
 Everything the N>1 topology needs, gathered from the design sections:
 Postgres driver for the storage module, S3 blob backend for host-virtual,
 checkpoint write fencing (epoch), routing-key plumbing (login cookie +
@@ -925,9 +932,10 @@ checklists only for UI look-and-feel and packaging smoke.
 | M2 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M3 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | Switch integration, all directions unconstrained: real→real (files stay + honest context block; same-device note when applicable), virtual→real (files land in the target tmp dir, context block names the path, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
-| M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim through the management UI. Tier 3: UI manual checklist. |
-| M6 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
-| M7 | Storage-module tests run against both dialects; fencing test (stale epoch write rejected); two local instances behind a hash proxy — user pinned to one instance, remap after instance removal restores from the shared DB; S3 backend round-trip against a local S3-compatible server. |
+| M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
+| M6 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |
+| M7 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
+| M8 | Storage-module tests run against both dialects; fencing test (stale epoch write rejected); two local instances behind a hash proxy — user pinned to one instance, remap after instance removal restores from the shared DB; S3 backend round-trip against a local S3-compatible server. |
 
 Test modules and their coverage get documented per milestone as they land, per
 the repo's design-record rules.
