@@ -173,30 +173,31 @@ and the migrate/upgrade flow.
 The functional design of the product itself — what the backend modules
 actually store and expose, and what the web UI consists of.
 
-### Deployment modes and credential scoping
+### Instance mode: shared vs isolated
 
-One mechanism, not two systems: every **provider connection** (an API key, or
-a completed subscription login) has exactly one owner — `site` or
-`user:<id>`. Site-owned connections are usable by every user of the instance
-(usage is still metered per user in the ledger); user-owned connections are
-usable only by their owner. Deployment character comes from two instance
-settings, not from modes:
+An instance runs in exactly one of two opposing modes; there is no mixing and
+no per-connection ownership machinery:
 
-- `registration`: open / invite-token / closed.
-- `userConnections`: whether non-admin users may create their own
-  connections.
+- **Shared**: provider connections are instance-wide. Only users with the
+  admin role may create/modify/delete them; ordinary users cannot touch any
+  provider configuration — they just use the models. Typical self-host.
+- **Isolated**: every user manages their own provider connections; nothing is
+  shared between users. Typical public host.
 
-Typical self-host: admin creates site connections, registration closed or
-invite-only. Typical public host: registration open, user connections only,
-no site connections. Same tables, same code.
+Usage is metered per user in both modes. The only other instance setting is
+`registration` (open / invite-token / closed). A **provider connection** is
+an API key or a completed subscription login; since either mode allows
+multiple connections of the same provider type, model selection is keyed by
+`(connectionId, modelId)` — the backend instantiates one provider runtime per
+connection and uses the connectionId as its providerId.
 
 ### User system (minimal final state)
 
 Email + password (modern hash), cookie session; the `/agent` WebSocket and
 control API authenticate by the same same-origin cookie. The first registered
-user is the admin. Admin privileges are exactly two: manage site-owned
-connections, and edit instance settings. No organizations, teams, or roles
-beyond admin/user.
+user is the admin. Admin privileges are exactly two: manage the instance's
+provider connections (shared mode), and edit instance settings. No
+organizations, teams, or roles beyond admin/user.
 
 ### Conversation system
 
@@ -224,13 +225,19 @@ queue — documented, not engineered around).
 
 ### Provider management (web)
 
-The connections page: paste an API key (openai / anthropic / google, with
-optional compatible-endpoint baseUrl), or connect a subscription — the
-backend runs the provider's device-login flow and the UI shows the
-verification code/URL and polls until claimed. Each connection shows auth
-state and the latest quota snapshot (from the provider runtimes); connections
-can be deleted. Model pickers everywhere are fed from the backend's
-aggregated catalog, filtered to connections the user can use.
+The connections page (admin-only in shared mode, per-user in isolated mode):
+paste an API key (openai / anthropic / google, with optional
+compatible-endpoint baseUrl), or connect a subscription — the backend runs
+the provider's device-login flow and the UI shows the verification code/URL
+and polls until claimed. Configuring a connection makes **all of its models**
+usable — model lists come live from the provider runtime's catalog and are
+never stored, with one exception: compatible-endpoint connections take a
+user-entered model id list (part of the connection config) plus a **Test**
+button that fires one cheap request to validate the endpoint/key. Each
+connection shows auth state and the latest quota snapshot; connections can be
+deleted. There is no model-level configuration of any kind — no per-model
+enablement, aliases, or parameter overrides. Model pickers are fed from the
+backend's aggregated catalog, grouped by connection.
 
 ### Web UI surface inventory
 
