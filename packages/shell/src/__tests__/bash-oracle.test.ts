@@ -9,7 +9,9 @@ import { oracle, runBash } from './bash-oracle-helpers'
  * Additional measured traps live in `bash-oracle-traps.test.ts`.
  */
 
-test('oracle is GNU bash on Linux', () => {
+// The oracle suite only runs where GNU bash on Linux is available; elsewhere
+// every measured test is skipped rather than failed.
+test.skipIf(!oracle.ok)('oracle is GNU bash on Linux', () => {
   expect(oracle.uname).toBe('Linux')
   expect(oracle.bashVersion).toContain('GNU bash')
 })
