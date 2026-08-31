@@ -317,6 +317,72 @@ the same, but the gateway smoke test should rerun through
 `createClaudeCodeProvider` once the gateway exists; and the WS hop should be
 re-verified through the actual gateway reverse-proxy implementation.
 
+## Implementation roadmap
+
+Ordering principles: the riskiest long-lived contracts (relay frame protocol,
+backend session authority, gateway credential/metering model) are exercised by
+real code first; every milestone ends runnable and demoable; product surface
+(full UI, deployment targets) comes last because it is cheap to change.
+Each item is its own branch off `main`.
+
+**M0 — Groundwork (independent small branches, parallelizable)**
+- `@demicodes/provider` execution-requirement capability flag; declared by
+  claude-code.
+- claude-code public CLI env-overlay option; plumb `usageUrl` / `modelsDevUrl`.
+- codex quota probe + grok model catalog: apply configured `headers`.
+- Integration test: checkpoint restored via `fromCheckpoint` on a second
+  LocalHost in a different directory (simulated cross-machine), then continues
+  a turn. The migration design rests on this; existing coverage is same-host.
+
+**M1 — Protocol + minimal loop (first demoable node)**
+Relay/control protocol types package; minimal `@demicodes/runner` daemon
+(`createLocalAgentServer` + one outbound WS); minimal `@demicodes/gateway`
+relay (static-token auth, in-memory registry). Accept: web-ui chats through
+the gateway to a daemon in another directory; browser disconnect mid-turn
+self-heals via `sync_transcript`. The data model is multi-user from this
+milestone (userId on every row, one stub user) — auth can be retrofitted,
+tenant-shaped data cannot.
+
+**M2 — Session authority moves to the backend**
+Gateway-backed `HostStore` write-through for checkpoints; session index; cold
+history browsing; session lease (single owning runner, takeover semantics
+lifted above `SessionOwnershipRegistry`). Accept: history readable with the
+daemon offline; a second runner's open is fenced by the lease.
+
+**M3 — Inference gateway + credential model + metering**
+Wire-level passthrough proxy (re-verify the Codex WS hop through the real
+reverse proxy); per-runner credential model (daemon pass-through vs
+backend-held injection); usage ledger aggregated from authoritative-transcript
+`TokenUsage`. Accept: all daemon inference traffic transits the gateway
+(including the CLI via env overlay) against mocks; real-subscription smoke is
+manual only, never an ungated test.
+
+**M4 — Virtual runner as default entry** (parallelizable with M3)
+`host-virtual` package (in-memory fs/store; `process.spawn` fails with an
+actionable "virtual environment — upgrade to a device" message); in-gateway
+AgentServer. Accept: zero-config chat with portable commands; process-requiring
+providers routed to the upgrade flow via the capability flag.
+
+**M5 — Migration primitive**
+Turn-boundary lease transfer + target-runner replay + harness-injected
+migration context block + virtual→real file materialization. Runner switching,
+virtual upgrade, and offline fallback all derive from this one primitive.
+Depends on M2 (authority) and M4 (virtual source).
+
+**M6 — Multi-user product shell**
+Real auth, device pairing (device-code flow), session list / runner picker /
+migration UI, tenant-isolation tests. UI is deliberately last-but-one: earlier
+milestones accept with the stub user and existing web-ui surfaces.
+
+**M7 — Deployment targets**
+Docker runner image (same daemon binary); Cloudflare Workers port (Durable
+Object relay, D1/KV storage); end-to-end acceptance. Pure hosting work, done
+only after protocol and storage interfaces are frozen.
+
+Deliberately deferred (off the critical path, no contract impact): relay
+end-to-end encryption, per-wire usage reconciliation, artifact write-through
+capacity policy.
+
 ## Open questions
 
 - Command-artifact write-through cap and retention policy in the backend store.
