@@ -50,6 +50,23 @@ test('defineProvider exposes public provider fields and hides runtime factory fr
   expect(output[0]).toEqual(events.text('ok'))
 })
 
+test('defineProvider passes the execution-requirement capability flag through', () => {
+  const unset = defineProvider({
+    id: 'plain',
+    displayName: 'Plain',
+    createRuntime: () => new StubProvider([]),
+  })
+  expect(unset.requiresProcessCapableHost).toBeUndefined()
+
+  const requiring = defineProvider({
+    id: 'cli-backed',
+    displayName: 'CLI backed',
+    requiresProcessCapableHost: true,
+    createRuntime: () => new StubProvider([]),
+  })
+  expect(requiring.requiresProcessCapableHost).toBe(true)
+})
+
 test('applyModelPolicy remaps provider ids and applies include, exclude, and default selection', () => {
   const list: ProviderModelList = {
     providerId: 'source',
