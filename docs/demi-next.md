@@ -295,11 +295,8 @@ this design deleted: transcript sync back to the backend, a browser↔runner
 frame relay, sessions with two homes (lease, migration machinery, offline
 lock-in), and a runner fattened with agent/coding-agent/provider deps. The
 latency win is bounded (turn wall-clock is inference-dominated); the costs
-are structural. **Revisit gate**: M1 Track B fires latency measurements over
-injected RTT (30/150/300 ms) on realistic coding turns as early as the
-protocol exists; if the 300 ms tier is still unusable after the
-cache/pipeline fixes, session placement gets re-evaluated globally — moved
-whole, never forked per scenario.
+are structural, and the latency cost is bounded and optimizable — so the
+decision is closed, not parked behind a measurement.
 
 Disconnect semantics: when the socket drops, in-flight spawns on the runner
 are killed and pending fs calls fail; the backend surfaces the failure into
@@ -517,14 +514,12 @@ is explicitly out of M1 scope. Accept: zero-setup browser chat with
 portable-command tools; refresh mid-turn reattaches to the running turn;
 cold history readable.
 
-*Track B — Runner protocol core + the latency gate.* The runner-protocol
-package (fs RPC, streaming spawn, handshake) and the `demi-runner` binary,
-exercised against a **bare AgentServer** in tests — no product integration,
-no device registry yet. This track exists to fire the placement revisit gate
-as early as possible: realistic coding turns over injected RTT (30/150/300
-ms) with the PATH-cache and artifact-pipeline fixes, reporting per-command
-and per-turn overhead. If the gate trips, it does so before Track A's
-architecture assumptions have compounded.
+*Track B — Runner protocol core.* The runner-protocol package (fs RPC,
+streaming spawn, handshake) and the `demi-runner` binary, exercised against a
+**bare AgentServer** in tests — no product integration, no device registry
+yet. Runs in parallel because it depends on nothing in Track A and is the
+design's only greenfield contract — the earlier it exists, the earlier its
+implementation problems surface.
 
 **M2 — Runner productized**
 Claim-by-token flow, device registry with online status, backend harness
@@ -576,7 +571,7 @@ checklists only for UI look-and-feel and packaging smoke.
 |---|---|
 | M0 | Spawn-injection + `buildClaudeEnv` overlay assertions (no CLI). Capability-flag tests. Host-switch integration: StubProvider session runs turn 1 against LocalHost A, turn 2 against LocalHost B; assert context block injected, per-Host BashEnvironment isolation, transcript continuity. |
 | M1-A | Backend integration in one test process: browser-side `AgentClient` (in-process transport) + virtual-Host session; detach client mid-turn with a slow StubProvider → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort); cold-history read equals live transcript; portable commands work, spawn fails with the upgrade message. |
-| M1-B | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Remote-Host integration against a bare AgentServer: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. Latency measurement (the placement revisit gate): realistic coding turns over injected RTT of 30/150/300 ms, reporting per-command and per-turn overhead with the PATH-cache and artifact-pipeline fixes in place. |
+| M1-B | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Remote-Host integration against a bare AgentServer: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. |
 | M2 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M3 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | Switch integration: real→real (files absent + honest context block), virtual→real (files materialized), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
