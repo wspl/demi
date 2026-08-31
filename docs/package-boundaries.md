@@ -160,6 +160,22 @@ Test code may depend upward for integration coverage. Production code must not.
 - Internal boundary: generateContent body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
+### `@demicodes/runner-protocol`
+
+- Status: implemented (M1; claim flow productized in M2).
+- Production deps: `@demicodes/shell`, `@demicodes/utils`.
+- Owns: the runner wire protocol — message types (claim/auth handshake, liveness, Host fs RPC, streaming spawn), the portable-JSON frame codec, the backend-side `RemoteHost` proxy (a `Host` over a connection: stable object across reconnects, logical cwd fallback, injected store), and the runner-side `HostRpcServer` serving a Host's `fs`/`process` facets.
+- Public boundary: message types, codec functions, `RemoteHost`, `HostRpcServer` from root.
+- Must not: contain network IO (the wire is an injected send/handle pair), credentials, claim policy, device registry, or conversation state. `Host.store` never crosses this protocol.
+
+### `@demicodes/runner`
+
+- Status: implemented (M1: connection + Host RPC; claim productization in M2; packaging in M7).
+- Production deps: `@demicodes/host-local`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
+- Owns: the runner program — the single outbound backend WebSocket with reconnect/backoff, the hello/claim handshake client, machine-local state (`~/.demi/runner.json`, `runner-token` 0600), serving `LocalHost` over the runner protocol, and the `demi-runner` CLI entry.
+- Public boundary: `RunnerClient`, `RunnerState` from root; the `demi-runner` bin.
+- Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, or provider packages in production code (the `host-local` dependency is for `LocalHost` only).
+
 ### `@demicodes/repl`
 
 - Status: implemented.
@@ -238,6 +254,8 @@ provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
+runner-protocol -> shell, utils
+runner -> host-local, runner-protocol, shell, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils
 web-ui -> agent, core, utils
 web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils

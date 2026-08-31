@@ -70,6 +70,14 @@ describe('portable JSON codec', () => {
     )
   })
 
+  it('round-trips Buffer as Uint8Array despite Buffer.toJSON', () => {
+    const decoded = parsePortableJson<{ bytes: Uint8Array }>(
+      stringifyPortableJson({ bytes: Buffer.from([9, 8, 7]) }),
+    )
+    expect(decoded.bytes).toBeInstanceOf(Uint8Array)
+    expect([...decoded.bytes]).toEqual([9, 8, 7])
+  })
+
   it('parses plain JSON without markers unchanged', () => {
     expect(parsePortableJson<{ a: number[] }>('{"a":[1,2]}')).toEqual({ a: [1, 2] })
   })

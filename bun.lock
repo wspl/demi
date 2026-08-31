@@ -202,6 +202,27 @@
         "@demicodes/utils": "workspace:^",
       },
     },
+    "packages/runner": {
+      "name": "@demicodes/runner",
+      "version": "0.20.0",
+      "bin": {
+        "demi-runner": "./dist/main.mjs",
+      },
+      "dependencies": {
+        "@demicodes/host-local": "workspace:^",
+        "@demicodes/runner-protocol": "workspace:^",
+        "@demicodes/shell": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+      },
+    },
+    "packages/runner-protocol": {
+      "name": "@demicodes/runner-protocol",
+      "version": "0.20.0",
+      "dependencies": {
+        "@demicodes/shell": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+      },
+    },
     "packages/shell": {
       "name": "@demicodes/shell",
       "version": "0.20.0",
@@ -354,6 +375,10 @@
     "@demicodes/provider-openai-api": ["@demicodes/provider-openai-api@workspace:packages/provider-openai-api"],
 
     "@demicodes/repl": ["@demicodes/repl@workspace:packages/repl"],
+
+    "@demicodes/runner": ["@demicodes/runner@workspace:packages/runner"],
+
+    "@demicodes/runner-protocol": ["@demicodes/runner-protocol@workspace:packages/runner-protocol"],
 
     "@demicodes/shell": ["@demicodes/shell@workspace:packages/shell"],
 
