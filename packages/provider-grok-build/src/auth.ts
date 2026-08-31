@@ -383,8 +383,10 @@ export async function refreshGrokOidcToken(
     refresh_token: input.refreshToken,
     client_id: input.clientId,
   })
-  if (nonEmptyString(input.principalType)) body.set('principal_type', input.principalType)
-  if (nonEmptyString(input.principalId)) body.set('principal_id', input.principalId)
+  const principalType = nonEmptyString(input.principalType)
+  if (principalType) body.set('principal_type', principalType)
+  const principalId = nonEmptyString(input.principalId)
+  if (principalId) body.set('principal_id', principalId)
   const response = await fetch(input.tokenEndpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
