@@ -33,12 +33,13 @@ client-owned session ids).
    turn boundary, a checkpoint replay on the target, and an injected context
    block that tells the model what changed. Virtual→real upgrade, runner
    switching, and offline degradation are all this one primitive.
-3. **All model traffic flows through the gateway, and all credentials live
-   server-side.** Every provider transport points `baseUrl` (or CLI env) at
-   the gateway carrying only a gateway-issued runner/session token; the
-   gateway injects the real credential (BYOK key or subscription OAuth) at
-   forward time. Runners of every kind — user daemons included — hold zero
-   provider credentials.
+3. **Inference executes at the gateway; credentials live server-side; runners
+   speak only Demi's own protocols.** Runner sessions request inference over
+   the remote inference RPC; the gateway runs the real provider runtimes with
+   vault credentials, and the official provider wire protocols exist only on
+   the gateway→LLM leg. Runners of every kind hold zero provider credentials.
+   Sole exception: the Claude Code CLI's Anthropic-wire traffic, which passes
+   through a gateway endpoint with token swap (see Inference service).
 
 ## Components
 
@@ -68,12 +69,15 @@ of scope so its constraints cannot leak into the interfaces:
   agent protocol already tolerates relay reconnects: transcript frames carry a
   monotonic `revision` and the client self-heals gaps with `sync_transcript`
   (`packages/agent/src/client.ts:200`).
-- **Inference gateway**: wire-level reverse proxy per provider family. No
-  protocol translation — Anthropic Messages, OpenAI/Codex Responses (SSE and
-  WebSocket), Gemini `generateContent`, and Grok proxy traffic pass through in
-  native format. The Claude Code CLI is just another Anthropic-wire client.
-- **Backend session store**: serves checkpoint reads/writes for runners (see
-  Session model) and renders cold history.
+- **Inference service**: hosts the real provider runtimes with vault
+  credentials; runner sessions call it over the remote inference RPC; plus one
+  Anthropic-wire passthrough endpoint used solely by the Claude Code CLI (see
+  Inference service).
+- **Backend session store**: serves transcript/checkpoint persistence for
+  runners (incremental — see Session model) and renders cold history by
+  feeding the stored transcript to the ordinary web-ui components as a
+  full-sync `transcript_reset` frame (or an equivalent read endpoint; follow
+  mainstream practice, no second rendering path).
 
 ### Runner daemon (new product package, e.g. `@demicodes/runner`)
 
@@ -81,17 +85,18 @@ Detailed design (responsibilities, multiplex protocol, control RPC surface):
 `docs/runner-daemon.md`.
 
 A headless sibling of the `@demicodes/web` server: `LocalHost` +
-`createCodingAgentHarness` + `createLocalAgentServer` + the five providers,
-minus any HTTP listener — it dials the gateway with one outbound WebSocket
-(control channel) and attaches relayed agent sockets as transport bindings.
-Outbound-only networking traverses NAT and needs no user firewall setup.
+`createCodingAgentHarness` + `createLocalAgentServer`, minus any HTTP
+listener — it dials the gateway with one outbound WebSocket and attaches
+relayed agent connections as transport bindings. Outbound-only networking
+traverses NAT and needs no user firewall setup.
 
-- The daemon holds **zero provider credentials** (invariant 3): providers are
-  assembled in gateway mode (`baseUrl` → gateway + runner token), and the
-  Claude Code CLI runs in token mode with a placeholder
-  `CLAUDE_CODE_OAUTH_TOKEN` whose `Authorization` header the gateway swaps for
-  the real server-held token at forward time (the CLI's adoption of the env
-  token is verified below).
+- The daemon assembles **no official providers and holds no credentials**
+  (invariant 3): its sessions use the single remote provider, which forwards
+  `InferenceRequest`s to the gateway over the multiplexed socket. The one
+  exception is the Claude Code provider (CLI on the device), whose env
+  overlay points `ANTHROPIC_BASE_URL` at the gateway passthrough with the
+  runner's gateway token as `CLAUDE_CODE_OAUTH_TOKEN` (token swap at the
+  gateway; CLI adoption of the env token is verified below).
 - The same binary packaged into a container image is the **docker runner**
   (operator-managed) — a hosting variant, not a new code path.
 
@@ -161,12 +166,17 @@ four-method `/control` RPC (`packages/web-ui/src/transport/protocol.ts:40`).
 harnessName }`, `packages/agent/src/types.ts:199`) is the restorable truth and
 already flows through `Host.store` at
 `agent-sessions/<sessionId>/checkpoint.json` with debounced writes
-(`packages/agent/src/server.ts:807`). The mechanism for backend authority is a
-**gateway-backed `HostStore` facet** given to every runner Host: checkpoint
-writes write through to the backend (the portable JSON codec in
-`@demicodes/utils` exists precisely for `HostStore` implementations that cross
-a wire). Runner-local disk remains a cache for offline daemon use of the same
-machine.
+(`packages/agent/src/server.ts:807`). Backend authority means these writes
+land in the gateway store — but shipping a full checkpoint on every debounce
+tick across the network is not acceptable. The write path is therefore
+**incremental**: implement the `journal.jsonl` design already planned in
+`docs/session-storage-and-naming.md` (append `TranscriptPatch` entries during
+streaming — the same patch type that feeds live UIs — and rewrite the
+checkpoint + truncate the journal only at action boundaries), and send
+patches/boundary checkpoints to the gateway over the multiplexed socket's
+store messages. The concrete transcript-store abstraction gets its own design
+record before M2 lands. Runner-local disk remains a cache for offline daemon
+use of the same machine.
 
 Command artifacts (`commands/<id>/artifact.json`) are size-capped on the
 write-through path; the full artifact stays runner-local. Cold history browsing
@@ -213,60 +223,60 @@ CLI session id, no config-dir state travels; cross-machine resume needs only a
 `packages/provider-claude-code/src/cli.ts:14`). HTTP providers are stateless
 per request.
 
-## Inference gateway
+## Inference service
 
-### Why wire-level, not a normalized protocol
+### Inference executes at the gateway; official wires exist only gateway→LLM
 
-A gateway-normalized inference protocol can never absorb the Claude Code CLI,
-which speaks only the Anthropic wire — normalization would recreate the very
-fragmentation it is meant to remove. Demi's normalization layer already exists
-on the runner: the provider contract emits uniform provider events,
-`TokenUsage`, and `ProviderQuota` regardless of transport. The gateway stays a
-dumb, per-wire passthrough with authentication, routing, credential injection,
-and rate limiting.
+The protocol layering is: browser ↔ gateway ↔ runner all speak **Demi's own
+protocols** (agent frames, the multiplex envelope, and the remote inference
+RPC below); the **official provider wire protocols exist only on the
+gateway→LLM leg**, spoken by the real provider runtimes
+(`createAnthropicApiProvider`, `createCodexProvider`, …) instantiated inside
+the gateway with vault credentials at their native default endpoints.
 
-### Verified per-provider routing matrix
+A daemon-side AgentSession therefore does not assemble official providers at
+all. It uses one **remote provider**: an `AgentProvider` implementation whose
+`run(request)` serializes the existing `InferenceRequest` (items, tools,
+thinking, model) over the multiplexed socket and yields the `ProviderEvent`
+stream the gateway sends back. Demi's provider contract is already the
+normalized interface — events, `TokenUsage`, `ProviderQuota` are uniform
+across transports — so this remote hop is written once and covers every HTTP
+provider forever. Steering and cancellation map to two extra message types.
 
-| Provider | baseUrl → gateway | Extra headers (gateway token) | Traffic that bypasses the gateway |
-|---|---|---|---|
-| openai-api | `baseUrl` option, env fallback (`provider.ts:201`) | `headers` resolver per request (`provider.ts:65`) | none (static model catalog, no probes) |
-| anthropic-api | `baseUrl` option (must include `/v1`) | `headers` resolver | none |
-| google | `baseUrl` option | `headers` resolver | none |
-| grok-build | `baseUrl` option; models + billing/quota probes follow it (`models.ts:145`, `quota.ts:53`) | static `headers` map | OAuth refresh + device login against `auth.x.ai` (hardcoded issuer, `auth.ts:77`) |
-| codex | `baseUrl` drives SSE, WS (scheme swap, same host/path, `transport.ts:206`), `/codex/models`, and the quota probe | `headers` option on inference + catalog; **not** on the quota probe (`quota.ts:16`) | OAuth refresh + device login against `auth.openai.com` (hardcoded, `auth.ts:103`, `device-login.ts:52`) |
-| claude-code | CLI inherits the daemon process env (`cli.ts:36`): daemon sets `ANTHROPIC_BASE_URL` → gateway plus a placeholder `CLAUDE_CODE_OAUTH_TOKEN`; the gateway swaps the `Authorization` header for the vault token (CLI adoption of the env token verified below). An explicit env-overlay option is cleaner (see Changes) | via env | models.dev catalog (`models.ts:26`); the `/api/oauth/usage` quota probe and OAuth refresh (`console.anthropic.com`, `login.ts:12`) move to the gateway vault |
+This dissolves what the earlier wire-passthrough design needed: no per-wire
+proxy code, no credential slot rewriting, no "external auth" provider modes
+for codex/grok (their runtimes run at the gateway with real auth), and no
+per-provider gateway-mode options. Auth-plane traffic (device login, OAuth
+refresh against the hard-coded `auth.openai.com` / `auth.x.ai` /
+`console.anthropic.com` endpoints) runs entirely inside the gateway vault.
+Codex specifics — `x-codex-*` quota headers, the non-standard
+`WebSocket(url, { headers })` auth (Bun supports it) — become gateway-internal
+concerns, observed firsthand by the runtime.
 
-Consequences to accept explicitly:
+### The single passthrough exception: the Claude Code CLI
 
-- **Auth-plane traffic (device login, OAuth refresh) runs entirely at the
-  gateway** for every runner kind — credentials are server-side, so the
-  hard-coded `auth.openai.com` / `auth.x.ai` / `console.anthropic.com`
-  endpoints are called from the gateway's credential vault, never from
-  runners.
-- Codex `x-codex-*` quota values ride on inference response headers; the
-  gateway must forward response headers verbatim or quota observation breaks
-  (`packages/provider-codex/src/quota.ts:92`). The WS path never surfaces
-  them — unchanged from today.
-- Codex WS auth relies on the non-standard `new WebSocket(url, { headers })`
-  extension (`transport.ts:303`); the runner runtime matrix must guarantee it
-  (Bun does; browsers do not — irrelevant since runners are server-side).
-  Runtime verification of WS reverse-proxying is a listed follow-up.
-- Provider-side probes that need credentials (the claude-code
-  `/api/oauth/usage` quota probe, codex/grok quota) become gateway concerns:
-  runner-side providers send them with the placeholder token and the gateway
-  injects, or the gateway probes directly from the vault.
+The CLI must run on a real runner and speaks only the Anthropic wire, so it is
+the one place a wire passthrough exists: the daemon's env overlay sets
+`ANTHROPIC_BASE_URL` → a gateway endpoint and `CLAUDE_CODE_OAUTH_TOKEN` → the
+runner's gateway token; the CLI puts that token in its `Authorization` header
+(verified below), and the gateway authenticates it and swaps in the vault
+OAuth token before forwarding to `api.anthropic.com`. The claude-code
+provider's own quota probe and the models.dev catalog fetch run wherever the
+provider runs; the OAuth-usage probe becomes a vault-side concern.
+
+The earlier per-provider `baseUrl`/headers verification below is retained as
+the factual record; with this design its load-bearing conclusions are the CLI
+row (passthrough feasibility) and the freedom to point any provider at a
+non-default endpoint when assembling inside the gateway.
 
 ### Usage accounting
 
-Metering does not parse wire formats. Every provider already normalizes usage
-into `TokenUsage` on transcript blocks, and checkpoints/frames flow to the
-backend anyway — the accounting pipeline aggregates from the authoritative
-transcript stream into a `user × session × provider × model` ledger.
-Enforcement at the gateway starts coarse (auth, request counting, rate limits,
-over-quota refusal); per-wire usage extractors are a later, purely gateway-side
-addition if runner-reported usage ever needs adversarial reconciliation
-(daemon runners burn the user's own credentials, so misreporting only harms
-the reporter; managed runners are operator-controlled).
+Simpler than before: the gateway hosts the provider runtimes, so it observes
+`TokenUsage` and quota events firsthand for every HTTP provider, and the CLI
+passthrough is metered at the proxy. The ledger aggregates
+`user × session × provider × model`; enforcement (auth, rate limits,
+over-quota refusal) sits on the remote-inference entry point. There is no
+trust gap to reconcile — runners never self-report usage.
 
 ## Provider routing rule
 
@@ -280,22 +290,33 @@ the backend host itself as a local runner to relax this.
 
 ## Changes to existing packages (all additive)
 
-1. `@demicodes/provider-claude-code` — public options for: CLI env overlay
-   entries (at minimum `ANTHROPIC_BASE_URL` + auth header var), quota
-   `usageUrl`, and catalog `modelsDevUrl` (both exist internally, unplumbed).
+1. `@demicodes/provider-claude-code` — a public CLI env overlay option (at
+   minimum `ANTHROPIC_BASE_URL` + `CLAUDE_CODE_OAUTH_TOKEN`).
 2. `@demicodes/provider` — execution-requirement capability flag in provider
    metadata.
-3. `@demicodes/provider-codex` — pass configured `headers` to the quota probe.
-   `@demicodes/provider-grok-build` — pass configured `headers` to the model
-   catalog request (verified missing; see Runtime verification).
+3. `@demicodes/agent` — implement the planned `journal.jsonl` incremental
+   persistence from `docs/session-storage-and-naming.md` (append
+   `TranscriptPatch` during streaming, checkpoint rewrite + journal truncation
+   at boundaries), so runner→gateway persistence sends patches, not repeated
+   full checkpoints. The concrete transcript-store abstraction gets its own
+   design record before M2.
 4. New packages: `@demicodes/gateway` (product leaf), `@demicodes/runner`
    (product leaf), a small platform-neutral relay/control protocol package
-   (may start inside gateway and split when runner consumes it), and a virtual
-   `Host` implementation (platform-neutral; candidate `@demicodes/host-virtual`
-   mirroring `host-local`'s registry position without Node deps).
-5. Gateway-backed `HostStore` implementation is transport glue, not a shell
-   concern: the remote (runner-side) flavor lives in the runner package; the
-   virtual runner uses the gateway session store directly, in-process.
+   carrying the envelope + remote inference RPC types and the remote
+   `AgentProvider` implementation (both runner and gateway consume it), and a
+   virtual `Host` implementation (platform-neutral; candidate
+   `@demicodes/host-virtual` mirroring `host-local`'s registry position
+   without Node deps).
+5. Session persistence glue (journal/checkpoint write-through, store
+   messages) is transport work in the runner/protocol packages, not a shell
+   concern; the virtual runner uses the gateway session store directly,
+   in-process.
+
+No longer needed under this design (dropped from earlier drafts): per-provider
+gateway-mode `baseUrl`/headers options for daemon use, codex/grok header-gap
+fixes, claude-code `usageUrl`/`modelsDevUrl` plumbing, and any codex/grok
+"external auth" mode — the gateway assembles those providers natively with
+vault credentials.
 
 `docs/package-boundaries.md` gains registry entries for the new packages when
 implementation starts. `@demicodes/web` (single-user, Vite-dev product) is
@@ -361,8 +382,7 @@ Each item is its own branch off `main`.
 **M0 — Groundwork (independent small branches, parallelizable)**
 - `@demicodes/provider` execution-requirement capability flag; declared by
   claude-code.
-- claude-code public CLI env-overlay option; plumb `usageUrl` / `modelsDevUrl`.
-- codex quota probe + grok model catalog: apply configured `headers`.
+- claude-code public CLI env-overlay option.
 - Integration test: checkpoint restored via `fromCheckpoint` on a second
   LocalHost in a different directory (simulated cross-machine), then continues
   a turn. The migration design rests on this; existing coverage is same-host.
@@ -377,19 +397,27 @@ milestone (userId on every row, one stub user) — auth can be retrofitted,
 tenant-shaped data cannot.
 
 **M2 — Session authority moves to the backend**
-Gateway-backed `HostStore` write-through for checkpoints; session index; cold
-history browsing; session lease (single owning runner, takeover semantics
-lifted above `SessionOwnershipRegistry`). Accept: history readable with the
-daemon offline; a second runner's open is fenced by the lease.
+Transcript-store design record, then implementation: `journal.jsonl`
+incremental persistence in `@demicodes/agent` (the planned remaining work in
+`docs/session-storage-and-naming.md`), store messages on the multiplexed
+socket, patches during streaming + checkpoints at boundaries landing in the
+gateway store; session index; cold history browsing; session lease (single
+owning runner, takeover semantics lifted above `SessionOwnershipRegistry`).
+Accept: history readable with the daemon offline; a second runner's open is
+fenced by the lease; steady-state streaming transfers patches, not repeated
+full checkpoints.
 
-**M3 — Inference gateway + credential vault + metering**
-Wire-level passthrough proxy (re-verify the Codex WS hop through the real
-reverse proxy); server-side credential vault (BYOK keys, provider device-login
-flows, token refresh) with injection at forward time — runners hold only
-gateway tokens; usage ledger aggregated from authoritative-transcript
-`TokenUsage`. Accept: all daemon inference traffic transits the gateway
-(including the CLI via env overlay with placeholder-token swap) against mocks;
-real-subscription smoke is manual only, never an ungated test.
+**M3 — Remote inference + credential vault + metering**
+The remote inference RPC (serialize `InferenceRequest` / stream
+`ProviderEvent` over the multiplexed socket, plus steer/cancel messages) and
+the runner-side remote `AgentProvider`; gateway-side provider runtimes
+assembled from the credential vault (BYOK keys, provider device-login flows,
+token refresh); the single Anthropic-wire passthrough endpoint for the Claude
+Code CLI with token swap; usage ledger fed by gateway-observed `TokenUsage`.
+Accept: a daemon session completes turns with every HTTP provider against a
+mock LLM without the daemon holding any credential; the CLI chain works
+through the passthrough (skip when no `claude` binary); real-subscription
+smoke is manual only, never an ungated test.
 
 **M4 — Ephemeral virtual runner as default entry** (parallelizable with M3;
 depends on M2 for checkpoint authority)
@@ -440,10 +468,10 @@ Per milestone (tier 1 unless marked):
 
 | M | Verification |
 |---|---|
-| M0 | Capability-flag type/declaration tests. `buildClaudeEnv` assertions for the overlay option (no CLI). Injected-fetch header assertions for the codex quota probe and grok catalog. Cross-machine replay: two LocalHosts in two temp dirs + StubProvider — run turns on A, checkpoint, `fromCheckpoint` on B, continue; assert transcript identity and executing-tool force-complete. |
+| M0 | Capability-flag type/declaration tests. `buildClaudeEnv` assertions for the overlay option (no CLI). Cross-machine replay: two LocalHosts in two temp dirs + StubProvider — run turns on A, checkpoint, `fromCheckpoint` on B, continue; assert transcript identity and executing-tool force-complete. |
 | M1 | Frame codec round-trip tests in the protocol package. Single-process integration: gateway (random port) + daemon (temp dir) + AgentClient, StubProvider turn through the relay. Fault injection: client disconnect/reconnect mid-turn → `sync_transcript` self-heal yields the full transcript; runner disconnect → error frame reaches the client. |
-| M2 | Write-through HostStore unit tests (checkpoint lands in backend store; debounce). Integration: turn via daemon, kill daemon → cold history readable from the gateway; second runner `open` fenced by lease, takeover after release; daemon killed mid-turn → authoritative state equals last persisted point and restores. |
-| M3 | Promote the mock-gateway verification harness into tests: mock upstream + real gateway proxy, asserting per-wire passthrough (paths, request headers, verbatim `x-codex-*` response headers), the WS hop through the real proxy, and credential injection (backend-held key added, runner gateway token stripped). Metering: StubProvider turns with usage → ledger aggregation rows. CLI chain (daemon env overlay → gateway → mock upstream) skips when no `claude` binary is present. Tier 2: one gated real-subscription smoke per provider. |
+| M2 | Journal unit tests in `@demicodes/agent` (patch append during streaming, boundary checkpoint + truncation, restore = checkpoint + journal replay). Store-message integration: streaming a turn transfers patches, not repeated full checkpoints (assert on message sizes/counts); turn via daemon, kill daemon → cold history readable from the gateway; second runner `open` fenced by lease, takeover after release; daemon killed mid-turn → authoritative state equals checkpoint + journal and restores. |
+| M3 | Remote inference RPC round-trip tests: `InferenceRequest` / `ProviderEvent` serialization (portable JSON incl. `Uint8Array`), streaming, steer, cancel, error propagation. Integration: daemon session completes turns with each HTTP provider runtime at the gateway against a mock LLM endpoint, daemon holding zero credentials; vault injection unit tests; CLI passthrough chain (env overlay → gateway token swap → mock upstream) skips when no `claude` binary is present. Metering: gateway-observed usage → ledger aggregation rows. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | host-virtual unit tests: fs/store semantics (`Uint8Array`/`bigint` round-trip), portable-command coverage matrix, spawn-failure message shape. Lifecycle integration with a slow StubProvider: detach client mid-turn → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort in one test); short-delay `yield` wakeup rematerializes the session; idle dispose; `requiresProcessHost` provider rejected with upgrade guidance. |
 | M5 | Migration integration: virtual→real asserts lease-transfer ordering, replay, migration context block content, file materialization; real→real asserts files absent and the context block says so; mid-turn migration refused; concurrent double-migration has exactly one winner. Tier 2 (optional): an agent-eval case that the model acts sensibly on the migration note. |
 | M6 | Tenant-isolation authz matrix: every API action by user A against user B's sessions/runners/credentials asserts denial. Device-claim integration (happy path + claim-token expiry + re-claim). Tier 3: UI manual checklist — no new browser-test infrastructure. |
