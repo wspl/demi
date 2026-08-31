@@ -456,7 +456,8 @@ function formatShellToolResult(result: ShellCommandStatus, options: ShellToolRes
 
   if (result.status === 'running') {
     lines.push(
-      'next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it.',
+      result.runningHint ??
+        'next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it.',
     )
   } else if (result.status === 'aborted') {
     lines.push('next: command was intentionally stopped.')
