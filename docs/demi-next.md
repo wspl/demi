@@ -73,9 +73,28 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 
 ### Backend (`@demicodes/backend`, product leaf)
 
-One self-hostable Bun process — serverless hosting is explicitly out of scope
-so its constraints cannot leak into the interfaces. Spoken of as modules, not
-separate services:
+One deployable with two internal planes — self-host runs both in a single
+Bun process; large multi-user deployments scale by topology, not by a second
+architecture (serverless hosting stays out of scope so its constraints cannot
+leak into the interfaces):
+
+- **Application plane** (Web API, auth, session index, vault, ledger, device
+  registry): stateless against the shared database; replicable.
+- **Conversation plane** (session workers): stateful, **sharded by user** —
+  a user's sessions, virtual Hosts, runner sockets, and CLI processes all
+  live on that user's worker. The affinity is natural: conversations,
+  devices, and (isolated mode) connections are all user-owned, so no
+  stateful interaction ever crosses workers; a runner's socket is routed to
+  its owner's worker after `hello`. Self-host: one worker, in-process, no
+  router. Scaled: replicated application plane + a userId→worker routing
+  layer + a worker pool. The "sessions have exactly one home" invariant is
+  unchanged — only the number of homes grows.
+
+v1 milestones implement the single-process topology only; the scaled
+topology is a deployment change enabled by the data layer below, not new
+application code paths.
+
+Spoken of as modules, not separate services:
 
 - **Conversation module**: AgentServer/AgentSession hosting for every session,
   transcript persistence in the backend store, session index, cold-history
@@ -286,14 +305,18 @@ search are explicitly out.
 
 ### Database
 
-SQLite via `bun:sqlite` — one file, WAL mode, no ORM, no
-database-portability layer. Rationale: a single self-hostable Bun process;
-every persistent concern (users, sessions, conversation index, provider
-connections/vault, usage ledger, the DB-backed `HostStore`) is
-low-concurrency structured data; SQLite transactions natively provide the
-`writeJson` atomicity the checkpoint path relies on. Message-attachment bytes
-live in the checkpoint like today; command artifacts stay on execution
-targets.
+Two dialects are final state, matching the two topologies: **SQLite**
+(`bun:sqlite`, one file, WAL) as the single-process default — zero
+dependencies, backup is copying a file — and **Postgres** for scaled
+deployments, where a shared database is what makes the application plane
+replicable. Because both are declared targets, a thin schema layer is a
+requirement, not speculation: schema-as-code with a typed query layer
+(Drizzle-class — one schema definition, both dialects, generated migrations,
+no runtime magic; no heavyweight ORM). All persistent concerns (users,
+conversation index, connections/vault, ledger, the DB-backed `HostStore`)
+are structured data; transactions in either dialect provide the `writeJson`
+atomicity the checkpoint path relies on. v1 runs SQLite only. Command
+artifacts stay on execution targets.
 
 ### Web API (browser ↔ backend)
 
