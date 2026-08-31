@@ -1,5 +1,15 @@
 # @demicodes/shell
 
+## 0.21.0
+
+### Minor Changes
+
+- 9d1e56c: Registered commands can declare `runningHint`, replacing the generic "check again with shell_status, or call yield" line on running shell results while they are the foreground job. `demi agent` spawn and resume use it to tell parents to steer, abort, or end the turn and be woken on completion instead of polling.
+
+### Patch Changes
+
+- @demicodes/utils@0.21.0
+
 ## 0.20.0
 
 ### Patch Changes
