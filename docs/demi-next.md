@@ -580,7 +580,7 @@ checklists only for UI look-and-feel and packaging smoke.
 | M2 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M3 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | Switch integration: real→real (files absent + honest context block), virtual→real (files materialized), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
-| M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); claim-token expiry + re-claim. Tier 3: UI manual checklist. |
+| M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); device revoke + re-claim through the management UI. Tier 3: UI manual checklist. |
 | M6 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
 
 Test modules and their coverage get documented per milestone as they land, per
