@@ -1,0 +1,13 @@
+{
+  "name": "@demicodes/testkit",
+  "description": "Test-only helpers shared across Demi package test suites.",
+  "version": "0.20.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@demicodes/shell": "workspace:^"
+  }
+}

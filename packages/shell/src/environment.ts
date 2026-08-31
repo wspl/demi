@@ -23,7 +23,7 @@ import {
   recordForegroundChunk,
 } from './environment-output'
 import type { BackgroundJob, BoundaryOutcome, ForegroundProcess, ShellSession } from './environment-state'
-import type { Host, SpawnErrorKind } from './host'
+import type { Host, HostSpawnError, SpawnErrorKind } from './host'
 import { HostBackedFileSystem } from './host-fs'
 import { AgentSessionCommandStorage } from './storage'
 import { CommandArtifactStore } from './command-artifact-store'
@@ -943,7 +943,7 @@ export class BashEnvironment {
     let spawnError = exit.spawnError
     if (!foreground.captureOverflowed && exit.spawnError) {
       exitCode = spawnErrorExitCode(exit.spawnError.kind)
-      stderr = spawnErrorStderr(command, opts.cwd, opts.env, exit.spawnError.kind)
+      stderr = spawnErrorStderr(command, opts.cwd, opts.env, exit.spawnError)
     } else if (!foreground.captureOverflowed && exit.exitCode === null && foreground.rawStderrBuffer.length === 0) {
       stderr = `${command}: ${exit.signal ?? 'command not found'}\n`
     }
@@ -1243,16 +1243,18 @@ function spawnErrorStderr(
   command: string,
   cwd: string,
   env: Record<string, string>,
-  kind: SpawnErrorKind,
+  spawnError: HostSpawnError,
 ): string {
-  if (kind === 'permission_denied') return `bash: ${command}: Permission denied\n`
-  if (kind === 'is_directory') return `bash: ${command}: Is a directory\n`
-  if (kind === 'cwd_unusable') return `bash: ${cwd}: No such file or directory\n`
+  const { kind } = spawnError
+  const suffix = spawnError.detail ? ` (${spawnError.detail})` : ''
+  if (kind === 'permission_denied') return `bash: ${command}: Permission denied${suffix}\n`
+  if (kind === 'is_directory') return `bash: ${command}: Is a directory${suffix}\n`
+  if (kind === 'cwd_unusable') return `bash: ${cwd}: No such file or directory${suffix}\n`
   if (kind === 'executable_not_found') {
-    if (command.includes('/') || !env.PATH) return `bash: ${command}: No such file or directory\n`
-    return `bash: ${command}: command not found\n`
+    if (command.includes('/') || !env.PATH) return `bash: ${command}: No such file or directory${suffix}\n`
+    return `bash: ${command}: command not found${suffix}\n`
   }
-  return `bash: ${command}: ${kind}\n`
+  return `bash: ${command}: ${kind}${suffix}\n`
 }
 
 function hasWideChar(value: string): boolean {
