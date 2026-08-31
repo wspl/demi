@@ -295,10 +295,11 @@ this design deleted: transcript sync back to the backend, a browser↔runner
 frame relay, sessions with two homes (lease, migration machinery, offline
 lock-in), and a runner fattened with agent/coding-agent/provider deps. The
 latency win is bounded (turn wall-clock is inference-dominated); the costs
-are structural. **Revisit gate**: M2 acceptance includes latency measurements
-over injected RTT (30/150/300 ms) on realistic coding turns; if the 300 ms
-tier is still unusable after the cache/pipeline fixes, session placement gets
-re-evaluated globally — moved whole, never forked per scenario.
+are structural. **Revisit gate**: M1 Track B fires latency measurements over
+injected RTT (30/150/300 ms) on realistic coding turns as early as the
+protocol exists; if the 300 ms tier is still unusable after the
+cache/pipeline fixes, session placement gets re-evaluated globally — moved
+whole, never forked per scenario.
 
 Disconnect semantics: when the socket drops, in-flight spawns on the runner
 are killed and pending fs calls fail; the backend surfaces the failure into
@@ -505,27 +506,45 @@ surface last. Each item is its own branch off `main`.
   between turns (two temp-dir LocalHosts) with an injected context block —
   the migration primitive in miniature.
 
-**M1 — Backend skeleton + virtual default (first demoable node)**
+**M1 — Two parallel tracks (no dependency between them)**
+
+*Track A — Backend skeleton + virtual default (first demoable node).*
 `@demicodes/backend` serving `/agent` + control RPC multi-user-shaped (stub
 user), conversation persistence in the backend store, session index,
-`host-virtual` as the default target. Accept: zero-setup browser chat with
+`host-virtual` as the default target. Providers are **operator-assembled**
+exactly like `@demicodes/web` today (env keys / operator logins) — the vault
+is explicitly out of M1 scope. Accept: zero-setup browser chat with
 portable-command tools; refresh mid-turn reattaches to the running turn;
 cold history readable.
 
-**M2 — Runner protocol + runner program**
-The runner-protocol package (claim handshake, fs RPC, streaming spawn),
-`demi-runner run` with claim-by-token, device registry with online status,
-harness host resolution to remote Hosts. Accept: a session executes real
-shell commands and file edits on a claimed device; runner disconnect surfaces
-as tool errors without losing the session; reconnect resumes.
+*Track B — Runner protocol core + the latency gate.* The runner-protocol
+package (fs RPC, streaming spawn, handshake) and the `demi-runner` binary,
+exercised against a **bare AgentServer** in tests — no product integration,
+no device registry yet. This track exists to fire the placement revisit gate
+as early as possible: realistic coding turns over injected RTT (30/150/300
+ms) with the PATH-cache and artifact-pipeline fixes, reporting per-command
+and per-turn overhead. If the gate trips, it does so before Track A's
+architecture assumptions have compounded.
+
+**M2 — Runner productized**
+Claim-by-token flow, device registry with online status, backend harness
+host resolution to remote Hosts. Accept: a session executes real shell
+commands and file edits on a claimed device; runner disconnect surfaces as
+tool errors without losing the session; reconnect resumes.
 
 **M3 — LLM module + credential vault + metering + Claude Code**
-Vault (BYOK keys, provider device-login flows, refresh), provider runtimes
-assembled per user, usage ledger + enforcement, the Anthropic passthrough,
-and claude-code sessions spawning their CLI on the session's runner. Accept:
-turns with every provider against mock LLM endpoints, runner holding zero
-credentials; CLI chain end-to-end through the passthrough (skip when no
-`claude` binary); real-subscription smoke manual only, never an ungated test.
+Two acceptance steps in order:
+1. *BYOK + metering* (no dependencies): vault key storage, per-user provider
+   assembly for the API-key providers, usage ledger + enforcement. This is
+   the product's minimum viable form — a user pastes a key and chats — and
+   stands alone as a demoable point.
+2. *Subscriptions + Claude Code* (depends on M2): provider device-login
+   flows + refresh in the vault, the Anthropic passthrough, claude-code
+   sessions spawning their CLI on the session's runner. Accept: turns with
+   every provider against mock LLM endpoints, runner holding zero
+   credentials; CLI chain end-to-end through the passthrough (skip when no
+   `claude` binary); real-subscription smoke manual only, never an ungated
+   test.
 
 **M4 — Target switching productized**
 Turn-boundary switching UI + context injection + virtual→real
@@ -556,9 +575,10 @@ checklists only for UI look-and-feel and packaging smoke.
 | M | Verification |
 |---|---|
 | M0 | Spawn-injection + `buildClaudeEnv` overlay assertions (no CLI). Capability-flag tests. Host-switch integration: StubProvider session runs turn 1 against LocalHost A, turn 2 against LocalHost B; assert context block injected, per-Host BashEnvironment isolation, transcript continuity. |
-| M1 | Backend integration in one test process: browser-side `AgentClient` (in-process transport) + virtual-Host session; detach client mid-turn with a slow StubProvider → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort); cold-history read equals live transcript; portable commands work, spawn fails with the upgrade message. |
-| M2 | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token). Remote-Host integration: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. Latency measurement (the runner-side-inference revisit gate): realistic coding turns over injected RTT of 30/150/300 ms, reporting per-command and per-turn overhead with the PATH-cache and artifact-pipeline fixes in place. |
-| M3 | Vault unit tests (login-flow state machines against mock auth endpoints, refresh, per-user assembly). Ledger aggregation from StubProvider usage. Passthrough: mock upstream asserts token swap and single request class. Claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
+| M1-A | Backend integration in one test process: browser-side `AgentClient` (in-process transport) + virtual-Host session; detach client mid-turn with a slow StubProvider → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort); cold-history read equals live transcript; portable commands work, spawn fails with the upgrade message. |
+| M1-B | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Remote-Host integration against a bare AgentServer: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. Latency measurement (the placement revisit gate): realistic coding turns over injected RTT of 30/150/300 ms, reporting per-command and per-turn overhead with the PATH-cache and artifact-pipeline fixes in place. |
+| M2 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
+| M3 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | Switch integration: real→real (files absent + honest context block), virtual→real (files materialized), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
 | M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); claim-token expiry + re-claim. Tier 3: UI manual checklist. |
 | M6 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
