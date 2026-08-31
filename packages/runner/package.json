@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@demicodes/agent": "workspace:^",
+    "@demicodes/testkit": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/provider": "workspace:^"
   },
