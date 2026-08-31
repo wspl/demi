@@ -192,13 +192,24 @@ and the migrate/upgrade flow.
 ## Session and host model
 
 - Every session is an AgentSession in the backend. Its current **execution
-  target** (virtual, or a specific runner + directory) is a session property;
-  the harness resolves the Host per action from it.
-- **Target switching / migration** happens at turn boundaries: re-resolve the
-  Host and inject a context block (previous target/directory, new
-  target/directory, "previous filesystem state is unavailable" — except
-  virtual→real, which materializes the virtual fs into the target directory).
-  Files never move in real→real switches. Because command artifacts are real
+  target** is a session property; the harness resolves the Host per action
+  from it. A target is either `virtual` or a **workspace** — a lightweight
+  named entity, `(device, path, name)`. A workspace is only an attribute of
+  conversations: conversations move freely between workspaces (and to/from
+  virtual), and nothing else hangs off it — no per-workspace settings or
+  permissions.
+- **Target switching is one generic, unconstrained mechanism.** Any target →
+  any target, in any direction, at a turn boundary; the product adds no
+  restrictions. The machine's job is minimal: re-resolve the Host and inject
+  a context block stating the previous and new target/directory and that
+  files stay where they were. The single mechanical extra is switching **out
+  of virtual**: the virtual files are written to a temp directory on the new
+  target (`/tmp/demi-migration-<id>/`) — otherwise they would be permanently
+  unreachable — and the context block names that path so **the model
+  relocates what it needs itself**. No code-side placement, merging, or
+  conflict rules. When the new target is on the same device, the context
+  block notes the old directory is still directly accessible. Because
+  command artifacts are real
   files on the target, the context block also covers "full outputs of earlier
   commands live on the previous target" — artifact paths the model saw before
   the switch are stale on the new Host. The runtime side is already safe:
@@ -358,8 +369,9 @@ Schema (final state, no speculative columns):
 ```
 users            id, username, password_hash, role(master|admin|user), created_at
 web_sessions     token_hash, user_id, expires_at
-conversations    id, user_id, title, archived, target(virtual | device_id+cwd),
+conversations    id, user_id, title, archived, workspace_id(NULL = virtual),
                  connection_id, model_id, created_at, updated_at
+workspaces       id, user_id, device_id, path, name, created_at
 devices          id, user_id, name, platform, token_hash, claimed_at, last_seen_at
 connections      id, owner_user_id(NULL in shared mode), type, label,
                  config(encrypted), created_at
@@ -411,6 +423,7 @@ Resource layout (concrete scope fed into the roadmap):
 | conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript` (cold history); `WS /api/conversations/:id/stream` | M1 |
 | models | `GET /api/models` (aggregated catalog, grouped by connection) | M1 |
 | devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…` (directory browse) | M2 |
+| workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (rename/remove the pointer; never touches files) | M4 |
 | connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` (poll) | M3 |
 | usage | `GET /api/usage` | M3 |
 | attachments | `POST /api/attachments` (returns reference id), `POST /api/conversations/:id/workspace-files` | M4 |
@@ -790,8 +803,9 @@ Two acceptance steps in order:
    test.
 
 **M4 — Target switching + attachments**
-Turn-boundary switching UI + context injection + virtual→real
-materialization; offline-target degradation (read/chat via virtual);
+Turn-boundary switching UI + context injection + the out-of-virtual tmp-dump
+(model relocates); workspaces CRUD; offline-target degradation (read/chat via
+virtual);
 message-attachment upload (inline media content blocks) and workspace file
 drop (Host RPC `writeFile`). Accept: switch, upgrade, and offline flows each
 covered by integration tests; an uploaded image round-trips through a
@@ -827,7 +841,7 @@ checklists only for UI look-and-feel and packaging smoke.
 | M1-B | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Remote-Host integration against a bare AgentServer: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. |
 | M2 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M3 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
-| M4 | Switch integration: real→real (files absent + honest context block), virtual→real (files materialized), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
+| M4 | Switch integration, all directions unconstrained: real→real (files stay + honest context block; same-device note when applicable), virtual→real (files land in the target tmp dir, context block names the path, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
 | M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); device revoke + re-claim through the management UI. Tier 3: UI manual checklist. |
 | M6 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
 
