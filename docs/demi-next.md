@@ -940,8 +940,8 @@ checklists only for UI look-and-feel and packaging smoke.
 Test modules and their coverage get documented per milestone as they land, per
 the repo's design-record rules.
 
-## Open questions
-
-- Whether the web UI should offer directory creation on a device, or that
-  stays a local action.
-- fs RPC batching threshold — measure first (see the Runner program section).
+No open questions remain. Two late closures for the record: the workspace
+picker only browses — directory creation stays a local-machine action in v1
+(the Host RPC's `mkdir` makes it a zero-cost later addition if ever wanted);
+fs RPC batching is covered by the deliberately-deferred list (measure first),
+not an open design point.
