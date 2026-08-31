@@ -32,14 +32,17 @@ connection itself needs.
    code; the hub composes `coding-agent` + `host-local`, which no lower
    package may do). Any existing directory is a valid workspace; a
    `channel_open` for a nonexistent path fails with an error, nothing more.
-3. **Credential-free provider assembly.** The daemon holds zero provider
-   credentials (design invariant 3). HTTP providers are assembled in gateway
-   mode: `baseUrl` → gateway inference endpoint, headers carrying only the
-   gateway-issued runner token; the gateway injects real credentials at
-   forward time. The Claude Code CLI runs in token mode: the env overlay sets
-   `ANTHROPIC_BASE_URL` → gateway and a placeholder `CLAUDE_CODE_OAUTH_TOKEN`;
-   the gateway swaps the resulting `Authorization` header for the vault token
-   (CLI adoption of the env token is verified in the main design doc).
+3. **No official providers, no credentials.** The daemon's sessions use the
+   single **remote provider**: an `AgentProvider` implementation whose
+   `run(request)` forwards the `InferenceRequest` to the gateway over the
+   multiplexed socket and yields the streamed `ProviderEvent`s back — the
+   official provider wires are spoken only by the gateway's own runtimes with
+   vault credentials. The one exception is the Claude Code provider (the CLI
+   must run on this device): its env overlay sets `ANTHROPIC_BASE_URL` → the
+   gateway's Anthropic passthrough endpoint and `CLAUDE_CODE_OAUTH_TOKEN` →
+   this runner's gateway token, which the gateway authenticates and swaps for
+   the vault token (CLI adoption of the env token is verified in the main
+   design doc).
 4. **Control RPC answering.** Provider/model listing, session preparation,
    runner status (see RPC surface below).
 
@@ -95,6 +98,18 @@ so the agent-layer codec (`Uint8Array`/`bigint`) is applied exactly once.
 | both | `frame { ch, payload }` | one agent frame (payload: portable-JSON string) |
 | g → d | `control_call { id, method, params }` | control RPC request |
 | d → g | `control_result { id, ok, result \| error }` | control RPC response |
+| d → g | `infer_start { inferId, request }` | remote inference: serialized `InferenceRequest` |
+| g → d | `infer_event { inferId, event }` | one streamed `ProviderEvent` |
+| d → g | `infer_steer { inferId, input }` / `infer_cancel { inferId }` | steer / abort the run |
+| g → d | `infer_end { inferId, error? }` | stream finished or failed |
+| d → g | `store_append { sessionId, patches }` | incremental transcript persistence (journal patches during streaming) |
+| d → g | `store_checkpoint { sessionId, checkpoint }` | boundary checkpoint write (journal truncation point) |
+| d → g | `store_get { id, sessionId }` → g → d `store_result { id, … }` | read back checkpoint/journal on session open |
+
+The store messages implement the incremental persistence contract from the
+main design doc (M2): patches during streaming, full checkpoints only at
+action boundaries — never repeated full-checkpoint uploads. The exact
+transcript-store abstraction is a separate design record before M2.
 
 Session-open flow: browser `AgentClient` connects to the gateway → gateway
 resolves the session's owning runner and workspace → `channel_open` to the
@@ -118,14 +133,13 @@ Superset of the existing `/control` shape
 
 | Method | Notes |
 |---|---|
-| `listProviders()` | existing shape; availability from `provider.state()` (auth is a gateway concern, so daemon providers report ready) |
-| `listModels({providerId})` | existing shape |
-| `prepareSession({providerId, modelId, thinkingEffort?, serviceTierId?})` | existing shape |
 | `listWorkspaces()` | recently used workspace directories |
 | `runnerStatus()` | version, platform, capability flags |
 
-Credential and quota state do not cross this surface — both live at the
-gateway vault.
+Provider catalog, model listing, session preparation, credential state, and
+quota all live at the gateway (it hosts the provider runtimes and the vault);
+the web UI asks the gateway, never the daemon. The daemon's AgentServer is
+assembled with exactly two providers: the remote provider and claude-code.
 
 ## Trust model
 
