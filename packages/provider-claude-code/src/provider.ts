@@ -20,7 +20,8 @@ import { listClaudeCodeModels } from './models'
 import { injectableCliToken } from './oauth'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
 import { createClaudeCodeQuota } from './quota'
-import { ClaudeCliTransportFactory, type ClaudeSpawn, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
+import type { ClaudeSpawn } from './spawn'
+import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
 
 export interface ClaudeCodeProviderOptions {
   id?: string
