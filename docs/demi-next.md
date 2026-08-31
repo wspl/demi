@@ -871,7 +871,7 @@ Two acceptance steps in order:
    `claude` binary); real-subscription smoke manual only, never an ungated
    test.
 
-**M4 — Target switching + attachments (mechanisms + endpoints only; UI at M5)**
+**M4 — Target switching + attachments (mechanisms + endpoints only; UI at M6)**
 Turn-boundary switching + context injection + the out-of-virtual tmp-dump
 (model relocates); workspaces CRUD; offline-target degradation (read/chat via
 virtual);
