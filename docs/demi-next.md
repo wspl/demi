@@ -821,7 +821,8 @@ endpoint was contacted (a local deny-proxy caught escape attempts).
 
 Ordering principles: the riskiest long-lived contracts first (runner protocol,
 host-per-action resolution, vault), every milestone ends runnable, product
-surface last. Each item is its own branch off `main`.
+surface last. Implementation status, pitfalls, and conclusions are tracked
+live per milestone in `docs/demi-next-progress.md`.
 
 **M0 — Groundwork (independent small branches, parallelizable)**
 - claude-code injectable spawn + env overlay options.
