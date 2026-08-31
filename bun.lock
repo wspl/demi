@@ -214,6 +214,11 @@
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
       },
+      "devDependencies": {
+        "@demicodes/agent": "workspace:^",
+        "@demicodes/core": "workspace:^",
+        "@demicodes/provider": "workspace:^",
+      },
     },
     "packages/runner-protocol": {
       "name": "@demicodes/runner-protocol",
