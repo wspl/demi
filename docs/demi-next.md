@@ -406,7 +406,8 @@ backend's aggregated catalog, grouped by connection.
 ### Web UI surface inventory
 
 Chat view (existing web-ui components) + conversation sidebar; model/provider
-picker; execution-target picker (device list + directory browser via Host RPC
+picker; execution-target picker (device list + directory browser and
+directory creation via Host RPC
 `readdir`); device management (claim-token entry, online status, revoke);
 connections page (above); usage page (ledger, per user); admin-only user
 management (create user, reset password, grant admin — master only) and
@@ -485,7 +486,7 @@ Resource layout (concrete scope fed into the roadmap):
 | auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M1 stub → M5 real |
 | conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript` (cold history); `WS /api/conversations/:id/stream` | M1 |
 | models | `GET /api/models` (aggregated catalog, grouped by connection) | M1 |
-| devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…` (directory browse) | M2 |
+| devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…` (directory browse), `POST /api/devices/:id/fs` (create directory) | M2 |
 | workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (rename/remove the pointer; never touches files) | M4 |
 | connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` (poll) | M3 |
 | usage | `GET /api/usage` | M3 |
@@ -941,7 +942,6 @@ Test modules and their coverage get documented per milestone as they land, per
 the repo's design-record rules.
 
 No open questions remain. Two late closures for the record: the workspace
-picker only browses — directory creation stays a local-machine action in v1
-(the Host RPC's `mkdir` makes it a zero-cost later addition if ever wanted);
-fs RPC batching is covered by the deliberately-deferred list (measure first),
-not an open design point.
+picker supports creating a directory on the device (a trivial pass-through
+to the Host RPC's existing `mkdir`); fs RPC batching is covered by the
+deliberately-deferred list (measure first), not an open design point.
