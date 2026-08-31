@@ -141,7 +141,13 @@ and the migrate/upgrade flow.
   Host and inject a context block (previous target/directory, new
   target/directory, "previous filesystem state is unavailable" — except
   virtual→real, which materializes the virtual fs into the target directory).
-  Files never move in real→real switches.
+  Files never move in real→real switches. Because command artifacts are real
+  files on the target, the context block also covers "full outputs of earlier
+  commands live on the previous target" — artifact paths the model saw before
+  the switch are stale on the new Host. The runtime side is already safe:
+  per-Host environments plus cross-Host shell-handle ownership checks fence
+  old handles, and new commands write artifacts under the new target's
+  `commandArtifactsDir` naturally.
 - **Runner offline** mid-turn: in-flight spawns die and fs calls fail; these
   surface as ordinary tool errors and the turn continues or ends — the session
   itself is never lost. Offline targets leave the session fully readable and
