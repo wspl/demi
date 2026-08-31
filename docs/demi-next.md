@@ -212,13 +212,28 @@ No organizations, teams, or further roles.
 
 A conversation is one AgentSession plus one metadata row: id, owner userId,
 title, execution target, provider/model selection, created/updated
-timestamps, archived flag. Titles follow Demi's existing behavior (first user
-text block). The **streaming interface is the agent frame protocol** — no
-parallel SSE API; cold history rides the same rendering path (full-sync
-frame). Deleting a conversation removes its checkpoint/store entries and
-best-effort deletes its command artifacts on the target via the Host RPC;
-artifacts on an offline target are simply left behind (no deferred cleanup
-queue — documented, not engineered around).
+timestamps, archived flag.
+
+- **Archive only, no delete.** Archiving hides a conversation from the
+  default list; an archived view lists them and any can be restored. No data
+  is ever deleted in v1 — no deletion semantics to design, no artifact
+  cleanup problem.
+- **Titles**: default is the first user message (Demi's existing behavior) +
+  manual rename. LLM-generated auto-titles are planned for later, not v1.
+- **New conversation is one click**: immediately typeable — target defaults
+  to virtual, model defaults to the user's last-used selection (first
+  available connection's default on first use). Both are session properties
+  changeable at any time.
+- **Message-level operations: everything Demi implements gets exposed** — a
+  standing rule, never curtail an implemented capability. Concretely, from
+  the frame protocol: mid-turn steering, the message queue
+  (queue/dequeue/edit-queued/clear), abort, retry, resume, manual compaction,
+  mid-conversation provider/model switch (`set_provider`), and interactive
+  stdin to running commands (`shell_write`). Most of this ships with the
+  web-ui components already.
+
+The **streaming interface is the agent frame protocol** — no parallel SSE
+API; cold history rides the same rendering path (full-sync frame).
 
 ### Attachments — two distinct flows
 
@@ -275,7 +290,7 @@ Grouped by module — this is the concrete scope fed into the roadmap:
 | Group | Methods (shape, not final names) | Lands in |
 |---|---|---|
 | auth | login, logout, me | M1 stub → M5 real |
-| conversations | list, create, rename, archive, delete | M1 |
+| conversations | list, create, rename, archive, unarchive | M1 |
 | models | listProviders, listModels, prepareSession (existing shapes) | M1 |
 | targets | listDevices, claimDevice, revokeDevice, browseDirectory | M2 |
 | connections | list, addKey, startSubscriptionLogin, pollSubscriptionLogin, delete, quota | M3 |
