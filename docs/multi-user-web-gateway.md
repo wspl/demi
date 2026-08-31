@@ -413,6 +413,35 @@ Deliberately deferred (off the critical path, no contract impact): relay
 end-to-end encryption, per-wire usage reconciliation, artifact write-through
 capacity policy.
 
+## Milestone verification
+
+Three verification tiers, matching existing repo conventions:
+
+1. **Model-free automated tests** — StubProvider + local mocks, runnable with
+   scoped `bun test packages/<pkg>`, CI-gating. Every milestone's acceptance
+   criteria live almost entirely here.
+2. **Env-gated real-credential smoke** — `real-*.e2e.test.ts` behind
+   `DEMI_*_E2E` gates, never run by default, manual pre-release only. Real
+   models are never a merge gate.
+3. **Manual checklists** — only for UI look-and-feel and packaging smoke that
+   cannot be automated without new infrastructure.
+
+Per milestone (tier 1 unless marked):
+
+| M | Verification |
+|---|---|
+| M0 | Capability-flag type/declaration tests. `buildClaudeEnv` assertions for the overlay option (no CLI). Injected-fetch header assertions for the codex quota probe and grok catalog. Cross-machine replay: two LocalHosts in two temp dirs + StubProvider — run turns on A, checkpoint, `fromCheckpoint` on B, continue; assert transcript identity and executing-tool force-complete. |
+| M1 | Frame codec round-trip tests in the protocol package. Single-process integration: gateway (random port) + daemon (temp dir) + AgentClient, StubProvider turn through the relay. Fault injection: client disconnect/reconnect mid-turn → `sync_transcript` self-heal yields the full transcript; runner disconnect → error frame reaches the client. |
+| M2 | Write-through HostStore unit tests (checkpoint lands in backend store; debounce). Integration: turn via daemon, kill daemon → cold history readable from the gateway; second runner `open` fenced by lease, takeover after release; daemon killed mid-turn → authoritative state equals last persisted point and restores. |
+| M3 | Promote the mock-gateway verification harness into tests: mock upstream + real gateway proxy, asserting per-wire passthrough (paths, request headers, verbatim `x-codex-*` response headers), the WS hop through the real proxy, and credential injection (backend-held key added, runner gateway token stripped). Metering: StubProvider turns with usage → ledger aggregation rows. CLI chain (daemon env overlay → gateway → mock upstream) skips when no `claude` binary is present. Tier 2: one gated real-subscription smoke per provider. |
+| M4 | host-virtual unit tests: fs/store semantics (`Uint8Array`/`bigint` round-trip), portable-command coverage matrix, spawn-failure message shape. Lifecycle integration with a slow StubProvider: detach client mid-turn → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort in one test); short-delay `yield` wakeup rematerializes the session; idle dispose; `requiresProcessHost` provider rejected with upgrade guidance. |
+| M5 | Migration integration: virtual→real asserts lease-transfer ordering, replay, migration context block content, file materialization; real→real asserts files absent and the context block says so; mid-turn migration refused; concurrent double-migration has exactly one winner. Tier 2 (optional): an agent-eval case that the model acts sensibly on the migration note. |
+| M6 | Tenant-isolation authz matrix: every API action by user A against user B's sessions/runners/credentials asserts denial. Device-pairing integration (happy path + code expiry). Tier 3: UI manual checklist — no new browser-test infrastructure. |
+| M7 | Tier 3 scripted smoke: build the docker runner image, connect it to a local gateway, run one full turn end-to-end; optional CI stage. |
+
+Test modules and their coverage get documented per milestone in this file (or a
+sibling doc) as they land, per the repo's design-record rules.
+
 ## Open questions
 
 - Command-artifact write-through cap and retention policy in the backend store.
