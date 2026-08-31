@@ -184,8 +184,8 @@ no per-connection ownership machinery:
 - **Isolated**: every user manages their own provider connections; nothing is
   shared between users. Typical public host.
 
-Usage is metered per user in both modes. The only other instance setting is
-`registration` (open / invite-token / closed). A **provider connection** is
+Usage is metered per user in both modes. The mode is the only instance
+setting. A **provider connection** is
 an API key or a completed subscription login; since either mode allows
 multiple connections of the same provider type, model selection is keyed by
 `(connectionId, modelId)` — the backend instantiates one provider runtime per
@@ -193,11 +193,20 @@ connection and uses the connectionId as its providerId.
 
 ### User system (minimal final state)
 
-Email + password (modern hash), cookie session; the `/agent` WebSocket and
-control API authenticate by the same same-origin cookie. The first registered
-user is the admin. Admin privileges are exactly two: manage the instance's
-provider connections (shared mode), and edit instance settings. No
-organizations, teams, or roles beyond admin/user.
+Username + password (modern hash), cookie session (httpOnly, sliding
+expiry); the `/agent` WebSocket and control API authenticate by the same
+same-origin cookie. **No self-registration and no password recovery of any
+kind** — zero mail/SMTP dependency. Accounts are managed entirely from an
+admin page:
+
+- **master**: the instance's first account, created at initial setup. Can do
+  everything, including creating admins.
+- **admin**: everything master can do except creating admins — creates users,
+  resets passwords, manages the instance's provider connections (shared
+  mode), edits instance settings.
+- **user**: uses the product.
+
+No organizations, teams, or further roles.
 
 ### Conversation system
 
@@ -265,13 +274,13 @@ Grouped by module — this is the concrete scope fed into the roadmap:
 
 | Group | Methods (shape, not final names) | Lands in |
 |---|---|---|
-| auth | register, login, logout, me | M1 stub → M5 real |
+| auth | login, logout, me | M1 stub → M5 real |
 | conversations | list, create, rename, archive, delete | M1 |
 | models | listProviders, listModels, prepareSession (existing shapes) | M1 |
 | targets | listDevices, claimDevice, revokeDevice, browseDirectory | M2 |
 | connections | list, addKey, startSubscriptionLogin, pollSubscriptionLogin, delete, quota | M3 |
 | usage | summary per user/conversation | M3 |
-| admin | instance settings get/set | M5 |
+| admin | user management (create user, reset password, grant admin — master only for grants), instance mode get/set | M5 |
 | attachments | upload (returns a content-block reference) | M4+ |
 
 ## Runner program
@@ -655,9 +664,10 @@ covered by integration tests; an uploaded image round-trips through a
 StubProvider turn and the checkpoint.
 
 **M5 — Multi-user product shell**
-Real auth (email/password, cookie sessions, first-user admin), device
-management UI, connections/usage/instance-settings pages, session list /
-target picker, tenant-isolation authz matrix. UI deliberately late: earlier
+Real auth (username/password, cookie sessions, master/admin/user roles, no
+registration, no recovery), user-management admin page, device management UI,
+connections/usage/instance-settings pages, session list / target picker,
+tenant-isolation authz matrix. UI deliberately late: earlier
 milestones accept with the stub user and existing web-ui surfaces.
 
 **M6 — Deployment packaging**
