@@ -25,7 +25,7 @@ export function commandToForkCommand(
     execute: async (args, ctx): Promise<ForkExecResult> => {
       const stdin = decodeForkStdin(ctx.stdin)
       const argv = [command.name, ...args]
-      const job = new VirtualForegroundJob(session, command.name, args, ctx.cwd, captureLimitBytes)
+      const job = new VirtualForegroundJob(session, command.name, args, ctx.cwd, captureLimitBytes, resolveRunningHint(command, args))
       job.install()
       try {
         const result = await Promise.race([
@@ -103,6 +103,7 @@ class VirtualForegroundJob {
     args: string[],
     cwd: string,
     private readonly captureLimitBytes: number,
+    runningHint: string | undefined,
   ) {
     this.exitPromise = new Promise<HostSpawnExit>((resolve) => {
       this.settleExit = resolve
@@ -152,6 +153,7 @@ class VirtualForegroundJob {
       exitPromise: this.exitPromise,
       outputSinks: createOutputSinks(session.fs, cwd, undefined),
       abortController: this.abortController,
+      ...(runningHint !== undefined ? { runningHint } : {}),
     }
     this.io = {
       stdout: (data) => {
@@ -255,6 +257,17 @@ function toBytes(data: string | Uint8Array): Uint8Array {
 }
 
 async function* emptyByteStream(): AsyncIterable<Uint8Array> {}
+
+/** The `runningHint` of the executed node argv selects (flags never collide with subcommand names). */
+function resolveRunningHint(command: Command, args: string[]): string | undefined {
+  let node = command
+  for (const token of args) {
+    const child = node.subcommands?.find((candidate) => candidate.name === token)
+    if (!child) break
+    node = child
+  }
+  return node.runningHint
+}
 
 function treeConsumesStdin(command: Command): boolean {
   if (command.stdinField) return true
