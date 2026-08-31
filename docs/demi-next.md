@@ -30,10 +30,9 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
                                             └←— Anthropic wire, passing through backend —→ Claude backend
 ```
 
-- Browser ↔ backend: Demi's agent protocol (`ClientFrame`/`ServerFrame`) plus
-  the Web API (everything the page calls that is not the per-conversation
-  agent socket) — designed from scratch, inheriting nothing from
-  `@demicodes/web`'s demo endpoints.
+- Browser ↔ backend: Demi's agent protocol (`ClientFrame`/`ServerFrame`) on
+  the per-conversation stream socket, plus the Web API — plain HTTP REST for
+  everything else the page calls (see Product design).
 - Backend ↔ LLM providers: the official wire protocols, spoken by the real
   provider runtimes (`createAnthropicApiProvider`, `createCodexProvider`, …)
   instantiated **inside the backend** with vault credentials at their native
@@ -118,8 +117,7 @@ routing code and ship only a sample config:
   turns finish on the old instance; only new connections land on the new
   mapping.
 - **Scale events move ~1/N of users** (consistent hashing), and a moved
-  user's experience is exactly the already-defined backend-restart
-  semantics: in-flight turn interrupted only if the connection happened to
+  user's experience is exactly a backend restart: in-flight turn interrupted only if the connection happened to
   drop mid-turn, zero history loss (checkpoints in the shared database, any
   instance can restore any user), runner auto-reconnects to the new home.
   Scale events are rare, operator-initiated maintenance.
@@ -174,9 +172,24 @@ maps paths to keys (listing via prefix, rename as copy+delete) and cleanly
 fails the exotic operations object storage cannot express (symlink/link/
 chmod); quotas are two hardcoded numbers (per-file and per-conversation
 caps), and archived conversations keep their files — the no-deletion
-principle applies. (`Host.store` is not its concern: the backend composes
+principle applies. `Host.store` is not its concern: the backend composes
 every Host it hands the harness — virtual or remote — with the backend
-store, uniformly.)
+store, uniformly.
+
+Sessions default to the virtual target: zero setup, chat and
+portable-command tool use work immediately (`BashEnvironment` routes portable
+commands through `Host.fs` with zero spawns —
+`packages/shell/src/__tests__/environment.test.ts:1485`), and because the
+session runs in the backend anyway, there is no extra lifecycle machinery.
+Its `process.spawn` must resolve with
+`spawnError.kind = 'executable_not_found'` — the portable-command fallback
+engages only on that error kind, so anything else would break even `cat` —
+and the shell surfaces an actionable "virtual environment — upgrade to a
+device to run real programs" message. Limits surface honestly: `bash`, `sh`,
+`sleep`, background jobs, and any real binary require a real target
+(`packages/shell/src/portable-commands.ts:18`), and the Claude Code provider
+needs a process-capable target for its CLI — gated by a provider capability
+flag, never by hard-coded provider names.
 
 **Code execution on virtual: JS via a WASM-sandboxed interpreter; Python
 explicitly not offered.** A `node`/`js` command is registered into the
@@ -188,23 +201,10 @@ over embedding V8 isolates deliberately: hostile code is interpreted, never
 JIT-compiled, so the escape surface is a WASM-runtime bug rather than the
 recurring JIT-CVE class — and no half-maintained native V8 bridge enters the
 credential-holding process. The 10–50× interpreter slowdown is irrelevant at
-chat-script scale. This ships as an independent branch after M1, preceded by
-its own small design record (runtime choice, limits, console mapping). The
-`executable_not_found` spawn contract is unaffected — registered commands
-dispatch before spawn.
-Its `process.spawn` must resolve with `spawnError.kind = 'executable_not_found'`
-— the portable-command fallback engages only on that error kind
-(`packages/shell/src/portable-commands.ts`), so anything else would break even
-`cat` — and the shell surfaces an actionable "virtual environment — upgrade
-to a device to run real programs" message. Sessions default to it: zero setup,
-chat and portable-command tool use work immediately (`BashEnvironment` routes
-portable commands through `Host.fs` with zero spawns —
-`packages/shell/src/__tests__/environment.test.ts:1485`), and because the
-session runs in the backend anyway, there is no extra lifecycle machinery.
-Limits surface honestly: `bash`, `sh`, `sleep`, background jobs, and any real
-binary require a real target (`packages/shell/src/portable-commands.ts:18`),
-and the Claude Code provider needs a process-capable target for its CLI —
-gated by a provider capability flag, never by hard-coded provider names.
+chat-script scale. Registered commands dispatch before spawn, so the
+`executable_not_found` contract above is unaffected. Ships as an independent
+branch after M1, preceded by its own small design record (runtime choice,
+limits, console mapping).
 
 ### Web frontend (`@demicodes/web`, product leaf)
 
@@ -459,9 +459,8 @@ aggregation happens at query time, never at write time.
 
 ### Web API (browser ↔ backend)
 
-Designed from scratch — nothing is inherited from `@demicodes/web`'s demo
-`/control` WS RPC or its `/agent?cwd=` addressing, both of which do not
-survive. The product API has exactly two kinds of traffic:
+The product API has exactly two kinds of traffic (nothing is carried over
+from `web-demo`'s `/control` WS RPC or `/agent?cwd=` addressing):
 
 1. **Application data — plain HTTP REST.** Auth, conversations metadata,
    devices, connections, models, usage, users, settings, uploads: all
@@ -476,8 +475,8 @@ survive. The product API has exactly two kinds of traffic:
    the conversation record; the browser never names a cwd.
 
 `@demicodes/web-ui` is unaffected: it consumes a transport-agnostic client
-interface, which the product shell backs with fetch instead of the demo WS
-RPC. No server push in v1 — pages poll on open and on an interval.
+interface, which the product shell backs with fetch. No server push in v1 —
+pages poll on open and on an interval.
 
 Resource layout (concrete scope fed into the roadmap):
 
@@ -619,9 +618,8 @@ contain the least-changing code. Runner-side loops also resurrect everything
 this design deleted: transcript sync back to the backend, a browser↔runner
 frame relay, sessions with two homes (lease, migration machinery, offline
 lock-in), and a runner fattened with agent/coding-agent/provider deps. The
-latency win is bounded (turn wall-clock is inference-dominated); the costs
-are structural, and the latency cost is bounded and optimizable — so the
-decision is closed, not parked behind a measurement.
+latency win is bounded (turn wall-clock is inference-dominated) while the
+costs are structural, so the decision is closed.
 
 Disconnect semantics: when the socket drops, in-flight spawns on the runner
 are killed and pending fs calls fail; the backend surfaces the failure into
@@ -680,11 +678,13 @@ backend, which uses this same Host RPC when it needs to look at the device
    persistence (planned remaining work in
    `docs/session-storage-and-naming.md`) as a storage optimization.
 
-Dropped from earlier drafts (superseded by this architecture): the frame
-relay, per-provider proxy-mode `baseUrl`/headers options, codex/grok header
-fixes, any "external auth" provider mode, the remote-inference RPC, checkpoint
-write-through, and the session lease layer (backend-internal
-`SessionOwnershipRegistry` suffices — sessions have exactly one home).
+Explicitly **not** part of this design — each of these is unnecessary once
+sessions live in the backend, and none should be reintroduced: a
+browser↔runner frame relay, per-provider proxy-mode `baseUrl`/headers
+options, any "external auth" provider mode, a normalized remote-inference
+RPC, checkpoint write-through from runners, and a session lease layer
+(backend-internal `SessionOwnershipRegistry` suffices — sessions have
+exactly one home).
 
 `docs/package-boundaries.md` gains registry entries for the new packages when
 implementation starts. The existing single-user Vite-dev product is renamed
@@ -739,8 +739,8 @@ thin frozen runner on the trust risk.
 
 ## Verified facts (2026-08-31, code reading + local mocks only)
 
-Retained from the design's verification passes; no real provider endpoint was
-contacted (a local deny-proxy caught escape attempts).
+Established by code reading and local-mock experiments; no real provider
+endpoint was contacted (a local deny-proxy caught escape attempts).
 
 - Every HTTP provider runtime accepts `baseUrl` + extra headers and its full
   endpoint surface follows `baseUrl` (inference, catalogs, quota probes);
@@ -776,7 +776,7 @@ contacted (a local deny-proxy caught escape attempts).
   builds on it; only the product harness (today fixed-host in
   `coding-agent`) needs a routing implementation in the backend. Action
   metadata is not checkpointed — the target comes from the backend session
-  registry per action, as designed.
+  registry per action.
 - **No remote Host / RPC exists anywhere in the repo** — the runner protocol
   is greenfield, as planned.
 - Scan routing (`preferHostSpawn`) makes real-runner remoting cheap for the
@@ -832,7 +832,7 @@ surface last. Each item is its own branch off `main`.
 
 **M1 — Two parallel tracks (no dependency between them)**
 
-*Track A — Backend skeleton + virtual default (first demoable node).*
+*Track A — Backend skeleton + virtual default (first end-to-end node).*
 `@demicodes/backend` serving the conversation stream + the Web API
 multi-user-shaped (stub user); the storage module (schema, numbered `.sql`
 migrations, dual-dialect layer — SQLite driver only); conversation
@@ -863,7 +863,7 @@ Two acceptance steps in order:
    encryption at rest), per-user provider assembly for the API-key providers
    keyed by `(connectionId, modelId)`, usage ledger + enforcement. This is
    the product's minimum viable form — a user pastes a key and chats — and
-   stands alone as a demoable point.
+   stands alone as a usable point.
 2. *Subscriptions + Claude Code* (depends on M2): provider device-login
    flows + refresh in the vault, the Anthropic passthrough, claude-code
    sessions spawning their CLI on the session's runner. Accept: turns with
@@ -940,8 +940,3 @@ checklists only for UI look-and-feel and packaging smoke.
 
 Test modules and their coverage get documented per milestone as they land, per
 the repo's design-record rules.
-
-No open questions remain. Two late closures for the record: the workspace
-picker supports creating a directory on the device (a trivial pass-through
-to the Host RPC's existing `mkdir`); fs RPC batching is covered by the
-deliberately-deferred list (measure first), not an open design point.
