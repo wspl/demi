@@ -29,6 +29,11 @@
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^"
   },
+  "devDependencies": {
+    "@demicodes/agent": "workspace:^",
+    "@demicodes/core": "workspace:^",
+    "@demicodes/provider": "workspace:^"
+  },
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
