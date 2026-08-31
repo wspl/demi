@@ -165,9 +165,18 @@ section below. The same binary in a container image is the **docker runner**
 
 ### Virtual execution (default entry)
 
-`@demicodes/host-virtual`: a platform-neutral in-memory `Host` fs. (`Host.store`
-is not its concern: the backend composes every Host it hands the harness —
-virtual or remote — with the backend store, uniformly.)
+`@demicodes/host-virtual`: a platform-neutral `Host` fs whose bytes live in a
+pluggable blob backend, mirroring the database's two topologies: **local
+filesystem directory** (N=1 default, full fs semantics) or **S3-compatible
+object storage** (required at N>1 — a remapped user's virtual files must be
+reachable from any instance). Namespace is per-conversation. The S3 backend
+maps paths to keys (listing via prefix, rename as copy+delete) and cleanly
+fails the exotic operations object storage cannot express (symlink/link/
+chmod); quotas are two hardcoded numbers (per-file and per-conversation
+caps), and archived conversations keep their files — the no-deletion
+principle applies. (`Host.store` is not its concern: the backend composes
+every Host it hands the harness — virtual or remote — with the backend
+store, uniformly.)
 Its `process.spawn` must resolve with `spawnError.kind = 'executable_not_found'`
 — the portable-command fallback engages only on that error kind
 (`packages/shell/src/portable-commands.ts`), so anything else would break even
