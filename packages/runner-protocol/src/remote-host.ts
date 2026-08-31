@@ -85,6 +85,11 @@ export class RemoteHost implements Host {
     return this.send !== null
   }
 
+  /** Remote processes currently in flight (diagnostics). */
+  get activeSpawnCount(): number {
+    return this.activeSpawns.size
+  }
+
   /** Routes runner messages that belong to this Host (fs results, spawn streams). */
   handleMessage(message: RunnerToBackendMessage): void {
     if (message.type === 'fs_result') {
