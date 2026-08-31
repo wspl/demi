@@ -342,6 +342,33 @@ contacted (a local deny-proxy caught escape attempts).
   session ids are client-owned with takeover semantics
   (`packages/agent/src/server.ts:398`).
 
+### Storage pluggability (audited: DB-backed backend needs no interface changes)
+
+- Conversation state is fully behind `HostStore` (4 methods) — checkpoints,
+  command artifacts, future blobs/journal. The backend implements a DB-backed
+  `HostStore`; the agent layer is untouched.
+- Credentials are fully behind injectable auth stores: every subscription
+  provider creator accepts `authStore?:`
+  (`packages/provider-codex/src/provider.ts:52`,
+  `packages/provider-claude-code/src/provider.ts:34`,
+  `packages/provider-grok-build/src/provider.ts:33`), each a two-method
+  interface (`status()` + `resolveAuth`/`resolveAccess`) with refresh and
+  persistence as implementation concerns; injection takes precedence over the
+  file/pool stores. API-key providers take resolver functions. Device-login
+  flows return token material without persisting
+  (`runCodexDeviceLogin(): CodexAuthDotJson`), so the vault stores the return
+  value. The vault is therefore three authStore implementations plus one
+  `HostStore` implementation, all inside `@demicodes/backend`.
+- The file-based implementations (`File*AuthStore`,
+  `@demicodes/provider/credentials-pool`, `~/.demi` layout) stay for the
+  local products and the runner's own machine-local state; no migration or
+  compatibility layer.
+- Remaining hard-wired filesystem touches: the claude-code transport's
+  `statSync`/`child_process.spawn` (covered by the M0 injectable-spawn item),
+  the claude-code tmpdir wire log (disabled via `DEMI_CLAUDE_WIRE_LOG=0` in
+  the backend), and grok's optional `version.json` read (constant fallback,
+  harmless).
+
 ## Implementation roadmap
 
 Ordering principles: the riskiest long-lived contracts first (runner protocol,
