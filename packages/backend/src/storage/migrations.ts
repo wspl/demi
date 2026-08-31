@@ -93,7 +93,8 @@ CREATE TABLE attachments (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users(id),
   media_type TEXT NOT NULL,
-  bytes      BLOB NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  sha256     TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 
