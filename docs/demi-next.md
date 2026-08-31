@@ -217,8 +217,9 @@ assets ship inside the backend image and `@demicodes/backend` serves them
 alongside `/api`; development: Vite dev server proxying `/api`.
 
 Naming: the existing dev-only `@demicodes/web` product is renamed
-`web-demo` when the new package is scaffolded (M1), lives on as a deprecated
-demo, and gets deleted once the product covers it.
+`web-demo` when the new package is scaffolded (M5 — the frontend is built in
+one concentrated phase after all systems beneath it are test-accepted),
+lives on as a deprecated demo, and gets deleted once the product covers it.
 
 Layout and information architecture:
 
@@ -834,12 +835,12 @@ surface last. Each item is its own branch off `main`.
 multi-user-shaped (stub user); the storage module (schema, numbered `.sql`
 migrations, dual-dialect layer — SQLite driver only); conversation
 persistence + session index; `@demicodes/host-virtual` with its local-dir
-blob backend as the default target; the `@demicodes/web` SPA scaffold
-(login stub + chat view on web-ui) with the old product renamed `web-demo`.
-Providers are **operator-assembled** exactly like the old dev product (env
-keys / operator logins) — the vault is explicitly out of M1 scope. Accept:
-zero-setup browser chat with portable-command tools; refresh mid-turn
-reattaches to the running turn; cold history readable.
+blob backend as the default target. No frontend work — all acceptance is
+test-level (in-process `AgentClient`). Providers are **operator-assembled**
+exactly like the old dev product (env keys / operator logins) — the vault is
+explicitly out of M1 scope. Accept: a zero-setup virtual conversation with
+portable-command tools; client detach mid-turn reattaches to the running
+turn; cold history readable.
 
 *Track B — Runner protocol core.* The runner-protocol package (fs RPC,
 streaming spawn, handshake) and the `demi-runner` binary, exercised against a
@@ -869,8 +870,8 @@ Two acceptance steps in order:
    `claude` binary); real-subscription smoke manual only, never an ungated
    test.
 
-**M4 — Target switching + attachments**
-Turn-boundary switching UI + context injection + the out-of-virtual tmp-dump
+**M4 — Target switching + attachments (mechanisms + endpoints only; UI at M5)**
+Turn-boundary switching + context injection + the out-of-virtual tmp-dump
 (model relocates); workspaces CRUD; offline-target degradation (read/chat via
 virtual);
 message-attachment upload (inline media content blocks) and workspace file
@@ -878,14 +879,16 @@ drop (Host RPC `writeFile`). Accept: switch, upgrade, and offline flows each
 covered by integration tests; an uploaded image round-trips through a
 StubProvider turn and the checkpoint.
 
-**M5 — Multi-user product shell**
+**M5 — Multi-user product shell (all frontend, in one concentrated phase)**
 Real auth (username/password, cookie sessions, master/admin/user roles, no
-registration, no recovery); the full `@demicodes/web` shell per the layout
-design — workspace-grouped sidebar, settings dialogs (devices, connections,
-usage, user management, instance settings), target picker;
-**shared/isolated instance-mode enforcement** (admin-only connections in
-shared mode); tenant-isolation authz matrix. UI deliberately late: earlier
-milestones accept with the stub user and bare web-ui surfaces.
+registration, no recovery); the **entire `@demicodes/web` package** built
+here per the layout design — scaffold, workspace-grouped sidebar, chat view
+on web-ui, settings dialogs (devices, connections, usage, user management,
+instance settings), target picker — with the old dev product renamed
+`web-demo` at this point; **shared/isolated instance-mode enforcement**
+(admin-only connections in shared mode); tenant-isolation authz matrix.
+Frontend deliberately arrives only after every system beneath it is
+test-accepted — no scattered UI work across earlier milestones.
 
 **M6 — Deployment packaging**
 Docker images for runner and backend (backend image carries the built web
