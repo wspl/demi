@@ -12,6 +12,7 @@ const platformNeutralEntries = [
   ['@demicodes/agent', 'packages/agent/src/index.ts'],
   ['@demicodes/shell', 'packages/shell/src/index.ts'],
   ['@demicodes/coding-agent', 'packages/coding-agent/src/index.ts'],
+  ['@demicodes/runner-protocol', 'packages/runner-protocol/src/index.ts'],
 ] as const
 
 const workspaceEntries = new Map<string, string>([
@@ -23,6 +24,7 @@ const workspaceEntries = new Map<string, string>([
   ['@demicodes/provider-grok-build', 'packages/provider-grok-build/src/index.ts'],
   ['@demicodes/provider-google', 'packages/provider-google/src/index.ts'],
   ['@demicodes/host-local', 'packages/host-local/src/index.ts'],
+  ['@demicodes/runner', 'packages/runner/src/index.ts'],
   ['@demicodes/repl', 'packages/repl/src/index.ts'],
   ['@demicodes/agent-eval', 'packages/agent-eval/src/index.ts'],
 ])
@@ -41,6 +43,8 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demicodes/provider-anthropic-api', 'packages/provider-anthropic-api'],
   ['@demicodes/provider-grok-build', 'packages/provider-grok-build'],
   ['@demicodes/provider-google', 'packages/provider-google'],
+  ['@demicodes/runner-protocol', 'packages/runner-protocol'],
+  ['@demicodes/runner', 'packages/runner'],
   ['@demicodes/repl', 'packages/repl'],
   ['@demicodes/agent-eval', 'packages/agent-eval'],
 ])
@@ -59,6 +63,11 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/provider-anthropic-api', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   ['@demicodes/provider-grok-build', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   ['@demicodes/provider-google', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
+  ['@demicodes/runner-protocol', ['@demicodes/shell', '@demicodes/utils']],
+  [
+    '@demicodes/runner',
+    ['@demicodes/host-local', '@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils'],
+  ],
   [
     '@demicodes/repl',
     [

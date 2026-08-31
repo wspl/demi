@@ -1,0 +1,43 @@
+{
+  "name": "@demicodes/runner",
+  "description": "Demi runner: turns a machine into an execution target by serving the Host contract to a Demi backend.",
+  "version": "0.20.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "bin": {
+    "demi-runner": "./dist/main.mjs"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/host-local": "workspace:^",
+    "@demicodes/runner-protocol": "workspace:^",
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/utils": "workspace:^"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/runner"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/runner#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}
