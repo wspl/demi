@@ -220,6 +220,29 @@ Naming: the existing dev-only `@demicodes/web` product is renamed
 `web-demo` when the new package is scaffolded (M1), lives on as a deprecated
 demo, and gets deleted once the product covers it.
 
+Layout and information architecture:
+
+- Classic three-pane: sidebar (conversation list + new-conversation + user
+  menu at the bottom), chat area, and a conversation header carrying the
+  title, execution-target display/switch, and the conversation-level
+  operations from the "everything Demi implements gets exposed" rule
+  (compact, abort, retry, …). The **model picker lives at the input area —
+  it is web-ui's existing design**; the shell only feeds it the catalog
+  grouped by connection.
+- The conversation list is **grouped by workspace**: the first group is
+  always the no-workspace conversations (virtual is not a workspace),
+  followed by one group per workspace. Plus an archived view entry.
+- **Settings are modal dialogs**, opened from the sidebar user menu, with
+  tabs: devices, connections, usage, user management (admin), instance
+  settings (admin). No settings routes.
+- Responsive (sidebar collapses to a drawer on mobile — watching and
+  steering server-side turns from a phone is part of the product story); no
+  PWA, no offline, no push.
+- The chat body itself is zero design burden: message rendering, tool
+  blocks, markdown, streaming, input, and the model picker are existing
+  web-ui components; the shell builds the frame above, the settings dialogs,
+  and the target picker (device list + directory browse).
+
 ## Session and host model
 
 - Every session is an AgentSession in the backend. Its current **execution
