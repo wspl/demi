@@ -9,7 +9,8 @@ branch, renamed from the design branch `feat/chat-gui-gateway-design`).
 
 ## M0 — Groundwork
 
-Status: **in progress** (started 2026-08-31).
+Status: **done** (2026-08-31). All three items landed and verified with
+scoped `bun test` runs; repo-wide `bun run typecheck` green.
 
 ### Pre-flight (done)
 
@@ -71,11 +72,34 @@ Decisions:
 
 ### Item 2 — provider execution-requirement capability flag
 
-Status: not started.
+Status: **done** (`a8269d0`). `Provider.requiresProcessCapableHost?: boolean`
+— a flat optional flag, no grouping structure (nothing else to group yet).
+claude-code declares it; enforcement (virtual target refusal with upgrade
+guidance) lands with `@demicodes/host-virtual` in M1.
 
 ### Item 3 — host-switch integration test (migration primitive)
 
-Status: not started.
+Status: **done** (`734ae4f`,
+`packages/agent/src/__tests__/host-switch-migration.test.ts`).
+
+Conclusions for M4's product implementation:
+
+- The context-block injection point is the **harness `preamble` hook**
+  (`AgentHarness.preamble(ctx)` with `ctx.metadata`) — it lands on the user
+  block (`Block.preamble`) and is replayed to the model prepended to the
+  user turn. No new agent mechanism is needed for switch announcements.
+- Per-Host `BashEnvironment` reuse verified across an excursion: A → B → A
+  returns to A's shell with cwd and files intact; B starts fresh.
+- The harness `host()` hook is also called in metadata-less contexts
+  (session open); a product harness must fall back to the session's current
+  target there rather than requiring action metadata.
+
+### Other conclusions from landing M0
+
+- The root-entry boundary test (`platform-entrypoints.test.ts`) rejects
+  root exports from claude-code's `./transport`; the public injectable
+  spawn shape types therefore live in their own `./spawn` module
+  (`2059dab`) — transport stays internal.
 
 ## M1+
 
