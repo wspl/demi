@@ -6,8 +6,12 @@ import { createTodoCommand } from './todo-command'
 
 export type CodingState = Record<string, never>
 
+/** Per-action Host resolution (`AgentHarness.host` signature) for multi-target products. */
+export type CodingHostResolver = AgentHarness<CodingState>['host']
+
 export interface CodingAgentHarnessOptions {
-  host: Host
+  /** A fixed Host, or a resolver routing each action to its execution target. */
+  host: Host | CodingHostResolver
   referenceHost?: Host
   commands?: Command[]
 }
@@ -29,12 +33,15 @@ export function createCodingCommandRegistry(options: CodingCommandRegistryOption
 
 export function createCodingAgentHarness(options: CodingAgentHarnessOptions): AgentHarness<CodingState> {
   const commands = options.commands ?? defaultCodingCommands()
-  const referenceHost = options.referenceHost ?? options.host
-  const resolveReferences = createFileReferenceResolver<CodingState>(referenceHost)
+  const resolveHost: CodingHostResolver =
+    typeof options.host === 'function' ? options.host : () => options.host as Host
+  const resolveReferences = createFileReferenceResolver<CodingState>(
+    options.referenceHost ?? ((ctx) => resolveHost(ctx)),
+  )
   return {
     name: 'coding',
     initialState: () => ({}),
-    host: () => options.host,
+    host: resolveHost,
     commands: () => [...commands],
     agents: () => [
       {
