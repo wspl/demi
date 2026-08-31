@@ -20,6 +20,7 @@
 - Keep project documentation under `docs/`.
 - Verify runnable paths and external interfaces before writing concrete design plans.
 - Document test modules and their intended coverage under `docs/`.
+- Keep a live implementation log per roadmap milestone in `docs/demi-next-progress.md`: status, pitfalls encountered, and conclusions, updated as the work happens so it can be resumed and reviewed at any time.
 
 ## Submodules
 
