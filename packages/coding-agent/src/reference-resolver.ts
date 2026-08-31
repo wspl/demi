@@ -3,18 +3,25 @@ import type { Host } from '@demicodes/shell'
 import type { AgentReferenceResolveContext } from '@demicodes/agent'
 import type { UserContentBlock } from '@demicodes/core'
 
-export function createFileReferenceResolver<State>(host: Host) {
+export type ReferenceHostResolver<State> = (
+  ctx: AgentReferenceResolveContext<State>,
+) => Host | Promise<Host>
+
+export function createFileReferenceResolver<State>(host: Host | ReferenceHostResolver<State>) {
+  const resolveHost: ReferenceHostResolver<State> = typeof host === 'function' ? host : () => host
   return async (
     ctx: AgentReferenceResolveContext<State>,
     content: UserContentBlock[],
   ): Promise<UserContentBlock[]> => {
     const resolved: UserContentBlock[] = []
+    let contextHost: Host | null = null
     for (const block of content) {
       if (block.type !== 'reference') {
         resolved.push(block)
         continue
       }
-      resolved.push(await resolveFileReference(host, ctx.cwd, block.reference))
+      contextHost ??= await resolveHost(ctx)
+      resolved.push(await resolveFileReference(contextHost, ctx.cwd, block.reference))
     }
     return resolved
   }
