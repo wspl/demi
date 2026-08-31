@@ -31,8 +31,9 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 ```
 
 - Browser ↔ backend: Demi's agent protocol (`ClientFrame`/`ServerFrame`) plus
-  the control RPC — the same surfaces `@demicodes/web` uses today, served
-  multi-user.
+  the Web API (everything the page calls that is not the per-conversation
+  agent socket) — evolving the same surfaces `@demicodes/web` uses today,
+  served multi-user.
 - Backend ↔ LLM providers: the official wire protocols, spoken by the real
   provider runtimes (`createAnthropicApiProvider`, `createCodexProvider`, …)
   instantiated **inside the backend** with vault credentials at their native
@@ -194,7 +195,7 @@ connection and uses the connectionId as its providerId.
 ### User system (minimal final state)
 
 Username + password (modern hash), cookie session (httpOnly, sliding
-expiry); the `/agent` WebSocket and control API authenticate by the same
+expiry); the `/agent` WebSocket and the Web API authenticate by the same
 same-origin cookie. **No self-registration and no password recovery of any
 kind** — zero mail/SMTP dependency. Accounts are managed entirely from an
 admin page:
@@ -293,7 +294,20 @@ low-concurrency structured data; SQLite transactions natively provide the
 live in the checkpoint like today; command artifacts stay on execution
 targets.
 
-### Control API (browser ↔ backend, superset of today's `/control`)
+### Web API (browser ↔ backend)
+
+Everything the web app calls that is not the per-conversation `/agent`
+socket: auth, conversations, devices, connections, settings, uploads. It
+absorbs and replaces today's `/control` (the four existing methods fold in;
+the old name does not survive). Transport split by nature, not fashion:
+login/logout (cookie setting), the two uploads (large payloads, progress),
+and cold-history reads (cacheable) are plain HTTP; everything else stays
+small JSON request/response on the existing WS RPC shape
+(`{id, method, params}` → `{id, ok, result | error: {code, message}}`, error
+codes as stable strings). One Web API WS connection per logged-in page plus
+one `/agent` socket per open conversation; no server push in v1 — pages poll
+on open and on an interval (a push event can be added to the WS later
+without redesign).
 
 Grouped by module — this is the concrete scope fed into the roadmap:
 
@@ -645,7 +659,7 @@ surface last. Each item is its own branch off `main`.
 **M1 — Two parallel tracks (no dependency between them)**
 
 *Track A — Backend skeleton + virtual default (first demoable node).*
-`@demicodes/backend` serving `/agent` + control RPC multi-user-shaped (stub
+`@demicodes/backend` serving `/agent` + the Web API multi-user-shaped (stub
 user), conversation persistence in the backend store, session index,
 `host-virtual` as the default target. Providers are **operator-assembled**
 exactly like `@demicodes/web` today (env keys / operator logins) — the vault
