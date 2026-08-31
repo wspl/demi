@@ -365,6 +365,53 @@ implementation starts. `@demicodes/web` (single-user, Vite-dev product) is
 untouched for now; the backend is its strict superset and may eventually
 subsume it.
 
+## Prior art and the empty quadrant
+
+Every component of this architecture has large-scale precedent; only the
+combination is rare.
+
+- "Agent loop in a service, execution environment across a wire" is the
+  standard cloud-sandbox agent shape (E2B/Modal/Daytona-style sandbox APIs are
+  fs + exec over HTTP; Devin, Codex cloud, Copilot coding agent all run this
+  way).
+- "Orchestration in the cloud, execution on user-owned machines" is the CI
+  self-hosted-runner shape (GitHub Actions runners; Ansible control nodes).
+- Command-granular remote execution — our main path after `preferHostSpawn` —
+  is SSH-shaped: one round trip per command plus streamed output, proven over
+  WAN for decades.
+
+The genuinely unoccupied quadrant is the combination: **loop in a datacenter +
+execution target on user devices + a fine-grained fs protocol**. It is empty
+for two reasons, in this order of importance:
+
+1. **Trust asymmetry (structural, the main reason).** A datacenter service
+   holding "execute arbitrary commands on user devices" means a backend
+   compromise turns every claimed device into a bot. This is why Claude
+   Code's Remote Control chose the opposite placement (loop on the device,
+   cloud as UI relay). We accept the asymmetry deliberately, with three
+   answers: self-host-first positioning (the user controls the datacenter),
+   a runner so thin and frozen it is auditable (fs + spawn + claim, nothing
+   else), and explicit device claiming. If this product ever becomes public
+   multi-tenant SaaS, this becomes the number-one design pressure, and the
+   likely response is device-side capability narrowing (per-directory or
+   per-session grants) — the direction of the deleted workspace allowlist.
+   Not building that now is correct for the self-host context; the line
+   exists and we know where it is.
+2. **Fine-grained fs over WAN has a famous failure (engineering, the lesser
+   reason).** VS Code Remote originally tried "editor logic local, files
+   remote," failed on per-op latency, and moved the extension host to the
+   file side. The differences here: our load is agent-turn-granular, not
+   human-keystroke-granular, and the heavy operations are already
+   command-granular via scan routing; the chatty residue is bounded. The M2
+   injected-RTT measurement gate exists precisely so this precedent cannot
+   repeat unnoticed.
+
+The category itself — "drive my own machine from a hosted web UI" — is
+months old; an unoccupied quadrant in a young category is not a verdict.
+Where others hesitate, this design places explicit answers: a measurement
+gate with a fallback plan on the latency risk, and self-hosting plus a thin
+frozen runner on the trust risk.
+
 ## Verified facts (2026-08-31, code reading + local mocks only)
 
 Retained from the design's verification passes; no real provider endpoint was
