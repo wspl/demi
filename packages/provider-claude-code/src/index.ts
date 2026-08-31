@@ -4,6 +4,7 @@ export {
   type ClaudeCodeProviderOptions,
 } from './provider'
 export { resolveWireLogDir } from './wire-log'
+export type { ClaudeSpawn, ClaudeSpawnParams, ClaudeSpawnHandle, ClaudeSpawnExit } from './transport'
 export {
   createClaudeCodeQuota,
   mapClaudeUsagePayload,
