@@ -16,6 +16,8 @@
     "packages/provider-google",
     "packages/provider-grok-build",
     "packages/shell",
+    "packages/runner-protocol",
+    "packages/runner",
     "packages/repl",
     "packages/web-ui",
     "packages/agent-eval",
