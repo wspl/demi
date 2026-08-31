@@ -254,6 +254,8 @@ the backend host itself as a local runner to relax this.
 2. `@demicodes/provider` — execution-requirement capability flag in provider
    metadata.
 3. `@demicodes/provider-codex` — pass configured `headers` to the quota probe.
+   `@demicodes/provider-grok-build` — pass configured `headers` to the model
+   catalog request (verified missing; see Runtime verification).
 4. New packages: `@demicodes/gateway` (product leaf), `@demicodes/runner`
    (product leaf), a small platform-neutral relay/control protocol package
    (may start inside gateway and split when runner consumes it), and a virtual
@@ -266,16 +268,54 @@ the backend host itself as a local runner to relax this.
 implementation starts. `@demicodes/web` (single-user, Vite-dev product) is
 untouched.
 
-## Follow-up verifications (runtime, before implementation)
+## Runtime verification results (2026-08-31, local mocks only)
 
-Code-path verification is done (this document). Two behaviors need a live
-check against local mock servers only — no real-model calls:
+Both planned live checks ran against local mock servers (Bun 1.3.11, macOS,
+`claude` CLI 2.1.220); no real provider endpoint was contacted (external
+attempts were caught by a local deny-proxy).
 
-1. Point each HTTP provider at a local mock gateway and record exact paths,
-   headers, and the Codex WS upgrade behavior through a reverse proxy.
-2. Spawn the Claude Code CLI with `ANTHROPIC_BASE_URL` set to a local mock and
-   enumerate every path it requests (its endpoint surface beyond
-   `/v1/messages` is CLI-internal and undocumented).
+**HTTP providers → mock gateway.** Every provider was driven through
+`providerRuntime(...).run(...)` with `baseUrl` pointed at the mock and a
+`x-demi-gateway-token` extra header configured. Observed request surface:
+
+| Call | Path observed at mock | Gateway token present |
+|---|---|---|
+| anthropic-api inference | `POST /v1/messages` (`x-api-key`, `anthropic-version`) | yes |
+| openai-api responses wire | `POST /v1/responses` (`authorization: Bearer`) | yes |
+| openai-api chat wire | `POST /v1/chat/completions` | yes |
+| google inference | `POST /v1beta/models/<id>:streamGenerateContent?alt=sse` (`x-goog-api-key`) | yes |
+| grok-build inference | `POST /v1/chat/completions` (`authorization` + `x-xai-token-auth` + session headers) | yes |
+| grok-build model catalog | `GET /v1/models` | **no — configured headers not applied** (change item 3) |
+| codex SSE inference | `POST <base>/codex/responses` (`authorization`, `chatgpt-account-id`, `session-id`, `thread-id`) | yes |
+| codex model catalog | `GET <base>/codex/models?client_version=…` | yes |
+| codex quota probe | `POST <base>/codex/responses` | **no** (change item 3); probe successfully parsed `x-codex-*` from mock response headers — verbatim response-header forwarding suffices |
+| codex WS inference | WS upgrade `GET <base>/codex/responses` with `authorization`, `chatgpt-account-id`, `openai-beta: responses_websockets=…`, gateway token; first frame `response.create` delivered | yes |
+
+Conclusions: the entire inference/catalog/quota surface follows `baseUrl` with
+no stray absolute URLs; per-provider extra headers ride along everywhere except
+the two catalogued gaps; and Bun's client `WebSocket(url, { headers })`
+extension works, so WS auth reaches a self-hosted gateway endpoint.
+API-key options on openai/anthropic/google are resolver functions, not strings.
+
+**Claude Code CLI → mock.** `claude --print` with `ANTHROPIC_BASE_URL` set to
+the mock, a fake `CLAUDE_CODE_OAUTH_TOKEN`, a fresh `CLAUDE_CONFIG_DIR`, and
+`HTTP(S)_PROXY` set to a local deny-proxy:
+
+- The inference path fully redirects: exactly one request class hit the mock —
+  `POST /v1/messages?beta=true` with `authorization: Bearer <env token>` and
+  the CLI's `anthropic-beta` feature list. The env-injected token was honored.
+  Fed a minimal mocked SSE stream, the CLI completed the turn and exited 0.
+- One best-effort direct `CONNECT api.anthropic.com:443` ignores
+  `ANTHROPIC_BASE_URL` (present even with
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`); the deny-proxy refused it and
+  the run still succeeded, so it is not load-bearing. Gateway deployments
+  should expect this background attempt from daemon machines.
+
+Residual (implementation-time) checks: the demi provider spawns the CLI in
+stream-json mode with in-band MCP rather than `--print` — the wire endpoint is
+the same, but the gateway smoke test should rerun through
+`createClaudeCodeProvider` once the gateway exists; and the WS hop should be
+re-verified through the actual gateway reverse-proxy implementation.
 
 ## Open questions
 
