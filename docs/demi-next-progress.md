@@ -17,14 +17,36 @@ Status: **in progress** (started 2026-08-31).
   starting; all hold (claude-code hard-coded `child_process.spawn` +
   `process.env`, `createLogicalHostCwd`, host-routing tests, `authStore?`
   injection points, no existing remote-Host code anywhere).
-- Committed the dangling `just-bash` submodule pointer (`d9d2c82`, publish
-  dist fix) so the baseline is clean.
+- ~~Committed the dangling `just-bash` submodule pointer (`d9d2c82`)~~ —
+  **wrong, reverted** (`d75be59`): the dirty state was the working tree
+  *lagging* at an older commit, not a new change; shell needs `7ed8adb`
+  (hostCwd dirfd + spawn-error classification). Lesson: compare commit
+  dates/ancestry before accepting a dirty submodule pointer.
+
+### Pitfalls hit while landing M0 (all fixed on this branch)
+
+- **Baseline typecheck was red** (pre-existing): grok-build narrowing +
+  `HeadersInit`; fixed in `da997c1`. `bun run typecheck` is green again —
+  keep it green.
+- **just-bash needs a local build**: the workspace links
+  `packages/just-bash/packages/just-bash` whose `dist/` is gitignored; after
+  a submodule update run `bun install && bun run build && bun run build:worker`
+  inside `packages/just-bash` or shell/agent tests fail en masse.
+- **macOS cwd dirfd anchor was broken** (pre-existing, hit all real-spawn
+  shell tests on macOS): `/dev/fd/N` cannot be opened or traversed for
+  directory fds (ENOTDIR/ENOENT, Bun 1.3.11); the anchor is now Linux-only,
+  darwin uses logical path semantics, and a failed spawn's stdio no longer
+  throws `ERR_STREAM_PREMATURE_CLOSE` through `Host` streams (`714b440`).
+  Consequence for the runner protocol: dirfd-stable cwd is a Linux-only
+  nicety; the proxy Host's `createLogicalHostCwd` plan is unaffected.
 
 ### Item 1 — claude-code injectable spawn + env overlay
 
-Status: in progress.
+Status: **done** (`a43a744`). Tests: `transport.test.ts` (spawn injection,
+env cleanliness, stream-json round trip, local wrapper smoke),
+`cli.test.ts` (overlay precedence), utils `utf8Lines`.
 
-Plan settled before coding:
+Decisions:
 
 - `@demicodes/provider-claude-code` must not import `@demicodes/shell`
   (package boundary), so the injectable spawn is typed **structurally** in
