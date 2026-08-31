@@ -238,10 +238,17 @@ Layout and information architecture:
 - Responsive (sidebar collapses to a drawer on mobile — watching and
   steering server-side turns from a phone is part of the product story); no
   PWA, no offline, no push.
-- The chat body itself is zero design burden: message rendering, tool
-  blocks, markdown, streaming, input, and the model picker are existing
-  web-ui components; the shell builds the frame above, the settings dialogs,
-  and the target picker (device list + directory browse).
+- **Component placement rule**: generic components and LLM-domain components
+  all live in `@demicodes/web-ui` — it is the design system plus LLM
+  component library (message rendering, tool blocks, input, model picker,
+  and the dialogs/forms/pickers this product adds). `@demicodes/web` keeps
+  only the application-frame containers (nav, sidebar, page scaffolding) and
+  the wiring. web-ui stays product-neutral in its dependencies (data in via
+  props/slots, injected clients); in-repo consumption is by workspace
+  dependency (the registry-semver rule is for external consumers).
+- Visual language follows web-ui's existing theme system (light/dark);
+  **English-only copy in v1** — i18n is a separate later effort, no
+  framework introduced now.
 
 ## Session and host model
 
