@@ -400,9 +400,8 @@ for two reasons, in this order of importance:
    remote," failed on per-op latency, and moved the extension host to the
    file side. The differences here: our load is agent-turn-granular, not
    human-keystroke-granular, and the heavy operations are already
-   command-granular via scan routing; the chatty residue is bounded. The M2
-   injected-RTT measurement gate exists precisely so this precedent cannot
-   repeat unnoticed.
+   command-granular via scan routing; the chatty residue is bounded and has
+   named optimizations (PATH cache, artifact pipelining).
 
 The category itself — "drive my own machine from a hosted web UI" — is
 months old; an unoccupied quadrant in a young category is not a verdict.
