@@ -43,16 +43,16 @@ client-owned session ids).
 browser ──ws──▶ gateway ◀──ws (outbound)── runner daemon (user device)
  (web-ui)        │  ▲                        └─ AgentServer + LocalHost + providers
                  │  └── virtual runner = ephemeral in-gateway AgentServer (per active session)
-                 │  └── docker runner / CF sandbox runner (same daemon binary)
+                 │  └── docker runner (same daemon binary in a container)
                  ▼
              provider APIs (wire-level passthrough + credential injection)
 ```
 
 ### Gateway (new product package, e.g. `@demicodes/gateway`)
 
-Control plane + data plane in one deployable, written runtime-portable
-(self-host Bun process; Cloudflare Workers with Durable Objects per session for
-the relay):
+Control plane + data plane in one deployable: a single self-hostable Bun
+process. No multi-runtime abstraction — serverless hosting is explicitly out
+of scope so its constraints cannot leak into the interfaces:
 
 - **Control plane**: users/auth, device pairing (device-code flow), runner
   registry, session index, credential vault for backend-held keys, usage
@@ -82,9 +82,9 @@ Outbound-only networking traverses NAT and needs no user firewall setup.
   through the existing provider auth stores. Nothing is uploaded; provider
   assembly happens on the runner.
 - The same binary packaged into a container image is the **docker runner**
-  (self-host) and the **CF sandbox runner**. These are hosting variants, not
-  new code paths. Their difference is credential source: the gateway injects
-  backend-held credentials at proxy time, so sandboxes never see raw keys.
+  (operator-managed) — a hosting variant, not a new code path. Its difference
+  is credential source: the gateway injects backend-held credentials at proxy
+  time, so the container never sees raw keys.
 
 ### Virtual runner (default entry) — ephemeral server-side executor
 
@@ -111,8 +111,7 @@ since the gateway can rematerialize the session without any page open.
 This also keeps the client architecture uniform: the browser is always an
 `AgentClient` over WebSocket, for every runner kind; the virtual runner is
 simply the runner with the shortest relay distance (in-process at the
-gateway). On Cloudflare, one Durable Object per virtual session is this exact
-model — hibernation between turns, storage as the only resident state.
+gateway).
 
 To verify during implementation: an in-flight turn must keep running when the
 client transport detaches (AgentSession is transport-independent by design,
@@ -405,10 +404,10 @@ Real auth, device pairing (device-code flow), session list / runner picker /
 migration UI, tenant-isolation tests. UI is deliberately last-but-one: earlier
 milestones accept with the stub user and existing web-ui surfaces.
 
-**M7 — Deployment targets**
-Docker runner image (same daemon binary); Cloudflare Workers port (Durable
-Object relay, D1/KV storage); end-to-end acceptance. Pure hosting work, done
-only after protocol and storage interfaces are frozen.
+**M7 — Deployment packaging**
+Docker runner image (same daemon binary); gateway deployment packaging;
+end-to-end acceptance. Pure hosting work, done only after protocol and storage
+interfaces are frozen.
 
 Deliberately deferred (off the critical path, no contract impact): relay
 end-to-end encryption, per-wire usage reconciliation, artifact write-through
