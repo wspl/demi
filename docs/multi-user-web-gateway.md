@@ -33,9 +33,12 @@ client-owned session ids).
    turn boundary, a checkpoint replay on the target, and an injected context
    block that tells the model what changed. Virtual→real upgrade, runner
    switching, and offline degradation are all this one primitive.
-3. **All model traffic flows through the gateway.** Every provider transport
-   points `baseUrl` (or CLI env) at the gateway. Credentials are modeled
-   per-runner; the injection point for backend-held credentials is the gateway.
+3. **All model traffic flows through the gateway, and all credentials live
+   server-side.** Every provider transport points `baseUrl` (or CLI env) at
+   the gateway carrying only a gateway-issued runner/session token; the
+   gateway injects the real credential (BYOK key or subscription OAuth) at
+   forward time. Runners of every kind — user daemons included — hold zero
+   provider credentials.
 
 ## Components
 
@@ -54,9 +57,12 @@ Control plane + data plane in one deployable: a single self-hostable Bun
 process. No multi-runtime abstraction — serverless hosting is explicitly out
 of scope so its constraints cannot leak into the interfaces:
 
-- **Control plane**: users/auth, device pairing (device-code flow), runner
-  registry, session index, credential vault for backend-held keys, usage
-  accounting store.
+- **Control plane**: users/auth; the device registry — devices are claimed by
+  entering a daemon-printed token in the web UI, persist under the account,
+  and expose live online status (= their multiplexed socket state); session
+  index; the credential vault (all BYOK keys and subscription OAuth tokens,
+  including running the providers' device-login flows and token refresh);
+  usage accounting store.
 - **Frame relay**: forwards `ClientFrame`/`ServerFrame` JSON between the
   browser's `AgentClient` WebSocket and the owning runner's WebSocket. The
   agent protocol already tolerates relay reconnects: transcript frames carry a
@@ -80,14 +86,14 @@ minus any HTTP listener — it dials the gateway with one outbound WebSocket
 (control channel) and attaches relayed agent sockets as transport bindings.
 Outbound-only networking traverses NAT and needs no user firewall setup.
 
-- Credentials stay on the device: the daemon reuses the machine's existing CLI
-  logins (`~/.claude` keychain/pool, `~/.codex` auth, `~/.grok/auth.json`)
-  through the existing provider auth stores. Nothing is uploaded; provider
-  assembly happens on the runner.
+- The daemon holds **zero provider credentials** (invariant 3): providers are
+  assembled in gateway mode (`baseUrl` → gateway + runner token), and the
+  Claude Code CLI runs in token mode with a placeholder
+  `CLAUDE_CODE_OAUTH_TOKEN` whose `Authorization` header the gateway swaps for
+  the real server-held token at forward time (the CLI's adoption of the env
+  token is verified below).
 - The same binary packaged into a container image is the **docker runner**
-  (operator-managed) — a hosting variant, not a new code path. Its difference
-  is credential source: the gateway injects backend-held credentials at proxy
-  time, so the container never sees raw keys.
+  (operator-managed) — a hosting variant, not a new code path.
 
 ### Virtual runner (default entry) — ephemeral server-side executor
 
@@ -228,15 +234,15 @@ and rate limiting.
 | google | `baseUrl` option | `headers` resolver | none |
 | grok-build | `baseUrl` option; models + billing/quota probes follow it (`models.ts:145`, `quota.ts:53`) | static `headers` map | OAuth refresh + device login against `auth.x.ai` (hardcoded issuer, `auth.ts:77`) |
 | codex | `baseUrl` drives SSE, WS (scheme swap, same host/path, `transport.ts:206`), `/codex/models`, and the quota probe | `headers` option on inference + catalog; **not** on the quota probe (`quota.ts:16`) | OAuth refresh + device login against `auth.openai.com` (hardcoded, `auth.ts:103`, `device-login.ts:52`) |
-| claude-code | CLI inherits the daemon process env (`cli.ts:36`), so the daemon sets `ANTHROPIC_BASE_URL` (+ gateway token var) before spawn; an explicit env-overlay option is cleaner (see Changes) | via env | provider-side quota probe `api.anthropic.com/api/oauth/usage` (option exists but not plumbed, `quota.ts:19`); models.dev catalog (`models.ts:26`); OAuth refresh against `console.anthropic.com` (`login.ts:12`) |
+| claude-code | CLI inherits the daemon process env (`cli.ts:36`): daemon sets `ANTHROPIC_BASE_URL` → gateway plus a placeholder `CLAUDE_CODE_OAUTH_TOKEN`; the gateway swaps the `Authorization` header for the vault token (CLI adoption of the env token verified below). An explicit env-overlay option is cleaner (see Changes) | via env | models.dev catalog (`models.ts:26`); the `/api/oauth/usage` quota probe and OAuth refresh (`console.anthropic.com`, `login.ts:12`) move to the gateway vault |
 
 Consequences to accept explicitly:
 
-- **Auth-plane traffic (OAuth refresh, device login) does not transit the
-  gateway** for daemon runners. That is correct: those exchanges belong to the
-  user's own credential custody. For backend-managed runners the gateway holds
-  the credentials and performs refresh itself, so the sandbox sees neither
-  tokens nor auth endpoints.
+- **Auth-plane traffic (device login, OAuth refresh) runs entirely at the
+  gateway** for every runner kind — credentials are server-side, so the
+  hard-coded `auth.openai.com` / `auth.x.ai` / `console.anthropic.com`
+  endpoints are called from the gateway's credential vault, never from
+  runners.
 - Codex `x-codex-*` quota values ride on inference response headers; the
   gateway must forward response headers verbatim or quota observation breaks
   (`packages/provider-codex/src/quota.ts:92`). The WS path never surfaces
@@ -245,11 +251,10 @@ Consequences to accept explicitly:
   extension (`transport.ts:303`); the runner runtime matrix must guarantee it
   (Bun does; browsers do not — irrelevant since runners are server-side).
   Runtime verification of WS reverse-proxying is a listed follow-up.
-- Daemon-held OAuth tokens transit the gateway in request headers (pass-through
-  custody: seen, never stored). Users who reject even transit self-host the
-  gateway. Keychain-sourced Claude Code tokens are not injectable by design
-  (`oauth.ts:25`) — on such machines the CLI authenticates itself, and its
-  traffic still routes via `ANTHROPIC_BASE_URL`.
+- Provider-side probes that need credentials (the claude-code
+  `/api/oauth/usage` quota probe, codex/grok quota) become gateway concerns:
+  runner-side providers send them with the placeholder token and the gateway
+  injects, or the gateway probes directly from the vault.
 
 ### Usage accounting
 
@@ -377,13 +382,14 @@ history browsing; session lease (single owning runner, takeover semantics
 lifted above `SessionOwnershipRegistry`). Accept: history readable with the
 daemon offline; a second runner's open is fenced by the lease.
 
-**M3 — Inference gateway + credential model + metering**
+**M3 — Inference gateway + credential vault + metering**
 Wire-level passthrough proxy (re-verify the Codex WS hop through the real
-reverse proxy); per-runner credential model (daemon pass-through vs
-backend-held injection); usage ledger aggregated from authoritative-transcript
+reverse proxy); server-side credential vault (BYOK keys, provider device-login
+flows, token refresh) with injection at forward time — runners hold only
+gateway tokens; usage ledger aggregated from authoritative-transcript
 `TokenUsage`. Accept: all daemon inference traffic transits the gateway
-(including the CLI via env overlay) against mocks; real-subscription smoke is
-manual only, never an ungated test.
+(including the CLI via env overlay with placeholder-token swap) against mocks;
+real-subscription smoke is manual only, never an ungated test.
 
 **M4 — Ephemeral virtual runner as default entry** (parallelizable with M3;
 depends on M2 for checkpoint authority)
@@ -403,7 +409,8 @@ virtual upgrade, and offline fallback all derive from this one primitive.
 Depends on M2 (authority) and M4 (virtual source).
 
 **M6 — Multi-user product shell**
-Real auth, device pairing (device-code flow), session list / runner picker /
+Real auth, device claiming (enter the daemon-printed token in the web UI;
+persistent device registry with online status), session list / runner picker /
 migration UI, tenant-isolation tests. UI is deliberately last-but-one: earlier
 milestones accept with the stub user and existing web-ui surfaces.
 
@@ -439,7 +446,7 @@ Per milestone (tier 1 unless marked):
 | M3 | Promote the mock-gateway verification harness into tests: mock upstream + real gateway proxy, asserting per-wire passthrough (paths, request headers, verbatim `x-codex-*` response headers), the WS hop through the real proxy, and credential injection (backend-held key added, runner gateway token stripped). Metering: StubProvider turns with usage → ledger aggregation rows. CLI chain (daemon env overlay → gateway → mock upstream) skips when no `claude` binary is present. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | host-virtual unit tests: fs/store semantics (`Uint8Array`/`bigint` round-trip), portable-command coverage matrix, spawn-failure message shape. Lifecycle integration with a slow StubProvider: detach client mid-turn → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort in one test); short-delay `yield` wakeup rematerializes the session; idle dispose; `requiresProcessHost` provider rejected with upgrade guidance. |
 | M5 | Migration integration: virtual→real asserts lease-transfer ordering, replay, migration context block content, file materialization; real→real asserts files absent and the context block says so; mid-turn migration refused; concurrent double-migration has exactly one winner. Tier 2 (optional): an agent-eval case that the model acts sensibly on the migration note. |
-| M6 | Tenant-isolation authz matrix: every API action by user A against user B's sessions/runners/credentials asserts denial. Device-pairing integration (happy path + code expiry). Tier 3: UI manual checklist — no new browser-test infrastructure. |
+| M6 | Tenant-isolation authz matrix: every API action by user A against user B's sessions/runners/credentials asserts denial. Device-claim integration (happy path + claim-token expiry + re-claim). Tier 3: UI manual checklist — no new browser-test infrastructure. |
 | M7 | Tier 3 scripted smoke: build the docker runner image, connect it to a local gateway, run one full turn end-to-end; optional CI stage. |
 
 Test modules and their coverage get documented per milestone in this file (or a
