@@ -92,6 +92,8 @@ test('Claude Code public provider reports auth via credential store and defers r
     message: 'Runtime is checked when a Claude Code request runs',
   })
   expect(provider.credentials).toBeDefined()
+  // The CLI transport needs a process-capable execution target.
+  expect(provider.requiresProcessCapableHost).toBe(true)
 })
 
 test('ClaudeCodeProvider streams text and response events from transport messages', async () => {

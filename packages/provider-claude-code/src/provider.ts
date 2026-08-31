@@ -612,6 +612,8 @@ export function createClaudeCodeProvider(options: ClaudeCodeProviderOptions = {}
   return defineProvider({
     id,
     displayName,
+    // The CLI transport spawns a real process on the session's execution target.
+    requiresProcessCapableHost: true,
     auth: { status: () => authStore.status() },
     quota,
     ...(credentialsApi ? { credentials: credentialsApi } : {}),
