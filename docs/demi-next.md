@@ -334,8 +334,9 @@ backend's aggregated catalog, grouped by connection.
 Chat view (existing web-ui components) + conversation sidebar; model/provider
 picker; execution-target picker (device list + directory browser via Host RPC
 `readdir`); device management (claim-token entry, online status, revoke);
-connections page (above); usage page (ledger, per user); admin-only instance
-settings. Nothing else in the first final state — sharing, collaboration, and
+connections page (above); usage page (ledger, per user); admin-only user
+management (create user, reset password, grant admin — master only) and
+instance settings. Nothing else in the first final state — sharing, collaboration, and
 search are explicitly out.
 
 ### Database
