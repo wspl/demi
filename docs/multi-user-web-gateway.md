@@ -42,7 +42,7 @@ client-owned session ids).
 ```
 browser ──ws──▶ gateway ◀──ws (outbound)── runner daemon (user device)
  (web-ui)        │  ▲                        └─ AgentServer + LocalHost + providers
-                 │  └── virtual runner = AgentServer in the browser page (no relay hop)
+                 │  └── virtual runner = ephemeral in-gateway AgentServer (per active session)
                  │  └── docker runner / CF sandbox runner (same daemon binary)
                  ▼
              provider APIs (wire-level passthrough + credential injection)
@@ -86,39 +86,37 @@ Outbound-only networking traverses NAT and needs no user firewall setup.
   new code paths. Their difference is credential source: the gateway injects
   backend-held credentials at proxy time, so sandboxes never see raw keys.
 
-### Virtual runner (default entry) — runs in the browser
+### Virtual runner (default entry) — ephemeral server-side executor
 
-An AgentServer **in the browser page itself** (a Web Worker), over a new
-in-memory `Host` implementation. Zero provisioning cost and zero backend
-compute, so it is the default for new sessions: pure chat and light tool use
-work immediately; complex tasks upgrade to a real runner via migration.
+A gateway-side AgentServer over a new in-memory `Host` implementation,
+**materialized on demand and disposed when idle**. The key observation: between
+turns a session's entire truth is its checkpoint, so the virtual runner is not
+a resident service — the gateway spins an AgentSession up via `fromCheckpoint`
+when a turn starts (or a wakeup fires), runs it against the virtual Host
+(in-memory fs backed by the gateway session store), persists, and tears it
+down after an idle timeout. Zero provisioning for the user, near-zero resident
+cost for the operator: virtual sessions have no real processes, only fetch
+loops, and nothing runs between turns.
 
-Structure: `@demicodes/web-ui` pairs with the in-page AgentServer through
-`server.client()` — no WebSocket, no relay hop for this runner kind. Provider
-transports still point `baseUrl` at the gateway (invariant 3), which is also
-what makes browser execution possible at all: the browser only ever talks to
-our own origin (CORS is ours to grant), and the page holds **no secrets** —
-provider `apiKey`/`headers` resolvers carry a gateway session token, and the
-gateway injects the real credential (BYOK key or subscription OAuth) at
-forward time. This is strictly stronger than the existing "secrets must not
-cross browser-visible frames" boundary: the browser runner never sees even the
-user's own key.
+Why server-side and not in the browser page: a page-hosted AgentServer dies on
+every refresh, navigation, laptop sleep, and mobile tab eviction — exactly
+mid-turn, where checkpoint write-through cannot help (it restores to the last
+persisted point; it cannot continue an in-flight turn). No browser mechanism
+holds a long-lived agent loop reliably across a refresh (SharedWorker survival
+with zero clients is browser-discretionary; Service Workers are aggressively
+reclaimed). Server-side execution makes turns refresh-immune — the page
+reattaches with `open` + `sync_transcript` — and `yield` delayed wakeups work,
+since the gateway can rematerialize the session without any page open.
 
-Backend authority is unaffected: the virtual Host's `store` (and its fs
-contents) write through to the gateway session store (write-behind is fine),
-so checkpoints land in the backend exactly as for daemon runners, virtual→real
-migration materializes files from the backend rather than from a live page,
-and the same session can reopen on another device.
+This also keeps the client architecture uniform: the browser is always an
+`AgentClient` over WebSocket, for every runner kind; the virtual runner is
+simply the runner with the shortest relay distance (in-process at the
+gateway). On Cloudflare, one Durable Object per virtual session is this exact
+model — hibernation between turns, storage as the only resident state.
 
-Browser-specific constraints:
-
-- Codex must use `transport: 'sse'` — the WS transport authenticates via the
-  non-standard `WebSocket(url, { headers })` extension, which browsers do not
-  implement (verified: auth rides entirely on upgrade headers).
-- Turns progress only while a page hosting the session is open; `yield`
-  delayed wakeups do not fire in a closed tab. Sessions needing background
-  continuation belong on a real runner (a Durable-Object-hosted virtual-runner
-  variant is a possible later addition, not in scope).
+To verify during implementation: an in-flight turn must keep running when the
+client transport detaches (AgentSession is transport-independent by design,
+but the binding-close path must not abort the turn).
 
 Verified feasibility: the `Host` contract is platform-neutral and enforced so
 (`packages/shell/src/__tests__/root-entry.test.ts:15`), `BashEnvironment`
@@ -283,19 +281,14 @@ the backend host itself as a local runner to relax this.
 3. `@demicodes/provider-codex` — pass configured `headers` to the quota probe.
    `@demicodes/provider-grok-build` — pass configured `headers` to the model
    catalog request (verified missing; see Runtime verification).
-4. Browser-safe provider assembly: the codex/grok root entries pull Node-only
-   auth stores (`node:fs`); move file/pool auth behind Node-only subpaths (or
-   make credential resolution injectable) so a browser bundle can create these
-   providers with gateway-token resolvers instead of local auth files. Merges
-   naturally with the "gateway mode" option work.
-5. New packages: `@demicodes/gateway` (product leaf), `@demicodes/runner`
+4. New packages: `@demicodes/gateway` (product leaf), `@demicodes/runner`
    (product leaf), a small platform-neutral relay/control protocol package
    (may start inside gateway and split when runner consumes it), and a virtual
    `Host` implementation (platform-neutral; candidate `@demicodes/host-virtual`
    mirroring `host-local`'s registry position without Node deps).
-6. Gateway-backed `HostStore` implementation is transport glue, not a shell
-   concern: the Node flavor lives in the runner package, the browser flavor
-   beside the in-page runner assembly.
+5. Gateway-backed `HostStore` implementation is transport glue, not a shell
+   concern: the remote (runner-side) flavor lives in the runner package; the
+   virtual runner uses the gateway session store directly, in-process.
 
 `docs/package-boundaries.md` gains registry entries for the new packages when
 implementation starts. `@demicodes/web` (single-user, Vite-dev product) is
@@ -390,15 +383,16 @@ backend-held injection); usage ledger aggregated from authoritative-transcript
 (including the CLI via env overlay) against mocks; real-subscription smoke is
 manual only, never an ungated test.
 
-**M4 — Browser virtual runner as default entry** (depends on M3: gateway
-inference is what gives the browser CORS access and credential injection)
-`host-virtual` package (in-memory fs/store, browser-safe; `process.spawn`
+**M4 — Ephemeral virtual runner as default entry** (parallelizable with M3;
+depends on M2 for checkpoint authority)
+`host-virtual` package (in-memory fs/store, platform-neutral; `process.spawn`
 fails with an actionable "virtual environment — upgrade to a device" message);
-in-page AgentServer paired to web-ui via `server.client()`; browser-safe
-provider entries (change item 4); virtual store write-through to the gateway.
-Accept: zero-config chat with portable commands and no secrets in the page;
-process-requiring providers routed to the upgrade flow via the capability
-flag; session reopens on a second device from the backend store.
+gateway-side materialize-on-demand session lifecycle (`fromCheckpoint` on turn
+start / wakeup, dispose on idle). Accept: zero-config chat with portable
+commands; a page refresh mid-turn reattaches to the still-running turn;
+`yield` wakeups fire with no page open; process-requiring providers routed to
+the upgrade flow via the capability flag; verify the binding-close path does
+not abort an in-flight turn.
 
 **M5 — Migration primitive**
 Turn-boundary lease transfer + target-runner replay + harness-injected
