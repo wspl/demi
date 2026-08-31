@@ -110,7 +110,9 @@ section below. The same binary in a container image is the **docker runner**
 
 ### Virtual execution (default entry)
 
-`@demicodes/host-virtual`: a platform-neutral in-memory `Host` (fs + store).
+`@demicodes/host-virtual`: a platform-neutral in-memory `Host` fs. (`Host.store`
+is not its concern: the backend composes every Host it hands the harness —
+virtual or remote — with the backend store, uniformly.)
 Its `process.spawn` must resolve with `spawnError.kind = 'executable_not_found'`
 — the portable-command fallback engages only on that error kind
 (`packages/shell/src/portable-commands.ts`), so anything else would break even
@@ -195,7 +197,10 @@ local policy layer, no configuration beyond what the connection needs.
    a nonexistent path fails with an error, nothing more. Spawned processes
    stream stdin/stdout/stderr over the socket and honor kill signals
    (`HostSpawnHandle` semantics, platform-neutral).
-3. **Answering the small control RPC** (workspaces, status; table below).
+That is the whole surface. There is deliberately no runner-side control RPC:
+directory picking for the web UI is ordinary `readdir` over the same Host RPC,
+recently-used workspaces come from the backend's own session index, and
+version/platform ride the `hello`.
 
 Non-responsibilities: user authentication (backend-only), credentials of any
 kind (backend vault — the Claude Code CLI's env token is the backend-issued
@@ -253,8 +258,6 @@ backend-local):
 | r → b | `spawn_output { spawnId, stream, bytes }` | stdout/stderr chunks |
 | b → r | `spawn_stdin { spawnId, bytes }` / `spawn_kill { spawnId, signal }` | input / termination |
 | r → b | `spawn_exit { spawnId, code, signal? }` | process finished |
-| b → r | `control_call { id, method, params }` | control RPC request |
-| r → b | `control_result { id, ok, result \| error }` | control RPC response |
 
 The exact `fs_call` op set mirrors `HostFileSystem` (18 async, plain-data
 methods; `Uint8Array`/`Date` ride the portable JSON codec) and is fixed when
@@ -284,15 +287,10 @@ are killed and pending fs calls fail; the backend surfaces the failure into
 the affected turns as ordinary tool errors (the session itself lives in the
 backend and is not lost). On reconnect the device is simply online again.
 
-### Control RPC surface
-
-| Method | Notes |
-|---|---|
-| `listWorkspaces()` | recently used workspace directories |
-| `runnerStatus()` | version, platform |
-
 Provider catalog, model listing, credential state, and quota all live in the
-backend; the web UI never asks the runner about them.
+backend; the web UI never asks the runner about anything — it asks the
+backend, which uses this same Host RPC when it needs to look at the device
+(e.g. browsing directories for the workspace picker).
 
 ### Trust model
 
@@ -403,8 +401,10 @@ contacted (a local deny-proxy caught escape attempts).
 ### Storage pluggability (audited: DB-backed backend needs no interface changes)
 
 - Conversation state is fully behind `HostStore` (4 methods) — checkpoints,
-  command artifacts, future blobs/journal. The backend implements a DB-backed
-  `HostStore`; the agent layer is untouched.
+  subagent records, future blobs/journal (command artifacts are fs files on
+  the execution target, not store entries). The backend implements a DB-backed
+  `HostStore` and composes it into every Host it hands the harness; the agent
+  layer is untouched.
 - Credentials are fully behind injectable auth stores: every subscription
   provider creator accepts `authStore?:`
   (`packages/provider-codex/src/provider.ts:52`,
