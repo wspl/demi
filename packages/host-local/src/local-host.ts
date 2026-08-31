@@ -366,11 +366,18 @@ function toHostDirent(value: Dirent): HostDirent {
 
 async function* streamBytes(stream: Readable | null): AsyncIterable<Uint8Array> {
   if (!stream) return
-  for await (const chunk of stream) {
-    if (chunk instanceof Uint8Array) {
-      yield chunk
-    } else {
-      yield Buffer.from(String(chunk))
+  try {
+    for await (const chunk of stream) {
+      if (chunk instanceof Uint8Array) {
+        yield chunk
+      } else {
+        yield Buffer.from(String(chunk))
+      }
     }
+  } catch (error) {
+    // A child that failed to spawn closes its stdio pipes without ending them;
+    // the process never produced output, so the stream simply ends.
+    if ((error as NodeJS.ErrnoException | null)?.code === 'ERR_STREAM_PREMATURE_CLOSE') return
+    throw error
   }
 }

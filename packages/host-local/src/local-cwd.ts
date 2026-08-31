@@ -71,8 +71,10 @@ export class LocalHostCwd implements HostCwd {
 
   private fdAnchor(): string | undefined {
     if (!this.handle) return undefined
+    // Linux-only: macOS devfs cannot open or traverse a directory through
+    // /dev/fd/N (open → ENOTDIR, /dev/fd/N/sub → ENOENT, spawn cwd → ENOTDIR),
+    // so darwin falls back to logical path semantics.
     if (process.platform === 'linux') return `/proc/self/fd/${this.handle.fd}`
-    if (process.platform === 'darwin') return `/dev/fd/${this.handle.fd}`
     return undefined
   }
 }

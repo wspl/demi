@@ -117,7 +117,7 @@ test('LocalHost missing binary with a live dirfd is executable_not_found', async
   await cwd.close()
 })
 
-test('LocalHost spawn after unlinking cwd still runs an absolute command', async () => {
+test('LocalHost spawn after unlinking cwd follows the platform cwd anchor', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-local-cwd-'))
   const dir = join(root, 'gone')
   await mkdir(dir)
@@ -131,8 +131,16 @@ test('LocalHost spawn after unlinking cwd still runs an absolute command', async
     env: { PATH: '/usr/bin:/bin' },
   })
   const [stdout, exit] = await Promise.all([collectText(handle.stdout), handle.wait()])
-  expect(exit.exitCode).toBe(0)
-  expect(stdout).toBe('ok\n')
+  if (process.platform === 'linux') {
+    // The /proc/self/fd anchor keeps the unlinked directory reachable.
+    expect(exit.exitCode).toBe(0)
+    expect(stdout).toBe('ok\n')
+  } else {
+    // Without a dirfd anchor (macOS devfs cannot traverse directory fds) the
+    // deleted path is honestly unusable.
+    expect(exit.exitCode).toBeNull()
+    expect(exit.spawnError?.kind).toBe('cwd_unusable')
+  }
   await cwd.close()
 })
 
