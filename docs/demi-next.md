@@ -370,6 +370,9 @@ API; cold history rides the same rendering path (full-sync frame).
 - **Message attachments** (model-visible media, the closed media set in
   `@demicodes/core`; the picker filters by the selected model's
   `acceptedExtensions`): uploaded via **HTTP POST → attachment id**; the
+  bytes go to the blob store (local dir at N=1, S3 at N>1 — the same two
+  topologies as the virtual fs), never into the database — the
+  `attachments` table holds metadata + content hash only; the
   `send` frame carries only a small reference block, and the conversation
   module resolves references into inline bytes before handing the message to
   the AgentSession — providers still receive inline bytes, zero provider
@@ -441,7 +444,10 @@ connections      id, owner_user_id(NULL in shared mode), type, label,
                  config(encrypted), created_at
 usage_ledger     id, user_id, conversation_id, connection_id, model_id,
                  input_tokens, output_tokens, cache_tokens…, created_at
-attachments      id, user_id, media_type, bytes(BLOB), created_at
+attachments      id, user_id, media_type, size_bytes, sha256, created_at
+                 ← metadata only; the bytes live in the blob store
+                   (content-addressed, per session-storage-and-naming.md),
+                   never in the database
 host_store       scope, key, value_json          ← the DB HostStore (checkpoints)
 settings         key, value                       ← instance mode only
 ```
