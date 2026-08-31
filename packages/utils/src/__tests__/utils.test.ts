@@ -24,6 +24,7 @@ import {
   throwIfAborted,
   truncate,
   utf8Bytes,
+  utf8Lines,
   utf8Slice,
 } from '../index'
 
@@ -72,6 +73,36 @@ test('async', async () => {
   const start = await Promise.resolve(true)
   expect(start).toBe(true)
   await delay(1)
+})
+
+test('utf8Lines splits byte streams into lines', async () => {
+  async function* chunks(parts: string[]): AsyncIterable<Uint8Array> {
+    for (const part of parts) yield encodeUtf8(part)
+  }
+  const collect = async (parts: string[]): Promise<string[]> => {
+    const lines: string[] = []
+    for await (const line of utf8Lines(chunks(parts))) lines.push(line)
+    return lines
+  }
+
+  expect(await collect(['a\nb\n'])).toEqual(['a', 'b'])
+  // Lines split across chunk boundaries, CRLF endings, trailing unterminated line.
+  expect(await collect(['first li', 'ne\r\nsec', 'ond\ntail'])).toEqual(['first line', 'second', 'tail'])
+  expect(await collect([])).toEqual([])
+  expect(await collect(['\n\n'])).toEqual(['', ''])
+
+  // A multi-byte UTF-8 sequence split across chunks decodes correctly.
+  const euro = encodeUtf8('€\n')
+  const lines: string[] = []
+  for await (const line of utf8Lines(
+    (async function* () {
+      yield euro.slice(0, 1)
+      yield euro.slice(1)
+    })(),
+  )) {
+    lines.push(line)
+  }
+  expect(lines).toEqual(['€'])
 })
 
 test('bytes round-trip and slice', () => {

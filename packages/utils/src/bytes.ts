@@ -48,6 +48,28 @@ export function utf8Slice(text: string, start: number, end: number): string {
   return decoder.decode(encoder.encode(text).slice(start, end))
 }
 
+/**
+ * Splits a UTF-8 byte stream into lines. Newlines (`\n`, with an optional
+ * preceding `\r`) are stripped; a trailing chunk without a final newline is
+ * still yielded. Multi-byte sequences split across chunks decode correctly.
+ */
+export async function* utf8Lines(chunks: AsyncIterable<Uint8Array>): AsyncIterable<string> {
+  const streamDecoder = new TextDecoder()
+  let buffer = ''
+  for await (const chunk of chunks) {
+    buffer += streamDecoder.decode(chunk, { stream: true })
+    let newline = buffer.indexOf('\n')
+    while (newline !== -1) {
+      const line = buffer.slice(0, newline)
+      yield line.endsWith('\r') ? line.slice(0, -1) : line
+      buffer = buffer.slice(newline + 1)
+      newline = buffer.indexOf('\n')
+    }
+  }
+  buffer += streamDecoder.decode()
+  if (buffer.length > 0) yield buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer
+}
+
 /** Concatenates byte chunks into a single `Uint8Array`. */
 export function concatBytes(chunks: readonly Uint8Array[]): Uint8Array {
   const length = chunks.reduce((total, chunk) => total + chunk.byteLength, 0)

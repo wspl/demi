@@ -20,7 +20,7 @@ import { listClaudeCodeModels } from './models'
 import { injectableCliToken } from './oauth'
 import { controlRequestToToolCall, mapClaudeStdoutMessage, type ClaudeControlRequest } from './output'
 import { createClaudeCodeQuota } from './quota'
-import { ClaudeCliTransportFactory, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
+import { ClaudeCliTransportFactory, type ClaudeSpawn, type ClaudeTransport, type ClaudeTransportFactory } from './transport'
 
 export interface ClaudeCodeProviderOptions {
   id?: string
@@ -32,6 +32,10 @@ export interface ClaudeCodeProviderOptions {
   /** When true (default), attach multi-credential pool + global switch. */
   credentials?: boolean
   authStore?: import('./auth').ClaudeCodeAuthStore
+  /** `Host.process`-shaped spawn the CLI runs through (remote execution targets). */
+  spawn?: ClaudeSpawn
+  /** Public CLI env overlay applied last (e.g. `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN`). */
+  env?: Record<string, string>
 }
 
 export interface ClaudeCodeRuntimeOptions {
@@ -42,6 +46,10 @@ export interface ClaudeCodeRuntimeOptions {
   authStore?: import('./auth').ClaudeCodeAuthStore
   /** Returns active credential id for process reuse checks. */
   getActiveCredentialId?: () => Promise<string | null>
+  /** `Host.process`-shaped spawn the CLI runs through (remote execution targets). */
+  spawn?: ClaudeSpawn
+  /** Public CLI env overlay applied last (e.g. `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN`). */
+  env?: Record<string, string>
 }
 
 export interface ClaudeCodeProviderConfig {
@@ -88,6 +96,8 @@ export class ClaudeCodeProvider implements AgentProvider {
       options.transportFactory ??
       new ClaudeCliTransportFactory({
         claudePath: options.claudePath,
+        spawn: options.spawn,
+        env: options.env,
         resolveOAuthAccessToken: options.authStore
           ? async () => {
               try {
@@ -595,6 +605,8 @@ export function createClaudeCodeProvider(options: ClaudeCodeProviderOptions = {}
     quota,
     authStore,
     getActiveCredentialId: pool ? () => pool.getActiveId() : undefined,
+    spawn: options.spawn,
+    env: options.env,
   }
 
   return defineProvider({
