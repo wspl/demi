@@ -1,4 +1,4 @@
-import type { HostIdentity, SpawnErrorKind } from '@demicodes/shell'
+import type { HostIdentity, HostSpawnError } from '@demicodes/shell'
 import { parsePortableJson, stringifyPortableJson, isRecord } from '@demicodes/utils'
 
 /**
@@ -72,7 +72,7 @@ export type RunnerToBackendMessage =
       spawnId: string
       exitCode: number | null
       signal?: string
-      spawnError?: { kind: SpawnErrorKind }
+      spawnError?: HostSpawnError
     }
 
 export type BackendToRunnerMessage =

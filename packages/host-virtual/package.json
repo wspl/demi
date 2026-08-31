@@ -1,15 +1,12 @@
 {
-  "name": "@demicodes/runner",
-  "description": "Demi runner: turns a machine into an execution target by serving the Host contract to a Demi backend.",
+  "name": "@demicodes/host-virtual",
+  "description": "Demi virtual execution target: a platform-neutral Host over a pluggable per-conversation filesystem backend.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
-  "bin": {
-    "demi-runner": "./dist/main.mjs"
-  },
   "exports": {
     ".": {
       "development": "./src/index.ts",
@@ -24,16 +21,11 @@
     "build": "tsdown"
   },
   "dependencies": {
-    "@demicodes/host-local": "workspace:^",
-    "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^"
   },
   "devDependencies": {
-    "@demicodes/agent": "workspace:^",
-    "@demicodes/testkit": "workspace:^",
-    "@demicodes/core": "workspace:^",
-    "@demicodes/provider": "workspace:^"
+    "@demicodes/host-local": "workspace:^"
   },
   "license": "Apache-2.0",
   "publishConfig": {
@@ -42,8 +34,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wspl/demi.git",
-    "directory": "packages/runner"
+    "directory": "packages/host-virtual"
   },
-  "homepage": "https://github.com/wspl/demi/tree/main/packages/runner#readme",
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/host-virtual#readme",
   "bugs": "https://github.com/wspl/demi/issues"
 }

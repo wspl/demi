@@ -120,10 +120,17 @@ export interface HostProcessOutputChunk {
   chunk: Uint8Array
 }
 
+export interface HostSpawnError {
+  kind: SpawnErrorKind
+  /** Optional Host-specific guidance appended to the shell's error message
+   *  (e.g. a virtual target explaining that real programs need a device). */
+  detail?: string
+}
+
 export interface HostSpawnExit {
   exitCode: number | null
   signal?: string
-  spawnError?: { kind: SpawnErrorKind }
+  spawnError?: HostSpawnError
 }
 
 /** Path-string cwd for test doubles and Hosts that cannot hold a directory fd. */

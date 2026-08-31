@@ -71,6 +71,17 @@
         "@demicodes/utils": "workspace:^",
       },
     },
+    "packages/host-virtual": {
+      "name": "@demicodes/host-virtual",
+      "version": "0.20.0",
+      "dependencies": {
+        "@demicodes/shell": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+      },
+      "devDependencies": {
+        "@demicodes/host-local": "workspace:^",
+      },
+    },
     "packages/just-bash/packages/just-bash": {
       "name": "@demicodes/just-bash",
       "version": "3.1.0-demi.4",
@@ -218,6 +229,7 @@
         "@demicodes/agent": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
+        "@demicodes/testkit": "workspace:^",
       },
     },
     "packages/runner-protocol": {
@@ -227,6 +239,10 @@
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
       },
+      "devDependencies": {
+        "@demicodes/host-local": "workspace:^",
+        "@demicodes/testkit": "workspace:^",
+      },
     },
     "packages/shell": {
       "name": "@demicodes/shell",
@@ -235,6 +251,13 @@
         "@demicodes/just-bash": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "zod": "^4.0.0",
+      },
+    },
+    "packages/testkit": {
+      "name": "@demicodes/testkit",
+      "version": "0.20.0",
+      "dependencies": {
+        "@demicodes/shell": "workspace:^",
       },
     },
     "packages/utils": {
@@ -363,6 +386,8 @@
 
     "@demicodes/host-local": ["@demicodes/host-local@workspace:packages/host-local"],
 
+    "@demicodes/host-virtual": ["@demicodes/host-virtual@workspace:packages/host-virtual"],
+
     "@demicodes/just-bash": ["@demicodes/just-bash@workspace:packages/just-bash/packages/just-bash"],
 
     "@demicodes/provider": ["@demicodes/provider@workspace:packages/provider"],
@@ -386,6 +411,8 @@
     "@demicodes/runner-protocol": ["@demicodes/runner-protocol@workspace:packages/runner-protocol"],
 
     "@demicodes/shell": ["@demicodes/shell@workspace:packages/shell"],
+
+    "@demicodes/testkit": ["@demicodes/testkit@workspace:packages/testkit"],
 
     "@demicodes/utils": ["@demicodes/utils@workspace:packages/utils"],
 

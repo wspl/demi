@@ -15,7 +15,7 @@ import {
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
-import type { HostStore } from '@demicodes/shell'
+import { memoryHostStore } from '@demicodes/testkit'
 import { waitFor } from '@demicodes/utils'
 import { RunnerClient } from '../runner-client'
 
@@ -38,20 +38,6 @@ const model: ModelSelection = {
 }
 const selection = { providerId: 'stub', model }
 
-function memoryStore(): HostStore {
-  const map = new Map<string, unknown>()
-  return {
-    readJson: async <T>(key: string) => (map.has(key) ? (map.get(key) as T) : null),
-    writeJson: async (key, value) => {
-      map.set(key, value)
-    },
-    delete: async (key) => {
-      map.delete(key)
-    },
-    list: async (prefix) => [...map.keys()].filter((key) => key.startsWith(prefix)),
-  }
-}
-
 test('bare AgentServer executes over a live runner; death mid-command is a tool error; reconnect resumes', async () => {
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-runner-e2e-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-runner-state-'))
@@ -61,7 +47,7 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
     defaultCwd: runnerDir,
     commandArtifactsDir: join(runnerDir, '.demi-artifacts'),
     identity: runnerHost.identity,
-    store: memoryStore(),
+    store: memoryHostStore(),
   })
 
   // Bare backend socket: accept the runner, reply hello_ok, and bind the

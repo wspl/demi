@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { LocalHost } from '@demicodes/host-local'
-import type { HostStore } from '@demicodes/shell'
 import {
   HostRpcServer,
   RemoteHost,
@@ -13,6 +12,7 @@ import {
   type RunnerProtocolMessage,
   type RunnerToBackendMessage,
 } from '../index'
+import { memoryHostStore } from '@demicodes/testkit'
 
 test('runner messages round-trip through the portable wire codec', () => {
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>
@@ -51,20 +51,6 @@ test('runner messages round-trip through the portable wire codec', () => {
   expect(() => decodeRunnerMessage('{"no":"type"}')).toThrow('Malformed')
 })
 
-function memoryStore(): HostStore {
-  const map = new Map<string, unknown>()
-  return {
-    readJson: async <T>(key: string) => (map.has(key) ? (map.get(key) as T) : null),
-    writeJson: async (key, value) => {
-      map.set(key, value)
-    },
-    delete: async (key) => {
-      map.delete(key)
-    },
-    list: async (prefix) => [...map.keys()].filter((key) => key.startsWith(prefix)),
-  }
-}
-
 /** RemoteHost and HostRpcServer joined directly (encoded through the codec both ways). */
 async function connectedPair() {
   const dir = await mkdtemp(join(tmpdir(), 'demi-runner-proto-'))
@@ -73,7 +59,7 @@ async function connectedPair() {
     defaultCwd: dir,
     commandArtifactsDir: join(dir, '.artifacts'),
     identity: { uid: 501, gid: 20, hostname: 'test' },
-    store: memoryStore(),
+    store: memoryHostStore(),
   })
   const server = new HostRpcServer(local, (message: RunnerToBackendMessage) => {
     remote.handleMessage(decodeRunnerMessage(encodeRunnerMessage(message)) as RunnerToBackendMessage)
