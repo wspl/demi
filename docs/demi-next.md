@@ -97,11 +97,37 @@ Every instance is a **complete** backend for its assigned users — user x's
 HTTP, conversation sockets, runner socket, virtual Hosts, and CLI processes
 are all pinned to instance `hash(x)`. The affinity is natural because
 conversations, devices, and (isolated mode) connections are all user-owned,
-so nothing stateful ever crosses instances. The router is a pure ops
-component with no business logic (cookie-hash in a reverse proxy suffices);
-self-host is the N=1 degenerate form with no router at all. The "sessions
-have exactly one home" invariant is unchanged — only the number of homes
-grows. v1 milestones implement N=1 only.
+so nothing stateful ever crosses instances. The "sessions have exactly one
+home" invariant is unchanged — only the number of homes grows. Self-host is
+the N=1 degenerate form with no router at all. v1 milestones implement N=1
+only.
+
+How the routing works — the router is an off-the-shelf reverse proxy
+(nginx-class) doing consistent-hash upstream selection; we develop no
+routing code and ship only a sample config:
+
+- **The routing key**: at login the backend sets a uid cookie (browser
+  traffic); at claim time the backend hands the runner its owner's route key
+  alongside the device token, and the runner sends it as a header on every
+  reconnect (device traffic). Same key ⇒ same hash ⇒ browser and devices of
+  one user converge on one instance. The proxy holds no state and knows no
+  business — it is config (the static server list) plus arithmetic over the
+  key.
+- **Hashing happens at connection establishment only.** Established
+  WebSockets are never rerouted mid-stream: during a scale event, in-flight
+  turns finish on the old instance; only new connections land on the new
+  mapping.
+- **Scale events move ~1/N of users** (consistent hashing), and a moved
+  user's experience is exactly the already-defined backend-restart
+  semantics: in-flight turn interrupted only if the connection happened to
+  drop mid-turn, zero history loss (checkpoints in the shared database, any
+  instance can restore any user), runner auto-reconnects to the new home.
+  Scale events are rare, operator-initiated maintenance.
+- **The one N>1 correctness mechanism: checkpoint write fencing.** During a
+  remap a stale session object may linger on the old instance while the new
+  home restores from checkpoint; checkpoint rows carry an epoch so a stale
+  instance's write is rejected by the database. A few lines of SQL
+  constraint, implemented when the scaled topology lands — not in v1.
 
 Spoken of as modules, not separate services:
 
@@ -325,6 +351,34 @@ persistent concerns (users, conversation index, connections/vault, ledger,
 the DB-backed `HostStore`) are structured data; transactions in either
 dialect provide the `writeJson` atomicity the checkpoint path relies on. v1
 runs SQLite only. Command artifacts stay on execution targets.
+
+Schema (final state, no speculative columns):
+
+```
+users            id, username, password_hash, role(master|admin|user), created_at
+web_sessions     token_hash, user_id, expires_at
+conversations    id, user_id, title, archived, target(virtual | device_id+cwd),
+                 connection_id, model_id, created_at, updated_at
+devices          id, user_id, name, platform, token_hash, claimed_at, last_seen_at
+connections      id, owner_user_id(NULL in shared mode), type, label,
+                 config(encrypted), created_at
+usage_ledger     id, user_id, conversation_id, connection_id, model_id,
+                 input_tokens, output_tokens, cache_tokens…, created_at
+attachments      id, user_id, media_type, bytes(BLOB), created_at
+host_store       scope, key, value_json          ← the DB HostStore (checkpoints)
+settings         key, value                       ← instance mode only
+```
+
+Notes: pending claim tokens live in memory (an unclaimed runner socket holds
+them; a backend restart just reprints); device online status is runtime
+state, `last_seen_at` is display-only; the transcript is inside the
+checkpoint, not a table. **Credential encryption**: `connections.config` is
+encrypted at rest with an instance secret (generated into the data directory
+on first start; a shared secret config across instances at N>1) — cheap
+protection against the database file leaking alone (backups, copies), with
+no KMS or per-user key machinery. **Ledger granularity**: one raw row per
+provider request as `TokenUsage` events arrive (a turn may produce several);
+aggregation happens at query time, never at write time.
 
 ### Web API (browser ↔ backend)
 
