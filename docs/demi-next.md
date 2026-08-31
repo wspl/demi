@@ -831,13 +831,15 @@ surface last. Each item is its own branch off `main`.
 
 *Track A — Backend skeleton + virtual default (first demoable node).*
 `@demicodes/backend` serving the conversation stream + the Web API
-multi-user-shaped (stub
-user), conversation persistence in the backend store, session index,
-`host-virtual` as the default target. Providers are **operator-assembled**
-exactly like `@demicodes/web` today (env keys / operator logins) — the vault
-is explicitly out of M1 scope. Accept: zero-setup browser chat with
-portable-command tools; refresh mid-turn reattaches to the running turn;
-cold history readable.
+multi-user-shaped (stub user); the storage module (schema, numbered `.sql`
+migrations, dual-dialect layer — SQLite driver only); conversation
+persistence + session index; `@demicodes/host-virtual` with its local-dir
+blob backend as the default target; the `@demicodes/web` SPA scaffold
+(login stub + chat view on web-ui) with the old product renamed `web-demo`.
+Providers are **operator-assembled** exactly like the old dev product (env
+keys / operator logins) — the vault is explicitly out of M1 scope. Accept:
+zero-setup browser chat with portable-command tools; refresh mid-turn
+reattaches to the running turn; cold history readable.
 
 *Track B — Runner protocol core.* The runner-protocol package (fs RPC,
 streaming spawn, handshake) and the `demi-runner` binary, exercised against a
@@ -854,8 +856,9 @@ tool errors without losing the session; reconnect resumes.
 
 **M3 — LLM module + credential vault + metering + Claude Code**
 Two acceptance steps in order:
-1. *BYOK + metering* (no dependencies): vault key storage, per-user provider
-   assembly for the API-key providers, usage ledger + enforcement. This is
+1. *BYOK + metering* (no dependencies): vault key storage (instance-secret
+   encryption at rest), per-user provider assembly for the API-key providers
+   keyed by `(connectionId, modelId)`, usage ledger + enforcement. This is
    the product's minimum viable form — a user pastes a key and chats — and
    stands alone as a demoable point.
 2. *Subscriptions + Claude Code* (depends on M2): provider device-login
@@ -877,14 +880,24 @@ StubProvider turn and the checkpoint.
 
 **M5 — Multi-user product shell**
 Real auth (username/password, cookie sessions, master/admin/user roles, no
-registration, no recovery), user-management admin page, device management UI,
-connections/usage/instance-settings pages, session list / target picker,
-tenant-isolation authz matrix. UI deliberately late: earlier
-milestones accept with the stub user and existing web-ui surfaces.
+registration, no recovery); the full `@demicodes/web` shell per the layout
+design — workspace-grouped sidebar, settings dialogs (devices, connections,
+usage, user management, instance settings), target picker;
+**shared/isolated instance-mode enforcement** (admin-only connections in
+shared mode); tenant-isolation authz matrix. UI deliberately late: earlier
+milestones accept with the stub user and bare web-ui surfaces.
 
 **M6 — Deployment packaging**
-Docker images for runner and backend; end-to-end acceptance. Pure hosting
-work after interfaces are frozen.
+Docker images for runner and backend (backend image carries the built web
+assets); end-to-end acceptance. Pure hosting work after interfaces are
+frozen.
+
+**M7 — Scaled deployment (post-v1)**
+Everything the N>1 topology needs, gathered from the design sections:
+Postgres driver for the storage module, S3 blob backend for host-virtual,
+checkpoint write fencing (epoch), routing-key plumbing (login cookie +
+runner route key) and the sample reverse-proxy config, multi-instance smoke.
+Nothing here changes application code paths — that is the point.
 
 Independent branch, any time after M1: the virtual-target JS command
 (WASM-sandboxed QuickJS; own design record first).
@@ -909,8 +922,9 @@ checklists only for UI look-and-feel and packaging smoke.
 | M2 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M3 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | Switch integration, all directions unconstrained: real→real (files stay + honest context block; same-device note when applicable), virtual→real (files land in the target tmp dir, context block names the path, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
-| M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); device revoke + re-claim through the management UI. Tier 3: UI manual checklist. |
+| M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim through the management UI. Tier 3: UI manual checklist. |
 | M6 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
+| M7 | Storage-module tests run against both dialects; fencing test (stale epoch write rejected); two local instances behind a hash proxy — user pinned to one instance, remap after instance removal restores from the shared DB; S3 backend round-trip against a local S3-compatible server. |
 
 Test modules and their coverage get documented per milestone as they land, per
 the repo's design-record rules.
