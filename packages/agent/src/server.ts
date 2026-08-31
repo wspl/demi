@@ -170,6 +170,7 @@ export class AgentServer {
     const bindings = [...this.bindings]
     this.bindings.clear()
     await Promise.all(bindings.map((binding) => binding.close()))
+    await this.sessionOwnership.disposeAll()
   }
 
   /**
@@ -183,7 +184,7 @@ export class AgentServer {
     args: string[],
     opts: RunCommandLineOptions,
   ): Promise<RunCommandLineResult> {
-    const owners = [...this.bindings].filter((binding) => binding.hasShell(shellId))
+    const owners = this.sessionOwnership.sessions().filter((live) => live.hasShell(shellId))
     if (owners.length === 0) throw new RunCommandLineShellNotFoundError(shellId)
     if (owners.length > 1) throw new Error(`runCommandLine: shell id "${shellId}" is not unique`)
     return owners[0]!.runCommandLine(shellId, name, args, opts)
@@ -191,26 +192,45 @@ export class AgentServer {
 }
 
 /**
- * Tracks which transport binding currently owns each client-provided session
- * id. Opening a session id that is already owned takes it over: the previous
- * binding's session is closed (flushing its checkpoint) before the new open
- * proceeds, so two connections never write the same checkpoint key concurrently.
+ * Owns every live session in this server and tracks which transport binding is
+ * currently attached to each. Sessions live in the server, not in bindings: a
+ * binding going away merely detaches its subscription, and opening a session
+ * id that another binding is attached to takes the attachment over — the
+ * running session object itself is adopted, never restarted.
  */
 class SessionOwnershipRegistry {
-  private readonly holders = new Map<string, AgentTransportBindingImpl>()
+  private readonly live = new Map<string, LiveSession>()
+  private readonly attached = new Map<string, AgentTransportBindingImpl>()
 
-  async claim(sessionId: string, binding: AgentTransportBindingImpl): Promise<void> {
-    const previous = this.holders.get(sessionId)
+  /** Detaches any other binding from the id and records this one; returns the live session to adopt. */
+  async claim(sessionId: string, binding: AgentTransportBindingImpl): Promise<LiveSession | null> {
+    const previous = this.attached.get(sessionId)
     if (previous && previous !== binding) await previous.handleTakeover()
-    this.holders.set(sessionId, binding)
+    this.attached.set(sessionId, binding)
+    return this.live.get(sessionId) ?? null
+  }
+
+  register(live: LiveSession): void {
+    this.live.set(live.agentSessionId, live)
+  }
+
+  unregister(sessionId: string): void {
+    this.live.delete(sessionId)
   }
 
   release(sessionId: string, binding: AgentTransportBindingImpl): void {
-    if (this.holders.get(sessionId) === binding) this.holders.delete(sessionId)
+    if (this.attached.get(sessionId) === binding) this.attached.delete(sessionId)
   }
 
-  get(sessionId: string): AgentTransportBindingImpl | undefined {
-    return this.holders.get(sessionId)
+  sessions(): LiveSession[] {
+    return [...this.live.values()]
+  }
+
+  async disposeAll(): Promise<void> {
+    const sessions = this.sessions()
+    this.live.clear()
+    this.attached.clear()
+    await Promise.all(sessions.map((live) => live.dispose()))
   }
 }
 
@@ -234,17 +254,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly prepareShell: PrepareShell | null
   private readonly notifyParentOnIdle: boolean
   private readonly sessions: SessionOwnershipRegistry
-  private session: AgentSession<unknown> | null = null
-  private currentAgent: AgentHarness<unknown> | null = null
-  private readonly environmentsByHost = new Map<Host, BashEnvironment>()
-  private readonly pendingEnvironmentsByHost = new Map<Host, Promise<BashEnvironment>>()
-  private currentCommandRegistry: CommandRegistry | null = null
-  private currentCwd: string | null = null
-  private currentProviderId: string | null = null
-  private currentSessionId: string | null = null
-  private currentCommandNames: ReadonlySet<string> = new Set()
-  private supervisor: ChildSupervisor<unknown> | null = null
-  private unsubscribeSession: (() => void) | null = null
+  private live: LiveSession | null = null
   private unsubscribeTransport: (() => void) | null = null
   private closed = false
 
@@ -262,28 +272,36 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     })
   }
 
-  /** Called by the ownership registry when another connection opens this session id. */
+  /**
+   * Called by the ownership registry when another connection opens this session
+   * id: this binding detaches — the running session is adopted by the new
+   * binding, never restarted.
+   */
   async handleTakeover(): Promise<void> {
-    try {
-      await this.closeSession()
-    } catch (error) {
-      this.sendError(error)
-    }
+    this.detach()
     this.send({ type: 'closed' })
   }
 
+  /**
+   * Transport gone (socket closed, process detaching). Sessions live in the
+   * server: an in-flight turn keeps running and the session stays adoptable —
+   * only the explicit `close` frame (or server shutdown) disposes it.
+   */
   async close(): Promise<void> {
     if (this.closed) return
     this.closed = true
-    try {
-      await this.closeSession()
-    } catch (error) {
-      this.sendError(error)
-    } finally {
-      this.unsubscribeTransport?.()
-      this.unsubscribeTransport = null
-      this.transport.close()
-    }
+    this.detach()
+    this.unsubscribeTransport?.()
+    this.unsubscribeTransport = null
+    this.transport.close()
+  }
+
+  private detach(): void {
+    const live = this.live
+    this.live = null
+    if (!live) return
+    live.detachSink()
+    this.sessions.release(live.agentSessionId, this)
   }
 
   private async handleFrame(frame: ClientFrame): Promise<void> {
@@ -311,7 +329,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           return
         }
         case 'steer_queued_message': {
-          const session = this.session
+          const session = this.live?.session ?? null
           if (!session) {
             this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: 'No session is open on this connection' })
             return
@@ -340,7 +358,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           return
         }
         case 'steer': {
-          const session = this.session
+          const session = this.live?.session ?? null
           if (!session) {
             this.send({ type: 'steer_result', steerId: frame.steerId, status: 'rejected', reason: 'No session is open on this connection' })
             return
@@ -355,7 +373,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           return
         }
         case 'cancel_pending_steer': {
-          this.session?.cancelPendingSteer(frame.steerId)
+          this.live?.session.cancelPendingSteer(frame.steerId)
           return
         }
         case 'set_provider':
@@ -387,7 +405,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           return
         }
         case 'abort_subagents': {
-          await this.supervisor?.abortAll()
+          await this.live?.supervisor.abortAll()
           return
         }
         case 'shell_write':
@@ -400,7 +418,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           const session = this.sessionFor('sync_transcript')
           if (!session) return
           this.sendTranscriptReset(session)
-          this.supervisor?.replay()
+          this.live?.supervisor.replay()
           return
         }
         case 'close':
@@ -414,19 +432,32 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   }
 
   private async open(frame: Extract<ClientFrame, { type: 'open' }>): Promise<void> {
-    if (this.session) {
+    if (this.live) {
       this.send({ type: 'rejected', command: 'open', reason: 'A session is already open on this connection' })
       return
     }
 
     const agent = this.agent
-    const provider = await this.createRuntime(frame.provider)
     // The session id is client-owned: it keys the checkpoint, so a reconnect with
-    // the same id resumes the conversation rather than starting a new one. If
-    // another connection currently owns the id, this open takes it over.
+    // the same id resumes the conversation rather than starting a new one. If the
+    // session is still live in this server the running object is adopted; if
+    // another connection is attached, this open takes the attachment over.
     const agentSessionId = frame.sessionId
-    await this.sessions.claim(agentSessionId, this)
-    this.currentSessionId = agentSessionId
+    const adopted = await this.sessions.claim(agentSessionId, this)
+    if (adopted) {
+      this.live = adopted
+      adopted.attachSink((serverFrame) => this.send(serverFrame))
+      await this.alignProvider(adopted, frame.provider)
+      this.send({ type: 'opened' })
+      this.sendTranscriptReset(adopted.session)
+      this.send({ type: 'phase', phase: adopted.session.phase() })
+      this.send({ type: 'queue', queue: adopted.session.queuedMessages() })
+      // Live children replay their started + transcript_reset frames for this client.
+      adopted.supervisor.replay()
+      return
+    }
+
+    const provider = await this.createRuntime(frame.provider)
 
     // The checkpoint lives in Host.store, so a Host is needed before the restored
     // state exists. Harnesses must tolerate host() being called with initial
@@ -443,6 +474,12 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const harnessContext = { state, cwd: frame.cwd }
     const harnessCommands = (await agent.commands?.(harnessContext)) ?? []
     const profiles = (await agent.agents?.(harnessContext)) ?? null
+    // Deferred references into the LiveSession under construction: the closures
+    // below only run once the session is live.
+    let live: LiveSession | null = null
+    const liveSink = (serverFrame: ServerFrame): void => {
+      live?.sink(serverFrame)
+    }
     // Root sessions get the subagent surface (`demi agent`); child sessions are
     // supervisor-built with a send-parent-only tree, so spawn is root-only.
     const supervisor = new ChildSupervisor<unknown>({
@@ -455,15 +492,17 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       sessionOptions: this.sessionOptions,
       notifyParentOnIdle: this.notifyParentOnIdle,
       store: provisionalHost.store,
-      emit: (subagentFrame) => this.send(subagentFrame),
+      emit: liveSink,
     })
     const commands = injectSubagentCommand(harnessCommands, supervisor.rootCommandNode())
     const commandRegistry = new CommandRegistry()
     for (const command of commands) commandRegistry.register(command)
-    const commandNames = commandRegistry.list().map((command) => command.name)
     let sessionRef: AgentSession<unknown> | null = null
     const tools = createStandardAgentTools({
-      environment: (ctx, handle) => this.resolveEnvironment(ctx, handle),
+      environment: (ctx, handle) => {
+        if (!live) throw new Error('AgentServer: session is not ready for shell access')
+        return live.resolveEnvironment(ctx, handle)
+      },
       scheduleYield: (ctx, durationMs) => {
         if (!sessionRef) throw new Error('AgentServer: session is not ready for yield scheduling')
         return sessionRef.scheduleYieldWakeup(durationMs, ctx.metadata)
@@ -490,27 +529,44 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
           { agentSessionId, store, ...this.sessionOptions },
         )
     sessionRef = session
-    this.session = session
     supervisor.attachParent(session)
-    this.supervisor = supervisor
-    this.currentAgent = agent
-    this.currentCommandRegistry = commandRegistry
-    this.currentCwd = frame.cwd
-    this.currentProviderId = frame.provider.providerId
-    this.currentCommandNames = new Set(commandNames)
+    live = new LiveSession({
+      agentSessionId,
+      session,
+      supervisor,
+      agent,
+      commandRegistry,
+      cwd: frame.cwd,
+      providerId: frame.provider.providerId,
+      shellOptions: this.shellOptions,
+      prepareShell: this.prepareShell,
+    })
+    this.sessions.register(live)
+    this.live = live
+    live.attachSink((serverFrame) => this.send(serverFrame))
     // A resumed session restores its model from the checkpoint; align it with the
     // model the client opened with (which may differ from when it was saved).
     if (restoring) session.updateModel(null, frame.provider.model)
-    this.unsubscribeSession = this.session.subscribe((event) => this.handleSessionEvent(event))
 
     this.send({ type: 'opened' })
     this.sendTranscriptReset(session)
-    this.send({ type: 'phase', phase: this.session.phase() })
-    this.send({ type: 'queue', queue: this.session.queuedMessages() })
+    this.send({ type: 'phase', phase: session.phase() })
+    this.send({ type: 'queue', queue: session.queuedMessages() })
     // Children persisted by a previous process of this parent come back after the
     // open handshake, so the client sees them exactly like a replay: started +
     // transcript_reset frames, then live patches as their interrupted turns resume.
     if (restoring) await supervisor.restore()
+  }
+
+  /** Aligns an adopted live session with the model/provider this open named. */
+  private async alignProvider(live: LiveSession, selection: ProviderSelection): Promise<void> {
+    if (selection.providerId === live.providerId) {
+      live.session.updateModel(null, selection.model)
+      return
+    }
+    const runtime = await this.createRuntime(selection)
+    live.session.updateModel(runtime, selection.model)
+    live.providerId = selection.providerId
   }
 
   private sendTranscriptReset(session: AgentSession<unknown>): void {
@@ -518,51 +574,21 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.send({ type: 'transcript_reset', blocks: cloneBlocks(transcript.blocks), revision: transcript.revision })
   }
 
-  private handleSessionEvent(event: SessionEvent): void {
-    switch (event.type) {
-      case 'transcript_changed':
-        this.send({ type: 'transcript_patch', patches: event.patches, revision: event.revision })
-        return
-      case 'phase_changed':
-        this.send({ type: 'phase', phase: event.phase })
-        return
-      case 'queue_changed':
-        this.send({ type: 'queue', queue: event.queue })
-        return
-      case 'tool_progress': {
-        this.sendToolProgress(event.toolCallId, event.toolName, event.progress)
-        return
-      }
-      case 'retry_scheduled':
-        this.send({
-          type: 'retry_scheduled',
-          attempt: event.attempt,
-          delayMs: event.delayMs,
-          code: event.code,
-          diagnostics: event.diagnostics,
-        })
-        return
-      case 'error':
-        this.sendError(event.error)
-        return
-    }
-  }
-
   private async setProvider(provider: ProviderSelection, apply?: ModelSwitchApply): Promise<void> {
-    const session = this.session
-    if (!session) {
+    const live = this.live
+    if (!live) {
       this.send({ type: 'rejected', command: 'set_provider', reason: 'No session is open on this connection' })
       return
     }
-    if (provider.providerId === this.currentProviderId) {
+    if (provider.providerId === live.providerId) {
       // Same provider id: keep the instance and only swap the model (the provider itself
       // restarts whatever it needs to when the model id changes on the next request).
-      session.updateModel(null, provider.model, apply)
+      live.session.updateModel(null, provider.model, apply)
       return
     }
     const next = await this.createRuntime(provider)
-    session.updateModel(next, provider.model, apply)
-    this.currentProviderId = provider.providerId
+    live.session.updateModel(next, provider.model, apply)
+    live.providerId = provider.providerId
   }
 
   private async createRuntime(selection: ProviderSelection) {
@@ -576,40 +602,14 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     return providerRuntime(provider, selection)
   }
 
+  /** Explicit `close` frame: the session is disposed for real, not just detached. */
   private async closeSession(): Promise<void> {
-    const session = this.session
-    const agent = this.currentAgent
-    const cwd = this.currentCwd
-
-    try {
-      if (this.supervisor) await this.supervisor.dispose()
-      if (session) await session.dispose()
-      const pendingEnvironments = await Promise.allSettled(this.pendingEnvironmentsByHost.values())
-      const environments = new Set(this.environmentsByHost.values())
-      for (const result of pendingEnvironments) {
-        if (result.status === 'fulfilled') environments.add(result.value)
-      }
-      await Promise.all([...environments].map((environment) => environment.disposeAllShells()))
-      if (session && agent && cwd) {
-        await agent.dispose?.({ agentSessionId: session.id(), state: session.state(), cwd, transcript: session.transcript() })
-      }
-    } finally {
-      this.unsubscribeSession?.()
-      this.unsubscribeSession = null
-      this.session = null
-      this.supervisor = null
-      this.currentAgent = null
-      this.environmentsByHost.clear()
-      this.pendingEnvironmentsByHost.clear()
-      this.currentCommandRegistry = null
-      this.currentCwd = null
-      this.currentProviderId = null
-      this.currentCommandNames = new Set()
-      if (this.currentSessionId) {
-        this.sessions.release(this.currentSessionId, this)
-        this.currentSessionId = null
-      }
-    }
+    const live = this.live
+    this.live = null
+    if (!live) return
+    this.sessions.unregister(live.agentSessionId)
+    this.sessions.release(live.agentSessionId, this)
+    await live.dispose()
   }
 
   // List the persisted conversations for a workspace (cwd), newest first, read
@@ -630,14 +630,15 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   }
 
   private async handleShellWrite(frame: Extract<ClientFrame, { type: 'shell_write' }>): Promise<void> {
+    const live = this.live
     const session = this.sessionFor('shell_write')
-    if (!session || !this.currentCwd) return
+    if (!session || !live) return
 
-    const environment = await this.resolveEnvironment(
+    const environment = await live.resolveEnvironment(
       {
         agentSessionId: session.id(),
         state: session.state(),
-        cwd: this.currentCwd,
+        cwd: live.cwd,
         metadata: frame.metadata ?? null,
       },
       { commandId: frame.commandId },
@@ -647,6 +648,194 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       stdin: frame.stdin,
     })
     this.sendShellWriteResult(frame.commandId, result)
+  }
+
+  private sessionFor(command: string): AgentSession<unknown> | null {
+    if (!this.live) {
+      this.send({ type: 'rejected', command, reason: 'No session is open' })
+      return null
+    }
+    return this.live.session
+  }
+
+  private rejectIfBusy(session: AgentSession<unknown>, command: string): boolean {
+    const phase = session.phase()
+    if (phase === 'idle') return false
+    this.send({ type: 'rejected', command, reason: `Session is busy (${phase})` })
+    return true
+  }
+
+  private sendShellWriteResult(commandId: string, progress: unknown): void {
+    const shell = progressToShellOutput(progress)
+    if (shell) {
+      this.send({
+        type: 'shell_output',
+        shellId: shell.shellId,
+        commandId: shell.commandId,
+        status: shell.status,
+      })
+    }
+    const audit = progressToAudit(progress)
+    if (audit.length > 0) this.send({ type: 'audit', events: audit })
+    this.send({ type: 'shell_write_result', commandId, output: progressToOutput(progress) })
+  }
+
+  private send(frame: ServerFrame): void {
+    this.transport.send(frame)
+  }
+
+  private observeSessionAction(action: Promise<void>): void {
+    action.catch(noop)
+  }
+
+  private sendError(error: unknown): void {
+    const normalized = error instanceof Error ? error : new Error(String(error))
+    const code = errorCode(error)
+    const diagnostics = errorDiagnostics(error)
+    this.send({
+      type: 'error',
+      message: normalized.message,
+      ...(code ? { code } : {}),
+      ...(diagnostics ? { diagnostics } : {}),
+    })
+  }
+}
+
+interface LiveSessionOptions {
+  agentSessionId: string
+  session: AgentSession<unknown>
+  supervisor: ChildSupervisor<unknown>
+  agent: AgentHarness<unknown>
+  commandRegistry: CommandRegistry
+  cwd: string
+  providerId: string
+  shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  prepareShell: PrepareShell | null
+}
+
+/**
+ * One running session, owned by the server (via the ownership registry), not
+ * by any transport binding. It carries everything session-scoped — the
+ * AgentSession, subagent supervisor, per-Host shell environments — and emits
+ * server frames through a swappable sink: the currently attached binding, or
+ * nowhere while detached (turns keep running either way).
+ */
+class LiveSession {
+  readonly agentSessionId: string
+  readonly session: AgentSession<unknown>
+  readonly supervisor: ChildSupervisor<unknown>
+  readonly agent: AgentHarness<unknown>
+  readonly commandRegistry: CommandRegistry
+  readonly commandNames: ReadonlySet<string>
+  readonly cwd: string
+  providerId: string
+  sink: (frame: ServerFrame) => void = noop
+
+  private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  private readonly prepareShell: PrepareShell | null
+  private readonly environmentsByHost = new Map<Host, BashEnvironment>()
+  private readonly pendingEnvironmentsByHost = new Map<Host, Promise<BashEnvironment>>()
+  private readonly unsubscribeSession: () => void
+
+  constructor(options: LiveSessionOptions) {
+    this.agentSessionId = options.agentSessionId
+    this.session = options.session
+    this.supervisor = options.supervisor
+    this.agent = options.agent
+    this.commandRegistry = options.commandRegistry
+    this.commandNames = new Set(options.commandRegistry.list().map((command) => command.name))
+    this.cwd = options.cwd
+    this.providerId = options.providerId
+    this.shellOptions = options.shellOptions
+    this.prepareShell = options.prepareShell
+    this.unsubscribeSession = options.session.subscribe((event) => this.handleSessionEvent(event))
+  }
+
+  attachSink(sink: (frame: ServerFrame) => void): void {
+    this.sink = sink
+  }
+
+  detachSink(): void {
+    this.sink = noop
+  }
+
+  async dispose(): Promise<void> {
+    try {
+      await this.supervisor.dispose()
+      await this.session.dispose()
+      const pendingEnvironments = await Promise.allSettled(this.pendingEnvironmentsByHost.values())
+      const environments = new Set(this.environmentsByHost.values())
+      for (const result of pendingEnvironments) {
+        if (result.status === 'fulfilled') environments.add(result.value)
+      }
+      await Promise.all([...environments].map((environment) => environment.disposeAllShells()))
+      await this.agent.dispose?.({
+        agentSessionId: this.session.id(),
+        state: this.session.state(),
+        cwd: this.cwd,
+        transcript: this.session.transcript(),
+      })
+    } finally {
+      this.unsubscribeSession()
+      this.detachSink()
+      this.environmentsByHost.clear()
+      this.pendingEnvironmentsByHost.clear()
+    }
+  }
+
+  private handleSessionEvent(event: SessionEvent): void {
+    switch (event.type) {
+      case 'transcript_changed':
+        this.sink({ type: 'transcript_patch', patches: event.patches, revision: event.revision })
+        return
+      case 'phase_changed':
+        this.sink({ type: 'phase', phase: event.phase })
+        return
+      case 'queue_changed':
+        this.sink({ type: 'queue', queue: event.queue })
+        return
+      case 'tool_progress': {
+        this.emitToolProgress(event.toolCallId, event.toolName, event.progress)
+        return
+      }
+      case 'retry_scheduled':
+        this.sink({
+          type: 'retry_scheduled',
+          attempt: event.attempt,
+          delayMs: event.delayMs,
+          code: event.code,
+          diagnostics: event.diagnostics,
+        })
+        return
+      case 'error': {
+        const normalized = event.error instanceof Error ? event.error : new Error(String(event.error))
+        const code = errorCode(event.error)
+        const diagnostics = errorDiagnostics(event.error)
+        this.sink({
+          type: 'error',
+          message: normalized.message,
+          ...(code ? { code } : {}),
+          ...(diagnostics ? { diagnostics } : {}),
+        })
+        return
+      }
+    }
+  }
+
+  private emitToolProgress(toolCallId: string, toolName: string, progress: unknown): void {
+    const output = progressToOutput(progress)
+    this.sink({ type: 'tool_progress', toolUseId: toolCallId, output })
+    const shell = toolName === 'shell_status' ? null : progressToShellOutput(progress)
+    if (shell) {
+      this.sink({
+        type: 'shell_output',
+        shellId: shell.shellId,
+        commandId: shell.commandId,
+        status: shell.status,
+      })
+    }
+    const audit = progressToAudit(progress)
+    if (audit.length > 0) this.sink({ type: 'audit', events: audit })
   }
 
   /** Backs `AgentServer.runCommandLine` — see its doc comment for the contract. */
@@ -659,14 +848,13 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     // Scope resolution doubles as the subagent boundary: a child shell resolves
     // to its own environment and command set, which has no spawn surface.
     const parentEnvironment = this.environmentForShell(shellId)
-    const scope =
-      parentEnvironment && this.currentSessionId
-        ? {
-            environment: parentEnvironment,
-            commandNames: this.currentCommandNames,
-            agentSessionId: this.currentSessionId,
-          }
-        : (this.supervisor?.environmentScopeForShell(shellId) ?? null)
+    const scope = parentEnvironment
+      ? {
+          environment: parentEnvironment,
+          commandNames: this.commandNames,
+          agentSessionId: this.agentSessionId,
+        }
+      : (this.supervisor.environmentScopeForShell(shellId) ?? null)
     if (!scope) throw new Error('runCommandLine: session has no active shell environment')
     const { environment, agentSessionId } = scope
     if (!scope.commandNames.has(name)) throw new RunCommandLineCommandNotRegisteredError(name)
@@ -724,24 +912,20 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   }
 
   hasShell(shellId: string): boolean {
-    return this.environmentForShell(shellId) !== null || (this.supervisor?.hasShell(shellId) ?? false)
+    return this.environmentForShell(shellId) !== null || this.supervisor.hasShell(shellId)
   }
 
-  private async resolveEnvironment(
+  async resolveEnvironment(
     ctx: Pick<AgentToolInvokeContext<unknown>, 'agentSessionId' | 'state' | 'cwd' | 'metadata'>,
     handle: { shellId?: string; commandId?: string },
   ): Promise<BashEnvironment> {
-    const agent = this.currentAgent
-    const commandRegistry = this.currentCommandRegistry
-    if (!agent || !commandRegistry) throw new Error('Shell environment is not available before session open')
-
-    const host = await agent.host({
+    const host = await this.agent.host({
       agentSessionId: ctx.agentSessionId,
       state: ctx.state,
       cwd: ctx.cwd,
       metadata: ctx.metadata,
     })
-    const environment = await this.environmentForHost(host, commandRegistry)
+    const environment = await this.environmentForHost(host, this.commandRegistry)
     const owner = handle.shellId
       ? this.environmentForShell(handle.shellId)
       : handle.commandId
@@ -771,11 +955,9 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   }
 
   private async createEnvironment(host: Host, commands: CommandRegistry): Promise<BashEnvironment> {
-    const agentSessionId = this.currentSessionId
-    if (!agentSessionId) throw new Error('Shell environment is not available before session open')
     const shellOptions = this.prepareShell
       ? await this.prepareShell({
-          agentSessionId,
+          agentSessionId: this.agentSessionId,
           host,
           commandNames: commands.list().map((command) => command.name),
           shell: this.shellOptions,
@@ -795,72 +977,6 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const matches = [...this.environmentsByHost.values()].filter((environment) => environment.hasCommand(commandId))
     if (matches.length > 1) throw new Error(`Command id "${commandId}" is not unique in this session`)
     return matches[0] ?? null
-  }
-
-  private sessionFor(command: string): AgentSession<unknown> | null {
-    if (!this.session) {
-      this.send({ type: 'rejected', command, reason: 'No session is open' })
-      return null
-    }
-    return this.session
-  }
-
-  private rejectIfBusy(session: AgentSession<unknown>, command: string): boolean {
-    const phase = session.phase()
-    if (phase === 'idle') return false
-    this.send({ type: 'rejected', command, reason: `Session is busy (${phase})` })
-    return true
-  }
-
-  private sendToolProgress(toolCallId: string, toolName: string, progress: unknown): void {
-    const output = progressToOutput(progress)
-    this.send({ type: 'tool_progress', toolUseId: toolCallId, output })
-    const shell = toolName === 'shell_status' ? null : progressToShellOutput(progress)
-    if (shell) {
-      this.send({
-        type: 'shell_output',
-        shellId: shell.shellId,
-        commandId: shell.commandId,
-        status: shell.status,
-      })
-    }
-    const audit = progressToAudit(progress)
-    if (audit.length > 0) this.send({ type: 'audit', events: audit })
-  }
-
-  private sendShellWriteResult(commandId: string, progress: unknown): void {
-    const shell = progressToShellOutput(progress)
-    if (shell) {
-      this.send({
-        type: 'shell_output',
-        shellId: shell.shellId,
-        commandId: shell.commandId,
-        status: shell.status,
-      })
-    }
-    const audit = progressToAudit(progress)
-    if (audit.length > 0) this.send({ type: 'audit', events: audit })
-    this.send({ type: 'shell_write_result', commandId, output: progressToOutput(progress) })
-  }
-
-  private send(frame: ServerFrame): void {
-    this.transport.send(frame)
-  }
-
-  private observeSessionAction(action: Promise<void>): void {
-    action.catch(noop)
-  }
-
-  private sendError(error: unknown): void {
-    const normalized = error instanceof Error ? error : new Error(String(error))
-    const code = errorCode(error)
-    const diagnostics = errorDiagnostics(error)
-    this.send({
-      type: 'error',
-      message: normalized.message,
-      ...(code ? { code } : {}),
-      ...(diagnostics ? { diagnostics } : {}),
-    })
   }
 }
 
