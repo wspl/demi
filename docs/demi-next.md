@@ -238,14 +238,24 @@ API; cold history rides the same rendering path (full-sync frame).
 ### Attachments — two distinct flows
 
 - **Message attachments** (model-visible media, the closed media set in
-  `@demicodes/core`): uploaded through the control API, inlined as bytes into
-  the `user_message` content blocks, size-capped, persisted in the checkpoint
-  — matching Demi's current inline behavior. The planned blob store
-  (`docs/session-storage-and-naming.md`) later removes the duplication; not a
-  prerequisite.
-- **Workspace files** (files the agent should work on): written into the
-  execution target's filesystem via the ordinary Host RPC `writeFile`. This
-  is filesystem data, not conversation data.
+  `@demicodes/core`; the picker filters by the selected model's
+  `acceptedExtensions`): uploaded via **HTTP POST → attachment id**; the
+  `send` frame carries only a small reference block, and the conversation
+  module resolves references into inline bytes before handing the message to
+  the AgentSession — providers still receive inline bytes, zero provider
+  changes. Never inline large binaries into the frame socket: WS messages
+  serialize, so a slow multi-MB upload would block steer/abort/ping exactly
+  when the user most needs them (and every mainstream LLM frontend uses
+  upload-then-reference for the same reason). This is a minimal
+  implementation of the `source.ref` blob design already planned in
+  `docs/session-storage-and-naming.md`. Size cap hardcoded (single number,
+  configurable later). Arbitrary-file message attachments are a future item
+  (requires new core block types — designed then, not now).
+- **Workspace files** (files the agent should work on; anything non-media
+  dropped into the chat routes here automatically): written into the
+  execution target's working directory via the backend (browser → HTTP upload
+  → Host RPC `writeFile`), with the file path auto-inserted into the input as
+  a text reference. Filesystem data, not conversation data.
 
 ### Provider management (web)
 
@@ -296,7 +306,7 @@ Grouped by module — this is the concrete scope fed into the roadmap:
 | connections | list, addKey, startSubscriptionLogin, pollSubscriptionLogin, delete, quota | M3 |
 | usage | summary per user/conversation | M3 |
 | admin | user management (create user, reset password, grant admin — master only for grants), instance mode get/set | M5 |
-| attachments | upload (returns a content-block reference) | M4+ |
+| attachments | uploadAttachment (HTTP, returns reference id), uploadToWorkspace (HTTP, writes target fs) | M4 |
 
 ## Runner program
 
