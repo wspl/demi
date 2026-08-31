@@ -29,6 +29,13 @@ export interface Command {
   positionals?: string[]
   stdinField?: string
   output?: CommandOutputSpec
+  /**
+   * Replaces the generic "check again with shell_status, or call yield" next
+   * hint in model-facing shell results while this command is the running
+   * foreground job. For long-running commands whose running state should not
+   * be watched with status/yield polling (e.g. an attended child agent).
+   */
+  runningHint?: string
 }
 
 export interface ParsedCommandInput {
@@ -111,6 +118,7 @@ const EXECUTION_ONLY_FIELDS = [
   'positionals',
   'stdinField',
   'output',
+  'runningHint',
 ] as const
 
 const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/

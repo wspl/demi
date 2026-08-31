@@ -110,3 +110,47 @@ test('piped stdin stays the snapshot; registered command pipes remain byte-clean
   expect(result.exitCode).toBe(0)
   expect(result.stdout.delta).toBe('hi there')
 })
+
+test('a running registered command surfaces the executed node runningHint; siblings and exit do not', async () => {
+  const env = await makeEnv([
+    {
+      name: 'attend',
+      summary: 'Routes to wait/quick.',
+      subcommands: [
+        {
+          name: 'wait',
+          summary: 'Runs until aborted.',
+          runningHint: 'next: still attending; do not poll.',
+          run: async ({ signal }) => {
+            await new Promise<void>((resolve) => {
+              if (signal.aborted) return resolve()
+              signal.addEventListener('abort', () => resolve(), { once: true })
+            })
+            return { exitCode: 0 }
+          },
+        },
+        {
+          name: 'quick',
+          summary: 'Exits immediately.',
+          run: async () => ({ exitCode: 0 }),
+        },
+      ],
+    },
+  ])
+
+  const started = await env.exec({ script: 'attend wait', timeoutMs: 100, agentSessionId: 'fg-hint' })
+  expect(started.status).toBe('running')
+  if (started.status !== 'running') throw new Error('expected running')
+  expect(started.runningHint).toBe('next: still attending; do not poll.')
+
+  const observed = await env.status({ commandId: started.commandId })
+  expect(observed.status === 'running' && observed.runningHint).toBe('next: still attending; do not poll.')
+
+  const aborted = await env.abort({ commandId: started.commandId })
+  expect(aborted.status).toBe('aborted')
+  expect('runningHint' in aborted).toBe(false)
+
+  const quick = await env.exec({ script: 'attend quick', timeoutMs: 100, agentSessionId: 'fg-hint' })
+  expect(quick.status).toBe('exited')
+  expect('runningHint' in quick).toBe(false)
+})

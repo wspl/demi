@@ -182,6 +182,13 @@ not a completion channel and not a loop. Waiting is still blocking spawn,
 `shell_status` with `timeoutMs`, or `yield`. Completion and abort still
 arrive as the spawn tool result, or as a user `send` when the parent is idle.
 
+The shell result's generic running hint ("check again with shell_status, or
+call yield") is exactly the polling loop this table exists to prevent, so the
+spawn and `resume` commands set `Command.runningHint` — a per-command override
+of that line, surfaced on running `ShellCommandStatus` while the command is
+the foreground job — telling the parent to steer, abort, or end the turn and
+be woken, never to poll.
+
 `list` / `show` field descriptions state they are snapshots of running
 children, that `show` omits tool outputs, and that they are not for polling.
 

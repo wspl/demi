@@ -79,6 +79,8 @@ export interface ForegroundProcess {
   exitPromise: Promise<HostSpawnExit>
   outputSinks: Record<1 | 2, ForegroundSink>
   abortController: AbortController
+  /** The resolved registered command's `runningHint`, surfaced on running command statuses. */
+  runningHint?: string
 }
 
 export interface ForegroundSink {

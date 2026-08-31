@@ -29,6 +29,9 @@ export const MAX_ARCHIVED_SUBAGENTS = 16
 export const SUBAGENT_RESULT_MAX_BYTES = 32 * 1024
 const SHOW_RECENT_TOOLS = 8
 
+const SPAWN_RUNNING_HINT =
+  "next: the child agent is still working; a long-running spawn is normal. shell_write steers it, shell_abort aborts it. Otherwise stop attending and end the turn — the child's completion returns as this command's result and wakes the session when it is idle. Do not poll with shell_status or timed yields; use `demi agent show` only to decide a steer or abort."
+
 const SPAWN_PROMPT_DESCRIPTION =
   "The child's first user message and only task brief. The child starts with an empty transcript and cannot see this conversation: do not refer to prior turns, and do not paste this conversation or the product user's message unchanged. Include the goal for this child, applicable decisions and constraints, whether to edit or only report, how to verify, and every concrete identifier it needs (paths, ids, error text, commands already tried and their key results). State the exact shape of the last assistant text it should return."
 
@@ -140,7 +143,7 @@ export class ChildSupervisor<State = unknown> {
     return {
       name: 'agent',
       summary:
-        'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out.',
+        'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out, then end the turn — completion wakes an idle session; do not poll.',
       successOutput:
         'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
       failureOutput: 'non-zero exit with the abort or failure reason on stderr',
@@ -158,6 +161,7 @@ export class ChildSupervisor<State = unknown> {
       positionals: ['prompt'],
       stdinField: 'prompt',
       output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
+      runningHint: SPAWN_RUNNING_HINT,
       run: async ({ parsed, io, signal, stdinStream }) => {
         const prompt = String(parsed.values.prompt ?? '').trim()
         if (!prompt) {
@@ -233,6 +237,7 @@ export class ChildSupervisor<State = unknown> {
           positionals: ['id', 'message'],
           stdinField: 'message',
           output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
+          runningHint: SPAWN_RUNNING_HINT,
           run: async ({ parsed, io, signal, stdinStream }) => {
             const id = String(parsed.values.id)
             const message = String(parsed.values.message ?? '').trim()
