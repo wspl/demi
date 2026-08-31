@@ -25,6 +25,7 @@ const workspaceEntries = new Map<string, string>([
   ['@demicodes/provider-grok-build', 'packages/provider-grok-build/src/index.ts'],
   ['@demicodes/provider-google', 'packages/provider-google/src/index.ts'],
   ['@demicodes/host-local', 'packages/host-local/src/index.ts'],
+  ['@demicodes/backend', 'packages/backend/src/index.ts'],
   ['@demicodes/runner', 'packages/runner/src/index.ts'],
   ['@demicodes/repl', 'packages/repl/src/index.ts'],
   ['@demicodes/agent-eval', 'packages/agent-eval/src/index.ts'],
@@ -47,6 +48,7 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demicodes/runner-protocol', 'packages/runner-protocol'],
   ['@demicodes/runner', 'packages/runner'],
   ['@demicodes/host-virtual', 'packages/host-virtual'],
+  ['@demicodes/backend', 'packages/backend'],
   ['@demicodes/repl', 'packages/repl'],
   ['@demicodes/agent-eval', 'packages/agent-eval'],
 ])
@@ -67,6 +69,22 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/provider-google', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   ['@demicodes/runner-protocol', ['@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/host-virtual', ['@demicodes/shell', '@demicodes/utils']],
+  [
+    '@demicodes/backend',
+    [
+      '@demicodes/agent',
+      '@demicodes/coding-agent',
+      '@demicodes/core',
+      '@demicodes/host-local',
+      '@demicodes/host-virtual',
+      '@demicodes/provider',
+      '@demicodes/provider-anthropic-api',
+      '@demicodes/provider-google',
+      '@demicodes/provider-openai-api',
+      '@demicodes/shell',
+      '@demicodes/utils',
+    ],
+  ],
   [
     '@demicodes/runner',
     ['@demicodes/host-local', '@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils'],

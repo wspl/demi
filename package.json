@@ -16,6 +16,7 @@
     "packages/provider-google",
     "packages/provider-grok-build",
     "packages/shell",
+    "packages/backend",
     "packages/host-virtual",
     "packages/testkit",
     "packages/runner-protocol",

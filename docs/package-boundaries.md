@@ -160,6 +160,15 @@ Test code may depend upward for integration coverage. Production code must not.
 - Internal boundary: generateContent body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
 - Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
 
+### `@demicodes/backend`
+
+- Status: implemented through M1 (Web API skeleton + conversation module + virtual default; runner management M2, LLM module/vault/accounting M3+).
+- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`, `@demicodes/host-virtual`, `@demicodes/provider`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-google`, `@demicodes/provider-openai-api`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
+- Owns: the hosted multi-user product's server — the storage module (thin dual-dialect SQL layer, numbered migrations, DB-backed `HostStore`, conversation index), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, operator provider assembly (`demi-backend` entry), and — per later milestones — runner management, the credential vault, the Anthropic passthrough, and usage accounting.
+- Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
+- May assemble: concrete providers, AgentServer, LocalHost (as the virtual-fs real backing), VirtualHost, and the coding harness.
+- Must not: be imported by any other production package; put business logic in the HTTP layer beyond routing/validation; let providers or credentials cross to runners or browsers.
+
 ### `@demicodes/host-virtual`
 
 - Status: implemented (M1: local-dir topology via `scopedFsBackend`; the S3 backend arrives with the scaled milestone in `@demicodes/backend`).
@@ -269,6 +278,7 @@ provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
 host-virtual -> shell, utils
+backend -> agent, coding-agent, core, host-local, host-virtual, provider, provider-anthropic-api, provider-google, provider-openai-api, shell, utils
 runner-protocol -> shell, utils
 runner -> host-local, runner-protocol, shell, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils

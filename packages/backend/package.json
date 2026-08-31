@@ -1,0 +1,54 @@
+{
+  "name": "@demicodes/backend",
+  "description": "Demi backend: the hosted multi-user chat product's server — conversations, LLM module, runner management, vault, accounting.",
+  "version": "0.20.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "bin": {
+    "demi-backend": "./dist/main.mjs"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/agent": "workspace:^",
+    "@demicodes/coding-agent": "workspace:^",
+    "@demicodes/core": "workspace:^",
+    "@demicodes/host-local": "workspace:^",
+    "@demicodes/host-virtual": "workspace:^",
+    "@demicodes/provider": "workspace:^",
+    "@demicodes/provider-anthropic-api": "workspace:^",
+    "@demicodes/provider-google": "workspace:^",
+    "@demicodes/provider-openai-api": "workspace:^",
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/utils": "workspace:^",
+    "hono": "^4.13.5"
+  },
+  "devDependencies": {
+    "@demicodes/testkit": "workspace:^"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/backend"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/backend#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}
