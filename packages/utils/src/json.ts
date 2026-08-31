@@ -69,8 +69,8 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
   return JSON.stringify(
     value,
     function (this: unknown, key, nested) {
-      // Date.prototype.toJSON runs before the replacer, so the Date must be
-      // recovered from the holder object rather than from `nested`.
+      // toJSON (Date, Node byte arrays) runs before the replacer, so these
+      // must be recovered from the holder object rather than from `nested`.
       const original = isRecord(this) || Array.isArray(this) ? (this as Record<string, unknown>)[key] : undefined
       if (original instanceof Date) {
         return {
@@ -78,10 +78,10 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
           iso: original.toISOString(),
         }
       }
-      if (nested instanceof Uint8Array) {
+      if (original instanceof Uint8Array || nested instanceof Uint8Array) {
         return {
           [BINARY_MARKER]: true,
-          base64: bytesToBase64(nested),
+          base64: bytesToBase64(original instanceof Uint8Array ? original : (nested as Uint8Array)),
         }
       }
       if (typeof nested === 'bigint') {
