@@ -103,9 +103,9 @@ Conclusions for M4's product implementation:
 
 ## M1 — Backend skeleton + virtual default (A) / Runner protocol core (B)
 
-Status: **in progress** (started 2026-08-31). No parallel work — tracks run
-sequentially, B first per the risk-first ordering principle (the only
-greenfield contract).
+Status: **done** (2026-08-31). No parallel work — tracks ran sequentially,
+B first per the risk-first ordering principle (the only greenfield
+contract).
 
 ### Track B — runner protocol core
 
@@ -149,4 +149,52 @@ Pitfalls:
 
 ### Track A — backend skeleton + virtual default
 
-Status: in progress.
+Status: **done** (`115e752` host-virtual, `d414327` coding-agent host
+resolver, `ef75e5c` agent session-lifetime refactor, `8f25145` backend).
+M1 acceptance tests pass end-to-end over the real Web API + WS stream.
+
+What landed:
+
+- `@demicodes/host-virtual`: `VirtualHost` (chroot-clamped per-conversation
+  namespace, symlink containment, real-root-hiding realpath, hardcoded
+  per-file/total quotas with artifact exemption, spawn refusal with
+  guidance) + `scopedFsBackend` (real-directory adapter). Shell contract
+  gained `HostSpawnError.detail`, surfaced in spawn-error stderr — that is
+  the "upgrade to a device" message mechanism.
+- `@demicodes/testkit` (private): shared test helpers (`memoryHostStore`).
+- coding-agent: `host` option accepts the `AgentHarness.host` resolver
+  signature; reference resolution follows the resolved Host.
+- **`@demicodes/agent` session-lifetime refactor (the significant find)**:
+  the design told us to "verify a binding close never aborts an in-flight
+  turn" — it did (binding close and takeover both disposed the session).
+  Sessions now live in the server: `LiveSession` (owned by the ownership
+  registry) carries the AgentSession + subagent supervisor + per-Host
+  shell environments and emits frames through a swappable sink. Socket
+  drop = detach only; re-open adopts the live object; takeover moves the
+  attachment; only the explicit `close` frame or `AgentServer.close()`
+  disposes. Consequence for clients: `AgentClient.close()` sends `close`
+  and *disposes* — a browser "refresh" is just dropping the socket.
+- `@demicodes/backend` on **Hono** (user selection): storage module
+  (dual-dialect SQL seam, bun:sqlite WAL driver, numbered migrations for
+  the full final-state schema, `DbHostStore` with single-upsert atomic
+  writes, conversation index), Web API (auth stubs, conversations CRUD,
+  cold transcript, model catalog), per-conversation frame-protocol WS
+  with server-side session/cwd scoping and first-message default titles,
+  one stable `VirtualHost` per conversation, operator provider assembly
+  (`demi-backend` env-key entry).
+
+Deviations from the design record's letter (same intent):
+
+- Migrations are numbered tagged-template constants in one module rather
+  than `.sql` files — a published bundle needs no file-tree lookup; the
+  numbering and common-subset SQL discipline are unchanged.
+- Idle detached sessions currently stay in memory until server close;
+  an eviction policy (dispose after idle, restore from checkpoint on next
+  open) is a later optimization, not v1 scope.
+
+Pitfalls:
+
+- macOS `/var` → `/private/var`: `scopedFsBackend` must compare realpath
+  results against the *canonicalized* root.
+- Hono's `upgradeWebSocket` cannot reject inside the handler factory —
+  do the conversation lookup in the route before delegating the upgrade.
