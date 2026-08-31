@@ -3,12 +3,8 @@ import process from 'node:process'
 import { decodeUtf8, encodeUtf8 } from '@demicodes/utils'
 import type { InferenceRequest } from '@demicodes/provider'
 import type { HostProcess } from '@demicodes/shell'
-import {
-  ClaudeCliTransportFactory,
-  type ClaudeSpawn,
-  type ClaudeSpawnHandle,
-  type ClaudeSpawnParams,
-} from '../transport'
+import type { ClaudeSpawn, ClaudeSpawnHandle, ClaudeSpawnParams } from '../spawn'
+import { ClaudeCliTransportFactory } from '../transport'
 
 // Compile-time contract: a real `Host.process.spawn` is assignable to the
 // structurally-typed injectable spawn (the package must not import shell at
