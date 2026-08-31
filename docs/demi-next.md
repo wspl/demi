@@ -168,6 +168,105 @@ and the migrate/upgrade flow.
   (`packages/agent/src/client.ts:200`). Verify during implementation that a
   binding close never aborts an in-flight turn.
 
+## Product design
+
+The functional design of the product itself — what the backend modules
+actually store and expose, and what the web UI consists of.
+
+### Deployment modes and credential scoping
+
+One mechanism, not two systems: every **provider connection** (an API key, or
+a completed subscription login) has exactly one owner — `site` or
+`user:<id>`. Site-owned connections are usable by every user of the instance
+(usage is still metered per user in the ledger); user-owned connections are
+usable only by their owner. Deployment character comes from two instance
+settings, not from modes:
+
+- `registration`: open / invite-token / closed.
+- `userConnections`: whether non-admin users may create their own
+  connections.
+
+Typical self-host: admin creates site connections, registration closed or
+invite-only. Typical public host: registration open, user connections only,
+no site connections. Same tables, same code.
+
+### User system (minimal final state)
+
+Email + password (modern hash), cookie session; the `/agent` WebSocket and
+control API authenticate by the same same-origin cookie. The first registered
+user is the admin. Admin privileges are exactly two: manage site-owned
+connections, and edit instance settings. No organizations, teams, or roles
+beyond admin/user.
+
+### Conversation system
+
+A conversation is one AgentSession plus one metadata row: id, owner userId,
+title, execution target, provider/model selection, created/updated
+timestamps, archived flag. Titles follow Demi's existing behavior (first user
+text block). The **streaming interface is the agent frame protocol** — no
+parallel SSE API; cold history rides the same rendering path (full-sync
+frame). Deleting a conversation removes its checkpoint/store entries and
+best-effort deletes its command artifacts on the target via the Host RPC;
+artifacts on an offline target are simply left behind (no deferred cleanup
+queue — documented, not engineered around).
+
+### Attachments — two distinct flows
+
+- **Message attachments** (model-visible media, the closed media set in
+  `@demicodes/core`): uploaded through the control API, inlined as bytes into
+  the `user_message` content blocks, size-capped, persisted in the checkpoint
+  — matching Demi's current inline behavior. The planned blob store
+  (`docs/session-storage-and-naming.md`) later removes the duplication; not a
+  prerequisite.
+- **Workspace files** (files the agent should work on): written into the
+  execution target's filesystem via the ordinary Host RPC `writeFile`. This
+  is filesystem data, not conversation data.
+
+### Provider management (web)
+
+The connections page: paste an API key (openai / anthropic / google, with
+optional compatible-endpoint baseUrl), or connect a subscription — the
+backend runs the provider's device-login flow and the UI shows the
+verification code/URL and polls until claimed. Each connection shows auth
+state and the latest quota snapshot (from the provider runtimes); connections
+can be deleted. Model pickers everywhere are fed from the backend's
+aggregated catalog, filtered to connections the user can use.
+
+### Web UI surface inventory
+
+Chat view (existing web-ui components) + conversation sidebar; model/provider
+picker; execution-target picker (device list + directory browser via Host RPC
+`readdir`); device management (claim-token entry, online status, revoke);
+connections page (above); usage page (ledger, per user); admin-only instance
+settings. Nothing else in the first final state — sharing, collaboration, and
+search are explicitly out.
+
+### Database
+
+SQLite via `bun:sqlite` — one file, WAL mode, no ORM, no
+database-portability layer. Rationale: a single self-hostable Bun process;
+every persistent concern (users, sessions, conversation index, provider
+connections/vault, usage ledger, the DB-backed `HostStore`) is
+low-concurrency structured data; SQLite transactions natively provide the
+`writeJson` atomicity the checkpoint path relies on. Message-attachment bytes
+live in the checkpoint like today; command artifacts stay on execution
+targets.
+
+### Control API (browser ↔ backend, superset of today's `/control`)
+
+Grouped by module — this is the concrete scope fed into the roadmap:
+
+| Group | Methods (shape, not final names) | Lands in |
+|---|---|---|
+| auth | register, login, logout, me | M1 stub → M5 real |
+| conversations | list, create, rename, archive, delete | M1 |
+| models | listProviders, listModels, prepareSession (existing shapes) | M1 |
+| targets | listDevices, claimDevice, revokeDevice, browseDirectory | M2 |
+| connections | list, addKey, startSubscriptionLogin, pollSubscriptionLogin, delete, quota | M3 |
+| usage | summary per user/conversation | M3 |
+| admin | instance settings get/set | M5 |
+| attachments | upload (returns a content-block reference) | M4+ |
+
 ## Runner program
 
 The runner turns a user's machine into an **execution target**. It is not an
@@ -540,15 +639,19 @@ Two acceptance steps in order:
    `claude` binary); real-subscription smoke manual only, never an ungated
    test.
 
-**M4 — Target switching productized**
+**M4 — Target switching + attachments**
 Turn-boundary switching UI + context injection + virtual→real
-materialization; offline-target degradation (read/chat via virtual). Accept:
-switch, upgrade, and offline flows each covered by integration tests.
+materialization; offline-target degradation (read/chat via virtual);
+message-attachment upload (inline media content blocks) and workspace file
+drop (Host RPC `writeFile`). Accept: switch, upgrade, and offline flows each
+covered by integration tests; an uploaded image round-trips through a
+StubProvider turn and the checkpoint.
 
 **M5 — Multi-user product shell**
-Real auth, device management UI, session list / target picker,
-tenant-isolation authz matrix. UI deliberately late: earlier milestones accept
-with the stub user and existing web-ui surfaces.
+Real auth (email/password, cookie sessions, first-user admin), device
+management UI, connections/usage/instance-settings pages, session list /
+target picker, tenant-isolation authz matrix. UI deliberately late: earlier
+milestones accept with the stub user and existing web-ui surfaces.
 
 **M6 — Deployment packaging**
 Docker images for runner and backend; end-to-end acceptance. Pure hosting
@@ -582,8 +685,6 @@ the repo's design-record rules.
 
 ## Open questions
 
-- Direct browser connection means backend auth must cover the `/agent`
-  WebSocket from M1's stub onward — token-in-URL vs cookie, decide at M1.
 - Whether the web UI should offer directory creation on a device, or that
   stays a local action.
 - fs RPC batching threshold — measure first (see the Runner program section).
