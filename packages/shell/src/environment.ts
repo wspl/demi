@@ -186,6 +186,8 @@ export type ShellCommandStatus =
       output: ShellOutputView
       runningMs: number
       idleMs: number
+      /** The running foreground registered command's `runningHint`, when it declares one. */
+      runningHint?: string
     }
   | {
       status: 'aborted'
@@ -1197,6 +1199,9 @@ export class BashEnvironment {
       return result
     }
     if (record.status === 'aborted') return { ...base, status: 'aborted' }
+    if (foreground?.commandId === record.id && foreground.runningHint !== undefined) {
+      return { ...base, status: 'running', runningHint: foreground.runningHint }
+    }
     return { ...base, status: 'running' }
   }
 
