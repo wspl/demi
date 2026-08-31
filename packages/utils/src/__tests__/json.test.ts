@@ -51,6 +51,25 @@ describe('portable JSON codec', () => {
     expect([...decoded.two]).toEqual([254, 253])
   })
 
+  it('round-trips Date values, including nested, top-level, and in arrays', () => {
+    const date = new Date('2026-08-31T12:34:56.789Z')
+    const decoded = parsePortableJson<{ at: Date; list: Date[] }>(
+      stringifyPortableJson({ at: date, list: [date] }),
+    )
+    expect(decoded.at).toBeInstanceOf(Date)
+    expect(decoded.at.toISOString()).toBe(date.toISOString())
+    expect(decoded.list[0]).toBeInstanceOf(Date)
+
+    const top = parsePortableJson<Date>(stringifyPortableJson(date))
+    expect(top).toBeInstanceOf(Date)
+    expect(top.getTime()).toBe(date.getTime())
+
+    // A plain ISO string stays a string — only marked Dates revive.
+    expect(parsePortableJson<{ s: string }>(stringifyPortableJson({ s: date.toISOString() })).s).toBe(
+      date.toISOString(),
+    )
+  })
+
   it('parses plain JSON without markers unchanged', () => {
     expect(parsePortableJson<{ a: number[] }>('{"a":[1,2]}')).toEqual({ a: [1, 2] })
   })
