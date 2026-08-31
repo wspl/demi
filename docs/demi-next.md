@@ -206,12 +206,19 @@ binary require a real target (`packages/shell/src/portable-commands.ts:18`),
 and the Claude Code provider needs a process-capable target for its CLI —
 gated by a provider capability flag, never by hard-coded provider names.
 
-### Web frontend
+### Web frontend (`@demicodes/web`, product leaf)
 
-`@demicodes/web-ui` unchanged: it already consumes an injected `AgentClient`
-and a transport-agnostic control client. The product shell adds login, device
-management (claim by token, online status), session list with target badges,
-and the migrate/upgrade flow.
+A separate frontend package — the product shell as a pure SPA (no SSR: a
+logged-in application with no SEO surface): Vue 3 + Vite, vue-router for
+pages (login, chat, devices, connections, usage, admin), **Pinia** for app
+state, consuming `@demicodes/web-ui` (unchanged: injected `AgentClient` +
+transport-agnostic control client) and the Web API. Production: the built
+assets ship inside the backend image and `@demicodes/backend` serves them
+alongside `/api`; development: Vite dev server proxying `/api`.
+
+Naming: the existing dev-only `@demicodes/web` product is renamed
+`web-demo` when the new package is scaffolded (M1), lives on as a deprecated
+demo, and gets deleted once the product covers it.
 
 ## Session and host model
 
@@ -629,7 +636,9 @@ backend, which uses this same Host RPC when it needs to look at the device
 2. `@demicodes/provider` — an execution-requirement capability flag in
    provider metadata (claude-code declares it; virtual targets refuse it with
    upgrade guidance).
-3. New packages: `@demicodes/backend` (product leaf), `@demicodes/runner`
+3. New packages: `@demicodes/backend` (product leaf), `@demicodes/web` (the
+   frontend product leaf; the old dev product is renamed `web-demo`),
+   `@demicodes/runner`
    (product leaf), a small platform-neutral runner-protocol package (envelope,
    Host RPC types), and `@demicodes/host-virtual` (platform-neutral fs
    semantics over an injected blob backend; the local-dir and S3 backend
@@ -645,9 +654,9 @@ write-through, and the session lease layer (backend-internal
 `SessionOwnershipRegistry` suffices — sessions have exactly one home).
 
 `docs/package-boundaries.md` gains registry entries for the new packages when
-implementation starts. `@demicodes/web` (single-user, Vite-dev product) is
-untouched for now; the backend is its strict superset and may eventually
-subsume it.
+implementation starts. The existing single-user Vite-dev product is renamed
+`web-demo` (deprecated, deleted once the product covers it); the new frontend
+product takes the `@demicodes/web` name.
 
 ## Prior art and the empty quadrant
 
