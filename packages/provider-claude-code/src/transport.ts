@@ -4,6 +4,7 @@ import process from 'node:process'
 import { encodeUtf8, utf8Lines } from '@demicodes/utils'
 import type { InferenceRequest } from '@demicodes/provider'
 import { buildClaudeArgs, buildClaudeEnv } from './cli'
+import type { ClaudeSpawn, ClaudeSpawnExit, ClaudeSpawnHandle, ClaudeSpawnParams } from './spawn'
 import { createClaudeWireLog, type ClaudeWireLog } from './wire-log'
 
 // The session cwd is a logical workspace id for some hosts (e.g. a virtual
@@ -18,36 +19,6 @@ function resolveSpawnCwd(cwd: string): string {
   }
   return process.cwd()
 }
-
-/**
- * Structural subset of `Host.process.spawn` from `@demicodes/shell` (which
- * this package must not import): a real `host.process.spawn` is directly
- * assignable to `ClaudeSpawn`. Injecting one runs the CLI on that Host's
- * machine instead of the local process tree.
- */
-export interface ClaudeSpawnParams {
-  command: string
-  args?: string[]
-  cwd?: string
-  env?: Record<string, string | undefined>
-}
-
-export interface ClaudeSpawnHandle {
-  stdout: AsyncIterable<Uint8Array>
-  stderr: AsyncIterable<Uint8Array>
-  writeStdin(data: Uint8Array): Promise<void>
-  closeStdin(): Promise<void>
-  kill(signal?: string): Promise<void>
-  wait(): Promise<ClaudeSpawnExit>
-}
-
-export interface ClaudeSpawnExit {
-  exitCode: number | null
-  signal?: string
-  spawnError?: { kind: string }
-}
-
-export type ClaudeSpawn = (params: ClaudeSpawnParams) => Promise<ClaudeSpawnHandle>
 
 export interface ClaudeTransport {
   writeJson(value: unknown): Promise<void>
