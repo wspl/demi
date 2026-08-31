@@ -274,13 +274,31 @@ the protocol package lands. Proxy-side notes from the Host portability audit:
 - **Artifacts**: `Host.commandArtifactsDir` is part of the fs namespace —
   command artifact files live on the execution target and are written through
   `fs_call` like any other file.
-- Known cost to accept: fs operations are per-op round trips. The merged
-  scan-routing change helps a lot — `cat`/`grep`/`rg`/`find`/`ls` are
-  `preferHostSpawn` and run as a single remote spawn on real runners. Known
-  hot spots to measure before optimizing: PATH resolution (one `stat` per
-  PATH entry per command — a proxy-side cache is the likely fix), the
-  stat+read pair per file read, and the 3–4 sequential artifact writes per
-  command status change.
+- Known cost to accept: fs operations are per-op round trips, and since the
+  backend always runs in a datacenter while runners sit on user devices, this
+  is the product's normal case, not an edge. The merged scan-routing change
+  helps a lot — `cat`/`grep`/`rg`/`find`/`ls` are `preferHostSpawn` and run
+  as a single remote spawn on real runners. Known hot spots with planned
+  fixes: PATH resolution (one `stat` per PATH entry per command — proxy-side
+  cache), the stat+read pair per file read, and the 3–4 sequential artifact
+  writes per command status change (pipeline, don't block command
+  completion). Target after those: 2–3 RTTs per command.
+
+**Considered and rejected: running the agent loop on the runner.** It would
+buy zero-latency tool execution, at the price of putting the wire through the
+system's fastest-moving interface instead of its most stable one. The Host
+contract (fs + spawn) is essentially frozen; the agent internals (inference
+items, transcript patches, subagents, compaction) change constantly — and the
+runner binary on user devices is the hardest component to update, so it must
+contain the least-changing code. Runner-side loops also resurrect everything
+this design deleted: transcript sync back to the backend, a browser↔runner
+frame relay, sessions with two homes (lease, migration machinery, offline
+lock-in), and a runner fattened with agent/coding-agent/provider deps. The
+latency win is bounded (turn wall-clock is inference-dominated); the costs
+are structural. **Revisit gate**: M2 acceptance includes latency measurements
+over injected RTT (30/150/300 ms) on realistic coding turns; if the 300 ms
+tier is still unusable after the cache/pipeline fixes, session placement gets
+re-evaluated globally — moved whole, never forked per scenario.
 
 Disconnect semantics: when the socket drops, in-flight spawns on the runner
 are killed and pending fs calls fail; the backend surfaces the failure into
@@ -492,7 +510,7 @@ checklists only for UI look-and-feel and packaging smoke.
 |---|---|
 | M0 | Spawn-injection + `buildClaudeEnv` overlay assertions (no CLI). Capability-flag tests. Host-switch integration: StubProvider session runs turn 1 against LocalHost A, turn 2 against LocalHost B; assert context block injected, per-Host BashEnvironment isolation, transcript continuity. |
 | M1 | Backend integration in one test process: browser-side `AgentClient` (in-process transport) + virtual-Host session; detach client mid-turn with a slow StubProvider → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort); cold-history read equals live transcript; portable commands work, spawn fails with the upgrade message. |
-| M2 | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token). Remote-Host integration: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. |
+| M2 | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token). Remote-Host integration: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. Latency measurement (the runner-side-inference revisit gate): realistic coding turns over injected RTT of 30/150/300 ms, reporting per-command and per-turn overhead with the PATH-cache and artifact-pipeline fixes in place. |
 | M3 | Vault unit tests (login-flow state machines against mock auth endpoints, refresh, per-user assembly). Ledger aggregation from StubProvider usage. Passthrough: mock upstream asserts token swap and single request class. Claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | Switch integration: real→real (files absent + honest context block), virtual→real (files materialized), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
 | M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); claim-token expiry + re-claim. Tier 3: UI manual checklist. |
