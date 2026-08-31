@@ -71,6 +71,9 @@ of scope so its constraints cannot leak into the interfaces:
 
 ### Runner daemon (new product package, e.g. `@demicodes/runner`)
 
+Detailed design (responsibilities, multiplex protocol, control RPC surface):
+`docs/runner-daemon.md`.
+
 A headless sibling of the `@demicodes/web` server: `LocalHost` +
 `createCodingAgentHarness` + `createLocalAgentServer` + the five providers,
 minus any HTTP listener — it dials the gateway with one outbound WebSocket
