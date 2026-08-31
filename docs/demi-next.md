@@ -177,6 +177,21 @@ caps), and archived conversations keep their files — the no-deletion
 principle applies. (`Host.store` is not its concern: the backend composes
 every Host it hands the harness — virtual or remote — with the backend
 store, uniformly.)
+
+**Code execution on virtual: JS via a WASM-sandboxed interpreter; Python
+explicitly not offered.** A `node`/`js` command is registered into the
+CommandRegistry of virtual-target shells only (per-Host command composition —
+it must never shadow the real `node` on device workspaces), executing scripts
+in a QuickJS-compiled-to-WASM interpreter: fs wired to the virtual `Host.fs`,
+hard memory/time limits, no network, capability-based imports only. Chosen
+over embedding V8 isolates deliberately: hostile code is interpreted, never
+JIT-compiled, so the escape surface is a WASM-runtime bug rather than the
+recurring JIT-CVE class — and no half-maintained native V8 bridge enters the
+credential-holding process. The 10–50× interpreter slowdown is irrelevant at
+chat-script scale. This ships as an independent branch after M1, preceded by
+its own small design record (runtime choice, limits, console mapping). The
+`executable_not_found` spawn contract is unaffected — registered commands
+dispatch before spawn.
 Its `process.spawn` must resolve with `spawnError.kind = 'executable_not_found'`
 — the portable-command fallback engages only on that error kind
 (`packages/shell/src/portable-commands.ts`), so anything else would break even
@@ -616,8 +631,9 @@ backend, which uses this same Host RPC when it needs to look at the device
    upgrade guidance).
 3. New packages: `@demicodes/backend` (product leaf), `@demicodes/runner`
    (product leaf), a small platform-neutral runner-protocol package (envelope,
-   Host RPC types), and `@demicodes/host-virtual` (platform-neutral,
-   mirroring `host-local`'s registry position without Node deps).
+   Host RPC types), and `@demicodes/host-virtual` (platform-neutral fs
+   semantics over an injected blob backend; the local-dir and S3 backend
+   implementations live in `@demicodes/backend`).
 4. `@demicodes/agent` — optional, later: `journal.jsonl` incremental
    persistence (planned remaining work in
    `docs/session-storage-and-naming.md`) as a storage optimization.
@@ -830,6 +846,9 @@ milestones accept with the stub user and existing web-ui surfaces.
 **M6 — Deployment packaging**
 Docker images for runner and backend; end-to-end acceptance. Pure hosting
 work after interfaces are frozen.
+
+Independent branch, any time after M1: the virtual-target JS command
+(WASM-sandboxed QuickJS; own design record first).
 
 Deliberately deferred: journal.jsonl storage optimization, fs RPC
 batching/caching (only when measurements demand), per-wire usage
