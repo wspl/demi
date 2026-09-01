@@ -733,6 +733,67 @@ operations follow it atomically. Messages are portable JSON
 (`@demicodes/utils` codec — `Uint8Array`/`bigint` round-trip, which file bytes
 need).
 
+The pairing flow, end to end — two user steps (run the command, paste the
+code), no third:
+
+```
+① First start (unclaimed)
+
+User's device                                Backend
+─────────────                                ───────
+$ demi-runner run --backend https://demi.example.com
+      │
+      │  opens ONE outbound WebSocket (no inbound ports, ever)
+      ├────────────────────────────────────────►│
+      │  hello { deviceToken: absent,           │  no token
+      │          runner: {name, platform,       │  ⇒ unclaimed device
+      │          version, identity} }           │  ⇒ generate claim token
+      │◄────────────────────────────────────────┤    (in memory only)
+      │  claim_pending { claimToken }           │
+      │                                         │
+   prints:                                      │
+   ┌─────────────────────────────────┐          │
+   │  Pairing code:                  │          │  socket stays open,
+   │    9Z7K-M3FV-TQ2X-8HJD-4WPN-C6  │          │  runner just waits
+   │  Enter it in the web UI to      │          │
+   │  link this device.              │          │
+   └─────────────────────────────────┘          │
+
+② User pastes the code in the web UI
+
+Browser (logged in as alice)                 Backend
+────────────────────────────                 ───────
+Devices page → paste code                    lookup claim token
+      ├────────────────────────────────────► │  ⇒ bind device to alice
+      │  POST /api/devices/claim             │  ⇒ mint permanent deviceToken
+      │                                      │
+      │                              push down the SAME open socket:
+      │                              ┌───────┴──────────────────────►  runner
+      │                              │  claimed { deviceToken }
+      │                              │
+      │                              │       runner persists and is live:
+      │                              │         ~/.demi/runner.json
+      │◄─────────────────────────────┤         ~/.demi/runner-token (0600)
+      │  device shows "online"       │  online = socket state, nothing else
+
+③ Every later start (claimed)
+
+$ demi-runner run
+      │  hello { deviceToken: "…", runner: {…} }
+      ├────────────────────────────────────────►│  token valid
+      │◄────────────────────────────────────────┤
+      │  hello_ok { deviceId }                  │  device online
+      │                                         │
+      │  from here the socket carries only      │
+      │  Host RPC: fs_call / fs_result /        │
+      │  spawn / spawn_output / spawn_exit,     │
+      │  plus ping/pong liveness                │
+```
+
+The only failure branch: a revoked or invalid device token answers
+`hello_error { reason }`; the runner prompts to pair again (delete the
+local token, back to ①).
+
 Claim/auth handshake:
 
 | Direction | Message | Purpose |
