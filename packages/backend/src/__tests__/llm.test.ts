@@ -8,6 +8,11 @@ import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { deferred, delay, waitFor } from '@demicodes/utils'
+import { LocalHost } from '@demicodes/host-local'
+import { RunnerClient } from '@demicodes/runner'
+import type { SessionProviderContext } from '../llm/assembly'
+import { LocalControlService } from '../storage/control'
+import { openSqliteDatabase } from '../storage/database'
 import { createBackend, type Backend, type BackendOptions } from '../index'
 
 // M5 step 1 (BYOK + metering): a pasted key becomes a usable connection —
@@ -236,3 +241,91 @@ test('subscription login: pending material surfaces, completion becomes a connec
 
   await backend.close()
 }, 15_000)
+
+test('a process-capable provider gets a session-scoped instance: target spawn + passthrough token', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-state-'))
+  const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-runner-'))
+  const sessions: SessionProviderContext[] = []
+  const backend = await createBackend({
+    dataDir,
+    port: 0,
+    runner: { pingIntervalMs: 0 },
+    providerTypes: {
+      'stub-cli': ({ connectionId, label, session }) => {
+        if (session) sessions.push(session)
+        return defineProvider({
+          id: connectionId,
+          displayName: label,
+          requiresProcessCapableHost: true,
+          createRuntime: () => new StubProvider([[events.text('cli turn'), events.response()]]),
+        })
+      },
+    },
+  })
+
+  // Claim a runner and bind a conversation's workspace to it (M4 machinery).
+  const codes: string[] = []
+  const runner = new RunnerClient({
+    backendUrl: backend.url,
+    stateDir,
+    name: 'cli-device',
+    host: new LocalHost(runnerDir),
+    reconnect: { initialDelayMs: 30, maxDelayMs: 100 },
+    onClaimPending: (code) => codes.push(code),
+  })
+  runner.start()
+  await waitFor(() => codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const claimed = await api<{ device: { id: string } }>(backend, '/api/devices/claim', post({ code: codes[0] }))
+  const created = await api<{ connection: { id: string } }>(
+    backend,
+    '/api/connections',
+    post({ type: 'stub-cli', label: 'CLI', apiKey: 'k' }),
+  )
+  const connectionId = created.body.connection.id
+  const conversation = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
+  const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
+  const control = new LocalControlService(controlDb)
+  const workspace = await control.createWorkspace({
+    userId: 'local',
+    deviceId: claimed.body.device.id,
+    path: runnerDir,
+    name: 'cli workspace',
+  })
+  await control.setConversationWorkspace(conversation.body.conversation.id, workspace.id)
+  controlDb.close()
+
+  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversation.body.conversation.id}/stream`)
+  await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve(), { once: true }))
+  const client = new AgentClient(createWebSocketClientTransport(socket as never))
+  await client.open(selectionFor(connectionId), '/ignored', 'ignored')
+
+  expect(sessions).toHaveLength(1)
+  const session = sessions[0]!
+  expect(session.anthropicPassthrough.baseUrl).toBe(`${backend.url}/api/passthrough/anthropic`)
+
+  // The minted token authenticates at the passthrough (a stub connection has
+  // no OAuth pool, so a recognized token fails at credential resolution — 502,
+  // never the 401 an unknown token gets).
+  const withToken = await fetch(`${session.anthropicPassthrough.baseUrl}/v1/messages`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${session.anthropicPassthrough.token}` },
+    body: '{}',
+  })
+  expect(withToken.status).toBe(502)
+  const withoutToken = await fetch(`${session.anthropicPassthrough.baseUrl}/v1/messages`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer wrong' },
+    body: '{}',
+  })
+  expect(withoutToken.status).toBe(401)
+
+  // The session spawn executes on the claimed device.
+  const handle = await session.spawn({ command: 'touch', args: ['spawned.marker'], cwd: runnerDir })
+  await handle.wait()
+  expect(existsSync(join(runnerDir, 'spawned.marker'))).toBe(true)
+
+  await client.close()
+  await runner.stop()
+  await backend.close()
+}, 20_000)
