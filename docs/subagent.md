@@ -28,7 +28,11 @@ that control surface instead of adding `agent_exec` tools.
 Depth is not capped. A child delegating a slice of its own task spawns exactly
 like the root does; there is no per-depth command stripping. What bounds the
 tree is fan-out (`maxLiveSubagents` live children per session) and the real
-turns each spawn costs.
+turns each spawn costs. A spawner can still forbid one specific child from
+delegating further — `--no-subagents` at spawn, or `canSpawnSubagents: false`
+on the profile — an explicit per-child restriction, never depth-derived: the
+child loses spawn, `abort`, and `resume`, and keeps `send` / `steer` /
+`list` / `show`.
 
 ## Topology and the agent directory
 
@@ -68,7 +72,7 @@ registered `demi`, the subcommands attach to that tree; otherwise
 `AgentServer` registers a `demi` root that only contains them.
 
 ```text
-demi agent [--profile <name>] [--description <title>] [prompt]
+demi agent [--profile <name>] [--description <title>] [--no-subagents] [prompt]
 demi agent abort <id>
 demi agent resume <id> [message]
 demi agent send <id|parent> [message]
@@ -104,9 +108,9 @@ bridge stays fine for the short subcommands.
 
 Prompt and `send` / `steer` / `resume` messages use an optional positional, or
 stdin/heredoc when the positional is omitted. An empty message fails.
-`--profile` names a profile configured at harness assembly. There is no
-`--model` flag: model and provider runtime come from the profile or from the
-parent.
+`--profile` names a profile configured at harness assembly. `--no-subagents`
+forbids the child from spawning children of its own. There is no `--model`
+flag: model and provider runtime come from the profile or from the parent.
 
 `--json` on spawn and `resume` writes `{ "subagentId", "text" }` at exit.
 `abort` / `send` / `steer` / `show` / `list` define JSON objects
@@ -302,6 +306,8 @@ interface SubagentProfile {
   commands?(parent: Command[]): Command[]
   /** When true, `host()` must reject writes. Command allowlists are not enough. */
   readonly?: boolean
+  /** When false, children of this profile cannot spawn subagents (communication and reads remain). */
+  canSpawnSubagents?: boolean
   /** Same provider runtime as the parent (`provider.clone()`), optional model override. */
   model?: ModelSelection
 }
@@ -316,7 +322,10 @@ Omitted `agents()` yields one implicit profile named `default`: inherit the
 parent harness, model, Host, and commands. `--profile` is optional and must
 match a configured name. A profile's `commands()` filter applies to the
 harness commands; the `demi agent` tree is injected after it and is not
-strippable — every subagent can spawn, message, and observe.
+strippable by `commands()`. The only sanctioned narrowing is the spawn
+restriction (`--no-subagents` / `canSpawnSubagents: false`), which removes
+spawn, `abort`, and `resume` — communication and reads always remain. The
+restriction persists across restore and resume with the child.
 
 The assembler owns provider instances. A profile may pin a `ModelSelection` at
 init. The running command cannot pick a provider. Profiles apply to a
@@ -549,6 +558,8 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
   on a non-child), idle parent wakeup on completion, empty prompt fails,
   empty last text exits 0, `subagent*` protocol frames from nested depths,
   inherited vs replaced `systemPrompt` with unknown-profile rejection,
+  spawn restriction (`--no-subagents` and profile `canSpawnSubagents: false`)
+  with communication intact,
   `resume` on the preserved transcript, list tree rendering
   with self marker, parent close detaches (not aborts) live children
 - `packages/shell/src/__tests__/foreground-command.test.ts` — registered command abort

@@ -224,6 +224,8 @@ export interface ChildSupervisorOptions<State> {
   directory: AgentDirectory<State>
   /** Live-children ceiling for this supervisor (from `AgentServerOptions.subagents.maxLiveSubagents`). */
   maxLiveSubagents: number
+  /** When false, this supervisor's owner may not spawn: its `demi agent` tree carries communication and reads only. */
+  canSpawn: boolean
   /** Invoked whenever the live-children set changes; wired to the owning job's settle loop. */
   onJobsChanged: (() => void) | null
   emit(frame: ServerFrame): void
@@ -241,6 +243,8 @@ interface PersistedSubagentJob {
   profileName: string | null
   metadata: AgentMetadata | null
   spawnedAt: number
+  /** Absent means true; false pins the child to a communication-only `demi agent` tree across restores. */
+  canSpawnSubagents?: boolean
   closedPhase?: SubagentClose['phase']
   closedAt?: number
 }
@@ -280,6 +284,17 @@ export class ChildSupervisor<State = unknown> {
 
   /** The `agent` node AgentServer (and every child assembly) grafts under the registry's `demi` root. */
   rootCommandNode(): Command {
+    const full = this.spawnableCommandNode()
+    if (this.options.canSpawn) return full
+    return {
+      name: 'agent',
+      summary:
+        'Agent tree communication. This session may not spawn subagents: send/steer message any live agent, list renders the tree, show snapshots one agent.',
+      subcommands: (full.subcommands ?? []).filter((command) => command.name !== 'abort' && command.name !== 'resume'),
+    }
+  }
+
+  private spawnableCommandNode(): Command {
     const profileNames = this.configuredProfileNames()
     return {
       name: 'agent',
@@ -298,6 +313,10 @@ export class ChildSupervisor<State = unknown> {
           .string()
           .optional()
           .describe('Short UI title distinguishing concurrent children.'),
+        'no-subagents': z
+          .boolean()
+          .optional()
+          .describe('Forbid this child from spawning subagents of its own; it can still send, steer, list, and show.'),
       },
       positionals: ['prompt'],
       stdinField: 'prompt',
@@ -315,6 +334,7 @@ export class ChildSupervisor<State = unknown> {
             prompt,
             profileName: parsed.values.profile === undefined ? undefined : String(parsed.values.profile),
             description: parsed.values.description === undefined ? '' : String(parsed.values.description),
+            isSpawnForbidden: parsed.values['no-subagents'] === true,
           })
         } catch (error) {
           await io.stderr(`demi agent: ${errorMessage(error)}\n`)
@@ -571,6 +591,7 @@ export class ChildSupervisor<State = unknown> {
       profile,
       metadata: meta.metadata,
       spawnedAt: meta.spawnedAt,
+      canSpawnSubagents: meta.canSpawnSubagents !== false,
     })
     const session = AgentSession.fromCheckpoint<State>(
       { provider: parent.cloneProviderRuntime(), runtime, checkpoint },
@@ -603,6 +624,7 @@ export class ChildSupervisor<State = unknown> {
       profileName: meta.profileName,
       metadata: parent.actionMetadata(),
       spawnedAt: Date.now(),
+      ...(meta.canSpawnSubagents === false ? { canSpawnSubagents: false } : {}),
     }
     await this.options.store.writeJson(this.childStoreKey(id, 'job.json'), liveMeta)
     const job = this.reassembleJob(id, liveMeta, checkpoint)
@@ -641,9 +663,11 @@ export class ChildSupervisor<State = unknown> {
     prompt: string
     profileName: string | undefined
     description: string
+    isSpawnForbidden: boolean
   }): Promise<ChildJob<State>> {
     const parent = this.parentSession
     if (!parent) throw new Error('subagent supervisor has no owner session')
+    if (!this.options.canSpawn) throw new Error('this session may not spawn subagents')
     if (this.isDisposed) throw new Error('owner session is closing')
     if (this.jobs.size >= this.options.maxLiveSubagents) {
       throw new Error(`at most ${this.options.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
@@ -653,6 +677,7 @@ export class ChildSupervisor<State = unknown> {
     const metadata = parent.actionMetadata()
     const profileName = input.profileName ?? (this.options.profiles ? profile.name : null)
     const spawnedAt = Date.now()
+    const canSpawnSubagents = !input.isSpawnForbidden && profile.canSpawnSubagents !== false
 
     const { job, runtime } = this.assembleJob({
       id,
@@ -661,12 +686,14 @@ export class ChildSupervisor<State = unknown> {
       profile,
       metadata,
       spawnedAt,
+      canSpawnSubagents,
     })
     await this.options.store.writeJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'), {
       description: input.description,
       profileName,
       metadata,
       spawnedAt,
+      ...(canSpawnSubagents ? {} : { canSpawnSubagents }),
     })
     const session = new AgentSession<State>(
       {
@@ -697,6 +724,7 @@ export class ChildSupervisor<State = unknown> {
     profile: SubagentProfile<State>
     metadata: AgentMetadata | null
     spawnedAt: number
+    canSpawnSubagents: boolean
   }): { job: ChildJob<State>; runtime: AgentHarnessRuntime<State> } {
     const { id, profile } = input
     const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
@@ -736,6 +764,7 @@ export class ChildSupervisor<State = unknown> {
       ...this.options,
       parentCommands: inherited,
       storePrefix: `${this.options.storePrefix}/subagents/${id}`,
+      canSpawn: input.canSpawnSubagents,
       onJobsChanged: () => job.wake?.(),
     })
     const commands = injectSubagentCommand(inherited, job.ownSupervisor.rootCommandNode())

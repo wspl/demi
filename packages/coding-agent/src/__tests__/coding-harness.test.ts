@@ -257,6 +257,7 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
     storePrefix: 'agent-sessions/help-probe',
     directory: new AgentDirectory<CodingState>(),
     maxLiveSubagents: 8,
+    canSpawn: true,
     onJobsChanged: null,
     emit: () => {},
   })

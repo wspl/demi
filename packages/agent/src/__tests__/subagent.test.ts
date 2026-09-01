@@ -449,6 +449,66 @@ test('lifecycle authority: send and abort reject an archived child; only resume 
   await client.close()
 })
 
+test('--no-subagents forbids the child from spawning while communication and reads remain', async () => {
+  let nestedFailText = ''
+  let listText = ''
+  const { client, seen } = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent 'restricted task' --no-subagents --description r", 10_000)],
+      [events.toolCall('n1', 'shell_exec', { script: "demi agent 'nested task'", timeoutMs: 5_000 })],
+      (request) => {
+        nestedFailText = itemsText(request)
+        return [events.toolCall('n2', 'shell_exec', { script: 'demi agent list', timeoutMs: 5_000 })]
+      },
+      (request) => {
+        listText = itemsText(request)
+        return [events.text('restricted done'), events.response()]
+      },
+      [events.text('parent done'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  // The nested spawn never started a session; the tree still reads fine.
+  expect(nestedFailText).not.toContain('subagentId:')
+  expect(seen.filter((event) => event.type === 'subagent' && event.event === 'started')).toHaveLength(1)
+  expect(listText).toContain('← you')
+  await client.close()
+})
+
+test('a profile with canSpawnSubagents: false pins its children to communication only', async () => {
+  let nestedFailText = ''
+  const { client, seen } = await openHarness({
+    agents: [{ name: 'worker', description: 'No delegation.', canSpawnSubagents: false }],
+    turns: [
+      [spawnCall('t1', "demi agent 'leaf task' --profile worker", 10_000)],
+      [events.toolCall('n1', 'shell_exec', { script: "demi agent 'nested task'", timeoutMs: 5_000 })],
+      (request) => {
+        nestedFailText = itemsText(request)
+        return [events.text('leaf done'), events.response()]
+      },
+      [events.text('parent done'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  expect(nestedFailText).not.toContain('subagentId:')
+  expect(seen.filter((event) => event.type === 'subagent' && event.event === 'started')).toHaveLength(1)
+  await client.close()
+})
+
 test('a child finishing after the parent went idle wakes it with a user message', async () => {
   let wakeText = ''
   const { client } = await openHarness({
