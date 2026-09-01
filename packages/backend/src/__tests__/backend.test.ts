@@ -10,7 +10,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { createBackend, type Backend } from '../index'
 
-// M1-A acceptance: a zero-setup virtual conversation over the real Web API +
+// M2 acceptance: a zero-setup virtual conversation over the real Web API +
 // conversation stream — portable-command tools work, real programs surface
 // upgrade guidance, a detached client's turn completes server-side and a
 // reattach sees the full result, and cold history equals the live transcript.
@@ -173,4 +173,53 @@ test('detach mid-turn: the turn completes server-side and a reattach sees the re
 
   await client2.close()
   await backend.close()
+}, 30_000)
+
+test('backend restart restores the conversation from its database (M3)', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-restart-'))
+  const makeProvider = () =>
+    defineProvider({
+      id: 'stub',
+      displayName: 'Stub',
+      createRuntime: () =>
+        new StubProvider([
+          [events.text('first answer'), events.response()],
+          [events.text('second answer'), events.response()],
+        ]),
+    })
+
+  const backend = await createBackend({ dataDir, providers: [makeProvider()], port: 0 })
+  const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
+  const conversationId = created.conversation.id
+  const { client } = await connectClient(backend, conversationId)
+  await client.open(selection, '/ignored', 'ignored')
+  await client.send([{ type: 'text', text: 'remember me' }])
+  const before = client.transcript().blocks
+  expect(before.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  await client.close()
+  await backend.close()
+
+  // A fresh process over the same data directory: cold history and the live
+  // session both come back from conversations/<id>.sqlite block rows.
+  const restarted = await createBackend({ dataDir, providers: [makeProvider()], port: 0 })
+  const cold = await api<{ blocks: Block[] }>(restarted, `/api/conversations/${conversationId}/transcript`)
+  expect(cold.blocks.map((block) => block.id)).toEqual(before.map((block) => block.id))
+
+  const { client: resumed } = await connectClient(restarted, conversationId)
+  await resumed.open(selection, '/ignored', 'ignored')
+  await waitFor(() => resumed.transcript().blocks.length === before.length)
+  expect(resumed.transcript().blocks.map((block) => block.id)).toEqual(before.map((block) => block.id))
+
+  // The restored session keeps working and appends new rows.
+  await resumed.send([{ type: 'text', text: 'and again' }])
+  expect(resumed.transcript().blocks.map((block) => block.type)).toEqual([
+    'user',
+    'text',
+    'response',
+    'user',
+    'text',
+    'response',
+  ])
+  await resumed.close()
+  await restarted.close()
 }, 30_000)
