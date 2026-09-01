@@ -133,6 +133,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     agentServer,
     runnerRegistry,
     upgradeWebSocket,
+    blobs,
+    hostFor,
   })
 
   const server = Bun.serve({

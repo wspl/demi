@@ -78,6 +78,8 @@ test('M6 acceptance: virtual→real switch with context block and migration pipe
       // Turn 4 (after switch back to virtual): the old workspace is the prev, reachable by real spawn.
       [events.toolCall('t4', 'shell_exec', { script: 'demi host prev shell -- cat notes.txt', timeoutMs: 20_000 })],
       [events.text('four'), events.response()],
+      // Turn 5: chat-only while the bound workspace's runner is offline.
+      [events.text('offline chat works'), events.response()],
     ])
   const backend = await createBackend({
     dataDir,
@@ -169,6 +171,24 @@ test('M6 acceptance: virtual→real switch with context block and migration pipe
 
   await client.send([{ type: 'text', text: 'read from the old place' }])
   expect(lastExited(shellEvents)?.stdout.delta).toContain('secret')
+
+  // Offline degradation: with the runner gone, the session stays readable and
+  // chattable — switching (a control-plane write) and text-only turns both work.
+  await runner.stop()
+  const offlineSwitch = await api(backend, `/api/conversations/${conversation.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ workspaceId: workspace.id }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(offlineSwitch.status).toBe(200)
+  await client.send([{ type: 'text', text: 'still there?' }])
+  expect(client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'offline chat works')).toBe(true)
+  const backToVirtual = await api(backend, `/api/conversations/${conversation.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ workspaceId: null }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(backToVirtual.status).toBe(200)
 
   // Workspace deletion: refused while bound, allowed when free.
   await control.setConversationWorkspace(conversation.id, workspace.id)
