@@ -131,6 +131,37 @@ test('ControlService conversation CRUD and ordering', async () => {
   db.close()
 })
 
+test('ControlService device and workspace records', async () => {
+  const db = openControlDb()
+  const control = new LocalControlService(db)
+  await control.ensureUser({ id: 'u1', username: 'local', role: 'master' })
+
+  const device = await control.createDevice({ userId: 'u1', name: 'laptop', platform: 'darwin', tokenHash: 'hash-1' })
+  expect(device.lastSeenAt).toBeNull()
+  expect(await control.getDevice(device.id)).toEqual(device)
+  expect(await control.getDeviceByTokenHash('hash-1')).toEqual(device)
+  expect(await control.getDeviceByTokenHash('hash-unknown')).toBeNull()
+
+  await control.touchDeviceSeen(device.id)
+  expect((await control.getDevice(device.id))?.lastSeenAt).not.toBeNull()
+
+  const other = await control.createDevice({ userId: 'u1', name: 'desktop', platform: 'linux', tokenHash: 'hash-2' })
+  expect((await control.listDevices('u1')).map((row) => row.id)).toEqual([device.id, other.id])
+
+  const workspace = await control.createWorkspace({ userId: 'u1', deviceId: device.id, path: '/proj', name: 'proj' })
+  expect(await control.getWorkspace(workspace.id)).toEqual(workspace)
+
+  const conversation = await control.createConversation('u1')
+  await control.setConversationWorkspace(conversation.id, workspace.id)
+  expect((await control.getConversation(conversation.id))?.workspaceId).toBe(workspace.id)
+  await control.setConversationWorkspace(conversation.id, null)
+  expect((await control.getConversation(conversation.id))?.workspaceId).toBeNull()
+
+  await control.deleteDevice(other.id)
+  expect((await control.listDevices('u1')).map((row) => row.id)).toEqual([device.id])
+  db.close()
+})
+
 test('DirBlobStore content-addresses bytes and is idempotent', async () => {
   const root = mkdtempSync(join(tmpdir(), 'demi-blobs-'))
   const blobs = new DirBlobStore(root)
