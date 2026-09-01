@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { providerRuntime, withProviderId, type Provider, type ProviderModelList } from '@demicodes/provider'
 import { createId, errorMessage } from '@demicodes/utils'
 import { createAnthropicApiProvider } from '@demicodes/provider-anthropic-api'
-import { createClaudeCodeProvider } from '@demicodes/provider-claude-code'
+import { createClaudeCodeProvider, type ClaudeSpawn } from '@demicodes/provider-claude-code'
 import { createCodexProvider } from '@demicodes/provider-codex'
 import { createGoogleProvider } from '@demicodes/provider-google'
 import { createGrokBuildProvider } from '@demicodes/provider-grok-build'
@@ -21,7 +21,19 @@ export type ProviderTypeFactory = (options: {
   label: string
   config: ConnectionConfig
   vaultDir: string
+  /** Present when the provider needs the session's execution target (CLI transports). */
+  session?: SessionProviderContext
 }) => Provider
+
+/**
+ * Session context for providers whose transport runs on the session's
+ * execution target: the target's spawn, and the backend passthrough the
+ * spawned process's model traffic must flow through.
+ */
+export interface SessionProviderContext {
+  spawn: ClaudeSpawn
+  anthropicPassthrough: { baseUrl: string; token: string }
+}
 
 function apiKey(config: ConnectionConfig): ApiKeyConnectionConfig {
   if (config.kind !== 'api_key') throw new Error(`Provider type "${config.provider}" expects an API key connection`)
@@ -47,7 +59,20 @@ export function builtinProviderTypes(): Record<string, ProviderTypeFactory> {
     anthropic: keyed(createAnthropicApiProvider),
     openai: keyed(createOpenAIApiProvider),
     google: keyed(createGoogleProvider),
-    'claude-code': (options) => createClaudeCodeProvider({ ...common(options), stateDir: options.vaultDir }),
+    'claude-code': (options) =>
+      createClaudeCodeProvider({
+        ...common(options),
+        stateDir: options.vaultDir,
+        ...(options.session
+          ? {
+              spawn: options.session.spawn,
+              env: {
+                ANTHROPIC_BASE_URL: options.session.anthropicPassthrough.baseUrl,
+                CLAUDE_CODE_OAUTH_TOKEN: options.session.anthropicPassthrough.token,
+              },
+            }
+          : {}),
+      }),
     codex: (options) => createCodexProvider({ ...common(options), stateDir: options.vaultDir }),
     'grok-build': (options) => createGrokBuildProvider({ ...common(options), stateDir: options.vaultDir }),
   }
@@ -98,12 +123,21 @@ export class ProviderAssembly {
     await rm(this.vaultDir(connectionId), { recursive: true, force: true })
   }
 
-  /** The base (unmetered) provider for a connection, or null when unknown. */
-  async providerFor(connectionId: string): Promise<{ connection: Connection; provider: Provider } | null> {
+  /**
+   * The base (unmetered) provider for a connection, or null when unknown.
+   * With `session` the provider is built fresh and uncached — session-scoped
+   * instances carry the target's spawn and a session passthrough token.
+   */
+  async providerFor(
+    connectionId: string,
+    session?: SessionProviderContext,
+  ): Promise<{ connection: Connection; provider: Provider } | null> {
     const connection = await this.vault.get(connectionId)
     if (!connection) return null
-    const cached = this.cache.get(connectionId)
-    if (cached) return { connection, provider: cached }
+    if (!session) {
+      const cached = this.cache.get(connectionId)
+      if (cached) return { connection, provider: cached }
+    }
     const factory = this.types[connection.config.provider]
     if (!factory) throw new Error(`Unknown provider type "${connection.config.provider}"`)
     const provider = factory({
@@ -111,8 +145,9 @@ export class ProviderAssembly {
       label: connection.label,
       config: connection.config,
       vaultDir: this.vaultDir(connectionId),
+      ...(session ? { session } : {}),
     })
-    this.cache.set(connectionId, provider)
+    if (!session) this.cache.set(connectionId, provider)
     return { connection, provider }
   }
 
