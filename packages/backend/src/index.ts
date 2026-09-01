@@ -1,4 +1,5 @@
-export { createBackend, VIRTUAL_WORKSPACE_CWD, type Backend, type BackendOptions } from './backend'
+export { createBackend, type Backend, type BackendOptions } from './backend'
+export { VIRTUAL_WORKSPACE_CWD } from './conversation/scoped-transport'
 export { openSqliteDatabase, type SqlDatabase, type SqlParams } from './storage/database'
 export { migrate, CONTROL_MIGRATIONS, CONVERSATION_MIGRATIONS, type Migration } from './storage/migrations'
 export { DbHostStore } from './storage/host-store'
