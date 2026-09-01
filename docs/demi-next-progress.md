@@ -611,3 +611,41 @@ Decisions, in review order:
 Explicitly not designed (deferred by decision, not omission): user-host
 migration implementation (`switch <device>` + web confirmation flow),
 managed→virtual downgrade entrance, finer security items.
+
+### Provisioning review: Docker Engine API dropped for direct runsc drive
+
+A follow-up review replaced the provisioning implementation. The original
+plan was the Docker Engine API (gVisor as the configured docker runtime).
+The user asked whether a lighter, docker-nestable sandbox existed; the
+comparison that settled it:
+
+- **runsc is a standalone OCI runtime** — the backend can prepare a
+  bundle and supervise `runsc run` as a child process, and the systrap
+  platform needs no KVM, so managed hosts nest inside a containerized
+  backend with zero host grants (no docker.sock, no DinD). User-namespace
+  tools (bubblewrap/rootless podman) were rejected as a boundary (shared
+  host kernel — the tier the baseline already bans); microVMs rejected
+  (KVM requirement kills nesting).
+- **Complexity accounting favored runsc-direct**: bundle prep is a
+  config.json template + one shared read-only rootfs with runsc's own
+  overlay (no per-instance unpack); lifecycle is plain child-process
+  management (≈ the size of the Engine API client it replaces); the
+  network rule was never free under docker either (same custom filtering
+  work), so it is a constant, not a runsc cost. Docker's only real edge
+  was cgroup convenience.
+- **Image question resolved**: any distro userland works and security
+  does not depend on it — the guest talks to gVisor's Sentry, never the
+  host kernel; docker stays in CI as a build-time packager producing the
+  rootfs tarball. Known cost is Sentry syscall compatibility (industry-
+  accepted), not security.
+- **Resource limits resolved**: memory/CPU/pids hard via a per-container
+  cgroup-v2 subtree (delegation is a deployment prerequisite when
+  nested); disk is soft — the idle sweep doubles as an overlay-size
+  watchdog, breach freezes the host (same discipline as snapshot
+  failure).
+
+Outcome: runsc-direct is the only production implementation; there is no
+Docker Engine API implementation at all. Design doc, boundaries doc, M7,
+M10, and the M7 verification row updated accordingly. Deployment
+prerequisites stated in the design: Linux-only provisioning, cgroup
+delegation when nested, network policy at the backend's own boundary.
