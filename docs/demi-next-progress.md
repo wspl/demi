@@ -649,3 +649,93 @@ Docker Engine API implementation at all. Design doc, boundaries doc, M7,
 M10, and the M7 verification row updated accordingly. Deployment
 prerequisites stated in the design: Linux-only provisioning, cgroup
 delegation when nested, network policy at the backend's own boundary.
+
+## M6 — Target switching + attachments (2026-09-01)
+
+Status: done. Two commits: switching + `demi host` frame, then attachments.
+
+### What landed
+
+- **Switch mechanism** (`conversation/target-switch.ts`): one generic path
+  behind `PATCH /api/conversations/:id {workspaceId}` — refused mid-turn via
+  the new `AgentServer.sessionPhase()` (409 `turn_in_flight`), single winner
+  via `ControlService.switchConversationWorkspace` compare-and-set on the
+  current pointer (409 `switch_conflict` for the loser), departed target
+  recorded in the prev slot. The prev slot lives as
+  `conversations.prev_target_json` in control.sqlite — binding history
+  belongs next to the binding, and `demi host` resolution reads the control
+  plane anyway.
+- **Context block** (`conversation/switch-announcement.ts`): injected
+  through the harness `preamble` hook (the M0 mechanism, first product use —
+  a `preamble` passthrough was added to `createCodingAgentHarness`). One
+  announcement per switch via the prev record's `announced` flag, so it
+  survives restarts; names both targets, the new start directory, states
+  that no files moved and old paths are stale, gives the tar-pipe recipe,
+  and adds the same-device note when the prev directory is still reachable.
+- **`demi host` frame** (`managed/host-command.ts`, per the boundaries doc
+  this module hosts the command group; the provisioner joins it in M7):
+  status (current target + prev line), `prev shell -- <argv>`, `prev
+  release`. The backend passes a commands *builder* to the coding harness —
+  `AgentHarness.commands` context gained `agentSessionId` so product
+  commands can close over their conversation. `createDemiCommand` gained
+  `extraSubcommands` for the umbrella layering decided in the design round.
+- **`prev shell` execution**: workspace prevs run by direct
+  `host.process.spawn` on the device — streamed byte-faithful stdio, real
+  exit codes, pre-start stdin bytes forwarded then stdin closed (post-start
+  `shell_write` stdin is not forwarded — migration is a pull pipe). Virtual
+  prevs run through an ephemeral prev-side `BashEnvironment`, where
+  just-bash's portable set (full `tar` included) operates over the virtual
+  `Host.fs`; output is buffered with a 256 MB cap (virtual trees are
+  conversation-sized) and returned through the exec result's
+  `binaryStdout`/UTF-8-delta byte-faithful contract. `Command` gained
+  `restField` (raw argv after a literal `--`) for the `-- <argv>` form.
+- **Workspaces CRUD** (`http/workspaces.ts`): list/create/rename/delete;
+  creation validates device ownership; deletion is refused (409
+  `workspace_in_use`) while conversations still point at the workspace —
+  moving them is a target switch with its own turn-boundary rules, never a
+  bulk pointer wipe.
+- **Attachments**: `POST /api/attachments` stores bytes in the blob store +
+  one metadata row (25 MB hardcoded cap). The send frame carries
+  `{type:'ref', ref: <attachment id>}` media sources — a backend wire
+  extension parsed by a zod schema in `conversation/attachment-refs.ts` and
+  resolved to inline bytes in the scoped transport *before* the agent
+  server validates the frame, so the agent protocol and providers see only
+  the core media set. Missing/foreign refs degrade to a visible
+  `[attachment … is not available]` text block. Frame rewriting became
+  async (attachment reads); an in-order delivery chain keeps frame order.
+  `POST /api/conversations/:id/workspace-files?name=…` writes dropped files
+  into the target cwd over `Host.fs` (createParents, relative-path
+  validation, 25 MB cap) and returns the absolute path for the input
+  reference.
+- **cwd on switch needed no work**: shells are born in `Host.defaultCwd`
+  (workspace path for RemoteHost, `/workspace` for virtual), so the switch
+  re-resolving the Host re-homes new shells automatically; the stale
+  session-level cwd is covered by the context block until the next
+  reconnect re-derives it.
+
+### Correction during the round
+
+The design round's "portable create-only `tar` registered into
+virtual-target shells" was based on a false probe: a grep against the wrong
+path of the nested just-bash repo (`packages/just-bash/src` instead of
+`packages/just-bash/packages/just-bash/src`) concluded tar was absent, and
+a redundant ustar implementation was briefly written. just-bash ships a
+full `tar` (modern-tar; create+extract, gz/bz2/xz/zstd) already inside
+`DEMI_PORTABLE_COMMANDS`. The reimplementation was deleted and the design
+doc now states the fact; the virtual-prev pipe simply uses the existing
+portable tar.
+
+### Pitfalls
+
+- StubProvider mid-turn gating: scripted arrays cannot hold a turn open;
+  an inline provider awaiting a gate promise is the pattern for
+  turn-in-flight tests (TS note: initialize the release fn to a no-op —
+  assignment inside a Promise executor does not narrow).
+- After reattach, `client.transcript()` is empty until the full-sync frame
+  arrives — wait for blocks before asserting restored content.
+- Verification coverage: `switch.test.ts` (virtual→real with pipe + context
+  block, release closing the pipe, real→virtual with spawn-side prev,
+  mid-turn 409, CAS single winner, offline chat + offline switch, workspace
+  delete-in-use), `attachments.test.ts` (upload→ref→inline-at-provider,
+  checkpoint round-trip, missing-ref placeholder, size/traversal refusals,
+  drop visible to the agent shell).
