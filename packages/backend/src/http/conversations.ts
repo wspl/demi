@@ -1,8 +1,12 @@
 import type { AgentServer } from '@demicodes/agent'
+import type { Host } from '@demicodes/shell'
+import { errorMessage } from '@demicodes/utils'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { STUB_USER } from '../auth/identity'
+import { VIRTUAL_WORKSPACE_CWD } from '../conversation/scoped-transport'
 import { switchConversationTarget } from '../conversation/target-switch'
+import { ATTACHMENT_MAX_BYTES } from './attachments'
 import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 
@@ -19,8 +23,9 @@ export function conversationRoutes(options: {
   control: ControlService
   conversationStores: ConversationStores
   agentServer: AgentServer
+  hostFor: (conversationId: string) => Promise<Host>
 }): Hono {
-  const { control, conversationStores, agentServer } = options
+  const { control, conversationStores, agentServer, hostFor } = options
   const app = new Hono()
 
   app.get('/', async (c) => {
@@ -68,6 +73,32 @@ export function conversationRoutes(options: {
     return c.json({ conversation: await control.getConversation(conversation.id) })
   })
 
+  // Workspace file drop: bytes land in the execution target's working
+  // directory over the ordinary Host fs — filesystem data, not conversation
+  // data. The returned path is what the client inserts as a text reference.
+  app.post('/:id/workspace-files', async (c) => {
+    const conversation = await control.getConversation(c.req.param('id'))
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    const name = c.req.query('name')
+    if (!name || !isSafeRelativePath(name)) {
+      return c.json({ code: 'invalid_body', message: 'Provide ?name= as a relative file path' }, 400)
+    }
+    const bytes = new Uint8Array(await c.req.arrayBuffer())
+    if (bytes.length === 0) return c.json({ code: 'invalid_body', message: 'Empty upload' }, 400)
+    if (bytes.length > ATTACHMENT_MAX_BYTES) {
+      return c.json({ code: 'too_large', message: `File exceeds the ${ATTACHMENT_MAX_BYTES}-byte limit` }, 413)
+    }
+    const workspace = conversation.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
+    const cwd = workspace?.path ?? VIRTUAL_WORKSPACE_CWD
+    try {
+      const host = await hostFor(conversation.id)
+      await host.fs.writeFile(name, bytes, { cwd, createParents: true })
+    } catch (error) {
+      return c.json({ code: 'write_failed', message: errorMessage(error) }, 409)
+    }
+    return c.json({ path: `${cwd.replace(/\/+$/, '')}/${name}` }, 201)
+  })
+
   app.get('/:id/transcript', async (c) => {
     const conversation = await control.getConversation(c.req.param('id'))
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
@@ -75,4 +106,10 @@ export function conversationRoutes(options: {
   })
 
   return app
+}
+
+function isSafeRelativePath(name: string): boolean {
+  if (name.includes('\0') || name.startsWith('/')) return false
+  const segments = name.split('/')
+  return segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')
 }

@@ -1,5 +1,6 @@
-import type { AgentServerTransport, ClientFrame } from '@demicodes/agent'
+import type { AgentServerTransport, BlobStore, ClientFrame } from '@demicodes/agent'
 import type { ControlService, ConversationRecord } from '../storage/control'
+import { resolveAttachmentRefs } from './attachment-refs'
 
 /** Virtual working directory every virtual-target conversation starts in. */
 export const VIRTUAL_WORKSPACE_CWD = '/workspace'
@@ -9,30 +10,38 @@ export const VIRTUAL_WORKSPACE_CWD = '/workspace'
  * resolved server-side from the conversation record (the browser never names
  * a cwd — a workspace-bound conversation runs in its workspace path, a
  * virtual one in the virtual constant), the first user message becomes the
- * default title, and activity bumps the index row.
+ * default title, attachment references inflate to inline bytes, and activity
+ * bumps the index row.
  */
 export function conversationScopedTransport(
   inner: AgentServerTransport,
   conversation: ConversationRecord,
   control: ControlService,
   cwd: string = VIRTUAL_WORKSPACE_CWD,
+  blobs?: BlobStore,
 ): AgentServerTransport {
+  // Frame rewrites can await storage (attachment resolution); the chain keeps
+  // delivery in arrival order regardless.
+  let deliveries: Promise<void> = Promise.resolve()
   return {
     send: (frame) => inner.send(frame),
     onFrame: (handler) =>
       inner.onFrame((frame) => {
-        handler(rewriteFrame(frame, conversation, control, cwd))
+        deliveries = deliveries.then(async () => {
+          handler(await rewriteFrame(frame, conversation, control, cwd, blobs))
+        })
       }),
     close: () => inner.close(),
   }
 }
 
-function rewriteFrame(
+async function rewriteFrame(
   frame: ClientFrame,
   conversation: ConversationRecord,
   control: ControlService,
   cwd: string,
-): ClientFrame {
+  blobs: BlobStore | undefined,
+): Promise<ClientFrame> {
   if (frame.type === 'open') {
     void control.setConversationModel(conversation.id, frame.provider.providerId, frame.provider.model.model.id)
     return { ...frame, sessionId: conversation.id, cwd }
@@ -42,7 +51,12 @@ function rewriteFrame(
     const title = (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
     if (title) void control.defaultConversationTitle(conversation.id, title)
     void control.touchConversation(conversation.id)
-    return frame
+    if (!blobs) return frame
+    const content = (await resolveAttachmentRefs(
+      { control, blobs, userId: conversation.userId },
+      frame.content,
+    )) as typeof frame.content
+    return { ...frame, content }
   }
   if (frame.type === 'set_provider') {
     void control.setConversationModel(conversation.id, frame.provider.providerId, frame.provider.model.model.id)
