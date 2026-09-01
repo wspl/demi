@@ -1,4 +1,6 @@
-import type { HostStore } from '@demicodes/shell'
+// Test helpers for packages exercising the Host contract. Shipped as the
+// `@demicodes/shell/testing` entrypoint, never imported by runtime code.
+import type { HostStore } from './host'
 
 /** In-memory `HostStore` for tests (values held by reference, no cloning). */
 export function memoryHostStore(): HostStore {

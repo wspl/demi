@@ -15,7 +15,7 @@ import {
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
-import { memoryHostStore } from '@demicodes/testkit'
+import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
 import { RunnerClient } from '../runner-client'
 

@@ -18,7 +18,6 @@
     "packages/shell",
     "packages/backend",
     "packages/host-virtual",
-    "packages/testkit",
     "packages/runner-protocol",
     "packages/runner",
     "packages/repl",
