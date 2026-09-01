@@ -259,6 +259,7 @@
       "dependencies": {
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
       "devDependencies": {
         "@demicodes/host-local": "workspace:^",

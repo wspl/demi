@@ -10,7 +10,7 @@ import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
   RemoteHost,
-  decodeRunnerMessage,
+  decodeRunnerToBackendMessage,
   encodeRunnerMessage,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
@@ -62,7 +62,7 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
     },
     websocket: {
       message(ws, data) {
-        const message = decodeRunnerMessage(String(data)) as RunnerToBackendMessage
+        const message = decodeRunnerToBackendMessage(String(data))
         if (message.type === 'hello') {
           active.socket = ws
           ws.data.authed = true

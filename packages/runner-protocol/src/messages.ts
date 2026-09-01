@@ -1,5 +1,6 @@
-import type { HostIdentity, HostSpawnError } from '@demicodes/shell'
-import { parsePortableJson, stringifyPortableJson, isRecord } from '@demicodes/utils'
+import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
+import type { z } from 'zod'
+import { HOST_FS_OPS, backendToRunnerMessageSchema, runnerToBackendMessageSchema } from './schemas'
 
 /**
  * Wire protocol between the backend and a runner: one multiplexed connection
@@ -8,7 +9,9 @@ import { parsePortableJson, stringifyPortableJson, isRecord } from '@demicodes/u
  * this protocol — conversation state is backend-local.
  *
  * Messages are text frames of portable JSON (`Uint8Array`/`bigint`/`Date`
- * round-trip via `@demicodes/utils`).
+ * round-trip via `@demicodes/utils`). The message set is declared as zod
+ * schemas in `schemas.ts` — the single source of truth these types derive
+ * from — and each end validates the direction it receives.
  */
 
 /**
@@ -18,98 +21,36 @@ import { parsePortableJson, stringifyPortableJson, isRecord } from '@demicodes/u
  */
 export const RUNNER_PROTOCOL_VERSION = 1
 
-export interface RunnerInfo {
-  name: string
-  platform: string
-  version: string
-  /** Read synchronously at shell creation, so it must arrive before any Host use. */
-  identity: HostIdentity
-}
-
-/** Error shape carried for a failed fs call; `code` preserves errno-style codes (ENOENT, …). */
-export interface WireCallError {
-  message: string
-  code?: string
-}
-
-/** The `HostFileSystem` method set, proxied one call per message. */
-export const HOST_FS_OPS = [
-  'readFile',
-  'writeFile',
-  'appendFile',
-  'exists',
-  'stat',
-  'lstat',
-  'readdir',
-  'mkdir',
-  'rm',
-  'cp',
-  'mv',
-  'chmod',
-  'symlink',
-  'link',
-  'readlink',
-  'realpath',
-  'utimes',
-] as const
+export { HOST_FS_OPS }
 
 export type HostFsOp = (typeof HOST_FS_OPS)[number]
 
-export type RunnerToBackendMessage =
-  | {
-      type: 'hello'
-      protocol: number
-      /** Absent on an unclaimed first start. */
-      deviceToken?: string
-      runner: RunnerInfo
-    }
-  | { type: 'pong' }
-  | { type: 'fs_result'; id: string; ok: true; result: unknown }
-  | { type: 'fs_result'; id: string; ok: false; error: WireCallError }
-  | { type: 'spawn_output'; spawnId: string; stream: 'stdout' | 'stderr'; bytes: Uint8Array }
-  | {
-      type: 'spawn_exit'
-      spawnId: string
-      exitCode: number | null
-      signal?: string
-      spawnError?: HostSpawnError
-    }
-
-export type BackendToRunnerMessage =
-  | { type: 'hello_ok'; deviceId: string }
-  | { type: 'claim_pending'; claimToken: string }
-  | { type: 'claimed'; deviceToken: string }
-  | { type: 'hello_error'; reason: string }
-  | { type: 'ping' }
-  | { type: 'fs_call'; id: string; op: HostFsOp; args: unknown[] }
-  | {
-      type: 'spawn'
-      spawnId: string
-      command: string
-      args?: string[]
-      cwd?: string
-      env?: Record<string, string | undefined>
-      killProcessGroup?: boolean
-    }
-  | { type: 'spawn_stdin'; spawnId: string; bytes: Uint8Array }
-  | { type: 'spawn_stdin_end'; spawnId: string }
-  | { type: 'spawn_kill'; spawnId: string; signal?: string }
-
+export type RunnerToBackendMessage = z.infer<typeof runnerToBackendMessageSchema>
+export type BackendToRunnerMessage = z.infer<typeof backendToRunnerMessageSchema>
 export type RunnerProtocolMessage = RunnerToBackendMessage | BackendToRunnerMessage
+
+export type RunnerInfo = Extract<RunnerToBackendMessage, { type: 'hello' }>['runner']
+export type WireCallError = Extract<RunnerToBackendMessage, { type: 'fs_result'; ok: false }>['error']
 
 export function encodeRunnerMessage(message: RunnerProtocolMessage): string {
   return stringifyPortableJson(message)
 }
 
-/** Decodes a wire frame; throws on frames that are not runner-protocol messages. */
-export function decodeRunnerMessage(frame: string): RunnerProtocolMessage {
-  const value = parsePortableJson<unknown>(frame)
-  if (!isRecord(value) || typeof value.type !== 'string') {
-    throw new Error('Malformed runner-protocol frame')
-  }
-  return value as RunnerProtocolMessage
+/** Decodes and validates a frame arriving at the backend (runner → backend direction). */
+export function decodeRunnerToBackendMessage(frame: string): RunnerToBackendMessage {
+  return decodeWith(runnerToBackendMessageSchema, frame)
 }
 
-export function isHostFsOp(value: unknown): value is HostFsOp {
-  return typeof value === 'string' && (HOST_FS_OPS as readonly string[]).includes(value)
+/** Decodes and validates a frame arriving at the runner (backend → runner direction). */
+export function decodeBackendToRunnerMessage(frame: string): BackendToRunnerMessage {
+  return decodeWith(backendToRunnerMessageSchema, frame)
+}
+
+function decodeWith<Schema extends z.ZodType>(schema: Schema, frame: string): z.infer<Schema> {
+  const parsed = schema.safeParse(parsePortableJson<unknown>(frame))
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    throw new Error(`Malformed runner-protocol frame${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}`)
+  }
+  return parsed.data as z.infer<Schema>
 }

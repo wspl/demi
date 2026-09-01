@@ -6,7 +6,8 @@ import { LocalHost } from '@demicodes/host-local'
 import {
   HostRpcServer,
   RemoteHost,
-  decodeRunnerMessage,
+  decodeBackendToRunnerMessage,
+  decodeRunnerToBackendMessage,
   encodeRunnerMessage,
   type BackendToRunnerMessage,
   type RunnerProtocolMessage,
@@ -16,7 +17,9 @@ import { memoryHostStore } from '@demicodes/shell/testing'
 
 test('runner messages round-trip through the portable wire codec', () => {
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>
-    decodeRunnerMessage(encodeRunnerMessage(message))
+    message.type === 'hello' || message.type === 'pong' || message.type === 'fs_result' || message.type === 'spawn_output' || message.type === 'spawn_exit'
+      ? decodeRunnerToBackendMessage(encodeRunnerMessage(message))
+      : decodeBackendToRunnerMessage(encodeRunnerMessage(message))
 
   const hello: RunnerProtocolMessage = {
     type: 'hello',
@@ -47,8 +50,12 @@ test('runner messages round-trip through the portable wire codec', () => {
   expect(decodedOutput.bytes).toBeInstanceOf(Uint8Array)
   expect([...decodedOutput.bytes]).toEqual([0, 255, 10])
 
-  expect(() => decodeRunnerMessage('42')).toThrow('Malformed')
-  expect(() => decodeRunnerMessage('{"no":"type"}')).toThrow('Malformed')
+  expect(() => decodeRunnerToBackendMessage('42')).toThrow('Malformed')
+  expect(() => decodeBackendToRunnerMessage('{"no":"type"}')).toThrow('Malformed')
+  // Validation is structural, not just type-tag: a hello without its runner
+  // info, or an fs_call with a bogus op, is refused at decode.
+  expect(() => decodeRunnerToBackendMessage('{"type":"hello","protocol":1}')).toThrow('Malformed')
+  expect(() => decodeBackendToRunnerMessage(encodeRunnerMessage({ type: 'fs_call', id: 'x', op: 'format_disk', args: [] } as never))).toThrow('Malformed')
 })
 
 /** RemoteHost and HostRpcServer joined directly (encoded through the codec both ways). */
@@ -62,10 +69,10 @@ async function connectedPair() {
     store: memoryHostStore(),
   })
   const server = new HostRpcServer(local, (message: RunnerToBackendMessage) => {
-    remote.handleMessage(decodeRunnerMessage(encodeRunnerMessage(message)) as RunnerToBackendMessage)
+    remote.handleMessage(decodeRunnerToBackendMessage(encodeRunnerMessage(message)))
   })
   remote.attach((message: BackendToRunnerMessage) => {
-    void server.handleMessage(decodeRunnerMessage(encodeRunnerMessage(message)) as BackendToRunnerMessage)
+    void server.handleMessage(decodeBackendToRunnerMessage(encodeRunnerMessage(message)))
   })
   return { dir, remote, server }
 }
