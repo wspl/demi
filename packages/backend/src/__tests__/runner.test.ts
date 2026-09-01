@@ -1,12 +1,18 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import type { ModelSelection } from '@demicodes/core'
+import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } from '@demicodes/agent'
 import { LocalHost } from '@demicodes/host-local'
+import { defineProvider } from '@demicodes/provider'
+import { StubProvider, events } from '@demicodes/provider/testing'
 import { encodeRunnerMessage } from '@demicodes/runner-protocol'
 import { RunnerClient } from '@demicodes/runner'
 import { delay, waitFor } from '@demicodes/utils'
+import { LocalControlService } from '../storage/control'
+import { openSqliteDatabase } from '../storage/database'
 import { createBackend, type Backend } from '../index'
 
 // M4: the pairing flow end-to-end — unclaimed runner prints a code, the web
@@ -210,3 +216,100 @@ test('a malformed runner frame closes the socket; a bad device token is rejected
   badToken.close()
   await backend.close()
 }, 15_000)
+
+const model: ModelSelection = {
+  providerId: 'stub',
+  model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+  thinking: null,
+}
+const selection = { providerId: 'stub', model }
+
+test('M4 acceptance: a session executes on the claimed device; disconnect is a tool error; reconnect resumes', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-accept-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-m4-accept-state-'))
+  const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m4-accept-runner-'))
+  const provider = defineProvider({
+    id: 'stub',
+    displayName: 'Stub',
+    createRuntime: () =>
+      new StubProvider([
+        // Turn 1: real spawns on the claimed device.
+        [events.toolCall('t1', 'shell_exec', { script: 'printf hello | tee made.txt | cat', timeoutMs: 10_000 })],
+        [events.text('turn one done'), events.response()],
+        // Turn 2: killed mid-command by the runner going away.
+        [events.toolCall('t2', 'shell_exec', { script: 'touch started.marker && sleep 30', timeoutMs: 60_000 })],
+        [events.text('survived the drop'), events.response()],
+        // Turn 3: after the runner comes back, the same session serves again.
+        [events.toolCall('t3', 'shell_exec', { script: 'cat made.txt', timeoutMs: 10_000 })],
+        [events.text('turn three done'), events.response()],
+      ]),
+  })
+  const backend = await createBackend({ dataDir, providers: [provider], port: 0, runner: { pingIntervalMs: 0 } })
+
+  // Pair a device, then point the conversation's workspace at it (the M6
+  // workspace endpoints do this over HTTP; here the control plane is written
+  // directly).
+  const paired = capture()
+  const runner = startRunner(backend, { stateDir, runnerDir }, paired)
+  await waitFor(() => paired.codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const claimed = await api(backend, '/api/devices/claim', {
+    method: 'POST',
+    body: JSON.stringify({ code: paired.codes[0] }),
+    headers: { 'content-type': 'application/json' },
+  })
+  const { device } = (await claimed.json()) as { device: { id: string } }
+
+  const created = await api(backend, '/api/conversations', { method: 'POST' })
+  const { conversation } = (await created.json()) as { conversation: { id: string } }
+  const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
+  const control = new LocalControlService(controlDb)
+  const workspace = await control.createWorkspace({
+    userId: 'local',
+    deviceId: device.id,
+    path: runnerDir,
+    name: 'test workspace',
+  })
+  await control.setConversationWorkspace(conversation.id, workspace.id)
+  controlDb.close()
+
+  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversation.id}/stream`)
+  await new Promise<void>((resolve, reject) => {
+    socket.addEventListener('open', () => resolve(), { once: true })
+    socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
+  })
+  const client = new AgentClient(createWebSocketClientTransport(socket as never))
+  const shellEvents: Extract<ClientSessionEvent, { type: 'shell_output' }>[] = []
+  client.subscribe((event) => {
+    if (event.type === 'shell_output') shellEvents.push(event)
+  })
+  await client.open(selection, '/ignored-by-server', 'ignored')
+
+  // Turn 1: the command runs on the device — the file really exists there.
+  await client.send([{ type: 'text', text: 'run on my machine' }])
+  expect(shellEvents.filter((event) => event.status.status === 'exited').at(-1)?.status.stdout.delta).toBe('hello')
+  expect(readFileSync(join(runnerDir, 'made.txt'), 'utf8')).toBe('hello')
+
+  // Turn 2: stop the runner while `sleep 30` runs — an ordinary tool error,
+  // the turn completes, the session survives.
+  const eventsBeforeTurn2 = shellEvents.length
+  const sendPromise = client.send([{ type: 'text', text: 'now hang' }])
+  await waitFor(() => existsSync(join(runnerDir, 'started.marker')), undefined, { timeoutMs: 10_000 })
+  await runner.stop()
+  await sendPromise
+  const failed = shellEvents.at(-1)
+  expect(failed?.status.status).not.toBe('running')
+
+  // A fresh runner process with the persisted device token: reconnect resumes.
+  const returned = capture()
+  const revived = startRunner(backend, { stateDir, runnerDir }, returned)
+  await waitFor(() => returned.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
+  const eventsBeforeTurn3 = shellEvents.length
+  await client.send([{ type: 'text', text: 'read it back' }])
+  const turn3 = shellEvents.slice(eventsBeforeTurn3).at(-1)
+  expect(turn3?.status.status).toBe('exited')
+  expect(turn3?.status.stdout.delta).toBe('hello')
+
+  await client.close()
+  await revived.stop()
+  await backend.close()
+}, 30_000)
