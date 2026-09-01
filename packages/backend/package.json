@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/backend",
-  "description": "Demi backend: the hosted multi-user chat product's server — conversations, LLM module, runner management, vault, accounting.",
+  "description": "Demi backend: the hosted multi-user chat product's server \u2014 conversations, LLM module, runner management, vault, accounting.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -36,9 +36,6 @@
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "hono": "^4.13.5"
-  },
-  "devDependencies": {
-    "@demicodes/testkit": "workspace:^"
   },
   "license": "Apache-2.0",
   "publishConfig": {

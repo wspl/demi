@@ -12,7 +12,7 @@ import {
   type RunnerProtocolMessage,
   type RunnerToBackendMessage,
 } from '../index'
-import { memoryHostStore } from '@demicodes/testkit'
+import { memoryHostStore } from '@demicodes/shell/testing'
 
 test('runner messages round-trip through the portable wire codec', () => {
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>

@@ -63,9 +63,6 @@
         "@demicodes/utils": "workspace:^",
         "hono": "^4.13.5",
       },
-      "devDependencies": {
-        "@demicodes/testkit": "workspace:^",
-      },
     },
     "packages/coding-agent": {
       "name": "@demicodes/coding-agent",
@@ -253,7 +250,6 @@
         "@demicodes/agent": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
-        "@demicodes/testkit": "workspace:^",
       },
     },
     "packages/runner-protocol": {
@@ -265,7 +261,6 @@
       },
       "devDependencies": {
         "@demicodes/host-local": "workspace:^",
-        "@demicodes/testkit": "workspace:^",
       },
     },
     "packages/shell": {
@@ -275,13 +270,6 @@
         "@demicodes/just-bash": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "zod": "^4.0.0",
-      },
-    },
-    "packages/testkit": {
-      "name": "@demicodes/testkit",
-      "version": "0.20.0",
-      "dependencies": {
-        "@demicodes/shell": "workspace:^",
       },
     },
     "packages/utils": {
@@ -437,8 +425,6 @@
     "@demicodes/runner-protocol": ["@demicodes/runner-protocol@workspace:packages/runner-protocol"],
 
     "@demicodes/shell": ["@demicodes/shell@workspace:packages/shell"],
-
-    "@demicodes/testkit": ["@demicodes/testkit@workspace:packages/testkit"],
 
     "@demicodes/utils": ["@demicodes/utils@workspace:packages/utils"],
 

@@ -19,6 +19,11 @@
       "development": "./src/host-fs.ts",
       "types": "./dist/host-fs.d.mts",
       "import": "./dist/host-fs.mjs"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
     }
   },
   "dependencies": {
