@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/backend",
-  "description": "Demi backend: the hosted multi-user chat product's server \u2014 conversations, LLM module, runner management, vault, accounting.",
+  "description": "Demi backend: the hosted multi-user chat product's server — conversations, LLM module, runner management, vault, accounting.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -31,7 +31,10 @@
     "@demicodes/host-virtual": "workspace:^",
     "@demicodes/provider": "workspace:^",
     "@demicodes/provider-anthropic-api": "workspace:^",
+    "@demicodes/provider-claude-code": "workspace:^",
+    "@demicodes/provider-codex": "workspace:^",
     "@demicodes/provider-google": "workspace:^",
+    "@demicodes/provider-grok-build": "workspace:^",
     "@demicodes/provider-openai-api": "workspace:^",
     "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",

@@ -13,6 +13,7 @@ import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ConnectionVault } from './vault/connections'
 import { loadOrCreateInstanceSecret } from './vault/secret'
+import { SubscriptionLoginFlows } from './vault/subscription-login'
 import { DirBlobStore } from './storage/blob-store'
 import { ConversationStores } from './storage/conversation-store'
 import { LocalControlService, type ControlService } from './storage/control'
@@ -56,7 +57,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const runnerRegistry = new RunnerRegistry({ control, ...options.runner })
 
   const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(options.dataDir))
-  const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes })
+  const vaultRoot = join(options.dataDir, 'vault')
+  const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot)
+  const logins = new SubscriptionLoginFlows(vault, assembly, { ownerUserId: STUB_USER.id, vaultRoot })
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
   // connectionId = providerId: the LLM module assembles the connection's base
@@ -103,6 +106,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     conversationStores,
     vault,
     assembly,
+    logins,
     agentServer,
     runnerRegistry,
     upgradeWebSocket,

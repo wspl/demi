@@ -1,42 +1,55 @@
+import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { providerRuntime, withProviderId, type Provider, type ProviderModelList } from '@demicodes/provider'
 import { createId, errorMessage } from '@demicodes/utils'
 import { createAnthropicApiProvider } from '@demicodes/provider-anthropic-api'
+import { createClaudeCodeProvider } from '@demicodes/provider-claude-code'
+import { createCodexProvider } from '@demicodes/provider-codex'
 import { createGoogleProvider } from '@demicodes/provider-google'
+import { createGrokBuildProvider } from '@demicodes/provider-grok-build'
 import { createOpenAIApiProvider } from '@demicodes/provider-openai-api'
 import type { ControlService } from '../storage/control'
-import type { ApiKeyConnectionConfig, Connection, ConnectionVault } from '../vault/connections'
+import type { ApiKeyConnectionConfig, Connection, ConnectionConfig, ConnectionVault } from '../vault/connections'
 
-/** Builds a base provider for one connection; the connection id is the provider id. */
+/**
+ * Builds a base provider for one connection; the connection id is the
+ * provider id. `vaultDir` is the connection's private credential-pool root —
+ * subscription providers keep their OAuth material there.
+ */
 export type ProviderTypeFactory = (options: {
   connectionId: string
   label: string
-  config: ApiKeyConnectionConfig
+  config: ConnectionConfig
+  vaultDir: string
 }) => Provider
+
+function apiKey(config: ConnectionConfig): ApiKeyConnectionConfig {
+  if (config.kind !== 'api_key') throw new Error(`Provider type "${config.provider}" expects an API key connection`)
+  return config
+}
 
 export function builtinProviderTypes(): Record<string, ProviderTypeFactory> {
   const common = ({ connectionId, label }: { connectionId: string; label: string }) => ({
     id: connectionId,
     displayName: label,
   })
+  const keyed =
+    (create: (options: { id: string; displayName: string; apiKey: () => string; baseUrl?: string }) => Provider): ProviderTypeFactory =>
+    (options) => {
+      const config = apiKey(options.config)
+      return create({
+        ...common(options),
+        apiKey: () => config.apiKey,
+        ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+      })
+    }
   return {
-    anthropic: (options) =>
-      createAnthropicApiProvider({
-        ...common(options),
-        apiKey: () => options.config.apiKey,
-        ...(options.config.baseUrl ? { baseUrl: options.config.baseUrl } : {}),
-      }),
-    openai: (options) =>
-      createOpenAIApiProvider({
-        ...common(options),
-        apiKey: () => options.config.apiKey,
-        ...(options.config.baseUrl ? { baseUrl: options.config.baseUrl } : {}),
-      }),
-    google: (options) =>
-      createGoogleProvider({
-        ...common(options),
-        apiKey: () => options.config.apiKey,
-        ...(options.config.baseUrl ? { baseUrl: options.config.baseUrl } : {}),
-      }),
+    anthropic: keyed(createAnthropicApiProvider),
+    openai: keyed(createOpenAIApiProvider),
+    google: keyed(createGoogleProvider),
+    'claude-code': (options) => createClaudeCodeProvider({ ...common(options), stateDir: options.vaultDir }),
+    codex: (options) => createCodexProvider({ ...common(options), stateDir: options.vaultDir }),
+    'grok-build': (options) => createGrokBuildProvider({ ...common(options), stateDir: options.vaultDir }),
   }
 }
 
@@ -59,7 +72,31 @@ export class ProviderAssembly {
   constructor(
     private readonly vault: ConnectionVault,
     private readonly types: Record<string, ProviderTypeFactory>,
+    /** Per-connection credential-pool root: `<vaultRoot>/<connectionId>/`. */
+    private readonly vaultRoot: string,
   ) {}
+
+  vaultDir(connectionId: string): string {
+    return join(this.vaultRoot, connectionId)
+  }
+
+  /** Builds a provider through a registered type factory without a connection row (login flows). */
+  buildDetached(type: string, options: { id: string; label: string; vaultDir: string }): Provider {
+    const factory = this.types[type]
+    if (!factory) throw new Error(`Unknown provider type "${type}"`)
+    return factory({
+      connectionId: options.id,
+      label: options.label,
+      config: { kind: 'subscription', provider: type },
+      vaultDir: options.vaultDir,
+    })
+  }
+
+  /** Removes a deleted connection's credential-pool directory. */
+  async deleteConnectionState(connectionId: string): Promise<void> {
+    this.invalidate(connectionId)
+    await rm(this.vaultDir(connectionId), { recursive: true, force: true })
+  }
 
   /** The base (unmetered) provider for a connection, or null when unknown. */
   async providerFor(connectionId: string): Promise<{ connection: Connection; provider: Provider } | null> {
@@ -69,7 +106,12 @@ export class ProviderAssembly {
     if (cached) return { connection, provider: cached }
     const factory = this.types[connection.config.provider]
     if (!factory) throw new Error(`Unknown provider type "${connection.config.provider}"`)
-    const provider = factory({ connectionId, label: connection.label, config: connection.config })
+    const provider = factory({
+      connectionId,
+      label: connection.label,
+      config: connection.config,
+      vaultDir: this.vaultDir(connectionId),
+    })
     this.cache.set(connectionId, provider)
     return { connection, provider }
   }
@@ -93,7 +135,7 @@ export class ProviderAssembly {
     if (!resolved) return { ok: false, message: 'Unknown connection' }
     const { connection, provider } = resolved
     const modelId =
-      connection.config.modelIds?.[0] ??
+      (connection.config.kind === 'api_key' ? connection.config.modelIds?.[0] : undefined) ??
       (provider.listModels ? (await provider.listModels()).models[0]?.id : undefined)
     if (!modelId) return { ok: false, message: 'No model available to test with' }
 
@@ -143,8 +185,9 @@ export class ProviderAssembly {
       connections.map(async (connection) => {
         const resolved = await this.providerFor(connection.id)
         const provider = resolved?.provider
-        const models = connection.config.modelIds
-          ? connection.config.modelIds.map((modelId) => userEnteredModel(connection.id, modelId))
+        const modelIds = connection.config.kind === 'api_key' ? connection.config.modelIds : undefined
+        const models = modelIds
+          ? modelIds.map((modelId) => userEnteredModel(connection.id, modelId))
           : provider?.listModels
             ? withProviderId(await provider.listModels(), connection.id).models
             : []

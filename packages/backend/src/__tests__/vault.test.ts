@@ -54,7 +54,7 @@ test('ConnectionVault: rows carry ciphertext only; CRUD round-trips typed config
     label: 'My OpenAI',
     config: { kind: 'api_key', provider: 'openai', apiKey: 'sk-secret', baseUrl: 'https://proxy.example/v1' },
   })
-  expect(created.config.apiKey).toBe('sk-secret')
+  expect(created.config.kind === 'api_key' && created.config.apiKey).toBe('sk-secret')
 
   // The database never sees the key.
   const raw = db.get<{ config: string; type: string }>('SELECT config, type FROM connections WHERE id = ?', [created.id])

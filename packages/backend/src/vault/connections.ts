@@ -16,7 +16,18 @@ export interface ApiKeyConnectionConfig {
   modelIds?: string[]
 }
 
-export type ConnectionConfig = ApiKeyConnectionConfig
+/**
+ * A completed subscription login. The OAuth material itself lives in the
+ * provider's own credential pool under the vault directory
+ * (`<dataDir>/vault/<connectionId>/`) — the provider's login/refresh
+ * machinery manages it; the row only names the provider type.
+ */
+export interface SubscriptionConnectionConfig {
+  kind: 'subscription'
+  provider: string
+}
+
+export type ConnectionConfig = ApiKeyConnectionConfig | SubscriptionConnectionConfig
 
 export interface Connection {
   id: string

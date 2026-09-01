@@ -1,4 +1,5 @@
-import { mkdtemp } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -6,7 +7,7 @@ import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { delay, waitFor } from '@demicodes/utils'
+import { deferred, delay, waitFor } from '@demicodes/utils'
 import { createBackend, type Backend, type BackendOptions } from '../index'
 
 // M5 step 1 (BYOK + metering): a pasted key becomes a usable connection —
@@ -157,5 +158,81 @@ test('enforcement: the provider request rate limit refuses at the inference entr
   expect(errors[0]).toContain('rate limit')
 
   await client.close()
+  await backend.close()
+}, 15_000)
+
+test('subscription login: pending material surfaces, completion becomes a connection with a vault pool', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-sub-'))
+  const approve = deferred<void>()
+  const backend = await createBackend({
+    dataDir,
+    port: 0,
+    providerTypes: {
+      'stub-sub': ({ connectionId, label, vaultDir }) =>
+        defineProvider({
+          id: connectionId,
+          displayName: label,
+          credentials: {
+            capability: () => ({ mode: 'supported', canBeginLogin: true }),
+            list: () => [],
+            getActive: () => ({ credentialId: 'cred-1', status: { status: 'ok' } as never }),
+            setActive: () => ({ credentialId: 'cred-1', status: { status: 'ok' } as never }),
+            beginLogin: async (options) => {
+              options?.onPending?.({ verificationUrl: 'https://verify.example/device', userCode: 'ABCD-1234' })
+              await approve.promise
+              await mkdir(vaultDir, { recursive: true })
+              await writeFile(join(vaultDir, 'oauth.json'), '{"token":"secret"}')
+              return { status: 'completed', credentialId: 'cred-1' }
+            },
+          },
+          createRuntime: () => new StubProvider([[events.text('hello'), events.response()]]),
+        }),
+    },
+  })
+
+  // A type without a native login flow is refused.
+  const noFlow = await api(backend, '/api/connections/subscription-login', post({ type: 'anthropic' }))
+  expect(noFlow.status).toBe(400)
+
+  const started = await api<{ login: { id: string } }>(
+    backend,
+    '/api/connections/subscription-login',
+    post({ type: 'stub-sub', label: 'My Subscription' }),
+  )
+  expect(started.status).toBe(202)
+  const loginId = started.body.login.id
+
+  await waitFor(() => false, undefined, { timeoutMs: 30, intervalMs: 10 }).catch(() => {})
+  const pending = await api<{ login: { status: string; verificationUrl: string; userCode: string } }>(
+    backend,
+    `/api/connections/subscription-login/${loginId}`,
+  )
+  expect(pending.body.login).toEqual({
+    status: 'pending',
+    verificationUrl: 'https://verify.example/device',
+    userCode: 'ABCD-1234',
+  })
+
+  approve.resolve()
+  let state: { status: string; connectionId?: string } = { status: 'pending' }
+  await waitFor(() => {
+    void api<{ login: typeof state }>(backend, `/api/connections/subscription-login/${loginId}`).then((polled) => {
+      state = polled.body.login
+    })
+    return state.status === 'completed'
+  }, undefined, { timeoutMs: 5_000 })
+
+  const connectionId = state.connectionId as string
+  const listed = await api<{ connections: Array<Record<string, unknown>> }>(backend, '/api/connections')
+  expect(listed.body.connections).toEqual([
+    expect.objectContaining({ id: connectionId, kind: 'subscription', type: 'stub-sub', label: 'My Subscription' }),
+  ])
+  // The login's pool became the connection's vault directory.
+  expect(existsSync(join(dataDir, 'vault', connectionId, 'oauth.json'))).toBe(true)
+
+  const deleted = await fetch(`${backend.url}/api/connections/${connectionId}`, { method: 'DELETE' })
+  expect(deleted.status).toBe(204)
+  expect(existsSync(join(dataDir, 'vault', connectionId))).toBe(false)
+
   await backend.close()
 }, 15_000)
