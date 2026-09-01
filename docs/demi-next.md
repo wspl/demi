@@ -73,28 +73,31 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 ### Backend (`@demicodes/backend`, product leaf)
 
 One program, one architecture. Scaling is running more copies of the same
-program, never splitting it into roles (serverless hosting stays out of
-scope so its constraints cannot leak into the interfaces):
+program plus one internal control-plane process (serverless hosting stays
+out of scope so its constraints cannot leak into the interfaces):
 
 ```
 Self-host (one instance):
 
   browser ─────────┐
-                   ├──►  demi-backend  ──►  SQLite (one file)
-  runner ──────────┘     (complete: Web API + sessions + vault + runner mgmt)
+                   ├──►  demi-backend  ──►  control.sqlite
+  runner ──────────┘     (complete: Web API │  + conversations/<id>.sqlite (per conv)
+                          + sessions + vault│  + blob dir
+                          + runner mgmt)    └─ (litestream ──► S3, optional)
 
 
-Scaled (same program × N):
+Scaled (same program × N + one internal control-plane service):
 
-                        ┌──►  demi-backend #1 (everything for users a,b) ──┐
-  browsers ──►  router  ├──►  demi-backend #2 (everything for users c,d) ──┼──►  Postgres (shared)
-  runners  ──►  (pins   ├──►  demi-backend #3 (everything for users e,f) ──┘
-                by user) └──►  …
+                        ┌──►  demi-backend #1 (users a,b) ─► own conversations/*.sqlite ─┐
+  browsers ──►  router  ├──►  demi-backend #2 (users c,d) ─► own conversations/*.sqlite ─┼─► demi-controld
+  runners  ──►  (pins   ├──►  demi-backend #3 (users e,f) ─► own conversations/*.sqlite ─┘   (internal RPC,
+                by user) └──►  …                                every node: litestream ─► S3   control.sqlite)
 ```
 
 Every instance is a **complete** backend for its assigned users — user x's
 HTTP, conversation sockets, runner socket, virtual Hosts, and CLI processes
-are all pinned to instance `hash(x)`. The affinity is natural because
+are all pinned to the instance the user→worker map names. The affinity is
+natural because
 conversations, devices, and (isolated mode) connections are all user-owned,
 so nothing stateful ever crosses instances. The "sessions have exactly one
 home" invariant is unchanged — only the number of homes grows. Self-host is
@@ -102,30 +105,34 @@ the N=1 degenerate form with no router at all. v1 milestones implement N=1
 only.
 
 How the routing works — the router is an off-the-shelf reverse proxy
-(nginx-class) doing consistent-hash upstream selection; we develop no
+(nginx-class) selecting the upstream from the routing key; we develop no
 routing code and ship only a sample config:
 
 - **The routing key**: at login the backend sets a uid cookie (browser
   traffic); at claim time the backend hands the runner its owner's route key
   alongside the device token, and the runner sends it as a header on every
-  reconnect (device traffic). Same key ⇒ same hash ⇒ browser and devices of
-  one user converge on one instance. The proxy holds no state and knows no
-  business — it is config (the static server list) plus arithmetic over the
-  key.
-- **Hashing happens at connection establishment only.** Established
+  reconnect (device traffic). Same key ⇒ same map entry ⇒ browser and
+  devices of one user converge on one instance. The proxy holds no state
+  and knows no business — it is config (the static user→worker map over a
+  static server list) plus a lookup on the key. Requests without a key yet
+  (login, registration) may land on any worker; those endpoints only talk
+  to the control plane, so every worker answers them identically.
+- **Routing happens at connection establishment only.** Established
   WebSockets are never rerouted mid-stream: during a scale event, in-flight
   turns finish on the old instance; only new connections land on the new
   mapping.
-- **Scale events move ~1/N of users** (consistent hashing), and a moved
-  user's experience is exactly a backend restart: in-flight turn interrupted only if the connection happened to
-  drop mid-turn, zero history loss (checkpoints in the shared database, any
-  instance can restore any user), runner auto-reconnects to the new home.
-  Scale events are rare, operator-initiated maintenance.
-- **The one N>1 correctness mechanism: checkpoint write fencing.** During a
-  remap a stale session object may linger on the old instance while the new
-  home restores from checkpoint; checkpoint rows carry an epoch so a stale
-  instance's write is rejected by the database. A few lines of SQL
-  constraint, implemented when the scaled topology lands — not in v1.
+- **Scale events move users explicitly**, and a moved user's experience is
+  exactly a backend restart: stop the user's sessions on the source
+  instance, `litestream restore` their conversation files on the target,
+  update the routing map; the runner auto-reconnects to the new home.
+  Conversation data lives only on the owning instance (replicated to S3),
+  so there is no shared mutable state to fence — a stale instance has
+  nothing it could write to. Scale events are rare, operator-initiated
+  maintenance.
+- **Control-plane access is the only cross-instance traffic**: workers
+  reach `demi-controld` through the internal `ControlService` RPC (see
+  Database below). Everything user-request-shaped stays on the user's
+  worker.
 
 Spoken of as modules, not separate services:
 
@@ -289,9 +296,11 @@ Layout and information architecture:
   (since the `/@` virtual-fs replacement, `Host.commandArtifactsDir` lives in
   the fs namespace), so full command output follows the target and is
   unavailable while that runner is offline — the transcript's bounded tool
-  views in the checkpoint remain always readable. The `journal.jsonl`
-  incremental design from `docs/session-storage-and-naming.md` remains a
-  storage optimization, no longer a network necessity.
+  views in the persisted transcript remain always readable. The journal
+  (incremental transcript persistence, from
+  `docs/session-storage-and-naming.md`) is **required design**, realized as
+  block rows in the per-conversation database (see Database): streaming
+  appends block rows; nothing ever rewrites the whole transcript.
 - **Browser refresh / disconnect** is inherently safe: turns run server-side;
   the client reattaches with `open` + `sync_transcript`
   (`packages/agent/src/client.ts:200`). Verify during implementation that a
@@ -419,19 +428,151 @@ search are explicitly out.
 
 ### Database
 
-Two dialects are final state, matching the two topologies: **SQLite**
-(`bun:sqlite`, one file, WAL) for N=1 — zero dependencies, backup is copying
-a file — and **Postgres** for N>1, where the shared database is what the
-instances have in common. **No ORM, no query builder**: a hand-rolled thin
-storage module with hand-written SQL kept to the two dialects' common subset,
-two drivers (`bun:sqlite` / a postgres client), per-statement dialect
-handling only where unavoidable, and numbered `.sql` migration files. All
-persistent concerns (users, conversation index, connections/vault, ledger,
-the DB-backed `HostStore`) are structured data; transactions in either
-dialect provide the `writeJson` atomicity the checkpoint path relies on. v1
-runs SQLite only. Command artifacts stay on execution targets.
+**SQLite is the only dialect, in both topologies** (review record:
+`docs/demi-next-progress.md`). The storage split follows the
+write-frequency line:
 
-Schema (final state, no speculative columns):
+- **`control.sqlite`** — one per deployment, the control-plane data: users,
+  auth, devices, conversation index, connections/vault, ledger, attachment
+  metadata, settings. Low write rate (the hottest writer is one ledger row
+  per provider request), read-heavy (auth check per request, absorbed by a
+  short-TTL token cache).
+- **`conversations/<id>.sqlite`** — one file per conversation, the data
+  plane: the transcript as **one row per block** (the journal — this is the
+  required design, not an optimization: streaming persists by appending
+  block rows, never by rewriting a whole-checkpoint JSON), plus session
+  state and that conversation's `host_store` scope. High write rate
+  (roughly one small append per second per active conversation), but each
+  file has exactly one writer and the files never contend with each other.
+- **Blob store** — attachment bytes and transcript media (`source.ref`),
+  content-addressed `blobs/<sha256>`: local directory at N=1, S3 at N>1.
+  Bytes never enter any database.
+- **[Litestream](https://litestream.io/)** watches the data directory
+  (`dir` + glob + `watch`: dynamically created conversation files are
+  picked up automatically) and continuously replicates every `*.sqlite` to
+  S3. It is the durability and recovery story — asynchronous, loses at
+  most about the last sync interval (~1 s) on node death; restore is
+  snapshot + LTX replay with gap detection, point-in-time capable.
+  Optional at N=1 (a bare instance still needs zero external services),
+  required at N>1.
+
+**No ORM, no query builder**: a hand-rolled thin storage module with
+hand-written SQL and numbered migrations, written for SQLite alone.
+
+Deployment topology (N>1). Workers are fully symmetric; the control plane
+is a dedicated internal service:
+
+```
+ Browser / Runner
+       │  external HTTP/WS (the full public API — every worker serves all of it)
+       ▼
+ ┌───────────┐
+ │    LB     │  routes by uid (static user→worker map)
+ └─────┬─────┘
+       ├──────────────────────────────┬─────────────────────────┐
+       ▼                              ▼                         ▼
+ ┌─────────────────┐          ┌─────────────────┐       ┌─────────────────┐
+ │  worker 1       │          │  worker 2       │       │  worker N       │
+ │  (symmetric)    │          │  (symmetric)    │       │  (symmetric)    │
+ │ conversation    │          │                 │       │                 │
+ │ hot path:       │          │     (same)      │       │     (same)      │
+ │  WS stream,     │          │                 │       │                 │
+ │  cold transcript│          │                 │       │                 │
+ │   │ block append│          │                 │       │                 │
+ │   ▼             │          │                 │       │                 │
+ │ conversations/  │          │ conversations/  │       │ conversations/  │
+ │  <id>.sqlite ×n │          │  <id>.sqlite ×n │       │  <id>.sqlite ×n │
+ │ (this worker's  │          │                 │       │                 │
+ │  users only)    │          │                 │       │                 │
+ │                 │          │                 │       │                 │
+ │ RemoteControl-  │          │ RemoteControl-  │       │ RemoteControl-  │
+ │ Service ────┐   │          │ Service ────┐   │       │ Service ────┐   │
+ │ litestream ─┼─▶ S3         │ litestream ─┼─▶ S3      │ litestream ─┼─▶ S3
+ └─────────────┼───┘          └─────────────┼───┘       └─────────────┼───┘
+               │                            │                         │
+               └──────────────┬─────────────┴─────────────────────────┘
+                              │  internal RPC only (private network,
+                              │  service-token auth, ControlService
+                              │  domain methods 1:1 — no SQL on the wire,
+                              ▼  no cross-call transactions)
+                    ┌───────────────────────┐
+                    │  demi-controld  (× 1) │  no public listener;
+                    │  ControlService RPC   │  single instance by design
+                    │   │ in-process SQL,   │  (SQLite single-writer);
+                    │   ▼ local txns only   │  failover = restore
+                    │  control.sqlite       │  control.sqlite from S3,
+                    │  litestream ──▶ S3    │  start a new controld,
+                    └───────────────────────┘  repoint workers
+
+ S3:  litestream/…     continuous replication of every *.sqlite
+      blobs/<sha256>   attachment bytes + transcript media (source.ref)
+```
+
+**N=1 (v1) is the same picture with the LB and the extra workers deleted:
+one process = worker + controld fused.** `ControlService` is the in-process
+implementation, no RPC, no internal listener; the data directory is
+byte-identical. That homogeneity is a design requirement: the storage
+shape never changes between topologies, only the process placement does.
+
+Interface topology — every external endpoint by where its data lives:
+
+```
+ (a) control-plane endpoints — worker is a thin shell over one RPC call
+   POST /api/auth/login ────── createSession ─────────▶ ┌─────────┐
+   GET  /api/conversations ─── listConversations ─────▶ │ demi-   │──▶ control
+   POST /api/devices/claim ─── claimDevice ───────────▶ │ controld│    .sqlite
+   …(connections, usage, admin, settings likewise)      └─────────┘
+
+ (b) auth check on EVERY authed request — RPC, blunted by a local cache
+   any request ──▶ worker token cache (short TTL) ──miss──▶ resolveSession
+
+ (c) conversation hot path — worker-LOCAL, never crosses the network
+   WS /:id/stream ──▶ live session ──▶ conversations/<id>.sqlite (block append)
+   GET /:id/transcript ─────────────▶ conversations/<id>.sqlite (cold read)
+   VirtualHost fs ops ──────────────▶ workspace files (no db at all)
+
+ (d) mixed endpoints — local work + independent control-plane appends
+   WS stream, turn ends ─┬─▶ <id>.sqlite (blocks, local)
+                         ├─▶ appendUsage ───────▶ controld (ledger row)
+                         └─▶ touchConversation ─▶ controld (updated_at, title)
+   POST /api/attachments ─┬─▶ blob store (bytes)
+                          └─▶ putAttachmentMeta ▶ controld (metadata row)
+
+ (e) runner WS — terminates on the worker; controld sees identity only
+   claim ──▶ claimDevice (once) · hello ──▶ token cache / resolve
+   fs_call / spawn streams ⇆ live sessions (worker-local only)
+```
+
+Invariants this topology enforces:
+
+- The public API exists only on workers; `demi-controld` has no public
+  endpoint. Workers never touch `control.sqlite`; controld never touches
+  conversation files.
+- The RPC surface is the `ControlService` interface mapped 1:1 (Hono +
+  `POST /rpc/<method>`, plain JSON, domain errors as `{code, message}`
+  rebuilt by the client). One call = one atomic operation; transactions
+  never span calls, and SQL never crosses the wire. Type safety comes from
+  `RemoteControlService implements ControlService`, not from route
+  inference.
+- Every high-frequency write is worker-local (c); every controld call in
+  (a/b/d/e) is low-rate or cache-absorbed. This is the load equation the
+  whole design rests on.
+- No cross-database transactions exist anywhere: the (d) pairs are
+  independent appends/updates with no invariant between them (a lost
+  ledger row never corrupts a transcript, and vice versa).
+- User→worker assignment is partitioned, not balanced per-request: a user
+  is pinned to one worker; rebalancing = migrating users (stop writes on
+  the source, `litestream restore` the user's conversation files on the
+  target, update the map).
+
+Naming: interface `ControlService`, implementations `LocalControlService`
+(in-process SQL — the N=1 backend and controld itself) and
+`RemoteControlService` (the workers' RPC client); process `demi-controld`;
+database `control.sqlite`. "Control plane / data plane" are the layer
+names in prose; no component is named after a plane, and the `*Store`
+suffix stays reserved for storage backends (`HostStore` family).
+
+Schema — `control.sqlite` (final state, no speculative columns):
 
 ```
 users            id, username, password_hash, role(master|admin|user), created_at
@@ -445,23 +586,44 @@ connections      id, owner_user_id(NULL in shared mode), type, label,
 usage_ledger     id, user_id, conversation_id, connection_id, model_id,
                  input_tokens, output_tokens, cache_tokens…, created_at
 attachments      id, user_id, media_type, size_bytes, sha256, created_at
-                 ← metadata only; the bytes live in the blob store
-                   (content-addressed, per session-storage-and-naming.md),
-                   never in the database
-host_store       scope, key, value_json          ← the DB HostStore (checkpoints)
+                 ← metadata only; bytes live in the blob store
 settings         key, value                       ← instance mode only
+```
+
+Schema — `conversations/<id>.sqlite` (shape owned by the agent
+persistence contract; exact columns land with the block-row
+implementation):
+
+```
+blocks           one row per transcript block, append-only during streaming
+session state    checkpoint fields other than the transcript
+host_store       scope, key, value_json  ← this conversation's scope only
 ```
 
 Notes: pending claim tokens live in memory (an unclaimed runner socket holds
 them; a backend restart just reprints); device online status is runtime
-state, `last_seen_at` is display-only; the transcript is inside the
-checkpoint, not a table. **Credential encryption**: `connections.config` is
-encrypted at rest with an instance secret (generated into the data directory
-on first start; a shared secret config across instances at N>1) — cheap
-protection against the database file leaking alone (backups, copies), with
-no KMS or per-user key machinery. **Ledger granularity**: one raw row per
-provider request as `TokenUsage` events arrive (a turn may produce several);
-aggregation happens at query time, never at write time.
+state, `last_seen_at` is display-only. **Credential encryption**:
+`connections.config` is encrypted at rest with an instance secret
+(generated into the data directory on first start; a shared secret config
+across instances at N>1) — cheap protection against the database file
+leaking alone (backups, copies), with no KMS or per-user key machinery.
+**Ledger granularity**: one raw row per provider request as `TokenUsage`
+events arrive (a turn may produce several); aggregation happens at query
+time, never at write time.
+
+Production precedents this design stands on — every piece has one; the
+composition is ours, every part and every seam is industry-standard:
+per-tenant SQLite files with a single owning process (Bluesky PDS:
+per-account SQLite + service-level SQLite databases, WAL, LRU handle
+cache), symmetric data nodes with a dedicated low-write metadata service
+(HDFS NameNode, TiDB PD, Kafka controller, Kubernetes control plane), a
+service exclusively owning its database behind a domain API (the standard
+database-per-service pattern), an HTTP service fronting SQLite (Grafana,
+Gitea, Headscale), user-sharded SQLite-per-shard control planes
+(Tailscale: one SQLite + one exclusive Go process per shard, tenants
+migrate between shards), and streaming SQLite replication to S3
+(Litestream). Alternatives weighed and rejected during the review are
+archived in `docs/demi-next-progress.md`.
 
 ### Web API (browser ↔ backend)
 
@@ -680,9 +842,10 @@ backend, which uses this same Host RPC when it needs to look at the device
    Host RPC types), and `@demicodes/host-virtual` (platform-neutral fs
    semantics over an injected blob backend; the local-dir and S3 backend
    implementations live in `@demicodes/backend`).
-4. `@demicodes/agent` — optional, later: `journal.jsonl` incremental
-   persistence (planned remaining work in
-   `docs/session-storage-and-naming.md`) as a storage optimization.
+4. `@demicodes/agent` — the persistence contract becomes append-block +
+   save-state (the journal, required design — see Database and
+   `docs/session-storage-and-naming.md`): streaming appends finished
+   blocks; nothing rewrites the whole transcript. Lands in M1.5.
 
 Explicitly **not** part of this design — each of these is unnecessary once
 sessions live in the backend, and none should be reintroduced: a
@@ -794,13 +957,15 @@ endpoint was contacted (a local deny-proxy caught escape attempts).
   atomic-checkpoint change) and should serve `list` + bulk reads efficiently
   (`listConversations` is read-per-key today).
 
-### Storage pluggability (audited: DB-backed backend needs no interface changes)
+### Storage pluggability (audited)
 
 - Conversation state is fully behind `HostStore` (4 methods) — checkpoints,
-  subagent records, future blobs/journal (command artifacts are fs files on
+  subagent records, future blobs (command artifacts are fs files on
   the execution target, not store entries). The backend implements a DB-backed
-  `HostStore` and composes it into every Host it hands the harness; the agent
-  layer is untouched.
+  `HostStore` and composes it into every Host it hands the harness. The one
+  deliberate agent-layer change is M1.5's persistence contract
+  (append-block + save-state); everything else plugs in behind the
+  existing seams.
 - Credentials are fully behind injectable auth stores: every subscription
   provider creator accepts `authStore?:`
   (`packages/provider-codex/src/provider.ts:52`,
@@ -842,7 +1007,7 @@ live per milestone in `docs/demi-next-progress.md`.
 *Track A — Backend skeleton + virtual default (first end-to-end node).*
 `@demicodes/backend` serving the conversation stream + the Web API
 multi-user-shaped (stub user); the storage module (schema, numbered `.sql`
-migrations, dual-dialect layer — SQLite driver only); conversation
+migrations, thin SQL layer); conversation
 persistence + session index; `@demicodes/host-virtual` with its local-dir
 blob backend as the default target. No frontend work — all acceptance is
 test-level (in-process `AgentClient`). Providers are **operator-assembled**
@@ -857,6 +1022,16 @@ streaming spawn, handshake) and the `demi-runner` binary, exercised against a
 yet. Runs in parallel because it depends on nothing in Track A and is the
 design's only greenfield contract — the earlier it exists, the earlier its
 implementation problems surface.
+
+**M1.5 — Storage final shape**
+The final storage layout at N=1: `control.sqlite` +
+`conversations/<id>.sqlite`, the block-row journal in the agent
+persistence contract (streaming appends block rows — no whole-transcript
+rewrites), transcript media out of the transcript via `source.ref` into
+the blob store, and `host_store` scoped into the conversation databases.
+`ControlService` exists from here as the interface in front of
+`control.sqlite` (Local implementation only; the RPC realization is
+M8's).
 
 **M2 — Runner productized**
 Claim-by-token flow, device registry with online status, backend harness
@@ -907,22 +1082,26 @@ and adds no new backend surface.
 
 **M7 — Deployment packaging**
 Docker images for runner and backend (backend image carries the built web
-assets); end-to-end acceptance. Pure hosting work after interfaces are
+assets); a sample Litestream sidecar config (optional S3 durability at
+N=1); end-to-end acceptance. Pure hosting work after interfaces are
 frozen.
 
 **M8 — Scaled deployment (post-v1)**
 Everything the N>1 topology needs, gathered from the design sections:
-Postgres driver for the storage module, S3 blob backend for host-virtual,
-checkpoint write fencing (epoch), routing-key plumbing (login cookie +
-runner route key) and the sample reverse-proxy config, multi-instance smoke.
-Nothing here changes application code paths — that is the point.
+`demi-controld` as a standalone process (`ControlService` RPC server on
+Hono + `RemoteControlService` client, internal listener, service-token
+auth), the workers' short-TTL auth token cache, S3 blob backend for
+host-virtual, Litestream deployment config (every node, `dir` + `watch`),
+routing-key plumbing (login cookie + runner route key) and the sample
+reverse-proxy config with the static user→worker map, the user-migration
+procedure (stop → restore → remap), multi-instance smoke. No application code path changes — the `ControlService` seam and
+the storage shape are already final from M1.5; that is the point.
 
 Independent branch, any time after M1: the virtual-target JS command
 (WASM-sandboxed QuickJS; own design record first).
 
-Deliberately deferred: journal.jsonl storage optimization, fs RPC
-batching/caching (only when measurements demand), per-wire usage
-reconciliation.
+Deliberately deferred: fs RPC batching/caching (only when measurements
+demand), per-wire usage reconciliation.
 
 ## Milestone verification
 
@@ -937,13 +1116,14 @@ checklists only for UI look-and-feel and packaging smoke.
 | M0 | Spawn-injection + `buildClaudeEnv` overlay assertions (no CLI). Capability-flag tests. Host-switch integration: StubProvider session runs turn 1 against LocalHost A, turn 2 against LocalHost B; assert context block injected, per-Host BashEnvironment isolation, transcript continuity. |
 | M1-A | Backend integration in one test process: browser-side `AgentClient` (in-process transport) + virtual-Host session; detach client mid-turn with a slow StubProvider → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort); cold-history read equals live transcript; portable commands work, spawn fails with the upgrade message. |
 | M1-B | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Remote-Host integration against a bare AgentServer: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. |
+| M1.5 | Block-row persistence: a streamed turn appends rows (no whole-transcript rewrite observable); restore from `control.sqlite` + `conversations/<id>.sqlite` equals the live transcript; media blocks round-trip through `source.ref` + blob store; per-conversation `host_store` isolation. |
 | M2 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M3 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M4 | Switch integration, all directions unconstrained: real→real (files stay + honest context block; same-device note when applicable), virtual→real (files land in the target tmp dir, context block names the path, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
 | M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
 | M6 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |
 | M7 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
-| M8 | Storage-module tests run against both dialects; fencing test (stale epoch write rejected); two local instances behind a hash proxy — user pinned to one instance, remap after instance removal restores from the shared DB; S3 backend round-trip against a local S3-compatible server. |
+| M8 | `ControlService` contract tests run against both implementations (Local in-process / Remote over a real controld); two local workers + one controld behind a mapped proxy — user pinned to one worker, migration (stop → restore conversation files from the replica → remap) preserves history; blob-store S3 round-trip against a local S3-compatible server; domain errors survive the RPC wire with `code` intact. |
 
 Test modules and their coverage get documented per milestone as they land, per
 the repo's design-record rules.
