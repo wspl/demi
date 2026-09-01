@@ -357,12 +357,11 @@ Managed hosts serve two product scenarios over one provisioning path:
 
 Demi's agent works entirely through shell commands, and the command surface
 follows one organizing rule: **every Demi-specific capability lives under
-the `demi` platform command — flat verbs are the file operations
-(read/create/edit/patch), noun subcommand groups are platform domains
-(`todo`, `agent`, `host`, …); anything outside `demi` is an ordinary shell
-command.** The coding-agent package defines `demi`; the backend composition
-root contributes the `host` group, which needs the provisioner and the
-device registry:
+the `demi` platform command, and every `demi` subcommand is a noun domain
+group (`file`, `todo`, `agent`, `host`, …); anything outside `demi` is an
+ordinary shell command.** The coding-agent package defines `demi`; the
+backend composition root contributes the `host` group, which needs the
+provisioner and the device registry:
 
 ```
 demi host                        # current target: kind, device, cwd — plus a prev line while one exists

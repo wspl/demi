@@ -751,3 +751,9 @@ flat verbs = file operations, noun groups = platform domains; outside
 option died with the move. The `packages/web` dev-product suite has 5
 pre-existing failures on this branch ("Provider … does not expose a runtime
 factory") unrelated to this change — that package is replaced at M9.
+
+Follow-up in the same review: the file verbs also moved into a noun group
+(`demi file read/create/edit/patch`), so the rule has zero exceptions —
+every `demi` subcommand is a domain group. Cost is one extra token per
+file operation; bought: no dual-citizen layer to explain, and future file
+operations have an unambiguous home.
