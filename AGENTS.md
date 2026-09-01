@@ -11,7 +11,7 @@
 
 ## Code Reuse
 
-- Put all generic, common code in `@demicodes/utils` (test-only helpers in `@demicodes/testkit`); do not scatter utility functions across packages.
+- Put all generic, common code in `@demicodes/utils`; do not scatter utility functions across packages. Test-only helpers live in the owning package's `/testing` entrypoint (e.g. `@demicodes/provider/testing`, `@demicodes/shell/testing`); never create a standalone test-utilities package.
 - Never re-implement, copy-paste, or create a same-purpose-but-differently-named helper; reuse the existing one and merge duplicates/similar functions instead of adding another.
 - Only truly generic code goes in `@demicodes/utils`; domain helpers stay in their owning package (provider wire mapping in the provider kit, `TokenUsage` helpers in `@demicodes/core`, etc.).
 

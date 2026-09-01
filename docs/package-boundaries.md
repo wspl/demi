@@ -177,12 +177,6 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `VirtualHost`, `scopedFsBackend`, quota constants, guidance constant from root.
 - Must not: perform its own IO (all bytes flow through the injected backend), spawn processes, or hold conversation state (`store` is injected by the composing product).
 
-### `@demicodes/testkit`
-
-- Status: implemented; private test-only workspace package (never published, never in `dependencies`).
-- May be imported by any package's test code; production code must not import it.
-- Owns: shared test helpers (in-memory `HostStore`, …).
-
 ### `@demicodes/runner-protocol`
 
 - Status: implemented (M1; claim flow productized in M4).
