@@ -16,10 +16,11 @@ import type { Host } from '@demicodes/shell'
 import { Hono } from 'hono'
 import { createBunWebSocket } from 'hono/bun'
 import type { WSContext } from 'hono/ws'
-import { ConversationIndex, type ConversationRecord } from './storage/conversations'
-import { openSqliteDatabase, type SqlDatabase } from './storage/database'
-import { DbHostStore } from './storage/host-store'
-import { migrate } from './storage/migrations'
+import { DirBlobStore } from './storage/blob-store'
+import { ConversationStores } from './storage/conversation-store'
+import { LocalControlService, type ControlService, type ConversationRecord } from './storage/control'
+import { openSqliteDatabase } from './storage/database'
+import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 
 /** Virtual working directory every virtual-target conversation starts in. */
 export const VIRTUAL_WORKSPACE_CWD = '/workspace'
@@ -42,12 +43,13 @@ export interface Backend {
 }
 
 export async function createBackend(options: BackendOptions): Promise<Backend> {
-  const db = openSqliteDatabase(join(options.dataDir, 'demi.sqlite'))
-  migrate(db)
-  ensureStubUser(db)
+  const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
+  migrate(controlDb, CONTROL_MIGRATIONS)
+  const control: ControlService = new LocalControlService(controlDb)
+  await control.ensureUser(STUB_USER)
 
-  const conversations = new ConversationIndex(db)
-  const store = new DbHostStore(db, 'agent')
+  const blobs = new DirBlobStore(join(options.dataDir, 'blobs'))
+  const conversationStores = new ConversationStores(join(options.dataDir, 'conversations'), blobs)
   const localFs = new LocalHost(options.dataDir).fs
 
   // One stable VirtualHost per conversation — AgentHarness.host must return
@@ -59,7 +61,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       host = (async () => {
         const virtual = new VirtualHost({
           backend: scopedFsBackend(join(options.dataDir, 'virtual', conversationId), localFs),
-          store,
+          store: conversationStores.hostStore(conversationId),
         })
         await virtual.ensureLayout()
         return virtual
@@ -73,11 +75,15 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     agent: createCodingAgentHarness({
       host: (ctx): Promise<Host> =>
         // Shell/reference contexts carry the session id (= conversation id);
-        // session-less contexts only touch the shared store, so any namespace works.
+        // session-less contexts get their own scratch namespace.
         virtualHostFor('agentSessionId' in ctx ? ctx.agentSessionId : 'lobby'),
     }),
     providers: options.providers,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },
+    // Sessions persist as block rows in their conversation database; the
+    // Host-store default never runs in the product backend.
+    sessionStore: (agentSessionId) => conversationStores.sessionStore(agentSessionId),
+    blobs,
   })
 
   const { upgradeWebSocket, websocket } = createBunWebSocket()
@@ -90,14 +96,14 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   app.post('/api/auth/login', (c) => c.json({ user: STUB_USER }))
   app.post('/api/auth/logout', (c) => c.body(null, 204))
 
-  app.get('/api/conversations', (c) => {
+  app.get('/api/conversations', async (c) => {
     const archived = c.req.query('archived') === 'true'
-    return c.json({ conversations: conversations.listForUser(STUB_USER.id, { archived }) })
+    return c.json({ conversations: await control.listConversations(STUB_USER.id, { archived }) })
   })
-  app.post('/api/conversations', (c) => c.json({ conversation: conversations.create(STUB_USER.id) }, 201))
+  app.post('/api/conversations', async (c) => c.json({ conversation: await control.createConversation(STUB_USER.id) }, 201))
 
   app.patch('/api/conversations/:id', async (c) => {
-    const conversation = conversations.get(c.req.param('id'))
+    const conversation = await control.getConversation(c.req.param('id'))
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     const body = await c.req.json<{
       title?: string
@@ -105,19 +111,18 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       connectionId?: string | null
       modelId?: string | null
     }>()
-    if (typeof body.title === 'string' && body.title.trim()) conversations.rename(conversation.id, body.title.trim())
-    if (typeof body.archived === 'boolean') conversations.setArchived(conversation.id, body.archived)
+    if (typeof body.title === 'string' && body.title.trim()) await control.renameConversation(conversation.id, body.title.trim())
+    if (typeof body.archived === 'boolean') await control.setConversationArchived(conversation.id, body.archived)
     if (body.connectionId !== undefined || body.modelId !== undefined) {
-      conversations.setModel(conversation.id, body.connectionId ?? null, body.modelId ?? null)
+      await control.setConversationModel(conversation.id, body.connectionId ?? null, body.modelId ?? null)
     }
-    return c.json({ conversation: conversations.get(conversation.id) })
+    return c.json({ conversation: await control.getConversation(conversation.id) })
   })
 
   app.get('/api/conversations/:id/transcript', async (c) => {
-    const conversation = conversations.get(c.req.param('id'))
+    const conversation = await control.getConversation(c.req.param('id'))
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
-    const loaded = await loadPersistedSession(store, `agent-sessions/${conversation.id}`)
-    return c.json({ blocks: loaded?.blocks ?? [] })
+    return c.json({ blocks: conversationStores.transcriptBlocks(conversation.id) })
   })
 
   app.get('/api/models', async (c) => {
@@ -133,7 +138,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   })
 
   app.get('/api/conversations/:id/stream', async (c, next) => {
-    const conversation = conversations.get(c.req.param('id'))
+    const conversation = await control.getConversation(c.req.param('id'))
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     return upgradeWebSocket(() => {
       const adapter = new WsContextAdapter()
@@ -143,7 +148,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
           const transport = conversationScopedTransport(
             createWebSocketServerTransport(adapter.socket(ws)),
             conversation,
-            conversations,
+            control,
           )
           binding = agentServer.attachTransport(transport)
         },
@@ -169,16 +174,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     close: async () => {
       await agentServer.close()
       server.stop(true)
-      db.close()
+      conversationStores.close()
+      controlDb.close()
     },
   }
-}
-
-function ensureStubUser(db: SqlDatabase): void {
-  db.run(
-    'INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING',
-    [STUB_USER.id, STUB_USER.username, '!', STUB_USER.role, new Date().toISOString()],
-  )
 }
 
 /**
@@ -190,36 +189,32 @@ function ensureStubUser(db: SqlDatabase): void {
 function conversationScopedTransport(
   inner: AgentServerTransport,
   conversation: ConversationRecord,
-  conversations: ConversationIndex,
+  control: ControlService,
 ): AgentServerTransport {
   return {
     send: (frame) => inner.send(frame),
     onFrame: (handler) =>
       inner.onFrame((frame) => {
-        handler(rewriteFrame(frame, conversation, conversations))
+        handler(rewriteFrame(frame, conversation, control))
       }),
     close: () => inner.close(),
   }
 }
 
-function rewriteFrame(
-  frame: ClientFrame,
-  conversation: ConversationRecord,
-  conversations: ConversationIndex,
-): ClientFrame {
+function rewriteFrame(frame: ClientFrame, conversation: ConversationRecord, control: ControlService): ClientFrame {
   if (frame.type === 'open') {
-    conversations.setModel(conversation.id, frame.provider.providerId, frame.provider.model.model.id)
+    void control.setConversationModel(conversation.id, frame.provider.providerId, frame.provider.model.model.id)
     return { ...frame, sessionId: conversation.id, cwd: VIRTUAL_WORKSPACE_CWD }
   }
   if (frame.type === 'send') {
     const text = frame.content.find((block): block is { type: 'text'; text: string } => block.type === 'text')?.text
     const title = (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
-    if (title) conversations.defaultTitle(conversation.id, title)
-    conversations.touch(conversation.id)
+    if (title) void control.defaultConversationTitle(conversation.id, title)
+    void control.touchConversation(conversation.id)
     return frame
   }
   if (frame.type === 'set_provider') {
-    conversations.setModel(conversation.id, frame.provider.providerId, frame.provider.model.model.id)
+    void control.setConversationModel(conversation.id, frame.provider.providerId, frame.provider.model.model.id)
     return frame
   }
   return frame
