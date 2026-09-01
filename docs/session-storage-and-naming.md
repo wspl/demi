@@ -117,17 +117,24 @@ internal command-artifact storage key.
 - **blobs/\<sha256\>** (remaining) — media/binary bytes referenced from content
   blocks (`source.ref`). Session-scoped content addressing; deleting the session
   directory reclaims everything.
-- **journal.jsonl** (remaining) — the same `TranscriptPatch` stream that already
-  feeds live UIs (`TranscriptLog.takePatches()`), appended during streaming.
-  Restore = checkpoint + replay journal.
+- **journal** (remaining, **required design**) —
+  incremental transcript persistence: streaming appends finished blocks;
+  nothing rewrites the whole transcript per interval. `journal.jsonl` is its
+  file-backed realization here; the product backend realizes the same
+  contract as one row per block in a per-conversation SQLite database (see
+  `docs/demi-next.md` § Database). The persistence contract therefore
+  becomes append-block + save-state, not save-whole-checkpoint.
 
 ### Write path (today vs final)
 
 - Today: throttled full-checkpoint writes (`persistIntervalMs`, default 1 s) plus
   boundary rewrites at turn end / abort / dispose. After view slimming this is
-  ~100s of KB for ordinary sessions, not tens of MB.
-- Final with journal: append patches to `journal.jsonl` during streaming; rewrite
-  `checkpoint.json` and truncate the journal at action boundaries.
+  ~100s of KB for ordinary sessions, not tens of MB — still a whole-transcript
+  rewrite per interval, which is not the final write path.
+- Final with journal: append finished blocks during streaming; persist the
+  non-transcript state at action boundaries. In the file realization that is
+  `journal.jsonl` + a slim `checkpoint.json`; in the product backend it is
+  block rows + a state row in `conversations/<id>.sqlite`.
 - Command artifacts (and future blobs) are written by their owners — the
   checkpoint never embeds them.
 

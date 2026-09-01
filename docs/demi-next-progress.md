@@ -198,3 +198,71 @@ Pitfalls:
   results against the *canonicalized* root.
 - Hono's `upgradeWebSocket` cannot reject inside the handler factory —
   do the conversation lookup in the route before delegating the upgrade.
+
+## Database design review (2026-09-01)
+
+Status: **concluded** — design record updated (`demi-next.md` § Database,
+Backend topology, package-changes item 4, storage-pluggability audit,
+roadmap M1.5/M7/M8 + verification rows; `session-storage-and-naming.md`
+journal role). **No implementation yet**; M1.5 scheduling to be confirmed
+separately.
+
+Final design (see `demi-next.md` for the full record + diagrams):
+
+1. **SQLite only, both topologies** — the dual-dialect (SQLite/Postgres)
+   plan is retired.
+2. **Attachment bytes never enter any database** (implemented early:
+   `b731eea`); transcript media leaves via `source.ref` + blob store.
+3. **The journal is required design, not an optimization**: transcript
+   persisted as one row per block in `conversations/<id>.sqlite`;
+   whole-checkpoint rewrites are ruled out as a final write path.
+4. **Homogeneous shape**: N=1 and N>1 use the identical data directory
+   (`control.sqlite` + per-conversation files + blob store); scaling
+   changes process placement only — no storage evolution layers.
+5. **N>1 topology**: symmetric workers (each owns its users'
+   conversation files and serves the full public API) + one internal
+   `demi-controld` (sole owner of `control.sqlite`, `ControlService`
+   domain RPC over Hono, no public listener). Litestream replicates every
+   `*.sqlite` to S3; failover and user migration are restore-based.
+
+Review path and verdicts (kept so the reasoning survives):
+
+- Self-built multi-node SQLite sharding with S3 leases/epoch fencing —
+  **rejected** (invented machinery). The *sharding shape* itself was later
+  validated by the Tailscale precedent; only the invented parts stay dead.
+- Expensify Bedrock — healthy-looking but ~no external adoption in ten
+  years; **rejected**.
+- sqld / libsql-server — server tree frozen upstream since 2025-12;
+  **rejected**. Turso Cloud / Cloudflare D1 validate the "fleet of small
+  SQLite databases as a service" pattern but are proprietary.
+- rqlite — active and credible, but no interactive transactions
+  (batch-only) and a Raft write ceiling; **archived** with Postgres as the
+  fallbacks if multi-replica strong consistency ever becomes a real
+  requirement.
+- Postgres as the N>1 dialect — **superseded**: once the review removed
+  the shared-database role (worker-local conversation files + a dedicated
+  control-plane service), the dual-dialect cost bought nothing.
+- Production precedents the final design stands on (all verified during
+  the review): Bluesky PDS (per-account SQLite + service-level SQLite,
+  WAL, LRU handle cache), Tailscale control plane (per-shard SQLite + one
+  exclusive process, tenant migration between shards), Litestream
+  (checkpoint-takeover WAL replication to S3; v0.5 LTX + tiered
+  compaction; `dir`+`watch` discovery for dynamic per-tenant files),
+  database-per-service (microservices.io / AWS / Microsoft guidance),
+  dedicated low-write metadata services (HDFS NameNode, TiDB PD, Kafka
+  controller), HTTP services fronting SQLite (Grafana, Gitea, Headscale).
+
+Naming decided: interface `ControlService` (impls `LocalControlService` /
+`RemoteControlService`), process `demi-controld`, database
+`control.sqlite`. "Control plane" stays a layer term in prose; `*Store`
+stays reserved for storage backends.
+
+Pitfalls (of the review itself):
+
+- Whole-checkpoint throttled rewrites looked acceptable ("~100s of KB")
+  until multiplied by active-session count and Litestream/WAL amplification
+  — write-path shape, not size, was the real issue.
+- Two plausible-sounding intermediate designs died on the "does anyone
+  actually run this?" test (S3-lease sharding, Bedrock). The test that
+  settled every argument was demanding a named production system per
+  design element.
