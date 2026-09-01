@@ -22,6 +22,7 @@ import type {
   SubagentProfile,
 } from './types'
 import { createStandardAgentTools } from './tools'
+import { hostAgentSessionStore, type BlobStore } from './session-store'
 import type { AgentServerSessionOptions, PrepareShell } from './server'
 
 export const MAX_LIVE_SUBAGENTS = 8
@@ -90,8 +91,10 @@ export interface ChildSupervisorOptions<State> {
   sessionOptions: AgentServerSessionOptions
   /** When false, a child closing never wakes an idle parent; the host app orchestrates the wakeup from the `subagent closed` frame. */
   notifyParentOnIdle: boolean
-  /** Backing store for child checkpoints and job metadata, keyed under the parent's session directory. */
+  /** Backing store for child session rows and job metadata, keyed under the parent's session directory. */
   store: HostStore
+  /** Media blob store for child session persistence. */
+  blobs?: BlobStore
   emit(frame: ServerFrame): void
 }
 
@@ -385,7 +388,7 @@ export class ChildSupervisor<State = unknown> {
     const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
     // Archived children are finished: only `demi agent resume` revives them.
     if (meta?.closedPhase) return
-    const checkpoint = await this.childSessionStore(id).loadCheckpoint()
+    const checkpoint = await this.childSessionStore(id).load()
     if (!meta || !checkpoint) throw new Error('incomplete persisted subagent')
     const job = this.reassembleJob(id, meta, checkpoint)
     // A live persisted job is by definition unfinished (closeJob archives it),
@@ -432,7 +435,7 @@ export class ChildSupervisor<State = unknown> {
     }
     const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
     if (!meta?.closedPhase) throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
-    const checkpoint = await this.childSessionStore(id).loadCheckpoint()
+    const checkpoint = await this.childSessionStore(id).load()
     if (!checkpoint) throw new Error(`archived subagent "${id}" has no checkpoint left`)
     const liveMeta: PersistedSubagentJob = {
       description: meta.description,
@@ -621,15 +624,19 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private childSessionStore(childId: string): AgentSessionStore<State> {
-    return {
-      saveCheckpoint: (checkpoint) => this.options.store.writeJson(this.childStoreKey(childId, 'checkpoint.json'), checkpoint),
-      loadCheckpoint: () => this.options.store.readJson(this.childStoreKey(childId, 'checkpoint.json')),
-    }
+    return hostAgentSessionStore<State>(this.options.store, this.childStorePrefix(childId), {
+      blobs: this.options.blobs,
+    })
+  }
+
+  private childStorePrefix(childId: string): string {
+    return `agent-sessions/${this.parentSession?.id() ?? ''}/subagents/${childId}`
   }
 
   private async deletePersistedJob(id: string): Promise<void> {
-    await this.options.store.delete(this.childStoreKey(id, 'checkpoint.json')).catch(noop)
-    await this.options.store.delete(this.childStoreKey(id, 'job.json')).catch(noop)
+    for (const key of await this.options.store.list(`${this.childStorePrefix(id)}/`).catch(() => [] as string[])) {
+      await this.options.store.delete(key).catch(noop)
+    }
   }
 
   /** Shared spawn/resume foreground behaviour: announce the id, wire abort and stdin steers, wait for close, report the outcome. */
