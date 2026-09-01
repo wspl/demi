@@ -6,6 +6,7 @@ import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ConnectionVault } from '../vault/connections'
+import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import { authRoutes } from './auth'
 import { connectionRoutes } from './connections'
 import { conversationRoutes } from './conversations'
@@ -21,6 +22,7 @@ export function createApp(options: {
   conversationStores: ConversationStores
   vault: ConnectionVault
   assembly: ProviderAssembly
+  logins: SubscriptionLoginFlows
   agentServer: AgentServer
   runnerRegistry: RunnerRegistry
   upgradeWebSocket: UpgradeWebSocket
@@ -32,7 +34,7 @@ export function createApp(options: {
 
   app.route('/api/auth', authRoutes())
   app.route('/api/models', modelRoutes(options.assembly))
-  app.route('/api/connections', connectionRoutes({ vault: options.vault, assembly: options.assembly }))
+  app.route('/api/connections', connectionRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins }))
   app.route('/api/usage', usageRoutes({ control: options.control }))
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
