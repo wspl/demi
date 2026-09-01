@@ -10,6 +10,14 @@
 - Write all code comments in English only.
 - Never run tests that call real models: keep the `real-*.e2e.test.ts` env gates (`DEMI_*_E2E`, `DEMI_CLAUDE_CODE_EVAL`) unset, and verify changes with scoped `bun test packages/<pkg>` runs instead of the full suite.
 
+## Data Validation
+
+- Three tiers, chosen by where the data comes from:
+  1. Single-field probing of foreign thrown values (error `code` etc.) uses the shared guards in `@demicodes/utils` — never define per-file private variants.
+  2. Structured data crossing a trust boundary (HTTP bodies, inbound protocol frames, third-party responses) is schema-defined with zod: one schema module per boundary, types derived via `z.infer`, no hand-rolled `isRecord` + field-probe chains.
+  3. Inside our own code (both sides ours), type the contract (typed error classes, tagged unions) — re-probing or re-validating already-typed data is forbidden.
+- Validate inbound only; never validate data this process constructed itself (including reading back our own single-writer persisted state — corruption should fail loudly, not be normalized).
+
 ## Code Reuse
 
 - Put all generic, common code in `@demicodes/utils`; do not scatter utility functions across packages. Test-only helpers live in the owning package's `/testing` entrypoint (e.g. `@demicodes/provider/testing`, `@demicodes/shell/testing`); never create a standalone test-utilities package.
