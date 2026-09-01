@@ -16,6 +16,18 @@ export interface ControlService {
   listDevices(userId: string): Promise<DeviceRecord[]>
   deleteDevice(id: string): Promise<void>
   touchDeviceSeen(id: string): Promise<void>
+  /** `config` is opaque here — the vault encrypts/decrypts; storage never sees plaintext. */
+  createConnection(connection: {
+    ownerUserId: string | null
+    type: string
+    label: string
+    config: string
+  }): Promise<ConnectionRecord>
+  getConnection(id: string): Promise<ConnectionRecord | null>
+  listConnections(): Promise<ConnectionRecord[]>
+  deleteConnection(id: string): Promise<void>
+  appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void>
+  listUsage(userId: string): Promise<UsageRow[]>
   createWorkspace(workspace: { userId: string; deviceId: string; path: string; name: string }): Promise<WorkspaceRecord>
   getWorkspace(id: string): Promise<WorkspaceRecord | null>
   setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void>
@@ -45,6 +57,29 @@ export interface WorkspaceRecord {
   deviceId: string
   path: string
   name: string
+  createdAt: string
+}
+
+export interface ConnectionRecord {
+  id: string
+  ownerUserId: string | null
+  type: string
+  label: string
+  /** Encrypted at rest (vault crypto); opaque to storage. */
+  config: string
+  createdAt: string
+}
+
+export interface UsageRow {
+  id: string
+  userId: string
+  conversationId: string
+  connectionId: string
+  modelId: string
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
   createdAt: string
 }
 
@@ -128,6 +163,82 @@ export class LocalControlService implements ControlService {
 
   async touchDeviceSeen(id: string): Promise<void> {
     this.db.run('UPDATE devices SET last_seen_at = ? WHERE id = ?', [new Date().toISOString(), id])
+  }
+
+  async createConnection(connection: {
+    ownerUserId: string | null
+    type: string
+    label: string
+    config: string
+  }): Promise<ConnectionRecord> {
+    const record: ConnectionRecord = {
+      id: createId(),
+      ownerUserId: connection.ownerUserId,
+      type: connection.type,
+      label: connection.label,
+      config: connection.config,
+      createdAt: new Date().toISOString(),
+    }
+    this.db.run('INSERT INTO connections (id, owner_user_id, type, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+      record.id,
+      record.ownerUserId,
+      record.type,
+      record.label,
+      record.config,
+      record.createdAt,
+    ])
+    return record
+  }
+
+  async getConnection(id: string): Promise<ConnectionRecord | null> {
+    const row = this.db.get<ConnectionRow>(`${CONNECTION_SELECT} WHERE id = ?`, [id])
+    return row ? connectionFromRow(row) : null
+  }
+
+  async listConnections(): Promise<ConnectionRecord[]> {
+    return this.db.all<ConnectionRow>(`${CONNECTION_SELECT} ORDER BY created_at`).map(connectionFromRow)
+  }
+
+  async deleteConnection(id: string): Promise<void> {
+    this.db.run('DELETE FROM connections WHERE id = ?', [id])
+  }
+
+  async appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void> {
+    this.db.run(
+      'INSERT INTO usage_ledger (id, user_id, conversation_id, connection_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        createId(),
+        row.userId,
+        row.conversationId,
+        row.connectionId,
+        row.modelId,
+        row.inputTokens,
+        row.outputTokens,
+        row.cacheReadTokens,
+        row.cacheWriteTokens,
+        new Date().toISOString(),
+      ],
+    )
+  }
+
+  async listUsage(userId: string): Promise<UsageRow[]> {
+    return this.db
+      .all<UsageLedgerRow>(
+        'SELECT id, user_id, conversation_id, connection_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM usage_ledger WHERE user_id = ? ORDER BY created_at',
+        [userId],
+      )
+      .map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        conversationId: row.conversation_id,
+        connectionId: row.connection_id,
+        modelId: row.model_id,
+        inputTokens: row.input_tokens,
+        outputTokens: row.output_tokens,
+        cacheReadTokens: row.cache_read_tokens,
+        cacheWriteTokens: row.cache_write_tokens,
+        createdAt: row.created_at,
+      }))
   }
 
   async createWorkspace(workspace: {
@@ -265,6 +376,41 @@ interface WorkspaceRow {
 }
 
 const DEVICE_SELECT = 'SELECT id, user_id, name, platform, claimed_at, last_seen_at FROM devices'
+
+interface ConnectionRow {
+  id: string
+  owner_user_id: string | null
+  type: string
+  label: string
+  config: string
+  created_at: string
+}
+
+interface UsageLedgerRow {
+  id: string
+  user_id: string
+  conversation_id: string
+  connection_id: string
+  model_id: string
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  created_at: string
+}
+
+const CONNECTION_SELECT = 'SELECT id, owner_user_id, type, label, config, created_at FROM connections'
+
+function connectionFromRow(row: ConnectionRow): ConnectionRecord {
+  return {
+    id: row.id,
+    ownerUserId: row.owner_user_id,
+    type: row.type,
+    label: row.label,
+    config: row.config,
+    createdAt: row.created_at,
+  }
+}
 
 function deviceFromRow(row: DeviceRow): DeviceRecord {
   return {
