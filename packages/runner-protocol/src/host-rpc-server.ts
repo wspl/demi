@@ -1,6 +1,6 @@
 import type { Host, HostProcessOutputChunk, HostSpawnHandle } from '@demicodes/shell'
 import { errorMessage } from '@demicodes/utils'
-import { isHostFsOp, type BackendToRunnerMessage, type RunnerToBackendMessage } from './messages'
+import type { BackendToRunnerMessage, HostFsOp, RunnerToBackendMessage } from './messages'
 
 /**
  * Serves a `Host`'s `fs` and `process` facets over the runner protocol —
@@ -51,11 +51,7 @@ export class HostRpcServer {
     await Promise.all(spawns.map((spawn) => spawn.kill('SIGKILL').catch(() => {})))
   }
 
-  private async handleFsCall(id: string, op: unknown, args: unknown[]): Promise<void> {
-    if (!isHostFsOp(op)) {
-      this.send({ type: 'fs_result', id, ok: false, error: { message: `Unknown fs op: ${String(op)}` } })
-      return
-    }
+  private async handleFsCall(id: string, op: HostFsOp, args: unknown[]): Promise<void> {
     try {
       const method = this.host.fs[op] as (...callArgs: unknown[]) => Promise<unknown>
       const result = await method.apply(this.host.fs, args)

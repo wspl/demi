@@ -4,7 +4,7 @@ import { LocalHost } from '@demicodes/host-local'
 import {
   HostRpcServer,
   RUNNER_PROTOCOL_VERSION,
-  decodeRunnerMessage,
+  decodeBackendToRunnerMessage,
   encodeRunnerMessage,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
@@ -123,7 +123,7 @@ export class RunnerClient {
   private async handleFrame(ws: WebSocket, rpc: HostRpcServer, frame: string): Promise<void> {
     let message: BackendToRunnerMessage
     try {
-      message = decodeRunnerMessage(frame) as BackendToRunnerMessage
+      message = decodeBackendToRunnerMessage(frame)
     } catch {
       return
     }
