@@ -396,8 +396,10 @@ point; a child that was already quiescent closes through the normal path.
 
 A closed child moves to the **archive**: its transcript checkpoint stays on
 store, marked with the closed phase. Archived children are listed by
-`demi agent list`, skipped by restore, and pruned oldest-first past 16 per
-parent. `demi agent resume <id> <message>` — the archived child's parent
+`demi agent list` and skipped by restore. Nothing prunes the archive: an
+archived child lives exactly as long as its parent's session directory and is
+deleted only with it — a revivable id stays revivable.
+`demi agent resume <id> <message>` — the archived child's parent
 only — revives one: the session rebuilds from the preserved checkpoint and
 the message opens its next turn on top of the old transcript. From there the
 command behaves exactly like spawn (foreground job, steers via `shell_write`,
@@ -545,7 +547,7 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
   on a non-child), idle parent wakeup on completion, empty prompt fails,
   empty last text exits 0, `subagent*` protocol frames from nested depths,
   inherited vs replaced `systemPrompt` with unknown-profile rejection,
-  archive prune and `resume` on the preserved transcript, list tree rendering
+  `resume` on the preserved transcript, list tree rendering
   with self marker, parent close detaches (not aborts) live children
 - `packages/shell/src/__tests__/foreground-command.test.ts` — registered command abort
   signal, live stdout, `shell_write` as stdin stream, byte-clean pipes around
