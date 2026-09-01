@@ -1,10 +1,10 @@
 import type { Block, SessionPhase, UserContentBlock } from '@demicodes/core'
-import { applyTranscriptPatches } from './patch'
+import { applyTranscriptPatches } from '../transcript/patch'
 import type { ProviderSelection } from '@demicodes/provider'
-import type { ClientFrame, ClientSessionEvent, ConversationSummary, ServerFrame } from './frames'
-import type { AgentClientTransport } from './transport'
-import type { AbortResult, AgentMetadata, ModelSwitchApply } from './types'
-import { ProviderStreamError } from './provider-stream-error'
+import type { ClientFrame, ClientSessionEvent, ConversationSummary, ServerFrame } from '../protocol/frames'
+import type { AgentClientTransport } from '../protocol/transport'
+import type { AbortResult, AgentMetadata, ModelSwitchApply } from '../types'
+import { ProviderStreamError } from '../session/provider-stream-error'
 
 export type AgentClientListener = (event: ClientSessionEvent) => void
 

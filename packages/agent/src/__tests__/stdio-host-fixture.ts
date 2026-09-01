@@ -3,7 +3,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import type { AgentHarness } from '@demicodes/agent'
 import { LocalHost } from '@demicodes/host-local'
 import { AgentServer } from '../index'
-import { createStdioServerTransport } from '../stdio-transport'
+import { createStdioServerTransport } from '../protocol/stdio-transport'
 
 const childProvider = defineProvider({
   id: 'child-stub',

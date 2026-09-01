@@ -17,8 +17,8 @@ import {
   type ClientSessionEvent,
   type ClientFrame,
 } from '../index'
-import { createStdioClientTransport, createStdioServerTransport } from '../stdio-transport'
-import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
+import { createStdioClientTransport, createStdioServerTransport } from '../protocol/stdio-transport'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../session/compaction'
 
 const model: ModelSelection = {
   providerId: 'stub',

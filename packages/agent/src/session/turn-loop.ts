@@ -1,13 +1,13 @@
 import { AbortError, abortable, asError, delay, isAbortError, parseJsonOrString, throwIfAborted } from '@demicodes/utils'
 import type { ModelSelection, ProviderErrorDiagnostics, TokenUsage } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolDefinition } from '@demicodes/provider'
-import { TranscriptLog } from './transcript'
+import { TranscriptLog } from '../transcript/transcript'
 import { ProviderStreamError } from './provider-stream-error'
 import { isRetryableCode, retryDelayMs, type TurnRetryPolicy } from './retry-policy'
 import { findResumePoint } from './recovery'
-import { resolveCompactionThreshold } from './compaction-support'
+import { resolveCompactionThreshold } from './compaction'
 import type { ActiveTurnPhase } from './session'
-import type { AgentHarnessRuntime, AgentMetadata, AgentTool, AgentToolInvokeResult, SessionEvent } from './types'
+import type { AgentHarnessRuntime, AgentMetadata, AgentTool, AgentToolInvokeResult, SessionEvent } from '../types'
 
 const MAX_AUTO_COMPACTIONS_PER_TURN = 3
 

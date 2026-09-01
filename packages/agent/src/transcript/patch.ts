@@ -1,5 +1,5 @@
 import type { Block } from '@demicodes/core'
-import type { TranscriptPatch } from './frames'
+import type { TranscriptPatch } from '../protocol/frames'
 
 /**
  * Applies journal-produced transcript patches to a block list, returning a new

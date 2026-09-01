@@ -15,7 +15,7 @@ import {
   type JsonWebSocket,
   type ServerFrame,
 } from '../index'
-import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../session/compaction'
 
 const model: ModelSelection = {
   providerId: 'stub',

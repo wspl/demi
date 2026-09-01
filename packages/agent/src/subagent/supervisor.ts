@@ -10,8 +10,8 @@ import {
   type HostStore,
 } from '@demicodes/shell'
 import type { Block, UserContentBlock } from '@demicodes/core'
-import { AgentSession } from './session'
-import type { ServerFrame, SubagentJob, TranscriptPatch } from './frames'
+import { AgentSession } from '../session/session'
+import type { ServerFrame, SubagentJob, TranscriptPatch } from '../protocol/frames'
 import type {
   AgentHarness,
   AgentHarnessRuntime,
@@ -20,10 +20,11 @@ import type {
   AgentSessionStore,
   AgentToolInvokeContext,
   SubagentProfile,
-} from './types'
-import { createStandardAgentTools } from './tools'
-import { hostAgentSessionStore, type BlobStore } from './session-store'
-import type { AgentServerSessionOptions, PrepareShell } from './server'
+} from '../types'
+import { createStandardAgentTools } from '../tools'
+import { hostAgentSessionStore } from '../store/session-store'
+import type { BlobStore } from '../store/media'
+import type { AgentServerSessionOptions, PrepareShell } from '../server/server'
 
 export const MAX_LIVE_SUBAGENTS = 8
 export const MAX_ARCHIVED_SUBAGENTS = 16

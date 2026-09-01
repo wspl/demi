@@ -7,7 +7,7 @@ import type {
   UserContentBlock,
 } from '@demicodes/core'
 import type { ProviderSelection } from '@demicodes/provider'
-import type { AbortResult, AgentMetadata, ModelSwitchApply } from './types'
+import type { AbortResult, AgentMetadata, ModelSwitchApply } from '../types'
 import type { BashAuditEvent, ShellCommandStatus } from '@demicodes/shell'
 
 /** A persisted conversation in a workspace (cwd), for the resume/history list. */

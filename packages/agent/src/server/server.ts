@@ -1,5 +1,5 @@
 import { bytesToBase64, errorCode, isRecord, noop, safeJsonStringify } from '@demicodes/utils'
-import { AgentSession } from './session'
+import { AgentSession } from '../session/session'
 import {
   BashEnvironment,
   CommandRegistry,
@@ -13,10 +13,10 @@ import {
 } from '@demicodes/shell'
 import type { Block, ProviderErrorDiagnostics, ToolResultContentBlock } from '@demicodes/core'
 import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
-import { AgentClient } from './client'
-import { cloneBlocks } from './patch'
-import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandStatusLike } from './frames'
-import { createInProcessTransportPair, type AgentServerTransport } from './transport'
+import { AgentClient } from '../client/client'
+import { cloneBlocks } from '../transcript/patch'
+import type { ClientFrame, ConversationSummary, ServerFrame, ShellCommandStatusLike } from '../protocol/frames'
+import { createInProcessTransportPair, type AgentServerTransport } from '../protocol/transport'
 import type {
   AgentHarness,
   AgentHarnessRuntime,
@@ -25,17 +25,13 @@ import type {
   AgentToolInvokeContext,
   ModelSwitchApply,
   SessionEvent,
-} from './types'
-import type { TurnRetryPolicy } from './retry-policy'
-import { createStandardAgentTools } from './tools'
-import { ChildSupervisor, injectSubagentCommand } from './subagent'
-import { ProviderStreamError } from './provider-stream-error'
-import {
-  hostAgentSessionStore,
-  loadPersistedSession,
-  persistedSessionCheckpoint,
-  type BlobStore,
-} from './session-store'
+} from '../types'
+import type { TurnRetryPolicy } from '../session/retry-policy'
+import { createStandardAgentTools } from '../tools'
+import { ChildSupervisor, injectSubagentCommand } from '../subagent/supervisor'
+import { ProviderStreamError } from '../session/provider-stream-error'
+import { hostAgentSessionStore, loadPersistedSession, persistedSessionCheckpoint } from '../store/session-store'
+import type { BlobStore } from '../store/media'
 
 /** Session tuning forwarded to every AgentSession this server creates. */
 export interface AgentServerSessionOptions {

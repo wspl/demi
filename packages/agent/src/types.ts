@@ -11,9 +11,9 @@ import type {
 import type { AgentProvider, ToolDefinition } from '@demicodes/provider'
 import type { Command, Host } from '@demicodes/shell'
 import type { PortableJsonValue } from '@demicodes/utils'
-import type { TranscriptPatch } from './frames'
-import type { TurnRetryPolicy } from './retry-policy'
-import type { TranscriptLog } from './transcript'
+import type { TranscriptPatch } from './protocol/frames'
+import type { TurnRetryPolicy } from './session/retry-policy'
+import type { TranscriptLog } from './transcript/transcript'
 
 /** Caller-defined data carried with one agent action. Demi transports it without interpreting it. */
 export type AgentMetadata = Readonly<Record<string, PortableJsonValue>>
