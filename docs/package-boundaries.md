@@ -162,12 +162,18 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/backend`
 
-- Status: implemented through M2 (Web API skeleton + conversation module + virtual default; runner management M4, LLM module/vault/accounting M5+).
+- Status: implemented through M3 (Web API skeleton + conversation module + two-plane storage + virtual default; runner management M4, LLM module/vault/accounting M5+).
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`, `@demicodes/host-virtual`, `@demicodes/provider`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-google`, `@demicodes/provider-openai-api`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
-- Owns: the hosted multi-user product's server — the storage module (thin dual-dialect SQL layer, numbered migrations, DB-backed `HostStore`, conversation index), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, operator provider assembly (`demi-backend` entry), and — per later milestones — runner management, the credential vault, the Anthropic passthrough, and usage accounting.
+- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, operator provider assembly (`demi-backend` entry), and — per later milestones — runner management, the credential vault, the Anthropic passthrough, and usage accounting.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, LocalHost (as the virtual-fs real backing), VirtualHost, and the coding harness.
 - Must not: be imported by any other production package; put business logic in the HTTP layer beyond routing/validation; let providers or credentials cross to runners or browsers.
+- Layout (directories mirror the design record's backend modules):
+  - `backend.ts` — the composition root (wire and mount only).
+  - `http/` — the external HTTP surface: app assembly, one route module per resource, the WS upgrade adapter.
+  - `conversation/` — conversation-module domain logic (frame scoping/rewrite, virtual-host factory).
+  - `storage/` — the SQLite layer (database seam, migrations, control service, conversation stores, blob store, host store).
+  - Later milestones add sibling module directories (`runner/`, `llm/`, `vault/`, `usage/`) — never new files at the root.
 
 ### `@demicodes/host-virtual`
 
@@ -289,6 +295,29 @@ enforced at the manifest level by that test; `web` is a product leaf like `repl`
 The graph is a compact view of the `Production deps` fields in the package registry. Every
 package in the registry is implemented; keep the registry, this graph, and the maps in
 `packages/core/src/__tests__/platform-entrypoints.test.ts` in lockstep.
+
+## Module Layout Conventions
+
+How files and directories are organized inside a package. These are design
+rules, enforceable in review — not taste:
+
+1. **One composition root per product package.** Exactly one file assembles
+   the package (`backend.ts`, `main.ts`): it may construct, inject, mount,
+   and return — never branch on business state. Any domain logic appearing
+   in a composition root is a violation.
+2. **Directories mirror design modules; files carry one responsibility.**
+   A subdirectory must be nameable as a module of the owning package's
+   design record entry (e.g. the backend's conversation/LLM/runner/vault/
+   usage/auth modules). No domain-less catch-all directories (`misc/`,
+   `helpers/`) — generic code goes to `@demicodes/utils`, domain helpers
+   sit next to their module.
+3. **Split by responsibility, not by line count.** A file that carries two
+   of {route handling, domain logic, storage access, wire adaptation} gets
+   split, regardless of size; a long file with one responsibility may stay.
+
+Packages small enough to be a single module (e.g. `host-virtual`,
+`runner-protocol`) need no subdirectories; the registry entry's Layout
+section appears only where a package has more than one module.
 
 ## Global Boundary Rules
 
