@@ -257,6 +257,75 @@ Pitfalls:
   new `/testing`-style entrypoint needs an explicit mapping there in
   addition to package.json `exports` and the tsdown entry list.
 
+## M4 — Runner productized
+
+Status: **done** (2026-09-01; `f758090` control-plane device/workspace
+records, `012d41b` runner management module, `e9ae6c9` remote-Host
+resolution + acceptance, `9d0499d` CLI output polish). Repo-wide typecheck
+green; backend/runner/runner-protocol suites 24 tests green.
+
+What landed:
+
+- **Pairing spec finalized before implementation** (`0bfdaf5`, `cee9feb`):
+  claim codes are 128-bit random Crockford base32, single-use, expiring,
+  claim endpoint rate-limited per user; the end-to-end flow diagram lives
+  in demi-next.md § Connection model.
+- **`ControlService` device/workspace domain**: device rows (token stored
+  as SHA-256 hash only), workspace rows, and the conversation→workspace
+  pointer.
+- **`backend/src/runner/` module**: `claim-codes.ts` (code generation +
+  Crockford normalization with confusable mapping, device-token
+  mint/hash) and `registry.ts` — pending claims keyed by normalized code
+  (in memory only; expiry rotates a fresh code over the waiting socket),
+  one authenticated socket per device (a newer connection replaces the
+  older), backend-driven ping/pong liveness, and stable per-execution-
+  target `RemoteHost`s attached/detached as the device socket comes and
+  goes. Malformed frames close the socket (boundary #3 discipline).
+- **HTTP surface**: `WS /api/runner` (thin adapter; all protocol logic in
+  the registry), `GET /api/devices` (online = socket state),
+  `POST /api/devices/claim` (404 invalid/expired, 429 rate-limited),
+  `DELETE /api/devices/:id` (revoke drops the live socket and refuses the
+  reconnect), `GET/POST /api/devices/:id/fs` (directory browse/create over
+  ordinary Host RPC; 409 while offline).
+- **Host resolution**: the harness resolves a conversation's execution
+  target server-side — workspace pointer ⇒ the device's stable
+  `RemoteHost` (offline ⇒ tool errors until reattach), none ⇒ virtual.
+  The Host's store is the conversation's own host_store scope, same as
+  virtual.
+- **Runner client**: `--backend https://host` now derives
+  `wss://host/api/runner` (explicit paths kept); the CLI prints the
+  pairing code in the documented two-line form.
+- Acceptance per the verification table: full pairing lifecycle (messy
+  code input normalized, single-use, restart-with-token, revoke →
+  rejected), code expiry rotation, rate limiting, malformed-frame and
+  bad-token rejection, and the M4 session test — real commands and file
+  edits on the claimed device through the product backend, runner death
+  mid-`sleep` surfacing as a tool error with the session intact, a fresh
+  runner process resuming service on the same session.
+
+Decisions:
+
+- Claim codes over UUIDs (user call): equal-entropy either way, but
+  Crockford base32 is shorter and confusable-free; the encode/normalize
+  pair is ~20 lines.
+- Workspace *creation* stays M6 (workspaces CRUD): M4 adds only the
+  storage primitives host resolution needs; the acceptance test writes the
+  workspace row via the control plane directly.
+- Fs results and spawn streams fan out to every `RemoteHost` of the device
+  and each host claims its own call ids — no central id routing table to
+  keep in sync.
+- The registry caches each device's last-known `HostIdentity` so a Host
+  can be constructed while its runner is offline (identity is read
+  synchronously at shell creation).
+
+Pitfalls:
+
+- Backend-side "wait until the remote command started" cannot watch
+  streaming shell events (they are not guaranteed mid-command); the
+  acceptance test probes a filesystem marker on the runner instead.
+- `waitFor` takes a sync predicate — polling an HTTP endpoint needs a
+  hand-rolled delay loop.
+
 ## Agent restructure & boundary schemas (2026-09-01)
 
 Status: **done** (design record: `docs/agent-restructure-and-schemas.md`).
