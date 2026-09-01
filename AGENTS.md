@@ -18,6 +18,11 @@ Guidance on picking the right tool when handling data of uncertain shape:
 - Parsing structured data that arrives from outside the process (an HTTP body, an inbound protocol frame, a third-party response)? Define a zod schema next to the boundary's types and derive the TS type with `z.infer`. If you find yourself writing an `isRecord` + field-by-field check chain, that's the sign a schema wants to exist.
 - When both producer and consumer are our code, prefer putting the type on the contract itself (a typed error class, a tagged union) so downstream just uses it — a second round of checking adds noise, not safety.
 - Data this process built or wrote itself (outbound frames, our own persisted rows) doesn't need validating on the way back in; if it reads back corrupt, a loud failure beats silent normalization.
+- Prefer declaration over logic: a shape expressed as a schema/table/tagged union reads better than the equivalent imperative checks. When a schema exists, it is the single source of truth — derive the TS type from it (`z.infer`), never hand-maintain a parallel type declaration (the shell command inputs are the house example).
+
+## Refactoring
+
+- The test for any restructure is whether it simplifies comprehension, not whether it looks more organized: fewer declarations of the same fact, dependencies visible in signatures instead of captured in closures, one topic per file. A change that adds a parallel structure to keep in sync is complication wearing refactor clothes.
 
 ## Code Reuse
 
