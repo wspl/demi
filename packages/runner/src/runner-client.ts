@@ -51,7 +51,7 @@ export class RunnerClient {
 
   constructor(private readonly options: RunnerClientOptions) {
     this.state = new RunnerState(options.stateDir)
-    this.host = options.host ?? new LocalHost(homedir())
+    this.host = withDeviceEnvFallback(options.host ?? new LocalHost(homedir()))
     this.createWebSocket = options.createWebSocket ?? ((url) => new WebSocket(url))
     this.initialDelayMs = options.reconnect?.initialDelayMs ?? 1_000
     this.maxDelayMs = options.reconnect?.maxDelayMs ?? 30_000
@@ -174,6 +174,30 @@ export class RunnerClient {
       this.reconnectTimer = null
       void this.connect()
     }, delay)
+  }
+}
+
+/**
+ * Binary resolution and the home directory are device facts: a spawn request
+ * that names no `PATH` / `HOME` resolves against this device's own (backend
+ * processes cannot know them). A request that sets either key explicitly is
+ * honored exactly.
+ */
+function withDeviceEnvFallback(host: Pick<Host, 'fs' | 'process' | 'identity'>): Pick<Host, 'fs' | 'process' | 'identity'> {
+  return {
+    fs: host.fs,
+    identity: host.identity,
+    process: {
+      openCwd: (path) => host.process.openCwd(path),
+      spawn: (params) => {
+        if (!params.env) return host.process.spawn(params)
+        const env = { ...params.env }
+        for (const key of ['PATH', 'HOME'] as const) {
+          if (!(key in env) && process.env[key]) env[key] = process.env[key]
+        }
+        return host.process.spawn({ ...params, env })
+      },
+    },
   }
 }
 
