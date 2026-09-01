@@ -39,6 +39,7 @@ async function openHarness(options: {
   turns: TurnScript[]
   agents?: SubagentProfile<Record<string, never>>[]
   notifyParentOnIdle?: boolean
+  maxLiveSubagents?: number
   metadataLog?: (AgentMetadata | null)[]
   root?: string
   sessionId?: string
@@ -65,7 +66,14 @@ async function openHarness(options: {
     agent: harness,
     providers: [defineProvider({ id: 'stub', displayName: 'stub', createRuntime: () => new StubProvider(options.turns) })],
     shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
-    ...(options.notifyParentOnIdle === undefined ? {} : { subagents: { notifyParentOnIdle: options.notifyParentOnIdle } }),
+    ...(options.notifyParentOnIdle === undefined && options.maxLiveSubagents === undefined
+      ? {}
+      : {
+          subagents: {
+            ...(options.notifyParentOnIdle === undefined ? {} : { notifyParentOnIdle: options.notifyParentOnIdle }),
+            ...(options.maxLiveSubagents === undefined ? {} : { maxLiveSubagents: options.maxLiveSubagents }),
+          },
+        }),
   })
   const client = server.client()
   const seen: ClientSessionEvent[] = []
@@ -175,50 +183,269 @@ test('an empty prompt fails the spawn command without starting a child', async (
   await client.close()
 })
 
-test('a child has no spawn surface: its demi agent tree is send-parent only', async () => {
-  let childContinuationText = ''
-  const { client } = await openHarness({
+test('a child spawns a grandchild; the tree links and both close naturally', async () => {
+  let grandchildRequest: InferenceRequest | null = null
+  const { client, seen, sessionId } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'outer task'", 5_000)],
-      [events.toolCall('c1', 'shell_exec', { script: "demi agent 'nested task'", timeoutMs: 5_000 })],
+      [spawnCall('t1', "demi agent 'outer task' --description outer", 10_000)],
+      [events.toolCall('c1', 'shell_exec', { script: "demi agent 'inner task' --description inner", timeoutMs: 10_000 })],
       (request) => {
-        childContinuationText = itemsText(request)
-        return [events.text('child done'), events.response()]
+        grandchildRequest = request
+        return [events.text('inner result'), events.response()]
+      },
+      [events.text('outer result'), events.response()],
+      [events.text('parent done'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  // The grandchild is a full subagent: empty transcript, preamble, own task brief.
+  expect(grandchildRequest).not.toBeNull()
+  expect(grandchildRequest!.items.map((item) => item.type)).toEqual(['user_message'])
+  expect(itemsText(grandchildRequest!)).toContain('inner task')
+  expect(itemsText(grandchildRequest!)).toContain('You are a subagent')
+
+  // Frames from both depths on the same connection, linked by parentSessionId.
+  const started = seen.filter((event) => event.type === 'subagent' && event.event === 'started')
+  expect(started).toHaveLength(2)
+  const outer = started.find((event) => event.type === 'subagent' && event.job.description === 'outer')
+  const inner = started.find((event) => event.type === 'subagent' && event.job.description === 'inner')
+  expect(outer?.type === 'subagent' ? outer.job.parentSessionId : '').toBe(sessionId)
+  expect(inner?.type === 'subagent' ? inner.job.parentSessionId : '').toBe(
+    outer?.type === 'subagent' ? outer.job.subagentId : '',
+  )
+  const closed = seen.filter((event) => event.type === 'subagent' && event.event === 'closed')
+  expect(closed.map((event) => (event.type === 'subagent' ? event.job.description : ''))).toEqual(['inner', 'outer'])
+  expect(closed.every((event) => event.type === 'subagent' && event.job.phase === 'completed')).toBe(true)
+  await client.close()
+})
+
+test('aborting a child tears its whole subtree down', async () => {
+  const { client, seen } = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent 'outer task' --description outer", 50)],
+      [events.toolCall('c1', 'shell_exec', { script: "demi agent 'inner task' --description inner", timeoutMs: 10_000 })],
+      [events.toolCall('g1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
+      (request) => {
+        const id = subagentIdFrom(request)
+        return [events.toolCall('t2', 'shell_exec', { script: `demi agent abort ${id}`, timeoutMs: 5_000 })]
       },
       [events.text('parent done'), events.response()],
     ],
   })
 
   await client.send([{ type: 'text', text: 'go' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'))
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
 
-  // The nested spawn must fail: the child tree only carries send-parent.
-  expect(childContinuationText).not.toContain('subagentId:')
-  expect(childContinuationText.toLowerCase()).toContain('agent')
+  const closed = seen.filter((event) => event.type === 'subagent' && event.event === 'closed')
+  expect(closed).toHaveLength(2)
+  expect(closed.every((event) => event.type === 'subagent' && event.job.phase === 'aborted')).toBe(true)
   await client.close()
 })
 
-test('send-parent reaches a parent blocked in the spawn as a steer at its continuation boundary', async () => {
-  let parentContinuation: InferenceRequest | null = null
+test('steer chimes into a running child turn; the parent steer materializes at the continuation', async () => {
+  let childContinuation: InferenceRequest | null = null
   const { client } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'report halfway then finish' --description sp", 5_000)],
-      [events.toolCall('c1', 'shell_exec', { script: "demi agent send-parent 'halfway there'", timeoutMs: 5_000 })],
-      [events.text('final answer'), events.response()],
+      [spawnCall('t1', "demi agent 'slow task' --description slow", 50)],
+      [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.4', timeoutMs: 10_000 })],
       (request) => {
-        parentContinuation = request
+        const id = subagentIdFrom(request)
+        return [events.toolCall('t2', 'shell_exec', { script: `demi agent steer ${id} 'course correction'`, timeoutMs: 5_000 })]
+      },
+      [events.text('parent idle'), events.response()],
+      (request) => {
+        childContinuation = request
+        return [events.text('steered fine'), events.response()]
+      },
+      [events.text('acknowledged'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'acknowledged'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  // The message joined the child's running turn as a steer, not a new turn.
+  expect(childContinuation).not.toBeNull()
+  const steer = childContinuation!.items.find((item) => item.type === 'user_steer')
+  expect(JSON.stringify(steer ?? '')).toContain('course correction')
+  expect(JSON.stringify(steer ?? '')).toContain('[agent ')
+  await client.close()
+})
+
+test('send is a mailbox: a queued message opens a new child turn instead of closing the session', async () => {
+  let secondTurnRequest: InferenceRequest | null = null
+  const { client, seen, sessionId } = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent 'bg task' --description bg", 50)],
+      [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.4', timeoutMs: 10_000 })],
+      (request) => {
+        const id = subagentIdFrom(request)
+        return [events.toolCall('t2', 'shell_exec', { script: `demi agent send ${id} 'extra instruction'`, timeoutMs: 5_000 })]
+      },
+      [events.text('parent idle'), events.response()],
+      [events.text('first phase'), events.response()],
+      (request) => {
+        secondTurnRequest = request
+        return [events.text('second phase'), events.response()]
+      },
+      [events.text('acknowledged'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'acknowledged'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  // The mailbox message arrived as a fresh user turn after the first turn ended,
+  // prefixed with the sender identity (the root session).
+  expect(secondTurnRequest).not.toBeNull()
+  expect(itemsText(secondTurnRequest!)).toContain('extra instruction')
+  expect(itemsText(secondTurnRequest!)).toContain(`[agent ${sessionId}`)
+  const closedFrame = seen.find((event) => event.type === 'subagent' && event.event === 'closed')
+  expect(closedFrame?.type === 'subagent' ? closedFrame.job.result : '').toBe('second phase')
+  await client.close()
+})
+
+test('steering an idle root fails; send parent wakes it as a user turn', async () => {
+  let steerFailureText = ''
+  let wakeRequest: InferenceRequest | null = null
+  // The parent wake and the child's own continuation race after the send, so
+  // these two entries dispatch on request identity instead of arrival order.
+  const afterSend: TurnScript = (request) => {
+    if (itemsText(request).includes('You are a subagent')) return [events.text('child done'), events.response()]
+    wakeRequest = request
+    return [events.text('got it'), events.response()]
+  }
+  const { client } = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent 'report home' --description rep", 50)],
+      [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.3', timeoutMs: 10_000 })],
+      [events.text('parent idle'), events.response()],
+      [events.toolCall('c2', 'shell_exec', { script: "demi agent steer parent 'ping'", timeoutMs: 5_000 })],
+      (request) => {
+        steerFailureText = itemsText(request)
+        return [events.toolCall('c3', 'shell_exec', { script: "demi agent send parent 'ping via mail'", timeoutMs: 5_000 })]
+      },
+      afterSend,
+      afterSend,
+      [events.text('acknowledged'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'acknowledged'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  expect(steerFailureText).toContain('no running turn to steer')
+  expect(wakeRequest).not.toBeNull()
+  expect(itemsText(wakeRequest!)).toContain('ping via mail')
+  expect(itemsText(wakeRequest!)).toContain('[agent ')
+  await client.close()
+})
+
+test('a sibling shows and messages another sibling through the directory', async () => {
+  let showText = ''
+  let siblingMessageRequest: InferenceRequest | null = null
+  const { client } = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent 'hold the fort' --description holder", 50)],
+      [events.toolCall('a1', 'shell_exec', { script: 'sleep 0.5', timeoutMs: 10_000 })],
+      (request) => {
+        const holderId = subagentIdFrom(request)
+        return [spawnCall('t2', `demi agent 'message agent ${holderId} then finish' --description messenger`, 10_000)]
+      },
+      (request) => {
+        const targetId = itemsText(request).match(/message agent ([A-Za-z0-9_-]+)/)![1]!
+        return [
+          events.toolCall('b1', 'shell_exec', { script: `demi agent show ${targetId}`, timeoutMs: 5_000 }),
+          events.toolCall('b2', 'shell_exec', { script: `demi agent send ${targetId} 'hello sibling'`, timeoutMs: 5_000 }),
+        ]
+      },
+      (request) => {
+        showText = itemsText(request)
+        return [events.text('messenger done'), events.response()]
+      },
+      [events.text('parent idle'), events.response()],
+      [events.text('holder first'), events.response()],
+      (request) => {
+        siblingMessageRequest = request
+        return [events.text('holder second'), events.response()]
+      },
+      [events.text('parent done'), events.response()],
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  // show on a sibling works and reports its live execution state.
+  expect(showText).toContain('execution: tool_executing')
+  expect(showText).toContain('sent to ')
+  // The sibling's message arrived as a new turn with the sender identity.
+  expect(siblingMessageRequest).not.toBeNull()
+  expect(itemsText(siblingMessageRequest!)).toContain('hello sibling')
+  expect(itemsText(siblingMessageRequest!)).toContain('messenger')
+  await client.close()
+})
+
+test('lifecycle authority: send and abort reject an archived child; only resume revives it', async () => {
+  let sendFailureText = ''
+  let abortFailureText = ''
+  const { client } = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent 'quick task' --description q", 5_000)],
+      [events.text('done already'), events.response()],
+      (request) => {
+        const id = subagentIdFrom(request)
+        return [events.toolCall('t2', 'shell_exec', { script: `demi agent send ${id} 'too late'`, timeoutMs: 5_000 })]
+      },
+      (request) => {
+        sendFailureText = itemsText(request)
+        const id = subagentIdFrom(request)
+        return [events.toolCall('t3', 'shell_exec', { script: `demi agent abort ${id}`, timeoutMs: 5_000 })]
+      },
+      (request) => {
+        abortFailureText = itemsText(request)
         return [events.text('parent done'), events.response()]
       },
     ],
   })
 
   await client.send([{ type: 'text', text: 'go' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'))
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
 
-  expect(parentContinuation).not.toBeNull()
-  const steer = parentContinuation!.items.find((item) => item.type === 'user_steer')
-  expect(JSON.stringify(steer ?? '')).toContain('halfway there')
-  expect(itemsText(parentContinuation!)).toContain('final answer')
+  expect(sendFailureText).toContain('no live agent')
+  expect(sendFailureText).toContain('resume')
+  expect(abortFailureText).toContain('not one of your running children')
   await client.close()
 })
 
@@ -357,9 +584,9 @@ test('demi agent abort tears the child down and fails the pending spawn command'
   await client.close()
 })
 
-test('list and show expose bounded live snapshots with relative ages; a finished id misses', async () => {
+test('list renders the tree with a self marker; show exposes a bounded snapshot; a finished id misses', async () => {
   let inspectionText = ''
-  const { client } = await openHarness({
+  const { client, sessionId } = await openHarness({
     turns: [
       [spawnCall('t1', "demi agent 'inspect me' --description insp", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 1', timeoutMs: 10_000 })],
@@ -386,12 +613,16 @@ test('list and show expose bounded live snapshots with relative ages; a finished
     { timeoutMs: 3_000 },
   )
 
+  // The tree: root marked as the caller, the live child rendered beneath it.
+  expect(inspectionText).toContain(`${sessionId}  (root session) ← you`)
+  expect(inspectionText).toContain('└─●')
   expect(inspectionText).toContain('execution=tool_executing')
   expect(inspectionText).toContain('activity=shell_exec')
+  // show: bounded live snapshot with relative ages.
   expect(inspectionText).toContain('recent tool calls (last 1):')
   expect(inspectionText).toContain('[executing for ')
   expect(inspectionText).toContain('last assistant text: (none yet)')
-  expect(inspectionText).toContain('no running subagent \\"gone-id\\"')
+  expect(inspectionText).toContain('no live agent \\"gone-id\\"')
   await client.close()
 })
 
@@ -523,7 +754,7 @@ test('a finished child is archived: list shows it and resume revives it on top o
     { timeoutMs: 5_000 },
   )
 
-  // The archive is visible after the child finished.
+  // The archive renders in the tree beneath its parent.
   expect(listText).toContain('archived')
   expect(listText).toContain(childId)
   expect(listText).toContain('completed')
@@ -631,5 +862,34 @@ test('the live-children ceiling rejects the spawn beyond MAX_LIVE_SUBAGENTS', as
   )
 
   expect(limitText).toContain(`at most ${MAX_LIVE_SUBAGENTS} running subagents`)
+  await client.close()
+})
+
+test('the ceiling is configurable per server via subagents.maxLiveSubagents', async () => {
+  let limitText = ''
+  const { client } = await openHarness({
+    maxLiveSubagents: 1,
+    notifyParentOnIdle: false,
+    turns: [
+      [
+        spawnCall('t1', "demi agent 'first'", 30),
+        spawnCall('t2', "demi agent 'second'", 5_000),
+      ],
+      [events.toolCall('c1', 'shell_exec', { script: 'sleep 1', timeoutMs: 10_000 })],
+      (request) => {
+        limitText = itemsText(request)
+        return [events.text('parent done'), events.response()]
+      },
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  expect(limitText).toContain('at most 1 running subagents')
   await client.close()
 })
