@@ -328,10 +328,13 @@ Pitfalls:
 
 ## M5 — LLM module + credential vault + metering + Claude Code
 
-Status: **step 1 (BYOK + metering) done** (2026-09-01; `afa2484` agent
+Status: **done** (2026-09-01). Step 1 (BYOK + metering): `afa2484` agent
 ProviderResolver seam, `30f8e65` vault module, `fd4d6c1` LLM assembly +
-metering + HTTP surface). Step 2 (subscriptions + Claude Code passthrough)
-in progress.
+metering + HTTP surface. Step 2 (subscriptions + Claude Code): `f2710c3`
+subscription login flows, `d1f15f3` design correction (below), `8b674f1`
+claude-code chain. Repo-wide typecheck green; backend 27 + runner/
+runner-protocol/provider-claude-code sweeps green, chain e2e passes in ~3 s
+with the local `claude` binary.
 
 Step 1 — what landed:
 
@@ -377,6 +380,69 @@ Step 1 decisions:
   time (multi-user-shaped now, correct when M7 lands).
 - Rate-limit numbers are hardcoded like the virtual-fs quotas; no quota
   configuration surface exists by design.
+
+Step 2 — what landed:
+
+- **Subscription connections**: config `{kind:'subscription', provider}`;
+  the OAuth material lives in the provider's OWN credential pool under the
+  connection's vault directory (`dataDir/vault/<connectionId>/`) — login,
+  storage format, and refresh are entirely the provider package's
+  machinery; the backend only names the directory. `SubscriptionLoginFlows`
+  drives `provider.credentials.beginLogin` on a throwaway pool
+  (`vault/pending-<id>`), the web UI polls
+  `POST/GET /api/connections/subscription-login`, and on completion the
+  pool directory is renamed to the new connection's vault dir. Deleting a
+  connection removes its pool.
+- **Claude Code on the runner**: the claude-code type factory receives the
+  session's execution-target spawn (`SessionProviderContext`, built by the
+  resolver for `requiresProcessCapableHost` providers); the provider
+  runtime resolves the vault token from its auth store and injects
+  `CLAUDE_CODE_OAUTH_TOKEN` into the CLI env itself. The CLI talks its
+  native Anthropic wire directly upstream. Chain e2e (skipped without a
+  `claude` binary): real CLI on a claimed runner, mock upstream via the
+  provider's public env overlay — asserts the vault token reached the
+  upstream, the answer streamed back to the browser transcript, usage
+  landed in the ledger, and the CLI's config home stayed inside the
+  workspace artifacts dir.
+- **Supporting fixes** (`8b674f1`): workspace-bound conversations open in
+  their workspace path (the scoped transport had hardwired the virtual
+  `/workspace` constant — the stream route now resolves the cwd from the
+  workspace row); the runner fills `PATH`/`HOME` from the device when a
+  spawn request names none (binary resolution is a device fact — the
+  transport's remote env is deliberately built from an empty base, since
+  the backend's own env is meaningless on a device); injected-spawn CLI
+  runs pin `CLAUDE_CONFIG_DIR` inside the workspace artifacts dir so the
+  CLI consumes zero device-local settings/hooks.
+
+Design correction (review, 2026-09-01): the milestone was originally
+implemented with an Anthropic passthrough — the CLI's traffic pointed back
+at the backend (`ANTHROPIC_BASE_URL` + backend-minted token, swapped for
+the vault token server-side). Review rejected it: (1) datacenter-IP
+aggregation of many users' subscription OAuth is exactly the traffic shape
+Anthropic bans — the ban lands on the user's account; (2) the CLI's
+base-url/token behavior is not a contract (version-dependent, evidenced by
+hangs); (3) the "all model traffic through the backend" invariant has no
+value here — the transport already runs on the user's device and burns the
+user's own subscription, so there is no credential-exposure or metering
+trust gap to close; (4) the passthrough required the backend to reach into
+the provider's credential internals, violating the ownership boundary.
+Final shape: credentials stored server-side, injected into the CLI process
+env at spawn by the provider itself, traffic direct to Anthropic
+(byte-identical to a user running the official CLI); metering reads the
+usage the provider reports. `d1f15f3` removed the passthrough.
+
+Step 2 pitfalls:
+
+- The transport's injected-spawn branch builds env from an empty base by
+  design — anything device-shaped (`PATH`, `HOME`) must come from the
+  device. Without the runner-side fallback the CLI spawn dies unresolved
+  and the transport waits on stdout forever.
+- Local CLI probes inherit the developer's own Claude Code session env
+  (`CLAUDECODE`, auth vars), which changes CLI behavior — clean the env
+  (`env -i`-style) before concluding anything about CLI wire behavior.
+- The CLI runs device `SessionStart` hooks and settings unless
+  `CLAUDE_CONFIG_DIR` is pinned — a managed device's CLI must be isolated
+  or it consumes (and can be broken by) the device owner's config.
 
 ## Agent restructure & boundary schemas (2026-09-01)
 
