@@ -326,6 +326,58 @@ Pitfalls:
 - `waitFor` takes a sync predicate — polling an HTTP endpoint needs a
   hand-rolled delay loop.
 
+## M5 — LLM module + credential vault + metering + Claude Code
+
+Status: **step 1 (BYOK + metering) done** (2026-09-01; `afa2484` agent
+ProviderResolver seam, `30f8e65` vault module, `fd4d6c1` LLM assembly +
+metering + HTTP surface). Step 2 (subscriptions + Claude Code passthrough)
+in progress.
+
+Step 1 — what landed:
+
+- **`@demicodes/agent` seam**: `AgentServerOptions.providers` accepts a
+  `ProviderResolver` (`(providerId, {agentSessionId}) → Provider | null`)
+  besides the static list; the binding resolves at every runtime
+  construction (open, set_provider), so products assemble providers
+  per-connection with session context. Static lists normalize to a
+  resolver internally — one lookup path.
+- **`backend/src/vault/`**: `instance-secret` (32 random bytes, 0600,
+  created on first start; corrupt file is a loud error), AES-256-GCM
+  `encryptJson`/`decryptJson` (`v1:iv:tag:ct`), and `ConnectionVault` —
+  typed `ApiKeyConnectionConfig` plaintext exists only in process memory,
+  rows carry ciphertext (`connections.type` = provider type for listing).
+- **`backend/src/llm/`**: `ProviderAssembly` (connectionId = providerId;
+  base provider per connection built by registered type factories —
+  builtins anthropic/openai/google over the existing `create*Provider`
+  factories with `id`/`displayName`/`apiKey`/`baseUrl`; cache invalidated
+  on delete — connections are immutable rows), the aggregated catalog
+  (live `listModels` stamped with the connectionId; compatible-endpoint
+  `modelIds` become minimal entries with null capabilities), one-cheap-
+  request `testConnection`, and the metering wrap (`meterProvider`):
+  usage observed firsthand from `response` events — one ledger row per
+  provider request — plus a `beforeRequest` enforcement hook.
+- **`backend/src/usage/`**: `ProviderRateLimiter` — hardcoded generous
+  per-user ceiling (120 provider requests/min, virtual-quota style),
+  refusal surfaces as a `rate_limited` provider error in the turn.
+- **HTTP**: `GET/POST /api/connections` (zod-validated; responses never
+  carry key material), `DELETE /:id`, `POST /:id/test`,
+  `GET /api/usage` (query-time aggregation, `connection × model`),
+  `/api/models` rebuilt over the assembly. `BackendOptions.providers` is
+  gone — `main.ts` starts credential-free and connections arrive via the
+  API; tests register a `stub` provider type through
+  `BackendOptions.providerTypes` and create connections over HTTP.
+
+Step 1 decisions:
+
+- Metering wraps the provider (not the HTTP layer): `TokenUsage` comes
+  from the provider's own `response` events, which is exactly the
+  "observed firsthand" requirement and the per-request granularity the
+  ledger wants.
+- The ledger row's `userId` comes from the conversation record at resolve
+  time (multi-user-shaped now, correct when M7 lands).
+- Rate-limit numbers are hardcoded like the virtual-fs quotas; no quota
+  configuration surface exists by design.
+
 ## Agent restructure & boundary schemas (2026-09-01)
 
 Status: **done** (design record: `docs/agent-restructure-and-schemas.md`).
