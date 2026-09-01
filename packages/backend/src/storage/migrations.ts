@@ -1,9 +1,10 @@
 import type { SqlDatabase } from './database'
 
 /**
- * Numbered migrations, applied in order inside one transaction each. SQL stays
- * in the SQLite/Postgres common subset: TEXT ids, TEXT ISO timestamps, INTEGER
- * booleans, no dialect-specific column types or defaults.
+ * Numbered migrations, applied in order inside one transaction each: one set
+ * for `control.sqlite` (the control plane) and one for every
+ * `conversations/<id>.sqlite` (the data plane). TEXT ids, TEXT ISO
+ * timestamps, INTEGER booleans.
  *
  * (The design record called for `.sql` files; they live as tagged constants in
  * this one module instead so the published bundle needs no file-tree lookup —
@@ -15,7 +16,7 @@ export interface Migration {
   sql: string
 }
 
-export const MIGRATIONS: Migration[] = [
+export const CONTROL_MIGRATIONS: Migration[] = [
   {
     id: 1,
     name: 'init',
@@ -98,13 +99,6 @@ CREATE TABLE attachments (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE host_store (
-  scope      TEXT NOT NULL,
-  key        TEXT NOT NULL,
-  value_json TEXT NOT NULL,
-  PRIMARY KEY (scope, key)
-);
-
 CREATE TABLE settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -113,7 +107,39 @@ CREATE TABLE settings (
   },
 ]
 
-export function migrate(db: SqlDatabase, migrations: Migration[] = MIGRATIONS): void {
+/**
+ * Per-conversation database: the transcript as one row per block, the session
+ * state row, and that conversation's host_store scope. Media bytes never
+ * appear in block_json — they live in the blob store as content-addressed
+ * refs.
+ */
+export const CONVERSATION_MIGRATIONS: Migration[] = [
+  {
+    id: 1,
+    name: 'init',
+    sql: `
+CREATE TABLE blocks (
+  idx        INTEGER PRIMARY KEY,
+  block_json TEXT NOT NULL
+);
+
+CREATE TABLE session (
+  id          INTEGER PRIMARY KEY CHECK (id = 1),
+  state_json  TEXT NOT NULL,
+  block_count INTEGER NOT NULL
+);
+
+CREATE TABLE host_store (
+  scope      TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value_json TEXT NOT NULL,
+  PRIMARY KEY (scope, key)
+);
+`,
+  },
+]
+
+export function migrate(db: SqlDatabase, migrations: Migration[]): void {
   db.run('CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)')
   const applied = new Set(db.all<{ id: number }>('SELECT id FROM schema_migrations').map((row) => row.id))
   const pending = [...migrations].sort((a, b) => a.id - b.id).filter((migration) => !applied.has(migration.id))
