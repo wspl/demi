@@ -53,7 +53,7 @@ test('coding agent completes an demi/todo workflow through shell session tools',
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.stdout).toBe('Created src/app.ts')
-      return [events.toolCall('add-todo', 'shell_exec', { shellId: result.shellId, script: 'todo add \"Run tests\" --json', timeoutMs: 1_000 })]
+      return [events.toolCall('add-todo', 'shell_exec', { shellId: result.shellId, script: 'demi todo add \"Run tests\" --json', timeoutMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -88,7 +88,7 @@ test('coding agent completes an demi/todo workflow through shell session tools',
   ])
   const file = await environment.exec({ shellId: 'coding-shell', script: 'cat src/app.ts' })
   expect(file.stdout.delta).toBe('export const value = 2\n')
-  const todos = await environment.exec({ agentSessionId: session.id(), shellId: 'coding-shell', script: 'todo list --json' })
+  const todos = await environment.exec({ agentSessionId: session.id(), shellId: 'coding-shell', script: 'demi todo list --json' })
   expect(JSON.parse(todos.stdout.delta)).toEqual({ todos: [{ id: 'T1', text: 'Run tests', status: 'pending' }] })
 })
 
@@ -106,7 +106,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
           "demi create note.txt <<'EOF'",
           'first turn',
           'EOF',
-          'todo add "carry state" --json',
+          'demi todo add "carry state" --json',
         ].join('\n'),
       }),
     ],
@@ -126,7 +126,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
       return [
         events.toolCall('continue-workflow', 'shell_exec', {
           timeoutMs: 1_000,
-          script: ['todo done T1 --json', "printf '\\n'", 'todo list --json', "printf '\\n'", 'cat note.txt'].join('\n'),
+          script: ['demi todo done T1 --json', "printf '\\n'", 'demi todo list --json', "printf '\\n'", 'cat note.txt'].join('\n'),
         }),
       ]
     },
@@ -145,7 +145,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
   await session.send([{ type: 'text', text: 'Continue the workflow and close the todo.' }])
 
   expect(provider.consumedTurns).toBe(4)
-  const todos = await environment.exec({ agentSessionId: 'coding-multiturn-agent', script: 'todo list --json' })
+  const todos = await environment.exec({ agentSessionId: 'coding-multiturn-agent', script: 'demi todo list --json' })
   expect(JSON.parse(todos.stdout.delta)).toEqual({
     todos: [{ id: 'T1', text: 'carry state', status: 'done' }],
   })
