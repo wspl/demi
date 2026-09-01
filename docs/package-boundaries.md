@@ -86,6 +86,14 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: import concrete providers, `@demicodes/host-local`, or UI packages; must not own UDS sockets, PATH shim materialization, or `bridge-bin` layout.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
 - Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, optional `prepareShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target. Local open-box assembly (bridge default on, UDS + shims) lives entirely in `@demicodes/host-local` via `createLocalAgentServer`.
+- Layout (directories mirror the package's modules; root keeps entrypoints, `types.ts`, and single-file modules like `tools.ts`):
+  - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction).
+  - `transcript/` — the TranscriptLog mutation journal and patch application.
+  - `store/` — the session persistence realization over `HostStore` and the media blob contract (externalize/rehydrate).
+  - `protocol/` — frame types, the inbound-frame zod schemas (`ClientFrame`'s single source of truth), and the transports (`stdio-transport.ts` backs the `./stdio` entry).
+  - `server/` — the server facade, transport binding (frame dispatch, ingress validation), session-assembly pipeline, live-session runtime, ownership registry, and frame-view mappers.
+  - `subagent/` — supervisor lifecycle and the declarative `demi agent` command tree behind the `SubagentCommandOps` seam.
+  - `client/` — AgentClient.
 
 ### `@demicodes/coding-agent`
 
