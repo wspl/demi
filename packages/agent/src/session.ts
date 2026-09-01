@@ -1,4 +1,4 @@
-import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAborted, truncate } from '@demicodes/utils'
+import { AbortError, abortable, asError, createId, errorCode, isAbortError, noop, throwIfAborted, truncate } from '@demicodes/utils'
 import type { ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
 import { TranscriptLog, type TranscriptOptions } from './transcript'
@@ -1274,16 +1274,8 @@ async function readProviderIterator(
       value: {
         type: 'error',
         message: normalized.message,
-        code: providerErrorCode(error),
+        code: errorCode(error),
       },
     }
   }
-}
-
-function providerErrorCode(error: unknown): string | null {
-  if (error !== null && typeof error === 'object' && 'code' in error) {
-    const code = (error as { code?: unknown }).code
-    if (typeof code === 'string') return code
-  }
-  return null
 }
