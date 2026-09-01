@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-01 |
-| Status | Proposed (no implementation yet) |
+| Status | Implemented (progress log has the commit-by-commit record) |
 | Scope | `@demicodes/agent` module layout; schema-ization of the product's trust boundaries (`agent`, `runner-protocol`, `backend`); the shared-guard dedup sweep |
 
 Two problems, one root cause. `@demicodes/agent` is 23 flat files
