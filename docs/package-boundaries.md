@@ -99,7 +99,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: coding harness, coding prompt, coding commands, todo command, and file reference resolution.
+- Owns: coding harness, coding prompt, coding commands (the `demi` umbrella command accepts composed-in subcommand groups — e.g. the backend's `host` group), todo command, and file reference resolution.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, or LocalHost.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate BashEnvironment/tool runtime.
@@ -172,7 +172,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented through M3 (Web API skeleton + conversation module + two-plane storage + virtual default; runner management M4, LLM module/vault/accounting M5+).
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`, `@demicodes/host-virtual`, `@demicodes/provider`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-google`, `@demicodes/provider-openai-api`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
-- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, runner management (pairing, device registry, remote-Host resolution, browse endpoints), the LLM module (per-connection provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted connections, subscription device-login flows over per-connection provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
+- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, runner management (pairing, device registry, remote-Host resolution, browse endpoints), the managed-hosts module (`ManagedHostProvisioner` over the Docker Engine API, lifecycle/hibernate, the backend-contributed `demi host` subcommand group), the LLM module (per-connection provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted connections, subscription device-login flows over per-connection provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, LocalHost (as the virtual-fs real backing), VirtualHost, and the coding harness.
 - Must not: be imported by any other production package; put business logic in the HTTP layer beyond routing/validation; let providers or credentials cross to runners or browsers.
@@ -185,6 +185,7 @@ Test code may depend upward for integration coverage. Production code must not.
   - `llm/` — provider assembly per connection (type factories, catalog, connection test) and the metering wrap at the inference entry.
   - `vault/` — instance secret, credential crypto, and the typed connection vault over the control plane.
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
+  - `managed/` — managed hosts: the provisioner seam + Docker Engine API implementation, lifecycle (idle hibernate to home snapshots, wake, prev release), and the `demi host` subcommand group injected into the coding command registry.
   - New modules get sibling directories — never new files at the root.
 
 ### `@demicodes/host-virtual`
@@ -205,7 +206,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner`
 
-- Status: implemented (M1: connection + Host RPC; M4: pairing against the product backend; packaging in M9).
+- Status: implemented (M1: connection + Host RPC; M4: pairing against the product backend; packaging in M10).
 - Production deps: `@demicodes/host-local`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the runner program — the single outbound backend WebSocket with reconnect/backoff, the hello/claim handshake client, machine-local state (`~/.demi/runner.json`, `runner-token` 0600), serving `LocalHost` over the runner protocol (spawn requests naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact), and the `demi-runner` CLI entry.
 - Public boundary: `RunnerClient`, `RunnerState` from root; the `demi-runner` bin.
