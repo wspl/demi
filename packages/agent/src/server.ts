@@ -68,9 +68,11 @@ export interface AgentServerOptions {
   session?: AgentServerSessionOptions
   subagents?: {
     /**
-     * When false, a child closing never wakes an idle parent with an automatic
-     * user send; the host app observes the `subagent closed` frame and drives
-     * the parent itself. Defaults to true.
+     * When false, a child of the ROOT session closing never wakes the idle
+     * root with an automatic user send; the host app observes the `subagent
+     * closed` frame and drives the root itself. Applies to the root level
+     * only: a subagent parent has no host-side message channel, so deeper
+     * levels always self-notify. Defaults to true.
      */
     notifyParentOnIdle?: boolean
     /**
