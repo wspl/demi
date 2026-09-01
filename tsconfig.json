@@ -20,6 +20,7 @@
       "@demicodes/agent/stdio": ["./packages/agent/src/stdio-transport.ts"],
       "@demicodes/shell/storage": ["./packages/shell/src/storage.ts"],
       "@demicodes/shell/host-fs": ["./packages/shell/src/host-fs.ts"],
+      "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },

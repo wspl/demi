@@ -157,7 +157,7 @@ What landed:
   guidance) + `scopedFsBackend` (real-directory adapter). Shell contract
   gained `HostSpawnError.detail`, surfaced in spawn-error stderr — that is
   the "upgrade to a device" message mechanism.
-- `@demicodes/testkit` (private): shared test helpers (`memoryHostStore`).
+- `@demicodes/shell/testing`: shared test helpers (`memoryHostStore`).
 - coding-agent: `host` option accepts the `AgentHarness.host` resolver
   signature; reference resolution follows the resolved Host.
 - **`@demicodes/agent` session-lifetime refactor (the significant find)**:

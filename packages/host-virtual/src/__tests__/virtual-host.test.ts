@@ -5,7 +5,7 @@ import process from 'node:process'
 import { expect, test } from 'bun:test'
 import { LocalHost } from '@demicodes/host-local'
 import { BashEnvironment } from '@demicodes/shell'
-import { memoryHostStore } from '@demicodes/testkit'
+import { memoryHostStore } from '@demicodes/shell/testing'
 import { VIRTUAL_UPGRADE_GUIDANCE, VirtualHost, scopedFsBackend } from '../index'
 
 const text = (value: string) => new TextEncoder().encode(value)
