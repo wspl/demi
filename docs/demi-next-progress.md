@@ -257,6 +257,50 @@ Pitfalls:
   new `/testing`-style entrypoint needs an explicit mapping there in
   addition to package.json `exports` and the tsdown entry list.
 
+## Agent restructure & boundary schemas (2026-09-01)
+
+Status: **done** (design record: `docs/agent-restructure-and-schemas.md`).
+All six execution steps landed as separate green commits; repo-wide
+typecheck clean, 543 tests across the affected packages passing.
+
+What landed:
+
+- Guard dedup: the two private `errorCode` clones in `@demicodes/agent`
+  replaced by the `@demicodes/utils` guard.
+- `@demicodes/agent` directory layout per the design record (`session/`,
+  `transcript/`, `store/`, `protocol/`, `server/`, `subagent/`,
+  `client/`); compaction halves merged, media externalization split from
+  the session store; `./stdio` entry registrations moved with the file.
+- `server/` split: facade / binding (frame dispatch) / `open-session.ts`
+  (assembly pipeline, closure captures now explicit parameters) /
+  live-session / ownership / summaries.
+- `subagent/` split: supervisor lifecycle vs the declarative command tree
+  behind a generic `SubagentCommandOps` seam (Job handle opaque, no
+  internal types leak through the root export).
+- Boundary schemas, one commit each: tool-progress views (zod replaces the
+  40-line isRecord chain), `ClientFrame` (schemas.ts is the single source
+  of truth, frames derive via `z.infer`, ingress rejects malformed frames
+  with `invalid_frame`), HTTP PATCH body (400 `invalid_body`), runner
+  protocol (both directions declared in `runner-protocol/schemas.ts`,
+  direction-aware decode validates structurally; the in-band fs-op guard
+  became redundant and was removed).
+- Negative-path tests per boundary (malformed frame, malformed body,
+  malformed protocol frames including a bogus fs op).
+
+Pitfalls:
+
+- zod's `discriminatedUnion` refuses two branches sharing a `type` value
+  (the fs_result ok/error pair) — a plain `z.union` handles that message
+  set with identical semantics.
+- `z.instanceof(Uint8Array)` infers `Uint8Array<ArrayBuffer>`, which
+  rejects ordinary `ArrayBufferLike` views at compile time; a
+  `z.custom<Uint8Array>` instance check keeps the plain type.
+- Shared types owned by other packages (core content blocks, provider
+  selections, shell identities) keep their hand-written declarations;
+  their validators are annotated `z.ZodType<T>` so schema drift fails the
+  build instead of silently diverging — only types whose boundary owns
+  them (frames, protocol messages) flip to schema-derived.
+
 ## Database design review (2026-09-01)
 
 Status: **concluded** — design record updated (`demi-next.md` § Database,
