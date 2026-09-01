@@ -703,7 +703,9 @@ local policy layer, no configuration beyond what the connection needs.
    session names. Any existing directory is a valid workspace; an operation on
    a nonexistent path fails with an error, nothing more. Spawned processes
    stream stdin/stdout/stderr over the socket and honor kill signals
-   (`HostSpawnHandle` semantics, platform-neutral).
+   (`HostSpawnHandle` semantics, platform-neutral). Binary resolution is a
+   device fact: a spawn request naming no `PATH`/`HOME` resolves against the
+   device's own; a request that sets either key is honored exactly.
 That is the whole surface. There is deliberately no runner-side control RPC:
 directory picking for the web UI is ordinary `readdir` over the same Host RPC,
 recently-used workspaces come from the backend's own session index, and
