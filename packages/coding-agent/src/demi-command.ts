@@ -10,18 +10,27 @@ export interface DemiCommandOptions {
 
 /**
  * The platform command. Organizing rule: every Demi-specific capability
- * lives under `demi` — flat verbs are the file operations, noun subgroups
- * are platform domains (todo, agent, host, …); anything outside `demi` is
- * an ordinary shell command.
+ * lives under `demi`, and every `demi` subcommand is a noun domain group
+ * (file, todo, agent, host, …); anything outside `demi` is an ordinary
+ * shell command.
  */
 export function createDemiCommand(options: DemiCommandOptions = {}): Command {
   return {
     name: 'demi',
-    summary:
-      'The Demi platform command: workspace file operations (read, create, edit, patch — text, images, and video) plus platform domains as subcommand groups.',
+    summary: 'The Demi platform command: every subcommand is a platform domain (file, todo, …).',
     subcommands: [
+      createFileGroup(),
       createTodoCommand(),
       ...(options.extraSubcommands ?? []),
+    ],
+  }
+}
+
+function createFileGroup(): Command {
+  return {
+    name: 'file',
+    summary: 'Read, create, edit, and patch workspace files (text, images, and video).',
+    subcommands: [
       {
         name: 'read',
         summary:

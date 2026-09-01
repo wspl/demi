@@ -18,27 +18,27 @@ import { LocalHost } from '@demicodes/host-local'
 import { bytesToBase64, encodeUtf8 } from '@demicodes/utils'
 import { createCodingCommandRegistry, createDemiCommand } from '../index'
 
-test('demi read returns a text file as text', async () => {
+test('demi file read returns a text file as text', async () => {
   const { env } = await createDemiEnvironment()
-  const created = await env.exec({ script: "demi create note.txt <<'EOF'\nhello world\nEOF" })
-  const read = await env.exec({ shellId: created.shellId, script: 'demi read note.txt' })
+  const created = await env.exec({ script: "demi file create note.txt <<'EOF'\nhello world\nEOF" })
+  const read = await env.exec({ shellId: created.shellId, script: 'demi file read note.txt' })
   expect(read.stdout.delta).toBe('hello world\n')
 })
 
-test('demi read emits raw bytes; binary files surface as binaryStdout at the boundary', async () => {
+test('demi file read emits raw bytes; binary files surface as binaryStdout at the boundary', async () => {
   const { env, host } = await createDemiEnvironment()
   // A real (invalid-UTF-8) binary payload written through Host.fs directly.
   const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe])
   await host.fs.writeFile('shot.png', png, { cwd: host.defaultCwd })
 
-  const read = await env.exec({ script: 'demi read shot.png' })
+  const read = await env.exec({ script: 'demi file read shot.png' })
   if (read.status !== 'exited') throw new Error('expected exited result')
   expect(read.exitCode).toBe(0)
   expect(read.binaryStdout?.data).toEqual(png)
   expect(read.stdout.delta).toContain(`<binary stdout: ${png.length} bytes; raw bytes at ${read.artifactDir}/stdout.bin`)
 
   // Bytes pipe cleanly into downstream commands.
-  const counted = await env.exec({ shellId: read.shellId, script: 'demi read shot.png | wc -c' })
+  const counted = await env.exec({ shellId: read.shellId, script: 'demi file read shot.png | wc -c' })
   if (counted.status !== 'exited') throw new Error('expected exited result')
   expect(counted.stdout.delta.trim()).toBe(String(png.length))
 })
@@ -52,26 +52,26 @@ test('demi --help documents byte-stream reads, and any word stays usable as a fi
   expect(help.stdout.delta).toContain('shown to you as viewable media')
   expect(help.stdout.delta).toContain('<path> - File path to read')
 
-  const leafHelp = await env.exec({ shellId: help.shellId, script: 'demi read --help' })
+  const leafHelp = await env.exec({ shellId: help.shellId, script: 'demi file read --help' })
   expect(leafHelp.status).toBe('exited')
   if (leafHelp.status !== 'exited') throw new Error('expected exited result')
-  expect(leafHelp.stdout.delta).toContain('demi read: Read a file.')
+  expect(leafHelp.stdout.delta).toContain('demi file read: Read a file.')
 
   // Help is a flag, so no word is reserved: a file named "prompt" is just a file.
-  const created = await env.exec({ shellId: help.shellId, script: "demi create prompt <<'EOF'\nnot help\nEOF" })
+  const created = await env.exec({ shellId: help.shellId, script: "demi file create prompt <<'EOF'\nnot help\nEOF" })
   expect(created.status).toBe('exited')
-  const read = await env.exec({ shellId: help.shellId, script: 'demi read prompt' })
+  const read = await env.exec({ shellId: help.shellId, script: 'demi file read prompt' })
   expect(read.status).toBe('exited')
   if (read.status !== 'exited') throw new Error('expected exited result')
   expect(read.exitCode).toBe(0)
   expect(read.stdout.delta).toBe('not help\n')
 })
 
-test('demi create writes a new file from heredoc content', async () => {
+test('demi file create writes a new file from heredoc content', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create src/foo.txt <<'EOF'\nhello\nEOF",
+    script: "demi file create src/foo.txt <<'EOF'\nhello\nEOF",
   })
   expect(created.stdout.delta).toBe('Created src/foo.txt\n')
   expect(fileDiffs(created)[0]).toMatchObject({
@@ -101,7 +101,7 @@ test('demi allows paths outside default cwd when Host.fs allows them', async () 
 
   const absoluteOutside = join(parent, 'absolute-outside.txt')
   const absolute = await env.exec({
-    script: `demi create ${JSON.stringify(absoluteOutside)} <<'EOF'\nnope\nEOF`,
+    script: `demi file create ${JSON.stringify(absoluteOutside)} <<'EOF'\nnope\nEOF`,
   })
   expect(absolute.status).toBe('exited')
   if (absolute.status !== 'exited') throw new Error('expected exited result')
@@ -110,7 +110,7 @@ test('demi allows paths outside default cwd when Host.fs allows them', async () 
 
   const relative = await env.exec({
     shellId: absolute.shellId,
-    script: "demi create ../relative-outside.txt <<'EOF'\nnope\nEOF",
+    script: "demi file create ../relative-outside.txt <<'EOF'\nnope\nEOF",
   })
   expect(relative.status).toBe('exited')
   if (relative.status !== 'exited') throw new Error('expected exited result')
@@ -118,7 +118,7 @@ test('demi allows paths outside default cwd when Host.fs allows them', async () 
   await expect(readFile(join(parent, 'relative-outside.txt'), 'utf8')).resolves.toBe('nope\n')
 })
 
-test('demi patch can modify paths outside default cwd when Host.fs allows them', async () => {
+test('demi file patch can modify paths outside default cwd when Host.fs allows them', async () => {
   const parent = await mkdtemp(join(tmpdir(), 'demi-patch-boundary-'))
   const root = join(parent, 'default-cwd')
   await mkdir(root)
@@ -132,11 +132,11 @@ test('demi patch can modify paths outside default cwd when Host.fs allows them',
   })
 
   const created = await env.exec({
-    script: "demi create inside.txt <<'EOF'\ninside\nEOF",
+    script: "demi file create inside.txt <<'EOF'\ninside\nEOF",
   })
   const patched = await env.exec({
     shellId: created.shellId,
-    script: `demi patch <<'PATCH'\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ ${outsidePath}\n@@ -0,0 +1 @@\n+outside\nPATCH`,
+    script: `demi file patch <<'PATCH'\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ ${outsidePath}\n@@ -0,0 +1 @@\n+outside\nPATCH`,
   })
 
   expect(patched.status).toBe('exited')
@@ -148,16 +148,16 @@ test('demi patch can modify paths outside default cwd when Host.fs allows them',
   await expect(readFile(outsidePath, 'utf8')).resolves.toBe('outside\n')
 })
 
-test('demi edit replaces exact text and fails on ambiguous matches', async () => {
+test('demi file edit replaces exact text and fails on ambiguous matches', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create file.txt <<'EOF'\none\ntwo\ntwo\nEOF",
+    script: "demi file create file.txt <<'EOF'\none\ntwo\ntwo\nEOF",
   })
 
   const ambiguous = await env.exec({
     shellId: created.shellId,
-    script: 'demi edit file.txt --old two --new changed',
+    script: 'demi file edit file.txt --old two --new changed',
   })
   if (ambiguous.status !== 'exited') throw new Error('expected exited result')
   expect(ambiguous.exitCode).toBe(1)
@@ -165,7 +165,7 @@ test('demi edit replaces exact text and fails on ambiguous matches', async () =>
 
   const edited = await env.exec({
     shellId: created.shellId,
-    script: 'demi edit file.txt --old two --new changed --occurrence 2',
+    script: 'demi file edit file.txt --old two --new changed --occurrence 2',
   })
   expect(edited.stdout.delta).toBe('Edited file.txt\n')
   expect(fileDiffs(edited)[0]).toMatchObject({
@@ -177,16 +177,16 @@ test('demi edit replaces exact text and fails on ambiguous matches', async () =>
   expect(read.stdout.delta).toBe('one\ntwo\nchanged\n')
 })
 
-test('demi edit uses context only when it disambiguates to one nearest match', async () => {
+test('demi file edit uses context only when it disambiguates to one nearest match', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create context.txt <<'EOF'\ntarget\nmiddle\ntarget\nEOF",
+    script: "demi file create context.txt <<'EOF'\ntarget\nmiddle\ntarget\nEOF",
   })
 
   const ambiguous = await env.exec({
     shellId: created.shellId,
-    script: 'demi edit context.txt --old target --new changed --context 2',
+    script: 'demi file edit context.txt --old target --new changed --context 2',
   })
   if (ambiguous.status !== 'exited') throw new Error('expected exited result')
   expect(ambiguous.exitCode).toBe(1)
@@ -199,7 +199,7 @@ test('demi edit uses context only when it disambiguates to one nearest match', a
 
   const edited = await env.exec({
     shellId: created.shellId,
-    script: 'demi edit context.txt --old target --new changed --context 3',
+    script: 'demi file edit context.txt --old target --new changed --context 3',
   })
   expect(edited.stdout.delta).toBe('Edited context.txt\n')
 
@@ -207,16 +207,16 @@ test('demi edit uses context only when it disambiguates to one nearest match', a
   expect(read.stdout.delta).toBe('target\nmiddle\nchanged\n')
 })
 
-test('demi edit rejects empty old text without modifying the file', async () => {
+test('demi file edit rejects empty old text without modifying the file', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create empty-old.txt <<'EOF'\ncontent\nEOF",
+    script: "demi file create empty-old.txt <<'EOF'\ncontent\nEOF",
   })
 
   const failed = await env.exec({
     shellId: created.shellId,
-    script: 'demi edit empty-old.txt --old "" --new changed',
+    script: 'demi file edit empty-old.txt --old "" --new changed',
   })
   expect(failed.status).toBe('exited')
   if (failed.status !== 'exited') throw new Error('expected exited result')
@@ -227,16 +227,16 @@ test('demi edit rejects empty old text without modifying the file', async () => 
   expect(unchanged.stdout.delta).toBe('content\n')
 })
 
-test('demi patch applies a unified diff', async () => {
+test('demi file patch applies a unified diff', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create patch.txt <<'EOF'\none\ntwo\nEOF",
+    script: "demi file create patch.txt <<'EOF'\none\ntwo\nEOF",
   })
 
   const patched = await env.exec({
     shellId: created.shellId,
-    script: "demi patch <<'PATCH'\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
+    script: "demi file patch <<'PATCH'\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
   expect(fileDiffs(patched)[0]).toMatchObject({
@@ -248,17 +248,17 @@ test('demi patch applies a unified diff', async () => {
   expect(read.stdout.delta).toBe('one\nthree\n')
 })
 
-test('demi patch accepts unified diff headers with timestamps', async () => {
+test('demi file patch accepts unified diff headers with timestamps', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create timed.txt <<'EOF'\nold\nEOF",
+    script: "demi file create timed.txt <<'EOF'\nold\nEOF",
   })
 
   const patched = await env.exec({
     shellId: created.shellId,
     script:
-      "demi patch <<'PATCH'\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
+      "demi file patch <<'PATCH'\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
 
@@ -266,17 +266,17 @@ test('demi patch accepts unified diff headers with timestamps', async () => {
   expect(read.stdout.delta).toBe('new\n')
 })
 
-test('demi patch applies multiple files and creates new files', async () => {
+test('demi file patch applies multiple files and creates new files', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create existing.txt <<'EOF'\none\nEOF",
+    script: "demi file create existing.txt <<'EOF'\none\nEOF",
   })
 
   const patched = await env.exec({
     shellId: created.shellId,
     script:
-      "demi patch <<'PATCH'\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
+      "demi file patch <<'PATCH'\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 2 file(s)\n')
   expect(fileDiffs(patched)).toHaveLength(2)
@@ -293,16 +293,16 @@ test('demi patch applies multiple files and creates new files', async () => {
   expect(added.stdout.delta).toBe('new\nfile\n')
 })
 
-test('demi patch deletes files with a /dev/null target', async () => {
+test('demi file patch deletes files with a /dev/null target', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create doomed.txt <<'EOF'\nremove\nEOF",
+    script: "demi file create doomed.txt <<'EOF'\nremove\nEOF",
   })
 
   const patched = await env.exec({
     shellId: created.shellId,
-    script: "demi patch <<'PATCH'\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
+    script: "demi file patch <<'PATCH'\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
   expect(fileDiffs(patched)[0]).toMatchObject({
@@ -318,17 +318,17 @@ test('demi patch deletes files with a /dev/null target', async () => {
   expect(missing.exitCode).toBe(0)
 })
 
-test('demi patch validates all files before writing any changes', async () => {
+test('demi file patch validates all files before writing any changes', async () => {
   const { env } = await createDemiEnvironment()
 
   const created = await env.exec({
-    script: "demi create first.txt <<'EOF'\nfirst\nEOF\ndemi create second.txt <<'EOF'\nsecond\nEOF",
+    script: "demi file create first.txt <<'EOF'\nfirst\nEOF\ndemi file create second.txt <<'EOF'\nsecond\nEOF",
   })
 
   const failed = await env.exec({
     shellId: created.shellId,
     script:
-      "demi patch <<'PATCH'\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-wrong\n+changed\nPATCH",
+      "demi file patch <<'PATCH'\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-wrong\n+changed\nPATCH",
   })
   expect(failed.status).toBe('exited')
   if (failed.status !== 'exited') throw new Error('expected exited result')
@@ -339,14 +339,15 @@ test('demi patch validates all files before writing any changes', async () => {
   expect(first.stdout.delta).toBe('first\n')
 })
 
-test('demi patch rolls back files when a later write fails', async () => {
+test('demi file patch rolls back files when a later write fails', async () => {
   const host = new FailingWriteHost('/workspace', {
     'first.txt': 'first\n',
     'second.txt': 'second\n',
   })
   const command = createDemiCommand()
-  const patch = command.subcommands?.find((subcommand) => subcommand.name === 'patch')
-  if (!patch?.run) throw new Error('missing demi patch command')
+  const fileGroup = command.subcommands?.find((subcommand) => subcommand.name === 'file')
+  const patch = fileGroup?.subcommands?.find((subcommand) => subcommand.name === 'patch')
+  if (!patch?.run) throw new Error('missing demi file patch command')
   const output = commandOutput()
 
   const result = await patch.run({
