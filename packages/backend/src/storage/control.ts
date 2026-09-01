@@ -28,6 +28,9 @@ export interface ControlService {
   deleteConnection(id: string): Promise<void>
   appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void>
   listUsage(userId: string): Promise<UsageRow[]>
+  /** Metadata only — the bytes live in the blob store under `sha256`. */
+  createAttachment(attachment: { userId: string; mediaType: string; sizeBytes: number; sha256: string }): Promise<AttachmentRecord>
+  getAttachment(id: string): Promise<AttachmentRecord | null>
   createWorkspace(workspace: { userId: string; deviceId: string; path: string; name: string }): Promise<WorkspaceRecord>
   getWorkspace(id: string): Promise<WorkspaceRecord | null>
   listWorkspaces(userId: string): Promise<WorkspaceRecord[]>
@@ -86,6 +89,15 @@ export interface ConnectionRecord {
   label: string
   /** Encrypted at rest (vault crypto); opaque to storage. */
   config: string
+  createdAt: string
+}
+
+export interface AttachmentRecord {
+  id: string
+  userId: string
+  mediaType: string
+  sizeBytes: number
+  sha256: string
   createdAt: string
 }
 
@@ -249,6 +261,48 @@ export class LocalControlService implements ControlService {
         new Date().toISOString(),
       ],
     )
+  }
+
+  async createAttachment(attachment: {
+    userId: string
+    mediaType: string
+    sizeBytes: number
+    sha256: string
+  }): Promise<AttachmentRecord> {
+    const record: AttachmentRecord = {
+      id: createId(),
+      userId: attachment.userId,
+      mediaType: attachment.mediaType,
+      sizeBytes: attachment.sizeBytes,
+      sha256: attachment.sha256,
+      createdAt: new Date().toISOString(),
+    }
+    this.db.run('INSERT INTO attachments (id, user_id, media_type, size_bytes, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+      record.id,
+      record.userId,
+      record.mediaType,
+      record.sizeBytes,
+      record.sha256,
+      record.createdAt,
+    ])
+    return record
+  }
+
+  async getAttachment(id: string): Promise<AttachmentRecord | null> {
+    const row = this.db.get<AttachmentRow>(
+      'SELECT id, user_id, media_type, size_bytes, sha256, created_at FROM attachments WHERE id = ?',
+      [id],
+    )
+    return row
+      ? {
+          id: row.id,
+          userId: row.user_id,
+          mediaType: row.media_type,
+          sizeBytes: row.size_bytes,
+          sha256: row.sha256,
+          createdAt: row.created_at,
+        }
+      : null
   }
 
   async listUsage(userId: string): Promise<UsageRow[]> {
@@ -475,6 +529,15 @@ interface ConnectionRow {
   type: string
   label: string
   config: string
+  created_at: string
+}
+
+interface AttachmentRow {
+  id: string
+  user_id: string
+  media_type: string
+  size_bytes: number
+  sha256: string
   created_at: string
 }
 
