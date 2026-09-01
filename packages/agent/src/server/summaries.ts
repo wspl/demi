@@ -3,6 +3,7 @@
 // rendered into typed frame payloads (tools are arbitrary, so their progress
 // is a real validation boundary).
 import { isRecord, safeJsonStringify } from '@demicodes/utils'
+import { z } from 'zod'
 import type { Block, ProviderErrorDiagnostics, ToolResultContentBlock } from '@demicodes/core'
 import type { BashAuditEvent } from '@demicodes/shell'
 import type { ConversationSummary, ShellCommandStatusLike } from '../protocol/frames'
@@ -40,72 +41,64 @@ function progressToText(progress: unknown): string {
   return safeJsonStringify(progress) ?? String(progress)
 }
 
+// Schemas validate; the original object is what crosses (no lossy clone).
+const shellStreamViewSchema = z.looseObject({
+  path: z.string(),
+  offset: z.number(),
+  delta: z.string(),
+  tail: z.string(),
+  bytes: z.number(),
+  truncated: z.boolean(),
+})
+
+const shellCommandStatusSchema = z.looseObject({
+  shellId: z.string(),
+  commandId: z.string(),
+  status: z.enum(['running', 'exited', 'aborted']),
+  stdout: shellStreamViewSchema,
+  stderr: shellStreamViewSchema,
+  runningMs: z.number(),
+  idleMs: z.number(),
+})
+
+const auditEventSchema = z.discriminatedUnion('kind', [
+  z.looseObject({
+    kind: z.literal('registered-command'),
+    name: z.string(),
+    args: z.array(z.string()),
+    exitCode: z.number(),
+  }),
+  z.looseObject({
+    kind: z.literal('portable-command'),
+    name: z.string(),
+    args: z.array(z.string()),
+    cwd: z.string(),
+    exitCode: z.number(),
+  }),
+  z.looseObject({
+    kind: z.literal('system-command'),
+    name: z.string(),
+    args: z.array(z.string()),
+    cwd: z.string(),
+    exitCode: z.number().nullable(),
+  }),
+])
+
 export function progressToShellOutput(
   progress: unknown,
 ): { shellId: string; commandId: string; status: ShellCommandStatusLike } | null {
-  if (!isRecord(progress)) return null
-  if (typeof progress.shellId !== 'string' || typeof progress.commandId !== 'string') return null
-  if (progress.status !== 'running' && progress.status !== 'exited' && progress.status !== 'aborted') return null
-  if (!isRecord(progress.stdout) || !isRecord(progress.stderr)) return null
-  const stdout = progress.stdout
-  const stderr = progress.stderr
-  if (
-    !isShellStreamView(stdout) ||
-    !isShellStreamView(stderr) ||
-    typeof progress.runningMs !== 'number' ||
-    typeof progress.idleMs !== 'number'
-  ) {
-    return null
-  }
+  const parsed = shellCommandStatusSchema.safeParse(progress)
+  if (!parsed.success) return null
   return {
-    shellId: progress.shellId,
-    commandId: progress.commandId,
-    status: progress as unknown as ShellCommandStatusLike,
+    shellId: parsed.data.shellId,
+    commandId: parsed.data.commandId,
+    status: progress as ShellCommandStatusLike,
   }
-}
-
-function isShellStreamView(value: Record<string, unknown>): boolean {
-  return (
-    typeof value.path === 'string' &&
-    typeof value.offset === 'number' &&
-    typeof value.delta === 'string' &&
-    typeof value.tail === 'string' &&
-    typeof value.bytes === 'number' &&
-    typeof value.truncated === 'boolean'
-  )
 }
 
 export function progressToAudit(progress: unknown): BashAuditEvent[] {
   if (!isRecord(progress) || !Array.isArray(progress.audit)) return []
-  return progress.audit.filter(isBashAuditEvent)
-}
-
-function isBashAuditEvent(value: unknown): value is BashAuditEvent {
-  if (!isRecord(value)) return false
-  if (value.kind === 'registered-command') {
-    return typeof value.name === 'string' && isStringArray(value.args) && typeof value.exitCode === 'number'
-  }
-  if (value.kind === 'portable-command') {
-    return (
-      typeof value.name === 'string' &&
-      isStringArray(value.args) &&
-      typeof value.cwd === 'string' &&
-      typeof value.exitCode === 'number'
-    )
-  }
-  if (value.kind === 'system-command') {
-    return (
-      typeof value.name === 'string' &&
-      isStringArray(value.args) &&
-      typeof value.cwd === 'string' &&
-      (typeof value.exitCode === 'number' || value.exitCode === null)
-    )
-  }
-  return false
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+  return progress.audit.filter((event): event is BashAuditEvent => auditEventSchema.safeParse(event).success)
 }
 
 export function errorDiagnostics(error: unknown): ProviderErrorDiagnostics | undefined {
