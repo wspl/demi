@@ -28,7 +28,7 @@ thread through exec/session/ctx.
 - Registered-command adapter: `CommandIO.stdout(Uint8Array)` returns latin1
   + `stdoutKind: 'bytes'` to the pipe; `CommandStdin` carries `bytes`
   alongside `text`.
-- `demi read` is `cat`: it emits raw file bytes for every file type. Media
+- `demi file read` is `cat`: it emits raw file bytes for every file type. Media
   summaries and model-capability errors move to the boundary.
 
 ## Boundary decision tree (agent layer, where the model is known)
@@ -54,7 +54,7 @@ capability gating lives in the agent layer where the tool result is built.
 Sniffing a closed set by magic bytes is deterministic; there is no
 content-type guessing beyond it.
 
-Accepted edge: a mixed stream (`demi read a.png; echo done`) matches magic at
+Accepted edge: a mixed stream (`demi file read a.png; echo done`) matches magic at
 offset 0 and ships with trailing bytes — decoders tolerate trailing data, and
 the fix is to not mix streams.
 
@@ -62,5 +62,5 @@ the fix is to not mix streams.
 
 The UDS `/run` result carries `stdoutEncoding: 'base64'` when the final
 stream is binary; the shim decodes and writes raw bytes to its OS stdout, so
-`demi read a.png | ffmpeg -i - …` works in external shells too. A truncated
+`demi file read a.png | ffmpeg -i - …` works in external shells too. A truncated
 binary stream is reported on stderr alongside the capped payload.
