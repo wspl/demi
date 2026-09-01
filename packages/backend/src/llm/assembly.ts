@@ -27,12 +27,11 @@ export type ProviderTypeFactory = (options: {
 
 /**
  * Session context for providers whose transport runs on the session's
- * execution target: the target's spawn, and the backend passthrough the
- * spawned process's model traffic must flow through.
+ * execution target: the target's spawn. Credentials are the provider's own
+ * business — its runtime resolves and injects them at spawn time.
  */
 export interface SessionProviderContext {
   spawn: ClaudeSpawn
-  anthropicPassthrough: { baseUrl: string; token: string }
 }
 
 function apiKey(config: ConnectionConfig): ApiKeyConnectionConfig {
@@ -63,15 +62,7 @@ export function builtinProviderTypes(): Record<string, ProviderTypeFactory> {
       createClaudeCodeProvider({
         ...common(options),
         stateDir: options.vaultDir,
-        ...(options.session
-          ? {
-              spawn: options.session.spawn,
-              env: {
-                ANTHROPIC_BASE_URL: options.session.anthropicPassthrough.baseUrl,
-                CLAUDE_CODE_OAUTH_TOKEN: options.session.anthropicPassthrough.token,
-              },
-            }
-          : {}),
+        ...(options.session ? { spawn: options.session.spawn } : {}),
       }),
     codex: (options) => createCodexProvider({ ...common(options), stateDir: options.vaultDir }),
     'grok-build': (options) => createGrokBuildProvider({ ...common(options), stateDir: options.vaultDir }),
