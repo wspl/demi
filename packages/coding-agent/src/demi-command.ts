@@ -2,11 +2,19 @@ import { asError, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@dem
 import { z } from 'zod'
 import type { Command, Host } from '@demicodes/shell'
 
-export function createDemiCommand(): Command {
+export interface DemiCommandOptions {
+  /** Product-contributed subcommand groups (e.g. the backend's `host` group). */
+  extraSubcommands?: Command[]
+}
+
+export function createDemiCommand(options: DemiCommandOptions = {}): Command {
   return {
     name: 'demi',
-    summary: 'Read, create, edit, and patch workspace files (text, images, and video).',
+    summary: options.extraSubcommands?.length
+      ? 'Workspace files (read, create, edit, patch — text, images, and video) and platform operations.'
+      : 'Read, create, edit, and patch workspace files (text, images, and video).',
     subcommands: [
+      ...(options.extraSubcommands ?? []),
       {
         name: 'read',
         summary:

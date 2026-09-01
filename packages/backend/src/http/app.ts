@@ -15,6 +15,7 @@ import { modelRoutes } from './models'
 import { runnerSocketRoutes } from './runner-socket'
 import { streamRoutes } from './stream'
 import { usageRoutes } from './usage'
+import { workspaceRoutes } from './workspaces'
 
 /** Assembles the external HTTP surface: error shape, 404 shape, one route module per resource. */
 export function createApp(options: {
@@ -38,6 +39,7 @@ export function createApp(options: {
   app.route('/api/usage', usageRoutes({ control: options.control }))
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
+  app.route('/api/workspaces', workspaceRoutes({ control: options.control }))
   // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
   app.route(
     '/api/conversations',
@@ -49,7 +51,11 @@ export function createApp(options: {
   )
   app.route(
     '/api/conversations',
-    conversationRoutes({ control: options.control, conversationStores: options.conversationStores }),
+    conversationRoutes({
+      control: options.control,
+      conversationStores: options.conversationStores,
+      agentServer: options.agentServer,
+    }),
   )
 
   return app

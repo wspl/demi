@@ -1,4 +1,4 @@
-import type { AgentHarness } from '@demicodes/agent'
+import type { AgentCommandsContext, AgentHarness } from '@demicodes/agent'
 import { CommandRegistry, type Command, type Host } from '@demicodes/shell'
 import { createDemiCommand } from './demi-command'
 import { createFileReferenceResolver } from './reference-resolver'
@@ -9,11 +9,17 @@ export type CodingState = Record<string, never>
 /** Per-action Host resolution (`AgentHarness.host` signature) for multi-target products. */
 export type CodingHostResolver = AgentHarness<CodingState>['host']
 
+/** Session-aware command construction (`AgentHarness.commands` signature). */
+export type CodingCommandsBuilder = (ctx: AgentCommandsContext<CodingState>) => Promise<Command[]> | Command[]
+
 export interface CodingAgentHarnessOptions {
   /** A fixed Host, or a resolver routing each action to its execution target. */
   host: Host | CodingHostResolver
   referenceHost?: Host
-  commands?: Command[]
+  /** Replaces the default command set; a builder closes over the session id. */
+  commands?: Command[] | CodingCommandsBuilder
+  /** Per-round context injection (`AgentHarness.preamble` signature). */
+  preamble?: AgentHarness<CodingState>['preamble']
 }
 
 export interface CodingCommandRegistryOptions {
@@ -33,6 +39,7 @@ export function createCodingCommandRegistry(options: CodingCommandRegistryOption
 
 export function createCodingAgentHarness(options: CodingAgentHarnessOptions): AgentHarness<CodingState> {
   const commands = options.commands ?? defaultCodingCommands()
+  const buildCommands: CodingCommandsBuilder = typeof commands === 'function' ? commands : () => [...commands]
   const resolveHost: CodingHostResolver =
     typeof options.host === 'function' ? options.host : () => options.host as Host
   const resolveReferences = createFileReferenceResolver<CodingState>(
@@ -42,7 +49,8 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
     name: 'coding',
     initialState: () => ({}),
     host: resolveHost,
-    commands: () => [...commands],
+    commands: buildCommands,
+    ...(options.preamble ? { preamble: options.preamble } : {}),
     agents: () => [
       {
         name: 'default',

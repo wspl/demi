@@ -60,6 +60,7 @@ CREATE TABLE conversations (
   title         TEXT NOT NULL,
   archived      INTEGER NOT NULL DEFAULT 0,
   workspace_id  TEXT REFERENCES workspaces(id),
+  prev_target_json TEXT,
   connection_id TEXT,
   model_id      TEXT,
   created_at    TEXT NOT NULL,
