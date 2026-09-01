@@ -1,5 +1,14 @@
 # @demicodes/web-ui
 
+## 0.22.1
+
+### Patch Changes
+
+- Updated dependencies [837e0f7]
+  - @demicodes/agent@0.22.1
+  - @demicodes/core@0.22.1
+  - @demicodes/utils@0.22.1
+
 ## 0.22.0
 
 ### Patch Changes
