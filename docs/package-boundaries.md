@@ -99,7 +99,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: coding harness, coding prompt, coding commands (the `demi` umbrella command accepts composed-in subcommand groups — e.g. the backend's `host` group), todo command, and file reference resolution.
+- Owns: coding harness, coding prompt, coding commands (the `demi` platform command: flat file-operation verbs plus noun subcommand groups — `todo` built in, product groups like the backend's `host` composed in), and file reference resolution.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, or LocalHost.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate BashEnvironment/tool runtime.

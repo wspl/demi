@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { AgentServer, type ProviderResolver } from '@demicodes/agent'
-import { createCodingAgentHarness, createDemiCommand, createTodoCommand } from '@demicodes/coding-agent'
+import { createCodingAgentHarness, createDemiCommand } from '@demicodes/coding-agent'
 import { LocalHost } from '@demicodes/host-local'
 import type { Host } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
@@ -111,7 +111,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
       commands: (ctx) => [
         createDemiCommand({ extraSubcommands: [createHostCommandGroup(hostCommandDeps, ctx.agentSessionId)] }),
-        createTodoCommand(),
       ],
       preamble: switchAnnouncementPreamble(control),
     }),

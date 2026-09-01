@@ -739,3 +739,15 @@ portable tar.
   delete-in-use), `attachments.test.ts` (upload→ref→inline-at-provider,
   checkpoint round-trip, missing-ref placeholder, size/traversal refusals,
   drop visible to the agent shell).
+
+### Command-surface consolidation (post-M6 review)
+
+On review the command layering had one inconsistency: `todo` sat at the top
+level while `host`/`agent` nested under `demi`. Consolidated: `todo` is now
+a `demi` subcommand group, and the organizing rule is stated in the design
+(§ The `demi host` command): everything Demi-specific lives under `demi` —
+flat verbs = file operations, noun groups = platform domains; outside
+`demi` is ordinary shell. `createCodingCommandRegistry`'s `includeDemi`
+option died with the move. The `packages/web` dev-product suite has 5
+pre-existing failures on this branch ("Provider … does not expose a runtime
+factory") unrelated to this change — that package is replaced at M9.
