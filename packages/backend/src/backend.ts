@@ -34,6 +34,11 @@ export interface BackendOptions {
   usage?: { providerRequestsPerMinute?: number }
   /** Passthrough upstream override — tests only. */
   passthrough?: { anthropic?: { upstreamBaseUrl?: string } }
+  /**
+   * The URL runners and their spawned CLI processes reach this backend at.
+   * Defaults to the local listen address — set it for any real deployment.
+   */
+  publicUrl?: string
 }
 
 export interface Backend {
@@ -66,12 +71,40 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const anthropicPassthrough = new AnthropicPassthrough(assembly, options.passthrough?.anthropic ?? {})
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
+  // Set after Bun.serve when no explicit publicUrl is configured.
+  let publicUrl = options.publicUrl ?? ''
+  // One passthrough token per (connection, session) pair, reused across reopens.
+  const passthroughTokens = new Map<string, string>()
+  const passthroughTokenFor = (connectionId: string, agentSessionId: string): string => {
+    const key = `${connectionId} ${agentSessionId}`
+    let token = passthroughTokens.get(key)
+    if (!token) {
+      token = anthropicPassthrough.mintToken(connectionId)
+      passthroughTokens.set(key, token)
+    }
+    return token
+  }
+
   // connectionId = providerId: the LLM module assembles the connection's base
   // provider from vault credentials and wraps it with metering + enforcement
-  // in the session's user/conversation context.
+  // in the session's user/conversation context. Providers whose transport
+  // runs on the execution target (requiresProcessCapableHost) get a
+  // session-scoped instance: the target's spawn plus a passthrough token, so
+  // the spawned CLI's model traffic flows back through this backend.
   const resolveProvider: ProviderResolver = async (providerId, { agentSessionId }) => {
-    const resolved = await assembly.providerFor(providerId)
+    let resolved = await assembly.providerFor(providerId)
     if (!resolved) return null
+    if (resolved.provider.requiresProcessCapableHost) {
+      const host = await hostFor(agentSessionId)
+      resolved = await assembly.providerFor(providerId, {
+        spawn: (params) => host.process.spawn(params),
+        anthropicPassthrough: {
+          baseUrl: `${publicUrl}/api/passthrough/anthropic`,
+          token: passthroughTokenFor(providerId, agentSessionId),
+        },
+      })
+      if (!resolved) return null
+    }
     const conversation = await control.getConversation(agentSessionId)
     const userId = conversation?.userId ?? STUB_USER.id
     return meterProvider(resolved.provider, {
@@ -122,6 +155,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     fetch: app.fetch,
     websocket,
   })
+  if (!publicUrl) publicUrl = `http://localhost:${server.port}`
 
   return {
     port: server.port ?? 0,
