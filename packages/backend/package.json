@@ -33,10 +33,14 @@
     "@demicodes/provider-anthropic-api": "workspace:^",
     "@demicodes/provider-google": "workspace:^",
     "@demicodes/provider-openai-api": "workspace:^",
+    "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "hono": "^4.13.5",
     "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@demicodes/runner": "workspace:^"
   },
   "license": "Apache-2.0",
   "publishConfig": {

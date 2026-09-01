@@ -83,7 +83,7 @@ export class RunnerClient {
     const deviceToken = await this.state.readToken()
     let ws: WebSocket
     try {
-      ws = this.createWebSocket(this.options.backendUrl)
+      ws = this.createWebSocket(runnerSocketUrl(this.options.backendUrl))
     } catch (error) {
       this.scheduleReconnect()
       return
@@ -175,4 +175,13 @@ export class RunnerClient {
       void this.connect()
     }, delay)
   }
+}
+
+/** `--backend https://demi.example.com` ⇒ `wss://demi.example.com/api/runner`; an explicit path is kept as-is. */
+function runnerSocketUrl(backendUrl: string): string {
+  const url = new URL(backendUrl)
+  if (url.protocol === 'http:') url.protocol = 'ws:'
+  else if (url.protocol === 'https:') url.protocol = 'wss:'
+  if (url.pathname === '' || url.pathname === '/') url.pathname = '/api/runner'
+  return url.toString()
 }
