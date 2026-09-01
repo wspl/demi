@@ -67,7 +67,7 @@ Decisions:
 - Local-only `resolveSpawnCwd` (statSync fallback for virtual cwds) stays in
   the local wrapper; injected spawns receive the request cwd as-is.
 - Per-session spawn routing (which runner a given session's CLI lands on) is
-  deliberately **not** solved here — the option is provider-level; M3's
+  deliberately **not** solved here — the option is provider-level; M5's
   backend owns routing.
 
 ### Item 2 — provider execution-requirement capability flag
@@ -75,14 +75,14 @@ Decisions:
 Status: **done** (`a8269d0`). `Provider.requiresProcessCapableHost?: boolean`
 — a flat optional flag, no grouping structure (nothing else to group yet).
 claude-code declares it; enforcement (virtual target refusal with upgrade
-guidance) lands with `@demicodes/host-virtual` in M1.
+guidance) lands with `@demicodes/host-virtual` in M2.
 
 ### Item 3 — host-switch integration test (migration primitive)
 
 Status: **done** (`734ae4f`,
 `packages/agent/src/__tests__/host-switch-migration.test.ts`).
 
-Conclusions for M4's product implementation:
+Conclusions for M6's product implementation:
 
 - The context-block injection point is the **harness `preamble` hook**
   (`AgentHarness.preamble(ctx)` with `ctx.metadata`) — it lands on the user
@@ -101,15 +101,11 @@ Conclusions for M4's product implementation:
   spawn shape types therefore live in their own `./spawn` module
   (`2059dab`) — transport stays internal.
 
-## M1 — Backend skeleton + virtual default (A) / Runner protocol core (B)
+## M1 — Runner protocol core
 
-Status: **done** (2026-08-31). No parallel work — tracks ran sequentially,
-B first per the risk-first ordering principle (the only greenfield
-contract).
-
-### Track B — runner protocol core
-
-Status: **done** (`58bbfaf`, `02154de`).
+Status: **done** (2026-08-31, `58bbfaf`, `02154de`). Ran before M2 per the
+risk-first ordering principle (the only greenfield contract); no parallel
+work.
 
 What landed:
 
@@ -119,7 +115,7 @@ What landed:
 - `@demicodes/runner`: `RunnerClient` (outbound WS, reconnect/backoff,
   claim handshake client, ping/pong), `RunnerState` (`runner.json` +
   `runner-token` 0600), `demi-runner` CLI entry.
-- M1-B acceptance test passes end-to-end over a real WebSocket: real
+- M1 acceptance test passes end-to-end over a real WebSocket: real
   cat/tee/spawn on the runner, mid-command runner death → ordinary tool
   error + session continues, auto-reconnect → next command succeeds.
 
@@ -147,11 +143,11 @@ Pitfalls:
   running, so tests can't use events to detect "command started";
   `RemoteHost.activeSpawnCount` was added as the honest diagnostic.
 
-### Track A — backend skeleton + virtual default
+## M2 — Backend skeleton + virtual default
 
-Status: **done** (`115e752` host-virtual, `d414327` coding-agent host
-resolver, `ef75e5c` agent session-lifetime refactor, `8f25145` backend).
-M1 acceptance tests pass end-to-end over the real Web API + WS stream.
+Status: **done** (2026-08-31; `115e752` host-virtual, `d414327` coding-agent
+host resolver, `ef75e5c` agent session-lifetime refactor, `8f25145` backend).
+M2 acceptance tests pass end-to-end over the real Web API + WS stream.
 
 What landed:
 
@@ -203,8 +199,8 @@ Pitfalls:
 
 Status: **concluded** — design record updated (`demi-next.md` § Database,
 Backend topology, package-changes item 4, storage-pluggability audit,
-roadmap M1.5/M7/M8 + verification rows; `session-storage-and-naming.md`
-journal role). **No implementation yet**; M1.5 scheduling to be confirmed
+roadmap M3/M9/M10 + verification rows; `session-storage-and-naming.md`
+journal role). **No implementation yet**; M3 scheduling to be confirmed
 separately.
 
 Final design (see `demi-next.md` for the full record + diagrams):

@@ -210,7 +210,7 @@ recurring JIT-CVE class — and no half-maintained native V8 bridge enters the
 credential-holding process. The 10–50× interpreter slowdown is irrelevant at
 chat-script scale. Registered commands dispatch before spawn, so the
 `executable_not_found` contract above is unaffected. Ships as an independent
-branch after M1, preceded by its own small design record (runtime choice,
+branch after M2, preceded by its own small design record (runtime choice,
 limits, console mapping).
 
 ### Web frontend (`@demicodes/web`, product leaf)
@@ -224,7 +224,7 @@ assets ship inside the backend image and `@demicodes/backend` serves them
 alongside `/api`; development: Vite dev server proxying `/api`.
 
 Naming: the existing dev-only `@demicodes/web` product is renamed
-`web-demo` when the new package is scaffolded (M6 — the UI is its own
+`web-demo` when the new package is scaffolded (M8 — the UI is its own
 dedicated milestone, last among feature work, built against the frozen API
 so completed functionality never forces UI rework), lives on as a deprecated
 demo, and gets deleted once the product covers it.
@@ -650,15 +650,15 @@ Resource layout (concrete scope fed into the roadmap):
 
 | Resource | Endpoints | Lands in |
 |---|---|---|
-| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M1 stub → M5 real |
-| conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript` (cold history); `WS /api/conversations/:id/stream` | M1 |
-| models | `GET /api/models` (aggregated catalog, grouped by connection) | M1 |
-| devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…` (directory browse), `POST /api/devices/:id/fs` (create directory) | M2 |
-| workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (rename/remove the pointer; never touches files) | M4 |
-| connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` (poll) | M3 |
-| usage | `GET /api/usage` | M3 |
-| attachments | `POST /api/attachments` (returns reference id), `POST /api/conversations/:id/workspace-files` | M4 |
-| admin | `GET/POST/PATCH /api/users` (create, reset password; grant admin — master only), `GET/PUT /api/settings` (instance mode) | M5 |
+| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M2 stub → M7 real |
+| conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript` (cold history); `WS /api/conversations/:id/stream` | M2 |
+| models | `GET /api/models` (aggregated catalog, grouped by connection) | M2 |
+| devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…` (directory browse), `POST /api/devices/:id/fs` (create directory) | M4 |
+| workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (rename/remove the pointer; never touches files) | M6 |
+| connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` (poll) | M5 |
+| usage | `GET /api/usage` | M5 |
+| attachments | `POST /api/attachments` (returns reference id), `POST /api/conversations/:id/workspace-files` | M6 |
+| admin | `GET/POST/PATCH /api/users` (create, reset password; grant admin — master only), `GET/PUT /api/settings` (instance mode) | M7 |
 
 ## Runner program
 
@@ -845,7 +845,7 @@ backend, which uses this same Host RPC when it needs to look at the device
 4. `@demicodes/agent` — the persistence contract becomes append-block +
    save-state (the journal, required design — see Database and
    `docs/session-storage-and-naming.md`): streaming appends finished
-   blocks; nothing rewrites the whole transcript. Lands in M1.5.
+   blocks; nothing rewrites the whole transcript. Lands in M3.
 
 Explicitly **not** part of this design — each of these is unnecessary once
 sessions live in the backend, and none should be reintroduced: a
@@ -963,7 +963,7 @@ endpoint was contacted (a local deny-proxy caught escape attempts).
   subagent records, future blobs (command artifacts are fs files on
   the execution target, not store entries). The backend implements a DB-backed
   `HostStore` and composes it into every Host it hands the harness. The one
-  deliberate agent-layer change is M1.5's persistence contract
+  deliberate agent-layer change is M3's persistence contract
   (append-block + save-state); everything else plugs in behind the
   existing seams.
 - Credentials are fully behind injectable auth stores: every subscription
@@ -1002,28 +1002,26 @@ live per milestone in `docs/demi-next-progress.md`.
   between turns (two temp-dir LocalHosts) with an injected context block —
   the migration primitive in miniature.
 
-**M1 — Two parallel tracks (no dependency between them)**
+**M1 — Runner protocol core**
+The runner-protocol package (fs RPC, streaming spawn, handshake) and the
+`demi-runner` binary, exercised against a **bare AgentServer** in tests —
+no product integration, no device registry yet. First because it depends
+on nothing else and is the design's only greenfield contract — the
+earlier it exists, the earlier its implementation problems surface.
 
-*Track A — Backend skeleton + virtual default (first end-to-end node).*
+**M2 — Backend skeleton + virtual default (first end-to-end node)**
 `@demicodes/backend` serving the conversation stream + the Web API
 multi-user-shaped (stub user); the storage module (schema, numbered `.sql`
-migrations, thin SQL layer); conversation
-persistence + session index; `@demicodes/host-virtual` with its local-dir
-blob backend as the default target. No frontend work — all acceptance is
-test-level (in-process `AgentClient`). Providers are **operator-assembled**
-exactly like the old dev product (env keys / operator logins) — the vault is
-explicitly out of M1 scope. Accept: a zero-setup virtual conversation with
+migrations, thin SQL layer); conversation persistence + session index;
+`@demicodes/host-virtual` with its local-dir blob backend as the default
+target. No frontend work — all acceptance is test-level (in-process
+`AgentClient`). Providers are **operator-assembled** exactly like the old
+dev product (env keys / operator logins) — the vault is explicitly out of
+scope here. Accept: a zero-setup virtual conversation with
 portable-command tools; client detach mid-turn reattaches to the running
 turn; cold history readable.
 
-*Track B — Runner protocol core.* The runner-protocol package (fs RPC,
-streaming spawn, handshake) and the `demi-runner` binary, exercised against a
-**bare AgentServer** in tests — no product integration, no device registry
-yet. Runs in parallel because it depends on nothing in Track A and is the
-design's only greenfield contract — the earlier it exists, the earlier its
-implementation problems surface.
-
-**M1.5 — Storage final shape**
+**M3 — Storage final shape**
 The final storage layout at N=1: `control.sqlite` +
 `conversations/<id>.sqlite`, the block-row journal in the agent
 persistence contract (streaming appends block rows — no whole-transcript
@@ -1031,22 +1029,22 @@ rewrites), transcript media out of the transcript via `source.ref` into
 the blob store, and `host_store` scoped into the conversation databases.
 `ControlService` exists from here as the interface in front of
 `control.sqlite` (Local implementation only; the RPC realization is
-M8's).
+M10's).
 
-**M2 — Runner productized**
+**M4 — Runner productized**
 Claim-by-token flow, device registry with online status, backend harness
 host resolution to remote Hosts. Accept: a session executes real shell
 commands and file edits on a claimed device; runner disconnect surfaces as
 tool errors without losing the session; reconnect resumes.
 
-**M3 — LLM module + credential vault + metering + Claude Code**
+**M5 — LLM module + credential vault + metering + Claude Code**
 Two acceptance steps in order:
 1. *BYOK + metering* (no dependencies): vault key storage (instance-secret
    encryption at rest), per-user provider assembly for the API-key providers
    keyed by `(connectionId, modelId)`, usage ledger + enforcement. This is
    the product's minimum viable form — a user pastes a key and chats — and
    stands alone as a usable point.
-2. *Subscriptions + Claude Code* (depends on M2): provider device-login
+2. *Subscriptions + Claude Code* (depends on M4): provider device-login
    flows + refresh in the vault, the Anthropic passthrough, claude-code
    sessions spawning their CLI on the session's runner. Accept: turns with
    every provider against mock LLM endpoints, runner holding zero
@@ -1054,7 +1052,7 @@ Two acceptance steps in order:
    `claude` binary); real-subscription smoke manual only, never an ungated
    test.
 
-**M4 — Target switching + attachments (mechanisms + endpoints only; UI at M6)**
+**M6 — Target switching + attachments (mechanisms + endpoints only; UI at M8)**
 Turn-boundary switching + context injection + the out-of-virtual tmp-dump
 (model relocates); workspaces CRUD; offline-target degradation (read/chat via
 virtual);
@@ -1063,30 +1061,30 @@ drop (Host RPC `writeFile`). Accept: switch, upgrade, and offline flows each
 covered by integration tests; an uploaded image round-trips through a
 StubProvider turn and the checkpoint.
 
-**M5 — Multi-user systems (API-level, no UI)**
+**M7 — Multi-user systems (API-level, no UI)**
 Real auth (username/password, cookie sessions, master/admin/user roles, no
 registration, no recovery); user-management and instance-settings endpoints;
 **shared/isolated instance-mode enforcement** (admin-only connections in
 shared mode); tenant-isolation authz matrix. Everything test-accepted
-against the API — at the end of M5 the entire API surface is complete and
+against the API — at the end of M7 the entire API surface is complete and
 frozen.
 
-**M6 — Web UI (its own dedicated milestone, last among feature work)**
+**M8 — Web UI (its own dedicated milestone, last among feature work)**
 The **entire `@demicodes/web` package** built in one concentrated phase per
 the layout design — scaffold, workspace-grouped sidebar, chat view on
 web-ui, settings dialogs (devices, connections, usage, user management,
 instance settings), target picker — with the old dev product renamed
 `web-demo` at this point. UI is deliberately last so that completed,
-frozen functionality never forces UI rework; it consumes the M5-frozen API
+frozen functionality never forces UI rework; it consumes the M7-frozen API
 and adds no new backend surface.
 
-**M7 — Deployment packaging**
+**M9 — Deployment packaging**
 Docker images for runner and backend (backend image carries the built web
 assets); a sample Litestream sidecar config (optional S3 durability at
 N=1); end-to-end acceptance. Pure hosting work after interfaces are
 frozen.
 
-**M8 — Scaled deployment (post-v1)**
+**M10 — Scaled deployment (post-v1)**
 Everything the N>1 topology needs, gathered from the design sections:
 `demi-controld` as a standalone process (`ControlService` RPC server on
 Hono + `RemoteControlService` client, internal listener, service-token
@@ -1095,9 +1093,9 @@ host-virtual, Litestream deployment config (every node, `dir` + `watch`),
 routing-key plumbing (login cookie + runner route key) and the sample
 reverse-proxy config with the static user→worker map, the user-migration
 procedure (stop → restore → remap), multi-instance smoke. No application code path changes — the `ControlService` seam and
-the storage shape are already final from M1.5; that is the point.
+the storage shape are already final from M3; that is the point.
 
-Independent branch, any time after M1: the virtual-target JS command
+Independent branch, any time after M2: the virtual-target JS command
 (WASM-sandboxed QuickJS; own design record first).
 
 Deliberately deferred: fs RPC batching/caching (only when measurements
@@ -1114,16 +1112,16 @@ checklists only for UI look-and-feel and packaging smoke.
 | M | Verification |
 |---|---|
 | M0 | Spawn-injection + `buildClaudeEnv` overlay assertions (no CLI). Capability-flag tests. Host-switch integration: StubProvider session runs turn 1 against LocalHost A, turn 2 against LocalHost B; assert context block injected, per-Host BashEnvironment isolation, transcript continuity. |
-| M1-A | Backend integration in one test process: browser-side `AgentClient` (in-process transport) + virtual-Host session; detach client mid-turn with a slow StubProvider → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort); cold-history read equals live transcript; portable commands work, spawn fails with the upgrade message. |
-| M1-B | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Remote-Host integration against a bare AgentServer: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. |
-| M1.5 | Block-row persistence: a streamed turn appends rows (no whole-transcript rewrite observable); restore from `control.sqlite` + `conversations/<id>.sqlite` equals the live transcript; media blocks round-trip through `source.ref` + blob store; per-conversation `host_store` isolation. |
-| M2 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
-| M3 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
-| M4 | Switch integration, all directions unconstrained: real→real (files stay + honest context block; same-device note when applicable), virtual→real (files land in the target tmp dir, context block names the path, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
-| M5 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
-| M6 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |
-| M7 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
-| M8 | `ControlService` contract tests run against both implementations (Local in-process / Remote over a real controld); two local workers + one controld behind a mapped proxy — user pinned to one worker, migration (stop → restore conversation files from the replica → remap) preserves history; blob-store S3 round-trip against a local S3-compatible server; domain errors survive the RPC wire with `code` intact. |
+| M1 | Protocol codec round-trips (portable JSON incl. `Uint8Array`). Remote-Host integration against a bare AgentServer: session executes `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error, session continues; reconnect → next command succeeds. |
+| M2 | Backend integration in one test process: browser-side `AgentClient` (in-process transport) + virtual-Host session; detach client mid-turn with a slow StubProvider → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort); cold-history read equals live transcript; portable commands work, spawn fails with the upgrade message. |
+| M3 | Block-row persistence: a streamed turn appends rows (no whole-transcript rewrite observable); restore from `control.sqlite` + `conversations/<id>.sqlite` equals the live transcript; media blocks round-trip through `source.ref` + blob store; per-conversation `host_store` isolation. |
+| M4 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
+| M5 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
+| M6 | Switch integration, all directions unconstrained: real→real (files stay + honest context block; same-device note when applicable), virtual→real (files land in the target tmp dir, context block names the path, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
+| M7 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
+| M8 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |
+| M9 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
+| M10 | `ControlService` contract tests run against both implementations (Local in-process / Remote over a real controld); two local workers + one controld behind a mapped proxy — user pinned to one worker, migration (stop → restore conversation files from the replica → remap) preserves history; blob-store S3 round-trip against a local S3-compatible server; domain errors survive the RPC wire with `code` intact. |
 
 Test modules and their coverage get documented per milestone as they land, per
 the repo's design-record rules.
