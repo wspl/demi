@@ -555,3 +555,59 @@ Pitfalls (of the review itself):
   actually run this?" test (S3-lease sharding, Bedrock). The test that
   settled every argument was demanding a named production system per
   design element.
+
+## Host design round: user/managed hosts, `demi host`, lifecycle (2026-09-01)
+
+Design-only round (no code); the outcome is the "Execution targets: user
+hosts and managed hosts" section in `docs/demi-next.md`, the M6 rewrite,
+the new M7 (managed hosts), and the M8–M11 renumbering.
+
+Origin: the phrase "docker based host" existed in the design only as a
+hosting variant with no usage scenario. This round gave it one and renamed
+the concepts: **user host** (paired device) and **managed host**
+(backend-provisioned container), serving two scenarios — session upgrade
+(workspace-less conversation binds a managed host directly,
+`conversations.hostDeviceId`) and Cloud workspace (one managed host per
+project behind the existing workspace pipeline).
+
+Decisions, in review order:
+
+- **Binding model**: three-branch host resolution (workspace →
+  session-bound managed host → virtual), `workspaceId`/`hostDeviceId`
+  mutually exclusive; `devices.kind: 'user' | 'managed'`; managed devices
+  never listed as user assets.
+- **Command layering**: `demi` was found to be the file-editing command
+  (read/create/edit/patch) with `todo` as a sibling — a proposed top-level
+  `host` command was considered, but the user confirmed `demi host` under
+  the umbrella; the backend contributes the `host` group into the
+  coding-agent-owned `demi` command.
+- **"upgrade" semantics rejected** in favor of target-carrying
+  `demi host switch managed` (reserves `switch <device>` for future
+  user-host migration).
+- **`origin` rejected** as the name for the departed host (git collision;
+  the concept is temporal) — `prev` chosen.
+- **`ls`/`cp` migration subcommands rejected**: filtering/globbing/
+  scripting belong to the shells on both ends; the only primitive is
+  `demi host prev shell` as a byte-faithful ssh analog, with a portable
+  create-only `tar` for virtual prevs. `demi read`'s pipe-into-ffmpeg
+  contract is the plumbing precedent.
+- **`release` kept over destroy/dispose**: it is the only verb true for
+  all three prev types (virtual no-op / managed hibernate / user-host
+  grant revocation).
+- **Security baseline trimmed on review**: an earlier per-deployment
+  tiering (runc for self-host, gVisor for multi-tenant) was rejected —
+  uniform baseline everywhere; cap-drop/seccomp/no-new-privileges and
+  split network rules were cut as redundant under gVisor; final list is
+  the six items in the design.
+- **Lifecycle checked against production practice** before acceptance:
+  idle snapshot-and-destroy + only-home-survives is Gitpod's model
+  (Codespaces/Coder as volume variants); adopted their edge cases —
+  running processes count as activity, snapshot failure never destroys,
+  snapshot size cap surfaces, wake idempotent per owner. The prev slot is
+  the one invented piece and was deliberately kept minimal.
+- The old M6 out-of-virtual tmp-dump (`/tmp/demi-migration-<id>/`) is
+  superseded by the prev pipe — the agent pulls what it needs itself.
+
+Explicitly not designed (deferred by decision, not omission): user-host
+migration implementation (`switch <device>` + web confirmation flow),
+managed→virtual downgrade entrance, finer security items.

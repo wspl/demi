@@ -15,8 +15,8 @@ over ChatGPT/Claude web UIs:
   existing subscriptions (Claude Code, Codex, Grok, …); all credentials are
   stored server-side and usable from any of the user's devices.
 - **Choice of execution environment**: agent tools run on the user's own
-  devices via the runner program, in operator-managed containers, or in a
-  zero-setup virtual environment.
+  devices via the runner program (user hosts), in operator-provisioned
+  containers (managed hosts), or in a zero-setup virtual environment.
 - **Chat-first default**: most sessions are conversation with light tools and
   need no real machine at all.
 
@@ -25,7 +25,7 @@ over ChatGPT/Claude web UIs:
 ```
 web  ←— our protocol —→  backend  ←— official provider wires —→  LLM providers
                             │
-                            └←— our runner protocol (Host RPC) —→ runner (user device / container)
+                            └←— our runner protocol (Host RPC) —→ runner (user host / managed host)
                                      └─ claude code CLI (spawned by backend via the runner;
                                         stream-json over stdio to the backend)
                                             └── its own native Anthropic HTTPS ——▶ Claude backend
@@ -62,8 +62,9 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
    authoritative conversation store is backend-local. Runners hold no
    conversation state.
 2. **The execution target is a mutable session property.** A session's tools
-   execute against a `Host`: the in-process virtual Host, a runner's remote
-   Host, or an operator container's remote Host. Demi's agent was built for
+   execute against a `Host`: the in-process virtual Host, or the remote Host
+   of a runner — on a user-paired device (user host) or an
+   operator-provisioned container (managed host). Demi's agent was built for
    this — `AgentHarness.host` resolves a stable Host per execution target from
    action metadata, with per-Host BashEnvironment reuse. Switching targets is
    a first-class operation at a turn boundary, announced to the model with an
@@ -159,6 +160,9 @@ Spoken of as modules, not separate services:
 - **Runner management module**: device registry (claim tokens, device tokens,
   online status = socket state), the runner-protocol server, and per-session
   Host handles over connected runners.
+- **Managed hosts module**: the `ManagedHostProvisioner` (Docker Engine API),
+  lifecycle (idle hibernate to home snapshots, wake, prev release), and the
+  backend-contributed `demi host` subcommand group — see Execution targets.
 - **Credential vault module**: BYOK keys and subscription OAuth tokens,
   the providers' device-login flows, token refresh — including the hard-coded
   auth endpoints (`auth.openai.com`, `auth.x.ai`, `console.anthropic.com`),
@@ -174,8 +178,9 @@ Spoken of as modules, not separate services:
 ### Runner (`@demicodes/runner`, product leaf)
 
 The program users install on their devices — detailed in the Runner program
-section below. The same binary in a container image is the **docker runner**
-(operator-managed): a hosting variant, not a new code path.
+section below. The same binary is the entrypoint of the managed-host
+container image (see Execution targets): one binary, two acquisition paths —
+user pairing and backend provisioning — zero code forks.
 
 ### Virtual execution (default entry)
 
@@ -200,8 +205,9 @@ session runs in the backend anyway, there is no extra lifecycle machinery.
 Its `process.spawn` must resolve with
 `spawnError.kind = 'executable_not_found'` — the portable-command fallback
 engages only on that error kind, so anything else would break even `cat` —
-and the shell surfaces an actionable "virtual environment — upgrade to a
-device to run real programs" message. Limits surface honestly: `bash`, `sh`,
+and the shell surfaces an actionable message naming the way out:
+`demi host switch managed` for a real Linux environment (see Execution
+targets), or moving the session to one of the user's own devices. Limits surface honestly: `bash`, `sh`,
 `sleep`, background jobs, and any real binary require a real target
 (`packages/shell/src/portable-commands.ts:18`), and the Claude Code provider
 needs a process-capable target for its CLI — gated by a provider capability
@@ -233,7 +239,7 @@ assets ship inside the backend image and `@demicodes/backend` serves them
 alongside `/api`; development: Vite dev server proxying `/api`.
 
 Naming: the existing dev-only `@demicodes/web` product is renamed
-`web-demo` when the new package is scaffolded (M8 — the UI is its own
+`web-demo` when the new package is scaffolded (M9 — the UI is its own
 dedicated milestone, last among feature work, built against the frozen API
 so completed functionality never forces UI rework), lives on as a deprecated
 demo, and gets deleted once the product covers it.
@@ -272,20 +278,22 @@ Layout and information architecture:
 
 - Every session is an AgentSession in the backend. Its current **execution
   target** is a session property; the harness resolves the Host per action
-  from it. A target is either `virtual` or a **workspace** — a lightweight
-  named entity, `(device, path, name)`. A workspace is only an attribute of
-  conversations: conversations move freely between workspaces (and to/from
-  virtual), and nothing else hangs off it — no per-workspace settings or
-  permissions.
-- **Target switching is one generic, unconstrained mechanism.** Any target →
-  any target, in any direction, at a turn boundary; the product adds no
-  restrictions. The machine's job is minimal: re-resolve the Host and inject
-  a context block stating the previous and new target/directory and that
-  files stay where they were. The single mechanical extra is switching **out
-  of virtual**: the virtual files are written to a temp directory on the new
-  target (`/tmp/demi-migration-<id>/`) — otherwise they would be permanently
-  unreachable — and the context block names that path so **the model
-  relocates what it needs itself**. No code-side placement, merging, or
+  from it. A target is `virtual`, a **workspace** — a lightweight named
+  entity, `(device, path, name)` — or, for workspace-less sessions that need
+  a real machine, a session-bound **managed host**
+  (`conversations.hostDeviceId`, cwd = the container home; see Execution
+  targets). Resolution order: workspace if set, else the session-bound
+  managed host, else virtual; `workspaceId` and `hostDeviceId` are mutually
+  exclusive. A workspace is only an attribute of conversations:
+  conversations move freely between workspaces (and to/from virtual), and
+  nothing else hangs off it — no per-workspace settings or permissions.
+- **Target switching is one generic mechanism with named entrances.** The
+  machine's job is minimal: at a turn boundary, re-resolve the Host, record
+  the departed target in the session's **prev slot**, and inject a context
+  block stating the previous and new target/directory. Files are never moved
+  by code: the previous host stays reachable through `demi host prev` until
+  released (see Execution targets), and **the model relocates what it needs
+  itself** over the shell pipe — no code-side placement, merging, or
   conflict rules. When the new target is on the same device, the context
   block notes the old directory is still directly accessible. Because
   command artifacts are real
@@ -294,7 +302,12 @@ Layout and information architecture:
   the switch are stale on the new Host. The runtime side is already safe:
   per-Host environments plus cross-Host shell-handle ownership checks fence
   old handles, and new commands write artifacts under the new target's
-  `commandArtifactsDir` naturally.
+  `commandArtifactsDir` naturally. Entrances: the agent upgrades a virtual
+  session itself (`demi host switch managed`, silent — no user
+  confirmation); the user moves a session to a user host from the web target
+  picker (second confirmation, migration again left to the agent); no
+  managed→virtual entrance exists — the capability supports it, the product
+  does not surface it.
 - **Runner offline** mid-turn: in-flight spawns die and fs calls fail; these
   surface as ordinary tool errors and the turn continues or ends — the session
   itself is never lost. Offline targets leave the session fully readable and
@@ -314,6 +327,149 @@ Layout and information architecture:
   the client reattaches with `open` + `sync_transcript`
   (`packages/agent/src/client.ts:200`). Verify during implementation that a
   binding close never aborts an in-flight turn.
+
+## Execution targets: user hosts and managed hosts
+
+Two device classes back real execution, one runner binary behind both:
+
+- A **user host** is a device the user pairs through the claim flow — their
+  own machine, listed on the devices page.
+- A **managed host** is a container the backend provisions on demand — an
+  operator resource, absent from the devices list (`devices.kind =
+  'managed'`) and bound to exactly one owner, which every control-plane
+  check enforces.
+
+Managed hosts serve two product scenarios over one provisioning path:
+
+- **Session upgrade**: a workspace-less conversation needs a real Linux
+  environment. The agent runs `demi host switch managed`; the backend
+  provisions a container and binds it to the conversation
+  (`conversations.hostDeviceId`); work continues in the container home. The
+  conversation stays workspace-less — only the execution target changed.
+- **Cloud workspace**: creating a project with the **Cloud** device choice
+  (the new-project dropdown offers Cloud alongside the user's paired
+  devices) provisions one dedicated managed host for that project and
+  creates the workspace on it — from there the existing workspace pipeline
+  carries everything: every session under the workspace executes on that
+  host, with zero new fields.
+
+### The `demi host` command
+
+Demi's agent works entirely through shell commands, so host operations are
+subcommands under the existing `demi` umbrella command. The coding-agent
+package defines `demi`; the backend composition root contributes the `host`
+group, which needs the provisioner and the device registry:
+
+```
+demi host                        # current target: kind, device, cwd — plus a prev line while one exists
+demi host switch managed         # provision + bind; `switch <device>` (user hosts) is reserved, not yet supported
+demi host prev shell -- <argv>   # run argv on the departed host: stdin/stdout/stderr byte-faithful, exit code passed through
+demi host prev release           # migration done: give the lease back
+```
+
+Migration deliberately has no richer surface. Filtering, globbing, and
+scripting belong to the shells on both ends; cross-host transport belongs
+to the pipe:
+
+```
+demi host prev shell -- tar cz -C /workspace . | tar xz
+```
+
+That recipe is identical for every prev type. A virtual prev satisfies it
+through a portable `tar` (create-only, walking `Host.fs`) registered into
+virtual-target shells like the virtual-only `node`; real prevs use their
+real `tar`. `release` is the one lifecycle verb, and it states the only
+fact true for every prev type — the session gives up its access. The
+platform disposes of the underlying resource per type: virtual, nothing to
+do (the files live in the store); managed, hibernate; user host, revoke the
+access grant.
+
+### Provisioning
+
+A narrow backend seam, `ManagedHostProvisioner` (provision/destroy), with
+one production implementation: the **Docker Engine API** (unix socket or a
+configured endpoint) — no docker CLI is spawned. The `managedHosts` backend
+config names the endpoint, the image, the backend URL reachable from
+containers, resource-limit sizes, and the per-user container cap; when it
+is absent, `demi host switch managed` and Cloud workspace creation fail
+with a clear "managed hosts not configured" error. Tests drive the full
+flows through a fake provisioner plus a local runner; docker itself is
+exercised by an env-gated smoke.
+
+Joining skips pairing entirely: the backend pre-creates the device row
+(`kind: 'managed'`, token hash only, as ever) and injects the token
+plaintext into the container env (`DEMI_DEVICE_TOKEN`,
+`DEMI_BACKEND_URL`); the runner finds it and starts directly on the
+`hello` path — the claim flow never enters, and the runner protocol is
+untouched. The image is the runner binary as entrypoint over a base
+toolchain (git, curl, tar, node, python, bun — the baseline list iterates),
+running as user `demi` with home `/home/demi`. `HostIdentity` reports
+`homeDir` — a device fact, like `PATH`/`HOME` fallback — and that is the
+session cwd for session-bound hosts.
+
+### Security baseline
+
+Uniform across all deployments, self-hosted included — no tiers. gVisor is
+the isolation boundary; each remaining item covers something gVisor does
+not (resources, network, host fs, credentials, lease reuse):
+
+1. **Runtime = gVisor (`runsc`), no fallback** — provisioning fails loudly
+   when it is unavailable; the runtime config field exists only to
+   substitute Kata, never `runc`.
+2. **Resource caps**: memory, CPU, pids, disk quota — sizes configurable,
+   presence not.
+3. **One network rule**: zero inbound; egress to the public internet only —
+   host-internal ranges, cloud metadata, and other containers unreachable;
+   the backend is reached via its public URL.
+4. **Zero host mounts**; the container filesystem dies with the container.
+5. **Credential surface**: the only secret entering a container is its own
+   device token (single-device scope, hash-stored, revocable);
+   control-plane checks bind a managed device to its owning conversation or
+   workspace, so the token moves nothing else even if it leaks.
+6. **One container per lease, never reused across owners**; per-user
+   container-count cap bounds provisioning.
+
+### Lifecycle
+
+Managed hosts are cattle: the durable state is a home snapshot in the
+backend store; the container is disposable.
+
+```
+provisioning ──▶ running ──▶ hibernated ──▶ running (wake) ──▶ …
+                               │  snapshot in store, container destroyed
+                               ▼
+                 owner archived/deleted: container destroyed,
+                 snapshot kept (no-deletion principle)
+```
+
+- **Idle → hibernate**: no in-flight agent turn, no live spawned process,
+  and no fs activity for the configured window (default 30 min; a
+  workspace host counts activity across all its sessions) → tar the home
+  directory into the store, destroy the container. **A snapshot failure
+  never destroys the container** (the host is marked and retried);
+  snapshots have a size cap, and exceeding it surfaces as an error, never
+  a silent skip.
+- **Wake**: the next action needing the host provisions a fresh container
+  and unpacks the snapshot — a latency, not an error. Wake is idempotent
+  per owner: at most one active container per owner; concurrent triggers
+  join the same wake.
+- **Fidelity boundary, stated honestly**: only home survives hibernation.
+  System packages do not (restore = base image + home), and the
+  agent-facing guidance says so: keep durable work in home.
+- **The prev slot** is a single slot per session: switching again releases
+  the old prev first. The window closes by `demi host prev release`, by
+  idle reclaim of a managed prev (hibernate covers it — no separate
+  timer), or by session archive; afterwards `prev shell` fails with
+  "prev host released".
+
+The model is assembled from long-running practice: idle
+snapshot-and-destroy with on-demand restore and the only-home-survives
+boundary is the classic cloud-workspace design (Gitpod's
+stop/backup/resume; Codespaces and Coder are disk-volume variants),
+pre-issued join tokens are the CI-runner and cluster-bootstrap pattern,
+and the migration pipe is tar-over-ssh with the transport swapped. The
+prev slot is the one product-specific piece — agent-executed migration has
+no off-the-shelf analog — and is kept to minimum surface accordingly.
 
 ## Product design
 
@@ -429,7 +585,9 @@ backend's aggregated catalog, grouped by connection.
 Chat view (existing web-ui components) + conversation sidebar; model/provider
 picker; execution-target picker (device list + directory browser and
 directory creation via Host RPC
-`readdir`); device management (claim-token entry, online status, revoke);
+`readdir`; the new-project device dropdown adds **Cloud** — a managed host
+provisioned per project); device management (claim-token entry, online
+status, revoke — user hosts only, managed hosts never appear);
 connections page (above); usage page (ledger, per user); admin-only user
 management (create user, reset password, grant admin — master only) and
 instance settings. Nothing else in the first final state — sharing, collaboration, and
@@ -661,15 +819,15 @@ Resource layout (concrete scope fed into the roadmap):
 
 | Resource | Endpoints | Lands in |
 |---|---|---|
-| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M2 stub → M7 real |
+| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M2 stub → M8 real |
 | conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript` (cold history); `WS /api/conversations/:id/stream` | M2 |
 | models | `GET /api/models` (aggregated catalog, grouped by connection) | M2 |
 | devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…` (directory browse), `POST /api/devices/:id/fs` (create directory) | M4 |
-| workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (rename/remove the pointer; never touches files) | M6 |
+| workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (rename/remove the pointer; never touches files); creation takes `cloud: true` in place of a deviceId (provisions the project's managed host) | M6; cloud flag M7 |
 | connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` (poll) | M5 |
 | usage | `GET /api/usage` | M5 |
 | attachments | `POST /api/attachments` (returns reference id), `POST /api/conversations/:id/workspace-files` | M6 |
-| admin | `GET/POST/PATCH /api/users` (create, reset password; grant admin — master only), `GET/PUT /api/settings` (instance mode) | M7 |
+| admin | `GET/POST/PATCH /api/users` (create, reset password; grant admin — master only), `GET/PUT /api/settings` (instance mode) | M8 |
 
 ## Runner program
 
@@ -695,7 +853,10 @@ local policy layer, no configuration beyond what the connection needs.
    and the token is additionally single-use, expiring, and the claim endpoint
    is rate-limited per user. Users copy-paste it, so length costs nothing.
    The backend then pushes a device token over the same socket, which the
-   runner persists and uses for all subsequent connects. One outbound
+   runner persists and uses for all subsequent connects. A managed host
+   skips the claim entirely: the backend pre-creates its device row and
+   injects the token via env (`DEMI_DEVICE_TOKEN`), so the runner starts
+   directly on the reconnect path. One outbound
    WebSocket, exponential backoff on reconnect; no inbound ports, ever.
    Device online status in the web UI is simply this socket's state.
 2. **Serving the Host contract.** Answer filesystem operations and process
@@ -709,7 +870,7 @@ local policy layer, no configuration beyond what the connection needs.
 That is the whole surface. There is deliberately no runner-side control RPC:
 directory picking for the web UI is ordinary `readdir` over the same Host RPC,
 recently-used workspaces come from the backend's own session index, and
-version/platform ride the `hello`.
+version/platform/home directory (device facts) ride the `hello`.
 
 Non-responsibilities: user authentication (backend-only), credentials of any
 kind (backend vault — the runner is never issued one; the Claude Code CLI it
@@ -1133,39 +1294,52 @@ Two acceptance steps in order:
    overlay (skip when no `claude` binary); real-subscription smoke manual
    only, never an ungated test.
 
-**M6 — Target switching + attachments (mechanisms + endpoints only; UI at M8)**
-Turn-boundary switching + context injection + the out-of-virtual tmp-dump
-(model relocates); workspaces CRUD; offline-target degradation (read/chat via
+**M6 — Target switching + attachments (mechanisms + endpoints only; UI at M9)**
+Turn-boundary switching + context injection + the prev slot; the `demi
+host` command frame (`demi host`, `prev shell` byte pipe, `prev release`)
+with the portable create-only `tar` for virtual prevs; workspaces CRUD;
+offline-target degradation (read/chat via
 virtual);
 message-attachment upload (inline media content blocks) and workspace file
-drop (Host RPC `writeFile`). Accept: switch, upgrade, and offline flows each
+drop (Host RPC `writeFile`). Accept: switch, migration-pipe, and offline
+flows each
 covered by integration tests; an uploaded image round-trips through a
 StubProvider turn and the checkpoint.
 
-**M7 — Multi-user systems (API-level, no UI)**
+**M7 — Managed hosts**
+Device kind + session-bound binding (`conversations.hostDeviceId`); the
+`ManagedHostProvisioner` seam with the Docker Engine API implementation
+(gVisor runtime, the security baseline); pre-issued-token join; `demi host
+switch managed`; Cloud workspace creation; lifecycle — idle hibernate to a
+home snapshot in the store, wake on demand, prev release semantics. Accept:
+full flows (switch, hibernate/wake, release, owner-scoped authz) against a
+fake provisioner + local runner; docker provisioning smoke env-gated.
+
+**M8 — Multi-user systems (API-level, no UI)**
 Real auth (username/password, cookie sessions, master/admin/user roles, no
 registration, no recovery); user-management and instance-settings endpoints;
 **shared/isolated instance-mode enforcement** (admin-only connections in
 shared mode); tenant-isolation authz matrix. Everything test-accepted
-against the API — at the end of M7 the entire API surface is complete and
+against the API — at the end of M8 the entire API surface is complete and
 frozen.
 
-**M8 — Web UI (its own dedicated milestone, last among feature work)**
+**M9 — Web UI (its own dedicated milestone, last among feature work)**
 The **entire `@demicodes/web` package** built in one concentrated phase per
 the layout design — scaffold, workspace-grouped sidebar, chat view on
 web-ui, settings dialogs (devices, connections, usage, user management,
 instance settings), target picker — with the old dev product renamed
 `web-demo` at this point. UI is deliberately last so that completed,
-frozen functionality never forces UI rework; it consumes the M7-frozen API
+frozen functionality never forces UI rework; it consumes the M8-frozen API
 and adds no new backend surface.
 
-**M9 — Deployment packaging**
+**M10 — Deployment packaging**
 Docker images for runner and backend (backend image carries the built web
-assets); a sample Litestream sidecar config (optional S3 durability at
+assets), plus the managed-host image (runner entrypoint over the base
+toolchain); a sample Litestream sidecar config (optional S3 durability at
 N=1); end-to-end acceptance. Pure hosting work after interfaces are
 frozen.
 
-**M10 — Scaled deployment (post-v1)**
+**M11 — Scaled deployment (post-v1)**
 Everything the N>1 topology needs, gathered from the design sections:
 `demi-controld` as a standalone process (`ControlService` RPC server on
 Hono + `RemoteControlService` client, internal listener, service-token
@@ -1198,11 +1372,12 @@ checklists only for UI look-and-feel and packaging smoke.
 | M3 | Block-row persistence: a streamed turn appends rows (no whole-transcript rewrite observable); restore from `control.sqlite` + `conversations/<id>.sqlite` equals the live transcript; media blocks round-trip through `source.ref` + blob store; per-conversation `host_store` isolation. |
 | M4 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M5 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; claude-code-on-runner chain with the real CLI against a mock upstream (provider env overlay), asserting the vault token reached the upstream and nothing was persisted on the device — skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
-| M6 | Switch integration, all directions unconstrained: real→real (files stay + honest context block; same-device note when applicable), virtual→real (files land in the target tmp dir, context block names the path, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
-| M7 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
-| M8 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |
-| M9 | Tier 3 scripted smoke: build both images, claim a containerized runner against a local backend, run one full turn end-to-end; optional CI stage. |
-| M10 | `ControlService` contract tests run against both implementations (Local in-process / Remote over a real controld); two local workers + one controld behind a mapped proxy — user pinned to one worker, migration (stop → restore conversation files from the replica → remap) preserves history; blob-store S3 round-trip against a local S3-compatible server; domain errors survive the RPC wire with `code` intact. |
+| M6 | Switch integration: real→real (files stay + honest context block; same-device note when applicable), virtual→real (context block names the prev, `demi host prev shell` portable-tar pipe lands the files, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; prev slot single-occupancy + release closes `prev shell`; offline target → session readable and chattable on virtual. |
+| M7 | Fake-provisioner integration: `demi host switch managed` binds a session-scoped host and spawns land there; Cloud workspace creation provisions once per project; pre-issued token joins on `hello` without a claim; idle hibernate snapshots home + destroys, wake restores (snapshot-failure keeps the container; wake idempotent under concurrency); owner-scoped authz (another user/conversation cannot touch the device); env-gated docker + gVisor smoke. |
+| M8 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
+| M9 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |
+| M10 | Tier 3 scripted smoke: build the images, claim a containerized runner against a local backend, run one full turn end-to-end; managed-host image boots and joins via a pre-issued token; optional CI stage. |
+| M11 | `ControlService` contract tests run against both implementations (Local in-process / Remote over a real controld); two local workers + one controld behind a mapped proxy — user pinned to one worker, migration (stop → restore conversation files from the replica → remap) preserves history; blob-store S3 round-trip against a local S3-compatible server; domain errors survive the RPC wire with `code` intact. |
 
 Test modules and their coverage get documented per milestone as they land, per
 the repo's design-record rules.
