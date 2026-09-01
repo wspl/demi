@@ -765,6 +765,10 @@ export class ChildSupervisor<State = unknown> {
       parentCommands: inherited,
       storePrefix: `${this.options.storePrefix}/subagents/${id}`,
       canSpawn: input.canSpawnSubagents,
+      // `notifyParentOnIdle: false` hands root-level wakeups to the host app,
+      // which can only drive the root session — a subagent parent has no
+      // host-side message channel, so deeper levels always self-notify.
+      notifyParentOnIdle: true,
       onJobsChanged: () => job.wake?.(),
     })
     const commands = injectSubagentCommand(inherited, job.ownSupervisor.rootCommandNode())

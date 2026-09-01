@@ -226,6 +226,46 @@ test('a child spawns a grandchild; the tree links and both close naturally', asy
   await client.close()
 })
 
+test('notifyParentOnIdle: false only silences the root level; a mid-tree parent still self-wakes', async () => {
+  let childWakeRequest: InferenceRequest | null = null
+  let parentContinuationText = ''
+  const { client, seen } = await openHarness({
+    notifyParentOnIdle: false,
+    turns: [
+      [spawnCall('t1', "demi agent 'outer task' --description outer", 10_000)],
+      [events.toolCall('c1', 'shell_exec', { script: "demi agent 'inner task' --description inner", timeoutMs: 50 })],
+      [events.toolCall('g1', 'shell_exec', { script: 'sleep 0.3', timeoutMs: 10_000 })],
+      [events.text('inner dispatched'), events.response()],
+      [events.text('inner result'), events.response()],
+      (request) => {
+        childWakeRequest = request
+        return [events.text('outer integrated'), events.response()]
+      },
+      (request) => {
+        parentContinuationText = itemsText(request)
+        return [events.text('parent done'), events.response()]
+      },
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+
+  // The grandchild's completion woke the idle mid-tree child, which integrated
+  // the result before closing; the root got it as the spawn tool result.
+  expect(childWakeRequest).not.toBeNull()
+  expect(itemsText(childWakeRequest!)).toContain('completed')
+  expect(itemsText(childWakeRequest!)).toContain('inner result')
+  expect(parentContinuationText).toContain('outer integrated')
+  const closed = seen.filter((event) => event.type === 'subagent' && event.event === 'closed')
+  expect(closed.map((event) => (event.type === 'subagent' ? event.job.description : ''))).toEqual(['inner', 'outer'])
+  await client.close()
+})
+
 test('aborting a child tears its whole subtree down', async () => {
   const { client, seen } = await openHarness({
     turns: [
