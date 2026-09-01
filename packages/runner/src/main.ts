@@ -36,7 +36,8 @@ async function main(): Promise<void> {
       if (status === 'rejected') console.error(`rejected by backend: ${detail ?? 'unknown reason'}`)
     },
     onClaimPending: (claimToken) => {
-      console.log(`Unclaimed device. Enter this claim token in the web UI: ${claimToken}`)
+      console.log(`Pairing code: ${claimToken}`)
+      console.log('Enter it in the web UI to link this device.')
     },
   })
   client.start()

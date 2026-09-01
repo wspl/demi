@@ -291,7 +291,6 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
 
   // Turn 2: stop the runner while `sleep 30` runs — an ordinary tool error,
   // the turn completes, the session survives.
-  const eventsBeforeTurn2 = shellEvents.length
   const sendPromise = client.send([{ type: 'text', text: 'now hang' }])
   await waitFor(() => existsSync(join(runnerDir, 'started.marker')), undefined, { timeoutMs: 10_000 })
   await runner.stop()
