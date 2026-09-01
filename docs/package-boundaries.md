@@ -162,7 +162,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/backend`
 
-- Status: implemented through M1 (Web API skeleton + conversation module + virtual default; runner management M2, LLM module/vault/accounting M3+).
+- Status: implemented through M2 (Web API skeleton + conversation module + virtual default; runner management M4, LLM module/vault/accounting M5+).
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`, `@demicodes/host-virtual`, `@demicodes/provider`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-google`, `@demicodes/provider-openai-api`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (thin dual-dialect SQL layer, numbered migrations, DB-backed `HostStore`, conversation index), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, operator provider assembly (`demi-backend` entry), and — per later milestones — runner management, the credential vault, the Anthropic passthrough, and usage accounting.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
@@ -171,7 +171,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-virtual`
 
-- Status: implemented (M1: local-dir topology via `scopedFsBackend`; the S3 backend arrives with the scaled milestone in `@demicodes/backend`).
+- Status: implemented (M2: local-dir topology via `scopedFsBackend`; the S3 backend arrives with the scaled milestone in `@demicodes/backend`).
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the virtual execution target — a platform-neutral `Host` over a pluggable `VirtualFsBackend` (virtual-absolute normalized paths): per-conversation namespace with chroot-style clamping, symlink containment, hardcoded per-file/per-conversation quotas (artifact writes exempt), spawn refusal with `executable_not_found` + upgrade guidance, logical cwd; plus `scopedFsBackend`, the real-directory backend adapter (root-prefix translation, symlink/realpath untranslation).
 - Public boundary: `VirtualHost`, `scopedFsBackend`, quota constants, guidance constant from root.
@@ -185,7 +185,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner-protocol`
 
-- Status: implemented (M1; claim flow productized in M2).
+- Status: implemented (M1; claim flow productized in M4).
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the runner wire protocol — message types (claim/auth handshake, liveness, Host fs RPC, streaming spawn), the portable-JSON frame codec, the backend-side `RemoteHost` proxy (a `Host` over a connection: stable object across reconnects, logical cwd fallback, injected store), and the runner-side `HostRpcServer` serving a Host's `fs`/`process` facets.
 - Public boundary: message types, codec functions, `RemoteHost`, `HostRpcServer` from root.
@@ -193,7 +193,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner`
 
-- Status: implemented (M1: connection + Host RPC; claim productization in M2; packaging in M7).
+- Status: implemented (M1: connection + Host RPC; claim productization in M4; packaging in M9).
 - Production deps: `@demicodes/host-local`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the runner program — the single outbound backend WebSocket with reconnect/backoff, the hello/claim handshake client, machine-local state (`~/.demi/runner.json`, `runner-token` 0600), serving `LocalHost` over the runner protocol, and the `demi-runner` CLI entry.
 - Public boundary: `RunnerClient`, `RunnerState` from root; the `demi-runner` bin.
