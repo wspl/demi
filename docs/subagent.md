@@ -27,8 +27,8 @@ that control surface instead of adding `agent_exec` tools.
 
 Depth is not capped. A child delegating a slice of its own task spawns exactly
 like the root does; there is no per-depth command stripping. What bounds the
-tree is fan-out (at most 8 live children per session) and the real turns each
-spawn costs.
+tree is fan-out (`maxLiveSubagents` live children per session) and the real
+turns each spawn costs.
 
 ## Topology and the agent directory
 
@@ -414,7 +414,9 @@ agent directory:
 - `provider.clone()`, empty transcript, checkpoint under the parent's session
   directory (not listed by `listConversations`)
 - inherit spawner cwd and the current action's `metadata` (Host routing)
-- at most 8 running children per session; spawn fails when full
+- at most `maxLiveSubagents` running children per session — an `AgentServer`
+  assembly option (default 8), one value for every supervisor in the tree,
+  not a CLI flag; spawn and `resume` fail when full
 - dispose detaches the subtree without closing it (checkpoints flush; the
   next open restores); abort closes it
 
