@@ -601,7 +601,9 @@ host_store       scope, key, value_json  ← this conversation's scope only
 ```
 
 Notes: pending claim tokens live in memory (an unclaimed runner socket holds
-them; a backend restart just reprints); device online status is runtime
+them; a backend restart just reprints); claim tokens are 128-bit random
+values, single-use with an expiry, and the claim endpoint is rate-limited
+per user; device online status is runtime
 state, `last_seen_at` is display-only. **Credential encryption**:
 `connections.config` is encrypted at rest with an instance secret
 (generated into the data directory on first start; a shared secret config
@@ -677,12 +679,16 @@ local policy layer, no configuration beyond what the connection needs.
 ### Responsibilities
 
 1. **Device identity and connection.** On first start, connect to the backend,
-   receive a claim token, and print it; the user enters that token in the web
-   UI to attach the device to their account permanently. The backend then
-   pushes a device token over the same socket, which the runner persists and
-   uses for all subsequent connects. One outbound WebSocket, exponential
-   backoff on reconnect; no inbound ports, ever. Device online status in the
-   web UI is simply this socket's state.
+   receive a claim token, and print it; the user pastes that token into the web
+   UI to attach the device to their account permanently. The claim token is a
+   128-bit random value (Crockford base32, grouped for copy-paste — e.g.
+   `9Z7K-M3FV-TQ2X-8HJD-4WPN-C6`): guessing is infeasible by entropy alone,
+   and the token is additionally single-use, expiring, and the claim endpoint
+   is rate-limited per user. Users copy-paste it, so length costs nothing.
+   The backend then pushes a device token over the same socket, which the
+   runner persists and uses for all subsequent connects. One outbound
+   WebSocket, exponential backoff on reconnect; no inbound ports, ever.
+   Device online status in the web UI is simply this socket's state.
 2. **Serving the Host contract.** Answer filesystem operations and process
    spawns from the backend, scoped per request to a working directory the
    session names. Any existing directory is a valid workspace; an operation on
