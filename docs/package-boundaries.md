@@ -172,7 +172,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented through M3 (Web API skeleton + conversation module + two-plane storage + virtual default; runner management M4, LLM module/vault/accounting M5+).
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`, `@demicodes/host-virtual`, `@demicodes/provider`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-google`, `@demicodes/provider-openai-api`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
-- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, operator provider assembly (`demi-backend` entry), runner management (pairing, device registry, remote-Host resolution, browse endpoints), and — per later milestones — the credential vault, the Anthropic passthrough, and usage accounting.
+- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, runner management (pairing, device registry, remote-Host resolution, browse endpoints), the LLM module (per-connection provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted connections), usage accounting (ledger + rate limit), and — per later milestones — subscription login flows and the Anthropic passthrough.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, LocalHost (as the virtual-fs real backing), VirtualHost, and the coding harness.
 - Must not: be imported by any other production package; put business logic in the HTTP layer beyond routing/validation; let providers or credentials cross to runners or browsers.
@@ -182,7 +182,10 @@ Test code may depend upward for integration coverage. Production code must not.
   - `conversation/` — conversation-module domain logic (frame scoping/rewrite, virtual-host factory).
   - `storage/` — the SQLite layer (database seam, migrations, control service, conversation stores, blob store, host store).
   - `runner/` — runner management: pairing-code/device-token primitives and the registry (pending claims, one live socket per device, stable per-target `RemoteHost`s, liveness).
-  - Later milestones add sibling module directories (`llm/`, `vault/`, `usage/`) — never new files at the root.
+  - `llm/` — provider assembly per connection (type factories, catalog, connection test) and the metering wrap at the inference entry.
+  - `vault/` — instance secret, credential crypto, and the typed connection vault over the control plane.
+  - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
+  - New modules get sibling directories — never new files at the root.
 
 ### `@demicodes/host-virtual`
 
