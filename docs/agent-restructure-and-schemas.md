@@ -124,8 +124,8 @@ itself carries the type.
 | # | Boundary | Today | Target |
 |---|---|---|---|
 | 1 | Browser → backend HTTP bodies | blind `c.req.json<{…}>()` casts | zod schema per route module (`backend/src/http/*.ts`), parse before use, 400 with `{code, message}` on failure |
-| 2 | Browser → backend WS frames (`ClientFrame`) | `JSON.parse` + cast | `agent/src/protocol/schemas.ts`: `clientFrameSchema`; validated once at AgentServer transport ingress (the binding), rejected frames answered with the existing `rejected`/`error` frames |
-| 3 | Runner ⇄ backend protocol messages | cast + scattered field checks | `runner-protocol/src/schemas.ts`: message schemas; both ends validate their inbound direction (`HostRpcServer` validates backend→runner, `RemoteHost`/backend validates runner→backend) |
+| 2 | Browser → backend WS frames (`ClientFrame`) | `JSON.parse` + cast; frame types hand-written in `frames.ts` | `agent/src/protocol/schemas.ts` declares the client frames as zod schemas and becomes the **single source of truth**: `frames.ts` derives `ClientFrame` via `z.infer` (no parallel hand-written declaration to keep in sync). Validated once at AgentServer transport ingress (the binding); rejected frames answered with the existing `rejected`/`error` frames |
+| 3 | Runner ⇄ backend protocol messages | cast + scattered field checks; message types hand-written | same single-source treatment: `runner-protocol/src/schemas.ts` declares the messages, `messages.ts` derives the types via `z.infer`; both ends validate their inbound direction (`HostRpcServer` validates backend→runner, `RemoteHost`/backend validates runner→backend) |
 | 4 | Tool progress → shell-output frames | 40-line hand-rolled `isRecord` chain (`progressToShellOutput` / `isShellStreamView`) | zod schema in `agent/src/server/summaries.ts` — the tool-progress channel is legitimately `unknown` (tools are arbitrary), so this is a real boundary, just currently validated by hand |
 | 5 | Server → browser frames | none | **none, by design** — this process constructed them |
 | 6 | Persisted rows read back (`control.sqlite`, conversation DBs, host_store) | typed cast | **cast stays, by design** — single-writer own data; corruption fails loudly, never normalized |
@@ -139,8 +139,12 @@ Notes:
 - Portable-codec payloads (`Uint8Array` in fs results) validate with
   `z.instanceof(Uint8Array)` after codec decode — schema order is
   decode-then-validate, never validate the raw JSON envelope.
-- Zod stays out of `@demicodes/utils` (tier-1 guards must remain
+- Zod stays out of `@demicodes/utils` (the shared guards must remain
   dependency-free); schemas live beside their boundary's frame types.
+- Schema-ization must never produce two declarations of one shape: where a
+  hand-written type exists today, the schema replaces it as the source of
+  truth and the type becomes `z.infer`. `ServerFrame` (outbound, unvalidated
+  by design) keeps its hand-written type — no schema, so no duplication.
 
 ### Guard dedup sweep (tier 1)
 
