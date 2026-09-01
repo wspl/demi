@@ -19,7 +19,7 @@ import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
 import { RunnerClient } from '../runner-client'
 
-// M1-B acceptance: a bare AgentServer executing on a real runner over a real
+// M1 acceptance: a bare AgentServer executing on a real runner over a real
 // WebSocket — commands run in the runner's temp dir, a runner death
 // mid-command surfaces as an ordinary tool error without losing the session,
 // and after reconnect the next command succeeds.
