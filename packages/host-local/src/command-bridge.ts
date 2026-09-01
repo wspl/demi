@@ -115,7 +115,7 @@ async function main() {
   const result = JSON.parse(response.body)
   if (result.stdout) {
     // Binary final streams arrive base64-encoded; write raw bytes so external
-    // pipes (demi read a.png | ffmpeg -i - ...) stay byte-clean.
+    // pipes (demi file read a.png | ffmpeg -i - ...) stay byte-clean.
     process.stdout.write(result.stdoutEncoding === 'base64' ? Buffer.from(result.stdout, 'base64') : result.stdout)
   }
   if (result.stderr) process.stderr.write(result.stderr)

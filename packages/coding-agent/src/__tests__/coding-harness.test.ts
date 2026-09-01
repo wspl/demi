@@ -71,7 +71,7 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(prompt).toContain('demi: The Demi platform command')
   expect(prompt).toContain('Treat cwd as the task workspace')
   expect(prompt).toContain('do not create a separate project directory under /tmp')
-  expect(prompt).toContain('demi create')
+  expect(prompt).toContain('demi file create')
   expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
   expect(prompt).toContain('Failure output: writes the reason to stderr and exits non-zero')
   expect(prompt).toContain('todo: Manage an agent-session-scoped task list')
@@ -88,7 +88,7 @@ test('coding agent harness exposes shell session tools and registered command pr
   const todo = await environment.exec({ script: 'demi todo add "Verify default registration"' })
   expect(todo.stdout.delta).toBe('[ ] T1 Verify default registration\n')
   const demiHelp = await environment.exec({ shellId: todo.shellId, script: 'demi --help' })
-  expect(demiHelp.stdout.delta).toContain('demi create')
+  expect(demiHelp.stdout.delta).toContain('demi file create')
   expect(demiHelp.stdout.delta).toContain('Success output: writes "Created <path>" to stdout')
 })
 
@@ -260,7 +260,7 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
   const help = registry.renderHelp()
 
   // Spawn is grafted under the harness's existing demi root, beside file editing.
-  expect(help).toContain('demi create')
+  expect(help).toContain('demi file create')
   expect(help).toContain('demi agent')
   expect(help).toContain('demi agent steer')
   expect(help).toContain('demi agent abort')
