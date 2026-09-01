@@ -51,9 +51,20 @@ export type PrepareShell = (
   | Omit<BashEnvironmentOptions, 'host' | 'commands'>
   | Promise<Omit<BashEnvironmentOptions, 'host' | 'commands'>>
 
+/**
+ * Dynamic provider lookup: called once per runtime construction (session open,
+ * `set_provider`) with the session id, so products can assemble providers per
+ * connection/user and observe usage in context. Return null for unknown ids.
+ */
+export type ProviderResolver = (
+  providerId: string,
+  context: { agentSessionId: string },
+) => Provider | null | Promise<Provider | null>
+
 export interface AgentServerOptions {
   agent: AgentHarness<unknown>
-  providers: Provider[]
+  /** A static provider list, or a resolver for products that assemble providers dynamically. */
+  providers: Provider[] | ProviderResolver
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
   subagents?: {
@@ -85,7 +96,7 @@ export interface AgentTransportBinding {
 
 export class AgentServer {
   private readonly agent: AgentHarness<unknown>
-  private readonly providers: Map<string, Provider>
+  private readonly resolveProvider: ProviderResolver
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
@@ -97,7 +108,9 @@ export class AgentServer {
 
   constructor(options: AgentServerOptions) {
     this.agent = options.agent
-    this.providers = createProviderMap(options.providers)
+    this.resolveProvider = Array.isArray(options.providers)
+      ? staticResolver(createProviderMap(options.providers))
+      : options.providers
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell ?? null
@@ -116,7 +129,7 @@ export class AgentServer {
     const binding = new AgentTransportBindingImpl({
       transport,
       agent: this.agent,
-      providers: this.providers,
+      resolveProvider: this.resolveProvider,
       shell: this.shellOptions,
       session: this.sessionOptions,
       prepareShell: this.prepareShell,
@@ -161,4 +174,8 @@ function createProviderMap(providers: Provider[]): Map<string, Provider> {
     map.set(provider.id, provider)
   }
   return map
+}
+
+function staticResolver(map: Map<string, Provider>): ProviderResolver {
+  return (providerId) => map.get(providerId) ?? null
 }
