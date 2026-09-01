@@ -3,10 +3,8 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 /**
- * The thin dual-dialect storage seam: hand-written SQL kept to the
- * SQLite/Postgres common subset behind this interface. v1 ships the
- * `bun:sqlite` driver only; the Postgres driver arrives with the scaled
- * milestone and changes nothing above this file.
+ * The thin storage seam: hand-written SQLite behind a four-method interface.
+ * SQLite is the only dialect in every topology (see demi-next.md § Database).
  */
 export interface SqlDatabase {
   run(sql: string, params?: SqlParams): void
