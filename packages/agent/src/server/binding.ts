@@ -1,6 +1,6 @@
 import { errorCode, noop } from '@demicodes/utils'
 import type { BashEnvironmentOptions, Host } from '@demicodes/shell'
-import { providerRuntime, type Provider, type ProviderSelection } from '@demicodes/provider'
+import { providerRuntime, type ProviderSelection } from '@demicodes/provider'
 import type { AgentSession } from '../session/session'
 import { cloneBlocks } from '../transcript/patch'
 import type { ClientFrame, ConversationSummary, ServerFrame } from '../protocol/frames'
@@ -13,12 +13,12 @@ import type { LiveSession } from './live-session'
 import { assembleLiveSession } from './open-session'
 import type { SessionAttachment, SessionOwnershipRegistry } from './ownership'
 import { errorDiagnostics, progressToAudit, progressToOutput, progressToShellOutput, summarizeConversation } from './summaries'
-import type { AgentServerSessionOptions, AgentTransportBinding, PrepareShell } from './server'
+import type { AgentServerSessionOptions, AgentTransportBinding, PrepareShell, ProviderResolver } from './server'
 
 export interface AgentTransportBindingOptions {
   transport: AgentServerTransport
   agent: AgentHarness<unknown>
-  providers: ReadonlyMap<string, Provider>
+  resolveProvider: ProviderResolver
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
   prepareShell: PrepareShell | null
@@ -37,7 +37,7 @@ export interface AgentTransportBindingOptions {
 export class AgentTransportBindingImpl implements AgentTransportBinding, SessionAttachment {
   private readonly transport: AgentServerTransport
   private readonly agent: AgentHarness<unknown>
-  private readonly providers: ReadonlyMap<string, Provider>
+  private readonly resolveProvider: ProviderResolver
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
@@ -52,7 +52,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
   constructor(options: AgentTransportBindingOptions) {
     this.transport = options.transport
     this.agent = options.agent
-    this.providers = options.providers
+    this.resolveProvider = options.resolveProvider
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell
@@ -258,7 +258,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
       return
     }
 
-    const provider = await this.createRuntime(frame.provider)
+    const provider = await this.createRuntime(frame.provider, agentSessionId)
     const { live, restoring } = await assembleLiveSession(
       {
         agent: this.agent,
@@ -295,7 +295,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
       live.session.updateModel(null, selection.model)
       return
     }
-    const runtime = await this.createRuntime(selection)
+    const runtime = await this.createRuntime(selection, live.agentSessionId)
     live.session.updateModel(runtime, selection.model)
     live.providerId = selection.providerId
   }
@@ -317,18 +317,18 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
       live.session.updateModel(null, provider.model, apply)
       return
     }
-    const next = await this.createRuntime(provider)
+    const next = await this.createRuntime(provider, live.agentSessionId)
     live.session.updateModel(next, provider.model, apply)
     live.providerId = provider.providerId
   }
 
-  private async createRuntime(selection: ProviderSelection) {
+  private async createRuntime(selection: ProviderSelection, agentSessionId: string) {
     if (selection.model.providerId !== selection.providerId) {
       throw new Error(
         `Provider selection mismatch: providerId "${selection.providerId}" does not match model providerId "${selection.model.providerId}"`,
       )
     }
-    const provider = this.providers.get(selection.providerId)
+    const provider = await this.resolveProvider(selection.providerId, { agentSessionId })
     if (!provider) throw new Error(`Provider "${selection.providerId}" is not available`)
     return providerRuntime(provider, selection)
   }

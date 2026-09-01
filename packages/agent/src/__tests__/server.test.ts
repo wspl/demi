@@ -1306,3 +1306,32 @@ test('a malformed client frame is rejected at ingress with invalid_frame', async
   expect(received[1]).toMatchObject({ type: 'error', code: 'invalid_frame' })
   await server.close()
 })
+
+test('AgentServer accepts a ProviderResolver: session context arrives, unknown ids error', async () => {
+  const contexts: Array<{ providerId: string; agentSessionId: string }> = []
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providers: (providerId, context) => {
+      contexts.push({ providerId, agentSessionId: context.agentSessionId })
+      if (providerId !== 'dynamic') return null
+      return runtimeProvider('dynamic', new StubProvider([[events.text('resolved'), events.response()]]))
+    },
+  })
+
+  const client = server.client()
+  const sessionId = globalThis.crypto.randomUUID()
+  await client.open(providerSelection('dynamic'), '/workspace', sessionId)
+  await client.send([{ type: 'text', text: 'go' }])
+  expect(client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'resolved')).toBe(true)
+  expect(contexts).toEqual([{ providerId: 'dynamic', agentSessionId: sessionId }])
+
+  const other = server.client()
+  const errors: string[] = []
+  other.subscribe((event) => {
+    if (event.type === 'error') errors.push(event.message)
+  })
+  void other.open(providerSelection('missing'), '/workspace', globalThis.crypto.randomUUID()).catch(() => {})
+  await waitFor(() => errors.length > 0)
+  expect(errors[0]).toContain('not available')
+  await server.close()
+})
