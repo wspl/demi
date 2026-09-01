@@ -9,6 +9,7 @@ import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
 import { meterProvider } from './llm/metering'
+import { AnthropicPassthrough } from './llm/passthrough'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ConnectionVault } from './vault/connections'
@@ -31,6 +32,8 @@ export interface BackendOptions {
   providerTypes?: Record<string, ProviderTypeFactory>
   /** Usage-enforcement tuning — tests only. */
   usage?: { providerRequestsPerMinute?: number }
+  /** Passthrough upstream override — tests only. */
+  passthrough?: { anthropic?: { upstreamBaseUrl?: string } }
 }
 
 export interface Backend {
@@ -60,6 +63,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const vaultRoot = join(options.dataDir, 'vault')
   const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot)
   const logins = new SubscriptionLoginFlows(vault, assembly, { ownerUserId: STUB_USER.id, vaultRoot })
+  const anthropicPassthrough = new AnthropicPassthrough(assembly, options.passthrough?.anthropic ?? {})
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
   // connectionId = providerId: the LLM module assembles the connection's base
@@ -107,6 +111,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     vault,
     assembly,
     logins,
+    anthropicPassthrough,
     agentServer,
     runnerRegistry,
     upgradeWebSocket,
