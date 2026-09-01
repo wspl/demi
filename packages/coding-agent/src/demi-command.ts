@@ -1,19 +1,26 @@
 import { asError, decodeUtf8, dirnamePath, encodeUtf8, errorMessage } from '@demicodes/utils'
 import { z } from 'zod'
 import type { Command, Host } from '@demicodes/shell'
+import { createTodoCommand } from './todo-command'
 
 export interface DemiCommandOptions {
   /** Product-contributed subcommand groups (e.g. the backend's `host` group). */
   extraSubcommands?: Command[]
 }
 
+/**
+ * The platform command. Organizing rule: every Demi-specific capability
+ * lives under `demi` — flat verbs are the file operations, noun subgroups
+ * are platform domains (todo, agent, host, …); anything outside `demi` is
+ * an ordinary shell command.
+ */
 export function createDemiCommand(options: DemiCommandOptions = {}): Command {
   return {
     name: 'demi',
-    summary: options.extraSubcommands?.length
-      ? 'Workspace files (read, create, edit, patch — text, images, and video) and platform operations.'
-      : 'Read, create, edit, and patch workspace files (text, images, and video).',
+    summary:
+      'The Demi platform command: workspace file operations (read, create, edit, patch — text, images, and video) plus platform domains as subcommand groups.',
     subcommands: [
+      createTodoCommand(),
       ...(options.extraSubcommands ?? []),
       {
         name: 'read',
