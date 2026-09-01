@@ -27,6 +27,7 @@ export function streamRoutes(options: {
   app.get('/:id/stream', async (c, next) => {
     const conversation = await control.getConversation(c.req.param('id'))
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    const workspace = conversation.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
     return upgradeWebSocket(() => {
       const adapter = new WsContextAdapter()
       let binding: AgentTransportBinding | null = null
@@ -36,6 +37,7 @@ export function streamRoutes(options: {
             createWebSocketServerTransport(adapter.socket(ws)),
             conversation,
             control,
+            workspace?.path,
           )
           binding = agentServer.attachTransport(transport)
         },
