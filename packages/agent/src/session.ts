@@ -2,6 +2,7 @@ import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAb
 import type { ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
 import { TranscriptLog, type TranscriptOptions } from './transcript'
+import type { TranscriptPatch } from './frames'
 import { YieldScheduler } from './yield-scheduler'
 import { PendingSteerQueue, type PendingSteer } from './pending-steer-queue'
 import { CompactionController, type CompactionHost } from './compaction-controller'
@@ -99,6 +100,12 @@ export class AgentSession<State> {
   private persistTimer: ReturnType<typeof setTimeout> | null = null
   private persistDirty = false
   private persistChain: Promise<void> = Promise.resolve()
+  // Journal write tracking: which transcript rows the next save must write.
+  // `dirtyBlockFloor` marks "this index and everything after" (appends,
+  // mid-inserts, removals — anything that shifts positions); the set holds
+  // point updates below the floor. Infinity + empty set = rows are current.
+  private dirtyBlockIndices = new Set<number>()
+  private dirtyBlockFloor = Number.POSITIVE_INFINITY
 
   /**
    * Restores a session from a checkpoint. Ownership of the checkpoint (including
@@ -132,6 +139,10 @@ export class AgentSession<State> {
     // the result is gone for good. Complete each one with an error result:
     // providers reject a replayed tool call that has no matching result, and
     // the restored turn should see which call was cut short.
+    // The checkpoint's blocks are the store's rows: start clean. The repair
+    // above recorded patches, so those rows re-mark themselves dirty on the
+    // first transcript commit.
+    session.dirtyBlockFloor = Number.POSITIVE_INFINITY
     for (const toolCall of session.transcriptLog.pendingToolCalls()) {
       session.transcriptLog.completeToolCall(
         toolCall.toolUseId,
@@ -174,6 +185,10 @@ export class AgentSession<State> {
       params.transcript instanceof TranscriptLog
         ? params.transcript
         : new TranscriptLog(params.transcript?.blocks ?? [], transcriptOptions)
+    // A session constructed with pre-existing blocks cannot know they are in
+    // the store; the first save writes them all. `fromCheckpoint` resets this
+    // to clean — its blocks came from the store.
+    if (this.transcriptLog.blocks.length > 0) this.dirtyBlockFloor = 0
 
     const self = this
     const compactionHost: CompactionHost = {
@@ -1122,8 +1137,35 @@ export class AgentSession<State> {
    */
   private async commitTranscript(): Promise<void> {
     const drained = this.transcriptLog.takePatches()
-    if (drained) this.emit({ type: 'transcript_changed', patches: drained.patches, revision: drained.revision })
+    if (drained) {
+      this.markDirtyBlocks(drained.patches)
+      this.emit({ type: 'transcript_changed', patches: drained.patches, revision: drained.revision })
+    }
     this.schedulePersist()
+  }
+
+  /**
+   * Conservative dirty marking from the patch stream. Position-shifting ops
+   * (add, remove, bulk replace) dirty everything from their index on — patch
+   * indices recorded after a shift stay accurate below the floor and are
+   * swallowed by it above. Point ops below the floor dirty just their row.
+   */
+  private markDirtyBlocks(patches: TranscriptPatch[]): void {
+    for (const patch of patches) {
+      switch (patch.op) {
+        case 'add':
+        case 'remove':
+          this.dirtyBlockFloor = Math.min(this.dirtyBlockFloor, patch.path[1])
+          break
+        case 'replace':
+          this.dirtyBlockFloor = 0
+          break
+        case 'replace_block':
+        case 'append_text':
+          if (patch.path[1] < this.dirtyBlockFloor) this.dirtyBlockIndices.add(patch.path[1])
+          break
+      }
+    }
   }
 
   private schedulePersist(): void {
@@ -1151,15 +1193,40 @@ export class AgentSession<State> {
   private async writeCheckpointIfDirty(): Promise<void> {
     if (!this.store || !this.persistDirty) return
     this.persistDirty = false
-    await this.store.saveCheckpoint({
-      transcript: this.transcriptLog.toJSON(),
-      state: structuredClone(this.agentState),
-      phase: this.currentPhase,
-      queue: structuredClone(this.queuedMessages()),
-      cwd: this.cwd,
-      model: structuredClone(this.model),
-      harnessName: this.runtime.harnessName,
-    })
+    const blocks = this.transcriptLog.blocks
+    const floor = this.dirtyBlockFloor
+    const pointIndices = this.dirtyBlockIndices
+    this.dirtyBlockFloor = Number.POSITIVE_INFINITY
+    this.dirtyBlockIndices = new Set()
+
+    const indices = new Set<number>()
+    for (const index of pointIndices) {
+      if (index < blocks.length) indices.add(index)
+    }
+    for (let index = floor; index < blocks.length; index += 1) indices.add(index)
+    const changedBlocks = [...indices]
+      .sort((a, b) => a - b)
+      .map((index) => ({ index, block: structuredClone(blocks[index]) }))
+
+    try {
+      await this.store.save({
+        changedBlocks,
+        blockCount: blocks.length,
+        state: structuredClone(this.agentState),
+        phase: this.currentPhase,
+        queue: structuredClone(this.queuedMessages()),
+        cwd: this.cwd,
+        model: structuredClone(this.model),
+        harnessName: this.runtime.harnessName,
+      })
+    } catch (error) {
+      // The rows are still unwritten: merge the marks back so the next tick
+      // retries them instead of silently dropping the delta.
+      this.persistDirty = true
+      this.dirtyBlockFloor = Math.min(this.dirtyBlockFloor, floor)
+      for (const index of pointIndices) this.dirtyBlockIndices.add(index)
+      throw error
+    }
   }
 
   private async flushPersist(): Promise<void> {

@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import {
   AgentServer,
   createWebSocketServerTransport,
+  loadPersistedSession,
   type AgentServerTransport,
   type AgentTransportBinding,
   type ClientFrame,
@@ -115,10 +116,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   app.get('/api/conversations/:id/transcript', async (c) => {
     const conversation = conversations.get(c.req.param('id'))
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
-    const checkpoint = await store.readJson<{ transcript?: { blocks?: unknown[] } }>(
-      `agent-sessions/${conversation.id}/checkpoint.json`,
-    )
-    return c.json({ blocks: checkpoint?.transcript?.blocks ?? [] })
+    const loaded = await loadPersistedSession(store, `agent-sessions/${conversation.id}`)
+    return c.json({ blocks: loaded?.blocks ?? [] })
   })
 
   app.get('/api/models', async (c) => {

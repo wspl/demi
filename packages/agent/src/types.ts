@@ -1,4 +1,5 @@
 import type {
+  Block,
   ModelSelection,
   ProviderErrorDiagnostics,
   QueuedMessage,
@@ -237,10 +238,37 @@ export interface AgentSessionCheckpoint<State> {
   harnessName: string
 }
 
+/** Everything a session persists except the transcript blocks. */
+export interface AgentSessionStateSnapshot<State> {
+  state: State
+  phase: SessionPhase
+  queue: QueuedMessage[]
+  cwd: string
+  model: ModelSelection
+  harnessName: string
+}
+
+/**
+ * One persist tick: the journal write. `changedBlocks` carries only the
+ * transcript blocks mutated since the last save (streaming appends touch the
+ * tail; compaction and rewinds touch a suffix), keyed by transcript index.
+ * Rows at `index >= blockCount` no longer exist and must be deleted. The
+ * state snapshot rides along on every tick — it is small.
+ */
+export interface AgentSessionPersistUpdate<State> extends AgentSessionStateSnapshot<State> {
+  changedBlocks: Array<{ index: number; block: Block }>
+  blockCount: number
+}
+
+/**
+ * Session persistence: block rows plus a state row. Implementations write
+ * `changedBlocks` as individual rows — never the whole transcript — and
+ * reassemble the checkpoint on load.
+ */
 export interface AgentSessionStore<State = unknown> {
-  saveCheckpoint(checkpoint: AgentSessionCheckpoint<State>): Promise<void> | void
-  /** Load a previously saved checkpoint for this session, or null if none exists. */
-  loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null>
+  save(update: AgentSessionPersistUpdate<State>): Promise<void> | void
+  /** Load the persisted session, or null if none exists. */
+  load(): Promise<AgentSessionCheckpoint<State> | null>
 }
 
 export interface AgentSessionRestoreParams<State> {

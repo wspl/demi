@@ -30,6 +30,12 @@ import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
 import { ChildSupervisor, injectSubagentCommand } from './subagent'
 import { ProviderStreamError } from './provider-stream-error'
+import {
+  hostAgentSessionStore,
+  loadPersistedSession,
+  persistedSessionCheckpoint,
+  type BlobStore,
+} from './session-store'
 
 /** Session tuning forwarded to every AgentSession this server creates. */
 export interface AgentServerSessionOptions {
@@ -79,6 +85,14 @@ export interface AgentServerOptions {
    * command bridge wiring lives in `@demicodes/host-local`, not here.
    */
   prepareShell?: PrepareShell
+  /**
+   * Per-session persistence override. When absent, sessions persist through
+   * the resolved Host's store (`hostAgentSessionStore` under
+   * `agent-sessions/<id>`). Products with their own databases inject here.
+   */
+  sessionStore?: (agentSessionId: string, host: Host) => AgentSessionStore<unknown>
+  /** Media blob store used by the default host-backed persistence. */
+  blobs?: BlobStore
 }
 
 export interface AgentTransportBinding {
@@ -133,6 +147,8 @@ export class AgentServer {
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
   private readonly notifyParentOnIdle: boolean
+  private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
+  private readonly blobs: BlobStore | null
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -143,6 +159,8 @@ export class AgentServer {
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell ?? null
     this.notifyParentOnIdle = options.subagents?.notifyParentOnIdle ?? true
+    this.sessionStore = options.sessionStore ?? null
+    this.blobs = options.blobs ?? null
   }
 
   client(): AgentClient {
@@ -161,6 +179,8 @@ export class AgentServer {
       prepareShell: this.prepareShell,
       notifyParentOnIdle: this.notifyParentOnIdle,
       sessions: this.sessionOwnership,
+      sessionStore: this.sessionStore,
+      blobs: this.blobs,
     })
     this.bindings.add(binding)
     return binding
@@ -243,6 +263,8 @@ interface AgentTransportBindingOptions {
   prepareShell: PrepareShell | null
   notifyParentOnIdle: boolean
   sessions: SessionOwnershipRegistry
+  sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
+  blobs: BlobStore | null
 }
 
 class AgentTransportBindingImpl implements AgentTransportBinding {
@@ -254,6 +276,8 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly prepareShell: PrepareShell | null
   private readonly notifyParentOnIdle: boolean
   private readonly sessions: SessionOwnershipRegistry
+  private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
+  private readonly blobs: BlobStore | null
   private live: LiveSession | null = null
   private unsubscribeTransport: (() => void) | null = null
   private closed = false
@@ -267,6 +291,8 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.prepareShell = options.prepareShell
     this.notifyParentOnIdle = options.notifyParentOnIdle
     this.sessions = options.sessions
+    this.sessionStore = options.sessionStore
+    this.blobs = options.blobs
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
     })
@@ -459,13 +485,17 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
 
     const provider = await this.createRuntime(frame.provider)
 
-    // The checkpoint lives in Host.store, so a Host is needed before the restored
-    // state exists. Harnesses must tolerate host() being called with initial
-    // state for store access (listConversations does the same).
+    // The default persistence lives in Host.store, so a Host is needed before
+    // the restored state exists. Harnesses must tolerate host() being called
+    // with initial state for store access (listConversations does the same).
     const initialState = agent.initialState()
     const provisionalHost = await agent.host({ state: initialState, cwd: frame.cwd })
-    const store = new HostAgentSessionStore(provisionalHost.store, agentSessionId)
-    const checkpoint = await store.loadCheckpoint()
+    const store = this.sessionStore
+      ? this.sessionStore(agentSessionId, provisionalHost)
+      : hostAgentSessionStore(provisionalHost.store, `agent-sessions/${agentSessionId}`, {
+          blobs: this.blobs ?? undefined,
+        })
+    const checkpoint = await store.load()
     const restoring = checkpoint !== null && checkpoint.harnessName === agent.name
 
     // One live state object, shared by the harness closures (host, commands,
@@ -492,6 +522,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       sessionOptions: this.sessionOptions,
       notifyParentOnIdle: this.notifyParentOnIdle,
       store: provisionalHost.store,
+      blobs: this.blobs ?? undefined,
       emit: liveSink,
     })
     const commands = injectSubagentCommand(harnessCommands, supervisor.rootCommandNode())
@@ -614,16 +645,18 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
 
   // List the persisted conversations for a workspace (cwd), newest first, read
   // straight from Host.store — independent of any client-side state, so history
-  // survives a cleared browser / a different device.
+  // survives a cleared browser / a different device. Summaries read the raw
+  // rows (no media rehydration — titles and timestamps need none).
   private async listConversations(cwd: string): Promise<void> {
     const host = await this.agent.host({ state: this.agent.initialState(), cwd })
     const keys = await host.store.list('agent-sessions/')
     const conversations: ConversationSummary[] = []
     for (const key of keys) {
-      if (!key.endsWith('/checkpoint.json')) continue
-      const checkpoint = await host.store.readJson<AgentSessionCheckpoint<unknown>>(key)
-      if (!checkpoint || checkpoint.cwd !== cwd) continue
-      conversations.push(summarizeConversation(key.slice('agent-sessions/'.length, -'/checkpoint.json'.length), checkpoint))
+      if (!key.endsWith('/state.json')) continue
+      const id = key.slice('agent-sessions/'.length, -'/state.json'.length)
+      const loaded = await loadPersistedSession(host.store, `agent-sessions/${id}`)
+      if (!loaded || loaded.state.cwd !== cwd) continue
+      conversations.push(summarizeConversation(id, persistedSessionCheckpoint(loaded)))
     }
     conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     this.send({ type: 'conversations', conversations })
@@ -977,21 +1010,6 @@ class LiveSession {
     const matches = [...this.environmentsByHost.values()].filter((environment) => environment.hasCommand(commandId))
     if (matches.length > 1) throw new Error(`Command id "${commandId}" is not unique in this session`)
     return matches[0] ?? null
-  }
-}
-
-class HostAgentSessionStore<State> implements AgentSessionStore<State> {
-  constructor(
-    private readonly store: HostStore,
-    private readonly agentSessionId: string,
-  ) {}
-
-  saveCheckpoint(checkpoint: AgentSessionCheckpoint<State>): Promise<void> {
-    return this.store.writeJson(`agent-sessions/${this.agentSessionId}/checkpoint.json`, checkpoint)
-  }
-
-  loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null> {
-    return this.store.readJson<AgentSessionCheckpoint<State>>(`agent-sessions/${this.agentSessionId}/checkpoint.json`)
   }
 }
 

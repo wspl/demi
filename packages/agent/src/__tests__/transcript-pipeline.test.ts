@@ -4,7 +4,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import { waitFor } from '@demicodes/utils'
 import { AgentClient, TranscriptLog, applyTranscriptPatches, createInProcessTransportPair } from '../index'
 import { AgentSession } from '../session'
-import type { AgentHarnessRuntime, AgentSessionCheckpoint, AgentSessionStore } from '../types'
+import type { AgentHarnessRuntime, AgentSessionCheckpoint, AgentSessionPersistUpdate, AgentSessionStore } from '../types'
 import type { ClientFrame } from '../frames'
 
 const model: ModelSelection = {
@@ -31,14 +31,14 @@ function createRuntime(): AgentHarnessRuntime<Record<string, never>> {
 
 class CountingStore implements AgentSessionStore<Record<string, never>> {
   saves = 0
-  last: AgentSessionCheckpoint<Record<string, never>> | null = null
+  last: AgentSessionPersistUpdate<Record<string, never>> | null = null
 
-  saveCheckpoint(snapshot: AgentSessionCheckpoint<Record<string, never>>): void {
+  save(update: AgentSessionPersistUpdate<Record<string, never>>): void {
     this.saves += 1
-    this.last = snapshot
+    this.last = structuredClone(update)
   }
 
-  loadCheckpoint(): Promise<AgentSessionCheckpoint<Record<string, never>> | null> {
+  load(): Promise<AgentSessionCheckpoint<Record<string, never>> | null> {
     return Promise.resolve(null)
   }
 }
@@ -101,7 +101,7 @@ test('a turn with tool calls persists at action boundaries, not per event', asyn
 
   // With the persist timer effectively disabled, only the boundary flush writes.
   expect(store.saves).toBe(1)
-  expect(store.last?.transcript.blocks.map((block) => block.type)).toEqual([
+  expect(store.last?.changedBlocks.map(({ block }) => block.type)).toEqual([
     'user',
     'tool_call',
     'response',

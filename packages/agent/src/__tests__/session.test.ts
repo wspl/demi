@@ -11,9 +11,11 @@ import {
   type AgentSessionOptions,
   type AgentSessionStore,
   type AgentSessionCheckpoint,
+  type AgentSessionPersistUpdate,
   type AgentToolInvokeResult,
   type SessionEvent,
 } from '../index'
+import { MemorySessionStore } from './helpers'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -698,10 +700,8 @@ test('AgentSession serializes checkpoint writes so a flush cannot overlap a sche
   await session.send(text('finish'))
 
   expect(store.maxInFlight).toBe(1)
-  expect(store.snapshots.length).toBeGreaterThan(1)
-  expect(store.snapshots.at(-1)?.transcript.blocks.map((block) => block.type)).toEqual(
-    session.transcript().blocks.map((block) => block.type),
-  )
+  expect(store.saves.length).toBeGreaterThan(1)
+  expect(store.saves.at(-1)?.blockCount).toBe(session.transcript().blocks.length)
 })
 
 test('AgentSession persists extension state snapshots appended by lifecycle hooks', async () => {
@@ -2091,15 +2091,15 @@ class BlockingSteerStore implements AgentSessionStore<{ toolCalls: number }> {
   private readonly releaseSave = deferred<void>()
   private blocked = false
 
-  async saveCheckpoint(snapshot: AgentSessionCheckpoint<{ toolCalls: number }>): Promise<void> {
-    if (!this.blocked && snapshot.transcript.blocks.some((block) => block.type === 'steer')) {
+  async save(update: AgentSessionPersistUpdate<{ toolCalls: number }>): Promise<void> {
+    if (!this.blocked && update.changedBlocks.some(({ block }) => block.type === 'steer')) {
       this.blocked = true
       this.started.resolve(undefined)
       await this.releaseSave.promise
     }
   }
 
-  async loadCheckpoint(): Promise<AgentSessionCheckpoint<{ toolCalls: number }> | null> {
+  async load(): Promise<AgentSessionCheckpoint<{ toolCalls: number }> | null> {
     return null
   }
 
@@ -2192,33 +2192,21 @@ class ThrowingProvider implements AgentProvider {
   }
 }
 
-class MemorySessionStore<State> {
-  readonly snapshots: Array<AgentSessionCheckpoint<State>> = []
-
-  saveCheckpoint(snapshot: AgentSessionCheckpoint<State>): void {
-    this.snapshots.push(snapshot)
-  }
-
-  loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null> {
-    return Promise.resolve(this.snapshots[this.snapshots.length - 1] ?? null)
-  }
-}
-
 class SlowSessionStore implements AgentSessionStore<{ toolCalls: number }> {
-  readonly snapshots: Array<AgentSessionCheckpoint<{ toolCalls: number }>> = []
+  readonly saves: Array<AgentSessionPersistUpdate<{ toolCalls: number }>> = []
   maxInFlight = 0
   private inFlight = 0
 
-  async saveCheckpoint(snapshot: AgentSessionCheckpoint<{ toolCalls: number }>): Promise<void> {
+  async save(update: AgentSessionPersistUpdate<{ toolCalls: number }>): Promise<void> {
     this.inFlight += 1
     this.maxInFlight = Math.max(this.maxInFlight, this.inFlight)
     await delay(20)
-    this.snapshots.push(snapshot)
+    this.saves.push(structuredClone(update))
     this.inFlight -= 1
   }
 
-  loadCheckpoint(): Promise<AgentSessionCheckpoint<{ toolCalls: number }> | null> {
-    return Promise.resolve(this.snapshots.at(-1) ?? null)
+  load(): Promise<AgentSessionCheckpoint<{ toolCalls: number }> | null> {
+    return Promise.resolve(null)
   }
 }
 
