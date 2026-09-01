@@ -223,3 +223,30 @@ test('backend restart restores the conversation from its database (M3)', async (
   await resumed.close()
   await restarted.close()
 }, 30_000)
+
+test('a malformed PATCH body is rejected with 400 invalid_body', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-badbody-'))
+  const provider = defineProvider({
+    id: 'stub',
+    displayName: 'Stub',
+    createRuntime: () => new StubProvider([[events.text('ok'), events.response()]]),
+  })
+  const backend = await createBackend({ dataDir, providers: [provider], port: 0 })
+  const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
+
+  const bad = await fetch(`${backend.url}/api/conversations/${created.conversation.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ archived: 'yes' }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(bad.status).toBe(400)
+  expect(await bad.json()).toMatchObject({ code: 'invalid_body' })
+
+  const notJson = await fetch(`${backend.url}/api/conversations/${created.conversation.id}`, {
+    method: 'PATCH',
+    body: 'not json',
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(notJson.status).toBe(400)
+  await backend.close()
+})
