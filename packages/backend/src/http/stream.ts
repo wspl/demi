@@ -2,6 +2,7 @@ import {
   createWebSocketServerTransport,
   type AgentServer,
   type AgentTransportBinding,
+  type BlobStore,
   type JsonWebSocket,
 } from '@demicodes/agent'
 import { Hono } from 'hono'
@@ -20,8 +21,9 @@ export function streamRoutes(options: {
   control: ControlService
   agentServer: AgentServer
   upgradeWebSocket: UpgradeWebSocket
+  blobs: BlobStore
 }): Hono {
-  const { control, agentServer, upgradeWebSocket } = options
+  const { control, agentServer, upgradeWebSocket, blobs } = options
   const app = new Hono()
 
   app.get('/:id/stream', async (c, next) => {
@@ -38,6 +40,7 @@ export function streamRoutes(options: {
             conversation,
             control,
             workspace?.path,
+            blobs,
           )
           binding = agentServer.attachTransport(transport)
         },
