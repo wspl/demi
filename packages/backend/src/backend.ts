@@ -8,6 +8,7 @@ import { createBunWebSocket } from 'hono/bun'
 import { STUB_USER } from './auth/identity'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { createApp } from './http/app'
+import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { DirBlobStore } from './storage/blob-store'
 import { ConversationStores } from './storage/conversation-store'
 import { LocalControlService, type ControlService } from './storage/control'
@@ -21,6 +22,8 @@ export interface BackendOptions {
   providers: Provider[]
   /** HTTP port (0 = ephemeral, for tests). */
   port?: number
+  /** Runner-management tuning (claim TTL, liveness interval) — tests only. */
+  runner?: Omit<RunnerRegistryOptions, 'control'>
 }
 
 export interface Backend {
@@ -44,12 +47,23 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     localFs: new LocalHost(options.dataDir).fs,
   })
 
+  const runnerRegistry = new RunnerRegistry({ control, ...options.runner })
+
+  // The execution target is resolved server-side from the conversation record:
+  // a workspace pointer routes to the device's stable RemoteHost (offline ⇒
+  // tool errors until the runner reattaches), no workspace ⇒ virtual.
+  const hostFor = async (conversationId: string): Promise<Host> => {
+    const conversation = await control.getConversation(conversationId)
+    const workspace = conversation?.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
+    if (workspace) return runnerRegistry.hostFor(workspace, conversationId, conversationStores.hostStore(conversationId))
+    return virtualHostFor(conversationId)
+  }
+
   const agentServer = new AgentServer({
     agent: createCodingAgentHarness({
-      host: (ctx): Promise<Host> =>
-        // Shell/reference contexts carry the session id (= conversation id);
-        // session-less contexts get their own scratch namespace.
-        virtualHostFor('agentSessionId' in ctx ? ctx.agentSessionId : 'lobby'),
+      // Shell/reference contexts carry the session id (= conversation id);
+      // session-less contexts get their own scratch namespace.
+      host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
     }),
     providers: options.providers,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },
@@ -65,6 +79,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     conversationStores,
     providers: options.providers,
     agentServer,
+    runnerRegistry,
     upgradeWebSocket,
   })
 
@@ -79,6 +94,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     url: `http://localhost:${server.port}`,
     close: async () => {
       await agentServer.close()
+      await runnerRegistry.close()
       server.stop(true)
       conversationStores.close()
       controlDb.close()
