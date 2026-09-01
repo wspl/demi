@@ -113,11 +113,11 @@ Mechanics to watch (verified against the repo):
 
 ## Part 2 — Boundary schemas (schema-ization)
 
-Per the AGENTS.md validation tiers: structured data crossing a trust
-boundary gets a zod schema (one schema module per boundary, types via
-`z.infer`); single-field probes of thrown values use `@demicodes/utils`
-guards; both-sides-ours data is typed at the contract and never
-re-probed.
+Per the AGENTS.md Data Validation guidance: structured data arriving from
+outside the process gets a zod schema next to the boundary's types (TS
+types via `z.infer`); field probes of thrown values use the
+`@demicodes/utils` guards; where both sides are our code, the contract
+itself carries the type.
 
 ### Boundary inventory and placement
 
