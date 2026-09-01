@@ -1,6 +1,8 @@
+import type { AgentServer } from '@demicodes/agent'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { STUB_USER } from '../auth/identity'
+import { switchConversationTarget } from '../conversation/target-switch'
 import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 
@@ -9,14 +11,16 @@ const patchConversationBodySchema = z.object({
   archived: z.boolean().optional(),
   connectionId: z.string().nullable().optional(),
   modelId: z.string().nullable().optional(),
+  workspaceId: z.string().nullable().optional(),
 })
 
 /** `/api/conversations` REST surface (the live stream is `stream.ts`). */
 export function conversationRoutes(options: {
   control: ControlService
   conversationStores: ConversationStores
+  agentServer: AgentServer
 }): Hono {
-  const { control, conversationStores } = options
+  const { control, conversationStores, agentServer } = options
   const app = new Hono()
 
   app.get('/', async (c) => {
@@ -44,6 +48,22 @@ export function conversationRoutes(options: {
     if (body.archived !== undefined) await control.setConversationArchived(conversation.id, body.archived)
     if (body.connectionId !== undefined || body.modelId !== undefined) {
       await control.setConversationModel(conversation.id, body.connectionId ?? null, body.modelId ?? null)
+    }
+    if (body.workspaceId !== undefined) {
+      const result = await switchConversationTarget({ control, agentServer }, conversation.id, body.workspaceId)
+      switch (result.outcome) {
+        case 'switched':
+        case 'noop':
+          break
+        case 'workspace_not_found':
+          return c.json({ code: 'workspace_not_found', message: 'No such workspace' }, 404)
+        case 'turn_in_flight':
+          return c.json({ code: 'turn_in_flight', message: 'Target switches happen at turn boundaries; a turn is running' }, 409)
+        case 'conflict':
+          return c.json({ code: 'switch_conflict', message: 'A concurrent switch won; re-read the conversation' }, 409)
+        case 'conversation_not_found':
+          return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+      }
     }
     return c.json({ conversation: await control.getConversation(conversation.id) })
   })

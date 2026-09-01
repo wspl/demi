@@ -70,6 +70,11 @@ export interface AgentHostContext<State> extends AgentHarnessContext<State> {
   metadata: AgentMetadata | null
 }
 
+/** Context for building the session's registered commands (root session id). */
+export interface AgentCommandsContext<State> extends AgentHarnessContext<State> {
+  agentSessionId: string
+}
+
 /**
  * A named subagent configuration. Every field is an override on the parent's
  * setup: omitted fields inherit the parent harness (system prompt), the
@@ -92,7 +97,7 @@ export interface AgentHarness<State = unknown> {
   initialState(): State
   /** Return the same Host object for calls that target the same execution environment. */
   host(ctx: AgentHarnessContext<State> | AgentHostContext<State>): Host | Promise<Host>
-  commands?(ctx: AgentHarnessContext<State>): Promise<Command[]> | Command[]
+  commands?(ctx: AgentCommandsContext<State>): Promise<Command[]> | Command[]
   /**
    * Named subagent profiles for `demi agent`. Omitted: one implicit profile
    * named `default` that fully inherits the parent's setup.

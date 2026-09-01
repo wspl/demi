@@ -30,7 +30,26 @@ export interface ControlService {
   listUsage(userId: string): Promise<UsageRow[]>
   createWorkspace(workspace: { userId: string; deviceId: string; path: string; name: string }): Promise<WorkspaceRecord>
   getWorkspace(id: string): Promise<WorkspaceRecord | null>
+  listWorkspaces(userId: string): Promise<WorkspaceRecord[]>
+  renameWorkspace(id: string, name: string): Promise<void>
+  deleteWorkspace(id: string): Promise<void>
+  countConversationsInWorkspace(workspaceId: string): Promise<number>
   setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void>
+  /**
+   * The target-switch write: moves the workspace pointer and fills the prev
+   * slot in one compare-and-set — returns false (and writes nothing) when the
+   * pointer no longer equals `fromWorkspaceId`, so concurrent switches have
+   * exactly one winner. Overwriting an occupied prev slot IS the release of
+   * the departed target it held.
+   */
+  switchConversationWorkspace(
+    conversationId: string,
+    fromWorkspaceId: string | null,
+    toWorkspaceId: string | null,
+    prev: PrevTargetRecord,
+  ): Promise<boolean>
+  markConversationPrevAnnounced(conversationId: string): Promise<void>
+  clearConversationPrev(conversationId: string): Promise<void>
   createConversation(userId: string, options?: { title?: string }): Promise<ConversationRecord>
   getConversation(id: string): Promise<ConversationRecord | null>
   listConversations(userId: string, options?: { archived?: boolean }): Promise<ConversationRecord[]>
@@ -83,12 +102,22 @@ export interface UsageRow {
   createdAt: string
 }
 
+/** The departed execution target a session can still reach via `demi host prev`. */
+export type PrevTarget = { kind: 'virtual' } | { kind: 'workspace'; deviceId: string; path: string }
+
+export interface PrevTargetRecord {
+  target: PrevTarget
+  /** True once the switch context block has been injected into a turn. */
+  announced: boolean
+}
+
 export interface ConversationRecord {
   id: string
   userId: string
   title: string
   archived: boolean
   workspaceId: string | null
+  prevTarget: PrevTargetRecord | null
   connectionId: string | null
   modelId: string | null
   createdAt: string
@@ -101,6 +130,7 @@ interface ConversationRow {
   title: string
   archived: number
   workspace_id: string | null
+  prev_target_json: string | null
   connection_id: string | null
   model_id: string | null
   created_at: string
@@ -108,7 +138,7 @@ interface ConversationRow {
 }
 
 const SELECT =
-  'SELECT id, user_id, title, archived, workspace_id, connection_id, model_id, created_at, updated_at FROM conversations'
+  'SELECT id, user_id, title, archived, workspace_id, prev_target_json, connection_id, model_id, created_at, updated_at FROM conversations'
 
 /** In-process `ControlService` over the control database. */
 export class LocalControlService implements ControlService {
@@ -280,12 +310,73 @@ export class LocalControlService implements ControlService {
       : null
   }
 
+  async listWorkspaces(userId: string): Promise<WorkspaceRecord[]> {
+    const rows = this.db.all<WorkspaceRow>(
+      'SELECT id, user_id, device_id, path, name, created_at FROM workspaces WHERE user_id = ? ORDER BY created_at',
+      [userId],
+    )
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      deviceId: row.device_id,
+      path: row.path,
+      name: row.name,
+      createdAt: row.created_at,
+    }))
+  }
+
+  async renameWorkspace(id: string, name: string): Promise<void> {
+    this.db.run('UPDATE workspaces SET name = ? WHERE id = ?', [name, id])
+  }
+
+  async deleteWorkspace(id: string): Promise<void> {
+    this.db.run('DELETE FROM workspaces WHERE id = ?', [id])
+  }
+
+  async countConversationsInWorkspace(workspaceId: string): Promise<number> {
+    return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM conversations WHERE workspace_id = ?', [workspaceId])?.n ?? 0
+  }
+
   async setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void> {
     this.db.run('UPDATE conversations SET workspace_id = ?, updated_at = ? WHERE id = ?', [
       workspaceId,
       new Date().toISOString(),
       conversationId,
     ])
+  }
+
+  async switchConversationWorkspace(
+    conversationId: string,
+    fromWorkspaceId: string | null,
+    toWorkspaceId: string | null,
+    prev: PrevTargetRecord,
+  ): Promise<boolean> {
+    return this.db.transaction(() => {
+      this.db.run(
+        'UPDATE conversations SET workspace_id = ?, prev_target_json = ?, updated_at = ? WHERE id = ? AND workspace_id IS ?',
+        [toWorkspaceId, JSON.stringify(prev), new Date().toISOString(), conversationId, fromWorkspaceId],
+      )
+      return (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+    })
+  }
+
+  async markConversationPrevAnnounced(conversationId: string): Promise<void> {
+    this.db.transaction(() => {
+      const row = this.db.get<{ prev_target_json: string | null }>(
+        'SELECT prev_target_json FROM conversations WHERE id = ?',
+        [conversationId],
+      )
+      if (!row?.prev_target_json) return
+      const prev = JSON.parse(row.prev_target_json) as PrevTargetRecord
+      this.db.run('UPDATE conversations SET prev_target_json = ? WHERE id = ?', [
+        JSON.stringify({ ...prev, announced: true }),
+        conversationId,
+      ])
+    })
+  }
+
+  async clearConversationPrev(conversationId: string): Promise<void> {
+    this.db.run('UPDATE conversations SET prev_target_json = NULL WHERE id = ?', [conversationId])
   }
 
   async createConversation(userId: string, options: { title?: string } = {}): Promise<ConversationRecord> {
@@ -296,6 +387,7 @@ export class LocalControlService implements ControlService {
       title: options.title ?? 'New conversation',
       archived: false,
       workspaceId: null,
+      prevTarget: null,
       connectionId: null,
       modelId: null,
       createdAt: now,
@@ -430,6 +522,7 @@ function fromRow(row: ConversationRow): ConversationRecord {
     title: row.title,
     archived: row.archived !== 0,
     workspaceId: row.workspace_id,
+    prevTarget: row.prev_target_json ? (JSON.parse(row.prev_target_json) as PrevTargetRecord) : null,
     connectionId: row.connection_id,
     modelId: row.model_id,
     createdAt: row.created_at,

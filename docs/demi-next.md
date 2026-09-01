@@ -376,9 +376,10 @@ demi host prev shell -- tar cz -C /workspace . | tar xz
 ```
 
 That recipe is identical for every prev type. A virtual prev satisfies it
-through a portable `tar` (create-only, walking `Host.fs`) registered into
-virtual-target shells like the virtual-only `node`; real prevs use their
-real `tar`. `release` is the one lifecycle verb, and it states the only
+because the shell's portable command set (just-bash) already carries a
+full `tar` running over `Host.fs` — nothing is registered or implemented
+for this; real prevs use their real toolchain through the same shell.
+`release` is the one lifecycle verb, and it states the only
 fact true for every prev type — the session gives up its access. The
 platform disposes of the underlying resource per type: virtual, nothing to
 do (the files live in the store); managed, hibernate; user host, revoke the
@@ -1331,7 +1332,8 @@ Two acceptance steps in order:
 **M6 — Target switching + attachments (mechanisms + endpoints only; UI at M9)**
 Turn-boundary switching + context injection + the prev slot; the `demi
 host` command frame (`demi host`, `prev shell` byte pipe, `prev release`)
-with the portable create-only `tar` for virtual prevs; workspaces CRUD;
+(virtual prevs export through the portable command set's own `tar` over
+`Host.fs` — nothing new registered); workspaces CRUD;
 offline-target degradation (read/chat via
 virtual);
 message-attachment upload (inline media content blocks) and workspace file
@@ -1409,7 +1411,7 @@ checklists only for UI look-and-feel and packaging smoke.
 | M3 | Block-row persistence: a streamed turn appends rows (no whole-transcript rewrite observable); restore from `control.sqlite` + `conversations/<id>.sqlite` equals the live transcript; media blocks round-trip through `source.ref` + blob store; per-conversation `host_store` isolation. |
 | M4 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M5 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; claude-code-on-runner chain with the real CLI against a mock upstream (provider env overlay), asserting the vault token reached the upstream and nothing was persisted on the device — skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
-| M6 | Switch integration: real→real (files stay + honest context block; same-device note when applicable), virtual→real (context block names the prev, `demi host prev shell` portable-tar pipe lands the files, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; prev slot single-occupancy + release closes `prev shell`; offline target → session readable and chattable on virtual. |
+| M6 | Switch integration: real→real (files stay + honest context block; same-device note when applicable), virtual→real (context block names the prev, the `demi host prev shell` tar pipe — just-bash's portable `tar` on the virtual side — lands the files, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; prev slot single-occupancy + release closes `prev shell`; offline target → session readable and chattable on virtual. |
 | M7 | Fake-provisioner integration: `demi host switch managed` binds a session-scoped host and spawns land there; Cloud workspace creation provisions once per project; pre-issued token joins on `hello` without a claim; idle hibernate snapshots home + destroys, wake restores (snapshot-failure keeps the container; wake idempotent under concurrency); owner-scoped authz (another user/conversation cannot touch the device); env-gated runsc smoke (Linux only). |
 | M8 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
 | M9 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |

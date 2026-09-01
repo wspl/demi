@@ -28,6 +28,12 @@ export interface Command {
   input?: CommandInputSpec
   positionals?: string[]
   stdinField?: string
+  /**
+   * Field receiving every token after a literal `--`, unparsed — for
+   * commands that forward a raw argv. Declare the field as
+   * `z.array(z.string())` (optional when `--` may be omitted).
+   */
+  restField?: string
   output?: CommandOutputSpec
 }
 
@@ -204,6 +210,10 @@ function parseArgs(
 
   for (let i = startIndex; i < argv.length; i += 1) {
     const token = argv[i]
+    if (command.restField && token === '--') {
+      values[command.restField] = argv.slice(i + 1)
+      break
+    }
     if (token === '--help') {
       return { path: [...path], help: true, values: {}, json: false }
     }

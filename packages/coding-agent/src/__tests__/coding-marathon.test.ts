@@ -461,7 +461,7 @@ function createRuntimeFromHarness(
   ) => AgentToolInvokeResult,
 ): { environment: BashEnvironment; runtime: AgentHarnessRuntime<Record<string, never>> } {
   const state = harness.initialState()
-  const harnessContext = { state, cwd }
+  const harnessContext = { state, cwd, agentSessionId: 'test-session' }
   const registry = new CommandRegistry()
   const commands = harness.commands?.(harnessContext) ?? []
   if (commands instanceof Promise) throw new Error('test harness commands must be synchronous')

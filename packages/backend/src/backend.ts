@@ -1,11 +1,13 @@
 import { join } from 'node:path'
 import { AgentServer, type ProviderResolver } from '@demicodes/agent'
-import { createCodingAgentHarness } from '@demicodes/coding-agent'
+import { createCodingAgentHarness, createDemiCommand, createTodoCommand } from '@demicodes/coding-agent'
 import { LocalHost } from '@demicodes/host-local'
 import type { Host } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import { STUB_USER } from './auth/identity'
+import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
+import { createHostCommandGroup } from './managed/host-command'
 import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
 import { meterProvider } from './llm/metering'
@@ -96,11 +98,22 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     return virtualHostFor(conversationId)
   }
 
+  const hostCommandDeps = {
+    control,
+    registry: runnerRegistry,
+    virtualHostFor: (conversationId: string): Promise<Host> => virtualHostFor(conversationId),
+    hostStoreFor: (conversationId: string) => conversationStores.hostStore(conversationId),
+  }
   const agentServer = new AgentServer({
     agent: createCodingAgentHarness({
       // Shell/reference contexts carry the session id (= conversation id);
       // session-less contexts get their own scratch namespace.
       host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
+      commands: (ctx) => [
+        createDemiCommand({ extraSubcommands: [createHostCommandGroup(hostCommandDeps, ctx.agentSessionId)] }),
+        createTodoCommand(),
+      ],
+      preamble: switchAnnouncementPreamble(control),
     }),
     providers: resolveProvider,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },

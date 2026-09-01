@@ -67,7 +67,7 @@ export async function assembleLiveSession(
   // prompts) and the session itself. On restore it carries the saved state.
   const state = restoring ? structuredClone(checkpoint.state) : initialState
   const harnessContext = { state, cwd }
-  const harnessCommands = (await agent.commands?.(harnessContext)) ?? []
+  const harnessCommands = (await agent.commands?.({ ...harnessContext, agentSessionId })) ?? []
   const profiles = (await agent.agents?.(harnessContext)) ?? null
 
   let live: LiveSession | null = null
