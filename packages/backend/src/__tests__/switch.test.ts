@@ -202,6 +202,115 @@ test('M6 acceptance: virtual→real switch with context block and migration pipe
   await backend.close()
 }, 30_000)
 
+test('real→real switch: files stay, same-device note, prev slot single-occupancy', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-m6-rr-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-m6-rr-state-'))
+  const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m6-rr-runner-'))
+  const stubRuntime = () =>
+    new StubProvider([
+      // Turn 1 (workspace A): leave a file behind.
+      [events.toolCall('t1', 'shell_exec', { script: 'printf alpha > a.txt', timeoutMs: 10_000 })],
+      [events.text('one'), events.response()],
+      // Turn 2 (after A→B on the same device): the old directory is directly reachable, and the pipe works too.
+      [events.toolCall('t2', 'shell_exec', { script: `cat ${join(runnerDir, 'a', 'a.txt')} && demi host prev shell -- cat a.txt`, timeoutMs: 20_000 })],
+      [events.text('two'), events.response()],
+    ])
+  const backend = await createBackend({
+    dataDir,
+    port: 0,
+    runner: { pingIntervalMs: 0 },
+    providerTypes: {
+      stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: stubRuntime }),
+    },
+  })
+  const selection = selectionFor(await stubConnection(backend))
+
+  const codes: string[] = []
+  const runner = new RunnerClient({
+    backendUrl: backend.url,
+    stateDir,
+    name: 'm6-rr-device',
+    host: new LocalHost(runnerDir),
+    reconnect: { initialDelayMs: 30, maxDelayMs: 100 },
+    onClaimPending: (code) => codes.push(code),
+  })
+  runner.start()
+  await waitFor(() => codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const claimed = await api(backend, '/api/devices/claim', {
+    method: 'POST',
+    body: JSON.stringify({ code: codes[0] }),
+    headers: { 'content-type': 'application/json' },
+  })
+  const { device } = (await claimed.json()) as { device: { id: string } }
+  const dirA = join(runnerDir, 'a')
+  const dirB = join(runnerDir, 'b')
+  const fsA = await api(backend, `/api/devices/${device.id}/fs`, {
+    method: 'POST',
+    body: JSON.stringify({ path: dirA }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(fsA.status).toBe(201)
+  await api(backend, `/api/devices/${device.id}/fs`, {
+    method: 'POST',
+    body: JSON.stringify({ path: dirB }),
+    headers: { 'content-type': 'application/json' },
+  })
+  const workspaceFor = async (path: string, name: string) => {
+    const response = await api(backend, '/api/workspaces', {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: device.id, path, name }),
+      headers: { 'content-type': 'application/json' },
+    })
+    return ((await response.json()) as { workspace: { id: string } }).workspace
+  }
+  const workspaceA = await workspaceFor(dirA, 'A')
+  const workspaceB = await workspaceFor(dirB, 'B')
+
+  const created = await api(backend, '/api/conversations', { method: 'POST' })
+  const { conversation } = (await created.json()) as { conversation: { id: string } }
+  const patch = (body: unknown) =>
+    api(backend, `/api/conversations/${conversation.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    })
+  expect((await patch({ workspaceId: workspaceA.id })).status).toBe(200)
+
+  const { client, shellEvents } = await openClient(backend, conversation.id, selection)
+  await client.send([{ type: 'text', text: 'write in A' }])
+  expect(readFileSync(join(dirA, 'a.txt'), 'utf8')).toBe('alpha')
+
+  // A→B: files stay in A; the context block carries the same-device note.
+  expect((await patch({ workspaceId: workspaceB.id })).status).toBe(200)
+  await client.send([{ type: 'text', text: 'now in B' }])
+  expect(readFileSync(join(dirA, 'a.txt'), 'utf8')).toBe('alpha')
+  expect(existsSync(join(dirB, 'a.txt'))).toBe(false)
+  const output = lastExited(shellEvents)?.stdout.delta ?? ''
+  expect(output).toBe('alphaalpha')
+  const sameDeviceNote = client
+    .transcript()
+    .blocks.some(
+      (block) =>
+        block.type === 'user' &&
+        block.preamble?.includes('[Execution target switched]') &&
+        block.preamble.includes(dirA) &&
+        block.preamble.includes('same device'),
+    )
+  expect(sameDeviceNote).toBe(true)
+
+  // Single occupancy: switching again without release replaces the prev slot.
+  expect((await patch({ workspaceId: null })).status).toBe(200)
+  const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
+  const control: ControlService = new LocalControlService(controlDb)
+  const record = await control.getConversation(conversation.id)
+  expect(record?.prevTarget?.target).toEqual({ kind: 'workspace', deviceId: device.id, path: dirB })
+  controlDb.close()
+
+  await client.close()
+  await runner.stop()
+  await backend.close()
+}, 30_000)
+
 test('a running turn refuses the switch; concurrent switches have one winner', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m6-race-'))
   let releaseTurn: () => void = () => {}
