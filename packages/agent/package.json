@@ -16,7 +16,7 @@
       "import": "./dist/client-entry.mjs"
     },
     "./stdio": {
-      "development": "./src/stdio-transport.ts",
+      "development": "./src/protocol/stdio-transport.ts",
       "types": "./dist/stdio-transport.d.mts",
       "import": "./dist/stdio-transport.mjs"
     }

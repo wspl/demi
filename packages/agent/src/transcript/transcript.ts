@@ -7,7 +7,7 @@ import type {
   UserContentBlock,
 } from '@demicodes/core'
 import type { InferenceItem, ProviderEvent } from '@demicodes/provider'
-import type { TranscriptPatch } from './frames'
+import type { TranscriptPatch } from '../protocol/frames'
 
 const DEFAULT_MODEL_TEXT_HEAD_CHARS = 8_000
 const DEFAULT_MODEL_TEXT_TAIL_CHARS = 8_000

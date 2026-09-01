@@ -3,9 +3,9 @@ import type { Block, ModelSelection } from '@demicodes/core'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { waitFor } from '@demicodes/utils'
 import { AgentClient, TranscriptLog, applyTranscriptPatches, createInProcessTransportPair } from '../index'
-import { AgentSession } from '../session'
+import { AgentSession } from '../session/session'
 import type { AgentHarnessRuntime, AgentSessionCheckpoint, AgentSessionPersistUpdate, AgentSessionStore } from '../types'
-import type { ClientFrame } from '../frames'
+import type { ClientFrame } from '../protocol/frames'
 
 const model: ModelSelection = {
   providerId: 'stub',
