@@ -133,7 +133,7 @@ const allowedWorkspaceSubpaths = new Map<string, string>([
 ])
 
 const nodeOnlySubpaths = new Map<string, string>([
-  ['@demicodes/agent/stdio', 'packages/agent/src/stdio-transport.ts'],
+  ['@demicodes/agent/stdio', 'packages/agent/src/protocol/stdio-transport.ts'],
 ])
 
 const forbiddenSourcePatterns = [
@@ -172,7 +172,7 @@ test('only AgentServer imports AgentSession as a runtime value outside tests', a
     const relativeFile = formatPath(file)
     const source = await readFile(file, 'utf8')
     if (!hasRuntimeImportFromAgent(source, 'AgentSession')) continue
-    if (relativeFile !== 'packages/agent/src/server.ts') violations.push(relativeFile)
+    if (relativeFile !== 'packages/agent/src/server/server.ts') violations.push(relativeFile)
   }
 
   expect(violations).toEqual([])

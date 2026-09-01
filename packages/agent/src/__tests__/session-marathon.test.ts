@@ -3,7 +3,7 @@ import { deferred } from '@demicodes/utils'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { AgentSession, TranscriptLog } from '../index'
-import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../session/compaction'
 import {
   assertNoOrphanToolItems,
   assertTranscriptInvariants,
