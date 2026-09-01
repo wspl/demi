@@ -35,7 +35,8 @@
     "@demicodes/provider-openai-api": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
-    "hono": "^4.13.5"
+    "hono": "^4.13.5",
+    "zod": "^4.0.0"
   },
   "license": "Apache-2.0",
   "publishConfig": {

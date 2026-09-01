@@ -62,6 +62,7 @@
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "hono": "^4.13.5",
+        "zod": "^4.0.0",
       },
     },
     "packages/coding-agent": {
