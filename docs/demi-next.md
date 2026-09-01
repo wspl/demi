@@ -160,7 +160,7 @@ Spoken of as modules, not separate services:
 - **Runner management module**: device registry (claim tokens, device tokens,
   online status = socket state), the runner-protocol server, and per-session
   Host handles over connected runners.
-- **Managed hosts module**: the `ManagedHostProvisioner` (Docker Engine API),
+- **Managed hosts module**: the `ManagedHostProvisioner` (direct runsc drive),
   lifecycle (idle hibernate to home snapshots, wake, prev release), and the
   backend-contributed `demi host` subcommand group — see Execution targets.
 - **Credential vault module**: BYOK keys and subscription OAuth tokens,
@@ -179,7 +179,7 @@ Spoken of as modules, not separate services:
 
 The program users install on their devices — detailed in the Runner program
 section below. The same binary is the entrypoint of the managed-host
-container image (see Execution targets): one binary, two acquisition paths —
+rootfs (see Execution targets): one binary, two acquisition paths —
 user pairing and backend provisioning — zero code forks.
 
 ### Virtual execution (default entry)
@@ -387,25 +387,59 @@ access grant.
 ### Provisioning
 
 A narrow backend seam, `ManagedHostProvisioner` (provision/destroy), with
-one production implementation: the **Docker Engine API** (unix socket or a
-configured endpoint) — no docker CLI is spawned. The `managedHosts` backend
-config names the endpoint, the image, the backend URL reachable from
-containers, resource-limit sizes, and the per-user container cap; when it
-is absent, `demi host switch managed` and Cloud workspace creation fail
-with a clear "managed hosts not configured" error. Tests drive the full
-flows through a fake provisioner plus a local runner; docker itself is
-exercised by an env-gated smoke.
+one production implementation: **direct runsc drive** — the backend
+prepares an OCI bundle and runs gVisor's `runsc` as a child process. No
+container daemon exists anywhere in the path: no dockerd, no socket
+grants, no registry pulls. Because runsc's systrap platform needs no KVM,
+managed hosts nest inside a containerized backend — the single-compose
+self-hosted form works with zero host privileges granted.
+
+- **Bundle**: `config.json` is a static template with env and limit sizes
+  interpolated. The rootfs is one shared read-only directory unpacked
+  from the **managed-host rootfs tarball** shipped alongside the backend;
+  per-container writes go to runsc's own overlay — no per-instance
+  unpacking, no overlayfs privileges.
+- **Rootfs**: any distro userland, and the isolation boundary does not
+  depend on the choice — the guest never talks to the host kernel:
+  gVisor's Sentry implements the Linux syscall ABI in userspace, and the
+  host kernel sees only the Sentry's own seccomp-pinned syscall set. CI
+  assembles the tarball (container tooling is a build-time packager only):
+  base toolchain (git, curl, tar, node, python, bun — the baseline list
+  iterates), user `demi`, home `/home/demi`, the runner binary as
+  entrypoint. gVisor's honest cost is syscall compatibility, not
+  security: mainstream dev workloads are long verified by industry use;
+  exotic ioctls and the like can fail.
+- **Lifecycle**: `runsc run`/`kill`/`delete` is plain child-process
+  management — the backend supervises runsc like any other child.
+- **Network**: hostinet (gVisor's userspace network stack over host
+  sockets) — zero per-container network setup. The security baseline's
+  network rule is enforced at the boundary the backend itself runs
+  behind (its container network in the nested form, a host firewall rule
+  on bare metal) — a stated deployment prerequisite.
+- **Resource caps**: each runsc process gets its own cgroup-v2 subtree —
+  `memory.max`/`cpu.max`/`pids.max` are hard caps. Nested deployments
+  must delegate the backend's cgroup subtree (a standard v2 option, a
+  stated deployment prerequisite). Disk is the soft one: the idle sweep
+  doubles as a watchdog over each container's overlay backing size, and
+  a breach freezes the host and surfaces the error — the same
+  never-silently-destroy discipline as snapshot failure.
+
+The `managedHosts` backend config names the rootfs tarball, the backend
+URL reachable from containers, resource-limit sizes, and the per-user
+container cap; when it is absent, `demi host switch managed` and Cloud
+workspace creation fail with a clear "managed hosts not configured"
+error. runsc is Linux-only, so provisioning is too; tests drive the full
+flows through a fake provisioner plus a local runner everywhere, and an
+env-gated smoke exercises real runsc on Linux.
 
 Joining skips pairing entirely: the backend pre-creates the device row
 (`kind: 'managed'`, token hash only, as ever) and injects the token
 plaintext into the container env (`DEMI_DEVICE_TOKEN`,
 `DEMI_BACKEND_URL`); the runner finds it and starts directly on the
 `hello` path — the claim flow never enters, and the runner protocol is
-untouched. The image is the runner binary as entrypoint over a base
-toolchain (git, curl, tar, node, python, bun — the baseline list iterates),
-running as user `demi` with home `/home/demi`. `HostIdentity` reports
-`homeDir` — a device fact, like `PATH`/`HOME` fallback — and that is the
-session cwd for session-bound hosts.
+untouched. `HostIdentity` reports `homeDir` — a device fact, like
+`PATH`/`HOME` fallback — and that is the session cwd for session-bound
+hosts.
 
 ### Security baseline
 
@@ -414,10 +448,10 @@ the isolation boundary; each remaining item covers something gVisor does
 not (resources, network, host fs, credentials, lease reuse):
 
 1. **Runtime = gVisor (`runsc`), no fallback** — provisioning fails loudly
-   when it is unavailable; the runtime config field exists only to
-   substitute Kata, never `runc`.
-2. **Resource caps**: memory, CPU, pids, disk quota — sizes configurable,
-   presence not.
+   when it is unavailable; there is no `runc` mode.
+2. **Resource caps**: memory, CPU, and pids hard-capped via the
+   per-container cgroup subtree; disk soft-capped by the overlay watchdog
+   plus the snapshot size cap — sizes configurable, presence not.
 3. **One network rule**: zero inbound; egress to the public internet only —
    host-internal ranges, cloud metadata, and other containers unreachable;
    the backend is reached via its public URL.
@@ -1308,12 +1342,14 @@ StubProvider turn and the checkpoint.
 
 **M7 — Managed hosts**
 Device kind + session-bound binding (`conversations.hostDeviceId`); the
-`ManagedHostProvisioner` seam with the Docker Engine API implementation
-(gVisor runtime, the security baseline); pre-issued-token join; `demi host
+`ManagedHostProvisioner` seam with the direct-runsc implementation (OCI
+bundle over the shared rootfs, cgroup caps, the security baseline);
+pre-issued-token join; `demi host
 switch managed`; Cloud workspace creation; lifecycle — idle hibernate to a
 home snapshot in the store, wake on demand, prev release semantics. Accept:
 full flows (switch, hibernate/wake, release, owner-scoped authz) against a
-fake provisioner + local runner; docker provisioning smoke env-gated.
+fake provisioner + local runner; runsc provisioning smoke env-gated
+(Linux only).
 
 **M8 — Multi-user systems (API-level, no UI)**
 Real auth (username/password, cookie sessions, master/admin/user roles, no
@@ -1333,11 +1369,12 @@ frozen functionality never forces UI rework; it consumes the M8-frozen API
 and adds no new backend surface.
 
 **M10 — Deployment packaging**
-Docker images for runner and backend (backend image carries the built web
-assets), plus the managed-host image (runner entrypoint over the base
-toolchain); a sample Litestream sidecar config (optional S3 durability at
-N=1); end-to-end acceptance. Pure hosting work after interfaces are
-frozen.
+Container images for runner and backend (backend image carries the built
+web assets), plus the managed-host rootfs tarball (base toolchain, user
+`demi`, runner entrypoint — container tooling as build-time packager
+only, shipped alongside the backend); a sample Litestream sidecar config
+(optional S3 durability at N=1); end-to-end acceptance. Pure hosting
+work after interfaces are frozen.
 
 **M11 — Scaled deployment (post-v1)**
 Everything the N>1 topology needs, gathered from the design sections:
@@ -1373,7 +1410,7 @@ checklists only for UI look-and-feel and packaging smoke.
 | M4 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
 | M5 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; claude-code-on-runner chain with the real CLI against a mock upstream (provider env overlay), asserting the vault token reached the upstream and nothing was persisted on the device — skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M6 | Switch integration: real→real (files stay + honest context block; same-device note when applicable), virtual→real (context block names the prev, `demi host prev shell` portable-tar pipe lands the files, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; prev slot single-occupancy + release closes `prev shell`; offline target → session readable and chattable on virtual. |
-| M7 | Fake-provisioner integration: `demi host switch managed` binds a session-scoped host and spawns land there; Cloud workspace creation provisions once per project; pre-issued token joins on `hello` without a claim; idle hibernate snapshots home + destroys, wake restores (snapshot-failure keeps the container; wake idempotent under concurrency); owner-scoped authz (another user/conversation cannot touch the device); env-gated docker + gVisor smoke. |
+| M7 | Fake-provisioner integration: `demi host switch managed` binds a session-scoped host and spawns land there; Cloud workspace creation provisions once per project; pre-issued token joins on `hello` without a claim; idle hibernate snapshots home + destroys, wake restores (snapshot-failure keeps the container; wake idempotent under concurrency); owner-scoped authz (another user/conversation cannot touch the device); env-gated runsc smoke (Linux only). |
 | M8 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
 | M9 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |
 | M10 | Tier 3 scripted smoke: build the images, claim a containerized runner against a local backend, run one full turn end-to-end; managed-host image boots and joins via a pre-issued token; optional CI stage. |
