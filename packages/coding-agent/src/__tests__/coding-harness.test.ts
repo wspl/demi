@@ -47,7 +47,7 @@ test('coding agent harness exposes shell session tools and registered command pr
   const { environment, runtime } = createRuntimeFromHarness(harness, process.cwd())
 
   expect(harness.name).toBe('coding')
-  expect(commands.map((command) => command.name)).toEqual(['demi', 'todo'])
+  expect(commands.map((command) => command.name)).toEqual(['demi'])
   const tools = runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd(), metadata: null })
   expect(tools.map((tool) => tool.name)).toEqual([
     'shell_exec',
@@ -68,7 +68,7 @@ test('coding agent harness exposes shell session tools and registered command pr
     commandsPrompt: renderCommandsPrompt(commands),
     metadata: null,
   })
-  expect(prompt).toContain('demi: Read, create, edit, and patch workspace files (text, images, and video).')
+  expect(prompt).toContain('demi: The Demi platform command')
   expect(prompt).toContain('Treat cwd as the task workspace')
   expect(prompt).toContain('do not create a separate project directory under /tmp')
   expect(prompt).toContain('demi create')
@@ -85,7 +85,7 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(prompt).toContain('do not rely on the session script builtin read across turns')
   expect(prompt).toContain('File references attached by the client are expanded before provider calls.')
 
-  const todo = await environment.exec({ script: 'todo add "Verify default registration"' })
+  const todo = await environment.exec({ script: 'demi todo add "Verify default registration"' })
   expect(todo.stdout.delta).toBe('[ ] T1 Verify default registration\n')
   const demiHelp = await environment.exec({ shellId: todo.shellId, script: 'demi --help' })
   expect(demiHelp.stdout.delta).toContain('demi create')

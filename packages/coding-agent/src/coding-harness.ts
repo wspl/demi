@@ -2,7 +2,6 @@ import type { AgentCommandsContext, AgentHarness } from '@demicodes/agent'
 import { CommandRegistry, type Command, type Host } from '@demicodes/shell'
 import { createDemiCommand } from './demi-command'
 import { createFileReferenceResolver } from './reference-resolver'
-import { createTodoCommand } from './todo-command'
 
 export type CodingState = Record<string, never>
 
@@ -23,16 +22,12 @@ export interface CodingAgentHarnessOptions {
 }
 
 export interface CodingCommandRegistryOptions {
-  includeDemi?: boolean
   commands?: Command[]
 }
 
 export function createCodingCommandRegistry(options: CodingCommandRegistryOptions = {}): CommandRegistry {
   const registry = new CommandRegistry()
-  const commands = options.commands ?? [
-    ...(options.includeDemi ? [createDemiCommand()] : []),
-    createTodoCommand(),
-  ]
+  const commands = options.commands ?? defaultCodingCommands()
   for (const command of commands) registry.register(command)
   return registry
 }
@@ -102,5 +97,5 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
 }
 
 function defaultCodingCommands(): Command[] {
-  return [createDemiCommand(), createTodoCommand()]
+  return [createDemiCommand()]
 }

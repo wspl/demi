@@ -94,7 +94,7 @@ test('demi allows paths outside default cwd when Host.fs allows them', async () 
   const host = new LocalHost(defaultCwd)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ includeDemi: true }),
+    commands: createCodingCommandRegistry(),
     shellIdFactory: () => 'demi-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
@@ -126,7 +126,7 @@ test('demi patch can modify paths outside default cwd when Host.fs allows them',
   const host = new LocalHost(root)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ includeDemi: true }),
+    commands: createCodingCommandRegistry(),
     shellIdFactory: () => 'demi-patch-boundary-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
@@ -381,7 +381,7 @@ async function createDemiEnvironment(): Promise<{ env: BashEnvironment; host: Lo
   const host = new LocalHost(root)
   const env = new BashEnvironment({
     host,
-    commands: createCodingCommandRegistry({ includeDemi: true }),
+    commands: createCodingCommandRegistry(),
     shellIdFactory: () => 'demi-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
