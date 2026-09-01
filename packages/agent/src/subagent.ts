@@ -24,8 +24,8 @@ import type {
 import { createStandardAgentTools } from './tools'
 import type { AgentServerSessionOptions, PrepareShell } from './server'
 
+/** Default per-session live-children ceiling; override with `AgentServerOptions.subagents.maxLiveSubagents`. */
 export const MAX_LIVE_SUBAGENTS = 8
-export const MAX_ARCHIVED_SUBAGENTS = 16
 export const SUBAGENT_RESULT_MAX_BYTES = 32 * 1024
 const SHOW_RECENT_TOOLS = 8
 
@@ -64,6 +64,8 @@ interface ChildJob<State> {
   profileName: string | null
   metadata: AgentMetadata | null
   session: AgentSession<State>
+  /** Supervisor of this child's own children (the grandchildren of this supervisor's owner). */
+  ownSupervisor: ChildSupervisor<State>
   commandRegistry: CommandRegistry
   commandNames: string[]
   environments: Map<Host, BashEnvironment>
@@ -79,6 +81,127 @@ interface ChildJob<State> {
   closed: Promise<SubagentClose>
   settleClosed: (close: SubagentClose) => void
   isClosing: boolean
+  /** Wakes the settle loop when the child set or an inbound send changes the picture. */
+  wake: (() => void) | null
+}
+
+/**
+ * Connection-wide flat registry of every live session in the tree: the root
+ * plus every subagent at any depth. The sole basis for cross-tree addressing —
+ * `send`, `steer`, `show`, and `list` resolve here, with no routing rules
+ * along the tree.
+ */
+export class AgentDirectory<State = unknown> {
+  private root: { session: AgentSession<State>; supervisor: ChildSupervisor<State> } | null = null
+  private readonly entries = new Map<string, { job: ChildJob<State>; owner: ChildSupervisor<State> }>()
+
+  attachRoot(session: AgentSession<State>, supervisor: ChildSupervisor<State>): void {
+    this.root = { session, supervisor }
+  }
+
+  rootId(): string {
+    if (!this.root) throw new Error('agent directory has no root session')
+    return this.root.session.id()
+  }
+
+  rootSession(): AgentSession<State> {
+    if (!this.root) throw new Error('agent directory has no root session')
+    return this.root.session
+  }
+
+  register(job: ChildJob<State>, owner: ChildSupervisor<State>): void {
+    this.entries.set(job.id, { job, owner })
+  }
+
+  unregister(id: string): void {
+    this.entries.delete(id)
+  }
+
+  liveEntry(id: string): { job: ChildJob<State>; owner: ChildSupervisor<State> } | null {
+    return this.entries.get(id) ?? null
+  }
+
+  /** The parent session id of a live agent; null for the root, undefined for an unknown id. */
+  parentIdOf(id: string): string | null | undefined {
+    if (this.root && this.root.session.id() === id) return null
+    return this.entries.get(id)?.owner.ownerId()
+  }
+
+  /**
+   * The whole session tree: the root, every live agent, and each live node's
+   * archived children (their supervisors exist, so their archives are
+   * readable). Live children order by spawn time; archived newest first.
+   */
+  async tree(): Promise<AgentTreeNode[]> {
+    if (!this.root) return []
+    const build = async (
+      id: string,
+      parentId: string | null,
+      job: ChildJob<State> | null,
+      owner: ChildSupervisor<State> | null,
+      supervisor: ChildSupervisor<State>,
+    ): Promise<AgentTreeNode> => {
+      const liveChildren = [...this.entries.values()]
+        .filter((entry) => entry.owner === supervisor)
+        .sort((a, b) => a.job.spawnedAt - b.job.spawnedAt)
+      const children: AgentTreeNode[] = []
+      for (const entry of liveChildren) {
+        children.push(await build(entry.job.id, id, entry.job, entry.owner, entry.job.ownSupervisor))
+      }
+      const now = Date.now()
+      for (const archived of await supervisor.listArchivedJobs()) {
+        children.push({
+          id: archived.id,
+          parentId: id,
+          kind: 'archived',
+          description: archived.meta.description,
+          profile: archived.meta.profileName,
+          phase: archived.meta.closedPhase ?? 'completed',
+          closedAgoMs: archived.meta.closedAt === undefined ? null : now - archived.meta.closedAt,
+          line: null,
+          children: [],
+        })
+      }
+      if (job && owner) {
+        return {
+          id,
+          parentId,
+          kind: 'live',
+          description: job.description,
+          profile: job.profileName,
+          phase: job.phase,
+          closedAgoMs: null,
+          line: owner.renderListLine(job),
+          children,
+        }
+      }
+      return {
+        id,
+        parentId,
+        kind: 'root',
+        description: '',
+        profile: null,
+        phase: 'running',
+        closedAgoMs: null,
+        line: null,
+        children,
+      }
+    }
+    return [await build(this.rootId(), null, null, null, this.root.supervisor)]
+  }
+}
+
+export interface AgentTreeNode {
+  id: string
+  parentId: string | null
+  kind: 'root' | 'live' | 'archived'
+  description: string
+  profile: string | null
+  phase: SubagentJob['phase']
+  closedAgoMs: number | null
+  /** Pre-rendered live status line (id, phase, ages, execution, activity); null for root/archived. */
+  line: string | null
+  children: AgentTreeNode[]
 }
 
 export interface ChildSupervisorOptions<State> {
@@ -86,23 +209,32 @@ export interface ChildSupervisorOptions<State> {
   cwd: string
   /** Harness-configured profiles; null means the implicit `default` only. */
   profiles: SubagentProfile<State>[] | null
-  /** Parent registered commands (harness list, before the `demi agent` injection). */
+  /** The owner session's harness commands, before the `demi agent` injection. */
   parentCommands: Command[]
   shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   prepareShell: PrepareShell | null
   sessionOptions: AgentServerSessionOptions
   /** When false, a child closing never wakes an idle parent; the host app orchestrates the wakeup from the `subagent closed` frame. */
   notifyParentOnIdle: boolean
-  /** Backing store for child checkpoints and job metadata, keyed under the parent's session directory. */
+  /** Backing store for child checkpoints and job metadata. */
   store: HostStore
+  /** Store key prefix of the owner session's directory (e.g. `agent-sessions/<id>`); children nest under `<prefix>/subagents/<childId>`. */
+  storePrefix: string
+  /** Connection-wide registry shared by every supervisor in the tree. */
+  directory: AgentDirectory<State>
+  /** Live-children ceiling for this supervisor (from `AgentServerOptions.subagents.maxLiveSubagents`). */
+  maxLiveSubagents: number
+  /** Invoked whenever the live-children set changes; wired to the owning job's settle loop. */
+  onJobsChanged: (() => void) | null
   emit(frame: ServerFrame): void
 }
 
 /**
- * The on-store shape of a child (`.../subagents/<id>/job.json`); its checkpoint
- * sits beside it. Without `closedPhase` the child is live (a parent restore
- * resumes it); with `closedPhase` it is archived — finished but revivable with
- * `demi agent resume`, skipped by restore, pruned oldest-first past the cap.
+ * The on-store shape of a child (`<prefix>/subagents/<id>/job.json`); its
+ * checkpoint sits beside it. Without `closedPhase` the child is live (a parent
+ * restore resumes it); with `closedPhase` it is archived — finished but
+ * revivable with `demi agent resume`, skipped by restore, never pruned: it
+ * lives exactly as long as the owning session directory.
  */
 interface PersistedSubagentJob {
   description: string
@@ -114,14 +246,14 @@ interface PersistedSubagentJob {
 }
 
 /**
- * Per-parent subagent supervisor. Owns every child `AgentSession` this parent
- * spawns: lifecycle (spawn / steer / abort / natural end), the `demi agent`
- * command tree, child shell environments, and the `subagent*` protocol frames
- * on the parent connection. Children persist exactly like the parent: each
- * live child keeps a checkpoint and job record under the parent's session
- * directory, and reopening the parent restores and resumes them (`restore`).
- * A closed child moves to the archive: its transcript checkpoint stays on
- * store and `demi agent resume` revives it with a new user message.
+ * Per-session subagent supervisor. Every session — root or subagent — owns one
+ * and carries the identical `demi agent` command tree, so spawn nests to any
+ * depth. The supervisor owns its direct children's lifecycle (spawn / abort /
+ * resume / natural end), their shell environments, and the `subagent*`
+ * protocol frames; communication and reads (`send` / `steer` / `show` /
+ * `list`) resolve through the shared AgentDirectory and reach any live agent
+ * in the tree. Children persist under the owner's session directory,
+ * recursively, and reopening a session restores its whole subtree.
  */
 export class ChildSupervisor<State = unknown> {
   private readonly options: ChildSupervisorOptions<State>
@@ -137,13 +269,22 @@ export class ChildSupervisor<State = unknown> {
     this.parentSession = session
   }
 
-  /** The `agent` node AgentServer grafts under the parent registry's `demi` root. */
+  ownerId(): string {
+    if (!this.parentSession) throw new Error('subagent supervisor has no owner session')
+    return this.parentSession.id()
+  }
+
+  hasLiveJobs(): boolean {
+    return this.jobs.size > 0
+  }
+
+  /** The `agent` node AgentServer (and every child assembly) grafts under the registry's `demi` root. */
   rootCommandNode(): Command {
     const profileNames = this.configuredProfileNames()
     return {
       name: 'agent',
       summary:
-        'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out, then end the turn — completion wakes an idle session; do not poll.',
+        'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out, then end the turn — completion wakes an idle session; do not poll. Children can spawn children of their own.',
       successOutput:
         'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
       failureOutput: 'non-zero exit with the abort or failure reason on stderr',
@@ -183,42 +324,69 @@ export class ChildSupervisor<State = unknown> {
       },
       subcommands: [
         {
-          name: 'steer',
-          summary: 'Send a user steer to a running child. Queues until the child can take it; does not wait.',
+          name: 'send',
+          summary:
+            'Leave a message for any live agent in the tree (`demi agent list`), or `parent`. The target sees it as a new user turn at its next turn boundary, never mid-turn; a message to a finishing subagent extends its life by one turn. Fire-and-forget: queues and returns, never waits. An archived target fails — only its parent can revive it with resume.',
           input: {
-            id: z.string().describe('subagentId from spawn stderr'),
+            id: z.string().describe('Target agent id from the tree, or "parent" for the session that spawned this one'),
             message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
           },
           positionals: ['id', 'message'],
           stdinField: 'message',
           output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
           run: async ({ parsed, io }) => {
-            const id = String(parsed.values.id)
+            const message = String(parsed.values.message ?? '').trim()
+            if (!message) {
+              await io.stderr('demi agent send: message must not be empty\n')
+              return { exitCode: 1 }
+            }
+            try {
+              const targetId = this.deliverSend(String(parsed.values.id), message)
+              await io.stdout(parsed.json ? `${JSON.stringify({ id: targetId, accepted: true })}\n` : `sent to ${targetId}\n`)
+              return { exitCode: 0 }
+            } catch (error) {
+              await io.stderr(`demi agent send: ${errorMessage(error)}\n`)
+              return { exitCode: 1 }
+            }
+          },
+        },
+        {
+          name: 'steer',
+          summary:
+            "Chime into a running agent's current turn: the target sees the message at its next sampling/tool boundary and continues its current work with the new information. Nothing is cancelled and the turn does not restart. Fails when the target has no running turn — use send for that. Targets any live agent in the tree, or `parent`.",
+          input: {
+            id: z.string().describe('Target agent id from the tree, or "parent" for the session that spawned this one'),
+            message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
+          },
+          positionals: ['id', 'message'],
+          stdinField: 'message',
+          output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
+          run: async ({ parsed, io }) => {
             const message = String(parsed.values.message ?? '').trim()
             if (!message) {
               await io.stderr('demi agent steer: message must not be empty\n')
               return { exitCode: 1 }
             }
-            const job = this.jobs.get(id)
-            if (!job) {
-              await io.stderr(`demi agent steer: no running subagent "${id}"\n`)
+            try {
+              const targetId = await this.deliverSteer(String(parsed.values.id), message)
+              await io.stdout(parsed.json ? `${JSON.stringify({ id: targetId, accepted: true })}\n` : `steered ${targetId}\n`)
+              return { exitCode: 0 }
+            } catch (error) {
+              await io.stderr(`demi agent steer: ${errorMessage(error)}\n`)
               return { exitCode: 1 }
             }
-            await this.steerChild(job, message)
-            await io.stdout(parsed.json ? `${JSON.stringify({ id, accepted: true })}\n` : `steered ${id}\n`)
-            return { exitCode: 0 }
           },
         },
         {
           name: 'abort',
-          summary: 'Abort a running child and its subtree. Siblings are untouched.',
-          input: { id: z.string().describe('subagentId from spawn stderr') },
+          summary: 'Abort one of your own running children and its whole subtree. Siblings are untouched; only the spawning session may abort a child.',
+          input: { id: z.string().describe('subagentId of one of your running children') },
           positionals: ['id'],
           output: { json: z.object({ id: z.string(), aborted: z.boolean() }) },
           run: async ({ parsed, io }) => {
             const id = String(parsed.values.id)
             if (!this.jobs.has(id)) {
-              await io.stderr(`demi agent abort: no running subagent "${id}"\n`)
+              await io.stderr(`demi agent abort: "${id}" is not one of your running children\n`)
               return { exitCode: 1 }
             }
             await this.abortSubtree(id)
@@ -229,9 +397,9 @@ export class ChildSupervisor<State = unknown> {
         {
           name: 'resume',
           summary:
-            'Revive an archived (finished) child with a new user message on top of its preserved transcript. Behaves like the spawn command afterwards: stays running until the child ends again, stdout is its new last assistant text, shell_write steers, shell_abort aborts. Archived ids are in `demi agent list`.',
+            'Revive one of your own archived (finished) children with a new user message on top of its preserved transcript. Behaves like the spawn command afterwards: stays running until the child ends again, stdout is its new last assistant text, shell_write steers, shell_abort aborts. Archived ids are in `demi agent list`; only the spawning session may resume its child.',
           input: {
-            id: z.string().describe('subagentId of an archived child'),
+            id: z.string().describe('subagentId of one of your archived children'),
             message: z.string().optional().describe('The reviving user message; positional, or stdin/heredoc when omitted.'),
           },
           positionals: ['id', 'message'],
@@ -258,52 +426,36 @@ export class ChildSupervisor<State = unknown> {
         {
           name: 'list',
           summary:
-            'Snapshot roster of this session\'s running children, then its archived (finished, revivable via resume) children. One line per child with ages relative to now. A read, not a wait — not for polling loops.',
-          output: { json: z.object({ agents: z.array(z.unknown()), archived: z.array(z.unknown()) }) },
+            'Render the whole session tree from the root down, marking your own position. Live agents show phase, ages, execution, and activity; each node\'s archived (finished, revivable by its parent) children render beneath it. Every age is relative to now. A read, not a wait — not for polling loops.',
+          output: { json: z.object({ tree: z.array(z.unknown()) }) },
           run: async ({ parsed, io }) => {
-            const jobs = [...this.jobs.values()]
-            const archived = await this.listArchivedJobs()
+            const nodes = await this.options.directory.tree()
             if (parsed.json) {
-              await io.stdout(`${JSON.stringify({
-                agents: jobs.map((job) => this.snapshot(job, false)),
-                archived: archived.map(({ id, meta }) => ({
-                  subagentId: id,
-                  description: meta.description,
-                  profile: meta.profileName,
-                  phase: meta.closedPhase,
-                  closedAgoMs: meta.closedAt === undefined ? null : Date.now() - meta.closedAt,
-                })),
-              })}\n`)
+              await io.stdout(`${JSON.stringify({ tree: flattenTree(nodes, this.ownerId()) })}\n`)
               return { exitCode: 0 }
             }
-            if (jobs.length === 0) await io.stdout('no running subagents\n')
-            for (const job of jobs) await io.stdout(`${this.renderListLine(job)}\n`)
-            if (archived.length > 0) {
-              await io.stdout('archived (revivable with `demi agent resume <id>`):\n')
-              for (const { id, meta } of archived) {
-                const closedAgo = meta.closedAt === undefined ? '' : `  closed ${formatDuration(Date.now() - meta.closedAt)} ago`
-                await io.stdout(`  ${id}  ${meta.closedPhase}${closedAgo}  ${meta.description ? `"${meta.description}"` : '(no description)'}\n`)
-              }
-            }
+            const lines: string[] = []
+            for (const node of nodes) renderTreeNode(node, '', true, this.ownerId(), lines)
+            await io.stdout(`${lines.join('\n')}\n`)
             return { exitCode: 0 }
           },
         },
         {
           name: 'show',
           summary:
-            'Bounded snapshot of one running child: execution state, recent tool titles with durations, last assistant text. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.',
-          input: { id: z.string().describe('subagentId from spawn stderr') },
+            'Bounded snapshot of any live agent in the tree (root excluded): execution state, recent tool titles with durations, last assistant text. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.',
+          input: { id: z.string().describe('Agent id from the tree') },
           positionals: ['id'],
           output: { json: z.object({ agent: z.unknown() }) },
           run: async ({ parsed, io }) => {
             const id = String(parsed.values.id)
-            const job = this.jobs.get(id)
-            if (!job) {
-              await io.stderr(`demi agent show: no running subagent "${id}"\n`)
+            const entry = this.options.directory.liveEntry(id)
+            if (!entry) {
+              await io.stderr(`demi agent show: no live agent "${id}"\n`)
               return { exitCode: 1 }
             }
-            if (parsed.json) await io.stdout(`${JSON.stringify({ agent: this.snapshot(job, true) })}\n`)
-            else await io.stdout(this.renderShow(job))
+            if (parsed.json) await io.stdout(`${JSON.stringify({ agent: entry.owner.snapshot(entry.job, true) })}\n`)
+            else await io.stdout(entry.owner.renderShow(entry.job))
             return { exitCode: 0 }
           },
         },
@@ -315,7 +467,7 @@ export class ChildSupervisor<State = unknown> {
     return this.environmentScopeForShell(shellId) !== null
   }
 
-  /** Resolves the child scope owning a shell, for the command bridge dispatch. */
+  /** Resolves the descendant scope owning a shell (recursively), for the command bridge dispatch. */
   environmentScopeForShell(
     shellId: string,
   ): { environment: BashEnvironment; commandNames: ReadonlySet<string>; agentSessionId: string } | null {
@@ -325,11 +477,13 @@ export class ChildSupervisor<State = unknown> {
           return { environment, commandNames: new Set(job.commandNames), agentSessionId: job.id }
         }
       }
+      const nested = job.ownSupervisor.environmentScopeForShell(shellId)
+      if (nested) return nested
     }
     return null
   }
 
-  /** Re-emits `subagent started` + transcript reset for every running child (transcript resync). */
+  /** Re-emits `subagent started` + transcript reset for the whole live subtree (transcript resync). */
   replay(): void {
     for (const job of this.jobs.values()) {
       this.options.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
@@ -340,13 +494,14 @@ export class ChildSupervisor<State = unknown> {
         blocks: structuredClone(transcript.blocks),
         revision: transcript.revision,
       })
+      job.ownSupervisor.replay()
     }
   }
 
   /**
-   * Detaches every live child on connection teardown: aborts in-flight turns,
-   * flushes checkpoints, and keeps the persisted job so the next open of this
-   * parent restores it — the same dispose semantics as the parent session.
+   * Detaches the live subtree on connection teardown: aborts in-flight turns,
+   * flushes checkpoints, and keeps the persisted jobs so the next open of the
+   * owner restores them — the same dispose semantics as the owner session.
    * No `closed` frame is emitted: the children are not done, just paused.
    */
   async dispose(): Promise<void> {
@@ -355,22 +510,25 @@ export class ChildSupervisor<State = unknown> {
       job.isClosing = true
       job.unsubscribe()
       this.jobs.delete(job.id)
+      this.options.directory.unregister(job.id)
+      await job.ownSupervisor.dispose()
       await job.session.dispose().catch(noop)
       await this.disposeJobShells(job)
       job.settleClosed({ phase: 'aborted' })
+      job.wake?.()
     }
   }
 
   /**
-   * Rebuilds every persisted live child of this parent and finishes what it was
+   * Rebuilds every persisted live child of this owner and finishes what it was
    * doing: an interrupted turn resumes from its resume point; an already
-   * quiescent child closes with its result. Children share the parent's
-   * persistence lifecycle — a parent restore is a child restore.
+   * quiescent child closes with its result. Recursive: each restored child
+   * restores its own subtree. Children share the owner's persistence
+   * lifecycle — a session restore is a subtree restore.
    */
   async restore(): Promise<void> {
-    const parent = this.parentSession
-    if (!parent || this.isDisposed) return
-    const prefix = `agent-sessions/${parent.id()}/subagents/`
+    if (!this.parentSession || this.isDisposed) return
+    const prefix = `${this.options.storePrefix}/subagents/`
     const keys = await this.options.store.list(prefix).catch(() => [] as string[])
     const ids = [...new Set(keys.map((key) => key.slice(prefix.length).split('/')[0] ?? '').filter(Boolean))]
     for (const id of ids) {
@@ -385,8 +543,7 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private async restoreJob(id: string): Promise<void> {
-    const parent = this.parentSession
-    if (!parent) return
+    if (!this.parentSession) return
     const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
     // Archived children are finished: only `demi agent resume` revives them.
     if (meta?.closedPhase) return
@@ -397,13 +554,15 @@ export class ChildSupervisor<State = unknown> {
     // so always resume: findResumePoint decides how far to unwind, exactly like
     // an interrupted parent session. A child that had already produced its final
     // text re-infers one turn and closes through the normal quiescence path.
-    void this.watchTurn(job, job.session.resume(meta.metadata ? { metadata: meta.metadata } : {}))
+    this.trackTurn(job, job.session.resume(meta.metadata ? { metadata: meta.metadata } : {}))
+    void this.settleJob(job)
+    await job.ownSupervisor.restore()
   }
 
   /** Shared by restore and resume: rebuild a persisted child's job and session from its checkpoint. */
   private reassembleJob(id: string, meta: PersistedSubagentJob, checkpoint: AgentSessionCheckpoint<State>): ChildJob<State> {
     const parent = this.parentSession
-    if (!parent) throw new Error('subagent supervisor has no parent session')
+    if (!parent) throw new Error('subagent supervisor has no owner session')
     const profile = this.resolveProfile(meta.profileName ?? undefined)
     const { job, runtime } = this.assembleJob({
       id,
@@ -429,11 +588,11 @@ export class ChildSupervisor<State = unknown> {
    */
   private async resumeArchived(id: string, message: string): Promise<ChildJob<State>> {
     const parent = this.parentSession
-    if (!parent) throw new Error('subagent supervisor has no parent session')
-    if (this.isDisposed) throw new Error('parent session is closing')
-    if (this.jobs.has(id)) throw new Error(`subagent "${id}" is still running; steer it instead`)
-    if (this.jobs.size >= MAX_LIVE_SUBAGENTS) {
-      throw new Error(`at most ${MAX_LIVE_SUBAGENTS} running subagents per session; abort one or wait for a result`)
+    if (!parent) throw new Error('subagent supervisor has no owner session')
+    if (this.isDisposed) throw new Error('owner session is closing')
+    if (this.jobs.has(id)) throw new Error(`subagent "${id}" is still running; send or steer it instead`)
+    if (this.jobs.size >= this.options.maxLiveSubagents) {
+      throw new Error(`at most ${this.options.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
     }
     const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
     if (!meta?.closedPhase) throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
@@ -447,15 +606,15 @@ export class ChildSupervisor<State = unknown> {
     }
     await this.options.store.writeJson(this.childStoreKey(id, 'job.json'), liveMeta)
     const job = this.reassembleJob(id, liveMeta, checkpoint)
-    void this.watchTurn(job, job.session.send([{ type: 'text', text: message }], liveMeta.metadata ? { metadata: liveMeta.metadata } : {}))
+    this.trackTurn(job, job.session.send([{ type: 'text', text: message }], liveMeta.metadata ? { metadata: liveMeta.metadata } : {}))
+    void this.settleJob(job)
     return job
   }
 
-  /** Every archived (finished, revivable) child of this parent, newest first. */
-  private async listArchivedJobs(): Promise<{ id: string; meta: PersistedSubagentJob }[]> {
-    const parent = this.parentSession
-    if (!parent) return []
-    const prefix = `agent-sessions/${parent.id()}/subagents/`
+  /** Every archived (finished, revivable) child of this owner, newest first. */
+  async listArchivedJobs(): Promise<{ id: string; meta: PersistedSubagentJob }[]> {
+    if (!this.parentSession) return []
+    const prefix = `${this.options.storePrefix}/subagents/`
     const keys = await this.options.store.list(prefix).catch(() => [] as string[])
     const ids = [...new Set(keys.map((key) => key.slice(prefix.length).split('/')[0] ?? '').filter(Boolean))]
     const archived: { id: string; meta: PersistedSubagentJob }[] = []
@@ -467,21 +626,13 @@ export class ChildSupervisor<State = unknown> {
     return archived.sort((a, b) => (b.meta.closedAt ?? 0) - (a.meta.closedAt ?? 0))
   }
 
-  private async pruneArchive(): Promise<void> {
-    const archived = await this.listArchivedJobs()
-    for (const stale of archived.slice(MAX_ARCHIVED_SUBAGENTS)) {
-      await this.deletePersistedJob(stale.id)
-    }
-  }
-
   async abortSubtree(id: string): Promise<void> {
     const job = this.jobs.get(id)
     if (!job) return
-    // Depth is 1: the subtree is the node itself. Descendants would close here first.
     await this.closeJob(job, 'aborted')
   }
 
-  /** Aborts every live child; the archive is untouched. */
+  /** Aborts every live child (each with its subtree); the archive is untouched. */
   async abortAll(): Promise<void> {
     for (const id of [...this.jobs.keys()]) await this.abortSubtree(id)
   }
@@ -492,10 +643,10 @@ export class ChildSupervisor<State = unknown> {
     description: string
   }): Promise<ChildJob<State>> {
     const parent = this.parentSession
-    if (!parent) throw new Error('subagent supervisor has no parent session')
-    if (this.isDisposed) throw new Error('parent session is closing')
-    if (this.jobs.size >= MAX_LIVE_SUBAGENTS) {
-      throw new Error(`at most ${MAX_LIVE_SUBAGENTS} running subagents per session; abort one or wait for a result`)
+    if (!parent) throw new Error('subagent supervisor has no owner session')
+    if (this.isDisposed) throw new Error('owner session is closing')
+    if (this.jobs.size >= this.options.maxLiveSubagents) {
+      throw new Error(`at most ${this.options.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
     }
     const profile = this.resolveProfile(input.profileName)
     const id = createId()
@@ -528,11 +679,17 @@ export class ChildSupervisor<State = unknown> {
       { agentSessionId: id, store: this.childSessionStore(id), ...this.options.sessionOptions },
     )
     this.attachSession(job, session)
-    this.watchChild(job, input.prompt)
+    this.trackTurn(job, session.send([{ type: 'text', text: input.prompt }], metadata ? { metadata } : {}))
+    void this.settleJob(job)
     return job
   }
 
-  /** Everything spawn and restore share: the command tree, the harness runtime, and the job record (session attached separately). */
+  /**
+   * Everything spawn and restore share: the command tree (identical to the
+   * owner's — children spawn, message, and observe exactly like any session),
+   * the child's own supervisor, the harness runtime, and the job record
+   * (session attached separately).
+   */
   private assembleJob(input: {
     id: string
     description: string
@@ -542,13 +699,7 @@ export class ChildSupervisor<State = unknown> {
     spawnedAt: number
   }): { job: ChildJob<State>; runtime: AgentHarnessRuntime<State> } {
     const { id, profile } = input
-    const agentNode = this.createChildAgentNode(id, input.description)
     const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
-    const commands = injectSubagentCommand(inherited, agentNode)
-    const commandRegistry = new CommandRegistry()
-    for (const command of commands) commandRegistry.register(command)
-    const commandNames = commandRegistry.list().map((command) => command.name)
-    const commandsPrompt = commandRegistry.renderHelp()
 
     let settleClosed!: (close: SubagentClose) => void
     const closed = new Promise<SubagentClose>((resolve) => {
@@ -562,8 +713,9 @@ export class ChildSupervisor<State = unknown> {
       profileName: input.profileName,
       metadata: input.metadata,
       session: null as unknown as AgentSession<State>,
-      commandRegistry,
-      commandNames,
+      ownSupervisor: null as unknown as ChildSupervisor<State>,
+      commandRegistry: new CommandRegistry(),
+      commandNames: [],
       environments: new Map(),
       pendingEnvironments: new Map(),
       readonlyHosts: new WeakMap(),
@@ -577,7 +729,19 @@ export class ChildSupervisor<State = unknown> {
       closed,
       settleClosed,
       isClosing: false,
+      wake: null,
     }
+
+    job.ownSupervisor = new ChildSupervisor<State>({
+      ...this.options,
+      parentCommands: inherited,
+      storePrefix: `${this.options.storePrefix}/subagents/${id}`,
+      onJobsChanged: () => job.wake?.(),
+    })
+    const commands = injectSubagentCommand(inherited, job.ownSupervisor.rootCommandNode())
+    for (const command of commands) job.commandRegistry.register(command)
+    job.commandNames = job.commandRegistry.list().map((command) => command.name)
+    const commandsPrompt = job.commandRegistry.renderHelp()
 
     const agent = this.options.agent
     const preamble = this.subagentPreamble(id)
@@ -600,7 +764,12 @@ export class ChildSupervisor<State = unknown> {
 
   private attachSession(job: ChildJob<State>, session: AgentSession<State>): void {
     job.session = session
+    job.ownSupervisor.attachParent(session)
     job.unsubscribe = session.subscribe((event) => {
+      if (event.type === 'phase_changed') {
+        job.wake?.()
+        return
+      }
       if (event.type !== 'transcript_changed') return
       this.recordTelemetry(job, event.patches)
       this.options.emit({
@@ -611,6 +780,8 @@ export class ChildSupervisor<State = unknown> {
       })
     })
     this.jobs.set(job.id, job)
+    this.options.directory.register(job, this)
+    this.options.onJobsChanged?.()
     this.options.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
     const transcript = session.transcript()
     this.options.emit({
@@ -622,7 +793,7 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private childStoreKey(childId: string, file: string): string {
-    return `agent-sessions/${this.parentSession?.id() ?? ''}/subagents/${childId}/${file}`
+    return `${this.options.storePrefix}/subagents/${childId}/${file}`
   }
 
   private childSessionStore(childId: string): AgentSessionStore<State> {
@@ -668,7 +839,79 @@ export class ChildSupervisor<State = unknown> {
     return { exitCode: 1 }
   }
 
-  /** Delivers one steer to a child: mid-turn as a steer, idle as a new user turn. */
+  /**
+   * Resolves a send/steer target against the directory. `parent` is the
+   * session that spawned the caller; a caller cannot message itself.
+   */
+  private resolveTarget(rawId: string): {
+    id: string
+    session: AgentSession<State>
+    job: ChildJob<State> | null
+    owner: ChildSupervisor<State> | null
+  } {
+    const selfId = this.ownerId()
+    let id = rawId
+    if (id === 'parent') {
+      const parentId = this.options.directory.parentIdOf(selfId)
+      if (parentId === null) throw new Error('the root session has no parent')
+      if (parentId === undefined) throw new Error('this session is not in the agent directory')
+      id = parentId
+    }
+    if (id === selfId) throw new Error('cannot message your own session')
+    if (id === this.options.directory.rootId()) {
+      return { id, session: this.options.directory.rootSession(), job: null, owner: null }
+    }
+    const entry = this.options.directory.liveEntry(id)
+    if (!entry || entry.job.isClosing) {
+      throw new Error(`no live agent "${id}" (see \`demi agent list\`; an archived child is revived only by its parent via resume)`)
+    }
+    return { id, session: entry.job.session, job: entry.job, owner: entry.owner }
+  }
+
+  /**
+   * Mailbox delivery: an ordinary user send on the target session. The
+   * session's own action queue is the inbox — a busy target sees it as a new
+   * user turn after the current one; an idle root wakes; a finishing subagent
+   * is kept open for one more turn by its settle loop (the enqueue lands
+   * before the loop's synchronous close check, so nothing drops silently).
+   */
+  private deliverSend(rawId: string, message: string): string {
+    const target = this.resolveTarget(rawId)
+    const content: UserContentBlock[] = [{ type: 'text', text: `${this.senderPrefix()} ${message}` }]
+    const metadata = target.job ? target.job.metadata : this.senderMetadata()
+    if (target.job && target.owner) {
+      target.owner.trackTurn(target.job, target.session.send(content, metadata ? { metadata } : {}))
+      target.job.wake?.()
+    } else {
+      void target.session.send(content, metadata ? { metadata } : {}).catch(noop)
+    }
+    return target.id
+  }
+
+  /** Chime-in delivery: injects into the target's running turn; no fallback when idle. */
+  private async deliverSteer(rawId: string, message: string): Promise<string> {
+    const target = this.resolveTarget(rawId)
+    if (target.session.phase() === 'idle') {
+      throw new Error(`agent "${target.id}" has no running turn to steer; use \`demi agent send\``)
+    }
+    const content: UserContentBlock[] = [{ type: 'text', text: `${this.senderPrefix()} ${message}` }]
+    await target.session.steer(content)
+    return target.id
+  }
+
+  private senderPrefix(): string {
+    const selfId = this.ownerId()
+    const entry = this.options.directory.liveEntry(selfId)
+    const description = entry ? entry.job.description : 'root session'
+    return `[agent ${selfId}${description ? ` — ${description}` : ''}]`
+  }
+
+  /** Metadata for a turn on the root: the sender subtree's spawning round, or null from the root itself. */
+  private senderMetadata(): AgentMetadata | null {
+    return this.options.directory.liveEntry(this.ownerId())?.job.metadata ?? null
+  }
+
+  /** Delivers one stdin chunk from the attending spawner: mid-turn as a steer, otherwise as a new user turn. */
   private async steerChild(job: ChildJob<State>, message: string): Promise<void> {
     const content: UserContentBlock[] = [{ type: 'text', text: message }]
     if (job.session.phase() !== 'idle') {
@@ -679,7 +922,7 @@ export class ChildSupervisor<State = unknown> {
         // Turn boundary raced the steer; fall through to a fresh turn.
       }
     }
-    void this.watchTurn(job, job.session.send(content))
+    this.trackTurn(job, job.session.send(content))
   }
 
   private async pumpStdinSteers(id: string, stdinStream: AsyncIterable<Uint8Array>): Promise<void> {
@@ -695,42 +938,41 @@ export class ChildSupervisor<State = unknown> {
     }
   }
 
-  private watchChild(job: ChildJob<State>, prompt: string): void {
-    const opening = job.session.send(
-      [{ type: 'text', text: prompt }],
-      job.metadata ? { metadata: job.metadata } : {},
-    )
-    void this.watchTurn(job, opening)
-  }
-
-  /** Tracks one child turn to session quiescence, then closes the job with its outcome. */
-  private async watchTurn(job: ChildJob<State>, turn: Promise<void>): Promise<void> {
-    try {
-      await turn
-    } catch (error) {
+  /** Observes one turn promise of an own child: a non-abort failure closes the job as an error. */
+  private trackTurn(job: ChildJob<State>, turn: Promise<void>): void {
+    turn.catch((error: unknown) => {
+      if (job.isClosing) return
       job.failure = errorMessage(error)
-      await this.closeJob(job, 'error')
-      return
-    }
-    await this.waitForQuiescence(job)
-    if (job.phase === 'running' && !job.isClosing) await this.closeJob(job, 'completed')
+      void this.closeJob(job, 'error')
+    })
   }
 
-  /** Resolves when the child is idle with no pending yield wakeups (or the job closed). */
-  private async waitForQuiescence(job: ChildJob<State>): Promise<void> {
-    while (!job.isClosing && (job.session.phase() !== 'idle' || job.session.hasPendingYields())) {
+  /**
+   * The one place a child closes naturally. Loops until the child is
+   * quiescent: no running or queued turn (the session action queue doubles as
+   * the mailbox), no pending yield wakeups, and no live children of its own.
+   * The final check-and-close is synchronous, so a send that lands before it
+   * is processed and one that lands after it fails on `isClosing` — nothing
+   * drops silently.
+   */
+  private async settleJob(job: ChildJob<State>): Promise<void> {
+    while (!job.isClosing) {
+      if (job.session.isSettled() && !job.session.hasPendingYields() && !job.ownSupervisor.hasLiveJobs()) {
+        void this.closeJob(job, 'completed')
+        return
+      }
       await new Promise<void>((resolve) => {
         let settled = false
         const finish = (): void => {
           if (settled) return
           settled = true
-          unsubscribe()
+          job.wake = null
           resolve()
         }
-        const unsubscribe = job.session.subscribe((event) => {
-          if (event.type === 'phase_changed') finish()
-        })
+        job.wake = finish
         void job.closed.then(finish)
+        if (job.session.isSettled()) return
+        void job.session.waitUntilDone().then(finish)
       })
     }
   }
@@ -741,6 +983,12 @@ export class ChildSupervisor<State = unknown> {
     job.phase = phase
     job.unsubscribe()
     this.jobs.delete(job.id)
+    this.options.directory.unregister(job.id)
+    job.wake?.()
+
+    // A natural completion has no live descendants by construction; an abort
+    // or error tears the subtree down with it.
+    await job.ownSupervisor.abortAll()
 
     const result = phase === 'completed' ? boundedResultText(lastAssistantText(job.session.transcript().blocks)) : undefined
     // dispose() flushes the final checkpoint; the archived job record beside it
@@ -757,7 +1005,6 @@ export class ChildSupervisor<State = unknown> {
         closedAt: Date.now(),
       })
       .catch(noop)
-    await this.pruneArchive().catch(noop)
 
     const close: SubagentClose = {
       phase,
@@ -766,6 +1013,7 @@ export class ChildSupervisor<State = unknown> {
     }
     this.options.emit({ type: 'subagent', event: 'closed', job: this.wireJob(job, result) })
     job.settleClosed(close)
+    this.options.onJobsChanged?.()
     this.notifyIdleParent(job, close)
   }
 
@@ -778,7 +1026,7 @@ export class ChildSupervisor<State = unknown> {
     for (const environment of environments) await environment.disposeAllShells().catch(noop)
   }
 
-  /** Wakes an idle parent with a user send; a parent blocked in the spawn gets the tool result instead. */
+  /** Wakes an idle owner with a user send; an owner blocked in the spawn gets the tool result instead. */
   private notifyIdleParent(job: ChildJob<State>, close: SubagentClose): void {
     if (this.isDisposed || !this.options.notifyParentOnIdle) return
     const parent = this.parentSession
@@ -792,52 +1040,6 @@ export class ChildSupervisor<State = unknown> {
           : `[${label}] failed: ${close.failure ?? 'unknown error'}`
     // The wakeup round runs on behalf of the round that spawned the child, so it carries that round's metadata.
     void parent.send([{ type: 'text', text: body }], job.metadata ? { metadata: job.metadata } : {}).catch(noop)
-  }
-
-  private createChildAgentNode(childId: string, description: string): Command {
-    return {
-      name: 'agent',
-      summary: 'Subagent bridge to the parent session.',
-      subcommands: [
-        {
-          name: 'send-parent',
-          summary:
-            'Send an interim user message to the parent session. The parent sees it only when it is not blocked waiting on this session. Your result is still the last assistant text when this session ends, not this message.',
-          input: {
-            message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
-          },
-          positionals: ['message'],
-          stdinField: 'message',
-          output: { json: z.object({ accepted: z.boolean() }) },
-          run: async ({ parsed, io }) => {
-            const message = String(parsed.values.message ?? '').trim()
-            if (!message) {
-              await io.stderr('demi agent send-parent: message must not be empty\n')
-              return { exitCode: 1 }
-            }
-            this.deliverToParent(childId, description, message)
-            await io.stdout(parsed.json ? `${JSON.stringify({ accepted: true })}\n` : 'sent\n')
-            return { exitCode: 0 }
-          },
-        },
-      ],
-    }
-  }
-
-  private deliverToParent(childId: string, description: string, message: string): void {
-    const parent = this.parentSession
-    if (!parent || this.isDisposed) return
-    const text = `[subagent ${childId}${description ? ` — ${description}` : ''}] ${message}`
-    const content: UserContentBlock[] = [{ type: 'text', text }]
-    const metadata = this.jobs.get(childId)?.metadata ?? null
-    const sendOptions = metadata ? { metadata } : {}
-    if (parent.phase() !== 'idle') {
-      void parent.steer(content).catch(() => {
-        void parent.send(content, sendOptions).catch(noop)
-      })
-      return
-    }
-    void parent.send(content, sendOptions).catch(noop)
   }
 
   private async childEnvironment(
@@ -888,8 +1090,7 @@ export class ChildSupervisor<State = unknown> {
       initialEnv: {
         ...prepared.initialEnv,
         DEMI_SUBAGENT_ID: job.id,
-        DEMI_PARENT_SESSION_ID: this.parentSession?.id() ?? '',
-        DEMI_SUBAGENT_DEPTH: '1',
+        DEMI_PARENT_SESSION_ID: this.ownerId(),
       },
       host,
       commands: job.commandRegistry,
@@ -922,9 +1123,9 @@ export class ChildSupervisor<State = unknown> {
 
   private subagentPreamble(childId: string): string {
     return [
-      `You are a subagent: an isolated child agent session (id ${childId}) spawned by a parent agent session. Your transcript starts empty; the task brief in the first user message is your entire context.`,
-      'When you end your turn with no scheduled wakeups, the session ends and your last assistant text is returned to the parent as the result. Write it for the parent agent, in the shape the task brief asked for.',
-      '`demi agent send-parent <message>` sends an interim user message to the parent; it is seen only when the parent is not blocked waiting on this session.',
+      `You are a subagent: an isolated child agent session (id ${childId}) spawned by parent agent session ${this.ownerId()}. Your transcript starts empty; the task brief in the first user message is your entire context.`,
+      'When you end your turn with nothing pending — no queued messages, no scheduled wakeups, no running children of your own — the session ends and your last assistant text is returned to the parent as the result. Write it for the parent agent, in the shape the task brief asked for.',
+      '`demi agent` spawns your own children. `demi agent send <id|parent> <message>` leaves a message any live agent sees at its next turn boundary; `demi agent steer <id> <message>` chimes into a running agent\'s current turn; `demi agent list` renders the whole agent tree with your position.',
       'You are not talking to the product user; do not address them.',
     ].join('\n')
   }
@@ -993,11 +1194,12 @@ export class ChildSupervisor<State = unknown> {
     return now - job.lastEventAt
   }
 
-  private snapshot(job: ChildJob<State>, detailed: boolean): Record<string, unknown> {
+  snapshot(job: ChildJob<State>, detailed: boolean): Record<string, unknown> {
     const now = Date.now()
     const execution = this.executionOf(job)
     const base: Record<string, unknown> = {
       subagentId: job.id,
+      parentSessionId: this.ownerId(),
       description: job.description,
       profile: job.profileName,
       phase: job.phase,
@@ -1022,7 +1224,7 @@ export class ChildSupervisor<State = unknown> {
     }
   }
 
-  private renderListLine(job: ChildJob<State>): string {
+  renderListLine(job: ChildJob<State>): string {
     const now = Date.now()
     const execution = this.executionOf(job)
     const parts = [
@@ -1038,11 +1240,12 @@ export class ChildSupervisor<State = unknown> {
     return parts.join('  ')
   }
 
-  private renderShow(job: ChildJob<State>): string {
+  renderShow(job: ChildJob<State>): string {
     const now = Date.now()
     const execution = this.executionOf(job)
     const lines = [
       `id: ${job.id}`,
+      `parent: ${this.ownerId()}`,
       `description: ${job.description || '(none)'}`,
       `profile: ${job.profileName ?? 'default'}`,
       `phase: ${job.phase}`,
@@ -1077,7 +1280,7 @@ export class ChildSupervisor<State = unknown> {
   private wireJob(job: ChildJob<State>, result?: string): SubagentJob {
     return {
       subagentId: job.id,
-      parentSessionId: this.parentSession?.id() ?? '',
+      parentSessionId: this.ownerId(),
       description: job.description,
       profile: job.profileName,
       phase: job.phase,
@@ -1085,6 +1288,41 @@ export class ChildSupervisor<State = unknown> {
       ...(result !== undefined ? { result } : {}),
     }
   }
+}
+
+function renderTreeNode(node: AgentTreeNode, prefix: string, isLast: boolean, selfId: string, lines: string[]): void {
+  const marker = node.id === selfId ? ' ← you' : ''
+  const body =
+    node.kind === 'root'
+      ? `● ${node.id}  (root session)${marker}`
+      : node.kind === 'archived'
+        ? `○ ${node.id}  archived (${node.phase}${node.closedAgoMs === null ? '' : ` ${formatDuration(node.closedAgoMs)} ago`})  ${node.description ? `"${node.description}"` : '(no description)'}`
+        : `● ${node.line}${marker}`
+  if (node.parentId === null) lines.push(body)
+  else lines.push(`${prefix}${isLast ? '└─' : '├─'}${body}`)
+  const childPrefix = node.parentId === null ? '' : `${prefix}${isLast ? '  ' : '│ '}`
+  node.children.forEach((child, index) => {
+    renderTreeNode(child, childPrefix, index === node.children.length - 1, selfId, lines)
+  })
+}
+
+function flattenTree(nodes: AgentTreeNode[], selfId: string): Record<string, unknown>[] {
+  const flat: Record<string, unknown>[] = []
+  const visit = (node: AgentTreeNode): void => {
+    flat.push({
+      subagentId: node.id,
+      parentSessionId: node.parentId,
+      kind: node.kind,
+      description: node.description,
+      profile: node.profile,
+      phase: node.phase,
+      closedAgoMs: node.closedAgoMs,
+      self: node.id === selfId,
+    })
+    node.children.forEach(visit)
+  }
+  nodes.forEach(visit)
+  return flat
 }
 
 /**

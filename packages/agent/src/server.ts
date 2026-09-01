@@ -28,7 +28,7 @@ import type {
 } from './types'
 import type { TurnRetryPolicy } from './retry-policy'
 import { createStandardAgentTools } from './tools'
-import { ChildSupervisor, injectSubagentCommand } from './subagent'
+import { AgentDirectory, ChildSupervisor, MAX_LIVE_SUBAGENTS, injectSubagentCommand } from './subagent'
 import { ProviderStreamError } from './provider-stream-error'
 
 /** Session tuning forwarded to every AgentSession this server creates. */
@@ -73,6 +73,11 @@ export interface AgentServerOptions {
      * the parent itself. Defaults to true.
      */
     notifyParentOnIdle?: boolean
+    /**
+     * Live-children ceiling applied to every session in the tree (each session
+     * counts its own direct children). Defaults to {@link MAX_LIVE_SUBAGENTS}.
+     */
+    maxLiveSubagents?: number
   }
   /**
    * Optional host-side shell prep (env, PATH, etc.). Implementation-agnostic —
@@ -133,6 +138,7 @@ export class AgentServer {
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
   private readonly notifyParentOnIdle: boolean
+  private readonly maxLiveSubagents: number
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -143,6 +149,7 @@ export class AgentServer {
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell ?? null
     this.notifyParentOnIdle = options.subagents?.notifyParentOnIdle ?? true
+    this.maxLiveSubagents = options.subagents?.maxLiveSubagents ?? MAX_LIVE_SUBAGENTS
   }
 
   client(): AgentClient {
@@ -160,6 +167,7 @@ export class AgentServer {
       session: this.sessionOptions,
       prepareShell: this.prepareShell,
       notifyParentOnIdle: this.notifyParentOnIdle,
+      maxLiveSubagents: this.maxLiveSubagents,
       sessions: this.sessionOwnership,
     })
     this.bindings.add(binding)
@@ -222,6 +230,7 @@ interface AgentTransportBindingOptions {
   session?: AgentServerSessionOptions
   prepareShell: PrepareShell | null
   notifyParentOnIdle: boolean
+  maxLiveSubagents: number
   sessions: SessionOwnershipRegistry
 }
 
@@ -233,6 +242,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
   private readonly notifyParentOnIdle: boolean
+  private readonly maxLiveSubagents: number
   private readonly sessions: SessionOwnershipRegistry
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
@@ -256,6 +266,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell
     this.notifyParentOnIdle = options.notifyParentOnIdle
+    this.maxLiveSubagents = options.maxLiveSubagents
     this.sessions = options.sessions
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
@@ -443,8 +454,9 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     const harnessContext = { state, cwd: frame.cwd }
     const harnessCommands = (await agent.commands?.(harnessContext)) ?? []
     const profiles = (await agent.agents?.(harnessContext)) ?? null
-    // Root sessions get the subagent surface (`demi agent`); child sessions are
-    // supervisor-built with a send-parent-only tree, so spawn is root-only.
+    // Every session in the tree carries the identical `demi agent` surface:
+    // the root gets it here, children get theirs from their spawning supervisor.
+    const directory = new AgentDirectory<unknown>()
     const supervisor = new ChildSupervisor<unknown>({
       agent,
       cwd: frame.cwd,
@@ -455,6 +467,10 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       sessionOptions: this.sessionOptions,
       notifyParentOnIdle: this.notifyParentOnIdle,
       store: provisionalHost.store,
+      storePrefix: `agent-sessions/${agentSessionId}`,
+      directory,
+      maxLiveSubagents: this.maxLiveSubagents,
+      onJobsChanged: null,
       emit: (subagentFrame) => this.send(subagentFrame),
     })
     const commands = injectSubagentCommand(harnessCommands, supervisor.rootCommandNode())
@@ -492,6 +508,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     sessionRef = session
     this.session = session
     supervisor.attachParent(session)
+    directory.attachRoot(session, supervisor)
     this.supervisor = supervisor
     this.currentAgent = agent
     this.currentCommandRegistry = commandRegistry
@@ -656,8 +673,8 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
     args: string[],
     opts: RunCommandLineOptions,
   ): Promise<RunCommandLineResult> {
-    // Scope resolution doubles as the subagent boundary: a child shell resolves
-    // to its own environment and command set, which has no spawn surface.
+    // Scope resolution doubles as the session boundary: a child shell resolves
+    // (recursively) to that child's own environment and command set.
     const parentEnvironment = this.environmentForShell(shellId)
     const scope =
       parentEnvironment && this.currentSessionId
