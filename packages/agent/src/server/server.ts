@@ -1,4 +1,5 @@
 import type { BashEnvironmentOptions, Host } from '@demicodes/shell'
+import type { SessionPhase } from '@demicodes/core'
 import type { Provider } from '@demicodes/provider'
 import { AgentClient } from '../client/client'
 import { createInProcessTransportPair, type AgentServerTransport } from '../protocol/transport'
@@ -147,6 +148,11 @@ export class AgentServer {
     this.bindings.clear()
     await Promise.all(bindings.map((binding) => binding.close()))
     await this.sessionOwnership.disposeAll()
+  }
+
+  /** Current phase of a live session; null when no live session exists for the id (⇒ nothing is running). */
+  sessionPhase(agentSessionId: string): SessionPhase | null {
+    return this.sessionOwnership.get(agentSessionId)?.session.phase() ?? null
   }
 
   /**

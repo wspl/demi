@@ -43,7 +43,7 @@ const model: ModelSelection = {
 test('coding agent harness exposes shell session tools and registered command prompt', async () => {
   const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
   const state = harness.initialState()
-  const commands = (await harness.commands?.({ state, cwd: process.cwd() })) ?? []
+  const commands = (await harness.commands?.({ state, cwd: process.cwd(), agentSessionId: 'test-session' })) ?? []
   const { environment, runtime } = createRuntimeFromHarness(harness, process.cwd())
 
   expect(harness.name).toBe('coding')
@@ -240,7 +240,7 @@ test('coding agent harness ships default and explore subagent profiles', async (
 test('the injected demi agent command help teaches self-contained spawn prompts', async () => {
   const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
   const state = harness.initialState()
-  const harnessContext = { state, cwd: process.cwd() }
+  const harnessContext = { state, cwd: process.cwd(), agentSessionId: 'test-session' }
   const commands = (await harness.commands?.(harnessContext)) ?? []
   const profiles = (await harness.agents?.(harnessContext)) ?? []
   const supervisor = new ChildSupervisor({
@@ -284,7 +284,7 @@ function createRuntimeFromHarness(
   cwd: string,
 ): { environment: BashEnvironment; runtime: AgentHarnessRuntime<Record<string, never>>; state: Record<string, never> } {
   const state = harness.initialState()
-  const harnessContext = { state, cwd }
+  const harnessContext = { state, cwd, agentSessionId: 'test-session' }
   const registry = new CommandRegistry()
   const commands = harness.commands?.(harnessContext) ?? []
   if (commands instanceof Promise) throw new Error('test harness commands must be synchronous')

@@ -36,6 +36,10 @@ export class SessionOwnershipRegistry {
     if (this.attached.get(sessionId) === binding) this.attached.delete(sessionId)
   }
 
+  get(sessionId: string): LiveSession | null {
+    return this.live.get(sessionId) ?? null
+  }
+
   sessions(): LiveSession[] {
     return [...this.live.values()]
   }
