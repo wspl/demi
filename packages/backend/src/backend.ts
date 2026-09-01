@@ -1,14 +1,18 @@
 import { join } from 'node:path'
-import { AgentServer } from '@demicodes/agent'
+import { AgentServer, type ProviderResolver } from '@demicodes/agent'
 import { createCodingAgentHarness } from '@demicodes/coding-agent'
 import { LocalHost } from '@demicodes/host-local'
-import type { Provider } from '@demicodes/provider'
 import type { Host } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import { STUB_USER } from './auth/identity'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { createApp } from './http/app'
+import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
+import { meterProvider } from './llm/metering'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
+import { ProviderRateLimiter } from './usage/rate-limit'
+import { ConnectionVault } from './vault/connections'
+import { loadOrCreateInstanceSecret } from './vault/secret'
 import { DirBlobStore } from './storage/blob-store'
 import { ConversationStores } from './storage/conversation-store'
 import { LocalControlService, type ControlService } from './storage/control'
@@ -18,12 +22,14 @@ import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 export interface BackendOptions {
   /** Data directory: control database, conversation databases, blobs, virtual filesystems. */
   dataDir: string
-  /** Operator-assembled providers (the vault arrives in M5). */
-  providers: Provider[]
   /** HTTP port (0 = ephemeral, for tests). */
   port?: number
   /** Runner-management tuning (claim TTL, liveness interval) — tests only. */
   runner?: Omit<RunnerRegistryOptions, 'control'>
+  /** Extra provider-type factories merged over the builtins — tests register stubs here. */
+  providerTypes?: Record<string, ProviderTypeFactory>
+  /** Usage-enforcement tuning — tests only. */
+  usage?: { providerRequestsPerMinute?: number }
 }
 
 export interface Backend {
@@ -49,6 +55,24 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
 
   const runnerRegistry = new RunnerRegistry({ control, ...options.runner })
 
+  const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(options.dataDir))
+  const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes })
+  const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
+
+  // connectionId = providerId: the LLM module assembles the connection's base
+  // provider from vault credentials and wraps it with metering + enforcement
+  // in the session's user/conversation context.
+  const resolveProvider: ProviderResolver = async (providerId, { agentSessionId }) => {
+    const resolved = await assembly.providerFor(providerId)
+    if (!resolved) return null
+    const conversation = await control.getConversation(agentSessionId)
+    const userId = conversation?.userId ?? STUB_USER.id
+    return meterProvider(resolved.provider, {
+      observe: usageAppender(control, { userId, conversationId: agentSessionId, connectionId: providerId }),
+      beforeRequest: () => rateLimiter.take(userId),
+    })
+  }
+
   // The execution target is resolved server-side from the conversation record:
   // a workspace pointer routes to the device's stable RemoteHost (offline ⇒
   // tool errors until the runner reattaches), no workspace ⇒ virtual.
@@ -65,7 +89,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       // session-less contexts get their own scratch namespace.
       host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
     }),
-    providers: options.providers,
+    providers: resolveProvider,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },
     // Sessions persist as block rows in their conversation database; the
     // Host-store default never runs in the product backend.
@@ -77,7 +101,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const app = createApp({
     control,
     conversationStores,
-    providers: options.providers,
+    vault,
+    assembly,
     agentServer,
     runnerRegistry,
     upgradeWebSocket,
