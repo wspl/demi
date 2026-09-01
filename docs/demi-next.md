@@ -780,6 +780,7 @@ Schema — `control.sqlite` (final state, no speculative columns):
 users            id, username, password_hash, role(master|admin|user), created_at
 web_sessions     token_hash, user_id, expires_at
 conversations    id, user_id, title, archived, workspace_id(NULL = virtual),
+                 prev_target_json(NULL = released; the prev slot),
                  connection_id, model_id, created_at, updated_at
 workspaces       id, user_id, device_id, path, name, created_at
 devices          id, user_id, name, platform, token_hash, claimed_at, last_seen_at
