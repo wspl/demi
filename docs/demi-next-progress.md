@@ -195,6 +195,68 @@ Pitfalls:
 - Hono's `upgradeWebSocket` cannot reject inside the handler factory —
   do the conversation lookup in the route before delegating the upgrade.
 
+## M3 — Storage final shape
+
+Status: **done** (2026-09-01; `ab8c276` shell/testing entrypoint, `0e54834`
+agent persistence contract, `2176685` acceptance tests, `316cd35` backend
+two-plane storage). Repo-wide typecheck green; scoped tests green
+(agent 248, backend 10, plus shell/runner/host-virtual sweeps).
+
+What landed:
+
+- **`@demicodes/agent` persistence contract**: `AgentSessionStore` is now
+  `save(update)` + `load()`; a save carries only the block rows mutated
+  since the last tick (`changedBlocks` + `blockCount`) plus the small state
+  snapshot. Dirty tracking is fed from the existing transcript patch
+  stream: position-shifting ops (add/remove/replace-all) dirty a floor
+  index to the end, point ops (replace_block/append_text) dirty single
+  rows; a failed save merges its marks back so the next tick retries.
+  `fromCheckpoint` starts clean (its blocks came from the store).
+- **`hostAgentSessionStore`**: the HostStore realization (one entry per
+  block under `<prefix>/blocks/<index>.json` + `state.json`), used by the
+  agent server default path and subagent children.
+- **Media externalization**: `BlobStore` interface + externalize/rehydrate
+  in the persistence layer — inline binary/base64 media sources become
+  content-addressed `ref` sources at rest and rehydrate on load; a missing
+  blob degrades to a text placeholder instead of failing the load. The
+  in-memory transcript and providers always see inline bytes.
+- **`@demicodes/backend` two-plane storage**: `control.sqlite` (migrations
+  without host_store) behind the `ControlService` interface
+  (`LocalControlService`; async domain methods, RPC-realizable at N>1) +
+  `conversations/<id>.sqlite` per conversation (blocks / session /
+  host_store tables) via `ConversationStores`, with `DirBlobStore`
+  (`blobs/<sha256>`, temp+rename writes). `AgentServer` gained
+  `sessionStore` / `blobs` injection options; the backend injects the
+  per-conversation store, so the product never uses the Host-store path.
+- Acceptance tests per the verification table: incremental rows across
+  turns (earlier rows never rewritten), store round trips, stale-row
+  deletion, media ref round trip + missing-blob degradation,
+  per-conversation host_store isolation, and a full backend restart
+  restoring cold + live transcript from the conversation database.
+
+Decisions:
+
+- Dirty marking is deliberately conservative (a mid-transcript insert
+  dirties the suffix): patch indices recorded after a shift stay accurate
+  below the floor and are swallowed by it above — correctness without
+  replaying index arithmetic. Appends only dirty the streamed tail, which
+  is the hot path that matters.
+- Media externalization lives in the persistence layer, not ingestion:
+  in-memory blocks keep bytes (unchanged memory profile, zero provider
+  changes, no core content-type unions touched); only the at-rest
+  representation carries refs.
+- `ControlService` methods are async from day one so the Remote (RPC)
+  implementation is a drop-in at M10.
+
+Pitfalls:
+
+- `bun test packages/agent` also globs `packages/agent-eval` fixtures,
+  which contain an intentionally failing test — scope runs to
+  `packages/agent/src`.
+- Root tsconfig resolves workspace subpath imports through `paths`, so a
+  new `/testing`-style entrypoint needs an explicit mapping there in
+  addition to package.json `exports` and the tsdown entry list.
+
 ## Database design review (2026-09-01)
 
 Status: **concluded** — design record updated (`demi-next.md` § Database,
