@@ -4,6 +4,7 @@ import { providerRuntime, type Provider, type ProviderSelection } from '@demicod
 import type { AgentSession } from '../session/session'
 import { cloneBlocks } from '../transcript/patch'
 import type { ClientFrame, ConversationSummary, ServerFrame } from '../protocol/frames'
+import { clientFrameSchema } from '../protocol/schemas'
 import type { AgentServerTransport } from '../protocol/transport'
 import type { AgentHarness, AgentSessionStore, ModelSwitchApply } from '../types'
 import { loadPersistedSession, persistedSessionCheckpoint } from '../store/session-store'
@@ -97,6 +98,18 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
   }
 
   private async handleFrame(frame: ClientFrame): Promise<void> {
+    // The transport hands over whatever arrived on the wire; this is the
+    // trust boundary, so the frame is validated before anything acts on it.
+    const parsed = clientFrameSchema.safeParse(frame)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      this.send({
+        type: 'error',
+        message: `Invalid client frame${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}`,
+        code: 'invalid_frame',
+      })
+      return
+    }
     try {
       switch (frame.type) {
         case 'open':

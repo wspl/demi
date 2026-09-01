@@ -23,6 +23,7 @@ import {
   AgentClient,
   AgentServer,
   ProviderStreamError,
+  createInProcessTransportPair,
   type ClientSessionEvent,
 } from '../index'
 
@@ -1283,3 +1284,25 @@ function latestQueueTexts(events: ClientSessionEvent[]): string[] {
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+test('a malformed client frame is rejected at ingress with invalid_frame', async () => {
+  const server = new AgentServer({
+    agent: createTextHarness(),
+    providers: [runtimeProvider('stub', () => new StubProvider([[events.text('ok'), events.response()]]))],
+  })
+  const pair = createInProcessTransportPair()
+  server.attachTransport(pair.server)
+  const received: unknown[] = []
+  pair.client.onFrame((frame) => received.push(frame))
+
+  // Missing required fields: `send` without messageId/content.
+  pair.client.send({ type: 'send' } as never)
+  await waitFor(() => received.length > 0)
+  expect(received[0]).toMatchObject({ type: 'error', code: 'invalid_frame' })
+
+  // An unknown frame type is equally rejected.
+  pair.client.send({ type: 'definitely_not_a_frame' } as never)
+  await waitFor(() => received.length > 1)
+  expect(received[1]).toMatchObject({ type: 'error', code: 'invalid_frame' })
+  await server.close()
+})
