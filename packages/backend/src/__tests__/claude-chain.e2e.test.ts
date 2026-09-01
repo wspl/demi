@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,7 +31,7 @@ function sse(events: Array<[string, unknown]>): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
-chain('claude-code on a runner, end-to-end through the passthrough to a mock upstream', async () => {
+chain('claude-code on a runner: vault token in the CLI env, native wire to a mock upstream', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-claude-chain-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-claude-chain-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-claude-chain-runner-'))
@@ -40,7 +41,6 @@ chain('claude-code on a runner, end-to-end through the passthrough to a mock ups
     port: 0,
     fetch: async (request) => {
       const path = new URL(request.url).pathname
-      console.log('[upstream]', request.method, path)
       if (request.method === 'POST' && path === '/v1/messages') {
         upstreamAuths.push(request.headers.get('authorization'))
         return sse([
@@ -142,10 +142,6 @@ chain('claude-code on a runner, end-to-end through the passthrough to a mock ups
   const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversation.id}/stream`)
   await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve(), { once: true }))
   const client = new AgentClient(createWebSocketClientTransport(socket as never))
-  client.subscribe((event) => {
-    if (event.type === 'error') console.log('[client error]', JSON.stringify(event))
-    else if (event.type === 'phase') console.log('[phase]', event.phase)
-  })
   const model: ModelSelection = {
     providerId: connection.id,
     model: {
@@ -159,12 +155,7 @@ chain('claude-code on a runner, end-to-end through the passthrough to a mock ups
     thinking: null,
   }
   await client.open({ providerId: connection.id, model }, '/ignored', 'ignored')
-  const sendPromise = client.send([{ type: 'text', text: 'Reply with exactly OK.' }])
-  const watchdog = setTimeout(() => {
-    console.log('[watchdog] transcript so far:', JSON.stringify(client.transcript().blocks))
-  }, 30_000)
-  await sendPromise
-  clearTimeout(watchdog)
+  await client.send([{ type: 'text', text: 'Reply with exactly OK.' }])
 
   // The mock's answer streamed back through CLI → runner → backend → browser.
   const texts = client
@@ -177,6 +168,10 @@ chain('claude-code on a runner, end-to-end through the passthrough to a mock ups
   // and the CLI-side env token is a different, backend-minted value.
   expect(upstreamAuths.length).toBeGreaterThan(0)
   for (const auth of upstreamAuths) expect(auth).toBe('Bearer vault-oauth-token')
+
+  // Device-config isolation: the CLI's config home lived inside the
+  // workspace artifacts dir, not the device's ~/.claude.
+  expect(existsSync(join(runnerDir, '.demi-artifacts', 'claude-config'))).toBe(true)
 
   // Metering: the CLI turn's usage landed in the ledger.
   await delay(100)

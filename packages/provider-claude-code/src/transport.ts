@@ -87,7 +87,13 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
           command: this.claudePath,
           args,
           cwd: request.cwd,
-          env: buildClaudeEnv({}, { oauthAccessToken, overlay }),
+          // Injected-spawn targets are managed devices: the CLI must consume
+          // zero device-local configuration (settings, hooks, sessions), so
+          // its config home is pinned inside the workspace's artifacts dir.
+          env: buildClaudeEnv({}, {
+            oauthAccessToken,
+            overlay: { CLAUDE_CONFIG_DIR: `${request.cwd}/.demi-artifacts/claude-config`, ...overlay },
+          }),
         })
       : await localClaudeSpawn({
           command: this.claudePath,
