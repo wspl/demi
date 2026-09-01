@@ -1,14 +1,14 @@
+import type { z } from 'zod'
 import type {
   Block,
   ProviderErrorDiagnostics,
   QueuedMessage,
   SessionPhase,
   ToolResultContentBlock,
-  UserContentBlock,
 } from '@demicodes/core'
-import type { ProviderSelection } from '@demicodes/provider'
-import type { AbortResult, AgentMetadata, ModelSwitchApply } from '../types'
+import type { AbortResult, AgentMetadata } from '../types'
 import type { BashAuditEvent, ShellCommandStatus } from '@demicodes/shell'
+import type { clientFrameSchema } from './schemas'
 
 /** A persisted conversation in a workspace (cwd), for the resume/history list. */
 export interface ConversationSummary {
@@ -31,27 +31,12 @@ export interface SubagentJob {
   result?: string
 }
 
-export type ClientFrame =
-  | { type: 'open'; provider: ProviderSelection; cwd: string; sessionId: string }
-  | { type: 'send'; messageId: string; content: UserContentBlock[]; metadata?: AgentMetadata }
-  | { type: 'dequeue_message'; messageId: string }
-  | { type: 'send_queued_message'; messageId: string }
-  | { type: 'steer_queued_message'; messageId: string; steerId: string }
-  | { type: 'clear_message_queue' }
-  | { type: 'steer'; steerId: string; content: UserContentBlock[] }
-  | { type: 'cancel_pending_steer'; steerId: string }
-  | { type: 'set_provider'; provider: ProviderSelection; apply?: ModelSwitchApply }
-  | { type: 'abort' }
-  | { type: 'abort_subagents' }
-  | { type: 'retry'; metadata?: AgentMetadata }
-  | { type: 'resume'; metadata?: AgentMetadata }
-  | { type: 'compact'; metadata?: AgentMetadata }
-  | { type: 'shell_write'; commandId: string; stdin: string; metadata?: AgentMetadata }
-  | { type: 'list_conversations'; cwd: string }
-  // Requests a fresh transcript_reset; sent by the client when it detects a
-  // revision gap in the patch stream (defensive resync, transports are ordered).
-  | { type: 'sync_transcript' }
-  | { type: 'close' }
+/**
+ * The inbound frames, derived from their zod declaration in `schemas.ts` —
+ * the schema is the single source of truth for this union, and the server
+ * validates every arriving frame against it at transport ingress.
+ */
+export type ClientFrame = z.infer<typeof clientFrameSchema>
 
 export type ServerFrame =
   | { type: 'opened' }
