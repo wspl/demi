@@ -1,5 +1,4 @@
 import { createId, decodeUtf8, errorMessage, noop, utf8Slice } from '@demicodes/utils'
-import { z } from 'zod'
 import {
   BashEnvironment,
   CommandRegistry,
@@ -25,14 +24,15 @@ import { createStandardAgentTools } from '../tools'
 import { hostAgentSessionStore } from '../store/session-store'
 import type { BlobStore } from '../store/media'
 import type { AgentServerSessionOptions, PrepareShell } from '../server/server'
+import { childAgentNode, injectSubagentCommand, subagentCommandNode } from './commands'
+import { formatDuration } from './format'
+
+export { injectSubagentCommand }
 
 export const MAX_LIVE_SUBAGENTS = 8
 export const MAX_ARCHIVED_SUBAGENTS = 16
 export const SUBAGENT_RESULT_MAX_BYTES = 32 * 1024
 const SHOW_RECENT_TOOLS = 8
-
-const SPAWN_PROMPT_DESCRIPTION =
-  "The child's first user message and only task brief. The child starts with an empty transcript and cannot see this conversation: do not refer to prior turns, and do not paste this conversation or the product user's message unchanged. Include the goal for this child, applicable decisions and constraints, whether to edit or only report, how to verify, and every concrete identifier it needs (paths, ids, error text, commands already tried and their key results). State the exact shape of the last assistant text it should return."
 
 export type SubagentExecution =
   | 'idle'
@@ -140,174 +140,27 @@ export class ChildSupervisor<State = unknown> {
 
   /** The `agent` node AgentServer grafts under the parent registry's `demi` root. */
   rootCommandNode(): Command {
-    const profileNames = this.configuredProfileNames()
-    return {
-      name: 'agent',
-      summary:
-        'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out.',
-      successOutput:
-        'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
-      failureOutput: 'non-zero exit with the abort or failure reason on stderr',
-      input: {
-        prompt: z.string().optional().describe(SPAWN_PROMPT_DESCRIPTION),
-        profile: z
-          .string()
-          .optional()
-          .describe(`Named subagent profile configured at harness assembly. Available: ${profileNames.join(', ')}.`),
-        description: z
-          .string()
-          .optional()
-          .describe('Short UI title distinguishing concurrent children.'),
-      },
-      positionals: ['prompt'],
-      stdinField: 'prompt',
-      output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
-      run: async ({ parsed, io, signal, stdinStream }) => {
-        const prompt = String(parsed.values.prompt ?? '').trim()
-        if (!prompt) {
-          await io.stderr('demi agent: prompt must not be empty\n')
-          return { exitCode: 1 }
-        }
-        let job: ChildJob<State>
-        try {
-          job = await this.spawn({
-            prompt,
-            profileName: parsed.values.profile === undefined ? undefined : String(parsed.values.profile),
-            description: parsed.values.description === undefined ? '' : String(parsed.values.description),
-          })
-        } catch (error) {
-          await io.stderr(`demi agent: ${errorMessage(error)}\n`)
-          return { exitCode: 1 }
-        }
-        return this.attendChild(job, { io, isJson: parsed.json === true, signal, stdinStream })
-      },
-      subcommands: [
-        {
-          name: 'steer',
-          summary: 'Send a user steer to a running child. Queues until the child can take it; does not wait.',
-          input: {
-            id: z.string().describe('subagentId from spawn stderr'),
-            message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
-          },
-          positionals: ['id', 'message'],
-          stdinField: 'message',
-          output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
-          run: async ({ parsed, io }) => {
-            const id = String(parsed.values.id)
-            const message = String(parsed.values.message ?? '').trim()
-            if (!message) {
-              await io.stderr('demi agent steer: message must not be empty\n')
-              return { exitCode: 1 }
-            }
-            const job = this.jobs.get(id)
-            if (!job) {
-              await io.stderr(`demi agent steer: no running subagent "${id}"\n`)
-              return { exitCode: 1 }
-            }
-            await this.steerChild(job, message)
-            await io.stdout(parsed.json ? `${JSON.stringify({ id, accepted: true })}\n` : `steered ${id}\n`)
-            return { exitCode: 0 }
-          },
-        },
-        {
-          name: 'abort',
-          summary: 'Abort a running child and its subtree. Siblings are untouched.',
-          input: { id: z.string().describe('subagentId from spawn stderr') },
-          positionals: ['id'],
-          output: { json: z.object({ id: z.string(), aborted: z.boolean() }) },
-          run: async ({ parsed, io }) => {
-            const id = String(parsed.values.id)
-            if (!this.jobs.has(id)) {
-              await io.stderr(`demi agent abort: no running subagent "${id}"\n`)
-              return { exitCode: 1 }
-            }
-            await this.abortSubtree(id)
-            await io.stdout(parsed.json ? `${JSON.stringify({ id, aborted: true })}\n` : `aborted ${id}\n`)
-            return { exitCode: 0 }
-          },
-        },
-        {
-          name: 'resume',
-          summary:
-            'Revive an archived (finished) child with a new user message on top of its preserved transcript. Behaves like the spawn command afterwards: stays running until the child ends again, stdout is its new last assistant text, shell_write steers, shell_abort aborts. Archived ids are in `demi agent list`.',
-          input: {
-            id: z.string().describe('subagentId of an archived child'),
-            message: z.string().optional().describe('The reviving user message; positional, or stdin/heredoc when omitted.'),
-          },
-          positionals: ['id', 'message'],
-          stdinField: 'message',
-          output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
-          run: async ({ parsed, io, signal, stdinStream }) => {
-            const id = String(parsed.values.id)
-            const message = String(parsed.values.message ?? '').trim()
-            if (!message) {
-              await io.stderr('demi agent resume: message must not be empty\n')
-              return { exitCode: 1 }
-            }
-            let job: ChildJob<State>
-            try {
-              job = await this.resumeArchived(id, message)
-            } catch (error) {
-              await io.stderr(`demi agent resume: ${errorMessage(error)}\n`)
-              return { exitCode: 1 }
-            }
-            return this.attendChild(job, { io, isJson: parsed.json === true, signal, stdinStream })
-          },
-        },
-        {
-          name: 'list',
-          summary:
-            'Snapshot roster of this session\'s running children, then its archived (finished, revivable via resume) children. One line per child with ages relative to now. A read, not a wait — not for polling loops.',
-          output: { json: z.object({ agents: z.array(z.unknown()), archived: z.array(z.unknown()) }) },
-          run: async ({ parsed, io }) => {
-            const jobs = [...this.jobs.values()]
-            const archived = await this.listArchivedJobs()
-            if (parsed.json) {
-              await io.stdout(`${JSON.stringify({
-                agents: jobs.map((job) => this.snapshot(job, false)),
-                archived: archived.map(({ id, meta }) => ({
-                  subagentId: id,
-                  description: meta.description,
-                  profile: meta.profileName,
-                  phase: meta.closedPhase,
-                  closedAgoMs: meta.closedAt === undefined ? null : Date.now() - meta.closedAt,
-                })),
-              })}\n`)
-              return { exitCode: 0 }
-            }
-            if (jobs.length === 0) await io.stdout('no running subagents\n')
-            for (const job of jobs) await io.stdout(`${this.renderListLine(job)}\n`)
-            if (archived.length > 0) {
-              await io.stdout('archived (revivable with `demi agent resume <id>`):\n')
-              for (const { id, meta } of archived) {
-                const closedAgo = meta.closedAt === undefined ? '' : `  closed ${formatDuration(Date.now() - meta.closedAt)} ago`
-                await io.stdout(`  ${id}  ${meta.closedPhase}${closedAgo}  ${meta.description ? `"${meta.description}"` : '(no description)'}\n`)
-              }
-            }
-            return { exitCode: 0 }
-          },
-        },
-        {
-          name: 'show',
-          summary:
-            'Bounded snapshot of one running child: execution state, recent tool titles with durations, last assistant text. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.',
-          input: { id: z.string().describe('subagentId from spawn stderr') },
-          positionals: ['id'],
-          output: { json: z.object({ agent: z.unknown() }) },
-          run: async ({ parsed, io }) => {
-            const id = String(parsed.values.id)
-            const job = this.jobs.get(id)
-            if (!job) {
-              await io.stderr(`demi agent show: no running subagent "${id}"\n`)
-              return { exitCode: 1 }
-            }
-            if (parsed.json) await io.stdout(`${JSON.stringify({ agent: this.snapshot(job, true) })}\n`)
-            else await io.stdout(this.renderShow(job))
-            return { exitCode: 0 }
-          },
-        },
-      ],
-    }
+    return subagentCommandNode<ChildJob<State>>({
+      profileNames: () => this.configuredProfileNames(),
+      spawn: (input) => this.spawn(input),
+      resumeArchived: (id, message) => this.resumeArchived(id, message),
+      attend: (job, ctx) => this.attendChild(job, ctx),
+      getRunning: (id) => this.jobs.get(id) ?? null,
+      steer: (job, message) => this.steerChild(job, message),
+      abortSubtree: (id) => this.abortSubtree(id),
+      runningJobs: () => [...this.jobs.values()],
+      listArchived: async () =>
+        (await this.listArchivedJobs()).map(({ id, meta }) => ({
+          id,
+          description: meta.description,
+          profileName: meta.profileName,
+          closedPhase: meta.closedPhase,
+          closedAt: meta.closedAt,
+        })),
+      snapshot: (job, detailed) => this.snapshot(job, detailed),
+      renderListLine: (job) => this.renderListLine(job),
+      renderShow: (job) => this.renderShow(job),
+    })
   }
 
   hasShell(shellId: string): boolean {
@@ -798,33 +651,7 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private createChildAgentNode(childId: string, description: string): Command {
-    return {
-      name: 'agent',
-      summary: 'Subagent bridge to the parent session.',
-      subcommands: [
-        {
-          name: 'send-parent',
-          summary:
-            'Send an interim user message to the parent session. The parent sees it only when it is not blocked waiting on this session. Your result is still the last assistant text when this session ends, not this message.',
-          input: {
-            message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
-          },
-          positionals: ['message'],
-          stdinField: 'message',
-          output: { json: z.object({ accepted: z.boolean() }) },
-          run: async ({ parsed, io }) => {
-            const message = String(parsed.values.message ?? '').trim()
-            if (!message) {
-              await io.stderr('demi agent send-parent: message must not be empty\n')
-              return { exitCode: 1 }
-            }
-            this.deliverToParent(childId, description, message)
-            await io.stdout(parsed.json ? `${JSON.stringify({ accepted: true })}\n` : 'sent\n')
-            return { exitCode: 0 }
-          },
-        },
-      ],
-    }
+    return childAgentNode((message) => this.deliverToParent(childId, description, message))
   }
 
   private deliverToParent(childId: string, description: string, message: string): void {
@@ -1091,22 +918,6 @@ export class ChildSupervisor<State = unknown> {
 }
 
 /**
- * Grafts the `agent` node under a `demi` root: onto an existing harness `demi`
- * tree, or as a new `demi` root when the harness has none.
- */
-export function injectSubagentCommand(commands: Command[], agentNode: Command): Command[] {
-  const demiIndex = commands.findIndex((command) => command.name === 'demi')
-  if (demiIndex === -1) {
-    return [...commands, { name: 'demi', summary: 'Demi agent runtime commands.', subcommands: [agentNode] }]
-  }
-  const demi = commands[demiIndex]!
-  const subcommands = [...(demi.subcommands ?? []).filter((command) => command.name !== 'agent'), agentNode]
-  const next = [...commands]
-  next[demiIndex] = { ...demi, subcommands }
-  return next
-}
-
-/**
  * Host wrapper for read-only subagent profiles: filesystem mutation is
  * rejected outside the shell's own command-artifacts tree, and process spawn
  * is rejected outright (a real process cannot be write-restricted).
@@ -1189,13 +1000,3 @@ function boundedResultText(text: string): string {
   return utf8Slice(text, 0, SUBAGENT_RESULT_MAX_BYTES)
 }
 
-function formatDuration(ms: number): string {
-  const totalSeconds = Math.max(0, Math.round(ms / 1000))
-  if (totalSeconds < 60) return `${totalSeconds}s`
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  if (minutes < 60) return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remMinutes = minutes % 60
-  return remMinutes > 0 ? `${hours}h${remMinutes}m` : `${hours}h`
-}
