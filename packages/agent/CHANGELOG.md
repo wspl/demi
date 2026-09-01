@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.22.1
+
+### Patch Changes
+
+- 837e0f7: `subagents.notifyParentOnIdle: false` now applies to the root level only. A subagent parent has no host-side message channel, so deeper levels always self-notify — a mid-tree parent that dispatched a background child is woken by that child's completion instead of closing with an unintegrated result.
+  - @demicodes/core@0.22.1
+  - @demicodes/provider@0.22.1
+  - @demicodes/shell@0.22.1
+  - @demicodes/utils@0.22.1
+
 ## 0.22.0
 
 ### Minor Changes
