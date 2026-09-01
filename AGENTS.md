@@ -1,5 +1,6 @@
 - Keep `AGENTS.md` limited to project-specific rules explicitly set by the user.
 - Treat package boundaries in `docs/package-boundaries.md` as the highest architecture constraint.
+- Follow the Module Layout Conventions in `docs/package-boundaries.md`: one composition root per product package, directories mirror design modules, files split by responsibility (never by line count), no catch-all directories.
 - Work toward final-state designs; avoid framing architecture decisions as MVP stages.
 - Do not preserve historical baggage or compatibility paths when they conflict with the intended final design.
 - Do not add legacy-data detection, migration, cleanup, or normalization paths; fix the final-state read/write contract directly and leave historical artifacts outside runtime code.
