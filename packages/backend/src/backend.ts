@@ -9,7 +9,6 @@ import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
 import { meterProvider } from './llm/metering'
-import { AnthropicPassthrough } from './llm/passthrough'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ConnectionVault } from './vault/connections'
@@ -32,13 +31,6 @@ export interface BackendOptions {
   providerTypes?: Record<string, ProviderTypeFactory>
   /** Usage-enforcement tuning — tests only. */
   usage?: { providerRequestsPerMinute?: number }
-  /** Passthrough upstream override — tests only. */
-  passthrough?: { anthropic?: { upstreamBaseUrl?: string } }
-  /**
-   * The URL runners and their spawned CLI processes reach this backend at.
-   * Defaults to the local listen address — set it for any real deployment.
-   */
-  publicUrl?: string
 }
 
 export interface Backend {
@@ -68,29 +60,14 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const vaultRoot = join(options.dataDir, 'vault')
   const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot)
   const logins = new SubscriptionLoginFlows(vault, assembly, { ownerUserId: STUB_USER.id, vaultRoot })
-  const anthropicPassthrough = new AnthropicPassthrough(assembly, options.passthrough?.anthropic ?? {})
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
-
-  // Set after Bun.serve when no explicit publicUrl is configured.
-  let publicUrl = options.publicUrl ?? ''
-  // One passthrough token per (connection, session) pair, reused across reopens.
-  const passthroughTokens = new Map<string, string>()
-  const passthroughTokenFor = (connectionId: string, agentSessionId: string): string => {
-    const key = `${connectionId} ${agentSessionId}`
-    let token = passthroughTokens.get(key)
-    if (!token) {
-      token = anthropicPassthrough.mintToken(connectionId)
-      passthroughTokens.set(key, token)
-    }
-    return token
-  }
 
   // connectionId = providerId: the LLM module assembles the connection's base
   // provider from vault credentials and wraps it with metering + enforcement
   // in the session's user/conversation context. Providers whose transport
   // runs on the execution target (requiresProcessCapableHost) get a
-  // session-scoped instance: the target's spawn plus a passthrough token, so
-  // the spawned CLI's model traffic flows back through this backend.
+  // session-scoped instance carrying the target's spawn; the provider itself
+  // resolves and injects its credential at spawn time.
   const resolveProvider: ProviderResolver = async (providerId, { agentSessionId }) => {
     let resolved = await assembly.providerFor(providerId)
     if (!resolved) return null
@@ -98,10 +75,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       const host = await hostFor(agentSessionId)
       resolved = await assembly.providerFor(providerId, {
         spawn: (params) => host.process.spawn(params),
-        anthropicPassthrough: {
-          baseUrl: `${publicUrl}/api/passthrough/anthropic`,
-          token: passthroughTokenFor(providerId, agentSessionId),
-        },
       })
       if (!resolved) return null
     }
@@ -144,7 +117,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     vault,
     assembly,
     logins,
-    anthropicPassthrough,
     agentServer,
     runnerRegistry,
     upgradeWebSocket,
@@ -155,7 +127,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     fetch: app.fetch,
     websocket,
   })
-  if (!publicUrl) publicUrl = `http://localhost:${server.port}`
 
   return {
     port: server.port ?? 0,

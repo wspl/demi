@@ -26,8 +26,9 @@ over ChatGPT/Claude web UIs:
 web  ←— our protocol —→  backend  ←— official provider wires —→  LLM providers
                             │
                             └←— our runner protocol (Host RPC) —→ runner (user device / container)
-                                     └─ claude code CLI (spawned by backend, runs on runner)
-                                            └←— Anthropic wire, passing through backend —→ Claude backend
+                                     └─ claude code CLI (spawned by backend via the runner;
+                                        stream-json over stdio to the backend)
+                                            └── its own native Anthropic HTTPS ——▶ Claude backend
 ```
 
 - Browser ↔ backend: Demi's agent protocol (`ClientFrame`/`ServerFrame`) on
@@ -44,11 +45,15 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
   CLI, which must run on a real machine. The provider itself runs in the
   backend like every other provider, but spawns its CLI process on the
   session's runner through the runner protocol's ordinary `spawn`, speaking
-  stream-json over the spawned process's stdio. The CLI's own HTTPS traffic
-  goes to the Claude backend **through a backend passthrough endpoint**
-  (`ANTHROPIC_BASE_URL` + runner token as `CLAUDE_CODE_OAUTH_TOKEN`, swapped
-  for the vault token at the passthrough) so it is metered and credentialed
-  like everything else.
+  stream-json over the spawned process's stdio. The CLI is purely the
+  agent-SDK RPC proxy to Anthropic: its HTTPS goes **directly** to the Claude
+  backend with the connection's vault OAuth token, which the provider runtime
+  resolves from its own auth store and injects as `CLAUDE_CODE_OAUTH_TOKEN`
+  into the spawned process env. The CLI consumes zero device-local state —
+  not the device's own `claude login`, keychain, or settings — so any device
+  with the binary behaves identically, and the traffic shape is exactly a
+  user running the official CLI. The backend never proxies or rewrites any
+  provider's model traffic.
 
 ## Invariants
 
@@ -63,10 +68,15 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
    action metadata, with per-Host BashEnvironment reuse. Switching targets is
    a first-class operation at a turn boundary, announced to the model with an
    injected context block.
-3. **All model traffic flows through the backend, and all credentials live
-   server-side.** HTTP provider runtimes run in the backend with vault
-   credentials; the Claude Code CLI's Anthropic-wire traffic passes through
-   the backend with token swap. Runners hold zero credentials.
+3. **All credentials are stored server-side, and each provider package owns
+   its own credential machinery.** API keys and subscription OAuth material
+   live in the vault; login and refresh run server-side through the
+   provider's own flows. HTTP provider runtimes speak their wires in the
+   backend process. The one CLI transport (Claude Code) receives its access
+   token only as process env at spawn time — the device never persists a
+   credential, and the runner program itself is never given one. The backend
+   never touches credential bytes (it only names where a provider's pool
+   lives) and never proxies model traffic.
 
 ## Components
 
@@ -143,10 +153,9 @@ Spoken of as modules, not separate services:
   practice, no second rendering path), compaction, session concurrency via the
   existing client-owned session ids + `SessionOwnershipRegistry` takeover
   (`packages/agent/src/server.ts:182`).
-- **LLM module**: the provider runtimes assembled from the credential vault;
-  the Anthropic passthrough endpoint used solely by Claude Code CLI processes
-  (authenticates the runner token in `Authorization`, swaps in the vault OAuth
-  token); model catalog and quota surfaces for the web UI.
+- **LLM module**: the provider runtimes assembled from the credential vault
+  (session-scoped for CLI transports — the execution target's spawn is
+  injected at assembly); model catalog and quota surfaces for the web UI.
 - **Runner management module**: device registry (claim tokens, device tokens,
   online status = socket state), the runner-protocol server, and per-session
   Host handles over connected runners.
@@ -701,9 +710,9 @@ recently-used workspaces come from the backend's own session index, and
 version/platform ride the `hello`.
 
 Non-responsibilities: user authentication (backend-only), credentials of any
-kind (backend vault — the Claude Code CLI's env token is the backend-issued
-runner token, swapped for the real credential at the backend passthrough),
-transcript or checkpoint storage (backend-only — the runner stores nothing
+kind (backend vault — the runner is never issued one; the Claude Code CLI it
+spawns receives its token as process env from the backend-side provider,
+nothing is persisted on the device), transcript or checkpoint storage (backend-only — the runner stores nothing
 about conversations), shell interpretation (just-bash runs in the backend
 against this Host), and provider logic (the CLI it may be asked to spawn is
 driven entirely by the backend-side claude-code provider over spawn stdio).
@@ -876,24 +885,26 @@ backend, which uses this same Host RPC when it needs to look at the device
 
 ## Claude Code specifics (the special case, contained)
 
-- `packages/provider-claude-code` spawns its CLI with `child_process.spawn`
-  today (`transport.ts:65`) and builds env from `process.env` (`cli.ts:36`).
-  Two additive options make it remote-capable: **injectable spawn** (a
-  `Host.process`-shaped spawn function) and a **public env overlay**
-  (`ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN`).
-- Verified with local mocks (CLI 2.1.220): with `ANTHROPIC_BASE_URL` set, the
-  CLI sends exactly one request class — `POST /v1/messages?beta=true` — and
-  adopts the env token in its `Authorization` header; fed a minimal SSE
-  stream it completes the turn. One best-effort direct
-  `CONNECT api.anthropic.com:443` ignores the base URL, survives refusal, and
-  is not load-bearing. The passthrough endpoint therefore needs to serve only
-  the Messages wire.
+- `packages/provider-claude-code` runs the whole credential path itself: its
+  auth store resolves (and refreshes) the OAuth token from the connection's
+  vault pool and injects it as `CLAUDE_CODE_OAUTH_TOKEN` into the spawned
+  CLI's env (`provider.ts:105`, `cli.ts:42`). The backend's contribution is
+  two public factory options: **injectable spawn** (a `Host.process`-shaped
+  function targeting the session's runner) and `stateDir` (the connection's
+  vault directory). The CLI's Anthropic traffic goes directly upstream with
+  that token — no base-URL override, no proxying.
+- Verified with local mocks (CLI 2.1.220): the CLI adopts the env token in
+  its `Authorization` header, and its Messages traffic is one request class
+  (`POST /v1/messages?beta=true`) — the public `env` overlay option
+  (`ANTHROPIC_BASE_URL`) remains a test tool for pointing a CLI at a mock
+  upstream.
 - Transcript replay needs no CLI-side state: `--no-session-persistence`, no
   session ids, plain-message replay (`jsonl.ts:79`) — so target switching
   works for Claude Code sessions like any other; the next turn cold-starts a
   CLI on the new target.
-- The provider-side `/api/oauth/usage` quota probe and OAuth refresh become
-  vault concerns; the models.dev catalog fetch runs in the backend.
+- The provider-side `/api/oauth/usage` quota probe and OAuth refresh run in
+  the backend through the provider's own auth store over the connection's
+  vault pool; the models.dev catalog fetch runs in the backend.
 
 ## Changes to existing packages (all additive)
 
@@ -1112,12 +1123,13 @@ Two acceptance steps in order:
    the product's minimum viable form — a user pastes a key and chats — and
    stands alone as a usable point.
 2. *Subscriptions + Claude Code* (depends on M4): provider device-login
-   flows + refresh in the vault, the Anthropic passthrough, claude-code
-   sessions spawning their CLI on the session's runner. Accept: turns with
-   every provider against mock LLM endpoints, runner holding zero
-   credentials; CLI chain end-to-end through the passthrough (skip when no
-   `claude` binary); real-subscription smoke manual only, never an ungated
-   test.
+   flows + refresh over per-connection vault pools, claude-code sessions
+   spawning their CLI on the session's runner with the vault token injected
+   as process env. Accept: turns with every provider against mock LLM
+   endpoints, the runner program itself holding zero credentials; CLI chain
+   end-to-end on a runner against a mock upstream via the provider's env
+   overlay (skip when no `claude` binary); real-subscription smoke manual
+   only, never an ungated test.
 
 **M6 — Target switching + attachments (mechanisms + endpoints only; UI at M8)**
 Turn-boundary switching + context injection + the out-of-virtual tmp-dump
@@ -1183,7 +1195,7 @@ checklists only for UI look-and-feel and packaging smoke.
 | M2 | Backend integration in one test process: browser-side `AgentClient` (in-process transport) + virtual-Host session; detach client mid-turn with a slow StubProvider → turn completes → reattach sees the full result (covers refresh-immunity and binding-close-must-not-abort); cold-history read equals live transcript; portable commands work, spawn fails with the upgrade message. |
 | M3 | Block-row persistence: a streamed turn appends rows (no whole-transcript rewrite observable); restore from `control.sqlite` + `conversations/<id>.sqlite` equals the live transcript; media blocks round-trip through `source.ref` + blob store; per-conversation `host_store` isolation. |
 | M4 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Backend host routing to a claimed device's remote Host; device online status follows the socket. |
-| M5 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; passthrough mock upstream asserts token swap and single request class; claude-code-on-runner chain with the real CLI against a mock upstream, skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
+| M5 | Step 1: vault key storage + per-user assembly unit tests; ledger aggregation from StubProvider usage. Step 2: login-flow state machines against mock auth endpoints + refresh; claude-code-on-runner chain with the real CLI against a mock upstream (provider env overlay), asserting the vault token reached the upstream and nothing was persisted on the device — skipped when no `claude` binary. Tier 2: one gated real-subscription smoke per provider. |
 | M6 | Switch integration, all directions unconstrained: real→real (files stay + honest context block; same-device note when applicable), virtual→real (files land in the target tmp dir, context block names the path, no code-side placement), real→virtual (fresh virtual fs + context block), mid-turn switch refused, concurrent switch has one winner; offline target → session readable and chattable on virtual. |
 | M7 | Tenant-isolation authz matrix (every API action by user A against user B's data asserts denial); instance-mode enforcement (shared: non-admin connection writes rejected, everyone reads the instance connections; isolated: users see only their own); device revoke + re-claim via the API. |
 | M8 | Tier 3 manual checklist over the full layout design, including a sweep of the "everything Demi implements gets exposed" list (steer, queue, abort, retry, resume, compact, `set_provider`, `shell_write`). |
