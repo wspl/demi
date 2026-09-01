@@ -1,4 +1,4 @@
-import { bytesToBase64, isRecord, noop, safeJsonStringify } from '@demicodes/utils'
+import { bytesToBase64, errorCode, isRecord, noop, safeJsonStringify } from '@demicodes/utils'
 import { AgentSession } from './session'
 import {
   BashEnvironment,
@@ -1110,11 +1110,6 @@ function isBashAuditEvent(value: unknown): value is BashAuditEvent {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
-}
-
-function errorCode(error: unknown): string | undefined {
-  if (!isRecord(error) || typeof error.code !== 'string') return undefined
-  return error.code
 }
 
 function errorDiagnostics(error: unknown): ProviderErrorDiagnostics | undefined {
