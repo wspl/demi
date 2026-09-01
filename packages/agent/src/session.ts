@@ -447,10 +447,15 @@ export class AgentSession<State> {
   }
 
   waitUntilDone(): Promise<void> {
-    if (!this.workerRunning && this.pendingActions.length === 0) return Promise.resolve()
+    if (this.isSettled()) return Promise.resolve()
     return new Promise((resolve) => {
       this.idleResolvers.push(resolve)
     })
+  }
+
+  /** True when no turn is running and no action (including queued user sends) is pending. */
+  isSettled(): boolean {
+    return !this.workerRunning && this.pendingActions.length === 0
   }
 
   /**
