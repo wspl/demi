@@ -1,13 +1,13 @@
 import { AbortError, abortable, asError, createId, errorCode, isAbortError, noop, throwIfAborted, truncate } from '@demicodes/utils'
 import type { ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
-import { TranscriptLog, type TranscriptOptions } from './transcript'
-import type { TranscriptPatch } from './frames'
+import { TranscriptLog, type TranscriptOptions } from '../transcript/transcript'
+import type { TranscriptPatch } from '../protocol/frames'
 import { YieldScheduler } from './yield-scheduler'
-import { PendingSteerQueue, type PendingSteer } from './pending-steer-queue'
-import { CompactionController, type CompactionHost } from './compaction-controller'
+import { PendingSteerQueue, type PendingSteer } from './steer-queue'
+import { CompactionController, type CompactionHost } from './compaction'
 import { ProviderStreamError } from './provider-stream-error'
-import { ProviderTurnLoop, type ProviderTurnLoopHost } from './provider-turn-loop'
+import { ProviderTurnLoop, type ProviderTurnLoopHost } from './turn-loop'
 import { resolveRetryPolicy, type TurnRetryPolicy } from './retry-policy'
 import { findResumePoint } from './recovery'
 import type {
@@ -26,7 +26,7 @@ import type {
   ModelSwitchApply,
   SessionEvent,
   SessionEventListener,
-} from './types'
+} from '../types'
 
 const DEFAULT_KEEP_RECENT_TOKENS = 4_000
 const DEFAULT_PREFLIGHT_THRESHOLD_RATIO = 0.8
