@@ -83,6 +83,8 @@ export interface SubagentProfile<State = unknown> {
   commands?(parentCommands: Command[]): Command[]
   /** Reject filesystem writes and process spawns on the child's Host. */
   readonly?: boolean
+  /** When false, the child cannot spawn subagents of its own (communication and reads remain). */
+  canSpawnSubagents?: boolean
   model?: ModelSelection
 }
 
