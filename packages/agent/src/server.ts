@@ -470,6 +470,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
       storePrefix: `agent-sessions/${agentSessionId}`,
       directory,
       maxLiveSubagents: this.maxLiveSubagents,
+      canSpawn: true,
       onJobsChanged: null,
       emit: (subagentFrame) => this.send(subagentFrame),
     })
