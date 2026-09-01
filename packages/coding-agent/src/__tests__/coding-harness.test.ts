@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import {
+  AgentDirectory,
   AgentSession,
   ChildSupervisor,
   createStandardAgentTools,
@@ -25,7 +26,7 @@ import {
   createLogicalHostCwd,
 } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
-import { createCodingAgentHarness } from '../index'
+import { createCodingAgentHarness, type CodingState } from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -253,6 +254,10 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
     sessionOptions: {},
     notifyParentOnIdle: true,
     store: new LocalHost(process.cwd()).store,
+    storePrefix: 'agent-sessions/help-probe',
+    directory: new AgentDirectory<CodingState>(),
+    maxLiveSubagents: 8,
+    onJobsChanged: null,
     emit: () => {},
   })
   const registry = new CommandRegistry()
