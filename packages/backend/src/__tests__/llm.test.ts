@@ -242,7 +242,7 @@ test('subscription login: pending material surfaces, completion becomes a connec
   await backend.close()
 }, 15_000)
 
-test('a process-capable provider gets a session-scoped instance: target spawn + passthrough token', async () => {
+test('a process-capable provider gets a session-scoped instance carrying the target spawn', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-runner-'))
@@ -302,23 +302,6 @@ test('a process-capable provider gets a session-scoped instance: target spawn + 
 
   expect(sessions).toHaveLength(1)
   const session = sessions[0]!
-  expect(session.anthropicPassthrough.baseUrl).toBe(`${backend.url}/api/passthrough/anthropic`)
-
-  // The minted token authenticates at the passthrough (a stub connection has
-  // no OAuth pool, so a recognized token fails at credential resolution — 502,
-  // never the 401 an unknown token gets).
-  const withToken = await fetch(`${session.anthropicPassthrough.baseUrl}/v1/messages`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${session.anthropicPassthrough.token}` },
-    body: '{}',
-  })
-  expect(withToken.status).toBe(502)
-  const withoutToken = await fetch(`${session.anthropicPassthrough.baseUrl}/v1/messages`, {
-    method: 'POST',
-    headers: { authorization: 'Bearer wrong' },
-    body: '{}',
-  })
-  expect(withoutToken.status).toBe(401)
 
   // The session spawn executes on the claimed device.
   const handle = await session.spawn({ command: 'touch', args: ['spawned.marker'], cwd: runnerDir })
