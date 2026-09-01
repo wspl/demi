@@ -15,19 +15,40 @@ import { createBackend, type Backend } from '../index'
 // upgrade guidance, a detached client's turn completes server-side and a
 // reattach sees the full result, and cold history equals the live transcript.
 
-const model: ModelSelection = {
-  providerId: 'stub',
-  model: {
-    id: 'test-model',
-    name: 'Test Model',
-    contextWindow: 100_000,
-    inputLimit: null,
-    thinking: [],
-    acceptedExtensions: [],
-  },
-  thinking: null,
+function selectionFor(connectionId: string) {
+  const model: ModelSelection = {
+    providerId: connectionId,
+    model: {
+      id: 'test-model',
+      name: 'Test Model',
+      contextWindow: 100_000,
+      inputLimit: null,
+      thinking: [],
+      acceptedExtensions: [],
+    },
+    thinking: null,
+  }
+  return { providerId: connectionId, model }
 }
-const selection = { providerId: 'stub', model }
+
+/** Registers `type: 'stub'` connections backed by the given runtime factory. */
+function stubTypes(createRuntime: () => import('@demicodes/provider').AgentProvider) {
+  return {
+    stub: ({ connectionId, label }: { connectionId: string; label: string }) =>
+      defineProvider({ id: connectionId, displayName: label, createRuntime }),
+  }
+}
+
+async function createStubConnection(backend: Backend): Promise<string> {
+  const response = await fetch(`${backend.url}/api/connections`, {
+    method: 'POST',
+    body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'test-key' }),
+    headers: { 'content-type': 'application/json' },
+  })
+  if (response.status !== 201) throw new Error(`connection create failed: ${response.status}`)
+  const { connection } = (await response.json()) as { connection: { id: string } }
+  return connection.id
+}
 
 function slowTextTurn(text: string): AsyncIterable<ProviderEvent> {
   return (async function* () {
@@ -67,19 +88,15 @@ test('virtual conversation end-to-end: portable tools, upgrade guidance, detach-
     [events.toolCall('t2', 'shell_exec', { script: 'python3 -V', timeoutMs: 10_000 })],
     [events.text('refused as expected'), events.response()],
   ])
-  const provider = defineProvider({
-    id: 'stub',
-    displayName: 'Stub',
-    state: () => ({ status: 'ready' }),
-    createRuntime: () => stub,
-  })
-  const backend = await createBackend({ dataDir, providers: [provider], port: 0 })
+  const backend = await createBackend({ dataDir, port: 0, providerTypes: stubTypes(() => stub) })
+  const connectionId = await createStubConnection(backend)
 
   // Web API basics.
   const me = await api<{ user: { id: string; role: string } }>(backend, '/api/auth/me')
   expect(me.user.role).toBe('master')
   const models = await api<{ connections: Array<{ connectionId: string }> }>(backend, '/api/models')
-  expect(models.connections.map((connection) => connection.connectionId)).toEqual(['stub'])
+  expect(models.connections.map((connection) => connection.connectionId)).toEqual([connectionId])
+  const selection = selectionFor(connectionId)
 
   const created = await api<{ conversation: { id: string; title: string } }>(backend, '/api/conversations', {
     method: 'POST',
@@ -121,10 +138,10 @@ test('detach mid-turn: the turn completes server-side and a reattach sees the re
   ])
   // A provider whose second turn streams slowly so the client can detach mid-turn.
   let turn = 0
-  const provider = defineProvider({
-    id: 'stub',
-    displayName: 'Stub',
-    createRuntime: () => {
+  const backend = await createBackend({
+    dataDir,
+    port: 0,
+    providerTypes: stubTypes(() => {
       const runtime: import('@demicodes/provider').AgentProvider = {
         run(request) {
           turn += 1
@@ -134,9 +151,10 @@ test('detach mid-turn: the turn completes server-side and a reattach sees the re
         clone: () => runtime,
       }
       return runtime
-    },
+    }),
   })
-  const backend = await createBackend({ dataDir, providers: [provider], port: 0 })
+  const connectionId = await createStubConnection(backend)
+  const selection = selectionFor(connectionId)
   const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
   const conversationId = created.conversation.id
 
@@ -177,18 +195,18 @@ test('detach mid-turn: the turn completes server-side and a reattach sees the re
 
 test('backend restart restores the conversation from its database (M3)', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-restart-'))
-  const makeProvider = () =>
-    defineProvider({
-      id: 'stub',
-      displayName: 'Stub',
-      createRuntime: () =>
+  const types = () =>
+    stubTypes(
+      () =>
         new StubProvider([
           [events.text('first answer'), events.response()],
           [events.text('second answer'), events.response()],
         ]),
-    })
+    )
 
-  const backend = await createBackend({ dataDir, providers: [makeProvider()], port: 0 })
+  const backend = await createBackend({ dataDir, port: 0, providerTypes: types() })
+  const connectionId = await createStubConnection(backend)
+  const selection = selectionFor(connectionId)
   const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
   const conversationId = created.conversation.id
   const { client } = await connectClient(backend, conversationId)
@@ -201,7 +219,8 @@ test('backend restart restores the conversation from its database (M3)', async (
 
   // A fresh process over the same data directory: cold history and the live
   // session both come back from conversations/<id>.sqlite block rows.
-  const restarted = await createBackend({ dataDir, providers: [makeProvider()], port: 0 })
+  // The connection row (and its encrypted key) came back from control.sqlite.
+  const restarted = await createBackend({ dataDir, port: 0, providerTypes: types() })
   const cold = await api<{ blocks: Block[] }>(restarted, `/api/conversations/${conversationId}/transcript`)
   expect(cold.blocks.map((block) => block.id)).toEqual(before.map((block) => block.id))
 
@@ -226,12 +245,7 @@ test('backend restart restores the conversation from its database (M3)', async (
 
 test('a malformed PATCH body is rejected with 400 invalid_body', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-badbody-'))
-  const provider = defineProvider({
-    id: 'stub',
-    displayName: 'Stub',
-    createRuntime: () => new StubProvider([[events.text('ok'), events.response()]]),
-  })
-  const backend = await createBackend({ dataDir, providers: [provider], port: 0 })
+  const backend = await createBackend({ dataDir, port: 0 })
   const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
 
   const bad = await fetch(`${backend.url}/api/conversations/${created.conversation.id}`, {

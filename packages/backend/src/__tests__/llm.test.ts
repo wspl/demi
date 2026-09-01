@@ -1,0 +1,161 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { expect, test } from 'bun:test'
+import type { ModelSelection } from '@demicodes/core'
+import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
+import { defineProvider } from '@demicodes/provider'
+import { StubProvider, events } from '@demicodes/provider/testing'
+import { delay, waitFor } from '@demicodes/utils'
+import { createBackend, type Backend, type BackendOptions } from '../index'
+
+// M5 step 1 (BYOK + metering): a pasted key becomes a usable connection —
+// providers assemble per connection from vault credentials, every provider
+// request lands in the usage ledger, and the rate limit refuses at the
+// inference entry.
+
+function selectionFor(connectionId: string) {
+  const model: ModelSelection = {
+    providerId: connectionId,
+    model: { id: 'test-model', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+    thinking: null,
+  }
+  return { providerId: connectionId, model }
+}
+
+async function api<T>(backend: Backend, path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
+  const response = await fetch(`${backend.url}${path}`, init)
+  return { status: response.status, body: (await response.json().catch(() => null)) as T }
+}
+
+function post(payload: unknown): RequestInit {
+  return { method: 'POST', body: JSON.stringify(payload), headers: { 'content-type': 'application/json' } }
+}
+
+function stubBackendOptions(dataDir: string, turns: number): BackendOptions {
+  return {
+    dataDir,
+    port: 0,
+    providerTypes: {
+      stub: ({ connectionId, label }) =>
+        defineProvider({
+          id: connectionId,
+          displayName: label,
+          createRuntime: () =>
+            new StubProvider(
+              Array.from({ length: turns }, (_, index) => [
+                events.text(`answer ${index}`),
+                events.response({ inputTokens: 100 + index, outputTokens: 10 }),
+              ]),
+            ),
+        }),
+    },
+  }
+}
+
+async function openConversation(backend: Backend, connectionId: string) {
+  const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
+  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${created.body.conversation.id}/stream`)
+  await new Promise<void>((resolve, reject) => {
+    socket.addEventListener('open', () => resolve(), { once: true })
+    socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
+  })
+  const client = new AgentClient(createWebSocketClientTransport(socket as never))
+  await client.open(selectionFor(connectionId), '/ignored', 'ignored')
+  return client
+}
+
+test('connections: create/list redact key material, unknown types rejected, delete unresolves', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-conn-'))
+  const backend = await createBackend(stubBackendOptions(dataDir, 1))
+
+  const unknown = await api(backend, '/api/connections', post({ type: 'nope', label: 'x', apiKey: 'k' }))
+  expect(unknown.status).toBe(400)
+
+  const created = await api<{ connection: Record<string, unknown> }>(
+    backend,
+    '/api/connections',
+    post({ type: 'stub', label: 'My Stub', apiKey: 'sk-super-secret', modelIds: ['custom-1', 'custom-2'] }),
+  )
+  expect(created.status).toBe(201)
+  expect(JSON.stringify(created.body)).not.toContain('sk-super-secret')
+  const connectionId = created.body.connection.id as string
+
+  const listed = await api<{ connections: Array<Record<string, unknown>> }>(backend, '/api/connections')
+  expect(listed.body.connections).toEqual([
+    expect.objectContaining({ id: connectionId, type: 'stub', label: 'My Stub', modelIds: ['custom-1', 'custom-2'] }),
+  ])
+  expect(JSON.stringify(listed.body)).not.toContain('sk-super-secret')
+
+  // The catalog groups by connection; user-entered model ids become entries.
+  const models = await api<{ connections: Array<{ connectionId: string; models: Array<{ id: string; providerId: string }> }> }>(
+    backend,
+    '/api/models',
+  )
+  expect(models.body.connections).toHaveLength(1)
+  expect(models.body.connections[0]?.models.map((model) => model.id)).toEqual(['custom-1', 'custom-2'])
+  expect(models.body.connections[0]?.models[0]?.providerId).toBe(connectionId)
+
+  const deleted = await fetch(`${backend.url}/api/connections/${connectionId}`, { method: 'DELETE' })
+  expect(deleted.status).toBe(204)
+  expect((await api<{ connections: unknown[] }>(backend, '/api/connections')).body.connections).toHaveLength(0)
+  expect((await api<{ connections: unknown[] }>(backend, '/api/models')).body.connections).toHaveLength(0)
+
+  await backend.close()
+}, 15_000)
+
+test('metering: every provider request lands in the ledger; /api/usage aggregates', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-usage-'))
+  const backend = await createBackend(stubBackendOptions(dataDir, 3))
+  const created = await api<{ connection: { id: string } }>(
+    backend,
+    '/api/connections',
+    post({ type: 'stub', label: 'Stub', apiKey: 'k' }),
+  )
+  const connectionId = created.body.connection.id
+
+  const client = await openConversation(backend, connectionId)
+  await client.send([{ type: 'text', text: 'one' }])
+  await client.send([{ type: 'text', text: 'two' }])
+
+  // Ledger appends are fire-and-forget off the event stream; give them a beat.
+  await delay(50)
+  const usage = await api<{
+    totals: Array<{ connectionId: string; modelId: string; requests: number; inputTokens: number; outputTokens: number }>
+  }>(backend, '/api/usage')
+  expect(usage.body.totals).toEqual([
+    expect.objectContaining({
+      connectionId,
+      modelId: 'test-model',
+      requests: 2,
+      inputTokens: 201, // 100 + 101
+      outputTokens: 20,
+    }),
+  ])
+
+  await client.close()
+  await backend.close()
+}, 15_000)
+
+test('enforcement: the provider request rate limit refuses at the inference entry', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-limit-'))
+  const backend = await createBackend({ ...stubBackendOptions(dataDir, 5), usage: { providerRequestsPerMinute: 1 } })
+  const created = await api<{ connection: { id: string } }>(
+    backend,
+    '/api/connections',
+    post({ type: 'stub', label: 'Stub', apiKey: 'k' }),
+  )
+  const client = await openConversation(backend, created.body.connection.id)
+  const errors: string[] = []
+  client.subscribe((event) => {
+    if (event.type === 'error') errors.push(event.message)
+  })
+
+  await client.send([{ type: 'text', text: 'allowed' }])
+  await client.send([{ type: 'text', text: 'refused' }]).catch(() => {})
+  await waitFor(() => errors.length > 0, undefined, { timeoutMs: 5_000 })
+  expect(errors[0]).toContain('rate limit')
+
+  await client.close()
+  await backend.close()
+}, 15_000)

@@ -1,4 +1,6 @@
 export { createBackend, type Backend, type BackendOptions } from './backend'
+export { ProviderAssembly, builtinProviderTypes, type ProviderTypeFactory, type CatalogConnection } from './llm/assembly'
+export { ConnectionVault, type Connection, type ConnectionConfig, type ApiKeyConnectionConfig } from './vault/connections'
 export { VIRTUAL_WORKSPACE_CWD } from './conversation/scoped-transport'
 export { openSqliteDatabase, type SqlDatabase, type SqlParams } from './storage/database'
 export { migrate, CONTROL_MIGRATIONS, CONVERSATION_MIGRATIONS, type Migration } from './storage/migrations'

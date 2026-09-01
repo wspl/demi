@@ -19,8 +19,6 @@ import { createBackend, type Backend } from '../index'
 // API claims it, the device token round-trips a restart, revoke refuses the
 // reconnect, and the browse endpoints ride the same Host RPC.
 
-const NO_PROVIDERS: never[] = []
-
 async function api(backend: Backend, path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${backend.url}${path}`, init)
 }
@@ -58,7 +56,7 @@ test('pairing: claim, reconnect with the device token, revoke refuses the reconn
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m4-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m4-runner-'))
-  const backend = await createBackend({ dataDir, providers: NO_PROVIDERS, port: 0, runner: { pingIntervalMs: 0 } })
+  const backend = await createBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
 
   const first = capture()
   const runner = startRunner(backend, { stateDir, runnerDir }, first)
@@ -142,7 +140,6 @@ test('claim codes expire and rotate on the waiting socket; the stale code is dea
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m4-expiry-runner-'))
   const backend = await createBackend({
     dataDir,
-    providers: NO_PROVIDERS,
     port: 0,
     runner: { pingIntervalMs: 0, claimTtlMs: 150 },
   })
@@ -172,7 +169,6 @@ test('the claim endpoint is rate-limited per user', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-rate-'))
   const backend = await createBackend({
     dataDir,
-    providers: NO_PROVIDERS,
     port: 0,
     runner: { pingIntervalMs: 0, claimAttemptsPerMinute: 2 },
   })
@@ -190,7 +186,7 @@ test('the claim endpoint is rate-limited per user', async () => {
 
 test('a malformed runner frame closes the socket; a bad device token is rejected', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-reject-'))
-  const backend = await createBackend({ dataDir, providers: NO_PROVIDERS, port: 0, runner: { pingIntervalMs: 0 } })
+  const backend = await createBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
   const wsUrl = `${backend.url.replace('http', 'ws')}/api/runner`
 
   const garbage = new WebSocket(wsUrl)
@@ -217,21 +213,20 @@ test('a malformed runner frame closes the socket; a bad device token is rejected
   await backend.close()
 }, 15_000)
 
-const model: ModelSelection = {
-  providerId: 'stub',
-  model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
-  thinking: null,
+function selectionFor(connectionId: string) {
+  const model: ModelSelection = {
+    providerId: connectionId,
+    model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
+    thinking: null,
+  }
+  return { providerId: connectionId, model }
 }
-const selection = { providerId: 'stub', model }
 
 test('M4 acceptance: a session executes on the claimed device; disconnect is a tool error; reconnect resumes', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-accept-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m4-accept-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m4-accept-runner-'))
-  const provider = defineProvider({
-    id: 'stub',
-    displayName: 'Stub',
-    createRuntime: () =>
+  const stubRuntime = () =>
       new StubProvider([
         // Turn 1: real spawns on the claimed device.
         [events.toolCall('t1', 'shell_exec', { script: 'printf hello | tee made.txt | cat', timeoutMs: 10_000 })],
@@ -242,9 +237,22 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
         // Turn 3: after the runner comes back, the same session serves again.
         [events.toolCall('t3', 'shell_exec', { script: 'cat made.txt', timeoutMs: 10_000 })],
         [events.text('turn three done'), events.response()],
-      ]),
+      ])
+  const backend = await createBackend({
+    dataDir,
+    port: 0,
+    runner: { pingIntervalMs: 0 },
+    providerTypes: {
+      stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: stubRuntime }),
+    },
   })
-  const backend = await createBackend({ dataDir, providers: [provider], port: 0, runner: { pingIntervalMs: 0 } })
+  const connectionResponse = await api(backend, '/api/connections', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'test-key' }),
+    headers: { 'content-type': 'application/json' },
+  })
+  const { connection: stubConnection } = (await connectionResponse.json()) as { connection: { id: string } }
+  const selection = selectionFor(stubConnection.id)
 
   // Pair a device, then point the conversation's workspace at it (the M6
   // workspace endpoints do this over HTTP; here the control plane is written
