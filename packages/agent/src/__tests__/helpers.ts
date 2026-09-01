@@ -7,6 +7,8 @@ import {
   type AgentHarnessRuntime,
   type AgentSessionOptions,
   type AgentSessionCheckpoint,
+  type AgentSessionPersistUpdate,
+  type AgentSessionStore,
 } from '../index'
 
 export interface TestState {
@@ -79,15 +81,41 @@ export function makeTranscript(): TranscriptLog {
   })
 }
 
-export class MemorySessionStore<State> {
+/**
+ * In-memory `AgentSessionStore`: applies each row-level save to a block map
+ * and materializes a full checkpoint per save into `snapshots`, so tests can
+ * assert either the row deltas (`saves`) or the resulting state.
+ */
+export class MemorySessionStore<State> implements AgentSessionStore<State> {
+  readonly saves: Array<AgentSessionPersistUpdate<State>> = []
   readonly snapshots: Array<AgentSessionCheckpoint<State>> = []
+  private readonly rows = new Map<number, Block>()
 
-  saveCheckpoint(snapshot: AgentSessionCheckpoint<State>): void {
-    this.snapshots.push(snapshot)
+  save(update: AgentSessionPersistUpdate<State>): void {
+    this.saves.push(structuredClone(update))
+    for (const { index, block } of update.changedBlocks) this.rows.set(index, structuredClone(block))
+    for (const index of [...this.rows.keys()]) {
+      if (index >= update.blockCount) this.rows.delete(index)
+    }
+    const blocks: Block[] = []
+    for (let index = 0; index < update.blockCount; index += 1) {
+      const block = this.rows.get(index)
+      if (!block) throw new Error(`MemorySessionStore: missing block row ${index}`)
+      blocks.push(structuredClone(block))
+    }
+    this.snapshots.push({
+      transcript: { blocks },
+      state: structuredClone(update.state),
+      phase: update.phase,
+      queue: structuredClone(update.queue),
+      cwd: update.cwd,
+      model: structuredClone(update.model),
+      harnessName: update.harnessName,
+    })
   }
 
-  loadCheckpoint(): Promise<AgentSessionCheckpoint<State> | null> {
-    return Promise.resolve(this.snapshots[this.snapshots.length - 1] ?? null)
+  load(): Promise<AgentSessionCheckpoint<State> | null> {
+    return Promise.resolve(structuredClone(this.snapshots[this.snapshots.length - 1] ?? null))
   }
 }
 

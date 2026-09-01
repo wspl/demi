@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
-import type { AgentHarness, AgentSessionCheckpoint } from '@demicodes/agent'
+import type { AgentHarness } from '@demicodes/agent'
+import { loadPersistedSession } from '@demicodes/agent'
 import type { BashEnvironmentOptions } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
 import {
@@ -130,16 +131,20 @@ test('AgentServer persists session snapshots through Host.store', async () => {
   await client.send([{ type: 'text', text: 'persist me' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
+  // Block-row persistence: one entry per transcript block plus the state row.
   const keys = await host.store.list('agent-sessions')
-  expect(keys).toHaveLength(1)
-  expect(keys[0]).toEndWith('/checkpoint.json')
-  const snapshot = await host.store.readJson<AgentSessionCheckpoint<Record<string, never>>>(keys[0])
-  expect(snapshot).toMatchObject({
+  const stateKey = keys.find((key) => key.endsWith('/state.json'))
+  if (!stateKey) throw new Error('missing state.json entry')
+  const prefix = stateKey.slice(0, -'/state.json'.length)
+  const loaded = await loadPersistedSession<Record<string, never>>(host.store, prefix)
+  expect(loaded?.state).toMatchObject({
     cwd: root,
     harnessName: 'stored-session',
     phase: 'running',
+    blockCount: 3,
   })
-  expect(snapshot?.transcript.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  expect(loaded?.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  expect(keys.filter((key) => key.includes('/blocks/'))).toHaveLength(3)
 })
 
 test('AgentServer resumes a conversation by session id and restores its transcript', async () => {
