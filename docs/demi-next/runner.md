@@ -38,7 +38,7 @@ configuration beyond what the connection needs.
 3. **Running commands.** A tool call becomes one job: real `bash -c` on this
    machine with the conversation's cwd and env, the conversation and shell
    ids in the environment, the bounded output view streamed to the backend,
-   the full output teed to an artifact file here.
+   the full output teed to an output file here.
 4. **Relaying root commands.** A Unix domain socket for command-mode shell
    processes: manifest cache misses, and `rpc` command invocations
    forwarded to the backend attributed to the invoking conversation. The
@@ -129,18 +129,18 @@ Jobs — the agent's commands:
 |---|---|---|
 | b → r | `job_start { jobId, script, cwd, env, background, viewLimit }` | run `bash -c script`; `env` carries the conversation and shell ids |
 | r → b | `job_output { jobId, stream, bytes }` | the bounded view; stops at `viewLimit` per stream |
-| r → b | `job_exit { jobId, code, signal?, artifact: { stdoutPath, stderrPath, stdoutBytes, stderrBytes } }` | exit plus where the full output lives on this machine |
+| r → b | `job_exit { jobId, code, signal?, output: { stdoutPath, stderrPath, stdoutBytes, stderrBytes } }` | exit plus where the full output lives on this machine |
 | b → r | `job_stdin { jobId, bytes }` / `job_kill { jobId, signal }` | interactive input (`shell_write`), termination |
 | r → b | `job_list` reply and `pong.jobs` | the job table is the runner's; the backend reads it |
 
-Relay and artifacts:
+Relay and outputs:
 
 | Direction | Message | Purpose |
 |---|---|---|
 | r → b | `rpc_call { callId, conversationId, shellId, root, command, args, stdin }` streamed | an `rpc` command of some root invoked on this target |
 | b → r | `rpc_output { callId, stream, bytes }` / `rpc_exit { callId, code }` | its result back to the command-mode process |
 | b → r | `manifest { hash, tree, modules }` on connect and on change | the command manifest the runner caches for the CLI |
-| b → r | `artifact_upload { path, uploadUrl }` | the backend wants the full bytes of an artifact: the runner `PUT`s the file to the one-shot URL over HTTP |
+| b → r | `output_upload { path, uploadUrl }` | the backend wants the full bytes of an output file: the runner `PUT`s the file to the one-shot URL over HTTP |
 | b → r | `transfer_send { path, uploadUrl }` / `transfer_receive { path, downloadUrl }` | a brokered cross-host copy: the source `PUT`s, the destination `GET`s, the backend pipes the two |
 
 The exact `fs_*` op set mirrors `HostFileSystem` and is fixed in the
@@ -154,16 +154,19 @@ handle kept after the tool call returns. The runner owns process groups,
 reaps children, and reports the count of running jobs in every `pong`.
 
 The **tee** is a shell primitive (`shell.md`): each job's stdout and
-stderr are written in full to artifact files under the target's
-`commandArtifactsDir`, and only the first `viewLimit` bytes of each stream
+stderr are written in full to output files under the target's
+`commandOutputDir`, and only the first `viewLimit` bytes of each stream
 travel to the backend. The backend's tool result is built from the view;
-the artifact path in `job_exit` is what the model sees as "full output
-available at …". Artifacts stay on the target and are not uploaded at
+the output path in `job_exit` is what the model sees as "full output
+available at …". Output files stay on the target and are not uploaded at
 hibernation; the backend fetches them by reference over HTTP when a user
 opens a past command's full output while the host is online
 (`sessions-and-targets.md`).
 
 `cmd1 | cmd2` is an OS pipe on the target. Zero bytes of it cross the wire.
+
+The word *artifact* is not used for these files: in agent products it
+names the agent's deliverables, and Demi keeps it free for that.
 
 ## The local relay
 

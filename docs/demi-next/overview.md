@@ -63,7 +63,7 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
   their native endpoints (`providers-and-vault.md`).
 - Backend ↔ runner: Demi's runner protocol — a remote form of the `Host`
   contract (filesystem ops, process spawn with streamed stdio) plus the job
-  and artifact messages (`runner.md`). Both ends are TypeScript: the backend
+  and output messages (`runner.md`). Both ends are TypeScript: the backend
   on Bun, the runner as JS on the QuickJS shell (`shell.md`).
 - Target ↔ backend for root commands (`demi` and any library-defined
   root): a root command on a target is the shell plus the loader;
@@ -98,7 +98,7 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
    access token only as process env at spawn time — the device never
    persists a credential, and the runner program itself is never given one.
 4. **Protocols carry references, never bulk bytes.** File reads and writes
-   happen on the target; the runner tees full command output to artifact
+   happen on the target; the runner tees full command output to output
    files on the target and the wire carries a bounded view; media reaches
    the browser by reference; bulk transfer, when needed, is an HTTP stream
    brokered by the backend (`runner.md`).
