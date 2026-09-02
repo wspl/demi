@@ -23,6 +23,7 @@ import {
 import type { Dirent, Stats } from 'node:fs'
 import type { Readable } from 'node:stream'
 import { isFileNotFoundError } from '@demicodes/utils'
+import { fileHostStore } from '@demicodes/shell'
 import type {
   Host,
   HostCwd,
@@ -38,14 +39,13 @@ import type {
   HostStore,
   SpawnErrorKind,
 } from '@demicodes/shell'
-import { LocalHostStore } from './local-store'
 import { LocalHostCwd } from './local-cwd'
 
 export interface LocalHostOptions {
   storeRoot?: string
   /** Where command artifacts land as plain files; defaults next to the store. */
   commandArtifactsDir?: string
-  /** Bring-your-own persistence, e.g. to wrap or gate writes; defaults to a LocalHostStore rooted at storeRoot. */
+  /** Bring-your-own persistence, e.g. to wrap or gate writes; defaults to a fileHostStore rooted at storeRoot. */
   store?: HostStore
 }
 
@@ -63,7 +63,7 @@ export class LocalHost implements Host {
     this.commandArtifactsDir = resolve(options.commandArtifactsDir ?? join(storeRoot, 'command-artifacts'))
     this.fs = new LocalHostFileSystem(this.defaultCwd)
     this.process = new LocalHostProcess(this.defaultCwd)
-    this.store = options.store ?? new LocalHostStore(storeRoot)
+    this.store = options.store ?? fileHostStore(this.fs, resolve(storeRoot))
     const info = userInfo()
     this.identity = { uid: info.uid, gid: info.gid, hostname: hostname() }
   }
