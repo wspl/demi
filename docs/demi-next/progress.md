@@ -1219,3 +1219,49 @@ implement in `demishell:net`); tokio's and rustls's reputations (the
 choice). Size levers recorded in `shell.md` Packaging: lazy network
 initialisation, per-package opt-level, no hyper/tungstenite, ring, trimmed
 tokio features, QuickJS without bignum; UPX and nightly build-std rejected.
+
+## M7 — Shell (started 2026-09-02)
+
+Status: in progress on `feat/demi-next`. Crate at `packages/demi-shell`;
+`cargo build --features conformance && target/debug/demi-shell` runs the
+primitive conformance suite (`conformance/*.mjs`), which is the embedded
+bundle under that feature so it sees `demishell:*`.
+
+### Landed so far
+
+- Event loop, module loader (`/embedded/*` table, absolute and relative
+  file paths, `demishell:*` only from the embedded bundle, `import.meta.url`),
+  `ShellError` with errno codes, the handle table, standard globals,
+  `demishell:fs`, `demishell:bytes`, `demishell:runtime`, the entry-mode
+  skeleton. 31 conformance cases pass on macOS arm64. Release binary
+  1.5 MB before any network code; command-mode hello starts in 7 ms.
+
+### Pitfalls
+
+- `AsyncRuntime::idle()` holds the runtime lock for its whole duration, so
+  nothing outside it (a signal task) can enter the context while the loop
+  waits. The loop is therefore one `async_with` for the life of the
+  process, with its own liveness count (`State.active`: in-flight IO,
+  live timers, child waits) deciding when to exit; signal handlers do not
+  count, as in Node.
+- `while let Some(t) = queue.borrow_mut().pop()` keeps the `RefCell`
+  borrowed through the loop body; a timer callback that schedules another
+  timer panicked. The borrow is now scoped before the callback runs.
+- rquickjs does not set `import.meta.url`; the loader sets it from the
+  module name after `Module::declare`.
+- QuickJS `Error.stack` holds only the frames; the harness prints
+  `name: message` itself.
+
+### Decisions taken while implementing
+
+- Regular files and the standard streams are `Arc<std::fs::File>` driven
+  through `spawn_blocking` with a cloned descriptor, so concurrent
+  operations on one file need no bookkeeping; pipes and sockets are tokio
+  streams with one read and one write in flight (`EBUSY` otherwise) and
+  `close` cancelling a pending operation with `ECANCELED`.
+- `console`, `queueMicrotask`, `TextEncoder`/`TextDecoder`, `URL`,
+  `AbortController` and `structuredClone` are prelude JS over native
+  transcoders; only per-byte work is Rust. `shell.md` says the same.
+- MessagePack follows `@msgpack/msgpack` defaults: integral numbers as
+  ints, `Uint8Array` as bin, `Date` as the timestamp extension, `undefined`
+  as nil.
