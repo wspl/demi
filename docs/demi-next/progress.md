@@ -1834,6 +1834,46 @@ the runner's cache layout from step 3 on, with `commands/current` the
 symlink the runner maintains; the entry bundle belongs to
 `@demicodes/runner` (the package whose dependency footprint it is).
 
+### Step 2: the wire at both ends (2026-09-02) — delivered
+
+Landed in `@demicodes/runner-protocol`, the Bun runner and the backend,
+protocol version 2:
+
+- Frames are binary MessagePack. The package no longer carries a codec of
+  its own: `createRunnerWire(codec)` takes a `{ encode, decode }` pair —
+  `msgpackCodec` over `@msgpack/msgpack` on the Bun ends, `tinyjs:bytes`
+  on tinyjs (its `bytes.rs` already follows `@msgpack/msgpack`'s
+  defaults). A test encodes every message shape on Bun, has tinyjs decode
+  and re-encode the frames, and compares byte for byte; the tinyjs
+  conformance case for the protocol bundle now frames over `tinyjs:bytes`.
+- fs RPC is one message per operation: `fsOps` in `schemas.ts` is a table
+  of `{ params, result }` schemas per `HostFileSystem` method, and the
+  `fs_<op>` request union, the `fs_ok { id, op, result }` union and the
+  `FsParams` / `FsResult` types all derive from it; `fs_error { id, code?,
+  message }` carries the errno code. `RemoteHost` builds the request from
+  the method call, `HostRpcServer` dispatches through a handler table keyed
+  by op. A malformed parameter or a result of the wrong shape is refused
+  at decode on either end.
+- `pong { jobs }`: the Bun runner reports 0 (no job table until step 3);
+  the registry keeps the count per connection (`runningJobs(deviceId)`)
+  for the idle rule.
+- `hello_error { code, reason }` with `unsupported_protocol`,
+  `unknown_device`, `already_connected`, `revoked`, `internal`. The
+  one-connection-per-token rule replaces the old "newer connection wins":
+  a second hello on a connected token is refused with `already_connected`
+  and logged (`RunnerRegistryOptions.log`); the runner retries that one
+  code with its backoff and stops on every other. Covered by a backend
+  test: the twin is refused while the first is online and is accepted
+  after the first stops.
+- The backend socket route sends and receives binary frames; a text frame
+  is malformed and closes the socket.
+
+Pitfalls: `registry.ts` carried two literal NUL characters in string
+literals (a key separator and a sentinel), which made git treat the file
+as binary and hid its diffs; they are `\0` escapes now. hono's Bun
+adapter hands a binary message over as `message.buffer`; the frames decode
+cleanly through the M4 suite, so the buffers are not pooled views.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
