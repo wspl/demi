@@ -1,6 +1,6 @@
 import { asError, collectBytes, concatByteStreams, concatBytes, decodeUtf8, emptyByteStream, encodeUtf8 } from '@demicodes/utils'
 import type { z } from 'zod'
-import { loadCommandModule, type CommandResult, type CommandWriter, type RuntimeModule } from './command-abi'
+import { loadCommandModule, type CommandModule, type CommandResult, type CommandWriter, type RuntimeModule } from './command-abi'
 import type { Host } from './host'
 
 export type CommandInputSpec = Record<string, z.ZodType>
@@ -134,6 +134,12 @@ export interface CommandExecutionContext {
   signal?: AbortSignal
   /** Stdin written after the command started, for `rpc` handlers that steer. */
   stdinStream?: AsyncIterable<Uint8Array>
+  /**
+   * How a `runtime` module's text becomes its function. Absent, the text is
+   * imported through a `blob:` URL; an embedder whose runtime imports only
+   * files (tinyjs) supplies the import from its module cache.
+   */
+  loadModule?: (module: RuntimeModule) => Promise<CommandModule>
 }
 
 const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
@@ -330,7 +336,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
       stdinStream,
     })
   } else {
-    const run = await loadCommandModule(node.module)
+    const run = await (ctx.loadModule ?? loadCommandModule)(node.module)
     result = await run({
       args: parsed.values,
       fs: ctx.host.fs,

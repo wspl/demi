@@ -107,12 +107,20 @@ export function loadCommandModule(javascript: string): Promise<CommandModule> {
 async function importModule(javascript: string): Promise<CommandModule> {
   const url = URL.createObjectURL(new Blob([javascript], { type: 'text/javascript' }))
   try {
-    const loaded = (await import(url)) as { default?: unknown }
-    if (typeof loaded.default !== 'function') {
-      throw new TypeError('a runtime module must default-export its command function')
-    }
-    return loaded.default as CommandModule
+    return await importCommandModule(url)
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+/**
+ * Imports a `runtime` module by specifier — a `blob:` URL here, a file in the
+ * manifest cache on a target — and checks its one export.
+ */
+export async function importCommandModule(specifier: string): Promise<CommandModule> {
+  const loaded = (await import(specifier)) as { default?: unknown }
+  if (typeof loaded.default !== 'function') {
+    throw new TypeError('a runtime module must default-export its command function')
+  }
+  return loaded.default as CommandModule
 }
