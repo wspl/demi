@@ -1155,3 +1155,15 @@ that runs a VM. Decision: "host" is Demi's sense only; the VM is the
 *guest* and the machine running the backend and Firecracker is the
 *backend machine*. A vocabulary table (target / device / host / guest and
 backend machine) is in `overview.md`; `managed-hosts.md` was reworded.
+
+## Shell API shape (2026-09-02)
+
+Decided in discussion, recorded in `shell.md`: the shell's job is to run
+one bundled ESM module plus `import()` of absolute paths for `runtime`
+command modules. The API is one frozen global read only by
+`@demicodes/host-shell`; integer handles with explicit close; pull-model
+reads; Node errno codes. Raw TCP and TLS primitives were dropped — the
+only network users are the WebSocket to the backend, HTTP for uploads and
+transfers, and the UDS relay, so those are the exposed level. pty, servers,
+mount/netlink, watch, workers, wasm and compression are explicitly outside
+the first version.
