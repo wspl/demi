@@ -65,8 +65,8 @@ in `PATH`; everything else is whatever the machine has.
                                     │                                      │
                                     │                                      ├─ npm test 2>&1 | tail -20       (ordinary processes;
                                     │                                      │    the pipe is an OS pipe)
- ◀── job_output {view ≤ 1 MB} ──────┘                                      │
- ◀── job_exit {code, output paths} ◀── bash exits ◀────────────────────────┘
+ ◀── job_output {the model's view} ─┘                                      │
+ ◀── job_exit {code, cwd, output paths, tails} ◀── bash exits ◀────────────┘
 
  an rpc command inside the same script, e.g.  demi todo add "run the suite":
 
@@ -79,9 +79,10 @@ in `PATH`; everything else is whatever the machine has.
  ─── rpc_output / rpc_exit ─────▶ runner ──────────── UDS ────────────▶ command mode writes stdout, exits with the code
 ```
 
-What crosses the wire: the script, the bounded view, the exit, and the
-arguments and output of `rpc` commands. File contents and pipeline bytes
-never do.
+What crosses the wire: the script, the model's view of the output (the
+first bytes while running, the last bytes at exit — `runner.md`), the
+exit, and the arguments and output of `rpc` commands. File contents and
+pipeline bytes never do.
 
 ### Hostless (no execution target)
 
@@ -129,8 +130,8 @@ tinybash cannot run is run on a machine instead.
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
 | The shell environment behind the `shell_*` tools | `BashEnvironment` (just-bash over the Host) | the backend's `HostlessEnvironment` (tinybash over the Host); same command records, views and artifacts |
 | Where files live | on the target | in `conversations/<id>.sqlite` |
-| Where full output lives | output files on the target | the tool result itself (bounded, no tee needed) |
-| Bytes on the wire | script, view, exit, rpc args/output | none |
+| Where full output lives | output files on the target; the model reads past the view with commands | nowhere beyond the view: no tee, the shell runs in the backend |
+| Bytes on the wire | script, the model's view, exit, rpc args/output | none |
 | Leaving this path | user switches the target in the picker | the first script outside the subset moves the conversation to a machine, silently |
 
 ## Command kinds
