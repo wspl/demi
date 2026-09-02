@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "[a|1]\n[b|0]\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

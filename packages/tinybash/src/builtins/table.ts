@@ -12,6 +12,7 @@ import { grep, grepPaths } from './grep'
 import { head, headTailPaths, tail } from './head-tail'
 import { ls } from './ls'
 import { mkdir } from './mkdir'
+import { printf, printfPaths } from './printf'
 import { falseBuiltin, pwd, trueBuiltin } from './pwd-true-false'
 import { rm } from './rm'
 import { sed, sedPaths } from './sed'
@@ -68,6 +69,7 @@ export const BUILTINS: ReadonlyMap<string, BuiltinEntry> = new Map<string, Built
   entry('tail', SPECS.tail, tail, headTailPaths('tail')),
   entry('cat', SPECS.cat, cat),
   ['echo', { flags: null, paths: none, run: echo }],
+  ['printf', { flags: null, paths: printfPaths, run: printf }],
   entry('ls', SPECS.ls, ls),
   ['find', { flags: null, paths: findPaths, run: find }],
   entry('wc', SPECS.wc, wc),
