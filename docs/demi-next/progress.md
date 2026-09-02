@@ -1710,6 +1710,41 @@ Owner decisions after the review round:
   runner side → output and media by reference → the `host-virtual`
   reduction → the deletions. `roadmap.md` carries the list.
 
+### M8 close-out, part 1: tinyjs (2026-09-02)
+
+Landed in `packages/tinyjs`, `cargo test` green (56/56 conformance, the
+packing test, two unit tests) on macOS arm64; release build 2.4 MB for
+each binary:
+
+- The crate is a library plus two binaries. `tinyjsc` (`src/bin/tinyjsc.rs`
+  over `src/pack.rs`) packs; `tinyjs` only reads the section. The section
+  starts with a header (magic, abi, release) and every binary carries a
+  `TINYJS-RELEASE:<release>:<abi>` marker as a `#[used]` static that the
+  runtime parses for its own release, so no linker drops it. The marker
+  prefix and the section magic are spelled backwards in the source and
+  reversed at compile or run time, so their only forward copy in a binary
+  is the marker itself, respectively an injected section: `tinyjsc` can
+  search a bare binary's bytes for them without false hits from its own
+  string constants. Refused at pack time: another release, an already
+  packed binary, a file that is not tinyjs, a bundle importing a second
+  file (the loader compiles against a payload with no modules beside the
+  entry). Refused at start: a section from another release.
+- Loader: `/embedded/*` is refused from a file-loaded module, checked
+  after normalization so `../embedded/…` cannot reach it either;
+  `import.meta.url` is a `file:` URL.
+- `kill` accepts only pids in the child table; `0`, `-1` and the own pid
+  fail with `ESRCH` before the syscall.
+- `spawn`'s `stdin` was always `null` for `stdin: "null"`; the record said
+  `fd`. The record now says `fd | null` — the code was right and the
+  contract was misstated.
+- The conformance test generates RSA certificates: the EC keys macOS's
+  LibreSSL writes fail to decode in Bun's BoringSSL, which is why the
+  stub-backed net cases failed on this machine at first.
+
+Toolchain on a fresh machine: `brew install rustup`, then
+`rustup default stable` with `/opt/homebrew/opt/rustup/bin` on the PATH;
+Bun and openssl for the stub cases.
+
 ### Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
