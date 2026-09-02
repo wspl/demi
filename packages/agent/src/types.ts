@@ -64,7 +64,11 @@ export interface AgentHarnessContext<State> {
   cwd: string
 }
 
-/** Context used when a shell operation resolves its action-specific Host. */
+/**
+ * Context used when a shell operation resolves its action-specific Host.
+ * `agentSessionId` is the root session's: the execution target belongs to
+ * the conversation, and a subagent resolves through its root.
+ */
 export interface AgentHostContext<State> extends AgentHarnessContext<State> {
   agentSessionId: string
   metadata: AgentMetadata | null
