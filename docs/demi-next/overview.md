@@ -16,7 +16,7 @@
 | `storage.md` | control and conversation databases, `ControlService`, blob and home-image stores, replication |
 | `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
 | `sessions-and-targets.md` | a conversation's execution target: hostless, user hosts, managed hosts, switching, grants |
-| `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader, hostless execution |
+| `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader, tinybash and hostless execution |
 | `shell.md` | the QuickJS shell: the runtime under the runner and every root command on a target |
 | `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
 | `managed-hosts.md` | Firecracker provisioning, images, home persistence, lifecycle, security |
@@ -38,8 +38,9 @@ over ChatGPT/Claude web UIs:
   devices via the runner program (user hosts) or in operator-provisioned
   microVMs (managed hosts).
 - **Chat-first default**: most conversations are conversation with light
-  tools and need no machine at all — they run `demi` commands in the backend
-  and only get a machine when they first need one.
+  tools and need no machine at all — they run `demi` commands in the
+  backend's tiny shell (tinybash) and only get a machine when they first
+  need one.
 
 ## Protocol layering (the core shape)
 
@@ -118,9 +119,10 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
   execution target — one outbound socket, Host RPC, the job table, the tee,
   the local relay for root commands. `runner.md`.
 - **Command loader** (`@demicodes/command-loader`, pure JS): serves the
-  command tree wherever commands run — inside the runner, inside the `demi`
-  CLI, inside the backend for hostless conversations, and inside any
-  third-party embedder. `commands.md`.
+  command manifest wherever commands run — inside the runner, inside the
+  shell in command mode, inside the backend for hostless conversations, and
+  inside any third-party embedder. **tinybash** (`@demicodes/tinybash`,
+  pure JS): the tiny shell hostless conversations run in. `commands.md`.
 - **Managed hosts**: Firecracker microVMs the backend provisions on demand,
   persisting only a home image. `managed-hosts.md`.
 - **Web frontend** (`@demicodes/web`): the product SPA over

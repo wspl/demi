@@ -4,7 +4,7 @@
 |---|---|
 | Date | 2026-09-02 |
 | Status | Design (lands in M8; the CLI's `rpc` path completes in M9) |
-| Scope | The command system: root commands, organizing rule, command kinds, the command ABI, the manifest, the loader, hostless execution, root commands on a target |
+| Scope | The command system: root commands, organizing rule, command kinds, the command ABI, the manifest, the loader, tinybash and hostless execution, root commands on a target |
 
 ## Root commands
 
@@ -17,7 +17,7 @@ manifest, loader and target-side entry. Nothing below is specific to
 
 On a target every root is a name in `PATH` — a symlink to the shell binary
 (`shell.md`) — so real bash runs `demi …` and `myagent …` the same way it
-runs anything else. In a hostless conversation the parser accepts exactly
+runs anything else. In a hostless conversation tinybash accepts exactly
 the manifest's roots as first words.
 
 ## Organizing rule
@@ -85,8 +85,8 @@ never do.
 
 ### Hostless (no execution target)
 
-There is no bash and no runner. The backend parses the tool call itself,
-accepts only `demi` commands, and runs them in-process.
+There is no bash and no runner. The backend runs the tool call in tinybash,
+which accepts only root commands and runs them in-process.
 
 ```
  tool call:  demi file create notes.md <<'EOF' … EOF
@@ -94,10 +94,10 @@ accepts only `demi` commands, and runs them in-process.
 
  backend (one process; nothing leaves it)
  ────────────────────────────────────────
- root-command parser ─▶ [ {argv, stdin}, {argv, stdin} ]      tokens, heredocs, `;` `&&` newline
+ tinybash ──▶ [ {argv, stdin}, {argv, stdin} ]                words, quotes, heredocs, `;` `&&` `||` newline
         │                                                     anything else → refused (below)
         ▼
- in-process loader
+ in-process loader  (tinybash's only "executables" are the manifest's roots)
    ├─ demi file create …   kind = runtime  → run the SAME module as on a real host,
    │                                          ctx.fs = store-backed Host
    │                                          → conversations/<id>.sqlite  (host_store)
@@ -108,7 +108,7 @@ accepts only `demi` commands, and runs them in-process.
 
 
  tool call:  npm test
- root-command parser ─▶ first word is not a root command
+ tinybash ──▶ first word is not a root command
                         ├─ managed hosts configured ──▶ backend provisions a managed host bound to
                         │                                the conversation, writes the hostless files
                         │                                into its home, injects the context block,
@@ -121,8 +121,8 @@ accepts only `demi` commands, and runs them in-process.
 
 | | Real host | Hostless |
 |---|---|---|
-| Who parses the tool call | real bash on the target | the backend's root-command parser |
-| What can appear in it | anything bash runs | root commands, heredocs, `;` `&&` newline |
+| Who runs the tool call | real bash on the target | tinybash in the backend |
+| What can appear in it | anything bash runs | root commands, heredocs, `;` `&&` `\|\|` newline |
 | Where a `runtime` module runs | in a command-mode shell process on the target | in the backend process |
 | The `ctx.fs` it sees | the target's real filesystem (`host-shell`) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
@@ -265,28 +265,31 @@ backend and stdout/stderr back.
 ## Hostless execution
 
 A conversation with no execution target (`sessions-and-targets.md`) still
-executes root commands. The backend parses the tool call with a
-**root-command parser** and dispatches through an in-process loader whose
-Host is the conversation's store-backed filesystem
-(`@demicodes/host-virtual`).
+executes root commands. The backend runs the tool call in **tinybash**
+(`@demicodes/tinybash`): a deliberately tiny shell — parser plus executor —
+whose only executables are the manifest's root commands, dispatched through
+an in-process loader whose Host is the conversation's store-backed
+filesystem (`@demicodes/host-virtual`). It is the in-process counterpart of
+real bash on a target: same tool, same commands, a fraction of the grammar.
 
-The parser accepts exactly:
+tinybash accepts exactly:
 
 - one simple command per statement — words with single quotes, double
-  quotes and backslash escapes;
+  quotes and backslash escapes; `#` comments;
 - heredocs: `<<EOF`, `<<'EOF'`, `<<-EOF`, and here-strings `<<<`; `demi
   file create` and `demi file patch` take their content on stdin and the
   agent writes them this way;
-- statements joined by newline, `;` or `&&` (a failure stops an `&&`
-  chain).
+- statements joined by newline, `;`, `&&` or `||`, with bash's exit-status
+  semantics for the chains; the tool result's exit code is the last
+  statement's.
 
 Anything else is refused with a message naming the way out: pipes,
 redirections, variables, command and process substitution, globs,
-background jobs, and any first word that is not a manifest root. The
-parser does not pretend to be bash, so there is no divergence catalogue.
-The tool description in the hostless state says which commands exist and
-that any other command starts a machine; the model reaches for `demi file`
-rather than `cat`.
+background jobs, and any first word that is not a manifest root. tinybash
+does not pretend to be bash, so there is no divergence catalogue — its
+grammar is the list above. The tool description in the hostless state says
+which commands exist and that any other command starts a machine; the
+model reaches for `demi file` rather than `cat`.
 
 The first command whose first word is not a root auto-provisions a managed
 host bound to the conversation, and the backend writes the hostless files
@@ -322,7 +325,9 @@ sockets.
   written against the ABI. A library user declares their own root the same
   way, with the same types.
 - `@demicodes/command-loader` is new: the loader, the manifest types and
-  build, the root-command parser (it is a parser of root-command
-  invocations, not of bash).
+  build.
+- `@demicodes/tinybash` is new: the hostless shell — parser and executor
+  over a loader, no Host of its own. Usable by any embedder that wants
+  hostless execution, not only the backend.
 - `@demicodes/backend` assembles the roots, builds and serves the
   manifest, and embeds the loader for hostless conversations.
