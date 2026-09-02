@@ -94,7 +94,14 @@ test('message attachment: upload → ref block → inline bytes at the provider 
   expect(image.source.data).toEqual(PNG_BYTES)
   expect(image.source.mediaType).toBe('image/png')
 
-  // Checkpoint round-trip: a fresh client reattaches and the image survives in the transcript.
+  // The browser sees media by reference, live and after a restore alike:
+  // the transcript frames carry the blob's hash, and the bytes are one GET away.
+  const liveImage = client
+    .transcript()
+    .blocks.filter((block) => block.type === 'user')
+    .flatMap((block) => (block.type === 'user' ? block.content : []))
+    .find((block): block is Extract<UserContentBlock, { type: 'image' }> => block.type === 'image')
+  expect(liveImage?.source).toEqual({ type: 'ref', ref: attachment.sha256, mediaType: 'image/png' } as never)
   await client.close()
   const revived = await connectClient(backend, conversation.id, selection)
   await waitFor(() => revived.transcript().blocks.length > 0, undefined, { timeoutMs: 5_000 })
@@ -103,9 +110,13 @@ test('message attachment: upload → ref block → inline bytes at the provider 
     .blocks.filter((block) => block.type === 'user')
     .flatMap((block) => (block.type === 'user' ? block.content : []))
     .find((block): block is Extract<UserContentBlock, { type: 'image' }> => block.type === 'image')
-  expect(revivedImage?.source.type).toBe('binary')
-  if (revivedImage?.source.type !== 'binary') throw new Error('expected binary image source after restore')
-  expect(revivedImage.source.data).toEqual(PNG_BYTES)
+  expect(revivedImage?.source).toEqual({ type: 'ref', ref: attachment.sha256, mediaType: 'image/png' } as never)
+  const blob = await api(backend, `/api/blobs/${attachment.sha256}?type=image/png`)
+  expect(blob.status).toBe(200)
+  expect(blob.headers.get('content-type')).toBe('image/png')
+  expect(blob.headers.get('cache-control')).toContain('immutable')
+  expect(new Uint8Array(await blob.arrayBuffer())).toEqual(PNG_BYTES)
+  expect((await api(backend, '/api/blobs/0000000000000000000000000000000000000000000000000000000000000000')).status).toBe(404)
 
   // A missing reference degrades loudly to a visible placeholder, never a crash.
   const ghost = { type: 'image', source: { type: 'ref', ref: 'no-such-id' } } as never as UserContentBlock

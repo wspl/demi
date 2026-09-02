@@ -5,7 +5,7 @@ import { LocalHost } from '@demicodes/host-local'
 import { VirtualHost } from '@demicodes/host-virtual'
 import { buildManifest, inProcessRpc, type Manifest } from '@demicodes/command-loader'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/runner-protocol'
-import { AgentSessionCommandStorage, type Command } from '@demicodes/shell'
+import { AgentSessionCommandStorage, type Command, type CommandIO } from '@demicodes/shell'
 import { toBytes } from '@demicodes/utils'
 import type { Host } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
@@ -18,6 +18,7 @@ import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
 import { meterProvider } from './llm/metering'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
+import { TransferBroker } from './runner/transfers'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ConnectionVault } from './vault/connections'
 import { loadOrCreateInstanceSecret } from './vault/secret'
@@ -66,8 +67,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // from it, and an rpc command a runner relays runs against the tree of the
   // conversation the ids in the job's environment name.
   let manifest: Promise<Manifest> | null = null
+  const transfers = new TransferBroker()
   const runnerRegistry = new RunnerRegistry({
     control,
+    transfers,
     manifest: () => (manifest ??= buildManifest(commandsFor(''), { transpile: transpileCommandModule })),
     rpc: async (call, io) => {
       const host = await hostFor(call.agentSessionId)
@@ -84,7 +87,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         stdin: call.stdin,
         cwd: call.cwd,
         env: call.env,
-        io: { stdout: (data) => io.stdout(toBytes(data)), stderr: (data) => io.stderr(toBytes(data)) },
+        // The relayed io carries the calling device as a transfer destination
+        // (`host shell --id` streams its stdout there, not over the sockets).
+        io: { stdout: (data) => io.stdout(toBytes(data)), stderr: (data) => io.stderr(toBytes(data)), transferDestination: io.transferDestination } as CommandIO,
         signal: new AbortController().signal,
         stdinStream: io.stdinStream,
       })
@@ -136,6 +141,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const hostCommandDeps = {
     control,
     registry: runnerRegistry,
+    transfers,
     virtualHostFor: (conversationId: string): Promise<Host> => virtualHostFor(conversationId),
     hostStoreFor: (conversationId: string) => conversationStores.hostStore(conversationId),
   }
@@ -175,6 +181,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     logins,
     agentServer,
     runnerRegistry,
+    transfers,
     upgradeWebSocket,
     blobs,
     hostFor,
@@ -191,6 +198,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     url: `http://localhost:${server.port}`,
     close: async () => {
       await agentServer.close()
+      transfers.close()
       await runnerRegistry.close()
       server.stop(true)
       conversationStores.close()

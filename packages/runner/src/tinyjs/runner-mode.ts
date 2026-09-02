@@ -25,6 +25,7 @@ import { delay, errorMessage } from '@demicodes/utils'
 import { ManifestCache } from './manifest-cache'
 import { RelayServer } from './relay'
 import { RunnerState } from './state'
+import { TransferClient } from './transfers'
 
 export interface RunnerModeOptions {
   backendUrl: string
@@ -47,6 +48,7 @@ export class RunnerMode {
   private readonly host: Host
   private readonly state: RunnerState
   private readonly cache: ManifestCache
+  private readonly transfers: TransferClient
   private readonly wire = createRunnerWire({ encode: msgpackEncode, decode: msgpackDecode })
   private readonly log: (line: string) => void
   private stopped = false
@@ -57,6 +59,7 @@ export class RunnerMode {
     this.host = createRunnerHost({ defaultCwd: identity.homeDir, commandArtifactsDir: `${options.stateDir}/output`, storeDir: `${options.stateDir}/store` })
     this.state = new RunnerState(this.host.fs, options.stateDir)
     this.cache = new ManifestCache(this.host.fs, this.state.commandsDir, this.state.binDir, options.executable)
+    this.transfers = new TransferClient(options.backendUrl, () => this.state.readToken())
     this.log = options.log ?? ((line) => console.error(line))
   }
 
@@ -67,7 +70,11 @@ export class RunnerMode {
     let backoff = initial
     await this.host.fs.mkdir(this.options.stateDir, { recursive: true })
     await this.host.fs.rm(this.state.socketPath, { force: true })
-    this.relay = await RelayServer.listen(this.state.socketPath, { send: (message) => this.sendToBackend(message), manifest: () => this.cache.current() })
+    this.relay = await RelayServer.listen(this.state.socketPath, {
+      send: (message) => this.sendToBackend(message),
+      manifest: () => this.cache.current(),
+      download: (url) => this.transfers.download(url),
+    })
     try {
       while (!this.stopped) {
         this.log('connecting…')
@@ -192,8 +199,13 @@ export class RunnerMode {
         }
         return undefined
       case 'rpc_output':
+      case 'rpc_transfer':
       case 'rpc_exit':
         this.relay?.handleReply(message)
+        return undefined
+      case 'transfer_send':
+      case 'transfer_receive':
+        void this.transfer(message)
         return undefined
       case 'job_start':
       case 'job_stdin':
@@ -204,6 +216,23 @@ export class RunnerMode {
       default:
         await ends.rpc.handleMessage(message)
         return undefined
+    }
+  }
+
+  /** One brokered copy: the HTTP exchange runs to its end, then `transfer_done` reports it. */
+  private async transfer(message: Extract<BackendToRunnerMessage, { type: 'transfer_send' | 'transfer_receive' }>): Promise<void> {
+    const { transferId } = message
+    try {
+      if (message.type === 'transfer_send') await this.transfers.send(message.path, message.url)
+      else await this.transfers.receive(message.path, message.url)
+      this.sendToBackend({ type: 'transfer_done', transferId, ok: true })
+    } catch (error) {
+      this.log(`transfer ${transferId} failed: ${errorMessage(error)}`)
+      try {
+        this.sendToBackend({ type: 'transfer_done', transferId, ok: false, error: errorMessage(error) })
+      } catch {
+        // Offline: the backend already failed the transfer with the connection.
+      }
     }
   }
 }

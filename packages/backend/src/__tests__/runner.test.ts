@@ -7,7 +7,7 @@ import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { createRunnerWire } from '@demicodes/runner-protocol'
+import { RUNNER_PROTOCOL_VERSION, createRunnerWire } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
@@ -173,7 +173,7 @@ test('a malformed runner frame closes the socket; a bad device token is rejected
   badToken.send(
     wire.encode({
       type: 'hello',
-      protocol: 2,
+      protocol: RUNNER_PROTOCOL_VERSION,
       deviceToken: 'not-a-real-token',
       runner: { name: 'x', platform: 'test', version: '0', identity: { uid: 0, gid: 0, hostname: 'x' } },
     }),

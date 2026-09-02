@@ -5,6 +5,7 @@ import { expect, test } from 'bun:test'
 import { LocalHost } from '@demicodes/host-local'
 import {
   HostRpcServer,
+  RUNNER_PROTOCOL_VERSION,
   RemoteHost,
   createRunnerWire,
   type BackendToRunnerMessage,
@@ -17,13 +18,13 @@ import { memoryHostStore } from '@demicodes/shell/testing'
 const wire = createRunnerWire(msgpackCodec)
 
 test('runner messages round-trip through the MessagePack wire', () => {
-  const runnerToBackend = new Set(['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit'])
+  const runnerToBackend = new Set(['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'transfer_done'])
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>
     runnerToBackend.has(message.type) ? wire.decodeRunnerToBackend(wire.encode(message)) : wire.decodeBackendToRunner(wire.encode(message))
 
   const hello: RunnerProtocolMessage = {
     type: 'hello',
-    protocol: 2,
+    protocol: RUNNER_PROTOCOL_VERSION,
     deviceToken: 'token',
     runner: { name: 'dev-box', platform: 'darwin', version: '1.0.0', identity: { uid: 501, gid: 20, hostname: 'mac' } },
   }
@@ -60,12 +61,22 @@ test('runner messages round-trip through the MessagePack wire', () => {
   expect(decodedOutput.bytes).toBeInstanceOf(Uint8Array)
   expect([...decodedOutput.bytes]).toEqual([0, 255, 10])
 
+  // Transfers carry references only: a path on the device and an origin-relative URL.
+  const send: RunnerProtocolMessage = { type: 'transfer_send', transferId: 't1', path: '/home/x/.demi/output/j1/stdout.txt', url: '/api/transfers/t1' }
+  expect(roundTrip(send)).toEqual(send)
+  const receive: RunnerProtocolMessage = { type: 'transfer_receive', transferId: 't2', path: '/tmp/in.tar', url: '/api/transfers/t2' }
+  expect(roundTrip(receive)).toEqual(receive)
+  const relayed: RunnerProtocolMessage = { type: 'rpc_transfer', callId: 'c9', url: '/api/transfers/t1' }
+  expect(roundTrip(relayed)).toEqual(relayed)
+  const done: RunnerProtocolMessage = { type: 'transfer_done', transferId: 't2', ok: false, error: 'transfer refused (404)' }
+  expect(roundTrip(done)).toEqual(done)
+
   expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode(42))).toThrow('Malformed')
   expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ no: 'type' }))).toThrow('Malformed')
   expect(() => wire.decodeBackendToRunner(new TextEncoder().encode('{"type":"ping"}'))).toThrow('Malformed')
   // Validation is structural, not just type-tag: a hello without its runner
   // info, an unknown fs op, or a typed result of the wrong shape is refused.
-  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'hello', protocol: 2 }))).toThrow('Malformed')
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'hello', protocol: RUNNER_PROTOCOL_VERSION }))).toThrow('Malformed')
   expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ type: 'fs_format_disk', id: 'x' }))).toThrow('Malformed')
   expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ type: 'fs_stat', id: 'x' }))).toThrow('Malformed')
   expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'fs_ok', id: 'x', op: 'stat', result: 'nope' }))).toThrow('Malformed')
