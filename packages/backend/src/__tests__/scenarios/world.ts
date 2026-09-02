@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
 import { defineProvider } from '@demicodes/provider'
-import type { RunnerProtocolMessage } from '@demicodes/runner-protocol'
+import { JOB_VIEW_BYTES, type RunnerProtocolMessage } from '@demicodes/runner-protocol'
 import { startTinyjsRunner, type TinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { createBackend, type Backend } from '../../index'
@@ -41,8 +41,8 @@ export interface WireFrame {
   message: RunnerProtocolMessage
 }
 
-/** The view budget a runner job's output frames stay within: a head and a tail. */
-export const JOB_VIEW_BYTES = 2 * 32 * 1024
+/** What a runner job's output frames may carry: the head of each stream; the tail rides the exit frame. */
+const JOB_FRAMES_BYTES = 2 * JOB_VIEW_BYTES
 
 export class World {
   readonly drivers: Driver[] = []
@@ -177,14 +177,14 @@ export class World {
       for (const message of of('in')) {
         if (message.type === 'job_output') jobBytes.set(message.jobId, (jobBytes.get(message.jobId) ?? 0) + message.bytes.byteLength)
       }
-      for (const [jobId, bytes] of jobBytes) expect(bytes, `job ${jobId} output on ${device.name}'s socket`).toBeLessThanOrEqual(JOB_VIEW_BYTES)
+      for (const [jobId, bytes] of jobBytes) expect(bytes, `job ${jobId} output on ${device.name}'s socket`).toBeLessThanOrEqual(JOB_FRAMES_BYTES)
       const count = (direction: 'in' | 'out', ...types: string[]) => of(direction).filter((m) => types.includes(m.type)).length
       expect(count('in', 'job_exit'), `jobs exited on ${device.name}`).toBe(count('out', 'job_start'))
       expect(count('in', 'transfer_done'), `transfers completed on ${device.name}`).toBe(count('out', 'transfer_send', 'transfer_receive'))
     }
-    // One ledger row per provider request.
+    // One ledger row per provider request the model answered.
     const usage = await this.api<{ totals: Array<{ requests: number }> }>('/api/usage')
-    expect(usage.totals.reduce((sum, group) => sum + group.requests, 0), 'ledger rows').toBe(this.model.requests.length)
+    expect(usage.totals.reduce((sum, group) => sum + group.requests, 0), 'ledger rows').toBe(this.model.answered)
   }
 }
 

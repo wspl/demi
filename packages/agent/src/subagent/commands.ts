@@ -255,6 +255,32 @@ export function childAgentNode(deliverToParent: (message: string) => void): Comm
 }
 
 /**
+ * The `agent` node's shape alone, for a manifest built outside any session:
+ * a target parses `demi agent …` from it and relays the call as `rpc`, which
+ * runs against the live session's tree. Running the shape itself is a wiring
+ * error.
+ */
+export function subagentCommandShape(profileNames: string[]): CommandGroup {
+  const notHere = (): never => {
+    throw new Error('demi agent runs on the live session; the manifest carries its shape only')
+  }
+  return subagentCommandNode<never>({
+    profileNames: () => profileNames,
+    spawn: notHere,
+    resumeArchived: notHere,
+    attend: notHere,
+    getRunning: notHere,
+    steer: notHere,
+    abortSubtree: notHere,
+    runningJobs: notHere,
+    listArchived: notHere,
+    snapshot: notHere,
+    renderListLine: notHere,
+    renderShow: notHere,
+  })
+}
+
+/**
  * Grafts the `agent` node under a `demi` root: onto an existing harness `demi`
  * tree, or as a new `demi` root when the harness has none.
  */

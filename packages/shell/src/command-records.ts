@@ -31,6 +31,12 @@ export interface ShellCommandRecord {
   outputOffset: number
   exitCode?: number
   binaryStdout?: BinaryStdout
+  /**
+   * The length of each stream on the target when the record holds only its
+   * view (a runner's head and tail); absent when the text is the stream.
+   */
+  stdoutBytes?: number
+  stderrBytes?: number
   /** Output limit of the exec that started this command (binary carry cap). */
   outputLimitBytes: number
 }
@@ -152,7 +158,7 @@ function streamView(record: ShellCommandRecord, stream: 'stdout' | 'stderr', max
     offset: nextOffset,
     delta,
     tail: tailString(text),
-    bytes: totalBytes,
+    bytes: (stream === 'stdout' ? record.stdoutBytes : record.stderrBytes) ?? totalBytes,
     truncated,
   }
 }
