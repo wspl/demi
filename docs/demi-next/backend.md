@@ -86,13 +86,17 @@ Spoken of as modules, not separate services:
 
 ## Media by reference
 
-Nothing the backend sends to a browser inlines bulk bytes. Transcript media
-blocks carry `source.ref` (the blob's content hash); `transcript_reset` and
-`transcript_patch` never expand them; the page fetches `GET
-/api/blobs/:sha256` (cookie-authenticated, cacheable, immutable). Providers
+Nothing the backend sends to a browser inlines bulk bytes. The
+conversation-scoped transport rewrites every outbound frame that carries
+transcript blocks (`transcript_reset`, `transcript_patch`, and the
+subagent pair): each inline media source becomes `{ type: 'ref', ref,
+mediaType }` — `ref` the blob's content hash, the same form the block rows
+hold at rest — and the page fetches `GET /api/blobs/:sha256?type=<media
+type>` (cookie-authenticated, `immutable`, cached for a year). Providers
 still receive inline bytes: the conversation module resolves references
 before handing a message to the provider runtime. The same rule governs
-attachments in both directions (`product.md`).
+attachments in both directions (`product.md`): an upload's `ref` in a
+`send` frame is the attachment id, resolved inbound.
 
 ## Web API (browser ↔ backend)
 
@@ -121,6 +125,7 @@ poll on open and on an interval.
 | connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` | M5 |
 | usage | `GET /api/usage` | M5 |
 | attachments, blobs | `POST /api/attachments` (returns a reference id), `POST /api/conversations/:id/workspace-files`, `GET /api/blobs/:sha256` | M6; blobs M9 |
+| transfers | `PUT /api/transfers/:id` (source runner), `GET /api/transfers/:id` (destination runner); device-token authenticated, single-use, piped in flight (`runner.md` § Transfers) | M9 |
 | grants | `GET/POST/DELETE /api/conversations/:id/grants` | M10 |
 | commands | `GET /api/commands/manifest`, `GET /api/commands/modules/:hash` (the manifest source for a standalone command-mode shell) | M8 |
 | admin | `GET/POST/PATCH /api/users`, `GET/PUT /api/settings` (instance mode) | M11 |
