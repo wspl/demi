@@ -8,7 +8,7 @@ import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } 
 import { LocalHost } from '@demicodes/host-local'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { encodeRunnerMessage } from '@demicodes/runner-protocol'
+import { createRunnerWire, msgpackCodec } from '@demicodes/runner-protocol'
 import { RunnerClient } from '@demicodes/runner'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
@@ -195,20 +195,22 @@ test('a malformed runner frame closes the socket; a bad device token is rejected
   garbage.send('{"type":"not-a-runner-frame"}')
   await closed
 
+  const wire = createRunnerWire(msgpackCodec)
   const badToken = new WebSocket(wsUrl)
+  badToken.binaryType = 'arraybuffer'
   await new Promise<void>((resolve) => badToken.addEventListener('open', () => resolve(), { once: true }))
-  const reply = new Promise<string>((resolve) =>
-    badToken.addEventListener('message', (event) => resolve(String(event.data)), { once: true }),
+  const reply = new Promise<ArrayBuffer>((resolve) =>
+    badToken.addEventListener('message', (event) => resolve(event.data as ArrayBuffer), { once: true }),
   )
   badToken.send(
-    encodeRunnerMessage({
+    wire.encode({
       type: 'hello',
-      protocol: 1,
+      protocol: 2,
       deviceToken: 'not-a-real-token',
       runner: { name: 'x', platform: 'test', version: '0', identity: { uid: 0, gid: 0, hostname: 'x' } },
     }),
   )
-  expect(JSON.parse(await reply)).toMatchObject({ type: 'hello_error', reason: 'unknown device' })
+  expect(wire.decodeBackendToRunner(new Uint8Array(await reply))).toMatchObject({ type: 'hello_error', code: 'unknown_device', reason: 'unknown device' })
   badToken.close()
   await backend.close()
 }, 15_000)
@@ -320,3 +322,44 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
   await revived.stop()
   await backend.close()
 }, 30_000)
+
+test('a device token holds one live connection: the newcomer is refused and retries once the first is gone', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-m9-one-conn-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-m9-one-conn-state-'))
+  const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m9-one-conn-runner-'))
+  const refusals: string[] = []
+  const backend = await createBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0, log: (line) => refusals.push(line) } })
+
+  const first = capture()
+  const runner = startRunner(backend, { stateDir, runnerDir }, first)
+  await waitFor(() => first.codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const claimed = await api(backend, '/api/devices/claim', {
+    method: 'POST',
+    body: JSON.stringify({ code: first.codes[0] }),
+    headers: { 'content-type': 'application/json' },
+  })
+  const { device } = (await claimed.json()) as { device: { id: string } }
+  await waitFor(() => first.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
+
+  // The same token from a second process: refused with already_connected,
+  // logged, and the first connection is untouched.
+  const second = capture()
+  const twin = startRunner(backend, { stateDir, runnerDir }, second)
+  await waitFor(() => refusals.some((line) => line.includes('already_connected')), undefined, { timeoutMs: 5_000 })
+  expect(refusals[0]).toContain(device.id)
+  expect(second.statuses).not.toContain('rejected')
+  expect(await deviceOnline(backend, device.id)).toBe(true)
+
+  // Once the first connection is gone the newcomer's retry is accepted.
+  await runner.stop()
+  await waitFor(() => second.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
+  expect(await deviceOnline(backend, device.id)).toBe(true)
+
+  await twin.stop()
+  await backend.close()
+}, 15_000)
+
+async function deviceOnline(backend: Backend, deviceId: string): Promise<boolean> {
+  const { devices } = (await (await api(backend, '/api/devices')).json()) as { devices: Array<{ id: string; online: boolean }> }
+  return devices.find((device) => device.id === deviceId)?.online ?? false
+}

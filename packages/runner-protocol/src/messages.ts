@@ -1,6 +1,5 @@
-import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
 import type { z } from 'zod'
-import { HOST_FS_OPS, backendToRunnerMessageSchema, runnerToBackendMessageSchema } from './schemas'
+import { backendToRunnerMessageSchema, helloErrorCodeSchema, runnerToBackendMessageSchema } from './schemas'
 
 /**
  * Wire protocol between the backend and a runner: one multiplexed connection
@@ -8,10 +7,12 @@ import { HOST_FS_OPS, backendToRunnerMessageSchema, runnerToBackendMessageSchema
  * `Host` contract's `fs` and `process` facets. `Host.store` never crosses
  * this protocol — conversation state is backend-local.
  *
- * Messages are text frames of portable JSON (`Uint8Array`/`bigint`/`Date`
- * round-trip via `@demicodes/utils`). The message set is declared as zod
- * schemas in `schemas.ts` — the single source of truth these types derive
- * from — and each end validates the direction it receives.
+ * Frames are MessagePack (`Uint8Array` as bin, `Date` as the timestamp
+ * extension, `undefined` as nil), so bytes and times are native wire types.
+ * The codec is the carrier's: `@msgpack/msgpack` on Bun (`codec.ts`),
+ * `tinyjs:bytes` on tinyjs. The message set is declared as zod schemas in
+ * `schemas.ts` — the single source of truth these types derive from — and
+ * each end validates the direction it receives.
  */
 
 /**
@@ -19,35 +20,49 @@ import { HOST_FS_OPS, backendToRunnerMessageSchema, runnerToBackendMessageSchema
  * is the hardest component to update, so the backend must be able to tell an
  * incompatible runner apart from a broken one (`hello_error`).
  */
-export const RUNNER_PROTOCOL_VERSION = 1
+export const RUNNER_PROTOCOL_VERSION = 2
 
-export { HOST_FS_OPS }
-
-export type HostFsOp = (typeof HOST_FS_OPS)[number]
+export type { FsCallMessage, FsOkMessage, FsOp, FsParams, FsResult } from './schemas'
+export { FS_OPS } from './schemas'
 
 export type RunnerToBackendMessage = z.infer<typeof runnerToBackendMessageSchema>
 export type BackendToRunnerMessage = z.infer<typeof backendToRunnerMessageSchema>
 export type RunnerProtocolMessage = RunnerToBackendMessage | BackendToRunnerMessage
 
 export type RunnerInfo = Extract<RunnerToBackendMessage, { type: 'hello' }>['runner']
-export type WireCallError = Extract<RunnerToBackendMessage, { type: 'fs_result'; ok: false }>['error']
+export type HelloErrorCode = z.infer<typeof helloErrorCodeSchema>
 
-export function encodeRunnerMessage(message: RunnerProtocolMessage): string {
-  return stringifyPortableJson(message)
+/** A MessagePack codec: the two ends bring their own (`msgpackCodec`, `tinyjs:bytes`). */
+export interface MessagePackCodec {
+  encode(value: unknown): Uint8Array
+  decode(bytes: Uint8Array): unknown
 }
 
-/** Decodes and validates a frame arriving at the backend (runner → backend direction). */
-export function decodeRunnerToBackendMessage(frame: string): RunnerToBackendMessage {
-  return decodeWith(runnerToBackendMessageSchema, frame)
+/** One end's framing: encode any message, decode and validate the inbound direction. */
+export interface RunnerWire {
+  encode(message: RunnerProtocolMessage): Uint8Array
+  /** A frame arriving at the backend (runner → backend). */
+  decodeRunnerToBackend(frame: Uint8Array): RunnerToBackendMessage
+  /** A frame arriving at the runner (backend → runner). */
+  decodeBackendToRunner(frame: Uint8Array): BackendToRunnerMessage
 }
 
-/** Decodes and validates a frame arriving at the runner (backend → runner direction). */
-export function decodeBackendToRunnerMessage(frame: string): BackendToRunnerMessage {
-  return decodeWith(backendToRunnerMessageSchema, frame)
+export function createRunnerWire(codec: MessagePackCodec): RunnerWire {
+  return {
+    encode: (message) => codec.encode(message),
+    decodeRunnerToBackend: (frame) => decodeWith(runnerToBackendMessageSchema, codec, frame),
+    decodeBackendToRunner: (frame) => decodeWith(backendToRunnerMessageSchema, codec, frame),
+  }
 }
 
-function decodeWith<Schema extends z.ZodType>(schema: Schema, frame: string): z.infer<Schema> {
-  const parsed = schema.safeParse(parsePortableJson<unknown>(frame))
+function decodeWith<Schema extends z.ZodType>(schema: Schema, codec: MessagePackCodec, frame: Uint8Array): z.infer<Schema> {
+  let value: unknown
+  try {
+    value = codec.decode(frame)
+  } catch (error) {
+    throw new Error(`Malformed runner-protocol frame: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  const parsed = schema.safeParse(value)
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
     throw new Error(`Malformed runner-protocol frame${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}`)
