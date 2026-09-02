@@ -46,11 +46,13 @@ in-process loader (`commands.md`): `demi file`,
 store. The tool description in this state lists the available commands and
 says that any other command starts a machine.
 
-**The first non-`demi` command auto-provisions** a managed host bound to
-the conversation (session upgrade). The backend writes the hostless files
-into the new host's home under the conversation's directory, injects the
-context block naming the new target and that the files are there, and runs
-the command. No model-driven migration exists; the agent never initiates a
+**The first script with a non-root first word auto-provisions** a managed
+host bound to the conversation (session upgrade). tinybash reports the
+script as not its own before running anything (`tinybash.md`); the backend
+writes the hostless files into the new host's home under the conversation's
+directory, injects the context block naming the new target and that the
+files are there, and runs the **whole script** there. No model-driven
+migration exists; the agent never initiates a
 target switch of any kind. Where managed hosts are not configured, the
 command is refused with a message naming the way out: pair a device and
 move the conversation there from the picker.
