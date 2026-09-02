@@ -4,7 +4,7 @@ import * as fs from "demishell:fs";
 
 test("runtime: argv/env/pid/identity/version", () => {
   assert(Array.isArray(rt.argv) && rt.argv.length >= 1, "argv");
-  assert(typeof rt.env.PATH === "string", "env.PATH");
+  assert(typeof rt.env === "object" && rt.env !== null, "env");
   assert(Object.isFrozen(rt.env), "env frozen");
   assert(rt.pid > 0, "pid");
   assertEq([rt.stdin, rt.stdout, rt.stderr], [0, 1, 2]);

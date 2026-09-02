@@ -1220,14 +1220,35 @@ choice). Size levers recorded in `shell.md` Packaging: lazy network
 initialisation, per-package opt-level, no hyper/tungstenite, ring, trimmed
 tokio features, QuickJS without bignum; UPX and nightly build-std rejected.
 
-## M7 — Shell (started 2026-09-02)
+## M7 — Shell (2026-09-02)
 
-Status: in progress on `feat/demi-next`. Crate at `packages/demi-shell`;
-`cargo build --features conformance && target/debug/demi-shell` runs the
-primitive conformance suite (`conformance/*.mjs`), which is the embedded
-bundle under that feature so it sees `demishell:*`.
+Status: delivered on `feat/demi-next`. Crate at `packages/demi-shell`;
+`cargo test --features conformance` runs the primitive conformance suite
+(`conformance/*.mjs`, embedded as the bundle under that feature so it sees
+`demishell:*`) with the ports, test CA and Bun stub it needs.
 
-### Landed so far
+### Acceptance, measured
+
+| | |
+|---|---|
+| Conformance | 54/54 on macOS arm64; 54/54 macOS x86_64 under Rosetta; 46/46 Linux aarch64 musl inside the Firecracker guest as root (stub-backed net cases skipped: no Bun in the guest) and 43/43 in the Lima VM; Linux x86_64 musl builds (`cargo zigbuild`) but has no machine here to run on |
+| Binary | 2.3 MB macOS arm64, 2.6 MB Linux aarch64 musl, 3.0 MB Linux x86_64 musl, 2.6 MB macOS x86_64 |
+| Command-mode hello, guest, cold cache | 0.18 s first execution, 0.02 s second; no network code on the startup path (the TLS config and connectors are built on first use) |
+| Tee, 100 MB from `/dev/zero` to a file in the guest | 126 MB/s; `head \| cat > file` baseline 86 MB/s with fresh pages and 116 MB/s warm |
+| runner-protocol codec bundled with Bun, loaded on the shell | encodes and decodes; schema rejects bad frames |
+
+Cross builds: `cargo zigbuild --release --target
+{x86_64,aarch64}-unknown-linux-musl --features guest-roots` from macOS
+(zig 0.15, cargo-zigbuild 0.23); macOS x86_64 with the rustup target. The
+guest fixture is the Lima `fc` instance's Firecracker setup from the
+spikes, with `/opt/demishell/{demi-shell,demi-shell-conf}` and a
+`demishell` case in the rootfs `init.sh`.
+
+Left for later milestones: the stub-backed net cases on Linux (install
+Bun in the fixture), a Linux x86_64 run, and the `ENOTFOUND` case (this
+network sinkholes unresolvable names).
+
+### Landed
 
 - Event loop, module loader (`/embedded/*` table, absolute and relative
   file paths, `demishell:*` only from the embedded bundle, `import.meta.url`),
