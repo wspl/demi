@@ -88,13 +88,14 @@ In dependency order, lightest first:
    job count, the one-connection-per-token rule.
 3. The runner ported to `host-runner`: the job table with real `bash -c`
    (foreground, background, kill, exit), session ids in the environment,
-   the tee with the bounded view and output files on the target, the
-   disconnect semantics; the UDS relay and manifest cache completing the
-   CLI's `rpc` path; the manifest served to the runner and its symlinks
-   for the root set.
-4. What rests on the job table and output files: output fetch by
-   reference, the brokered cross-host transfer, browser-bound media by
-   reference.
+   the working directory carried between jobs, the tee with the model's
+   view (head while running, tail at exit) and output files on the target,
+   the disconnect semantics; the UDS relay and manifest cache completing
+   the CLI's `rpc` path; the manifest served to the runner and its
+   symlinks for the root set; the backend's shell environment for real
+   hosts over the job messages.
+4. What rests on the job table: the brokered cross-host transfer and
+   browser-bound media by reference.
 5. `@demicodes/host-virtual` reduced to the store-backed Host, its spawn
    refusal deleted.
 6. Deletion, once the M1 and M4 suites pass on the new runner:
@@ -145,9 +146,8 @@ frozen.
 **M12 — Web UI** (`product.md`)
 The entire `@demicodes/web` package in one concentrated phase: scaffold,
 workspace-grouped sidebar, chat view on web-ui, settings dialogs, the target
-picker with the hostless state, grant management, media by reference,
-offline-output notices. Consumes the M11-frozen API; adds no backend
-surface. The old dev product is renamed `web-demo` here.
+picker with the hostless state, grant management, media by reference.
+Consumes the M11-frozen API; adds no backend surface. The old dev product is renamed `web-demo` here.
 
 **M13 — Deployment packaging**
 Container image for the backend (carrying the built web assets); tinyjs
@@ -183,7 +183,7 @@ Test modules and their intended coverage, per milestone.
 | M6 | Switch integration (real→real with files staying and an honest context block; mid-turn switch refused; concurrent switch has one winner); offline target → readable and chattable; attachment upload → ref → inline at provider; checkpoint round-trip. |
 | M7 | Primitive conformance suite from JS: fs incl. errno cases and streaming reads; spawn incl. stdin/kill/uid/tee byte counts; WebSocket send backpressure and receive; HTTP request bodies from files and response bodies streamed to a fd; UDS listen mode and accept; MessagePack extension types; timers ordering; globals; `tinyjs:*` refused from a file-loaded module. Build-target matrix; guest cold-start (command-mode hello, cold cache), binary size and tee throughput measured in the Firecracker fixture. |
 | M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, tinyjs and fixture; tinybash grammar and builtin tables, the equivalence corpus against real bash + GNU coreutils in a Linux container (`tinybash.md`); parse-first, session-state and cancellation cases; hostless conversation runs file, todo and builtin pipelines; third-party embedding example. |
-| M9 | Host conformance suite on `host-runner`; a `runtime` command run by tinyjs in command mode; M1 and M4 suites on tinyjs runner; job table (foreground, background, kill, exit); tee + bounded view + output file; UDS relay round trip with session attribution; MessagePack frames; output fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
+| M9 | Host conformance suite on `host-runner`; a `runtime` command run by tinyjs in command mode; M1 and M4 suites on tinyjs runner; job table (foreground, background, kill, exit); cwd carried between jobs; tee + the model's view (head, tail) + output file; UDS relay round trip with session attribution; MessagePack frames; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
 | M10 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
 | M11 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
 | M12 | Manual checklist over the full layout, including the "everything Demi implements gets exposed" sweep. |

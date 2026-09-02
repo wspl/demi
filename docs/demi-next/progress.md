@@ -1874,6 +1874,36 @@ as binary and hid its diffs; they are `\0` escapes now. hono's Bun
 adapter hands a binary message over as `message.buffer`; the frames decode
 cleanly through the M4 suite, so the buffers are not pooled views.
 
+### The view is the model's view; cwd carries, env does not (2026-09-02)
+
+Two owner decisions before step 3, both written into `runner.md`,
+`sessions-and-targets.md`, `commands.md`, `backend.md`, `overview.md`,
+`product.md` and the roadmap:
+
+- **No output beyond the model's view exists anywhere but on the target.**
+  The records had carried a 1 MB "bounded view" per stream that crossed
+  the wire and was stored, plus an `output_upload` message and an
+  `/outputs/:ref` API for the browser to fetch full output by reference.
+  The 1 MB was the inherited `DEFAULT_OUTPUT_LIMIT_BYTES`, not a designed
+  number, and its only consumer would have been a browser view of output
+  the model never saw — a requirement nobody had. Both are gone. The wire
+  carries the model's window: the first bytes while the job runs (so a
+  running command can be polled) and the last bytes of each stream at
+  exit, read by the runner from the output file so the tail is the true
+  tail. Today's `ShellStreamView` (1 MB, offset paging) survives only for
+  its two programmatic consumers, the command bridge's `runCommandLine`
+  and `demi host prev shell`'s tar pipe, and is deleted with them in
+  step 6.
+- **Shell state across jobs: the working directory carries, nothing
+  else.** Surveyed: Claude Code, Codex CLI, Gemini CLI and Aider run a
+  fresh process per call; only Claude Code carries the directory (tracked
+  by the harness, reset when it leaves the project), none carries
+  environment variables; OpenHands and Cline keep a persistent shell
+  (tmux with a PS1 JSON marker, respectively the VS Code terminal). The
+  runner records `pwd` from an `EXIT` trap and returns it in `job_exit`;
+  `export` does not persist, matching the mainstream rather than inventing
+  a half-persistent state.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
@@ -1887,6 +1917,10 @@ cleanly through the M4 suite, so the buffers are not pooled views.
   spawn refusal deleted (M9, with just-bash).
 - `@demicodes/host-local` and the local open-box assembly deleted (M9,
   after the M1 and M4 suites pass on the new runner).
+- `ShellStreamView` (the 1 MB offset-paged stream view) and its two
+  consumers, `runCommandLine` and `demi host prev shell`, deleted together
+  (M9 step 6); the model view (`ShellToolView`, 32 KB tail) and the
+  records stay.
 - tinybash reference suites (just-bash compat, oils spec, GNU tests) and
   the split-equivalence test (M10, needs auto-provision).
 - CI re-deriving the corpus goldens from bash (`TINYBASH_CHECK_GOLDENS=1`
