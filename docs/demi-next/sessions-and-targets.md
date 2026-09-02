@@ -170,13 +170,12 @@ may switch it elsewhere.
   (`storage.md`).
 - **Command outputs** — full command output — are real files on the
   execution target under `Host.commandOutputDir`, written by the runner's
-  tee (`runner.md`). They follow the target: reachable while its runner is
-  online, fetched by reference over HTTP when a user opens a past command's
-  full output; a hibernated managed host is woken on demand to serve them;
-  an offline user host shows "full output is on an offline host". They are
-  not uploaded at hibernation — the value of full output decays fast, and
-  uploading it would move the very bytes the wire rule exists to keep off
-  the wire. The transcript's bounded views remain always readable.
+  tee (`runner.md`). They stay there: the model reads them with ordinary
+  commands while the target is its Host, and the transcript keeps exactly
+  the view the model saw, which is also all the browser shows. Nothing
+  fetches them back to the backend and nothing uploads them at hibernation
+  — their value decays fast, and the wire rule exists to keep those bytes
+  off the wire.
 - **Browser refresh / disconnect** is inherently safe: turns run
   server-side; the client reattaches with `open` + `sync_transcript`. A
   binding close never aborts an in-flight turn.

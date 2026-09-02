@@ -100,9 +100,9 @@ new-project device dropdown adds **Cloud**); grant management per
 conversation (the granted hosts, revoke); device management (claim-token
 entry, online status, revoke — user hosts only, managed hosts never
 appear); connections page; usage page; admin-only user management and
-instance settings; "full output is on an offline host" and wake-on-open for
-command outputs. Nothing else in the first final state — sharing, collaboration
-and search are explicitly out.
+instance settings. A command's output in the browser is the view the
+model saw, never more. Nothing else in the first final state — sharing,
+collaboration and search are explicitly out.
 
 ## The frontend package
 
