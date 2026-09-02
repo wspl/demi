@@ -34,8 +34,6 @@ default = []
 # The guest build trusts the embedded webpki roots; every other build uses
 # the platform verifier.
 guest-roots = []
-# Embeds the conformance suite as the bundle and lets it add a test CA.
-conformance = []
 
 [profile.release]
 opt-level = "z"

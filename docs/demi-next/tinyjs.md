@@ -210,10 +210,12 @@ version: number   abi: number
 timers and the random source are Rust; the classes and `console` are a
 small prelude of embedded JS over them.
 
-**Module loading**: the embedded bundle runs at start under a `/embedded/`
-name; `import()` accepts only absolute file paths, reads the file and
-declares it — no npm-style resolution of any kind. `tinyjs:*` resolves
-only when the importer is the embedded bundle.
+**Module loading**: the embedded bundle runs at start under the
+`/embedded/` namespace; `import()` accepts only absolute file paths, reads
+the file and declares it — no npm-style resolution of any kind. `tinyjs:*`
+resolves only when the importer is under `/embedded/`. What `/embedded/`
+contains is decided at start (see "Entry modes"): the packed bundle, or the
+directory of the entry file given on the command line.
 
 When tinyjs is PID 1 it additionally reaps adopted children itself; that
 is its only PID 1-specific behaviour. Mounting and network configuration
@@ -266,7 +268,22 @@ The Host implementation `@demicodes/host-tinyjs` maps the `Host` contract
 
 ## Entry modes
 
-One binary, one file on disk, reached through symlinks:
+tinyjs is a prebuilt runtime that carries no Demi JS of its own. A
+deliverable is made the way `bun build --compile` and Node's single
+executable applications make one: the bundle is **packed** onto a copy of
+the binary, no compiler involved.
+
+**Packed binary.** tinyjs reserves a slot for the bundle inside the
+executable at build time: a static block beginning with the magic
+`TINYJS_SLOT_v1__`, the slot capacity and the bundle length (little-endian
+`u64`s), then the capacity's worth of bytes — 8 MiB, a build-time
+constant. Packing finds the magic in a copy of the binary and writes the
+length and the bundle in place. Nothing about the file's layout changes,
+so no binary format is parsed or rewritten and a code signature is simply
+re-applied afterwards. At start tinyjs reads the length from its own
+mapped image; a non-zero length is the packed bundle, evaluated as
+`/embedded/main.mjs`. Nothing is read from disk. The packed file is one
+file on disk, reached through symlinks:
 
 - `demi-runner` — **runner mode**: runs the runner program (`runner.md`).
 - any other name — **command mode**: runs the loader with `argv[0]` as the
@@ -274,9 +291,26 @@ One binary, one file on disk, reached through symlinks:
   user's `myagent` is another symlink to the same file. The runner
   maintains the symlinks from the manifest's root set.
 
-The mode is selected by `argv[0]`. The JS for both modes is bundled into
-the binary; there is no separate JS file to install, no `node_modules` on a
-target.
+The mode is selected by `argv[0]` inside the bundle; Rust parses no
+arguments. There is no separate JS file to install and no `node_modules`
+on a target. Packing is done by the build tooling, not by tinyjs: copy the platform
+binary, find the magic, write the length and the bytes, and on macOS
+re-sign (`codesign -s -` for a local build; the Developer ID, via
+`rcodesign` when packing from Linux, for a distributed one), because the
+write invalidates the existing signature. The slot costs its capacity in
+file size and nothing at run time: pages past the bundle are never
+touched. Two other ways were measured and rejected in `progress.md`:
+appending after the Mach-O executes but fails `codesign`'s strict
+validation, and injecting a section with `postject`/LIEF mis-relocates the
+TLS sections of a Rust binary on macOS and silently writes nothing into a
+static musl ELF.
+
+**Bare binary.** Without a payload, `tinyjs <entry.mjs> [args…]` runs the
+entry file as the embedded bundle: the entry's directory is `/embedded/`,
+so the entry and the files it imports relatively see `tinyjs:*`, while
+anything reached through an absolute `import()` still does not. This is
+the development and test entry; `argv[0]` is the entry path. With neither
+a payload nor an entry, tinyjs prints its usage and exits with 2.
 
 ## Packaging
 
@@ -301,9 +335,11 @@ target.
   QuickJS is built without the bignum extension and dump facilities.
   `tokio` carries only the features used. No UPX: decompressing the whole
   binary on every start is exactly the fresh-page cost the guest punishes.
-- Root certificates: the guest build embeds `webpki-roots`; user-host
-  builds use the platform verifier (system keychain and certificate
-  store), which is what makes corporate MITM proxies work.
+- Root certificates: the guest build (`guest-roots` feature) embeds
+  `webpki-roots`; user-host builds use the platform verifier (system
+  keychain and certificate store), which is what makes corporate MITM
+  proxies work. The conformance run can point `TINYJS_CONFORMANCE_CA` at
+  its own test CA instead.
 - Version reported in the runner `hello`; the backend refuses a tinyjs older
   than the protocol it speaks.
 
@@ -316,7 +352,6 @@ target.
 - `@demicodes/host-tinyjs` — the Host over the tinyjs API (TypeScript, runs
   only on tinyjs).
 - The primitive conformance suite is JS (`packages/tinyjs/conformance`),
-  embedded as the bundle by the `conformance` feature and driven by
-  `cargo test --features conformance`, which provisions ports, a test CA
-  and the Bun stub server. It runs on every build target and is the
-  definition of done for tinyjs.
+  run on the bare binary as `tinyjs conformance/main.mjs` and driven by
+  `cargo test`, which provisions ports, a test CA and the Bun stub server.
+  It runs on every build target and is the definition of done for tinyjs.
