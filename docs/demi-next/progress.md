@@ -1107,3 +1107,18 @@ hard failure surfaced to user and agent, not a policy.
   for now, with support for such machines a later design item. Consequence:
   there is always a machine to upgrade to, so the hostless design has no
   "no machine" branch at all.
+
+### The upgrade condition and the hostless namespace (2026-09-02)
+
+Aligning only the home path was found insufficient for a silent upgrade:
+`cat /etc/os-release` or `ls /usr/bin` would answer differently hostless
+and on a machine. Decision: the hostless filesystem is exactly
+`/home/demi` and `/tmp` (plus `/dev/null`); any absolute path outside that
+namespace — in builtin arguments, redirections, `cd`, glob expansions or
+path-typed root-command arguments — is an upgrade condition decided at
+parse time, alongside grammar, programs and flags. Path-typed arguments
+are marked in the manifest schemas so the loader and tinybash can check
+them. The storage quota is the one run-time-only failure and is an error,
+not an upgrade. Metadata (mode, mtime, symlinks, case sensitivity, owner
+`demi`), the environment table and GNU output are aligned on both sides;
+the "split equivalence" test defines silence.

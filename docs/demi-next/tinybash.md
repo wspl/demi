@@ -134,15 +134,23 @@ Refused outright, with the way out named: `awk`, `jq`, `xargs`, `perl`,
 ## Semantics
 
 **Parse first, then run.** The whole script is parsed before anything
-executes. A script is either entirely inside the subset — every construct
-in the grammar, every command word a builtin or a root, every flag on a
-whitelist — and runs here, or it is **outside**, and nothing runs: the
-backend provisions a machine and runs the entire script there, intact and
-silently (`sessions-and-targets.md`). Hostless execution never leaves a
-script half-done, and the model never learns where the line is. Grammar
-outside the subset and programs outside the subset are the same case; the
+executes. A script is either entirely inside the subset and runs here, or
+it is **outside**, and nothing runs: the backend provisions a machine and
+runs the entire script there, intact and silently
+(`sessions-and-targets.md`). Inside means all of: every construct in the
+grammar; every command word a builtin or a root; every flag on its
+whitelist; every absolute path — builtin arguments, redirection targets,
+`cd` targets, glob expansions, and root-command arguments the manifest
+marks as paths — inside the namespace the embedder declares (`/home/demi`
+and `/tmp` in the product). Hostless execution never leaves a script
+half-done, and the model never learns where the line is. Grammar,
+programs, flags and paths outside the subset are the same case; the
 distinction below exists only for the refusal messages an embedder shows
 when it has no machine to hand the script to.
+
+The one run-time failure that is not an upgrade is the storage quota: a
+write that exceeds it fails with an `ENOSPC`-class error, as a full disk
+would on a machine.
 
 Execution:
 
@@ -180,7 +188,8 @@ offending token and line.
 | `{a,b}` brace expansion, `**` | not expanded | list the names |
 | `if`, `for`, `while`, `case`, `function`, `!`, `(`, `{` as words | control flow and grouping | a machine |
 | `&` (background), `;;`, `<(…)`, `>(…)` | job control, process substitution | a machine |
-| `\|` into a non-builtin, non-root command | no such program here | a machine — this is the `not-tinybash` case when the word is unknown |
+| `\|` into a non-builtin, non-root command | no such program here | a machine |
+| an absolute path outside the namespace | no such place here | a path under the home, or a machine |
 | a builtin with a flag outside its whitelist | not implemented faithfully | the listed flags, or a machine |
 | `grep` pattern with no faithful translation | dialect | `-F`, or a simpler pattern |
 | unterminated quote or heredoc, `\r` | not a script | fix the script |
@@ -190,7 +199,8 @@ offending token and line.
 ```ts
 runTinybash(input: {
   script: string
-  roots: ReadonlySet<string>
+  roots: ReadonlyMap<string, RootPathArgs>   // root names → which arguments are paths (from the manifest)
+  namespace: readonly string[]               // absolute prefixes the script may touch, e.g. ['/home/demi', '/tmp']
   dispatch: (root: string, argv: string[], io: CommandIO) => Promise<number>
   fs: HostFileSystem                 // the builtins' filesystem
   state: { cwd: string; home: string; vars: Record<string, string> }   // mutated by cd and assignments
@@ -241,7 +251,12 @@ tests use it for the grammar table.
   dispatch log must match byte for byte. This is the guarantee's test and
   runs in CI on Linux.
 - **Parse-first**: a script whose last statement is outside the subset
-  executes nothing, whether the cause is grammar, a program or a flag.
+  executes nothing, whether the cause is grammar, a program, a flag or a
+  path; path cases cover builtin arguments, redirections, `cd`, globs and
+  path-typed root arguments, absolute and relative.
+- **Split equivalence** (`sessions-and-targets.md`): tool-call sequences
+  run hostless-then-machine at every split point match the all-machine
+  run byte for byte.
 - **Reference suites**: the just-bash fork's compatibility tests filtered
   to the subset; the oils spec tests (cross-shell, table-driven, with
   bash's expected output per case) filtered to the subset; GNU bash's and

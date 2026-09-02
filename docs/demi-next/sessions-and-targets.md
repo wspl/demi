@@ -55,16 +55,57 @@ upgrade, `managed-hosts.md`). From that command on, every tool call runs
 there. Nothing is injected into the transcript; the web UI tells the user
 the conversation now has a machine.
 
-Silence is possible because **the hostless environment is the managed
-host's environment, minus the programs**:
+Silence is possible because **the hostless environment is a subset of the
+managed host's environment, and every script that would touch anything
+outside the subset is moved before it runs.** Three things make that
+precise.
 
-- The hostless filesystem is the managed host's home: same user, same
-  `/home/<user>` path, same default cwd; tinybash's `~` is that home. Paths
-  the model saw before the upgrade are the same paths after it.
-- The backend writes the hostless files into the new host's home at their
-  own paths before the first command runs, and hands tinybash's session
-  state — cwd and variables — to the real bash job.
-- Output formats are GNU's on both sides (`tinybash.md`).
+**The namespace.** The hostless filesystem consists of exactly two
+subtrees, `/home/demi` and `/tmp`, plus `/dev/null`. Nothing else exists,
+and nothing else is pretended: `/etc`, `/usr`, `/proc` are not empty
+directories, they are outside. The store-backed Host keeps what the
+managed host would show — mode, mtime, symlinks, case-sensitive names,
+owner fixed to `demi` — so `ls -l` reads the same on both sides.
+
+**The upgrade condition**, decided entirely at parse time, before any
+statement runs (`tinybash.md`). A script is outside the subset when any
+of these holds:
+
+| Condition | Example |
+|---|---|
+| a construct outside the grammar | `$(…)`, `for`, `&` |
+| a command word that is neither a builtin nor a root | `python3`, `git`, `date`, `which` |
+| a builtin flag outside its whitelist | `grep -P`, `sed -i` |
+| an absolute path outside the namespace, anywhere a path can appear | `cat /etc/os-release`, `> /var/log/x`, `cd /` |
+| a glob whose expansion leaves the namespace | `ls /usr/*` |
+| a root-command argument declared as a path that resolves outside | `demi file read /etc/hosts` |
+
+Relative paths resolve against the cwd, which is always inside the
+namespace because `cd` outside it is itself a condition. Root-command
+arguments are checkable because the manifest marks path-typed arguments
+(`commands.md`) and the loader resolves them before dispatch. The one
+condition that can only be seen at run time — the hostless storage quota
+— is not an upgrade trigger: the script has already run in part, so it
+fails the command with an `ENOSPC`-class error, the same thing a full
+disk does on a machine; the quota is sized so that this is a genuine
+fault, not a normal event.
+
+**What moves.** Before the first command runs on the new host the backend
+places both subtrees at their own paths with mode, mtime and symlinks
+intact, and hands tinybash's session state — cwd and variables — to the
+real bash job. The environment table is shared: the hostless `env`
+(`HOME`, `USER`, `PATH`, `PWD`, `SHELL`, `LANG`) is the table the managed
+host's login environment is generated from, so `echo $PATH` prints the
+same string on both sides. Output formats are GNU's on both sides
+(`tinybash.md`). Hostless has no processes, no background jobs and no
+artifacts, so nothing else exists to move.
+
+**Verification: split equivalence.** A sequence of tool calls is run
+twice — once entirely on a machine, once split at an arbitrary point with
+the first part hostless, the upgrade, and the rest on the machine. Every
+tool result and the final state of both subtrees must match byte for
+byte, at every split point. This test is the design's definition of
+"silent".
 
 The agent never initiates a target switch of any kind, and no model-driven
 migration exists. Managed hosts are a deployment requirement

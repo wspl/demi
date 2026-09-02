@@ -161,6 +161,13 @@ A `runtime` module has one export:
 export default async function (ctx: CommandContext): Promise<CommandResult>
 ```
 
+A leaf's input schema marks every argument that names a file or directory
+as a **path** (a zod schema with `path` metadata). The loader resolves
+path arguments against the cwd before dispatch, and tinybash uses the same
+marks to decide whether a script stays inside the hostless namespace
+(`sessions-and-targets.md`). An argument that can be a path must be marked;
+an unmarked argument is never treated as one.
+
 `ctx` is the whole world the module sees:
 
 | Field | Meaning |
