@@ -162,9 +162,11 @@ Relay and outputs:
 | Direction | Message | Purpose |
 |---|---|---|
 | r → b | `rpc_call { callId, conversationId, shellId, root, command, args, stdin }` streamed | an `rpc` command of some root invoked on this target |
-| b → r | `rpc_output { callId, stream, bytes }` / `rpc_exit { callId, code }` | its result back to the command-mode process |
-| b → r | `manifest { hash, tree, modules }` on connect and on change | the command manifest the runner caches for the CLI |
-| b → r | `transfer_send { path, uploadUrl }` / `transfer_receive { path, downloadUrl }` | a brokered cross-host copy: the source `PUT`s, the destination `GET`s, the backend pipes the two |
+| b → r | `rpc_output { callId, stream, bytes }` / `rpc_exit { callId, exitCode }` | its result back to the command-mode process |
+| b → r | `rpc_transfer { callId, url }` | the call's stdout is a brokered transfer: the runner `GET`s it and relays the body, then `rpc_exit` follows |
+| b → r | `manifest { manifest }` on connect and on change | the command manifest the runner caches for the CLI |
+| b → r | `transfer_send { transferId, path, url }` / `transfer_receive { transferId, path, url }` | a brokered cross-host copy: the source `PUT`s the file at `path`, the destination `GET`s into `path` |
+| r → b | `transfer_done { transferId, ok, error? }` | the HTTP exchange ended |
 
 The `fs_*` op set mirrors `HostFileSystem` one to one and is one table in
 the protocol package (`fsOps`: parameters and result schema per method),
@@ -232,6 +234,53 @@ command-mode process never holds a credential. Attribution is by the ids
 the backend put into the job's environment; a process on the same machine
 that forges them can only reach the conversations already executing here,
 which it could already read and modify.
+
+## Transfers
+
+A cross-host copy is a file moved by HTTP between two runners with the
+backend in the middle, never a byte stream on a runner socket. The unit
+is a job's stdout file: `demi host shell --id A <script>` runs `script` as
+a job on A (the pipe's bytes as its stdin, its stderr view streaming back
+as it runs, its exit code passed through), and at exit the job's full
+`stdoutPath` is the file transferred. The backend mints a single-use
+transfer id, tells A `transfer_send { transferId, path, url }`, and
+delivers the bytes to the caller:
+
+```
+B's model:   demi host shell --id A "tar c -C /work ." | tar x
+
+  A (source)                 backend                          B (caller)
+  job_start ◄─────────────   the script as a job     ◄──── rpc_call (relayed)
+  tee → output/<job>/stdout.txt
+  job_exit ───────────────►  transfer minted
+  transfer_send ◄─────────   { transferId, path, url }
+                              rpc_transfer ─────────────────►  { callId, url }
+  PUT /api/transfers/<id> ─►  ═══ piped, held in flight only ═══ ◄─ GET /api/transfers/<id>
+                                                                body → relay output → stdout → tar x
+  transfer_done ──────────►
+                              rpc_exit ─────────────────────►  the job's exit code
+```
+
+- A caller on a device (a command-mode process, via the relay) receives
+  `rpc_transfer { callId, url }`: its runner `GET`s the URL with the
+  device token and writes the body to the process's stdout through the
+  relay, before `rpc_exit`. A hostless caller (the backend's own
+  tinybash) takes the `PUT` body straight into the command's stdout.
+- `transfer_receive { transferId, path, url }` is the symmetric end: the
+  destination runner `GET`s into a file. The hostless → managed upgrade
+  uses it to place the store's files (`managed-hosts.md`).
+- `url` is origin-relative (`/api/transfers/<id>`); a runner resolves it
+  against its backend URL and sends `Authorization: Bearer <device
+  token>`. The backend accepts the `PUT` only from the transfer's source
+  device and the `GET` only from its destination device; each id serves
+  one exchange; a side that never arrives times the transfer out; a
+  device disconnecting fails what it was party to. The `PUT` completes
+  only after the destination drained the body, so `transfer_done` is
+  the end of the copy.
+- The stdout of `host shell --id` arrives once the remote script has
+  exited: the transfer is of a finished file. Its caller is a pipe, not a
+  view, so nothing needs it earlier; the job's 32 KB view still streams to
+  the backend as the job runs and goes nowhere.
 
 ## Wire rules
 
