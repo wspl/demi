@@ -22,6 +22,7 @@
 | `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
 | `managed-hosts.md` | Firecracker provisioning, images, home persistence, lifecycle, security |
 | `providers-and-vault.md` | the LLM module, credential vault, usage accounting, Claude Code |
+| `scenarios.md` | the scenario suite over the headless system: the world fixture, the driver, the teardown invariants, the scenarios and restarts |
 | `progress.md` | live implementation log, review history, measurements |
 
 Every record is a standalone final-state document. Review history and

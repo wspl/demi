@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (mechanisms and endpoints through M6; multi-user in M11; UI in M12) |
+| Status | Design (mechanisms and endpoints through M6; multi-user in M12; UI in M13) |
 | Scope | What the product stores and exposes: instance mode, users, conversations, attachments, provider management, the web UI and frontend package |
 
 ## Instance mode: shared vs isolated
@@ -114,7 +114,7 @@ the backend image and the backend serves them alongside `/api`;
 development: Vite dev server proxying `/api`.
 
 The existing dev-only `@demicodes/web` product is renamed `web-demo` when
-the new package is scaffolded (M12), lives on as a deprecated demo, and is
+the new package is scaffolded (M13), lives on as a deprecated demo, and is
 deleted once the product covers it.
 
 Layout and information architecture:

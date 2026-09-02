@@ -146,7 +146,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/backend`
 
-- Status: implemented through M9 (Web API, conversation module, two-plane storage, runner management, LLM module/vault/accounting, the hostless shell, brokered transfers, media by reference; managed hosts M10, auth M11).
+- Status: implemented through M9 (Web API, conversation module, two-plane storage, runner management, LLM module/vault/accounting, the hostless shell, brokered transfers, media by reference; managed hosts M11, auth M12).
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/host-virtual`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (`ManagedHostProvisioner` driving Firecracker under jailer through the privileged helper, images and the home-image store, lifecycle/hibernate, the backend-contributed `demi host` subcommand group), the LLM module (per-connection provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted connections, subscription device-login flows over per-connection provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
@@ -211,7 +211,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner`
 
-- Status: implemented on tinyjs (`src/tinyjs/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; packaging in M13).
+- Status: implemented on tinyjs (`src/tinyjs/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; packaging in M14).
 - Production deps: `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; the `tinyjs:*` modules, declared once in `src/machine/tinyjs.d.ts` and imported nowhere outside `src/machine/`.
 - Owns: the runner program (`runner.md`) — the single outbound backend WebSocket with reconnect/backoff and the hello/claim handshake; machine-local state under `DEMI_HOME` (`~/.demi`: `runner.json`, `runner-token` 0600, `runner.sock`, `commands/`, `bin/`, `output/`); the machine served over the protocol (spawns naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact); the job table over the tee; brokered transfers; the local relay and its command-mode client; the manifest cache with the `current` and root symlinks. Command mode: the loader over the machine layer, `rpc` leaves through the relay, the job's live stdin told from a redirection by `fdNode`.
 - Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTinyjsRunner`, `tinyjsBinary` and `bundleForTinyjs` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on tinyjs; `HostRpcServer` and `JobTable` under `@demicodes/runner/serve` for tests that join the runner's end to a `RemoteHost` without a socket.
@@ -242,9 +242,9 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/web`
 
-- Status: the browser application; rebuilt in M12 on the backend's API (`docs/demi-next/roadmap.md`). Until then it carries the Vite scaffold only: no server of its own exists.
+- Status: the browser application; rebuilt in M13 on the backend's API (`docs/demi-next/roadmap.md`). Until then it carries the Vite scaffold only: no server of its own exists.
 - Production deps: `@demicodes/web-ui`, `@demicodes/agent`, `@demicodes/core`, `@demicodes/utils`.
-- Owns: the Demi web product's browser application — the Vite-built app over `@demicodes/web-ui`, talking to `@demicodes/backend` over its REST and WebSocket API. The backend serves the built assets in deployment (M13).
+- Owns: the Demi web product's browser application — the Vite-built app over `@demicodes/web-ui`, talking to `@demicodes/backend` over its REST and WebSocket API. The backend serves the built assets in deployment (M14).
 - Public boundary: the browser entry point.
 - Must not: be imported by any other production package, or carry a server.
 
