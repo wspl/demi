@@ -291,9 +291,11 @@ hand in a table. `DispatchIO` is what a root command's `ctx` is built
 from: the loader adds `args` and `fs`. The script's `stdin` is what real
 bash would give a job: one stream every command whose stdin is not
 redirected reads in turn (a shared iterator, never closed by a reader
-that stops early). Builtins never read it — a builtin with no input reads
-nothing — so it only reaches root commands, which is how `shell_write`
-steers a running `demi agent spawn` in a hostless conversation.
+that stops early). A builtin reads it directly, so `head -n 1` alone
+waits for the line the caller writes, as under bash; a root command gets
+it as `stdinStream` beside an empty pipe, since the pipe must end for the
+stdin field to be read and the caller's stream ends only when the caller
+ends it. That is how `shell_write` reaches a hostless command.
 
 `OutsideReason` names the construct, program or flag that put the script
 outside the subset, and `message` is the refusal line for embedders with
