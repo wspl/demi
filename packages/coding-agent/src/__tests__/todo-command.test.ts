@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { BashEnvironment } from '@demicodes/shell'
+import { BashEnvironment } from '@demicodes/shell/bash'
 import { LocalHost } from '@demicodes/host-local'
 import { createCodingCommandRegistry } from '../index'
 

@@ -12,11 +12,8 @@ import {
   type AgentToolInvokeContext,
   type AgentToolInvokeResult,
 } from '@demicodes/agent'
-import {
-  BashEnvironment,
-  CommandRegistry,
-  type BashEnvironmentOptions,
-} from '@demicodes/shell'
+import { CommandRegistry } from '@demicodes/shell'
+import { BashEnvironment, type BashEnvironmentOptions } from '@demicodes/shell/bash'
 import { LocalHost } from '@demicodes/host-local'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
