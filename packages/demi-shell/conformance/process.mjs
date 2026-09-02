@@ -1,7 +1,8 @@
 import { test, assert, assertEq, assertCode, sleep } from "./harness.mjs";
 import * as proc from "demishell:process";
 import * as fs from "demishell:fs";
-import { env, pid as ownPid, onSignal } from "demishell:runtime";
+import { env, pid as ownPid, onSignal, identity } from "demishell:runtime";
+const ownUid = identity.uid;
 
 const enc = (s) => new TextEncoder().encode(s);
 const dec = (b) => new TextDecoder().decode(b);
@@ -122,6 +123,32 @@ test("process: onSignal receives a signal raised by a child", async () => {
   fs.close(child.stdout); fs.close(child.stderr);
   for (let i = 0; i < 50 && got === null; i++) await sleep(2);
   assertEq(got, "SIGUSR2");
+});
+
+test("process: tee throughput (100 MB from /dev/zero, reported as MB/s)", async () => {
+  await fs.mkdir(tmp, { recursive: true });
+  const t0 = performance.now();
+  const child = await proc.spawn({
+    command: "head", args: ["-c", "100000000", "/dev/zero"], env: baseEnv,
+    tee: { stdoutPath: `${tmp}/tee.out`, stderrPath: `${tmp}/tee.err`, viewLimit: 4096 },
+  });
+  const view = await drain(child.stdout);
+  fs.close(child.stderr);
+  const status = await proc.wait(child.pid);
+  const seconds = (performance.now() - t0) / 1000;
+  assertEq(view.length, 4096);
+  assertEq(status.stdoutBytes, 100000000);
+  assertEq((await fs.stat(`${tmp}/tee.out`)).size, 100000000);
+  console.log(`     tee: ${(100 / seconds).toFixed(0)} MB/s`);
+  await fs.unlink(`${tmp}/tee.out`); await fs.unlink(`${tmp}/tee.err`); await fs.rmdir(tmp);
+});
+
+test("process: uid/gid switch (root only)", async () => {
+  if (ownUid !== 0) { console.log("     (not root: skipped)"); return; }
+  const child = await proc.spawn({ command: "sh", args: ["-c", "id -u; id -g"], env: baseEnv, uid: 65534, gid: 65534 });
+  assertEq(await drain(child.stdout), "65534\n65534\n");
+  fs.close(child.stderr);
+  assertEq((await proc.wait(child.pid)).code, 0);
 });
 
 test("process: many sequential spawns reap cleanly", async () => {

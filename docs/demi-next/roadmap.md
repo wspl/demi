@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M6 delivered; M7 next |
+| Status | M0–M7 delivered; M8 next |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -45,26 +45,15 @@ message-attachment upload and workspace file drop. The prev slot, `switch`
 and `release` verbs and the tar-pipe migration delivered here are removed
 by M8–M10 (`sessions-and-targets.md`).
 
-## Planned
+**M7 — Shell.** `packages/demi-shell`: QuickJS on `rquickjs`, the event
+loop with its own liveness count, the module loader with `demishell:*`
+private to the embedded bundle, the five modules over `hyper`,
+`tokio-tungstenite`, `rustls`, `rmpv`; the JS conformance suite driven by
+`cargo test --features conformance`; static musl and macOS builds; the
+entry-mode skeletons. Measured in the Firecracker fixture: command-mode
+hello 0.18 s first execution, tee at the pipe baseline.
 
-**M7 — Shell** (`shell.md`; depends on nothing)
-The Rust binary embedding QuickJS on `rquickjs` and `tokio`
-(current-thread), with the protocols from crates (`hyper`,
-`tokio-tungstenite`, `rustls`/`ring`, `rmpv`): the event loop, timers and promise scheduling, the standard
-globals; the five `demishell:*` modules — `fs` with errno fidelity and
-streaming `open`/`read`/`write`, `process` with pipes, stdin, kill,
-uid/gid and the tee with a bounded view, `net` with the WebSocket client,
-the streaming HTTP/1.1 client (proxy-aware, `CONNECT` tunnel), UDS connect and listen,
-`bytes` with MessagePack/base64/SHA-256/random, `runtime`; the module
-loader with `import()` of absolute paths and `demishell:*` visible only to
-the embedded bundle; static musl builds for Linux x86_64 and aarch64,
-macOS builds, platform verifier on user hosts and embedded roots in the
-guest build; the two entry modes as skeletons. Accept: the primitive
-conformance suite, driven from JS, passes on every build target; first execution of command-mode `hello`
-inside a fresh microVM under 0.2 s with no network code on the startup
-path; tee throughput at the guest's pipe baseline; the runner-protocol
-bundle encodes and decodes on the shell. A library milestone in the M1
-sense.
+## Planned
 
 **M8 — Command system, loader, hostless execution** (`commands.md`,
 `tinybash.md`, `sessions-and-targets.md`; depends on M7)

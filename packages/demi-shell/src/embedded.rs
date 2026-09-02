@@ -20,6 +20,7 @@ pub const MODULES: &[(&str, &str)] = &[
     ("/embedded/runtime.mjs", include_str!("../conformance/runtime.mjs")),
     ("/embedded/process.mjs", include_str!("../conformance/process.mjs")),
     ("/embedded/net.mjs", include_str!("../conformance/net.mjs")),
+    ("/embedded/protocol.mjs", include_str!("../conformance/protocol.mjs")),
     ("/embedded/loader.mjs", include_str!("../conformance/loader.mjs")),
 ];
 

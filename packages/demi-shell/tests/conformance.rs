@@ -37,6 +37,20 @@ fn make_certs(dir: &PathBuf) -> Option<(PathBuf, PathBuf, PathBuf)> {
     ok.then_some((ca, cert, key))
 }
 
+/// Bundles the runner-protocol codec the way the runner bundle will be
+/// built, so the suite can prove it runs on the shell.
+fn bundle_runner_protocol(bun: &PathBuf, work: &PathBuf) -> Option<PathBuf> {
+    let entry = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runner-protocol/src/messages.ts");
+    let out = work.join("runner-protocol.mjs");
+    let ok = Command::new(bun)
+        .args(["build", entry.to_str()?, "--format=esm", "--target=browser", "--outfile"])
+        .arg(&out)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    ok.then_some(out)
+}
+
 #[test]
 #[cfg_attr(not(feature = "conformance"), ignore = "build with --features conformance")]
 fn primitive_conformance_suite() {
@@ -50,6 +64,9 @@ fn primitive_conformance_suite() {
     cmd.env_remove("HTTPS_PROXY").env_remove("HTTP_PROXY").env_remove("NO_PROXY");
     cmd.env_remove("https_proxy").env_remove("http_proxy").env_remove("no_proxy");
     if let Some(bun) = which("bun") {
+        if let Some(bundle) = bundle_runner_protocol(&bun, &work) {
+            cmd.env("DEMI_SHELL_CONFORMANCE_PROTOCOL", bundle);
+        }
         let ports = [free_port(), free_port(), free_port()];
         cmd.env("DEMI_SHELL_CONFORMANCE_DIR", &conformance_dir)
             .env("DEMI_SHELL_CONFORMANCE_BUN", &bun)
