@@ -41,7 +41,7 @@ describe('session state', () => {
       expect(w.state.vars.X).toBe('1')
       await w.run('Y=2 demi run; pwd; echo "$X$Y"')
       expect(w.state.vars.Y).toBeUndefined()
-      expect(w.output()).toBe(`${w.home}/src\n1\n`)
+      expect(w.output()).toBe(`demi run\n${w.home}/src\n1\n`)
       expect(w.calls[0]?.cwd).toBe(`${w.home}/src`)
     } finally {
       w.dispose()
