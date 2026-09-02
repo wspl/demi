@@ -24,7 +24,7 @@ export interface Golden {
 }
 
 export const GOLDENS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'goldens')
-export const ROOT_NAMES = ['demi', 'myagent']
+export const ROOT_NAMES = ['demi', 'scout']
 export const HOME_TOKEN = '@HOME@'
 
 function bashCommand(): string[] {
