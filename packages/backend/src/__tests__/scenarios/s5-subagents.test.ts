@@ -2,13 +2,12 @@ import { readFile } from 'node:fs/promises'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { World } from './world'
 import { itemsText } from './model'
-import { expected, model, type Target } from './driver'
+import { model, type Target } from './driver'
 
 // S5 — subagents: `demi agent spawn` with the `explore` profile, then
 // `default`; the child runs commands on the same target; the parent reads
-// the result; the explore child's write is refused. Parent and child share
-// the target; the read-only profile holds; the parent's transcript carries
-// the subagent frames.
+// the result. Parent and child share the target; a profile is a prompt, not
+// a restriction; the parent's transcript carries the subagent frames.
 
 let world: World
 
@@ -21,13 +20,13 @@ afterAll(async () => {
 })
 
 describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (target) => {
-  test('an explore child reads the parent\'s files; its write is refused where the Host is the filesystem; a default child writes', async () => {
+  test('an explore child works on the parent\'s files like any child; a default child writes', async () => {
     const driver = await world.conversation(target)
     await driver.turn({
       model: [model.shell('t1', "demi file create notes.md <<'EOF'\nthe answer is 42\nEOF"), model.say('written')],
     })
 
-    // The explore child: sees only its brief, reads the file on the same target, is refused a write.
+    // The explore child: sees only its brief and works on the same target as its parent.
     let brief = ''
     world.model.scriptChild(
       (request) => {
@@ -35,7 +34,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (targe
         return model.shell('c1', 'cat notes.md')
       },
       model.shell('c2', "demi file create blocked.md <<'EOF'\nnope\nEOF"),
-      model.say('the file says 42; I tried a write'),
+      model.say('the file says 42; I wrote too'),
     )
     const explored = await driver.turn({
       model: [model.shell('t2', "demi agent spawn 'Read notes.md and report its content' --profile explore --description reader", 10_000), model.say('explored')],
@@ -45,11 +44,10 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (targe
     const childRequests = world.model.requests.filter((request) => request.sessionId !== driver.id)
     const childSaw = itemsText(childRequests.at(-1)!.items)
     expect(childSaw).toContain('the answer is 42')
-    expect(childSaw).toContain(expected(target).readonlyWrite)
+    expect(childSaw).toContain('Created blocked.md')
     expect(explored.received[0]).toContain('subagentId:')
-    expect(explored.received[0]).toContain('the file says 42; I tried a write')
-    const blocked = await readFile(driver.filePath('blocked.md'), 'utf8').catch(() => 'absent')
-    expect(blocked).toBe(target === 'hostless' ? 'absent' : 'nope\n')
+    expect(explored.received[0]).toContain('the file says 42; I wrote too')
+    expect(await readFile(driver.filePath('blocked.md'), 'utf8')).toBe('nope\n')
 
     // The default child writes where the parent then reads.
     world.model.scriptChild(model.shell('c3', "demi file create reply.md <<'EOF'\nfrom the child\nEOF"), model.say('wrote reply.md'))
