@@ -13,8 +13,8 @@ process: it contains no LLM logic and runs no AgentSession. It is a remote
 implementation of Demi's `Host` contract (`packages/shell/src/host.ts`) —
 this machine's filesystem and process execution over Demi's own protocol —
 plus the job table that runs the agent's commands in real bash, the tee that
-keeps their full output on this machine, and the relay through which the
-`demi` CLI reaches the backend. Even the Claude Code CLI reaches the runner
+keeps their full output on this machine, and the relay through which root
+commands (`commands.md`) reach the backend. Even the Claude Code CLI reaches the runner
 as an ordinary remote `spawn`; the runner has no claude-specific code.
 
 It is JS running on the shell (`shell.md`), so its protocol schemas are the
@@ -39,15 +39,17 @@ configuration beyond what the connection needs.
    machine with the conversation's cwd and env, the conversation and shell
    ids in the environment, the bounded output view streamed to the backend,
    the full output teed to an artifact file here.
-4. **Relaying `demi`.** A Unix domain socket for the `demi` CLI: manifest
-   cache misses, and `rpc` command invocations forwarded to the backend
-   attributed to the invoking conversation.
+4. **Relaying root commands.** A Unix domain socket for command-mode shell
+   processes: manifest cache misses, and `rpc` command invocations
+   forwarded to the backend attributed to the invoking conversation. The
+   runner also maintains the root-command symlinks in `PATH` from the
+   manifest.
 
 Non-responsibilities: user authentication; credentials of any kind (the
 Claude Code CLI it spawns receives its token as process env from the
 backend-side provider, nothing is persisted here); transcript or checkpoint
-storage; command implementations (`runtime` modules run in the `demi` CLI,
-`rpc` commands in the backend); provider logic.
+storage; command implementations (`runtime` modules run in command-mode
+processes, `rpc` commands in the backend); provider logic.
 
 ## Process shape and local state
 
@@ -137,8 +139,8 @@ Relay and artifacts:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| r → b | `rpc_call { callId, conversationId, shellId, command, args, stdin }` streamed | a `demi` `rpc` command invoked on this target |
-| b → r | `rpc_output { callId, stream, bytes }` / `rpc_exit { callId, code }` | its result back to the CLI |
+| r → b | `rpc_call { callId, conversationId, shellId, root, command, args, stdin }` streamed | an `rpc` command of some root invoked on this target |
+| b → r | `rpc_output { callId, stream, bytes }` / `rpc_exit { callId, code }` | its result back to the command-mode process |
 | b → r | `manifest { hash, tree, modules }` on connect and on change | the command manifest the runner caches for the CLI |
 | b → r | `artifact_upload { path, uploadUrl }` | the backend wants the full bytes of an artifact: the runner `PUT`s the file to the one-shot URL over HTTP |
 | b → r | `transfer_send { path, uploadUrl }` / `transfer_receive { path, downloadUrl }` | a brokered cross-host copy: the source `PUT`s, the destination `GET`s, the backend pipes the two |
@@ -167,11 +169,12 @@ opens a past command's full output while the host is online
 
 ## The local relay
 
-`~/.demi/runner.sock` accepts connections only from the `demi` CLI. Two
-request types: `manifest?` (answered from the cache or, on a miss, fetched
-over the socket) and `rpc { conversationId, shellId, command, args }` with
-stdin streamed in and stdout/stderr streamed out. The runner forwards `rpc`
-on its authenticated socket; the CLI never holds a credential. Attribution
+`~/.demi/runner.sock` accepts connections only from command-mode shell
+processes. Two request types: `manifest?` (answered from the cache or, on a
+miss, fetched over the socket) and `rpc { conversationId, shellId, root,
+command, args }` with stdin streamed in and stdout/stderr streamed out. The
+runner forwards `rpc` on its authenticated socket; the command-mode process
+never holds a credential. Attribution
 is by the ids the backend put into the job's environment; a process on the
 same machine that forges them can only reach the conversations already
 executing here, which it could already read and modify.
