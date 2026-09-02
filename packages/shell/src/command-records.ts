@@ -8,7 +8,6 @@ import type {
   ShellOutputRecordChunk,
   ShellOutputView,
   ShellStreamView,
-  ShellViewInput,
 } from './shell-environment'
 
 /**
@@ -67,20 +66,19 @@ export function createCommandRecord(fields: {
 }
 
 /**
- * The status the tools see: stream views cut at the caller's offsets, then
+ * The status the tools see: each stream's delta since the last view (the
+ * record keeps the cursor), capped at `maxOutputBytes`, plus its tail; then
  * the record persisted through `artifacts` — absent for an environment whose
  * output files are written where the command ran (the runner's tee).
  */
 export function commandStatusView(
   record: ShellCommandRecord,
-  input: ShellViewInput,
-  defaultOutputLimitBytes: number,
+  maxOutputBytes: number,
   artifacts?: CommandArtifactStore,
 ): ShellCommandStatus {
-  const maxOutputBytes = input.maxOutputBytes ?? defaultOutputLimitBytes
-  const stdout = streamView(record, 'stdout', input.stdoutOffset, maxOutputBytes)
-  const stderr = streamView(record, 'stderr', input.stderrOffset, maxOutputBytes)
-  const output = mergedOutputView(record, input.outputOffset, maxOutputBytes)
+  const stdout = streamView(record, 'stdout', maxOutputBytes)
+  const stderr = streamView(record, 'stderr', maxOutputBytes)
+  const output = mergedOutputView(record, maxOutputBytes)
   const base = {
     shellId: record.shellId,
     commandId: record.id,
@@ -166,15 +164,10 @@ export function settleExited(record: ShellCommandRecord, exitCode: number, stdou
   record.audit = [...audit]
 }
 
-function streamView(
-  record: ShellCommandRecord,
-  stream: 'stdout' | 'stderr',
-  explicitOffset: number | undefined,
-  maxOutputBytes: number,
-): ShellStreamView {
+function streamView(record: ShellCommandRecord, stream: 'stdout' | 'stderr', maxOutputBytes: number): ShellStreamView {
   const text = stream === 'stdout' ? record.stdout : record.stderr
   const totalBytes = utf8Bytes(text)
-  const offset = explicitOffset ?? (stream === 'stdout' ? record.stdoutOffset : record.stderrOffset)
+  const offset = stream === 'stdout' ? record.stdoutOffset : record.stderrOffset
   const boundedOffset = clampOffset(offset, totalBytes)
   const available = Math.max(0, totalBytes - boundedOffset)
   const byteLimit = Math.max(0, Math.floor(maxOutputBytes))
@@ -182,10 +175,8 @@ function streamView(
   const delta = utf8Slice(text, boundedOffset, boundedOffset + takeBytes)
   const nextOffset = boundedOffset + utf8Bytes(delta)
   const truncated = nextOffset < totalBytes
-  if (explicitOffset === undefined) {
-    if (stream === 'stdout') record.stdoutOffset = nextOffset
-    else record.stderrOffset = nextOffset
-  }
+  if (stream === 'stdout') record.stdoutOffset = nextOffset
+  else record.stderrOffset = nextOffset
   return {
     path: `${record.artifactDir}/${stream}.txt`,
     offset: nextOffset,
@@ -196,13 +187,9 @@ function streamView(
   }
 }
 
-function mergedOutputView(
-  record: ShellCommandRecord,
-  explicitOffset: number | undefined,
-  maxOutputBytes: number,
-): ShellOutputView {
+function mergedOutputView(record: ShellCommandRecord, maxOutputBytes: number): ShellOutputView {
   const totalBytes = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
-  const offset = clampOffset(explicitOffset ?? record.outputOffset, totalBytes)
+  const offset = clampOffset(record.outputOffset, totalBytes)
   const byteLimit = Math.max(0, Math.floor(maxOutputBytes))
   const available = Math.max(0, totalBytes - offset)
   let remaining = byteLimit === 0 ? available : Math.min(available, byteLimit)
@@ -227,7 +214,7 @@ function mergedOutputView(
   const text = chunks.map((chunk) => chunk.text).join('')
   const nextOffset = offset + utf8Bytes(text)
   const truncated = nextOffset < totalBytes
-  if (explicitOffset === undefined) record.outputOffset = nextOffset
+  record.outputOffset = nextOffset
   return {
     path: record.artifactDir,
     offset: nextOffset,

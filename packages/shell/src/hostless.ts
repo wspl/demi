@@ -1,5 +1,7 @@
-import type { Loader } from '@demicodes/command-loader'
-import { rootPaths } from '@demicodes/command-loader'
+// The hostless shell environment (`commands.md` § Hostless): tinybash over
+// a Host, root commands through an injected dispatcher, no process
+// anywhere. This is where Demi's Host contract and command ABI meet
+// tinybash's own system interface; tinybash itself depends on neither.
 import {
   CommandArtifactStore,
   DEFAULT_BINARY_LIMIT_BYTES,
@@ -21,17 +23,18 @@ import {
   type ShellEnvironmentOptions,
   type ShellExecInput,
   type ShellStatusInput,
-  type ShellViewInput,
   type ShellWriteInput,
-} from '@demicodes/shell'
-import { runTinybash, type ShellState } from '@demicodes/tinybash'
+} from './index'
+import { runTinybash, type DispatchIO, type RootPaths, type ShellState } from '@demicodes/tinybash'
 import { ByteQueue, concatBytes, delay, errorMessage, isAbsolutePath, toBytes } from '@demicodes/utils'
 
 export interface HostlessEnvironmentOptions extends ShellEnvironmentOptions {
   /** The conversation's store-backed Host. */
   host: Host
-  /** Dispatches the manifest's roots; its trees give tinybash the path marks. */
-  loader: Loader
+  /** Root names → the path-typed arguments of an invocation, from the trees' path marks (`rootPaths` in the loader). */
+  roots: ReadonlyMap<string, RootPaths>
+  /** Runs a root command; `argv` excludes the root name. */
+  dispatch: (root: string, argv: string[], io: DispatchIO) => Promise<number>
   /** `$HOME`, and the first namespace prefix. */
   home: string
   /** Absolute prefixes a script may touch (`sessions-and-targets.md` § The namespace). */
@@ -68,7 +71,8 @@ const ABORT_GRACE_MS = 2_000
  */
 export class HostlessEnvironment implements ShellEnvironment {
   private readonly host: Host
-  private readonly loader: Loader
+  private readonly roots: ReadonlyMap<string, RootPaths>
+  private readonly dispatch: (root: string, argv: string[], io: DispatchIO) => Promise<number>
   private readonly home: string
   private readonly namespace: readonly string[]
   private readonly identity: { user: string; group: string }
@@ -86,7 +90,8 @@ export class HostlessEnvironment implements ShellEnvironment {
 
   constructor(options: HostlessEnvironmentOptions) {
     this.host = options.host
-    this.loader = options.loader
+    this.roots = options.roots
+    this.dispatch = options.dispatch
     this.home = options.home
     this.namespace = options.namespace
     this.identity = options.identity
@@ -133,11 +138,11 @@ export class HostlessEnvironment implements ShellEnvironment {
     }
     const running = this.start(shell, input.script, input.signal)
     await settledOrElapsed(running.settled, timeoutMs)
-    return this.view(running.record, input)
+    return this.view(running.record)
   }
 
   async status(input: ShellStatusInput): Promise<ShellCommandStatus> {
-    return this.view(this.requireCommand(input.commandId), input)
+    return this.view(this.requireCommand(input.commandId))
   }
 
   async write(input: ShellWriteInput): Promise<ShellCommandStatus> {
@@ -148,18 +153,18 @@ export class HostlessEnvironment implements ShellEnvironment {
     const data = toBytes(input.stdin)
     if (data.byteLength === 0) throw new Error('shell_write field "stdin" must not be empty; use shell_status to poll')
     running.stdin.push(data)
-    return this.view(record, input)
+    return this.view(record)
   }
 
   async abort(input: ShellAbortInput): Promise<ShellCommandStatus> {
     const record = this.requireCommand(input.commandId)
     const running = this.runningById.get(record.id)
-    if (record.status !== 'running' || !running) return this.view(record, input)
+    if (record.status !== 'running' || !running) return this.view(record)
     running.controller.abort()
     running.stdin.close()
     await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     if (record.status === 'running') this.markAborted(running)
-    return this.view(record, input)
+    return this.view(record)
   }
 
   async releaseCommand(commandId: string): Promise<boolean> {
@@ -228,10 +233,10 @@ export class HostlessEnvironment implements ShellEnvironment {
     }
     const run = runTinybash({
       script,
-      roots: rootPaths(this.loader.roots),
+      roots: this.roots,
       namespace: this.namespace,
       dispatch: async (root, argv, io) => {
-        const exitCode = await this.loader.dispatch(root, argv, io)
+        const exitCode = await this.dispatch(root, argv, io)
         audit.push({ kind: 'registered-command', name: root, args: [...argv], exitCode })
         return exitCode
       },
@@ -282,8 +287,8 @@ export class HostlessEnvironment implements ShellEnvironment {
     record.status = 'aborted'
   }
 
-  private view(record: ShellCommandRecord, input: ShellViewInput): ShellCommandStatus {
-    return commandStatusView(record, input, this.defaultOutputLimitBytes, this.artifacts)
+  private view(record: ShellCommandRecord): ShellCommandStatus {
+    return commandStatusView(record, this.defaultOutputLimitBytes, this.artifacts)
   }
 
   private requireShell(shellId: string): HostlessShell {
@@ -303,7 +308,9 @@ export class HostlessEnvironment implements ShellEnvironment {
     const existing = this.defaultShellByAgentSessionId.get(key)
     if (existing) {
       const shell = this.shells.get(existing)
-      if (shell && !shell.exited) return shell
+      // A busy default shell is left to its command: the session gets a fresh
+      // shell for this exec, so a long-running command never blocks the next.
+      if (shell && !shell.exited) return shell.foreground && agentSessionId ? this.createShell(agentSessionId) : shell
     }
     const shell = this.createShell(agentSessionId)
     this.defaultShellByAgentSessionId.set(key, shell.id)

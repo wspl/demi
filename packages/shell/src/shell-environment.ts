@@ -1,9 +1,10 @@
 /**
  * The shell environment behind the `shell_exec` / `shell_status` /
  * `shell_write` / `shell_abort` tools: one interface, two implementations —
- * `BashEnvironment` (just-bash over a Host that spawns processes) and the
- * backend's hostless environment (tinybash over the conversation's
- * store-backed Host). The agent server talks to the interface only.
+ * `HostlessEnvironment` (`@demicodes/shell/hostless`: tinybash over the
+ * conversation's store-backed Host) and `RemoteShellEnvironment`
+ * (`@demicodes/host-remote`: jobs on a machine's runner). The agent server
+ * talks to the interface only.
  */
 
 export interface ShellExecInput {
@@ -11,7 +12,6 @@ export interface ShellExecInput {
   shellId?: string
   agentSessionId?: string
   timeoutMs?: number
-  maxOutputBytes?: number
   signal?: AbortSignal
   /**
    * Run in a dedicated one-shot shell instead of the session default shell, so
@@ -29,26 +29,17 @@ export interface ShellExecInput {
 
 export interface ShellStatusInput {
   commandId: string
-  stdoutOffset?: number
-  stderrOffset?: number
-  outputOffset?: number
-  maxOutputBytes?: number
 }
 
 export interface ShellWriteInput {
   commandId: string
   stdin: string | Uint8Array
-  maxOutputBytes?: number
   signal?: AbortSignal
 }
 
 export interface ShellAbortInput {
   commandId: string
-  maxOutputBytes?: number
 }
-
-/** The offsets and cap a status view is cut with. */
-export type ShellViewInput = Pick<ShellStatusInput, 'stdoutOffset' | 'stderrOffset' | 'outputOffset' | 'maxOutputBytes'>
 
 export interface ShellStreamView {
   path: string
@@ -149,7 +140,7 @@ export interface ShellEnvironment {
   hasCommand(commandId: string): boolean
 }
 
-/** Options every shell environment takes; the just-bash one adds its own. */
+/** Options every shell environment takes; an engine adds its own. */
 export interface ShellEnvironmentOptions {
   shellIdFactory?: () => string
   commandIdFactory?: () => string
@@ -180,7 +171,7 @@ export const DEFAULT_BINARY_LIMIT_BYTES = 16 * 1024 * 1024
  * on the embedding process, not a view budget.
  */
 export const DEFAULT_CAPTURE_LIMIT_BYTES = 64 * 1024 * 1024
-/** Upper bound for a single exec observation window (also the command-bridge wait ceiling). */
+/** Upper bound for a single exec observation window. */
 export const MAX_TIMEOUT_MS = 600_000
 
 export function normalizeTimeoutMs(value: number): number {

@@ -15,7 +15,7 @@ import {
   type Host,
   type RuntimeModule,
 } from '../index'
-import { RESERVED_COMMAND_NAMES } from '../portable-commands'
+import { RESERVED_COMMAND_NAMES } from '../reserved-names'
 
 const testHost = {} as Host
 

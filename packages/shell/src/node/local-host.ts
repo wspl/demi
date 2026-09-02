@@ -1,34 +1,16 @@
+// The Host over this Node process's machine: `nodeFileSystem` plus child
+// processes, a directory-fd cwd and the real identity.
 import { spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { homedir, hostname, userInfo } from 'node:os'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
-import {
-  appendFile,
-  chmod,
-  cp,
-  link,
-  lstat,
-  mkdir,
-  readFile,
-  readdir,
-  readlink,
-  realpath,
-  rename,
-  rm,
-  stat,
-  symlink,
-  utimes,
-  writeFile,
-} from 'node:fs/promises'
-import type { Dirent, Stats } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
+import { hostname, tmpdir, userInfo } from 'node:os'
+import { join, resolve } from 'node:path'
+import { stat } from 'node:fs/promises'
 import type { Readable } from 'node:stream'
-import { isFileNotFoundError } from '@demicodes/utils'
-import { fileHostStore } from '@demicodes/shell'
+import { fileHostStore } from '../file-host-store'
+import { nodeFileSystem } from './file-system'
 import type {
   Host,
   HostCwd,
-  HostDirent,
-  HostFileStat,
   HostFileSystem,
   HostIdentity,
   HostProcess,
@@ -38,7 +20,7 @@ import type {
   HostSpawnParams,
   HostStore,
   SpawnErrorKind,
-} from '@demicodes/shell'
+} from '../host'
 import { LocalHostCwd } from './local-cwd'
 
 export interface LocalHostOptions {
@@ -61,7 +43,7 @@ export class LocalHost implements Host {
     this.defaultCwd = resolve(defaultCwd)
     const storeRoot = options.storeRoot ?? defaultStoreRoot(this.defaultCwd)
     this.commandArtifactsDir = resolve(options.commandArtifactsDir ?? join(storeRoot, 'command-artifacts'))
-    this.fs = new LocalHostFileSystem(this.defaultCwd)
+    this.fs = nodeFileSystem(this.defaultCwd)
     this.process = new LocalHostProcess(this.defaultCwd)
     this.store = options.store ?? fileHostStore(this.fs, resolve(storeRoot))
     const info = userInfo()
@@ -198,139 +180,19 @@ async function* streamMergedOutput(
   }
 }
 
-class LocalHostFileSystem implements HostFileSystem {
-  constructor(private readonly defaultCwd: string) {}
-
-  async readFile(path: string, options?: { cwd?: string }): Promise<Uint8Array> {
-    return readFile(this.resolvePath(path, options?.cwd))
-  }
-
-  async writeFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void> {
-    const target = this.resolvePath(path, options?.cwd)
-    if (options?.createParents) await mkdir(dirname(target), { recursive: true })
-    await writeFile(target, data)
-  }
-
-  async appendFile(path: string, data: Uint8Array, options?: { cwd?: string; createParents?: boolean }): Promise<void> {
-    const target = this.resolvePath(path, options?.cwd)
-    if (options?.createParents) await mkdir(dirname(target), { recursive: true })
-    await appendFile(target, data)
-  }
-
-  async exists(path: string, options?: { cwd?: string }): Promise<boolean> {
-    try {
-      await lstat(this.resolvePath(path, options?.cwd))
-      return true
-    } catch (error) {
-      if (isFileNotFoundError(error)) return false
-      throw error
-    }
-  }
-
-  async stat(path: string, options?: { cwd?: string }): Promise<HostFileStat> {
-    return toHostFileStat(await stat(this.resolvePath(path, options?.cwd)))
-  }
-
-  async lstat(path: string, options?: { cwd?: string }): Promise<HostFileStat> {
-    return toHostFileStat(await lstat(this.resolvePath(path, options?.cwd)))
-  }
-
-  async readdir(path: string, options: { cwd?: string; withFileTypes: true }): Promise<HostDirent[]>
-  async readdir(path: string, options?: { cwd?: string; withFileTypes?: false }): Promise<string[]>
-  async readdir(path: string, options?: { cwd?: string; withFileTypes?: boolean }): Promise<string[] | HostDirent[]> {
-    const target = this.resolvePath(path, options?.cwd)
-    if (options?.withFileTypes) {
-      return (await readdir(target, { withFileTypes: true })).map(toHostDirent)
-    }
-    return readdir(target)
-  }
-
-  async mkdir(path: string, options?: { cwd?: string; recursive?: boolean }): Promise<void> {
-    // Node rejects `{ recursive: undefined }` (must be boolean or omitted).
-    await mkdir(this.resolvePath(path, options?.cwd), { recursive: options?.recursive === true })
-  }
-
-  async rm(path: string, options?: { cwd?: string; recursive?: boolean; force?: boolean }): Promise<void> {
-    await rm(this.resolvePath(path, options?.cwd), {
-      recursive: options?.recursive === true,
-      force: options?.force === true,
-    })
-  }
-
-  async cp(path: string, destination: string, options?: { cwd?: string; recursive?: boolean }): Promise<void> {
-    await cp(this.resolvePath(path, options?.cwd), this.resolvePath(destination, options?.cwd), {
-      recursive: options?.recursive === true,
-    })
-  }
-
-  async mv(path: string, destination: string, options?: { cwd?: string }): Promise<void> {
-    await rename(this.resolvePath(path, options?.cwd), this.resolvePath(destination, options?.cwd))
-  }
-
-  async chmod(path: string, mode: number, options?: { cwd?: string }): Promise<void> {
-    await chmod(this.resolvePath(path, options?.cwd), mode)
-  }
-
-  async symlink(target: string, path: string, options?: { cwd?: string }): Promise<void> {
-    await symlink(target, this.resolvePath(path, options?.cwd))
-  }
-
-  async link(existingPath: string, path: string, options?: { cwd?: string }): Promise<void> {
-    await link(this.resolvePath(existingPath, options?.cwd), this.resolvePath(path, options?.cwd))
-  }
-
-  async readlink(path: string, options?: { cwd?: string }): Promise<string> {
-    return readlink(this.resolvePath(path, options?.cwd))
-  }
-
-  async realpath(path: string, options?: { cwd?: string }): Promise<string> {
-    return realpath(this.resolvePath(path, options?.cwd))
-  }
-
-  async utimes(path: string, atime: Date, mtime: Date, options?: { cwd?: string }): Promise<void> {
-    await utimes(this.resolvePath(path, options?.cwd), atime, mtime)
-  }
-
-  private resolvePath(path: string, cwd?: string): string {
-    if (isAbsolute(path)) return resolve(path)
-    return resolve(cwd ?? this.defaultCwd, path)
-  }
-}
-
-// The store persists conversations and shell artifacts, so it lives in the
-// platform data directory, not tmpdir (which evaporates on reboot/cleanup).
+/**
+ * A store is throwaway but stable within the process: one temp directory
+ * per working directory, so a Host re-created for the same directory (a
+ * reopened session) finds its state, and a fresh process starts clean.
+ */
+const storeRoots = new Map<string, string>()
 function defaultStoreRoot(defaultCwd: string): string {
-  const key = createHash('sha256').update(defaultCwd).digest('hex').slice(0, 16)
-  return join(dataHome(), 'demi', 'host-local', key)
-}
-
-function dataHome(): string {
-  const xdg = process.env.XDG_DATA_HOME
-  if (xdg && xdg.trim()) return xdg
-  if (process.platform === 'win32') {
-    const localAppData = process.env.LOCALAPPDATA
-    if (localAppData && localAppData.trim()) return localAppData
-    return join(homedir(), 'AppData', 'Local')
+  let root = storeRoots.get(defaultCwd)
+  if (!root) {
+    root = mkdtempSync(join(tmpdir(), 'demi-local-host-'))
+    storeRoots.set(defaultCwd, root)
   }
-  return join(homedir(), '.local', 'share')
-}
-
-function toHostFileStat(value: Stats): HostFileStat {
-  return {
-    isFile: value.isFile(),
-    isDirectory: value.isDirectory(),
-    isSymbolicLink: value.isSymbolicLink(),
-    mode: value.mode,
-    size: value.size,
-    mtime: value.mtime,
-    uid: value.uid,
-    gid: value.gid,
-    ino: value.ino,
-    dev: value.dev,
-    nlink: value.nlink,
-    isCharacterDevice: value.isCharacterDevice(),
-    isFIFO: value.isFIFO(),
-  }
+  return root
 }
 
 function definedEnv(env: Record<string, string | undefined>): Record<string, string> {
@@ -353,15 +215,6 @@ async function classifySpawnFailure(error: Error, cwd: string): Promise<SpawnErr
   if (code === 'EACCES' || code === 'EPERM') return 'permission_denied'
   if (code === 'EISDIR') return 'is_directory'
   return 'other'
-}
-
-function toHostDirent(value: Dirent): HostDirent {
-  return {
-    name: value.name,
-    isFile: value.isFile(),
-    isDirectory: value.isDirectory(),
-    isSymbolicLink: value.isSymbolicLink(),
-  }
 }
 
 async function* streamBytes(stream: Readable | null): AsyncIterable<Uint8Array> {

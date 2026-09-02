@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/shell",
-  "description": "Sandboxable bash engine and Host contract for Demi.",
+  "description": "Demi's Host contract, command system and shell-environment contract; the hostless shell environment under /hostless.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -15,20 +15,20 @@
       "types": "./dist/storage.d.mts",
       "import": "./dist/storage.mjs"
     },
-    "./host-fs": {
-      "development": "./src/host-fs.ts",
-      "types": "./dist/host-fs.d.mts",
-      "import": "./dist/host-fs.mjs"
-    },
     "./testing": {
       "development": "./src/testing.ts",
       "types": "./dist/testing.d.mts",
       "import": "./dist/testing.mjs"
     },
-    "./bash": {
-      "development": "./src/bash.ts",
-      "types": "./dist/bash.d.mts",
-      "import": "./dist/bash.mjs"
+    "./node": {
+      "development": "./src/node.ts",
+      "types": "./dist/node.d.mts",
+      "import": "./dist/node.mjs"
+    },
+    "./hostless": {
+      "development": "./src/hostless.ts",
+      "types": "./dist/hostless.d.mts",
+      "import": "./dist/hostless.mjs"
     },
     "./build": {
       "development": "./src/build.ts",
@@ -37,7 +37,7 @@
     }
   },
   "dependencies": {
-    "@demicodes/just-bash": "workspace:^",
+    "@demicodes/tinybash": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "zod": "^4.0.0"
   },
