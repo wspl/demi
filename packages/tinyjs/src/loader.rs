@@ -12,7 +12,7 @@ use rquickjs::loader::{Loader, Resolver};
 use rquickjs::module::Declared;
 use rquickjs::{Ctx, Error, Module, Result};
 
-use crate::payload::Payload;
+use crate::payload::{Entry, Payload};
 
 pub const SCHEME: &str = "tinyjs:";
 const EMBEDDED_PREFIX: &str = "/embedded/";
@@ -74,9 +74,16 @@ impl ShellLoader {
     }
 }
 
-/// Evaluates the entry module under its `/embedded/` name.
-pub fn evaluate_entry<'js>(ctx: &Ctx<'js>, name: &str, source: Vec<u8>) -> Result<rquickjs::Promise<'js>> {
-    let module = declare_with_meta(ctx, name, source)?;
+/// Evaluates the entry module under its `/embedded/` name: packed bytecode
+/// is loaded as is, a file is compiled.
+pub fn evaluate_entry<'js>(ctx: &Ctx<'js>, name: &str, entry: Entry) -> Result<rquickjs::Promise<'js>> {
+    let module = match entry {
+        // SAFETY: the bytecode was produced by this interpreter build from
+        // the bundle at pack time and lives in the executable's own image.
+        Entry::Bytecode(bytes) => unsafe { Module::load(ctx.clone(), bytes)? },
+        Entry::Source(source) => Module::declare(ctx.clone(), name, source)?,
+    };
+    module.meta()?.set("url", name)?;
     let (_, promise) = module.eval()?;
     Ok(promise)
 }
