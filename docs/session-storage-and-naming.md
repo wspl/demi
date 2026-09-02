@@ -122,7 +122,7 @@ internal command-artifact storage key.
   nothing rewrites the whole transcript per interval. `journal.jsonl` is its
   file-backed realization here; the product backend realizes the same
   contract as one row per block in a per-conversation SQLite database (see
-  `docs/demi-next.md` § Database). The persistence contract therefore
+  `docs/demi-next/storage.md`). The persistence contract therefore
   becomes append-block + save-state, not save-whole-checkpoint.
 
 ### Write path (today vs final)

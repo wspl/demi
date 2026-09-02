@@ -35,7 +35,7 @@ Guidance on picking the right tool when handling data of uncertain shape:
 - Keep project documentation under `docs/`.
 - Verify runnable paths and external interfaces before writing concrete design plans.
 - Document test modules and their intended coverage under `docs/`.
-- Keep a live implementation log per roadmap milestone in `docs/demi-next-progress.md`: status, pitfalls encountered, and conclusions, updated as the work happens so it can be resumed and reviewed at any time.
+- Keep a live implementation log per roadmap milestone in `docs/demi-next/progress.md`: status, pitfalls encountered, and conclusions, updated as the work happens so it can be resumed and reviewed at any time.
 - Write design records as standalone final-state documents: never leave residue of superseded designs ("originally X", "replaced/retired by review", "no longer") in them — readers have no historical context. Review history and rejected alternatives belong only in the progress log.
 
 ## Submodules
