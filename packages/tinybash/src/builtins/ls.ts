@@ -3,7 +3,7 @@ import type { Builtin, BuiltinContext } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
 import { quoteC, strerror } from './errors'
-import { encodeLatin1 } from '@demicodes/utils'
+import { compareUtf8Bytes, encodeLatin1, utf8AsLatin1 } from '@demicodes/utils'
 
 interface Entry {
   name: string
@@ -13,10 +13,6 @@ interface Entry {
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-function byteCompare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0
-}
 
 export function modeString(stat: HostFileStat): string {
   const type = stat.isSymbolicLink ? 'l' : stat.isDirectory ? 'd' : stat.isCharacterDevice ? 'c' : stat.isFIFO ? 'p' : '-'
@@ -79,8 +75,8 @@ export const ls: Builtin = async (ctx) => {
     if (stat.isDirectory && !(long && entry.linkTarget !== null)) dirs.push(entry)
     else files.push(entry)
   }
-  files.sort((x, y) => byteCompare(x.name, y.name))
-  dirs.sort((x, y) => byteCompare(x.name, y.name))
+  files.sort((x, y) => compareUtf8Bytes(x.name, y.name))
+  dirs.sort((x, y) => compareUtf8Bytes(x.name, y.name))
   const headers = recursive || operands.length > 1
   let printedSomething = false
   if (files.length > 0) {
@@ -90,7 +86,7 @@ export const ls: Builtin = async (ctx) => {
   const queue = [...dirs]
   while (queue.length > 0) {
     const dir = queue.shift()!
-    if (headers) await ctx.stdout(encodeLatin1(`${printedSomething ? '\n' : ''}${dir.path}:\n`))
+    if (headers) await ctx.stdout(encodeLatin1(`${printedSomething ? '\n' : ''}${utf8AsLatin1(dir.path)}:\n`))
     printedSomething = true
     let names: string[]
     try {
@@ -102,7 +98,7 @@ export const ls: Builtin = async (ctx) => {
     }
     if (all) names.push('.', '..')
     else names = names.filter((name) => !name.startsWith('.'))
-    names.sort(byteCompare)
+    names.sort(compareUtf8Bytes)
     const entries: Entry[] = []
     for (const name of names) {
       const path = dir.path.endsWith('/') ? `${dir.path}${name}` : `${dir.path}/${name}`
@@ -126,7 +122,7 @@ export const ls: Builtin = async (ctx) => {
 
 async function printEntries(ctx: BuiltinContext, entries: Entry[], options: { long: boolean; now: Date; total: boolean }): Promise<void> {
   if (!options.long) {
-    for (const entry of entries) await ctx.stdout(encodeLatin1(`${entry.name}\n`))
+    for (const entry of entries) await ctx.stdout(encodeLatin1(`${utf8AsLatin1(entry.name)}\n`))
     return
   }
   if (options.total) {
@@ -139,7 +135,7 @@ async function printEntries(ctx: BuiltinContext, entries: Entry[], options: { lo
     group: ctx.identity.group,
     size: String(entry.stat.size),
     time: timeColumn(entry.stat.mtime, options.now),
-    name: entry.linkTarget !== null ? `${entry.name} -> ${entry.linkTarget}` : entry.name,
+    name: utf8AsLatin1(entry.linkTarget !== null ? `${entry.name} -> ${entry.linkTarget}` : entry.name),
   }))
   const width = (key: 'nlink' | 'user' | 'group' | 'size') => Math.max(...rows.map((row) => row[key].length))
   const w = { nlink: width('nlink'), user: width('user'), group: width('group'), size: width('size') }

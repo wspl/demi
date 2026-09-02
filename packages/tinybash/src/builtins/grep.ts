@@ -4,7 +4,7 @@ import { SPECS } from './table'
 import { translatePattern } from './grep-pattern'
 import { lines } from '../exec/stream'
 import { strerror } from './errors'
-import { collectBytes, encodeLatin1, errorCode } from '@demicodes/utils'
+import { collectBytes, compareUtf8Bytes, encodeLatin1, errorCode, utf8AsLatin1 } from '@demicodes/utils'
 import { guardedStdin } from './inputs'
 
 /** The files after the pattern; also the parse-time check of the flags and the pattern. */
@@ -50,7 +50,7 @@ export const grep: Builtin = async (ctx) => {
   const recursive = has(flags, 'r')
   const operands = flags.operands.slice(1)
   const options: Options = {
-    regex: translatePattern(flags.operands[0]!, has(flags, 'F') ? 'fixed' : has(flags, 'E') ? 'extended' : 'basic', has(flags, 'i'), ctx.line),
+    regex: translatePattern(utf8AsLatin1(flags.operands[0]!), has(flags, 'F') ? 'fixed' : has(flags, 'E') ? 'extended' : 'basic', has(flags, 'i'), ctx.line),
     invert: has(flags, 'v'),
     count: has(flags, 'c'),
     listFiles: has(flags, 'l'),
@@ -97,7 +97,7 @@ async function grepPath(ctx: BuiltinContext, path: string, display: string, opti
       await ctx.stderr(`grep: ${display}: ${strerror(error)}\n`)
       return 'error'
     }
-    names.sort((x, y) => (x < y ? -1 : x > y ? 1 : 0))
+    names.sort(compareUtf8Bytes)
     let matched = false
     let errored = false
     for (const name of names) {
@@ -129,13 +129,13 @@ async function grepBytes(ctx: BuiltinContext, bytes: Uint8Array, display: string
   for await (const line of lines(oneChunk(bytes))) all.push(line.text)
   const selected = all.map((text) => options.regex.test(text) !== options.invert)
   const count = selected.filter(Boolean).length
-  const prefix = options.withNames ? `${display}` : ''
+  const prefix = options.withNames ? utf8AsLatin1(display) : ''
   if (options.count) {
     await ctx.stdout(encodeLatin1(`${prefix ? `${prefix}:` : ''}${count}\n`))
     return count > 0
   }
   if (options.listFiles) {
-    if (count > 0) await ctx.stdout(encodeLatin1(`${display}\n`))
+    if (count > 0) await ctx.stdout(encodeLatin1(`${utf8AsLatin1(display)}\n`))
     return count > 0
   }
   if (count === 0) return false

@@ -1,7 +1,7 @@
 import type { Builtin, BuiltinContext } from './io'
 import { outside } from '../outside/reasons'
 import { quoteC, strerror } from './errors'
-import { encodeLatin1 } from '@demicodes/utils'
+import { compareUtf8Bytes, encodeLatin1, utf8AsLatin1 } from '@demicodes/utils'
 import { bracketToRegex, escapeRegex } from '../grammar/glob'
 
 interface Expression {
@@ -91,7 +91,7 @@ export const find: Builtin = async (ctx) => {
     await ctx.stderr(`find: ${error.message}\n`)
     return 1
   }
-  const matcher = parsed.expression.name ? nameMatcher(parsed.expression.name.pattern, parsed.expression.name.ignoreCase) : null
+  const matcher = parsed.expression.name ? nameMatcher(utf8AsLatin1(parsed.expression.name.pattern), parsed.expression.name.ignoreCase) : null
   let status = 0
   for (const start of parsed.paths) {
     const ok = await walk(ctx, start, 0, parsed.expression, matcher)
@@ -111,8 +111,8 @@ async function walk(ctx: BuiltinContext, path: string, depth: number, expression
   const base = depth === 0 ? path.replace(/\/+$/, '') || '/' : path.slice(path.lastIndexOf('/') + 1)
   const baseName = depth === 0 ? base.slice(base.lastIndexOf('/') + 1) || base : base
   const typeOk = expression.type === null || (expression.type === 'f' ? stat.isFile && !stat.isSymbolicLink : stat.isDirectory && !stat.isSymbolicLink)
-  const nameOk = matcher === null || matcher.test(baseName)
-  if (typeOk && nameOk) await ctx.stdout(encodeLatin1(`${path}\n`))
+  const nameOk = matcher === null || matcher.test(utf8AsLatin1(baseName))
+  if (typeOk && nameOk) await ctx.stdout(encodeLatin1(`${utf8AsLatin1(path)}\n`))
   if (!stat.isDirectory || stat.isSymbolicLink) return true
   if (expression.maxDepth !== null && depth >= expression.maxDepth) return true
   let names: string[]
@@ -122,7 +122,7 @@ async function walk(ctx: BuiltinContext, path: string, depth: number, expression
     await ctx.stderr(`find: ${quoteC(path)}: ${strerror(error)}\n`)
     return false
   }
-  names.sort((x, y) => (x < y ? -1 : x > y ? 1 : 0))
+  names.sort(compareUtf8Bytes)
   let ok = true
   for (const name of names) {
     const child = path.endsWith('/') ? `${path}${name}` : `${path}/${name}`

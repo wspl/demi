@@ -1,4 +1,5 @@
 import type { Builtin } from './io'
+import { encodeLatin1, utf8AsLatin1 } from '@demicodes/utils'
 
 /** bash's `echo`: `-n` and `-e` (and their combinations) are options; anything else is text. */
 export const echo: Builtin = async (ctx) => {
@@ -14,10 +15,10 @@ export const echo: Builtin = async (ctx) => {
       else escapes = false
     }
   }
-  let text = ctx.argv.slice(i).join(' ')
+  let text = utf8AsLatin1(ctx.argv.slice(i).join(' '))
   let stop = false
   if (escapes) ({ text, stop } = interpretEscapes(text))
-  await ctx.stdout(text + (newline && !stop ? '\n' : ''))
+  await ctx.stdout(encodeLatin1(text + (newline && !stop ? '\n' : '')))
   return 0
 }
 
