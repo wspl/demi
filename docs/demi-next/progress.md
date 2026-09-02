@@ -1367,6 +1367,23 @@ now linked with `-headerpad 0x2000` (`.cargo/config.toml`) and `--pack`
 checks the padding of whatever it is given. All four targets were packed
 from macOS and run.
 
+Verified upstream (2026-09-02): this is libsui's own open bug, not a
+misuse — `denoland/sui#82` ("Resulting binary (often) failing with SIGILL
+on MacOS", 2026-08-16) and PR `#83`, unmerged, which reads exactly like our
+crash: `build` pays for the 152-byte load command by dropping that much of
+the padding after the load commands without checking it exists, and a
+stock `cargo build` binary often has 48 bytes. The PR's author adds that
+release binaries are corrupted identically and only look fine because a
+different function sits at the start of `__text` — so our release build
+"working" was luck, and the `-headerpad` link flag plus the pre-check are
+the correct mitigation until upstream shifts the image itself. The same PR
+found a second defect: with `LC_DYLD_CHAINED_FIXUPS` libsui leaves
+`seg_count` one short and `dyld_info -fixups` rejects the output (dyld is
+lenient, so `deno compile` binaries run anyway). tinyjs is linked with
+`LC_DYLD_INFO_ONLY`, `dyld_info -fixups` accepts the packed binary, and
+`-fixup_chains` must not be added to the link flags while that bug is
+open. Deno's own `.cargo/config.toml` sets no `-headerpad`.
+
 `cargo test` runs the conformance suite on the bare binary and a
 packed-binary case (`--pack`, strict signature verification on macOS, run
 through `demi` and `demi-runner` symlinks, arguments passed through
