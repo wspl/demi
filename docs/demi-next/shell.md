@@ -41,7 +41,7 @@ by:
  ╞═══════════════════════════════════════╡    ╞═══════════════════════════════════════╡
  │  shell API (private)         (Rust)   │    │  shell API (private)         (Rust)   │
  │  fs+errno · spawn+tee · pty           │    │  fs+errno · spawn · stdio             │
- │  tcp/tls/ws/uds · http                │    │  uds · http                           │
+ │  ws · http · uds                      │    │  uds · http                           │
  │  event loop · timers                  │    │  event loop · timers                  │
  │  msgpack · base64 · utf-8 · globals   │    │  base64 · utf-8 · globals             │
  ├───────────────────────────────────────┤    ├───────────────────────────────────────┤
@@ -83,26 +83,66 @@ but carries a Node-compatibility surface we do not want, an experimental
 label, and gaps (WebSocket, UDS) that would need Rust modules regardless —
 the same work with a larger, borrowed API.
 
-## Primitives
+## The shell API
 
-Everything JS cannot do itself, and everything that loops over bytes:
+The shell runs one bundled ESM module and gives it the few things JS
+cannot do for itself. Its API is shaped by that role, not by any existing
+runtime:
 
-| Area | Primitives |
-|---|---|
-| Module loading | ESM from files and from strings; `import()` |
-| Event loop | timers, microtask and job scheduling, async completion for every IO primitive below |
-| Filesystem | the `HostFileSystem` method set with **errno fidelity**: open/read/write/stat/readdir/mkdir/rename/unlink/symlink/chmod/utimes/truncate, streaming read and write |
-| Processes | spawn with pipes, stdin write, kill by signal name, exit code and signal; **tee**: stdout/stderr written to a file on the target with only a bounded view returned to JS; pty allocation for interactive commands |
-| Network | TCP client and listener, TLS client, WebSocket client, HTTP client, Unix domain sockets (client and listener) |
-| Bytes | base64, MessagePack encode/decode, UTF-8 encode/decode |
-| Process | argv, env, cwd, exit, signals, stdin/stdout/stderr streams |
-| Globals | `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `URL`, `crypto.randomUUID`, `crypto.getRandomValues`, `performance.now`, `console`, `AbortController`, `structuredClone` |
+- **One frozen global, `__shell`.** Not a module: bundles treat it as
+  external. `@demicodes/host-shell` is the only package that reads it and
+  exports typed wrappers; the runner and `@demicodes/command-loader`
+  depend on host-shell, never on the global. That single import point is
+  what makes the shell API private.
+- **Every IO call returns a `Promise`** and takes and returns plain data.
+  Bytes are `Uint8Array`; strings are used only for paths, names and
+  signal names.
+- **Handles are integers** with an explicit `close(id)` — files,
+  processes, sockets and listeners alike. Nothing is released by a GC
+  finalizer, so a leak is countable in tests.
+- **Reads are pull-model**: `read(id, max)` resolves to bytes or `null` at
+  end of stream. There are no WHATWG streams and no event callbacks;
+  backpressure is implicit and JS never buffers.
+- **Errors are `ShellError { code, errno, syscall, path? }`** with Node's
+  string codes (`ENOENT`, `EACCES`, …), so `errorCode` in
+  `@demicodes/utils` and the existing Host error mapping apply unchanged.
+- **Cancellation is `close` or `kill`.** The primitives do not know
+  `AbortSignal`; host-shell maps it.
+- `__shell.version` and `__shell.abi` are two numbers; host-shell checks
+  the abi at start.
+
+### Primitives
+
+Every primitive is there because one of the three JS blocks in the stack
+needs it; nothing is there for generality.
+
+| Area | Primitives | Needed by |
+|---|---|---|
+| Module loading | the embedded bundle runs at start; `import()` of an **absolute file path** loads a second module at run time — no npm-style resolution of any kind | `runtime` command modules from `~/.demi/commands/<hash>/` |
+| Event loop | `setTimeout`/`clearTimeout`/`setInterval`/`queueMicrotask`; every IO completion below is delivered on the same loop | all |
+| Filesystem | the `HostFileSystem` method set one to one — `readFile`/`writeFile`/`appendFile`, `stat`/`lstat`, `readdir` with types, `mkdir`, `rm`, `cp`, `mv`, `chmod`, `symlink`/`link`/`readlink`/`realpath`, `utimes` — plus `open`/`read`/`write`/`close` for streaming; errno fidelity throughout | host-shell |
+| Processes | `spawn({ command, args, cwd, env, stdin, uid?, gid?, killProcessGroup?, tee? })` → handle with stdin/stdout/stderr ids; `kill(id, signal)`; `wait(id)` → `{ code, signal }`. **tee**: with `tee: { stdoutPath, stderrPath, viewLimit }` the full streams are written to those files inside the shell and JS reads only the first `viewLimit` bytes of each, then `null`; `wait` also reports the full byte counts. `uid`/`gid` is how PID 1 runs jobs as the guest user | runner jobs, Host `spawn`, the Claude Code CLI |
+| Network | `wsConnect(url, headers)` → send bytes, receive bytes, close; `httpRequest({ method, url, headers, body: bytes \| file id })` → status, headers, body id; `udsConnect(path)`, `udsListen(path)`/`accept`. TLS lives inside these; **no TCP or TLS primitive is exposed** — nothing needs one | the backend socket, the relay, `output_upload`, transfers |
+| Bytes | MessagePack encode/decode (`Uint8Array` and `Date` as extension types), base64, SHA-256, random bytes | frames, manifest-cache verification, claim codes |
+| Own process | `argv`, `env` (read-only snapshot), `cwd`/`chdir`, `exit`, `onSignal`, pre-opened stdin/stdout/stderr ids, `pid`, `uid`/`gid`/`hostname`/`homeDir` | entry-mode selection, `HostIdentity`, PID 1's `SIGTERM` |
+| Globals | `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `crypto.getRandomValues`, `performance.now`, `console`, `AbortController`, `structuredClone` | zod, the protocol package, the loader |
+
+When the shell is PID 1 it additionally reaps adopted children itself; that
+is its only PID 1-specific behaviour. Mounting and network configuration
+are done by spawning `mount` and `ip` from the rootfs, not by primitives.
 
 The rule that decides what belongs here: **JS on the shell handles control
 flow; any per-byte work is a primitive.** QuickJS has no JIT — a pure-JS
 base64 loop measured 2.8 MB/s where the native primitive measured 300 MB/s
 — so the tee, the codec and the transcoders are Rust, and the runner's JS
 never sees a chunk it has to iterate over.
+
+### Not in the first version
+
+Each has no consumer today and is added only when one appears: pty
+(interactive input goes through the job's stdin pipe), HTTP/WebSocket/TLS
+servers (the runner is outbound-only; the relay is a UDS), mount and
+netlink primitives, fs watching, workers, WebAssembly, compression.
 
 The Host implementation `@demicodes/host-shell` maps the `Host` contract
 (`packages/shell/src/host.ts`) onto these primitives, exactly as
