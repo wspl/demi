@@ -1,5 +1,6 @@
 import { outside } from '../outside/reasons'
 import type { Builtin } from './io'
+import { encodeLatin1, utf8AsLatin1 } from '@demicodes/utils'
 
 /**
  * bash's `printf` for the whitelisted conversions: `%s %c %d %i %u %x %X %o
@@ -42,8 +43,9 @@ export const printf: Builtin = async (ctx) => {
     await ctx.stderr('bash: line ' + ctx.line + ': printf: usage: printf [-v var] format [arguments]\n')
     return 2
   }
-  const pieces = parseFormat(format, ctx.line)
-  const args = ctx.argv.slice(i + 1)
+  // Format and arguments are bytes from here on: widths, precisions and `%c` count bytes, as bash does.
+  const pieces = parseFormat(utf8AsLatin1(format), ctx.line)
+  const args = ctx.argv.slice(i + 1).map(utf8AsLatin1)
   const hasDirective = pieces.some((piece) => typeof piece !== 'string' && piece.conversion !== '%')
   let out = ''
   let index = 0
@@ -75,7 +77,7 @@ export const printf: Builtin = async (ctx) => {
       out += formatInteger(number.value, piece)
     }
   } while (hasDirective && index < args.length)
-  await ctx.stdout(out)
+  await ctx.stdout(encodeLatin1(out))
   return status
 }
 

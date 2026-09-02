@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout": "",
+  "stderr": "cut: the delimiter must be a single character\nTry 'cut --help' for more information.\n",
+  "user": "zan",
+  "group": "zan"
+}

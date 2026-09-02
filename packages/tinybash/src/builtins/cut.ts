@@ -2,7 +2,7 @@ import type { Builtin } from './io'
 import { parseFlags, value } from './flags'
 import { SPECS } from './table'
 import { lazyInputs } from './inputs'
-import { encodeLatin1 } from '@demicodes/utils'
+import { encodeLatin1, utf8AsLatin1 } from '@demicodes/utils'
 import { lines } from '../exec/stream'
 import { tryHelp } from './errors'
 
@@ -30,7 +30,8 @@ function parseList(list: string): ((field: number) => boolean) | null {
 export const cut: Builtin = async (ctx) => {
   const flags = parseFlags('cut', ctx.argv, SPECS.cut, ctx.line)
   const list = value(flags, 'f')
-  const delimiter = value(flags, 'd')
+  const raw = value(flags, 'd')
+  const delimiter = raw === undefined ? undefined : utf8AsLatin1(raw)
   if (list === undefined) {
     await ctx.stderr(`cut: you must specify a list of bytes, characters, or fields\n${tryHelp('cut')}`)
     return 1

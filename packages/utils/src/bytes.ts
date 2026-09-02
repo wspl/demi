@@ -23,6 +23,24 @@ export function encodeLatin1(text: string): Uint8Array {
   return out
 }
 
+/**
+ * The UTF-8 encoding of `text` as a latin1 byte-string (each char = one
+ * byte), for code that processes text byte by byte, as the C locale does.
+ */
+export function utf8AsLatin1(text: string): string {
+  return decodeLatin1(encodeUtf8(text))
+}
+
+/** Orders strings by UTF-16 code unit, which for byte-strings is byte order. */
+export function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/** Orders strings by their UTF-8 bytes, as the C locale orders names and lines. */
+export function compareUtf8Bytes(a: string, b: string): number {
+  return compareCodeUnits(utf8AsLatin1(a), utf8AsLatin1(b))
+}
+
 /** Unpacks bytes into a latin1 byte-string (each char = one byte). */
 export function decodeLatin1(bytes: Uint8Array): string {
   let out = ''

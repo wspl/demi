@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "bin.dat\ncsv.txt\ndocs\nempty.txt\nlink.txt\nnaÃ¯ve.txt\nnonl.txt\nnotes.txt\nnumbers.txt\nscript.sh\nspace dir\nsrc\nutf8.txt\nwords.txt\n./naÃ¯ve.txt\nnaÃ¯ve.txt\n",
+  "stderr": "ls: cannot access 'na?ve.txt': No such file or directory\n",
+  "user": "zan",
+  "group": "zan"
+}
