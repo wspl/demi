@@ -1567,3 +1567,29 @@ Pitfalls met:
   that reads `stdout.bin` right after the exited status polls for it.
 - `$?` is outside the grammar, so a test cannot echo an exit status; it
   observes the status the environment reports instead.
+
+Step 5 done — the second root and the embedding example: `scout` is the
+second root in the loader tests and the hostless test (an `rpc` leaf that
+is steered and aborted through `shell_write` / `shell_abort`), and
+`examples/embed-commands/` embeds `demi` plus a `scout` root with only
+the loader and a Host, then puts tinybash on top for a hostless shell
+(`bun run examples/embed-commands/main.ts`). `zod` is a root
+devDependency so examples can declare input schemas.
+
+Checkpoint 2 result: typecheck clean; scoped `bun test` green for utils,
+shell, host-virtual, command-loader, tinybash, coding-agent, agent,
+backend, host-local (one pre-existing timing-sensitive shell test,
+"flushes redirected foreground output on shell_abort", is flaky under
+load on this machine and unrelated).
+
+Left for later, by design:
+
+- Runtime-module conformance under tinyjs (the target-side command mode)
+  is M9 with the runner; the modules are verified under Bun (LocalHost)
+  and against the store-backed VirtualHost here.
+- The hostless → managed-host hand-over on `outside` is M10; today the
+  tool result carries tinybash's refusal line, exit 2.
+- The tinybash "Reference suites" (just-bash compat, oils spec, GNU tests
+  filtered to the subset) from checkpoint 1 remain undone.
+- `printf` is outside the tinybash subset (`echo -n` / `echo -e` cover
+  most uses); worth a decision, since models reach for it.

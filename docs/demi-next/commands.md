@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (lands in M8; the CLI's `rpc` path completes in M9) |
+| Status | Implemented (M8); the target-side command mode and the CLI's `rpc` path complete in M9 |
 | Scope | The command system: root commands, organizing rule, command kinds, the command ABI, the manifest, the loader, tinybash and hostless execution, root commands on a target |
 
 ## Root commands
