@@ -13,7 +13,7 @@ import type {
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
 import { createId, deferred, type Deferred } from '@demicodes/utils'
-import type { BackendToRunnerMessage, HostFsOp, RunnerToBackendMessage, WireCallError } from './messages'
+import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, RunnerToBackendMessage } from './messages'
 
 export interface RemoteHostOptions {
   defaultCwd: string
@@ -54,7 +54,7 @@ export class RemoteHost implements Host {
     this.commandArtifactsDir = options.commandArtifactsDir
     this.identity = options.identity
     this.store = options.store
-    this.fs = createRemoteFs((op, args) => this.call(op, args))
+    this.fs = createRemoteFs((op, params) => this.call(op, params))
     this.process = {
       spawn: (params) => this.spawn(params),
       openCwd: async (path) => this.openCwd(path),
@@ -92,12 +92,12 @@ export class RemoteHost implements Host {
 
   /** Routes runner messages that belong to this Host (fs results, spawn streams). */
   handleMessage(message: RunnerToBackendMessage): void {
-    if (message.type === 'fs_result') {
+    if (message.type === 'fs_ok' || message.type === 'fs_error') {
       const pending = this.pendingCalls.get(message.id)
       if (!pending) return
       this.pendingCalls.delete(message.id)
-      if (message.ok) pending.resolve(message.result)
-      else pending.reject(wireCallError(message.error))
+      if (message.type === 'fs_ok') pending.resolve(message.result)
+      else pending.reject(fsError(message.code, message.message))
       return
     }
     if (message.type === 'spawn_output') {
@@ -121,18 +121,19 @@ export class RemoteHost implements Host {
     this.send(message)
   }
 
-  private async call(op: HostFsOp, args: unknown[]): Promise<unknown> {
+  /** One `fs_<op>` request, answered by `fs_ok` or `fs_error` under its id. */
+  private async call<Op extends FsOp>(op: Op, params: FsParams<Op>): Promise<FsResult<Op>> {
     if (!this.send) throw offlineError('runner disconnected')
     const id = createId()
     const pending = deferred<unknown>()
     this.pendingCalls.set(id, pending)
     try {
-      this.send({ type: 'fs_call', id, op, args })
+      this.send({ type: `fs_${op}`, id, ...definedFields(params) } as BackendToRunnerMessage)
     } catch (error) {
       this.pendingCalls.delete(id)
       throw error
     }
-    return pending.promise
+    return (await pending.promise) as FsResult<Op>
   }
 
   private async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {
@@ -168,9 +169,9 @@ function offlineError(reason: string): Error {
   return Object.assign(new Error(reason), { code: 'ERUNNEROFFLINE' })
 }
 
-function wireCallError(error: WireCallError): Error {
-  const rebuilt = new Error(error.message)
-  if (error.code) Object.assign(rebuilt, { code: error.code })
+function fsError(code: string | undefined, message: string): Error {
+  const rebuilt = new Error(message)
+  if (code) Object.assign(rebuilt, { code })
   return rebuilt
 }
 
@@ -276,32 +277,36 @@ function failedSpawnHandle(exit: HostSpawnExit): HostSpawnHandle {
 
 async function* emptyStream(): AsyncIterable<never> {}
 
-function createRemoteFs(call: (op: HostFsOp, args: unknown[]) => Promise<unknown>): HostFileSystem {
+type RemoteCall = <Op extends FsOp>(op: Op, params: FsParams<Op>) => Promise<FsResult<Op>>
+
+function createRemoteFs(call: RemoteCall): HostFileSystem {
   return {
-    readFile: (path, options) => call('readFile', dropUndefined([path, options])) as Promise<Uint8Array>,
-    writeFile: (path, data, options) => call('writeFile', dropUndefined([path, data, options])) as Promise<void>,
-    appendFile: (path, data, options) => call('appendFile', dropUndefined([path, data, options])) as Promise<void>,
-    exists: (path, options) => call('exists', dropUndefined([path, options])) as Promise<boolean>,
-    stat: (path, options) => call('stat', dropUndefined([path, options])) as Promise<HostFileStat>,
-    lstat: (path, options) => call('lstat', dropUndefined([path, options])) as Promise<HostFileStat>,
+    readFile: (path, options) => call('readFile', { path, cwd: options?.cwd }),
+    writeFile: async (path, data, options) => void (await call('writeFile', { path, data, cwd: options?.cwd, createParents: options?.createParents })),
+    appendFile: async (path, data, options) => void (await call('appendFile', { path, data, cwd: options?.cwd, createParents: options?.createParents })),
+    exists: (path, options) => call('exists', { path, cwd: options?.cwd }),
+    stat: (path, options) => call('stat', { path, cwd: options?.cwd }),
+    lstat: (path, options) => call('lstat', { path, cwd: options?.cwd }),
     readdir: ((path: string, options?: { cwd?: string; withFileTypes?: boolean }) =>
-      call('readdir', dropUndefined([path, options]))) as HostFileSystem['readdir'],
-    mkdir: (path, options) => call('mkdir', dropUndefined([path, options])) as Promise<void>,
-    rm: (path, options) => call('rm', dropUndefined([path, options])) as Promise<void>,
-    cp: (path, destination, options) => call('cp', dropUndefined([path, destination, options])) as Promise<void>,
-    mv: (path, destination, options) => call('mv', dropUndefined([path, destination, options])) as Promise<void>,
-    chmod: (path, mode, options) => call('chmod', dropUndefined([path, mode, options])) as Promise<void>,
-    symlink: (target, path, options) => call('symlink', dropUndefined([target, path, options])) as Promise<void>,
-    link: (existingPath, path, options) => call('link', dropUndefined([existingPath, path, options])) as Promise<void>,
-    readlink: (path, options) => call('readlink', dropUndefined([path, options])) as Promise<string>,
-    realpath: (path, options) => call('realpath', dropUndefined([path, options])) as Promise<string>,
-    utimes: (path, atime, mtime, options) => call('utimes', dropUndefined([path, atime, mtime, options])) as Promise<void>,
+      call('readdir', { path, cwd: options?.cwd, withFileTypes: options?.withFileTypes })) as HostFileSystem['readdir'],
+    mkdir: async (path, options) => void (await call('mkdir', { path, cwd: options?.cwd, recursive: options?.recursive })),
+    rm: async (path, options) => void (await call('rm', { path, cwd: options?.cwd, recursive: options?.recursive, force: options?.force })),
+    cp: async (path, destination, options) => void (await call('cp', { path, destination, cwd: options?.cwd, recursive: options?.recursive })),
+    mv: async (path, destination, options) => void (await call('mv', { path, destination, cwd: options?.cwd })),
+    chmod: async (path, mode, options) => void (await call('chmod', { path, mode, cwd: options?.cwd })),
+    symlink: async (target, path, options) => void (await call('symlink', { target, path, cwd: options?.cwd })),
+    link: async (existingPath, path, options) => void (await call('link', { existingPath, path, cwd: options?.cwd })),
+    readlink: (path, options) => call('readlink', { path, cwd: options?.cwd }),
+    realpath: (path, options) => call('realpath', { path, cwd: options?.cwd }),
+    utimes: async (path, atime, mtime, options) => void (await call('utimes', { path, atime, mtime, cwd: options?.cwd })),
   }
 }
 
-/** Trailing undefined options are dropped so the wire carries the caller's actual arity. */
-function dropUndefined(args: unknown[]): unknown[] {
-  const trimmed = [...args]
-  while (trimmed.length > 0 && trimmed[trimmed.length - 1] === undefined) trimmed.pop()
-  return trimmed
+/** Undefined options are left off the frame; the wire carries what the caller set. */
+function definedFields<T extends object>(params: T): Partial<T> {
+  const defined: Partial<T> = {}
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) (defined as Record<string, unknown>)[key] = value
+  }
+  return defined
 }

@@ -4,8 +4,8 @@ import { LocalHost } from '@demicodes/host-local'
 import {
   HostRpcServer,
   RUNNER_PROTOCOL_VERSION,
-  decodeBackendToRunnerMessage,
-  encodeRunnerMessage,
+  createRunnerWire,
+  msgpackCodec,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
@@ -36,6 +36,8 @@ export interface RunnerClientOptions {
  * claim), answers Host RPC, responds to liveness pings, and reconnects with
  * exponential backoff. Runner presence equals the state of this socket.
  */
+const wire = createRunnerWire(msgpackCodec)
+
 export class RunnerClient {
   private readonly state: RunnerState
   private readonly host: Pick<Host, 'fs' | 'process' | 'identity'>
@@ -88,6 +90,7 @@ export class RunnerClient {
       this.scheduleReconnect()
       return
     }
+    ws.binaryType = 'arraybuffer'
     this.ws = ws
     const rpc = new HostRpcServer(this.host, (message) => this.send(ws, message))
     this.rpc = rpc
@@ -106,7 +109,8 @@ export class RunnerClient {
       })
     })
     ws.addEventListener('message', (event) => {
-      void this.handleFrame(ws, rpc, typeof event.data === 'string' ? event.data : '')
+      if (!(event.data instanceof ArrayBuffer)) return
+      void this.handleFrame(ws, rpc, new Uint8Array(event.data))
     })
     ws.addEventListener('close', () => {
       if (this.ws !== ws) return
@@ -120,10 +124,10 @@ export class RunnerClient {
     })
   }
 
-  private async handleFrame(ws: WebSocket, rpc: HostRpcServer, frame: string): Promise<void> {
+  private async handleFrame(ws: WebSocket, rpc: HostRpcServer, frame: Uint8Array): Promise<void> {
     let message: BackendToRunnerMessage
     try {
-      message = decodeBackendToRunnerMessage(frame)
+      message = wire.decodeBackendToRunner(frame)
     } catch {
       return
     }
@@ -145,13 +149,18 @@ export class RunnerClient {
         this.options.onStatus?.('online')
         return
       case 'hello_error':
-        // Revoked device or bad token: retrying cannot help without operator action.
-        this.rejected = true
-        this.options.onStatus?.('rejected', message.reason)
+        // The token's previous connection may be a half-open socket the
+        // backend has not timed out yet: back off and try again. Anything
+        // else cannot change without operator action.
+        if (message.code !== 'already_connected') {
+          this.rejected = true
+          this.options.onStatus?.('rejected', message.reason)
+        }
         ws.close()
         return
       case 'ping':
-        this.send(ws, { type: 'pong' })
+        // No job table on this build: the count is the port's (M9 step 3).
+        this.send(ws, { type: 'pong', jobs: 0 })
         return
       default:
         await rpc.handleMessage(message)
@@ -160,7 +169,7 @@ export class RunnerClient {
 
   private send(ws: WebSocket, message: RunnerToBackendMessage): void {
     try {
-      ws.send(encodeRunnerMessage(message))
+      ws.send(wire.encode(message))
     } catch {
       // A racing close drops the frame; the close handler owns recovery.
     }

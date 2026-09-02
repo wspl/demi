@@ -23,6 +23,7 @@
   "dependencies": {
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
+    "@msgpack/msgpack": "^3.1.3",
     "zod": "^4.0.0"
   },
   "license": "Apache-2.0",
@@ -37,6 +38,7 @@
   "homepage": "https://github.com/wspl/demi/tree/main/packages/runner-protocol#readme",
   "bugs": "https://github.com/wspl/demi/issues",
   "devDependencies": {
-    "@demicodes/host-local": "workspace:^"
+    "@demicodes/host-local": "workspace:^",
+    "@demicodes/host-runner": "workspace:^"
   }
 }

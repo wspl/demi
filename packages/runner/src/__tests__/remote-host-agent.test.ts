@@ -8,13 +8,7 @@ import { AgentServer, type AgentHarness, type ClientSessionEvent } from '@demico
 import { LocalHost } from '@demicodes/host-local'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import {
-  RemoteHost,
-  decodeRunnerToBackendMessage,
-  encodeRunnerMessage,
-  type BackendToRunnerMessage,
-  type RunnerToBackendMessage,
-} from '@demicodes/runner-protocol'
+import { RemoteHost, createRunnerWire, msgpackCodec, type BackendToRunnerMessage } from '@demicodes/runner-protocol'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
 import { RunnerClient } from '../runner-client'
@@ -37,6 +31,7 @@ const model: ModelSelection = {
   thinking: null,
 }
 const selection = { providerId: 'stub', model }
+const wire = createRunnerWire(msgpackCodec)
 
 test('bare AgentServer executes over a live runner; death mid-command is a tool error; reconnect resumes', async () => {
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-runner-e2e-'))
@@ -62,14 +57,15 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
     },
     websocket: {
       message(ws, data) {
-        const message = decodeRunnerToBackendMessage(String(data))
+        if (typeof data === 'string') throw new Error('runner frames are binary')
+        const message = wire.decodeRunnerToBackend(new Uint8Array(data))
         if (message.type === 'hello') {
           active.socket = ws
           ws.data.authed = true
           remoteHost.attach((outgoing: BackendToRunnerMessage) => {
-            ws.send(encodeRunnerMessage(outgoing))
+            ws.send(wire.encode(outgoing))
           })
-          ws.send(encodeRunnerMessage({ type: 'hello_ok', deviceId: 'device-test' }))
+          ws.send(wire.encode({ type: 'hello_ok', deviceId: 'device-test' }))
           return
         }
         remoteHost.handleMessage(message)

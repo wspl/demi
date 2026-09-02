@@ -1,16 +1,21 @@
 export {
   RUNNER_PROTOCOL_VERSION,
-  HOST_FS_OPS,
-  encodeRunnerMessage,
-  decodeRunnerToBackendMessage,
-  decodeBackendToRunnerMessage,
+  FS_OPS,
+  createRunnerWire,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
   type RunnerProtocolMessage,
   type RunnerInfo,
-  type HostFsOp,
-  type WireCallError,
+  type RunnerWire,
+  type MessagePackCodec,
+  type HelloErrorCode,
+  type FsOp,
+  type FsParams,
+  type FsResult,
+  type FsCallMessage,
+  type FsOkMessage,
 } from './messages'
-export { runnerToBackendMessageSchema, backendToRunnerMessageSchema } from './schemas'
+export { msgpackCodec } from './codec'
+export { runnerToBackendMessageSchema, backendToRunnerMessageSchema, fsOps } from './schemas'
 export { RemoteHost, type RemoteHostOptions } from './remote-host'
 export { HostRpcServer } from './host-rpc-server'

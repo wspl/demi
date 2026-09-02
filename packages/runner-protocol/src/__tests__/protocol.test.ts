@@ -6,39 +6,49 @@ import { LocalHost } from '@demicodes/host-local'
 import {
   HostRpcServer,
   RemoteHost,
-  decodeBackendToRunnerMessage,
-  decodeRunnerToBackendMessage,
-  encodeRunnerMessage,
+  createRunnerWire,
+  msgpackCodec,
   type BackendToRunnerMessage,
   type RunnerProtocolMessage,
   type RunnerToBackendMessage,
 } from '../index'
 import { memoryHostStore } from '@demicodes/shell/testing'
 
-test('runner messages round-trip through the portable wire codec', () => {
+const wire = createRunnerWire(msgpackCodec)
+
+test('runner messages round-trip through the MessagePack wire', () => {
+  const runnerToBackend = new Set(['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit'])
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>
-    message.type === 'hello' || message.type === 'pong' || message.type === 'fs_result' || message.type === 'spawn_output' || message.type === 'spawn_exit'
-      ? decodeRunnerToBackendMessage(encodeRunnerMessage(message))
-      : decodeBackendToRunnerMessage(encodeRunnerMessage(message))
+    runnerToBackend.has(message.type) ? wire.decodeRunnerToBackend(wire.encode(message)) : wire.decodeBackendToRunner(wire.encode(message))
 
   const hello: RunnerProtocolMessage = {
     type: 'hello',
-    protocol: 1,
+    protocol: 2,
     deviceToken: 'token',
     runner: { name: 'dev-box', platform: 'darwin', version: '1.0.0', identity: { uid: 501, gid: 20, hostname: 'mac' } },
   }
   expect(roundTrip(hello)).toEqual(hello)
 
-  // Uint8Array file bytes and Date args survive the wire.
+  // Uint8Array file bytes and Date args are native wire types.
   const call: RunnerProtocolMessage = {
-    type: 'fs_call',
+    type: 'fs_utimes',
     id: 'c1',
-    op: 'utimes',
-    args: ['/tmp/x', new Date('2026-08-31T00:00:00Z'), new Date('2026-08-31T01:00:00Z'), { cwd: '/tmp' }],
+    path: '/tmp/x',
+    atime: new Date('2026-08-31T00:00:00Z'),
+    mtime: new Date('2026-08-31T01:00:00.250Z'),
+    cwd: '/tmp',
   }
-  const decodedCall = roundTrip(call) as Extract<RunnerProtocolMessage, { type: 'fs_call' }>
-  expect(decodedCall.args[1]).toBeInstanceOf(Date)
-  expect((decodedCall.args[1] as Date).toISOString()).toBe('2026-08-31T00:00:00.000Z')
+  const decodedCall = roundTrip(call) as Extract<RunnerProtocolMessage, { type: 'fs_utimes' }>
+  expect(decodedCall.atime).toBeInstanceOf(Date)
+  expect(decodedCall.atime.toISOString()).toBe('2026-08-31T00:00:00.000Z')
+  expect(decodedCall.mtime.toISOString()).toBe('2026-08-31T01:00:00.250Z')
+  const stat: RunnerProtocolMessage = {
+    type: 'fs_ok',
+    id: 'c2',
+    op: 'stat',
+    result: { isFile: true, isDirectory: false, isSymbolicLink: false, mode: 0o644, size: 3, mtime: new Date(1_600_000_000_000) },
+  }
+  expect(roundTrip(stat)).toEqual(stat)
 
   const output: RunnerProtocolMessage = {
     type: 'spawn_output',
@@ -50,12 +60,16 @@ test('runner messages round-trip through the portable wire codec', () => {
   expect(decodedOutput.bytes).toBeInstanceOf(Uint8Array)
   expect([...decodedOutput.bytes]).toEqual([0, 255, 10])
 
-  expect(() => decodeRunnerToBackendMessage('42')).toThrow('Malformed')
-  expect(() => decodeBackendToRunnerMessage('{"no":"type"}')).toThrow('Malformed')
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode(42))).toThrow('Malformed')
+  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ no: 'type' }))).toThrow('Malformed')
+  expect(() => wire.decodeBackendToRunner(new TextEncoder().encode('{"type":"ping"}'))).toThrow('Malformed')
   // Validation is structural, not just type-tag: a hello without its runner
-  // info, or an fs_call with a bogus op, is refused at decode.
-  expect(() => decodeRunnerToBackendMessage('{"type":"hello","protocol":1}')).toThrow('Malformed')
-  expect(() => decodeBackendToRunnerMessage(encodeRunnerMessage({ type: 'fs_call', id: 'x', op: 'format_disk', args: [] } as never))).toThrow('Malformed')
+  // info, an unknown fs op, or a typed result of the wrong shape is refused.
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'hello', protocol: 2 }))).toThrow('Malformed')
+  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ type: 'fs_format_disk', id: 'x' }))).toThrow('Malformed')
+  expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ type: 'fs_stat', id: 'x' }))).toThrow('Malformed')
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'fs_ok', id: 'x', op: 'stat', result: 'nope' }))).toThrow('Malformed')
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'pong' }))).toThrow('Malformed')
 })
 
 /** RemoteHost and HostRpcServer joined directly (encoded through the codec both ways). */
@@ -69,10 +83,10 @@ async function connectedPair() {
     store: memoryHostStore(),
   })
   const server = new HostRpcServer(local, (message: RunnerToBackendMessage) => {
-    remote.handleMessage(decodeRunnerToBackendMessage(encodeRunnerMessage(message)))
+    remote.handleMessage(wire.decodeRunnerToBackend(wire.encode(message)))
   })
   remote.attach((message: BackendToRunnerMessage) => {
-    void server.handleMessage(decodeBackendToRunnerMessage(encodeRunnerMessage(message)))
+    void server.handleMessage(wire.decodeBackendToRunner(wire.encode(message)))
   })
   return { dir, remote, server }
 }
