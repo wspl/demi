@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M8 delivered; M9 in progress: step 1 delivered |
+| Status | M0–M8 delivered; M9 in progress: steps 1–2 delivered |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -114,7 +114,11 @@ conformance suite (`@demicodes/shell/testing`, the suite `host-local` also
 runs) on tinyjs; command mode runs `demi file create` and `demi file read`
 from a manifest directory through the packed binary reached by its root
 symlink (`packages/runner/src/tinyjs/entry.ts`), `file read` in 33 ms
-end to end on macOS arm64. Steps 2–6 open.
+end to end on macOS arm64. Step 2 delivered — the wire at both ends:
+MessagePack frames over an injected codec, `fs_<op>` requests with typed
+replies, `pong { jobs }`, `hello_error { code, reason }` with the
+one-connection-per-token rule; the M1 and M4 suites pass on it, and a test
+holds the Bun and tinyjs codecs to the same bytes. Steps 3–6 open.
 
 **M10 — Access model and managed hosts** (`sessions-and-targets.md`,
 `managed-hosts.md`; depends on M9)
