@@ -4,7 +4,7 @@
 // opaque here) and the supervisor keeps its lifecycle methods private.
 import { errorMessage } from '@demicodes/utils'
 import { z } from 'zod'
-import type { Command, CommandIO } from '@demicodes/shell'
+import { isCommandGroup, type Command, type CommandGroup, type CommandIO } from '@demicodes/shell'
 import { formatDuration } from './format'
 
 const SPAWN_PROMPT_DESCRIPTION =
@@ -41,49 +41,54 @@ export interface SubagentCommandOps<Job> {
   renderShow(job: Job): string
 }
 
-export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): Command {
+export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): CommandGroup {
   const profileNames = ops.profileNames()
   return {
     name: 'agent',
-    summary:
-      'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out.',
-    successOutput:
-      'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
-    failureOutput: 'non-zero exit with the abort or failure reason on stderr',
-    input: {
-      prompt: z.string().optional().describe(SPAWN_PROMPT_DESCRIPTION),
-      profile: z
-        .string()
-        .optional()
-        .describe(`Named subagent profile configured at harness assembly. Available: ${profileNames.join(', ')}.`),
-      description: z
-        .string()
-        .optional()
-        .describe('Short UI title distinguishing concurrent children.'),
-    },
-    positionals: ['prompt'],
-    stdinField: 'prompt',
-    output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
-    run: async ({ parsed, io, signal, stdinStream }) => {
-      const prompt = String(parsed.values.prompt ?? '').trim()
-      if (!prompt) {
-        await io.stderr('demi agent: prompt must not be empty\n')
-        return { exitCode: 1 }
-      }
-      let job: Job
-      try {
-        job = await ops.spawn({
-          prompt,
-          profileName: parsed.values.profile === undefined ? undefined : String(parsed.values.profile),
-          description: parsed.values.description === undefined ? '' : String(parsed.values.description),
-        })
-      } catch (error) {
-        await io.stderr(`demi agent: ${errorMessage(error)}\n`)
-        return { exitCode: 1 }
-      }
-      return ops.attend(job, { io, isJson: parsed.json === true, signal, stdinStream })
-    },
+    summary: 'Child agent sessions: spawn one and wait for its result, steer, abort, resume, list and show them.',
     subcommands: [
+      {
+        name: 'spawn',
+        kind: 'rpc',
+        summary:
+          'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out.',
+        successOutput:
+          'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
+        failureOutput: 'non-zero exit with the abort or failure reason on stderr',
+        input: {
+          prompt: z.string().optional().describe(SPAWN_PROMPT_DESCRIPTION),
+          profile: z
+            .string()
+            .optional()
+            .describe(`Named subagent profile configured at harness assembly. Available: ${profileNames.join(', ')}.`),
+          description: z
+            .string()
+            .optional()
+            .describe('Short UI title distinguishing concurrent children.'),
+        },
+        positionals: ['prompt'],
+        stdinField: 'prompt',
+        output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
+        run: async ({ parsed, io, signal, stdinStream }) => {
+          const prompt = String(parsed.values.prompt ?? '').trim()
+          if (!prompt) {
+            await io.stderr('demi agent spawn: prompt must not be empty\n')
+            return { exitCode: 1 }
+          }
+          let job: Job
+          try {
+            job = await ops.spawn({
+              prompt,
+              profileName: parsed.values.profile === undefined ? undefined : String(parsed.values.profile),
+              description: parsed.values.description === undefined ? '' : String(parsed.values.description),
+            })
+          } catch (error) {
+            await io.stderr(`demi agent spawn: ${errorMessage(error)}\n`)
+            return { exitCode: 1 }
+          }
+          return ops.attend(job, { io, isJson: parsed.json === true, signal, stdinStream })
+        },
+      },
       {
         name: 'steer',
         summary: 'Send a user steer to a running child. Queues until the child can take it; does not wait.',
@@ -94,6 +99,7 @@ export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): Command 
         positionals: ['id', 'message'],
         stdinField: 'message',
         output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
+        kind: 'rpc',
         run: async ({ parsed, io }) => {
           const id = String(parsed.values.id)
           const message = String(parsed.values.message ?? '').trim()
@@ -117,6 +123,7 @@ export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): Command 
         input: { id: z.string().describe('subagentId from spawn stderr') },
         positionals: ['id'],
         output: { json: z.object({ id: z.string(), aborted: z.boolean() }) },
+        kind: 'rpc',
         run: async ({ parsed, io }) => {
           const id = String(parsed.values.id)
           if (!ops.getRunning(id)) {
@@ -139,6 +146,7 @@ export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): Command 
         positionals: ['id', 'message'],
         stdinField: 'message',
         output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
+        kind: 'rpc',
         run: async ({ parsed, io, signal, stdinStream }) => {
           const id = String(parsed.values.id)
           const message = String(parsed.values.message ?? '').trim()
@@ -161,6 +169,7 @@ export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): Command 
         summary:
           'Snapshot roster of this session\'s running children, then its archived (finished, revivable via resume) children. One line per child with ages relative to now. A read, not a wait — not for polling loops.',
         output: { json: z.object({ agents: z.array(z.unknown()), archived: z.array(z.unknown()) }) },
+        kind: 'rpc',
         run: async ({ parsed, io }) => {
           const jobs = ops.runningJobs()
           const archived = await ops.listArchived()
@@ -196,6 +205,7 @@ export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): Command 
         input: { id: z.string().describe('subagentId from spawn stderr') },
         positionals: ['id'],
         output: { json: z.object({ agent: z.unknown() }) },
+        kind: 'rpc',
         run: async ({ parsed, io }) => {
           const id = String(parsed.values.id)
           const job = ops.getRunning(id)
@@ -213,7 +223,7 @@ export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): Command 
 }
 
 /** The child-side bridge node: `demi agent send-parent` inside a child session. */
-export function childAgentNode(deliverToParent: (message: string) => void): Command {
+export function childAgentNode(deliverToParent: (message: string) => void): CommandGroup {
   return {
     name: 'agent',
     summary: 'Subagent bridge to the parent session.',
@@ -228,6 +238,7 @@ export function childAgentNode(deliverToParent: (message: string) => void): Comm
         positionals: ['message'],
         stdinField: 'message',
         output: { json: z.object({ accepted: z.boolean() }) },
+        kind: 'rpc',
         run: async ({ parsed, io }) => {
           const message = String(parsed.values.message ?? '').trim()
           if (!message) {
@@ -247,13 +258,14 @@ export function childAgentNode(deliverToParent: (message: string) => void): Comm
  * Grafts the `agent` node under a `demi` root: onto an existing harness `demi`
  * tree, or as a new `demi` root when the harness has none.
  */
-export function injectSubagentCommand(commands: Command[], agentNode: Command): Command[] {
+export function injectSubagentCommand(commands: Command[], agentNode: CommandGroup): Command[] {
   const demiIndex = commands.findIndex((command) => command.name === 'demi')
   if (demiIndex === -1) {
     return [...commands, { name: 'demi', summary: 'Demi agent runtime commands.', subcommands: [agentNode] }]
   }
   const demi = commands[demiIndex]!
-  const subcommands = [...(demi.subcommands ?? []).filter((command) => command.name !== 'agent'), agentNode]
+  if (!isCommandGroup(demi)) throw new Error('injectSubagentCommand: the demi root must be a group')
+  const subcommands = [...demi.subcommands.filter((command) => command.name !== 'agent'), agentNode]
   const next = [...commands]
   next[demiIndex] = { ...demi, subcommands }
   return next

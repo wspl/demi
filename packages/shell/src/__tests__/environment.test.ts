@@ -1054,14 +1054,6 @@ test('BashEnvironment dispatches registered commands before system commands and 
       exitCode: 0,
     },
   ])
-  expect(result.commandMetadata).toEqual([
-    {
-      kind: 'registered-command',
-      name: 'echo-cmd',
-      args: ['run', '--value', 'hello'],
-      metadata: { echoed: 'hello' },
-    },
-  ])
 })
 
 test('BashEnvironment supports command builtin lookup and system execution', async () => {
@@ -2586,9 +2578,10 @@ function echoCommand(): Command {
         input: {
           value: z.string(),
         },
+        kind: 'rpc',
         run: async ({ parsed, io }) => {
           await io.stdout(`registered:${parsed.values.value}\n`)
-          return { exitCode: 0, metadata: { echoed: parsed.values.value } }
+          return { exitCode: 0 }
         },
       },
     ],
@@ -2603,6 +2596,7 @@ function counterCommand(): Command {
       {
         name: 'inc',
         summary: 'Increment counter.',
+        kind: 'rpc',
         run: async ({ io, storage }) => {
           const state = (await storage.readJson<{ count: number }>('counter.json')) ?? { count: 0 }
           state.count += 1
@@ -2627,6 +2621,7 @@ function stdinCommand(): Command {
           content: z.string(),
         },
         stdinField: 'content',
+        kind: 'rpc',
         run: async ({ parsed, io }) => {
           await io.stdout(String(parsed.values.content))
           return { exitCode: 0 }

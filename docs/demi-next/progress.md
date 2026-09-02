@@ -1465,3 +1465,48 @@ Decisions taken while implementing:
 - `ls -l` block totals are computed as ext4 would report them for
   ordinary files (4 KiB blocks, none for empty files or fast symlinks);
   the Linux run confirms the numbers for the fixture.
+
+### Checkpoint 2 — command tree, loader, hostless execution
+
+Order: (1) command tree types and the ABI in `@demicodes/shell`; (2)
+`@demicodes/command-loader`; (3) `demi file` as runtime modules, `todo`
+and `host` as `rpc`; (4) the hostless path in the backend through
+tinybash and the loader; (5) a second root, the embedding example and the
+acceptance tests. Each step lands with its docs and one commit.
+
+Decisions taken before writing code:
+
+- A `runtime` leaf carries its module as **text** (`module: string`), not
+  a file path: the tree is declared in TypeScript and its source paths do
+  not survive packaging, while the manifest hashes content anyway. The
+  text comes from `import x from './read.command.ts' with { type: 'text' }`.
+  Verified: Bun honors the attribute; tsdown/rolldown does not (it neither
+  passes import attributes to plugins nor recognizes `?text`), so a
+  `load` plugin serves `*.command.ts` by name; TypeScript types the import
+  as the module (a wildcard ambient declaration does not override a real
+  file), so `runtimeModule()` is the single conversion point and checks
+  for text at runtime.
+- The manifest build transpiles with Bun in the backend composition root;
+  `@demicodes/command-loader` stays pure JS.
+- `CommandResult` is `{ exitCode }`; the file commands' diff `metadata`
+  had no consumer outside their own test and is gone.
+- The hostless environment (tinybash + loader behind the `shell_*`
+  tools) lives in the backend, the only hostless embedder; the shell
+  package is due to shrink in M9.
+
+Step 1 done — the tree and the ABI (`@demicodes/shell`): `Command` is
+`CommandGroup | RpcCommand | RuntimeCommand`; groups navigate only (a
+group with nothing after it prints its help), so the two dual-mode nodes
+became `demi agent spawn` and `demi host current`. `CommandContext`,
+`CommandResult`, `DispatchIO`, `pathArg` / `isPathArg`, `runtimeModule`
+and `loadCommandModule` (a `blob:` import) live in `command-abi.ts`;
+`runRegisteredCommand` runs both kinds and takes stdin as a stream, so
+the same entry serves the just-bash bridge today and the loader next.
+`demi file read/create/edit/patch` are `*.command.ts` modules under
+`coding-agent/src/commands/file/`, imported as text; the tsdown build of
+`coding-agent` runs `commandModulesAsText` from `@demicodes/shell/build`
+and the built bundle carries the four module texts inline (verified).
+The file commands' diff metadata and the shell's `commandMetadata`
+plumbing are gone. tinybash's byte-stream helpers moved to
+`@demicodes/utils` (`bytesStream`, `collectBytes`, `emptyByteStream`,
+`concatByteStreams`, `toBytes`) and it takes `DispatchIO` from shell.

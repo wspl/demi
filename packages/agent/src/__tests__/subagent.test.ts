@@ -94,7 +94,7 @@ test('spawn runs an isolated child whose last assistant text becomes the tool re
   let continuationText = ''
   const { client, seen } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'Summarize the config file layout' --description sum", 5_000)],
+      [spawnCall('t1', "demi agent spawn 'Summarize the config file layout' --description sum", 5_000)],
       (request) => {
         childRequest = request
         return [events.text('child result text'), events.response()]
@@ -139,7 +139,7 @@ test('spawn runs an isolated child whose last assistant text becomes the tool re
 test('an empty child last assistant text completes with empty output', async () => {
   const { client, seen } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'silent task'", 5_000)],
+      [spawnCall('t1', "demi agent spawn 'silent task'", 5_000)],
       [events.response()],
       [events.text('parent done'), events.response()],
     ],
@@ -159,7 +159,7 @@ test('an empty prompt fails the spawn command without starting a child', async (
   let continuationText = ''
   const { client, seen } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent ''", 5_000)],
+      [spawnCall('t1', "demi agent spawn ''", 5_000)],
       (request) => {
         continuationText = itemsText(request)
         return [events.text('parent done'), events.response()]
@@ -179,8 +179,8 @@ test('a child has no spawn surface: its demi agent tree is send-parent only', as
   let childContinuationText = ''
   const { client } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'outer task'", 5_000)],
-      [events.toolCall('c1', 'shell_exec', { script: "demi agent 'nested task'", timeoutMs: 5_000 })],
+      [spawnCall('t1', "demi agent spawn 'outer task'", 5_000)],
+      [events.toolCall('c1', 'shell_exec', { script: "demi agent spawn 'nested task'", timeoutMs: 5_000 })],
       (request) => {
         childContinuationText = itemsText(request)
         return [events.text('child done'), events.response()]
@@ -202,7 +202,7 @@ test('send-parent reaches a parent blocked in the spawn as a steer at its contin
   let parentContinuation: InferenceRequest | null = null
   const { client } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'report halfway then finish' --description sp", 5_000)],
+      [spawnCall('t1', "demi agent spawn 'report halfway then finish' --description sp", 5_000)],
       [events.toolCall('c1', 'shell_exec', { script: "demi agent send-parent 'halfway there'", timeoutMs: 5_000 })],
       [events.text('final answer'), events.response()],
       (request) => {
@@ -226,7 +226,7 @@ test('a child finishing after the parent went idle wakes it with a user message'
   let wakeText = ''
   const { client } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'long background task' --description bg", 50)],
+      [spawnCall('t1', "demi agent spawn 'long background task' --description bg", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.25', timeoutMs: 5_000 })],
       [events.text('spawned, going idle'), events.response()],
       [events.text('bg result'), events.response()],
@@ -254,7 +254,7 @@ test('the idle wakeup carries the metadata of the round that spawned the child',
   const { client } = await openHarness({
     metadataLog,
     turns: [
-      [spawnCall('t1', "demi agent 'long background task' --description bg", 50)],
+      [spawnCall('t1', "demi agent spawn 'long background task' --description bg", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.25', timeoutMs: 5_000 })],
       [events.text('spawned, going idle'), events.response()],
       [events.text('bg result'), events.response()],
@@ -277,7 +277,7 @@ test('notifyParentOnIdle: false leaves the idle parent untouched when a child cl
   const { client, seen } = await openHarness({
     notifyParentOnIdle: false,
     turns: [
-      [spawnCall('t1', "demi agent 'long background task' --description bg", 50)],
+      [spawnCall('t1', "demi agent spawn 'long background task' --description bg", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.25', timeoutMs: 5_000 })],
       [events.text('spawned, going idle'), events.response()],
       [events.text('bg result'), events.response()],
@@ -303,7 +303,7 @@ test('client abortSubagents aborts every live child without touching the parent 
   const { client, seen } = await openHarness({
     notifyParentOnIdle: false,
     turns: [
-      [spawnCall('t1', "demi agent 'stuck task' --description stuck", 50)],
+      [spawnCall('t1', "demi agent spawn 'stuck task' --description stuck", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
       [events.text('spawned, going idle'), events.response()],
     ],
@@ -331,7 +331,7 @@ test('demi agent abort tears the child down and fails the pending spawn command'
   let abortResultText = ''
   const { client, seen } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'stuck task' --description stuck", 50)],
+      [spawnCall('t1', "demi agent spawn 'stuck task' --description stuck", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
       (request) => {
         const id = subagentIdFrom(request)
@@ -361,7 +361,7 @@ test('list and show expose bounded live snapshots with relative ages; a finished
   let inspectionText = ''
   const { client } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'inspect me' --description insp", 50)],
+      [spawnCall('t1', "demi agent spawn 'inspect me' --description insp", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 1', timeoutMs: 10_000 })],
       (request) => {
         const id = subagentIdFrom(request)
@@ -403,12 +403,12 @@ test('a profile systemPrompt replaces the parent prompt; an unknown profile fail
       { name: 'explore', description: 'Read-only explorer.', systemPrompt: () => 'explore-system-marker' },
     ],
     turns: [
-      [spawnCall('t1', "demi agent 'map the repo' --profile explore", 5_000)],
+      [spawnCall('t1', "demi agent spawn 'map the repo' --profile explore", 5_000)],
       (request) => {
         childRequest = request
         return [events.text('explored'), events.response()]
       },
-      [events.toolCall('t2', 'shell_exec', { script: "demi agent 'x' --profile nope", timeoutMs: 5_000 })],
+      [events.toolCall('t2', 'shell_exec', { script: "demi agent spawn 'x' --profile nope", timeoutMs: 5_000 })],
       (request) => {
         failureText = itemsText(request)
         return [events.text('parent done'), events.response()]
@@ -431,7 +431,7 @@ test('closing the parent detaches live children; a reopened parent restores and 
   // Phase 1: spawn a child, let it get stuck mid-tool, then tear the connection down.
   const first = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'undying task' --description bg", 50)],
+      [spawnCall('t1', "demi agent spawn 'undying task' --description bg", 50)],
       [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
       [events.text('spawned, going idle'), events.response()],
     ],
@@ -495,7 +495,7 @@ test('a finished child is archived: list shows it and resume revives it on top o
   let resumeToolText = ''
   const { client, seen } = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'first task' --description arc", 5_000)],
+      [spawnCall('t1', "demi agent spawn 'first task' --description arc", 5_000)],
       [events.text('first result'), events.response()],
       (request) => {
         childId = subagentIdFrom(request)
@@ -544,7 +544,7 @@ test('a finished child is archived: list shows it and resume revives it on top o
 test('a parent restore skips archived children; the archive stays revivable', async () => {
   const first = await openHarness({
     turns: [
-      [spawnCall('t1', "demi agent 'finish fast'", 5_000)],
+      [spawnCall('t1', "demi agent spawn 'finish fast'", 5_000)],
       [events.text('done already'), events.response()],
       [events.text('parent idle'), events.response()],
     ],
@@ -607,7 +607,7 @@ test('a readonly Host wrapped over a class-instance Host still reads; mutation a
 
 test('the live-children ceiling rejects the spawn beyond MAX_LIVE_SUBAGENTS', async () => {
   const spawns = Array.from({ length: MAX_LIVE_SUBAGENTS }, (_, index) =>
-    spawnCall(`t${index + 1}`, `demi agent 'held task ${index + 1}'`, 30),
+    spawnCall(`t${index + 1}`, `demi agent spawn 'held task ${index + 1}'`, 30),
   )
   const childHold: TurnScript = [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })]
   let limitText = ''
@@ -615,7 +615,7 @@ test('the live-children ceiling rejects the spawn beyond MAX_LIVE_SUBAGENTS', as
     turns: [
       spawns,
       ...Array.from({ length: MAX_LIVE_SUBAGENTS }, () => childHold),
-      [events.toolCall('t9', 'shell_exec', { script: "demi agent 'one too many'", timeoutMs: 5_000 })],
+      [events.toolCall('t9', 'shell_exec', { script: "demi agent spawn 'one too many'", timeoutMs: 5_000 })],
       (request) => {
         limitText = itemsText(request)
         return [events.text('parent done'), events.response()]

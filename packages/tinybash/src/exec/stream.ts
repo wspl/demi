@@ -1,6 +1,7 @@
-import { concatBytes, encodeUtf8 } from '@demicodes/utils'
+import { decodeLatin1, toBytes } from '@demicodes/utils'
+import type { CommandWriter } from '@demicodes/shell'
 
-export type Writer = (data: string | Uint8Array) => Promise<void> | void
+export type Writer = CommandWriter
 
 /** Thrown into a writer whose reader has gone away; the producing builtin stops quietly, as SIGPIPE would end it. */
 export class PipeClosed extends Error {
@@ -8,10 +9,6 @@ export class PipeClosed extends Error {
     super('pipe closed')
     this.name = 'PipeClosed'
   }
-}
-
-export function toBytes(data: string | Uint8Array): Uint8Array {
-  return typeof data === 'string' ? encodeUtf8(data) : data
 }
 
 /**
@@ -75,18 +72,6 @@ export class Pipe {
   }
 }
 
-export async function* emptyStream(): AsyncIterable<Uint8Array> {}
-
-export async function* bytesStream(bytes: Uint8Array): AsyncIterable<Uint8Array> {
-  if (bytes.length > 0) yield bytes
-}
-
-export async function collect(stream: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
-  const chunks: Uint8Array[] = []
-  for await (const chunk of stream) chunks.push(chunk)
-  return concatBytes(chunks)
-}
-
 /**
  * Lines of a byte stream, split on `\n`. Each line is returned without its
  * newline plus a flag saying whether one followed it, so tools can reproduce
@@ -96,7 +81,7 @@ export async function collect(stream: AsyncIterable<Uint8Array>): Promise<Uint8A
 export async function* lines(stream: AsyncIterable<Uint8Array>): AsyncIterable<{ text: string; newline: boolean }> {
   let carry = ''
   for await (const chunk of stream) {
-    let text = carry + latin1(chunk)
+    let text = carry + decodeLatin1(chunk)
     let start = 0
     for (;;) {
       const index = text.indexOf('\n', start)
@@ -108,23 +93,4 @@ export async function* lines(stream: AsyncIterable<Uint8Array>): AsyncIterable<{
     text = ''
   }
   if (carry.length > 0) yield { text: carry, newline: false }
-}
-
-export function latin1(bytes: Uint8Array): string {
-  let out = ''
-  const step = 8192
-  for (let i = 0; i < bytes.length; i += step) {
-    out += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + step)))
-  }
-  return out
-}
-
-export function latin1Bytes(text: string): Uint8Array {
-  const out = new Uint8Array(text.length)
-  for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i) & 0xff
-  return out
-}
-
-export function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
-  return concatBytes(chunks)
 }

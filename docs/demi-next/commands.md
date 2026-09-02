@@ -155,18 +155,25 @@ state is `rpc`.** There is no third kind and no per-target implementation.
 
 ## The command ABI
 
-A `runtime` module has one export:
+A leaf declares its kind next to its schema. An `rpc` leaf carries `run`,
+the backend handler; a `runtime` leaf carries `module`, the **text** of an
+ES module with one export:
 
 ```ts
 export default async function (ctx: CommandContext): Promise<CommandResult>
 ```
 
+`CommandResult` is `{ exitCode }`; everything a command has to say goes
+through its streams, so the result is the same object on every surface.
+
 A leaf's input schema marks every argument that names a file or directory
-as a **path** (a zod schema with `path` metadata). The loader resolves
-path arguments against the cwd before dispatch, and tinybash uses the same
-marks to decide whether a script stays inside the hostless namespace
-(`sessions-and-targets.md`). An argument that can be a path must be marked;
-an unmarked argument is never treated as one.
+as a **path** (`pathArg(z.string())`, zod metadata read back with
+`isPathArg`); the mark survives into the manifest's JSON Schema. Arguments
+reach the module as written — a module resolves a path through `ctx.fs`
+with `ctx.cwd`, so its messages name what the caller typed — and tinybash
+uses the marks to decide whether a script stays inside the hostless
+namespace (`sessions-and-targets.md`). An argument that can be a path must
+be marked; an unmarked argument is never treated as one.
 
 `ctx` is the whole world the module sees:
 
@@ -181,7 +188,8 @@ an unmarked argument is never treated as one.
 | `signal` | an `AbortSignal` for cancellation |
 
 A module imports nothing from the runtime: no Node builtins, no Bun or
-tinyjs globals, no network. It sees the standard ECMAScript library plus the
+tinyjs globals, no network, and no value import from any package — only
+`import type`. It sees the standard ECMAScript library plus the
 Web-platform globals every embedder guarantees (`TextEncoder`,
 `TextDecoder`, `URL`, `atob`, `btoa`, `crypto.randomUUID`, `AbortSignal`).
 This is what makes one module run identically inside tinyjs against a
@@ -193,6 +201,29 @@ Byte-heavy work inside a module goes through `ctx.fs` and the streams,
 which every embedder implements natively; a module never loops over bytes
 in JS (tinyjs has no JIT — `tinyjs.md`).
 
+### How a tree carries a module
+
+A module is one self-contained file named `<leaf>.command.ts`,
+type-checked like any other source; the helpers it needs live in it. The
+tree that declares the leaf imports it as text and hands the text to
+`runtimeModule`:
+
+```ts
+import readModule from './read.command.ts' with { type: 'text' }
+
+{ name: 'read', kind: 'runtime', module: runtimeModule(readModule), input: { path: pathArg(z.string()) }, positionals: ['path'] }
+```
+
+Bun honors the `text` import attribute natively (development, tests, the
+backend). tsdown does not — rolldown resolves the file as a module — so
+every package that declares runtime leaves builds with the
+`commandModulesAsText` plugin from `@demicodes/shell/build`, which serves
+`*.command.ts` files as text by name; the built package carries the module
+text inline. TypeScript types the import as the module, not as a string,
+so `runtimeModule` is the one declared conversion, and it checks at
+runtime that it received text: a build that forgot the plugin fails when
+the tree is constructed, not when a manifest ships a function.
+
 ## The manifest
 
 The backend builds a manifest from the assembled tree at start-up and
@@ -202,16 +233,20 @@ whenever the tree changes:
 manifest
   hash                       content hash of everything below
   roots[name]                one tree per root command (`demi`, `myagent`, …):
-    tree                     groups and leaves: name, kind, help, input and output schemas (JSON Schema)
-  modules[hash]              one bundled ESM file per runtime leaf, referenced from its leaf
+    tree                     groups and leaves: name, kind, help, input and output schemas (JSON Schema),
+                             and for a runtime leaf the hash of its module
+  modules[hash]              one self-contained ESM file per runtime leaf
 ```
 
-Each `runtime` leaf is bundled at build time into one self-contained module
-(its source plus whatever it imports, tree-shaken); a small command is
-simply a small bundle. The manifest is served by the backend to embedders
-over their existing connection (the runner socket) and by HTTP for the
-standalone case; modules are fetched by hash and cached forever — a new
-tree is a new manifest hash, never a mutated module.
+The build takes each `runtime` leaf's module text, transpiles it to
+JavaScript, and stores it under the hash of the result; a module that
+imports a value from anywhere fails the build, since nothing is there to
+bundle. The build runs where a transpiler is (the backend composition
+root, on Bun); the loader itself never transpiles. The manifest is served
+by the backend to embedders over their existing connection (the runner
+socket) and by HTTP for the standalone case; modules are fetched by hash
+and cached forever — a new tree is a new manifest hash, never a mutated
+module.
 
 ## The loader
 
@@ -232,11 +267,14 @@ loader.dispatch(root, argv, io) → exit code
   memory in the backend).
 
 Dispatch selects the root's tree, resolves the path through it, prints help
-for a group,
-parses and validates the leaf's arguments against its schema, then either
-runs the cached module with a `ctx` built from `host`, `io` and the
-arguments, or sends the `rpc` message. Help text comes from the tree, so
-`demi file --help` is identical on every surface.
+for a group, parses and validates the leaf's arguments against its schema,
+then either runs the module with a `ctx` built from `host`, `io` and the
+arguments, or sends the `rpc` message. A module is loaded from its text
+(a `blob:` URL in the backend and in tests; the cache directory on a
+target), so the same bytes run everywhere. Help text comes from the tree,
+so `demi file --help` is identical on every surface. `rootPaths(manifest)`
+derives the `RootPaths` functions tinybash needs from the path marks, so
+an embedder that runs tinybash over the loader declares nothing twice.
 
 Embedders:
 
@@ -298,8 +336,9 @@ the grant table and the provisioner:
 ```
 demi host                                        help for the group
 demi host list                                   granted hosts: id, kind, online; the current one marked
-demi host current                                the current execution target
+demi host current                                the current execution target (and the previous one during a migration)
 demi host shell --id <hostId> <shell_content>    run a shell string in that host's real bash; byte-faithful stdio
+demi host prev shell -- <argv…>                  run on the previous target during a migration; released with `prev release`
 ```
 
 `<shell_content>` is executed by the remote host's `bash -c`, so pipes,
@@ -313,14 +352,17 @@ sockets.
 ## Packages
 
 - `@demicodes/shell` keeps the `Command` types (tree, input/output specs,
-  `CommandContext`, `CommandResult`) and the Host contract; it loses the
-  interpreter and the portable command set in M9.
+  `CommandContext`, `CommandResult`, path marks, `runtimeModule`), the
+  `commandModulesAsText` build plugin under `@demicodes/shell/build`, and
+  the Host contract; it loses the interpreter and the portable command set
+  in M9.
 - `@demicodes/coding-agent` declares the `demi` root's agent-facing groups
-  with the `kind` on each leaf; the `runtime` leaves' implementations are
-  written against the ABI. A library user declares their own root the same
-  way, with the same types.
-- `@demicodes/command-loader` is new: the loader, the manifest types and
-  build.
+  with the `kind` on each leaf; the `runtime` leaves are `*.command.ts`
+  files written against the ABI. A library user declares their own root
+  the same way, with the same types.
+- `@demicodes/command-loader` is new: the manifest types, the loader and
+  `rootPaths`. The manifest build lives in the backend composition root,
+  where the transpiler is.
 - `@demicodes/tinybash` is new: the hostless shell — parser, executor and
   the GNU-faithful builtins over an injected Host, roots over a loader.
   Usable by any embedder that wants hostless execution, not only the

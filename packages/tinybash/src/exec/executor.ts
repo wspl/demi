@@ -1,20 +1,12 @@
-import type { HostFileSystem } from '@demicodes/shell'
+import type { DispatchIO, HostFileSystem } from '@demicodes/shell'
 import type { Command, List, Pipeline, Script } from '../grammar/ast'
 import { type ExpansionScope, expandArgv, expandSingle } from '../grammar/expand'
 import { BUILTINS } from '../builtins/table'
 import type { BuiltinContext } from '../builtins/io'
 import type { RootPaths } from '../outside/check'
 import { type Channels, RedirectError, applyRedirects } from './redirect'
-import { Pipe, PipeClosed, type Writer, emptyStream } from './stream'
-
-export interface DispatchIO {
-  stdin: AsyncIterable<Uint8Array>
-  stdout: Writer
-  stderr: Writer
-  cwd: string
-  env: Record<string, string>
-  signal?: AbortSignal
-}
+import { emptyByteStream } from '@demicodes/utils'
+import { Pipe, PipeClosed, type Writer } from './stream'
 
 export interface ShellState {
   cwd: string
@@ -54,7 +46,7 @@ async function runList(list: List, env: ExecutionEnvironment): Promise<number> {
 }
 
 async function runPipeline(pipeline: Pipeline, env: ExecutionEnvironment): Promise<number> {
-  const top: Channels = { stdin: emptyStream(), stdout: env.stdout, stderr: env.stderr }
+  const top: Channels = { stdin: emptyByteStream(), stdout: env.stdout, stderr: env.stderr }
   if (pipeline.commands.length === 1) {
     return runCommand(pipeline.commands[0]!, top, env, true)
   }
