@@ -236,6 +236,7 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
   const profiles = (await harness.agents?.(harnessContext)) ?? []
   const supervisor = new ChildSupervisor({
     agent: harness,
+    agentSessionId: 'test-session',
     cwd: process.cwd(),
     profiles,
     parentCommands: commands,

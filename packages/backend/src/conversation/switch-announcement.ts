@@ -25,7 +25,7 @@ export function switchAnnouncementPreamble(control: ControlService): AgentHarnes
     const lines = [
       '[Execution target switched]',
       `Previous target: ${await describePrev(control, prev)}. Current target: ${currentDesc}. New shells start in ${currentDir}.`,
-      'No files were moved: everything created earlier — including full command outputs under the artifacts directory — lives on the previous target, and file paths from before the switch are stale here.',
+      'No files were moved: everything created earlier lives on the previous target, and file paths from before the switch are stale here.',
       `The previous target stays reachable until released: \`demi host prev shell -- <argv>\` runs a command there with byte-faithful stdio (e.g. \`demi host prev shell -- tar cz -C ${prevDir} . | tar xz\` pulls its files into the current directory), and \`demi host prev release\` gives it back once migration is done.`,
     ]
     if (prev.kind === 'workspace' && workspace && prev.deviceId === workspace.deviceId) {
