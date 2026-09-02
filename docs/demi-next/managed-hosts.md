@@ -12,11 +12,12 @@ A managed host is a Firecracker microVM the backend provisions on demand.
 It is an operator resource: absent from the user's devices list
 (`devices.kind = 'managed'`), bound to exactly one owner — a conversation
 or a workspace — which every control-plane check enforces, and never reused
-across owners. Managed hosts require `/dev/kvm` on the backend's machine
-(bare metal or a cloud instance with nested virtualization); the
-`managedHosts` backend config enables them, and when it is absent
-auto-provision and Cloud workspace creation fail with "managed hosts not
-configured". Self-hosters without it pair their own machine.
+across owners. Managed hosts are a **deployment requirement**: the backend
+needs `/dev/kvm` (bare metal or a cloud instance with nested
+virtualization), and the `managedHosts` config names the kernel, the
+rootfs image, the home-image store and the resource sizes. A backend
+without them is not a supported deployment; support for machines without
+KVM is a later design item.
 
 Two product scenarios share one provisioning path (`sessions-and-targets.md`):
 
@@ -159,9 +160,16 @@ provision ──▶ running ──▶ hibernated ──▶ running (wake) ──
   action needing the host triggers it — a latency, not an error; idempotent
   per owner (at most one active VM per owner; concurrent triggers join the
   same wake). `demi host shell --id` on a hibernated granted host wakes it.
-- **Runner is PID 1** (`init=/demi-runner`): mounts `/proc`, `/sys`,
+- **Runner is PID 1** (`init=/demi-runner`, root): mounts `/proc`, `/sys`,
   `/tmp`, the upper and `/home`, configures the network from the kernel
-  command line, sets `HOME`, reaps zombies, handles `SIGTERM`. If it exits,
+  command line, reaps zombies, handles `SIGTERM`. It spawns every job and
+  process as the **guest user `demi`** (uid 1000, home `/home/demi`,
+  `HOME` and `PATH` set), who has **passwordless `sudo`**: `sudo apt
+  install` works into the ephemeral upper, while tools that refuse to run
+  as root (Linuxbrew, some package managers) work as themselves. The VM is
+  single-tenant, so the user boundary is not a security boundary; it
+  exists for tool compatibility and for the file ownership the model
+  expects. If it exits,
   `panic=1 reboot=k` makes Firecracker exit, the backend observes the
   process death, and the next tool call takes the wake path. Nothing in the
   runner is worth preserving across a crash — the job table describes
