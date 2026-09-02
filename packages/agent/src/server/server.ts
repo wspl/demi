@@ -1,5 +1,4 @@
-import type { CommandRegistry, Host, ShellEnvironment } from '@demicodes/shell'
-import { BashEnvironment, type BashEnvironmentOptions } from '@demicodes/shell/bash'
+import type { CommandRegistry, Host, ShellEnvironment, ShellEnvironmentOptions } from '@demicodes/shell'
 import type { SessionPhase } from '@demicodes/core'
 import type { Provider } from '@demicodes/provider'
 import { AgentClient } from '../client/client'
@@ -9,19 +8,6 @@ import type { TurnRetryPolicy } from '../session/retry-policy'
 import type { BlobStore } from '../store/media'
 import { AgentTransportBindingImpl } from './binding'
 import { SessionOwnershipRegistry } from './ownership'
-import {
-  RunCommandLineShellNotFoundError,
-  type RunCommandLineOptions,
-  type RunCommandLineResult,
-} from './live-session'
-
-export {
-  RunCommandLineCommandNotRegisteredError,
-  RunCommandLineShellNotFoundError,
-  RunCommandLineTimeoutError,
-  type RunCommandLineOptions,
-  type RunCommandLineResult,
-} from './live-session'
 
 /** Session tuning forwarded to every AgentSession this server creates. */
 export interface AgentServerSessionOptions {
@@ -36,7 +22,7 @@ export interface AgentServerSessionOptions {
 
 /**
  * Host-agnostic hook invoked before each resolved Host's ShellEnvironment is built.
- * LocalHost uses this to inject PATH / env for the command bridge; AgentServer
+ * A product uses this to inject PATH / env for a Host; AgentServer
  * itself does not know about UDS, shims, or bin directories.
  */
 export interface PrepareShellContext {
@@ -44,32 +30,30 @@ export interface PrepareShellContext {
   host: Host
   commandNames: readonly string[]
   /** Shell options from AgentServer construction (before this hook). */
-  shell: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shell: ShellEnvironmentOptions
 }
 
 export type PrepareShell = (
   ctx: PrepareShellContext,
 ) =>
-  | Omit<BashEnvironmentOptions, 'host' | 'commands'>
-  | Promise<Omit<BashEnvironmentOptions, 'host' | 'commands'>>
+  | ShellEnvironmentOptions
+  | Promise<ShellEnvironmentOptions>
 
 export interface ShellEnvironmentContext {
   agentSessionId: string
   host: Host
   commands: CommandRegistry
   /** Shell options after `prepareShell`. */
-  shell: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shell: ShellEnvironmentOptions
 }
 
 /**
  * Builds the shell environment behind the `shell_*` tools for one Host. The
- * default is just-bash over the Host; a product substitutes another engine
- * for the Hosts that want one (the backend runs hostless conversations in
- * tinybash).
+ * product supplies the engine per Host — the agent never knows which one
+ * runs (the backend: `HostlessEnvironment` for a `VirtualHost`,
+ * `RemoteShellEnvironment` for a `RemoteHost`).
  */
 export type ShellEnvironmentFactory = (ctx: ShellEnvironmentContext) => ShellEnvironment | Promise<ShellEnvironment>
-
-export const defaultShellEnvironment: ShellEnvironmentFactory = ({ host, commands, shell }) => new BashEnvironment({ ...shell, host, commands })
 
 /**
  * Dynamic provider lookup: called once per runtime construction (session open,
@@ -85,7 +69,7 @@ export interface AgentServerOptions {
   agent: AgentHarness<unknown>
   /** A static provider list, or a resolver for products that assemble providers dynamically. */
   providers: Provider[] | ProviderResolver
-  shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shell?: ShellEnvironmentOptions
   session?: AgentServerSessionOptions
   subagents?: {
     /**
@@ -95,13 +79,10 @@ export interface AgentServerOptions {
      */
     notifyParentOnIdle?: boolean
   }
-  /**
-   * Optional host-side shell prep (env, PATH, etc.). Implementation-agnostic —
-   * command bridge wiring lives in `@demicodes/host-local`, not here.
-   */
+  /** Optional host-side shell prep (env, PATH, etc.). Implementation-agnostic. */
   prepareShell?: PrepareShell
-  /** The shell engine per Host; defaults to just-bash (`defaultShellEnvironment`). */
-  shellEnvironment?: ShellEnvironmentFactory
+  /** The shell engine per Host. */
+  shellEnvironment: ShellEnvironmentFactory
   /**
    * Per-session persistence override. When absent, sessions persist through
    * the resolved Host's store (`hostAgentSessionStore` under
@@ -119,7 +100,7 @@ export interface AgentTransportBinding {
 export class AgentServer {
   private readonly agent: AgentHarness<unknown>
   private readonly resolveProvider: ProviderResolver
-  private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  private readonly shellOptions: ShellEnvironmentOptions
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
   private readonly shellEnvironment: ShellEnvironmentFactory
@@ -137,7 +118,7 @@ export class AgentServer {
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell ?? null
-    this.shellEnvironment = options.shellEnvironment ?? defaultShellEnvironment
+    this.shellEnvironment = options.shellEnvironment
     this.notifyParentOnIdle = options.subagents?.notifyParentOnIdle ?? true
     this.sessionStore = options.sessionStore ?? null
     this.blobs = options.blobs ?? null
@@ -177,23 +158,6 @@ export class AgentServer {
   /** Current phase of a live session; null when no live session exists for the id (⇒ nothing is running). */
   sessionPhase(agentSessionId: string): SessionPhase | null {
     return this.sessionOwnership.get(agentSessionId)?.session.phase() ?? null
-  }
-
-  /**
-   * Runs one registered-command invocation to completion for a live session.
-   * Transport-agnostic: callers (e.g. LocalHost command bridge) supply their
-   * own IPC; AgentServer only knows how to exec against the open session shell.
-   */
-  async runCommandLine(
-    shellId: string,
-    name: string,
-    args: string[],
-    opts: RunCommandLineOptions,
-  ): Promise<RunCommandLineResult> {
-    const owners = this.sessionOwnership.sessions().filter((live) => live.hasShell(shellId))
-    if (owners.length === 0) throw new RunCommandLineShellNotFoundError(shellId)
-    if (owners.length > 1) throw new Error(`runCommandLine: shell id "${shellId}" is not unique`)
-    return owners[0]!.runCommandLine(shellId, name, args, opts)
   }
 }
 

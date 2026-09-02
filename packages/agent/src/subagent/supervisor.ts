@@ -1,14 +1,5 @@
 import { createId, decodeUtf8, errorMessage, noop, utf8Slice } from '@demicodes/utils'
-import {
-  type ShellEnvironment,
-  CommandRegistry,
-  type Command,
-  type CommandGroup,
-  type CommandIO,
-  type Host,
-  type HostStore,
-} from '@demicodes/shell'
-import { RESERVED_COMMAND_NAMES, type BashEnvironmentOptions } from '@demicodes/shell/bash'
+import { type ShellEnvironment, CommandRegistry, type Command, type CommandGroup, type CommandIO, type Host, type HostStore, RESERVED_COMMAND_NAMES, type ShellEnvironmentOptions } from '@demicodes/shell'
 import type { Block, UserContentBlock } from '@demicodes/core'
 import { AgentSession } from '../session/session'
 import type { ServerFrame, SubagentJob, TranscriptPatch } from '../protocol/frames'
@@ -88,7 +79,7 @@ export interface ChildSupervisorOptions<State> {
   profiles: SubagentProfile<State>[] | null
   /** Parent registered commands (harness list, before the `demi agent` injection). */
   parentCommands: Command[]
-  shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shellOptions: ShellEnvironmentOptions
   prepareShell: PrepareShell | null
   shellEnvironment: ShellEnvironmentFactory
   sessionOptions: AgentServerSessionOptions
@@ -169,7 +160,7 @@ export class ChildSupervisor<State = unknown> {
     return this.environmentScopeForShell(shellId) !== null
   }
 
-  /** Resolves the child scope owning a shell, for the command bridge dispatch. */
+  /** Resolves the child scope owning a shell. */
   environmentScopeForShell(
     shellId: string,
   ): { environment: ShellEnvironment; commandNames: ReadonlySet<string>; agentSessionId: string } | null {

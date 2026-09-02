@@ -1,6 +1,5 @@
 import type { AgentCommandsContext, AgentHarness } from '@demicodes/agent'
-import { CommandRegistry, type Command, type Host } from '@demicodes/shell'
-import { RESERVED_COMMAND_NAMES } from '@demicodes/shell/bash'
+import { CommandRegistry, RESERVED_COMMAND_NAMES, type Command, type Host } from '@demicodes/shell'
 import { createDemiCommand } from './demi-command'
 import { createFileReferenceResolver } from './reference-resolver'
 

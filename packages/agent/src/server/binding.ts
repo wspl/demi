@@ -1,6 +1,5 @@
 import { errorCode, noop } from '@demicodes/utils'
-import type { Host } from '@demicodes/shell'
-import type { BashEnvironmentOptions } from '@demicodes/shell/bash'
+import type { Host, ShellEnvironmentOptions } from '@demicodes/shell'
 import { providerRuntime, type ProviderSelection } from '@demicodes/provider'
 import type { AgentSession } from '../session/session'
 import { cloneBlocks } from '../transcript/patch'
@@ -20,7 +19,7 @@ export interface AgentTransportBindingOptions {
   transport: AgentServerTransport
   agent: AgentHarness<unknown>
   resolveProvider: ProviderResolver
-  shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shell?: ShellEnvironmentOptions
   session?: AgentServerSessionOptions
   prepareShell: PrepareShell | null
   shellEnvironment: ShellEnvironmentFactory
@@ -40,7 +39,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
   private readonly transport: AgentServerTransport
   private readonly agent: AgentHarness<unknown>
   private readonly resolveProvider: ProviderResolver
-  private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  private readonly shellOptions: ShellEnvironmentOptions
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
   private readonly shellEnvironment: ShellEnvironmentFactory

@@ -47,5 +47,8 @@
     "directory": "packages/agent"
   },
   "homepage": "https://github.com/wspl/demi/tree/main/packages/agent#readme",
-  "bugs": "https://github.com/wspl/demi/issues"
+  "bugs": "https://github.com/wspl/demi/issues",
+  "devDependencies": {
+    "@demicodes/command-loader": "workspace:^"
+  }
 }

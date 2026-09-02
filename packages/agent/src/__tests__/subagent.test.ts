@@ -2,9 +2,10 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { hostlessShellFactory, probeCommand } from '@demicodes/command-loader/testing'
 import { waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/shell/node'
 import { defineProvider, type InferenceRequest, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -48,6 +49,7 @@ async function openHarness(options: {
   const harness: AgentHarness<Record<string, never>> = {
     name: 'subagent-test',
     initialState: () => ({}),
+    commands: () => [probeCommand()],
     host: (ctx) => {
       const existing = hosts.get(ctx.cwd)
       if (existing) return existing
@@ -62,6 +64,7 @@ async function openHarness(options: {
     ...(options.agents ? { agents: () => options.agents! } : {}),
   }
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: harness,
     providers: [defineProvider({ id: 'stub', displayName: 'stub', createRuntime: () => new StubProvider(options.turns) })],
     shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
@@ -227,7 +230,7 @@ test('a child finishing after the parent went idle wakes it with a user message'
   const { client } = await openHarness({
     turns: [
       [spawnCall('t1', "demi agent spawn 'long background task' --description bg", 50)],
-      [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.25', timeoutMs: 5_000 })],
+      [events.toolCall('c1', 'shell_exec', { script: 'probe hold 250', timeoutMs: 5_000 })],
       [events.text('spawned, going idle'), events.response()],
       [events.text('bg result'), events.response()],
       (request) => {
@@ -255,7 +258,7 @@ test('the idle wakeup carries the metadata of the round that spawned the child',
     metadataLog,
     turns: [
       [spawnCall('t1', "demi agent spawn 'long background task' --description bg", 50)],
-      [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.25', timeoutMs: 5_000 })],
+      [events.toolCall('c1', 'shell_exec', { script: 'probe hold 250', timeoutMs: 5_000 })],
       [events.text('spawned, going idle'), events.response()],
       [events.text('bg result'), events.response()],
       [events.text('acknowledged'), events.response()],
@@ -278,7 +281,7 @@ test('notifyParentOnIdle: false leaves the idle parent untouched when a child cl
     notifyParentOnIdle: false,
     turns: [
       [spawnCall('t1', "demi agent spawn 'long background task' --description bg", 50)],
-      [events.toolCall('c1', 'shell_exec', { script: 'sleep 0.25', timeoutMs: 5_000 })],
+      [events.toolCall('c1', 'shell_exec', { script: 'probe hold 250', timeoutMs: 5_000 })],
       [events.text('spawned, going idle'), events.response()],
       [events.text('bg result'), events.response()],
     ],
@@ -304,7 +307,7 @@ test('client abortSubagents aborts every live child without touching the parent 
     notifyParentOnIdle: false,
     turns: [
       [spawnCall('t1', "demi agent spawn 'stuck task' --description stuck", 50)],
-      [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
+      [events.toolCall('c1', 'shell_exec', { script: 'probe hold 5000', timeoutMs: 10_000 })],
       [events.text('spawned, going idle'), events.response()],
     ],
   })
@@ -332,7 +335,7 @@ test('demi agent abort tears the child down and fails the pending spawn command'
   const { client, seen } = await openHarness({
     turns: [
       [spawnCall('t1', "demi agent spawn 'stuck task' --description stuck", 50)],
-      [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
+      [events.toolCall('c1', 'shell_exec', { script: 'probe hold 5000', timeoutMs: 10_000 })],
       (request) => {
         const id = subagentIdFrom(request)
         return [events.toolCall('t2', 'shell_exec', { script: `demi agent abort ${id}`, timeoutMs: 5_000 })]
@@ -362,7 +365,7 @@ test('list and show expose bounded live snapshots with relative ages; a finished
   const { client } = await openHarness({
     turns: [
       [spawnCall('t1', "demi agent spawn 'inspect me' --description insp", 50)],
-      [events.toolCall('c1', 'shell_exec', { script: 'sleep 1', timeoutMs: 10_000 })],
+      [events.toolCall('c1', 'shell_exec', { script: 'probe hold 1000', timeoutMs: 10_000 })],
       (request) => {
         const id = subagentIdFrom(request)
         return [
@@ -432,7 +435,7 @@ test('closing the parent detaches live children; a reopened parent restores and 
   const first = await openHarness({
     turns: [
       [spawnCall('t1', "demi agent spawn 'undying task' --description bg", 50)],
-      [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })],
+      [events.toolCall('c1', 'shell_exec', { script: 'probe hold 5000', timeoutMs: 10_000 })],
       [events.text('spawned, going idle'), events.response()],
     ],
   })
@@ -609,7 +612,7 @@ test('the live-children ceiling rejects the spawn beyond MAX_LIVE_SUBAGENTS', as
   const spawns = Array.from({ length: MAX_LIVE_SUBAGENTS }, (_, index) =>
     spawnCall(`t${index + 1}`, `demi agent spawn 'held task ${index + 1}'`, 30),
   )
-  const childHold: TurnScript = [events.toolCall('c1', 'shell_exec', { script: 'sleep 5', timeoutMs: 10_000 })]
+  const childHold: TurnScript = [events.toolCall('c1', 'shell_exec', { script: 'probe hold 5000', timeoutMs: 10_000 })]
   let limitText = ''
   const { client } = await openHarness({
     turns: [

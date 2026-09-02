@@ -2,8 +2,9 @@ import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { hostlessShellFactory } from '@demicodes/command-loader/testing'
 import type { Block, ModelSelection } from '@demicodes/core'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/shell/node'
 import { defineProvider, type InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { AgentServer, type AgentHarness, type ClientSessionEvent } from '../index'
@@ -83,13 +84,13 @@ test('switching Host between turns injects a context block and keeps one continu
         // Turn 2 on B: a fresh shell on the new target; A's files are absent.
         capture([events.toolCall('b-1', 'shell_exec', { script: 'pwd && ls', timeoutMs: 5_000 })]),
         capture([events.text('done on b'), events.response()]),
-        // Turn 3 back on A: A's BashEnvironment (and its cwd) survived the excursion.
+        // Turn 3 back on A: A's shell environment (and its cwd) survived the excursion.
         capture([events.toolCall('a-2', 'shell_exec', { script: 'pwd && cat marker.txt', timeoutMs: 5_000 })]),
         capture([events.text('done back on a'), events.response()]),
       ]),
   })
 
-  const server = new AgentServer({ agent: harness, providers: [provider] })
+  const server = new AgentServer({ shellEnvironment: hostlessShellFactory, agent: harness, providers: [provider] })
   const client = server.client()
   const shellOutputs: ClientSessionEvent[] = []
   client.subscribe((event) => {
