@@ -101,6 +101,18 @@ const runnerInfoSchema = z.object({
   identity: hostIdentitySchema,
 })
 
+const streamSchema = z.enum(['stdout', 'stderr'])
+
+/** Where a job's full output lives on the target, and the last bytes of each stream. */
+const jobOutputSchema = z.object({
+  stdoutPath: z.string(),
+  stderrPath: z.string(),
+  stdoutBytes: z.number(),
+  stderrBytes: z.number(),
+  stdoutTail: bytesSchema,
+  stderrTail: bytesSchema,
+})
+
 export const runnerToBackendMessageSchema = z.union([
   z.object({
     type: z.literal('hello'),
@@ -127,6 +139,35 @@ export const runnerToBackendMessageSchema = z.union([
     signal: z.string().optional(),
     spawnError: hostSpawnErrorSchema.optional(),
   }),
+  /** Live output while the job runs, up to the view budget per stream. */
+  z.object({ type: z.literal('job_output'), jobId: z.string(), stream: streamSchema, bytes: bytesSchema }),
+  z.object({
+    type: z.literal('job_exit'),
+    jobId: z.string(),
+    exitCode: z.number().nullable(),
+    signal: z.string().optional(),
+    spawnError: hostSpawnErrorSchema.optional(),
+    /** The directory the script ended in; absent when bash never ran the script. */
+    cwd: z.string().optional(),
+    output: jobOutputSchema.optional(),
+  }),
+  /** An `rpc` command invoked on the target, relayed with the pipe's bytes; later stdin streams after it. */
+  z.object({
+    type: z.literal('rpc_call'),
+    callId: z.string(),
+    agentSessionId: z.string(),
+    shellId: z.string(),
+    root: z.string(),
+    path: z.array(z.string()),
+    argv: z.array(z.string()),
+    args: z.record(z.string(), z.unknown()),
+    json: z.boolean(),
+    cwd: z.string(),
+    env: z.record(z.string(), z.string()),
+    stdin: bytesSchema,
+  }),
+  z.object({ type: z.literal('rpc_stdin'), callId: z.string(), bytes: bytesSchema }),
+  z.object({ type: z.literal('rpc_stdin_end'), callId: z.string() }),
 ])
 
 /**
@@ -155,6 +196,25 @@ export const backendToRunnerMessageSchema = z.union([
     z.object({ type: z.literal('spawn_stdin'), spawnId: z.string(), bytes: bytesSchema }),
     z.object({ type: z.literal('spawn_stdin_end'), spawnId: z.string() }),
     z.object({ type: z.literal('spawn_kill'), spawnId: z.string(), signal: z.string().optional() }),
+    /** One job: `bash -c script` in `cwd` with exactly `env`; the shell ids ride in `env`. */
+    z.object({
+      type: z.literal('job_start'),
+      jobId: z.string(),
+      script: z.string(),
+      cwd: z.string(),
+      env: z.record(z.string(), z.string()),
+    }),
+    z.object({ type: z.literal('job_stdin'), jobId: z.string(), bytes: bytesSchema }),
+    z.object({ type: z.literal('job_stdin_end'), jobId: z.string() }),
+    z.object({ type: z.literal('job_kill'), jobId: z.string(), signal: z.string().optional() }),
+    z.object({ type: z.literal('rpc_output'), callId: z.string(), stream: streamSchema, bytes: bytesSchema }),
+    z.object({ type: z.literal('rpc_exit'), callId: z.string(), exitCode: z.number() }),
+    /**
+     * The command manifest for the runner's cache. Its shape is the loader's
+     * (`parseManifest` in `@demicodes/command-loader`), which the runner
+     * applies; the protocol carries it opaque so it owns no command types.
+     */
+    z.object({ type: z.literal('manifest'), manifest: z.unknown() }),
   ]),
   fsCallMessageSchema,
 ])

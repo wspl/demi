@@ -13,7 +13,19 @@ import type {
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
 import { createId, deferred, type Deferred } from '@demicodes/utils'
-import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, RunnerToBackendMessage } from './messages'
+import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, JobExitMessage, RunnerToBackendMessage } from './messages'
+
+/** One job on the runner as the backend drives it (`runner.md` § Jobs and the tee). */
+export interface RemoteJob {
+  /** The view: ordered, stream-tagged chunks while the job runs. */
+  output: AsyncIterable<HostProcessOutputChunk>
+  writeStdin(data: Uint8Array): Promise<void>
+  closeStdin(): Promise<void>
+  kill(signal?: string): Promise<void>
+  wait(): Promise<RemoteJobExit>
+}
+
+export type RemoteJobExit = Omit<JobExitMessage, 'type' | 'jobId'>
 
 export interface RemoteHostOptions {
   defaultCwd: string
@@ -48,6 +60,7 @@ export class RemoteHost implements Host {
   private send: ((message: BackendToRunnerMessage) => void) | null = null
   private readonly pendingCalls = new Map<string, Deferred<unknown>>()
   private readonly activeSpawns = new Map<string, RemoteSpawn>()
+  private readonly activeJobs = new Map<string, RemoteJobState>()
 
   constructor(options: RemoteHostOptions) {
     this.defaultCwd = options.defaultCwd
@@ -79,6 +92,11 @@ export class RemoteHost implements Host {
     for (const spawn of spawns) {
       spawn.finish({ exitCode: null, signal: reason, spawnError: { kind: 'other' } })
     }
+    const jobs = [...this.activeJobs.values()]
+    this.activeJobs.clear()
+    for (const job of jobs) {
+      job.finish({ exitCode: null, signal: reason, spawnError: { kind: 'other' } })
+    }
   }
 
   get online(): boolean {
@@ -88,6 +106,29 @@ export class RemoteHost implements Host {
   /** Remote processes currently in flight (diagnostics). */
   get activeSpawnCount(): number {
     return this.activeSpawns.size
+  }
+
+  /** Jobs this Host started that have not exited (diagnostics). */
+  get activeJobCount(): number {
+    return this.activeJobs.size
+  }
+
+  /** Starts `bash -c script` on the runner as one job; offline, the job fails at once. */
+  startJob(params: { script: string; cwd: string; env: Record<string, string> }): RemoteJob {
+    const jobId = createId()
+    const job = new RemoteJobState(jobId, (message) => this.dispatch(message))
+    if (!this.send) {
+      job.finish({ exitCode: null, signal: 'runner disconnected', spawnError: { kind: 'other' } })
+      return job.handle()
+    }
+    this.activeJobs.set(jobId, job)
+    try {
+      this.send({ type: 'job_start', jobId, script: params.script, cwd: params.cwd, env: params.env })
+    } catch (error) {
+      this.activeJobs.delete(jobId)
+      throw error
+    }
+    return job.handle()
   }
 
   /** Routes runner messages that belong to this Host (fs results, spawn streams). */
@@ -113,6 +154,18 @@ export class RemoteHost implements Host {
         signal: message.signal,
         ...(message.spawnError ? { spawnError: message.spawnError } : {}),
       })
+      return
+    }
+    if (message.type === 'job_output') {
+      this.activeJobs.get(message.jobId)?.pushChunk({ stream: message.stream, chunk: message.bytes })
+      return
+    }
+    if (message.type === 'job_exit') {
+      const job = this.activeJobs.get(message.jobId)
+      if (!job) return
+      this.activeJobs.delete(message.jobId)
+      const { type: _type, jobId: _jobId, ...exit } = message
+      job.finish(exit)
     }
   }
 
@@ -260,6 +313,73 @@ class RemoteSpawn {
 
   private async *mergedView(): AsyncIterable<HostProcessOutputChunk> {
     yield* this.entries()
+  }
+}
+
+/** One job's chunk log and exit, the same cursor model as a spawn. */
+class RemoteJobState {
+  private readonly chunks: HostProcessOutputChunk[] = []
+  private done = false
+  private readonly exitPromise = deferred<RemoteJobExit>()
+  private readonly waiters = new Set<() => void>()
+
+  constructor(
+    private readonly jobId: string,
+    private readonly send: (message: BackendToRunnerMessage) => void,
+  ) {}
+
+  pushChunk(chunk: HostProcessOutputChunk): void {
+    if (this.done) return
+    this.chunks.push(chunk)
+    this.wake()
+  }
+
+  finish(exit: RemoteJobExit): void {
+    if (this.done) return
+    this.done = true
+    this.exitPromise.resolve(exit)
+    this.wake()
+  }
+
+  handle(): RemoteJob {
+    return {
+      output: this.entries(),
+      writeStdin: async (data) => {
+        if (this.done) return
+        this.send({ type: 'job_stdin', jobId: this.jobId, bytes: data })
+      },
+      closeStdin: async () => {
+        if (this.done) return
+        this.send({ type: 'job_stdin_end', jobId: this.jobId })
+      },
+      kill: async (signal) => {
+        if (this.done) return
+        this.send({ type: 'job_kill', jobId: this.jobId, ...(signal ? { signal } : {}) })
+      },
+      wait: () => this.exitPromise.promise,
+    }
+  }
+
+  private wake(): void {
+    const waiters = [...this.waiters]
+    this.waiters.clear()
+    for (const waiter of waiters) waiter()
+  }
+
+  private async *entries(): AsyncIterable<HostProcessOutputChunk> {
+    let cursor = 0
+    while (true) {
+      if (cursor < this.chunks.length) {
+        const item = this.chunks[cursor]
+        cursor += 1
+        yield item
+        continue
+      }
+      if (this.done) return
+      await new Promise<void>((resolve) => {
+        this.waiters.add(resolve)
+      })
+    }
   }
 }
 
