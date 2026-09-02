@@ -1,0 +1,176 @@
+# Demi Next: Scenario Suite
+
+| | |
+|---|---|
+| Date | 2026-09-03 |
+| Status | Design (M10) |
+| Scope | The integration suite over the headless system: what it covers, the world fixture, the driver, the invariants, the scenarios |
+
+## What the suite is for
+
+Every layer of the headless system has a suite of its own: the Host
+conformance cases, the tinybash corpus, the tinyjs primitives, the runner
+protocol codecs, the pairing state machine, the provider assembly. Each
+proves its contract once. What none of them proves is the **composition**:
+that a tool call the model makes in a conversation created over the Web API
+reaches the target, runs, and comes back as the text the model reads on its
+next turn, while the transcript, the databases, the ledger and the runner
+sockets all show what they should. The scenario suite is that proof, and it
+is where every later milestone adds its end-to-end cases instead of
+building a fixture of its own.
+
+```
+ Web API ─▶ backend ─▶ agent loop ─▶ shell tool ─┬─▶ hostless engine (tinybash + virtual fs)
+                                                 └─▶ runner (packed tinyjs, real socket) ─▶ bash and commands on the target
+    ◀── the text the model receives ◀── the view ◀──┘
+    ◀── transcript (live) / conversations/<id>.sqlite (cold) / ledger / blobs
+```
+
+### Covered
+
+The path in the diagram, driven from the outside: conversations over the
+HTTP and WebSocket surface, the model as a script, the hostless engine and
+a real runner as the two targets, the commands under `demi` on both,
+subagents, target switching as a step inside a longer script, attachments
+and media by reference, detach and reattach, and the restarts of both
+processes.
+
+### Not covered
+
+The provider wire (the model is scripted at the provider-event level, as
+in every other suite; the real-CLI chain in `claude-chain.e2e.test.ts`
+keeps its own gate), the tinybash grammar and builtins, the tinyjs
+primitives, the Host conformance cases, the pairing state machine
+(`runner.test.ts`), vault and provider assembly (`llm.test.ts`), the M6
+switch acceptance (`switch.test.ts`), the browser.
+
+## The world
+
+One fixture per test file; one conversation per scenario.
+
+```
+ world = createWorld({ runners: 1 | 2, port?: fixed })
+ ┌──────────────────────────────────────────────────────────────┐
+ │ backend (temp dataDir, the `stub` provider type, wire trace)   │
+ │   ├─ device A ◀── tinyjs runner A (stateDir A, home A, workspace A) │
+ │   └─ device B ◀── tinyjs runner B                              │
+ │ world.conversation(target) ─▶ driver                          │
+ │   target: 'hostless' | 'runner:A' | 'runner:B'                │
+ └──────────────────────────────────────────────────────────────┘
+```
+
+- **backend**: `createBackend` over a fresh data directory, the port
+  ephemeral except in the restart file, where it is fixed so a runner can
+  find the restarted process. The registry's `trace` hook records every
+  runner frame with its device and direction.
+- **runners**: `startTinyjsRunner` from `@demicodes/runner/testing`, the
+  packed binary built once per test process. The world claims each pairing
+  code over `POST /api/devices/claim` and creates a workspace at the
+  runner's home over `POST /api/workspaces`.
+- **model**: the `stub` provider type is registered with a runtime factory
+  that looks up the conversation's script queue. The queue is filled by the
+  driver one turn at a time, so a scenario reads linearly: script the turn,
+  send, observe. A turn's script is either a list of provider events or a
+  function of the inference request, which is how a scenario asserts what
+  the model was shown.
+- **conversation(target)**: `POST /api/conversations`, then `PATCH` to
+  the workspace for a runner target, then the WebSocket stream opened
+  through `AgentClient`.
+
+## The driver
+
+```
+ const turn = await driver.turn({ model: [events.toolCall('t1', 'shell_exec', {script}), events.text('done'), events.response()] })
+ turn.received      // the tool results as the model received them: the items of the next inference request
+ turn.shell         // the shell_output frames of this turn, in order
+ turn.blocks        // the blocks this turn appended to the live transcript
+ await driver.files()   // the target's files under the conversation's cwd: host store for hostless, disk for a runner
+ world.wire(deviceId)   // the trace since the last call: frame counts by type, rpc_output bytes
+```
+
+`received` is the primary observation. The suite's central question is
+"what did the model see", so most assertions are on that text, not on
+frames or files; frames and files confirm the mechanism behind it.
+
+## Two targets, one script
+
+Every scenario that does not itself switch targets runs twice, over
+`describe.each(['hostless', 'runner'])`, with the same script. The
+differences a scenario may special-case are the following and no others;
+any other difference between the two runs is a bug.
+
+| Difference | Hostless | Runner |
+|---|---|---|
+| `demi host current` | `host: virtual` | the device name |
+| `outputDir` in a status view, `path` on a stream | absent | present (the tee's output files) |
+| binary final stream note | "not kept beyond this view" | the output file path |
+| the executable set | tinybash builtins and the manifest roots | whatever the target has |
+| a refused script | "runs nothing and says so" | bash's own error |
+
+## Invariants at teardown
+
+`world.close()` checks these for every conversation the file opened, so a
+scenario never repeats them:
+
+- the cold transcript (`GET /api/conversations/:id/transcript`) has the
+  same block ids in the same order as the live one;
+- no runner socket carried output beyond the view: every `rpc_output` and
+  job output frame stays within the view's byte budget, and no frame type
+  outside the protocol's control set appears (the audit `host-shell`
+  introduced, generalized);
+- no job is left on any runner, and the transfer broker holds no open
+  transfer;
+- the usage ledger has exactly one row per provider request the scripts
+  made.
+
+A failed invariant names the conversation and the scenario that opened it.
+
+## Scenarios
+
+Each scenario is one test, one conversation, a linear script of turns.
+
+| # | Scenario | Turns | Asserts |
+|---|---|---|---|
+| S1 | File workflow | create through a heredoc, read, edit, list, across four turns | the text the model receives equals the file's content; the file is where the target keeps it |
+| S2 | Output view | a command printing far past the view budget; a binary final stream; a non-zero exit; a command hitting its timeout | head and tail within budget with the elision note; the binary placeholder; exit and timeout reported in the result; on a runner the wire bytes equal the view |
+| S3 | Long commands and steering | a command that waits for stdin, `shell_status` while it runs, `shell_write` to feed it, a second command aborted with `shell_abort`, a background job on a runner | the status machine as the model sees it; nothing left running after the abort |
+| S4 | Todo | `demi todo` written in one turn, read in a later one; a second conversation sees an empty list | the rpc leaf crosses the relay on a runner and runs in-process hostless; storage scoped to the session |
+| S5 | Subagents | `demi agent spawn` with the `explore` profile, then `default`; the child runs commands on the same target; the parent reads the result; the explore child's write is refused | parent and child share the target; the read-only profile holds; the parent's transcript carries the subagent frames |
+| S6 | Continuing across a switch | S1's first turn hostless, switch to the runner over `PATCH`, S1's remaining turns there, switch back, one more read | the script keeps working across both switches; the context block appears at each; files are where each target keeps them |
+| S7 | Concurrent sessions on one runner | two conversations on the same device interleaving commands that change `cwd` and shell state | each session sees only its own state; the frames carry the right session attribution |
+| S8 | Attachments | an image attached to a user message | the model receives the bytes inline; the transcript stores a `ref`; `GET /api/blobs/:sha256` serves it; the cold transcript carries the same ref |
+| S9 | Detach mid-turn | the client closes its socket while a command runs; a new client attaches | the turn completes server-side; the reattached client's transcript has the result; cold equals live |
+
+S9 moves in from `backend.test.ts`, where it was the M2 acceptance.
+
+## Restart scenarios
+
+A separate file with a fixed port. Its world is closed and reopened over
+the same data directory to restart the backend; a runner is stopped and
+started over the same state directory to restart it.
+
+| # | Scenario | Asserts |
+|---|---|---|
+| R1 | Backend restart, idle | the conversation on the runner comes back from its database; the runner reconnects with its device token on its own; the next turn executes on the runner; the ledger totals carry over |
+| R2 | Backend restart mid-turn | the backend is closed while a command is running; after the restart the transcript has no dangling tool call (the turn is closed with an error result or dropped as a unit, whichever the code does, recorded in `progress.md`); the next turn executes |
+| R3 | Runner death and return | the runner is killed while a command runs: the tool result is an error naming the loss; the runner restarted over its state directory reconnects; the next turn executes; files written before the death are still there |
+| R4 | Hostless persistence | files, `demi todo` entries and the ledger survive a backend restart of a hostless conversation |
+
+R1 moves in from `backend.test.ts`, where it was the M3 acceptance, and
+gains the runner.
+
+## Layout
+
+```
+packages/backend/src/__tests__/scenarios/
+  world.ts          the world fixture: backend, runners, claim, workspaces, trace, teardown invariants
+  model.ts          the per-conversation script queue behind the stub provider type
+  driver.ts         conversation(target) and turn()
+  s1-files.test.ts … s9-detach.test.ts
+  restart.test.ts   R1–R4
+```
+
+The fixture is internal to the backend package: nothing here is exported
+from a `testing` entry, since no other package drives a backend.
+`bun test packages/backend` runs the suite; the runners need the tinyjs
+crate built or `TINYJS_BIN` set, as every runner test already does.

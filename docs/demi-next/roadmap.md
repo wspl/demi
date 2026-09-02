@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Date | 2026-09-02 |
+| Date | 2026-09-03 |
 | Status | M0–M9 delivered |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
@@ -43,7 +43,7 @@ conversation's runner with the vault token as process env.
 context injection; workspaces CRUD; offline-target degradation;
 message-attachment upload and workspace file drop. The prev slot, `switch`
 and `release` verbs and the tar-pipe migration delivered here are removed
-by M8–M10 (`sessions-and-targets.md`).
+by M8–M11 (`sessions-and-targets.md`).
 
 **M7 — tinyjs.** `packages/tinyjs`: QuickJS on `rquickjs`, the event
 loop with its own liveness count, the module loader with `tinyjs:*`
@@ -162,7 +162,29 @@ and everything the old paths were: just-bash, the interpreter, host-local,
 host-runner, repl, agent-eval, the web server, the Bun runner, the offset
 paging, the stale records. M9 closed.
 
-**M10 — Access model and managed hosts** (`sessions-and-targets.md`,
+**M10 — Scenario suite** (`scenarios.md`; depends on M9)
+The headless system exercised as one composition, from the Web API through
+the backend, the agent loop, the shell tool, the hostless engine or a real
+tinyjs runner over its socket, the commands on the target, and back to the
+model's next turn, the transcript, the databases and the ledger. One world
+fixture (the backend over a temp data directory, one or two packed tinyjs
+runners claimed as devices, the scripted model queued per conversation and
+per turn), one driver whose observation is what the model actually
+received, and invariants checked at teardown for every scenario (the cold
+transcript equals the live one, runner sockets carry the view and control
+only, no residual jobs or transfers, one ledger row per provider request).
+Scenarios S1–S9 run the same script on the hostless engine and on a runner
+with the allowed differences enumerated; the restart scenarios R1–R4 cover
+the backend restarted idle and mid-turn, a runner killed and returned, and
+hostless persistence. The milestone tests the suite subsumes (backend
+restart, detach mid-turn) move in; pairing, provider assembly and switch
+acceptance stay where they are. Later milestones add scenarios here rather
+than fixtures of their own.
+Accept: every scenario green on both targets; R2 has a recorded verdict on
+what a mid-turn backend restart leaves in the transcript, and the code
+fixed if it leaves a dangling tool call.
+
+**M11 — Access model and managed hosts** (`sessions-and-targets.md`,
 `managed-hosts.md`; depends on M9)
 `conversation_host_grants`, auto-grant on switch, the grant check before a
 cross-host spawn, `demi host list` / `current` / `shell --id`, wake on
@@ -177,29 +199,29 @@ full flows against a fake provisioner plus a local runner, including
 owner-scoped authz; Firecracker smoke env-gated (Linux with `/dev/kvm`),
 including cold-provision and wake latency.
 
-**M11 — Multi-user systems** (`product.md`)
+**M12 — Multi-user systems** (`product.md`)
 Real auth (username/password, cookie sessions, master/admin/user roles, no
 registration, no recovery); user-management and instance-settings
 endpoints; shared/isolated instance-mode enforcement; the tenant-isolation
-authz matrix. At the end of M11 the entire API surface is complete and
+authz matrix. At the end of M12 the entire API surface is complete and
 frozen.
 
-**M12 — Web UI** (`product.md`)
+**M13 — Web UI** (`product.md`)
 The entire `@demicodes/web` package in one concentrated phase: scaffold,
 workspace-grouped sidebar, chat view on web-ui, settings dialogs, the target
 picker with the hostless state, grant management, media by reference.
-Consumes the M11-frozen API; adds no backend surface. The old local dev
-product was deleted in M9 with the Node Host it ran on; until M12 the web
+Consumes the M12-frozen API; adds no backend surface. The old local dev
+product was deleted in M9 with the Node Host it ran on; until M13 the web
 package is the Vite scaffold alone.
 
-**M13 — Deployment packaging**
+**M14 — Deployment packaging**
 Container image for the backend (carrying the built web assets); tinyjs
 builds per platform with the runner and root-command symlinks; the guest kernel
 and the managed-host rootfs image as shipped images; the privileged
 provisioner helper; a sample Litestream sidecar config; end-to-end
 acceptance.
 
-**M14 — Scaled deployment (post-v1)**
+**M15 — Scaled deployment (post-v1)**
 `demi-controld` as a standalone process, the workers' auth-token cache, the
 S3 blob backend and home-image store, Litestream on every node, routing-key
 plumbing and the sample reverse-proxy config, the user-migration procedure,
@@ -227,8 +249,9 @@ Test modules and their intended coverage, per milestone.
 | M7 | Primitive conformance suite from JS: fs incl. errno cases and streaming reads; spawn incl. stdin/kill/uid/tee byte counts; WebSocket send backpressure and receive; HTTP request bodies from files and response bodies streamed to a fd; UDS listen mode and accept; MessagePack extension types; timers ordering; globals; `tinyjs:*` refused from a file-loaded module. Build-target matrix; guest cold-start (command-mode hello, cold cache), binary size and tee throughput measured in the Firecracker fixture. |
 | M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, tinyjs and fixture; tinybash grammar and builtin tables, the equivalence corpus against real bash + GNU coreutils in a Linux container (`tinybash.md`); parse-first, session-state and cancellation cases; hostless conversation runs file, todo and builtin pipelines; third-party embedding example. |
 | M9 | Host conformance suite on the runner's machine layer; a `runtime` command run by tinyjs in command mode; M1 and M4 suites on tinyjs runner; job table (foreground, background, kill, exit); cwd carried between jobs; tee + the model's view (head, tail) + output file; UDS relay round trip with session attribution; MessagePack frames; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
-| M10 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
-| M11 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
-| M12 | Manual checklist over the full layout, including the "everything Demi implements gets exposed" sweep. |
-| M13 | Scripted smoke: build the images, claim a containerized runner against a local backend, one full turn; managed-host image boots and joins via the pre-issued token; optional CI stage. |
-| M14 | `ControlService` contract tests against both implementations; two workers + one controld behind a mapped proxy; user migration preserves history; S3 round-trips; domain errors survive the RPC wire. |
+| M10 | The scenario suite (`packages/backend/src/__tests__/scenarios/`): the world fixture and the scripted model; S1 file workflow, S2 output view, S3 long commands and steering, S4 todo, S5 subagents, S6 continuing across a switch, S7 concurrent sessions on one runner, S8 attachments by reference, S9 detach mid-turn — each on the hostless engine and on a runner; R1 backend restart idle with the runner reconnecting, R2 backend restart mid-turn, R3 runner death and return, R4 hostless persistence across a restart; the teardown invariants on every scenario. |
+| M11 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
+| M12 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
+| M13 | Manual checklist over the full layout, including the "everything Demi implements gets exposed" sweep. |
+| M14 | Scripted smoke: build the images, claim a containerized runner against a local backend, one full turn; managed-host image boots and joins via the pre-issued token; optional CI stage. |
+| M15 | `ControlService` contract tests against both implementations; two workers + one controld behind a mapped proxy; user migration preserves history; S3 round-trips; domain errors survive the RPC wire. |

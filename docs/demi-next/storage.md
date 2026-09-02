@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (implemented through M6; home-image store in M10; S3 backends and controld in M14) |
+| Status | Design (implemented through M6; home-image store in M11; S3 backends and controld in M15) |
 | Scope | The two databases, `ControlService`, the blob store, the home-image store, replication, the N>1 topology |
 
 ## The split
