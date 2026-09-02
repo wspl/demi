@@ -49,7 +49,7 @@ test("bytes: msgpack extension types", () => {
 
 test("bytes: msgpack errors", () => {
   let threw = false;
-  try { msgpackDecode(new Uint8Array([0x92, 0x01])); } catch (e) { threw = /truncated/.test(e.message); }
+  try { msgpackDecode(new Uint8Array([0x92, 0x01])); } catch (e) { threw = e instanceof TypeError && /msgpackDecode/.test(e.message); }
   assert(threw, "truncated input throws");
   threw = false;
   try { msgpackEncode({ f() {} }); } catch (e) { threw = true; }

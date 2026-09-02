@@ -270,7 +270,7 @@ fn take_reader<'js>(ctx: &Ctx<'js>, fd: i32) -> Result<ReadTarget> {
                 Err(bad_handle(ctx, "read"))
             }
         },
-        Some(Resource::Listener(_)) => Err(throw_errno(ctx, libc::ENOTSUP, "read", None)),
+        Some(Resource::Listener(..)) | Some(Resource::Ws(_)) => Err(throw_errno(ctx, libc::ENOTSUP, "read", None)),
     }
 }
 
@@ -341,7 +341,7 @@ fn take_writer<'js>(ctx: &Ctx<'js>, fd: i32) -> Result<WriteTarget> {
                 Err(bad_handle(ctx, "write"))
             }
         },
-        Some(Resource::Listener(_)) => Err(throw_errno(ctx, libc::ENOTSUP, "write", None)),
+        Some(Resource::Listener(..)) | Some(Resource::Ws(_)) => Err(throw_errno(ctx, libc::ENOTSUP, "write", None)),
     }
 }
 
@@ -382,6 +382,14 @@ pub fn close(ctx: Ctx<'_>, fd: i32) -> Result<()> {
             s.cancel.notify_waiters();
             Ok(())
         }
-        Some(_) => Ok(()),
+        Some(Resource::Listener(_, cancel)) => {
+            cancel.notify_waiters();
+            Ok(())
+        }
+        Some(Resource::Ws(ws)) => {
+            ws.cancel.notify_waiters();
+            Ok(())
+        }
+        Some(Resource::File(_)) => Ok(()),
     }
 }

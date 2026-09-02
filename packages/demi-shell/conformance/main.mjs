@@ -8,6 +8,7 @@ import "./bytes.mjs";
 import "./fs.mjs";
 import "./runtime.mjs";
 import "./process.mjs";
+import "./net.mjs";
 import "./loader.mjs";
 
 exit(await run());

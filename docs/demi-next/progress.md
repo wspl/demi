@@ -1265,6 +1265,24 @@ bundle under that feature so it sees `demishell:*`.
 - MessagePack follows `@msgpack/msgpack` defaults: integral numbers as
   ints, `Uint8Array` as bin, `Date` as the timestamp extension, `undefined`
   as nil.
+- `demishell:net` landed on crates, not hand-written protocols (owner
+  decision 2026-09-02: "we do not implement protocols ourselves"):
+  `tokio-tungstenite` for WebSocket, `hyper` + `hyper-util` for HTTP/1.1
+  and the `CONNECT` tunnel with proxy-environment matching,
+  `tokio-rustls` with the platform verifier (or `webpki-roots` under the
+  `guest-roots` feature), UDS listen/accept/connect. The hand-written
+  base64 and MessagePack decoder went the same way (`base64`, `rmpv`).
+  Release binary 2.3 MB with everything in. `cargo test --features
+  conformance` provisions free ports, an openssl test CA and the Bun stub
+  (`conformance/stub.ts`: HTTP, WebSocket, CONNECT proxy) and runs the 51
+  cases, including https/wss through the proxy.
+- Pitfalls in net: closing a WebSocket the peer already closed makes
+  tungstenite report `SendAfterClosing`, which the shell treats as a
+  successful close; rustls reports handshake failures as `InvalidData`
+  (`EINVAL` by kind), remapped to `EPROTO`; Bun's WebSocket server drops
+  echoes past its `backpressureLimit`, so the stub raises it; a `.invalid`
+  hostname resolved on this network (sinkholed DNS), so the suite has no
+  `ENOTFOUND` case.
 - `demishell:process` landed: spawn over `std::process::Command` with the
   pipes handed to tokio (`pipe::Receiver`/`Sender`), the shell's own
   SIGCHLD reaper (`waitpid(-1)`, which is also the PID 1 orphan reaper),
