@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LocalHost } from '@demicodes/host-local'
 import { memoryHostStore } from '@demicodes/shell/testing'
-import { waitFor } from '@demicodes/utils'
+import { delay, waitFor } from '@demicodes/utils'
 import {
   HostRpcServer,
   JOB_VIEW_BYTES,
@@ -13,10 +13,10 @@ import {
   RemoteHost,
   RemoteShellEnvironment,
   createRunnerWire,
-  msgpackCodec,
   type JobSpawnHandle,
   type JobSpawnParams,
 } from '../index'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 
 // The job table on a local Host with a JavaScript tee (the tinyjs runner
 // brings the primitive): the backend's RemoteShellEnvironment drives it
@@ -34,7 +34,9 @@ async function connected() {
     spawn: (params) => teedSpawn(local, params),
     outputDir: join(dir, '.out'),
     fs: {
-      mkdir: (path) => mkdir(path, { recursive: true }),
+      mkdir: async (path) => {
+        await mkdir(path, { recursive: true })
+      },
       readTail: async (path, bytes) => {
         const size = (await stat(path)).size
         const handle = await open(path, 'r')
@@ -101,7 +103,10 @@ test('a job outliving the timeout is running, counts in the job table, takes std
   const { shell, jobs } = await connected()
   const running = await shell.exec({ script: 'echo ready; head -n1; sleep 30', timeoutMs: 200 })
   expect(running.status).toBe('running')
-  await waitFor(async () => (await shell.status({ commandId: running.commandId, stdoutOffset: 0 })).stdout.delta === 'ready\n', undefined, { timeoutMs: 5_000 })
+  for (let tries = 0; (await shell.status({ commandId: running.commandId, stdoutOffset: 0 })).stdout.delta !== 'ready\n'; tries += 1) {
+    if (tries > 200) throw new Error('the head of the view never arrived')
+    await delay(20)
+  }
   expect(jobs.count).toBe(1)
   const written = await shell.write({ commandId: running.commandId, stdin: 'typed\n' })
   expect(written.status).toBe('running')

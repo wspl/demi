@@ -19,9 +19,8 @@ export {
   type JobOutput,
   type RpcCallMessage,
 } from './messages'
-export { msgpackCodec } from './codec'
 export { runnerToBackendMessageSchema, backendToRunnerMessageSchema, fsOps } from './schemas'
 export { RemoteHost, type RemoteHostOptions, type RemoteJob, type RemoteJobExit } from './remote-host'
 export { RemoteShellEnvironment, type RemoteShellEnvironmentOptions } from './remote-shell-environment'
 export { HostRpcServer } from './host-rpc-server'
-export { JobTable, JOB_CWD_FILE_VAR, wrapScript, type JobSpawnHandle, type JobSpawnParams, type JobTableOptions } from './jobs'
+export { JobTable, JOB_CWD_FILE_VAR, JOB_STDIN_FD, JOB_STDIN_FD_VAR, wrapScript, type JobSpawnHandle, type JobSpawnParams, type JobTableOptions } from './jobs'

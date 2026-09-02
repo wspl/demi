@@ -23,7 +23,7 @@ impl ModuleDef for RuntimeModule {
     fn declare(decl: &Declarations<'_>) -> Result<()> {
         for name in [
             "argv", "env", "cwd", "chdir", "exit", "onSignal", "stdin", "stdout", "stderr", "pid",
-            "identity", "version", "abi", "openHandles",
+            "identity", "version", "abi", "openHandles", "fdNode",
         ] {
             decl.declare(name)?;
         }
@@ -55,6 +55,7 @@ impl ModuleDef for RuntimeModule {
         exports.export("version", VERSION)?;
         exports.export("abi", ABI)?;
         exports.export("openHandles", Func::from(open_handles))?;
+        exports.export("fdNode", Func::from(fd_node))?;
         Ok(())
     }
 }
@@ -62,6 +63,19 @@ impl ModuleDef for RuntimeModule {
 /// Handles open above the standard streams; a leak is countable in tests.
 fn open_handles(ctx: Ctx<'_>) -> usize {
     state(&ctx).handles.borrow().open_count()
+}
+
+/// `dev:ino` of the open file description behind an OS descriptor, or
+/// `null` when nothing is open there. Takes the OS number, not a handle:
+/// it exists for descriptors a parent process left open.
+fn fd_node<'js>(ctx: Ctx<'js>, fd: i32) -> Result<rquickjs::Value<'js>> {
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: fstat on a descriptor number into a zeroed stat buffer; a
+    // closed descriptor fails with EBADF.
+    if unsafe { libc::fstat(fd, &mut st) } != 0 {
+        return Ok(rquickjs::Value::new_null(ctx));
+    }
+    Ok(rquickjs::String::from_str(ctx, &format!("{}:{}", st.st_dev, st.st_ino))?.into_value())
 }
 
 fn cwd(ctx: Ctx<'_>) -> Result<String> {

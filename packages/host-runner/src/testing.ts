@@ -26,18 +26,14 @@ export function tinyjsBinary(name: 'tinyjs' | 'tinyjsc' = 'tinyjs'): string {
 
 /**
  * Bundles an entry for tinyjs: one ESM file, workspace packages from their
- * sources, `tinyjs:*` left to the runtime.
+ * sources, `tinyjs:*` left to the runtime. Runs the bundler in its own
+ * process: an in-process `Bun.build` for a browser target leaves the test
+ * process unable to resolve some of the same packages afterwards.
  */
 export async function bundleForTinyjs(entry: string, outfile: string): Promise<void> {
-  const result = await Bun.build({
-    entrypoints: [entry],
-    target: 'browser',
-    format: 'esm',
-    conditions: ['development'],
-    external: ['tinyjs:*'],
-  })
-  if (!result.success) throw new Error(`bundle failed:\n${result.logs.map(String).join('\n')}`)
-  const [output] = result.outputs
-  if (!output) throw new Error('bundle produced no output')
-  await Bun.write(outfile, await output.text())
+  const built = Bun.spawnSync(
+    ['bun', 'build', entry, '--format=esm', '--target=browser', '--conditions=development', '--external', 'tinyjs:*', '--outfile', outfile],
+    { stdout: 'pipe', stderr: 'pipe' },
+  )
+  if (!built.success) throw new Error(`bundle failed:\n${built.stderr.toString()}${built.stdout.toString()}`)
 }

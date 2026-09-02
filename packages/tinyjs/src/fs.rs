@@ -281,12 +281,19 @@ fn restore_reader<'js>(ctx: &Ctx<'js>, fd: i32, reader: Reader) {
 }
 
 /// Reads up to `max` bytes into a buffer allocated once at that size and
-/// handed to JS without a copy. Resolves to `null` at end of stream.
-pub async fn read<'js>(ctx: Ctx<'js>, fd: i32, max: u32) -> Result<Value<'js>> {
+/// handed to JS without a copy. Resolves to `null` at end of stream. With
+/// `offset`, a file is read at that position (`pread`) and its cursor is
+/// left alone; a stream has no positions.
+pub async fn read<'js>(ctx: Ctx<'js>, fd: i32, max: u32, offset: Opt<f64>) -> Result<Value<'js>> {
     let max = max as usize;
     if max == 0 {
         return Err(invalid(&ctx, "read", "max must be positive"));
     }
+    let offset = match offset.0 {
+        Some(o) if o >= 0.0 && o.fract() == 0.0 => Some(o as u64),
+        Some(_) => return Err(invalid(&ctx, "read", "offset must be a non-negative integer")),
+        None => None,
+    };
     let _activity = Activity::begin(&ctx);
     let result: io::Result<Vec<u8>> = match take_reader(&ctx, fd)? {
         ReadTarget::File(file) => {
@@ -296,11 +303,17 @@ pub async fn read<'js>(ctx: Ctx<'js>, fd: i32, max: u32) -> Result<Value<'js>> {
                 // SAFETY: read(2) writes into the uninitialised capacity and
                 // reports how much of it is now initialised.
                 let slice = unsafe { std::slice::from_raw_parts_mut(spare.as_mut_ptr() as *mut u8, spare.len()) };
-                let n = (&*file).read(slice)?;
+                let n = match offset {
+                    Some(at) => std::os::unix::fs::FileExt::read_at(&*file, slice, at)?,
+                    None => (&*file).read(slice)?,
+                };
                 unsafe { buf.set_len(n) };
                 Ok(buf)
             })
             .await
+        }
+        ReadTarget::Stream(..) if offset.is_some() => {
+            return Err(invalid(&ctx, "read", "a stream has no offset"));
         }
         ReadTarget::Stream(mut reader, cancel) => {
             let mut buf: Vec<u8> = Vec::with_capacity(max);
