@@ -23,7 +23,7 @@ export interface RunnerHostOptions {
  */
 export function createRunnerHost(options: RunnerHostOptions = {}): Host {
   if (abi !== TINYJS_ABI) {
-    throw new Error(`host-runner is built for tinyjs abi ${TINYJS_ABI}; this tinyjs has abi ${abi}`)
+    throw new Error(`this runner is built for tinyjs abi ${TINYJS_ABI}; this tinyjs has abi ${abi}`)
   }
   const defaultCwd = normalizePath(options.defaultCwd ?? cwd())
   const fs = createRunnerFileSystem(defaultCwd)

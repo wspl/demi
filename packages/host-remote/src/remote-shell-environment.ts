@@ -15,7 +15,6 @@ import {
   type ShellEnvironmentOptions,
   type ShellExecInput,
   type ShellStatusInput,
-  type ShellViewInput,
   type ShellWriteInput,
 } from '@demicodes/shell'
 import { concatBytes, decodeUtf8, delay, isAbsolutePath, toBytes } from '@demicodes/utils'
@@ -103,11 +102,11 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     }
     const running = this.start(shell, input.script, input.signal)
     await settledOrElapsed(running.settled, timeoutMs)
-    return this.view(running.record, input)
+    return this.view(running.record)
   }
 
   async status(input: ShellStatusInput): Promise<ShellCommandStatus> {
-    return this.view(this.requireCommand(input.commandId), input)
+    return this.view(this.requireCommand(input.commandId))
   }
 
   async write(input: ShellWriteInput): Promise<ShellCommandStatus> {
@@ -117,13 +116,13 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     const data = toBytes(input.stdin)
     if (data.byteLength === 0) throw new Error('shell_write field "stdin" must not be empty; use shell_status to poll')
     await running.job.writeStdin(data)
-    return this.view(record, input)
+    return this.view(record)
   }
 
   async abort(input: ShellAbortInput): Promise<ShellCommandStatus> {
     const record = this.requireCommand(input.commandId)
     const running = this.runningById.get(record.id)
-    if (record.status !== 'running' || !running) return this.view(record, input)
+    if (record.status !== 'running' || !running) return this.view(record)
     await running.job.kill('SIGTERM')
     await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     if (record.status === 'running') {
@@ -131,7 +130,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     }
     if (record.status === 'running') this.markAborted(running)
-    return this.view(record, input)
+    return this.view(record)
   }
 
   async releaseCommand(commandId: string): Promise<boolean> {
@@ -241,8 +240,8 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     record.status = 'aborted'
   }
 
-  private view(record: ShellCommandRecord, input: ShellViewInput): ShellCommandStatus {
-    return commandStatusView(record, input, this.defaultOutputLimitBytes)
+  private view(record: ShellCommandRecord): ShellCommandStatus {
+    return commandStatusView(record, this.defaultOutputLimitBytes)
   }
 
   private requireShell(shellId: string): RemoteShell {
@@ -262,7 +261,9 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     const existing = this.defaultShellByAgentSessionId.get(key)
     if (existing) {
       const shell = this.shells.get(existing)
-      if (shell && !shell.exited) return shell
+      // A busy default shell is left to its command: the session gets a fresh
+      // shell for this exec, so a long-running command never blocks the next.
+      if (shell && !shell.exited) return shell.foreground && agentSessionId ? this.createShell(agentSessionId) : shell
     }
     const shell = this.createShell(agentSessionId)
     this.defaultShellByAgentSessionId.set(key, shell.id)

@@ -1,7 +1,7 @@
 // The runner's end of brokered transfers (`runner.md` § Transfers): the
 // backend names an origin-relative URL; this end resolves it, authenticates
 // with the device token, and streams a file up or a body down.
-import { httpGet, httpUploadFile, writeStreamToFile } from '@demicodes/host-runner'
+import { httpGet, httpUploadFile, writeStreamToFile } from './machine'
 import { collectBytes, decodeUtf8 } from '@demicodes/utils'
 
 export class TransferClient {

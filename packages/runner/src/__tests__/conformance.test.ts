@@ -4,13 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bundleForTinyjs, tinyjsBinary } from '../testing'
 
-// host-runner runs only on tinyjs, so its conformance run does too: the
+// The machine layer runs only on tinyjs, so its conformance run does too: the
 // suite from @demicodes/shell/testing is bundled with the Host and run on
 // the bare binary.
-test('host-runner passes the Host conformance suite on tinyjs', async () => {
-  const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-host-runner-')))
+test('the machine layer passes the Host conformance suite on tinyjs', async () => {
+  const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-machine-')))
   const bundle = join(work, 'conformance.mjs')
-  await bundleForTinyjs(join(import.meta.dir, '..', 'conformance', 'main.ts'), bundle)
+  await bundleForTinyjs(join(import.meta.dir, 'conformance', 'main.ts'), bundle)
   const root = join(work, 'root')
   await Bun.$`mkdir -p ${root}`
   const run = Bun.spawnSync([tinyjsBinary(), bundle], {
