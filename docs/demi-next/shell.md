@@ -15,6 +15,41 @@ still start in tens of milliseconds inside a freshly booted microVM. It is
 the only Rust in the system and carries no product logic: it knows nothing
 about the runner protocol, the command tree or the backend.
 
+## The stack
+
+One binary on disk; what runs inside it depends on the name it was invoked
+by:
+
+```
+   invoked as  demi-runner                       invoked as  demi
+   (PID 1 on a managed host, a service           (spawned by real bash, once per
+    on a user host; one process, long-lived)      `demi …` in a tool call; short-lived)
+
+ ┌───────────────────────────────────────┐    ┌───────────────────────────────────────┐
+ │  runtime command module               │    │  runtime command module               │
+ │  export default (ctx) => …            │    │  export default (ctx) => …            │
+ │  — not run here: the runner only      │    │  — runs HERE against the real fs      │
+ │    caches modules for the CLI         │    │                                       │
+ ├───────────────────────────────────────┤    ├── command ABI (public) ───────────────┤
+ │  @demicodes/runner            (JS)    │    │  @demicodes/command-loader    (JS)    │
+ │  socket · handshake · Host RPC        │    │  manifest cache → dispatch            │
+ │  job table · tee · UDS relay          │    │  runtime → run module with ctx        │
+ │  manifest cache                       │    │  rpc → UDS → runner → backend         │
+ ├───────────────────────────────────────┤    ├───────────────────────────────────────┤
+ │  @demicodes/host-shell        (JS)    │    │  @demicodes/host-shell        (JS)    │
+ │  the Host contract over the shell API │    │  the Host contract over the shell API │
+ ╞═══════════════════════════════════════╡    ╞═══════════════════════════════════════╡
+ │  shell API (private)         (Rust)   │    │  shell API (private)         (Rust)   │
+ │  fs+errno · spawn+tee · pty           │    │  fs+errno · spawn · stdio             │
+ │  tcp/tls/ws/uds · http                │    │  uds · http                           │
+ │  event loop · timers                  │    │  event loop · timers                  │
+ │  msgpack · base64 · utf-8 · globals   │    │  base64 · utf-8 · globals             │
+ ├───────────────────────────────────────┤    ├───────────────────────────────────────┤
+ │  QuickJS (rquickjs)                   │    │  QuickJS (rquickjs)                   │
+ └───────────────────────────────────────┘    └───────────────────────────────────────┘
+                 the same static binary, a few MB, JS bundled in
+```
+
 Two layers of API meet in the shell, with different audiences:
 
 - The **shell API** — the primitives the binary exposes to JS. Private:
@@ -22,6 +57,12 @@ Two layers of API meet in the shell, with different audiences:
 - The **command ABI** (`commands.md`) — what a `runtime` command module
   sees. Public. A module never touches the shell API; the Host
   implementation between them is the seam.
+
+The two processes meet on the target through two files the runner owns:
+`~/.demi/runner.sock`, the UDS the CLI uses for `rpc` commands and manifest
+misses, and `~/.demi/commands/<hash>/`, the manifest cache the CLI reads
+directly. The CLI never opens a network connection and never holds a
+credential.
 
 ## Why a shell, measured
 
