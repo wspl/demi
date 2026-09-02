@@ -4,12 +4,12 @@
 |---|---|
 | Date | 2026-09-02 |
 | Status | Design (M7) |
-| Scope | The QuickJS-based runtime binary that runs the runner and the `demi` CLI on every execution target |
+| Scope | The QuickJS-based runtime binary that runs the runner and every root command on every execution target |
 
 ## Role
 
 The shell is a small Rust binary embedding QuickJS. It exists so that the
-code on execution targets — the runner and the `demi` CLI — can stay JS,
+code on execution targets — the runner and the root commands — can stay JS,
 share the protocol schemas and the loader with the backend unchanged, and
 still start in tens of milliseconds inside a freshly booted microVM. It is
 the only Rust in the system and carries no product logic: it knows nothing
@@ -21,18 +21,18 @@ One binary on disk; what runs inside it depends on the name it was invoked
 by:
 
 ```
-   invoked as  demi-runner                       invoked as  demi
-   (PID 1 on a managed host, a service           (spawned by real bash, once per
-    on a user host; one process, long-lived)      `demi …` in a tool call; short-lived)
+   invoked as  demi-runner                       invoked as a root command: demi, myagent, …
+   (PID 1 on a managed host, a service           (spawned by real bash, once per root-command
+    on a user host; one process, long-lived)      invocation in a tool call; short-lived)
 
  ┌───────────────────────────────────────┐    ┌───────────────────────────────────────┐
  │  runtime command module               │    │  runtime command module               │
  │  export default (ctx) => …            │    │  export default (ctx) => …            │
  │  — not run here: the runner only      │    │  — runs HERE against the real fs      │
- │    caches modules for the CLI         │    │                                       │
+ │    caches modules for command mode    │    │                                       │
  ├───────────────────────────────────────┤    ├── command ABI (public) ───────────────┤
  │  @demicodes/runner            (JS)    │    │  @demicodes/command-loader    (JS)    │
- │  socket · handshake · Host RPC        │    │  manifest cache → dispatch            │
+ │  socket · handshake · Host RPC        │    │  argv[0] = root → its tree → dispatch │
  │  job table · tee · UDS relay          │    │  runtime → run module with ctx        │
  │  manifest cache                       │    │  rpc → UDS → runner → backend         │
  ├───────────────────────────────────────┤    ├───────────────────────────────────────┤
@@ -59,10 +59,10 @@ Two layers of API meet in the shell, with different audiences:
   implementation between them is the seam.
 
 The two processes meet on the target through two files the runner owns:
-`~/.demi/runner.sock`, the UDS the CLI uses for `rpc` commands and manifest
-misses, and `~/.demi/commands/<hash>/`, the manifest cache the CLI reads
-directly. The CLI never opens a network connection and never holds a
-credential.
+`~/.demi/runner.sock`, the UDS a command-mode process uses for `rpc`
+commands and manifest misses, and `~/.demi/commands/<hash>/`, the manifest
+cache it reads directly. A command-mode process never opens a network
+connection and never holds a credential.
 
 ## Why a shell, measured
 
@@ -110,10 +110,13 @@ The Host implementation `@demicodes/host-shell` maps the `Host` contract
 
 ## Entry modes
 
-One binary, one file on disk, invoked under two names (a symlink):
+One binary, one file on disk, reached through symlinks:
 
-- `demi-runner` — runs the runner program (`runner.md`).
-- `demi` — runs the loader in CLI mode (`commands.md`).
+- `demi-runner` — **runner mode**: runs the runner program (`runner.md`).
+- any other name — **command mode**: runs the loader with `argv[0]` as the
+  root command (`commands.md`). `demi` is the built-in root; a library
+  user's `myagent` is another symlink to the same file. The runner
+  maintains the symlinks from the manifest's root set.
 
 The mode is selected by `argv[0]`. The JS for both modes is bundled into
 the binary; there is no separate JS file to install, no `node_modules` on a

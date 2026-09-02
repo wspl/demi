@@ -38,7 +38,7 @@ setup, and most conversations never leave it.
 
 ## Hostless execution
 
-In the hostless state the tool call is parsed by the demi-only parser and
+In the hostless state the tool call is parsed by the root-command parser and
 dispatched through the in-process loader (`commands.md`): `demi file`,
 `demi todo`, `demi agent` and the rest work against
 `@demicodes/host-virtual`, a `Host` whose files live in the conversation's
