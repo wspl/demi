@@ -134,12 +134,15 @@ Refused outright, with the way out named: `awk`, `jq`, `xargs`, `perl`,
 ## Semantics
 
 **Parse first, then run.** The whole script is parsed before anything
-executes. If any statement is refused, nothing runs and the tool result is
-the refusal. If every command word is a builtin or a root, the script
-runs; if any is not, the script is not tinybash's — the backend provisions
-a machine and runs the **entire script** there, intact
-(`sessions-and-targets.md`). Hostless execution therefore never leaves a
-script half-done.
+executes. A script is either entirely inside the subset — every construct
+in the grammar, every command word a builtin or a root, every flag on a
+whitelist — and runs here, or it is **outside**, and nothing runs: the
+backend provisions a machine and runs the entire script there, intact and
+silently (`sessions-and-targets.md`). Hostless execution never leaves a
+script half-done, and the model never learns where the line is. Grammar
+outside the subset and programs outside the subset are the same case; the
+distinction below exists only for the refusal messages an embedder shows
+when it has no machine to hand the script to.
 
 Execution:
 
@@ -164,8 +167,11 @@ Execution:
 
 ## Refusals
 
-A refusal exits 2 with one line on stderr: what was found, why it is not
-available here, and the way out; it names the offending token and line.
+Refusals are what an embedder **without a machine** shows for a script
+outside the subset; in the product they surface only when a deployment has
+no machine to upgrade to. A refusal exits 2 with one line on stderr: what
+was found, why it is not available here, and the way out; it names the
+offending token and line.
 
 | Found | Why refused | Way out named |
 |---|---|---|
@@ -192,14 +198,15 @@ runTinybash(input: {
   signal?: AbortSignal
 }): Promise<
   | { kind: 'ran'; exitCode: number }
-  | { kind: 'refused'; exitCode: 2; message: string }
-  | { kind: 'not-tinybash'; word: string }     // hand the whole script to a machine
+  | { kind: 'outside'; reason: OutsideReason; message: string }   // hand the whole script to a machine
 >
 ```
 
-`parseTinybash(script, roots)` is exported separately and returns the
-statement list, the refusal, or the unknown word; the backend uses it to
-decide the `not-tinybash` case before touching the loader or the Host, and
+`OutsideReason` names the construct, program or flag that put the script
+outside the subset, and `message` is the refusal line for embedders with
+nowhere to hand the script. `parseTinybash(script, roots)` is exported
+separately and returns the statement list or the `outside` result; the
+backend uses it to decide before touching the loader or the Host, and
 tests use it for the grammar table.
 
 ## What tinybash is not
@@ -207,7 +214,10 @@ tests use it for the grammar table.
 - Not a bash implementation and not a coreutils implementation: the
   builtin table is closed, the flag lists are closed, and nothing outside
   them is approximated. When a hostless conversation needs more, it needs a
-  machine, and the design gives it one on the first such command.
+  machine, and the design gives it one on the first such command without
+  telling the model.
+- Not something the model knows about. The tool is bash; tinybash is the
+  backend's business.
 - Not a sandbox. Its safety property is the equivalence guarantee, which
   is about meaning, not isolation; the store-backed Host bounds what a
   hostless command can touch.
@@ -230,8 +240,12 @@ tests use it for the grammar table.
   coreutils in a Linux container; tinybash's output, exit codes and
   dispatch log must match byte for byte. This is the guarantee's test and
   runs in CI on Linux.
-- **Parse-first**: a refusal or unknown word in the last statement
-  executes nothing.
+- **Parse-first**: a script whose last statement is outside the subset
+  executes nothing, whether the cause is grammar, a program or a flag.
+- **Reference suites**: the just-bash fork's compatibility tests filtered
+  to the subset; the oils spec tests (cross-shell, table-driven, with
+  bash's expected output per case) filtered to the subset; GNU bash's and
+  coreutils' own test cases for the accepted builtins and flags.
 - **Session state**: `cd` and assignments persist across tool calls;
   prefix assignments do not.
 - The backend's hostless integration (`roadmap.md` M8) runs `demi file`,
