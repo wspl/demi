@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-03 |
-| Status | Design (M10) |
+| Status | Delivered (M10) |
 | Scope | The integration suite over the headless system: what it covers, the world fixture, the driver, the invariants, the scenarios |
 
 ## What the suite is for
@@ -106,6 +106,10 @@ any other difference between the two runs is a bug.
 | binary final stream note | "not kept beyond this view" | the output file path |
 | the executable set | tinybash builtins and the manifest roots | whatever the target has |
 | a refused script | "runs nothing and says so" | bash's own error |
+| shell state between turns | the default shell keeps its variables and cwd | the shell keeps its cwd and nothing else |
+| a command reading live stdin (`shell_write`) | none: tinybash gives root commands the pipe, and no `demi` command reads the script's stdin | any program that reads its stdin |
+| a read-only child's write | refused: the Host is the filesystem, for `demi file` and for the builtins alike | only `rpc` leaves pass through the Host; a `runtime` command and bash write the disk |
+| a command killed by `shell_abort` | `status: aborted` | `status: aborted`, with the process's own last words on stderr |
 
 ## Invariants at teardown
 
@@ -118,10 +122,10 @@ scenario never repeats them:
   job output frame stays within the view's byte budget, and no frame type
   outside the protocol's control set appears (the audit `host-shell`
   introduced, generalized);
-- no job is left on any runner, and the transfer broker holds no open
-  transfer;
-- the usage ledger has exactly one row per provider request the scripts
-  made.
+- every job started on a runner reported its exit, except those running
+  when the world killed that runner; every transfer completed;
+- the usage ledger has exactly one row per provider request the model
+  answered (a request cut off by an abort carries no usage).
 
 A failed invariant names the conversation and the scenario that opened it.
 
@@ -133,9 +137,9 @@ Each scenario is one test, one conversation, a linear script of turns.
 |---|---|---|---|
 | S1 | File workflow | create through a heredoc, read, edit, list, across four turns | the text the model receives equals the file's content; the file is where the target keeps it |
 | S2 | Output view | a command printing far past the view budget; a binary final stream; a non-zero exit; a command hitting its timeout | head and tail within budget with the elision note; the binary placeholder; exit and timeout reported in the result; on a runner the wire bytes equal the view |
-| S3 | Long commands and steering | a command that waits for stdin, `shell_status` while it runs, `shell_write` to feed it, a second command aborted with `shell_abort`, a background job on a runner | the status machine as the model sees it; nothing left running after the abort |
+| S3 | Long commands and steering | a command outliving its window (`demi agent spawn` with a slow child: the long-running command both targets share) polled with `shell_status` to its end; a second command aborted with `shell_abort`; on a runner only, stdin fed with `shell_write` and a background job outliving its command | the status machine as the model sees it; nothing left running after the abort |
 | S4 | Todo | `demi todo` written in one turn, read in a later one; a second conversation sees an empty list | the rpc leaf crosses the relay on a runner and runs in-process hostless; storage scoped to the session |
-| S5 | Subagents | `demi agent spawn` with the `explore` profile, then `default`; the child runs commands on the same target; the parent reads the result; the explore child's write is refused | parent and child share the target; the read-only profile holds; the parent's transcript carries the subagent frames |
+| S5 | Subagents | `demi agent spawn` with the `explore` profile, then `default`; the child runs commands on the same target; the parent reads the result; the explore child attempts a write | parent and child share the target; the read-only profile holds where the Host is the filesystem (the table above); the parent's transcript carries the subagent frames |
 | S6 | Continuing across a switch | S1's first turn hostless, switch to the runner over `PATCH`, S1's remaining turns there, switch back, one more read | the script keeps working across both switches; the context block appears at each; files are where each target keeps them |
 | S7 | Concurrent sessions on one runner | two conversations on the same device interleaving commands that change `cwd` and shell state | each session sees only its own state; the frames carry the right session attribution |
 | S8 | Attachments | an image attached to a user message | the model receives the bytes inline; the transcript stores a `ref`; `GET /api/blobs/:sha256` serves it; the cold transcript carries the same ref |
@@ -152,8 +156,8 @@ started over the same state directory to restart it.
 | # | Scenario | Asserts |
 |---|---|---|
 | R1 | Backend restart, idle | the conversation on the runner comes back from its database; the runner reconnects with its device token on its own; the next turn executes on the runner; the ledger totals carry over |
-| R2 | Backend restart mid-turn | the backend is closed while a command is running; after the restart the transcript has no dangling tool call (the turn is closed with an error result or dropped as a unit, whichever the code does, recorded in `progress.md`); the next turn executes |
-| R3 | Runner death and return | the runner is killed while a command runs: the tool result is an error naming the loss; the runner restarted over its state directory reconnects; the next turn executes; files written before the death are still there |
+| R2 | Backend restart mid-turn | the backend is closed while a command is running: the job is killed on the runner, the tool call settles as an error, the turn closes with an abort block; after the restart the next turn executes and the model sees the aborted call's result first |
+| R3 | Runner death and return | the runner is killed while a command runs: the command ends with exit 127 and `runner disconnected`; the runner restarted over its state directory reconnects; the next turn executes; files written before the death are still there |
 | R4 | Hostless persistence | files, `demi todo` entries and the ledger survive a backend restart of a hostless conversation |
 
 R1 moves in from `backend.test.ts`, where it was the M3 acceptance, and

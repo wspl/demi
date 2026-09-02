@@ -30,6 +30,11 @@ export class ScriptedModel {
     this.children.push(...turns)
   }
 
+  /** Drops what a session had left to say: its turn was cut short and the script with it. */
+  clear(sessionId: string): void {
+    this.queues.delete(sessionId)
+  }
+
   /** Scripts left unconsumed, for the teardown check. */
   pending(): string[] {
     const left = [...this.queues].filter(([, queue]) => queue.length > 0).map(([id, queue]) => `${id}: ${queue.length}`)
