@@ -1,8 +1,8 @@
-// The Host conformance suite on tinyjs: the definition of done for this
-// package. Bundled by the Bun test and run as `tinyjs main.mjs`.
+// The Host conformance suite on tinyjs: the definition of done for the
+// machine layer. Bundled by the Bun test and run as `tinyjs main.mjs`.
 import { env, exit, openHandles } from 'tinyjs:runtime'
 import { hostConformanceCases } from '@demicodes/shell/testing'
-import { createRunnerHost } from '../host'
+import { createRunnerHost } from '../../machine'
 
 const root = env.HOST_CONFORMANCE_ROOT
 if (!root) {

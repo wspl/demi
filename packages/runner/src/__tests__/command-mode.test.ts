@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDemiCommand } from '@demicodes/coding-agent'
 import { buildManifest, writeManifestDirectory } from '@demicodes/command-loader'
-import { LocalHost } from '@demicodes/host-local'
-import { bundleForTinyjs, tinyjsBinary } from '@demicodes/host-runner/testing'
+import { LocalHost } from '@demicodes/shell/node'
+import { bundleForTinyjs, tinyjsBinary } from '../testing'
 
 // tinyjs in command mode: the bundle packed by tinyjsc, reached through a
 // symlink named after the root, running `demi file` runtime modules from a
@@ -13,7 +13,7 @@ import { bundleForTinyjs, tinyjsBinary } from '@demicodes/host-runner/testing'
 test('command mode runs demi file runtime commands on tinyjs', async () => {
   const work = await realpath(await mkdtemp(join(tmpdir(), 'demi-command-mode-')))
   const bundle = join(work, 'entry.mjs')
-  await bundleForTinyjs(join(import.meta.dir, '..', 'tinyjs', 'entry.ts'), bundle)
+  await bundleForTinyjs(join(import.meta.dir, '..', 'entry.ts'), bundle)
   const packed = join(work, 'demi-cli')
   const pack = Bun.spawnSync([tinyjsBinary('tinyjsc'), bundle, '--bin', tinyjsBinary(), '--out', packed], { stdout: 'pipe', stderr: 'pipe' })
   expect(pack.exitCode, pack.stderr.toString()).toBe(0)

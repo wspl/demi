@@ -2,7 +2,7 @@
 // one packed binary reached through symlinks, the mode chosen by the name it
 // was invoked by. `demi-runner` is runner mode; any other name is a root
 // command in command mode.
-import { argv, createRunnerHost, env, exit, identity, stderrWriter } from '@demicodes/host-runner'
+import { argv, createRunnerHost, env, exit, identity, stderrWriter } from './machine'
 import { basenamePath } from '@demicodes/utils'
 import { runCommandMode, stateDir } from './command-mode'
 import { RunnerMode } from './runner-mode'

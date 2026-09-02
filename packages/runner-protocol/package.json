@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/runner-protocol",
-  "description": "Demi runner protocol: wire messages, portable codec, remote Host proxy, and Host RPC server.",
+  "description": "The Demi runner wire: MessagePack frames, the message schemas and the codec seam, shared by the backend and the runner.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -41,9 +41,5 @@
     "directory": "packages/runner-protocol"
   },
   "homepage": "https://github.com/wspl/demi/tree/main/packages/runner-protocol#readme",
-  "bugs": "https://github.com/wspl/demi/issues",
-  "devDependencies": {
-    "@demicodes/host-local": "workspace:^",
-    "@demicodes/host-runner": "workspace:^"
-  }
+  "bugs": "https://github.com/wspl/demi/issues"
 }

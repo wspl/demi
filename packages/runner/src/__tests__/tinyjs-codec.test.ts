@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test'
 import { mkdtemp, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { bundleForTinyjs, tinyjsBinary } from '@demicodes/host-runner/testing'
-import { RUNNER_PROTOCOL_VERSION, createRunnerWire, type RunnerProtocolMessage } from '../index'
+import { bundleForTinyjs, tinyjsBinary } from '../testing'
+import { RUNNER_PROTOCOL_VERSION, createRunnerWire, type RunnerProtocolMessage } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 
 // The two codecs of the wire, @msgpack/msgpack on Bun and tinyjs:bytes on
