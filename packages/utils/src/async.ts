@@ -19,9 +19,24 @@ export function deferred<T = void>(): Deferred<T> {
   return { promise, resolve, reject }
 }
 
-/** Resolves after `ms` milliseconds. */
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+/**
+ * Resolves after `ms` milliseconds. With `signal`, resolves as soon as the
+ * signal aborts instead, and the timer is cleared — for a `Promise.race`
+ * whose loser must not keep the process alive.
+ */
+export function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve()
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    function onAbort() {
+      clearTimeout(timer)
+      resolve()
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 /**

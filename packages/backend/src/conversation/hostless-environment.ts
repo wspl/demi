@@ -132,7 +132,7 @@ export class HostlessEnvironment implements ShellEnvironment {
       throw new Error(`Shell session "${shell.id}" is already running command "${shell.foreground.record.id}"`)
     }
     const running = this.start(shell, input.script, input.signal)
-    await Promise.race([running.settled, delay(timeoutMs)])
+    await settledOrElapsed(running.settled, timeoutMs)
     return this.view(running.record, input)
   }
 
@@ -157,7 +157,7 @@ export class HostlessEnvironment implements ShellEnvironment {
     if (record.status !== 'running' || !running) return this.view(record, input)
     running.controller.abort()
     running.stdin.close()
-    await Promise.race([running.settled, delay(ABORT_GRACE_MS)])
+    await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     if (record.status === 'running') this.markAborted(running)
     return this.view(record, input)
   }
@@ -326,3 +326,12 @@ export class HostlessEnvironment implements ShellEnvironment {
   }
 }
 
+/** Waits for the command or the deadline, whichever comes first; a won race leaves no timer behind. */
+async function settledOrElapsed(settled: Promise<unknown>, ms: number): Promise<void> {
+  const timer = new AbortController()
+  try {
+    await Promise.race([settled, delay(ms, timer.signal)])
+  } finally {
+    timer.abort()
+  }
+}
