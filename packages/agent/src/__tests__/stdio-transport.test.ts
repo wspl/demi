@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { hostlessShellFactory, probeCommand } from '@demicodes/command-loader/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/shell/node'
 import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -73,6 +74,7 @@ test('StdioTransport carries the same AgentClient/AgentServer frames over NDJSON
   const serverToClient = new PassThrough()
 
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('echo-stub', () => new StubProvider([[events.text('over stdio'), events.response()]]))],
   })
@@ -94,6 +96,7 @@ test('StdioTransport preserves complex AgentClient action convergence over NDJSO
   const provider = new StdioScenarioProvider()
 
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('stdio-scenario', provider)],
   })
@@ -148,7 +151,7 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
       new StubProvider([
         [
           events.toolCall('tool-1', 'shell_exec', {
-            script: 'sh -c "sleep 0.2; printf leaked > stdio-leaked.txt"',
+            script: 'probe hold 200 && printf leaked > stdio-leaked.txt',
             timeoutMs: 1,
           }),
         ],
@@ -156,6 +159,7 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
       ]),
   )
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [provider],
     shell: {
@@ -211,6 +215,7 @@ function createHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
     initialState: () => ({}),
+    commands: () => [probeCommand()],
     host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
   }

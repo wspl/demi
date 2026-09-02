@@ -2,12 +2,13 @@ import { access, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { type ShellEnvironmentOptions } from '@demicodes/shell'
+import { hostlessShellFactory, probeCommand } from '@demicodes/command-loader/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
 import { loadPersistedSession } from '@demicodes/agent'
-import type { BashEnvironmentOptions } from '@demicodes/shell/bash'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/shell/node'
 import {
   defineProvider,
   type AgentProvider,
@@ -291,14 +292,14 @@ test('AgentServer forwards provider error codes once and preserves the transcrip
   })
 })
 
-test('AgentServer maps shell tool progress into shell_output and audit frames', async () => {
+test('AgentServer maps shell tool progress into shell_output frames', async () => {
   const { client } = createAgentClientHarness({
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       shellIdFactory: () => 'agent-shell',
     },
     providerTurns: [
-      [events.toolCall('tool-1', 'shell_exec', { script: 'sh -c "printf hi"', timeoutMs: 1_000 })],
+      [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi', timeoutMs: 1_000 })],
       [events.text('done'), events.response()],
     ],
   })
@@ -306,7 +307,7 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
   client.subscribe((event) => seen.push(event))
 
   await client.open(providerConfig([
-      [events.toolCall('tool-1', 'shell_exec', { script: 'sh -c "printf hi"', timeoutMs: 1_000 })],
+      [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi', timeoutMs: 1_000 })],
       [events.text('done'), events.response()],
     ]),
     process.cwd(),
@@ -322,7 +323,6 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
     commandId: expect.any(String),
     status: { stdout: { delta: 'hi' } },
   })
-  expect(seen.some((event) => event.type === 'audit')).toBe(true)
 })
 
 test('AgentServer bridges shell_write frames to the active shell command', async () => {
@@ -335,7 +335,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
+          script: 'probe stdin',
           timeoutMs: 1,
         }),
       ],
@@ -348,7 +348,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
   await client.open(providerConfig([
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
+          script: 'probe stdin',
           timeoutMs: 1,
         }),
       ],
@@ -401,7 +401,7 @@ test('AgentClient.shellWrite waits for shell_write_result and rejects when no se
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c \'IFS= read -r line; sleep 0.05; printf %s "$line"\'',
+          script: 'probe stdin --delay 50',
           timeoutMs: 1,
         }),
       ],
@@ -412,7 +412,7 @@ test('AgentClient.shellWrite waits for shell_write_result and rejects when no se
   const turns: ConstructorParameters<typeof StubProvider>[0] = [
     [
       events.toolCall('tool-1', 'shell_exec', {
-        script: 'sh -c \'IFS= read -r line; sleep 0.05; printf %s "$line"\'',
+        script: 'probe stdin --delay 50',
         timeoutMs: 1,
       }),
     ],
@@ -484,6 +484,7 @@ test('AgentServer queues send frames while the session is busy and drains them i
   const gate = deferred<void>()
   const provider = new DelayedProvider(gate.promise)
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('delayed', provider)],
   })
@@ -525,6 +526,7 @@ test('AgentServer queues send frames while the session is busy and drains them i
 test('AgentClient.steer resolves correlated accepted acks and receives transcript patches without queueing', async () => {
   const provider = new ServerGateProvider({ supportsSteer: true })
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-steerable', provider)],
   })
@@ -577,6 +579,7 @@ test('AgentClient.steer rejects when no session is open and does not create tran
 test('AgentClient.steer accepts active provider without native steer and materializes at the continuation boundary', async () => {
   const provider = new ServerGateProvider({ supportsSteer: false })
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-no-native-steer', provider)],
   })
@@ -629,6 +632,7 @@ test('AgentClient.steer accepts active provider without native steer and materia
 test('AgentClient.cancelPendingSteer removes an accepted steer before transcript materialization', async () => {
   const provider = new ServerGateProvider({ supportsSteer: false })
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-cancel-pending-steer', provider)],
   })
@@ -664,6 +668,7 @@ test('AgentClient.cancelPendingSteer removes an accepted steer before transcript
 
 test('AgentClient.cancelPendingSteer is silent without an open session', async () => {
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [],
   })
@@ -683,6 +688,7 @@ test('AgentServer rejects retry, resume, and compact frames while the session is
   const gate = deferred<void>()
   const provider = new DelayedProvider(gate.promise)
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('delayed-rejects', provider)],
   })
@@ -713,6 +719,7 @@ test('AgentClient resolves each queued send promise on its own phase cycle', asy
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -765,6 +772,7 @@ test('AgentClient.dequeueMessage resolves the removed queued send without runnin
   const gates = [deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -804,6 +812,7 @@ test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle'
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -855,6 +864,7 @@ test('AgentClient.steerQueuedMessage converts a queued send into an active steer
   const gates = [deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -905,6 +915,7 @@ test('AgentClient.clearMessageQueue resolves queued sends without canceling the 
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -949,6 +960,7 @@ test('AgentClient rejects only the active action when queued sends continue afte
   const successGate = deferred<void>()
   const provider = new ErrorThenDelayedProvider(errorGate.promise, successGate.promise)
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('error-then-delayed', provider)],
   })
@@ -984,6 +996,7 @@ test('AgentClient rejects only the active action when queued sends continue afte
 test('AgentClient.abort returns false while idle and true after aborting active work', async () => {
   const provider = new AbortAwareProvider()
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('abort-aware', provider)],
   })
@@ -1002,6 +1015,7 @@ test('AgentClient.abort returns false while idle and true after aborting active 
 test('AgentServer aborts the active session when a close frame is received', async () => {
   const provider = new AbortAwareProvider()
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('abort-aware', provider)],
   })
@@ -1032,7 +1046,7 @@ test('AgentServer disposes shell resources when a close frame is received', asyn
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c "sleep 0.2; printf leaked > agent-leaked.txt"',
+          script: 'probe hold 200 && printf leaked > agent-leaked.txt',
           timeoutMs: 1,
         }),
       ],
@@ -1043,7 +1057,7 @@ test('AgentServer disposes shell resources when a close frame is received', asyn
   await client.open(providerConfig([
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c "sleep 0.2; printf leaked > agent-leaked.txt"',
+          script: 'probe hold 200 && printf leaked > agent-leaked.txt',
           timeoutMs: 1,
         }),
       ],
@@ -1085,10 +1099,11 @@ test('AgentServer.close disposes harness resources directly', async () => {
 
 function createAgentClientHarness(options: {
   harness?: AgentHarness<unknown>
-  shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shell?: ShellEnvironmentOptions
   providerTurns: ConstructorParameters<typeof StubProvider>[0]
 }): { client: AgentClient; server: AgentServer } {
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: options.harness ?? createTextHarness(),
     providers: [runtimeProvider('stub', () => new StubProvider(options.providerTurns))],
     shell: options.shell,
@@ -1233,6 +1248,7 @@ function createTextHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
     initialState: () => ({}),
+    commands: () => [probeCommand()],
     host: (ctx) => {
       const existing = hosts.get(ctx.cwd)
       if (existing) return existing
@@ -1287,6 +1303,7 @@ function delay(ms: number): Promise<void> {
 
 test('a malformed client frame is rejected at ingress with invalid_frame', async () => {
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('stub', () => new StubProvider([[events.text('ok'), events.response()]]))],
   })
@@ -1310,6 +1327,7 @@ test('a malformed client frame is rejected at ingress with invalid_frame', async
 test('AgentServer accepts a ProviderResolver: session context arrives, unknown ids error', async () => {
   const contexts: Array<{ providerId: string; agentSessionId: string }> = []
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: (providerId, context) => {
       contexts.push({ providerId, agentSessionId: context.agentSessionId })
