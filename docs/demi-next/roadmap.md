@@ -63,7 +63,7 @@ encodes and decodes on the shell. A library milestone in the M1 sense.
 The command tree with kinds; the command ABI; the manifest and its build
 step; `@demicodes/command-loader`; file commands as `runtime` modules,
 `todo`/`agent`/`host` as `rpc`; `demi agent spawn` and the group/leaf
-dispatcher rule; the hostless parser; `@demicodes/host-virtual` reduced to
+dispatcher rule; `@demicodes/tinybash`; `@demicodes/host-virtual` reduced to
 the store-backed Host; the hostless tool description; two embedders: the
 backend in-process (hostless conversations) and the shell in command mode
 running `runtime` commands (its `rpc` path completes in M9); a second root
@@ -152,7 +152,7 @@ Test modules and their intended coverage, per milestone.
 | M5 | Vault key storage + per-user assembly; ledger aggregation; login-flow state machines against mock endpoints + refresh; claude-code-on-runner chain against a mock upstream with nothing persisted on the device. Real-subscription smoke gated and manual. |
 | M6 | Switch integration (real→real with files staying and an honest context block; mid-turn switch refused; concurrent switch has one winner); offline target → readable and chattable; attachment upload → ref → inline at provider; checkpoint round-trip. |
 | M7 | Primitive conformance suite from JS (fs incl. errno cases, spawn incl. stdin/kill/tee, sockets, timers, globals); build-target matrix; guest cold-start and tee throughput measured in the Firecracker fixture. |
-| M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, shell and fixture; hostless parser table (tokens, heredocs, sequences, every refusal); hostless conversation runs file and todo; third-party embedding example. |
+| M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, shell and fixture; tinybash grammar table (words, quotes, comments, heredocs, chains with exit-status semantics, every refusal); hostless conversation runs file and todo; third-party embedding example. |
 | M9 | M1 and M4 suites on the shell runner; job table (foreground, background, kill, exit); tee + bounded view + artifact file; UDS relay round trip with session attribution; MessagePack frames; artifact fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes; local-machine runner auto-registration. |
 | M10 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
 | M11 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
