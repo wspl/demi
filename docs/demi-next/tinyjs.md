@@ -136,7 +136,7 @@ mkdir(path, { recursive?, mode? })  rmdir(path)  unlink(path)  rename(from, to)
 symlink(target, path)  link(from, to)  readlink(path)  realpath(path)
 chmod(path, mode)  utimes(path, atimeMs, mtimeMs)  truncate(path, size)
 open(path, flags, mode?): Promise<fd>          // streaming
-read(fd, max): Promise<Uint8Array | null>      // null at end of stream
+read(fd, max, offset?): Promise<Uint8Array | null>   // null at end of stream; offset: pread on a file, the cursor untouched
 write(fd, data): Promise<void>                 // resolves once the bytes are in the kernel buffer
 close(fd)
 ```
@@ -206,7 +206,15 @@ onSignal(name, handler)                        // SIGTERM, SIGINT, SIGHUP
 stdin: fd   stdout: fd   stderr: fd   pid
 identity: { uid, gid, hostname, homeDir }
 version: number   abi: number
+fdNode(fd): string | null                      // dev:ino behind an OS file descriptor
 ```
+
+`fdNode` is how a command-mode process tells the job's live stdin from a
+redirection: the runner's job prelude duplicates the job's stdin onto a
+high descriptor (`exec {fd}<&0`) and exports its number; the process
+compares `fdNode(0)` with that descriptor's node. Equal means bash gave it
+the job's own stdin, which `shell_write` feeds and which never ends on its
+own; different means a heredoc, a pipeline or a file, which is finite.
 
 **Standard globals**, because libraries look them up by these names:
 `setTimeout`/`clearTimeout`/`setInterval`/`clearInterval`/`queueMicrotask`,

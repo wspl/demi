@@ -8,15 +8,17 @@ import { AgentServer, type AgentHarness, type ClientSessionEvent } from '@demico
 import { LocalHost } from '@demicodes/host-local'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { RemoteHost, createRunnerWire, msgpackCodec, type BackendToRunnerMessage } from '@demicodes/runner-protocol'
+import { RemoteHost, RemoteShellEnvironment, createRunnerWire, type BackendToRunnerMessage } from '@demicodes/runner-protocol'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { RunnerClient } from '../runner-client'
+import { startTinyjsRunner } from '../testing'
 
-// M1 acceptance: a bare AgentServer executing on a real runner over a real
-// WebSocket — commands run in the runner's temp dir, a runner death
-// mid-command surfaces as an ordinary tool error without losing the session,
-// and after reconnect the next command succeeds.
+// M1 acceptance on the tinyjs runner: a bare AgentServer executing on a real
+// runner process over a real WebSocket — commands run as jobs in the
+// runner's home, a runner death mid-command surfaces as an ordinary tool
+// error without losing the session, and after reconnect the next command
+// succeeds.
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -36,12 +38,10 @@ const wire = createRunnerWire(msgpackCodec)
 test('bare AgentServer executes over a live runner; death mid-command is a tool error; reconnect resumes', async () => {
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-runner-e2e-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-runner-state-'))
-  const runnerHost = new LocalHost(runnerDir)
-
   const remoteHost = new RemoteHost({
     defaultCwd: runnerDir,
-    commandArtifactsDir: join(runnerDir, '.demi-artifacts'),
-    identity: runnerHost.identity,
+    commandArtifactsDir: join(stateDir, 'output'),
+    identity: new LocalHost(runnerDir).identity,
     store: memoryHostStore(),
   })
 
@@ -49,6 +49,8 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
   // connection to the RemoteHost. No claim flow — that is M2 product surface.
   type SocketData = { authed: boolean }
   const active: { socket: Bun.ServerWebSocket<SocketData> | null } = { socket: null }
+  /** Every frame type the runner sent, in order: the wire audit of the acceptance. */
+  const inbound: string[] = []
   const server = Bun.serve<SocketData>({
     port: 0,
     fetch(request, bunServer) {
@@ -59,6 +61,7 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
       message(ws, data) {
         if (typeof data === 'string') throw new Error('runner frames are binary')
         const message = wire.decodeRunnerToBackend(new Uint8Array(data))
+        inbound.push(message.type)
         if (message.type === 'hello') {
           active.socket = ws
           ws.data.authed = true
@@ -79,15 +82,8 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
     },
   })
 
-  const runner = new RunnerClient({
-    backendUrl: `ws://localhost:${server.port}`,
-    stateDir,
-    name: 'test-runner',
-    host: runnerHost,
-    reconnect: { initialDelayMs: 50, maxDelayMs: 200 },
-  })
-  runner.start()
-  await waitFor(() => remoteHost.online, undefined, { timeoutMs: 5_000 })
+  const runner = await startTinyjsRunner({ backendUrl: `ws://localhost:${server.port}`, stateDir, home: runnerDir, name: 'test-runner' })
+  await waitFor(() => remoteHost.online, () => runner.log.join('\n'), { timeoutMs: 10_000 })
 
   const harness: AgentHarness<Record<string, never>> = {
     name: 'runner-e2e-test',
@@ -112,7 +108,11 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
       ]),
   })
 
-  const agentServer = new AgentServer({ agent: harness, providers: [provider] })
+  const agentServer = new AgentServer({
+    agent: harness,
+    providers: [provider],
+    shellEnvironment: (ctx) => new RemoteShellEnvironment({ ...ctx.shell, host: remoteHost }),
+  })
   const client = agentServer.client()
   const shellEvents: Extract<ClientSessionEvent, { type: 'shell_output' }>[] = []
   client.subscribe((event) => {
@@ -120,18 +120,22 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
   })
   await client.open(selection, runnerDir, globalThis.crypto.randomUUID())
 
-  // Turn 1: executes on the runner machine (the file really exists there).
+  // Turn 1: executes on the runner machine (the file really exists there),
+  // and `cmd1 | cmd2` is an OS pipe there: the wire saw the job's view and
+  // its exit, no spawn and no file bytes.
+  const framesBefore = inbound.length
   await client.send([{ type: 'text', text: 'run on the runner' }])
   const turn1 = shellEvents.filter((event) => event.status.status === 'exited')
   expect(turn1.at(-1)?.status.stdout.delta).toBe('hello')
   expect(existsSync(join(runnerDir, 'made.txt'))).toBe(true)
   expect(readFileSync(join(runnerDir, 'made.txt'), 'utf8')).toBe('hello')
+  expect(new Set(inbound.slice(framesBefore))).toEqual(new Set(['job_output', 'job_exit']))
 
   // Turn 2: drop the runner while `sleep 30` runs; the command dies as an
   // ordinary tool error and the turn still completes.
   const eventsBeforeTurn2 = shellEvents.length
   const sendPromise = client.send([{ type: 'text', text: 'now hang' }])
-  await waitFor(() => remoteHost.activeSpawnCount > 0, undefined, { timeoutMs: 10_000 })
+  await waitFor(() => remoteHost.activeJobCount > 0, undefined, { timeoutMs: 10_000 })
   active.socket?.close()
   await sendPromise
   const failed = shellEvents.slice(eventsBeforeTurn2).at(-1)
@@ -140,7 +144,7 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
 
   // Reconnect happens on its own (backoff); the same RemoteHost object goes
   // back online, so the session's shell state and Host identity are intact.
-  await waitFor(() => remoteHost.online, undefined, { timeoutMs: 10_000 })
+  await waitFor(() => remoteHost.online, () => runner.log.join('\n'), { timeoutMs: 10_000 })
   const eventsBeforeTurn3 = shellEvents.length
   await client.send([{ type: 'text', text: 'read it back' }])
   const turn3 = shellEvents.slice(eventsBeforeTurn3).at(-1)
@@ -151,4 +155,4 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
   await agentServer.close()
   await runner.stop()
   server.stop(true)
-}, 30_000)
+}, 60_000)

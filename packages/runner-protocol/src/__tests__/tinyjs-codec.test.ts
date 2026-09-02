@@ -3,7 +3,8 @@ import { mkdtemp, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bundleForTinyjs, tinyjsBinary } from '@demicodes/host-runner/testing'
-import { createRunnerWire, msgpackCodec, type RunnerProtocolMessage } from '../index'
+import { createRunnerWire, type RunnerProtocolMessage } from '../index'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 
 // The two codecs of the wire, @msgpack/msgpack on Bun and tinyjs:bytes on
 // tinyjs, must produce and read the same bytes: frames encoded here are

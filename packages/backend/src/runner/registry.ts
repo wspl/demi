@@ -2,14 +2,15 @@ import {
   RemoteHost,
   RUNNER_PROTOCOL_VERSION,
   createRunnerWire,
-  msgpackCodec,
   type BackendToRunnerMessage,
   type HelloErrorCode,
+  type RpcCallMessage,
   type RunnerInfo,
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import type { HostFileSystem, HostIdentity, HostStore } from '@demicodes/shell'
-import { errorMessage } from '@demicodes/utils'
+import { ByteQueue, errorMessage } from '@demicodes/utils'
 import type { ControlService, DeviceRecord, WorkspaceRecord } from '../storage/control'
 import { generateClaimCode, generateDeviceToken, hashDeviceToken, normalizeClaimCode } from './claim-codes'
 
@@ -23,7 +24,17 @@ export interface RunnerRegistryOptions {
   claimAttemptsPerMinute?: number
   /** Where connection-level refusals are logged (default `console.warn`). */
   log?: (line: string) => void
+  /** The command manifest pushed to every runner on connect (`commands.md`). */
+  manifest?: () => Promise<unknown>
+  /** Runs an `rpc` command a runner relayed; output streams back through `io`, the result is its exit. */
+  rpc?: RpcRelayHandler
 }
+
+/** One relayed `rpc` invocation: the call as it arrived, its live stdin, and where its output goes. */
+export type RpcRelayHandler = (
+  call: Omit<RpcCallMessage, 'type'>,
+  io: { stdinStream: AsyncIterable<Uint8Array>; stdout(bytes: Uint8Array): Promise<void>; stderr(bytes: Uint8Array): Promise<void> },
+) => Promise<number>
 
 export interface RunnerSocketHandle {
   /** One MessagePack frame from the runner. */
@@ -46,6 +57,8 @@ interface RunnerConnection {
   pongPending: boolean
   /** Running jobs as of the last `pong`; the idle rule reads it. */
   jobs: number
+  /** Live stdin queues of the rpc calls relayed on this connection. */
+  rpcStdin: Map<string, ByteQueue>
 }
 
 const wire = createRunnerWire(msgpackCodec)
@@ -63,6 +76,8 @@ export class RunnerRegistry {
   private readonly pingIntervalMs: number
   private readonly claimAttemptsPerMinute: number
   private readonly log: (line: string) => void
+  private readonly manifest: (() => Promise<unknown>) | null
+  private readonly rpc: RpcRelayHandler | null
   private readonly pendingClaims = new Map<string, RunnerConnection>()
   private readonly connections = new Map<string, RunnerConnection>()
   private readonly hosts = new Map<string, Map<string, RemoteHost>>()
@@ -77,6 +92,8 @@ export class RunnerRegistry {
     this.pingIntervalMs = options.pingIntervalMs ?? 30_000
     this.claimAttemptsPerMinute = options.claimAttemptsPerMinute ?? 10
     this.log = options.log ?? ((line) => console.warn(line))
+    this.manifest = options.manifest ?? null
+    this.rpc = options.rpc ?? null
   }
 
   /** Binds one runner WebSocket; the route feeds frames and the close event in. */
@@ -97,6 +114,7 @@ export class RunnerRegistry {
       pingTimer: null,
       pongPending: false,
       jobs: 0,
+      rpcStdin: new Map(),
     }
     return {
       handleMessage: (frame) => {
@@ -130,6 +148,7 @@ export class RunnerRegistry {
     })
     this.bindDevice(connection, device.id)
     connection.send({ type: 'claimed', deviceToken })
+    await this.pushManifest(connection)
     return { ok: true, device }
   }
 
@@ -211,11 +230,46 @@ export class RunnerRegistry {
       connection.jobs = message.jobs
       return
     }
-    // fs results and spawn streams: each per-target host claims its own ids.
     if (connection.deviceId === null) return
+    if (message.type === 'rpc_call') {
+      void this.relayRpc(connection, message)
+      return
+    }
+    if (message.type === 'rpc_stdin') {
+      connection.rpcStdin.get(message.callId)?.push(message.bytes)
+      return
+    }
+    if (message.type === 'rpc_stdin_end') {
+      connection.rpcStdin.get(message.callId)?.close()
+      return
+    }
+    // fs results, spawn and job streams: each per-target host claims its own ids.
     const deviceHosts = this.hosts.get(connection.deviceId)
     if (!deviceHosts) return
     for (const host of deviceHosts.values()) host.handleMessage(message)
+  }
+
+  /** An `rpc` command invoked on the device: run here, its output streamed back to the command-mode process. */
+  private async relayRpc(connection: RunnerConnection, message: RpcCallMessage): Promise<void> {
+    const { type: _type, ...call } = message
+    const stdin = new ByteQueue()
+    connection.rpcStdin.set(call.callId, stdin)
+    let exitCode: number
+    try {
+      if (!this.rpc) throw new Error('this backend serves no rpc commands to runners')
+      exitCode = await this.rpc(call, {
+        stdinStream: stdin.stream(),
+        stdout: async (bytes) => connection.send({ type: 'rpc_output', callId: call.callId, stream: 'stdout', bytes }),
+        stderr: async (bytes) => connection.send({ type: 'rpc_output', callId: call.callId, stream: 'stderr', bytes }),
+      })
+    } catch (error) {
+      connection.send({ type: 'rpc_output', callId: call.callId, stream: 'stderr', bytes: new TextEncoder().encode(`${call.root}: ${errorMessage(error)}\n`) })
+      exitCode = 1
+    } finally {
+      connection.rpcStdin.delete(call.callId)
+      stdin.close()
+    }
+    connection.send({ type: 'rpc_exit', callId: call.callId, exitCode })
   }
 
   private async handleHello(
@@ -256,6 +310,16 @@ export class RunnerRegistry {
     }
     this.bindDevice(connection, device.id)
     connection.send({ type: 'hello_ok', deviceId: device.id })
+    await this.pushManifest(connection)
+  }
+
+  private async pushManifest(connection: RunnerConnection): Promise<void> {
+    if (!this.manifest) return
+    try {
+      connection.send({ type: 'manifest', manifest: await this.manifest() })
+    } catch (error) {
+      this.log(`manifest not sent: ${errorMessage(error)}`)
+    }
   }
 
   private issueClaimCode(connection: RunnerConnection): void {

@@ -75,6 +75,11 @@ test("fs: streaming open/read/write/close", async () => {
   assertEq(dec(await fs.read(rd, 4)), "abcd");
   assertEq(dec(await fs.read(rd, 4)), "ef");
   assertEq(await fs.read(rd, 4), null);
+  // pread: a position leaves the cursor alone; a stream has none.
+  assertEq(dec(await fs.read(rd, 3, 2)), "cde");
+  assertEq(await fs.read(rd, 4), null);
+  assertEq(await fs.read(rd, 10, 6), null);
+  await assertCode(() => fs.read(rd, 4, -1), "EINVAL", "read");
   fs.close(rd);
   await assertCode(() => fs.open(p("stream"), "wx"), "EEXIST", "open");
   await assertCode(() => fs.read(rd, 1), "EBADF", "read");

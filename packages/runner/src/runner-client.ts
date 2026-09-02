@@ -5,10 +5,10 @@ import {
   HostRpcServer,
   RUNNER_PROTOCOL_VERSION,
   createRunnerWire,
-  msgpackCodec,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import type { Host } from '@demicodes/shell'
 import { RunnerState } from './state'
 
