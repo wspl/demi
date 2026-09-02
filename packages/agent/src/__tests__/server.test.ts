@@ -6,7 +6,7 @@ import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
 import { loadPersistedSession } from '@demicodes/agent'
-import type { BashEnvironmentOptions } from '@demicodes/shell'
+import type { BashEnvironmentOptions } from '@demicodes/shell/bash'
 import { LocalHost } from '@demicodes/host-local'
 import {
   defineProvider,

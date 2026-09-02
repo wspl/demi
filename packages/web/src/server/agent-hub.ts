@@ -8,7 +8,7 @@ import {
 import { createCodingAgentHarness } from '@demicodes/coding-agent'
 import { LocalHost, createLocalAgentServer, type LocalAgentServerHandle } from '@demicodes/host-local'
 import type { Provider } from '@demicodes/provider'
-import type { BashEnvironmentOptions } from '@demicodes/shell'
+import type { BashEnvironmentOptions } from '@demicodes/shell/bash'
 
 export type AgentHubShellOptions = Omit<BashEnvironmentOptions, 'host' | 'commands'>
 

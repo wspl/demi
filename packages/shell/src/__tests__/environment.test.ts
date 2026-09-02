@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
-import { BashEnvironment, CommandRegistry, type Command } from '../index'
+import { CommandRegistry, type Command } from '../index'
+import { BashEnvironment } from '../bash'
 import { LocalHost } from '@demicodes/host-local'
 
 test('BashEnvironment keeps cwd and env state across shell_exec calls', async () => {

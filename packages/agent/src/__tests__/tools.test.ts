@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { Model, ModelSelection } from '@demicodes/core'
-import type { BashEnvironment, ShellCommandStatus } from '@demicodes/shell'
+import type { ShellCommandStatus } from '@demicodes/shell'
+import type { BashEnvironment } from '@demicodes/shell/bash'
 import type { AgentToolInvokeContext } from '../types'
 import { createStandardAgentTools, shellCommandHandleRequired, shellPreviewBudgetTokens, toShellToolResult } from '../tools'
 
