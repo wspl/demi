@@ -23,13 +23,12 @@ pub fn run(payload: Payload, argv: Vec<String>) -> i32 {
 
 async fn run_async(payload: Payload, argv: Vec<String>) -> i32 {
     let entry_name = payload.entry_name();
-    let entry_source = match payload.source(&entry_name) {
-        Some(Ok(source)) => source,
-        Some(Err(e)) => {
+    let entry = match payload.entry() {
+        Ok(entry) => entry,
+        Err(e) => {
             eprintln!("tinyjs: cannot read entry '{entry_name}': {e}");
             return 2;
         }
-        None => unreachable!("the payload always has its entry"),
     };
     let js = AsyncRuntime::new().expect("QuickJS runtime");
     js.set_loader(loader::ShellResolver, loader::ShellLoader::new(payload)).await;
@@ -44,7 +43,7 @@ async fn run_async(payload: Payload, argv: Vec<String>) -> i32 {
             report_uncaught(&e);
             return 1;
         }
-        let entry = match loader::evaluate_entry(&ctx, &entry_name, entry_source).catch(&ctx) {
+        let entry = match loader::evaluate_entry(&ctx, &entry_name, entry).catch(&ctx) {
             Ok(p) => p.into_future::<()>(),
             Err(e) => {
                 report_uncaught(&e);

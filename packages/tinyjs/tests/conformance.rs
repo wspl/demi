@@ -86,10 +86,8 @@ fn primitive_conformance_suite() {
     assert!(status.success(), "conformance suite failed: {status}");
 }
 
-/// Packs a bundle into a copy of the binary the way the build tooling will
-/// (find the slot magic, write length and bytes in place, ad-hoc re-sign on
-/// macOS) and checks that the packed file runs it with `argv[0]` as the
-/// invoked name and `tinyjs:*` visible.
+/// Packs a bundle with `tinyjs --pack` and checks that the packed file runs
+/// it with `argv[0]` as the invoked name and `tinyjs:*` visible.
 #[test]
 fn packed_binary_runs_the_bundle() {
     let bin = env!("CARGO_BIN_EXE_tinyjs");
@@ -97,24 +95,18 @@ fn packed_binary_runs_the_bundle() {
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).unwrap();
     let packed = work.join("tinyjs-packed");
-    let bundle: &[u8] = br#"import { argv, exit } from "tinyjs:runtime";
+    let bundle = work.join("bundle.mjs");
+    std::fs::write(&bundle, r#"import { argv, exit } from "tinyjs:runtime";
 import { sha256 } from "tinyjs:bytes";
 const name = argv[0].slice(argv[0].lastIndexOf("/") + 1);
 console.log(`${name}:${argv.slice(1).join(",")}:${sha256(new Uint8Array(0)).length}`);
 exit(name === "demi-runner" ? 7 : 0);
-"#;
-    let mut data = std::fs::read(bin).unwrap();
-    let magic = b"TINYJS_SLOT_v1__";
-    let at = data.windows(magic.len()).position(|w| w == magic).expect("slot magic in the binary");
-    let capacity = u64::from_le_bytes(data[at + 16..at + 24].try_into().unwrap()) as usize;
-    assert!(bundle.len() <= capacity);
-    data[at + 24..at + 32].copy_from_slice(&(bundle.len() as u64).to_le_bytes());
-    data[at + 32..at + 32 + bundle.len()].copy_from_slice(bundle);
-    std::fs::write(&packed, &data).unwrap();
-    std::fs::set_permissions(&packed, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+"#).unwrap();
+    let out = Command::new(bin).arg("--pack").arg(&bundle).arg("--out").arg(&packed).output().unwrap();
+    assert!(out.status.success(), "pack failed: {}", String::from_utf8_lossy(&out.stderr));
     if cfg!(target_os = "macos") {
-        let status = Command::new("codesign").args(["-s", "-", "-f"]).arg(&packed).status().unwrap();
-        assert!(status.success(), "codesign failed");
+        let status = Command::new("codesign").args(["--verify", "--strict"]).arg(&packed).status().unwrap();
+        assert!(status.success(), "the packed binary must pass strict signature verification");
     }
     let demi = work.join("demi");
     let runner = work.join("demi-runner");
@@ -127,6 +119,9 @@ exit(name === "demi-runner" ? 7 : 0);
     let out = Command::new(&runner).output().unwrap();
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "demi-runner::32");
     assert_eq!(out.status.code(), Some(7));
+    // A packed binary parses no arguments: --pack goes to the bundle.
+    let out = Command::new(&demi).args(["--pack"]).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "demi:--pack:32");
 
     // The bare binary without an entry prints usage and exits with 2.
     let out = Command::new(bin).output().unwrap();
