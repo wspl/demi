@@ -89,11 +89,16 @@ The shell runs one bundled ESM module and gives it the few things JS
 cannot do for itself. Its API is shaped by that role, not by any existing
 runtime:
 
-- **One frozen global, `__shell`.** Not a module: bundles treat it as
-  external. `@demicodes/host-shell` is the only package that reads it and
-  exports typed wrappers; the runner and `@demicodes/command-loader`
-  depend on host-shell, never on the global. That single import point is
-  what makes the shell API private.
+- **Built-in modules under the `demishell:` scheme**, one per area:
+  `demishell:fs`, `demishell:process`, `demishell:net`, `demishell:bytes`,
+  `demishell:runtime`. Bundles treat the scheme as external;
+  `@demicodes/host-shell` is the only package that imports it, declares
+  its types, and exports the typed wrappers the runner and
+  `@demicodes/command-loader` use. The shell's module loader resolves
+  `demishell:*` **only for the embedded bundle**: a module loaded from a
+  file — a `runtime` command module — that imports it fails to load. That
+  check is what makes the shell API private and the command ABI the only
+  thing a command module can see.
 - **Every IO call returns a `Promise`** and takes and returns plain data.
   Bytes are `Uint8Array`; strings are used only for paths, names and
   signal names.
@@ -108,8 +113,8 @@ runtime:
   `@demicodes/utils` and the existing Host error mapping apply unchanged.
 - **Cancellation is `close` or `kill`.** The primitives do not know
   `AbortSignal`; host-shell maps it.
-- `__shell.version` and `__shell.abi` are two numbers; host-shell checks
-  the abi at start.
+- `demishell:runtime` exports `version` and `abi`, two numbers; host-shell
+  checks the abi at start.
 
 ### Primitives
 
@@ -120,12 +125,12 @@ needs it; nothing is there for generality.
 |---|---|---|
 | Module loading | the embedded bundle runs at start; `import()` of an **absolute file path** loads a second module at run time — no npm-style resolution of any kind | `runtime` command modules from `~/.demi/commands/<hash>/` |
 | Event loop | `setTimeout`/`clearTimeout`/`setInterval`/`queueMicrotask`; every IO completion below is delivered on the same loop | all |
-| Filesystem | the `HostFileSystem` method set one to one — `readFile`/`writeFile`/`appendFile`, `stat`/`lstat`, `readdir` with types, `mkdir`, `rm`, `cp`, `mv`, `chmod`, `symlink`/`link`/`readlink`/`realpath`, `utimes` — plus `open`/`read`/`write`/`close` for streaming; errno fidelity throughout | host-shell |
-| Processes | `spawn({ command, args, cwd, env, stdin, uid?, gid?, killProcessGroup?, tee? })` → handle with stdin/stdout/stderr ids; `kill(id, signal)`; `wait(id)` → `{ code, signal }`. **tee**: with `tee: { stdoutPath, stderrPath, viewLimit }` the full streams are written to those files inside the shell and JS reads only the first `viewLimit` bytes of each, then `null`; `wait` also reports the full byte counts. `uid`/`gid` is how PID 1 runs jobs as the guest user | runner jobs, Host `spawn`, the Claude Code CLI |
-| Network | `wsConnect(url, headers)` → send bytes, receive bytes, close; `httpRequest({ method, url, headers, body: bytes \| file id })` → status, headers, body id; `udsConnect(path)`, `udsListen(path)`/`accept`. TLS lives inside these; **no TCP or TLS primitive is exposed** — nothing needs one | the backend socket, the relay, `output_upload`, transfers |
-| Bytes | MessagePack encode/decode (`Uint8Array` and `Date` as extension types), base64, SHA-256, random bytes | frames, manifest-cache verification, claim codes |
-| Own process | `argv`, `env` (read-only snapshot), `cwd`/`chdir`, `exit`, `onSignal`, pre-opened stdin/stdout/stderr ids, `pid`, `uid`/`gid`/`hostname`/`homeDir` | entry-mode selection, `HostIdentity`, PID 1's `SIGTERM` |
-| Globals | `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `crypto.getRandomValues`, `performance.now`, `console`, `AbortController`, `structuredClone` | zod, the protocol package, the loader |
+| Filesystem (`demishell:fs`) | the `HostFileSystem` method set one to one — `readFile`/`writeFile`/`appendFile`, `stat`/`lstat`, `readdir` with types, `mkdir`, `rm`, `cp`, `mv`, `chmod`, `symlink`/`link`/`readlink`/`realpath`, `utimes` — plus `open`/`read`/`write`/`close` for streaming; errno fidelity throughout | host-shell |
+| Processes (`demishell:process`) | `spawn({ command, args, cwd, env, stdin, uid?, gid?, killProcessGroup?, tee? })` → handle with stdin/stdout/stderr ids; `kill(id, signal)`; `wait(id)` → `{ code, signal }`. **tee**: with `tee: { stdoutPath, stderrPath, viewLimit }` the full streams are written to those files inside the shell and JS reads only the first `viewLimit` bytes of each, then `null`; `wait` also reports the full byte counts. `uid`/`gid` is how PID 1 runs jobs as the guest user | runner jobs, Host `spawn`, the Claude Code CLI |
+| Network (`demishell:net`) | `wsConnect(url, headers)` → send bytes, receive bytes, close; `httpRequest({ method, url, headers, body: bytes \| file id })` → status, headers, body id; `udsConnect(path)`, `udsListen(path)`/`accept`. TLS lives inside these; **no TCP or TLS primitive is exposed** — nothing needs one | the backend socket, the relay, `output_upload`, transfers |
+| Bytes (`demishell:bytes`) | MessagePack encode/decode (`Uint8Array` and `Date` as extension types), base64, SHA-256, random bytes | frames, manifest-cache verification, claim codes |
+| Own process (`demishell:runtime`) | `argv`, `env` (read-only snapshot), `cwd`/`chdir`, `exit`, `onSignal`, pre-opened stdin/stdout/stderr ids, `pid`, `identity` (`uid`/`gid`/`hostname`/`homeDir`), `version`/`abi` | entry-mode selection, `HostIdentity`, PID 1's `SIGTERM` |
+| Globals | standard names only, because libraries look them up as globals: `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `crypto.getRandomValues`, `performance.now`, `console`, `AbortController`, `structuredClone` | zod, the protocol package, the loader |
 
 When the shell is PID 1 it additionally reaps adopted children itself; that
 is its only PID 1-specific behaviour. Mounting and network configuration
