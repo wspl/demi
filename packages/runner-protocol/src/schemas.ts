@@ -168,6 +168,8 @@ export const runnerToBackendMessageSchema = z.union([
   }),
   z.object({ type: z.literal('rpc_stdin'), callId: z.string(), bytes: bytesSchema }),
   z.object({ type: z.literal('rpc_stdin_end'), callId: z.string() }),
+  /** The end of a `transfer_send` / `transfer_receive`: the HTTP exchange completed, or why it did not. */
+  z.object({ type: z.literal('transfer_done'), transferId: z.string(), ok: z.boolean(), error: z.string().optional() }),
 ])
 
 /**
@@ -208,7 +210,17 @@ export const backendToRunnerMessageSchema = z.union([
     z.object({ type: z.literal('job_stdin_end'), jobId: z.string() }),
     z.object({ type: z.literal('job_kill'), jobId: z.string(), signal: z.string().optional() }),
     z.object({ type: z.literal('rpc_output'), callId: z.string(), stream: streamSchema, bytes: bytesSchema }),
+    /** The call's stdout comes from a brokered transfer: the runner `GET`s `url` and relays the body, then `rpc_exit` follows. */
+    z.object({ type: z.literal('rpc_transfer'), callId: z.string(), url: z.string() }),
     z.object({ type: z.literal('rpc_exit'), callId: z.string(), exitCode: z.number() }),
+    /**
+     * A brokered cross-host copy (`runner.md` § Transfers): the source `PUT`s
+     * the file at `path` to `url`, the destination `GET`s `url` into `path`.
+     * `url` is origin-relative; the runner resolves it against its backend
+     * URL and authenticates with its device token.
+     */
+    z.object({ type: z.literal('transfer_send'), transferId: z.string(), path: z.string(), url: z.string() }),
+    z.object({ type: z.literal('transfer_receive'), transferId: z.string(), path: z.string(), url: z.string() }),
     /**
      * The command manifest for the runner's cache. Its shape is the loader's
      * (`parseManifest` in `@demicodes/command-loader`), which the runner
