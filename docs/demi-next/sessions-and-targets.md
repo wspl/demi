@@ -38,15 +38,17 @@ setup, and most conversations never leave it.
 
 ## Hostless execution
 
-In the hostless state the tool call runs in tinybash, the backend's tiny
-shell whose only executables are the root commands, dispatched through the
+In the hostless state the tool call runs in tinybash (`tinybash.md`), the
+backend's small shell: a GNU-faithful subset of bash and coreutils over the
+store-backed filesystem, plus the root commands dispatched through the
 in-process loader (`commands.md`): `demi file`,
 `demi todo`, `demi agent` and the rest work against
 `@demicodes/host-virtual`, a `Host` whose files live in the conversation's
 store. The tool description in this state lists the available commands and
 says that any other command starts a machine.
 
-**The first script with a non-root first word auto-provisions** a managed
+**The first script using a program that is neither a tinybash builtin nor
+a root auto-provisions** a managed
 host bound to the conversation (session upgrade). tinybash reports the
 script as not its own before running anything (`tinybash.md`); the backend
 writes the hostless files into the new host's home under the conversation's
