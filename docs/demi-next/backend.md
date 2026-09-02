@@ -67,10 +67,11 @@ Spoken of as modules, not separate services:
   persistence, session index, cold-history reads on the same rendering
   path as live (a full-sync `transcript_reset`), compaction, session
   concurrency via client-owned session ids and the ownership registry.
-- **Command module**: assembles the `demi` tree from `@demicodes/coding-agent`
-  plus the backend-contributed `host` group, builds and serves the
-  manifest, embeds the loader for hostless conversations, executes `rpc`
-  commands arriving from runners (`commands.md`).
+- **Command module**: assembles the roots (`demi` from
+  `@demicodes/coding-agent` plus the backend-contributed `host` group),
+  builds and serves the manifest, runs hostless conversations' tool calls
+  in tinybash over an in-process loader, executes `rpc` commands arriving
+  from runners (`commands.md`).
 - **LLM module**, **credential vault**, **usage accounting**:
   `providers-and-vault.md`.
 - **Runner management module**: device registry (claim tokens, device
@@ -130,5 +131,5 @@ poll on open and on an interval.
 `@demicodes/backend` is a product leaf: nothing imports it. Its production
 dependencies are the agent, coding-agent, core, provider, the provider
 runtimes, shell (Host contract and command types), host-virtual,
-command-loader, runner-protocol and utils, plus `hono` on Bun. The module
+command-loader, tinybash, runner-protocol and utils, plus `hono` on Bun. The module
 directories mirror the modules above (`docs/package-boundaries.md`).
