@@ -119,18 +119,100 @@ runtime:
 ### Primitives
 
 Every primitive is there because one of the three JS blocks in the stack
-needs it; nothing is there for generality.
+needs it; nothing is there for generality. Paths are absolute (host-shell
+resolves against the cwd first). Handles (`fd`, process ids, sockets,
+listeners) are integers with an explicit `close`.
 
-| Area | Primitives | Needed by |
-|---|---|---|
-| Module loading | the embedded bundle runs at start; `import()` of an **absolute file path** loads a second module at run time — no npm-style resolution of any kind | `runtime` command modules from `~/.demi/commands/<hash>/` |
-| Event loop | `setTimeout`/`clearTimeout`/`setInterval`/`queueMicrotask`; every IO completion below is delivered on the same loop | all |
-| Filesystem (`demishell:fs`) | the `HostFileSystem` method set one to one — `readFile`/`writeFile`/`appendFile`, `stat`/`lstat`, `readdir` with types, `mkdir`, `rm`, `cp`, `mv`, `chmod`, `symlink`/`link`/`readlink`/`realpath`, `utimes` — plus `open`/`read`/`write`/`close` for streaming; errno fidelity throughout | host-shell |
-| Processes (`demishell:process`) | `spawn({ command, args, cwd, env, stdin, uid?, gid?, killProcessGroup?, tee? })` → handle with stdin/stdout/stderr ids; `kill(id, signal)`; `wait(id)` → `{ code, signal }`. **tee**: with `tee: { stdoutPath, stderrPath, viewLimit }` the full streams are written to those files inside the shell and JS reads only the first `viewLimit` bytes of each, then `null`; `wait` also reports the full byte counts. `uid`/`gid` is how PID 1 runs jobs as the guest user | runner jobs, Host `spawn`, the Claude Code CLI |
-| Network (`demishell:net`) | `wsConnect(url, headers)` → send bytes, receive bytes, close; `httpRequest({ method, url, headers, body: bytes \| file id })` → status, headers, body id; `udsConnect(path)`, `udsListen(path)`/`accept`. TLS lives inside these; **no TCP or TLS primitive is exposed** — nothing needs one | the backend socket, the relay, `output_upload`, transfers |
-| Bytes (`demishell:bytes`) | MessagePack encode/decode (`Uint8Array` and `Date` as extension types), base64, SHA-256, random bytes | frames, manifest-cache verification, claim codes |
-| Own process (`demishell:runtime`) | `argv`, `env` (read-only snapshot), `cwd`/`chdir`, `exit`, `onSignal`, pre-opened stdin/stdout/stderr ids, `pid`, `identity` (`uid`/`gid`/`hostname`/`homeDir`), `version`/`abi` | entry-mode selection, `HostIdentity`, PID 1's `SIGTERM` |
-| Globals | standard names only, because libraries look them up as globals: `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `crypto.getRandomValues`, `performance.now`, `console`, `AbortController`, `structuredClone` | zod, the protocol package, the loader |
+**`demishell:fs`** — the `HostFileSystem` method set one to one, with
+errno fidelity throughout:
+
+```ts
+readFile(path): Promise<Uint8Array>            // fstat first, one allocation of the exact size
+writeFile(path, data, { mode?, append? }): Promise<void>
+stat(path) / lstat(path): Promise<Stat>        // { kind, mode, size, mtimeMs, atimeMs, uid, gid, ino, dev, nlink }
+readdir(path): Promise<{ name, kind }[]>       // kind: file | dir | symlink | other
+mkdir(path, { recursive?, mode? })  rmdir(path)  unlink(path)  rename(from, to)
+symlink(target, path)  link(from, to)  readlink(path)  realpath(path)
+chmod(path, mode)  utimes(path, atimeMs, mtimeMs)  truncate(path, size)
+open(path, flags, mode?): Promise<fd>          // streaming
+read(fd, max): Promise<Uint8Array | null>      // null at end of stream
+write(fd, data): Promise<void>                 // resolves once the bytes are in the kernel buffer
+close(fd)
+```
+
+`rm -r`, `cp` and `mv` across devices are composed in host-shell from
+these.
+
+**`demishell:process`** — runner jobs, Host `spawn`, the Claude Code CLI:
+
+```ts
+spawn({
+  command, args, cwd, env,                     // env is the complete table; nothing is inherited
+  stdin: "pipe" | "null",
+  uid?, gid?, processGroup?: boolean,          // uid/gid: how PID 1 runs jobs as the guest user
+  tee?: { stdoutPath, stderrPath, viewLimit }
+}): Promise<{ pid, stdin: fd, stdout: fd, stderr: fd }>
+wait(pid): Promise<{ code: number | null, signal?: string, stdoutBytes?, stderrBytes? }>
+kill(pid, signal: string, { group?: boolean })
+```
+
+With `tee`, the full streams are written to the two files inside the
+shell; the `stdout`/`stderr` fds yield only the first `viewLimit` bytes
+and then end, and `wait` reports the full byte counts. Spawn failures map
+to the `HostSpawnError` kinds through errno: `ENOENT`, `EACCES`,
+`ENOTDIR`, `EISDIR`.
+
+**`demishell:net`** — the backend socket, the relay, uploads and
+transfers. TLS lives inside these; no TCP or TLS primitive is exposed:
+
+```ts
+wsConnect(url, { headers? }): Promise<ws>
+wsSend(ws, data): Promise<void>                // resolves once written: that is the backpressure
+wsRecv(ws): Promise<Uint8Array | null>
+wsClose(ws, code?)
+udsConnect(path): Promise<fd>                  // then read/write/close from demishell:fs
+udsListen(path, { mode }): Promise<listener>   // chmod applied before the first accept
+accept(listener): Promise<fd>
+close(listener)
+httpRequest({ method, url, headers, body?: Uint8Array | { file: path } })
+  : Promise<{ status, headers, body: fd }>     // request body streams from the file; response body streams to the reader
+```
+
+`wsConnect` and `httpRequest` honour the proxy environment variables and
+speak `CONNECT`, because user hosts sit behind corporate proxies.
+
+**`demishell:bytes`** — frames, manifest-cache verification, claim codes:
+
+```ts
+msgpackEncode(value): Uint8Array               // Uint8Array and Date as extension types
+msgpackDecode(bytes): value
+base64Encode(bytes): string   base64Decode(text): Uint8Array
+sha256(bytes): Uint8Array     randomBytes(n): Uint8Array
+```
+
+**`demishell:runtime`** — entry-mode selection, `HostIdentity`, PID 1:
+
+```ts
+argv: string[]                                 // argv[0] is the invoked name
+env: Readonly<Record<string, string>>
+cwd(): string   chdir(path)   exit(code)
+onSignal(name, handler)                        // SIGTERM, SIGINT, SIGHUP
+stdin: fd   stdout: fd   stderr: fd   pid
+identity: { uid, gid, hostname, homeDir }
+version: number   abi: number
+```
+
+**Standard globals**, because libraries look them up by these names:
+`setTimeout`/`clearTimeout`/`setInterval`/`clearInterval`/`queueMicrotask`,
+`TextEncoder`/`TextDecoder`, `atob`/`btoa`, `URL`/`URLSearchParams`,
+`console`, `performance.now`, `crypto.randomUUID`/`crypto.getRandomValues`,
+`AbortController`/`AbortSignal`, `structuredClone`. The last two are
+embedded JS; the rest are Rust bindings.
+
+**Module loading**: the embedded bundle runs at start under a `/embedded/`
+name; `import()` accepts only absolute file paths, reads the file and
+declares it — no npm-style resolution of any kind. `demishell:*` resolves
+only when the importer is the embedded bundle.
 
 When the shell is PID 1 it additionally reaps adopted children itself; that
 is its only PID 1-specific behaviour. Mounting and network configuration
@@ -140,7 +222,12 @@ The rule that decides what belongs here: **JS on the shell handles control
 flow; any per-byte work is a primitive.** QuickJS has no JIT — a pure-JS
 base64 loop measured 2.8 MB/s where the native primitive measured 300 MB/s
 — so the tee, the codec and the transcoders are Rust, and the runner's JS
-never sees a chunk it has to iterate over.
+never sees a chunk it has to iterate over. A second reason is the guest
+itself: under nested virtualization the first touch of fresh memory is
+expensive (50 MB allocated and filled measured 0.9 s on first touch, 0.16 s
+on the second), so every large buffer is allocated once, at its known
+size, in Rust — never grown incrementally and never copied into the JS
+heap.
 
 ### Not in the first version
 
@@ -148,6 +235,22 @@ Each has no consumer today and is added only when one appears: pty
 (interactive input goes through the job's stdin pipe), HTTP/WebSocket/TLS
 servers (the runner is outbound-only; the relay is a UDS), mount and
 netlink primitives, fs watching, workers, WebAssembly, compression.
+
+### Everything is ours
+
+The primitives are implemented directly, not assembled from a
+general-purpose runtime's module crates. LLRT publishes its modules as
+crates and a spike built a shell from them (`progress.md`): what worked
+was exactly the part that is trivial to write (timers, URL, encoders),
+while every primitive with semantics we depend on fell short — errors
+carry no errno code, sockets have no backpressure, fetch buffers whole
+bodies with no streams, whole-file reads grow a buffer incrementally. The
+Rust dependencies are therefore the runtime pieces only: `rquickjs`,
+`tokio` (current-thread runtime; the QuickJS context is single-threaded,
+so none of async Rust's `Send` friction applies), `rustls` on the `ring`
+backend, `rmp` for MessagePack, `sha2`, `getrandom`. HTTP/1.1 and
+WebSocket client framing are written in the crate — a few hundred lines
+each — rather than pulled from `hyper` and `tungstenite`.
 
 The Host implementation `@demicodes/host-shell` maps the `Host` contract
 (`packages/shell/src/host.ts`) onto these primitives, exactly as
@@ -172,16 +275,34 @@ target.
 - Static musl builds for Linux x86_64 and aarch64 (the managed-host rootfs
   and user hosts), macOS arm64 and x86_64 builds (user hosts). Windows has
   no bash and is not a target.
-- Size budget: a few MB. Every added primitive is weighed against the
-  first-execution cost it adds.
+- **Size budget: 2.5–3 MB** — QuickJS about 0.7 MB, rustls with ring
+  about 1 MB, tokio about 0.3 MB, the rest ours. Every added primitive is
+  weighed against the first-execution cost it adds.
+- **The startup path touches no network code.** First-execution cost in a
+  guest is paid per page touched, not per byte on disk (a 5.5 MB spike
+  binary started only 70 ms slower than a 1.45 MB one because its TLS and
+  HTTP code never ran). The TLS configuration, root store and connectors
+  are built on the first `wsConnect`/`httpRequest`; a command-mode process
+  never builds them. The conformance suite asserts that command-mode
+  `hello` first-exec stays in the same class as the bare interpreter.
+- Build profile: `opt-level = "z"` for the crate with `opt-level = 3`
+  kept for `rquickjs-sys` (the interpreter is all of JS performance; the
+  rest is IO glue); fat LTO, one codegen unit, `panic = "abort"`, stripped.
+  QuickJS is built without the bignum extension and dump facilities.
+  `tokio` carries only the features used. No UPX: decompressing the whole
+  binary on every start is exactly the fresh-page cost the guest punishes.
+- Root certificates: the guest build embeds `webpki-roots`; user-host
+  builds use the platform verifier (system keychain and certificate
+  store), which is what makes corporate MITM proxies work.
 - Version reported in the runner `hello`; the backend refuses a shell older
   than the protocol it speaks.
 
 ## Packages
 
 - `packages/demi-shell` — the Rust crate: `src/` split by area (loop, fs,
-  process, net, bytes, globals, entry). Depends on `rquickjs` and the
-  standard library plus rustls; no other runtime dependency.
+  process, net, bytes, globals, entry, plus the HTTP/1.1 and WebSocket
+  client framing). Runtime dependencies are exactly those listed under
+  "Everything is ours".
 - `@demicodes/host-shell` — the Host over the shell API (TypeScript, runs
   only on the shell).
 - The primitive conformance suite is JS, run on every build target; it is
