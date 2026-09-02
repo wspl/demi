@@ -1,6 +1,6 @@
 {
   "exit": 0,
-  "stdout": "lrwxrwxrwx 1 example-company example-company 9 Jan 15  2024 link.txt -> notes.txt\n",
+  "stdout": "1\n",
   "stderr": "",
   "user": "example-company",
   "group": "example-company"
