@@ -206,8 +206,9 @@ version: number   abi: number
 `setTimeout`/`clearTimeout`/`setInterval`/`clearInterval`/`queueMicrotask`,
 `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `URL`/`URLSearchParams`,
 `console`, `performance.now`, `crypto.randomUUID`/`crypto.getRandomValues`,
-`AbortController`/`AbortSignal`, `structuredClone`. The last two are
-embedded JS; the rest are Rust bindings.
+`AbortController`/`AbortSignal`, `structuredClone`. The transcoders, the
+timers and the random source are Rust; the classes and `console` are a
+small prelude of embedded JS over them.
 
 **Module loading**: the embedded bundle runs at start under a `/embedded/`
 name; `import()` accepts only absolute file paths, reads the file and
