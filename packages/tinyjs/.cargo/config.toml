@@ -1,4 +1,4 @@
-# Room in the Mach-O header for the load command `tinyjs --pack` adds: libsui
+# Room in the Mach-O header for the load command `tinyjsc` adds: libsui
 # drops that many bytes of padding after the load commands without checking
 # they exist (denoland/sui#82), and the linker's default is a few dozen
 # bytes. Do not add -fixup_chains: libsui leaves the chained-fixups segment
