@@ -125,7 +125,7 @@ tinybash cannot run is run on a machine instead.
 | Who runs the tool call | real bash on the target | tinybash in the backend |
 | What can appear in it | anything bash runs | the tinybash subset: pipelines, chains, heredocs, redirections, expansions; builtins + root commands |
 | Where a `runtime` module runs | in a command-mode tinyjs process on the target | in the backend process |
-| The `ctx.fs` it sees | the target's real filesystem (`host-tinyjs`) | the conversation's store-backed Host (`host-virtual`) |
+| The `ctx.fs` it sees | the target's real filesystem (`host-runner`) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
 | The shell environment behind the `shell_*` tools | `BashEnvironment` (just-bash over the Host) | the backend's `HostlessEnvironment` (tinybash over the Host); same command records, views and artifacts |
 | Where files live | on the target | in `conversations/<id>.sqlite` |
@@ -289,7 +289,7 @@ Embedders:
 |---|---|---|---|
 | backend, hostless conversation | in-process tree | the conversation's store-backed Host | in-process |
 | runner | the backend socket, cached on disk under `~/.demi/commands/<hash>/` | — (the runner does not execute commands; it caches and relays) | the backend socket |
-| tinyjs in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | `@demicodes/host-tinyjs` over the real filesystem | the runner over the UDS |
+| tinyjs in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | `@demicodes/host-runner` over the real filesystem | the runner over the UDS |
 | tinyjs in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
 | tests | in-memory | in-memory Host | stub |
 

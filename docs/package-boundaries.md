@@ -68,7 +68,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-local`
 
-- Status: implemented.
+- Status: implemented; deleted in M9 (`docs/demi-next/roadmap.md`). Not in the final design: user hosts and managed hosts are served by `@demicodes/host-runner` inside the runner, hostless conversations by `@demicodes/host-virtual`; the backend's use of `LocalHost` as a Node filesystem for its data directory becomes `node:fs`.
 - Production deps: `@demicodes/agent`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: local Node Host adapter (`LocalHost`); open-box local agent assembly (`createLocalAgentServer`) with command bridge **on by default**; command-bridge UDS listener, PATH shim materialization, and `~/.demi` / `$DEMI_HOME` state layout (`bridges/`, `bridge-bin/`).
 - Public boundary: Node-only local Host + local AgentServer factory + command-bridge primitives. Store is a Host facet, not a separate adapter family.
@@ -172,7 +172,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/backend`
 
 - Status: implemented through M3 (Web API skeleton + conversation module + two-plane storage + virtual default; runner management M4, LLM module/vault/accounting M5+).
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`, `@demicodes/host-virtual`, `@demicodes/provider`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-google`, `@demicodes/provider-openai-api`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
+- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-virtual`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/tinybash`, `@demicodes/utils` (`@demicodes/host-local` until M9, for a Node filesystem over the data directory only); external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, runner management (pairing, device registry, remote-Host resolution, browse endpoints), the managed-hosts module (`ManagedHostProvisioner` driving Firecracker under jailer through the privileged helper, images and the home-image store, lifecycle/hibernate, the backend-contributed `demi host` subcommand group), the LLM module (per-connection provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted connections, subscription device-login flows over per-connection provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, LocalHost (as the virtual-fs real backing), VirtualHost, and the coding harness.
@@ -192,7 +192,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-virtual`
 
-- Status: implemented (M2: local-dir topology via `scopedFsBackend`; the S3 backend arrives with the scaled milestone in `@demicodes/backend`).
+- Status: implemented (M2: local-dir topology via `scopedFsBackend`; the S3 backend arrives with the scaled milestone in `@demicodes/backend`); reduced in M9 to the store-backed Host of hostless conversations, its spawn refusal deleted.
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the virtual execution target — a platform-neutral `Host` over a pluggable `VirtualFsBackend` (virtual-absolute normalized paths): per-conversation namespace with chroot-style clamping, symlink containment, hardcoded per-file/per-conversation quotas (artifact writes exempt), spawn refusal with `executable_not_found` + upgrade guidance, logical cwd; plus `scopedFsBackend`, the real-directory backend adapter (root-prefix translation, symlink/realpath untranslation).
 - Public boundary: `VirtualHost`, `scopedFsBackend`, quota constants, guidance constant from root.
@@ -225,13 +225,21 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: message types, codec functions, `RemoteHost`, `HostRpcServer` from root.
 - Must not: contain network IO (the wire is an injected send/handle pair), credentials, claim policy, device registry, or conversation state. `Host.store` never crosses this protocol.
 
+### `@demicodes/host-runner`
+
+- Status: planned (M9, `docs/demi-next/runner.md`, `docs/demi-next/tinyjs.md`).
+- Production deps: `@demicodes/shell`, `@demicodes/utils`; the `tinyjs:*` modules.
+- Owns: the `Host` contract over tinyjs's primitives — the Host every user host and managed host serves through its runner. Its counterpart on the backend is `RemoteHost` in `@demicodes/runner-protocol`: the two ends of one Host.
+- Public boundary: the Host factory from root.
+- Must not: import Node, `@demicodes/host-local`, `@demicodes/agent`, `@demicodes/coding-agent`, or run anywhere but tinyjs.
+
 ### `@demicodes/runner`
 
-- Status: implemented (M1: connection + Host RPC; M4: pairing against the product backend; packaging in M10).
-- Production deps: `@demicodes/host-local`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the runner program — the single outbound backend WebSocket with reconnect/backoff, the hello/claim handshake client, machine-local state (`~/.demi/runner.json`, `runner-token` 0600), serving `LocalHost` over the runner protocol (spawn requests naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact), and the `demi-runner` CLI entry.
+- Status: implemented (M1: connection + Host RPC; M4: pairing against the product backend; ported to tinyjs and `@demicodes/host-runner` in M9; packaging in M10).
+- Production deps: `@demicodes/host-runner` (until M9: `@demicodes/host-local`), `@demicodes/runner-protocol`, `@demicodes/command-loader`, `@demicodes/utils`.
+- Owns: the runner program — the single outbound backend WebSocket with reconnect/backoff, the hello/claim handshake client, machine-local state (`~/.demi/runner.json`, `runner-token` 0600), serving the machine's Host over the runner protocol (spawn requests naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact), and the `demi-runner` CLI entry.
 - Public boundary: `RunnerClient`, `RunnerState` from root; the `demi-runner` bin.
-- Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, or provider packages in production code (the `host-local` dependency is for `LocalHost` only).
+- Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, or provider packages in production code.
 
 ### `@demicodes/repl`
 
