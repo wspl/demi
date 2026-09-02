@@ -94,4 +94,80 @@ describe('cancellation', () => {
       w.dispose()
     }
   })
+
+  test('a builtin reading an endless pipe stops at the abort with status 130', async () => {
+    const w = world()
+    try {
+      const controller = new AbortController()
+      let chunks = 0
+      const { roots } = stubRoots({ demi: {} })
+      // A root command that writes for as long as its reader takes chunks.
+      const endless: Parameters<typeof runTinybash>[0]['dispatch'] = async (_root, _argv, io) => {
+        for (;;) {
+          chunks++
+          await io.stdout(new TextEncoder().encode('line\n'))
+        }
+      }
+      let out = ''
+      const result = await runTinybash({
+        script: 'demi stream | cat; echo never',
+        roots,
+        namespace: [w.home],
+        dispatch: endless,
+        fs: w.host.fs,
+        state: w.state,
+        io: {
+          stdout: (d) => {
+            out += typeof d === 'string' ? d : new TextDecoder().decode(d)
+            if (out.length >= 20) controller.abort()
+          },
+          stderr: () => {},
+        },
+        identity: { user: 'demi', group: 'demi' },
+        signal: controller.signal,
+      })
+      expect(result).toEqual({ kind: 'ran', exitCode: 130 })
+      expect(out).not.toContain('never')
+      expect(chunks).toBeLessThan(10)
+    } finally {
+      w.dispose()
+    }
+  })
+
+  test('a tree walk stops at the abort', async () => {
+    const w = world()
+    try {
+      for (let i = 0; i < 20; i++) mkdirSync(join(w.home, `d${i}`))
+      const controller = new AbortController()
+      let readdirs = 0
+      const fs = new Proxy(w.host.fs, {
+        get(target, key) {
+          const value = Reflect.get(target, key) as unknown
+          if (key !== 'readdir' || typeof value !== 'function') return value
+          return (...args: unknown[]) => {
+            if (++readdirs === 3) controller.abort()
+            return (value as (...a: unknown[]) => unknown).apply(target, args)
+          }
+        },
+      })
+      const { roots, dispatch } = stubRoots({ demi: {} })
+      let out = ''
+      const result = await runTinybash({
+        script: 'find .; echo never',
+        roots,
+        namespace: [w.home],
+        dispatch,
+        fs,
+        state: w.state,
+        io: { stdout: (d) => void (out += typeof d === 'string' ? d : new TextDecoder().decode(d)), stderr: () => {} },
+        identity: { user: 'demi', group: 'demi' },
+        signal: controller.signal,
+      })
+      expect(result).toEqual({ kind: 'ran', exitCode: 130 })
+      expect(readdirs).toBe(3)
+      expect(out).not.toContain('never')
+    } finally {
+      w.dispose()
+    }
+  })
 })

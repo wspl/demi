@@ -4,7 +4,7 @@ import { type ExpansionScope, expandArgv, expandSingle } from '../grammar/expand
 import { BUILTINS } from '../builtins/table'
 import type { BuiltinContext } from '../builtins/io'
 import { type Channels, RedirectError, applyRedirects } from './redirect'
-import { emptyByteStream } from '@demicodes/utils'
+import { emptyByteStream, isAbortError } from '@demicodes/utils'
 import { Pipe, PipeClosed, type Writer } from './stream'
 import { OutsideError } from '../outside/reasons'
 
@@ -135,6 +135,8 @@ async function runCommand(command: Command, inherited: Channels, env: ExecutionE
   } catch (error) {
     if (error instanceof PipeClosed) {
       status = 141
+    } else if (isAbortError(error)) {
+      status = 130
     } else if (error instanceof OutsideError) {
       // The parse-first check saw the words as written; a glob can expand into a word (a file
       // named like an option) that a builtin's whitelist does not cover. Reported, not crashed.

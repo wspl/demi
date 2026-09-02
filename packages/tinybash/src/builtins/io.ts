@@ -1,5 +1,6 @@
 import type { HostFileSystem } from '@demicodes/shell'
 import type { Writer } from '../exec/stream'
+import { throwIfAborted } from '@demicodes/utils'
 
 /** What a builtin sees: the same world a root command's `ctx` is built from. */
 export interface BuiltinContext {
@@ -21,3 +22,12 @@ export interface BuiltinContext {
 }
 
 export type Builtin = (ctx: BuiltinContext) => Promise<number>
+
+/**
+ * A builtin that reads a stream or walks a tree calls this on every step, so
+ * a cancelled session stops it mid-way; the executor turns the throw into
+ * exit status 130, as a keyboard interrupt would.
+ */
+export function checkCancelled(ctx: Pick<BuiltinContext, 'signal'>): void {
+  if (ctx.signal) throwIfAborted(ctx.signal)
+}

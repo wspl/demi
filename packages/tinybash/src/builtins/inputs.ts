@@ -1,4 +1,4 @@
-import type { BuiltinContext } from './io'
+import { checkCancelled, type BuiltinContext } from './io'
 import { strerror } from './errors'
 import { bytesStream } from '@demicodes/utils'
 
@@ -19,7 +19,10 @@ export function guardedStdin(ctx: BuiltinContext, report: (detail: string) => vo
   let failed = false
   const stream = (async function* () {
     try {
-      for await (const chunk of ctx.stdin) yield chunk
+      for await (const chunk of ctx.stdin) {
+        checkCancelled(ctx)
+        yield chunk
+      }
     } catch (error) {
       failed = true
       await report(strerror(error))

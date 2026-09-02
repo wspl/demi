@@ -1,5 +1,5 @@
 import type { HostFileStat } from '@demicodes/shell'
-import type { Builtin, BuiltinContext } from './io'
+import { checkCancelled, type Builtin, type BuiltinContext } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
 import { quoteC, strerror } from './errors'
@@ -85,6 +85,7 @@ export const ls: Builtin = async (ctx) => {
   }
   const queue = [...dirs]
   while (queue.length > 0) {
+    checkCancelled(ctx)
     const dir = queue.shift()!
     if (headers) await ctx.stdout(encodeLatin1(`${printedSomething ? '\n' : ''}${utf8AsLatin1(dir.path)}:\n`))
     printedSomething = true
