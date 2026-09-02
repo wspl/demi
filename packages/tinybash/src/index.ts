@@ -37,14 +37,15 @@ export type ParseResult = { kind: 'script'; script: Script } | TinybashOutside
 /**
  * Parses and checks a script without running anything: the whole parse-first
  * decision, so an embedder can hand the script elsewhere before touching the
- * loader or the Host. Path conditions that need the filesystem (a glob whose
- * expansion leaves the namespace) cannot arise: a glob's static prefix is
- * checked here and its matches lie under that prefix.
+ * loader. Every path is checked under every shell state the script can
+ * reach (`outside/check.ts`); `fs`, when given, lets the check decide a `cd`
+ * that nothing before it could have affected, so fewer scripts are handed to
+ * a machine for a `..` after a `cd` that plainly succeeds.
  */
-export function parseTinybash(script: string, roots: ReadonlyMap<string, RootPaths>, namespace: readonly string[], state: Readonly<ShellState>): ParseResult {
+export async function parseTinybash(script: string, roots: ReadonlyMap<string, RootPaths>, namespace: readonly string[], state: Readonly<ShellState>, fs?: HostFileSystem): Promise<ParseResult> {
   try {
     const parsed = parseScript(script)
-    checkScript(parsed, { roots, namespace, scope: { home: state.home, cwd: state.cwd, vars: state.vars } })
+    await checkScript(parsed, { roots, namespace, scope: { home: state.home, cwd: state.cwd, vars: state.vars }, fs })
     return { kind: 'script', script: parsed }
   } catch (error) {
     if (error instanceof OutsideError) return { kind: 'outside', reason: error.reason, message: refusalMessage(error.reason) }
@@ -53,7 +54,7 @@ export function parseTinybash(script: string, roots: ReadonlyMap<string, RootPat
 }
 
 export async function runTinybash(input: TinybashInput): Promise<TinybashResult> {
-  const parsed = parseTinybash(input.script, input.roots, input.namespace, input.state)
+  const parsed = await parseTinybash(input.script, input.roots, input.namespace, input.state, input.fs)
   if (parsed.kind === 'outside') return parsed
   const exitCode = await executeScript(parsed.script, {
     fs: input.fs,

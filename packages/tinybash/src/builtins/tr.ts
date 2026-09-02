@@ -3,6 +3,7 @@ import { parseFlags, has } from './flags'
 import { SPECS } from './table'
 import { collectBytes } from '@demicodes/utils'
 import { tryHelp } from './errors'
+import { guardedStdin } from './inputs'
 
 const CLASSES: Record<string, (c: number) => boolean> = {
   upper: (c) => c >= 65 && c <= 90,
@@ -90,7 +91,9 @@ export const tr: Builtin = async (ctx) => {
     await ctx.stderr(`tr: ${set1}\n`)
     return 1
   }
-  const input = await collectBytes(ctx.stdin)
+  const stdin = guardedStdin(ctx, (detail) => ctx.stderr(`tr: read error: ${detail}\n`))
+  const input = await collectBytes(stdin.stream)
+  if (stdin.failed()) return 1
   const out = new Uint8Array(input.length)
   let n = 0
   if (deleting) {

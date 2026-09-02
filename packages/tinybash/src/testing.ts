@@ -1,3 +1,4 @@
+import { concatBytes, errorCode } from '@demicodes/utils'
 import type { DispatchIO, RootPaths } from './index'
 
 export interface RecordedCall {
@@ -26,22 +27,18 @@ export function stubRoots(spec: Record<string, { paths?: (argv: readonly string[
     calls,
     dispatch: async (root, argv, io) => {
       const chunks: Uint8Array[] = []
-      for await (const chunk of io.stdin) chunks.push(chunk)
-      const stdin = new TextDecoder().decode(concat(chunks))
+      try {
+        for await (const chunk of io.stdin) chunks.push(chunk)
+      } catch (error) {
+        // The bash-side stub reads stdin with `cat`, which reports a directory this way and goes on.
+        if (errorCode(error) !== 'EISDIR') throw error
+        await io.stderr('cat: -: Is a directory\n')
+      }
+      const stdin = new TextDecoder().decode(concatBytes(chunks))
       calls.push({ root, argv, stdin, cwd: io.cwd })
       await io.stdout(`${[root, ...argv].join(' ')}\n`)
       if (stdin.length > 0) await io.stdout(`stdin:\n${stdin}:end\n`)
       return 0
     },
   }
-}
-
-function concat(chunks: Uint8Array[]): Uint8Array {
-  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0))
-  let offset = 0
-  for (const chunk of chunks) {
-    out.set(chunk, offset)
-    offset += chunk.length
-  }
-  return out
 }

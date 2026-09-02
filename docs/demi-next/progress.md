@@ -1601,3 +1601,85 @@ reuse, bash's `invalid number` reporting, and the format escapes; `-v`,
 and `\u` are outside. Sixteen corpus cases against bash 5.2. Pitfall:
 bash's printf does not stop at `\c` in the format (only `%b` does) — the
 golden said so and the implementation followed.
+
+### Review round on the M8 code (2026-09-02)
+
+An owner-requested review of tinybash, the command loader and tinyjs
+against their records. Findings that are being fixed on the branch, in
+order: the namespace decision (below), the argv/byte boundary in the text
+builtins, `printf %c`, redirect words, cancellation inside builtins, the
+duplicated helpers, the `builtins/table.ts` import cycle, the leaked
+timer in `HostlessEnvironment.exec`, the `strayImport` check in the
+manifest build (deleted: a value import in a module fails at load time by
+itself; a construction-time check hid nothing and invented a rule), and
+the stale sentences in the records.
+
+### Namespace decision made exact (2026-09-02)
+
+The parse-first check simulated `cd` as always succeeding, so `cd
+missing; cat ../outside.txt` was accepted and read above the home; it
+also checked only a glob's literal prefix, so `cat */../../x` passed.
+The owner's first question was whether the decision belonged at run
+time instead; it cannot, because an upgrade re-runs the whole script on
+a machine and anything already run hostless would run twice. The second
+was whether the subset would have to shrink until the decision could be
+made statically. It does not: the subset already has the property that
+no string is computed at run time, so the filesystem is the only unknown,
+and it enters only through `cd` success, glob matches and `mv`/`cp`
+landing paths. Rather than argue it, a random-script test was written
+first (`namespace-fuzz.test.ts`: generated scripts over `cd`, `..`,
+globs, `$PWD`, variables, chains and the mutating builtins, executed
+against a recording filesystem) and run against the old check; it
+reproduced both holes and found three more — `find … || cd a; cat
+a/b/../../..` (a `cd` in a conditional branch treated as certain), `cd a
+|| X=…; > $X/../..` (a conditional assignment treated as certain; `$X`
+empty resolves to `/`), and `mv … */..` (a glob in the last operand
+shifting which operand is the destination). The check now carries a set
+of candidate states, decides a `cd` only when it is unconditional and
+nothing before it could reshape the tree, checks glob text at its own
+depth, and checks every `mv`/`cp` operand as a source of the last. Ten
+thousand rounds pass; the test stays in the suite.
+
+Decisions: no run-time guard (the check is the guarantee; a guard would
+hide a check bug rather than surface it); the hostless tree holds no
+symbolic links (nothing hostless can create one; content that carries
+one is an upgrade), which is what makes text-level resolution exact;
+`parseTinybash` is async and takes the `fs` so an unconditional `cd src`
+followed by `../x` stays hostless instead of going to a machine.
+
+The same fuzz surfaced run-time crashes, since fixed with corpus cases
+derived from bash 5.2: a directory redirected to stdin threw out of the
+builtin (each tool now reports it its own way — `cat: -: Is a
+directory`, `head: error reading 'standard input'`, `grep: (standard
+input)`, `sort: read failed: -`, `sed: read error on stdin`, exit 4 …);
+`>>` to a directory failed after the command instead of before it; a
+glob expanding `test -d s*` into four words threw a parse-time refusal
+at run time (now bash's `too many arguments` / `binary operator
+expected`, exit 2; the same for any builtin whose whitelist a glob
+expansion escapes, reported as the refusal line with exit 2). Redirect
+words are now expanded, split and globbed with bash's `ambiguous
+redirect` for anything but one word, naming the word as written.
+`printf '%c' ''` prints a NUL. The suite is green: 377 cases including
+the corpus, 4 Linux-only skips.
+
+### Open items (deferred, with their milestone)
+
+- tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
+  not now). tinyjs findings to take up with `host-tinyjs` in M9: the
+  `/embedded/` prefix importable from a file-loaded module through the
+  module cache, no version tag on the packed bytecode section and no
+  same-release check in `--pack --bin`, `kill` not validated against the
+  child table (PID 1 in the guest), tee writes synchronous on the loop
+  thread, TLS config rebuilt per request, `import.meta.url` as a bare
+  path, `spawn` returning `stdin: null` for `stdin: "null"`.
+- The loader's tinyjs paths (M9): a directory `ManifestSource`, a module
+  import strategy other than `blob:`, the manifest served to the runner.
+- `@demicodes/host-virtual` reduced to the store-backed Host and its
+  spawn refusal deleted (M9, with just-bash).
+- tinybash reference suites (just-bash compat, oils spec, GNU tests) and
+  the split-equivalence test (M10, needs auto-provision).
+- CI re-deriving the corpus goldens from bash (`TINYBASH_CHECK_GOLDENS=1`
+  on the Linux job), with the tinyjs CI.
+- A file named like an option matched by a glob in a builtin's operands
+  reaches a flag the whitelist excludes only at run time (see the
+  namespace entry above); reported as an error, not upgraded.
