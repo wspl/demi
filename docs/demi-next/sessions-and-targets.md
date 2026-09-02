@@ -64,8 +64,10 @@ precise.
 subtrees, `/home/demi` and `/tmp`, plus `/dev/null`. Nothing else exists,
 and nothing else is pretended: `/etc`, `/usr`, `/proc` are not empty
 directories, they are outside. The store-backed Host keeps what the
-managed host would show — mode, mtime, symlinks, case-sensitive names,
-owner fixed to `demi` — so `ls -l` reads the same on both sides.
+managed host would show — mode, mtime, case-sensitive names, owner fixed
+to `demi` — so `ls -l` reads the same on both sides. It holds no symbolic
+links: nothing hostless can create one, and a drop or upload that carries
+one is itself an upgrade (`tinybash.md` § Semantics).
 
 **The upgrade condition**, decided entirely at parse time, before any
 statement runs (`tinybash.md`). A script is outside the subset when any
@@ -76,14 +78,15 @@ of these holds:
 | a construct outside the grammar | `$(…)`, `for`, `&` |
 | a command word that is neither a builtin nor a root | `python3`, `git`, `date`, `which` |
 | a builtin flag outside its whitelist | `grep -P`, `sed -i` |
-| an absolute path outside the namespace, anywhere a path can appear | `cat /etc/os-release`, `> /var/log/x`, `cd /` |
-| a glob whose expansion leaves the namespace | `ls /usr/*` |
+| a path outside the namespace, anywhere a path can appear, under any state the script may be in | `cat /etc/os-release`, `> /var/log/x`, `cd /`, `ls /usr/*`, `cd missing; cat ../x` |
 | a root-command argument declared as a path that resolves outside | `demi file read /etc/hosts` |
 
 Relative paths resolve against the cwd, which is always inside the
-namespace because `cd` outside it is itself a condition. Root-command
-arguments are checkable because the manifest marks path-typed arguments
-(`commands.md`) and the loader resolves them before dispatch. The one
+namespace because `cd` outside it is itself a condition; a `cd` whose
+success cannot be decided before the script runs is checked both ways
+(`tinybash.md` § Semantics). Root-command arguments are checkable because
+the manifest marks path-typed arguments (`commands.md`) and the loader
+resolves them before dispatch. The one
 condition that can only be seen at run time — the hostless storage quota
 — is not an upgrade trigger: the script has already run in part, so it
 fails the command with an `ENOSPC`-class error, the same thing a full
@@ -91,7 +94,7 @@ disk does on a machine; the quota is sized so that this is a genuine
 fault, not a normal event.
 
 **What moves.** The new host's home image is built from the hostless
-tree — both subtrees, with mode, mtime and symlinks intact — by `mke2fs
+tree — both subtrees, with mode and mtime intact — by `mke2fs
 -d` before the VM boots (`storage.md`), so the first command already runs
 on a complete home; the backend hands tinybash's session state — cwd and
 variables — to the real bash job. The environment table is shared: the hostless `env`

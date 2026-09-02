@@ -203,7 +203,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented (M8; `docs/demi-next/tinybash.md`).
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the hostless shell — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), and the closed set of GNU-faithful builtins over an injected `HostFileSystem`; root commands go to an injected `dispatch`.
+- Owns: the hostless shell — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths under every shell state the script can reach), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), and the closed set of GNU-faithful builtins over an injected `HostFileSystem`; root commands go to an injected `dispatch`.
 - Public boundary: `runTinybash`, `parseTinybash`, the `OutsideReason` and IO types from root; stub roots for embedders' tests from `@demicodes/tinybash/testing`.
 - Acceptance implies bash-equivalence: any script it runs means what it means in GNU bash + coreutils; anything else is `outside`, never approximated. The equivalence corpus against real bash is the guarantee's test.
 - Must not: know the backend, the manifest format or the loader (it receives a `RootPaths` function and a `dispatch`), spawn processes, perform IO outside the injected `fs`, or run on real hosts.
