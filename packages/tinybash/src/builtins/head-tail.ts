@@ -14,7 +14,7 @@ function parseCount(raw: string): number | null {
   return Number(raw)
 }
 
-async function eachInput(ctx: BuiltinContext, program: string, operands: readonly string[], emit: (bytes: Uint8Array) => Promise<void>): Promise<number> {
+async function eachInput(ctx: BuiltinContext, program: string, operands: readonly string[], emit: (stream: AsyncIterable<Uint8Array>) => Promise<void>): Promise<number> {
   const inputs = lazyInputs(ctx, program, operands, (name, detail) => `${program}: cannot open '${name}' for reading: ${detail}\n`, (detail) => `${program}: error reading 'standard input': ${detail}\n`)
   const headers = inputs.length > 1
   let status = 0
@@ -29,7 +29,7 @@ async function eachInput(ctx: BuiltinContext, program: string, operands: readonl
       await ctx.stdout(`${first ? '' : '\n'}==> ${input.name} <==\n`)
       first = false
     }
-    await emit(await collectBytes(stream))
+    await emit(stream)
     if (input.readFailed()) status = 1
   }
   return status
@@ -74,13 +74,25 @@ export const head: Builtin = async (ctx) => {
     await ctx.stderr(`head: invalid number of ${c !== undefined ? 'bytes' : 'lines'}: '${c ?? n}'\n`)
     return 1
   }
-  return eachInput(ctx, 'head', flags.operands, async (bytes) => {
+  // As GNU head: reading stops once the count is reached, so an input that
+  // never ends (the script's stdin) still lets head finish.
+  return eachInput(ctx, 'head', flags.operands, async (stream) => {
+    let left = count
     if (c !== undefined) {
-      await ctx.stdout(bytes.subarray(0, count))
+      for await (const chunk of stream) {
+        if (left <= 0) break
+        const take = chunk.subarray(0, left)
+        await ctx.stdout(take)
+        left -= take.byteLength
+      }
       return
     }
-    const parts = (await lineParts(bytes)).slice(0, count)
-    if (parts.length > 0) await ctx.stdout(encodeLatin1(parts.join('')))
+    if (left <= 0) return
+    for await (const line of lines(stream)) {
+      await ctx.stdout(encodeLatin1(line.newline ? `${line.text}\n` : line.text))
+      left -= 1
+      if (left <= 0) break
+    }
   })
 }
 
@@ -95,7 +107,8 @@ export const tail: Builtin = async (ctx) => {
     await ctx.stderr(`tail: invalid number of ${c !== undefined ? 'bytes' : 'lines'}: '${c ?? n}'\n`)
     return 1
   }
-  return eachInput(ctx, 'tail', flags.operands, async (bytes) => {
+  return eachInput(ctx, 'tail', flags.operands, async (stream) => {
+    const bytes = await collectBytes(stream)
     if (c !== undefined) {
       await ctx.stdout(bytes.subarray(Math.max(0, bytes.length - count)))
       return

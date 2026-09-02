@@ -2236,6 +2236,14 @@ owner):
 - A machine's shell carries its cwd between jobs and nothing else;
   tinybash's default shell keeps its variables.
 
+Owner decisions after the first run: the read-only subagent capability is
+deleted (item 3); and tinybash's unredirected stdin now follows bash — a
+builtin whose stdin is not redirected reads the script's own (the
+executor's top-level channel), `head` stops reading at its count as GNU
+head does (an input that never ends no longer holds it), and a root
+command keeps the empty pipe with the live stream beside it. The stdin
+scenario of S3 runs on both targets.
+
 R2 verdict: closing the backend while a command runs aborts the turn — the
 job is killed on the runner (`job_kill`, `job_exit`), the tool call settles
 as an error, and the turn closes with an abort block; after the restart the

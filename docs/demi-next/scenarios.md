@@ -107,7 +107,6 @@ any other difference between the two runs is a bug.
 | the executable set | tinybash builtins and the manifest roots | whatever the target has |
 | a refused script | "runs nothing and says so" | bash's own error |
 | shell state between turns | the default shell keeps its variables and cwd | the shell keeps its cwd and nothing else |
-| a command reading live stdin (`shell_write`) | none: tinybash gives root commands the pipe, and no `demi` command reads the script's stdin | any program that reads its stdin |
 | a command killed by `shell_abort` | `status: aborted` | `status: aborted`, with the process's own last words on stderr |
 
 ## Invariants at teardown
@@ -136,7 +135,7 @@ Each scenario is one test, one conversation, a linear script of turns.
 |---|---|---|---|
 | S1 | File workflow | create through a heredoc, read, edit, list, across four turns | the text the model receives equals the file's content; the file is where the target keeps it |
 | S2 | Output view | a command printing far past the view budget; a binary final stream; a non-zero exit; a command hitting its timeout | head and tail within budget with the elision note; the binary placeholder; exit and timeout reported in the result; on a runner the wire bytes equal the view |
-| S3 | Long commands and steering | a command outliving its window (`demi agent spawn` with a slow child: the long-running command both targets share) polled with `shell_status` to its end; a second command aborted with `shell_abort`; on a runner only, stdin fed with `shell_write` and a background job outliving its command | the status machine as the model sees it; nothing left running after the abort |
+| S3 | Long commands and steering | a command outliving its window (`demi agent spawn` with a slow child: the long-running command both targets share) polled with `shell_status` to its end; a second command aborted with `shell_abort`; stdin fed with `shell_write` to an unredirected `head -n 1`; on a runner only, a background job outliving its command | the status machine as the model sees it; nothing left running after the abort |
 | S4 | Todo | `demi todo` written in one turn, read in a later one; a second conversation sees an empty list | the rpc leaf crosses the relay on a runner and runs in-process hostless; storage scoped to the session |
 | S5 | Subagents | `demi agent spawn` with the `explore` profile, then `default`; the child runs commands on the same target; the parent reads the result | parent and child share the target; a profile is a prompt, not a restriction; the parent's transcript carries the subagent frames |
 | S6 | Continuing across a switch | S1's first turn hostless, switch to the runner over `PATCH`, S1's remaining turns there, switch back, one more read | the script keeps working across both switches; the context block appears at each; files are where each target keeps them |
