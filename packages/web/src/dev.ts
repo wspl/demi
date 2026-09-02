@@ -1,6 +1,6 @@
 // The web app's dev entry: Vite alone. The app talks to a running
 // `@demicodes/backend` (`docs/demi-next/backend.md`); the browser
-// application itself is rebuilt on that API in M12.
+// application itself is rebuilt on that API in M13.
 import process from 'node:process'
 import { resolve } from 'node:path'
 import { WEB_DEV_HOST, WEB_FRONTEND_PORT, WEB_FRONTEND_URL } from './dev-ports'
