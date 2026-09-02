@@ -2,7 +2,7 @@ import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { isAbsolute, posix } from 'node:path'
-import type { HostCwd } from '@demicodes/shell'
+import type { HostCwd } from '../host'
 
 const DIR_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY
 

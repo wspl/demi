@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { expect, test } from 'bun:test'
-import { HostBackedFileSystem, createLogicalHostCwd, type Host } from '../index'
+import { createLogicalHostCwd, type Host } from '../index'
 
 const shellRootEntry = resolve(import.meta.dir, '../index.ts')
 const forbiddenRuntimePatterns = [
@@ -12,23 +12,11 @@ const forbiddenRuntimePatterns = [
 ] as const
 const moduleSpecifierPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g
 
-test('root entry exposes browser-safe Host contract and HostBackedFileSystem class', async () => {
+test('root entry exposes the Host contract and the logical cwd', async () => {
   const host: Pick<Host, 'defaultCwd'> = { defaultCwd: '/' }
   expect(host.defaultCwd).toBe('/')
-
-  const fs = new HostBackedFileSystem({
-    defaultCwd: '/tmp',
-    commandArtifactsDir: '/tmp/.command-artifacts',
-    identity: { uid: 1000, gid: 1000, hostname: 'test' },
-    fs: {} as Host['fs'],
-    process: {
-      spawn: async () => { throw new Error('not used') },
-      openCwd: async (path) => createLogicalHostCwd(path),
-    },
-    store: {} as Host['store'],
-  })
-  expect(typeof fs.resolvePath).toBe('function')
-  expect(fs.resolvePath('/a', 'b')).toBe('/a/b')
+  const cwd = await createLogicalHostCwd('/tmp')
+  expect(cwd.path).toBe('/tmp')
 })
 
 test('root entry local static closure does not import Node-only runtime source', async () => {
