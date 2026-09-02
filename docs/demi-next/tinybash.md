@@ -91,14 +91,24 @@ Expansions, in bash's order, on words outside single quotes:
 
 - **Tilde**: a leading `~` or `~/` becomes the session's home.
 - **Parameter**: `$NAME` and `${NAME}` become the session variable or
-  the empty string. Nothing else after `$` is accepted (see refusals).
+  the empty string; `$PWD` is the cwd. Nothing else after `$` is accepted
+  (see refusals). An unquoted expansion is split into words on blanks, as
+  bash does with the default `IFS`, and an unquoted expansion to nothing
+  yields no word; a quoted one is always exactly one word.
 - **Globbing**: `*`, `?` and `[…]` in an unquoted word match against the
   Host filesystem relative to the cwd, sorted, with bash's default of
   leaving the word literal when nothing matches. `**` is not accepted.
 - Words concatenate (`a'b'"c"` is `abc`); a bare-delimiter heredoc body
   expands `$NAME` like bash and a quoted-delimiter body is literal.
 
-Whitespace is space and tab; `\r` is refused.
+Whitespace is space and tab; `\r` is refused. `{` and `}` are literal
+except in the forms bash expands (`{a,b}`, `{1..3}`), which are refused;
+`~user` is refused.
+
+Text is bytes throughout, as in the C locale a managed host runs with:
+`sort` orders bytes, `grep` matches bytes, `wc -w` splits on ASCII blanks,
+`ls -l` prints English month names, and the tools quote names with plain
+`'…'`. tinybash is the C locale; there is no other.
 
 ## Builtins
 
@@ -107,12 +117,12 @@ any other flag or form with a message. Output formats are GNU's.
 
 | Command | Accepted | Notes |
 |---|---|---|
-| `grep` | `-n -i -v -c -l -r -E -F -A N -B N -C N`, files or stdin | patterns are translated from ERE (or BRE without `\(` `\{`) to JS regex; a pattern that has no faithful translation is refused |
-| `head`, `tail` | `-n N`, `-c N`, `tail -n +N` | |
+| `grep` | `-n -i -v -c -l -r -E -F -A N -B N -C N`, files or stdin | patterns are translated from ERE (or BRE without `\(` `\{`) to JS regex, with `-i` folding ASCII letters only, as the C locale does; a pattern that has no faithful translation is refused; `-r` visits entries in name order |
+| `head`, `tail` | `-n N`, `-N`, `-c N`, `tail -n +N` | |
 | `cat` | `-n` | |
 | `echo` | `-n -e` | |
 | `ls` | `-l -a -1 -R`, paths | GNU column and long formats |
-| `find` | paths, `-name`, `-iname`, `-type f\|d`, `-maxdepth N` | no other predicate, no `-exec` |
+| `find` | paths, `-name`, `-iname`, `-type f\|d`, `-maxdepth N` | no other predicate, no `-exec`; entries come in name order, where GNU's order is whatever the filesystem returns |
 | `wc` | `-l -w -c` | |
 | `sort` | `-r -n -u -k N` | |
 | `uniq` | `-c` | |
@@ -186,6 +196,7 @@ offending token and line.
 | `$(…)`, backtick, `$((…))` | command and arithmetic substitution | write the value literally; a machine for the rest |
 | `${NAME:-…}` and every other `${…}` operator, `$?`, `$1`, `$@` | parameter operators and positionals | a plain `$NAME` or the value literally |
 | `{a,b}` brace expansion, `**` | not expanded | list the names |
+| `~user` | tilde with a user name | the home path written out |
 | `if`, `for`, `while`, `case`, `function`, `!`, `(`, `{` as words | control flow and grouping | a machine |
 | `&` (background), `;;`, `<(…)`, `>(…)` | job control, process substitution | a machine |
 | `\|` into a non-builtin, non-root command | no such program here | a machine |
@@ -205,6 +216,7 @@ runTinybash(input: {
   fs: HostFileSystem                      // the builtins' filesystem
   state: { cwd: string; home: string; vars: Record<string, string> }   // mutated by cd and assignments
   io: CommandIO                           // the script's stdout and stderr
+  identity: { user: string; group: string }   // owner names `ls -l` shows; every hostless file is the session user's
   signal?: AbortSignal
 }): Promise<
   | { kind: 'ran'; exitCode: number }
@@ -276,9 +288,16 @@ declared as a table).
   behaviour, and every refused flag.
 - **Equivalence corpus**: the accepted scripts, with roots stubbed as
   programs that record `argv` and stdin, run through real bash with GNU
-  coreutils in a Linux container; tinybash's output, exit codes and
-  dispatch log must match byte for byte. This is the guarantee's test and
-  runs in CI on Linux.
+  coreutils on Linux; tinybash's output, exit codes and dispatch log must
+  match byte for byte. The scripts live in
+  `packages/tinybash/src/__tests__/corpus/cases.ts` over a fixed fixture
+  tree; bash's results are committed as goldens
+  (`corpus/goldens/*.json`, home path normalized) so every platform's
+  `bun test` compares against them, and on Linux
+  `TINYBASH_CHECK_GOLDENS=1` re-derives them from bash and fails on drift.
+  Cases whose output depends on the filesystem underneath (`ls -l` block
+  totals and directory sizes) are compared on Linux only. This is the
+  guarantee's test and runs in CI on Linux.
 - **Parse-first**: a script whose last statement is outside the subset
   executes nothing, whether the cause is grammar, a program, a flag or a
   path; path cases cover builtin arguments, redirections, `cd`, globs and

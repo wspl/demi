@@ -1419,3 +1419,49 @@ the goldens on every platform. The generator runs `bash` directly on
 Linux and `limactl shell fc -- bash` from macOS (the Lima instance has bash
 5.2.21, coreutils 9.4, grep 3.11, sed 4.9 and mounts the repository); a
 Linux-only test re-derives the goldens and fails if they drifted.
+
+Checkpoint 1 result (2026-09-02): `@demicodes/tinybash` landed
+(`3dc26b2`). 309 corpus cases plus the refusal table; on Linux (the Lima
+instance, bun 1.4) 330/330 pass with the goldens re-derived from bash
+5.2.21 / coreutils 9.4 in the same run; on macOS 326 pass and the four
+filesystem-dependent `ls -l` cases are skipped. Package layout is the one
+in `tinybash.md` (`grammar/`, `outside/`, `exec/`, `builtins/`).
+
+Pitfalls met:
+
+- Golden file names collided on the case-insensitive macOS filesystem
+  (`grep-c` / `grep-C`, `echo-e` / `echo-E`) and the two cases silently
+  shared one golden; names are now unique case-insensitively and a test
+  enforces it.
+- Concurrent `limactl shell` sessions interleave their stdin/stdout, so
+  the generator runs one bash at a time by default (8 s for the corpus).
+- A symlink's own mtime cannot be set through `HostFileSystem` (no
+  `lutimes`), so no case lists a symlink long-form with its time.
+- bash 5.2 enables `globskipdots`: `.*` no longer matches `.` and `..`;
+  tinybash follows 5.2.
+- Fixture modes are explicit on both sides because the two machines have
+  different umasks.
+- GNU details worth knowing when extending the builtins: `wc` prints the
+  `total` line whenever more than one operand was given, even if one
+  failed, and reports a directory as zero counts plus an error; `uniq`
+  always terminates its last line; `head`/`tail` say "cannot open 'x' for
+  reading"; `sort` says "cannot read: x"; `cp` into a missing directory
+  must be caught before `Host.fs.cp`, which creates parents; `ls` without
+  a terminal prints one name per line, so the column layout never
+  arises in a tool call.
+
+Decisions taken while implementing:
+
+- Unquoted parameter expansions are word-split on the default `IFS`, as
+  bash does; the doc originally did not say, and without it `X="a b";
+  cmd $X` would not be bash.
+- `{}` and `{x}` are literal (bash expands only `{a,b}` and `{1..3}`), so
+  `find -exec … {}` is refused for `-exec`, not for the braces.
+- `head -N` / `tail -N` (the obsolete GNU spelling) are accepted: the
+  corpus showed models write `head -20` about as often as `head -n 20`.
+- `find` and `grep -r` visit directory entries in name order; GNU's order
+  is the filesystem's and is not something a script can rely on, so the
+  corpus pipes them through `sort`.
+- `ls -l` block totals are computed as ext4 would report them for
+  ordinary files (4 KiB blocks, none for empty files or fast symlinks);
+  the Linux run confirms the numbers for the fixture.

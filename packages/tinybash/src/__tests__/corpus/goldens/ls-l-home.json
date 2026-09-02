@@ -1,7 +1,0 @@
-{
-  "exit": 0,
-  "stdout": "total 40\n-rw-r--r-- 1 bytedance bytedance   24 Jan 15  2024 bin.dat\n-rw-r--r-- 1 bytedance bytedance   50 Jan 15  2024 csv.txt\ndrwxr-xr-x 2 bytedance bytedance 4096 Jan 15  2024 docs\n-rw-r--r-- 1 bytedance bytedance    0 Jan 15  2024 empty.txt\nlrwxrwxrwx 1 bytedance bytedance    9 Jan 15  2024 link.txt -> notes.txt\n-rw-r--r-- 1 bytedance bytedance   17 Jan 15  2024 nonl.txt\n-rw-r--r-- 1 bytedance bytedance   28 Jan 15  2024 notes.txt\n-rw-r--r-- 1 bytedance bytedance   16 Jan 15  2024 numbers.txt\n-rwxr-xr-x 1 bytedance bytedance   18 Jan 15  2024 script.sh\ndrwxr-xr-x 2 bytedance bytedance 4096 Jan 15  2024 space dir\ndrwxr-xr-x 3 bytedance bytedance 4096 Jan 15  2024 src\n-rw-r--r-- 1 bytedance bytedance   55 Jan 15  2024 words.txt\n",
-  "stderr": "",
-  "user": "bytedance",
-  "group": "bytedance"
-}
