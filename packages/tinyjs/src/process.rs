@@ -404,8 +404,13 @@ fn kill(ctx: Ctx<'_>, pid: i32, signal: String, options: Opt<Object<'_>>) -> Res
         Some(o) => o.get::<_, Option<bool>>("group")?.unwrap_or(false),
         None => false,
     };
+    // Only a child of this process can be signalled: as PID 1 in a guest, a
+    // stray pid (0, -1, or an unrelated process) would take the machine down.
+    if !state(&ctx).children.borrow().map.contains_key(&pid) {
+        return Err(throw_io(&ctx, io::Error::from_raw_os_error(libc::ESRCH), "kill", None));
+    }
     let target = if group { -pid } else { pid };
-    // SAFETY: kill(2) with a pid we were given; the kernel validates it.
+    // SAFETY: kill(2) on a pid from our own child table.
     if unsafe { libc::kill(target, number) } != 0 {
         return Err(throw_io(&ctx, io::Error::last_os_error(), "kill", None));
     }

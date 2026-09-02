@@ -11,7 +11,7 @@ test("loader: import() of absolute paths with relative imports inside", async ()
   await fs.writeFile(`${dir}/entry.mjs`, enc(`import { twice, where } from "./lib/util.mjs"; export default twice(21); export { where };`));
   const mod = await import(`${dir}/entry.mjs`);
   assertEq(mod.default, 42);
-  assertEq(mod.where, `${dir}/lib/util.mjs`);
+  assertEq(mod.where, `file://${dir}/lib/util.mjs`);
 });
 
 test("loader: tinyjs:* is refused from a file-loaded module", async () => {
@@ -22,6 +22,17 @@ test("loader: tinyjs:* is refused from a file-loaded module", async () => {
   await assertThrows(() => import(`${dir}/leak2.mjs`));
 });
 
+test("loader: the embedded bundle is refused from a file-loaded module", async () => {
+  // The bundle's own modules are declared already; a file module naming one
+  // must not get it back from the module cache.
+  await fs.writeFile(`${dir}/leak3.mjs`, enc(`export default await import("/embedded/harness.mjs");`));
+  const e = await assertThrows(() => import(`${dir}/leak3.mjs`));
+  assert(/embedded bundle is not available/.test(String(e.message ?? e)), `message: ${e.message ?? e}`);
+  await fs.writeFile(`${dir}/leak4.mjs`, enc(`export default await import("/x/../embedded/harness.mjs");`));
+  await assertThrows(() => import(`${dir}/leak4.mjs`));
+  assertEq(import.meta.url, "file:///embedded/loader.mjs");
+});
+
 test("loader: bare specifiers and missing files fail", async () => {
   await assertThrows(() => import("lodash"));
   await assertThrows(() => import(`${dir}/missing.mjs`));
@@ -29,7 +40,7 @@ test("loader: bare specifiers and missing files fail", async () => {
 });
 
 test("loader: cleanup", async () => {
-  for (const f of ["lib/util.mjs", "entry.mjs", "leak.mjs", "leak2.mjs"]) await fs.unlink(`${dir}/${f}`);
+  for (const f of ["lib/util.mjs", "entry.mjs", "leak.mjs", "leak2.mjs", "leak3.mjs", "leak4.mjs"]) await fs.unlink(`${dir}/${f}`);
   await fs.rmdir(`${dir}/lib`);
   await fs.rmdir(dir);
 });

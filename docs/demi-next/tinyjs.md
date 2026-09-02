@@ -114,7 +114,8 @@ runtime:
 - **Cancellation is `close` or `kill`.** The primitives do not know
   `AbortSignal`; host-runner maps it.
 - `tinyjs:runtime` exports `version` and `abi`, two numbers; host-runner
-  checks the abi at start.
+  checks the abi at start. It also exports `openHandles()`, the count of
+  open handles, which is how tests assert nothing leaked.
 
 ### Primitives
 
@@ -151,10 +152,15 @@ spawn({
   stdin: "pipe" | "null",
   uid?, gid?, processGroup?: boolean,          // uid/gid: how PID 1 runs jobs as the guest user
   tee?: { stdoutPath, stderrPath, viewLimit }
-}): Promise<{ pid, stdin: fd, stdout: fd, stderr: fd }>
+}): Promise<{ pid, stdin: fd | null, stdout: fd, stderr: fd }>   // stdin is null for stdin: "null"
 wait(pid): Promise<{ code: number | null, signal?: string, stdoutBytes?, stderrBytes? }>
-kill(pid, signal: string, { group?: boolean })
+kill(pid, signal: string, { group?: boolean })                  // a child of this process, not yet reaped
 ```
+
+`kill` signals only a process this one spawned and has not reaped yet;
+any other pid — including `0`, `-1` and the process's own — fails with
+`ESRCH` before reaching the kernel, because as PID 1 in a guest a stray pid
+would take the machine down.
 
 With `tee`, the full streams are written to the two files inside
 tinyjs; the `stdout`/`stderr` fds yield only the first `viewLimit` bytes
@@ -213,9 +219,13 @@ small prelude of embedded JS over them.
 **Module loading**: the embedded bundle runs at start under the
 `/embedded/` namespace; `import()` accepts only absolute file paths, reads
 the file and declares it — no npm-style resolution of any kind. `tinyjs:*`
-resolves only when the importer is under `/embedded/`. What `/embedded/`
-contains is decided at start (see "Entry modes"): the packed bundle, or the
-directory of the entry file given on the command line.
+and `/embedded/*` resolve only when the importer is under `/embedded/`: a
+module loaded from a file can reach neither the primitives nor the
+bundle's own modules (which QuickJS would otherwise hand back from its
+module cache). `import.meta.url` is the module's `file:` URL
+(`file:///embedded/main.mjs` for the bundle). What `/embedded/` contains is
+decided at start (see "Entry modes"): the packed bundle, or the directory
+of the entry file given on the command line.
 
 When tinyjs is PID 1 it additionally reaps adopted children itself; that
 is its only PID 1-specific behaviour. Mounting and network configuration
@@ -286,11 +296,12 @@ applied, on ELF a `PT_NOTE` grafted after the image. At start tinyjs asks
 `libsui::find_section` for it in its own mapped image and loads the
 bytecode without parsing; nothing is read from disk and no source is
 scanned. Bytecode is always used, there is no source option. Bytecode is
-tied to the interpreter build, so the section carries the release's
-`version` and `abi` (the two numbers `tinyjs:runtime` exports): `tinyjsc`
-reads the bare binary's release marker and refuses a binary of another
-release, and tinyjs refuses at start a section whose `abi` is not its own.
-The packed file is one file on disk, reached through symlinks:
+tied to the interpreter build, so the section starts with a header naming
+the release (the crate version) and the `abi` it was compiled by, and every
+tinyjs binary carries a release marker in its bytes: `tinyjsc` reads the
+marker and refuses a binary of another release or one already packed, and
+tinyjs refuses at start a section from another release. The packed file is
+one file on disk, reached through symlinks:
 
 - `demi-runner` — **runner mode**: runs the runner program (`runner.md`).
 - any other name — **command mode**: runs the loader with `argv[0]` as the
@@ -308,9 +319,10 @@ runs on a target.
 tinyjsc <bundle.mjs> --bin <bare tinyjs of the target platform> --out <file>
 ```
 
-Compiling the bundle resolves its import graph with the real loader, so a
-bundle importing something that does not exist fails at pack time. The
-bare binary is any platform's build of the same release, so one machine
+Compiling the bundle resolves its import graph with the real loader
+against a payload that has no modules beside the entry, so a bundle is one
+file: an import of anything but `tinyjs:*` fails at pack time rather than
+on a target. The bare binary is any platform's build of the same release, so one machine
 packs every target (all four targets are 64-bit little-endian, so the
 bytecode is the same). The result passes `codesign --verify --strict` on
 macOS; a distributed build replaces the ad-hoc signature with the Developer
