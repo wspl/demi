@@ -41,3 +41,6 @@ Thumbs.db
 # Local agent/CLI session & config data
 .claude/
 .codex/
+
+# Rust build output
+packages/demi-shell/target/
