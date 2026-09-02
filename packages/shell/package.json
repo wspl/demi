@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/shell",
-  "description": "Demi's Host contract, command system and shell-environment contract; the hostless shell environment under /hostless.",
+  "description": "Demi's Host contract, command system and shell-environment contract.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -19,25 +19,9 @@
       "development": "./src/testing.ts",
       "types": "./dist/testing.d.mts",
       "import": "./dist/testing.mjs"
-    },
-    "./node": {
-      "development": "./src/node.ts",
-      "types": "./dist/node.d.mts",
-      "import": "./dist/node.mjs"
-    },
-    "./hostless": {
-      "development": "./src/hostless.ts",
-      "types": "./dist/hostless.d.mts",
-      "import": "./dist/hostless.mjs"
-    },
-    "./build": {
-      "development": "./src/build.ts",
-      "types": "./dist/build.d.mts",
-      "import": "./dist/build.mjs"
     }
   },
   "dependencies": {
-    "@demicodes/tinybash": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "zod": "^4.0.0"
   },
@@ -60,5 +44,8 @@
     "directory": "packages/shell"
   },
   "homepage": "https://github.com/wspl/demi/tree/main/packages/shell#readme",
-  "bugs": "https://github.com/wspl/demi/issues"
+  "bugs": "https://github.com/wspl/demi/issues",
+  "devDependencies": {
+    "@demicodes/host-virtual": "workspace:^"
+  }
 }

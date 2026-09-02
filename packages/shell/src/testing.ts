@@ -2,7 +2,7 @@
 // `@demicodes/shell/testing` entrypoint, never imported by runtime code:
 // the in-memory store and the conformance suite, runtime-neutral so the
 // suite runs on tinyjs too. The Node Host tests run it against is
-// `LocalHost` under `@demicodes/shell/node`.
+// `LocalHost` under `@demicodes/host-virtual/testing`.
 import type { Host, HostSpawnHandle, HostStore } from './host'
 import { collectBytes, decodeUtf8, encodeUtf8, errorCode } from '@demicodes/utils'
 
@@ -47,6 +47,10 @@ export function hostConformanceCases(options: HostConformanceOptions): HostConfo
   const { host, root } = options
   const env = { PATH: options.path ?? '/usr/bin:/bin' }
   const fs = host.fs
+  // Process cases apply only to a Host that runs processes.
+  const spawn = host.process.spawn?.bind(host.process)
+  const processCase = (name: string, run: (spawn: NonNullable<Host['process']['spawn']>) => Promise<void>): HostConformanceCase[] =>
+    spawn ? [{ name, run: () => run(spawn) }] : []
   const text = (value: string) => encodeUtf8(value)
   const read = async (path: string) => decodeUtf8(await fs.readFile(path))
   const codeOf = async (action: () => Promise<unknown>): Promise<string | null> => {
@@ -60,105 +64,65 @@ export function hostConformanceCases(options: HostConformanceOptions): HostConfo
 
   return [
     {
-      name: 'host: defaultCwd and commandArtifactsDir are absolute paths; identity is numeric ids and a hostname',
+      name: 'host: defaultCwd is an absolute path; identity is numeric ids and a hostname',
       run: async () => {
         ok(host.defaultCwd.startsWith('/'), `defaultCwd is absolute: ${host.defaultCwd}`)
-        ok(host.commandArtifactsDir.startsWith('/'), `commandArtifactsDir is absolute: ${host.commandArtifactsDir}`)
         ok(Number.isInteger(host.identity.uid) && Number.isInteger(host.identity.gid), 'identity uid/gid are integers')
         equal(typeof host.identity.hostname, 'string', 'identity hostname')
       },
     },
-    {
-      name: 'process: spawn captures stdout and the exit code',
-      run: async () => {
-        const result = await outputOf(await host.process.spawn({ command: 'printf', args: ['hello\\n'], env }))
+    ...processCase('process: spawn captures stdout and the exit code', async (spawn) => {        const result = await outputOf(await spawn({ command: 'printf', args: ['hello\\n'], env }))
         equal(result.stdout, 'hello\n', 'stdout')
         equal(result.exit.exitCode, 0, 'exit code')
         equal(result.exit.spawnError, undefined, 'no spawn error')
-      },
-    },
-    {
-      name: 'process: stdout and stderr are separate; a non-zero exit is reported',
-      run: async () => {
-        const result = await outputOf(await host.process.spawn({ command: 'sh', args: ['-c', 'echo out; echo err >&2; exit 3'], env }))
+    }),
+    ...processCase('process: stdout and stderr are separate; a non-zero exit is reported', async (spawn) => {        const result = await outputOf(await spawn({ command: 'sh', args: ['-c', 'echo out; echo err >&2; exit 3'], env }))
         equal(result.stdout, 'out\n', 'stdout')
         equal(result.stderr, 'err\n', 'stderr')
         equal(result.exit.exitCode, 3, 'exit code')
-      },
-    },
-    {
-      name: 'process: stdin reaches the child and ends when closed',
-      run: async () => {
-        const handle = await host.process.spawn({ command: 'sh', args: ['-c', 'IFS= read -r line; printf "%s" "$line"'], env })
+    }),
+    ...processCase('process: stdin reaches the child and ends when closed', async (spawn) => {        const handle = await spawn({ command: 'sh', args: ['-c', 'IFS= read -r line; printf "%s" "$line"'], env })
         await handle.writeStdin(text('from stdin\n'))
         await handle.closeStdin()
         const result = await outputOf(handle)
         equal(result.stdout, 'from stdin', 'stdout')
         equal(result.exit.exitCode, 0, 'exit code')
-      },
-    },
-    {
-      name: 'process: kill ends a foreground process with SIGTERM',
-      run: async () => {
-        const handle = await host.process.spawn({ command: 'sleep', args: ['10'], env })
+    }),
+    ...processCase('process: kill ends a foreground process with SIGTERM', async (spawn) => {        const handle = await spawn({ command: 'sleep', args: ['10'], env })
         await handle.kill()
         const result = await outputOf(handle)
         equal(result.exit.exitCode, null, 'exit code')
         equal(result.exit.signal, 'SIGTERM', 'signal')
-      },
-    },
-    {
-      name: 'process: children receive only the env passed to spawn',
-      run: async () => {
-        const result = await outputOf(await host.process.spawn({ command: 'printenv', args: ['HOME'], env }))
+    }),
+    ...processCase('process: children receive only the env passed to spawn', async (spawn) => {        const result = await outputOf(await spawn({ command: 'printenv', args: ['HOME'], env }))
         equal(result.exit.exitCode, 1, 'printenv exits 1 for an unset name')
         equal(result.stdout, '', 'stdout')
-      },
-    },
-    {
-      name: 'process: cwd is honoured',
-      run: async () => {
-        const dir = `${root}/cwd-honoured`
+    }),
+    ...processCase('process: cwd is honoured', async (spawn) => {        const dir = `${root}/cwd-honoured`
         await fs.mkdir(dir, { recursive: true })
-        const result = await outputOf(await host.process.spawn({ command: 'sh', args: ['-c', 'pwd'], cwd: dir, env }))
+        const result = await outputOf(await spawn({ command: 'sh', args: ['-c', 'pwd'], cwd: dir, env }))
         equal(result.exit.exitCode, 0, 'exit code')
         ok(result.stdout.trimEnd().endsWith('/cwd-honoured'), `pwd inside the cwd: ${result.stdout}`)
-      },
-    },
-    {
-      name: 'process: a missing binary is executable_not_found',
-      run: async () => {
-        const result = await outputOf(await host.process.spawn({ command: 'definitely-not-a-host-binary', env }))
+    }),
+    ...processCase('process: a missing binary is executable_not_found', async (spawn) => {        const result = await outputOf(await spawn({ command: 'definitely-not-a-host-binary', env }))
         equal(result.exit.exitCode, null, 'exit code')
         equal(result.exit.spawnError?.kind, 'executable_not_found', 'spawn error kind')
-      },
-    },
-    {
-      name: 'process: a missing cwd is cwd_unusable, not a missing binary',
-      run: async () => {
-        const result = await outputOf(await host.process.spawn({ command: '/bin/echo', args: ['ok'], cwd: `${root}/never-created`, env }))
+    }),
+    ...processCase('process: a missing cwd is cwd_unusable, not a missing binary', async (spawn) => {        const result = await outputOf(await spawn({ command: '/bin/echo', args: ['ok'], cwd: `${root}/never-created`, env }))
         equal(result.exit.exitCode, null, 'exit code')
         equal(result.exit.spawnError?.kind, 'cwd_unusable', 'spawn error kind')
-      },
-    },
-    {
-      name: 'process: a missing binary with a live cwd is executable_not_found',
-      run: async () => {
-        const dir = `${root}/live-cwd`
+    }),
+    ...processCase('process: a missing binary with a live cwd is executable_not_found', async (spawn) => {        const dir = `${root}/live-cwd`
         await fs.mkdir(dir, { recursive: true })
         const cwd = await host.process.openCwd(dir)
         try {
-          const result = await outputOf(await host.process.spawn({ command: 'definitely-not-a-host-binary', cwd: cwd.spawnPath(), env }))
+          const result = await outputOf(await spawn({ command: 'definitely-not-a-host-binary', cwd: cwd.spawnPath(), env }))
           equal(result.exit.spawnError?.kind, 'executable_not_found', 'spawn error kind')
         } finally {
           await cwd.close()
         }
-      },
-    },
-    {
-      name: 'process: openCwd walks directories, refuses missing ones, snapshots and restores',
-      run: async () => {
-        const dir = `${root}/open-cwd`
+    }),
+    ...processCase('process: openCwd walks directories, refuses missing ones, snapshots and restores', async (spawn) => {        const dir = `${root}/open-cwd`
         await fs.mkdir(`${dir}/sub`, { recursive: true })
         const cwd = await host.process.openCwd(dir)
         try {
@@ -176,8 +140,7 @@ export function hostConformanceCases(options: HostConformanceOptions): HostConfo
           await cwd.close()
         }
         equal(await codeOf(() => host.process.openCwd(`${root}/open-cwd-missing`)), 'ENOENT', 'openCwd on a missing directory')
-      },
-    },
+    }),
     {
       name: 'fs: write, append, read, readdir, stat, exists, rm',
       run: async () => {
@@ -251,33 +214,15 @@ export function hostConformanceCases(options: HostConformanceOptions): HostConfo
         equal(await codeOf(() => fs.readdir(`${dir}/missing`)), 'ENOENT', 'readdir of a missing directory')
       },
     },
-    {
-      name: 'fs and process share one namespace: a file written through fs is read by a process',
-      run: async () => {
-        const dir = `${root}/shared`
+    ...processCase('fs and process share one namespace: a file written through fs is read by a process', async (spawn) => {        const dir = `${root}/shared`
         await fs.mkdir(dir, { recursive: true })
         await fs.writeFile(`${dir}/seen.txt`, text('seen by cat\n'))
-        const result = await outputOf(await host.process.spawn({ command: 'cat', args: ['seen.txt'], cwd: dir, env }))
+        const result = await outputOf(await spawn({ command: 'cat', args: ['seen.txt'], cwd: dir, env }))
         equal(result.stdout, 'seen by cat\n', 'cat output')
-        const wrote = await outputOf(await host.process.spawn({ command: 'sh', args: ['-c', 'printf back > written.txt'], cwd: dir, env }))
+        const wrote = await outputOf(await spawn({ command: 'sh', args: ['-c', 'printf back > written.txt'], cwd: dir, env }))
         equal(wrote.exit.exitCode, 0, 'shell wrote')
         equal(await read(`${dir}/written.txt`), 'back', 'read through fs')
-      },
-    },
-    {
-      name: 'fs: commandArtifactsDir is reachable through fs and by processes',
-      run: async () => {
-        await fs.mkdir(host.commandArtifactsDir, { recursive: true })
-        const file = `${host.commandArtifactsDir}/conformance-${crypto.randomUUID()}.txt`
-        await fs.writeFile(file, text('artifact\n'))
-        try {
-          const result = await outputOf(await host.process.spawn({ command: 'cat', args: [file], env }))
-          equal(result.stdout, 'artifact\n', 'a process reads the artifact')
-        } finally {
-          await fs.rm(file, { force: true })
-        }
-      },
-    },
+    }),
     {
       name: 'store: JSON round trip with bytes and bigints, list by prefix, delete',
       run: async () => {

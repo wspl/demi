@@ -9,6 +9,11 @@
       "development": "./src/testing.ts",
       "types": "./dist/testing.d.mts",
       "import": "./dist/testing.mjs"
+    },
+    "./serve": {
+      "development": "./src/serve/index.ts",
+      "types": "./dist/serve/index.d.mts",
+      "import": "./dist/serve/index.mjs"
     }
   },
   "files": [
@@ -28,7 +33,8 @@
     "@demicodes/coding-agent": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/host-remote": "workspace:^",
-    "@demicodes/provider": "workspace:^"
+    "@demicodes/provider": "workspace:^",
+    "@demicodes/host-virtual": "workspace:^"
   },
   "license": "Apache-2.0",
   "publishConfig": {

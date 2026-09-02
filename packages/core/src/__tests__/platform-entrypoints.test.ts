@@ -66,7 +66,7 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/provider-grok-build', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   ['@demicodes/provider-google', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   ['@demicodes/runner-protocol', ['@demicodes/shell', '@demicodes/utils']],
-  ['@demicodes/host-virtual', ['@demicodes/shell', '@demicodes/utils']],
+  ['@demicodes/host-virtual', ['@demicodes/shell', '@demicodes/tinybash', '@demicodes/utils']],
   ['@demicodes/command-loader', ['@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/tinybash', ['@demicodes/utils']],
   ['@demicodes/host-remote', ['@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils']],
@@ -197,8 +197,9 @@ test('package manifests preserve layering boundaries', async () => {
     '@demicodes/coding-agent',
   ]
   for (const packageName of platformNeutralPackages) {
-    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-remote')
-    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-virtual')
+    // Hosts are the product's to inject; tests may run against one.
+    expect(productionDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-remote')
+    expect(productionDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-virtual')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-claude-code')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-codex')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-openai-api')
@@ -509,10 +510,11 @@ async function listSourceFiles(directory: string): Promise<string[]> {
   for (const entry of entries) {
     const path = join(directory, entry.name)
     const relativePath = formatPath(path)
+    // Tests and the `/testing` entries are test code: they may depend upward.
     if (entry.isDirectory()) {
-      if (entry.name === '__tests__') continue
+      if (entry.name === '__tests__' || entry.name === 'testing') continue
       files.push(...(await listSourceFiles(path)))
-    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+    } else if (entry.isFile() && entry.name.endsWith('.ts') && entry.name !== 'testing.ts') {
       files.push(path)
     }
   }
@@ -536,6 +538,10 @@ async function readPackageManifests(): Promise<Map<string, PackageManifest>> {
 
 async function readPackageManifest(path: string): Promise<PackageManifest> {
   return JSON.parse(await readFile(path, 'utf8')) as PackageManifest
+}
+
+function productionDependencyNames(manifest: PackageManifest | undefined): string[] {
+  return Object.keys(manifest?.dependencies ?? {}).sort()
 }
 
 function packageDependencyNames(manifest: PackageManifest | undefined): string[] {

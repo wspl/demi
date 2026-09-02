@@ -29,13 +29,6 @@ export const RUNNER_PROTOCOL_VERSION = 3
  */
 export const JOB_VIEW_BYTES = 32 * 1024
 
-/** The env var naming the file a job's `EXIT` trap writes the final `pwd` to (`runner.md` § Jobs and the tee). */
-export const JOB_CWD_FILE_VAR = 'DEMI_JOB_CWD_FILE'
-/** The env var naming the descriptor the job prelude duplicated the job's stdin onto. */
-export const JOB_STDIN_FD_VAR = 'DEMI_JOB_STDIN_FD'
-/** That descriptor: fixed, high, and clear of the ones scripts and tools reach for (bash 3.2 has no `{var}<&0`). */
-export const JOB_STDIN_FD = 199
-
 export type { FsCallMessage, FsOkMessage, FsOp, FsParams, FsResult } from './schemas'
 export { FS_OPS } from './schemas'
 

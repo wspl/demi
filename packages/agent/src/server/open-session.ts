@@ -8,14 +8,13 @@ import type { BlobStore } from '../store/media'
 import type { ServerFrame } from '../protocol/frames'
 import type { AgentHarness, AgentHarnessRuntime, AgentSessionStore } from '../types'
 import { LiveSession } from './live-session'
-import type { AgentServerSessionOptions, PrepareShell, ShellEnvironmentFactory } from './server'
+import type { AgentServerSessionOptions, ShellEnvironmentFactory } from './server'
 
 /** Everything the assembly pipeline needs from the server/binding configuration. */
 export interface AssembleLiveSessionDeps {
   agent: AgentHarness<unknown>
   shellOptions: ShellEnvironmentOptions
   sessionOptions: AgentServerSessionOptions
-  prepareShell: PrepareShell | null
   shellEnvironment: ShellEnvironmentFactory
   notifyParentOnIdle: boolean
   sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
@@ -83,7 +82,6 @@ export async function assembleLiveSession(
     profiles,
     parentCommands: harnessCommands,
     shellOptions: deps.shellOptions,
-    prepareShell: deps.prepareShell,
     shellEnvironment: deps.shellEnvironment,
     sessionOptions: deps.sessionOptions,
     notifyParentOnIdle: deps.notifyParentOnIdle,
@@ -136,7 +134,6 @@ export async function assembleLiveSession(
     cwd,
     providerId: selection.providerId,
     shellOptions: deps.shellOptions,
-    prepareShell: deps.prepareShell,
     shellEnvironment: deps.shellEnvironment,
   })
   // A resumed session restores its model from the checkpoint; align it with the

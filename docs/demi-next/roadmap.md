@@ -102,10 +102,11 @@ In dependency order, lightest first:
    `@demicodes/tinybash` standalone, declaring its own system interface
    (`TinybashFs`, `TinybashIO`, `DispatchIO`, `RootPaths`) and depending
    on `utils` alone; `HostlessEnvironment` moved from the backend to
-   `@demicodes/shell/hostless`, taking the loader's root paths and
-   dispatcher instead of the loader; `nodeFileSystem` under
-   `@demicodes/shell/node` for the backend's data directory, with `LocalHost`
-   beside it as the Node Host tests run against;
+   `@demicodes/host-virtual`, beside `VirtualHost`, taking the loader's
+   root paths and dispatcher instead of the loader; `nodeFileSystem` under
+   `@demicodes/host-virtual/node` for the backend's data directory, with
+   `LocalHost` under `@demicodes/host-virtual/testing` as the Node Host
+   tests run against;
    `@demicodes/host-remote` holding `RemoteHost` and
    `RemoteShellEnvironment`; `@demicodes/runner-protocol` reduced to the
    wire; the Host over tinyjs folded into `@demicodes/runner` as
@@ -155,7 +156,7 @@ frames; a hostless caller takes the bytes in-process); media by
 reference to the browser: outbound transcript frames carry `{ type:
 'ref', ref, mediaType }` and `GET /api/blobs/:sha256` serves the bytes.
 Steps 5 and 6 delivered — the package structure of `package-boundaries.md`
-(tinybash standalone, `shell/hostless` and `shell/node`, `host-remote`,
+(tinybash standalone, `host-virtual` holding the hostless shell, `host-remote`,
 the runner's `machine/` and `serve/`, the wire alone in `runner-protocol`),
 and everything the old paths were: just-bash, the interpreter, host-local,
 host-runner, repl, agent-eval, the web server, the Bun runner, the offset
@@ -216,7 +217,7 @@ Test modules and their intended coverage, per milestone.
 
 | Milestone | Coverage |
 |---|---|
-| M0 | Spawn-injection + `buildClaudeEnv` overlay assertions. Capability-flag tests. Host-switch integration: two temp-dir `LocalHost`s (`@demicodes/shell/node`), context block injected, per-Host environment isolation, transcript continuity. |
+| M0 | Spawn-injection + `buildClaudeEnv` overlay assertions. Capability-flag tests. Host-switch integration: two temp-dir `LocalHost`s (`@demicodes/host-virtual/testing`), context block injected, per-Host environment isolation, transcript continuity. |
 | M1 | Protocol codec round-trips. Remote-Host integration against a bare AgentServer: `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error; reconnect → next command succeeds. |
 | M2 | Backend integration in one process: in-process `AgentClient` + store-backed Host; detach mid-turn → turn completes → reattach sees the result; cold-history read equals live transcript. |
 | M3 | Block-row persistence: streamed turn appends rows; restore from the two databases equals the live transcript; media round-trips through `source.ref`; per-conversation `host_store` isolation. |

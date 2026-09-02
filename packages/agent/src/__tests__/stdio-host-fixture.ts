@@ -1,8 +1,8 @@
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { AgentHarness } from '@demicodes/agent'
-import { hostlessShellFactory } from '@demicodes/command-loader/testing'
-import { LocalHost } from '@demicodes/shell/node'
+import { hostlessShellFactory } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { AgentServer } from '../index'
 import { createStdioServerTransport } from '../protocol/stdio-transport'
 

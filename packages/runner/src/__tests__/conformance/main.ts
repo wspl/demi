@@ -9,7 +9,7 @@ if (!root) {
   console.error('HOST_CONFORMANCE_ROOT is not set')
   exit(2)
 }
-const host = createRunnerHost({ defaultCwd: root, commandArtifactsDir: `${root}/output`, storeDir: `${root}/store` })
+const host = createRunnerHost({ defaultCwd: root, storeDir: `${root}/store` })
 const cases = hostConformanceCases({ host, root, path: env.PATH })
 let failed = 0
 for (const conformance of cases) {

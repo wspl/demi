@@ -29,6 +29,7 @@
     "@demicodes/utils": "workspace:^"
   },
   "devDependencies": {
+    "@demicodes/host-virtual": "workspace:^",
     "@demicodes/shell": "workspace:^"
   },
   "license": "Apache-2.0",

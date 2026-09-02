@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { expect, test } from 'bun:test'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { VirtualHost, scopedFsBackend } from '../index'
 
@@ -46,7 +46,7 @@ test('virtual namespace: paths resolve against the virtual root, never the real 
   expect(resolved.includes(realRoot)).toBe(false)
 
   const entries = await host.fs.readdir('/')
-  expect(entries.sort()).toEqual(['.artifacts', 'etc', 'workspace'])
+  expect(entries.sort()).toEqual(['etc', 'workspace'])
 })
 
 test('symlinks stay inside the namespace', async () => {
@@ -67,7 +67,7 @@ test('symlinks stay inside the namespace', async () => {
   await expect(host.fs.realpath('/workspace/sneaky')).rejects.toThrow('outside the virtual workspace')
 })
 
-test('quota: per-file and per-conversation caps; artifacts excluded', async () => {
+test('quota: per-file and per-conversation caps', async () => {
   const { host } = await makeHost({ maxFileBytes: 10, maxTotalBytes: 25 })
 
   await host.fs.writeFile('/workspace/a.txt', text('1234567890'))
@@ -79,14 +79,11 @@ test('quota: per-file and per-conversation caps; artifacts excluded', async () =
   await expect(host.fs.writeFile('/workspace/c.txt', text('1234567890'))).rejects.toThrow('total size limit')
   // Overwriting counts growth, not gross size.
   await host.fs.writeFile('/workspace/b.txt', text('123456789A'))
-  // Artifact writes are never quota-gated.
-  await host.fs.writeFile('/.artifacts/cmd-1/stdout.txt', text('this artifact write is larger than caps'), {
-    createParents: true,
-  })
   expect(await host.usage()).toBe(20)
 })
 
 test('the hostless Host runs no processes', async () => {
   const { host } = await makeHost()
-  await expect(host.process.spawn({ command: 'python3', args: ['-V'] })).rejects.toThrow('runs no processes')
+  expect(host.process.spawn).toBeUndefined()
 })
+

@@ -5,7 +5,7 @@
 import { isRecord, safeJsonStringify } from '@demicodes/utils'
 import { z } from 'zod'
 import type { Block, ProviderErrorDiagnostics, ToolResultContentBlock } from '@demicodes/core'
-import type { BashAuditEvent } from '@demicodes/shell'
+import type { } from '@demicodes/shell'
 import type { ConversationSummary, ShellCommandStatusLike } from '../protocol/frames'
 import type { AgentSessionCheckpoint } from '../types'
 import { ProviderStreamError } from '../session/provider-stream-error'
@@ -43,7 +43,7 @@ function progressToText(progress: unknown): string {
 
 // Schemas validate; the original object is what crosses (no lossy clone).
 const shellStreamViewSchema = z.looseObject({
-  path: z.string(),
+  path: z.string().optional(),
   offset: z.number(),
   delta: z.string(),
   tail: z.string(),
@@ -61,29 +61,6 @@ const shellCommandStatusSchema = z.looseObject({
   idleMs: z.number(),
 })
 
-const auditEventSchema = z.discriminatedUnion('kind', [
-  z.looseObject({
-    kind: z.literal('registered-command'),
-    name: z.string(),
-    args: z.array(z.string()),
-    exitCode: z.number(),
-  }),
-  z.looseObject({
-    kind: z.literal('portable-command'),
-    name: z.string(),
-    args: z.array(z.string()),
-    cwd: z.string(),
-    exitCode: z.number(),
-  }),
-  z.looseObject({
-    kind: z.literal('system-command'),
-    name: z.string(),
-    args: z.array(z.string()),
-    cwd: z.string(),
-    exitCode: z.number().nullable(),
-  }),
-])
-
 export function progressToShellOutput(
   progress: unknown,
 ): { shellId: string; commandId: string; status: ShellCommandStatusLike } | null {
@@ -94,11 +71,6 @@ export function progressToShellOutput(
     commandId: parsed.data.commandId,
     status: progress as ShellCommandStatusLike,
   }
-}
-
-export function progressToAudit(progress: unknown): BashAuditEvent[] {
-  if (!isRecord(progress) || !Array.isArray(progress.audit)) return []
-  return progress.audit.filter((event): event is BashAuditEvent => auditEventSchema.safeParse(event).success)
 }
 
 export function errorDiagnostics(error: unknown): ProviderErrorDiagnostics | undefined {

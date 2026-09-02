@@ -2,10 +2,10 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { createRunnerWire, type BackendToRunnerMessage, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import { HostRpcServer } from '@demicodes/runner/testing'
+import { HostRpcServer } from '@demicodes/runner/serve'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { RemoteHost } from '../index'
 
@@ -17,7 +17,6 @@ async function connectedPair() {
   const local = new LocalHost(dir)
   const remote = new RemoteHost({
     defaultCwd: dir,
-    commandArtifactsDir: join(dir, '.artifacts'),
     identity: { uid: 501, gid: 20, hostname: 'test' },
     store: memoryHostStore(),
   })
@@ -56,29 +55,29 @@ test('remote fs calls execute on the served Host and preserve error codes', asyn
 test('remote spawn streams output, accepts stdin, and reports exit', async () => {
   const { dir, remote } = await connectedPair()
 
-  const echo = await remote.process.spawn({ command: '/bin/echo', args: ['over the wire'], cwd: dir, env: { PATH: '/usr/bin:/bin' } })
+  const echo = await remote.process.spawn!({ command: '/bin/echo', args: ['over the wire'], cwd: dir, env: { PATH: '/usr/bin:/bin' } })
   expect(await collect(echo.stdout)).toBe('over the wire\n')
   expect((await echo.wait()).exitCode).toBe(0)
 
-  const cat = await remote.process.spawn({ command: '/bin/cat', cwd: dir, env: { PATH: '/usr/bin:/bin' } })
+  const cat = await remote.process.spawn!({ command: '/bin/cat', cwd: dir, env: { PATH: '/usr/bin:/bin' } })
   await cat.writeStdin(new TextEncoder().encode('stdin data'))
   await cat.closeStdin()
   expect(await collect(cat.stdout)).toBe('stdin data')
   expect((await cat.wait()).exitCode).toBe(0)
 
-  const sleeper = await remote.process.spawn({ command: '/bin/sleep', args: ['30'], cwd: dir, env: { PATH: '/usr/bin:/bin' } })
+  const sleeper = await remote.process.spawn!({ command: '/bin/sleep', args: ['30'], cwd: dir, env: { PATH: '/usr/bin:/bin' } })
   await sleeper.kill('SIGTERM')
   const exit = await sleeper.wait()
   expect(exit.exitCode).not.toBe(0)
 
-  const missing = await remote.process.spawn({ command: 'not-a-real-binary', cwd: dir, env: { PATH: '/usr/bin:/bin' } })
+  const missing = await remote.process.spawn!({ command: 'not-a-real-binary', cwd: dir, env: { PATH: '/usr/bin:/bin' } })
   expect((await missing.wait()).spawnError?.kind).toBe('executable_not_found')
 })
 
 test('detach fails pending calls and kills in-flight spawn views; reattach resumes', async () => {
   const { dir, remote, server } = await connectedPair()
 
-  const running = await remote.process.spawn({ command: '/bin/sleep', args: ['30'], cwd: dir, env: { PATH: '/usr/bin:/bin' } })
+  const running = await remote.process.spawn!({ command: '/bin/sleep', args: ['30'], cwd: dir, env: { PATH: '/usr/bin:/bin' } })
   remote.detach('runner disconnected')
   const exit = await running.wait()
   expect(exit.exitCode).toBeNull()
@@ -86,7 +85,7 @@ test('detach fails pending calls and kills in-flight spawn views; reattach resum
   await server.close() // the real connection-drop path also kills runner-side children
 
   await expect(remote.fs.readFile(join(dir, 'x'))).rejects.toThrow('runner disconnected')
-  const offlineSpawn = await remote.process.spawn({ command: '/bin/echo', cwd: dir })
+  const offlineSpawn = await remote.process.spawn!({ command: '/bin/echo', cwd: dir })
   expect((await offlineSpawn.wait()).spawnError?.kind).toBe('other')
 
   // Reattach: the same Host object serves again.

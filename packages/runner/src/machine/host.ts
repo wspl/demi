@@ -10,8 +10,6 @@ export const TINYJS_ABI = 1
 export interface RunnerHostOptions {
   /** Default working directory (default: the process's cwd). */
   defaultCwd?: string
-  /** Where command output files land (default `~/.demi/output`). */
-  commandArtifactsDir?: string
   /** Where `Host.store` keeps its JSON files (default `~/.demi/store`). */
   storeDir?: string
 }
@@ -29,7 +27,6 @@ export function createRunnerHost(options: RunnerHostOptions = {}): Host {
   const fs = createRunnerFileSystem(defaultCwd)
   return {
     defaultCwd,
-    commandArtifactsDir: normalizePath(options.commandArtifactsDir ?? `${identity.homeDir}/.demi/output`),
     fs,
     process: createRunnerProcess(defaultCwd),
     store: fileHostStore(fs, normalizePath(options.storeDir ?? `${identity.homeDir}/.demi/store`)),

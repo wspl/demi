@@ -15,7 +15,7 @@ import type {
 import { createStandardAgentTools } from '../tools'
 import { hostAgentSessionStore } from '../store/session-store'
 import type { BlobStore } from '../store/media'
-import type { AgentServerSessionOptions, PrepareShell, ShellEnvironmentFactory } from '../server/server'
+import type { AgentServerSessionOptions, ShellEnvironmentFactory } from '../server/server'
 import { childAgentNode, injectSubagentCommand, subagentCommandNode } from './commands'
 import { formatDuration } from './format'
 
@@ -80,7 +80,6 @@ export interface ChildSupervisorOptions<State> {
   /** Parent registered commands (harness list, before the `demi agent` injection). */
   parentCommands: Command[]
   shellOptions: ShellEnvironmentOptions
-  prepareShell: PrepareShell | null
   shellEnvironment: ShellEnvironmentFactory
   sessionOptions: AgentServerSessionOptions
   /** When false, a child closing never wakes an idle parent; the host app orchestrates the wakeup from the `subagent closed` frame. */
@@ -695,17 +694,7 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private async createChildEnvironment(job: ChildJob<State>, host: Host): Promise<ShellEnvironment> {
-    // A read-only child cannot spawn processes, so bridge shims are useless
-    // (and un-materializable on a write-rejecting Host): skip prepareShell.
-    const prepared =
-      this.options.prepareShell && !job.profile.readonly
-        ? await this.options.prepareShell({
-            agentSessionId: job.id,
-            host,
-            commandNames: job.commandNames,
-            shell: this.options.shellOptions,
-          })
-        : this.options.shellOptions
+    const prepared = this.options.shellOptions
     return this.options.shellEnvironment({
       agentSessionId: job.id,
       host,
@@ -914,19 +903,14 @@ export class ChildSupervisor<State = unknown> {
 }
 
 /**
- * Host wrapper for read-only subagent profiles: filesystem mutation is
- * rejected outside the shell's own command-artifacts tree, and process spawn
- * is rejected outright (a real process cannot be write-restricted).
+ * Host wrapper for read-only subagent profiles: every filesystem mutation is
+ * rejected, and process spawn is rejected outright (a real process cannot be
+ * write-restricted).
  *
  * Every facet delegates method by method: Host facets are class instances
  * whose methods live on the prototype, so object spread would drop them.
  */
 export function createReadonlyHost(host: Host): Host {
-  const artifactsRoot = host.commandArtifactsDir.replace(/\/+$/, '')
-  const isArtifactPath = (path: string, cwd: string | undefined): boolean => {
-    const resolved = path.startsWith('/') ? path : `${(cwd ?? host.defaultCwd).replace(/\/+$/, '')}/${path}`
-    return resolved === artifactsRoot || resolved.startsWith(`${artifactsRoot}/`)
-  }
   const deny = (operation: string): Promise<never> =>
     Promise.reject(new Error(`read-only subagent: ${operation} is not permitted on this Host`))
   const readonlyFs: Host['fs'] = {
@@ -938,15 +922,11 @@ export function createReadonlyHost(host: Host): Host {
       host.fs.readdir(path, options as { cwd?: string; withFileTypes: true })) as Host['fs']['readdir'],
     readlink: (path, options) => host.fs.readlink(path, options),
     realpath: (path, options) => host.fs.realpath(path, options),
-    writeFile: (path, data, options) =>
-      isArtifactPath(path, options?.cwd) ? host.fs.writeFile(path, data, options) : deny(`write ${path}`),
-    appendFile: (path, data, options) =>
-      isArtifactPath(path, options?.cwd) ? host.fs.appendFile(path, data, options) : deny(`append ${path}`),
-    mkdir: (path, options) =>
-      isArtifactPath(path, options?.cwd) ? host.fs.mkdir(path, options) : deny(`mkdir ${path}`),
+    writeFile: (path) => deny(`write ${path}`),
+    appendFile: (path) => deny(`append ${path}`),
+    mkdir: (path) => deny(`mkdir ${path}`),
     rm: (path) => deny(`rm ${path}`),
-    cp: (path, destination, options) =>
-      isArtifactPath(destination, options?.cwd) ? host.fs.cp(path, destination, options) : deny(`cp to ${destination}`),
+    cp: (_path, destination) => deny(`cp to ${destination}`),
     mv: (path, destination) => deny(`mv ${path} ${destination}`),
     chmod: (path) => deny(`chmod ${path}`),
     symlink: (_target, path) => deny(`symlink ${path}`),
@@ -955,7 +935,6 @@ export function createReadonlyHost(host: Host): Host {
   }
   return {
     defaultCwd: host.defaultCwd,
-    commandArtifactsDir: host.commandArtifactsDir,
     identity: host.identity,
     store: host.store,
     fs: readonlyFs,

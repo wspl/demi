@@ -4,7 +4,7 @@
 // runner over the relay.
 import { createRunnerHost, cwd, env, fdNode, identity, onSignal, stderrWriter, stdinStream, stdoutWriter } from './machine'
 import { createLoader, directorySource, inMemorySource, parseManifest, type ManifestSource } from '@demicodes/command-loader'
-import { JOB_STDIN_FD_VAR } from '@demicodes/runner-protocol'
+import { JOB_STDIN_FD_VAR } from './serve/jobs'
 import { emptyByteStream, errorMessage } from '@demicodes/utils'
 import { fetchManifest, relayRpc } from './relay/client'
 

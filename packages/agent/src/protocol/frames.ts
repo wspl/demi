@@ -7,7 +7,7 @@ import type {
   ToolResultContentBlock,
 } from '@demicodes/core'
 import type { AbortResult, AgentMetadata } from '../types'
-import type { BashAuditEvent, ShellCommandStatus } from '@demicodes/shell'
+import type { ShellCommandStatus } from '@demicodes/shell'
 import type { clientFrameSchema } from './schemas'
 
 /** A persisted conversation in a workspace (cwd), for the resume/history list. */
@@ -51,7 +51,6 @@ export type ServerFrame =
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
   | { type: 'shell_output'; shellId: string; commandId: string; status: ShellCommandStatusLike }
   | { type: 'shell_write_result'; commandId: string; output: ToolResultContentBlock[] }
-  | { type: 'audit'; events: BashAuditEvent[] }
   | { type: 'conversations'; conversations: ConversationSummary[] }
   // A transient provider failure is being retried with backoff; informational.
   | {
@@ -93,7 +92,6 @@ export type ClientSessionEvent =
   | { type: 'tool_progress'; toolUseId: string; output: ToolResultContentBlock[] }
   | { type: 'shell_output'; shellId: string; commandId: string; status: ShellCommandStatusLike }
   | { type: 'shell_write_result'; commandId: string; output: ToolResultContentBlock[] }
-  | { type: 'audit'; events: BashAuditEvent[] }
   | {
       type: 'retry_scheduled'
       attempt: number

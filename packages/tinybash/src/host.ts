@@ -1,7 +1,7 @@
 // What tinybash asks of its embedder: a filesystem, the stdio of a script,
 // and a way to run root commands. tinybash owns these declarations the way
 // any standalone shell owns its system interface; an embedder adapts its
-// own filesystem and command loader to them (`@demicodes/shell/hostless`
+// own filesystem and command loader to them (`@demicodes/host-virtual`
 // does so for Demi's Host contract and loader).
 
 export interface TinybashStat {

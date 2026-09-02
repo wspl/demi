@@ -32,9 +32,7 @@ export interface VirtualHostOptions {
   store: HostStore
   /** Virtual working directory (default `/workspace`). */
   defaultCwd?: string
-  /** Virtual artifact directory (default `/.artifacts`), excluded from quota. */
-  commandArtifactsDir?: string
-  /** Directories `ensureLayout` creates besides the working and artifact directories (the namespace). */
+  /** Directories `ensureLayout` creates besides the working directory (the namespace). */
   directories?: readonly string[]
   identity?: HostIdentity
   /** Injectable for tests; product code keeps the hardcoded caps. */
@@ -43,7 +41,6 @@ export interface VirtualHostOptions {
 
 export class VirtualHost implements Host {
   readonly defaultCwd: string
-  readonly commandArtifactsDir: string
   readonly directories: readonly string[]
   readonly identity: HostIdentity
   readonly store: HostStore
@@ -58,27 +55,19 @@ export class VirtualHost implements Host {
     this.backend = options.backend
     this.store = options.store
     this.defaultCwd = normalizePath(options.defaultCwd ?? '/workspace')
-    this.commandArtifactsDir = normalizePath(options.commandArtifactsDir ?? '/.artifacts')
     this.directories = (options.directories ?? []).map((dir) => normalizePath(dir))
     this.identity = options.identity ?? { uid: 1000, gid: 1000, hostname: 'virtual' }
     this.maxFileBytes = options.quota?.maxFileBytes ?? VIRTUAL_MAX_FILE_BYTES
     this.maxTotalBytes = options.quota?.maxTotalBytes ?? VIRTUAL_MAX_TOTAL_BYTES
     this.fs = this.createFs()
     this.process = {
-      // A hostless conversation runs tinybash, which spawns nothing; a script
-      // that needs a program is handed to a machine by the backend
-      // (`sessions-and-targets.md`), never refused here.
-      spawn: async () => {
-        throw new Error('the hostless Host runs no processes')
-      },
       openCwd: async (path) => createLogicalHostCwd(this.resolve(path)),
     }
   }
 
-  /** Creates the namespace's directory layout (working dir, artifact dir, the declared directories). */
+  /** Creates the namespace's directory layout (the working dir and the declared directories). */
   async ensureLayout(): Promise<void> {
     await this.backend.mkdir(this.defaultCwd, { recursive: true })
-    await this.backend.mkdir(this.commandArtifactsDir, { recursive: true })
     for (const dir of this.directories) await this.backend.mkdir(dir, { recursive: true })
   }
 
@@ -99,7 +88,6 @@ export class VirtualHost implements Host {
   }
 
   private async usageUnder(dir: string): Promise<number> {
-    if (dir === this.commandArtifactsDir) return 0
     let total = 0
     let entries
     try {
@@ -123,7 +111,6 @@ export class VirtualHost implements Host {
   }
 
   private async enforceQuota(path: string, incomingBytes: number, append: boolean): Promise<void> {
-    if (path === this.commandArtifactsDir || path.startsWith(`${this.commandArtifactsDir}/`)) return
     let existingSize = 0
     try {
       existingSize = (await this.backend.stat(path)).size

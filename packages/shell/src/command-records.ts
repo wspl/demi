@@ -1,7 +1,5 @@
 import { decodeUtf8Strict, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
-import type { CommandArtifactStore } from './command-artifact-store'
 import type {
-  BashAuditEvent,
   BinaryStdout,
   ShellCommandStatus,
   ShellOutputChunk,
@@ -19,8 +17,8 @@ export interface ShellCommandRecord {
   id: string
   shellId: string
   commandStorageId: string
-  /** Real directory the artifact files (stdout.txt/stderr.txt/meta.json/stdout.bin) live in. */
-  artifactDir: string
+  /** The target directory holding the output files (the runner's tee); absent for hostless. */
+  outputDir?: string
   script: string
   startedAt: number
   lastOutputAt: number
@@ -32,20 +30,15 @@ export interface ShellCommandRecord {
   outputChunks: ShellOutputRecordChunk[]
   outputOffset: number
   exitCode?: number
-  audit: BashAuditEvent[]
   binaryStdout?: BinaryStdout
-  /** Full binary stream bytes awaiting their one-time write to stdout.bin. */
-  pendingBinaryArtifact?: Uint8Array
   /** Output limit of the exec that started this command (binary carry cap). */
   outputLimitBytes: number
-  persistedFingerprint?: string
 }
 
 export function createCommandRecord(fields: {
   id: string
   shellId: string
   commandStorageId: string
-  artifactDir: string
   script: string
   outputLimitBytes: number
 }): ShellCommandRecord {
@@ -61,61 +54,38 @@ export function createCommandRecord(fields: {
     stderrOffset: 0,
     outputChunks: [],
     outputOffset: 0,
-    audit: [],
   }
 }
 
 /**
  * The status the tools see: each stream's delta since the last view (the
- * record keeps the cursor), capped at `maxOutputBytes`, plus its tail; then
- * the record persisted through `artifacts` — absent for an environment whose
- * output files are written where the command ran (the runner's tee).
+ * record keeps the cursor), capped at `maxOutputBytes`, plus its tail.
  */
-export function commandStatusView(
-  record: ShellCommandRecord,
-  maxOutputBytes: number,
-  artifacts?: CommandArtifactStore,
-): ShellCommandStatus {
+export function commandStatusView(record: ShellCommandRecord, maxOutputBytes: number): ShellCommandStatus {
   const stdout = streamView(record, 'stdout', maxOutputBytes)
   const stderr = streamView(record, 'stderr', maxOutputBytes)
   const output = mergedOutputView(record, maxOutputBytes)
   const base = {
     shellId: record.shellId,
     commandId: record.id,
-    artifactDir: record.artifactDir,
+    ...(record.outputDir !== undefined ? { outputDir: record.outputDir } : {}),
     stdout,
     stderr,
     output,
     runningMs: Date.now() - record.startedAt,
     idleMs: Date.now() - record.lastOutputAt,
   }
-  if (artifacts) persistCommandArtifact(artifacts, record)
   if (record.status === 'exited') {
     const result: ShellCommandStatus = {
       ...base,
       status: 'exited',
       exitCode: record.exitCode ?? 0,
-      audit: record.audit,
     }
     if (record.binaryStdout) result.binaryStdout = record.binaryStdout
     return result
   }
   if (record.status === 'aborted') return { ...base, status: 'aborted' }
   return { ...base, status: 'running' }
-}
-
-export function persistCommandArtifact(artifacts: CommandArtifactStore, record: ShellCommandRecord): void {
-  const fingerprint = `${record.status}:${record.exitCode ?? ''}:${record.stdout.length}:${record.stderr.length}:${record.binaryStdout?.totalBytes ?? ''}`
-  if (record.persistedFingerprint === fingerprint) return
-  record.persistedFingerprint = fingerprint
-  const stdoutBin = record.pendingBinaryArtifact
-  record.pendingBinaryArtifact = undefined
-  artifacts.persist(record.commandStorageId, record.id, {
-    meta: `${JSON.stringify(commandArtifactMeta(record), null, 2)}\n`,
-    stdout: record.stdout,
-    stderr: record.stderr,
-    ...(stdoutBin ? { stdoutBin } : {}),
-  })
 }
 
 /**
@@ -128,7 +98,8 @@ export function persistCommandArtifact(artifacts: CommandArtifactStore, record: 
 export function finalStdoutBoundary(
   bytes: Uint8Array,
   binaryLimitBytes: number,
-  artifactDir: string,
+  /** Where the raw stream lives on the target; absent when it was not kept. */
+  rawPath?: string,
 ): { text: string; binary?: BinaryStdout } {
   const strict = decodeUtf8Strict(bytes)
   if (strict !== null) return { text: strict }
@@ -141,12 +112,12 @@ export function finalStdoutBoundary(
   }
   const text = `<binary stdout: ${bytes.length} bytes${
     truncated ? `, exceeds the ${binaryLimitBytes}-byte binary limit` : ''
-  }; raw bytes at ${artifactDir}/stdout.bin>\n`
+  }${rawPath ? `; raw bytes at ${rawPath}` : '; not kept beyond this view'}>\n`
   return { text, binary }
 }
 
 /** Marks the record exited with the given streams, replacing any streamed view of a binary stream. */
-export function settleExited(record: ShellCommandRecord, exitCode: number, stdout: string, stderr: string, binary: BinaryStdout | undefined, audit: BashAuditEvent[]): void {
+export function settleExited(record: ShellCommandRecord, exitCode: number, stdout: string, stderr: string, binary: BinaryStdout | undefined): void {
   record.stdout = stdout
   record.stderr = stderr
   if (binary) {
@@ -161,7 +132,6 @@ export function settleExited(record: ShellCommandRecord, exitCode: number, stdou
   record.lastOutputAt = Date.now()
   record.status = 'exited'
   record.exitCode = exitCode
-  record.audit = [...audit]
 }
 
 function streamView(record: ShellCommandRecord, stream: 'stdout' | 'stderr', maxOutputBytes: number): ShellStreamView {
@@ -178,7 +148,7 @@ function streamView(record: ShellCommandRecord, stream: 'stdout' | 'stderr', max
   if (stream === 'stdout') record.stdoutOffset = nextOffset
   else record.stderrOffset = nextOffset
   return {
-    path: `${record.artifactDir}/${stream}.txt`,
+    ...(record.outputDir !== undefined ? { path: `${record.outputDir}/${stream}.txt` } : {}),
     offset: nextOffset,
     delta,
     tail: tailString(text),
@@ -216,7 +186,7 @@ function mergedOutputView(record: ShellCommandRecord, maxOutputBytes: number): S
   const truncated = nextOffset < totalBytes
   record.outputOffset = nextOffset
   return {
-    path: record.artifactDir,
+    ...(record.outputDir !== undefined ? { path: record.outputDir } : {}),
     offset: nextOffset,
     text,
     tail: tailOutputText(record.outputChunks),
@@ -243,28 +213,6 @@ export function ensureRecordOutputCoverage(record: ShellCommandRecord): void {
   record.outputChunks = []
   appendRecordOutput(record, 'stdout', record.stdout)
   appendRecordOutput(record, 'stderr', record.stderr)
-}
-
-function commandArtifactMeta(record: ShellCommandRecord): Record<string, unknown> {
-  return {
-    status: record.status,
-    shellId: record.shellId,
-    commandId: record.id,
-    script: record.script,
-    startedAt: record.startedAt,
-    lastOutputAt: record.lastOutputAt,
-    exitCode: record.exitCode ?? null,
-    stdout: { path: `${record.artifactDir}/stdout.txt`, bytes: utf8Bytes(record.stdout) },
-    stderr: { path: `${record.artifactDir}/stderr.txt`, bytes: utf8Bytes(record.stderr) },
-    ...(record.binaryStdout
-      ? {
-          stdoutBinary: {
-            path: `${record.artifactDir}/stdout.bin`,
-            bytes: record.binaryStdout.totalBytes,
-          },
-        }
-      : {}),
-  }
 }
 
 function tailOutputText(chunks: readonly ShellOutputRecordChunk[]): string {

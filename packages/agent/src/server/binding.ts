@@ -12,8 +12,8 @@ import type { BlobStore } from '../store/media'
 import type { LiveSession } from './live-session'
 import { assembleLiveSession } from './open-session'
 import type { SessionAttachment, SessionOwnershipRegistry } from './ownership'
-import { errorDiagnostics, progressToAudit, progressToOutput, progressToShellOutput, summarizeConversation } from './summaries'
-import type { AgentServerSessionOptions, AgentTransportBinding, PrepareShell, ProviderResolver, ShellEnvironmentFactory } from './server'
+import { errorDiagnostics, progressToOutput, progressToShellOutput, summarizeConversation } from './summaries'
+import type { AgentServerSessionOptions, AgentTransportBinding, ProviderResolver, ShellEnvironmentFactory } from './server'
 
 export interface AgentTransportBindingOptions {
   transport: AgentServerTransport
@@ -21,7 +21,6 @@ export interface AgentTransportBindingOptions {
   resolveProvider: ProviderResolver
   shell?: ShellEnvironmentOptions
   session?: AgentServerSessionOptions
-  prepareShell: PrepareShell | null
   shellEnvironment: ShellEnvironmentFactory
   notifyParentOnIdle: boolean
   sessions: SessionOwnershipRegistry
@@ -41,7 +40,6 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
   private readonly resolveProvider: ProviderResolver
   private readonly shellOptions: ShellEnvironmentOptions
   private readonly sessionOptions: AgentServerSessionOptions
-  private readonly prepareShell: PrepareShell | null
   private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly notifyParentOnIdle: boolean
   private readonly sessions: SessionOwnershipRegistry
@@ -57,7 +55,6 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     this.resolveProvider = options.resolveProvider
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
-    this.prepareShell = options.prepareShell
     this.shellEnvironment = options.shellEnvironment
     this.notifyParentOnIdle = options.notifyParentOnIdle
     this.sessions = options.sessions
@@ -267,7 +264,6 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
         agent: this.agent,
         shellOptions: this.shellOptions,
         sessionOptions: this.sessionOptions,
-        prepareShell: this.prepareShell,
         shellEnvironment: this.shellEnvironment,
         notifyParentOnIdle: this.notifyParentOnIdle,
         sessionStore: this.sessionStore,
@@ -412,8 +408,6 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
         status: shell.status,
       })
     }
-    const audit = progressToAudit(progress)
-    if (audit.length > 0) this.send({ type: 'audit', events: audit })
     this.send({ type: 'shell_write_result', commandId, output: progressToOutput(progress) })
   }
 

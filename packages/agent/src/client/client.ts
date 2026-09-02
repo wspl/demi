@@ -263,7 +263,6 @@ export class AgentClient {
       case 'tool_progress':
       case 'shell_output':
       case 'shell_write_result':
-      case 'audit':
       case 'retry_scheduled':
       case 'subagent':
         this.emit(frame)

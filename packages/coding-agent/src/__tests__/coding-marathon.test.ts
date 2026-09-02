@@ -13,8 +13,8 @@ import {
   type AgentToolInvokeResult,
 } from '@demicodes/agent'
 import { CommandRegistry, type ShellEnvironment, type ShellEnvironmentOptions } from '@demicodes/shell'
-import { hostlessShell, probeCommand } from '@demicodes/command-loader/testing'
-import { LocalHost } from '@demicodes/shell/node'
+import { hostlessShell, probeCommand } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { createCodingAgentHarness } from '../index'

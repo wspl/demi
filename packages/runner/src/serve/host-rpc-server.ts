@@ -71,7 +71,9 @@ export class HostRpcServer {
     const { spawnId } = message
     let handle: HostSpawnHandle
     try {
-      handle = await this.host.process.spawn({
+      const spawn = this.host.process.spawn
+      if (!spawn) throw new Error('this Host runs no processes')
+      handle = await spawn.call(this.host.process, {
         command: message.command,
         ...(message.args ? { args: message.args } : {}),
         ...(message.cwd !== undefined ? { cwd: message.cwd } : {}),

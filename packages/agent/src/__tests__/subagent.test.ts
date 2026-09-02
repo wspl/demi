@@ -2,10 +2,10 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { hostlessShellFactory, probeCommand } from '@demicodes/command-loader/testing'
+import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
 import { waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { defineProvider, type InferenceRequest, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -600,12 +600,8 @@ test('a readonly Host wrapped over a class-instance Host still reads; mutation a
 
   await expect(host.fs.writeFile('evil.txt', new Uint8Array(), { cwd: root })).rejects.toThrow('read-only subagent')
   await expect(host.fs.rm('note.txt', { cwd: root })).rejects.toThrow('read-only subagent')
-  await expect(host.process.spawn({ command: 'true', args: [], cwd: root, env: {} })).rejects.toThrow('read-only subagent')
-
-  const artifactPath = `${host.commandArtifactsDir}/probe.txt`
-  await host.fs.mkdir(host.commandArtifactsDir, { recursive: true })
-  await host.fs.writeFile(artifactPath, new TextEncoder().encode('ok'))
-  expect(new TextDecoder().decode(await host.fs.readFile(artifactPath))).toBe('ok')
+  await expect(host.process.spawn!({ command: 'true', args: [], cwd: root, env: {} })).rejects.toThrow('read-only subagent')
+  await expect(host.fs.mkdir('probe', { cwd: root })).rejects.toThrow('read-only subagent')
 })
 
 test('the live-children ceiling rejects the spawn beyond MAX_LIVE_SUBAGENTS', async () => {

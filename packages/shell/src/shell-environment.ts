@@ -1,7 +1,7 @@
 /**
  * The shell environment behind the `shell_exec` / `shell_status` /
  * `shell_write` / `shell_abort` tools: one interface, two implementations —
- * `HostlessEnvironment` (`@demicodes/shell/hostless`: tinybash over the
+ * `HostlessEnvironment` (`@demicodes/host-virtual`: tinybash over the
  * conversation's store-backed Host) and `RemoteShellEnvironment`
  * (`@demicodes/host-remote`: jobs on a machine's runner). The agent server
  * talks to the interface only.
@@ -42,7 +42,8 @@ export interface ShellAbortInput {
 }
 
 export interface ShellStreamView {
-  path: string
+  /** Where the full stream lives on the target; absent when nothing beyond the view is kept (hostless). */
+  path?: string
   offset: number
   delta: string
   tail: string
@@ -61,7 +62,8 @@ export interface ShellOutputRecordChunk extends ShellOutputChunk {
 }
 
 export interface ShellOutputView {
-  path: string
+  /** The target directory holding the output files; absent for hostless. */
+  path?: string
   offset: number
   text: string
   tail: string
@@ -69,11 +71,6 @@ export interface ShellOutputView {
   bytes: number
   truncated: boolean
 }
-
-export type BashAuditEvent =
-  | { kind: 'registered-command'; name: string; args: string[]; exitCode: number }
-  | { kind: 'portable-command'; name: string; args: string[]; cwd: string; exitCode: number }
-  | { kind: 'system-command'; name: string; args: string[]; cwd: string; exitCode: number | null }
 
 /** Final stdout stream that is not valid UTF-8: raw bytes for the boundary above. */
 export interface BinaryStdout {
@@ -91,15 +88,14 @@ export type ShellCommandStatus =
       status: 'exited'
       shellId: string
       commandId: string
-      /** Real directory holding this command's artifact files. */
-      artifactDir: string
+      /** The directory the target's output files live in; absent when nothing beyond the view is kept (hostless). */
+      outputDir?: string
       exitCode: number
       stdout: ShellStreamView
       stderr: ShellStreamView
       output: ShellOutputView
       runningMs: number
       idleMs: number
-      audit: BashAuditEvent[]
       /** Present when the final stream was binary (bytes that are not valid UTF-8). */
       binaryStdout?: BinaryStdout
     }
@@ -107,7 +103,7 @@ export type ShellCommandStatus =
       status: 'running'
       shellId: string
       commandId: string
-      artifactDir: string
+      outputDir?: string
       stdout: ShellStreamView
       stderr: ShellStreamView
       output: ShellOutputView
@@ -118,7 +114,7 @@ export type ShellCommandStatus =
       status: 'aborted'
       shellId: string
       commandId: string
-      artifactDir: string
+      outputDir?: string
       stdout: ShellStreamView
       stderr: ShellStreamView
       output: ShellOutputView

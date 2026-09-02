@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildManifest, createLoader, inMemorySource, inProcessRpc, rootPaths } from '@demicodes/command-loader'
 import { createDemiCommand } from '@demicodes/coding-agent'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { VirtualHost, scopedFsBackend } from '@demicodes/host-virtual'
 import { AgentSessionCommandStorage, type Command, type ShellCommandStatus } from '@demicodes/shell'
 import { delay } from '@demicodes/utils'
 import { z } from 'zod'
-import { HostlessEnvironment } from '@demicodes/shell/hostless'
+import { HostlessEnvironment } from '@demicodes/host-virtual'
 import { HOSTLESS_IDENTITY, transpileCommandModule } from '../conversation/hostless-shell'
 import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from '../conversation/scoped-transport'
 
@@ -94,7 +94,6 @@ describe('hostless conversation', () => {
       const created = exited(await w.exec("mkdir src && cd src && demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF"))
       expect(created.exitCode).toBe(0)
       expect(created.stdout.delta).toBe('Created notes.md\n')
-      expect(created.audit).toEqual([{ kind: 'registered-command', name: 'demi', args: ['file', 'create', 'notes.md'], exitCode: 0 }])
 
       const piped = exited(await w.exec('pwd; demi file read notes.md | grep -n a | sort -r; echo "$HOME"'))
       expect(piped.stdout.delta).toBe(`${HOSTLESS_HOME}/src\n3:gamma\n2:beta\n1:alpha\n${HOSTLESS_HOME}\n`)
@@ -175,10 +174,10 @@ describe('hostless conversation', () => {
       const read = exited(await w.exec('demi file read pic.png'))
       expect(read.exitCode).toBe(0)
       expect(read.binaryStdout?.data).toEqual(png)
-      expect(read.stdout.delta).toContain('<binary stdout: 10 bytes')
-      // Artifact writes are chained asynchronously behind the status.
-      for (let i = 0; i < 100 && !(await w.host.fs.exists(`${read.artifactDir}/stdout.bin`)); i += 1) await delay(10)
-      expect(await w.host.fs.readFile(`${read.artifactDir}/stdout.bin`)).toEqual(png)
+      expect(read.stdout.delta).toContain('<binary stdout: 10 bytes; not kept beyond this view>')
+      // Nothing beyond the view is kept: no output files anywhere.
+      expect(read.outputDir).toBeUndefined()
+      expect(read.stdout.path).toBeUndefined()
     } finally {
       w.dispose()
     }

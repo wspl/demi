@@ -1,13 +1,15 @@
 // The Host over this Node process's machine: `nodeFileSystem` plus child
-// processes, a directory-fd cwd and the real identity.
+// processes, a directory-fd cwd and the real identity. A test fixture: the
+// Host tests run a shell against when they need a real directory and real
+// programs. The product's machines are reached through the runner.
 import { spawn } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { hostname, tmpdir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import { stat } from 'node:fs/promises'
 import type { Readable } from 'node:stream'
-import { fileHostStore } from '../file-host-store'
-import { nodeFileSystem } from './file-system'
+import { fileHostStore } from '@demicodes/shell'
+import { nodeFileSystem } from '../node'
 import type {
   Host,
   HostCwd,
@@ -20,20 +22,17 @@ import type {
   HostSpawnParams,
   HostStore,
   SpawnErrorKind,
-} from '../host'
+} from '@demicodes/shell'
 import { LocalHostCwd } from './local-cwd'
 
 export interface LocalHostOptions {
   storeRoot?: string
-  /** Where command artifacts land as plain files; defaults next to the store. */
-  commandArtifactsDir?: string
   /** Bring-your-own persistence, e.g. to wrap or gate writes; defaults to a fileHostStore rooted at storeRoot. */
   store?: HostStore
 }
 
 export class LocalHost implements Host {
   readonly defaultCwd: string
-  readonly commandArtifactsDir: string
   readonly fs: HostFileSystem
   readonly process: HostProcess
   readonly store: HostStore
@@ -42,7 +41,6 @@ export class LocalHost implements Host {
   constructor(defaultCwd: string, options: LocalHostOptions = {}) {
     this.defaultCwd = resolve(defaultCwd)
     const storeRoot = options.storeRoot ?? defaultStoreRoot(this.defaultCwd)
-    this.commandArtifactsDir = resolve(options.commandArtifactsDir ?? join(storeRoot, 'command-artifacts'))
     this.fs = nodeFileSystem(this.defaultCwd)
     this.process = new LocalHostProcess(this.defaultCwd)
     this.store = options.store ?? fileHostStore(this.fs, resolve(storeRoot))
