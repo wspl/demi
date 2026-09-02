@@ -63,7 +63,8 @@ init duties (`managed-hosts.md`).
   runner.json            backend URL, device id
   runner-token           device token (0600)
   runner.sock            the local relay (0600)
-  commands/<hash>/       manifest cache: tree + modules, by manifest hash
+  commands/<hash>/       manifest cache: manifest.json + modules/<hash>.mjs, by manifest hash
+  commands/current       → the cached manifest command mode reads
 ```
 
 Dependency footprint: `@demicodes/host-runner`, `@demicodes/runner-protocol`,

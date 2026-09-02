@@ -1747,15 +1747,102 @@ Toolchain on a fresh machine: `brew install rustup`, then
 `rustup default stable` with `/opt/homebrew/opt/rustup/bin` on the PATH;
 Bun and openssl for the stub cases.
 
-### Open items (deferred, with their milestone)
+## M9 — Runner on tinyjs, old paths deleted (2026-09-02)
+
+### Step 1: `host-runner` and command mode (2026-09-02) — delivered
+
+Landed, in dependency order:
+
+- `@demicodes/shell` root is the command system and the Host contract
+  only; `BashEnvironment` and the portable command set moved under
+  `@demicodes/shell/bash` (deleted in step 6 with just-bash), and
+  `CommandRegistry` takes its reserved-name set from the engine instead of
+  deriving it from just-bash. Nothing that runs on tinyjs may import the
+  bash entry.
+- The Host conformance suite: `hostConformanceCases` in
+  `@demicodes/shell/testing`, runtime-neutral (contract + utils, no
+  `bun:test`), 18 cases over spawn (stdio, stdin, kill, env isolation,
+  cwd, the three spawn-error kinds, `openCwd`), fs (tree operations,
+  links, metadata, errno codes, the artifact directory, one namespace
+  shared with processes) and the store. `host-local` runs it under
+  `bun:test` beside its dirfd-specific case; `host-runner` runs it on
+  tinyjs.
+- `fileHostStore(fs, root)` in `@demicodes/shell`: a `HostStore` as
+  portable-JSON files on any `HostFileSystem`, temp-and-rename writes.
+  `LocalHostStore` is gone; `LocalHost` and `host-runner` both use it.
+  `errnoError` in `@demicodes/utils` builds the errno-coded errors a Host
+  raises itself (`host-virtual`'s local copy removed).
+- `@demicodes/host-runner`: `createRunnerHost` over `tinyjs:fs`,
+  `tinyjs:process`, `tinyjs:runtime` (types declared once in
+  `src/tinyjs.d.ts`); `rm -r`, `cp` and a cross-device `mv` composed from
+  the primitives, file copies streamed in 1 MiB reads; spawn errors
+  classified through errno with the cwd checked first; a validated
+  logical cwd; the process's argv/env/stdio exported as typed access for
+  the runner and the entry. `@demicodes/host-runner/testing` finds the
+  binaries (building the crate when absent) and bundles an entry with
+  Bun (`conditions: development`, `tinyjs:*` external). The conformance
+  run is a Bun test that bundles `src/conformance/main.ts` and runs it on
+  the bare binary, asserting `openHandles() === 0` at the end.
+- The loader's runner side: `ManifestSource.modulePath(hash)`,
+  `directorySource(dir, fs)` over `manifest.json` +
+  `modules/<hash>.mjs` (the layout `writeManifestDirectory` produces),
+  `importCommandModule(specifier)` in the shell and
+  `CommandExecutionContext.loadModule` — the loader maps a module's text
+  back to its hash and imports the file when the source names one, the
+  `blob:` route otherwise. Proven under Bun in the loader's tests and on
+  tinyjs by command mode.
+- Command mode: `packages/runner/src/tinyjs/entry.ts` selects the mode by
+  `argv[0]` (`demi-runner` → runner mode, refused until step 3; any other
+  name → `command-mode.ts`: the Host, the directory source at
+  `DEMI_COMMANDS_DIR` or `~/.demi/commands/current`, dispatch with the
+  process stdio, SIGINT/SIGTERM as the abort signal). The test bundles the
+  entry, packs it with `tinyjsc`, symlinks `demi`, `nope` and
+  `demi-runner` to the packed file, writes the `demi` manifest as a
+  directory and runs `demi file create` (stdin) and `demi file read`,
+  `--help`, an `rpc` leaf without transport (exit 1), an unknown root
+  (127) and runner mode (2). `demi file read` measured 33 ms end to end
+  (process start, 530 KB bundle with zod, manifest parse, module import,
+  the read) on macOS arm64.
+- The boundary test in `packages/core` re-aligned with the registry: it
+  had scanned `packages/tinyjs` for a `package.json` since M7 and its
+  graph lacked `command-loader`, `tinybash`, the backend's provider and
+  protocol edges; it now reads the root `workspaces` and carries
+  `host-runner`, the `shell/bash` subpath and the runner's new edges.
+
+Pitfalls:
+
+- The shell root could not be bundled for tinyjs at all: `just-bash`
+  reaches `@mongodb-js/zstd`, which `require`s a Node builtin, and Bun's
+  bundler refuses that for a browser target regardless of tree shaking.
+  The `bash` split is what makes the root bundleable; nothing else in the
+  root imported Node.
+- `openHandles()` caught a leak the conformance cases themselves passed:
+  every child's stdin pipe handle stayed open unless the caller closed
+  it (8 of 9 spawns). The Host now closes it when the child exits.
+- `fileHostStore` saw keys with a trailing slash from
+  `AgentSessionCommandStorage` (`agent-sessions/<id>/`) and produced
+  `//` paths; keys are normalized.
+- zod 4's `fromJSONSchema` and the loader's tree building run on QuickJS
+  unchanged; the 530 KB bundle costs nothing visible next to process
+  start.
+
+Decisions: the conformance suite lives with the contract in
+`@demicodes/shell/testing` and is the acceptance of every Host, so
+`host-local` runs it too rather than keeping its own copy of the same
+cases; the manifest directory layout (`manifest.json` + module files) is
+the runner's cache layout from step 3 on, with `commands/current` the
+symlink the runner maintains; the entry bundle belongs to
+`@demicodes/runner` (the package whose dependency footprint it is).
+
+## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
   not now).
 - tinyjs, awaiting a proposal: tee writes synchronous on the loop thread;
   the TLS configuration rebuilt per request.
-- The loader's runner side (M9, with `host-runner`): a directory
-  `ManifestSource`, module import by file path, the entry bundle for
-  command mode; the manifest served to the runner.
+- The manifest served to the runner and cached under
+  `~/.demi/commands/<hash>/`, the `current` symlink, the UDS relay for the
+  CLI's `rpc` path (M9 step 3).
 - `@demicodes/host-virtual` reduced to the store-backed Host and its
   spawn refusal deleted (M9, with just-bash).
 - `@demicodes/host-local` and the local open-box assembly deleted (M9,
