@@ -2,13 +2,9 @@ import type { Builtin } from './io'
 import { parseFlags, has, value } from './flags'
 import { SPECS } from './table'
 import { openInputs } from './inputs'
-import { encodeLatin1 } from '@demicodes/utils'
+import { compareCodeUnits, encodeLatin1 } from '@demicodes/utils'
 import { lines } from '../exec/stream'
 import { tryHelp } from './errors'
-
-function byteCompare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0
-}
 
 /** GNU `-n`: leading blanks, an optional sign, digits, an optional fraction; anything else is 0. */
 function numericCompare(a: string, b: string): number {
@@ -56,10 +52,10 @@ export const sort: Builtin = async (ctx) => {
   for (const input of inputs) for await (const line of lines(input.stream)) all.push(line.text)
   if (inputs.some((input) => input.readFailed())) return 2
   const keyOf = (line: string) => (field > 0 ? keyFrom(line, field) : line)
-  const compareKeys = (a: string, b: string) => (numeric ? numericCompare(keyOf(a), keyOf(b)) : byteCompare(keyOf(a), keyOf(b)))
+  const compareKeys = (a: string, b: string) => (numeric ? numericCompare(keyOf(a), keyOf(b)) : compareCodeUnits(keyOf(a), keyOf(b)))
   const compare = (a: string, b: string) => {
     let result = compareKeys(a, b)
-    if (result === 0 && !unique) result = byteCompare(a, b)
+    if (result === 0 && !unique) result = compareCodeUnits(a, b)
     return reverse ? -result : result
   }
   const indexed = all.map((text, index) => ({ text, index }))

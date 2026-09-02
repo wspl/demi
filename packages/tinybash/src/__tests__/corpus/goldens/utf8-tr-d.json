@@ -1,6 +1,6 @@
 {
   "exit": 0,
-  "stdout": "-rw-r--r-- 1 zan zan 28 Jan 15  2024 notes.txt\n",
+  "stdout": "caf\n",
   "stderr": "",
   "user": "zan",
   "group": "zan"
