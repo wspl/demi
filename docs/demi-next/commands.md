@@ -24,6 +24,97 @@ the groups that need backend state (`host`), and the backend builds the
 manifest from the assembled tree. No other process holds a command
 definition.
 
+## Two execution paths
+
+The same tool call runs one of two ways, decided by whether the
+conversation has an execution target (`sessions-and-targets.md`). The model
+sees the same commands, help and output shapes on both.
+
+### On a real host (user host or managed host)
+
+Real bash on the target parses the tool call. `demi` is an ordinary program
+in `PATH`; everything else is whatever the machine has.
+
+```
+ tool call:  demi file edit src/a.ts <<'EOF' … EOF && npm test 2>&1 | tail -20
+
+ backend                          runner on the target                 processes on the target
+ ───────                          ────────────────────                 ───────────────────────
+ job_start {script, cwd,   ────▶  spawn  bash -c "<script>"     ────▶  bash
+            env + conv/shell ids}   │  tee stdout/stderr → artifact       │
+                                    │  files under commandArtifactsDir     ├─ demi file edit src/a.ts        (the demi CLI)
+                                    │                                      │    read ~/.demi/commands/<hash>/   manifest cache
+                                    │                                      │    kind = runtime
+                                    │                                      │    → run the module in-process, ctx.fs = real fs
+                                    │                                      │    (zero wire bytes)
+                                    │                                      │
+                                    │                                      ├─ npm test 2>&1 | tail -20       (ordinary processes;
+                                    │                                      │    the pipe is an OS pipe)
+ ◀── job_output {view ≤ 1 MB} ──────┘                                      │
+ ◀── job_exit {code, artifact paths} ◀── bash exits ◀──────────────────────┘
+
+ an rpc command inside the same script, e.g.  demi todo add "run the suite":
+
+                                                                        demi CLI: kind = rpc
+                                  runner  ◀───────── UDS ─────────────  → parsed args + stdin
+ ◀── rpc_call {conv id, shell id, ──┘  attributes by the ids in the
+     command, args, stdin}             job's environment
+     backend runs the command
+     against conversation state
+ ─── rpc_output / rpc_exit ─────▶ runner ──────────── UDS ────────────▶ demi CLI writes stdout, exits with the code
+```
+
+What crosses the wire: the script, the bounded view, the exit, and the
+arguments and output of `rpc` commands. File contents and pipeline bytes
+never do.
+
+### Hostless (no execution target)
+
+There is no bash and no runner. The backend parses the tool call itself,
+accepts only `demi` commands, and runs them in-process.
+
+```
+ tool call:  demi file create notes.md <<'EOF' … EOF
+             demi todo add "draft the outline"
+
+ backend (one process; nothing leaves it)
+ ────────────────────────────────────────
+ demi-only parser ──▶ [ {argv, stdin}, {argv, stdin} ]        tokens, heredocs, `;` `&&` newline
+        │                                                     anything else → refused (below)
+        ▼
+ in-process loader
+   ├─ demi file create …   kind = runtime  → run the SAME module as on a real host,
+   │                                          ctx.fs = store-backed Host
+   │                                          → conversations/<id>.sqlite  (host_store)
+   └─ demi todo add …      kind = rpc      → the in-process handler, no socket
+        │
+        ▼
+ tool result = stdout / stderr / exit code, exactly as on a real host
+
+
+ tool call:  npm test
+ demi-only parser ──▶ first word is not `demi` ──▶ refused: "this conversation has no machine;
+                                                   the first non-demi command starts one"
+                                              ──▶ backend auto-provisions a managed host,
+                                                  writes the hostless files into its home,
+                                                  injects the context block, re-runs the
+                                                  command on the real-host path above
+```
+
+### Side by side
+
+| | Real host | Hostless |
+|---|---|---|
+| Who parses the tool call | real bash on the target | the backend's demi-only parser |
+| What can appear in it | anything bash runs | `demi` commands, heredocs, `;` `&&` newline |
+| Where a `runtime` module runs | in the `demi` CLI process on the target | in the backend process |
+| The `ctx.fs` it sees | the target's real filesystem (`host-shell`) | the conversation's store-backed Host (`host-virtual`) |
+| Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
+| Where files live | on the target | in `conversations/<id>.sqlite` |
+| Where full output lives | artifact files on the target | the tool result itself (bounded, no tee needed) |
+| Bytes on the wire | script, view, exit, rpc args/output | none |
+| Leaving this path | user switches the target in the picker | first non-`demi` command auto-provisions |
+
 ## Command kinds
 
 Every leaf is one of two kinds:
