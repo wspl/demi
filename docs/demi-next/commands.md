@@ -126,9 +126,9 @@ tinybash cannot run is run on a machine instead.
 | Who runs the tool call | real bash on the target | tinybash in the backend |
 | What can appear in it | anything bash runs | the tinybash subset: pipelines, chains, heredocs, redirections, expansions; builtins + root commands |
 | Where a `runtime` module runs | in a command-mode tinyjs process on the target | in the backend process |
-| The `ctx.fs` it sees | the target's real filesystem (`host-runner`) | the conversation's store-backed Host (`host-virtual`) |
+| The `ctx.fs` it sees | the target's real filesystem (the runner's machine layer) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
-| The shell environment behind the `shell_*` tools | `BashEnvironment` (just-bash over the Host) | the backend's `HostlessEnvironment` (tinybash over the Host); same command records, views and artifacts |
+| The shell environment behind the `shell_*` tools | `RemoteShellEnvironment` (`host-remote`: jobs on the runner) | `HostlessEnvironment` (`@demicodes/shell/hostless`: tinybash over the Host); same command records, views and artifacts |
 | Where files live | on the target | in `conversations/<id>.sqlite` |
 | Where full output lives | output files on the target; the model reads past the view with commands | nowhere beyond the view: no tee, the shell runs in the backend |
 | Bytes on the wire | script, the model's view, exit, rpc args/output | none |
@@ -292,7 +292,7 @@ Embedders:
 |---|---|---|---|
 | backend, hostless conversation | in-process tree | the conversation's store-backed Host | in-process |
 | runner | the backend socket, cached on disk under `~/.demi/commands/<hash>/` | — (the runner does not execute commands; it caches and relays) | the backend socket |
-| tinyjs in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | `@demicodes/host-runner` over the real filesystem | the runner over the UDS |
+| tinyjs in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | the runner's machine layer over the real filesystem | the runner over the UDS |
 | tinyjs in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
 | tests | in-memory | in-memory Host | stub |
 
@@ -372,9 +372,11 @@ is the same path with the argv quoted into a script.
 
 - `@demicodes/shell` keeps the `Command` types (tree, input/output specs,
   `CommandContext`, `CommandResult`, path marks, `runtimeModule`), the
-  `commandModulesAsText` build plugin under `@demicodes/shell/build`, and
-  the Host contract; it loses the interpreter and the portable command set
-  in M9.
+  `commandModulesAsText` build plugin under `@demicodes/shell/build`, the
+  Host contract, and under `@demicodes/shell/hostless` the
+  `HostlessEnvironment` — the `ShellEnvironment` of a hostless
+  conversation, tinybash over a Host with the loader's root paths and
+  dispatcher injected. It carries no interpreter of its own.
 - `@demicodes/coding-agent` declares the `demi` root's agent-facing groups
   with the `kind` on each leaf; the `runtime` leaves are `*.command.ts`
   files written against the ABI. A library user declares their own root
@@ -382,14 +384,17 @@ is the same path with the argv quoted into a script.
 - `@demicodes/command-loader` is new: the manifest types, the manifest
   build (`buildManifest`, the transpiler injected), the loader and
   `rootPaths`.
-- `@demicodes/tinybash` is new: the hostless shell — parser, executor and
-  the GNU-faithful builtins over an injected Host, roots over a loader.
-  Usable by any embedder that wants hostless execution, not only the
-  backend.
+- `@demicodes/tinybash` is the hostless shell — parser, executor and the
+  GNU-faithful builtins over its own system interface (a filesystem, a
+  script's stdio, a root-command dispatcher; `tinybash.md` § Interface).
+  Standalone infrastructure depending on nothing of Demi but `utils`;
+  usable by any embedder that adapts a filesystem to it.
 - `@demicodes/backend` assembles the roots, builds and serves the
-  manifest, and embeds the loader for hostless conversations: its
-  `HostlessEnvironment` implements the shell's `ShellEnvironment` contract
-  with tinybash, and the agent server's `shellEnvironment` factory picks it
-  for every `VirtualHost`. `shell_write` reaches a root command as the
+  manifest, and composes the hostless shell: `createHostlessShell` builds
+  the loader over the conversation's `VirtualHost` with `rpc` in process
+  and hands `HostlessEnvironment` its root paths and dispatcher; the agent
+  server's `shellEnvironment` factory picks it for every `VirtualHost` and
+  `RemoteShellEnvironment` (`@demicodes/host-remote`) for every
+  `RemoteHost`. `shell_write` reaches a root command as the
   script's stdin (`tinybash.md` § Interface), so `demi agent spawn` is
   steerable hostless exactly as on a machine.
