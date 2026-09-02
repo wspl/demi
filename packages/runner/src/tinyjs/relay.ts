@@ -14,10 +14,14 @@ export interface RelayServerOptions {
   /** Forwards to the backend; throws while offline. */
   send(message: RunnerToBackendMessage): void
   manifest(): Promise<unknown | null>
+  /** `GET`s a brokered transfer with the device token (`rpc_transfer`). */
+  download(url: string): Promise<AsyncIterable<Uint8Array>>
 }
 
 export class RelayServer {
   private readonly calls = new Map<string, StreamSocket>()
+  /** Per call, the replies still being written: a transfer body streams asynchronously and `rpc_exit` waits behind it. */
+  private readonly writes = new Map<string, Promise<void>>()
   private closed = false
 
   static async listen(path: string, options: RelayServerOptions): Promise<RelayServer> {
@@ -47,15 +51,40 @@ export class RelayServer {
     this.calls.clear()
   }
 
-  handleReply(message: Extract<BackendToRunnerMessage, { type: 'rpc_output' | 'rpc_exit' }>): void {
+  handleReply(message: Extract<BackendToRunnerMessage, { type: 'rpc_output' | 'rpc_transfer' | 'rpc_exit' }>): void {
     const socket = this.calls.get(message.callId)
     if (!socket) return
-    if (message.type === 'rpc_output') {
-      void this.reply(socket, { type: 'output', stream: message.stream, bytes: message.bytes }).catch(noop)
-      return
-    }
-    this.calls.delete(message.callId)
-    void this.reply(socket, { type: 'exit', exitCode: message.exitCode }).then(() => socket.close(), noop)
+    const { callId } = message
+    const queued = this.writes.get(callId) ?? Promise.resolve()
+    const next = queued.then(async () => {
+      if (!this.calls.has(callId)) return
+      switch (message.type) {
+        case 'rpc_output':
+          await this.reply(socket, { type: 'output', stream: message.stream, bytes: message.bytes })
+          return
+        case 'rpc_transfer':
+          for await (const bytes of await this.options.download(message.url)) {
+            await this.reply(socket, { type: 'output', stream: 'stdout', bytes })
+          }
+          return
+        case 'rpc_exit':
+          this.calls.delete(callId)
+          this.writes.delete(callId)
+          await this.reply(socket, { type: 'exit', exitCode: message.exitCode })
+          socket.close()
+          return
+      }
+    })
+    this.writes.set(
+      callId,
+      next.catch(async (error: unknown) => {
+        // A failed transfer or a gone process ends the call on this side.
+        this.calls.delete(callId)
+        this.writes.delete(callId)
+        await this.reply(socket, { type: 'error', message: errorMessage(error) }).catch(noop)
+        socket.close()
+      }),
+    )
   }
 
   private async acceptLoop(): Promise<void> {

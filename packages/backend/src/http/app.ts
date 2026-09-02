@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import type { UpgradeWebSocket } from 'hono/ws'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { RunnerRegistry } from '../runner/registry'
+import type { TransferBroker } from '../runner/transfers'
 import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ConnectionVault } from '../vault/connections'
@@ -11,11 +12,13 @@ import type { BlobStore } from '@demicodes/agent'
 import type { Host } from '@demicodes/shell'
 import { attachmentRoutes } from './attachments'
 import { authRoutes } from './auth'
+import { blobRoutes } from './blobs'
 import { connectionRoutes } from './connections'
 import { conversationRoutes } from './conversations'
 import { deviceRoutes } from './devices'
 import { modelRoutes } from './models'
 import { runnerSocketRoutes } from './runner-socket'
+import { transferRoutes } from './transfers'
 import { streamRoutes } from './stream'
 import { usageRoutes } from './usage'
 import { workspaceRoutes } from './workspaces'
@@ -29,6 +32,7 @@ export function createApp(options: {
   logins: SubscriptionLoginFlows
   agentServer: AgentServer
   runnerRegistry: RunnerRegistry
+  transfers: TransferBroker
   upgradeWebSocket: UpgradeWebSocket
   blobs: BlobStore
   hostFor: (conversationId: string) => Promise<Host>
@@ -43,9 +47,11 @@ export function createApp(options: {
   app.route('/api/connections', connectionRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins }))
   app.route('/api/usage', usageRoutes({ control: options.control }))
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
+  app.route('/api/transfers', transferRoutes({ control: options.control, broker: options.transfers }))
   app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
   app.route('/api/workspaces', workspaceRoutes({ control: options.control }))
   app.route('/api/attachments', attachmentRoutes({ control: options.control, blobs: options.blobs }))
+  app.route('/api/blobs', blobRoutes({ blobs: options.blobs }))
   // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
   app.route(
     '/api/conversations',
