@@ -33,6 +33,8 @@ export interface Device {
   runner: TinyjsRunner
   deviceId: string
   workspaceId: string
+  /** Jobs that were running when the runner was killed: they never report an exit. */
+  lost: number
 }
 
 export interface WireFrame {
@@ -99,14 +101,20 @@ export class World {
     const { device } = await this.api<{ device: { id: string } }>('/api/devices/claim', { code: runner.codes[0] })
     await waitFor(() => runner.statuses.includes('online'), () => runner.log.join('\n'), { timeoutMs: 10_000 })
     const { workspace } = await this.api<{ workspace: { id: string } }>('/api/workspaces', { deviceId: device.id, path: home, name: `${name} workspace` })
-    const paired: Device = { name, home, stateDir, runner, deviceId: device.id, workspaceId: workspace.id }
+    const paired: Device = { name, home, stateDir, runner, deviceId: device.id, workspaceId: workspace.id, lost: 0 }
     this.devices.set(name, paired)
     return paired
   }
 
   /** Stops a runner's process; `returnRunner` starts it again over the same state. */
   async killRunner(name: string): Promise<void> {
-    await this.device(name).runner.stop()
+    const device = this.device(name)
+    device.lost += this.jobCount(device, 'out', 'job_start') - this.jobCount(device, 'in', 'job_exit') - device.lost
+    await device.runner.stop()
+  }
+
+  private jobCount(device: Device, direction: 'in' | 'out', type: string): number {
+    return this.frames.filter((f) => f.deviceId === device.deviceId && f.direction === direction && f.message.type === type).length
   }
 
   async returnRunner(name: string): Promise<void> {
@@ -119,10 +127,12 @@ export class World {
   async restartBackend(): Promise<void> {
     if (this.port === undefined) throw new Error('restartBackend needs a world with a fixed port')
     for (const driver of this.drivers) await driver.detach()
+    const seen = new Map([...this.devices.values()].map((device) => [device.name, device.runner.statuses.length]))
     await this.backend.close()
     this.backend = await World.openBackend(this.dataDir, this.port, this.model, this.frames)
     for (const device of this.devices.values()) {
-      await waitFor(() => device.runner.statuses.at(-1) === 'online', () => device.runner.log.join('\n'), { timeoutMs: 15_000 })
+      const from = seen.get(device.name) ?? 0
+      await waitFor(() => device.runner.statuses.slice(from).includes('online'), () => device.runner.log.join('\n'), { timeoutMs: 15_000 })
     }
   }
 
@@ -179,7 +189,7 @@ export class World {
       }
       for (const [jobId, bytes] of jobBytes) expect(bytes, `job ${jobId} output on ${device.name}'s socket`).toBeLessThanOrEqual(JOB_FRAMES_BYTES)
       const count = (direction: 'in' | 'out', ...types: string[]) => of(direction).filter((m) => types.includes(m.type)).length
-      expect(count('in', 'job_exit'), `jobs exited on ${device.name}`).toBe(count('out', 'job_start'))
+      expect(count('in', 'job_exit') + device.lost, `jobs exited on ${device.name}`).toBe(count('out', 'job_start'))
       expect(count('in', 'transfer_done'), `transfers completed on ${device.name}`).toBe(count('out', 'transfer_send', 'transfer_receive'))
     }
     // One ledger row per provider request the model answered.
