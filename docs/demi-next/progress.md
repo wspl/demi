@@ -1160,8 +1160,10 @@ backend machine) is in `overview.md`; `managed-hosts.md` was reworded.
 
 Decided in discussion, recorded in `shell.md`: the shell's job is to run
 one bundled ESM module plus `import()` of absolute paths for `runtime`
-command modules. The API is one frozen global read only by
-`@demicodes/host-shell`; integer handles with explicit close; pull-model
+command modules. The API is a set of built-in modules under the `demishell:` scheme,
+resolvable only from the embedded bundle and imported only by
+`@demicodes/host-shell` (a global object was rejected: any code, including
+a downloaded command module, could reach it); integer handles with explicit close; pull-model
 reads; Node errno codes. Raw TCP and TLS primitives were dropped — the
 only network users are the WebSocket to the backend, HTTP for uploads and
 transfers, and the UDS relay, so those are the exposed level. pty, servers,
