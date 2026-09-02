@@ -25,7 +25,7 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/command-loader": "workspace:^",
+        "@demicodes/host-virtual": "workspace:^",
       },
     },
     "packages/backend": {
@@ -70,7 +70,7 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
-        "@demicodes/command-loader": "workspace:^",
+        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/provider": "workspace:^",
       },
     },
@@ -81,6 +81,9 @@
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@demicodes/host-virtual": "workspace:^",
       },
     },
     "packages/core": {
@@ -96,6 +99,7 @@
         "@demicodes/utils": "workspace:^",
       },
       "devDependencies": {
+        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/runner": "workspace:^",
       },
     },
@@ -104,10 +108,12 @@
       "version": "0.20.0",
       "dependencies": {
         "@demicodes/shell": "workspace:^",
+        "@demicodes/tinybash": "workspace:^",
         "@demicodes/utils": "workspace:^",
       },
       "devDependencies": {
         "@demicodes/command-loader": "workspace:^",
+        "zod": "^4.0.0",
       },
     },
     "packages/provider": {
@@ -137,7 +143,7 @@
       },
       "devDependencies": {
         "@demicodes/agent": "workspace:^",
-        "@demicodes/command-loader": "workspace:^",
+        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/shell": "workspace:^",
       },
     },
@@ -151,7 +157,7 @@
       },
       "devDependencies": {
         "@demicodes/agent": "workspace:^",
-        "@demicodes/command-loader": "workspace:^",
+        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/shell": "workspace:^",
       },
     },
@@ -196,6 +202,7 @@
         "@demicodes/coding-agent": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/host-remote": "workspace:^",
+        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/provider": "workspace:^",
       },
     },
@@ -213,9 +220,11 @@
       "name": "@demicodes/shell",
       "version": "0.20.0",
       "dependencies": {
-        "@demicodes/tinybash": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@demicodes/host-virtual": "workspace:^",
       },
     },
     "packages/tinybash": {
@@ -225,6 +234,7 @@
         "@demicodes/utils": "workspace:^",
       },
       "devDependencies": {
+        "@demicodes/host-virtual": "workspace:^",
         "@demicodes/shell": "workspace:^",
       },
     },
