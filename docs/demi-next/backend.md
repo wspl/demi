@@ -77,7 +77,7 @@ Spoken of as modules, not separate services:
 - **Runner management module**: device registry (claim tokens, device
   tokens, online status = socket state, one live connection per token), the
   runner-protocol server, per-conversation Host handles over connected
-  runners, output fetch and brokered transfers (`runner.md`).
+  runners, brokered cross-host transfers (`runner.md`).
 - **Managed hosts module**: the `ManagedHostProvisioner` (Firecracker under
   jailer via the privileged helper), images, the home-image store,
   lifecycle (`managed-hosts.md`).
@@ -122,7 +122,6 @@ poll on open and on an interval.
 | usage | `GET /api/usage` | M5 |
 | attachments, blobs | `POST /api/attachments` (returns a reference id), `POST /api/conversations/:id/workspace-files`, `GET /api/blobs/:sha256` | M6; blobs M9 |
 | grants | `GET/POST/DELETE /api/conversations/:id/grants` | M10 |
-| outputs | `GET /api/conversations/:id/outputs/:ref` (full command output, fetched from the target by reference) | M9 |
 | commands | `GET /api/commands/manifest`, `GET /api/commands/modules/:hash` (the manifest source for a standalone command-mode shell) | M8 |
 | admin | `GET/POST/PATCH /api/users`, `GET/PUT /api/settings` (instance mode) | M11 |
 

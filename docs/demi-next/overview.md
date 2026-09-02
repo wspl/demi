@@ -82,8 +82,9 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 1. **Sessions live in the backend.** AgentSession, the transcript, tool
    orchestration and the command tree all run in the backend; the
    authoritative conversation store is backend-local. Runners hold no
-   conversation state. Command output beyond the bounded view is the one
-   thing that stays on the target (`sessions-and-targets.md`).
+   conversation state. Command output beyond the model's view is the one
+   thing that stays on the target, and stays there
+   (`sessions-and-targets.md`).
 2. **The execution target is a mutable conversation property.** A
    conversation's tools execute against a `Host`: the store-backed hostless
    Host in the backend, or the remote Host of a runner — on a user-paired
@@ -99,9 +100,9 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
    persists a credential, and the runner program itself is never given one.
 4. **Protocols carry references, never bulk bytes.** File reads and writes
    happen on the target; the runner tees full command output to output
-   files on the target and the wire carries a bounded view; media reaches
-   the browser by reference; bulk transfer, when needed, is an HTTP stream
-   brokered by the backend (`runner.md`).
+   files on the target and the wire carries only the model's view of it;
+   media reaches the browser by reference; bulk transfer, when needed, is
+   an HTTP stream brokered by the backend (`runner.md`).
 5. **One command manifest.** Every root command — `demi`, and any root a
    library user declares — is defined once in the backend and served to
    every execution surface by the loader; no target has a second

@@ -144,9 +144,9 @@ Jobs — the agent's commands:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| b → r | `job_start { jobId, script, cwd, env, background, viewLimit }` | run `bash -c script`; `env` carries the conversation and shell ids |
-| r → b | `job_output { jobId, stream, bytes }` | the bounded view; stops at `viewLimit` per stream |
-| r → b | `job_exit { jobId, code, signal?, output: { stdoutPath, stderrPath, stdoutBytes, stderrBytes } }` | exit plus where the full output lives on this machine |
+| b → r | `job_start { jobId, script, cwd, env, background }` | run `bash -c script`; `env` carries the conversation and shell ids |
+| r → b | `job_output { jobId, stream, bytes }` | live output while the job runs, up to the view budget per stream, then silence |
+| r → b | `job_exit { jobId, code, signal?, cwd, output: { stdoutPath, stderrPath, stdoutBytes, stderrBytes, stdoutTail, stderrTail } }` | exit, the working directory the script ended in, where the full output lives on this machine, and the last bytes of each stream |
 | b → r | `job_stdin { jobId, bytes }` / `job_kill { jobId, signal }` | interactive input (`shell_write`), termination |
 | r → b | `job_list` reply and `pong.jobs` | the job table is the runner's; the backend reads it |
 
@@ -157,7 +157,6 @@ Relay and outputs:
 | r → b | `rpc_call { callId, conversationId, shellId, root, command, args, stdin }` streamed | an `rpc` command of some root invoked on this target |
 | b → r | `rpc_output { callId, stream, bytes }` / `rpc_exit { callId, code }` | its result back to the command-mode process |
 | b → r | `manifest { hash, tree, modules }` on connect and on change | the command manifest the runner caches for the CLI |
-| b → r | `output_upload { path, uploadUrl }` | the backend wants the full bytes of an output file: the runner `PUT`s the file to the one-shot URL over HTTP |
 | b → r | `transfer_send { path, uploadUrl }` / `transfer_receive { path, downloadUrl }` | a brokered cross-host copy: the source `PUT`s, the destination `GET`s, the backend pipes the two |
 
 The `fs_*` op set mirrors `HostFileSystem` one to one and is one table in
@@ -167,19 +166,33 @@ from which the request union, the reply union and the TS types derive.
 ## Jobs and the tee
 
 The job table is the runner's. A job is one `bash -c` process with the
-conversation's cwd and env; a background job (`… &`) is the same with its
-handle kept after the tool call returns. The runner owns process groups,
-reaps children, and reports the count of running jobs in every `pong`.
+shell's cwd and env; a background job (`… &`) is the same with its handle
+kept after the tool call returns. The runner owns process groups, reaps
+children, and reports the count of running jobs in every `pong`.
 
-The **tee** is a tinyjs primitive (`tinyjs.md`): each job's stdout and
-stderr are written in full to output files under the target's
-`commandOutputDir`, and only the first `viewLimit` bytes of each stream
-travel to the backend. The backend's tool result is built from the view;
-the output path in `job_exit` is what the model sees as "full output
-available at …". Output files stay on the target and are not uploaded at
-hibernation; the backend fetches them by reference over HTTP when a user
-opens a past command's full output while the host is online
-(`sessions-and-targets.md`).
+**What carries from one job to the next** is the working directory and
+nothing else. The runner wraps the script so that an `EXIT` trap records
+`pwd` when bash ends — an explicit `exit` inside the script included — and
+`job_exit.cwd` carries it back; the backend's shell state takes it for the
+next `job_start`. Environment variables, functions, aliases and shell
+options do not carry: a fresh process per job is the norm across coding
+agents (Claude Code, Codex, Gemini, Aider), and only Claude Code carries
+the directory, which is the one thing a model reaches for.
+
+**The view is the model's view.** What crosses the wire, what the backend
+records, and what the browser shows are one and the same: the bytes the
+model sees. The **tee** is a tinyjs primitive (`tinyjs.md`): each job's
+stdout and stderr are written in full to output files under the target's
+`commandOutputDir`. While the job runs, `job_output` streams the first
+bytes of each stream up to the view budget (`JOB_VIEW_BYTES`, a protocol
+constant of the model-window class, 32 KB), so a running command can be
+polled; at exit `job_exit` carries the last bytes of each stream, read
+from the output file, so the model's window is the true tail and not the
+tail of a head-limited view. The output path in `job_exit` is what the
+model sees as "full output at …"; anything beyond the view it reads with
+ordinary commands (`grep`, `sed -n`, `tail`) on the target, where the file
+is. Nothing fetches full output back to the backend, and nothing shows the
+browser more than the model saw.
 
 `cmd1 | cmd2` is an OS pipe on the target. Zero bytes of it cross the wire.
 
@@ -208,13 +221,14 @@ The runner socket is therefore small-message and latency-bound, and the
 backend never holds a command's whole output in memory.
 
 **Recorded risk — control-message priority.** WebSocket is one ordered
-stream: a `ping` queued behind a 1 MB view chunk, or a user `abort` queued
-behind a large `transcript_patch`, waits for it — about 100 ms at 10 MB/s,
-about 1 s at 1 MB/s. A channel layer beneath the carrier (stream-id framing,
-≤16 KB chunks, strict control-first priority, `bufferedAmount`
-backpressure) removes it. **Deferred** on the precondition that views stay
-at the 1 MB class and transcript patches stay small; to be re-examined if a
-large patch source appears.
+stream: a `ping` or a user `abort` queued behind a large frame waits for
+it — about 100 ms per MB at 10 MB/s. With job views in the 32 KB class the
+largest frames are `spawn_output` chunks of raw spawns (the Claude Code
+CLI) and `transcript_patch`. A channel layer beneath the carrier
+(stream-id framing, ≤16 KB chunks, strict control-first priority,
+`bufferedAmount` backpressure) removes it. **Deferred** on the
+precondition that those stay small; to be re-examined if a large source
+appears.
 
 ## Disconnect semantics
 
