@@ -40,7 +40,7 @@ by:
  │  the Host contract over the shell API │    │  the Host contract over the shell API │
  ╞═══════════════════════════════════════╡    ╞═══════════════════════════════════════╡
  │  shell API (private)         (Rust)   │    │  shell API (private)         (Rust)   │
- │  fs+errno · spawn+tee · pty           │    │  fs+errno · spawn · stdio             │
+ │  fs+errno · spawn+tee                 │    │  fs+errno · spawn · stdio             │
  │  ws · http · uds                      │    │  uds · http                           │
  │  event loop · timers                  │    │  event loop · timers                  │
  │  msgpack · base64 · utf-8 · globals   │    │  base64 · utf-8 · globals             │
