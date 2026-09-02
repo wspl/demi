@@ -18,7 +18,7 @@
 | `sessions-and-targets.md` | a conversation's execution target: hostless, user hosts, managed hosts, switching, grants |
 | `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader, tinybash and hostless execution |
 | `tinybash.md` | the small shell hostless conversations run in: the corpus-placed boundary, grammar, GNU-faithful builtins, refusals, the equivalence guarantee |
-| `shell.md` | the QuickJS shell: the runtime under the runner and every root command on a target |
+| `tinyjs.md` | tinyjs: the runtime under the runner and every root command on a target |
 | `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
 | `managed-hosts.md` | Firecracker provisioning, images, home persistence, lifecycle, security |
 | `providers-and-vault.md` | the LLM module, credential vault, usage accounting, Claude Code |
@@ -64,9 +64,9 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 - Backend ↔ runner: Demi's runner protocol — a remote form of the `Host`
   contract (filesystem ops, process spawn with streamed stdio) plus the job
   and output messages (`runner.md`). Both ends are TypeScript: the backend
-  on Bun, the runner as JS on the QuickJS shell (`shell.md`).
+  on Bun, the runner as JS on tinyjs (`tinyjs.md`).
 - Target ↔ backend for root commands (`demi` and any library-defined
-  root): a root command on a target is the shell plus the loader;
+  root): a root command on a target is tinyjs plus the loader;
   `runtime` commands run on the target, `rpc` commands travel to the
   backend as typed messages through the runner's socket (`commands.md`).
 - The one special case is the **Claude Code provider**: its transport is the
@@ -127,15 +127,15 @@ on its own is always Demi's sense.
   hosting, LLM module, vault, accounting, runner management, managed hosts,
   the command manifest — that scales by running more copies plus one
   control-plane process. `backend.md`, `storage.md`.
-- **Shell** (`packages/demi-shell`, Rust): a small QuickJS runtime binary
+- **tinyjs** (`packages/tinyjs`, Rust): a small QuickJS runtime binary
   providing IO primitives, an event loop and the byte-level paths; the only
-  Rust in the system. `shell.md`.
-- **Runner** (`@demicodes/runner`, JS on the shell): the program on every
+  Rust in the system. `tinyjs.md`.
+- **Runner** (`@demicodes/runner`, JS on tinyjs): the program on every
   execution target — one outbound socket, Host RPC, the job table, the tee,
   the local relay for root commands. `runner.md`.
 - **Command loader** (`@demicodes/command-loader`, pure JS): serves the
-  command manifest wherever commands run — inside the runner, inside the
-  shell in command mode, inside the backend for hostless conversations, and
+  command manifest wherever commands run — inside the runner, inside
+  tinyjs in command mode, inside the backend for hostless conversations, and
   inside any third-party embedder. **tinybash** (`@demicodes/tinybash`,
   pure JS): the tiny shell hostless conversations run in. `commands.md`.
 - **Managed hosts**: Firecracker microVMs the backend provisions on demand,

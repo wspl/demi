@@ -43,4 +43,4 @@ Thumbs.db
 .codex/
 
 # Rust build output
-packages/demi-shell/target/
+packages/tinyjs/target/

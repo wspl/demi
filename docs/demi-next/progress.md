@@ -1158,11 +1158,11 @@ backend machine) is in `overview.md`; `managed-hosts.md` was reworded.
 
 ## Shell API shape (2026-09-02)
 
-Decided in discussion, recorded in `shell.md`: the shell's job is to run
+Decided in discussion, recorded in `tinyjs.md`: the shell's job is to run
 one bundled ESM module plus `import()` of absolute paths for `runtime`
-command modules. The API is a set of built-in modules under the `demishell:` scheme,
+command modules. The API is a set of built-in modules under the `tinyjs:` scheme,
 resolvable only from the embedded bundle and imported only by
-`@demicodes/host-shell` (a global object was rejected: any code, including
+`@demicodes/host-tinyjs` (a global object was rejected: any code, including
 a downloaded command module, could reach it); integer handles with explicit close; pull-model
 reads; Node errno codes. Raw TCP and TLS primitives were dropped — the
 only network users are the WebSocket to the backend, HTTP for uploads and
@@ -1191,7 +1191,7 @@ operations incl. symlink/chmod/readdir types, UDS listen/connect by path,
 HTTP GET/PUT and HTTPS via ring, `import()` of absolute paths, a resolver
 guard that refuses `fs` etc. from file-loaded modules while the embedded
 entry (named under `/embedded/`) sees them — this is the mechanism
-`shell.md` specifies for keeping `demishell:*` private.
+`tinyjs.md` specifies for keeping `tinyjs:*` private.
 
 Fell short: no errno `code` on any fs or net error (message text only);
 socket `write()` returns nothing and there is no `drain`, the queue is
@@ -1213,19 +1213,19 @@ Considered and closed in the same discussion: a C shell on QuickJS +
 libuv + libcurl (no memory safety for a PID 1 that faces the network,
 static musl builds of libcurl + TLS are the harder packaging problem, and
 libcurl's one real advantage — proxy handling — is a small feature we
-implement in `demishell:net`); tokio's and rustls's reputations (the
+implement in `tinyjs:net`); tokio's and rustls's reputations (the
 `Send` friction disappears on a current-thread runtime, and rustls on the
 `ring` backend with a platform verifier on user hosts is the settled
-choice). Size levers recorded in `shell.md` Packaging: lazy network
+choice). Size levers recorded in `tinyjs.md` Packaging: lazy network
 initialisation, per-package opt-level, no hyper/tungstenite, ring, trimmed
 tokio features, QuickJS without bignum; UPX and nightly build-std rejected.
 
 ## M7 — Shell (2026-09-02)
 
-Status: delivered on `feat/demi-next`. Crate at `packages/demi-shell`;
+Status: delivered on `feat/demi-next`. Crate at `packages/tinyjs`;
 `cargo test --features conformance` runs the primitive conformance suite
 (`conformance/*.mjs`, embedded as the bundle under that feature so it sees
-`demishell:*`) with the ports, test CA and Bun stub it needs.
+`tinyjs:*`) with the ports, test CA and Bun stub it needs.
 
 ### Acceptance, measured
 
@@ -1241,8 +1241,8 @@ Cross builds: `cargo zigbuild --release --target
 {x86_64,aarch64}-unknown-linux-musl --features guest-roots` from macOS
 (zig 0.15, cargo-zigbuild 0.23); macOS x86_64 with the rustup target. The
 guest fixture is the Lima `fc` instance's Firecracker setup from the
-spikes, with `/opt/demishell/{demi-shell,demi-shell-conf}` and a
-`demishell` case in the rootfs `init.sh`.
+spikes, with `/opt/tinyjs/{tinyjs,tinyjs-conf}` and a
+`tinyjs` case in the rootfs `init.sh`.
 
 Left for later milestones: the stub-backed net cases on Linux (install
 Bun in the fixture), a Linux x86_64 run, and the `ENOTFOUND` case (this
@@ -1251,9 +1251,9 @@ network sinkholes unresolvable names).
 ### Landed
 
 - Event loop, module loader (`/embedded/*` table, absolute and relative
-  file paths, `demishell:*` only from the embedded bundle, `import.meta.url`),
+  file paths, `tinyjs:*` only from the embedded bundle, `import.meta.url`),
   `ShellError` with errno codes, the handle table, standard globals,
-  `demishell:fs`, `demishell:bytes`, `demishell:runtime`, the entry-mode
+  `tinyjs:fs`, `tinyjs:bytes`, `tinyjs:runtime`, the entry-mode
   skeleton. 31 conformance cases pass on macOS arm64. Release binary
   1.5 MB before any network code; command-mode hello starts in 7 ms.
 
@@ -1282,11 +1282,11 @@ network sinkholes unresolvable names).
   `close` cancelling a pending operation with `ECANCELED`.
 - `console`, `queueMicrotask`, `TextEncoder`/`TextDecoder`, `URL`,
   `AbortController` and `structuredClone` are prelude JS over native
-  transcoders; only per-byte work is Rust. `shell.md` says the same.
+  transcoders; only per-byte work is Rust. `tinyjs.md` says the same.
 - MessagePack follows `@msgpack/msgpack` defaults: integral numbers as
   ints, `Uint8Array` as bin, `Date` as the timestamp extension, `undefined`
   as nil.
-- `demishell:net` landed on crates, not hand-written protocols (owner
+- `tinyjs:net` landed on crates, not hand-written protocols (owner
   decision 2026-09-02: "we do not implement protocols ourselves"):
   `tokio-tungstenite` for WebSocket, `hyper` + `hyper-util` for HTTP/1.1
   and the `CONNECT` tunnel with proxy-environment matching,
@@ -1304,7 +1304,7 @@ network sinkholes unresolvable names).
   echoes past its `backpressureLimit`, so the stub raises it; a `.invalid`
   hostname resolved on this network (sinkholed DNS), so the suite has no
   `ENOTFOUND` case.
-- `demishell:process` landed: spawn over `std::process::Command` with the
+- `tinyjs:process` landed: spawn over `std::process::Command` with the
   pipes handed to tokio (`pipe::Receiver`/`Sender`), the shell's own
   SIGCHLD reaper (`waitpid(-1)`, which is also the PID 1 orphan reaper),
   wait with tee byte counts, kill with process groups, the bounded view.
@@ -1313,3 +1313,16 @@ network sinkholes unresolvable names).
   wait"` about a quarter of the time (reproduced with Python's `killpg`
   outside the shell); the conformance case asserts the grandchildren died
   through pipe EOF and accepts either status.
+
+### Naming: the shell → tinyjs (2026-09-02)
+
+`@demicodes/shell` is already the Host contract and the agent's command
+environment, so calling the Rust binary "the shell" gave one word two
+meanings and made `@demicodes/host-shell` read as the Host over that
+package. The binary is now **tinyjs**, pairing with tinybash: the bash the
+agent runs in and the JS the runner and commands run on. Renamed
+throughout: crate `packages/tinyjs`, modules `tinyjs:*`,
+`@demicodes/host-tinyjs`, `docs/demi-next/tinyjs.md`, the
+`TINYJS_CONFORMANCE_*` variables. Rejected: `demi-js` (fine but
+unpaired), `demi-vm` (collides with the microVM vocabulary), `demi-core`
+and `demi-runtime` (taken).

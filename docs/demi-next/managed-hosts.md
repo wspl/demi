@@ -73,7 +73,7 @@ Three block devices meet in a guest:
   by our pipeline, fsck-clean, never mounted read-write at runtime. It is
   **preinstalled and heavy**: git, curl, build-essential, Python, Node, Bun,
   uv, Rust toolchain, ripgrep and the rest of a working developer machine,
-  plus the shell binary as `/demi-runner` and `/usr/bin/demi`. Its size
+  plus the tinyjs binary as `/demi-runner` and `/usr/bin/demi`. Its size
   costs an owner nothing — it is paged on demand and hot in the backend
   machine's page cache across every VM — and it is upgraded by shipping a new image; the
   next wake boots it with nothing to migrate.

@@ -15,8 +15,8 @@ declares their own root (`myagent`) with the same tree types, kinds, ABI,
 manifest, loader and target-side entry. Nothing below is specific to
 `demi` except its contents.
 
-On a target every root is a name in `PATH` — a symlink to the shell binary
-(`shell.md`) — so real bash runs `demi …` and `myagent …` the same way it
+On a target every root is a name in `PATH` — a symlink to the tinyjs binary
+(`tinyjs.md`) — so real bash runs `demi …` and `myagent …` the same way it
 runs anything else. In a hostless conversation tinybash's executables are
 its builtins plus the manifest's roots.
 
@@ -57,7 +57,7 @@ in `PATH`; everything else is whatever the machine has.
  ───────                          ────────────────────                 ───────────────────────
  job_start {script, cwd,   ────▶  spawn  bash -c "<script>"     ────▶  bash
             env + conv/shell ids}   │  tee stdout/stderr → output         │
-                                    │  files under commandOutputDir        ├─ demi file edit src/a.ts        (shell, command mode)
+                                    │  files under commandOutputDir        ├─ demi file edit src/a.ts        (tinyjs, command mode)
                                     │                                      │    read ~/.demi/commands/<hash>/   manifest cache
                                     │                                      │    kind = runtime
                                     │                                      │    → run the module in-process, ctx.fs = real fs
@@ -123,8 +123,8 @@ tinybash cannot run is run on a machine instead.
 |---|---|---|
 | Who runs the tool call | real bash on the target | tinybash in the backend |
 | What can appear in it | anything bash runs | the tinybash subset: pipelines, chains, heredocs, redirections, expansions; builtins + root commands |
-| Where a `runtime` module runs | in a command-mode shell process on the target | in the backend process |
-| The `ctx.fs` it sees | the target's real filesystem (`host-shell`) | the conversation's store-backed Host (`host-virtual`) |
+| Where a `runtime` module runs | in a command-mode tinyjs process on the target | in the backend process |
+| The `ctx.fs` it sees | the target's real filesystem (`host-tinyjs`) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
 | Where files live | on the target | in `conversations/<id>.sqlite` |
 | Where full output lives | output files on the target | the tool result itself (bounded, no tee needed) |
@@ -144,7 +144,7 @@ Every leaf is one of two kinds:
 - **`runtime`** — the implementation is an ES module shipped to wherever the
   command is invoked and run there against that place's filesystem. `demi
   file read/create/edit/patch` and future `demi search` are `runtime`. On a
-  target the module runs inside the shell in command mode with zero round
+  target the module runs inside tinyjs in command mode with zero round
   trips; in a
   hostless conversation it runs inside the backend against the
   conversation's store-backed Host.
@@ -181,17 +181,17 @@ an unmarked argument is never treated as one.
 | `signal` | an `AbortSignal` for cancellation |
 
 A module imports nothing from the runtime: no Node builtins, no Bun or
-shell globals, no network. It sees the standard ECMAScript library plus the
+tinyjs globals, no network. It sees the standard ECMAScript library plus the
 Web-platform globals every embedder guarantees (`TextEncoder`,
 `TextDecoder`, `URL`, `atob`, `btoa`, `crypto.randomUUID`, `AbortSignal`).
-This is what makes one module run identically inside the shell against a
+This is what makes one module run identically inside tinyjs against a
 real filesystem, inside the backend against the store-backed Host, and
 inside a test with an in-memory Host. It is the public contract a third
 party builds on, versioned with the manifest.
 
 Byte-heavy work inside a module goes through `ctx.fs` and the streams,
 which every embedder implements natively; a module never loops over bytes
-in JS (the shell has no JIT — `shell.md`).
+in JS (tinyjs has no JIT — `tinyjs.md`).
 
 ## The manifest
 
@@ -244,18 +244,18 @@ Embedders:
 |---|---|---|---|
 | backend, hostless conversation | in-process tree | the conversation's store-backed Host | in-process |
 | runner | the backend socket, cached on disk under `~/.demi/commands/<hash>/` | — (the runner does not execute commands; it caches and relays) | the backend socket |
-| the shell in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | `@demicodes/host-shell` over the real filesystem | the runner over the UDS |
-| the shell in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
+| tinyjs in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | `@demicodes/host-tinyjs` over the real filesystem | the runner over the UDS |
+| tinyjs in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
 | tests | in-memory | in-memory Host | stub |
 
 A third party who wants Demi's commands in another agent needs the loader,
-a Host implementation and a manifest source — no runner, no shell, no
+a Host implementation and a manifest source — no runner, no tinyjs, no
 backend.
 
 ## Root commands on a target
 
-A root command on a target is the shell binary in command mode
-(`shell.md`) running the loader, reached through a symlink named after the
+A root command on a target is the tinyjs binary in command mode
+(`tinyjs.md`) running the loader, reached through a symlink named after the
 root: `argv[0]` selects the root's tree in the manifest. Real bash spawns it
 like any other program; it reads the manifest cache the runner maintains,
 runs `runtime` commands in its own process, and forwards `rpc` commands to

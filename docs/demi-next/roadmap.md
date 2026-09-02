@@ -45,8 +45,8 @@ message-attachment upload and workspace file drop. The prev slot, `switch`
 and `release` verbs and the tar-pipe migration delivered here are removed
 by M8–M10 (`sessions-and-targets.md`).
 
-**M7 — Shell.** `packages/demi-shell`: QuickJS on `rquickjs`, the event
-loop with its own liveness count, the module loader with `demishell:*`
+**M7 — tinyjs.** `packages/tinyjs`: QuickJS on `rquickjs`, the event
+loop with its own liveness count, the module loader with `tinyjs:*`
 private to the embedded bundle, the five modules over `hyper`,
 `tokio-tungstenite`, `rustls`, `rmpv`; the JS conformance suite driven by
 `cargo test --features conformance`; static musl and macOS builds; the
@@ -62,18 +62,18 @@ step; `@demicodes/command-loader`; file commands as `runtime` modules,
 `todo`/`agent`/`host` as `rpc`; `demi agent spawn` and the group/leaf
 dispatcher rule; `@demicodes/tinybash`; `@demicodes/host-virtual` reduced to
 the store-backed Host; the hostless tool description; two embedders: the
-backend in-process (hostless conversations) and the shell in command mode
+backend in-process (hostless conversations) and tinyjs in command mode
 running `runtime` commands (its `rpc` path completes in M9); a second root
 beside `demi` in the tests, to prove the mechanism is not `demi`-specific.
 Accept: a
 hostless conversation runs `demi file` and `demi todo`; heredoc, sequence
 and refusal cases each covered; one `runtime` module behaves identically
-under Bun, on the shell and in the test fixture; a third-party embedding
+under Bun, on tinyjs and in the test fixture; a third-party embedding
 example using only the loader and a custom Host. Real hosts keep the
 current runner and command bridge untouched through M7–M8.
 
-**M9 — Runner on the shell, old paths deleted** (`runner.md`; depends on M7, M8)
-`@demicodes/host-shell` (the Host over shell primitives); the runner ported
+**M9 — Runner on tinyjs, old paths deleted** (`runner.md`; depends on M7, M8)
+`@demicodes/host-tinyjs` (the Host over tinyjs primitives); the runner ported
 to it; the job table with real `bash -c`, session ids in the environment,
 output files on the target; the UDS relay and manifest cache, completing
 the CLI's `rpc` path; MessagePack framing, per-op fs messages, `pong` with
@@ -117,7 +117,7 @@ offline-output notices. Consumes the M11-frozen API; adds no backend
 surface. The old dev product is renamed `web-demo` here.
 
 **M13 — Deployment packaging**
-Container image for the backend (carrying the built web assets); the shell
+Container image for the backend (carrying the built web assets); tinyjs
 builds per platform with the runner and root-command symlinks; the guest kernel
 and the managed-host rootfs image as shipped images; the privileged
 provisioner helper; a sample Litestream sidecar config; end-to-end
@@ -148,9 +148,9 @@ Test modules and their intended coverage, per milestone.
 | M4 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Host routing to a claimed device; online status follows the socket. |
 | M5 | Vault key storage + per-user assembly; ledger aggregation; login-flow state machines against mock endpoints + refresh; claude-code-on-runner chain against a mock upstream with nothing persisted on the device. Real-subscription smoke gated and manual. |
 | M6 | Switch integration (real→real with files staying and an honest context block; mid-turn switch refused; concurrent switch has one winner); offline target → readable and chattable; attachment upload → ref → inline at provider; checkpoint round-trip. |
-| M7 | Primitive conformance suite from JS: fs incl. errno cases and streaming reads; spawn incl. stdin/kill/uid/tee byte counts; WebSocket send backpressure and receive; HTTP request bodies from files and response bodies streamed to a fd; UDS listen mode and accept; MessagePack extension types; timers ordering; globals; `demishell:*` refused from a file-loaded module. Build-target matrix; guest cold-start (command-mode hello, cold cache), binary size and tee throughput measured in the Firecracker fixture. |
-| M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, shell and fixture; tinybash grammar and builtin tables, the equivalence corpus against real bash + GNU coreutils in a Linux container (`tinybash.md`); parse-first, session-state and cancellation cases; hostless conversation runs file, todo and builtin pipelines; third-party embedding example. |
-| M9 | M1 and M4 suites on the shell runner; job table (foreground, background, kill, exit); tee + bounded view + output file; UDS relay round trip with session attribution; MessagePack frames; output fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
+| M7 | Primitive conformance suite from JS: fs incl. errno cases and streaming reads; spawn incl. stdin/kill/uid/tee byte counts; WebSocket send backpressure and receive; HTTP request bodies from files and response bodies streamed to a fd; UDS listen mode and accept; MessagePack extension types; timers ordering; globals; `tinyjs:*` refused from a file-loaded module. Build-target matrix; guest cold-start (command-mode hello, cold cache), binary size and tee throughput measured in the Firecracker fixture. |
+| M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, tinyjs and fixture; tinybash grammar and builtin tables, the equivalence corpus against real bash + GNU coreutils in a Linux container (`tinybash.md`); parse-first, session-state and cancellation cases; hostless conversation runs file, todo and builtin pipelines; third-party embedding example. |
+| M9 | M1 and M4 suites on tinyjs runner; job table (foreground, background, kill, exit); tee + bounded view + output file; UDS relay round trip with session attribution; MessagePack frames; output fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
 | M10 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
 | M11 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
 | M12 | Manual checklist over the full layout, including the "everything Demi implements gets exposed" sweep. |
