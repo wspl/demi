@@ -65,11 +65,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   })
 
   // The command tree, defined once: the manifest every runner caches is built
-  // from it plus the shape of the `agent` node every session grafts on, and
-  // an rpc command a runner relays runs against the live tree of the session
-  // the ids in the job's environment name — the one its shell was built with.
+  // from it plus the shape of the `agent` node every session grafts on. An
+  // rpc command a runner relays runs as the session the job's environment
+  // names — a conversation or a subagent — against the tree and the Host its
+  // shell was built with (a read-only child's wrapped Host included).
   let manifest: Promise<Manifest> | null = null
-  const sessionCommands = new Map<string, CommandRegistry>()
+  const sessionShells = new Map<string, { host: Host; commands: CommandRegistry }>()
   const transfers = new TransferBroker()
   const runnerRegistry = new RunnerRegistry({
     control,
@@ -81,10 +82,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         return buildManifest(roots, { transpile: transpileCommandModule })
       })()),
     rpc: async (call, io) => {
-      const host = await hostFor(call.agentSessionId)
-      const transport = inProcessRpc(sessionCommands.get(call.agentSessionId)?.list() ?? commandsFor(call.agentSessionId), {
-        storage: new AgentSessionCommandStorage(host.store, call.agentSessionId),
-        host,
+      const shell = sessionShells.get(call.agentSessionId)
+      if (!shell) throw new Error(`no live session ${call.agentSessionId} behind this job`)
+      const transport = inProcessRpc(shell.commands.list(), {
+        storage: new AgentSessionCommandStorage(shell.host.store, call.agentSessionId),
+        host: shell.host,
       })
       const result = await transport({
         root: call.root,
@@ -174,7 +176,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     // A hostless conversation's shell is tinybash over its store-backed Host;
     // a real host's is the runner's job table; no other Host exists.
     shellEnvironment: (ctx) => {
-      sessionCommands.set(ctx.agentSessionId, ctx.commands)
+      sessionShells.set(ctx.agentSessionId, { host: ctx.host, commands: ctx.commands })
       if (ctx.host instanceof VirtualHost) return createHostlessShell(ctx)
       if (ctx.host instanceof RemoteHost) return new RemoteShellEnvironment({ ...ctx.shell, host: ctx.host })
       throw new Error('the backend runs conversations hostless or through a runner; no other Host exists')

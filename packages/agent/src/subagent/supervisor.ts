@@ -74,6 +74,8 @@ interface ChildJob<State> {
 
 export interface ChildSupervisorOptions<State> {
   agent: AgentHarness<State>
+  /** The root session: children resolve their Host as it, since a child shares its parent's execution target. */
+  agentSessionId: string
   cwd: string
   /** Harness-configured profiles; null means the implicit `default` only. */
   profiles: SubagentProfile<State>[] | null
@@ -667,7 +669,7 @@ export class ChildSupervisor<State = unknown> {
     ctx: Pick<AgentToolInvokeContext<State>, 'state' | 'metadata'>,
   ): Promise<ShellEnvironment> {
     const resolved = await this.options.agent.host({
-      agentSessionId: job.id,
+      agentSessionId: this.options.agentSessionId,
       state: ctx.state,
       cwd: this.options.cwd,
       metadata: ctx.metadata,
@@ -903,12 +905,12 @@ export class ChildSupervisor<State = unknown> {
 }
 
 /**
- * Host wrapper for read-only subagent profiles: every filesystem mutation is
- * rejected, and process spawn is rejected outright (a real process cannot be
- * write-restricted).
- *
- * Every facet delegates method by method: Host facets are class instances
- * whose methods live on the prototype, so object spread would drop them.
+ * Host view for read-only subagent profiles: the same Host — its class, cwd,
+ * identity and store, so a product still recognizes what it is — with its
+ * filesystem facet refusing every mutation and process spawn refused
+ * outright (a real process cannot be write-restricted). The read methods
+ * delegate one by one: the facets are class instances whose methods live on
+ * their prototypes, so object spread would drop them.
  */
 export function createReadonlyHost(host: Host): Host {
   const deny = (operation: string): Promise<never> =>
@@ -933,16 +935,14 @@ export function createReadonlyHost(host: Host): Host {
     link: (_existingPath, path) => deny(`link ${path}`),
     utimes: (path) => deny(`utimes ${path}`),
   }
-  return {
-    defaultCwd: host.defaultCwd,
-    identity: host.identity,
-    store: host.store,
-    fs: readonlyFs,
-    process: {
-      openCwd: (path) => host.process.openCwd(path),
-      spawn: () => deny('process spawn'),
-    },
+  const readonlyProcess: Host['process'] = {
+    openCwd: (path) => host.process.openCwd(path),
+    spawn: () => deny('process spawn'),
   }
+  return Object.create(host, {
+    fs: { value: readonlyFs, enumerable: true },
+    process: { value: readonlyProcess, enumerable: true },
+  }) as Host
 }
 
 function trimToolRecords(tools: ChildToolRecord[]): void {

@@ -78,6 +78,7 @@ export async function assembleLiveSession(
   // supervisor-built with a send-parent-only tree, so spawn is root-only.
   const supervisor = new ChildSupervisor<unknown>({
     agent,
+    agentSessionId,
     cwd,
     profiles,
     parentCommands: harnessCommands,

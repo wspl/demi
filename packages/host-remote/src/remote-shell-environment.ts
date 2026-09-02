@@ -228,9 +228,13 @@ export class RemoteShellEnvironment implements ShellEnvironment {
         binary = boundary.binary
       }
     }
-    // The record's chunks are the model's view (head, then the tail) and
-    // stand as they were streamed; the settled texts cover the same bytes.
-    record.outputChunks = []
+    // The streamed chunks are the head the model already saw; what the exit
+    // adds — a gap note and the tail — follows them, so a cursor into the
+    // merged view stays valid. A binary stream is re-presented by settle.
+    if (!binary) {
+      appendRecordOutput(record, 'stdout', stdoutText.slice(record.stdout.length))
+      appendRecordOutput(record, 'stderr', stderr.text.slice(record.stderr.length))
+    }
     const exitCode = exit.exitCode ?? (exit.signal === 'SIGTERM' || exit.signal === 'SIGKILL' ? 130 : 128)
     settleExited(record, exitCode, stdoutText, stderr.text, binary)
     // The view may be a head and a tail; the model is told the stream's length.

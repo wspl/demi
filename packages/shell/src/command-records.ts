@@ -127,8 +127,11 @@ export function settleExited(record: ShellCommandRecord, exitCode: number, stdou
   record.stdout = stdout
   record.stderr = stderr
   if (binary) {
+    // The streamed view was raw bytes; the placeholder is presented anew.
     record.binaryStdout = binary
     record.outputChunks = []
+    record.outputOffset = 0
+    record.stdoutOffset = 0
   }
   if (record.outputChunks.length === 0) {
     appendRecordOutput(record, 'stdout', stdout)
@@ -216,7 +219,9 @@ export function ensureRecordOutputCoverage(record: ShellCommandRecord): void {
     .filter((chunk) => chunk.stream === 'stderr')
     .reduce((total, chunk) => total + chunk.bytes, 0)
   if (stdoutBytes === utf8Bytes(record.stdout) && stderrBytes === utf8Bytes(record.stderr)) return
+  // The chunks no longer describe the texts: rebuilt, and the merged cursor with them.
   record.outputChunks = []
+  record.outputOffset = 0
   appendRecordOutput(record, 'stdout', record.stdout)
   appendRecordOutput(record, 'stderr', record.stderr)
 }

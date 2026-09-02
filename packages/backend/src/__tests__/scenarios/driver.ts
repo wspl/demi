@@ -6,6 +6,7 @@ import { events } from '@demicodes/provider/testing'
 import { delay } from '@demicodes/utils'
 import { HOSTLESS_HOME } from '../../conversation/scoped-transport'
 import type { TurnScript } from './model'
+export type { TurnScript } from './model'
 import type { World } from './world'
 
 /** `hostless`, or `runner:<name>` for a device the world paired. */
@@ -170,6 +171,12 @@ export function expected(target: Target) {
     binaryPlaceholder: hostless ? '; not kept beyond this view>' : '; raw bytes at ',
     /** How a truncated preview tells the model where the rest is. */
     previewTruncated: hostless ? 'previewTruncated: true; nothing beyond this view was kept' : 'previewTruncated: true; read ',
+    /**
+     * A read-only child's `demi file create`: hostless, the Host is the
+     * filesystem and refuses; on a machine a `runtime` command writes the
+     * disk itself, outside the Host, and only `rpc` leaves pass through it.
+     */
+    readonlyWrite: hostless ? 'read-only subagent' : 'Created blocked.md',
   }
 }
 
