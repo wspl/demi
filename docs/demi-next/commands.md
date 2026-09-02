@@ -101,7 +101,7 @@ tinybash cannot run is run on a machine instead.
  in-process loader  (executables: tinybash's builtins + the manifest's roots)
    ├─ demi file create …   kind = runtime  → run the SAME module as on a real host,
    │                                          ctx.fs = store-backed Host
-   │                                          → conversations/<id>.sqlite  (host_store)
+   │                                          → files tree in conversations/<id>.sqlite, bytes in the blob store
    └─ demi todo add …      kind = rpc      → the in-process handler, no socket
         │
         ▼
@@ -110,8 +110,8 @@ tinybash cannot run is run on a machine instead.
 
  tool call:  npm test                                   (or any script outside the subset: `$(…)`, `for`, …)
  tinybash ──▶ outside the subset, nothing ran
-        └──▶ backend provisions a managed host bound to the conversation (silently),
-             writes the hostless files into its home at the same paths, hands over cwd and
+        └──▶ backend builds the home image from the hostless tree (mke2fs -d), provisions a
+             managed host with it bound to the conversation (silently), hands over cwd and
              variables, runs the WHOLE script on the real-host path above;
              every later tool call runs there. The model sees only the tool result.
              (no machine configured at all → the tool result says so; a deployment error)
