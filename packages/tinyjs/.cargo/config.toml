@@ -1,0 +1,8 @@
+# Room in the Mach-O header for the load command `tinyjs --pack` adds; the
+# linker's default padding is a few dozen bytes and injecting a segment into
+# a binary without it overwrites the start of __text.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-headerpad,0x2000"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-headerpad,0x2000"]
