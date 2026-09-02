@@ -66,12 +66,16 @@ export function createCommandRecord(fields: {
   }
 }
 
-/** The status the tools see: stream views cut at the caller's offsets, then the record persisted. */
+/**
+ * The status the tools see: stream views cut at the caller's offsets, then
+ * the record persisted through `artifacts` — absent for an environment whose
+ * output files are written where the command ran (the runner's tee).
+ */
 export function commandStatusView(
   record: ShellCommandRecord,
   input: ShellViewInput,
   defaultOutputLimitBytes: number,
-  artifacts: CommandArtifactStore,
+  artifacts?: CommandArtifactStore,
 ): ShellCommandStatus {
   const maxOutputBytes = input.maxOutputBytes ?? defaultOutputLimitBytes
   const stdout = streamView(record, 'stdout', input.stdoutOffset, maxOutputBytes)
@@ -87,7 +91,7 @@ export function commandStatusView(
     runningMs: Date.now() - record.startedAt,
     idleMs: Date.now() - record.lastOutputAt,
   }
-  persistCommandArtifact(artifacts, record)
+  if (artifacts) persistCommandArtifact(artifacts, record)
   if (record.status === 'exited') {
     const result: ShellCommandStatus = {
       ...base,
