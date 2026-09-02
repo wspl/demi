@@ -66,6 +66,24 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S3 long commands on %s', (t
     expect(driver.lastText()).toBe('finished')
   }, 30_000)
 
+  test('stdin fed with shell_write reaches the command', async () => {
+    // As under bash, a command whose stdin is not redirected reads the
+    // script's own: `head -n 1` waits for the line shell_write feeds.
+    const driver = await world.conversation(target)
+    const turn = await driver.turn({
+      model: [
+        model.shell('t1', 'echo -n "got: " && head -n 1 | tr a-z A-Z', 200),
+        (request) => model.tool('t2', 'shell_write', { commandId: handleIn(request), stdin: 'hello there\n' }),
+        pollThenSay(driver.id, 'fed'),
+      ],
+    })
+    expect(turn.received[0]).toContain('status: running')
+    expect(turn.received[0]).toContain('got: ')
+    const last = turn.received.at(-1)!
+    expect(last).toContain('HELLO THERE')
+    expect(last).toContain('status: exited')
+  }, 30_000)
+
   test('a second command stopped with shell_abort while another already ended', async () => {
     const driver = await world.conversation(target)
     world.model.scriptChild(model.slowSay('never read', 5_000))
@@ -86,23 +104,6 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S3 long commands on %s', (t
 })
 
 describe('S3 on a runner only', () => {
-  test('stdin fed with shell_write reaches the command', async () => {
-    // The hostless command set has nothing that reads live stdin (allowed
-    // differences, `scenarios.md`); bash on a machine does.
-    const driver = await world.conversation('runner:alpha')
-    const turn = await driver.turn({
-      model: [
-        model.shell('t1', 'read line; echo "got: $line"', 200),
-        (request) => model.tool('t2', 'shell_write', { commandId: handleIn(request), stdin: 'hello there\n' }),
-        pollThenSay(driver.id, 'fed'),
-      ],
-    })
-    expect(turn.received[0]).toContain('status: running')
-    const last = turn.received.at(-1)!
-    expect(last).toContain('got: hello there')
-    expect(last).toContain('status: exited')
-  }, 30_000)
-
   test('a background job outlives its command', async () => {
     const driver = await world.conversation('runner:alpha')
     const turn = await driver.turn({

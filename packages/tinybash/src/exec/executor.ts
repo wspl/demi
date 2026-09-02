@@ -48,7 +48,8 @@ async function runList(list: List, env: ExecutionEnvironment): Promise<number> {
 }
 
 async function runPipeline(pipeline: Pipeline, env: ExecutionEnvironment): Promise<number> {
-  const top: Channels = { stdin: emptyByteStream(), stdout: env.stdout, stderr: env.stderr }
+  // As bash: a command whose stdin is not redirected reads the script's own.
+  const top: Channels = { stdin: env.stdin ?? emptyByteStream(), stdout: env.stdout, stderr: env.stderr }
   if (pipeline.commands.length === 1) {
     return runCommand(pipeline.commands[0]!, top, env, true, env.stdin)
   }
@@ -120,11 +121,13 @@ async function runCommand(command: Command, inherited: Channels, env: ExecutionE
       }
       status = await builtin.run(ctx)
     } else {
-      // A root command whose stdin is the script's own gets the live stream too.
-      const stdinStream = channels.stdin === inherited.stdin ? scriptStdin : undefined
+      // A root command whose stdin is the script's own gets it as the live
+      // stream, with an empty pipe: the script's stdin ends only when the
+      // caller ends it, and a root reads the pipe for its stdin field.
+      const live = channels.stdin === inherited.stdin && scriptStdin !== undefined
       status = await env.dispatch(name, argv.slice(1), {
-        stdin: channels.stdin,
-        stdinStream,
+        stdin: live ? emptyByteStream() : channels.stdin,
+        stdinStream: live ? scriptStdin : undefined,
         stdout: channels.stdout,
         stderr: channels.stderr,
         cwd: state.cwd,
