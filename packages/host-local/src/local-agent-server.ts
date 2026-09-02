@@ -7,7 +7,7 @@ import {
   type AgentServerSessionOptions,
 } from '@demicodes/agent'
 import type { Provider } from '@demicodes/provider'
-import type { BashEnvironmentOptions } from '@demicodes/shell'
+import type { BashEnvironmentOptions } from '@demicodes/shell/bash'
 import { COMMAND_BRIDGE_SHIM_SOURCE, startCommandBridge, type CommandBridgeHandle } from './command-bridge'
 import { materializeCommandBridgeShims } from './command-bridge-shim'
 import { defaultBridgeSocketPath, resolveDemiHome } from './demi-home'

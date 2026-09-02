@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
-import { BashEnvironment } from '../index'
+import { BashEnvironment } from '../bash'
 import { LocalHost } from '@demicodes/host-local'
 
 test('grep routes to the real host binary when one exists', async () => {
