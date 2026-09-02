@@ -219,10 +219,10 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner-protocol`
 
-- Status: implemented (M1; claim flow productized in M4).
-- Production deps: `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the runner wire protocol — message types (claim/auth handshake, liveness, Host fs RPC, streaming spawn), the portable-JSON frame codec, the backend-side `RemoteHost` proxy (a `Host` over a connection: stable object across reconnects, logical cwd fallback, injected store), and the runner-side `HostRpcServer` serving a Host's `fs`/`process` facets.
-- Public boundary: message types, codec functions, `RemoteHost`, `HostRpcServer` from root.
+- Status: implemented (M1; claim flow productized in M4; the final wire — MessagePack frames, per-op fs messages, `pong { jobs }`, `hello_error { code }` — in M9 step 2).
+- Production deps: `@demicodes/shell`, `@demicodes/utils`, `@msgpack/msgpack` (the Bun ends' codec).
+- Owns: the runner wire protocol — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec; `msgpackCodec` for Bun, `tinyjs:bytes` on tinyjs), the backend-side `RemoteHost` proxy (a `Host` over a connection: stable object across reconnects, logical cwd fallback, injected store), and the runner-side `HostRpcServer` serving a Host's `fs`/`process` facets.
+- Public boundary: message types and schemas, `createRunnerWire`, `msgpackCodec`, `RemoteHost`, `HostRpcServer` from root.
 - Must not: contain network IO (the wire is an injected send/handle pair), credentials, claim policy, device registry, or conversation state. `Host.store` never crosses this protocol.
 
 ### `@demicodes/host-runner`
