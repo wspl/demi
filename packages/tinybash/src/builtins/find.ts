@@ -1,7 +1,7 @@
 import type { Builtin, BuiltinContext } from './io'
 import { outside } from '../outside/reasons'
 import { quoteC, strerror } from './errors'
-import { latin1Bytes } from '../exec/stream'
+import { encodeLatin1 } from '@demicodes/utils'
 import { bracketToRegex, escapeRegex } from '../grammar/glob'
 
 interface Expression {
@@ -112,7 +112,7 @@ async function walk(ctx: BuiltinContext, path: string, depth: number, expression
   const baseName = depth === 0 ? base.slice(base.lastIndexOf('/') + 1) || base : base
   const typeOk = expression.type === null || (expression.type === 'f' ? stat.isFile && !stat.isSymbolicLink : stat.isDirectory && !stat.isSymbolicLink)
   const nameOk = matcher === null || matcher.test(baseName)
-  if (typeOk && nameOk) await ctx.stdout(latin1Bytes(`${path}\n`))
+  if (typeOk && nameOk) await ctx.stdout(encodeLatin1(`${path}\n`))
   if (!stat.isDirectory || stat.isSymbolicLink) return true
   if (expression.maxDepth !== null && depth >= expression.maxDepth) return true
   let names: string[]

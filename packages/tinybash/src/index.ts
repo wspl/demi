@@ -3,7 +3,8 @@ import type { Script } from './grammar/ast'
 import { parseScript } from './grammar/parser'
 import { type RootPaths, checkScript } from './outside/check'
 import { OutsideError, type OutsideReason, refusalMessage } from './outside/reasons'
-import { type DispatchIO, type ShellState, executeScript } from './exec/executor'
+import type { DispatchIO } from '@demicodes/shell'
+import { type ShellState, executeScript } from './exec/executor'
 
 export type { OutsideReason, RootPaths, DispatchIO, ShellState }
 export type { Script } from './grammar/ast'

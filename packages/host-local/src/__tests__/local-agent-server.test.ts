@@ -30,6 +30,7 @@ function demoCommand(): Command {
       {
         name: 'run',
         summary: 'pong',
+        kind: 'rpc',
         run: async ({ io }) => {
           await io.stdout('pong\n')
           return { exitCode: 0 }

@@ -2,7 +2,8 @@ import type { Builtin } from './io'
 import { parseFlags, value } from './flags'
 import { SPECS } from './table'
 import { lazyInputs } from './inputs'
-import { lines, latin1Bytes } from '../exec/stream'
+import { encodeLatin1 } from '@demicodes/utils'
+import { lines } from '../exec/stream'
 import { tryHelp } from './errors'
 
 /** A field list like `1,3-5,7-` into a membership test (1-based). */
@@ -55,7 +56,7 @@ export const cut: Builtin = async (ctx) => {
     for await (const line of lines(stream)) {
       const fields = line.text.split(sep)
       const out = fields.length === 1 ? line.text : fields.filter((_, index) => selected(index + 1)).join(sep)
-      await ctx.stdout(latin1Bytes(`${out}${line.newline ? '\n' : ''}`))
+      await ctx.stdout(encodeLatin1(`${out}${line.newline ? '\n' : ''}`))
     }
   }
   return status

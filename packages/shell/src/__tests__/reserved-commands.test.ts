@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { CommandRegistry } from '../command'
+import { CommandRegistry, type Command } from '../command'
 import { DEMI_PORTABLE_COMMANDS, RESERVED_COMMAND_NAMES } from '../portable-commands'
 
 // The historical hand-maintained reservation list; the derived set must remain
@@ -25,7 +25,7 @@ test('derived reserved names cover every portable command and the legacy list', 
 
 test('registry rejects reserved names and accepts distinct ones', () => {
   const registry = new CommandRegistry()
-  const leaf = { name: 'run', summary: 'x', run: () => ({ exitCode: 0 }) }
+  const leaf: Command = { name: 'run', summary: 'x', kind: 'rpc', run: () => ({ exitCode: 0 }) }
   expect(() => registry.register({ name: 'grep', summary: 'x', subcommands: [leaf] })).toThrow(/reserved/)
   expect(() => registry.register({ name: 'go', summary: 'x', subcommands: [leaf] })).toThrow(/reserved/)
   registry.register({ name: 'my_tool', summary: 'x', subcommands: [leaf] })
