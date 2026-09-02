@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "bin.dat\ndocs\nscript.sh\nspace dir\nsrc\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

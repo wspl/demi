@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "bin.dat\ncsv.txt\ndocs\nempty.txt\nlink.txt\nnonl.txt\nnumbers.txt\nscript.sh\nspace dir\nsrc\nwords.txt\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

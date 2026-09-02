@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "demi file read csv.txt empty.txt link.txt nonl.txt notes.txt numbers.txt words.txt\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

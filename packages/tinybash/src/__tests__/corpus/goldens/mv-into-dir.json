@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "lib\nmain.ts\nnotes.txt\nutil.ts\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

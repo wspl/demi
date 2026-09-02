@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "grep: x: invalid context length argument\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "name,city\nann,oslo\nbob,rome\ncid,lima\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

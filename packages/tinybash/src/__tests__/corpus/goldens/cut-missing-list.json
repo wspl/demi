@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "cut: you must specify a list of bytes, characters, or fields\nTry 'cut --help' for more information.\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

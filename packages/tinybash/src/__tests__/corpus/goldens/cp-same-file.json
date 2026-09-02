@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "cp: 'notes.txt' and 'notes.txt' are the same file\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

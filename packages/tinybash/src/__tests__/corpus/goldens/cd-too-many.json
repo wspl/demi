@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "@HOME@\n",
+  "stderr": "bash: line 1: cd: too many arguments\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

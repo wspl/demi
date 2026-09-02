@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "age,city\n31,oslo\n27,rome\n45,lima\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

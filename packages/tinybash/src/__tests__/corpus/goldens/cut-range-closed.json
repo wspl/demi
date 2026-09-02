@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "name,age\nann,31\nbob,27\ncid,45\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

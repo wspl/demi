@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "mv: missing destination file operand after 'notes.txt'\nTry 'mv --help' for more information.\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

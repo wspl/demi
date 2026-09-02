@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "rm: cannot remove 'src': Is a directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

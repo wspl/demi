@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "      1 alpha\n      2 beta\n      1 delta\n      1 gamma\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

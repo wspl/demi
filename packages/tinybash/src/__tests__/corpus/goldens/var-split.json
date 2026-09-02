@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "a b\na  b\ndemi count a b a  b\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

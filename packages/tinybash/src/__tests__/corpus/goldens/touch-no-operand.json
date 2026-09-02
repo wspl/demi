@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "touch: missing file operand\nTry 'touch --help' for more information.\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "cat: nofile: No such file or directory\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

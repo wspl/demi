@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "     1\talpha\n     2\tbeta\n     3\tgamma\n     4\tbeta\n     5\tdelta\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

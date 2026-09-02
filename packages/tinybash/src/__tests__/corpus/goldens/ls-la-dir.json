@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "total 16\ndrwxr-xr-x 2 bytedance bytedance 4096 Jan 15  2024 .\ndrwxr-xr-x 3 bytedance bytedance 4096 Jan 15  2024 ..\n-rw-r--r-- 1 bytedance bytedance    7 Jan 15  2024 .hidden\n-rw-r--r-- 1 bytedance bytedance    5 Jan 15  2024 deep.ts\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

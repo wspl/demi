@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": ".\n./docs\n./space dir\n./src\n./src/lib\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

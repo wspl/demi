@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "touch: cannot touch 'nodir/x': No such file or directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

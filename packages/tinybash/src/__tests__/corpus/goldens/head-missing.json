@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout": "==> notes.txt <==\nalpha\nbeta\ngamma\nbeta\ndelta\n",
+  "stderr": "head: cannot open 'nofile' for reading: No such file or directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

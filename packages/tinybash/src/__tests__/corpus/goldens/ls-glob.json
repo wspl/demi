@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "csv.txt\nempty.txt\nlink.txt\nnonl.txt\nnotes.txt\nnumbers.txt\nwords.txt\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

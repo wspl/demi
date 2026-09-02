@@ -281,6 +281,17 @@
         "zod": "^4.0.0",
       },
     },
+    "packages/tinybash": {
+      "name": "@demicodes/tinybash",
+      "version": "0.20.0",
+      "dependencies": {
+        "@demicodes/shell": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+      },
+      "devDependencies": {
+        "@demicodes/host-local": "workspace:^",
+      },
+    },
     "packages/utils": {
       "name": "@demicodes/utils",
       "version": "0.20.0",
@@ -434,6 +445,8 @@
     "@demicodes/runner-protocol": ["@demicodes/runner-protocol@workspace:packages/runner-protocol"],
 
     "@demicodes/shell": ["@demicodes/shell@workspace:packages/shell"],
+
+    "@demicodes/tinybash": ["@demicodes/tinybash@workspace:packages/tinybash"],
 
     "@demicodes/utils": ["@demicodes/utils@workspace:packages/utils"],
 

@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "export const x = 1\nexport const y = 2\nlib\nmain.ts\nutil.ts\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

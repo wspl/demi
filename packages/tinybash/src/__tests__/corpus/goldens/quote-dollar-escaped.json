@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "$HOME $HOME $HOME\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

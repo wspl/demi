@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "mkdir: cannot create directory 'x/y': No such file or directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

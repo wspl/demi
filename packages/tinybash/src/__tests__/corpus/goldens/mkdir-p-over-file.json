@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "mkdir: cannot create directory 'notes.txt': File exists\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}
