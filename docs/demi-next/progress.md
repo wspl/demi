@@ -1593,3 +1593,11 @@ Left for later, by design:
   filtered to the subset) from checkpoint 1 remain undone.
 - `printf` is outside the tinybash subset (`echo -n` / `echo -e` cover
   most uses); worth a decision, since models reach for it.
+
+`printf` joined the subset (user decision): bash's builtin for `%s %c %d
+%i %u %x %X %o %%` with `-` `+` space flags, width and precision, format
+reuse, bash's `invalid number` reporting, and the format escapes; `-v`,
+`*`, `%N$`, `%b`, `%q`, floating conversions, `#`, `'`, `0` with strings
+and `\u` are outside. Sixteen corpus cases against bash 5.2. Pitfall:
+bash's printf does not stop at `\c` in the format (only `%b` does) — the
+golden said so and the implementation followed.
