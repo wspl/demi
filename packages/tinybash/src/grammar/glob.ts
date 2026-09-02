@@ -101,26 +101,6 @@ export function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
 }
 
-function firstPatternIndex(field: readonly Piece[]): number {
-  let offset = 0
-  for (const piece of field) {
-    if (!piece.literal) {
-      const index = piece.text.search(/[*?[]/)
-      if (index !== -1) return offset + index
-    }
-    offset += piece.text.length
-  }
-  return -1
-}
-
-/** The directory part of a glob before its first pattern character, for the namespace check. */
-export function globPrefixDir(field: readonly Piece[]): string {
-  const text = field.map((piece) => piece.text).join('')
-  const first = firstPatternIndex(field)
-  const slash = text.lastIndexOf('/', first)
-  return slash === -1 ? '' : text.slice(0, slash + 1)
-}
-
 /** Splits a field into path segments, keeping piece literalness per character. */
 function splitSegments(field: readonly Piece[]): { absolute: boolean; segments: Piece[][] } {
   const segments: Piece[][] = [[]]
@@ -167,8 +147,11 @@ export async function expandGlob(field: readonly Piece[], cwd: string, fs: HostF
   const { absolute, segments } = splitSegments(field)
   const trailingSlash = raw.endsWith('/')
   const effective = trailingSlash ? segments.slice(0, -1) : segments
-  let candidates: string[] = [absolute ? '/' : '']
-  for (let index = 0; index < effective.length; index++) {
+  // The literal segments before the first pattern are the base; nothing below them is consulted.
+  const firstGlob = effective.findIndex(segmentHasGlob)
+  const literal = effective.slice(0, firstGlob === -1 ? effective.length : firstGlob).map(segmentText)
+  let candidates: string[] = [literal.reduce(joinGlob, absolute ? '/' : '')]
+  for (let index = Math.max(firstGlob, 0); index < effective.length && firstGlob !== -1; index++) {
     const segment = effective[index]!
     const last = index === effective.length - 1
     const next: string[] = []

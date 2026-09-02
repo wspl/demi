@@ -50,10 +50,11 @@ export const sort: Builtin = async (ctx) => {
     }
     field = Number(keyRaw)
   }
-  const { inputs, failed } = await openInputs(ctx, 'sort', flags.operands, (name, detail) => `sort: cannot read: ${name}: ${detail}\n`)
+  const { inputs, failed } = await openInputs(ctx, 'sort', flags.operands, (name, detail) => `sort: cannot read: ${name}: ${detail}\n`, (detail) => `sort: read failed: -: ${detail}\n`)
   if (failed) return 2
   const all: string[] = []
   for (const input of inputs) for await (const line of lines(input.stream)) all.push(line.text)
+  if (inputs.some((input) => input.readFailed())) return 2
   const keyOf = (line: string) => (field > 0 ? keyFrom(line, field) : line)
   const compareKeys = (a: string, b: string) => (numeric ? numericCompare(keyOf(a), keyOf(b)) : byteCompare(keyOf(a), keyOf(b)))
   const compare = (a: string, b: string) => {

@@ -58,6 +58,7 @@ export const cut: Builtin = async (ctx) => {
       const out = fields.length === 1 ? line.text : fields.filter((_, index) => selected(index + 1)).join(sep)
       await ctx.stdout(encodeLatin1(`${out}${line.newline ? '\n' : ''}`))
     }
+    if (input.readFailed()) status = 1
   }
   return status
 }
