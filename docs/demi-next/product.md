@@ -74,7 +74,9 @@ API; cold history rides the same rendering path.
   dropped into the chat routes here): written into the execution target's
   working directory via the backend (browser → HTTP upload → Host RPC
   write), the path inserted into the input as a text reference. In the
-  hostless state they land in the conversation's store filesystem.
+  hostless state they land in the conversation's hostless filesystem —
+  the same tree-plus-blobs form (`storage.md`), so the upload's bytes are
+  already a blob and the drop is a tree row.
 
 ## Provider management
 
