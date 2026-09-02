@@ -12,6 +12,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
     }
   },
   "files": [
@@ -24,9 +29,6 @@
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "@demicodes/host-local": "workspace:^"
   },
   "license": "Apache-2.0",
   "publishConfig": {

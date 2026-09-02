@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { hostConformanceCases } from '@demicodes/shell/testing'
-import { LocalHost } from '../local-host'
+import { LocalHost } from '../node'
+import { hostConformanceCases } from '../testing'
 
 const root = await mkdtemp(join(tmpdir(), 'demi-local-host-'))
 const host = new LocalHost(root, { storeRoot: join(root, 'store'), commandArtifactsDir: join(root, 'artifacts') })
