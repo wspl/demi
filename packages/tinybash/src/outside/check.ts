@@ -1,4 +1,4 @@
-import type { HostFileSystem, RootPaths } from '@demicodes/shell'
+import type { RootPaths, TinybashFs } from '../host'
 import type { Command, Script } from '../grammar/ast'
 import { type ExpansionScope, type Piece, expandSingle, expandToFields, fieldText } from '../grammar/expand'
 import { hasGlobChars } from '../grammar/glob'
@@ -12,7 +12,7 @@ export interface CheckContext {
   namespace: readonly string[]
   scope: ExpansionScope
   /** When present, a `cd` before any command that can create or remove directories is decided against it. */
-  fs?: HostFileSystem
+  fs?: TinybashFs
 }
 
 /** The shell state a script may be in at some point: the cwd and the variables. */

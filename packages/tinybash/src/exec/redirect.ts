@@ -1,4 +1,4 @@
-import type { HostFileSystem } from '@demicodes/shell'
+import type { TinybashFs } from '../host'
 import type { Redirect, Word } from '../grammar/ast'
 import { type ExpansionScope, expandHeredoc, expandSingle, expandToFields, fieldText, wordSource } from '../grammar/expand'
 import { expandGlob, hasGlobChars } from '../grammar/glob'
@@ -16,7 +16,7 @@ export interface Channels {
 /** Output bound for a file: collected while the command runs, appended when it ends. */
 class FileSink {
   private readonly chunks: Uint8Array[] = []
-  constructor(private readonly fs: HostFileSystem, private readonly path: string) {}
+  constructor(private readonly fs: TinybashFs, private readonly path: string) {}
   readonly write: Writer = (data) => {
     const bytes = toBytes(data)
     if (bytes.length > 0) this.chunks.push(bytes)
@@ -39,7 +39,7 @@ export class RedirectError extends Error {
  * split and globbed like any other, and bash refuses it when that yields
  * anything but exactly one word.
  */
-async function redirectTarget(word: Word, scope: ExpansionScope, fs: HostFileSystem): Promise<string> {
+async function redirectTarget(word: Word, scope: ExpansionScope, fs: TinybashFs): Promise<string> {
   const fields = expandToFields(word, scope)
   if (fields.length !== 1) throw new RedirectError(wordSource(word), 'ambiguous redirect')
   const field = fields[0]!
@@ -54,7 +54,7 @@ async function redirectTarget(word: Word, scope: ExpansionScope, fs: HostFileSys
  * Files are created or truncated now, as the shell would before running the
  * command; `flush` writes what the command produced.
  */
-export async function applyRedirects(redirects: readonly Redirect[], inherited: Channels, scope: ExpansionScope, fs: HostFileSystem): Promise<{ channels: Channels; flush: () => Promise<void> }> {
+export async function applyRedirects(redirects: readonly Redirect[], inherited: Channels, scope: ExpansionScope, fs: TinybashFs): Promise<{ channels: Channels; flush: () => Promise<void> }> {
   const channels: Channels = { ...inherited }
   const sinks: FileSink[] = []
   for (const redirect of redirects) {
