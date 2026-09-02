@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Implemented (M8); the target-side command mode and the CLI's `rpc` path complete in M9 |
+| Status | Implemented (M8); the target-side command mode in M9 step 1; the CLI's `rpc` path completes with the runner port |
 | Scope | The command system: root commands, organizing rule, command kinds, the command ABI, the manifest, the loader, tinybash and hostless execution, root commands on a target |
 
 ## Root commands
@@ -262,9 +262,11 @@ loader.roots                                          the manifest as command tr
 ```
 
 - `source` yields the manifest — held in memory (`inMemorySource`), read
-  from a directory, received over the runner's connection, fetched from a
-  URL. A directory source is also the cache on a target: modules are
-  files named by hash.
+  from a directory (`directorySource`: `manifest.json` beside
+  `modules/<hash>.mjs`, the layout `writeManifestDirectory` produces),
+  received over the runner's connection, fetched from a URL. A source that
+  keeps modules as files names them (`modulePath`); the directory source
+  is also the cache on a target.
 - `host` is the Host the `runtime` modules run against.
 - `rpc`, when present, carries typed `rpc` invocations (`RpcInvocation`:
   root, path, parsed args, `--json`, the pipe's bytes, cwd, env, plus the
@@ -276,9 +278,9 @@ loader.roots                                          the manifest as command tr
 Dispatch selects the root's tree, resolves the path through it, prints help
 for a group, parses and validates the leaf's arguments against its schema,
 then either runs the module with a `ctx` built from `host`, `io` and the
-arguments, or sends the `rpc` message. A module is loaded from its text
-(a `blob:` URL in the backend and in tests; the cache directory on a
-target), so the same bytes run everywhere. Help text comes from the tree,
+arguments, or sends the `rpc` message. A module is imported from a `blob:`
+URL of its text (the backend, tests) or from the source's module file
+(tinyjs imports only files), so the same bytes run everywhere. Help text comes from the tree,
 so `demi file --help` is identical on every surface. `rootPaths(manifest)`
 derives the `RootPaths` functions tinybash needs from the path marks, so
 an embedder that runs tinybash over the loader declares nothing twice.
@@ -308,7 +310,11 @@ the runner over the local UDS. The process holds no credential: the runner
 attributes an `rpc` call to a conversation by the ids the backend injected
 into the bash environment at spawn time and forwards it on its
 authenticated socket (`runner.md`). The runner creates and removes the
-symlinks as the manifest's root set changes.
+symlinks as the manifest's root set changes, and points
+`~/.demi/commands/current` at the cached manifest command mode reads;
+`DEMI_COMMANDS_DIR` names another directory (the standalone case). The
+entry of the bundle is `packages/runner/src/tinyjs/entry.ts`: the name it
+was invoked by selects runner mode or the root.
 
 Stdin and stdout are byte-faithful in both kinds: a `runtime` module reads
 and writes its process streams; an `rpc` invocation streams stdin to the

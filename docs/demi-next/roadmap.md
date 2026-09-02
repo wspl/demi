@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M8 delivered; M9 next |
+| Status | M0–M8 delivered; M9 in progress: step 1 delivered |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -109,6 +109,12 @@ Accept: every M1 and M4
 integration test passes on the new runner; `cmd1 | cmd2` with zero wire
 bytes; `demi todo` round trip over the UDS relay; runner killed mid-command
 → tool error, session continues, reconnect resumes.
+Status: step 1 delivered — `@demicodes/host-runner` accepted by the Host
+conformance suite (`@demicodes/shell/testing`, the suite `host-local` also
+runs) on tinyjs; command mode runs `demi file create` and `demi file read`
+from a manifest directory through the packed binary reached by its root
+symlink (`packages/runner/src/tinyjs/entry.ts`), `file read` in 33 ms
+end to end on macOS arm64. Steps 2–6 open.
 
 **M10 — Access model and managed hosts** (`sessions-and-targets.md`,
 `managed-hosts.md`; depends on M9)

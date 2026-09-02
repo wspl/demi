@@ -384,7 +384,12 @@ a payload nor an entry, tinyjs prints its usage and exits with 2.
   `tinyjsc`. Dependencies are those listed under "Protocols come from
   crates".
 - `@demicodes/host-runner` — the Host over the tinyjs API (TypeScript, runs
-  only on tinyjs, inside the runner).
+  only on tinyjs, inside the runner). Its `/testing` entry finds the
+  binaries and bundles an entry for tinyjs (Bun, one ESM file, `tinyjs:*`
+  external), which is how the Host conformance suite of
+  `@demicodes/shell/testing` runs on tinyjs from `cargo`-free Bun tests.
+- The bundle's entry is `packages/runner/src/tinyjs/entry.ts`: the name
+  tinyjs was invoked by selects runner mode or the root command.
 - The primitive conformance suite is JS (`packages/tinyjs/conformance`),
   run on the bare binary as `tinyjs conformance/main.mjs` and driven by
   `cargo test`, which provisions ports, a test CA and the Bun stub server.
