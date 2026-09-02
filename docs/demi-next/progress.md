@@ -1169,3 +1169,53 @@ only network users are the WebSocket to the backend, HTTP for uploads and
 transfers, and the UDS relay, so those are the exposed level. pty, servers,
 mount/netlink, watch, workers, wasm and compression are explicitly outside
 the first version.
+
+## Shell spike 2: LLRT module crates (2026-09-02)
+
+Question: assemble the shell from LLRT's per-module crates (`llrt_fs`,
+`llrt_net`, `llrt_fetch`, `llrt_timers`, `llrt_url`, …, rquickjs 0.11,
+Apache-2.0) instead of writing the primitives. Built in the Lima `fc`
+instance (`/opt/fc/shell2`), tested on the Lima host and inside a
+cold-cache Firecracker guest alongside spike 1's bare-rquickjs shell.
+
+Measured:
+
+| | spike 1 (bare rquickjs) | spike 2 (LLRT crates) |
+|---|---|---|
+| binary | 1.45 MB | 5.5 MB (3.15 MB without fetch: hyper + rustls are 2.35 MB) |
+| hello first exec, guest, cold | 0.18 s (same boot) | 0.25 s |
+| hello second exec | 0.02 s | 0.02 s |
+
+Worked unchanged: timers (ordering, interval, 2 ms sleep error), fs
+operations incl. symlink/chmod/readdir types, UDS listen/connect by path,
+HTTP GET/PUT and HTTPS via ring, `import()` of absolute paths, a resolver
+guard that refuses `fs` etc. from file-loaded modules while the embedded
+entry (named under `/embedded/`) sees them — this is the mechanism
+`shell.md` specifies for keeping `demishell:*` private.
+
+Fell short: no errno `code` on any fs or net error (message text only);
+socket `write()` returns nothing and there is no `drain`, the queue is
+unbounded; fetch has no ReadableStream — `Response.body` is undefined and
+request bodies must be in-memory bytes or Blob (guest GET of 16 MB took
+1.36 s); `readFile` of 50 MB took 2.2 s in the guest against 0.25 s for a
+chunked read with a reused 1 MB buffer and 0.02 s for `cat`; `crypto`
+and `structuredClone` absent; the build needs cmake for the compression
+feature.
+
+Environment fact, independent of the runtime: first touch of 50 MB of
+fresh memory in the guest is 0.93 s, the second 0.16 s — nested
+virtualization makes fresh pages expensive, which is why every large
+buffer must be allocated once at its known size in Rust.
+
+Decision: everything is ours. What LLRT provided correctly is the trivial
+part; everything with semantics we depend on needs rewriting anyway.
+Considered and closed in the same discussion: a C shell on QuickJS +
+libuv + libcurl (no memory safety for a PID 1 that faces the network,
+static musl builds of libcurl + TLS are the harder packaging problem, and
+libcurl's one real advantage — proxy handling — is a small feature we
+implement in `demishell:net`); tokio's and rustls's reputations (the
+`Send` friction disappears on a current-thread runtime, and rustls on the
+`ring` backend with a platform verifier on user hosts is the settled
+choice). Size levers recorded in `shell.md` Packaging: lazy network
+initialisation, per-package opt-level, no hyper/tungstenite, ring, trimmed
+tokio features, QuickJS without bignum; UPX and nightly build-std rejected.
