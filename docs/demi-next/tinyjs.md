@@ -36,7 +36,7 @@ by:
  │  job table · tee · UDS relay          │    │  runtime → run module with ctx        │
  │  manifest cache                       │    │  rpc → UDS → runner → backend         │
  ├───────────────────────────────────────┤    ├───────────────────────────────────────┤
- │  @demicodes/host-tinyjs       (JS)    │    │  @demicodes/host-tinyjs       (JS)    │
+ │  @demicodes/host-runner       (JS)    │    │  @demicodes/host-runner       (JS)    │
  │  the Host contract over the tinyjs API│    │  the Host contract over the tinyjs API│
  ╞═══════════════════════════════════════╡    ╞═══════════════════════════════════════╡
  │  tinyjs API (private)        (Rust)   │    │  tinyjs API (private)        (Rust)   │
@@ -53,7 +53,7 @@ by:
 Two layers of API meet in tinyjs, with different audiences:
 
 - The **tinyjs API** — the primitives the binary exposes to JS. Private:
-  only `@demicodes/host-tinyjs` and the runner use it.
+  only `@demicodes/host-runner` and the runner use it.
 - The **command ABI** (`commands.md`) — what a `runtime` command module
   sees. Public. A module never touches the tinyjs API; the Host
   implementation between them is the seam.
@@ -92,7 +92,7 @@ runtime:
 - **Built-in modules under the `tinyjs:` scheme**, one per area:
   `tinyjs:fs`, `tinyjs:process`, `tinyjs:net`, `tinyjs:bytes`,
   `tinyjs:runtime`. Bundles treat the scheme as external;
-  `@demicodes/host-tinyjs` is the only package that imports it, declares
+  `@demicodes/host-runner` is the only package that imports it, declares
   its types, and exports the typed wrappers the runner and
   `@demicodes/command-loader` use. The tinyjs module loader resolves
   `tinyjs:*` **only for the embedded bundle**: a module loaded from a
@@ -112,14 +112,14 @@ runtime:
   string codes (`ENOENT`, `EACCES`, …), so `errorCode` in
   `@demicodes/utils` and the existing Host error mapping apply unchanged.
 - **Cancellation is `close` or `kill`.** The primitives do not know
-  `AbortSignal`; host-tinyjs maps it.
-- `tinyjs:runtime` exports `version` and `abi`, two numbers; host-tinyjs
+  `AbortSignal`; host-runner maps it.
+- `tinyjs:runtime` exports `version` and `abi`, two numbers; host-runner
   checks the abi at start.
 
 ### Primitives
 
 Every primitive is there because one of the three JS blocks in the stack
-needs it; nothing is there for generality. Paths are absolute (host-tinyjs
+needs it; nothing is there for generality. Paths are absolute (host-runner
 resolves against the cwd first). Handles (`fd`, process ids, sockets,
 listeners) are integers with an explicit `close`.
 
@@ -140,7 +140,7 @@ write(fd, data): Promise<void>                 // resolves once the bytes are in
 close(fd)
 ```
 
-`rm -r`, `cp` and `mv` across devices are composed in host-tinyjs from
+`rm -r`, `cp` and `mv` across devices are composed in host-runner from
 these.
 
 **`tinyjs:process`** — runner jobs, Host `spawn`, the Claude Code CLI:
@@ -262,27 +262,35 @@ LLRT's module crates were evaluated and rejected (`progress.md`): what they
 provided correctly was the trivial part, while the primitives with
 semantics we depend on fell short.
 
-The Host implementation `@demicodes/host-tinyjs` maps the `Host` contract
-(`packages/shell/src/host.ts`) onto these primitives, exactly as
-`@demicodes/host-local` maps it onto Node.
+The Host implementation `@demicodes/host-runner` maps the `Host` contract
+(`packages/shell/src/host.ts`) onto these primitives. It is the Host every
+user host and managed host serves through its runner; the backend's end of
+the same connection is `RemoteHost` in `@demicodes/runner-protocol`
+(`runner.md`).
 
 ## Entry modes
 
 tinyjs is a prebuilt runtime that carries no Demi JS of its own. A
 deliverable is made the way `bun build --compile` and Node's single
 executable applications make one: the bundle is **packed** onto a copy of
-the binary, no compiler involved.
+the bare binary. The packing is done by **`tinyjsc`**, a second binary
+built from the same crate and released together with tinyjs; tinyjs itself
+carries no packing code and parses no packing arguments — it only reads
+the section at start.
 
-**Packed binary.** The bundle is compiled to QuickJS bytecode and placed
-in a section of the executable by `tinyjs --pack`, through `libsui`, the
-injector behind `deno compile`: on Mach-O a new segment with the load
-commands adjusted and an ad-hoc signature applied, on ELF a `PT_NOTE`
-grafted after the image. At start tinyjs asks `libsui::find_section` for
-it in its own mapped image and loads the bytecode without parsing; nothing
-is read from disk and no source is scanned. Bytecode is always used, there
-is no source option: it is tied to the interpreter build, which is fine
-because packing is done by the release it will run on. The packed file is
-one file on disk, reached through symlinks:
+**Packed binary.** `tinyjsc` compiles the bundle to QuickJS bytecode with
+the interpreter of its own release and places it in a section of the bare
+executable through `libsui`, the injector behind `deno compile`: on Mach-O
+a new segment with the load commands adjusted and an ad-hoc signature
+applied, on ELF a `PT_NOTE` grafted after the image. At start tinyjs asks
+`libsui::find_section` for it in its own mapped image and loads the
+bytecode without parsing; nothing is read from disk and no source is
+scanned. Bytecode is always used, there is no source option. Bytecode is
+tied to the interpreter build, so the section carries the release's
+`version` and `abi` (the two numbers `tinyjs:runtime` exports): `tinyjsc`
+reads the bare binary's release marker and refuses a binary of another
+release, and tinyjs refuses at start a section whose `abi` is not its own.
+The packed file is one file on disk, reached through symlinks:
 
 - `demi-runner` — **runner mode**: runs the runner program (`runner.md`).
 - any other name — **command mode**: runs the loader with `argv[0]` as the
@@ -292,20 +300,22 @@ one file on disk, reached through symlinks:
 
 The mode is selected by `argv[0]` inside the bundle; Rust parses no
 arguments. There is no separate JS file to install and no `node_modules`
-on a target. Packing is tinyjs's own job, as it is Bun's and Deno's:
+on a target. Packing is a separate tool because packing is always cross:
+one machine packs every target, and the runtime carries no code it never
+runs on a target.
 
 ```
-tinyjs --pack <bundle.mjs> --out <file> [--bin <bare tinyjs of another platform>]
+tinyjsc <bundle.mjs> --bin <bare tinyjs of the target platform> --out <file>
 ```
 
 Compiling the bundle resolves its import graph with the real loader, so a
-bundle importing something that does not exist fails at pack time. `--bin`
-packs another platform's bare binary of the same release, so one machine
+bundle importing something that does not exist fails at pack time. The
+bare binary is any platform's build of the same release, so one machine
 packs every target (all four targets are 64-bit little-endian, so the
 bytecode is the same). The result passes `codesign --verify --strict` on
 macOS; a distributed build replaces the ad-hoc signature with the Developer
 ID at release time. macOS binaries are linked with `-headerpad` so the
-injected load command has room, and `--pack` refuses a binary without it
+injected load command has room, and `tinyjsc` refuses a binary without it
 rather than overwrite the start of `__text`. A packed binary parses no
 arguments of its own: everything goes to the bundle. Two other mechanisms
 were measured and rejected (`progress.md`): appending after the Mach-O
@@ -349,15 +359,20 @@ a payload nor an entry, tinyjs prints its usage and exits with 2.
   its own test CA instead.
 - Version reported in the runner `hello`; the backend refuses a tinyjs older
   than the protocol it speaks.
+- `tinyjsc` is built for the machines that pack (developer machines and
+  CI), never shipped to a target; a release is the bare `tinyjs` per
+  target plus one `tinyjsc`, all from one crate version.
 
 ## Packages
 
-- `packages/tinyjs` — the Rust crate: `src/` split by area (event
-  loop, loader, handles, fs, process, net with connect/tls/ws/http/uds,
-  bytes, runtime, globals). Dependencies are those listed under "Protocols
-  come from crates".
-- `@demicodes/host-tinyjs` — the Host over the tinyjs API (TypeScript, runs
-  only on tinyjs).
+- `packages/tinyjs` — the Rust crate, two binaries: `tinyjs`, the runtime,
+  and `tinyjsc`, the packer. `src/` is split by area (event loop, loader,
+  handles, fs, process, net with connect/tls/ws/http/uds, bytes, runtime,
+  globals); the packer's injection and the release check live only in
+  `tinyjsc`. Dependencies are those listed under "Protocols come from
+  crates".
+- `@demicodes/host-runner` — the Host over the tinyjs API (TypeScript, runs
+  only on tinyjs, inside the runner).
 - The primitive conformance suite is JS (`packages/tinyjs/conformance`),
   run on the bare binary as `tinyjs conformance/main.mjs` and driven by
   `cargo test`, which provisions ports, a test CA and the Bun stub server.

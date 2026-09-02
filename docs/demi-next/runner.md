@@ -66,12 +66,18 @@ init duties (`managed-hosts.md`).
   commands/<hash>/       manifest cache: tree + modules, by manifest hash
 ```
 
-Dependency footprint: `@demicodes/host-tinyjs`, `@demicodes/runner-protocol`,
+Dependency footprint: `@demicodes/host-runner`, `@demicodes/runner-protocol`,
 `@demicodes/command-loader` (cache and relay only), `@demicodes/utils`. No
 agent, coding-agent or provider packages.
 
 Nothing in the backend executes commands in-process; every real machine
 is reached through a runner.
+
+The Host a runner serves is `@demicodes/host-runner`, the `Host` contract
+over tinyjs's primitives. The backend's end of the same connection is
+`RemoteHost` (`@demicodes/runner-protocol`), which forwards each Host call
+over the socket. They are the two ends of one Host: what `RemoteHost` is
+asked, `host-runner` performs on the machine.
 
 ## Connection model
 
