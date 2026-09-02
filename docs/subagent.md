@@ -195,8 +195,6 @@ interface SubagentProfile {
   description: string
   systemPrompt?: AgentHarness<State>['systemPrompt']
   commands?(parent: Command[]): Command[]
-  /** When true, `host()` must reject writes. Command allowlists are not enough. */
-  readonly?: boolean
   /** Same provider runtime as the parent (`provider.clone()`), optional model override. */
   model?: ModelSelection
 }
@@ -247,8 +245,9 @@ that only states a role still uses that inherited prompt unless it sets
 memory, or a sibling roster. A harness that loads those for the parent (for
 example in `systemPrompt` / `preamble`) loads them for a child that inherits
 that harness. A profile that replaces `systemPrompt` opts out. Explore-style
-profiles that want a cheap, instruction-light worker replace the prompt and
-keep the Host read-only.
+profiles that want a cheap, instruction-light worker replace the prompt; a
+profile is a prompt and a command set, never a restriction the Host
+enforces.
 
 Never copied into a non-clone child:
 
@@ -409,7 +408,7 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
 |---|---|
 | `@demicodes/shell` | Foreground registered commands (signal, live IO, stdin stream) |
 | `@demicodes/agent` | Supervisor, `demi agent` injection, protocol frames, child `AgentSession` |
-| `@demicodes/coding-agent` | Optional named profiles (`explore` read-only Host, `default`) |
+| `@demicodes/coding-agent` | Optional named profiles (`explore`, `default`) |
 | harness / product | Extra profiles, Host wrapping, UI over `AgentClient` |
 
 `@demicodes/coding-agent` does not instantiate `AgentSession`.

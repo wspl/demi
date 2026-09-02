@@ -91,8 +91,6 @@ export interface SubagentProfile<State = unknown> {
   systemPrompt?(ctx: AgentSystemPromptContext<State>): Promise<string> | string
   /** Derives the child's registered commands from the parent's list. */
   commands?(parentCommands: Command[]): Command[]
-  /** Reject filesystem writes and process spawns on the child's Host. */
-  readonly?: boolean
   model?: ModelSelection
 }
 
