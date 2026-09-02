@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M8 delivered; M9 in progress: steps 1–3 delivered |
+| Status | M0–M8 delivered; M9 in progress: steps 1–4 delivered |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -94,7 +94,8 @@ In dependency order, lightest first:
    the CLI's `rpc` path; the manifest served to the runner and its
    symlinks for the root set; the backend's shell environment for real
    hosts over the job messages.
-4. What rests on the job table: the brokered cross-host transfer and
+4. What rests on the job table: the brokered cross-host transfer
+   (`demi host shell --id`, the transfer messages, the backend broker) and
    browser-bound media by reference.
 5. `@demicodes/host-virtual` reduced to the store-backed Host, its spawn
    refusal deleted.
@@ -126,7 +127,16 @@ symlinks; the backend's `RemoteShellEnvironment`, manifest push and rpc
 relay; the M1, M4 and M6 suites run on the tinyjs runner, a pipeline
 crosses the wire as its view and exit only, `demi todo` round-trips the
 relay, a runner killed mid-command is a tool error and the reconnect
-resumes. Steps 4–6 open.
+resumes. Step 4 delivered — brokered transfers: `transfer_send` /
+`transfer_receive` / `rpc_transfer` / `transfer_done`, the backend's
+transfer broker with `PUT`/`GET /api/transfers/:id`, `demi host list` and
+`demi host shell --id` running the script as a job on the named host with
+its stdout file transferred (a 300 KB tree copied between two tinyjs
+runners with the runner sockets carrying only the view and control
+frames; a hostless caller takes the bytes in-process); media by
+reference to the browser: outbound transcript frames carry `{ type:
+'ref', ref, mediaType }` and `GET /api/blobs/:sha256` serves the bytes.
+Steps 5–6 open.
 
 **M10 — Access model and managed hosts** (`sessions-and-targets.md`,
 `managed-hosts.md`; depends on M9)

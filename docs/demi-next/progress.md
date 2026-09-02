@@ -1960,6 +1960,65 @@ Pitfalls, each one a rule now:
 - A running command's `stdout.delta` was empty until exit: the record's
   text must grow with the streamed chunks, not only its chunk list.
 
+### Step 4: transfers and media by reference (2026-09-03) — delivered
+
+The plan as presented and accepted: the transfer's unit is a job's stdout
+file; `demi host shell --id` runs the script as a job on the named host
+and moves that file over HTTP; a caller on a device fetches it through
+its own runner (`rpc_transfer`), a hostless caller takes the bytes
+in-process; `transfer_receive` is the symmetric file end for M10's
+hostless → managed placement; the browser gets transcript media as
+`{ type: 'ref', ref, mediaType }` plus `GET /api/blobs/:sha256`.
+
+Landed:
+
+- Protocol (v3): `transfer_send`, `transfer_receive`, `rpc_transfer`
+  (b → r) and `transfer_done` (r → b). `url` is origin-relative; the
+  runner resolves it against its backend URL and authenticates with the
+  device token.
+- host-runner: `httpUploadFile`, `httpGet`, `writeStreamToFile` over
+  `tinyjs:net.httpRequest` (file bodies stream; response bodies are
+  handles).
+- runner: `TransferClient`; runner mode answers the two transfer messages
+  with `transfer_done`; the relay writes a call's replies through one
+  per-call chain so an `rpc_transfer` body finishes before `rpc_exit`.
+- backend: `TransferBroker` (single-use ids, source/destination device
+  checks, the `PUT` held until the `GET` or the in-process consumer
+  drained, timeouts, `deviceGone`), `/api/transfers/:id` routes, the
+  registry's `transferSend` / `transferReceive` settled by
+  `transfer_done` and failed on disconnect, the relayed rpc io carrying
+  the calling device as a `transferDestination`; the `demi host` group
+  gains `list` and `shell --id`, with `prev shell` on a machine routed
+  through the same `runOnHost`; the reachable set is one function
+  (`reachableHosts`) for M10's grant table to widen. `GET
+  /api/blobs/:sha256`; the conversation-scoped transport externalizes
+  media on every outbound transcript frame; the web UI resolves a `ref`
+  source to the blob URL.
+- Tests: `transfers.test.ts` (runner end against a fake backend: receive
+  into a file, send a file, a refused exchange reported),
+  `transfer-broker.test.ts` (runner-to-runner pipe, in-process consumer,
+  timeout, wrong device, disconnect), `host-shell.test.ts` (two tinyjs
+  runners, a 300 KB file copied by `tar` through `host shell --id`, the
+  wire audit — the source socket carries `job_*` and the transfer
+  control frames, the caller's socket carries under 1 KB of `rpc_output`
+  — a refused id, and the hostless caller reading the copy), the
+  attachments test asserting the `ref` form live and after restore and
+  the blob route. A `trace` option on the registry records every message
+  per device for such audits.
+
+Pitfalls:
+
+- A Bun server that answers a `PUT` without reading its body resets the
+  connection, so the client sees `ECONNRESET` instead of the status. The
+  broker refuses unknown ids without draining (a large body would be
+  waste); the runner reports the reset as the failure, which is enough.
+- The command parser takes a rest field only after a literal `--`; a
+  script given as one quoted argument is a positional (`positionals:
+  ['script']`).
+- The wire audit's first cut asserted "no `rpc_output` frames" on the
+  caller's socket and tripped over `demi host list`'s own lines; the
+  assertion is now a byte count, and the trace carries whole messages.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
