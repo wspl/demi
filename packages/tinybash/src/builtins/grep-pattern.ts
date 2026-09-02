@@ -1,21 +1,7 @@
 import { outside } from '../outside/reasons'
+import { classRegexBody } from '../grammar/posix-classes'
 
 export type Dialect = 'basic' | 'extended' | 'fixed'
-
-const BRACKET_CLASSES: Record<string, string> = {
-  alpha: 'A-Za-z',
-  digit: '0-9',
-  alnum: 'A-Za-z0-9',
-  upper: 'A-Z',
-  lower: 'a-z',
-  space: ' \\t\\n\\r\\f\\v',
-  blank: ' \\t',
-  punct: '!-\\/:-@\\[-`{-~',
-  print: ' -~',
-  graph: '!-~',
-  cntrl: '\\x00-\\x1f\\x7f',
-  xdigit: '0-9A-Fa-f',
-}
 
 function isAsciiLetter(ch: string): boolean {
   return /^[A-Za-z]$/.test(ch)
@@ -53,10 +39,11 @@ function bracket(pattern: string, open: number, ignoreCase: boolean): { source: 
       const close = pattern.indexOf(`${kind}]`, i + 2)
       if (close === -1) return null
       if (kind !== ':') return null
-      const cls = BRACKET_CLASSES[pattern.slice(i + 2, close)]
-      if (cls === undefined) return null
+      const name = pattern.slice(i + 2, close)
+      const cls = classRegexBody(name)
+      if (cls === null) return null
       out += cls
-      if (ignoreCase && (cls === 'A-Z' || cls === 'a-z')) out += cls === 'A-Z' ? 'a-z' : 'A-Z'
+      if (ignoreCase && (name === 'upper' || name === 'lower')) out += classRegexBody(name === 'upper' ? 'lower' : 'upper')!
       i = close + 2
       continue
     }

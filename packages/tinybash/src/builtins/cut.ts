@@ -1,10 +1,11 @@
 import type { Builtin } from './io'
-import { parseFlags, value } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, value } from './flags'
 import { lazyInputs } from './inputs'
 import { encodeLatin1, utf8AsLatin1 } from '@demicodes/utils'
 import { lines } from '../exec/stream'
 import { tryHelp } from './errors'
+
+export const cutSpec: FlagSpec = { switches: [], valued: ['d', 'f'] }
 
 /** A field list like `1,3-5,7-` into a membership test (1-based). */
 function parseList(list: string): ((field: number) => boolean) | null {
@@ -28,7 +29,7 @@ function parseList(list: string): ((field: number) => boolean) | null {
 }
 
 export const cut: Builtin = async (ctx) => {
-  const flags = parseFlags('cut', ctx.argv, SPECS.cut, ctx.line)
+  const flags = parseFlags('cut', ctx.argv, cutSpec, ctx.line)
   const list = value(flags, 'f')
   const raw = value(flags, 'd')
   const delimiter = raw === undefined ? undefined : utf8AsLatin1(raw)

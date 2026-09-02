@@ -1,15 +1,16 @@
 import { checkCancelled, type Builtin, type BuiltinContext } from './io'
-import { parseFlags, has, value } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has, value } from './flags'
 import { translatePattern } from './grep-pattern'
 import { lines } from '../exec/stream'
 import { strerror } from './errors'
-import { collectBytes, compareUtf8Bytes, encodeLatin1, errorCode, utf8AsLatin1 } from '@demicodes/utils'
+import { bytesStream, collectBytes, compareUtf8Bytes, encodeLatin1, errorCode, utf8AsLatin1 } from '@demicodes/utils'
 import { guardedStdin } from './inputs'
+
+export const grepSpec: FlagSpec = { switches: ['n', 'i', 'v', 'c', 'l', 'r', 'E', 'F'], valued: ['A', 'B', 'C'] }
 
 /** The files after the pattern; also the parse-time check of the flags and the pattern. */
 export function grepPaths(argv: readonly string[], line: number): string[] {
-  const flags = parseFlags('grep', argv, SPECS.grep, line)
+  const flags = parseFlags('grep', argv, grepSpec, line)
   if (flags.operands.length === 0) return []
   translatePattern(flags.operands[0]!, has(flags, 'F') ? 'fixed' : has(flags, 'E') ? 'extended' : 'basic', has(flags, 'i'), line)
   return flags.operands.slice(1).filter((operand) => operand !== '-')
@@ -33,7 +34,7 @@ function contextLength(raw: string | undefined): number | null {
 }
 
 export const grep: Builtin = async (ctx) => {
-  const flags = parseFlags('grep', ctx.argv, SPECS.grep, ctx.line)
+  const flags = parseFlags('grep', ctx.argv, grepSpec, ctx.line)
   if (flags.operands.length === 0) {
     await ctx.stderr(`Usage: grep [OPTION]... PATTERNS [FILE]...\nTry 'grep --help' for more information.\n`)
     return 2
@@ -120,14 +121,10 @@ async function grepPath(ctx: BuiltinContext, path: string, display: string, opti
 }
 
 
-async function* oneChunk(bytes: Uint8Array): AsyncIterable<Uint8Array> {
-  if (bytes.length > 0) yield bytes
-}
-
 async function grepBytes(ctx: BuiltinContext, bytes: Uint8Array, display: string, options: Options): Promise<boolean> {
   const binary = bytes.includes(0)
   const all: string[] = []
-  for await (const line of lines(oneChunk(bytes))) all.push(line.text)
+  for await (const line of lines(bytesStream(bytes))) all.push(line.text)
   const selected = all.map((text) => options.regex.test(text) !== options.invert)
   const count = selected.filter(Boolean).length
   const prefix = options.withNames ? utf8AsLatin1(display) : ''

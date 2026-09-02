@@ -1,10 +1,11 @@
 import type { Builtin } from './io'
-import { parseFlags, has, value } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has, value } from './flags'
 import { openInputs } from './inputs'
 import { compareCodeUnits, encodeLatin1 } from '@demicodes/utils'
 import { lines } from '../exec/stream'
 import { tryHelp } from './errors'
+
+export const sortSpec: FlagSpec = { switches: ['r', 'n', 'u'], valued: ['k'] }
 
 /** GNU `-n`: leading blanks, an optional sign, digits, an optional fraction; anything else is 0. */
 function numericCompare(a: string, b: string): number {
@@ -33,7 +34,7 @@ function keyFrom(line: string, field: number): string {
 }
 
 export const sort: Builtin = async (ctx) => {
-  const flags = parseFlags('sort', ctx.argv, SPECS.sort, ctx.line)
+  const flags = parseFlags('sort', ctx.argv, sortSpec, ctx.line)
   const reverse = has(flags, 'r')
   const numeric = has(flags, 'n')
   const unique = has(flags, 'u')
@@ -41,7 +42,7 @@ export const sort: Builtin = async (ctx) => {
   let field = 0
   if (keyRaw !== undefined) {
     if (!/^[1-9]\d*$/.test(keyRaw)) {
-      await ctx.stderr(`sort: ${/^0/.test(keyRaw) ? `invalid number at field start: invalid count at start of '${keyRaw}'` : `invalid number at field start: invalid count at start of '${keyRaw}'`}\n`)
+      await ctx.stderr(`sort: invalid number at field start: invalid count at start of '${keyRaw}'\n`)
       return 2
     }
     field = Number(keyRaw)

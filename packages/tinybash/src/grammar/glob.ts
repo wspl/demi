@@ -1,6 +1,8 @@
 import type { HostFileSystem } from '@demicodes/shell'
 import { outside } from '../outside/reasons'
+import { isDirectory } from '../exec/fs'
 import type { Piece } from './expand'
+import { classRegexBody } from './posix-classes'
 import { compareUtf8Bytes, utf8AsLatin1 } from '@demicodes/utils'
 
 /** Whether any non-literal piece carries a pattern character. */
@@ -60,17 +62,6 @@ function findBracketClose(text: string, open: number): number {
   return -1
 }
 
-const CLASSES: Record<string, string> = {
-  alpha: 'A-Za-z',
-  digit: '0-9',
-  alnum: 'A-Za-z0-9',
-  upper: 'A-Z',
-  lower: 'a-z',
-  space: ' \\t\\n\\r\\f\\v',
-  blank: ' \\t',
-  punct: '!-\\/:-@\\[-`{-~',
-  xdigit: '0-9A-Fa-f',
-}
 
 /** The inside of a `[...]` bracket expression to a JS character class. */
 export function bracketToRegex(inner: string): string {
@@ -85,8 +76,8 @@ export function bracketToRegex(inner: string): string {
     if (ch === '[' && inner[i + 1] === ':') {
       const end = inner.indexOf(':]', i + 2)
       const name = inner.slice(i + 2, end)
-      const cls = CLASSES[name]
-      if (cls === undefined) return '(?!)'
+      const cls = classRegexBody(name)
+      if (cls === null) return '(?!)'
       out += cls
       i = end + 2
       continue
@@ -158,7 +149,7 @@ export async function expandGlob(field: readonly Piece[], cwd: string, fs: HostF
         const path = joinGlob(base, name)
         if (last && !trailingSlash) {
           if (await fs.exists(path, { cwd })) next.push(path)
-        } else if (await isDirectory(fs, path, cwd)) {
+        } else if ((await isDirectory(fs, cwd, path)) === true) {
           next.push(path)
         }
         continue
@@ -177,7 +168,7 @@ export async function expandGlob(field: readonly Piece[], cwd: string, fs: HostF
         if (!regex.test(utf8AsLatin1(name))) continue
         const path = joinGlob(base, name)
         if (!last || trailingSlash) {
-          if (!(await isDirectory(fs, path, cwd))) continue
+          if ((await isDirectory(fs, cwd, path)) !== true) continue
         }
         next.push(path)
       }
@@ -197,10 +188,3 @@ function joinGlob(base: string, name: string): string {
   return `${base}/${name}`
 }
 
-async function isDirectory(fs: HostFileSystem, path: string, cwd: string): Promise<boolean> {
-  try {
-    return (await fs.stat(path, { cwd })).isDirectory
-  } catch {
-    return false
-  }
-}

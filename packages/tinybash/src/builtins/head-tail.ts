@@ -1,9 +1,13 @@
 import type { Builtin, BuiltinContext } from './io'
-import { type ParsedFlags, parseFlags, value } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, type ParsedFlags, parseFlags, value } from './flags'
 import { lazyInputs } from './inputs'
-import { collectBytes, decodeLatin1, encodeLatin1 } from '@demicodes/utils'
+import { bytesStream, collectBytes, encodeLatin1 } from '@demicodes/utils'
+import { lines } from '../exec/stream'
 import { outside } from '../outside/reasons'
+
+export const headSpec: FlagSpec = { switches: [], valued: ['n', 'c'] }
+
+export const tailSpec: FlagSpec = { switches: [], valued: ['n', 'c'] }
 
 function parseCount(raw: string): number | null {
   if (!/^[0-9]+$/.test(raw)) return null
@@ -31,18 +35,12 @@ async function eachInput(ctx: BuiltinContext, program: string, operands: readonl
   return status
 }
 
-/** Splits into lines keeping each newline attached, as GNU counts them. */
-function splitKeepNewlines(text: string): string[] {
-  const out: string[] = []
-  let start = 0
-  for (;;) {
-    const index = text.indexOf('\n', start)
-    if (index === -1) break
-    out.push(text.slice(start, index + 1))
-    start = index + 1
-  }
-  if (start < text.length) out.push(text.slice(start))
-  return out
+/** The input's lines with their newlines attached, as GNU counts them. */
+async function lineParts(bytes: Uint8Array): Promise<string[]> {
+  const parts: string[] = []
+  for await (const line of lines(bytesStream(bytes))) parts.push(line.newline ? `${line.text}
+` : line.text)
+  return parts
 }
 
 /** The obsolete `-N` spelling GNU still accepts, rewritten to `-n N`. */
@@ -59,7 +57,7 @@ function obsoleteCount(argv: readonly string[]): string[] {
 
 /** Signed counts (`-n -5`, `tail -c +3`) are GNU forms outside the whitelist. */
 function parseCounted(program: 'head' | 'tail', argv: readonly string[], line: number): ParsedFlags {
-  const flags = parseFlags(program, obsoleteCount(argv), SPECS[program], line)
+  const flags = parseFlags(program, obsoleteCount(argv), (program === 'head' ? headSpec : tailSpec), line)
   const n = value(flags, 'n')
   const c = value(flags, 'c')
   if (n !== undefined && (n.startsWith('-') || (program === 'head' && n.startsWith('+')))) outside({ kind: 'flag', program, flag: `-n ${n}`, line })
@@ -81,7 +79,7 @@ export const head: Builtin = async (ctx) => {
       await ctx.stdout(bytes.subarray(0, count))
       return
     }
-    const parts = splitKeepNewlines(decodeLatin1(bytes)).slice(0, count)
+    const parts = (await lineParts(bytes)).slice(0, count)
     if (parts.length > 0) await ctx.stdout(encodeLatin1(parts.join('')))
   })
 }
@@ -102,7 +100,7 @@ export const tail: Builtin = async (ctx) => {
       await ctx.stdout(bytes.subarray(Math.max(0, bytes.length - count)))
       return
     }
-    const parts = splitKeepNewlines(decodeLatin1(bytes))
+    const parts = (await lineParts(bytes))
     const selected = fromStart ? parts.slice(Math.max(0, count - 1)) : count === 0 ? [] : parts.slice(Math.max(0, parts.length - count))
     if (selected.length > 0) await ctx.stdout(encodeLatin1(selected.join('')))
   })

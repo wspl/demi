@@ -1,9 +1,10 @@
 import type { Builtin } from './io'
-import { parseFlags } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags } from './flags'
+
+export const pwdSpec: FlagSpec = { switches: [], valued: [] }
 
 export const pwd: Builtin = async (ctx) => {
-  parseFlags('pwd', ctx.argv, SPECS.pwd, ctx.line)
+  parseFlags('pwd', ctx.argv, pwdSpec, ctx.line)
   await ctx.stdout(`${ctx.cwd}\n`)
   return 0
 }

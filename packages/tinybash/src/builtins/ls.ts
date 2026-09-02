@@ -1,9 +1,10 @@
 import type { HostFileStat } from '@demicodes/shell'
 import { checkCancelled, type Builtin, type BuiltinContext } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { quoteC, strerror } from './errors'
 import { compareUtf8Bytes, encodeLatin1, utf8AsLatin1 } from '@demicodes/utils'
+
+export const lsSpec: FlagSpec = { switches: ['l', 'a', '1', 'R'], valued: [] }
 
 interface Entry {
   name: string
@@ -44,7 +45,7 @@ function blocks(stat: HostFileStat): number {
 }
 
 export const ls: Builtin = async (ctx) => {
-  const flags = parseFlags('ls', ctx.argv, SPECS.ls, ctx.line)
+  const flags = parseFlags('ls', ctx.argv, lsSpec, ctx.line)
   const long = has(flags, 'l')
   const all = has(flags, 'a')
   const recursive = has(flags, 'R')

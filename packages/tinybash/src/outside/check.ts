@@ -3,7 +3,7 @@ import type { Command, Script } from '../grammar/ast'
 import { type ExpansionScope, type Piece, expandSingle, expandToFields, fieldText } from '../grammar/expand'
 import { hasGlobChars } from '../grammar/glob'
 import { BUILTINS } from '../builtins/table'
-import { normalizePath } from '@demicodes/utils'
+import { basenamePath, normalizePath } from '@demicodes/utils'
 import { insideNamespace, resolvePath } from './namespace'
 import { outside } from './reasons'
 
@@ -112,7 +112,7 @@ export async function checkScript(script: Script, context: CheckContext): Promis
       // become sources, so every operand is checked as a source of the last one.
       if ((name === 'mv' || name === 'cp') && paths.length >= 2) {
         const destination = paths[paths.length - 1]!
-        for (const source of paths) checkPath(state.cwd, `${destination}/${lastComponent(source)}`, line)
+        for (const source of paths) checkPath(state.cwd, `${destination}/${basenamePath(source)}`, line)
       }
       if (RESHAPING_BUILTINS.has(name)) reshaped = true
       if (name === 'cd' && !inPipeline) {
@@ -157,10 +157,6 @@ export async function checkScript(script: Script, context: CheckContext): Promis
 }
 
 /** The last path component as `mv`/`cp` name the target (`a/b/` → `b`, `a/..` → `..`). */
-function lastComponent(path: string): string {
-  const trimmed = path.replace(/\/+$/, '')
-  return trimmed.slice(trimmed.lastIndexOf('/') + 1)
-}
 
 function dedupe(states: Snapshot[]): Snapshot[] {
   const seen = new Map<string, Snapshot>()

@@ -7,7 +7,8 @@ import { runTinybash } from '../index'
 import { stubRoots } from '../testing'
 import { CASES, type CorpusCase } from './corpus/cases'
 import { buildFixture } from './corpus/fixture'
-import { type Golden, HOME_TOKEN, goldenPath, latin1, normalizeHome, runOnBash } from './corpus/generate'
+import { concatBytes, decodeLatin1, toBytes } from '@demicodes/utils'
+import { type Golden, HOME_TOKEN, goldenPath, normalizeHome, runOnBash } from './corpus/generate'
 
 /**
  * The equivalence corpus: tinybash against the goldens real GNU bash produced
@@ -18,9 +19,9 @@ import { type Golden, HOME_TOKEN, goldenPath, latin1, normalizeHome, runOnBash }
 const collect = () => {
   const chunks: Uint8Array[] = []
   const write = (data: string | Uint8Array) => {
-    chunks.push(typeof data === 'string' ? new TextEncoder().encode(data) : data)
+    chunks.push(toBytes(data))
   }
-  return { write, text: () => latin1(Buffer.concat(chunks)) }
+  return { write, text: () => decodeLatin1(concatBytes(chunks)) }
 }
 
 export async function runCase(testCase: CorpusCase, identity: { user: string; group: string }): Promise<Golden> {

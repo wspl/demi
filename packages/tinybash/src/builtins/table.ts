@@ -2,26 +2,26 @@ import type { Builtin } from './io'
 import type { FlagSpec } from './flags'
 import { parseFlags } from './flags'
 import { outside } from '../outside/reasons'
-import { cat } from './cat'
+import { cat, catSpec } from './cat'
 import { cd } from './cd'
-import { cp, mv } from './cp-mv'
-import { cut } from './cut'
+import { cp, cpSpec, mv, mvSpec } from './cp-mv'
+import { cut, cutSpec } from './cut'
 import { echo } from './echo'
 import { find, findPaths } from './find'
-import { grep, grepPaths } from './grep'
-import { head, headTailPaths, tail } from './head-tail'
-import { ls } from './ls'
-import { mkdir } from './mkdir'
+import { grep, grepPaths, grepSpec } from './grep'
+import { head, headSpec, headTailPaths, tail, tailSpec } from './head-tail'
+import { ls, lsSpec } from './ls'
+import { mkdir, mkdirSpec } from './mkdir'
 import { printf, printfPaths } from './printf'
-import { falseBuiltin, pwd, trueBuiltin } from './pwd-true-false'
-import { rm } from './rm'
-import { sed, sedPaths } from './sed'
-import { sort } from './sort'
+import { falseBuiltin, pwd, pwdSpec, trueBuiltin } from './pwd-true-false'
+import { rm, rmSpec } from './rm'
+import { sed, sedPaths, sedSpec } from './sed'
+import { sort, sortSpec } from './sort'
 import { makeTest, testPaths } from './test'
-import { touch } from './touch'
-import { tr } from './tr'
-import { uniq } from './uniq'
-import { wc } from './wc'
+import { touch, touchSpec } from './touch'
+import { tr, trSpec } from './tr'
+import { uniq, uniqSpec } from './uniq'
+import { wc, wcSpec } from './wc'
 
 /**
  * A builtin's entry in the whitelist: its flags, how to find the path operands
@@ -43,50 +43,30 @@ function entry(name: string, spec: FlagSpec, run: Builtin, paths?: BuiltinEntry[
 
 const none: BuiltinEntry['paths'] = () => []
 
-export const SPECS = {
-  grep: { switches: ['n', 'i', 'v', 'c', 'l', 'r', 'E', 'F'], valued: ['A', 'B', 'C'] },
-  head: { switches: [], valued: ['n', 'c'] },
-  tail: { switches: [], valued: ['n', 'c'] },
-  cat: { switches: ['n'], valued: [] },
-  ls: { switches: ['l', 'a', '1', 'R'], valued: [] },
-  wc: { switches: ['l', 'w', 'c'], valued: [] },
-  sort: { switches: ['r', 'n', 'u'], valued: ['k'] },
-  uniq: { switches: ['c'], valued: [] },
-  cut: { switches: [], valued: ['d', 'f'] },
-  tr: { switches: ['d'], valued: [] },
-  sed: { switches: ['n'], valued: [] },
-  mkdir: { switches: ['p'], valued: [] },
-  rm: { switches: ['r', 'f'], valued: [] },
-  cp: { switches: ['r'], valued: [] },
-  mv: { switches: [], valued: [] },
-  touch: { switches: [], valued: [] },
-  pwd: { switches: [], valued: [] },
-} satisfies Record<string, FlagSpec>
-
 export const BUILTINS: ReadonlyMap<string, BuiltinEntry> = new Map<string, BuiltinEntry>([
-  entry('grep', SPECS.grep, grep, grepPaths),
-  entry('head', SPECS.head, head, headTailPaths('head')),
-  entry('tail', SPECS.tail, tail, headTailPaths('tail')),
-  entry('cat', SPECS.cat, cat),
+  entry('grep', grepSpec, grep, grepPaths),
+  entry('head', headSpec, head, headTailPaths('head')),
+  entry('tail', tailSpec, tail, headTailPaths('tail')),
+  entry('cat', catSpec, cat),
   ['echo', { flags: null, paths: none, run: echo }],
   ['printf', { flags: null, paths: printfPaths, run: printf }],
-  entry('ls', SPECS.ls, ls),
+  entry('ls', lsSpec, ls),
   ['find', { flags: null, paths: findPaths, run: find }],
-  entry('wc', SPECS.wc, wc),
-  entry('sort', SPECS.sort, sort),
-  entry('uniq', SPECS.uniq, uniq),
-  entry('cut', SPECS.cut, cut),
-  entry('tr', SPECS.tr, tr, (argv, line) => {
-    parseFlags('tr', argv, SPECS.tr, line)
+  entry('wc', wcSpec, wc),
+  entry('sort', sortSpec, sort),
+  entry('uniq', uniqSpec, uniq),
+  entry('cut', cutSpec, cut),
+  entry('tr', trSpec, tr, (argv, line) => {
+    parseFlags('tr', argv, trSpec, line)
     return []
   }),
-  entry('sed', SPECS.sed, sed, sedPaths),
-  entry('mkdir', SPECS.mkdir, mkdir),
-  entry('rm', SPECS.rm, rm),
-  entry('mv', SPECS.mv, mv),
-  entry('cp', SPECS.cp, cp),
-  entry('touch', SPECS.touch, touch),
-  entry('pwd', SPECS.pwd, pwd),
+  entry('sed', sedSpec, sed, sedPaths),
+  entry('mkdir', mkdirSpec, mkdir),
+  entry('rm', rmSpec, rm),
+  entry('mv', mvSpec, mv),
+  entry('cp', cpSpec, cp),
+  entry('touch', touchSpec, touch),
+  entry('pwd', pwdSpec, pwd),
   ['true', { flags: null, paths: none, run: trueBuiltin }],
   ['false', { flags: null, paths: none, run: falseBuiltin }],
   ['test', { flags: null, paths: (argv, line) => testPaths('test', argv, line), run: makeTest('test') }],
