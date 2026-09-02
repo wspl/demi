@@ -7,8 +7,6 @@
     "packages/agent",
     "packages/core",
     "packages/utils",
-    "packages/host-local",
-    "packages/host-runner",
     "packages/provider",
     "packages/provider-codex",
     "packages/provider-claude-code",
@@ -22,12 +20,10 @@
     "packages/tinybash",
     "packages/command-loader",
     "packages/runner-protocol",
+    "packages/host-remote",
     "packages/runner",
-    "packages/repl",
     "packages/web-ui",
-    "packages/agent-eval",
-    "packages/web",
-    "packages/just-bash/packages/just-bash"
+    "packages/web"
   ],
   "scripts": {
     "check:registry": "bun run scripts/check-public-registry.ts",
@@ -40,13 +36,10 @@
     "release": "bun run scripts/release.ts",
     "web:dev": "bun --filter @demicodes/web dev",
     "web:server": "bun run packages/web/src/server/index.ts",
-    "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/host-local/src packages/host-runner/src packages/runner/src packages/tinybash/src packages/command-loader/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/provider-google/src packages/provider-grok-build/src packages/repl/src packages/web-ui/src packages/web/src packages/agent-eval/src",
+    "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/tinybash/src packages/command-loader/src packages/runner-protocol/src packages/host-remote/src packages/host-virtual/src packages/runner/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/provider-google/src packages/provider-grok-build/src packages/web-ui/src packages/web/src",
     "fixtures:compaction:build": "bun run packages/agent/fixtures/compaction/build-fixture.ts",
     "fixtures:compaction:verify": "bun run packages/agent/fixtures/compaction/verify-compaction.ts",
-    "fixtures:compaction:verify-switch": "bun run packages/agent/fixtures/compaction/verify-window-switch.ts",
-    "test:just-bash-core": "bun test packages/just-bash/packages/just-bash/src/syntax/parser-protection.test.ts packages/just-bash/packages/just-bash/src/syntax/parser-edge-cases.test.ts packages/just-bash/packages/just-bash/src/syntax/parse-errors.test.ts",
-    "repl": "bun run packages/repl/src/index.ts",
-    "agent-eval": "bun run packages/agent-eval/src/cli.ts"
+    "fixtures:compaction:verify-switch": "bun run packages/agent/fixtures/compaction/verify-window-switch.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
