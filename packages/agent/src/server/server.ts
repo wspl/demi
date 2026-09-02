@@ -20,30 +20,10 @@ export interface AgentServerSessionOptions {
   persistIntervalMs?: number
 }
 
-/**
- * Host-agnostic hook invoked before each resolved Host's ShellEnvironment is built.
- * A product uses this to inject PATH / env for a Host; AgentServer
- * itself does not know about UDS, shims, or bin directories.
- */
-export interface PrepareShellContext {
-  agentSessionId: string
-  host: Host
-  commandNames: readonly string[]
-  /** Shell options from AgentServer construction (before this hook). */
-  shell: ShellEnvironmentOptions
-}
-
-export type PrepareShell = (
-  ctx: PrepareShellContext,
-) =>
-  | ShellEnvironmentOptions
-  | Promise<ShellEnvironmentOptions>
-
 export interface ShellEnvironmentContext {
   agentSessionId: string
   host: Host
   commands: CommandRegistry
-  /** Shell options after `prepareShell`. */
   shell: ShellEnvironmentOptions
 }
 
@@ -79,8 +59,6 @@ export interface AgentServerOptions {
      */
     notifyParentOnIdle?: boolean
   }
-  /** Optional host-side shell prep (env, PATH, etc.). Implementation-agnostic. */
-  prepareShell?: PrepareShell
   /** The shell engine per Host. */
   shellEnvironment: ShellEnvironmentFactory
   /**
@@ -102,7 +80,6 @@ export class AgentServer {
   private readonly resolveProvider: ProviderResolver
   private readonly shellOptions: ShellEnvironmentOptions
   private readonly sessionOptions: AgentServerSessionOptions
-  private readonly prepareShell: PrepareShell | null
   private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly notifyParentOnIdle: boolean
   private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
@@ -117,7 +94,6 @@ export class AgentServer {
       : options.providers
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
-    this.prepareShell = options.prepareShell ?? null
     this.shellEnvironment = options.shellEnvironment
     this.notifyParentOnIdle = options.subagents?.notifyParentOnIdle ?? true
     this.sessionStore = options.sessionStore ?? null
@@ -137,7 +113,6 @@ export class AgentServer {
       resolveProvider: this.resolveProvider,
       shell: this.shellOptions,
       session: this.sessionOptions,
-      prepareShell: this.prepareShell,
       shellEnvironment: this.shellEnvironment,
       notifyParentOnIdle: this.notifyParentOnIdle,
       sessions: this.sessionOwnership,

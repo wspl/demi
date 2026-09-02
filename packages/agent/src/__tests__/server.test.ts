@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { type ShellEnvironmentOptions } from '@demicodes/shell'
-import { hostlessShellFactory, probeCommand } from '@demicodes/command-loader/testing'
+import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
 import { loadPersistedSession } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import {
   defineProvider,
   type AgentProvider,
@@ -372,7 +372,6 @@ test('AgentServer bridges shell_write frames to the active shell command', async
       status: 'running',
       shellId: 'agent-input-shell',
       commandId: 'agent-input-command',
-      artifactDir: expect.any(String),
       stdout: expect.objectContaining({ delta: '', truncated: false }),
       stderr: expect.objectContaining({ delta: '', tail: '', bytes: 0, truncated: false }),
       output: expect.objectContaining({ chunks: expect.any(Array) }),

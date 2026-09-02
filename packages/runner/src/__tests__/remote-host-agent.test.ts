@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentServer, type AgentHarness, type ClientSessionEvent } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
@@ -41,7 +41,6 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-runner-state-'))
   const remoteHost = new RemoteHost({
     defaultCwd: runnerDir,
-    commandArtifactsDir: join(stateDir, 'output'),
     identity: new LocalHost(runnerDir).identity,
     store: memoryHostStore(),
   })

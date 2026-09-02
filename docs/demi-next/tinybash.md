@@ -315,14 +315,14 @@ expansions), `outside/` (the refusal table and the parse-first checks),
 state) and `builtins/` (one file per builtin over a shared flag parser,
 the whitelist declared as a table).
 
-Demi meets it in `@demicodes/shell/hostless`: `HostlessEnvironment`
+Demi meets it in `@demicodes/host-virtual`: `HostlessEnvironment`
 implements the `ShellEnvironment` contract behind the `shell_*` tools by
 running tinybash over a Host's `fs` (which satisfies `TinybashFs`) with
-the loader's `rootPaths` and `dispatch`; command records, views and
-artifacts are the ones every engine shares. The backend composes it for
-hostless conversations; tests compose it over `LocalHost`
-(`@demicodes/shell/node`) wherever a shell is needed without a
-machine.
+the loader's `rootPaths` and `dispatch`; command records and views are the
+ones every engine shares, and nothing beyond the model's view is kept.
+The backend composes it for hostless conversations; tests compose it over
+`LocalHost` (`@demicodes/host-virtual/testing`) wherever a shell is
+needed without a machine.
 
 ## What tinybash is not
 

@@ -6,3 +6,4 @@ export {
   type VirtualHostOptions,
 } from './virtual-host'
 export { scopedFsBackend } from './scoped-backend'
+export { HostlessEnvironment, type HostlessEnvironmentOptions } from './hostless-environment'

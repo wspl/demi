@@ -1,14 +1,5 @@
 export interface Host {
   defaultCwd: string
-  /**
-   * Directory where command artifacts (stdout.txt / stderr.txt / stdout.bin /
-   * meta.json) are written as plain files, laid out as
-   * `<dir>/<storageId>/<commandId>/`. Contract: the path is reachable through
-   * `fs` AND visible to processes started via `process.spawn` — one shared
-   * filesystem namespace, so any tool (portable or real) can read and search
-   * artifacts with ordinary file operations.
-   */
-  commandArtifactsDir: string
   fs: HostFileSystem
   process: HostProcess
   store: HostStore
@@ -43,7 +34,8 @@ export interface HostFileSystem {
 }
 
 export interface HostProcess {
-  spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
+  /** Absent on a Host that runs no processes (the hostless Host): a provider that needs one says so. */
+  spawn?(params: HostSpawnParams): Promise<HostSpawnHandle>
   openCwd(path: string): Promise<HostCwd>
 }
 

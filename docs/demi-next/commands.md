@@ -128,7 +128,7 @@ tinybash cannot run is run on a machine instead.
 | Where a `runtime` module runs | in a command-mode tinyjs process on the target | in the backend process |
 | The `ctx.fs` it sees | the target's real filesystem (the runner's machine layer) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
-| The shell environment behind the `shell_*` tools | `RemoteShellEnvironment` (`host-remote`: jobs on the runner) | `HostlessEnvironment` (`@demicodes/shell/hostless`: tinybash over the Host); same command records, views and artifacts |
+| The shell environment behind the `shell_*` tools | `RemoteShellEnvironment` (`host-remote`: jobs on the runner) | `HostlessEnvironment` (`host-virtual`: tinybash over the Host); same command records and views |
 | Where files live | on the target | in `conversations/<id>.sqlite` |
 | Where full output lives | output files on the target; the model reads past the view with commands | nowhere beyond the view: no tee, the shell runs in the backend |
 | Bytes on the wire | script, the model's view, exit, rpc args/output | none |
@@ -221,7 +221,7 @@ import readModule from './read.command.ts' with { type: 'text' }
 Bun honors the `text` import attribute natively (development, tests, the
 backend). tsdown does not — rolldown resolves the file as a module — so
 every package that declares runtime leaves builds with the
-`commandModulesAsText` plugin from `@demicodes/shell/build`, which serves
+`commandModulesAsText` plugin from `@demicodes/command-loader/build`, which serves
 `*.command.ts` files as text by name; the built package carries the module
 text inline. TypeScript types the import as the module, not as a string,
 so `runtimeModule` is the one declared conversion, and it checks at
@@ -371,19 +371,21 @@ is the same path with the argv quoted into a script.
 ## Packages
 
 - `@demicodes/shell` keeps the `Command` types (tree, input/output specs,
-  `CommandContext`, `CommandResult`, path marks, `runtimeModule`), the
-  `commandModulesAsText` build plugin under `@demicodes/shell/build`, the
-  Host contract, and under `@demicodes/shell/hostless` the
+  `CommandContext`, `CommandResult`, path marks, `runtimeModule`), the Host
+  contract and the `ShellEnvironment` contract. It carries no engine.
+- `@demicodes/host-virtual` is the hostless target: `VirtualHost` and
   `HostlessEnvironment` — the `ShellEnvironment` of a hostless
-  conversation, tinybash over a Host with the loader's root paths and
-  dispatcher injected. It carries no interpreter of its own.
+  conversation, tinybash over the Host with the loader's root paths and
+  dispatcher injected — beside each other the way `host-remote` holds a
+  machine's Host and shell.
 - `@demicodes/coding-agent` declares the `demi` root's agent-facing groups
   with the `kind` on each leaf; the `runtime` leaves are `*.command.ts`
   files written against the ABI. A library user declares their own root
   the same way, with the same types.
 - `@demicodes/command-loader` is new: the manifest types, the manifest
-  build (`buildManifest`, the transpiler injected), the loader and
-  `rootPaths`.
+  build (`buildManifest`, the transpiler injected), the loader,
+  `rootPaths`, and the `commandModulesAsText` build plugin under
+  `@demicodes/command-loader/build`.
 - `@demicodes/tinybash` is the hostless shell — parser, executor and the
   GNU-faithful builtins over its own system interface (a filesystem, a
   script's stdio, a root-command dispatcher; `tinybash.md` § Interface).

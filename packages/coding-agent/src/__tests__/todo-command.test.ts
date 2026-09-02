@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { type ShellEnvironment } from '@demicodes/shell'
-import { hostlessShell } from '@demicodes/command-loader/testing'
-import { LocalHost } from '@demicodes/shell/node'
+import { hostlessShell } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { createCodingCommandRegistry } from '../index'
 
 test('todo command supports add/list/update/done with raw and JSON output', async () => {

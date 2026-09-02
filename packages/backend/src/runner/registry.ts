@@ -217,7 +217,6 @@ export class RunnerRegistry {
     if (!host) {
       host = new RemoteHost({
         defaultCwd: workspace.path,
-        commandArtifactsDir: `${workspace.path}/.demi-artifacts`,
         identity: this.identities.get(workspace.deviceId) ?? { uid: 0, gid: 0, hostname: 'offline' },
         store,
       })

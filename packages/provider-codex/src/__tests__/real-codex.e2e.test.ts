@@ -10,8 +10,8 @@ import {
   type AgentToolInvokeResult,
 } from '@demicodes/agent'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
-import { hostlessShell } from '@demicodes/command-loader/testing'
-import { LocalHost } from '@demicodes/shell/node'
+import { hostlessShell } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { FileCodexAuthStore } from '../auth'
 import { CodexProvider } from '../provider'
 

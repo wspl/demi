@@ -166,8 +166,6 @@ export class RemoteShellEnvironment implements ShellEnvironment {
       id,
       shellId: shell.id,
       commandStorageId: shell.commandStorageId,
-      // Filled from job_exit: the runner names where its tee wrote.
-      artifactDir: '',
       script,
       outputLimitBytes: this.defaultOutputLimitBytes,
     })
@@ -207,11 +205,12 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     if (exit.cwd) shell.cwd = exit.cwd
     if (exit.spawnError) {
       const message = exit.signal && exit.spawnError.kind === 'other' ? exit.signal : `bash: ${exit.spawnError.kind}`
-      settleExited(record, 127, decodeUtf8(concatBytes(head.stdout)), `${decodeUtf8(concatBytes(head.stderr))}${message}\n`, undefined, [])
+      settleExited(record, 127, decodeUtf8(concatBytes(head.stdout)), `${decodeUtf8(concatBytes(head.stderr))}${message}\n`, undefined)
       return
     }
     const output = exit.output
-    if (output) record.artifactDir = output.stdoutPath.slice(0, output.stdoutPath.lastIndexOf('/'))
+    // The runner names where its tee wrote: the output files are the target's.
+    if (output) record.outputDir = output.stdoutPath.slice(0, output.stdoutPath.lastIndexOf('/'))
     const stdout = streamText(concatBytes(head.stdout), output?.stdoutBytes ?? 0, output?.stdoutTail, output?.stdoutPath)
     const stderr = streamText(concatBytes(head.stderr), output?.stderrBytes ?? 0, output?.stderrTail, output?.stderrPath)
     // A binary final stream: the whole stream is on the target, read back by
@@ -221,7 +220,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     if (output && stdout.binary && output.stdoutBytes <= this.binaryLimitBytes) {
       const bytes = await this.host.fs.readFile(output.stdoutPath).catch(() => null)
       if (bytes) {
-        const boundary = finalStdoutBoundary(bytes, this.binaryLimitBytes, record.artifactDir)
+        const boundary = finalStdoutBoundary(bytes, this.binaryLimitBytes, output.stdoutPath)
         stdoutText = boundary.text
         binary = boundary.binary
       }
@@ -230,7 +229,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     // stand as they were streamed; the settled texts cover the same bytes.
     record.outputChunks = []
     const exitCode = exit.exitCode ?? (exit.signal === 'SIGTERM' || exit.signal === 'SIGKILL' ? 130 : 128)
-    settleExited(record, exitCode, stdoutText, stderr.text, binary, [])
+    settleExited(record, exitCode, stdoutText, stderr.text, binary)
   }
 
   private markAborted(running: RunningJob): void {

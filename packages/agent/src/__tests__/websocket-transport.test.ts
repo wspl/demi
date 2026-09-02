@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test'
-import { hostlessShellFactory } from '@demicodes/command-loader/testing'
+import { hostlessShellFactory } from '@demicodes/host-virtual/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {

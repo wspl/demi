@@ -1,9 +1,10 @@
 // The hostless shell environment (`commands.md` § Hostless): tinybash over
-// a Host, root commands through an injected dispatcher, no process
-// anywhere. This is where Demi's Host contract and command ABI meet
-// tinybash's own system interface; tinybash itself depends on neither.
+// the hostless Host, root commands through an injected dispatcher, no
+// process anywhere. This is where Demi's Host contract and command ABI
+// meet tinybash's own system interface; tinybash itself depends on
+// neither. Beside `VirtualHost` the way `RemoteShellEnvironment` sits
+// beside `RemoteHost`: one execution target, its Host and its shell.
 import {
-  CommandArtifactStore,
   DEFAULT_BINARY_LIMIT_BYTES,
   DEFAULT_CAPTURE_LIMIT_BYTES,
   DEFAULT_OUTPUT_LIMIT_BYTES,
@@ -14,7 +15,6 @@ import {
   finalStdoutBoundary,
   normalizeTimeoutMs,
   settleExited,
-  type BashAuditEvent,
   type Host,
   type ShellAbortInput,
   type ShellCommandRecord,
@@ -24,7 +24,7 @@ import {
   type ShellExecInput,
   type ShellStatusInput,
   type ShellWriteInput,
-} from './index'
+} from '@demicodes/shell'
 import { runTinybash, type DispatchIO, type RootPaths, type ShellState } from '@demicodes/tinybash'
 import { ByteQueue, concatBytes, delay, errorMessage, isAbsolutePath, toBytes } from '@demicodes/utils'
 
@@ -82,7 +82,6 @@ export class HostlessEnvironment implements ShellEnvironment {
   private readonly defaultOutputLimitBytes: number
   private readonly binaryLimitBytes: number
   private readonly captureLimitBytes: number
-  private readonly artifacts: CommandArtifactStore
   private readonly shells = new Map<string, HostlessShell>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
   private readonly commandsById = new Map<string, ShellCommandRecord>()
@@ -101,7 +100,6 @@ export class HostlessEnvironment implements ShellEnvironment {
     this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
     this.binaryLimitBytes = options.maxBinaryBytes ?? DEFAULT_BINARY_LIMIT_BYTES
     this.captureLimitBytes = options.maxCaptureBytes ?? DEFAULT_CAPTURE_LIMIT_BYTES
-    this.artifacts = new CommandArtifactStore(this.host)
   }
 
   getShell(shellId: string): { id: string } | null {
@@ -172,7 +170,6 @@ export class HostlessEnvironment implements ShellEnvironment {
     if (!record) return false
     if (record.status === 'running') await this.abort({ commandId })
     this.commandsById.delete(commandId)
-    await this.artifacts.release(record.commandStorageId, commandId)
     return true
   }
 
@@ -198,7 +195,6 @@ export class HostlessEnvironment implements ShellEnvironment {
       id,
       shellId: shell.id,
       commandStorageId: shell.commandStorageId,
-      artifactDir: this.artifacts.dirFor(shell.commandStorageId, id),
       script,
       outputLimitBytes: this.defaultOutputLimitBytes,
     })
@@ -209,7 +205,6 @@ export class HostlessEnvironment implements ShellEnvironment {
       else callerSignal.addEventListener('abort', () => controller.abort(), { once: true })
     }
     const stdin = new ByteQueue()
-    const audit: BashAuditEvent[] = []
     const stdoutBytes: Uint8Array[] = []
     const stdoutDecoder = new TextDecoder()
     const stderrDecoder = new TextDecoder()
@@ -237,7 +232,6 @@ export class HostlessEnvironment implements ShellEnvironment {
       namespace: this.namespace,
       dispatch: async (root, argv, io) => {
         const exitCode = await this.dispatch(root, argv, io)
-        audit.push({ kind: 'registered-command', name: root, args: [...argv], exitCode })
         return exitCode
       },
       fs: this.host.fs,
@@ -253,13 +247,13 @@ export class HostlessEnvironment implements ShellEnvironment {
         (result) => {
           if (overflowed) {
             const message = `hostless shell: output exceeded the ${this.captureLimitBytes}-byte capture limit and the command was stopped; narrow the output at the source (filters, head, tighter paths)\n`
-            return this.finish(running, 137, stdoutBytes, `${record.stderr}${message}`, audit)
+            return this.finish(running, 137, stdoutBytes, `${record.stderr}${message}`)
           }
-          if (result.kind === 'outside') return this.finish(running, 2, stdoutBytes, `${record.stderr}${result.message}\n`, audit)
+          if (result.kind === 'outside') return this.finish(running, 2, stdoutBytes, `${record.stderr}${result.message}\n`)
           if (controller.signal.aborted && result.exitCode === 130) return this.markAborted(running)
-          return this.finish(running, result.exitCode, stdoutBytes, record.stderr, audit)
+          return this.finish(running, result.exitCode, stdoutBytes, record.stderr)
         },
-        (error: unknown) => this.finish(running, 1, stdoutBytes, `${record.stderr}hostless shell: ${errorMessage(error)}\n`, audit),
+        (error: unknown) => this.finish(running, 1, stdoutBytes, `${record.stderr}hostless shell: ${errorMessage(error)}\n`),
       )
       .finally(() => {
         stdin.close()
@@ -271,13 +265,12 @@ export class HostlessEnvironment implements ShellEnvironment {
     return running
   }
 
-  private finish(running: RunningCommand, exitCode: number, stdoutBytes: Uint8Array[], stderr: string, audit: BashAuditEvent[]): void {
+  private finish(running: RunningCommand, exitCode: number, stdoutBytes: Uint8Array[], stderr: string): void {
     const { record } = running
     if (record.status !== 'running') return
     const bytes = concatBytes(stdoutBytes)
-    const boundary = finalStdoutBoundary(bytes, this.binaryLimitBytes, record.artifactDir)
-    if (boundary.binary) record.pendingBinaryArtifact = bytes
-    settleExited(record, exitCode, boundary.text, stderr, boundary.binary, audit)
+    const boundary = finalStdoutBoundary(bytes, this.binaryLimitBytes)
+    settleExited(record, exitCode, boundary.text, stderr, boundary.binary)
   }
 
   private markAborted(running: RunningCommand): void {
@@ -288,7 +281,7 @@ export class HostlessEnvironment implements ShellEnvironment {
   }
 
   private view(record: ShellCommandRecord): ShellCommandStatus {
-    return commandStatusView(record, this.defaultOutputLimitBytes, this.artifacts)
+    return commandStatusView(record, this.defaultOutputLimitBytes)
   }
 
   private requireShell(shellId: string): HostlessShell {

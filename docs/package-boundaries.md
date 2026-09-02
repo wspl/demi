@@ -41,27 +41,27 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/shell`
 
 - Status: implemented.
-- Production deps: `@demicodes/tinybash` (the `hostless` entry only), `@demicodes/utils`.
-- Owns: the Host contract (`defaultCwd`, `identity`, `fs`, `process` including `openCwd` / spawn-error kinds, `store`), `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`), the command system — command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `RootPaths`, path marks, `runtimeModule`, `importCommandModule`), `CommandRegistry` (the reserved-name set injected by the engine), HostStore-scoped command storage — the `ShellEnvironment` contract behind the `shell_*` tools with its command records, the model's status view and the artifact store (shared by every engine), shell quoting, and audit.
-- Entries: the root is the command system and the Host contract and runs on every runtime (Bun, tinyjs; the runner bundles it). `storage` and `build` (the `commandModulesAsText` build plugin) are platform-neutral too. `hostless` is `HostlessEnvironment`: the `ShellEnvironment` of a hostless conversation — tinybash over a Host, root commands through an injected dispatcher — where the Host contract and the command ABI meet tinybash's own system interface. `node` is the contract over Node: `nodeFileSystem`, the Host filesystem over `fs/promises` and the backing of the store-backed Host on the backend machine, and `LocalHost`, the whole contract over this Node process's machine (`nodeFileSystem` plus child processes and a directory-fd cwd), which tests run against a real directory. `testing` is the in-memory store and the Host conformance suite (`hostConformanceCases`, run by every Host implementation), runtime-neutral so the suite runs on tinyjs. No entry carries a shell interpreter: the engines are tinybash (hostless) and the runner's job table (machines).
+- Production deps: `@demicodes/utils`.
+- Owns three contracts and nothing that implements them. **The Host contract** (`host.ts`): `defaultCwd`, `identity`, `fs`, `process` (`openCwd`; `spawn` optional — absent on a Host that runs no processes), `store`; `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`). **The command system** (`command.ts`, `command-abi.ts`, `storage.ts`, `reserved-names.ts`, `shell-quote.ts`): command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `RootPaths`, path marks, `runtimeModule`, `importCommandModule`), `CommandRegistry` with the one reserved-name table, HostStore-scoped command storage. **The shell-environment contract** (`shell-environment.ts`, `command-records.ts`): `ShellEnvironment` behind the `shell_*` tools, the command record, the model's status view (each stream's delta since the last view, its tail, and the output path when the target keeps one). Engines live with their Hosts: `HostlessEnvironment` in `host-virtual`, `RemoteShellEnvironment` in `host-remote`.
+- Entries: the root runs on every runtime (Bun, tinyjs; the runner bundles it); `storage` too. `testing` is the in-memory store and the Host conformance suite (`hostConformanceCases`, run by every Host implementation; the process cases apply only to a Host with `spawn`), runtime-neutral so the suite runs on tinyjs. No entry imports Node.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
 - An `rpc` command's `run` receives the invoking shell's Host in its context; command implementations use that Host instead of closing over an assembly-time Host.
 - Runtime state such as command JSON state and agent session snapshots goes through `Host.store`; do not keep a separate top-level store adapter boundary.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
-- Must not: import `@demicodes/agent`, `@demicodes/provider`, concrete providers, `@demicodes/coding-agent`, or the runner packages; the root and the platform-neutral entries must not import Node.
+- Must not: import `@demicodes/agent`, `@demicodes/provider`, concrete providers, `@demicodes/coding-agent`, a Host implementation, tinybash, or Node.
 
 ### `@demicodes/agent`
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: AgentSession, AgentServer, AgentClient, action-scoped caller metadata, transcript replay, compaction, `AgentSession.clone()` for isolated snapshot copies (see `docs/provider-session-clone.md`), transport frames, transcript patches, action-aware Host resolution, per-Host shell-environment reuse and shell-handle ownership checks, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, host-agnostic `prepareShell`, in-parent subagent supervision (ChildSupervisor, the injected `demi agent` command, subagent profiles, and the `subagent*` protocol frames; see `docs/subagent.md`), and assembly of one harness with the standard shell runtime.
+- Owns: AgentSession, AgentServer, AgentClient, action-scoped caller metadata, transcript replay, compaction, `AgentSession.clone()` for isolated snapshot copies (see `docs/provider-session-clone.md`), transport frames, transcript patches, action-aware Host resolution, per-Host shell-environment reuse and shell-handle ownership checks, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, in-parent subagent supervision (ChildSupervisor, the injected `demi agent` command, subagent profiles, and the `subagent*` protocol frames; see `docs/subagent.md`), and assembly of one harness with the standard shell runtime.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpath `@demicodes/agent/stdio` for stdio transport only.
 - The shell behind the `shell_*` tools is the `ShellEnvironment` contract; `AgentServer` takes a required `shellEnvironment` factory per Host, so a product supplies the engine and the agent never knows which one runs (the backend: `HostlessEnvironment` for a `VirtualHost`, `RemoteShellEnvironment` for a `RemoteHost`; tests: `HostlessEnvironment` over `LocalHost`).
 - Must not: import concrete providers, Host implementations, or UI packages; must not own a shell interpreter.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
-- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, the `shellEnvironment` factory, optional `prepareShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target.
+- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, the `shellEnvironment` factory, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target.
 - Layout (directories mirror the package's modules; root keeps entrypoints, `types.ts`, and single-file modules like `tools.ts`):
   - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction).
   - `transcript/` — the TranscriptLog mutation journal and patch application.
@@ -147,11 +147,11 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/backend`
 
 - Status: implemented through M9 (Web API, conversation module, two-plane storage, runner management, LLM module/vault/accounting, the hostless shell, brokered transfers, media by reference; managed hosts M10, auth M11).
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/host-virtual`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell` (root, `hostless`, `node`), `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
+- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/host-virtual`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
 - Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (`ManagedHostProvisioner` driving Firecracker under jailer through the privileged helper, images and the home-image store, lifecycle/hibernate, the backend-contributed `demi host` subcommand group), the LLM module (per-connection provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted connections, subscription device-login flows over per-connection provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
-- May assemble: concrete providers, AgentServer, `VirtualHost` over `nodeFileSystem` (its backing on the backend machine), `RemoteHost`, and the coding harness.
-- Composes the hostless shell: `createHostlessShell` builds the manifest with Bun's transpiler, the loader over the conversation's `VirtualHost` with `rpc` in process, and hands `HostlessEnvironment` (`@demicodes/shell/hostless`) the root paths and the dispatcher; `HOSTLESS_HOME` (`/home/demi`) and `HOSTLESS_NAMESPACE` are the backend's constants.
+- May assemble: concrete providers, AgentServer, `VirtualHost` over `nodeFileSystem` (`@demicodes/host-virtual/node`, its backing on the backend machine), `RemoteHost`, and the coding harness.
+- Composes the hostless shell: `createHostlessShell` builds the manifest with Bun's transpiler, the loader over the conversation's `VirtualHost` with `rpc` in process, and hands `HostlessEnvironment` (`@demicodes/host-virtual`) the root paths and the dispatcher; `HOSTLESS_HOME` (`/home/demi`) and `HOSTLESS_NAMESPACE` are the backend's constants.
 - Must not: be imported by any other production package; put business logic in the HTTP layer beyond routing/validation; let providers or credentials cross to runners or browsers.
 - Layout (directories mirror the design record's backend modules):
   - `backend.ts` — the composition root (wire and mount only).
@@ -167,29 +167,29 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-virtual`
 
-- Status: implemented (M2; reduced in M9 to the store-backed Host of hostless conversations).
-- Production deps: `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the hostless execution target — a platform-neutral `Host` over a pluggable `VirtualFsBackend` (virtual-absolute normalized paths): per-conversation namespace with chroot-style clamping, symlink containment, hardcoded per-file/per-conversation quotas (artifact writes exempt), logical cwd; plus `scopedFsBackend`, the real-directory backend adapter (root-prefix translation, symlink/realpath untranslation) the backend feeds with `nodeFileSystem`.
-- Public boundary: `VirtualHost`, `scopedFsBackend`, quota constants from root.
-- `ensureLayout` creates the working directory, the artifact directory and the declared `directories` (the backend passes the hostless namespace).
-- No process facet beyond `openCwd`: a hostless conversation runs tinybash, which spawns nothing; a script needing a program is handed to a machine by the backend (`sessions-and-targets.md`).
-- Must not: perform its own IO (all bytes flow through the injected backend), spawn processes, or hold conversation state (`store` is injected by the composing product).
+- Status: implemented (M2; the hostless target's shell joined it in M9).
+- Production deps: `@demicodes/shell`, `@demicodes/tinybash`, `@demicodes/utils`.
+- Owns: the hostless execution target — its Host and its shell, the way `host-remote` owns a machine's. `VirtualHost`: a platform-neutral `Host` over a pluggable `VirtualFsBackend` (virtual-absolute normalized paths) with per-conversation namespace clamping, symlink containment, hardcoded per-file/per-conversation quotas and a logical cwd; no `spawn` — a hostless conversation runs no processes. `HostlessEnvironment`: the `ShellEnvironment` of a hostless conversation, tinybash over the Host with the loader's root paths and dispatcher injected — where Demi's Host contract and command ABI meet tinybash's own system interface; nothing beyond the model's view is kept. `scopedFsBackend`, the real-directory backend adapter (root-prefix translation, symlink/realpath untranslation).
+- Entries: `node` is `nodeFileSystem`, the Host filesystem over Node's `fs/promises` — the backing of the store-backed Host on the backend machine. `testing` is `hostlessShell` (the hostless shell composed over any Host with Bun's transpiler), `hostlessShellFactory`, the `probe` root (`hold`, `stdin`) that stands in for `sleep` and `read`, and `LocalHost`, the whole Host contract over this Node process's machine (`nodeFileSystem` plus child processes and a directory-fd cwd), which tests run against a real directory.
+- Public boundary: `VirtualHost`, `HostlessEnvironment`, `scopedFsBackend`, quota constants from root; `nodeFileSystem` from `node`; the fixtures from `testing`.
+- `ensureLayout` creates the working directory and the declared `directories` (the backend passes the hostless namespace).
+- Must not: perform its own IO in the root entry (all bytes flow through the injected backend), spawn processes, or hold conversation state (`store` is injected by the composing product).
 
 ### `@demicodes/tinybash`
 
 - Status: implemented (M8; `docs/demi-next/tinybash.md`).
 - Production deps: `@demicodes/utils`.
-- Owns: the hostless shell as standalone infrastructure — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths under every shell state the script can reach), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), the closed set of GNU-faithful builtins, and its own system interface (`src/host.ts`: `TinybashFs`, `TinybashIO`, `DispatchIO`, `RootPaths`) — what it asks of an embedder, declared by tinybash the way any shell declares its system calls. Demi's Host contract and loader are adapted to it by `@demicodes/shell/hostless`, never the other way round.
+- Owns: the hostless shell as standalone infrastructure — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths under every shell state the script can reach), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), the closed set of GNU-faithful builtins, and its own system interface (`src/host.ts`: `TinybashFs`, `TinybashIO`, `DispatchIO`, `RootPaths`) — what it asks of an embedder, declared by tinybash the way any shell declares its system calls. Demi's Host contract and loader are adapted to it by `HostlessEnvironment` in `@demicodes/host-virtual`, never the other way round.
 - Public boundary: `runTinybash`, `parseTinybash`, the `OutsideReason`, the system-interface types from root; stub roots for embedders' tests from `@demicodes/tinybash/testing`.
 - Acceptance implies bash-equivalence: any script it runs means what it means in GNU bash + coreutils; anything else is `outside`, never approximated. The equivalence corpus against real bash is the guarantee's test.
-- Must not: import any Demi package but `@demicodes/utils` in production code (`@demicodes/shell` appears only as a test dependency for the corpus fixtures), know the backend, the manifest format or the loader, spawn processes, perform IO outside the injected `fs`, or run on real hosts.
+- Must not: import any Demi package but `@demicodes/utils` in production code (`@demicodes/shell` and `@demicodes/host-virtual` appear only as test dependencies for the corpus fixtures), know the backend, the manifest format or the loader, spawn processes, perform IO outside the injected `fs`, or run on real hosts.
 
 ### `@demicodes/command-loader`
 
 - Status: implemented (M8; `docs/demi-next/commands.md`); the directory source and module import by path in M9 step 1; the socket source arrives with the runner port.
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the manifest types, the manifest sources (`inMemorySource`; `directorySource` with the `writeManifestDirectory` layout), the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, path-argument resolution, running a `runtime` module from its text or from the source's module file, forwarding an `rpc` invocation) and `rootPaths`, the `RootPaths` derivation tinybash consumes.
-- Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource` / `directorySource` / `writeManifestDirectory`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest`, `rootPaths` from root.
+- Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource` / `directorySource` / `writeManifestDirectory`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest`, `rootPaths` from root; the `commandModulesAsText` build plugin (a `*.command.ts` file served as its text at build time) under `build`, Node-only.
 - Pure JS with no runtime dependency: the same package runs in the backend, in tinyjs command mode and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
 - Must not: know the backend, the runner, tinybash or any Host implementation (all injected), spawn processes, or hold a command definition of its own.
 
@@ -197,7 +197,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
-- Owns: the runner wire and nothing else — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` for Bun, `tinyjs:bytes` on tinyjs), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`, the job environment names).
+- Owns: the runner wire and nothing else — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` for Bun, `tinyjs:bytes` on tinyjs), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
 - Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`. Both ends of the wire depend on this package; it depends on neither end.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
@@ -214,10 +214,10 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented on tinyjs (`src/tinyjs/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; packaging in M13).
 - Production deps: `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; the `tinyjs:*` modules, declared once in `src/machine/tinyjs.d.ts` and imported nowhere outside `src/machine/`.
 - Owns: the runner program (`runner.md`) — the single outbound backend WebSocket with reconnect/backoff and the hello/claim handshake; machine-local state under `DEMI_HOME` (`~/.demi`: `runner.json`, `runner-token` 0600, `runner.sock`, `commands/`, `bin/`, `output/`); the machine served over the protocol (spawns naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact); the job table over the tee; brokered transfers; the local relay and its command-mode client; the manifest cache with the `current` and root symlinks. Command mode: the loader over the machine layer, `rpc` leaves through the relay, the job's live stdin told from a redirection by `fdNode`.
-- Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTinyjsRunner`, `tinyjsBinary` and `bundleForTinyjs` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on tinyjs.
+- Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTinyjsRunner`, `tinyjsBinary` and `bundleForTinyjs` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on tinyjs; `HostRpcServer` and `JobTable` under `@demicodes/runner/serve` for tests that join the runner's end to a `RemoteHost` without a socket.
 - Layout (directories mirror the runner's modules):
   - `machine/` — this machine as the runner sees it: the `Host` contract over tinyjs's primitives (`fs`, `process`, `cwd`, `stdio`), the teed spawn and tail reads for jobs, the WebSocket, Unix-socket and HTTP links, the codec re-export, the process itself (`argv`, `env`, `exit`, `onSignal`, `fdNode`). Accepted by the Host conformance suite on tinyjs. Internal to the runner: the agent never holds it — a machine is reached through `@demicodes/host-remote`.
-  - `serve/` — the runner's end of the protocol: `HostRpcServer` (the `fs_*` and spawn messages over the machine layer) and `JobTable` (jobs over the teed spawn: the `EXIT` trap prelude, the stdin duplicate, the view budget).
+  - `serve/` — the runner's end of the protocol: `HostRpcServer` (the `fs_*` and spawn messages over the machine layer) and `JobTable` (jobs over the teed spawn: the `EXIT` trap prelude, the stdin duplicate, the view budget, the job environment names).
   - `relay/` — the UDS relay: server, client, and its length-prefixed wire.
   - `runner-mode.ts`, `command-mode.ts`, `entry.ts`, `manifest-cache.ts`, `state.ts`, `transfers.ts` — the two entry modes and the machine-local state they share.
 - Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, provider packages, or Node in production code.
@@ -257,7 +257,7 @@ core -> none
 utils -> none
 provider -> core
 tinybash -> utils
-shell -> tinybash, utils
+shell -> utils
 agent -> core, provider, shell, utils
 coding-agent -> agent, core, shell, utils
 provider-claude-code -> core, provider, utils
@@ -266,7 +266,7 @@ provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
-host-virtual -> shell, utils
+host-virtual -> shell, tinybash, utils
 command-loader -> shell, utils
 runner-protocol -> shell, utils
 host-remote -> runner-protocol, shell, utils
@@ -314,7 +314,7 @@ module.
 - Platform-neutral package roots must not statically pull Node-only adapters, concrete providers, UI code, or test helpers into their import closure.
 - Public roots expose stable package contracts only; internal parser, transport, protocol, local adapter, auth-store, stream, and test helpers stay behind implementation files unless a package registry entry explicitly says otherwise.
 - Any workspace package imported by production source must be declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
-- Runtime-specific code (Node, tinyjs) lives behind an entry or directory named for it (`@demicodes/shell/node`, the runner's `machine/`), never in a platform-neutral root.
+- Runtime-specific code (Node, tinyjs) lives behind an entry or directory named for it (`@demicodes/host-virtual/node`, the runner's `machine/`), never in a platform-neutral root.
 - Do not keep compatibility shims when a package split moves an implementation to its final package.
 
 ## Verification

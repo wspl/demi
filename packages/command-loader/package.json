@@ -13,10 +13,10 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
-    "./testing": {
-      "development": "./src/testing.ts",
-      "types": "./dist/testing.d.mts",
-      "import": "./dist/testing.mjs"
+    "./build": {
+      "development": "./src/build.ts",
+      "types": "./dist/build.d.mts",
+      "import": "./dist/build.mjs"
     }
   },
   "files": [
@@ -40,5 +40,8 @@
     "directory": "packages/command-loader"
   },
   "homepage": "https://github.com/wspl/demi/tree/main/packages/command-loader#readme",
-  "bugs": "https://github.com/wspl/demi/issues"
+  "bugs": "https://github.com/wspl/demi/issues",
+  "devDependencies": {
+    "@demicodes/host-virtual": "workspace:^"
+  }
 }
