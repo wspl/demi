@@ -1,11 +1,11 @@
 import { join } from 'node:path'
-import { AgentServer, type ProviderResolver } from '@demicodes/agent'
+import { AgentServer, injectSubagentCommand, subagentCommandShape, type ProviderResolver } from '@demicodes/agent'
 import { createCodingAgentHarness, createDemiCommand } from '@demicodes/coding-agent'
 import { nodeFileSystem } from '@demicodes/host-virtual/node'
 import { VirtualHost } from '@demicodes/host-virtual'
 import { buildManifest, inProcessRpc, type Manifest } from '@demicodes/command-loader'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
-import { AgentSessionCommandStorage, type Command, type CommandIO } from '@demicodes/shell'
+import { AgentSessionCommandStorage, type Command, type CommandIO, type CommandRegistry } from '@demicodes/shell'
 import { toBytes } from '@demicodes/utils'
 import type { Host } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
@@ -13,6 +13,7 @@ import { STUB_USER } from './auth/identity'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { createHostlessShell, transpileCommandModule } from './conversation/hostless-shell'
+import { HOSTLESS_HOME } from './conversation/scoped-transport'
 import { createHostCommandGroup } from './managed/host-command'
 import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
@@ -64,17 +65,24 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   })
 
   // The command tree, defined once: the manifest every runner caches is built
-  // from it, and an rpc command a runner relays runs against the tree of the
-  // conversation the ids in the job's environment name.
+  // from it plus the shape of the `agent` node every session grafts on, and
+  // an rpc command a runner relays runs against the live tree of the session
+  // the ids in the job's environment name — the one its shell was built with.
   let manifest: Promise<Manifest> | null = null
+  const sessionCommands = new Map<string, CommandRegistry>()
   const transfers = new TransferBroker()
   const runnerRegistry = new RunnerRegistry({
     control,
     transfers,
-    manifest: () => (manifest ??= buildManifest(commandsFor(''), { transpile: transpileCommandModule })),
+    manifest: () =>
+      (manifest ??= (async () => {
+        const profiles = (await harness.agents?.({ state: harness.initialState(), cwd: HOSTLESS_HOME })) ?? []
+        const roots = injectSubagentCommand(commandsFor(''), subagentCommandShape(profiles.map((profile) => profile.name)))
+        return buildManifest(roots, { transpile: transpileCommandModule })
+      })()),
     rpc: async (call, io) => {
       const host = await hostFor(call.agentSessionId)
-      const transport = inProcessRpc(commandsFor(call.agentSessionId), {
+      const transport = inProcessRpc(sessionCommands.get(call.agentSessionId)?.list() ?? commandsFor(call.agentSessionId), {
         storage: new AgentSessionCommandStorage(host.store, call.agentSessionId),
         host,
       })
@@ -152,19 +160,21 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const commandsFor = (agentSessionId: string): Command[] => [
     createDemiCommand({ extraSubcommands: [createHostCommandGroup(hostCommandDeps, agentSessionId)] }),
   ]
+  const harness = createCodingAgentHarness({
+    // Shell/reference contexts carry the session id (= conversation id);
+    // session-less contexts get their own scratch namespace.
+    host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
+    commands: (ctx) => commandsFor(ctx.agentSessionId),
+    preamble: switchAnnouncementPreamble(control),
+  })
   const agentServer = new AgentServer({
-    agent: createCodingAgentHarness({
-      // Shell/reference contexts carry the session id (= conversation id);
-      // session-less contexts get their own scratch namespace.
-      host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
-      commands: (ctx) => commandsFor(ctx.agentSessionId),
-      preamble: switchAnnouncementPreamble(control),
-    }),
+    agent: harness,
     providers: resolveProvider,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },
     // A hostless conversation's shell is tinybash over its store-backed Host;
     // a real host's is the runner's job table; no other Host exists.
     shellEnvironment: (ctx) => {
+      sessionCommands.set(ctx.agentSessionId, ctx.commands)
       if (ctx.host instanceof VirtualHost) return createHostlessShell(ctx)
       if (ctx.host instanceof RemoteHost) return new RemoteShellEnvironment({ ...ctx.shell, host: ctx.host })
       throw new Error('the backend runs conversations hostless or through a runner; no other Host exists')
