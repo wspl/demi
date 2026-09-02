@@ -26,10 +26,11 @@ Two product scenarios share one provisioning path (`sessions-and-targets.md`):
   (`conversations.hostDeviceId`), writes the hostless files into its home
   at their own paths, hands over the shell state, and the whole script
   runs there — silently, with no context block
-  (`sessions-and-targets.md`). This requires the home layout to be the
+  (`sessions-and-targets.md`). This requires the guest to match the
   hostless layout: the guest user is `demi`, home is `/home/demi`, the
-  default cwd is the home, and the hostless filesystem is exactly that
-  subtree.
+  default cwd is the home, the login environment is generated from the
+  same table as the hostless `env`, and `/tmp` is placed alongside home
+  at upgrade.
 - **Cloud workspace**: creating a project with the **Cloud** device choice
   provisions one host for that project and creates the workspace on it;
   every conversation under the workspace executes there.
