@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M7 delivered; M8 in close-out (tinyjs fixes, `tinyjsc`, tinyjs in command mode); M9 next |
+| Status | M0–M8 delivered; M9 next |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -61,29 +61,28 @@ The command tree with kinds; the command ABI; the manifest and its build
 step; `@demicodes/command-loader`; file commands as `runtime` modules,
 `todo`/`agent`/`host` as `rpc`; `demi agent spawn` and the group/leaf
 dispatcher rule; `@demicodes/tinybash`; the hostless tool description; two
-embedders: the backend in-process (hostless conversations) and tinyjs in
-command mode running `runtime` commands (its `rpc` path completes in M9);
-a second root beside `demi` in the tests, to prove the mechanism is not
+embedders: the backend in-process (hostless conversations) and the test
+fixture; a second root beside `demi` in the tests, to prove the mechanism is not
 `demi`-specific; `tinyjsc` split out of the tinyjs binary and the packed
-section's release check; the tinyjs fixes the M8 review found.
+section's release check; the tinyjs fixes the M8 review found. tinyjs in
+command mode on a target is M9 work: it is `host-runner` plus the loader's
+runner side plus an entry bundle.
 Accept: a
 hostless conversation runs `demi file` and `demi todo`; heredoc, sequence
 and refusal cases each covered; one `runtime` module behaves identically
 under Bun, on tinyjs and in the test fixture; a third-party embedding
 example using only the loader and a custom Host. Real hosts keep the
 current runner and command bridge untouched through M7–M8.
-Status: the loader, tinybash, hostless conversations and the second root
-are delivered. Close-out, still M8 because nothing in M9 can start on top
-of it unfinished: the tinyjs fixes (`kill` checked against the child
-table, `spawn` with `stdin: "null"`, `import.meta.url` as a URL, the
-`/embedded/` prefix unreachable from a file-loaded module, the packed
-section's `version`/`abi` check), `tinyjsc`, and tinyjs in command mode
-running `runtime` commands.
+Status: delivered — the loader, tinybash, hostless conversations, the
+second root, `tinyjsc` and the tinyjs fixes.
 
 **M9 — Runner on tinyjs, old paths deleted** (`runner.md`; depends on M7, M8)
 In dependency order, lightest first:
 1. `@demicodes/host-runner`, the Host over tinyjs primitives, accepted by
-   the Host conformance suite `host-local` passes today.
+   the Host conformance suite `host-local` passes today and by tinyjs in
+   command mode running one `runtime` command through the loader (a
+   directory `ManifestSource`, module import by file path, an entry bundle
+   selecting the root from `argv[0]`).
 2. The protocol, changed at both ends before the port so the port targets
    the final wire: MessagePack framing, per-op fs messages, `pong` with the
    job count, the one-connection-per-token rule.
@@ -91,9 +90,8 @@ In dependency order, lightest first:
    (foreground, background, kill, exit), session ids in the environment,
    the tee with the bounded view and output files on the target, the
    disconnect semantics; the UDS relay and manifest cache completing the
-   CLI's `rpc` path; the loader's runner side (a directory
-   `ManifestSource`, module import without `blob:`, the manifest served
-   to the runner).
+   CLI's `rpc` path; the manifest served to the runner and its symlinks
+   for the root set.
 4. What rests on the job table and output files: output fetch by
    reference, the brokered cross-host transfer, browser-bound media by
    reference.
@@ -175,7 +173,7 @@ Test modules and their intended coverage, per milestone.
 | M6 | Switch integration (real→real with files staying and an honest context block; mid-turn switch refused; concurrent switch has one winner); offline target → readable and chattable; attachment upload → ref → inline at provider; checkpoint round-trip. |
 | M7 | Primitive conformance suite from JS: fs incl. errno cases and streaming reads; spawn incl. stdin/kill/uid/tee byte counts; WebSocket send backpressure and receive; HTTP request bodies from files and response bodies streamed to a fd; UDS listen mode and accept; MessagePack extension types; timers ordering; globals; `tinyjs:*` refused from a file-loaded module. Build-target matrix; guest cold-start (command-mode hello, cold cache), binary size and tee throughput measured in the Firecracker fixture. |
 | M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, tinyjs and fixture; tinybash grammar and builtin tables, the equivalence corpus against real bash + GNU coreutils in a Linux container (`tinybash.md`); parse-first, session-state and cancellation cases; hostless conversation runs file, todo and builtin pipelines; third-party embedding example. |
-| M9 | Host conformance suite on `host-runner`; M1 and M4 suites on tinyjs runner; job table (foreground, background, kill, exit); tee + bounded view + output file; UDS relay round trip with session attribution; MessagePack frames; output fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
+| M9 | Host conformance suite on `host-runner`; a `runtime` command run by tinyjs in command mode; M1 and M4 suites on tinyjs runner; job table (foreground, background, kill, exit); tee + bounded view + output file; UDS relay round trip with session attribution; MessagePack frames; output fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
 | M10 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
 | M11 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
 | M12 | Manual checklist over the full layout, including the "everything Demi implements gets exposed" sweep. |

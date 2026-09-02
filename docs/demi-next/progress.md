@@ -1684,10 +1684,12 @@ Owner decisions after the review round:
   table, `spawn` with `stdin: "null"` returning a null stdin handle,
   `import.meta.url` as a URL, the `/embedded/` prefix unreachable from a
   file-loaded module through the module cache, the packed section's
-  `version`/`abi` check, `tinyjsc`, and tinyjs running `runtime`
-  commands in command mode. Two findings stay open for a proposal first:
-  tee writes on the loop thread, the TLS configuration rebuilt per
-  request.
+  `version`/`abi` check, and `tinyjsc`. Two findings stay open for a
+  proposal first: tee writes on the loop thread, the TLS configuration
+  rebuilt per request. tinyjs in command mode was first put on this list
+  and then moved to M9 (owner decision, same day): it is `host-runner`
+  plus a directory `ManifestSource`, module import by file path and an
+  entry bundle — M9's first step, not a leftover.
 - **`tinyjsc`.** The packer leaves the tinyjs binary: packing is always
   cross (one machine packs every target), so the runtime should carry no
   packing code, and one tool with one job is easier to keep right than a
@@ -1710,7 +1712,7 @@ Owner decisions after the review round:
   runner side → output and media by reference → the `host-virtual`
   reduction → the deletions. `roadmap.md` carries the list.
 
-### M8 close-out, part 1: tinyjs (2026-09-02)
+### M8 close-out: tinyjs (2026-09-02) — M8 closed
 
 Landed in `packages/tinyjs`, `cargo test` green (56/56 conformance, the
 packing test, two unit tests) on macOS arm64; release build 2.4 MB for
@@ -1751,8 +1753,9 @@ Bun and openssl for the stub cases.
   not now).
 - tinyjs, awaiting a proposal: tee writes synchronous on the loop thread;
   the TLS configuration rebuilt per request.
-- The loader's runner side (M9): a directory `ManifestSource`, a module
-  import strategy other than `blob:`, the manifest served to the runner.
+- The loader's runner side (M9, with `host-runner`): a directory
+  `ManifestSource`, module import by file path, the entry bundle for
+  command mode; the manifest served to the runner.
 - `@demicodes/host-virtual` reduced to the store-backed Host and its
   spawn refusal deleted (M9, with just-bash).
 - `@demicodes/host-local` and the local open-box assembly deleted (M9,
