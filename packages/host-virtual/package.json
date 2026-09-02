@@ -24,9 +24,6 @@
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^"
   },
-  "devDependencies": {
-    "@demicodes/host-local": "workspace:^"
-  },
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
@@ -37,5 +34,8 @@
     "directory": "packages/host-virtual"
   },
   "homepage": "https://github.com/wspl/demi/tree/main/packages/host-virtual#readme",
-  "bugs": "https://github.com/wspl/demi/issues"
+  "bugs": "https://github.com/wspl/demi/issues",
+  "devDependencies": {
+    "@demicodes/command-loader": "workspace:^"
+  }
 }

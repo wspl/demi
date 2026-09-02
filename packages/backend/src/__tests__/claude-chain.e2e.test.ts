@@ -5,9 +5,8 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
 import { FileCredentialPool } from '@demicodes/provider/credentials-pool'
-import { RunnerClient } from '@demicodes/runner'
+import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -87,17 +86,9 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   })
 
   // Pair the runner.
-  const codes: string[] = []
-  const runner = new RunnerClient({
-    backendUrl: backend.url,
-    stateDir,
-    name: 'chain-device',
-    host: new LocalHost(runnerDir),
-    reconnect: { initialDelayMs: 30, maxDelayMs: 100 },
-    onClaimPending: (code) => codes.push(code),
-  })
-  runner.start()
-  await waitFor(() => codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'chain-device' })
+  await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
+  const codes = runner.codes
   const claimResponse = await fetch(`${backend.url}/api/devices/claim`, {
     method: 'POST',
     body: JSON.stringify({ code: codes[0] }),

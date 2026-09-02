@@ -1,10 +1,10 @@
 import { join } from 'node:path'
-import { AgentServer, type ProviderResolver, defaultShellEnvironment } from '@demicodes/agent'
+import { AgentServer, type ProviderResolver } from '@demicodes/agent'
 import { createCodingAgentHarness, createDemiCommand } from '@demicodes/coding-agent'
-import { LocalHost } from '@demicodes/host-local'
+import { nodeFileSystem } from '@demicodes/shell/node'
 import { VirtualHost } from '@demicodes/host-virtual'
 import { buildManifest, inProcessRpc, type Manifest } from '@demicodes/command-loader'
-import { RemoteHost, RemoteShellEnvironment } from '@demicodes/runner-protocol'
+import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
 import { AgentSessionCommandStorage, type Command, type CommandIO } from '@demicodes/shell'
 import { toBytes } from '@demicodes/utils'
 import type { Host } from '@demicodes/shell'
@@ -60,7 +60,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const virtualHostFor = createVirtualHostFactory({
     dataDir: options.dataDir,
     conversationStores,
-    localFs: new LocalHost(options.dataDir).fs,
+    localFs: nodeFileSystem(options.dataDir),
   })
 
   // The command tree, defined once: the manifest every runner caches is built
@@ -159,13 +159,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     providers: resolveProvider,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },
     // A hostless conversation's shell is tinybash over its store-backed Host;
-    // a real host's is the runner's job table; anything else keeps just-bash.
-    shellEnvironment: (ctx) =>
-      ctx.host instanceof VirtualHost
-        ? createHostlessShell(ctx)
-        : ctx.host instanceof RemoteHost
-          ? new RemoteShellEnvironment({ ...ctx.shell, host: ctx.host })
-          : defaultShellEnvironment(ctx),
+    // a real host's is the runner's job table; no other Host exists.
+    shellEnvironment: (ctx) => {
+      if (ctx.host instanceof VirtualHost) return createHostlessShell(ctx)
+      if (ctx.host instanceof RemoteHost) return new RemoteShellEnvironment({ ...ctx.shell, host: ctx.host })
+      throw new Error('the backend runs conversations hostless or through a runner; no other Host exists')
+    },
     // Sessions persist as block rows in their conversation database; the
     // Host-store default never runs in the product backend.
     sessionStore: (agentSessionId) => conversationStores.sessionStore(agentSessionId),

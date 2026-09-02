@@ -2,14 +2,14 @@ import { describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildManifest, createLoader, inMemorySource, inProcessRpc } from '@demicodes/command-loader'
+import { buildManifest, createLoader, inMemorySource, inProcessRpc, rootPaths } from '@demicodes/command-loader'
 import { createDemiCommand } from '@demicodes/coding-agent'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/shell/node'
 import { VirtualHost, scopedFsBackend } from '@demicodes/host-virtual'
 import { AgentSessionCommandStorage, type Command, type ShellCommandStatus } from '@demicodes/shell'
 import { delay } from '@demicodes/utils'
 import { z } from 'zod'
-import { HostlessEnvironment } from '../conversation/hostless-environment'
+import { HostlessEnvironment } from '@demicodes/shell/hostless'
 import { HOSTLESS_IDENTITY, transpileCommandModule } from '../conversation/hostless-shell'
 import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from '../conversation/scoped-transport'
 
@@ -68,7 +68,8 @@ async function world() {
   let commands = 0
   const env = new HostlessEnvironment({
     host,
-    loader,
+    roots: rootPaths(loader.roots),
+    dispatch: (root, argv, io) => loader.dispatch(root, argv, io),
     home: HOSTLESS_HOME,
     namespace: HOSTLESS_NAMESPACE,
     identity: HOSTLESS_IDENTITY,

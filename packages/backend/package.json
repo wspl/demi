@@ -28,7 +28,7 @@
     "@demicodes/coding-agent": "workspace:^",
     "@demicodes/command-loader": "workspace:^",
     "@demicodes/core": "workspace:^",
-    "@demicodes/host-local": "workspace:^",
+    "@demicodes/host-remote": "workspace:^",
     "@demicodes/host-virtual": "workspace:^",
     "@demicodes/provider": "workspace:^",
     "@demicodes/provider-anthropic-api": "workspace:^",

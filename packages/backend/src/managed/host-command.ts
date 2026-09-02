@@ -1,22 +1,10 @@
-import { delay, errorMessage } from '@demicodes/utils'
-import {
-  CommandRegistry,
-  shellQuote,
-  type Command,
-  type CommandGroup,
-  type CommandIO,
-  type Host,
-  type HostStore,
-} from '@demicodes/shell'
-import { BashEnvironment, RESERVED_COMMAND_NAMES } from '@demicodes/shell/bash'
+import { errorMessage } from '@demicodes/utils'
+import { shellQuote, type Command, type CommandGroup, type CommandIO, type Host, type HostStore } from '@demicodes/shell'
 import { z } from 'zod'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import type { RpcTransferDestination, RunnerRegistry } from '../runner/registry'
 import type { TransferBroker } from '../runner/transfers'
 import type { ControlService, PrevTarget } from '../storage/control'
-
-/** Generous buffers for the virtual-prev portable path: exports are whole-tree tars. */
-const PREV_SHELL_OUTPUT_BYTES = 256 * 1024 * 1024
 
 export interface HostCommandDeps {
   control: ControlService
@@ -177,9 +165,13 @@ function prevShellCommand(deps: HostCommandDeps, conversationId: string): Comman
         return { exitCode: 1 }
       }
       try {
-        return prev.target.kind === 'virtual'
-          ? await runOnVirtualPrev(deps, conversationId, argv, ctx.io)
-          : await runOnHost(deps, conversationId, { deviceId: prev.target.deviceId, path: prev.target.path, role: 'prev' }, argv.map(shellQuote).join(' '), ctx)
+        if (prev.target.kind === 'virtual') {
+          // The hostless files are placed on the machine by the switch itself
+          // (`sessions-and-targets.md` § Upgrading); nothing runs "on" the hostless side.
+          await ctx.io.stderr('prev shell: the previous target was hostless; its files were placed here by the switch\n')
+          return { exitCode: 1 }
+        }
+        return await runOnHost(deps, conversationId, { deviceId: prev.target.deviceId, path: prev.target.path, role: 'prev' }, argv.map(shellQuote).join(' '), ctx)
       } catch (error) {
         await ctx.io.stderr(`prev shell: ${errorMessage(error)}\n`)
         return { exitCode: 1 }
@@ -259,64 +251,6 @@ async function runOnHost(
 /** The relayed-rpc io carries where its device can `GET` a transfer; any other io takes the bytes here. */
 function transferDestinationOf(io: CommandIO): RpcTransferDestination | null {
   return (io as { transferDestination?: RpcTransferDestination }).transferDestination ?? null
-}
-
-/**
- * Virtual prev: run through a prev-side shell, where the portable command set
- * (just-bash — full `tar` included) operates over the virtual `Host.fs`.
- * Output is buffered (virtual trees are conversation-sized); the byte-faithful
- * channel is the exec result's `binaryStdout` / UTF-8 delta contract.
- */
-async function runOnVirtualPrev(
-  deps: HostCommandDeps,
-  conversationId: string,
-  argv: string[],
-  io: { stdout(data: string | Uint8Array): Promise<void> | void; stderr(data: string | Uint8Array): Promise<void> | void },
-): Promise<{ exitCode: number }> {
-  const host = await deps.virtualHostFor(conversationId)
-  const environment = new BashEnvironment({
-    host,
-    commands: new CommandRegistry(RESERVED_COMMAND_NAMES),
-    maxOutputBytes: PREV_SHELL_OUTPUT_BYTES,
-    maxBinaryBytes: PREV_SHELL_OUTPUT_BYTES,
-    maxCaptureBytes: PREV_SHELL_OUTPUT_BYTES,
-  })
-  try {
-    const script = argv.map(shellQuote).join(' ')
-    let view = await environment.exec({
-      script,
-      ephemeral: true,
-      cwd: HOSTLESS_HOME,
-      timeoutMs: 60_000,
-      maxOutputBytes: PREV_SHELL_OUTPUT_BYTES,
-    })
-    while (view.status === 'running') {
-      await delay(100)
-      view = await environment.status({
-        commandId: view.commandId,
-        stdoutOffset: 0,
-        stderrOffset: 0,
-        maxOutputBytes: PREV_SHELL_OUTPUT_BYTES,
-      })
-    }
-    if (view.status !== 'exited') {
-      await io.stderr('prev shell: command aborted\n')
-      return { exitCode: 130 }
-    }
-    if (view.binaryStdout) {
-      if (view.binaryStdout.truncated) {
-        await io.stderr(`prev shell: output exceeded the ${PREV_SHELL_OUTPUT_BYTES}-byte buffer\n`)
-        return { exitCode: 1 }
-      }
-      await io.stdout(view.binaryStdout.data)
-    } else if (view.stdout.delta.length > 0) {
-      await io.stdout(view.stdout.delta)
-    }
-    if (view.stderr.delta.length > 0) await io.stderr(view.stderr.delta)
-    return { exitCode: view.exitCode ?? 1 }
-  } finally {
-    await environment.disposeAllShells().catch(() => {})
-  }
 }
 
 function describePrev(prev: PrevTarget): string {

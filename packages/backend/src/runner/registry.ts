@@ -1,5 +1,5 @@
+import { RemoteHost } from '@demicodes/host-remote'
 import {
-  RemoteHost,
   RUNNER_PROTOCOL_VERSION,
   createRunnerWire,
   type BackendToRunnerMessage,
