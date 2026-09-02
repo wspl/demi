@@ -1,3 +1,4 @@
+import { withoutUndefined } from '@demicodes/utils'
 import { runtimeModule, type Command, type CommandInputSpec, type CommandLeaf } from '@demicodes/shell'
 import { z } from 'zod'
 import { isManifestGroup, type Manifest, type ManifestLeaf, type ManifestNode } from '../manifest/schema'
@@ -47,7 +48,8 @@ function leafFromNode(root: string, node: ManifestLeaf, modules: Record<string, 
         root,
         path: ctx.parsed.path,
         argv: ctx.argv,
-        args: ctx.parsed.values,
+        // Absent optionals leave no key: the wire carries `undefined` as nil.
+        args: withoutUndefined(ctx.parsed.values),
         json: ctx.parsed.json,
         stdin: ctx.stdin.bytes,
         cwd: ctx.cwd,

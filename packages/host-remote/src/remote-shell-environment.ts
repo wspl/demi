@@ -38,6 +38,8 @@ interface RunningJob {
   record: ShellCommandRecord
   job: RemoteJob
   settled: Promise<void>
+  /** Set by `abort`: the exit that follows is the kill, not the command's own end. */
+  aborted?: boolean
 }
 
 /** How long `abort` waits for the runner to report the job dead after `job_kill`. */
@@ -123,6 +125,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     const record = this.requireCommand(input.commandId)
     const running = this.runningById.get(record.id)
     if (record.status !== 'running' || !running) return this.view(record)
+    running.aborted = true
     await running.job.kill('SIGTERM')
     await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     if (record.status === 'running') {
@@ -230,6 +233,16 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     record.outputChunks = []
     const exitCode = exit.exitCode ?? (exit.signal === 'SIGTERM' || exit.signal === 'SIGKILL' ? 130 : 128)
     settleExited(record, exitCode, stdoutText, stderr.text, binary)
+    // The view may be a head and a tail; the model is told the stream's length.
+    if (output) {
+      record.stdoutBytes = output.stdoutBytes
+      record.stderrBytes = output.stderrBytes
+    }
+    // Killed by `abort`: the streams settle as above, the status is the caller's stop.
+    if (running.aborted) {
+      record.status = 'aborted'
+      delete record.exitCode
+    }
   }
 
   private markAborted(running: RunningJob): void {

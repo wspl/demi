@@ -17,6 +17,8 @@ export class ScriptedModel {
   private readonly queues = new Map<string, TurnScript[]>()
   private readonly children: TurnScript[] = []
   readonly requests: InferenceRequest[] = []
+  /** Requests whose script ran to its `response`; an abort cuts a script short and leaves no usage. */
+  answered = 0
 
   script(sessionId: string, ...turns: TurnScript[]): void {
     const queue = this.queues.get(sessionId) ?? []
@@ -46,6 +48,7 @@ export class ScriptedModel {
         if (turn === undefined) throw new Error(`ScriptedModel: nothing scripted for session ${request.sessionId} (request #${model.requests.length})`)
         const events = typeof turn === 'function' ? turn(request) : turn
         for await (const event of events) yield event
+        model.answered += 1
       },
       clone: () => runtime,
     }
