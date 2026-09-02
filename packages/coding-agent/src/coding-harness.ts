@@ -1,5 +1,6 @@
 import type { AgentCommandsContext, AgentHarness } from '@demicodes/agent'
 import { CommandRegistry, type Command, type Host } from '@demicodes/shell'
+import { RESERVED_COMMAND_NAMES } from '@demicodes/shell/bash'
 import { createDemiCommand } from './demi-command'
 import { createFileReferenceResolver } from './reference-resolver'
 
@@ -26,7 +27,7 @@ export interface CodingCommandRegistryOptions {
 }
 
 export function createCodingCommandRegistry(options: CodingCommandRegistryOptions = {}): CommandRegistry {
-  const registry = new CommandRegistry()
+  const registry = new CommandRegistry(RESERVED_COMMAND_NAMES)
   const commands = options.commands ?? defaultCodingCommands()
   for (const command of commands) registry.register(command)
   return registry

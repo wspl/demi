@@ -15,6 +15,7 @@ import {
   type Host,
   type RuntimeModule,
 } from '../index'
+import { RESERVED_COMMAND_NAMES } from '../portable-commands'
 
 const testHost = {} as Host
 
@@ -289,7 +290,7 @@ test('CommandRegistry registers commands and renders all prompts', () => {
 })
 
 test('CommandRegistry rejects names reserved for shell and system commands', () => {
-  const registry = new CommandRegistry()
+  const registry = new CommandRegistry(RESERVED_COMMAND_NAMES)
   for (const name of reservedCommandNames) {
     expect(() => registry.register({ ...filerSpec, name })).toThrow('reserved for shell/system commands')
   }

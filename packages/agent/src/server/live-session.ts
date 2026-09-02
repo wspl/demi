@@ -4,10 +4,10 @@ import {
   MAX_TIMEOUT_MS,
   heredocDelimiter,
   shellQuote,
-  type BashEnvironmentOptions,
   type CommandRegistry,
   type Host,
 } from '@demicodes/shell'
+import type { BashEnvironmentOptions } from '@demicodes/shell/bash'
 import type { AgentSession } from '../session/session'
 import type { ChildSupervisor } from '../subagent/supervisor'
 import type { ServerFrame } from '../protocol/frames'

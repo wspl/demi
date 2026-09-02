@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { expect, test } from 'bun:test'
 import { LocalHost } from '@demicodes/host-local'
-import { BashEnvironment } from '@demicodes/shell'
+import { BashEnvironment } from '@demicodes/shell/bash'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { VIRTUAL_UPGRADE_GUIDANCE, VirtualHost, scopedFsBackend } from '../index'
 

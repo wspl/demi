@@ -2,13 +2,13 @@ import { createId, decodeUtf8, errorMessage, noop, utf8Slice } from '@demicodes/
 import {
   type ShellEnvironment,
   CommandRegistry,
-  type BashEnvironmentOptions,
   type Command,
   type CommandGroup,
   type CommandIO,
   type Host,
   type HostStore,
 } from '@demicodes/shell'
+import { RESERVED_COMMAND_NAMES, type BashEnvironmentOptions } from '@demicodes/shell/bash'
 import type { Block, UserContentBlock } from '@demicodes/core'
 import { AgentSession } from '../session/session'
 import type { ServerFrame, SubagentJob, TranscriptPatch } from '../protocol/frames'
@@ -399,7 +399,7 @@ export class ChildSupervisor<State = unknown> {
     const agentNode = this.createChildAgentNode(id, input.description)
     const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
     const commands = injectSubagentCommand(inherited, agentNode)
-    const commandRegistry = new CommandRegistry()
+    const commandRegistry = new CommandRegistry(RESERVED_COMMAND_NAMES)
     for (const command of commands) commandRegistry.register(command)
     const commandNames = commandRegistry.list().map((command) => command.name)
     const commandsPrompt = commandRegistry.renderHelp()

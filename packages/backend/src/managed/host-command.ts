@@ -1,6 +1,5 @@
 import { delay, errorMessage } from '@demicodes/utils'
 import {
-  BashEnvironment,
   CommandRegistry,
   shellQuote,
   type Command,
@@ -8,6 +7,7 @@ import {
   type Host,
   type HostStore,
 } from '@demicodes/shell'
+import { BashEnvironment, RESERVED_COMMAND_NAMES } from '@demicodes/shell/bash'
 import { z } from 'zod'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import type { RunnerRegistry } from '../runner/registry'
@@ -171,7 +171,7 @@ async function runOnVirtualPrev(
   const host = await deps.virtualHostFor(conversationId)
   const environment = new BashEnvironment({
     host,
-    commands: new CommandRegistry(),
+    commands: new CommandRegistry(RESERVED_COMMAND_NAMES),
     maxOutputBytes: PREV_SHELL_OUTPUT_BYTES,
     maxBinaryBytes: PREV_SHELL_OUTPUT_BYTES,
     maxCaptureBytes: PREV_SHELL_OUTPUT_BYTES,

@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import {
-  BashEnvironment,
   type CommandIO,
   type CommandStorage,
   type Host,
@@ -15,6 +14,7 @@ import {
   createLogicalHostCwd,
   runRegisteredCommand,
 } from '@demicodes/shell'
+import { BashEnvironment } from '@demicodes/shell/bash'
 import { LocalHost } from '@demicodes/host-local'
 import { bytesStream, bytesToBase64, encodeUtf8 } from '@demicodes/utils'
 import { createCodingCommandRegistry, createDemiCommand } from '../index'

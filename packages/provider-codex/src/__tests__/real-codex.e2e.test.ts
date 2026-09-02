@@ -9,7 +9,7 @@ import {
   type AgentToolInvokeResult,
 } from '@demicodes/agent'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
-import { BashEnvironment } from '@demicodes/shell'
+import { BashEnvironment } from '@demicodes/shell/bash'
 import { LocalHost } from '@demicodes/host-local'
 import { FileCodexAuthStore } from '../auth'
 import { CodexProvider } from '../provider'

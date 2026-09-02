@@ -1,7 +1,6 @@
 import { asError, collectBytes, concatByteStreams, concatBytes, decodeUtf8, emptyByteStream, encodeUtf8 } from '@demicodes/utils'
 import type { z } from 'zod'
 import { loadCommandModule, type CommandResult, type CommandWriter, type RuntimeModule } from './command-abi'
-import { RESERVED_COMMAND_NAMES } from './portable-commands'
 import type { Host } from './host'
 
 export type CommandInputSpec = Record<string, z.ZodType>
@@ -142,8 +141,11 @@ const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 export class CommandRegistry {
   private readonly commands = new Map<string, Command>()
 
+  /** `reserved`: names the executable namespace already owns (a shell's builtins, the system tools); registering one is refused. */
+  constructor(private readonly reserved: ReadonlySet<string> = new Set()) {}
+
   register(command: Command): void {
-    if (RESERVED_COMMAND_NAMES.has(command.name)) {
+    if (this.reserved.has(command.name)) {
       throw new Error(`CommandRegistry: command "${command.name}" is reserved for shell/system commands`)
     }
     if (this.commands.has(command.name)) {

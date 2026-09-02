@@ -1,4 +1,5 @@
-import { BashEnvironment, type BashEnvironmentOptions, type CommandRegistry, type Host, type ShellEnvironment } from '@demicodes/shell'
+import type { CommandRegistry, Host, ShellEnvironment } from '@demicodes/shell'
+import { BashEnvironment, type BashEnvironmentOptions } from '@demicodes/shell/bash'
 import type { SessionPhase } from '@demicodes/core'
 import type { Provider } from '@demicodes/provider'
 import { AgentClient } from '../client/client'

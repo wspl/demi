@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir, userInfo } from 'node:os'
 import { expect, test } from 'bun:test'
-import { BashEnvironment } from '../index'
+import { BashEnvironment } from '../bash'
 import { LocalHost } from '@demicodes/host-local'
 import { oracle } from './bash-oracle-helpers'
 

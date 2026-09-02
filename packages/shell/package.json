@@ -25,6 +25,11 @@
       "types": "./dist/testing.d.mts",
       "import": "./dist/testing.mjs"
     },
+    "./bash": {
+      "development": "./src/bash.ts",
+      "types": "./dist/bash.d.mts",
+      "import": "./dist/bash.mjs"
+    },
     "./build": {
       "development": "./src/build.ts",
       "types": "./dist/build.d.mts",

@@ -10,7 +10,7 @@ import { LexerError } from '@demicodes/just-bash/parser/lexer'
 import type { Command as ForkCommand, CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult, IFileSystem } from '@demicodes/just-bash/types'
 import { resolveLimits } from '@demicodes/just-bash/limits'
 import { CommandRegistry, type Command } from './command'
-import { DEMI_PORTABLE_COMMANDS, shouldPreferHostSpawn } from './portable-commands'
+import { DEMI_PORTABLE_COMMANDS, RESERVED_COMMAND_NAMES, shouldPreferHostSpawn } from './portable-commands'
 import { extractSimpleBackgroundCommand, formatCommandDisplay } from './background-command'
 import {
   buildBashopts,
@@ -77,7 +77,7 @@ export class BashEnvironment implements ShellEnvironment {
   constructor(options: BashEnvironmentOptions) {
     this.host = options.host
     this.artifacts = new CommandArtifactStore(this.host)
-    this.commands = options.commands ?? new CommandRegistry()
+    this.commands = options.commands ?? new CommandRegistry(RESERVED_COMMAND_NAMES)
     this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
     this.initialEnv = options.initialEnv ?? {}

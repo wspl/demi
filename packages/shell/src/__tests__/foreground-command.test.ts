@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { decodeUtf8, waitFor } from '@demicodes/utils'
 import { LocalHost } from '@demicodes/host-local'
-import { BashEnvironment, CommandRegistry, type Command } from '../index'
+import { CommandRegistry, type Command } from '../index'
+import { BashEnvironment } from '../bash'
 
 async function pollUntilSettled(env: BashEnvironment, commandId: string): Promise<Awaited<ReturnType<BashEnvironment['status']>>> {
   let latest = await env.status({ commandId })

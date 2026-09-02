@@ -15,7 +15,6 @@ import {
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
-  BashEnvironment,
   CommandRegistry,
   type Command,
   type Host,
@@ -25,6 +24,7 @@ import {
   type HostStore,
   createLogicalHostCwd,
 } from '@demicodes/shell'
+import { BashEnvironment } from '@demicodes/shell/bash'
 import { LocalHost } from '@demicodes/host-local'
 import { createCodingAgentHarness } from '../index'
 

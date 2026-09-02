@@ -1,4 +1,5 @@
-import { CommandRegistry, type BashEnvironmentOptions, type Host } from '@demicodes/shell'
+import { CommandRegistry, type Host } from '@demicodes/shell'
+import { RESERVED_COMMAND_NAMES, type BashEnvironmentOptions } from '@demicodes/shell/bash'
 import type { AgentProvider, ProviderSelection } from '@demicodes/provider'
 import { AgentSession } from '../session/session'
 import { createStandardAgentTools } from '../tools'
@@ -92,7 +93,7 @@ export async function assembleLiveSession(
     emit: liveSink,
   })
   const commands = injectSubagentCommand(harnessCommands, supervisor.rootCommandNode())
-  const commandRegistry = new CommandRegistry()
+  const commandRegistry = new CommandRegistry(RESERVED_COMMAND_NAMES)
   for (const command of commands) commandRegistry.register(command)
   let sessionRef: AgentSession<unknown> | null = null
   const tools = createStandardAgentTools({

@@ -1,5 +1,6 @@
 import { errorCode, noop } from '@demicodes/utils'
-import type { BashEnvironmentOptions, Host } from '@demicodes/shell'
+import type { Host } from '@demicodes/shell'
+import type { BashEnvironmentOptions } from '@demicodes/shell/bash'
 import { providerRuntime, type ProviderSelection } from '@demicodes/provider'
 import type { AgentSession } from '../session/session'
 import { cloneBlocks } from '../transcript/patch'
