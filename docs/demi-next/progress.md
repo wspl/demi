@@ -1146,3 +1146,12 @@ and the files are **command outputs**: `commandOutputDir`,
 `output_upload`, `GET …/outputs/:ref`, output fetch. The code's
 `commandArtifactsDir` and `command-artifact-store` are renamed with the
 M9 runner rewrite.
+
+### Naming: host vs guest (2026-09-02)
+
+"Host" was being used in two senses — Demi's execution target (user host,
+managed host, the `Host` contract, hostless) and virtualization's machine
+that runs a VM. Decision: "host" is Demi's sense only; the VM is the
+*guest* and the machine running the backend and Firecracker is the
+*backend machine*. A vocabulary table (target / device / host / guest and
+backend machine) is in `overview.md`; `managed-hosts.md` was reworded.
