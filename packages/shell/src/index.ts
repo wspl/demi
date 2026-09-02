@@ -1,4 +1,5 @@
 export * from './command'
+export * from './command-abi'
 export * from './environment'
 export * from './host'
 export * from './host-fs'

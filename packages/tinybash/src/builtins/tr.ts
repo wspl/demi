@@ -1,7 +1,7 @@
 import type { Builtin } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
-import { collect } from '../exec/stream'
+import { collectBytes } from '@demicodes/utils'
 import { tryHelp } from './errors'
 
 const CLASSES: Record<string, (c: number) => boolean> = {
@@ -90,7 +90,7 @@ export const tr: Builtin = async (ctx) => {
     await ctx.stderr(`tr: ${set1}\n`)
     return 1
   }
-  const input = await collect(ctx.stdin)
+  const input = await collectBytes(ctx.stdin)
   const out = new Uint8Array(input.length)
   let n = 0
   if (deleting) {
