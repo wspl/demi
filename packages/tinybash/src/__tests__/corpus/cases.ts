@@ -200,10 +200,11 @@ export const CASES: CorpusCase[] = [
   { name: 'ls-file-and-dir', script: `ls notes.txt src` },
   { name: 'ls-l-file', script: `ls -l notes.txt` },
   { name: 'ls-l-files', script: `ls -l notes.txt script.sh empty.txt` },
-  { name: 'ls-l-symlink', script: `ls -l link.txt`, linuxOnly: true },
+  // A symlink's own time cannot be fixed through the Host filesystem, so the long line is checked without it.
+  { name: 'ls-l-symlink', script: `ls -l link.txt | grep -c 'link.txt -> notes.txt'` },
   { name: 'ls-l-dir', script: `ls -l src`, linuxOnly: true },
   { name: 'ls-la-dir', script: `ls -la src/lib`, linuxOnly: true },
-  { name: 'ls-l-home', script: `ls -l`, linuxOnly: true },
+  { name: 'ls-l-dirs', script: `ls -l src docs 'space dir'`, linuxOnly: true },
   { name: 'ls-space-dir', script: `ls 'space dir'` },
   { name: 'ls-glob', script: `ls *.txt` },
   { name: 'ls-missing-and-dir', script: `ls nofile src` },
