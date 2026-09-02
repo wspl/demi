@@ -1510,3 +1510,17 @@ The file commands' diff metadata and the shell's `commandMetadata`
 plumbing are gone. tinybash's byte-stream helpers moved to
 `@demicodes/utils` (`bytesStream`, `collectBytes`, `emptyByteStream`,
 `concatByteStreams`, `toBytes`) and it takes `DispatchIO` from shell.
+
+Step 2 done — `@demicodes/command-loader`: `buildManifest(roots, {
+transpile })` (zod → JSON Schema per leaf, module text → transpiled JS
+under its SHA-256, a value import fails the build, manifest hash over the
+whole), `parseManifest` (zod schema for the wire), `treeFromManifest`
+(JSON Schema → zod with `z.fromJSONSchema`, path marks and descriptions
+intact, so help from a reconstructed tree equals help from the declared
+tree — a test asserts it), `createLoader({ source, host, rpc? })` whose
+`dispatch` is `runRegisteredCommand` on the reconstructed tree,
+`inProcessRpc` for the backend, `rootPaths` from the path marks. The
+manifest build's transpiler is injected rather than imported so the
+package stays pure; `RootPaths` moved to the shell ABI since both
+tinybash and the loader speak it. A comment-only change to a module is
+the same hash: the hash is over what runs.

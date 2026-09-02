@@ -1,9 +1,8 @@
-import type { CommandIO, HostFileSystem } from '@demicodes/shell'
+import type { CommandIO, DispatchIO, HostFileSystem, RootPaths } from '@demicodes/shell'
 import type { Script } from './grammar/ast'
 import { parseScript } from './grammar/parser'
-import { type RootPaths, checkScript } from './outside/check'
+import { checkScript } from './outside/check'
 import { OutsideError, type OutsideReason, refusalMessage } from './outside/reasons'
-import type { DispatchIO } from '@demicodes/shell'
 import { type ShellState, executeScript } from './exec/executor'
 
 export type { OutsideReason, RootPaths, DispatchIO, ShellState }
