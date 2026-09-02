@@ -281,9 +281,13 @@ provided correctly was the trivial part, while the primitives with
 semantics we depend on fell short.
 
 The Host implementation `@demicodes/host-runner` maps the `Host` contract
-(`packages/shell/src/host.ts`) onto these primitives. It is the Host every
-user host and managed host serves through its runner; the backend's end of
-the same connection is `RemoteHost` in `@demicodes/runner-protocol`
+(`packages/shell/src/host.ts`) onto these primitives, and beside it the
+typed wrappers the runner program uses: the teed spawn and the tail read
+(jobs), the WebSocket and Unix-socket links (the backend socket, the
+relay), and the HTTP pair for transfers — a file uploaded as a request
+body, a response body streamed to bytes or into a file. It is the Host
+every user host and managed host serves through its runner; the backend's
+end of the same connection is `RemoteHost` in `@demicodes/runner-protocol`
 (`runner.md`).
 
 ## Entry modes
