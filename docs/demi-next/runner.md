@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (M1/M4 delivered on the Bun build; the tinyjs build with jobs, tee and the relay lands in M9) |
+| Status | Implemented on tinyjs (M9 step 3): connection, Host RPC, jobs and the tee, the relay, the manifest cache; the M1, M4 and M6 suites run on it |
 | Scope | The program on every execution target: identity and connection, Host RPC, the job table, the tee, the local relay, the wire rules |
 
 ## Role
@@ -59,13 +59,20 @@ persisted device token. On a managed host the runner is PID 1 and performs
 init duties (`managed-hosts.md`).
 
 ```
-~/.demi/
+~/.demi/                 (`DEMI_HOME` names another place; every job and command-mode process inherits it)
   runner.json            backend URL, device id
   runner-token           device token (0600)
   runner.sock            the local relay (0600)
   commands/<hash>/       manifest cache: manifest.json + modules/<hash>.mjs, by manifest hash
   commands/current       → the cached manifest command mode reads
+  bin/<root>             → the packed binary, one per root in the manifest; first in every job's PATH
+  output/<jobId>/        stdout.txt, stderr.txt: a job's full output, written by the tee
+  store/                 Host.store of the machine's Host
 ```
+
+`demi-runner run [--backend <url>]` reads `DEMI_RUNNER_NAME` for the
+device name (default the hostname) and `DEMI_RUNNER_RECONNECT_MS` for the
+first reconnect delay (tests shorten it).
 
 Dependency footprint: `@demicodes/host-runner`, `@demicodes/runner-protocol`,
 `@demicodes/command-loader` (cache and relay only), `@demicodes/utils`. No
@@ -179,6 +186,15 @@ options do not carry: a fresh process per job is the norm across coding
 agents (Claude Code, Codex, Gemini, Aider), and only Claude Code carries
 the directory, which is the one thing a model reaches for.
 
+A job's environment is what the backend named — the shell's exports,
+`DEMI_SESSION_ID` and `DEMI_SHELL_ID` — with the device's `PATH` and `HOME`
+filled in when absent, `bin/` first in `PATH`, and three entries of the
+runner's own: `DEMI_HOME`, `DEMI_JOB_CWD_FILE` (where the `EXIT` trap
+writes `pwd`) and `DEMI_JOB_STDIN_FD` (the descriptor the prelude
+duplicated the job's stdin onto with `exec 199<&0`, so a command-mode
+process can tell the job's live stdin from a redirection by `fdNode`,
+`tinyjs.md`).
+
 **The view is the model's view.** What crosses the wire, what the backend
 records, and what the browser shows are one and the same: the bytes the
 model sees. The **tee** is a tinyjs primitive (`tinyjs.md`): each job's
@@ -201,15 +217,21 @@ names the agent's deliverables, and Demi keeps it free for that.
 
 ## The local relay
 
-`~/.demi/runner.sock` accepts connections only from command-mode tinyjs
-processes. Two request types: `manifest?` (answered from the cache or, on a
-miss, fetched over the socket) and `rpc { conversationId, shellId, root,
-command, args }` with stdin streamed in and stdout/stderr streamed out. The
-runner forwards `rpc` on its authenticated socket; the command-mode process
-never holds a credential. Attribution
-is by the ids the backend put into the job's environment; a process on the
-same machine that forges them can only reach the conversations already
-executing here, which it could already read and modify.
+`~/.demi/runner.sock` (mode 0600) accepts connections from command-mode
+tinyjs processes. Its frames are MessagePack behind a 32-bit big-endian
+length, one request per connection: `manifest` (answered from the cache;
+a process asks when `commands/current` is missing) or `rpc { agentSessionId,
+shellId, root, path, argv, args, json, cwd, env, stdin }` — the parsed
+invocation with the pipe's bytes — followed by `stdin { bytes }` frames for
+the live stdin and `stdin_end`; back come `output { stream, bytes }` frames
+and `exit { exitCode }`, or `error { message }`. The runner forwards `rpc`
+on its authenticated socket as `rpc_call` / `rpc_stdin` / `rpc_stdin_end`
+and relays `rpc_output` / `rpc_exit` back; the backend runs the leaf
+against the tree of the conversation `agentSessionId` names. The
+command-mode process never holds a credential. Attribution is by the ids
+the backend put into the job's environment; a process on the same machine
+that forges them can only reach the conversations already executing here,
+which it could already read and modify.
 
 ## Wire rules
 

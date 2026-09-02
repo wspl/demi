@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M8 delivered; M9 in progress: steps 1–2 delivered |
+| Status | M0–M8 delivered; M9 in progress: steps 1–3 delivered |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -119,7 +119,14 @@ end to end on macOS arm64. Step 2 delivered — the wire at both ends:
 MessagePack frames over an injected codec, `fs_<op>` requests with typed
 replies, `pong { jobs }`, `hello_error { code, reason }` with the
 one-connection-per-token rule; the M1 and M4 suites pass on it, and a test
-holds the Bun and tinyjs codecs to the same bytes. Steps 3–6 open.
+holds the Bun and tinyjs codecs to the same bytes. Step 3 delivered — the
+runner on tinyjs: runner mode with the job table over the tee, the working
+directory carried between jobs, the relay and the manifest cache with its
+symlinks; the backend's `RemoteShellEnvironment`, manifest push and rpc
+relay; the M1, M4 and M6 suites run on the tinyjs runner, a pipeline
+crosses the wire as its view and exit only, `demi todo` round-trips the
+relay, a runner killed mid-command is a tool error and the reconnect
+resumes. Steps 4–6 open.
 
 **M10 — Access model and managed hosts** (`sessions-and-targets.md`,
 `managed-hosts.md`; depends on M9)
