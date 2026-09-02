@@ -1,6 +1,6 @@
-import { buildManifest, createLoader, inMemorySource, inProcessRpc } from '@demicodes/command-loader'
+import { buildManifest, createLoader, inMemorySource, inProcessRpc, rootPaths } from '@demicodes/command-loader'
 import { AgentSessionCommandStorage, type CommandRegistry, type Host, type ShellEnvironment, type ShellEnvironmentOptions } from '@demicodes/shell'
-import { HostlessEnvironment } from './hostless-environment'
+import { HostlessEnvironment } from '@demicodes/shell/hostless'
 import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from './scoped-transport'
 
 /** Every hostless file belongs to the session user (`sessions-and-targets.md` § The namespace). */
@@ -40,7 +40,8 @@ export async function createHostlessShell(ctx: {
   return new HostlessEnvironment({
     ...ctx.shell,
     host: ctx.host,
-    loader,
+    roots: rootPaths(loader.roots),
+    dispatch: (root, argv, io) => loader.dispatch(root, argv, io),
     home: HOSTLESS_HOME,
     namespace: HOSTLESS_NAMESPACE,
     identity: HOSTLESS_IDENTITY,

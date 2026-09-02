@@ -8,8 +8,7 @@ import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { deferred, delay, waitFor } from '@demicodes/utils'
-import { LocalHost } from '@demicodes/host-local'
-import { RunnerClient } from '@demicodes/runner'
+import { startTinyjsRunner } from '@demicodes/runner/testing'
 import type { SessionProviderContext } from '../llm/assembly'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -265,17 +264,9 @@ test('a process-capable provider gets a session-scoped instance carrying the tar
   })
 
   // Claim a runner and bind a conversation's workspace to it (M4 machinery).
-  const codes: string[] = []
-  const runner = new RunnerClient({
-    backendUrl: backend.url,
-    stateDir,
-    name: 'cli-device',
-    host: new LocalHost(runnerDir),
-    reconnect: { initialDelayMs: 30, maxDelayMs: 100 },
-    onClaimPending: (code) => codes.push(code),
-  })
-  runner.start()
-  await waitFor(() => codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'cli-device' })
+  await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
+  const codes = runner.codes
   const claimed = await api<{ device: { id: string } }>(backend, '/api/devices/claim', post({ code: codes[0] }))
   const created = await api<{ connection: { id: string } }>(
     backend,
