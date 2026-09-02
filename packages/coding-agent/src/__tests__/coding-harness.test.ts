@@ -211,10 +211,8 @@ test('coding agent harness ships default and explore subagent profiles', async (
   expect(profiles.map((profile) => profile.name)).toEqual(['default', 'explore'])
   const defaultProfile = profiles[0]!
   expect(defaultProfile.systemPrompt).toBeUndefined()
-  expect(defaultProfile.readonly).toBeUndefined()
 
   const explore = profiles[1]!
-  expect(explore.readonly).toBe(true)
   const explorePrompt = await explore.systemPrompt!({
     agentSessionId: 'explore-child',
     state,
@@ -223,8 +221,8 @@ test('coding agent harness ships default and explore subagent profiles', async (
     commandsPrompt: 'COMMANDS-MARKER',
     metadata: null,
   })
-  expect(explorePrompt).toContain('read-only exploration agent')
-  expect(explorePrompt).toContain('do not attempt to edit, create, or execute anything')
+  expect(explorePrompt).toContain('You are an exploration agent')
+  expect(explorePrompt).toContain('Do not edit, create, or execute anything')
   expect(explorePrompt).toContain('COMMANDS-MARKER')
 })
 

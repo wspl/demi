@@ -11,7 +11,6 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import {
   AgentServer,
   MAX_LIVE_SUBAGENTS,
-  createReadonlyHost,
   type AgentClient,
   type AgentHarness,
   type AgentMetadata,
@@ -584,24 +583,6 @@ test('a parent restore skips archived children; the archive stays revivable', as
   expect(listText).toContain('archived')
   expect(listText).toContain('completed')
   await second.client.close()
-})
-
-test('a readonly Host wrapped over a class-instance Host still reads; mutation and spawn are denied', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-readonly-host-'))
-  const inner = new LocalHost(root)
-  await inner.fs.writeFile('note.txt', new TextEncoder().encode('readable'), { cwd: root })
-  const host = createReadonlyHost(inner)
-
-  // Class instances keep methods on the prototype; the wrapper must delegate, not spread.
-  expect(new TextDecoder().decode(await host.fs.readFile('note.txt', { cwd: root }))).toBe('readable')
-  expect(await host.fs.exists('note.txt', { cwd: root })).toBe(true)
-  expect((await host.fs.stat('note.txt', { cwd: root })).isFile).toBe(true)
-  expect(await host.fs.readdir(root)).toContain('note.txt')
-
-  await expect(host.fs.writeFile('evil.txt', new Uint8Array(), { cwd: root })).rejects.toThrow('read-only subagent')
-  await expect(host.fs.rm('note.txt', { cwd: root })).rejects.toThrow('read-only subagent')
-  await expect(host.process.spawn!({ command: 'true', args: [], cwd: root, env: {} })).rejects.toThrow('read-only subagent')
-  await expect(host.fs.mkdir('probe', { cwd: root })).rejects.toThrow('read-only subagent')
 })
 
 test('the live-children ceiling rejects the spawn beyond MAX_LIVE_SUBAGENTS', async () => {

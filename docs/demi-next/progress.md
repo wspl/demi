@@ -2200,12 +2200,12 @@ suites could see, each fixed where it belonged:
    run hostless while its parent was on a runner. The supervisor now
    resolves a child's Host as the root session (`ChildSupervisorOptions.
    agentSessionId`; `AgentHostContext.agentSessionId` is documented as the
-   root's), and the relay uses the session's own shell context (a
-   read-only child's wrapped Host included).
-3. The read-only child Host was a plain object, so the backend's
-   `instanceof` dispatch refused it on both targets. `createReadonlyHost`
-   is now a view over the Host (`Object.create`) with its `fs` and
-   `process` facets replaced: same class, cwd, identity and store.
+   root's), and the relay uses the session's own shell context.
+3. The read-only child Host (a plain-object wrapper) broke the backend's
+   `instanceof` dispatch on both targets, and on a machine it policed only
+   `rpc` leaves — bash and `runtime` commands write the disk. The owner
+   removed the capability: no `readonly` profile flag, no Host wrapper;
+   `explore` is a prompt and nothing more.
 4. On a runner the model was told `stdoutBytes` equal to the view (head
    and tail), not the stream: the record now carries the stream's length
    beside its view text (`stdoutBytes`/`stderrBytes` on the record).
@@ -2233,10 +2233,6 @@ owner):
   `shell_write` reaches nothing there; tinybash hands root commands the
   pipe and the loader's stdin field reads that. On a machine any program
   reads its stdin.
-- The read-only profile is enforced by the Host. On a machine only `rpc`
-  leaves pass through it; a `runtime` command (`demi file create`) and bash
-  itself write the disk. A real read-only child needs a target-side
-  mechanism (M11: a job user, or a read-only mount for managed hosts).
 - A machine's shell carries its cwd between jobs and nothing else;
   tinybash's default shell keeps its variables.
 

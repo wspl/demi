@@ -59,7 +59,6 @@ interface ChildJob<State> {
   commandNames: string[]
   environments: Map<Host, ShellEnvironment>
   pendingEnvironments: Map<Host, Promise<ShellEnvironment>>
-  readonlyHosts: WeakMap<Host, Host>
   spawnedAt: number
   lastEventAt: number
   tools: ChildToolRecord[]
@@ -412,7 +411,6 @@ export class ChildSupervisor<State = unknown> {
       commandNames,
       environments: new Map(),
       pendingEnvironments: new Map(),
-      readonlyHosts: new WeakMap(),
       spawnedAt: input.spawnedAt,
       lastEventAt: Date.now(),
       tools: [],
@@ -674,12 +672,7 @@ export class ChildSupervisor<State = unknown> {
       cwd: this.options.cwd,
       metadata: ctx.metadata,
     })
-    let host = resolved
-    if (job.profile.readonly) {
-      const wrapped = job.readonlyHosts.get(resolved) ?? createReadonlyHost(resolved)
-      job.readonlyHosts.set(resolved, wrapped)
-      host = wrapped
-    }
+    const host = resolved
     const existing = job.environments.get(host)
     if (existing) return existing
     const pending = job.pendingEnvironments.get(host)
@@ -902,47 +895,6 @@ export class ChildSupervisor<State = unknown> {
       ...(result !== undefined ? { result } : {}),
     }
   }
-}
-
-/**
- * Host view for read-only subagent profiles: the same Host — its class, cwd,
- * identity and store, so a product still recognizes what it is — with its
- * filesystem facet refusing every mutation and process spawn refused
- * outright (a real process cannot be write-restricted). The read methods
- * delegate one by one: the facets are class instances whose methods live on
- * their prototypes, so object spread would drop them.
- */
-export function createReadonlyHost(host: Host): Host {
-  const deny = (operation: string): Promise<never> =>
-    Promise.reject(new Error(`read-only subagent: ${operation} is not permitted on this Host`))
-  const readonlyFs: Host['fs'] = {
-    readFile: (path, options) => host.fs.readFile(path, options),
-    exists: (path, options) => host.fs.exists(path, options),
-    stat: (path, options) => host.fs.stat(path, options),
-    lstat: (path, options) => host.fs.lstat(path, options),
-    readdir: ((path: string, options?: { cwd?: string; withFileTypes?: boolean }) =>
-      host.fs.readdir(path, options as { cwd?: string; withFileTypes: true })) as Host['fs']['readdir'],
-    readlink: (path, options) => host.fs.readlink(path, options),
-    realpath: (path, options) => host.fs.realpath(path, options),
-    writeFile: (path) => deny(`write ${path}`),
-    appendFile: (path) => deny(`append ${path}`),
-    mkdir: (path) => deny(`mkdir ${path}`),
-    rm: (path) => deny(`rm ${path}`),
-    cp: (_path, destination) => deny(`cp to ${destination}`),
-    mv: (path, destination) => deny(`mv ${path} ${destination}`),
-    chmod: (path) => deny(`chmod ${path}`),
-    symlink: (_target, path) => deny(`symlink ${path}`),
-    link: (_existingPath, path) => deny(`link ${path}`),
-    utimes: (path) => deny(`utimes ${path}`),
-  }
-  const readonlyProcess: Host['process'] = {
-    openCwd: (path) => host.process.openCwd(path),
-    spawn: () => deny('process spawn'),
-  }
-  return Object.create(host, {
-    fs: { value: readonlyFs, enumerable: true },
-    process: { value: readonlyProcess, enumerable: true },
-  }) as Host
 }
 
 function trimToolRecords(tools: ChildToolRecord[]): void {

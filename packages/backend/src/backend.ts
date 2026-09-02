@@ -68,7 +68,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // from it plus the shape of the `agent` node every session grafts on. An
   // rpc command a runner relays runs as the session the job's environment
   // names — a conversation or a subagent — against the tree and the Host its
-  // shell was built with (a read-only child's wrapped Host included).
+  // shell was built with.
   let manifest: Promise<Manifest> | null = null
   const sessionShells = new Map<string, { host: Host; commands: CommandRegistry }>()
   const transfers = new TransferBroker()
