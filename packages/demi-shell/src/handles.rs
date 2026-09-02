@@ -48,7 +48,9 @@ impl Stream {
 pub enum Resource {
     File(Arc<std::fs::File>),
     Stream(Stream),
-    Listener(Rc<tokio::net::UnixListener>),
+    /// A UDS listener; the notify cancels a pending `accept` on close.
+    Listener(Rc<tokio::net::UnixListener>, Rc<Notify>),
+    Ws(crate::net::WsResource),
 }
 
 pub struct Handles {

@@ -48,20 +48,19 @@ by M8–M10 (`sessions-and-targets.md`).
 ## Planned
 
 **M7 — Shell** (`shell.md`; depends on nothing)
-The Rust binary embedding QuickJS, everything implemented in the crate on
-`rquickjs`, `tokio` (current-thread), `rustls`/`ring`, `rmp`, `sha2`,
-`getrandom`: the event loop, timers and promise scheduling, the standard
+The Rust binary embedding QuickJS on `rquickjs` and `tokio`
+(current-thread), with the protocols from crates (`hyper`,
+`tokio-tungstenite`, `rustls`/`ring`, `rmpv`): the event loop, timers and promise scheduling, the standard
 globals; the five `demishell:*` modules — `fs` with errno fidelity and
 streaming `open`/`read`/`write`, `process` with pipes, stdin, kill,
 uid/gid and the tee with a bounded view, `net` with the WebSocket client,
-the streaming HTTP/1.1 client (proxy-aware), UDS connect and listen,
+the streaming HTTP/1.1 client (proxy-aware, `CONNECT` tunnel), UDS connect and listen,
 `bytes` with MessagePack/base64/SHA-256/random, `runtime`; the module
 loader with `import()` of absolute paths and `demishell:*` visible only to
 the embedded bundle; static musl builds for Linux x86_64 and aarch64,
 macOS builds, platform verifier on user hosts and embedded roots in the
 guest build; the two entry modes as skeletons. Accept: the primitive
-conformance suite, driven from JS, passes on every build target; binary
-within the 2.5–3 MB budget; first execution of command-mode `hello`
+conformance suite, driven from JS, passes on every build target; first execution of command-mode `hello`
 inside a fresh microVM under 0.2 s with no network code on the startup
 path; tee throughput at the guest's pipe baseline; the runner-protocol
 bundle encodes and decodes on the shell. A library milestone in the M1
