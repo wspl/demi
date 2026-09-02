@@ -65,8 +65,8 @@ embedders: the backend in-process (hostless conversations) and the test
 fixture; a second root beside `demi` in the tests, to prove the mechanism is not
 `demi`-specific; `tinyjsc` split out of the tinyjs binary and the packed
 section's release check; the tinyjs fixes the M8 review found. tinyjs in
-command mode on a target is M9 work: it is `host-runner` plus the loader's
-runner side plus an entry bundle.
+command mode on a target is M9 work: it is the runner's machine layer plus
+the loader's runner side plus an entry bundle.
 Accept: a
 hostless conversation runs `demi file` and `demi todo`; heredoc, sequence
 and refusal cases each covered; one `runtime` module behaves identically
@@ -78,15 +78,15 @@ second root, `tinyjsc` and the tinyjs fixes.
 
 **M9 — Runner on tinyjs, old paths deleted** (`runner.md`; depends on M7, M8)
 In dependency order, lightest first:
-1. `@demicodes/host-runner`, the Host over tinyjs primitives, accepted by
-   the Host conformance suite `host-local` passes today and by tinyjs in
-   command mode running one `runtime` command through the loader (a
-   directory `ManifestSource`, module import by file path, an entry bundle
-   selecting the root from `argv[0]`).
+1. The Host over tinyjs primitives (the runner's machine layer), accepted
+   by the Host conformance suite and by tinyjs in command mode running one
+   `runtime` command through the loader (a directory `ManifestSource`,
+   module import by file path, an entry bundle selecting the root from
+   `argv[0]`).
 2. The protocol, changed at both ends before the port so the port targets
    the final wire: MessagePack framing, per-op fs messages, `pong` with the
    job count, the one-connection-per-token rule.
-3. The runner ported to `host-runner`: the job table with real `bash -c`
+3. The runner ported to tinyjs: the job table with real `bash -c`
    (foreground, background, kill, exit), session ids in the environment,
    the working directory carried between jobs, the tee with the model's
    view (head while running, tail at exit) and output files on the target,
@@ -97,23 +97,41 @@ In dependency order, lightest first:
 4. What rests on the job table: the brokered cross-host transfer
    (`demi host shell --id`, the transfer messages, the backend broker) and
    browser-bound media by reference.
-5. `@demicodes/host-virtual` reduced to the store-backed Host, its spawn
-   refusal deleted.
-6. Deletion, once the M1 and M4 suites pass on the new runner:
-   `packages/just-bash`; the interpreter and portable-command parts of
-   `@demicodes/shell`; `@demicodes/host-local` as a whole (the backend's
-   one use of it, a Node filesystem for its data directory, becomes
-   `node:fs` and can move first); the local open-box assembly that lived
-   on it (`@demicodes/repl`, `@demicodes/agent-eval`, `agent/server`,
-   `web/agent-hub`); the Bun runner build and `runner-client`;
-   `docs/bash-behavior.md`, `docs/command-bridge.md`.
+5. The package structure made final (`package-boundaries.md`), before
+   anything is deleted so every deletion lands in its final place:
+   `@demicodes/tinybash` standalone, declaring its own system interface
+   (`TinybashFs`, `TinybashIO`, `DispatchIO`, `RootPaths`) and depending
+   on `utils` alone; `HostlessEnvironment` moved from the backend to
+   `@demicodes/shell/hostless`, taking the loader's root paths and
+   dispatcher instead of the loader; `nodeFileSystem` under
+   `@demicodes/shell/node` for the backend's data directory; `LocalHost`
+   under `@demicodes/shell/testing` as the Node test fixture;
+   `@demicodes/host-remote` holding `RemoteHost` and
+   `RemoteShellEnvironment`; `@demicodes/runner-protocol` reduced to the
+   wire; the Host over tinyjs folded into `@demicodes/runner` as
+   `machine/`, `HostRpcServer` and `JobTable` as `serve/`; `AgentServer`'s
+   `shellEnvironment` required, no engine default. `@demicodes/host-virtual`
+   reduced to the store-backed Host, its spawn refusal deleted.
+6. Deletion: `packages/just-bash` (submodule, workspace entry, tsconfig
+   paths); the interpreter and portable-command parts of `@demicodes/shell`
+   (`bash`, `host-fs`, the environment files, their tests) and the
+   offset-paged 1 MB stream view with `runCommandLine`; `@demicodes/host-local`
+   (the command bridge, the local agent server, the state layout);
+   `@demicodes/host-runner` (now `runner/machine/`); `@demicodes/repl`,
+   `@demicodes/agent-eval`, the web package's server and its e2e tests;
+   the Bun runner (`RunnerClient`, `main.ts`, `state.ts`) and its bin; the
+   old design records (`docs/bash-behavior.md`, `docs/command-bridge.md`,
+   `docs/just-bash-fork-policy.md`, the REPL, eval, web and library-plan
+   records under `docs/internal/`, the Host and UI guides). Tests that ran
+   scripts through just-bash run them through `HostlessEnvironment` over
+   `LocalHost`, rewritten to the tinybash subset; a case whose point was a
+   real process moves to the tinyjs-runner suites.
 Accept: every M1 and M4
 integration test passes on the new runner; `cmd1 | cmd2` with zero wire
 bytes; `demi todo` round trip over the UDS relay; runner killed mid-command
 → tool error, session continues, reconnect resumes.
-Status: step 1 delivered — `@demicodes/host-runner` accepted by the Host
-conformance suite (`@demicodes/shell/testing`, the suite `host-local` also
-runs) on tinyjs; command mode runs `demi file create` and `demi file read`
+Status: step 1 delivered — the Host over tinyjs accepted by the Host
+conformance suite (`@demicodes/shell/testing`) on tinyjs; command mode runs `demi file create` and `demi file read`
 from a manifest directory through the packed binary reached by its root
 symlink (`packages/runner/src/tinyjs/entry.ts`), `file read` in 33 ms
 end to end on macOS arm64. Step 2 delivered — the wire at both ends:
@@ -136,7 +154,7 @@ runners with the runner sockets carrying only the view and control
 frames; a hostless caller takes the bytes in-process); media by
 reference to the browser: outbound transcript frames carry `{ type:
 'ref', ref, mediaType }` and `GET /api/blobs/:sha256` serves the bytes.
-Steps 5–6 open.
+Steps 5–6 in progress.
 
 **M10 — Access model and managed hosts** (`sessions-and-targets.md`,
 `managed-hosts.md`; depends on M9)
@@ -164,7 +182,9 @@ frozen.
 The entire `@demicodes/web` package in one concentrated phase: scaffold,
 workspace-grouped sidebar, chat view on web-ui, settings dialogs, the target
 picker with the hostless state, grant management, media by reference.
-Consumes the M11-frozen API; adds no backend surface. The old dev product is renamed `web-demo` here.
+Consumes the M11-frozen API; adds no backend surface. The old local dev
+product was deleted in M9 with the Node Host it ran on; until M12 the web
+package is the Vite scaffold alone.
 
 **M13 — Deployment packaging**
 Container image for the backend (carrying the built web assets); tinyjs
@@ -191,7 +211,7 @@ Test modules and their intended coverage, per milestone.
 
 | Milestone | Coverage |
 |---|---|
-| M0 | Spawn-injection + `buildClaudeEnv` overlay assertions. Capability-flag tests. Host-switch integration: two temp-dir LocalHosts, context block injected, per-Host environment isolation, transcript continuity. |
+| M0 | Spawn-injection + `buildClaudeEnv` overlay assertions. Capability-flag tests. Host-switch integration: two temp-dir `LocalHost`s (`@demicodes/shell/testing`), context block injected, per-Host environment isolation, transcript continuity. |
 | M1 | Protocol codec round-trips. Remote-Host integration against a bare AgentServer: `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error; reconnect → next command succeeds. |
 | M2 | Backend integration in one process: in-process `AgentClient` + store-backed Host; detach mid-turn → turn completes → reattach sees the result; cold-history read equals live transcript. |
 | M3 | Block-row persistence: streamed turn appends rows; restore from the two databases equals the live transcript; media round-trips through `source.ref`; per-conversation `host_store` isolation. |
@@ -200,7 +220,7 @@ Test modules and their intended coverage, per milestone.
 | M6 | Switch integration (real→real with files staying and an honest context block; mid-turn switch refused; concurrent switch has one winner); offline target → readable and chattable; attachment upload → ref → inline at provider; checkpoint round-trip. |
 | M7 | Primitive conformance suite from JS: fs incl. errno cases and streaming reads; spawn incl. stdin/kill/uid/tee byte counts; WebSocket send backpressure and receive; HTTP request bodies from files and response bodies streamed to a fd; UDS listen mode and accept; MessagePack extension types; timers ordering; globals; `tinyjs:*` refused from a file-loaded module. Build-target matrix; guest cold-start (command-mode hello, cold cache), binary size and tee throughput measured in the Firecracker fixture. |
 | M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, tinyjs and fixture; tinybash grammar and builtin tables, the equivalence corpus against real bash + GNU coreutils in a Linux container (`tinybash.md`); parse-first, session-state and cancellation cases; hostless conversation runs file, todo and builtin pipelines; third-party embedding example. |
-| M9 | Host conformance suite on `host-runner`; a `runtime` command run by tinyjs in command mode; M1 and M4 suites on tinyjs runner; job table (foreground, background, kill, exit); cwd carried between jobs; tee + the model's view (head, tail) + output file; UDS relay round trip with session attribution; MessagePack frames; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
+| M9 | Host conformance suite on the runner's machine layer; a `runtime` command run by tinyjs in command mode; M1 and M4 suites on tinyjs runner; job table (foreground, background, kill, exit); cwd carried between jobs; tee + the model's view (head, tail) + output file; UDS relay round trip with session attribution; MessagePack frames; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
 | M10 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
 | M11 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
 | M12 | Manual checklist over the full layout, including the "everything Demi implements gets exposed" sweep. |
