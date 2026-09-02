@@ -51,7 +51,7 @@ processes.
 - **Guest kernel.** A minimal kernel we build (virtio net/block/vsock,
   ext4, overlayfs, tmpfs, cgroups; no modules). Boot to init is under a
   second.
-- **Network.** One tap per VM. Egress policy, enforced host-side by
+- **Network.** One tap per VM. Egress policy, enforced on the backend machine by
   per-tap nftables rules the guest cannot alter: internet allowed; RFC 1918
   and link-local ranges, `169.254.169.254`, and the backend's own internal
   network blocked; no inbound. The runner dials the backend's public URL like
@@ -69,13 +69,13 @@ processes.
 
 Three block devices meet in a guest:
 
-- **The rootfs**: one shared, read-only ext4 image per backend host, built
+- **The rootfs**: one shared, read-only ext4 image per backend machine, built
   by our pipeline, fsck-clean, never mounted read-write at runtime. It is
   **preinstalled and heavy**: git, curl, build-essential, Python, Node, Bun,
   uv, Rust toolchain, ripgrep and the rest of a working developer machine,
   plus the shell binary as `/demi-runner` and `/usr/bin/demi`. Its size
-  costs an owner nothing — it is paged on demand and hot in the host page
-  cache across every VM — and it is upgraded by shipping a new image; the
+  costs an owner nothing — it is paged on demand and hot in the backend
+  machine's page cache across every VM — and it is upgraded by shipping a new image; the
   next wake boots it with nothing to migrate.
 - **The ephemeral upper**: a tmpfs (or a discarded disk) mounted as an
   overlay upper over `/` for the VM's lifetime, so `apt` and other
@@ -126,14 +126,14 @@ Timing:
 1. **On hibernate** — the authoritative save: VM dead, image consistent,
    shrunk, uploaded.
 2. **Periodic while running** (default 15 min, configurable) — durability
-   against backend-host disk loss during a multi-day workspace: Firecracker
-   `PATCH /vm {state: Paused}` → copy the image (reflink when the host
-   filesystem offers it, plain copy otherwise) → `Resumed` → upload the
+   against backend-machine disk loss during a multi-day workspace: Firecracker
+   `PATCH /vm {state: Paused}` → copy the image (reflink when the backend
+   machine's filesystem offers it, plain copy otherwise) → `Resumed` → upload the
    copy asynchronously. The pause window equals the copy time; the copy is
    crash-consistent and at most a writeback interval stale. Liveness
    detection exempts a host in a backend-initiated pause.
 
-Host filesystem: xfs with reflink recommended; ext4 acceptable; btrfs a poor
+Backend-machine filesystem: xfs with reflink recommended; ext4 acceptable; btrfs a poor
 fit for VM images. Guest filesystem: ext4, the one mainstream choice with
 offline shrink.
 

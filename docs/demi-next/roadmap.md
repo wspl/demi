@@ -32,7 +32,7 @@ the block-row journal, media out of the transcript via `source.ref`,
 `control.sqlite`.
 
 **M4 — Runner productized.** Claim-by-token flow, device registry with
-online status, backend host resolution to remote Hosts.
+online status, backend resolution of execution targets to remote Hosts.
 
 **M5 — LLM module, vault, metering, Claude Code.** Vault key storage,
 per-user provider assembly, usage ledger and enforcement; subscription
