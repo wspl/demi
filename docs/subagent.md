@@ -63,7 +63,7 @@ relay); hostless, the backend calls it directly. `demi agent … &` is not a
 spawn path: a backgrounded job's stdin is not the tool call's, so nothing
 steers the child. The short subcommands below are fine either way.
 
-Addressing by id (a later `shell_exec`, or the command bridge from a host
+Addressing by id (a later `shell_exec`, or a command-mode process on a host
 subprocess):
 
 ```text

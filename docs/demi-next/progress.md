@@ -2040,10 +2040,11 @@ findings from the owner:
   `HostRpcServer` and `JobTable` are `runner/src/serve/`;
   `runner-protocol` is the wire alone, depended on by both ends.
 
-Alongside: `LocalHost` becomes the Node test fixture under
-`@demicodes/shell/testing` (never a package again), over `nodeFileSystem`
-under `@demicodes/shell/node`, which is also the backing of the store-backed
-Host on the backend machine; `AgentServer.shellEnvironment` is required;
+Alongside: `LocalHost` becomes the Node Host under `@demicodes/shell/node`
+(never a package again; tests run against it), beside `nodeFileSystem`,
+the backing of the store-backed Host on the backend machine — the
+`testing` entry stays runtime-neutral so the conformance suite bundles for
+tinyjs; `AgentServer.shellEnvironment` is required;
 the old local products (`repl`, `agent-eval`, the web package's server)
 go with the Node Host they ran on rather than surviving to a rename in
 M12; the design records that described them (`bash-behavior`,
@@ -2054,6 +2055,84 @@ annotated. `package-boundaries.md`, `overview.md`, `runner.md`,
 `tinyjs.md`, `tinybash.md`, `commands.md`, `backend.md`, `roadmap.md`
 (steps 5 and 6 rewritten to this plan) and `README.md` state the final
 structure; the code follows in the next commits, one package per commit.
+
+### Steps 5 and 6: the structure made final, the old paths deleted (2026-09-03) — delivered; M9 closed
+
+Landed, in the order the records were written:
+
+- `@demicodes/tinybash` depends on `utils` alone: `src/host.ts` declares
+  `TinybashFs`, `TinybashStat`, `TinybashDirent`, `TinybashIO`,
+  `TinybashWriter`, `DispatchIO`, `RootPaths`; the corpus fixtures import
+  shell only as a dev dependency.
+- `@demicodes/shell`: `hostless` (`HostlessEnvironment` over `roots` +
+  `dispatch`), `node` (`nodeFileSystem`, `LocalHost` with `LocalHostCwd`),
+  `testing` kept runtime-neutral (memory store, conformance suite),
+  `reserved-names.ts` (one table: shell words, Unix tools, toolchains);
+  `bash`, `host-fs`, the environment files, the portable commands and
+  their ten test files deleted; the explicit offset paging
+  (`ShellStatusInput` offsets, per-call `maxOutputBytes`, `ShellViewInput`)
+  deleted — a status view is the delta since the last view, the record
+  keeps the cursor.
+- `@demicodes/command-loader/testing`: `hostlessShell` (the hostless shell
+  over any Host with Bun's transpiler), `hostlessShellFactory`, and the
+  `probe` root (`hold <ms>`, `stdin [--delay]`) that stands in for `sleep`
+  and `read` in tests — a builtin never sleeps and never reads the
+  script's stdin.
+- `@demicodes/host-remote`: `RemoteHost`, `RemoteShellEnvironment`.
+  `@demicodes/runner-protocol`: the wire only, plus the job env names
+  (`JOB_CWD_FILE_VAR`, `JOB_STDIN_FD_VAR`, `JOB_STDIN_FD`).
+  `@demicodes/runner`: `machine/` (the former host-runner), `serve/`
+  (`HostRpcServer` with the device `PATH`/`HOME` fallback for spawns,
+  `JobTable`, `device-env.ts`), `relay/`, the entry modes at the root;
+  `testing.ts` carries `tinyjsBinary`, `bundleForTinyjs`, `packedRunner`,
+  `startTinyjsRunner` and re-exports `HostRpcServer`; the Bun runner, its
+  bin and `RunnerClient` deleted.
+- `@demicodes/agent`: `shellEnvironment` required, `defaultShellEnvironment`
+  and `runCommandLine` (with its error types and test) deleted;
+  `ShellEnvironmentOptions` replaces the engine's option type everywhere.
+- `@demicodes/host-virtual`: `process.spawn` throws; the refusal handle
+  and `VIRTUAL_UPGRADE_GUIDANCE` deleted.
+- Backend: `nodeFileSystem(dataDir)` backs the virtual hosts; the shell
+  factory has no third branch; `demi host prev shell` on a hostless prev
+  is refused with the reason (the switch places the files, M10); the
+  claude-chain and llm tests run on the tinyjs runner.
+- Deleted outright: `packages/just-bash` (submodule, `.gitmodules`,
+  workspace entry, tsconfig paths, the `test:just-bash-core` script),
+  `packages/host-local`, `packages/repl`, `packages/agent-eval`,
+  `packages/web/src/server` with its three e2e tests (the web package is
+  the Vite scaffold until M12), `examples/`, `packages/host-runner`; the
+  changeset fixed group and the versioning record list the final set.
+- Tests: every suite runs a shell through `hostlessShell` over
+  `LocalHost` where it needs one; scripts moved into the tinybash subset
+  (`printf`, `test -e`, assignments instead of `export`, `grep … > /dev/null`
+  instead of `grep -q`, a grep-based check standing in for `bun test`);
+  the todo isolation tests build one environment per agent session, as
+  the product does. Green: agent 243, coding-agent + providers 136,
+  backend 41, runner 10, shell + tinybash + command-loader +
+  runner-protocol + host-remote + host-virtual + core + utils + web-ui +
+  web 561; typecheck and the web typecheck clean.
+
+Pitfalls, each a rule now:
+
+- A busy default shell must not block the next `shell_exec`: both engines
+  give the session a fresh shell when its default is running a command
+  (the old engine did; the hostless one had not), which is what lets
+  `demi agent list` run beside a running `demi agent spawn`.
+- `@demicodes/shell/testing` is bundled for tinyjs by the conformance
+  test: anything Node in it breaks the bundle, which is why `LocalHost`
+  lives under `node`, not `testing`.
+- A test fixture's store must be stable within the process but not across
+  runs: `LocalHost` keys one temp store per working directory in a
+  process-level map (a reopened session finds its children; a fresh
+  process starts clean — the old default under `~/.local/share` leaked
+  todo ids between runs).
+- The tinyjs runner's `HostRpcServer` did not fill `PATH`/`HOME` into a
+  spawn's env the way the Bun runner had; the Claude Code CLI then died
+  before its MCP handshake. The fallback is one function, shared by
+  spawns and jobs.
+- tinybash has no `grep -q`, no `read`, no `sleep`, no `sh -c`, and no
+  `!` in `test`; the scripts say so plainly now instead of pretending a
+  machine is there.
 
 ## Open items (deferred, with their milestone)
 

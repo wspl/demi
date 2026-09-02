@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M8 delivered; M9 in progress: steps 1–4 delivered |
+| Status | M0–M9 delivered |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -72,7 +72,7 @@ hostless conversation runs `demi file` and `demi todo`; heredoc, sequence
 and refusal cases each covered; one `runtime` module behaves identically
 under Bun, on tinyjs and in the test fixture; a third-party embedding
 example using only the loader and a custom Host. Real hosts keep the
-current runner and command bridge untouched through M7–M8.
+current runner untouched through M7–M8.
 Status: delivered — the loader, tinybash, hostless conversations, the
 second root, `tinyjsc` and the tinyjs fixes.
 
@@ -104,8 +104,8 @@ In dependency order, lightest first:
    on `utils` alone; `HostlessEnvironment` moved from the backend to
    `@demicodes/shell/hostless`, taking the loader's root paths and
    dispatcher instead of the loader; `nodeFileSystem` under
-   `@demicodes/shell/node` for the backend's data directory; `LocalHost`
-   under `@demicodes/shell/testing` as the Node test fixture;
+   `@demicodes/shell/node` for the backend's data directory, with `LocalHost`
+   beside it as the Node Host tests run against;
    `@demicodes/host-remote` holding `RemoteHost` and
    `RemoteShellEnvironment`; `@demicodes/runner-protocol` reduced to the
    wire; the Host over tinyjs folded into `@demicodes/runner` as
@@ -154,7 +154,12 @@ runners with the runner sockets carrying only the view and control
 frames; a hostless caller takes the bytes in-process); media by
 reference to the browser: outbound transcript frames carry `{ type:
 'ref', ref, mediaType }` and `GET /api/blobs/:sha256` serves the bytes.
-Steps 5–6 in progress.
+Steps 5 and 6 delivered — the package structure of `package-boundaries.md`
+(tinybash standalone, `shell/hostless` and `shell/node`, `host-remote`,
+the runner's `machine/` and `serve/`, the wire alone in `runner-protocol`),
+and everything the old paths were: just-bash, the interpreter, host-local,
+host-runner, repl, agent-eval, the web server, the Bun runner, the offset
+paging, the stale records. M9 closed.
 
 **M10 — Access model and managed hosts** (`sessions-and-targets.md`,
 `managed-hosts.md`; depends on M9)
@@ -211,7 +216,7 @@ Test modules and their intended coverage, per milestone.
 
 | Milestone | Coverage |
 |---|---|
-| M0 | Spawn-injection + `buildClaudeEnv` overlay assertions. Capability-flag tests. Host-switch integration: two temp-dir `LocalHost`s (`@demicodes/shell/testing`), context block injected, per-Host environment isolation, transcript continuity. |
+| M0 | Spawn-injection + `buildClaudeEnv` overlay assertions. Capability-flag tests. Host-switch integration: two temp-dir `LocalHost`s (`@demicodes/shell/node`), context block injected, per-Host environment isolation, transcript continuity. |
 | M1 | Protocol codec round-trips. Remote-Host integration against a bare AgentServer: `cat`/`tee`/spawn on a runner in a temp dir; kill the runner mid-command → tool error; reconnect → next command succeeds. |
 | M2 | Backend integration in one process: in-process `AgentClient` + store-backed Host; detach mid-turn → turn completes → reattach sees the result; cold-history read equals live transcript. |
 | M3 | Block-row persistence: streamed turn appends rows; restore from the two databases equals the live transcript; media round-trips through `source.ref`; per-conversation `host_store` isolation. |
