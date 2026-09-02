@@ -1,7 +1,7 @@
 import { asRecord, asString, sliceHead } from '@demicodes/utils'
 import type {
   BashAuditEvent,
-  BashEnvironment,
+  ShellEnvironment,
   ShellAbortInput,
   ShellCommandStatus,
   ShellExecInput,
@@ -30,15 +30,15 @@ interface ShellExecRepeatState {
   updatedAt: number
 }
 
-const execRepeatStates = new WeakMap<BashEnvironment, Map<string, ShellExecRepeatState>>()
+const execRepeatStates = new WeakMap<ShellEnvironment, Map<string, ShellExecRepeatState>>()
 
 export interface StandardAgentToolOptions<State = unknown> {
   environment:
-    | BashEnvironment
+    | ShellEnvironment
     | ((
         ctx: AgentToolInvokeContext<State>,
         handle: { shellId?: string; commandId?: string },
-      ) => BashEnvironment | Promise<BashEnvironment>)
+      ) => ShellEnvironment | Promise<ShellEnvironment>)
   scheduleYield(ctx: AgentToolInvokeContext<State>, durationMs: number): AgentToolInvokeResult
 }
 
@@ -176,7 +176,7 @@ function resolveEnvironment<State>(
   source: StandardAgentToolOptions<State>['environment'],
   ctx: AgentToolInvokeContext<State>,
   handle: { shellId?: string; commandId?: string },
-): BashEnvironment | Promise<BashEnvironment> {
+): ShellEnvironment | Promise<ShellEnvironment> {
   return typeof source === 'function' ? source(ctx, handle) : source
 }
 
@@ -396,7 +396,7 @@ function requiredDelay(value: unknown, label: string): number {
 }
 
 function repeatedShellExecResult(
-  environment: BashEnvironment,
+  environment: ShellEnvironment,
   agentSessionId: string,
   script: string,
 ): AgentToolInvokeResult | null {
@@ -493,7 +493,7 @@ function boundedPreview(text: string, budgetTokens: number): { text: string; tru
 }
 
 export async function finishShellToolResult<State>(
-  environment: BashEnvironment,
+  environment: ShellEnvironment,
   result: ShellCommandStatus,
   ctx: AgentToolInvokeContext<State>,
 ): Promise<AgentToolInvokeResult> {

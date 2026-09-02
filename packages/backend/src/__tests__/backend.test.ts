@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { Block, ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
-import { VIRTUAL_UPGRADE_GUIDANCE } from '@demicodes/host-virtual'
 import { defineProvider, type ProviderEvent } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { delay, waitFor } from '@demicodes/utils'
@@ -78,13 +77,13 @@ async function connectClient(
   return { client: new AgentClient(createWebSocketClientTransport(socket as never)), socket }
 }
 
-test('virtual conversation end-to-end: portable tools, upgrade guidance, detach-safe turns, cold history', async () => {
+test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe turns, cold history', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-'))
   const stub = new StubProvider([
-    // Turn 1: portable commands on the virtual target.
-    [events.toolCall('t1', 'shell_exec', { script: 'printf hello > f.txt && cat f.txt', timeoutMs: 10_000 })],
+    // Turn 1: tinybash builtins over the hostless tree.
+    [events.toolCall('t1', 'shell_exec', { script: 'echo -n hello > f.txt && cat f.txt', timeoutMs: 10_000 })],
     [events.text('files done'), events.response()],
-    // Turn 2: a real program is refused with guidance.
+    // Turn 2: a real program puts the script outside the subset; nothing runs.
     [events.toolCall('t2', 'shell_exec', { script: 'python3 -V', timeoutMs: 10_000 })],
     [events.text('refused as expected'), events.response()],
   ])
@@ -120,8 +119,7 @@ test('virtual conversation end-to-end: portable tools, upgrade guidance, detach-
   expect(shellOutputs[0]).toBe('hello')
 
   await client.send([{ type: 'text', text: 'now run python' }])
-  expect(shellErrors[1]).toContain('command not found')
-  expect(shellErrors[1]).toContain(VIRTUAL_UPGRADE_GUIDANCE)
+  expect(shellErrors[1]).toBe('tinybash: line 1: python3: no such program here; a machine\n')
 
   // The first user message became the title.
   const listed = await api<{ conversations: Array<{ id: string; title: string }> }>(backend, '/api/conversations')
