@@ -21,7 +21,7 @@ One binary on disk; what runs inside it depends on the name it was invoked
 by:
 
 ```
-   invoked as  demi-runner                       invoked as a root command: demi, myagent, …
+   invoked as  demi-runner                       invoked as a root command: demi, scout, …
    (PID 1 on a managed host, a service           (spawned by real bash, once per root-command
     on a user host; one process, long-lived)      invocation in a tool call; short-lived)
 
@@ -287,7 +287,7 @@ one file on disk, reached through symlinks:
 - `demi-runner` — **runner mode**: runs the runner program (`runner.md`).
 - any other name — **command mode**: runs the loader with `argv[0]` as the
   root command (`commands.md`). `demi` is the built-in root; a library
-  user's `myagent` is another symlink to the same file. The runner
+  user's `scout` is another symlink to the same file. The runner
   maintains the symlinks from the manifest's root set.
 
 The mode is selected by `argv[0]` inside the bundle; Rust parses no

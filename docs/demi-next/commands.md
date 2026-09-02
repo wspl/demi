@@ -11,12 +11,12 @@
 The command system is a mechanism, not a command. A **root command** is a
 top-level name the manifest declares — `demi` is the built-in root Demi's
 agent ships with, and a library user who builds another agent on Demi
-declares their own root (`myagent`) with the same tree types, kinds, ABI,
+declares their own root (`scout`) with the same tree types, kinds, ABI,
 manifest, loader and target-side entry. Nothing below is specific to
 `demi` except its contents.
 
 On a target every root is a name in `PATH` — a symlink to the tinyjs binary
-(`tinyjs.md`) — so real bash runs `demi …` and `myagent …` the same way it
+(`tinyjs.md`) — so real bash runs `demi …` and `scout …` the same way it
 runs anything else. In a hostless conversation tinybash's executables are
 its builtins plus the manifest's roots.
 
@@ -232,7 +232,7 @@ whenever the tree changes:
 ```
 manifest
   hash                       content hash of everything below
-  roots[name]                one tree per root command (`demi`, `myagent`, …):
+  roots[name]                one tree per root command (`demi`, `scout`, …):
     tree                     groups and leaves: name, kind, help, input and output schemas (JSON Schema),
                              and for a runtime leaf the hash of its module
   modules[hash]              one self-contained ESM file per runtime leaf

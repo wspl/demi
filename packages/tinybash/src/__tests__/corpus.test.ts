@@ -32,7 +32,7 @@ export async function runCase(testCase: CorpusCase, identity: { user: string; gr
     await buildFixture(host.fs, home)
     const { roots, dispatch } = stubRoots({
       demi: { paths: (argv) => (argv[0] === 'file' && argv[1] === 'read' ? argv.slice(2) : []) },
-      myagent: {},
+      scout: {},
     })
     const stdout = collect()
     const stderr = collect()
