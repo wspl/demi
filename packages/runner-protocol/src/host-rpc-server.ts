@@ -1,6 +1,6 @@
-import type { Host, HostProcessOutputChunk, HostSpawnHandle } from '@demicodes/shell'
-import { errorMessage } from '@demicodes/utils'
-import type { BackendToRunnerMessage, HostFsOp, RunnerToBackendMessage } from './messages'
+import type { Host, HostFileSystem, HostProcessOutputChunk, HostSpawnHandle } from '@demicodes/shell'
+import { errorCode, errorMessage } from '@demicodes/utils'
+import type { BackendToRunnerMessage, FsCallMessage, FsOp, FsParams, FsResult, RunnerToBackendMessage } from './messages'
 
 /**
  * Serves a `Host`'s `fs` and `process` facets over the runner protocol —
@@ -16,10 +16,11 @@ export class HostRpcServer {
   ) {}
 
   async handleMessage(message: BackendToRunnerMessage): Promise<void> {
+    if (message.type.startsWith('fs_')) {
+      await this.handleFsCall(message as FsCallMessage)
+      return
+    }
     switch (message.type) {
-      case 'fs_call':
-        await this.handleFsCall(message.id, message.op, message.args)
-        return
       case 'spawn':
         await this.handleSpawn(message)
         return
@@ -51,19 +52,15 @@ export class HostRpcServer {
     await Promise.all(spawns.map((spawn) => spawn.kill('SIGKILL').catch(() => {})))
   }
 
-  private async handleFsCall(id: string, op: HostFsOp, args: unknown[]): Promise<void> {
+  private async handleFsCall(message: FsCallMessage): Promise<void> {
+    const { type, id, ...params } = message
+    const op = type.slice('fs_'.length) as FsOp
     try {
-      const method = this.host.fs[op] as (...callArgs: unknown[]) => Promise<unknown>
-      const result = await method.apply(this.host.fs, args)
-      this.send({ type: 'fs_result', id, ok: true, result: result === undefined ? null : result })
+      const result = await (fsHandlers[op] as FsHandler<FsOp>)(this.host.fs, params as FsParams<FsOp>)
+      this.send({ type: 'fs_ok', id, op, result: result === undefined ? null : result } as RunnerToBackendMessage)
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException | null)?.code
-      this.send({
-        type: 'fs_result',
-        id,
-        ok: false,
-        error: { message: errorMessage(error), ...(typeof code === 'string' ? { code } : {}) },
-      })
+      const code = errorCode(error)
+      this.send({ type: 'fs_error', id, ...(code ? { code } : {}), message: errorMessage(error) })
     }
   }
 
@@ -112,6 +109,29 @@ export class HostRpcServer {
       ...(exit.spawnError ? { spawnError: exit.spawnError } : {}),
     })
   }
+}
+
+type FsHandler<Op extends FsOp> = (fs: HostFileSystem, params: FsParams<Op>) => Promise<FsResult<Op> | void>
+
+/** Each `fs_<op>` request to the `HostFileSystem` method it names. */
+const fsHandlers: { [Op in FsOp]: FsHandler<Op> } = {
+  readFile: (fs, p) => fs.readFile(p.path, { cwd: p.cwd }),
+  writeFile: (fs, p) => fs.writeFile(p.path, p.data, { cwd: p.cwd, createParents: p.createParents }),
+  appendFile: (fs, p) => fs.appendFile(p.path, p.data, { cwd: p.cwd, createParents: p.createParents }),
+  exists: (fs, p) => fs.exists(p.path, { cwd: p.cwd }),
+  stat: (fs, p) => fs.stat(p.path, { cwd: p.cwd }),
+  lstat: (fs, p) => fs.lstat(p.path, { cwd: p.cwd }),
+  readdir: (fs, p) => (p.withFileTypes ? fs.readdir(p.path, { cwd: p.cwd, withFileTypes: true }) : fs.readdir(p.path, { cwd: p.cwd })),
+  mkdir: (fs, p) => fs.mkdir(p.path, { cwd: p.cwd, recursive: p.recursive }),
+  rm: (fs, p) => fs.rm(p.path, { cwd: p.cwd, recursive: p.recursive, force: p.force }),
+  cp: (fs, p) => fs.cp(p.path, p.destination, { cwd: p.cwd, recursive: p.recursive }),
+  mv: (fs, p) => fs.mv(p.path, p.destination, { cwd: p.cwd }),
+  chmod: (fs, p) => fs.chmod(p.path, p.mode, { cwd: p.cwd }),
+  symlink: (fs, p) => fs.symlink(p.target, p.path, { cwd: p.cwd }),
+  link: (fs, p) => fs.link(p.existingPath, p.path, { cwd: p.cwd }),
+  readlink: (fs, p) => fs.readlink(p.path, { cwd: p.cwd }),
+  realpath: (fs, p) => fs.realpath(p.path, { cwd: p.cwd }),
+  utimes: (fs, p) => fs.utimes(p.path, p.atime, p.mtime, { cwd: p.cwd }),
 }
 
 function mergedOutput(handle: HostSpawnHandle): AsyncIterable<HostProcessOutputChunk> {
