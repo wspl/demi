@@ -1,0 +1,170 @@
+import type { HostSpawnError, HostSpawnHandle } from '@demicodes/shell'
+import { errorMessage, noop } from '@demicodes/utils'
+import { JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type RunnerToBackendMessage } from './messages'
+
+/**
+ * The runner's job table (`runner.md` § Jobs and the tee): one `bash -c`
+ * process per job, its stdout and stderr teed in full to output files on
+ * this machine, the model's view of them crossing the wire — the first
+ * `JOB_VIEW_BYTES` of each stream while the job runs, the last
+ * `JOB_VIEW_BYTES` at exit. The working directory the script ended in is
+ * carried back; nothing else of the shell's state is.
+ *
+ * Platform-neutral: the teed spawn and the file reads are injected — the
+ * tinyjs runner brings the tee primitive, tests bring a JavaScript tee
+ * over a local Host.
+ */
+export interface JobSpawnParams {
+  command: string
+  args: string[]
+  cwd: string
+  env: Record<string, string>
+  /** Where the full streams go; the handle's streams yield the view only. */
+  tee: { stdoutPath: string; stderrPath: string; viewLimit: number }
+}
+
+export interface JobSpawnHandle extends Omit<HostSpawnHandle, 'output' | 'wait'> {
+  wait(): Promise<{ exitCode: number | null; signal?: string; spawnError?: HostSpawnError; stdoutBytes: number; stderrBytes: number }>
+}
+
+export interface JobTableOptions {
+  /** A teed spawn: full streams to the files, the view on the handle. */
+  spawn(params: JobSpawnParams): Promise<JobSpawnHandle>
+  /** Directory the output files live in, one subdirectory per job. */
+  outputDir: string
+  fs: {
+    mkdir(path: string): Promise<void>
+    /** The last `bytes` of a file, or all of it when shorter. */
+    readTail(path: string, bytes: number): Promise<Uint8Array>
+    readFile(path: string): Promise<Uint8Array>
+    rm(path: string): Promise<void>
+  }
+  /** Device facts a job's env falls back to when the backend named none: `PATH`, `HOME`. */
+  deviceEnv: Record<string, string>
+  send(message: RunnerToBackendMessage): void
+}
+
+interface Job {
+  handle: JobSpawnHandle
+  cwdFile: string
+}
+
+/** The env var naming the file the `EXIT` trap writes the final `pwd` to. */
+export const JOB_CWD_FILE_VAR = 'DEMI_JOB_CWD_FILE'
+
+export class JobTable {
+  private readonly jobs = new Map<string, Job>()
+
+  constructor(private readonly options: JobTableOptions) {}
+
+  /** Running jobs, for `pong`. */
+  get count(): number {
+    return this.jobs.size
+  }
+
+  async handleMessage(message: BackendToRunnerMessage): Promise<void> {
+    switch (message.type) {
+      case 'job_start':
+        await this.start(message)
+        return
+      case 'job_stdin':
+        await this.jobs.get(message.jobId)?.handle.writeStdin(message.bytes).catch(noop)
+        return
+      case 'job_stdin_end':
+        await this.jobs.get(message.jobId)?.handle.closeStdin().catch(noop)
+        return
+      case 'job_kill':
+        await this.jobs.get(message.jobId)?.handle.kill(message.signal).catch(noop)
+        return
+      default:
+        return
+    }
+  }
+
+  /** Kills every running job — the connection dropped. */
+  async close(): Promise<void> {
+    const jobs = [...this.jobs.values()]
+    this.jobs.clear()
+    await Promise.all(jobs.map((job) => job.handle.kill('SIGKILL').catch(noop)))
+  }
+
+  private async start(message: Extract<BackendToRunnerMessage, { type: 'job_start' }>): Promise<void> {
+    const { jobId } = message
+    const dir = `${this.options.outputDir}/${jobId}`
+    const cwdFile = `${dir}/cwd`
+    const stdoutPath = `${dir}/stdout.txt`
+    const stderrPath = `${dir}/stderr.txt`
+    let handle: JobSpawnHandle
+    try {
+      await this.options.fs.mkdir(dir)
+      handle = await this.options.spawn({
+        command: 'bash',
+        args: ['-c', wrapScript(message.script)],
+        cwd: message.cwd,
+        env: { ...deviceFallback(message.env, this.options.deviceEnv), [JOB_CWD_FILE_VAR]: cwdFile },
+        tee: { stdoutPath, stderrPath, viewLimit: JOB_VIEW_BYTES },
+      })
+    } catch (error) {
+      this.options.send({ type: 'job_exit', jobId, exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })
+      return
+    }
+    this.jobs.set(jobId, { handle, cwdFile })
+    void this.pump(jobId, handle, { stdoutPath, stderrPath, cwdFile })
+  }
+
+  private async pump(jobId: string, handle: JobSpawnHandle, files: { stdoutPath: string; stderrPath: string; cwdFile: string }): Promise<void> {
+    const forward = async (stream: AsyncIterable<Uint8Array>, name: 'stdout' | 'stderr') => {
+      try {
+        for await (const bytes of stream) {
+          if (!this.jobs.has(jobId)) break
+          this.options.send({ type: 'job_output', jobId, stream: name, bytes })
+        }
+      } catch {
+        // A failed spawn's streams may error; the exit below still reports.
+      }
+    }
+    const [exit] = await Promise.all([handle.wait(), forward(handle.stdout, 'stdout'), forward(handle.stderr, 'stderr')])
+    if (!this.jobs.delete(jobId)) return
+    const output: JobOutput = {
+      stdoutPath: files.stdoutPath,
+      stderrPath: files.stderrPath,
+      stdoutBytes: exit.stdoutBytes,
+      stderrBytes: exit.stderrBytes,
+      stdoutTail: await this.options.fs.readTail(files.stdoutPath, JOB_VIEW_BYTES).catch(() => new Uint8Array(0)),
+      stderrTail: await this.options.fs.readTail(files.stderrPath, JOB_VIEW_BYTES).catch(() => new Uint8Array(0)),
+    }
+    const cwd = await this.options.fs
+      .readFile(files.cwdFile)
+      .then((bytes) => new TextDecoder().decode(bytes))
+      .catch(() => undefined)
+    await this.options.fs.rm(files.cwdFile).catch(noop)
+    this.options.send({
+      type: 'job_exit',
+      jobId,
+      exitCode: exit.exitCode,
+      ...(exit.signal !== undefined ? { signal: exit.signal } : {}),
+      ...(exit.spawnError ? { spawnError: exit.spawnError } : {}),
+      ...(cwd !== undefined && cwd !== '' ? { cwd } : {}),
+      output,
+    })
+  }
+}
+
+/**
+ * The script with an `EXIT` trap in front: bash writes the directory it
+ * ends in — after an explicit `exit` too — and the backend carries it into
+ * the next job. A script bash refuses to parse never runs the trap, and the
+ * backend keeps the directory it had.
+ */
+export function wrapScript(script: string): string {
+  return `trap 'printf %s "$PWD" > "$${JOB_CWD_FILE_VAR}"' EXIT\n${script}`
+}
+
+/** Binary resolution and the home directory are device facts (`runner.md` § Responsibilities). */
+function deviceFallback(env: Record<string, string>, device: Record<string, string>): Record<string, string> {
+  const merged = { ...env }
+  for (const key of ['PATH', 'HOME']) {
+    if (!(key in merged) && device[key] !== undefined) merged[key] = device[key]
+  }
+  return merged
+}
