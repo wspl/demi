@@ -2019,20 +2019,48 @@ Pitfalls:
   caller's socket and tripped over `demi host list`'s own lines; the
   assertion is now a byte count, and the trace carries whole messages.
 
+### The final package structure (2026-09-03) — decided, records updated first
+
+Before steps 5 and 6 the package set was re-drawn, on two review
+findings from the owner:
+
+- **`tinybash` depended on `shell` for six types.** A shell is
+  infrastructure like tinyjs and owns its system interface: tinybash now
+  declares `TinybashFs`, `TinybashIO`, `DispatchIO` and `RootPaths` in
+  `src/host.ts` and depends on `utils` alone. The adaptation of Demi's
+  Host contract and loader to it is `HostlessEnvironment`, moved from the
+  backend to `@demicodes/shell/hostless` (the place `shell/bash` held for
+  just-bash), taking `roots` and `dispatch` instead of a `Loader`;
+  `shell → tinybash` is the one new edge, and only through that entry.
+- **`host-runner` was misnamed.** The `host-` prefix means a Host the
+  backend injects into the agent (`host-virtual`, and now `host-remote`
+  for `RemoteHost` + `RemoteShellEnvironment`, out of `runner-protocol`).
+  The Host over tinyjs is none of that: it is the runner's own access to
+  its machine, held by nobody else. It is now `packages/runner/src/machine/`;
+  `HostRpcServer` and `JobTable` are `runner/src/serve/`;
+  `runner-protocol` is the wire alone, depended on by both ends.
+
+Alongside: `LocalHost` becomes the Node test fixture under
+`@demicodes/shell/testing` (never a package again), over `nodeFileSystem`
+under `@demicodes/shell/node`, which is also the backing of the store-backed
+Host on the backend machine; `AgentServer.shellEnvironment` is required;
+the old local products (`repl`, `agent-eval`, the web package's server)
+go with the Node Host they ran on rather than surviving to a rename in
+M12; the design records that described them (`bash-behavior`,
+`command-bridge`, `just-bash-fork-policy`, the binary-stream and
+shell-yield plans, the REPL/eval/web/library plans under `docs/internal/`,
+the Host and UI guides, the `examples/` directory) are deleted, not
+annotated. `package-boundaries.md`, `overview.md`, `runner.md`,
+`tinyjs.md`, `tinybash.md`, `commands.md`, `backend.md`, `roadmap.md`
+(steps 5 and 6 rewritten to this plan) and `README.md` state the final
+structure; the code follows in the next commits, one package per commit.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
   not now).
 - tinyjs, awaiting a proposal: tee writes synchronous on the loop thread;
   the TLS configuration rebuilt per request.
-- `@demicodes/host-virtual` reduced to the store-backed Host and its
-  spawn refusal deleted (M9, with just-bash).
-- `@demicodes/host-local` and the local open-box assembly deleted (M9,
-  after the M1 and M4 suites pass on the new runner).
-- `ShellStreamView` (the 1 MB offset-paged stream view) and its two
-  consumers, `runCommandLine` and `demi host prev shell`, deleted together
-  (M9 step 6); the model view (`ShellToolView`, 32 KB tail) and the
-  records stay.
 - tinybash reference suites (just-bash compat, oils spec, GNU tests) and
   the split-equivalence test (M10, needs auto-provision).
 - CI re-deriving the corpus goldens from bash (`TINYBASH_CHECK_GOLDENS=1`

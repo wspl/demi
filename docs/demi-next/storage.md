@@ -218,8 +218,8 @@ query time.
 - Conversation state is fully behind `HostStore` (four methods) —
   checkpoints and subagent records. The backend implements a DB-backed
   `HostStore` and composes it into every Host it hands the harness. The
-  DB-backed store provides the atomicity `LocalHostStore` guarantees for
-  `writeJson` and serves `list` and bulk reads efficiently.
+  DB-backed store provides atomic `writeJson` and serves `list` and bulk
+  reads efficiently.
 - The hostless filesystem is behind the `Host` fs contract
   (`@demicodes/host-virtual` over the `files` tree and the blob store).
 - The blob store is put/get by content hash with two backends (directory,

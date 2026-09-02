@@ -76,8 +76,9 @@ Spoken of as modules, not separate services:
   `providers-and-vault.md`.
 - **Runner management module**: device registry (claim tokens, device
   tokens, online status = socket state, one live connection per token), the
-  runner-protocol server, per-conversation Host handles over connected
-  runners, brokered cross-host transfers (`runner.md`).
+  runner-protocol server, per-conversation `RemoteHost` handles
+  (`@demicodes/host-remote`) over connected runners, the rpc relay,
+  brokered cross-host transfers (`runner.md`).
 - **Managed hosts module**: the `ManagedHostProvisioner` (Firecracker under
   jailer via the privileged helper), images, the home-image store,
   lifecycle (`managed-hosts.md`).
@@ -134,6 +135,8 @@ poll on open and on an interval.
 
 `@demicodes/backend` is a product leaf: nothing imports it. Its production
 dependencies are the agent, coding-agent, core, provider, the provider
-runtimes, shell (Host contract and command types), host-virtual,
-command-loader, tinybash, runner-protocol and utils, plus `hono` on Bun. The module
+runtimes, shell (the Host contract and command types; `hostless` for the
+hostless shell environment; `node` for the data directory's filesystem),
+host-virtual and host-remote (the two Hosts it injects into the agent),
+command-loader, runner-protocol and utils, plus `hono` on Bun. The module
 directories mirror the modules above (`docs/package-boundaries.md`).

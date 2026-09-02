@@ -254,9 +254,9 @@ runTinybash(input: {
   roots: ReadonlyMap<string, RootPaths>   // root names → which of an argv's arguments are paths
   namespace: readonly string[]            // absolute prefixes the script may touch, e.g. ['/home/demi', '/tmp']
   dispatch: (root: string, argv: string[], io: DispatchIO) => Promise<number>
-  fs: HostFileSystem                      // the builtins' filesystem
+  fs: TinybashFs                          // the builtins' filesystem
   state: { cwd: string; home: string; vars: Record<string, string> }   // mutated by cd and assignments
-  io: CommandIO                           // the script's stdout and stderr
+  io: TinybashIO                          // the script's stdout and stderr
   identity: { user: string; group: string }   // owner names `ls -l` shows; every hostless file is the session user's
   stdin?: AsyncIterable<Uint8Array>       // the script's own stdin: what the caller writes while the script runs
   signal?: AbortSignal
@@ -270,16 +270,22 @@ type RootPaths = (argv: readonly string[]) => readonly string[]   // the path-ty
 interface DispatchIO {
   stdin: AsyncIterable<Uint8Array>     // the pipeline, heredoc, `<` file, or empty; finite
   stdinStream?: AsyncIterable<Uint8Array>   // the script's stdin, when this command's stdin is not redirected; live
-  stdout: CommandIO['stdout']
-  stderr: CommandIO['stderr']
+  stdout: TinybashWriter
+  stderr: TinybashWriter
   cwd: string
   env: Record<string, string>
   signal?: AbortSignal
 }
 ```
 
-`RootPaths` is a function because which argument is a path depends on the
-leaf the argv selects; the loader builds it from the manifest's path marks
+These types are tinybash's own (`src/host.ts`): `TinybashFs` is the
+thirteen filesystem calls the builtins, redirections and globs make,
+`TinybashIO` a script's two writers, `DispatchIO` the stdio and
+environment of one root-command invocation, `RootPaths` the question the
+namespace check asks of a root. tinybash declares what it needs the way a
+shell declares its system calls; whoever embeds it adapts. `RootPaths` is
+a function because which argument is a path depends on the leaf the argv
+selects; in Demi the loader builds it from the manifest's path marks
 (`commands.md`) so tinybash never parses a root's arguments itself. Tests
 hand in a table. `DispatchIO` is what a root command's `ctx` is built
 from: the loader adds `args` and `fs`. The script's `stdin` is what real
@@ -300,13 +306,23 @@ which is still sound and merely hands more scripts to a machine.
 
 ## Packages
 
-`@demicodes/tinybash` depends on `@demicodes/shell` for `HostFileSystem`
-and `CommandIO` and on `@demicodes/utils`; nothing else. Its directories
-mirror this document: `grammar/` (lexer, parser, AST, expansions),
-`outside/` (the refusal table and the parse-first checks), `exec/`
-(statements, pipelines, byte streams, redirections, session state) and
-`builtins/` (one file per builtin over a shared flag parser, the whitelist
-declared as a table).
+`@demicodes/tinybash` is standalone infrastructure, like tinyjs: it
+depends on `@demicodes/utils` and nothing else of Demi, and knows no
+Host, loader, manifest or backend. Its directories mirror this document:
+`host.ts` (the system interface above), `grammar/` (lexer, parser, AST,
+expansions), `outside/` (the refusal table and the parse-first checks),
+`exec/` (statements, pipelines, byte streams, redirections, session
+state) and `builtins/` (one file per builtin over a shared flag parser,
+the whitelist declared as a table).
+
+Demi meets it in `@demicodes/shell/hostless`: `HostlessEnvironment`
+implements the `ShellEnvironment` contract behind the `shell_*` tools by
+running tinybash over a Host's `fs` (which satisfies `TinybashFs`) with
+the loader's `rootPaths` and `dispatch`; command records, views and
+artifacts are the ones every engine shares. The backend composes it for
+hostless conversations; tests compose it over `LocalHost`
+(`@demicodes/shell/testing`) wherever a shell is needed without a
+machine.
 
 ## What tinybash is not
 
@@ -361,8 +377,7 @@ declared as a table).
 - **Split equivalence** (`sessions-and-targets.md`): tool-call sequences
   run hostless-then-machine at every split point match the all-machine
   run byte for byte.
-- **Reference suites**: the just-bash fork's compatibility tests filtered
-  to the subset; the oils spec tests (cross-shell, table-driven, with
+- **Reference suites**: the oils spec tests (cross-shell, table-driven, with
   bash's expected output per case) filtered to the subset; GNU bash's and
   coreutils' own test cases for the accepted builtins and flags.
 - **Session state**: `cd` and assignments persist across tool calls;

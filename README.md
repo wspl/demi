@@ -1,23 +1,27 @@
 # Demi
 
-Demi is a TypeScript toolkit for building agents and coding agents. It gives you a
-provider-agnostic agent runtime, a sandboxable shell, a transport-neutral
-client/server protocol, and a ready-made coding-agent harness — composable
-packages you assemble into your own app.
+Demi is a hosted coding-agent product and the TypeScript packages it is
+built from: a provider-agnostic agent runtime, a command system with one
+manifest for every execution surface, a hostless shell, and a runner that
+turns any machine into an execution target. The design is recorded under
+[docs/demi-next/](docs/demi-next/overview.md); the package contract is
+[docs/package-boundaries.md](docs/package-boundaries.md).
 
-- **Provider-agnostic** — one inference contract (`@demicodes/provider`); ship adapters
-  for Claude Code, Codex, the Anthropic API, the OpenAI API, Google Gemini, Grok Build,
-  or your own.
-- **Host-abstracted** — the shell runs against a `Host` (`fs` / `process` / `store`),
-  with a Node reference (`@demicodes/host-local`) and room for remote/container/sandbox backends.
-- **Transport-neutral** — drive a session in-process, over stdio, or over WebSocket;
-  the same `AgentClient` protocol powers the REPL and the web UI.
-- **Long-running shell control** — `shell_exec` / `shell_status` / `shell_write` /
-  `shell_abort` / `yield`, with delayed wakeups and budgeted output. See
-  [docs/shell-yield-control-plan.md](docs/shell-yield-control-plan.md).
+- **Provider-agnostic** — one inference contract (`@demicodes/provider`) with
+  adapters for Claude Code, Codex, the Anthropic API, the OpenAI API, Google
+  Gemini and Grok Build.
+- **One backend, many targets** — a conversation runs hostless (files in its
+  own store, scripts in `@demicodes/tinybash`) or on a machine reached through
+  its runner; switching targets is a first-class operation.
+- **One command manifest** — every root command (`demi …`) is defined once in
+  the backend and served to every surface; the runner caches it and makes the
+  roots real executables.
+- **Protocols carry references, never bulk bytes** — output stays on the
+  target, media reaches the browser by reference, transfers are brokered HTTP
+  streams.
 
-> Status: pre-1.0. The package layout and runtime are stable and tested; the public
-> API may still shift before the first published release.
+> Status: pre-1.0, delivered milestone by milestone
+> ([docs/demi-next/roadmap.md](docs/demi-next/roadmap.md)).
 
 ## Architecture
 
@@ -25,100 +29,28 @@ Packages depend strictly downward (enforced by a boundary test):
 
 ```
 utils, core            shared helpers + data types (zero deps)
-provider               abstract inference contract  -> core, utils
-shell                  bash engine + Host contract  -> just-bash, utils
-host-local             Node Host + local assembly   -> agent, provider, shell, utils
-agent                  session runtime + protocol   -> core, provider, shell, utils
-coding-agent           coding harness + commands    -> agent, core, shell, utils
-provider-*             concrete providers           -> core, provider, utils
-repl / web / web-ui    apps (leaves)
-agent-eval             benchmark harness (leaf)
+provider               abstract inference contract          -> core, utils
+tinybash               the hostless shell (standalone)      -> utils
+shell                  Host contract + command system       -> tinybash (hostless entry), utils
+agent                  session runtime + protocol           -> core, provider, shell, utils
+coding-agent           coding harness + the demi root       -> agent, core, shell, utils
+provider-*             concrete providers                   -> core, provider, utils
+host-virtual           the hostless Host                    -> shell, utils
+command-loader         manifest + loader                    -> shell, utils
+runner-protocol        the runner wire                      -> shell, utils
+host-remote            the backend's Host over a runner     -> runner-protocol, shell, utils
+runner                 the machine-side program (tinyjs)    -> command-loader, runner-protocol, shell, utils
+backend                the product server (leaf)
+web-ui, web            the browser UI (leaves)
 ```
 
-The boundary contract is [docs/package-boundaries.md](docs/package-boundaries.md);
-runtime/shell design lives under [docs/](docs/). Notable design docs:
+Notable design records outside `docs/demi-next/`:
 
 - [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
 - [Provider global credentials](docs/provider-global-credentials.md) — multi-account pool + global `setActive`
 - [Provider / session clone](docs/provider-session-clone.md) — required `.clone()` for isolated forks
 - [Subagents](docs/subagent.md) — child sessions as `demi agent`, subagent events on the parent `AgentClient`
-- [Command bridge](docs/command-bridge.md) — LocalHost PATH shims + UDS for agent tools
-- [Bash / just-bash behavior](docs/bash-behavior.md) — GNU bash as the Host-backed shell oracle
 - [Provider errors & retries](docs/provider-errors-and-retries.md) — classified failures and resume recovery
-
-## Install
-
-```sh
-npm install @demicodes/agent @demicodes/coding-agent @demicodes/host-local @demicodes/provider-claude-code
-```
-
-(Packages publish as ESM with bundled `.d.ts`.)
-
-## Quickstart
-
-Assemble a coding agent and drive it through an in-process client:
-
-```ts
-import { AgentServer } from '@demicodes/agent'
-import { createCodingAgentHarness } from '@demicodes/coding-agent'
-import { LocalHost } from '@demicodes/host-local'
-import { modelSelectionFromCatalog } from '@demicodes/provider'
-import { createClaudeCodeProvider, listClaudeCodeModels } from '@demicodes/provider-claude-code'
-
-// 1. A Host gives the agent a filesystem, process spawning, and a scoped store.
-const host = new LocalHost(process.cwd())
-
-// 2. A harness supplies the system prompt, registered commands, and reference resolution.
-const harness = createCodingAgentHarness({ host })
-
-// 3. One or more inference providers.
-const providers = [createClaudeCodeProvider()]
-
-// 4. The server owns the session lifecycle; get an in-process client.
-const server = new AgentServer({
-  agent: harness,
-  providers,
-  shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
-})
-const client = server.client()
-
-// 5. Render transcript updates (the same blocks the REPL and web UI render).
-client.subscribe((event) => {
-  if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
-    // event.blocks -> your UI
-  }
-})
-
-// 6. Open a session with a model from the provider's catalog, then send a turn.
-// sessionId is caller-owned: reconnecting with the same id resumes that conversation.
-const catalog = await listClaudeCodeModels()
-const model = catalog.models.find((m) => m.id === catalog.defaultModelId) ?? catalog.models[0] ?? null
-const sessionId = crypto.randomUUID()
-await client.open(
-  { providerId: 'claude-code', model: modelSelectionFromCatalog('claude-code', model) },
-  process.cwd(),
-  sessionId,
-)
-await client.send([{ type: 'text', text: 'Create hello.txt with "hi", then read it back.' }])
-```
-
-For a terminal UI over the same protocol, see `@demicodes/repl`; for a browser UI that
-consumes an injected `AgentClient`, see `@demicodes/web-ui`.
-
-## Extending
-
-- **A new provider** — implement the `@demicodes/provider` contract (`run()` returning a
-  `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
-  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md), optional
-  [quota](docs/provider-quota.md) / [credentials](docs/provider-global-credentials.md),
-  and the runnable template [examples/custom-provider.ts](examples/custom-provider.ts).
-- **A new Host** — implement `{ defaultCwd, fs, process, store }`; `@demicodes/host-local`
-  is the reference for a remote/container/sandboxed backend.
-  See [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md) and the
-  sandbox template [examples/sandboxed-host.ts](examples/sandboxed-host.ts).
-- **A new UI** — consume an `AgentClient` (in-process, stdio via `@demicodes/agent/stdio`,
-  or WebSocket) and render `Block`s per [docs/tool-rendering-spec.md](docs/tool-rendering-spec.md).
-  See [docs/guides/embed-the-ui.md](docs/guides/embed-the-ui.md).
 
 ## Development
 
@@ -127,15 +59,25 @@ bun install
 bun run typecheck      # type-check all packages
 bun run typecheck:web  # type-check the Vue UI packages
 bun run test           # run the test suite
-bun run agent-eval     # run agent benchmarks (see packages/agent-eval)
 bun run build          # build every library package to dist/ (tsdown)
 bun run llms           # regenerate llms-full.txt from the docs
 ```
 
+The tinyjs runtime is a Rust crate under `packages/tinyjs`
+([docs/demi-next/tinyjs.md](docs/demi-next/tinyjs.md)); tests that need it
+build it once through `@demicodes/runner/testing`.
+
 Workspaces resolve `@demicodes/*` from source in dev/test (the `development` export
 condition); a build is only needed to publish.
 
+## Extending
+
+- **A new provider** — implement the `@demicodes/provider` contract (`run()` returning a
+  `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
+  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md).
+- **A new UI** — consume an `AgentClient` and render `Block`s per
+  [docs/tool-rendering-spec.md](docs/tool-rendering-spec.md).
+
 ## License
 
-[Apache-2.0](LICENSE). Demi bundles a fork of `just-bash` (also Apache-2.0) as the
-bash engine behind `@demicodes/shell`; see [NOTICE](NOTICE).
+[Apache-2.0](LICENSE).

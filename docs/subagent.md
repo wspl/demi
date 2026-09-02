@@ -57,12 +57,11 @@ Parallel children are multiple `demi agent` invocations in separate
 status at the cap and the parent turn continues; the child keeps running.
 A short window is the idiomatic way to fan out.
 
-Spawn is a direct in-process registered command only. `demi agent … &` is
-not a spawn path: `&` host-spawns the command-bridge shim, and the bridge's
-`runCommandLine` **aborts** the invocation (and with it the child) at its
-`MAX_TIMEOUT_MS` ceiling, delivers stderr — including the `subagentId` line —
-only at exit, closes stdin immediately, and exists only on local hosts. The
-bridge stays fine for the short subcommands below.
+Spawn is an `rpc` command: on a machine the command-mode process relays it
+to the backend and stays attached for its stdin (`runner.md` § The local
+relay); hostless, the backend calls it directly. `demi agent … &` is not a
+spawn path: a backgrounded job's stdin is not the tool call's, so nothing
+steers the child. The short subcommands below are fine either way.
 
 Addressing by id (a later `shell_exec`, or the command bridge from a host
 subprocess):

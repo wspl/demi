@@ -10,10 +10,12 @@ package in the group.
 The fixed group contains:
 
 - `@demicodes/agent`
-- `@demicodes/agent-eval` (private)
+- `@demicodes/backend` (private)
 - `@demicodes/coding-agent`
+- `@demicodes/command-loader`
 - `@demicodes/core`
-- `@demicodes/host-local`
+- `@demicodes/host-remote`
+- `@demicodes/host-virtual`
 - `@demicodes/provider`
 - `@demicodes/provider-anthropic-api`
 - `@demicodes/provider-claude-code`
@@ -21,15 +23,15 @@ The fixed group contains:
 - `@demicodes/provider-google`
 - `@demicodes/provider-grok-build`
 - `@demicodes/provider-openai-api`
-- `@demicodes/repl` (private)
+- `@demicodes/runner`
+- `@demicodes/runner-protocol`
 - `@demicodes/shell`
+- `@demicodes/tinybash`
 - `@demicodes/utils`
 - `@demicodes/web` (private)
 - `@demicodes/web-ui`
 
 Private workspaces participate in the shared version but are not published.
-`@demicodes/just-bash` remains outside the group because its version tracks the
-upstream just-bash release plus the Demi fork revision.
 
 ## Version Selection
 

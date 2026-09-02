@@ -36,7 +36,7 @@ by:
  │  job table · tee · UDS relay          │    │  runtime → run module with ctx        │
  │  manifest cache                       │    │  rpc → UDS → runner → backend         │
  ├───────────────────────────────────────┤    ├───────────────────────────────────────┤
- │  @demicodes/host-runner       (JS)    │    │  @demicodes/host-runner       (JS)    │
+ │  runner/machine               (JS)    │    │  runner/machine               (JS)    │
  │  the Host contract over the tinyjs API│    │  the Host contract over the tinyjs API│
  ╞═══════════════════════════════════════╡    ╞═══════════════════════════════════════╡
  │  tinyjs API (private)        (Rust)   │    │  tinyjs API (private)        (Rust)   │
@@ -53,7 +53,8 @@ by:
 Two layers of API meet in tinyjs, with different audiences:
 
 - The **tinyjs API** — the primitives the binary exposes to JS. Private:
-  only `@demicodes/host-runner` and the runner use it.
+  only the runner's machine layer (`packages/runner/src/machine/`) uses
+  it.
 - The **command ABI** (`commands.md`) — what a `runtime` command module
   sees. Public. A module never touches the tinyjs API; the Host
   implementation between them is the seam.
@@ -91,10 +92,10 @@ runtime:
 
 - **Built-in modules under the `tinyjs:` scheme**, one per area:
   `tinyjs:fs`, `tinyjs:process`, `tinyjs:net`, `tinyjs:bytes`,
-  `tinyjs:runtime`. Bundles treat the scheme as external;
-  `@demicodes/host-runner` is the only package that imports it, declares
-  its types, and exports the typed wrappers the runner and
-  `@demicodes/command-loader` use. The tinyjs module loader resolves
+  `tinyjs:runtime`. Bundles treat the scheme as external; the runner's
+  `machine/` directory is the only code that imports it, declares its
+  types (`machine/tinyjs.d.ts`), and exports the typed wrappers the rest
+  of the runner uses. The tinyjs module loader resolves
   `tinyjs:*` **only for the embedded bundle**: a module loaded from a
   file — a `runtime` command module — that imports it fails to load. That
   check is what makes the tinyjs API private and the command ABI the only
@@ -112,16 +113,16 @@ runtime:
   string codes (`ENOENT`, `EACCES`, …), so `errorCode` in
   `@demicodes/utils` and the existing Host error mapping apply unchanged.
 - **Cancellation is `close` or `kill`.** The primitives do not know
-  `AbortSignal`; host-runner maps it.
-- `tinyjs:runtime` exports `version` and `abi`, two numbers; host-runner
-  checks the abi at start. It also exports `openHandles()`, the count of
+  `AbortSignal`; the machine layer maps it.
+- `tinyjs:runtime` exports `version` and `abi`, two numbers; the machine
+  layer checks the abi at start. It also exports `openHandles()`, the count of
   open handles, which is how tests assert nothing leaked.
 
 ### Primitives
 
 Every primitive is there because one of the three JS blocks in the stack
-needs it; nothing is there for generality. Paths are absolute (host-runner
-resolves against the cwd first). Handles (`fd`, process ids, sockets,
+needs it; nothing is there for generality. Paths are absolute (the
+machine layer resolves against the cwd first). Handles (`fd`, process ids, sockets,
 listeners) are integers with an explicit `close`.
 
 **`tinyjs:fs`** — the `HostFileSystem` method set one to one, with
@@ -141,8 +142,8 @@ write(fd, data): Promise<void>                 // resolves once the bytes are in
 close(fd)
 ```
 
-`rm -r`, `cp` and `mv` across devices are composed in host-runner from
-these.
+`rm -r`, `cp` and `mv` across devices are composed in the machine layer
+from these.
 
 **`tinyjs:process`** — runner jobs, Host `spawn`, the Claude Code CLI:
 
@@ -280,15 +281,15 @@ LLRT's module crates were evaluated and rejected (`progress.md`): what they
 provided correctly was the trivial part, while the primitives with
 semantics we depend on fell short.
 
-The Host implementation `@demicodes/host-runner` maps the `Host` contract
-(`packages/shell/src/host.ts`) onto these primitives, and beside it the
-typed wrappers the runner program uses: the teed spawn and the tail read
-(jobs), the WebSocket and Unix-socket links (the backend socket, the
-relay), and the HTTP pair for transfers — a file uploaded as a request
-body, a response body streamed to bytes or into a file. It is the Host
-every user host and managed host serves through its runner; the backend's
-end of the same connection is `RemoteHost` in `@demicodes/runner-protocol`
-(`runner.md`).
+The runner's machine layer (`packages/runner/src/machine/`) maps the
+`Host` contract (`packages/shell/src/host.ts`) onto these primitives, and
+beside it the typed wrappers the rest of the runner uses: the teed spawn
+and the tail read (jobs), the WebSocket and Unix-socket links (the backend
+socket, the relay), and the HTTP pair for transfers — a file uploaded as a
+request body, a response body streamed to bytes or into a file. It is
+internal to the runner: what the machine does for the backend it does
+because `RemoteHost` (`@demicodes/host-remote`) asked over the wire, and
+the agent only ever holds that remote end (`runner.md`).
 
 ## Entry modes
 
@@ -395,10 +396,10 @@ a payload nor an entry, tinyjs prints its usage and exits with 2.
   globals); the packer's injection and the release check live only in
   `tinyjsc`. Dependencies are those listed under "Protocols come from
   crates".
-- `@demicodes/host-runner` — the Host over the tinyjs API (TypeScript, runs
-  only on tinyjs, inside the runner). Its `/testing` entry finds the
-  binaries and bundles an entry for tinyjs (Bun, one ESM file, `tinyjs:*`
-  external), which is how the Host conformance suite of
+- `@demicodes/runner` — the program that runs on tinyjs; its `machine/`
+  directory is the Host over the tinyjs API. The package's `/testing`
+  entry finds the binaries and bundles an entry for tinyjs (Bun, one ESM
+  file, `tinyjs:*` external), which is how the Host conformance suite of
   `@demicodes/shell/testing` runs on tinyjs from `cargo`-free Bun tests.
 - The bundle's entry is `packages/runner/src/tinyjs/entry.ts`: the name
   tinyjs was invoked by selects runner mode or the root command.

@@ -122,14 +122,18 @@ Four words are easy to confuse and are used in exactly one sense each:
 So a managed host is a *guest* on the *backend machine*; the word "host"
 on its own is always Demi's sense.
 
-The `Host` contract (`@demicodes/shell`) has two implementations and one
-proxy, named by role:
+The `Host` contract (`@demicodes/shell`) has two implementations the
+backend injects into the agent — the `host-` packages — and one internal
+realization inside the runner:
 
-| Package | Role | Runs in |
+| Where | Role | Runs in |
 |---|---|---|
 | `@demicodes/host-virtual` | the hostless Host: files in the conversation's store, no spawn | the backend |
-| `@demicodes/host-runner` | the Host of every user host and managed host: files on the machine, real processes | the runner, on tinyjs |
-| `RemoteHost` (`@demicodes/runner-protocol`) | the backend's end of a runner connection, forwarding Host calls to that runner's `host-runner` | the backend |
+| `@demicodes/host-remote` | the Host of every user host and managed host as the backend sees it: each call forwarded over the runner wire | the backend |
+| `@demicodes/runner`, `machine/` | the machine itself — files and real processes over tinyjs's primitives — performing what `host-remote` asked; never held by the agent | the runner, on tinyjs |
+
+The wire between the last two is `@demicodes/runner-protocol`, which both
+ends depend on.
 
 ## Components
 
