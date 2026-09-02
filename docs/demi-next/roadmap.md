@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-03 |
-| Status | M0–M9 delivered |
+| Status | M0–M10 delivered |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -183,6 +183,10 @@ than fixtures of their own.
 Accept: every scenario green on both targets; R2 has a recorded verdict on
 what a mid-turn backend restart leaves in the transcript, and the code
 fixed if it leaves a dangling tool call.
+Status: delivered — 26 scenario tests and the four restarts green; the
+suite's first run found and fixed seven composition defects (`progress.md`
+§ M10) and recorded two limitations of real hosts in the allowed
+differences.
 
 **M11 — Access model and managed hosts** (`sessions-and-targets.md`,
 `managed-hosts.md`; depends on M9)

@@ -2181,8 +2181,76 @@ clean.
 
 ## M10 — Scenario suite (2026-09-03)
 
-Status: planned; the design record is `scenarios.md`. Implementation
-waits for the owner's confirmation of the record.
+Status: delivered — `packages/backend/src/__tests__/scenarios/`: the
+world, the scripted model, the driver, S1–S9 on both targets (26 tests)
+and R1–R4; the M2 detach case and the M3 restart case moved in from
+`backend.test.ts`. `bun test packages/backend`: 69 pass.
+
+Findings on the first run — composition defects none of the per-layer
+suites could see, each fixed where it belonged:
+
+1. `demi agent` was unknown on a real host: the manifest a runner caches
+   was built from the backend's static tree, and the `agent` node is
+   grafted per session. The manifest now carries the node's shape
+   (`subagentCommandShape`, the harness's profile names), and a relayed
+   `rpc` call runs against the registry the session's shell was built with
+   (`sessionShells` in the backend), not a re-derived tree.
+2. A relayed `rpc` call from a subagent resolved its Host by conversation
+   id and landed on a fresh virtual host; the same lookup made every child
+   run hostless while its parent was on a runner. The supervisor now
+   resolves a child's Host as the root session (`ChildSupervisorOptions.
+   agentSessionId`; `AgentHostContext.agentSessionId` is documented as the
+   root's), and the relay uses the session's own shell context (a
+   read-only child's wrapped Host included).
+3. The read-only child Host was a plain object, so the backend's
+   `instanceof` dispatch refused it on both targets. `createReadonlyHost`
+   is now a view over the Host (`Object.create`) with its `fs` and
+   `process` facets replaced: same class, cwd, identity and store.
+4. On a runner the model was told `stdoutBytes` equal to the view (head
+   and tail), not the stream: the record now carries the stream's length
+   beside its view text (`stdoutBytes`/`stderrBytes` on the record).
+5. On a runner a job killed by `shell_abort` settled as `exited 130`;
+   hostless said `aborted`. The remote engine marks the exit that follows
+   its own kill as `aborted`.
+6. After a streamed head, the runner's exit rebuilt the record's chunks
+   while the merged-output cursor still pointed past the old ones, so the
+   model's final preview was a slice of the wrong stream. The remote engine
+   appends what the exit adds after the streamed chunks; a rebuild (binary
+   placeholder, coverage repair) resets the cursors.
+7. Absent optional flags crossed the wire as `null` (`undefined` as nil in
+   MessagePack) and reached a leaf as the string "null". The loader drops
+   `undefined`-valued args before the transport (`withoutUndefined` in
+   utils).
+
+Also: the switch announcement still spoke of "the artifacts directory";
+the `tool_call` block's comment still named command artifacts. Both
+corrected.
+
+Recorded, not changed (allowed differences in `scenarios.md`, for the
+owner):
+
+- No `demi` command reads the script's live stdin hostless, so
+  `shell_write` reaches nothing there; tinybash hands root commands the
+  pipe and the loader's stdin field reads that. On a machine any program
+  reads its stdin.
+- The read-only profile is enforced by the Host. On a machine only `rpc`
+  leaves pass through it; a `runtime` command (`demi file create`) and bash
+  itself write the disk. A real read-only child needs a target-side
+  mechanism (M11: a job user, or a read-only mount for managed hosts).
+- A machine's shell carries its cwd between jobs and nothing else;
+  tinybash's default shell keeps its variables.
+
+R2 verdict: closing the backend while a command runs aborts the turn — the
+job is killed on the runner (`job_kill`, `job_exit`), the tool call settles
+as an error, and the turn closes with an abort block; after the restart the
+next turn runs and the model sees the aborted call's result first. Nothing
+dangles; no code change was needed.
+
+Pitfalls: a scripted turn must end with a `response` (the ledger observes
+usage from it), and a script cut off by an abort carries none — the
+ledger invariant counts answered requests. Reused tool-use ids collapse
+in the driver's de-duplication; polls carry unique ids. A runner's
+`shell_write` returns at once; the scenario polls after it.
 
 Why a milestone: M0–M9 proved each contract once, in one test file per
 milestone, with the model as an in-process script. What was never proved
