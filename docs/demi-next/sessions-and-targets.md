@@ -67,12 +67,10 @@ host's environment, minus the programs**:
 - Output formats are GNU's on both sides (`tinybash.md`).
 
 The agent never initiates a target switch of any kind, and no model-driven
-migration exists. The one case that cannot be silent is a deployment with
-no machine to upgrade to: managed hosts need `/dev/kvm`, and a self-host
-without it enables the backend's own machine as a runner
-(`runner.md`) instead. With neither configured the tool result says that
-this conversation has no machine and the user has to attach one — a
-deployment error surfaced to both, not a policy.
+migration exists. Managed hosts are a deployment requirement
+(`managed-hosts.md`), so there is always a machine to upgrade to; a
+provisioning failure surfaces as an ordinary tool error and is retried on
+the next tool call.
 
 ## Switching
 

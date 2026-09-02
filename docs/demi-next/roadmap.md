@@ -82,7 +82,7 @@ artifact files on the target; the UDS relay and manifest cache, completing
 the CLI's `rpc` path; MessagePack framing, per-op fs messages, `pong` with
 the job count, the one-connection-per-token rule; artifact fetch by
 reference and the brokered cross-host transfer; browser-bound media by
-reference; the backend's own machine as a runner process; deletion of
+reference; deletion of
 `packages/just-bash`, the interpreter and portable-command parts of
 `@demicodes/shell`, `host-local/command-bridge`, the Bun runner build,
 `docs/bash-behavior.md`, `docs/command-bridge.md`. Accept: every M1 and M4
@@ -153,7 +153,7 @@ Test modules and their intended coverage, per milestone.
 | M6 | Switch integration (real→real with files staying and an honest context block; mid-turn switch refused; concurrent switch has one winner); offline target → readable and chattable; attachment upload → ref → inline at provider; checkpoint round-trip. |
 | M7 | Primitive conformance suite from JS (fs incl. errno cases, spawn incl. stdin/kill/tee, sockets, timers, globals); build-target matrix; guest cold-start and tee throughput measured in the Firecracker fixture. |
 | M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, shell and fixture; tinybash grammar and builtin tables, the equivalence corpus against real bash + GNU coreutils in a Linux container (`tinybash.md`); parse-first, session-state and cancellation cases; hostless conversation runs file, todo and builtin pipelines; third-party embedding example. |
-| M9 | M1 and M4 suites on the shell runner; job table (foreground, background, kill, exit); tee + bounded view + artifact file; UDS relay round trip with session attribution; MessagePack frames; artifact fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes; local-machine runner auto-registration. |
+| M9 | M1 and M4 suites on the shell runner; job table (foreground, background, kill, exit); tee + bounded view + artifact file; UDS relay round trip with session attribution; MessagePack frames; artifact fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
 | M10 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
 | M11 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
 | M12 | Manual checklist over the full layout, including the "everything Demi implements gets exposed" sweep. |

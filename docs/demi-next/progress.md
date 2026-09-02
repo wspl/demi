@@ -1092,3 +1092,18 @@ therefore surface only for embedders with no machine; in the product,
 grammar and program limits are the same "outside the subset" case. A
 deployment with neither managed hosts nor local execution enabled is a
 hard failure surfaced to user and agent, not a policy.
+
+### Guest user and deployment requirement (2026-09-02)
+
+- Jobs on a managed host run as the guest user `demi` with passwordless
+  `sudo`, not as root: the runner is PID 1 as root and drops to `demi` for
+  every spawn. Root-only would break the tools chosen for the long tail
+  (Linuxbrew refuses root) and would leave files root-owned; a user
+  without sudo would make `apt` fail although the ephemeral upper exists
+  for it. The user boundary is for compatibility, not security — the VM is
+  the boundary.
+- The "backend's own machine as a runner" path is deleted. Managed hosts
+  are a deployment requirement; backends without `/dev/kvm` are unsupported
+  for now, with support for such machines a later design item. Consequence:
+  there is always a machine to upgrade to, so the hostless design has no
+  "no machine" branch at all.

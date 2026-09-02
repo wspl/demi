@@ -70,10 +70,8 @@ Dependency footprint: `@demicodes/host-shell`, `@demicodes/runner-protocol`,
 `@demicodes/command-loader` (cache and relay only), `@demicodes/utils`. No
 agent, coding-agent or provider packages.
 
-The backend's own machine is a target the same way: in self-host
-deployments the backend starts a runner process on its machine, registered
-as a device without a claim; nothing in the backend executes commands
-in-process.
+Nothing in the backend executes commands in-process; every real machine
+is reached through a runner.
 
 ## Connection model
 
