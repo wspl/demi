@@ -1,6 +1,6 @@
 # Demi Next: Implementation Log
 
-Live status per roadmap milestone of `docs/demi-next.md`. Updated as the work
+Live status per roadmap milestone of `docs/demi-next/roadmap.md`. Updated as the work
 happens — status, pitfalls, and conclusions land here so the effort can be
 resumed and reviewed at any point.
 
@@ -269,7 +269,7 @@ What landed:
 - **Pairing spec finalized before implementation** (`0bfdaf5`, `cee9feb`):
   claim codes are 128-bit random Crockford base32, single-use, expiring,
   claim endpoint rate-limited per user; the end-to-end flow diagram lives
-  in demi-next.md § Connection model.
+  in `runner.md`.
 - **`ControlService` device/workspace domain**: device rows (token stored
   as SHA-256 hash only), workspace rows, and the conversation→workspace
   pointer.
@@ -490,13 +490,13 @@ Pitfalls:
 
 ## Database design review (2026-09-01)
 
-Status: **concluded** — design record updated (`demi-next.md` § Database,
+Status: **concluded** — design record updated (`storage.md`,
 Backend topology, package-changes item 4, storage-pluggability audit,
 roadmap M3/M9/M10 + verification rows; `session-storage-and-naming.md`
 journal role). **No implementation yet**; M3 scheduling to be confirmed
 separately.
 
-Final design (see `demi-next.md` for the full record + diagrams):
+Final design (see `storage.md` for the full record + diagrams):
 
 1. **SQLite only, both topologies** — the dual-dialect (SQLite/Postgres)
    plan is retired.
@@ -559,7 +559,7 @@ Pitfalls (of the review itself):
 ## Host design round: user/managed hosts, `demi host`, lifecycle (2026-09-01)
 
 Design-only round (no code); the outcome is the "Execution targets: user
-hosts and managed hosts" section in `docs/demi-next.md`, the M6 rewrite,
+hosts and managed hosts" section in `sessions-and-targets.md` and `managed-hosts.md`, the M6 rewrite,
 the new M7 (managed hosts), and the M8–M11 renumbering.
 
 Origin: the phrase "docker based host" existed in the design only as a
@@ -757,3 +757,231 @@ Follow-up in the same review: the file verbs also moved into a noun group
 every `demi` subcommand is a domain group. Cost is one extra token per
 file operation; bought: no dual-citizen layer to explain, and future file
 operations have an unambiguous home.
+
+## Execution layer review and owner decisions (2026-09-02)
+
+Review of the M7 spike, then an item-by-item owner review of its
+findings. The decisions are in the design records of this directory; this
+entry keeps the evidence, the alternatives and the measurements.
+
+### Design records split
+
+`demi-next.md` grew past what one document can carry once the execution
+layer was redesigned, and was split into this directory: `overview.md`
+(stable core), `roadmap.md` (volatile), one record per subsystem
+(`backend`, `storage`, `product`, `sessions-and-targets`, `commands`,
+`shell`, `runner`, `managed-hosts`, `providers-and-vault`), and this log.
+The review record `demi-next-execution-review.md` was folded into them and
+deleted. The dated "verified facts" and audits from the original record are
+evidence and live here (below); the facts that state current contracts were
+kept in `runner.md`, `storage.md` and `providers-and-vault.md`.
+
+### Milestones renumbered
+
+M7 shell, M8 command system + loader + hostless, M9 runner on the shell +
+deletion of just-bash and the command bridge, M10 access model + managed
+hosts; the former M8–M11 became M11–M14. Ordering changed to strict
+dependency order (lowest dependency first): the shell is built and judged
+before anything is written on top of it; the loader is verified on the real
+runtime before the runner moves. The M6 prev slot, `switch`, `release` and
+tar-pipe migration are removed by M8–M10; the owner accepted the rework.
+
+### Provisioning: runsc rejected, Firecracker adopted
+
+runsc's "nests inside a containerised backend with zero host grants" claim
+failed a privilege matrix inside Docker: gofer cannot start without both
+`CAP_SYS_ADMIN` and `seccomp=unconfined`; the backend must vacate its root
+cgroup; `memory.max` is not a hard limit without `memory.swap.max=0` (a
+64 MB cgroup accepted a 200 MB allocation with 17 GB of host swap);
+rootless mode ignores cgroup errors and has no Netstack. Firecracker under
+nested KVM on Apple Silicon (Lima, `vmType: vz`): boot to init 0.65–0.70 s
+with a minimal kernel, snapshot restore 12 ms, memory hard by construction.
+Its costs, accepted: the guest kernel is ours to build; rootfs images are
+block devices; `/dev/kvm` is required; jailer needs root at setup, confined
+to a privileged helper.
+
+### Persistence alternatives
+
+- Memory snapshots rejected: sessions live in the backend, so nothing in VM
+  memory is worth preserving; running processes already block hibernation.
+- `kill -9` verified safe: filesystem clean after the kill; an unsynced
+  file exists with empty content, a synced one is intact; the loss window
+  is the writeback interval, empty by construction at hibernation.
+- Persistent overlay (system layer in the home image) rejected in owner
+  review in favour of a heavy preinstalled rootfs plus an ephemeral upper:
+  the rootfs costs an owner nothing (shared, paged on demand, hot in the
+  host page cache across VMs), while a persistent upper carrying a dpkg
+  database makes the base image un-upgradable. The long tail installs into
+  home (Linuxbrew for the apt-shaped tail).
+- Storage: virtio-block passes no discard, so a live image is a high-water
+  mark; offline `e2fsck -f` + `resize2fs -M` + `truncate` shrank 369 MB to
+  69 MB in 0.11 s; re-grow 0.01 s. mkfs metadata at nominal 1/2/8/32 GB is
+  33/66/69/261 MB — hence small nominal size plus online growth for empty
+  homes, and untouched-skip on hibernate.
+- Content-addressed storage for home images rejected: it manufactures
+  superseded versions, orphans and a retention policy for an object that
+  has one current version. Retention rule deferred by the owner.
+
+### Ownership unit
+
+Per-user "scratch" hosts (one VM and home per user, conversations as
+directories) and per-workspace sharing were proposed to remove the
+per-conversation VM cost for trivial work; the owner kept per-conversation
+ownership. The trivial-work cost is instead removed by hostless execution:
+a conversation gets a machine only at its first non-`demi` command.
+
+### Execution model: hostless demi-only execution
+
+The review proposed deleting the virtual target outright ("chat only
+without a host"). Owner review found that most conversations only write a
+file or run a query, for which a microVM is disproportionate, and that
+what the model does without a host is entirely `demi` commands. Hence a
+demi-only parser (tokens, heredocs, sequences; everything else refused)
+and the loader running in the backend against the store-backed Host.
+just-bash is still deleted: it was the bash parser and the in-process host
+for registered commands, and a demi-only parser is ~200 lines. Pipelines
+between real processes transited the backend under just-bash (`|`
+implemented in memory); with real bash on the target the pipe is an OS
+pipe.
+
+`IN_PROCESS_PORTABLE_COMMANDS` is `echo`, `printf`, `pwd`, `alias`,
+`unalias`, `history`, `help`, `time` — all bash builtins.
+
+### Command system: one implementation, zero round trips
+
+Three options were compared for `demi file *` on real hosts: a second
+implementation in the runner's language (the review's original), relaying
+every file operation to the backend (one implementation, two wire round
+trips per operation — rejected by the owner as "silly"), and shipping the
+implementation as a module to run where the files are. The third was
+chosen and generalised into the `rpc` / `runtime` command kinds, the
+command ABI and the loader. A Rust command tree with a WASM build for the
+backend was considered when the runner was still Rust; it became moot when
+the runtime question was reopened (next item).
+
+### Runtime: Bun's cold start, LLRT, the shell
+
+The review measured Bun's real runner at 2.7 s cold in a fresh microVM and
+concluded Rust. Owner review asked whether a different JS runtime would
+avoid the cross-language cost. A second measurement run on an M3 Pro (Lima
+2.1.0 vz, Firecracker v1.16.1, CI kernel 6.1.155, 2 vCPU / 1 GB, a Bun
+stub as the backend) reproduced the 6.24 s "runner online" as 6.3 s and
+decomposed it:
+
+| Segment | Time | Evidence |
+|---|---|---|
+| Bun runtime baseline | 0.10 s | hello, second exec |
+| first executable mapping of the 100 MB binary | ~3.4 s | same file 4.95 s then 1.56 s; tmpfs copy 4.6 s then 1.6 s; host `drop_caches` no effect; equal page-fault counts, 310 extra major faults |
+| evaluating the 4.5 MB bundle | ~1.45 s | second exec minus baseline; `--bytecode --minify` no gain (1.54 s) |
+| runner `main` → online | 0.8–1.0 s | LocalHost 0.17, token read 0.17, TCP + upgrade 0.29, hello 0.05, config write 0.26 |
+
+The review's attribution ("disk 0.95 s cold", "WebSocket 0.55 s") was
+wrong on both counts: no disk effect exists, and the socket handshake is
+0.3 s of which the stub answers in 1 ms. The first row scales with
+executable pages touched (hello 0.9–1.5 s, runner 3.4 s, shell 0.1 s); the
+mechanism consistent with every observation is per-page kernel work on the
+first executable mapping (arm64 icache maintenance) amplified by nested
+virtualization — inferred, not profiled; x86 unverified. The bundle row is
+90 % just-bash (2.0 MB) and its dependencies (2.1 MB: yaml, domino, zod,
+fast-xml-parser); the runner, protocol and host-local proper are ~50 KB.
+
+Nested virtualization is the realistic deployment (cloud instances expose
+KVM that way), so the numbers are not pessimistic. LLRT qualifies on size
+but is experimental, Node-shaped and missing WebSocket/UDS; a shell of our
+own on rquickjs is the same Rust work with a smaller, owned API.
+
+Shell feasibility spike (150 lines of Rust, primitives `readFile`,
+`writeFile`, `spawnTee`, `tcpGet`, native base64; a 386 KB ESM bundle of
+the real `runner-protocol` codec plus zod 4), same guest:
+
+| Measurement | Shell | Reference |
+|---|---|---|
+| binary | 1.45 MB (glibc, dynamic) | Bun 103 MB |
+| hello, first / second exec | 0.12 s / 0.01 s | Bun 1.61 s / 0.10 s |
+| protocol bundle module evaluation, first / second | 149 ms / 37 ms | — |
+| zod encode of a byte-free message ×200 | 1 ms | — |
+| zod decode of a `spawn` frame ×200 | 8–10 ms | — |
+| tee 100 MB to a file with a 1 MB view | 83–96 MB/s | `head \| cat > file` in the guest: 78 MB/s |
+| native base64, 16 KB | 300 MB/s | — |
+| `bytesToBase64` from `@demicodes/utils` (pure JS) | 2.8 MB/s | native on Bun |
+| TCP to the stub, first / second | 41 ms / 5 ms | — |
+
+zod 4 runs unmodified in QuickJS; the tee saturates the guest's pipe; the
+one order-of-magnitude loss is a pure-JS byte loop without a JIT, which
+fixed the rule that byte-level work is a shell primitive. QuickJS lacks the
+Web-platform globals and an event loop (the spike supplied a prelude and
+ran synchronously). Decision: Rust writes the shell only; runner logic is
+JS on it; no code generation. Spike artifacts: Lima instance `fc`,
+`/opt/fc` inside it, `scratchpad/fc` and `scratchpad/shell`.
+
+Other runtime numbers from the review's environment: Rust hello 0.030 s
+cold (453 KB), Go hello 0.120 s (1.6 MB), Node hello 1.94 s, Node real
+runner 2.59 s. Bun's default target is glibc and fails on alpine; the
+shell is built static musl.
+
+### Data carrier
+
+zod 4.4.3 has no bytes type and `z.instanceof`/`z.custom` cannot export to
+JSON Schema; walking the zod AST and the JSON-Schema → `cargo typify` route
+both worked for discriminated unions and poorly for plain unions and custom
+types. Moot with both protocol ends in TypeScript. Protobuf and Bebop
+rejected as a second schema language. The exercise exposed two protocol
+defects fixed in M9: the fs layer was untyped (`fs_call.args: unknown[]`,
+`fs_result.result: unknown`), and `fs_result` shared `type` across ok and
+error. The zero refinements in the RPC schemas (all 13 in the codebase are
+on Web API bodies) mean nothing beyond structure and presence is validated
+on the wire.
+
+### Wire audit
+
+Backend → browser inlined media: `sync_transcript` → `sendTranscriptReset`
+→ `structuredClone` kept `Uint8Array` → `stringifyPortableJson`;
+`externalizeBlockMedia` ran only on the persistence paths. Giant stdout:
+the runner pumped every chunk uncapped, `RemoteSpawn.chunks` was unbounded,
+the backend dropped the capture and `SIGKILL`ed at 64 MB after the bytes
+had crossed the wire, then wrote the artifact back over `host.fs.writeFile`.
+Both fixed by the bytes rule and the tee. The channel-layer risk (control
+frames queued behind data frames) is recorded in `runner.md` with its
+precondition.
+
+### Managed-host security items reassessed
+
+- Device token on the kernel command line, readable by guest processes:
+  judged not a material widening (the VM is the trust boundary; a process
+  inside already sees everything the backend sends). Hiding `/proc/cmdline`
+  rejected (bootargs also appear in the device tree and dmesg). A one-shot
+  bootstrap exchange rejected as protocol weight for a case that no longer
+  exists once one live connection per token is enforced. Source-address
+  binding rejected: it would force managed runners onto a private path
+  through the tap gateway.
+- Egress policy vs backend reachability: resolved by having managed runners
+  dial the public backend URL like user hosts; no carve-out.
+- Artifacts at hibernation: not uploaded (owner decision); offline hosts
+  show a notice, hibernated managed hosts wake on open.
+- Auto-grant on switch: kept as decided; revocation is a UI item.
+
+### Verified facts carried over from the original record (2026-08-31)
+
+Established by code reading and local-mock experiments; no real provider
+endpoint was contacted.
+
+- Every HTTP provider runtime accepts `baseUrl` + extra headers and its
+  full endpoint surface follows `baseUrl`; auth-plane endpoints are
+  hard-coded. API-key options on openai/anthropic/google are resolver
+  functions.
+- Codex: WS transport is a scheme swap on the same host/path; its auth
+  relies on Bun's `WebSocket(url, {headers})`; `x-codex-*` quota rides on
+  inference response headers.
+- Claude Code CLI 2.1.220: single request class via base-URL override;
+  env-token adoption; harmless direct CONNECT attempt.
+- `Host` is platform-neutral and enforced (`root-entry.test.ts`); in-memory
+  Host/store shapes exist as test doubles.
+- `AgentSession.fromCheckpoint` restores from `{transcript, state, …}` and
+  force-completes executing tool calls; session ids are client-owned with
+  takeover semantics.
+- Host portability: all `HostFileSystem` methods async with plain-data
+  I/O; `HostCwd` fd anchors and sync `Host.identity` have designed answers.
+  Multi-Host-per-session exists and is tested (`host-routing.test.ts`). No
+  remote Host existed before M1.
+- The DB-backed `HostStore` must re-provide `LocalHostStore`'s `writeJson`
+  atomicity and serve `list` + bulk reads efficiently.
