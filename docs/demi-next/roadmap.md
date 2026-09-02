@@ -48,15 +48,24 @@ by M8–M10 (`sessions-and-targets.md`).
 ## Planned
 
 **M7 — Shell** (`shell.md`; depends on nothing)
-The Rust binary embedding QuickJS: ESM loading, the event loop, timers and
-promise scheduling, the Web-platform globals; fs primitives with errno
-fidelity; spawn with pipes, stdin, kill, tee with a bounded view; TCP, TLS,
-WebSocket client, HTTP client, UDS; base64, MessagePack, UTF-8; static musl
-builds for Linux x86_64 and aarch64, macOS builds; the two entry modes as
-skeletons. Accept: the primitive conformance suite, driven from JS, passes
-on every build target; first execution inside a fresh microVM under 0.2 s;
-tee throughput at the guest's pipe baseline; the runner-protocol bundle
-encodes and decodes on the shell. A library milestone in the M1 sense.
+The Rust binary embedding QuickJS, everything implemented in the crate on
+`rquickjs`, `tokio` (current-thread), `rustls`/`ring`, `rmp`, `sha2`,
+`getrandom`: the event loop, timers and promise scheduling, the standard
+globals; the five `demishell:*` modules — `fs` with errno fidelity and
+streaming `open`/`read`/`write`, `process` with pipes, stdin, kill,
+uid/gid and the tee with a bounded view, `net` with the WebSocket client,
+the streaming HTTP/1.1 client (proxy-aware), UDS connect and listen,
+`bytes` with MessagePack/base64/SHA-256/random, `runtime`; the module
+loader with `import()` of absolute paths and `demishell:*` visible only to
+the embedded bundle; static musl builds for Linux x86_64 and aarch64,
+macOS builds, platform verifier on user hosts and embedded roots in the
+guest build; the two entry modes as skeletons. Accept: the primitive
+conformance suite, driven from JS, passes on every build target; binary
+within the 2.5–3 MB budget; first execution of command-mode `hello`
+inside a fresh microVM under 0.2 s with no network code on the startup
+path; tee throughput at the guest's pipe baseline; the runner-protocol
+bundle encodes and decodes on the shell. A library milestone in the M1
+sense.
 
 **M8 — Command system, loader, hostless execution** (`commands.md`,
 `tinybash.md`, `sessions-and-targets.md`; depends on M7)
@@ -151,7 +160,7 @@ Test modules and their intended coverage, per milestone.
 | M4 | Claim-flow integration (unclaimed → claim → reconnect with device token; bad/revoked token; claim-token expiry). Host routing to a claimed device; online status follows the socket. |
 | M5 | Vault key storage + per-user assembly; ledger aggregation; login-flow state machines against mock endpoints + refresh; claude-code-on-runner chain against a mock upstream with nothing persisted on the device. Real-subscription smoke gated and manual. |
 | M6 | Switch integration (real→real with files staying and an honest context block; mid-turn switch refused; concurrent switch has one winner); offline target → readable and chattable; attachment upload → ref → inline at provider; checkpoint round-trip. |
-| M7 | Primitive conformance suite from JS (fs incl. errno cases, spawn incl. stdin/kill/tee, sockets, timers, globals); build-target matrix; guest cold-start and tee throughput measured in the Firecracker fixture. |
+| M7 | Primitive conformance suite from JS: fs incl. errno cases and streaming reads; spawn incl. stdin/kill/uid/tee byte counts; WebSocket send backpressure and receive; HTTP request bodies from files and response bodies streamed to a fd; UDS listen mode and accept; MessagePack extension types; timers ordering; globals; `demishell:*` refused from a file-loaded module. Build-target matrix; guest cold-start (command-mode hello, cold cache), binary size and tee throughput measured in the Firecracker fixture. |
 | M8 | Manifest build and hash stability; loader dispatch for both kinds; runtime-module conformance under Bun, shell and fixture; tinybash grammar and builtin tables, the equivalence corpus against real bash + GNU coreutils in a Linux container (`tinybash.md`); parse-first, session-state and cancellation cases; hostless conversation runs file, todo and builtin pipelines; third-party embedding example. |
 | M9 | M1 and M4 suites on the shell runner; job table (foreground, background, kill, exit); tee + bounded view + output file; UDS relay round trip with session attribution; MessagePack frames; output fetch by reference; media by reference in `transcript_reset`; pipeline with zero wire bytes. |
 | M10 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
