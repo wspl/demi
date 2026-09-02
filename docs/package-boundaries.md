@@ -196,6 +196,15 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `VirtualHost`, `scopedFsBackend`, quota constants, guidance constant from root.
 - Must not: perform its own IO (all bytes flow through the injected backend), spawn processes, or hold conversation state (`store` is injected by the composing product).
 
+### `@demicodes/tinybash`
+
+- Status: in progress (M8; `docs/demi-next/tinybash.md`).
+- Production deps: `@demicodes/shell`, `@demicodes/utils`.
+- Owns: the hostless shell — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), and the closed set of GNU-faithful builtins over an injected `HostFileSystem`; root commands go to an injected `dispatch`.
+- Public boundary: `runTinybash`, `parseTinybash`, the `OutsideReason` and IO types from root; stub roots for embedders' tests from `@demicodes/tinybash/testing`.
+- Acceptance implies bash-equivalence: any script it runs means what it means in GNU bash + coreutils; anything else is `outside`, never approximated. The equivalence corpus against real bash is the guarantee's test.
+- Must not: know the backend, the manifest format or the loader (it receives a `RootPaths` function and a `dispatch`), spawn processes, perform IO outside the injected `fs`, or run on real hosts.
+
 ### `@demicodes/runner-protocol`
 
 - Status: implemented (M1; claim flow productized in M4).
@@ -291,6 +300,7 @@ provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
 host-virtual -> shell, utils
+tinybash -> shell, utils
 backend -> agent, coding-agent, core, host-local, host-virtual, provider, provider-anthropic-api, provider-google, provider-openai-api, shell, utils
 runner-protocol -> shell, utils
 runner -> host-local, runner-protocol, shell, utils
