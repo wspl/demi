@@ -22,6 +22,13 @@ import { backendToRunnerMessageSchema, helloErrorCodeSchema, runnerToBackendMess
  */
 export const RUNNER_PROTOCOL_VERSION = 2
 
+/**
+ * The view budget per stream of a job: what crosses the wire is the model's
+ * window and nothing more — the first bytes while the job runs, the last
+ * bytes at exit (`runner.md` § Jobs and the tee).
+ */
+export const JOB_VIEW_BYTES = 32 * 1024
+
 export type { FsCallMessage, FsOkMessage, FsOp, FsParams, FsResult } from './schemas'
 export { FS_OPS } from './schemas'
 
@@ -30,6 +37,9 @@ export type BackendToRunnerMessage = z.infer<typeof backendToRunnerMessageSchema
 export type RunnerProtocolMessage = RunnerToBackendMessage | BackendToRunnerMessage
 
 export type RunnerInfo = Extract<RunnerToBackendMessage, { type: 'hello' }>['runner']
+export type JobExitMessage = Extract<RunnerToBackendMessage, { type: 'job_exit' }>
+export type JobOutput = NonNullable<JobExitMessage['output']>
+export type RpcCallMessage = Extract<RunnerToBackendMessage, { type: 'rpc_call' }>
 export type HelloErrorCode = z.infer<typeof helloErrorCodeSchema>
 
 /** A MessagePack codec: the two ends bring their own (`msgpackCodec`, `tinyjs:bytes`). */
