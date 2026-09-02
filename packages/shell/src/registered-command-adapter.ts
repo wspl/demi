@@ -1,4 +1,4 @@
-import { ByteQueue, bytesStream, concatBytes, decodeLatin1, encodeLatin1, encodeUtf8 } from '@demicodes/utils'
+import { ByteQueue, bytesStream, concatBytes, decodeLatin1, emptyByteStream, encodeLatin1, encodeUtf8, toBytes } from '@demicodes/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
 import { isCommandGroup, runRegisteredCommand, type Command, type CommandIO } from './command'
 import { createOutputSinks, notifyForegroundWaiters, recordForegroundChunk } from './environment-output'
@@ -201,12 +201,6 @@ class VirtualForegroundJob {
     }
   }
 }
-
-function toBytes(data: string | Uint8Array): Uint8Array {
-  return typeof data === 'string' ? encodeUtf8(data) : data
-}
-
-async function* emptyByteStream(): AsyncIterable<Uint8Array> {}
 
 function treeConsumesStdin(command: Command): boolean {
   if (isCommandGroup(command)) return command.subcommands.some(treeConsumesStdin)

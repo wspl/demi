@@ -1,10 +1,11 @@
 import type { Builtin } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { openInputs } from './inputs'
 import { encodeLatin1 } from '@demicodes/utils'
 import { lines } from '../exec/stream'
 import { outside } from '../outside/reasons'
+
+export const sedSpec: FlagSpec = { switches: ['n'], valued: [] }
 
 type Range = { from: number; to: number | 'last' }
 
@@ -12,8 +13,7 @@ type Range = { from: number; to: number | 'last' }
 function parseProgram(program: string, line: number): Range {
   const match = /^(\d+|\$)(?:,(\d+|\$))?p$/.exec(program.trim())
   if (!match) {
-    const flag = program.startsWith('s') ? program : program
-    outside({ kind: 'flag', program: 'sed', flag, line })
+    outside({ kind: 'flag', program: 'sed', flag: program, line })
   }
   const from = match[1] === '$' ? -1 : Number(match[1])
   const to: number | 'last' | undefined = match[2] === undefined ? undefined : match[2] === '$' ? 'last' : Number(match[2])
@@ -23,7 +23,7 @@ function parseProgram(program: string, line: number): Range {
 
 /** The operands after the script are files; `-n` is required, `-i` and `s///` are refused. */
 export function sedPaths(argv: readonly string[], line: number): string[] {
-  const flags = parseFlags('sed', argv, SPECS.sed, line)
+  const flags = parseFlags('sed', argv, sedSpec, line)
   if (!has(flags, 'n')) outside({ kind: 'flag', program: 'sed', flag: 'without -n', line })
   if (flags.operands.length === 0) return []
   parseProgram(flags.operands[0]!, line)
@@ -31,7 +31,7 @@ export function sedPaths(argv: readonly string[], line: number): string[] {
 }
 
 export const sed: Builtin = async (ctx) => {
-  const flags = parseFlags('sed', ctx.argv, SPECS.sed, ctx.line)
+  const flags = parseFlags('sed', ctx.argv, sedSpec, ctx.line)
   if (flags.operands.length === 0) {
     await ctx.stderr(`Usage: sed [OPTION]... {script-only-if-no-other-script} [input-file]...\n`)
     return 1

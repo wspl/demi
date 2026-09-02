@@ -1,12 +1,13 @@
 import type { Builtin } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { openInputs } from './inputs'
 import { encodeLatin1 } from '@demicodes/utils'
 import { lines } from '../exec/stream'
 
+export const uniqSpec: FlagSpec = { switches: ['c'], valued: [] }
+
 export const uniq: Builtin = async (ctx) => {
-  const flags = parseFlags('uniq', ctx.argv, SPECS.uniq, ctx.line)
+  const flags = parseFlags('uniq', ctx.argv, uniqSpec, ctx.line)
   if (flags.operands.length > 2) {
     await ctx.stderr(`uniq: extra operand '${flags.operands[2]}'\nTry 'uniq --help' for more information.\n`)
     return 1

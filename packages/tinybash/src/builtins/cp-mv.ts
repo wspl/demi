@@ -1,21 +1,13 @@
 import type { Builtin, BuiltinContext } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { quoteC, strerror, tryHelp } from './errors'
 import { resolvePath } from '../outside/namespace'
+import { isDirectory } from '../exec/fs'
+import { basenamePath } from '@demicodes/utils'
 
-function basename(path: string): string {
-  const trimmed = path.replace(/\/+$/, '')
-  return trimmed.slice(trimmed.lastIndexOf('/') + 1)
-}
+export const cpSpec: FlagSpec = { switches: ['r'], valued: [] }
 
-async function isDirectory(ctx: BuiltinContext, path: string): Promise<boolean | null> {
-  try {
-    return (await ctx.fs.stat(path, { cwd: ctx.cwd })).isDirectory
-  } catch {
-    return null
-  }
-}
+export const mvSpec: FlagSpec = { switches: [], valued: [] }
 
 /** Operand checks shared by cp and mv; returns the sources and the destination. */
 async function plan(ctx: BuiltinContext, program: string, operands: readonly string[]): Promise<{ sources: string[]; destination: string; intoDirectory: boolean } | number> {
@@ -29,7 +21,7 @@ async function plan(ctx: BuiltinContext, program: string, operands: readonly str
   }
   const destination = operands[operands.length - 1]!
   const sources = operands.slice(0, -1)
-  const destinationIsDirectory = await isDirectory(ctx, destination)
+  const destinationIsDirectory = await isDirectory(ctx.fs, ctx.cwd, destination)
   if (sources.length > 1 && destinationIsDirectory !== true) {
     if (destinationIsDirectory === null) await ctx.stderr(`${program}: target ${quoteC(destination)}: No such file or directory\n`)
     else await ctx.stderr(`${program}: target ${quoteC(destination)}: Not a directory\n`)
@@ -40,13 +32,13 @@ async function plan(ctx: BuiltinContext, program: string, operands: readonly str
 }
 
 export const cp: Builtin = async (ctx) => {
-  const flags = parseFlags('cp', ctx.argv, SPECS.cp, ctx.line)
+  const flags = parseFlags('cp', ctx.argv, cpSpec, ctx.line)
   const recursive = has(flags, 'r')
   const planned = await plan(ctx, 'cp', flags.operands)
   if (typeof planned === 'number') return planned
   let status = 0
   for (const source of planned.sources) {
-    const target = planned.intoDirectory ? `${planned.destination.replace(/\/+$/, '')}/${basename(source)}` : planned.destination
+    const target = planned.intoDirectory ? `${planned.destination.replace(/\/+$/, '')}/${basenamePath(source)}` : planned.destination
     let stat
     try {
       stat = await ctx.fs.stat(source, { cwd: ctx.cwd })
@@ -82,12 +74,12 @@ export const cp: Builtin = async (ctx) => {
 }
 
 export const mv: Builtin = async (ctx) => {
-  const flags = parseFlags('mv', ctx.argv, SPECS.mv, ctx.line)
+  const flags = parseFlags('mv', ctx.argv, mvSpec, ctx.line)
   const planned = await plan(ctx, 'mv', flags.operands)
   if (typeof planned === 'number') return planned
   let status = 0
   for (const source of planned.sources) {
-    const target = planned.intoDirectory ? `${planned.destination.replace(/\/+$/, '')}/${basename(source)}` : planned.destination
+    const target = planned.intoDirectory ? `${planned.destination.replace(/\/+$/, '')}/${basenamePath(source)}` : planned.destination
     try {
       await ctx.fs.lstat(source, { cwd: ctx.cwd })
     } catch (error) {
