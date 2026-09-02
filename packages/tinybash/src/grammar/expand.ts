@@ -1,6 +1,6 @@
 import type { HeredocBody, Word, WordPart } from './ast'
 import { expandGlob, hasGlobChars } from './glob'
-import type { HostFileSystem } from '@demicodes/shell'
+import type { TinybashFs } from '../host'
 
 export interface ExpansionScope {
   home: string
@@ -88,7 +88,7 @@ export function expandSingle(word: Word, scope: ExpansionScope): string {
 }
 
 /** Full expansion of a command's words into argv: tilde, parameter, splitting, globbing. */
-export async function expandArgv(words: readonly Word[], scope: ExpansionScope, fs: HostFileSystem): Promise<string[]> {
+export async function expandArgv(words: readonly Word[], scope: ExpansionScope, fs: TinybashFs): Promise<string[]> {
   const argv: string[] = []
   for (const word of words) {
     for (const field of expandToFields(word, scope)) {

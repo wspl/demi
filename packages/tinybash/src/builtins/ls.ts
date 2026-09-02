@@ -1,4 +1,4 @@
-import type { HostFileStat } from '@demicodes/shell'
+import type { TinybashStat } from '../host'
 import { checkCancelled, type Builtin, type BuiltinContext } from './io'
 import { type FlagSpec, parseFlags, has } from './flags'
 import { quoteC, strerror } from './errors'
@@ -9,13 +9,13 @@ export const lsSpec: FlagSpec = { switches: ['l', 'a', '1', 'R'], valued: [] }
 interface Entry {
   name: string
   path: string
-  stat: HostFileStat
+  stat: TinybashStat
   linkTarget: string | null
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-export function modeString(stat: HostFileStat): string {
+export function modeString(stat: TinybashStat): string {
   const type = stat.isSymbolicLink ? 'l' : stat.isDirectory ? 'd' : stat.isCharacterDevice ? 'c' : stat.isFIFO ? 'p' : '-'
   const m = stat.mode
   const bit = (mask: number, ch: string) => (m & mask ? ch : '-')
@@ -38,7 +38,7 @@ export function timeColumn(mtime: Date, now: Date): string {
 }
 
 /** Allocated 1K blocks as ext4 reports them for ordinary files: 4K blocks, none for an empty file or a fast symlink. */
-function blocks(stat: HostFileStat): number {
+function blocks(stat: TinybashStat): number {
   if (stat.isSymbolicLink) return stat.size < 60 ? 0 : 4
   if (stat.isDirectory) return 4
   return Math.ceil(stat.size / 4096) * 4
@@ -55,7 +55,7 @@ export const ls: Builtin = async (ctx) => {
   const files: Entry[] = []
   const dirs: Entry[] = []
   for (const operand of operands) {
-    let stat: HostFileStat
+    let stat: TinybashStat
     let linkTarget: string | null = null
     try {
       stat = await ctx.fs.lstat(operand, { cwd: ctx.cwd })

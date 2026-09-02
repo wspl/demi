@@ -1,12 +1,13 @@
 import { shareByteStream } from '@demicodes/utils'
-import type { CommandIO, DispatchIO, HostFileSystem, RootPaths } from '@demicodes/shell'
+import type { DispatchIO, RootPaths, TinybashFs, TinybashIO } from './host'
 import type { Script } from './grammar/ast'
 import { parseScript } from './grammar/parser'
 import { checkScript } from './outside/check'
 import { OutsideError, type OutsideReason, refusalMessage } from './outside/reasons'
 import { type ShellState, executeScript } from './exec/executor'
 
-export type { OutsideReason, RootPaths, DispatchIO, ShellState }
+export type { OutsideReason, ShellState }
+export type { DispatchIO, RootPaths, TinybashDirent, TinybashFs, TinybashIO, TinybashStat, TinybashWriter } from './host'
 export type { Script } from './grammar/ast'
 export { refusalMessage } from './outside/reasons'
 
@@ -18,10 +19,10 @@ export interface TinybashInput {
   namespace: readonly string[]
   /** Runs a root command; `argv` excludes the root name. */
   dispatch: (root: string, argv: string[], io: DispatchIO) => Promise<number>
-  fs: HostFileSystem
+  fs: TinybashFs
   /** The session shell state; `cd` and assignments mutate it. */
   state: ShellState
-  io: CommandIO
+  io: TinybashIO
   /** The script's stdin: what the caller writes while it runs. Root commands whose stdin is not redirected read it in turn. */
   stdin?: AsyncIterable<Uint8Array>
   /** Owner names `ls -l` shows for every file. */
@@ -42,7 +43,7 @@ export type ParseResult = { kind: 'script'; script: Script } | TinybashOutside
  * that nothing before it could have affected, so fewer scripts are handed to
  * a machine for a `..` after a `cd` that plainly succeeds.
  */
-export async function parseTinybash(script: string, roots: ReadonlyMap<string, RootPaths>, namespace: readonly string[], state: Readonly<ShellState>, fs?: HostFileSystem): Promise<ParseResult> {
+export async function parseTinybash(script: string, roots: ReadonlyMap<string, RootPaths>, namespace: readonly string[], state: Readonly<ShellState>, fs?: TinybashFs): Promise<ParseResult> {
   try {
     const parsed = parseScript(script)
     await checkScript(parsed, { roots, namespace, scope: { home: state.home, cwd: state.cwd, vars: state.vars }, fs })
