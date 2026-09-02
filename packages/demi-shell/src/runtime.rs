@@ -23,7 +23,7 @@ impl ModuleDef for RuntimeModule {
     fn declare(decl: &Declarations<'_>) -> Result<()> {
         for name in [
             "argv", "env", "cwd", "chdir", "exit", "onSignal", "stdin", "stdout", "stderr", "pid",
-            "identity", "version", "abi",
+            "identity", "version", "abi", "openHandles",
         ] {
             decl.declare(name)?;
         }
@@ -54,8 +54,14 @@ impl ModuleDef for RuntimeModule {
         exports.export("identity", identity(ctx)?)?;
         exports.export("version", VERSION)?;
         exports.export("abi", ABI)?;
+        exports.export("openHandles", Func::from(open_handles))?;
         Ok(())
     }
+}
+
+/// Handles open above the standard streams; a leak is countable in tests.
+fn open_handles(ctx: Ctx<'_>) -> usize {
+    state(&ctx).handles.borrow().open_count()
 }
 
 fn cwd(ctx: Ctx<'_>) -> Result<String> {
