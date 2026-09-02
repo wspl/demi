@@ -3,10 +3,10 @@
 // miss, and `rpc` invocations forwarded to the backend under the ids the
 // job's environment carried, with stdin streamed in and stdout/stderr
 // streamed back.
-import { listenUnix, msgpackDecode, msgpackEncode, type StreamSocket, type UnixListener } from '@demicodes/host-runner'
+import { listenUnix, msgpackDecode, msgpackEncode, type StreamSocket, type UnixListener } from '../machine'
 import type { BackendToRunnerMessage, RunnerToBackendMessage } from '@demicodes/runner-protocol'
 import { createId, errorMessage, noop } from '@demicodes/utils'
-import { frameOf, framesOf, relayRequestSchema, type RelayReply } from './relay-protocol'
+import { frameOf, framesOf, relayRequestSchema, type RelayReply } from './protocol'
 
 const codec = { encode: msgpackEncode, decode: msgpackDecode }
 

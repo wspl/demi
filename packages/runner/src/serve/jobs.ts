@@ -1,6 +1,7 @@
 import type { HostSpawnError, HostSpawnHandle } from '@demicodes/shell'
 import { errorMessage, noop } from '@demicodes/utils'
-import { JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type RunnerToBackendMessage } from './messages'
+import { deviceFallback } from './device-env'
+import { JOB_CWD_FILE_VAR, JOB_STDIN_FD, JOB_STDIN_FD_VAR, JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
 
 /**
  * The runner's job table (`runner.md` § Jobs and the tee): one `bash -c`
@@ -52,13 +53,6 @@ interface Job {
   handle: JobSpawnHandle
   cwdFile: string
 }
-
-/** The env var naming the file the `EXIT` trap writes the final `pwd` to. */
-export const JOB_CWD_FILE_VAR = 'DEMI_JOB_CWD_FILE'
-/** The env var naming the descriptor the prelude duplicated the job's stdin onto. */
-export const JOB_STDIN_FD_VAR = 'DEMI_JOB_STDIN_FD'
-/** That descriptor: fixed, high, and clear of the ones scripts and tools reach for (bash 3.2 has no `{var}<&0`). */
-export const JOB_STDIN_FD = 199
 
 export class JobTable {
   private readonly jobs = new Map<string, Job>()
@@ -184,12 +178,4 @@ function withPathPrefix(env: Record<string, string>, prefix: string[]): Record<s
   if (prefix.length === 0) return env
   const rest = (env.PATH ?? '').split(':').filter((entry) => entry !== '' && !prefix.includes(entry))
   return { ...env, PATH: [...prefix, ...rest].join(':') }
-}
-
-function deviceFallback(env: Record<string, string>, device: Record<string, string>): Record<string, string> {
-  const merged = { ...env }
-  for (const key of ['PATH', 'HOME']) {
-    if (!(key in merged) && device[key] !== undefined) merged[key] = device[key]
-  }
-  return merged
 }

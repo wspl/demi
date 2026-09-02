@@ -2,11 +2,11 @@
 // process. The loader runs `runtime` modules here against the machine's
 // Host from the runner's manifest cache, and forwards `rpc` leaves to the
 // runner over the relay.
-import { createRunnerHost, cwd, env, fdNode, identity, onSignal, stderrWriter, stdinStream, stdoutWriter } from '@demicodes/host-runner'
+import { createRunnerHost, cwd, env, fdNode, identity, onSignal, stderrWriter, stdinStream, stdoutWriter } from './machine'
 import { createLoader, directorySource, inMemorySource, parseManifest, type ManifestSource } from '@demicodes/command-loader'
 import { JOB_STDIN_FD_VAR } from '@demicodes/runner-protocol'
 import { emptyByteStream, errorMessage } from '@demicodes/utils'
-import { fetchManifest, relayRpc } from './relay-client'
+import { fetchManifest, relayRpc } from './relay/client'
 
 /** The runner's state directory: `DEMI_HOME`, else `~/.demi`. */
 export function stateDir(): string {
