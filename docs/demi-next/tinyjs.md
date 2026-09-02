@@ -273,17 +273,16 @@ deliverable is made the way `bun build --compile` and Node's single
 executable applications make one: the bundle is **packed** onto a copy of
 the binary, no compiler involved.
 
-**Packed binary.** tinyjs reserves a slot for the bundle inside the
-executable at build time: a static block beginning with the magic
-`TINYJS_SLOT_v1__`, the slot capacity and the bundle length (little-endian
-`u64`s), then the capacity's worth of bytes — 8 MiB, a build-time
-constant. Packing finds the magic in a copy of the binary and writes the
-length and the bundle in place. Nothing about the file's layout changes,
-so no binary format is parsed or rewritten and a code signature is simply
-re-applied afterwards. At start tinyjs reads the length from its own
-mapped image; a non-zero length is the packed bundle, evaluated as
-`/embedded/main.mjs`. Nothing is read from disk. The packed file is one
-file on disk, reached through symlinks:
+**Packed binary.** The bundle is compiled to QuickJS bytecode and placed
+in a section of the executable by `tinyjs --pack`, through `libsui`, the
+injector behind `deno compile`: on Mach-O a new segment with the load
+commands adjusted and an ad-hoc signature applied, on ELF a `PT_NOTE`
+grafted after the image. At start tinyjs asks `libsui::find_section` for
+it in its own mapped image and loads the bytecode without parsing; nothing
+is read from disk and no source is scanned. Bytecode is always used, there
+is no source option: it is tied to the interpreter build, which is fine
+because packing is done by the release it will run on. The packed file is
+one file on disk, reached through symlinks:
 
 - `demi-runner` — **runner mode**: runs the runner program (`runner.md`).
 - any other name — **command mode**: runs the loader with `argv[0]` as the
@@ -293,17 +292,25 @@ file on disk, reached through symlinks:
 
 The mode is selected by `argv[0]` inside the bundle; Rust parses no
 arguments. There is no separate JS file to install and no `node_modules`
-on a target. Packing is done by the build tooling, not by tinyjs: copy the platform
-binary, find the magic, write the length and the bytes, and on macOS
-re-sign (`codesign -s -` for a local build; the Developer ID, via
-`rcodesign` when packing from Linux, for a distributed one), because the
-write invalidates the existing signature. The slot costs its capacity in
-file size and nothing at run time: pages past the bundle are never
-touched. Two other ways were measured and rejected in `progress.md`:
-appending after the Mach-O executes but fails `codesign`'s strict
-validation, and injecting a section with `postject`/LIEF mis-relocates the
-TLS sections of a Rust binary on macOS and silently writes nothing into a
-static musl ELF.
+on a target. Packing is tinyjs's own job, as it is Bun's and Deno's:
+
+```
+tinyjs --pack <bundle.mjs> --out <file> [--bin <bare tinyjs of another platform>]
+```
+
+Compiling the bundle resolves its import graph with the real loader, so a
+bundle importing something that does not exist fails at pack time. `--bin`
+packs another platform's bare binary of the same release, so one machine
+packs every target (all four targets are 64-bit little-endian, so the
+bytecode is the same). The result passes `codesign --verify --strict` on
+macOS; a distributed build replaces the ad-hoc signature with the Developer
+ID at release time. macOS binaries are linked with `-headerpad` so the
+injected load command has room, and `--pack` refuses a binary without it
+rather than overwrite the start of `__text`. A packed binary parses no
+arguments of its own: everything goes to the bundle. Two other mechanisms
+were measured and rejected (`progress.md`): appending after the Mach-O
+executes but fails strict validation, and `postject`/LIEF mis-relocates a
+Rust binary's TLS sections.
 
 **Bare binary.** Without a payload, `tinyjs <entry.mjs> [args…]` runs the
 entry file as the embedded bundle: the entry's directory is `/embedded/`,
