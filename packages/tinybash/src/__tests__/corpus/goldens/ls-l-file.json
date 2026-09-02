@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "-rw-r--r-- 1 example-company example-company 28 Jan 15  2024 notes.txt\n",
+  "stderr": "",
+  "user": "example-company",
+  "group": "example-company"
+}

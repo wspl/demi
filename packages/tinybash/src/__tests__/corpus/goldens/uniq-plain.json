@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "alpha\nbeta\ndelta\ngamma\n",
+  "stderr": "",
+  "user": "example-company",
+  "group": "example-company"
+}
