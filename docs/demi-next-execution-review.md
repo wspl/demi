@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Review record — decisions taken during the M7 spike; awaiting owner review before folding into `demi-next.md` |
-| Scope | Managed-host provisioning, host lifecycle, the execution model (virtual host / just-bash), the runner, the RPC data carrier, the host access model, the `demi` command surface |
-| Working state | Nothing committed. Spike artifacts live outside the repo (Lima VM `fc`, `/opt/fc`, scratchpad). |
+| Status | Review record — decisions taken during the M7 spike and confirmed or revised in owner review on 2026-09-02; ready to fold into `demi-next.md` |
+| Scope | Managed-host provisioning, host lifecycle, the execution model (hostless execution, the command system, the shell), the runner, the RPC data carrier, the host access model, the `demi` command surface |
+| Working state | Nothing committed. Spike artifacts live outside the repo (Lima VM `fc`, `/opt/fc`, scratchpad; the QuickJS shell spike under `scratchpad/shell`). |
 
 This document records what was investigated, what was measured, and what
 was decided in one continuous review. Each item states the **decision** in
@@ -28,17 +28,24 @@ information the final design depends on.
 | 6 | Lifecycle | Home image is a **named mutable object** bound to its owner, never deleted; not a content-addressed blob |
 | 7 | Lifecycle | Upload on **hibernate + periodic checkpoint** (pause → copy → resume → async upload) |
 | 8 | Security | Firecracker under **jailer**; egress policy **c** (internet allowed, private ranges + metadata endpoint + backend internals blocked, no inbound) |
-| 9 | Execution model | **Drop virtual-host and just-bash.** One execution model: real bash on a real (micro)machine |
-| 10 | Execution model | `demi` becomes a **native Rust binary** (same static binary as the runner, two entry modes); `command-bridge` deleted |
-| 11 | Execution model | No execution target → chat only; **first tool call auto-provisions** a managed host |
+| 9 | Execution model | **Drop just-bash and the portable command set.** Real hosts run real bash; a conversation without a host runs **demi commands only**, against a backend-side filesystem |
+| 10 | Execution model | `demi` is the **QuickJS shell plus the loader**; one binary with two entry modes (runner / CLI); `command-bridge` deleted |
+| 11 | Execution model | No execution target → hostless demi execution; the **first non-demi command auto-provisions** a managed host and the backend places the hostless files on it |
 | 12 | Wire | **Bytes rule**: protocols carry references, never bulk bytes; bulk moves over HTTP |
-| 13 | Wire | Runner-side **tee**: full output lands on the target as artifact files; the wire carries a bounded view |
-| 14 | Carrier | **zod (schema) + MessagePack (wire) + custom zod-AST → Rust emitter** |
-| 15 | Runner | Runner rewritten in **Rust** |
+| 13 | Wire | Runner-side **tee**: full output lands on the target as artifact files; the wire carries a bounded view; artifacts are **not uploaded** on hibernate |
+| 14 | Carrier | **zod (schema) + MessagePack (wire)**; the protocol stays TS↔TS, no code generation; MessagePack is a shell primitive |
+| 15 | Runner | **Rust writes the shell only**; runner logic is JS on the shell |
 | 16 | Wire | Control-priority channel layer **deferred**; recorded as a risk with a stated precondition |
 | 17 | Access | `prev` / `switch` / `release` removed; **per-conversation host grants**, user-granted only, auto-grant on switch |
 | 18 | Commands | `demi host list` / `current` / `shell --id <hostId> <shell_content>`; **groups navigate, leaves execute** |
 | 19 | Agent protocol | `AgentServer` / `AgentClient` split **unchanged**; only the shell-runtime backing re-homes to the runner |
+| 20 | Commands | One command tree, defined in the backend; every command is **`rpc`** (runs in the backend) or **`runtime`** (an ESM module shipped to the target and run there) |
+| 21 | Commands | **Command ABI**: a runtime module is `export default (ctx) => …` and sees only `ctx` (Host fs, cwd, env, stdio, parsed args) |
+| 22 | Commands | The **loader** is a pure-JS library (manifest source + Host + optional rpc transport → hash-cached dispatch); the runner, the CLI and the hostless backend path are its embedders |
+| 23 | Shell | The shell provides IO primitives, the event loop, the Web-platform globals and every **byte-level path** (base64, MessagePack, UTF-8, tee); JS handles control flow only |
+| 24 | Lifecycle | Home-only persistence stands: the VM mounts an **ephemeral upper** for its lifetime; the **preinstalled rootfs** is ours to maintain; the long tail installs into home |
+| 25 | Lifecycle | One device token accepts **one live connection**; a second `hello` with the same token is rejected and logged |
+| 26 | Lifecycle | Home-image retention rule **deferred** |
 
 ---
 
@@ -59,6 +66,14 @@ Two findings were reversed by controls during the review — a cgroup memory
 limit that appeared ignored (the cause was swap, not gVisor) and a Bun
 startup cost attributed to disk I/O (the cause was runtime initialisation,
 not I/O). Both are recorded where they occur.
+
+A second environment produced the wake-time decomposition and the shell
+spike in §6: Apple M3 Pro (macOS 26.0), Lima 2.1.0 (`vmType: vz`,
+`nestedVirtualization: true`, Ubuntu 24.04, kernel 6.8), Firecracker
+v1.16.1 with the CI `vmlinux-6.1.155` kernel, 2 vCPU / 1 GB guests, a
+debootstrap noble rootfs, and a Bun stub standing in for the backend's
+runner socket. Its numbers are of the same order as the first environment's
+and are reported separately where they differ.
 
 **x86_64 is unverified.** No bare-metal or x86_64 run happened. The
 architecture-sensitive item (syscall compatibility) became moot with
@@ -151,12 +166,30 @@ the VM (`SIGKILL` on the Firecracker process); wake boots a fresh VM from
 the shared read-only rootfs and attaches the same home image. No memory
 snapshots, no graceful shutdown protocol.
 
+Three statements make home-only persistence hold (Decision 24):
+
+- **The rootfs is preinstalled and ours to maintain.** Its size costs a
+  conversation nothing: it is one shared read-only file per backend host,
+  paged in on demand and hot in the host page cache across every VM. A
+  heavy base image is therefore the cheap place to put toolchains.
+- **The VM mounts an ephemeral upper layer** (tmpfs or a discarded disk)
+  over the rootfs for its lifetime, so `apt` and other system-level installs
+  work during the session and vanish at hibernation. A persistent overlay
+  was rejected: an upper layer carrying a dpkg database and overwritten
+  system files makes the base image un-upgradable, while home-only lets the
+  next wake boot a patched rootfs with nothing to migrate.
+- **The long tail installs into home.** `uv`, `nvm`, `rustup` already live
+  there; the apt-shaped tail goes through a home-resident package manager
+  (Linuxbrew under `/home/linuxbrew`). The context block injected on
+  switch states that system installs are lost on hibernate and names the
+  home-resident alternatives.
+
 ### Evidence
 
 - Home-only restore verified: VM-1 writes to `/home`; VM-1 is killed with
   no snapshot; VM-2 boots with the rootfs mounted `ro` and the same home
   image attached; the random payload, directory tree and a 50 MB file read
-  back intact. Wake wall clock 1.16 s (pre-Rust-runner).
+  back intact. Wake wall clock 1.16 s excluding runner start-up.
 - `kill -9` is safe: after the kill the image reports `Filesystem state:
   clean`; the next VM mounts it without fsck (journal replay); a file
   written without `fsync` exists **with empty content**, a file written with
@@ -213,6 +246,13 @@ attachments and transcript media, which are permanent by design). A small
 separate store with **streaming** `write(ownerId, stream)` / `read(ownerId)`
 is required: 100 MB+ images must not pass through the backend heap as a
 `Uint8Array`.
+
+Two cost controls follow from per-conversation ownership: the image starts
+at a small nominal size and grows online (`truncate` + in-guest `resize2fs`)
+so an empty home costs a few MB rather than the 69 MB of inode tables an
+8 GB nominal image carries; and hibernation skips the upload when the
+runner reports the home untouched. The retention rule for images of
+archived or deleted conversations is deferred (Decision 26).
 
 ### Upload timing (Decision 7)
 
@@ -279,31 +319,76 @@ backend URL and network configuration. Protocol: unchanged `hello
 device. **A managed runner without a token receives `hello_error` and never
 `claim_pending`** — a managed VM must never appear in a user's pairing flow.
 
+The command line is readable by every process in the guest, including the
+untrusted code the agent runs. That is not a material widening: the VM is
+the trust boundary, and a process inside it already sees every file and
+spawn request the backend sends. The token's job — keeping arbitrary
+internet clients from registering as devices — is intact. One hygiene rule
+covers the remainder (Decision 25): **a token holds at most one live
+connection; a second `hello` carrying it is rejected and logged.** This
+applies to user hosts as well. Managed runners dial the same public backend
+URL as user hosts; there is no private-network path to carve out of the
+egress policy.
+
 ---
 
-## 4. Execution model: one model, real machines
+## 4. Execution model: real bash on real machines, demi-only without one
 
-### Decision (9, 10, 11)
+### Decision (9, 10, 11, 20–23)
 
-`@demicodes/host-virtual`, the just-bash interpreter role of
-`@demicodes/shell`, the portable command set, and `command-bridge` are
-removed. Every execution target is a real Linux machine — a user host, a
-managed microVM, or the local machine (LocalHost becomes "the runner running
-in-process"). Commands run in **real bash on the target**, spawned by the
-runner with the session's cwd and env passed explicitly (both are already
-tracked in backend session state). `demi` is a **native Rust binary** —
-the same static binary as the runner, selected by entry mode — present on
-every target. A conversation with no execution target is chat-only; its
-**first tool call auto-provisions** a managed host. The agent never
-initiates a target switch.
+The just-bash interpreter role of `@demicodes/shell`, the portable command
+set, and `command-bridge` are removed. On every real execution target — a
+user host, a managed microVM, the local machine — commands run in **real
+bash on the target**, spawned by the runner with the session's cwd and env
+passed explicitly (both are already tracked in backend session state). The
+agent never initiates a target switch.
 
-### Why virtual existed, and why it no longer needs to
+A conversation with **no execution target runs demi commands only**: the
+backend parses the tool call with a small demi-only parser, executes the
+command in-process against a filesystem backed by the conversation's store,
+and refuses anything else with an upgrade message. The **first non-demi
+command auto-provisions** a managed host, and the backend writes the
+hostless files into its home — no model-driven migration.
 
-Virtual provided execution when "no real machine" was available. In the
-hosted product a managed microVM is available on demand at sub-second cost
-with idle reclamation; a self-hoster has a real machine by definition (the one
-running the backend) and pairs it. The premise is gone in both deployment
-forms.
+**The command system** (Decisions 20–23):
+
+- One command tree, defined once in the backend. Every command is `rpc` —
+  its implementation runs in the backend — or `runtime` — its implementation
+  is an ESM module shipped to the target and run there. `demi file *` and
+  future `demi search` are `runtime`; `todo`, `agent`, `host` are `rpc`.
+- A runtime module is `export default (ctx) => …` and sees only `ctx`: the
+  Host fs interface, cwd, env, stdin/stdout and the parsed arguments. No
+  runtime builtins. This is the public **command ABI**: the same module runs
+  on the shell against a real filesystem, in the backend against the
+  hostless store, and in tests.
+- The **loader** is a pure-JS library: given a manifest source, a Host and an
+  optional rpc transport, it caches the command table and modules by hash and
+  dispatches calls — runtime modules locally, rpc commands as typed messages
+  carrying the already-parsed arguments. The runner embeds it with the backend
+  connection as manifest source and a disk cache; the standalone `demi` CLI
+  embeds it with a configured source; the hostless backend path embeds it
+  in-process. A third party needs the library, a Host and a source — no
+  runner, no shell.
+- `demi` on a target is the **shell plus the loader**: the same binary as the
+  runner, selected by entry mode. It reads the runner's manifest cache from
+  disk and asks the runner over a local UDS only on a miss; the CLI holds no
+  credential. Session attribution for rpc commands is by ids injected into
+  the bash environment, as the deleted bridge did with `DEMI_SHELL_ID`.
+
+### Why a hostless mode stays, and why it is small
+
+A large share of conversations only write a file or run a query. Provisioning
+a microVM for those pays a boot, minutes of resident memory and a persistent
+image for work that never needed a machine. The hostless mode keeps that
+work free, and it is small because everything the model does there is a
+`demi` command: the parser tokenizes one simple command (quotes, escapes),
+supports heredocs (`<<EOF`, `<<'EOF'`, `<<-EOF`, `<<<`) — `demi file create`
+and `demi file patch` take their content on stdin and the repository already
+emits heredocs for them — and sequences joined by newline, `;` or `&&`.
+Pipes, redirections, variables, substitutions, globs and any non-`demi` first
+word are refused. It does not pretend to be bash, so the bash-behavior
+divergence catalogue has nothing to describe. The tool description in the
+hostless state says so, so the model reaches for `demi` rather than `cat`.
 
 ### The pipeline finding
 
@@ -324,30 +409,34 @@ an OS pipe and **zero bytes cross the wire**.
 pinned to real processes. On a real host just-bash was (1) the parser and
 orchestrator, (2) the in-process host for the registered `demi` commands,
 (3) the capture / limit / artifact / job wrapper around them. (1) is replaced
-by real bash; (2) by the native binary; (3) moves to the runner.
+by real bash; (2) by runtime modules run by the loader; (3) moves to the
+runner.
 
-### `demi` subcommands: local versus RPC
+### Why runtime modules rather than a second implementation
 
-Verified against imports: `demi file *` depends only on `host.fs` and runs
-**locally** in the binary — no round trip. `todo` (`CommandStorage`),
-`agent` (subagent supervisor) and `host` (registry, control plane) are
-backend state and go over a local UDS to the runner, which attributes the
-call to a session by the spawning process (ids injected into the bash
-environment, as the deleted bridge did with `DEMI_SHELL_ID`) and forwards it
-on its existing connection. The binary holds no credential. Command logic
-stays in one place (the backend); the binary's CLI surface is **generated
-from the `Command` zod tree** by the same emitter as the carrier (§6).
+Verified against imports: `demi file *` depends only on `host.fs`. Running it
+in the backend for every host would cost two wire round trips per file
+operation; implementing it once per language would leave two copies of
+every file command to keep in sync. Shipping the implementation as a module
+gives one implementation and zero round trips, and it is what makes the
+toolkit story real: the command tree, the module format and the ABI are the
+contract a third party builds on.
 
 ### Consequences
 
-- **Deletion scope**: `packages/just-bash` (the fork submodule),
-  `packages/host-virtual`, the interpreter and portable-command parts of
-  `packages/shell`, `docs/bash-behavior.md`, `host-local/command-bridge`,
-  the virtual-prev tar pipe, the 64 MB capture `SIGKILL` (its rationale —
-  the backend holding whole outputs in memory — disappears with the tee).
-  The exact contents of `IN_PROCESS_PORTABLE_COMMANDS` must be enumerated
-  when scoping: that list is the only thing just-bash provided *exclusively*
-  on real hosts.
+- **Deletion scope**: `packages/just-bash` (the fork submodule), the
+  interpreter and portable-command parts of `packages/shell`,
+  `docs/bash-behavior.md`, `host-local/command-bridge`, the virtual-prev tar
+  pipe, the 64 MB capture `SIGKILL` (its rationale — the backend holding
+  whole outputs in memory — disappears with the tee). `packages/host-virtual`
+  is reduced to the store-backed Host the hostless mode needs.
+  `IN_PROCESS_PORTABLE_COMMANDS` is `echo`, `printf`, `pwd`, `alias`,
+  `unalias`, `history`, `help`, `time` — all bash builtins, nothing to
+  replace.
+- The runner bundle today is 4.5 MB, of which just-bash is 2.0 MB and its
+  dependencies (yaml, domino, fast-xml-parser, …) another 2.1 MB; the runner,
+  protocol and host-local proper are about 50 KB. The deletion removes the
+  module-evaluation cost measured in §6.
 - The job model to re-implement on the runner is small: one foreground
   process plus background jobs, and `extractSimpleBackgroundCommand`
   accepts only a single simple command with `&` (no pipelines, operators,
@@ -386,6 +475,12 @@ from the `Command` zod tree** by the same emitter as the carrier (§6).
   target; the wire carries only the bounded observation view (1 MB class).
 - When the backend needs full bytes it fetches them by reference over
   **HTTP**, never over the WebSocket.
+- Artifacts stay on the target and are **not uploaded** on hibernate. The
+  full output of a past command is reachable while its host is online; a
+  hibernated managed host is woken on demand to serve it, an offline user
+  host shows "full output is on an offline host". The value of full output
+  decays fast, and uploading it at hibernation would move the very bytes the
+  rule exists to keep off the wire.
 - Browser-bound media becomes a reference plus a `GET` endpoint;
   `transcript_reset` / `transcript_patch` no longer inline bytes.
 - Cross-host transfer (`demi host shell --id A "tar cz …" | tar xz`) must
@@ -438,95 +533,127 @@ To be re-examined if a large patch source appears.
 
 ---
 
-## 6. Data carrier
+## 6. Data carrier and runtime
 
 ### Decision (14)
 
-The RPC carrier is **zod as the schema language (unchanged), MessagePack as
-the wire (native bytes), and a custom emitter that walks the zod AST and
-emits Rust types with serde**. TypeScript needs no codegen (`z.infer`).
-Presence semantics are correct by construction (zod is required-by-default,
-`.optional()` is explicit). The same emitter emits the `demi` CLI surface
-(clap) from the `Command` tree.
+The RPC carrier is **zod as the schema language (unchanged) and MessagePack
+as the wire (native bytes)**. Both ends of the runner protocol are
+TypeScript — the backend on Bun, the runner as JS on the shell — so the
+schemas are shared as-is and **no code generation exists**. Presence
+semantics are correct by construction (zod is required-by-default,
+`.optional()` is explicit). MessagePack encoding and decoding is a shell
+primitive, not JS.
 
 ### Evidence
 
-- **Why zod could not export bytes.** zod 4.4.3 exposes `base64`,
-  `base64url`, `file` — no bytes type. `z.instanceof(Uint8Array)` and
-  `z.custom<Uint8Array>` both validate a real `Uint8Array` and both fail
-  `toJSONSchema` with "Custom types cannot be represented" (`instanceof` is a
-  custom internally); `z.base64()` exports but validates a *string*. The
-  root cause is a layer mismatch: the schemas describe the **decoded**
-  in-memory shape, the wire carries envelopes, and JSON Schema targets a
-  format with no binary. zod is a runtime value validator, not an IDL.
+- **zod is a runtime value validator, not an IDL.** zod 4.4.3 has no bytes
+  type: `z.instanceof(Uint8Array)` and `z.custom<Uint8Array>` validate a real
+  `Uint8Array` but cannot be exported to JSON Schema, and `z.base64()`
+  validates a *string*. The schemas describe the decoded in-memory shape;
+  the wire carries whatever the codec chooses. With MessagePack that codec
+  carries bytes natively and the schemas need no envelope types.
 - **What validation the RPC boundary actually uses.** Zero refinements in
   `runner-protocol/schemas.ts` and `agent/protocol/schemas.ts`; all 13
   refinements in the codebase are on Web API bodies (`connections` 7,
   `workspaces` 4, `devices` 2). Structural validation is inherent in a
   generated decoder; the only thing to carry over explicitly is field
   presence. `protovalidate` exists if a refinement is ever needed on the wire.
-- **The zod AST is walkable.** Every schema exposes `.def` with kind, shape,
-  `optional` / `nullable` wrapping, discriminator, enum values and record
-  key/value types. `z.instanceof` does **not** retain the class (`def.cls ===
-  Uint8Array` is false), so byte fields are identified by `.meta({ demiWire:
-  'bytes' })`, readable via `z.globalRegistry.get()` and preserved through
-  `.optional()`. Three hand-written Rust newtypes (`Bytes`, `Timestamp`,
-  `BigInt`) realise the portable envelopes on the Rust side.
-- **The JSON-Schema route was proven and rejected.** `z.toJSONSchema` (with
-  `unrepresentable:'any'`) → `cargo typify 0.7.0` (needs `rustfmt`) produced
-  1948 lines of Rust. The discriminated direction generated a clean
-  `#[serde(tag = "type")]` enum with automatic `rename`, `Option`, and enums;
-  the plain-`z.union` direction generated `#[serde(untagged)]` with
-  `Variant0` / `Variant3Error` / `Variant5SpawnErrorKind` and no exhaustiveness
-  value. This exposed two protocol defects that stand regardless of carrier:
+- **Cross-language generation was tried and is unnecessary.** Walking the
+  zod AST (`.def`, `.meta`, `z.globalRegistry`) and the JSON-Schema route
+  (`z.toJSONSchema` → `cargo typify`, 1948 lines of Rust) both work well
+  enough for discriminated unions and poorly for plain unions and custom
+  types; either would be a generator to maintain against zod internals. With
+  both protocol ends in TypeScript the question does not arise. The
+  exercise did expose two protocol defects that stand regardless of carrier:
   the fs layer is untyped (`fs_call.args: unknown[]`, `fs_result.result:
-  unknown` — `Vec<serde_json::Value>` in Rust, no drift protection where
-  errno / stat fidelity matters most), and `fs_result` shares `type` across
-  its ok / error branches. Fixes: per-op discriminated fs messages; nest ok /
-  error one level down. (`env: record(string, string.optional())` generated
-  `HashMap<String, String>`, correctly — `undefined` is not JSON.)
+  unknown` — no drift protection where errno / stat fidelity matters most),
+  and `fs_result` shares `type` across its ok / error branches. Fixes:
+  per-op discriminated fs messages; nest ok / error one level down.
 - **Protobuf and Bebop rejected.** Both would add a second schema language
-  beside zod (which stays for TS↔TS boundaries and HTTP bodies) for the
-  **only** self-designed narrow-RPC boundary in the system (browser↔backend
-  frames, Web API, and the future controld RPC are all TS↔TS; the Claude Code
-  stdio, Firecracker API and Codex WebSocket are third-party protocols). The
-  Rust protobuf ecosystem is mid-transition (prost passively maintained;
-  Buffa new). The unification answer is *zod everywhere*, not protobuf
-  anywhere. The decision reopens if a second cross-language boundary appears.
+  beside zod (which stays for TS↔TS boundaries and HTTP bodies). With the
+  runner in JS there is no cross-language protocol boundary at all: the
+  only Rust↔JS surface is the shell's primitive API, which knows nothing
+  about the protocol. The Claude Code stdio, Firecracker API and Codex
+  WebSocket remain third-party protocols.
 
-### Runner language (Decision 15)
+### Runtime (Decision 15): Rust writes the shell, the runner is JS
 
-Cold start of each runtime inside a fresh microVM, first execution:
+The runner, the `demi` CLI and the hostless path all execute JS. On a
+target, that JS runs on a **shell**: a Rust binary embedding QuickJS
+(rquickjs) that provides the IO primitives (fs with errno fidelity, spawn
+with pipes and tee, TCP/UDS/TLS, WebSocket, HTTP client, timers), the event
+loop, the Web-platform globals QuickJS lacks (`TextEncoder`, `TextDecoder`,
+`atob`, `btoa`, `URL`, …) and every byte-level path (base64, MessagePack,
+UTF-8, tee). JS on the shell handles control flow only. Runtime command
+modules never see the shell API — only the loader does.
 
-| Runtime | Cold | Warm | Size |
+**Why not a Bun or Node binary.** Cold start of each runtime inside a fresh
+microVM, first execution (nested virtualization, which is the realistic
+deployment: Firecracker needs `/dev/kvm`, and cloud instances provide it
+through nested virtualization, not bare metal):
+
+| Runtime | First exec | Second exec | Size |
 |---|---|---|---|
 | Rust hello | **0.030 s** | 0.000 s | 453 KB |
+| QuickJS shell hello | **0.12 s** | 0.01 s | 1.4 MB |
 | Go hello | **0.120 s** | 0.020 s | 1.6 MB |
-| Bun hello | 0.890 s | — | 86 MB |
+| Bun hello | 0.89–1.67 s | 0.10 s | 86–99 MB |
 | Node hello | 1.940 s | — | node 49 MB |
-| Node, real runner (4.3 MB bundle) | 2.590 s | 1.450 s | 49 + 4.3 MB |
-| Bun, real runner | 2.730 s | 0.790 s | 91 MB |
+| Bun, real runner | 4.95 s | 1.56 s | 103 MB |
 
-The end-to-end wake with the Bun runner was 7.26 s guest time
-(boot 0.95 s, network +0.07 s, runner online +6.24 s), of which the binary's
-first execution cost 2.87 s **with the page cache already warm** (disk was
-0.95 s cold at 100 MB/s; a second execution 0.55 s; WebSocket connect +
-handshake 0.55 s). The JS bundle is 4.7 % of the binary; the rest is the Bun
-runtime, so trimming the bundle cannot help. **Switching to Node is not a
-fix** (2.59 s). Go and Rust both remove the bottleneck; the choice is
-maintainability: the protocol is a tagged union and Rust's `enum` +
-`#[serde(tag)]` is isomorphic to `z.discriminatedUnion`, making a missed
-message a compile error, where Go's interface + type switch falls through
-silently on a daemon that runs on users' machines. This is the repository's
-own "declaration over logic" principle applied to the runner. Contract
-size: 15 messages, 17 fs ops, 6 spawn fields, one 3-envelope codec —
-~2 k lines; errno string fidelity is the main correctness risk.
+**Where the Bun runner's time goes.** A second measurement run (M3 Pro, Lima
+vz, Firecracker 1.16.1, 2 vCPU, 1 GB, a stub backend answering `hello` in
+1 ms) reproduced the 6.24 s "runner online" figure as 6.3 s and decomposed
+it:
+
+| Segment | Time | Evidence |
+|---|---|---|
+| Bun runtime baseline | 0.10 s | hello, second exec |
+| First executable mapping of the 100 MB binary | ~3.4 s | same file 4.95 s then 1.56 s; a tmpfs copy 4.6 s then 1.6 s; host `drop_caches` makes no difference; equal page-fault counts, 310 extra major faults on the first exec |
+| Evaluating the 4.5 MB bundle | ~1.45 s | second exec minus baseline; `--bytecode --minify` no gain (1.54 s); 90 % of the bundle is just-bash and its dependencies |
+| Runner `main` → online | 0.8–1.0 s | LocalHost construction 0.17, token read 0.17, TCP + upgrade 0.29, `hello` round trip 0.05, config write 0.26 |
+
+Neither page-cache warming nor bytecode caching touches the first row; it
+scales with the number of executable pages touched (hello: 0.9–1.5 s,
+runner: 3.4 s, shell: 0.1 s). The mechanism consistent with every
+observation is per-page kernel work on the first executable mapping of a
+file (arm64 instruction-cache maintenance), amplified under nested
+virtualization; no perf profile confirmed it, and x86 nested behaviour is
+unverified. The second row is deleted with just-bash (§4). The conclusion
+is that the binary must be small; LLRT would also qualify on this axis but
+carries a Node-compatibility surface, an experimental label and gaps
+(WebSocket, UDS) that would need Rust modules anyway — at which point the
+shell is the same work with a smaller, fully owned API.
+
+**Shell feasibility spike.** A 150-line rquickjs shell exposing `readFile`,
+`writeFile`, `spawnTee`, `tcpGet` and native base64, running a 386 KB ESM
+bundle of the real `runner-protocol` codec plus zod 4, in the same guest:
+
+| Measurement | Shell | Reference |
+|---|---|---|
+| Binary | 1.45 MB (glibc, dynamic) | Bun 103 MB |
+| hello, first / second exec | 0.12 s / 0.01 s | Bun 1.61 s / 0.10 s |
+| Protocol bundle module evaluation, first / second | 149 ms / 37 ms | — |
+| zod encode of a byte-free message ×200 | 1 ms | — |
+| zod decode of a `spawn` frame ×200 | 8–10 ms | — |
+| tee 100 MB to a file with a 1 MB view | 83–96 MB/s | `head \| cat > file` in the guest: 78 MB/s |
+| native base64, 16 KB | 300 MB/s | — |
+| `bytesToBase64` from `@demicodes/utils` (pure JS) | **2.8 MB/s** | native on Bun |
+| TCP to the stub, first / second | 41 ms / 5 ms | — |
+
+zod 4 runs unmodified in QuickJS; validation cost is negligible; the tee
+primitive saturates the guest's pipe and disk. The one order-of-magnitude
+loss is a pure-JS byte loop without a JIT, which fixes the rule in
+Decision 23: byte-level work is a shell primitive, never JS. QuickJS lacks
+the Web-platform globals and an event loop; the spike supplied the former
+with a prelude and ran synchronously — the event loop is the largest piece
+of shell design work.
 
 Guest-image consequences met on the way (relevant to M10): Bun's default
-target is glibc and fails on alpine (musl) with "not found"; the musl target
-then needs `libstdc++.so.6` / `libgcc_s.so.1`; a static Rust musl binary
-removes both problems. The runner locates state via `homedir()`, so PID-1
-init must set `HOME`.
+target is glibc and fails on alpine (musl) with "not found"; the shell must
+be built as a static musl binary. The runner locates state via `homedir()`,
+so PID-1 init must set `HOME`.
 
 ---
 
@@ -583,7 +710,8 @@ true`). Fixes: add `demi agent spawn [--profile] [--description] [prompt]`
 (touches `docs/subagent.md` §§ 42/53/60/71, the `demi agent:` error strings
 and the `resume` description; nothing in `coding-agent` teaches the bare
 form — the model learns from the tree's own help); `host` is rewritten under
-the grant model anyway. All three land in the Rust binary's generated CLI.
+the grant model anyway. All three are changes to the one command tree the
+loader serves.
 
 ---
 
@@ -615,31 +743,37 @@ the grant model anyway. All three land in the Rust binary's generated CLI.
 
 Pulled out per the "decide first, then test" process:
 
-1. `IN_PROCESS_PORTABLE_COMMANDS` contents and the full deletion scope
-   (`shell` interpreter vs Host-contract parts; any agent-layer path that
-   bypasses the shell to reach virtual).
-2. Runner spawning real `bash -c` with env-injected session ids; a `demi
-   todo` round trip over the UDS relay.
-3. `cmd1 | cmd2` on a managed host with zero wire bytes observed.
-4. Cold provision latency (new owner, no home yet) and wake latency with the
-   Rust runner (projection ~1.5 s nested).
-5. Firecracker under jailer; chroot layout for kernel / rootfs / home.
-6. Periodic checkpoint: pause window with and without reflink.
-7. x86_64 / bare-metal confirmation of the Firecracker numbers.
-8. If the channel layer is revisited: control-message latency and ping
+1. The full deletion scope (`shell` interpreter vs Host-contract parts; any
+   agent-layer path that bypasses the shell to reach virtual).
+2. Shell primitives not covered by the spike: the event loop, WebSocket and
+   TLS client, UDS, spawn stdin and pty, fs errno fidelity, static musl
+   linking.
+3. Runner spawning real `bash -c` with env-injected session ids; a `demi
+   todo` round trip over the UDS relay; a runtime module served from the
+   manifest cache.
+4. `cmd1 | cmd2` on a managed host with zero wire bytes observed.
+5. Cold provision latency (new owner, no home yet) and wake latency with the
+   shell-based runner (projection: kernel boot plus ~0.5 s).
+6. Firecracker under jailer; chroot layout for kernel / rootfs / home.
+7. Periodic checkpoint: pause window with and without reflink.
+8. x86_64 confirmation of the Firecracker and first-exec numbers.
+9. If the channel layer is revisited: control-message latency and ping
    stability under a saturated stream.
 
 ## 10. Effects on `demi-next.md` and the roadmap
 
-- Rewrite: § Virtual execution (delete), § Provisioning, § Security
-  baseline, § Lifecycle, § Session and host model (prev slot →
-  grants), § The `demi host` command, § Attachments (browser media by
-  reference both ways), § Changes to existing packages, § Verified facts /
-  Storage pluggability (blob store vs home store), the M2 / M6 / M7 roadmap
-  rows and their verification rows.
-- Milestone order changes: **carrier + Rust runner + native `demi`** is a
-  new milestone that precedes M7; the just-bash / virtual removal is part of
-  it or immediately before it.
+- Rewrite: § Virtual execution (becomes hostless demi execution),
+  § Provisioning, § Security baseline, § Lifecycle, § Session and host model
+  (prev slot → grants), § The `demi host` command, § Attachments (browser
+  media by reference both ways), § Changes to existing packages, § Verified
+  facts / Storage pluggability (blob store vs home store), the M2 / M6 / M7
+  roadmap rows and their verification rows. A new section describes the
+  command system: command kinds, the command ABI, the loader, the manifest
+  and its cache.
+- Milestone order changes: **shell + loader + command manifest + hostless
+  execution + just-bash removal** is a new milestone that precedes M7. M6's
+  prev slot, `switch`, `release` and the tar-pipe migration are removed by
+  it; the owner accepted that rework.
 - `docs/bash-behavior.md`, `docs/command-bridge.md` and the portable-command
   parts of `docs/package-boundaries.md` become obsolete.
 
@@ -649,4 +783,5 @@ gVisor rootless mode documentation; Firecracker design and getting-started
 documentation; Lima `nestedVirtualization` (vz) and UTM 4.6 release notes;
 sandbox landscape surveys (E2B, Modal, Daytona, Anthropic `sandbox-runtime`);
 Protobuf-ES 2.0 announcement; Buffa; prost; `cargo-typify`; Bebop; `buf
-breaking` documentation.
+breaking` documentation; rquickjs and QuickJS-ng; LLRT (AWS Low Latency
+Runtime) documentation.
