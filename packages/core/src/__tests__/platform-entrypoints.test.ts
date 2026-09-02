@@ -14,6 +14,9 @@ const platformNeutralEntries = [
   ['@demicodes/coding-agent', 'packages/coding-agent/src/index.ts'],
   ['@demicodes/runner-protocol', 'packages/runner-protocol/src/index.ts'],
   ['@demicodes/host-virtual', 'packages/host-virtual/src/index.ts'],
+  ['@demicodes/command-loader', 'packages/command-loader/src/index.ts'],
+  ['@demicodes/tinybash', 'packages/tinybash/src/index.ts'],
+  ['@demicodes/host-runner', 'packages/host-runner/src/index.ts'],
 ] as const
 
 const workspaceEntries = new Map<string, string>([
@@ -48,6 +51,9 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demicodes/runner-protocol', 'packages/runner-protocol'],
   ['@demicodes/runner', 'packages/runner'],
   ['@demicodes/host-virtual', 'packages/host-virtual'],
+  ['@demicodes/command-loader', 'packages/command-loader'],
+  ['@demicodes/tinybash', 'packages/tinybash'],
+  ['@demicodes/host-runner', 'packages/host-runner'],
   ['@demicodes/backend', 'packages/backend'],
   ['@demicodes/repl', 'packages/repl'],
   ['@demicodes/agent-eval', 'packages/agent-eval'],
@@ -69,25 +75,34 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/provider-google', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
   ['@demicodes/runner-protocol', ['@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/host-virtual', ['@demicodes/shell', '@demicodes/utils']],
+  ['@demicodes/command-loader', ['@demicodes/shell', '@demicodes/utils']],
+  ['@demicodes/tinybash', ['@demicodes/shell', '@demicodes/utils']],
+  ['@demicodes/host-runner', ['@demicodes/shell', '@demicodes/utils']],
   [
     '@demicodes/backend',
     [
       '@demicodes/agent',
       '@demicodes/coding-agent',
+      '@demicodes/command-loader',
       '@demicodes/core',
       '@demicodes/host-local',
       '@demicodes/host-virtual',
       '@demicodes/provider',
       '@demicodes/provider-anthropic-api',
+      '@demicodes/provider-claude-code',
+      '@demicodes/provider-codex',
       '@demicodes/provider-google',
+      '@demicodes/provider-grok-build',
       '@demicodes/provider-openai-api',
+      '@demicodes/runner-protocol',
       '@demicodes/shell',
+      '@demicodes/tinybash',
       '@demicodes/utils',
     ],
   ],
   [
     '@demicodes/runner',
-    ['@demicodes/host-local', '@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils'],
+    ['@demicodes/command-loader', '@demicodes/host-local', '@demicodes/host-runner', '@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils'],
   ],
   [
     '@demicodes/repl',
@@ -130,6 +145,8 @@ const allowedWorkspaceSubpaths = new Map<string, string>([
   ['@demicodes/just-bash/interpreter/helpers/ifs', 'packages/just-bash/packages/just-bash/src/interpreter/helpers/ifs.ts'],
   ['@demicodes/just-bash/parser', 'packages/just-bash/packages/just-bash/src/parser/parser.ts'],
   ['@demicodes/shell/storage', 'packages/shell/src/storage.ts'],
+  ['@demicodes/shell/bash', 'packages/shell/src/bash.ts'],
+  ['@demicodes/shell/host-fs', 'packages/shell/src/host-fs.ts'],
 ])
 
 const nodeOnlySubpaths = new Map<string, string>([
@@ -560,10 +577,9 @@ async function readPackageManifests(): Promise<Map<string, PackageManifest>> {
   const rootManifest = await readPackageManifest(resolveRepoPath('package.json'))
   manifests.set(rootManifest.name, rootManifest)
 
-  const packageDirs = await readdir(resolveRepoPath('packages'), { withFileTypes: true })
-  for (const entry of packageDirs) {
-    if (!entry.isDirectory()) continue
-    const manifest = await readPackageManifest(resolveRepoPath(`packages/${entry.name}/package.json`))
+  // The workspaces are the packages; packages/tinyjs is a Rust crate.
+  for (const workspace of rootManifest.workspaces ?? []) {
+    const manifest = await readPackageManifest(resolveRepoPath(`${workspace}/package.json`))
     manifests.set(manifest.name, manifest)
   }
 
@@ -586,6 +602,7 @@ function packageDependencyNames(manifest: PackageManifest | undefined): string[]
 
 interface PackageManifest {
   name: string
+  workspaces?: string[]
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
