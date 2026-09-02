@@ -12,6 +12,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./msgpack": {
+      "development": "./src/codec.ts",
+      "types": "./dist/codec.d.mts",
+      "import": "./dist/codec.mjs"
     }
   },
   "files": [

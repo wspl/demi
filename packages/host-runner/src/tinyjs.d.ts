@@ -32,7 +32,7 @@ declare module 'tinyjs:fs' {
   export function utimes(path: string, atimeMs: number, mtimeMs: number): Promise<void>
   export function truncate(path: string, size: number): Promise<void>
   export function open(path: string, flags: string, mode?: number): Promise<number>
-  export function read(fd: number, max: number): Promise<Uint8Array | null>
+  export function read(fd: number, max: number, offset?: number): Promise<Uint8Array | null>
   export function write(fd: number, data: Uint8Array): Promise<void>
   export function close(fd: number): void
 }
@@ -81,6 +81,8 @@ declare module 'tinyjs:runtime' {
   export const version: number
   export const abi: number
   export function openHandles(): number
+  /** `dev:ino` of the open file description behind an OS file descriptor, `null` when it is not open. */
+  export function fdNode(fd: number): string | null
 }
 
 declare module 'tinyjs:bytes' {

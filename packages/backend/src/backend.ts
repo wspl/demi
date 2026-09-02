@@ -3,12 +3,16 @@ import { AgentServer, type ProviderResolver, defaultShellEnvironment } from '@de
 import { createCodingAgentHarness, createDemiCommand } from '@demicodes/coding-agent'
 import { LocalHost } from '@demicodes/host-local'
 import { VirtualHost } from '@demicodes/host-virtual'
+import { buildManifest, inProcessRpc, type Manifest } from '@demicodes/command-loader'
+import { RemoteHost, RemoteShellEnvironment } from '@demicodes/runner-protocol'
+import { AgentSessionCommandStorage, type Command } from '@demicodes/shell'
+import { toBytes } from '@demicodes/utils'
 import type { Host } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import { STUB_USER } from './auth/identity'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
-import { createHostlessShell } from './conversation/hostless-shell'
+import { createHostlessShell, transpileCommandModule } from './conversation/hostless-shell'
 import { createHostCommandGroup } from './managed/host-command'
 import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
@@ -58,7 +62,36 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     localFs: new LocalHost(options.dataDir).fs,
   })
 
-  const runnerRegistry = new RunnerRegistry({ control, ...options.runner })
+  // The command tree, defined once: the manifest every runner caches is built
+  // from it, and an rpc command a runner relays runs against the tree of the
+  // conversation the ids in the job's environment name.
+  let manifest: Promise<Manifest> | null = null
+  const runnerRegistry = new RunnerRegistry({
+    control,
+    manifest: () => (manifest ??= buildManifest(commandsFor(''), { transpile: transpileCommandModule })),
+    rpc: async (call, io) => {
+      const host = await hostFor(call.agentSessionId)
+      const transport = inProcessRpc(commandsFor(call.agentSessionId), {
+        storage: new AgentSessionCommandStorage(host.store, call.agentSessionId),
+        host,
+      })
+      const result = await transport({
+        root: call.root,
+        path: call.path,
+        argv: call.argv,
+        args: call.args,
+        json: call.json,
+        stdin: call.stdin,
+        cwd: call.cwd,
+        env: call.env,
+        io: { stdout: (data) => io.stdout(toBytes(data)), stderr: (data) => io.stderr(toBytes(data)) },
+        signal: new AbortController().signal,
+        stdinStream: io.stdinStream,
+      })
+      return result.exitCode
+    },
+    ...options.runner,
+  })
 
   const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(options.dataDir))
   const vaultRoot = join(options.dataDir, 'vault')
@@ -106,20 +139,27 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     virtualHostFor: (conversationId: string): Promise<Host> => virtualHostFor(conversationId),
     hostStoreFor: (conversationId: string) => conversationStores.hostStore(conversationId),
   }
+  const commandsFor = (agentSessionId: string): Command[] => [
+    createDemiCommand({ extraSubcommands: [createHostCommandGroup(hostCommandDeps, agentSessionId)] }),
+  ]
   const agentServer = new AgentServer({
     agent: createCodingAgentHarness({
       // Shell/reference contexts carry the session id (= conversation id);
       // session-less contexts get their own scratch namespace.
       host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
-      commands: (ctx) => [
-        createDemiCommand({ extraSubcommands: [createHostCommandGroup(hostCommandDeps, ctx.agentSessionId)] }),
-      ],
+      commands: (ctx) => commandsFor(ctx.agentSessionId),
       preamble: switchAnnouncementPreamble(control),
     }),
     providers: resolveProvider,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },
-    // A hostless conversation's shell is tinybash over its store-backed Host; real hosts keep bash.
-    shellEnvironment: (ctx) => (ctx.host instanceof VirtualHost ? createHostlessShell(ctx) : defaultShellEnvironment(ctx)),
+    // A hostless conversation's shell is tinybash over its store-backed Host;
+    // a real host's is the runner's job table; anything else keeps just-bash.
+    shellEnvironment: (ctx) =>
+      ctx.host instanceof VirtualHost
+        ? createHostlessShell(ctx)
+        : ctx.host instanceof RemoteHost
+          ? new RemoteShellEnvironment({ ...ctx.shell, host: ctx.host })
+          : defaultShellEnvironment(ctx),
     // Sessions persist as block rows in their conversation database; the
     // Host-store default never runs in the product backend.
     sessionStore: (agentSessionId) => conversationStores.sessionStore(agentSessionId),

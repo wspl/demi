@@ -7,11 +7,11 @@ import {
   HostRpcServer,
   RemoteHost,
   createRunnerWire,
-  msgpackCodec,
   type BackendToRunnerMessage,
   type RunnerProtocolMessage,
   type RunnerToBackendMessage,
 } from '../index'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { memoryHostStore } from '@demicodes/shell/testing'
 
 const wire = createRunnerWire(msgpackCodec)

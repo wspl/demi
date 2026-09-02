@@ -5,10 +5,9 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
 import { defineProvider, type AgentProvider, type ProviderEvent } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { RunnerClient } from '@demicodes/runner'
+import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { LocalControlService, type ControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -92,20 +91,11 @@ test('M6 acceptance: virtual→real switch with context block and migration pipe
   const selection = selectionFor(await stubConnection(backend))
 
   // Pair a device and create the workspace over the M6 HTTP surface.
-  const codes: string[] = []
-  const runner = new RunnerClient({
-    backendUrl: backend.url,
-    stateDir,
-    name: 'm6-device',
-    host: new LocalHost(runnerDir),
-    reconnect: { initialDelayMs: 30, maxDelayMs: 100 },
-    onClaimPending: (code) => codes.push(code),
-  })
-  runner.start()
-  await waitFor(() => codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'm6-device' })
+  await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
   const claimed = await api(backend, '/api/devices/claim', {
     method: 'POST',
-    body: JSON.stringify({ code: codes[0] }),
+    body: JSON.stringify({ code: runner.codes[0] }),
     headers: { 'content-type': 'application/json' },
   })
   const { device } = (await claimed.json()) as { device: { id: string } }
@@ -225,20 +215,11 @@ test('real→real switch: files stay, same-device note, prev slot single-occupan
   })
   const selection = selectionFor(await stubConnection(backend))
 
-  const codes: string[] = []
-  const runner = new RunnerClient({
-    backendUrl: backend.url,
-    stateDir,
-    name: 'm6-rr-device',
-    host: new LocalHost(runnerDir),
-    reconnect: { initialDelayMs: 30, maxDelayMs: 100 },
-    onClaimPending: (code) => codes.push(code),
-  })
-  runner.start()
-  await waitFor(() => codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'm6-rr-device' })
+  await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
   const claimed = await api(backend, '/api/devices/claim', {
     method: 'POST',
-    body: JSON.stringify({ code: codes[0] }),
+    body: JSON.stringify({ code: runner.codes[0] }),
     headers: { 'content-type': 'application/json' },
   })
   const { device } = (await claimed.json()) as { device: { id: string } }
