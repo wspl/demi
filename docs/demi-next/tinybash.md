@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (M8) |
+| Status | Implemented (M8) |
 | Scope | The tiny shell hostless conversations run in: the boundary and why it sits there, grammar, builtins, semantics, refusals, interface, verification |
 
 ## Role
