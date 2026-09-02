@@ -985,3 +985,90 @@ endpoint was contacted.
   remote Host existed before M1.
 - The DB-backed `HostStore` must re-provide `LocalHostStore`'s `writeJson`
   atomicity and serve `list` + bulk reads efficiently.
+
+## tinybash scope: bash-usage corpus (2026-09-02)
+
+To place tinybash's boundary on evidence rather than taste, every `bash`
+tool call in the local Claude Code transcripts on the design machine was
+extracted and classified (`~/.claude/projects/**/*.jsonl`; 165 transcripts,
+107 projects, 6 120 calls). The script tokenizes each call (quotes and
+heredoc bodies stripped), flags the constructs used, and records the
+programs invoked; it prints frequencies only.
+
+**Bias notes.** The corpus is a coding agent *with* a machine, so it says
+what shapes the model habitually writes, not what a hostless conversation
+would write once told it has no machine. That environment also instructed
+the agent to read files with `cat`/`head`/`sed -n` instead of a file tool,
+inflating `head` and pipes; and a quarter of the calls are this
+repository's sessions, heavy in Lima and systemd operations. Excluding
+this repository (4 472 calls) moves every ladder step by under two points,
+so the shape is robust.
+
+Construct frequency (share of calls using it):
+
+| Construct | Share |
+|---|---|
+| more than one statement | 87 % |
+| pipe | 68 % |
+| any redirection | 46 % — `2>&1` 34 %, `/dev/null` 14 %, write to a file 2.5 %, read from a file 0.3 % |
+| `;` | 40 % |
+| `&&` | 38 % |
+| `cd` | 27 % — as a `cd X && …` prefix 23 % |
+| `~` | 19 % — all `~/` paths |
+| glob | 9 % |
+| heredoc | 8 % |
+| `$NAME` | 8 % |
+| assignment | 5 % |
+| `$( )` / backtick | 3.5 % |
+| control flow | 3.3 % |
+| `\|\|` | 2.2 % |
+| subshell | 0.4 % |
+| background `&` | 0.2 % |
+| here-string | 0.1 % |
+| `$` in a bare-delimiter heredoc body | 0.03 % |
+
+Pipes: 66 % of all calls pipe only into text filters; 2 % pipe into a
+real tool. Downstream of a pipe: `head` 40 %, `tail` 23 %, `grep` 23 %,
+`sort` 2 %, `sed` 2 %, `awk` 1.4 %, `python3` 1.3 %, `cut` 1.3 %, `wc`
+0.8 %.
+
+Cumulative coverage, ordered so each step adds the cheapest remaining
+construct (all projects / excluding this repository):
+
+| Subset | All | Excl. |
+|---|---|---|
+| one simple command, quotes | 9.4 % | 7.6 % |
+| + newline `;` `&&` `\|\|` | 16.4 % | 12.1 % |
+| + heredoc, here-string | 17.6 % | 13.4 % |
+| + `cd` | 20.1 % | 15.8 % |
+| + pipes into text filters | 37.5 % | 30.5 % |
+| + `2>&1`, `/dev/null` | 63.3 % | 57.6 % |
+| + `~/` | 78.5 % | 78.3 % |
+| + `$NAME`, assignments | 82.7 % | 82.6 % |
+| + globs | 90.3 % | 90.0 % |
+| + `> file`, `< file`, pipes into tools | 94.0 % | 93.9 % |
+| + `$( )`, backticks | 96.4 % | 96.5 % |
+| + control flow, subshells, `&` | 100 % | 100 % |
+
+Programs (share of calls invoking): `grep` 48 %, `head` 41 %, `cd` 27 %,
+`tail` 24 %, `echo` 22 %, `bun` 21 %, `git` 17 %, `sed` 16 %, `ls` 10 %,
+`python3` 9 %, `cat` 6 %, `bunx` 4 %, `sleep` 3 %, `curl` 2.5 %, `wc`
+2.3 %, `sort` 2.2 %, `find` 1.9 %, `awk` 1.7 %, `rm` 1.7 %, `cut` 1.3 %,
+`rg` 1.2 %, `mkdir` 0.6 %, `cp` 0.5 %. Calls whose programs are all
+file/text/fs-mutation/shell builtins: 42 %; calls invoking at least one
+real tool: 58 %. With every grammar level and only builtin-class programs,
+coverage caps at 41.6 % — the program axis, not the grammar, bounds what a
+hostless shell can ever run, and that remainder is exactly what
+auto-provisioning serves.
+
+**Decisions taken.** Grammar through file redirections (94 % of shapes),
+stopping before command substitution and control flow (the last 6 % costs
+an interpreter). A closed builtin set with whitelisted flags — grep, head,
+tail, cat, echo, ls, find, wc, sort, uniq, cut, tr, mkdir, rm, mv, cp,
+touch, pwd, true, false, test, cd — and `sed` only for printing line
+ranges, because `s///` was the largest divergence source in the previous
+portable-command effort. GNU coreutils is the reference (managed hosts are
+Linux); the equivalence corpus runs against real bash + GNU tools in a
+Linux container in CI. Considered and rejected: stopping at roots-only
+(20 %; every `grep … | head` would provision a machine), and going to
+control flow (an interpreter, which is just-bash again).

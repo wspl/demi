@@ -17,8 +17,8 @@ manifest, loader and target-side entry. Nothing below is specific to
 
 On a target every root is a name in `PATH` — a symlink to the shell binary
 (`shell.md`) — so real bash runs `demi …` and `myagent …` the same way it
-runs anything else. In a hostless conversation tinybash accepts exactly
-the manifest's roots as first words.
+runs anything else. In a hostless conversation tinybash's executables are
+its builtins plus the manifest's roots.
 
 ## Organizing rule
 
@@ -94,10 +94,10 @@ which accepts only root commands and runs them in-process.
 
  backend (one process; nothing leaves it)
  ────────────────────────────────────────
- tinybash ──▶ [ {argv, stdin}, {argv, stdin} ]                words, quotes, heredocs, `;` `&&` `||` newline
-        │                                                     anything else → refused (below)
-        ▼
- in-process loader  (tinybash's only "executables" are the manifest's roots)
+ tinybash ──▶ [ {argv, stdin}, {argv, stdin} ]                pipelines, chains, heredocs, redirections,
+        │                                                     cd, $NAME, ~/, globs; builtins (grep head ls …)
+        ▼                                                     substitution, control flow → refused
+ in-process loader  (executables: tinybash's builtins + the manifest's roots)
    ├─ demi file create …   kind = runtime  → run the SAME module as on a real host,
    │                                          ctx.fs = store-backed Host
    │                                          → conversations/<id>.sqlite  (host_store)
@@ -108,7 +108,7 @@ which accepts only root commands and runs them in-process.
 
 
  tool call:  npm test
- tinybash ──▶ first word is not a root command
+ tinybash ──▶ a command word is neither a builtin nor a root
                         ├─ managed hosts configured ──▶ backend provisions a managed host bound to
                         │                                the conversation, writes the hostless files
                         │                                into its home, injects the context block,
@@ -122,7 +122,7 @@ which accepts only root commands and runs them in-process.
 | | Real host | Hostless |
 |---|---|---|
 | Who runs the tool call | real bash on the target | tinybash in the backend |
-| What can appear in it | anything bash runs | root commands, heredocs, `;` `&&` `\|\|` newline |
+| What can appear in it | anything bash runs | the tinybash subset: pipelines, chains, heredocs, redirections, expansions; builtins + root commands |
 | Where a `runtime` module runs | in a command-mode shell process on the target | in the backend process |
 | The `ctx.fs` it sees | the target's real filesystem (`host-shell`) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
@@ -266,23 +266,22 @@ backend and stdout/stderr back.
 
 A conversation with no execution target (`sessions-and-targets.md`) still
 executes root commands. The backend runs the tool call in **tinybash**
-(`tinybash.md`): a deliberately tiny shell — parser plus executor — whose
-only executables are the manifest's root commands, dispatched through an
-in-process loader whose Host is the conversation's store-backed filesystem
-(`@demicodes/host-virtual`). It is the in-process counterpart of real bash
-on a target: same tool, same commands, a fraction of the grammar, and one
-guarantee — any script it accepts means the same thing in bash.
+(`tinybash.md`): a small shell — parser, executor and a closed set of
+GNU-faithful builtins over the conversation's store-backed filesystem
+(`@demicodes/host-virtual`) — that dispatches root commands through an
+in-process loader. It is the in-process counterpart of real bash on a
+target: same tool, same root commands, the subset of bash that covers
+94 % of the shapes a coding agent writes, and one guarantee — any script
+it accepts means the same thing in bash with GNU coreutils.
 
-In outline: simple commands with bash quoting, `#` comments, the four
-heredoc forms (the file verbs take their content on stdin), and `;` `&&`
-`||` newline chains with bash's exit-status semantics. Pipes, redirections,
-expansions, globs, job control and control flow are refused with a message
-naming the way out. The whole script is parsed before anything runs; a
-script whose first word is not a root is handed intact to a provisioned
-machine, so hostless execution never leaves a script half-done. The tool
-description in the hostless state says which commands exist and that any
-other command starts a machine; the model reaches for `demi file` rather
-than `cat`.
+In outline: pipelines, `;` `&&` `||` newline chains, heredocs,
+redirections, `cd`, `$NAME`, `~/` and globs; builtins such as `grep`,
+`head`, `tail`, `ls`, `cat`, `find` with whitelisted flags. Command
+substitution, control flow, job control and any flag outside a whitelist
+are refused with a message naming the way out. The whole script is parsed
+before anything runs; a script using a program that is neither a builtin
+nor a root is handed intact to a provisioned machine, so hostless
+execution never leaves a script half-done.
 
 ## The `demi host` group
 
@@ -315,8 +314,9 @@ sockets.
   way, with the same types.
 - `@demicodes/command-loader` is new: the loader, the manifest types and
   build.
-- `@demicodes/tinybash` is new: the hostless shell — parser and executor
-  over a loader, no Host of its own. Usable by any embedder that wants
-  hostless execution, not only the backend.
+- `@demicodes/tinybash` is new: the hostless shell — parser, executor and
+  the GNU-faithful builtins over an injected Host, roots over a loader.
+  Usable by any embedder that wants hostless execution, not only the
+  backend.
 - `@demicodes/backend` assembles the roots, builds and serves the
   manifest, and embeds the loader for hostless conversations.

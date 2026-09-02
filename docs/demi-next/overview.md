@@ -17,7 +17,7 @@
 | `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
 | `sessions-and-targets.md` | a conversation's execution target: hostless, user hosts, managed hosts, switching, grants |
 | `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader, tinybash and hostless execution |
-| `tinybash.md` | the tiny shell hostless conversations run in: grammar, semantics, refusals, the bash-equivalence guarantee |
+| `tinybash.md` | the small shell hostless conversations run in: the corpus-placed boundary, grammar, GNU-faithful builtins, refusals, the equivalence guarantee |
 | `shell.md` | the QuickJS shell: the runtime under the runner and every root command on a target |
 | `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
 | `managed-hosts.md` | Firecracker provisioning, images, home persistence, lifecycle, security |
