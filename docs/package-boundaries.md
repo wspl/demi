@@ -210,8 +210,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: in progress (M8; `docs/demi-next/commands.md`).
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the manifest types, the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, path-argument resolution, running a `runtime` module from its text, forwarding an `rpc` invocation) and `rootPaths`, the `RootPaths` derivation tinybash consumes.
-- Public boundary: `createLoader`, the `Manifest` types and `rootPaths` from root.
-- Pure JS with no runtime dependency: the same package runs in the backend, in tinyjs command mode and in tests. It never transpiles; the manifest build is the backend's.
+- Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest`, `rootPaths` from root.
+- Pure JS with no runtime dependency: the same package runs in the backend, in tinyjs command mode and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
 - Must not: know the backend, the runner, tinybash or any Host implementation (all injected), spawn processes, or hold a command definition of its own.
 
 ### `@demicodes/runner-protocol`

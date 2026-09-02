@@ -1,0 +1,42 @@
+{
+  "name": "@demicodes/command-loader",
+  "description": "Demi command loader: the manifest, and dispatch of root commands to runtime modules and rpc handlers, for any embedder.",
+  "version": "0.20.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/utils": "workspace:^",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@demicodes/host-local": "workspace:^"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/command-loader"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/command-loader#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

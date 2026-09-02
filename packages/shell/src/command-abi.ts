@@ -47,6 +47,13 @@ export interface DispatchIO {
   signal?: AbortSignal
 }
 
+/**
+ * What a hostless shell asks of a root command before running a script: the
+ * path arguments of one invocation (argv without the root name), from the
+ * path marks on the tree (`tinybash.md` § Interface).
+ */
+export type RootPaths = (argv: readonly string[]) => readonly string[]
+
 declare const runtimeModuleBrand: unique symbol
 
 /** The text of a `runtime` module, as a tree carries it. */
@@ -77,8 +84,20 @@ export function isPathArg(schema: z.ZodType): boolean {
   return schema.meta()?.[PATH_MARK] === true
 }
 
-/** Loads a `runtime` module from its JavaScript text. */
-export async function loadCommandModule(javascript: string): Promise<CommandModule> {
+const loadedModules = new Map<string, Promise<CommandModule>>()
+
+/** Loads a `runtime` module from its JavaScript text, once per text. */
+export function loadCommandModule(javascript: string): Promise<CommandModule> {
+  let loaded = loadedModules.get(javascript)
+  if (!loaded) {
+    loaded = importModule(javascript)
+    loadedModules.set(javascript, loaded)
+    loaded.catch(() => loadedModules.delete(javascript))
+  }
+  return loaded
+}
+
+async function importModule(javascript: string): Promise<CommandModule> {
   const url = URL.createObjectURL(new Blob([javascript], { type: 'text/javascript' }))
   try {
     const loaded = (await import(url)) as { default?: unknown }
