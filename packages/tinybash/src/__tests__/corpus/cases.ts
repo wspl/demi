@@ -351,5 +351,5 @@ export const CASES: CorpusCase[] = [
   { name: 'root-glob-args', script: `demi file read *.txt` },
   { name: 'root-cwd', script: `cd src; demi file read util.ts` },
   { name: 'root-chain', script: `demi todo list && echo listed` },
-  { name: 'root-second', script: `myagent run x` },
+  { name: 'root-second', script: `scout run x` },
 ]

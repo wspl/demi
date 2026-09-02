@@ -28,7 +28,7 @@ export default async function echo(ctx: CommandContext): Promise<CommandResult> 
 export function testRoots(): Command[] {
   return [
     {
-      name: 'myagent',
+      name: 'scout',
       summary: 'A second root beside demi.',
       subcommands: [
         {

@@ -16,9 +16,9 @@ describe('buildManifest', () => {
   test('a different module is a different manifest hash; a comment-only change is not', async () => {
     const a = await buildManifest(testRoots(), { transpile })
     const roots = testRoots()
-    const myagent = roots[0]!
-    if (!isCommandGroup(myagent)) throw new Error('fixture')
-    const copy = myagent.subcommands[0]!
+    const scout = roots[0]!
+    if (!isCommandGroup(scout)) throw new Error('fixture')
+    const copy = scout.subcommands[0]!
     if (isCommandGroup(copy) || copy.kind !== 'runtime') throw new Error('fixture')
     copy.module = runtimeModule(`${COPY_MODULE}\n// a comment transpiles away\n`)
     expect((await buildManifest(roots, { transpile })).hash).toBe(a.hash)
@@ -28,7 +28,7 @@ describe('buildManifest', () => {
 
   test('the tree carries kinds, help, positionals and JSON Schema with path marks', async () => {
     const manifest = await buildManifest(testRoots(), { transpile })
-    const root = manifest.roots.myagent!.tree
+    const root = manifest.roots.scout!.tree
     if (!isManifestGroup(root)) throw new Error('root')
     const copy = root.subcommands[0]!
     if (isManifestGroup(copy)) throw new Error('copy')

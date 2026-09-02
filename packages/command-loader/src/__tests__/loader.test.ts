@@ -41,7 +41,7 @@ describe('dispatch', () => {
     const w = await world()
     try {
       await w.host.fs.writeFile('a.txt', encodeUtf8('hello\n'), { cwd: w.dir })
-      const result = await w.run('myagent', ['copy', 'a.txt', 'b.txt', '--upper'])
+      const result = await w.run('scout', ['copy', 'a.txt', 'b.txt', '--upper'])
       expect(result).toEqual({ exit: 0, stdout: `copied a.txt -> b.txt in ${w.dir}\n`, stderr: '' })
       expect(decodeUtf8(await w.host.fs.readFile('b.txt', { cwd: w.dir }))).toBe('HELLO\n')
     } finally {
@@ -52,7 +52,7 @@ describe('dispatch', () => {
   test('stdin streams into a runtime module, env is visible, the exit code is the module\'s', async () => {
     const w = await world()
     try {
-      const result = await w.run('myagent', ['echo', '--code', '3'], 'piped bytes', { HOME: '/home/x' })
+      const result = await w.run('scout', ['echo', '--code', '3'], 'piped bytes', { HOME: '/home/x' })
       expect(result).toEqual({ exit: 3, stdout: 'piped bytes', stderr: 'env HOME=/home/x\n' })
     } finally {
       w.dispose()
@@ -62,9 +62,9 @@ describe('dispatch', () => {
   test('an rpc leaf runs its handler through the transport, with stdin and --json', async () => {
     const w = await world()
     try {
-      expect(await w.run('myagent', ['note', 'add', 'first'])).toEqual({ exit: 0, stdout: '1 notes\n', stderr: '' })
-      expect(await w.run('myagent', ['note', 'add'], 'from stdin')).toEqual({ exit: 0, stdout: '2 notes\n', stderr: '' })
-      expect(await w.run('myagent', ['note', 'add', 'third', '--json'])).toEqual({ exit: 0, stdout: '{"count":3}', stderr: '' })
+      expect(await w.run('scout', ['note', 'add', 'first'])).toEqual({ exit: 0, stdout: '1 notes\n', stderr: '' })
+      expect(await w.run('scout', ['note', 'add'], 'from stdin')).toEqual({ exit: 0, stdout: '2 notes\n', stderr: '' })
+      expect(await w.run('scout', ['note', 'add', 'third', '--json'])).toEqual({ exit: 0, stdout: '{"count":3}', stderr: '' })
     } finally {
       w.dispose()
     }
@@ -73,12 +73,12 @@ describe('dispatch', () => {
   test('a group prints its help; usage errors exit 1 with the reason; an unknown root exits 127', async () => {
     const w = await world()
     try {
-      const help = await w.run('myagent', ['note'])
+      const help = await w.run('scout', ['note'])
       expect(help.exit).toBe(0)
-      expect(help.stdout).toContain('myagent note add')
-      const bad = await w.run('myagent', ['copy', 'only-one'])
+      expect(help.stdout).toContain('scout note add')
+      const bad = await w.run('scout', ['copy', 'only-one'])
       expect(bad.exit).toBe(1)
-      expect(bad.stderr).toBe('myagent: Invalid value for "to": Invalid input: expected string, received undefined\n')
+      expect(bad.stderr).toBe('scout: Invalid value for "to": Invalid input: expected string, received undefined\n')
       const unknown = await w.run('nope', ['x'])
       expect(unknown.exit).toBe(127)
       expect(unknown.stderr).toBe('nope: not a root command of this manifest\n')
@@ -90,11 +90,11 @@ describe('dispatch', () => {
   test('without a transport, rpc leaves report the missing transport while runtime leaves still run', async () => {
     const w = await world(false)
     try {
-      const rpc = await w.run('myagent', ['note', 'add', 'x'])
+      const rpc = await w.run('scout', ['note', 'add', 'x'])
       expect(rpc.exit).toBe(1)
       expect(rpc.stderr).toContain('no rpc transport')
       await w.host.fs.writeFile('a.txt', encodeUtf8('x'), { cwd: w.dir })
-      expect((await w.run('myagent', ['copy', 'a.txt', 'c.txt'])).exit).toBe(0)
+      expect((await w.run('scout', ['copy', 'a.txt', 'c.txt'])).exit).toBe(0)
     } finally {
       w.dispose()
     }
@@ -104,8 +104,8 @@ describe('dispatch', () => {
     const w = await world()
     try {
       const loader: Loader = w.loader
-      expect(Object.keys(loader.manifest.roots)).toEqual(['myagent'])
-      expect(loader.roots.map((root) => root.name)).toEqual(['myagent'])
+      expect(Object.keys(loader.manifest.roots)).toEqual(['scout'])
+      expect(loader.roots.map((root) => root.name)).toEqual(['scout'])
     } finally {
       w.dispose()
     }
