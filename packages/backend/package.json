@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/backend",
-  "description": "Demi backend: the hosted multi-user chat product's server — conversations, LLM module, runner management, vault, accounting.",
+  "description": "Demi backend: the hosted multi-user chat product's server \u2014 conversations, LLM module, runner management, vault, accounting.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -26,6 +26,7 @@
   "dependencies": {
     "@demicodes/agent": "workspace:^",
     "@demicodes/coding-agent": "workspace:^",
+    "@demicodes/command-loader": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/host-local": "workspace:^",
     "@demicodes/host-virtual": "workspace:^",
@@ -38,6 +39,7 @@
     "@demicodes/provider-openai-api": "workspace:^",
     "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
+    "@demicodes/tinybash": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "hono": "^4.13.5",
     "zod": "^4.0.0"

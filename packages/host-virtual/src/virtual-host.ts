@@ -41,6 +41,8 @@ export interface VirtualHostOptions {
   defaultCwd?: string
   /** Virtual artifact directory (default `/.artifacts`), excluded from quota. */
   commandArtifactsDir?: string
+  /** Directories `ensureLayout` creates besides the working and artifact directories (the namespace). */
+  directories?: readonly string[]
   identity?: HostIdentity
   /** Injectable for tests; product code keeps the hardcoded caps. */
   quota?: { maxFileBytes?: number; maxTotalBytes?: number }
@@ -49,6 +51,7 @@ export interface VirtualHostOptions {
 export class VirtualHost implements Host {
   readonly defaultCwd: string
   readonly commandArtifactsDir: string
+  readonly directories: readonly string[]
   readonly identity: HostIdentity
   readonly store: HostStore
   readonly fs: HostFileSystem
@@ -63,6 +66,7 @@ export class VirtualHost implements Host {
     this.store = options.store
     this.defaultCwd = normalizePath(options.defaultCwd ?? '/workspace')
     this.commandArtifactsDir = normalizePath(options.commandArtifactsDir ?? '/.artifacts')
+    this.directories = (options.directories ?? []).map((dir) => normalizePath(dir))
     this.identity = options.identity ?? { uid: 1000, gid: 1000, hostname: 'virtual' }
     this.maxFileBytes = options.quota?.maxFileBytes ?? VIRTUAL_MAX_FILE_BYTES
     this.maxTotalBytes = options.quota?.maxTotalBytes ?? VIRTUAL_MAX_TOTAL_BYTES
@@ -73,10 +77,11 @@ export class VirtualHost implements Host {
     }
   }
 
-  /** Creates the namespace's directory layout (working dir + artifact dir). */
+  /** Creates the namespace's directory layout (working dir, artifact dir, the declared directories). */
   async ensureLayout(): Promise<void> {
     await this.backend.mkdir(this.defaultCwd, { recursive: true })
     await this.backend.mkdir(this.commandArtifactsDir, { recursive: true })
+    for (const dir of this.directories) await this.backend.mkdir(dir, { recursive: true })
   }
 
   /** Total quota-relevant bytes currently stored (artifact files excluded). */

@@ -13,7 +13,7 @@ import type { LiveSession } from './live-session'
 import { assembleLiveSession } from './open-session'
 import type { SessionAttachment, SessionOwnershipRegistry } from './ownership'
 import { errorDiagnostics, progressToAudit, progressToOutput, progressToShellOutput, summarizeConversation } from './summaries'
-import type { AgentServerSessionOptions, AgentTransportBinding, PrepareShell, ProviderResolver } from './server'
+import type { AgentServerSessionOptions, AgentTransportBinding, PrepareShell, ProviderResolver, ShellEnvironmentFactory } from './server'
 
 export interface AgentTransportBindingOptions {
   transport: AgentServerTransport
@@ -22,6 +22,7 @@ export interface AgentTransportBindingOptions {
   shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   session?: AgentServerSessionOptions
   prepareShell: PrepareShell | null
+  shellEnvironment: ShellEnvironmentFactory
   notifyParentOnIdle: boolean
   sessions: SessionOwnershipRegistry
   sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
@@ -41,6 +42,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
+  private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly notifyParentOnIdle: boolean
   private readonly sessions: SessionOwnershipRegistry
   private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
@@ -56,6 +58,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell
+    this.shellEnvironment = options.shellEnvironment
     this.notifyParentOnIdle = options.notifyParentOnIdle
     this.sessions = options.sessions
     this.sessionStore = options.sessionStore
@@ -265,6 +268,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
         shellOptions: this.shellOptions,
         sessionOptions: this.sessionOptions,
         prepareShell: this.prepareShell,
+        shellEnvironment: this.shellEnvironment,
         notifyParentOnIdle: this.notifyParentOnIdle,
         sessionStore: this.sessionStore,
         blobs: this.blobs,

@@ -1,3 +1,4 @@
+import { shareByteStream } from '@demicodes/utils'
 import type { CommandIO, DispatchIO, HostFileSystem, RootPaths } from '@demicodes/shell'
 import type { Script } from './grammar/ast'
 import { parseScript } from './grammar/parser'
@@ -21,6 +22,8 @@ export interface TinybashInput {
   /** The session shell state; `cd` and assignments mutate it. */
   state: ShellState
   io: CommandIO
+  /** The script's stdin: what the caller writes while it runs. Root commands whose stdin is not redirected read it in turn. */
+  stdin?: AsyncIterable<Uint8Array>
   /** Owner names `ls -l` shows for every file. */
   identity: { user: string; group: string }
   signal?: AbortSignal
@@ -60,6 +63,7 @@ export async function runTinybash(input: TinybashInput): Promise<TinybashResult>
     identity: input.identity,
     stdout: (data) => input.io.stdout(data),
     stderr: (data) => input.io.stderr(data),
+    stdin: input.stdin ? shareByteStream(input.stdin) : undefined,
     signal: input.signal,
   })
   return { kind: 'ran', exitCode }

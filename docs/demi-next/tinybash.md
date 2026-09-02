@@ -217,6 +217,7 @@ runTinybash(input: {
   state: { cwd: string; home: string; vars: Record<string, string> }   // mutated by cd and assignments
   io: CommandIO                           // the script's stdout and stderr
   identity: { user: string; group: string }   // owner names `ls -l` shows; every hostless file is the session user's
+  stdin?: AsyncIterable<Uint8Array>       // the script's own stdin: what the caller writes while the script runs
   signal?: AbortSignal
 }): Promise<
   | { kind: 'ran'; exitCode: number }
@@ -226,7 +227,8 @@ runTinybash(input: {
 type RootPaths = (argv: readonly string[]) => readonly string[]   // the path-typed arguments of this invocation
 
 interface DispatchIO {
-  stdin: AsyncIterable<Uint8Array>     // the pipeline, heredoc, `<` file, or empty
+  stdin: AsyncIterable<Uint8Array>     // the pipeline, heredoc, `<` file, or empty; finite
+  stdinStream?: AsyncIterable<Uint8Array>   // the script's stdin, when this command's stdin is not redirected; live
   stdout: CommandIO['stdout']
   stderr: CommandIO['stderr']
   cwd: string
@@ -239,7 +241,12 @@ interface DispatchIO {
 leaf the argv selects; the loader builds it from the manifest's path marks
 (`commands.md`) so tinybash never parses a root's arguments itself. Tests
 hand in a table. `DispatchIO` is what a root command's `ctx` is built
-from: the loader adds `args` and `fs`.
+from: the loader adds `args` and `fs`. The script's `stdin` is what real
+bash would give a job: one stream every command whose stdin is not
+redirected reads in turn (a shared iterator, never closed by a reader
+that stops early). Builtins never read it — a builtin with no input reads
+nothing — so it only reaches root commands, which is how `shell_write`
+steers a running `demi agent spawn` in a hostless conversation.
 
 `OutsideReason` names the construct, program or flag that put the script
 outside the subset, and `message` is the refusal line for embedders with

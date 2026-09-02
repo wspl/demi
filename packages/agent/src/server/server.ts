@@ -1,4 +1,4 @@
-import type { BashEnvironmentOptions, Host } from '@demicodes/shell'
+import { BashEnvironment, type BashEnvironmentOptions, type CommandRegistry, type Host, type ShellEnvironment } from '@demicodes/shell'
 import type { SessionPhase } from '@demicodes/core'
 import type { Provider } from '@demicodes/provider'
 import { AgentClient } from '../client/client'
@@ -34,7 +34,7 @@ export interface AgentServerSessionOptions {
 }
 
 /**
- * Host-agnostic hook invoked before each resolved Host's BashEnvironment is built.
+ * Host-agnostic hook invoked before each resolved Host's ShellEnvironment is built.
  * LocalHost uses this to inject PATH / env for the command bridge; AgentServer
  * itself does not know about UDS, shims, or bin directories.
  */
@@ -51,6 +51,24 @@ export type PrepareShell = (
 ) =>
   | Omit<BashEnvironmentOptions, 'host' | 'commands'>
   | Promise<Omit<BashEnvironmentOptions, 'host' | 'commands'>>
+
+export interface ShellEnvironmentContext {
+  agentSessionId: string
+  host: Host
+  commands: CommandRegistry
+  /** Shell options after `prepareShell`. */
+  shell: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+}
+
+/**
+ * Builds the shell environment behind the `shell_*` tools for one Host. The
+ * default is just-bash over the Host; a product substitutes another engine
+ * for the Hosts that want one (the backend runs hostless conversations in
+ * tinybash).
+ */
+export type ShellEnvironmentFactory = (ctx: ShellEnvironmentContext) => ShellEnvironment | Promise<ShellEnvironment>
+
+export const defaultShellEnvironment: ShellEnvironmentFactory = ({ host, commands, shell }) => new BashEnvironment({ ...shell, host, commands })
 
 /**
  * Dynamic provider lookup: called once per runtime construction (session open,
@@ -81,6 +99,8 @@ export interface AgentServerOptions {
    * command bridge wiring lives in `@demicodes/host-local`, not here.
    */
   prepareShell?: PrepareShell
+  /** The shell engine per Host; defaults to just-bash (`defaultShellEnvironment`). */
+  shellEnvironment?: ShellEnvironmentFactory
   /**
    * Per-session persistence override. When absent, sessions persist through
    * the resolved Host's store (`hostAgentSessionStore` under
@@ -101,6 +121,7 @@ export class AgentServer {
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly prepareShell: PrepareShell | null
+  private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly notifyParentOnIdle: boolean
   private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
   private readonly blobs: BlobStore | null
@@ -115,6 +136,7 @@ export class AgentServer {
     this.shellOptions = options.shell ?? {}
     this.sessionOptions = options.session ?? {}
     this.prepareShell = options.prepareShell ?? null
+    this.shellEnvironment = options.shellEnvironment ?? defaultShellEnvironment
     this.notifyParentOnIdle = options.subagents?.notifyParentOnIdle ?? true
     this.sessionStore = options.sessionStore ?? null
     this.blobs = options.blobs ?? null
@@ -134,6 +156,7 @@ export class AgentServer {
       shell: this.shellOptions,
       session: this.sessionOptions,
       prepareShell: this.prepareShell,
+      shellEnvironment: this.shellEnvironment,
       notifyParentOnIdle: this.notifyParentOnIdle,
       sessions: this.sessionOwnership,
       sessionStore: this.sessionStore,
