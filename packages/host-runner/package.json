@@ -1,0 +1,43 @@
+{
+  "name": "@demicodes/host-runner",
+  "description": "Demi Host over the tinyjs primitives: the Host every user host and managed host serves through its runner.",
+  "version": "0.20.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/utils": "workspace:^"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/host-runner"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/host-runner#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

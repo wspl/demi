@@ -22,6 +22,7 @@
       "@demicodes/shell/host-fs": ["./packages/shell/src/host-fs.ts"],
       "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
       "@demicodes/shell/bash": ["./packages/shell/src/bash.ts"],
+      "@demicodes/host-runner/testing": ["./packages/host-runner/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },

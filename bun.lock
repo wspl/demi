@@ -115,6 +115,14 @@
         "@demicodes/utils": "workspace:^",
       },
     },
+    "packages/host-runner": {
+      "name": "@demicodes/host-runner",
+      "version": "0.20.0",
+      "dependencies": {
+        "@demicodes/shell": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+      },
+    },
     "packages/host-virtual": {
       "name": "@demicodes/host-virtual",
       "version": "0.20.0",
@@ -264,13 +272,16 @@
         "demi-runner": "./dist/main.mjs",
       },
       "dependencies": {
+        "@demicodes/command-loader": "workspace:^",
         "@demicodes/host-local": "workspace:^",
+        "@demicodes/host-runner": "workspace:^",
         "@demicodes/runner-protocol": "workspace:^",
         "@demicodes/shell": "workspace:^",
         "@demicodes/utils": "workspace:^",
       },
       "devDependencies": {
         "@demicodes/agent": "workspace:^",
+        "@demicodes/coding-agent": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/provider": "workspace:^",
       },
@@ -436,6 +447,8 @@
     "@demicodes/core": ["@demicodes/core@workspace:packages/core"],
 
     "@demicodes/host-local": ["@demicodes/host-local@workspace:packages/host-local"],
+
+    "@demicodes/host-runner": ["@demicodes/host-runner@workspace:packages/host-runner"],
 
     "@demicodes/host-virtual": ["@demicodes/host-virtual@workspace:packages/host-virtual"],
 
