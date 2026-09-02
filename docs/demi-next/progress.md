@@ -1674,20 +1674,54 @@ redirect` for anything but one word, naming the word as written.
 `printf '%c' ''` prints a NUL. The suite is green: 377 cases including
 the corpus, 4 Linux-only skips.
 
+### M8 close-out and the M9 order (2026-09-02)
+
+Owner decisions after the review round:
+
+- **Still M8.** The tinyjs findings and tinyjs in command mode are M8
+  leftovers, not M9 work: M9 starts on top of them, so M8 is not closed
+  until they land. Close-out list: `kill` validated against the child
+  table, `spawn` with `stdin: "null"` returning a null stdin handle,
+  `import.meta.url` as a URL, the `/embedded/` prefix unreachable from a
+  file-loaded module through the module cache, the packed section's
+  `version`/`abi` check, `tinyjsc`, and tinyjs running `runtime`
+  commands in command mode. Two findings stay open for a proposal first:
+  tee writes on the loop thread, the TLS configuration rebuilt per
+  request.
+- **`tinyjsc`.** The packer leaves the tinyjs binary: packing is always
+  cross (one machine packs every target), so the runtime should carry no
+  packing code, and one tool with one job is easier to keep right than a
+  runtime with a `--pack` mode. `tinyjsc` is a second binary from the same
+  crate, released with tinyjs; the bare binary is given explicitly
+  (`--bin`), the release check is `tinyjsc`'s at pack time and tinyjs's
+  at start (`tinyjs.md`, "Entry modes").
+- **Naming by role.** The Host inside the runner is `@demicodes/host-runner`
+  (it serves user hosts and managed hosts; "tinyjs" is the runtime it
+  runs on, not its role). `@demicodes/host-virtual` stays the hostless
+  Host. `RemoteHost` in `runner-protocol` is the backend's end of a runner
+  connection. `overview.md` carries the table.
+- **`host-local` is not in the final design** and is deleted in M9 with
+  the Bun runner and the local open-box assembly (`repl`, `agent-eval`,
+  `agent/server`, `web/agent-hub`). The backend's one use of it, a Node
+  filesystem over its data directory, becomes `node:fs` and can move
+  before M9.
+- **M9 in dependency order**, lightest first: `host-runner` → the
+  protocol at both ends → the runner port with the relay and the loader's
+  runner side → output and media by reference → the `host-virtual`
+  reduction → the deletions. `roadmap.md` carries the list.
+
 ### Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
-  not now). tinyjs findings to take up with `host-tinyjs` in M9: the
-  `/embedded/` prefix importable from a file-loaded module through the
-  module cache, no version tag on the packed bytecode section and no
-  same-release check in `--pack --bin`, `kill` not validated against the
-  child table (PID 1 in the guest), tee writes synchronous on the loop
-  thread, TLS config rebuilt per request, `import.meta.url` as a bare
-  path, `spawn` returning `stdin: null` for `stdin: "null"`.
-- The loader's tinyjs paths (M9): a directory `ManifestSource`, a module
+  not now).
+- tinyjs, awaiting a proposal: tee writes synchronous on the loop thread;
+  the TLS configuration rebuilt per request.
+- The loader's runner side (M9): a directory `ManifestSource`, a module
   import strategy other than `blob:`, the manifest served to the runner.
 - `@demicodes/host-virtual` reduced to the store-backed Host and its
   spawn refusal deleted (M9, with just-bash).
+- `@demicodes/host-local` and the local open-box assembly deleted (M9,
+  after the M1 and M4 suites pass on the new runner).
 - tinybash reference suites (just-bash compat, oils spec, GNU tests) and
   the split-equivalence test (M10, needs auto-provision).
 - CI re-deriving the corpus goldens from bash (`TINYBASH_CHECK_GOLDENS=1`
