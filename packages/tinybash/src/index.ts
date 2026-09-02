@@ -23,7 +23,7 @@ export interface TinybashInput {
   /** The session shell state; `cd` and assignments mutate it. */
   state: ShellState
   io: TinybashIO
-  /** The script's stdin: what the caller writes while it runs. Root commands whose stdin is not redirected read it in turn. */
+  /** The script's stdin: what the caller writes while it runs. Every command whose stdin is not redirected reads it, as under bash: builtins directly, root commands as their live stream. */
   stdin?: AsyncIterable<Uint8Array>
   /** Owner names `ls -l` shows for every file. */
   identity: { user: string; group: string }
