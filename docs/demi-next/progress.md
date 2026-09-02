@@ -1614,6 +1614,18 @@ manifest build (deleted: a value import in a module fails at load time by
 itself; a construction-time check hid nothing and invented a rule), and
 the stale sentences in the records.
 
+Outcome: all of it landed, one commit per group; what stays deferred is
+under Open items. Kept apart on purpose: glob's and grep's bracket
+translators — they share the class table now, but negation spelling
+(`!` vs `^`), the outcome of an unknown class (no match vs refusal),
+range validation and case folding differ, and one parameterised
+translator would be harder to read than two short ones. Pitfall while
+regenerating goldens: `ls -l` goldens record the Lima user, and the
+regenerating machine's user differed from the original one's, so 308
+goldens changed in nothing but the user name; those were restored from
+git and only the 19 that the new `utf8.txt` fixture file affects
+changed.
+
 ### Namespace decision made exact (2026-09-02)
 
 The parse-first check simulated `cd` as always succeeding, so `cd

@@ -242,8 +242,9 @@ manifest
 ```
 
 The build takes each `runtime` leaf's module text, transpiles it to
-JavaScript, and stores it under the hash of the result. The build runs where a transpiler is (the backend composition
-root, on Bun); the loader itself never transpiles. The manifest is served
+JavaScript, and stores it under the hash of the result. The build is the
+loader's `buildManifest`, with the transpiler injected by the composition
+root (Bun's, in the backend); the loader itself never transpiles. The manifest is served
 by the backend to embedders over their existing connection (the runner
 socket) and by HTTP for the standalone case; modules are fetched by hash
 and cached forever — a new tree is a new manifest hash, never a mutated
@@ -366,9 +367,9 @@ sockets.
   with the `kind` on each leaf; the `runtime` leaves are `*.command.ts`
   files written against the ABI. A library user declares their own root
   the same way, with the same types.
-- `@demicodes/command-loader` is new: the manifest types, the loader and
-  `rootPaths`. The manifest build lives in the backend composition root,
-  where the transpiler is.
+- `@demicodes/command-loader` is new: the manifest types, the manifest
+  build (`buildManifest`, the transpiler injected), the loader and
+  `rootPaths`.
 - `@demicodes/tinybash` is new: the hostless shell — parser, executor and
   the GNU-faithful builtins over an injected Host, roots over a loader.
   Usable by any embedder that wants hostless execution, not only the

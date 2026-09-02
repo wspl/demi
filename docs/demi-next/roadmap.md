@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M8 delivered; M9 next |
+| Status | M0–M7 delivered; M8 delivered on the backend side, its tinyjs command mode and the host-virtual reduction land with M9; M9 next |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -71,6 +71,9 @@ and refusal cases each covered; one `runtime` module behaves identically
 under Bun, on tinyjs and in the test fixture; a third-party embedding
 example using only the loader and a custom Host. Real hosts keep the
 current runner and command bridge untouched through M7–M8.
+Status: the loader, tinybash, hostless conversations and the second root
+are delivered; tinyjs running `runtime` commands and the host-virtual
+reduction are M9 work, with the runner.
 
 **M9 — Runner on tinyjs, old paths deleted** (`runner.md`; depends on M7, M8)
 `@demicodes/host-tinyjs` (the Host over tinyjs primitives); the runner ported
