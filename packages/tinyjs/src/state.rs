@@ -19,6 +19,8 @@ use crate::process::Children;
 
 pub struct State {
     pub start: Instant,
+    /// `argv[0]` is the invoked name (or the entry path on the bare binary).
+    pub argv: Vec<String>,
     pub handles: RefCell<Handles>,
     pub children: RefCell<Children>,
     active: Cell<usize>,
@@ -38,9 +40,10 @@ unsafe impl<'js> JsLifetime<'js> for State {
 }
 
 impl State {
-    pub fn new(signal_tx: UnboundedSender<&'static str>) -> Self {
+    pub fn new(signal_tx: UnboundedSender<&'static str>, argv: Vec<String>) -> Self {
         State {
             start: Instant::now(),
+            argv,
             handles: RefCell::new(Handles::new()),
             children: RefCell::new(Children::default()),
             active: Cell::new(0),

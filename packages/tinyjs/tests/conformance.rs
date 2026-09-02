@@ -1,6 +1,6 @@
-//! Runs the primitive conformance suite: the binary built with the
-//! `conformance` feature embeds the suite as its bundle. This test
-//! provisions what the suite cannot make itself — free ports, a test CA and
+//! Runs the primitive conformance suite on the bare binary
+//! (`tinyjs conformance/main.mjs`). This test provisions what the suite
+//! cannot make itself — free ports, a test CA and
 //! server certificate (openssl), the path to Bun for the stub — and passes
 //! them through the environment.
 
@@ -52,7 +52,6 @@ fn bundle_runner_protocol(bun: &PathBuf, work: &PathBuf) -> Option<PathBuf> {
 }
 
 #[test]
-#[cfg_attr(not(feature = "conformance"), ignore = "build with --features conformance")]
 fn primitive_conformance_suite() {
     let bin = env!("CARGO_BIN_EXE_tinyjs");
     let conformance_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("conformance");
@@ -61,6 +60,7 @@ fn primitive_conformance_suite() {
     std::fs::create_dir_all(&work).unwrap();
 
     let mut cmd = Command::new(bin);
+    cmd.arg(conformance_dir.join("main.mjs"));
     cmd.env_remove("HTTPS_PROXY").env_remove("HTTP_PROXY").env_remove("NO_PROXY");
     cmd.env_remove("https_proxy").env_remove("http_proxy").env_remove("no_proxy");
     if let Some(bun) = which("bun") {
@@ -73,7 +73,7 @@ fn primitive_conformance_suite() {
             .env("TINYJS_CONFORMANCE_PORTS", format!("{},{},{}", ports[0], ports[1], ports[2]))
             .env("HTTPS_PROXY", format!("http://user:pass@127.0.0.1:{}", ports[2]));
         if let Some((ca, cert, key)) = make_certs(&work) {
-            cmd.env("TINYJS_CONFORMANCE_CA", ca)
+            cmd.env("TINYJS_CA_FILE", ca)
                 .env("TINYJS_CONFORMANCE_CERT", cert)
                 .env("TINYJS_CONFORMANCE_KEY", key);
         } else {
@@ -84,4 +84,52 @@ fn primitive_conformance_suite() {
     }
     let status = cmd.status().expect("run tinyjs");
     assert!(status.success(), "conformance suite failed: {status}");
+}
+
+/// Packs a bundle into a copy of the binary the way the build tooling will
+/// (find the slot magic, write length and bytes in place, ad-hoc re-sign on
+/// macOS) and checks that the packed file runs it with `argv[0]` as the
+/// invoked name and `tinyjs:*` visible.
+#[test]
+fn packed_binary_runs_the_bundle() {
+    let bin = env!("CARGO_BIN_EXE_tinyjs");
+    let work = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("packed");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+    let packed = work.join("tinyjs-packed");
+    let bundle: &[u8] = br#"import { argv, exit } from "tinyjs:runtime";
+import { sha256 } from "tinyjs:bytes";
+const name = argv[0].slice(argv[0].lastIndexOf("/") + 1);
+console.log(`${name}:${argv.slice(1).join(",")}:${sha256(new Uint8Array(0)).length}`);
+exit(name === "demi-runner" ? 7 : 0);
+"#;
+    let mut data = std::fs::read(bin).unwrap();
+    let magic = b"TINYJS_SLOT_v1__";
+    let at = data.windows(magic.len()).position(|w| w == magic).expect("slot magic in the binary");
+    let capacity = u64::from_le_bytes(data[at + 16..at + 24].try_into().unwrap()) as usize;
+    assert!(bundle.len() <= capacity);
+    data[at + 24..at + 32].copy_from_slice(&(bundle.len() as u64).to_le_bytes());
+    data[at + 32..at + 32 + bundle.len()].copy_from_slice(bundle);
+    std::fs::write(&packed, &data).unwrap();
+    std::fs::set_permissions(&packed, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    if cfg!(target_os = "macos") {
+        let status = Command::new("codesign").args(["-s", "-", "-f"]).arg(&packed).status().unwrap();
+        assert!(status.success(), "codesign failed");
+    }
+    let demi = work.join("demi");
+    let runner = work.join("demi-runner");
+    std::os::unix::fs::symlink(&packed, &demi).unwrap();
+    std::os::unix::fs::symlink(&packed, &runner).unwrap();
+
+    let out = Command::new(&demi).args(["a", "b"]).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "demi:a,b:32", "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(out.status.code(), Some(0));
+    let out = Command::new(&runner).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "demi-runner::32");
+    assert_eq!(out.status.code(), Some(7));
+
+    // The bare binary without an entry prints usage and exits with 2.
+    let out = Command::new(bin).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("usage"));
 }

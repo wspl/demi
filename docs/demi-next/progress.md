@@ -1326,3 +1326,40 @@ throughout: crate `packages/tinyjs`, modules `tinyjs:*`,
 `TINYJS_CONFORMANCE_*` variables. Rejected: `demi-js` (fine but
 unpaired), `demi-vm` (collides with the microVM vocabulary), `demi-core`
 and `demi-runtime` (taken).
+
+### tinyjs entry: packed binary instead of a compiled-in bundle (2026-09-02)
+
+Owner decision: no `include_str!`, no cargo build to change the bundle;
+follow Bun's `--compile` and Node's single executable applications, where
+a deliverable is a prebuilt runtime plus a bundle. Landed in
+`packages/tinyjs`: the bare binary runs `tinyjs <entry.mjs> [args…]` with
+the entry's directory as `/embedded/` (this is how the conformance suite
+runs now; the `conformance` feature and `embedded.rs` are gone), and a
+packed binary carries the bundle in a reserved slot (`payload.rs`).
+
+Three packing mechanisms were tried:
+
+- Appending bytes plus a trailer after the executable: runs on both
+  platforms, but `codesign` refuses the file ("main executable failed
+  strict validation"), which rules it out for macOS distribution.
+- `postject` (LIEF, what Node uses): on macOS it mis-relocated the Rust
+  binary's `__thread_bss` section and dyld refused to load; on the static
+  musl ELF it reported success and wrote no note at all. Current LIEF from
+  pip could not be installed to check whether it is fixed upstream.
+- The reserved slot: a static block with a magic header, capacity and
+  length, 8 MiB; the packer finds the magic and writes in place. No layout
+  change, `codesign -s -` succeeds, the runtime reads the length from its
+  own image. Adopted.
+
+Pitfall: as an immutable static the slot landed in `.rodata` at file
+offset 100 KB, ahead of all code, and the guest's cold first execution
+went from 0.18 s to 0.25 s. Placing it in the writable data segment
+(`link_section`) put it after the code (offset 2.7 MB) and the cold start
+is 0.18 s again. File size with the slot: 10.4 MB macOS arm64, 11.1 MB
+Linux aarch64 musl; the unused capacity is never touched at run time.
+
+`cargo test` now runs both the conformance suite on the bare binary and a
+packed-binary case (pack, re-sign on macOS, run through `demi` and
+`demi-runner` symlinks). `TINYJS_CA_FILE` replaces the TLS root store with
+a PEM file (as `SSL_CERT_FILE` does for OpenSSL); the suite uses it for
+its stub CA.
