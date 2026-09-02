@@ -65,8 +65,10 @@ step; `@demicodes/command-loader`; file commands as `runtime` modules,
 `todo`/`agent`/`host` as `rpc`; `demi agent spawn` and the group/leaf
 dispatcher rule; the hostless parser; `@demicodes/host-virtual` reduced to
 the store-backed Host; the hostless tool description; two embedders: the
-backend in-process (hostless conversations) and the `demi` CLI on the shell
-running `runtime` commands (its `rpc` path completes in M9). Accept: a
+backend in-process (hostless conversations) and the shell in command mode
+running `runtime` commands (its `rpc` path completes in M9); a second root
+beside `demi` in the tests, to prove the mechanism is not `demi`-specific.
+Accept: a
 hostless conversation runs `demi file` and `demi todo`; heredoc, sequence
 and refusal cases each covered; one `runtime` module behaves identically
 under Bun, on the shell and in the test fixture; a third-party embedding
@@ -119,7 +121,7 @@ surface. The old dev product is renamed `web-demo` here.
 
 **M13 — Deployment packaging**
 Container image for the backend (carrying the built web assets); the shell
-builds per platform with the runner and CLI entry symlinks; the guest kernel
+builds per platform with the runner and root-command symlinks; the guest kernel
 and the managed-host rootfs image as shipped artifacts; the privileged
 provisioner helper; a sample Litestream sidecar config; end-to-end
 acceptance.

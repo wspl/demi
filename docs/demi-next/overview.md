@@ -16,8 +16,8 @@
 | `storage.md` | control and conversation databases, `ControlService`, blob and home-image stores, replication |
 | `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
 | `sessions-and-targets.md` | a conversation's execution target: hostless, user hosts, managed hosts, switching, grants |
-| `commands.md` | the `demi` command system: tree, `rpc` and `runtime` kinds, the command ABI, manifest, loader, hostless execution |
-| `shell.md` | the QuickJS shell: the runtime under the runner and the `demi` CLI |
+| `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader, hostless execution |
+| `shell.md` | the QuickJS shell: the runtime under the runner and every root command on a target |
 | `runner.md` | the runner program: handshake, Host RPC, jobs, tee, the local relay |
 | `managed-hosts.md` | Firecracker provisioning, images, home persistence, lifecycle, security |
 | `providers-and-vault.md` | the LLM module, credential vault, usage accounting, Claude Code |
@@ -63,10 +63,10 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
   contract (filesystem ops, process spawn with streamed stdio) plus the job
   and artifact messages (`runner.md`). Both ends are TypeScript: the backend
   on Bun, the runner as JS on the QuickJS shell (`shell.md`).
-- Target ↔ backend for `demi` commands: the `demi` CLI on a target is the
-  shell plus the loader; `runtime` commands run on the target, `rpc` commands
-  travel to the backend as typed messages through the runner's socket
-  (`commands.md`).
+- Target ↔ backend for root commands (`demi` and any library-defined
+  root): a root command on a target is the shell plus the loader;
+  `runtime` commands run on the target, `rpc` commands travel to the
+  backend as typed messages through the runner's socket (`commands.md`).
 - The one special case is the **Claude Code provider**: its transport is the
   CLI, which must run on a real machine. The provider runs in the backend
   like every other provider and spawns its CLI on the conversation's runner
@@ -100,10 +100,10 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
    files on the target and the wire carries a bounded view; media reaches
    the browser by reference; bulk transfer, when needed, is an HTTP stream
    brokered by the backend (`runner.md`).
-5. **One command tree.** Every Demi-specific capability lives under the
-   `demi` command, defined once in the backend and served to every
-   execution surface by the loader; no target has a second implementation
-   of a command (`commands.md`).
+5. **One command manifest.** Every root command — `demi`, and any root a
+   library user declares — is defined once in the backend and served to
+   every execution surface by the loader; no target has a second
+   implementation of a command (`commands.md`).
 
 ## Components
 
@@ -116,7 +116,7 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
   Rust in the system. `shell.md`.
 - **Runner** (`@demicodes/runner`, JS on the shell): the program on every
   execution target — one outbound socket, Host RPC, the job table, the tee,
-  the local relay for the `demi` CLI. `runner.md`.
+  the local relay for root commands. `runner.md`.
 - **Command loader** (`@demicodes/command-loader`, pure JS): serves the
   command tree wherever commands run — inside the runner, inside the `demi`
   CLI, inside the backend for hostless conversations, and inside any
