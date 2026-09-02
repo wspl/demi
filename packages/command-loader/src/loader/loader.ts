@@ -1,13 +1,9 @@
-import { runRegisteredCommand, type Command, type DispatchIO, type Host } from '@demicodes/shell'
+import { importCommandModule, runRegisteredCommand, type Command, type CommandModule, type DispatchIO, type Host, type RuntimeModule } from '@demicodes/shell'
 import { errorMessage } from '@demicodes/utils'
 import type { Manifest } from '../manifest/schema'
 import type { RpcTransport } from './rpc'
+import type { ManifestSource } from './source'
 import { treeFromManifest } from './tree'
-
-/** Where a loader gets its manifest: in memory, a directory, a socket, a URL. */
-export interface ManifestSource {
-  manifest(): Promise<Manifest>
-}
 
 export interface LoaderOptions {
   source: ManifestSource
@@ -33,6 +29,7 @@ export interface Loader {
 export async function createLoader(options: LoaderOptions): Promise<Loader> {
   const manifest = await options.source.manifest()
   const roots = treeFromManifest(manifest, options.rpc)
+  const loadModule = moduleLoader(manifest, options.source)
   return {
     manifest,
     roots,
@@ -52,6 +49,7 @@ export async function createLoader(options: LoaderOptions): Promise<Loader> {
           io: { stdout: io.stdout, stderr: io.stderr },
           host: options.host,
           signal: io.signal,
+          loadModule,
         })
         return result.exitCode
       } catch (error) {
@@ -62,6 +60,18 @@ export async function createLoader(options: LoaderOptions): Promise<Loader> {
   }
 }
 
-export function inMemorySource(manifest: Manifest): ManifestSource {
-  return { manifest: async () => manifest }
+/**
+ * Module import by file when the source names files: the tree carries each
+ * module's text, the manifest maps the text back to its hash, the source
+ * maps the hash to a path.
+ */
+function moduleLoader(manifest: Manifest, source: ManifestSource): ((module: RuntimeModule) => Promise<CommandModule>) | undefined {
+  if (!source.modulePath) return undefined
+  const modulePath = source.modulePath.bind(source)
+  const hashes = new Map(Object.entries(manifest.modules).map(([hash, javascript]) => [javascript, hash]))
+  return (module) => {
+    const hash = hashes.get(module)
+    if (hash === undefined) throw new Error('loader: the module text is not in the manifest')
+    return importCommandModule(modulePath(hash))
+  }
 }
