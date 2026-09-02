@@ -1,8 +1,9 @@
 import { join } from 'node:path'
 import type { Block, UserContentBlock } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } from '@demicodes/agent'
-import type { InferenceRequest } from '@demicodes/provider'
+import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
+import { delay } from '@demicodes/utils'
 import { HOSTLESS_HOME } from '../../conversation/scoped-transport'
 import type { TurnScript } from './model'
 import type { World } from './world'
@@ -139,6 +140,16 @@ export class Driver {
   get agent(): AgentClient {
     return this.client
   }
+
+  /** Drops a file into the conversation's working tree over the workspace-files route. */
+  async upload(name: string, bytes: Uint8Array): Promise<void> {
+    const response = await fetch(`${this.world.url}/api/conversations/${this.id}/workspace-files?name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      body: bytes,
+      headers: { 'content-type': 'application/octet-stream' },
+    })
+    if (response.status !== 201) throw new Error(`upload ${name}: HTTP ${response.status} ${await response.text()}`)
+  }
 }
 
 export interface TurnBegin {
@@ -152,7 +163,13 @@ export function expected(target: Target) {
   const hostless = target === 'hostless'
   return {
     hostCurrent: hostless ? 'host: virtual' : `on device "${target.slice('runner:'.length)}"`,
-    outputPath: !hostless,
+    /** A stream past the runner's view carries a gap note; the hostless view is the whole capture. */
+    gapNote: hostless ? null : 'bytes not shown; the full stream is at',
+    /** Where a binary final stream's raw bytes are, as the model is told. */
+    binaryKept: hostless ? 'the raw bytes were not kept beyond this view' : 'the raw bytes remain readable at',
+    binaryPlaceholder: hostless ? '; not kept beyond this view>' : '; raw bytes at ',
+    /** How a truncated preview tells the model where the rest is. */
+    previewTruncated: hostless ? 'previewTruncated: true; nothing beyond this view was kept' : 'previewTruncated: true; read ',
   }
 }
 
@@ -162,12 +179,21 @@ export function expected(target: Target) {
  */
 export const model = {
   /** A request answered with one shell_exec call. */
-  shell: (toolUseId: string, script: string, timeoutMs = 10_000): TurnScript => [
+  shell: (toolUseId: string, script: string, timeoutMs = 10_000): ProviderEvent[] => [
     events.toolCall(toolUseId, 'shell_exec', { script, timeoutMs }),
     events.response(),
   ],
   /** A request answered with one tool call of any kind. */
-  tool: (toolUseId: string, toolName: string, input: unknown): TurnScript => [events.toolCall(toolUseId, toolName, input), events.response()],
+  tool: (toolUseId: string, toolName: string, input: unknown): ProviderEvent[] => [events.toolCall(toolUseId, toolName, input), events.response()],
   /** A request answered with text; the turn ends. */
-  say: (text: string): TurnScript => [events.text(text), events.response()],
+  say: (text: string): ProviderEvent[] => [events.text(text), events.response()],
+  /** A request answered with text after a pause: a slow model, or a subagent child that takes a while. */
+  slowSay:
+    (text: string, ms: number): TurnScript =>
+    () =>
+      (async function* () {
+        await delay(ms)
+        yield events.text(text)
+        yield events.response()
+      })(),
 }

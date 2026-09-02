@@ -16,10 +16,10 @@ import { createStandardAgentTools } from '../tools'
 import { hostAgentSessionStore } from '../store/session-store'
 import type { BlobStore } from '../store/media'
 import type { AgentServerSessionOptions, ShellEnvironmentFactory } from '../server/server'
-import { childAgentNode, injectSubagentCommand, subagentCommandNode } from './commands'
+import { childAgentNode, injectSubagentCommand, subagentCommandNode, subagentCommandShape } from './commands'
 import { formatDuration } from './format'
 
-export { injectSubagentCommand }
+export { injectSubagentCommand, subagentCommandShape }
 
 export const MAX_LIVE_SUBAGENTS = 8
 export const MAX_ARCHIVED_SUBAGENTS = 16
