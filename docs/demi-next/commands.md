@@ -114,7 +114,8 @@ tinybash cannot run is run on a machine instead.
              managed host with it bound to the conversation (silently), hands over cwd and
              variables, runs the WHOLE script on the real-host path above;
              every later tool call runs there. The model sees only the tool result.
-             (no machine configured at all → the tool result says so; a deployment error)
+             (no machine configured at all → the tool result is tinybash's refusal line on
+             stderr with exit 2, e.g. `tinybash: line 1: python3: no such program here; a machine`)
 ```
 
 ### Side by side
@@ -126,6 +127,7 @@ tinybash cannot run is run on a machine instead.
 | Where a `runtime` module runs | in a command-mode tinyjs process on the target | in the backend process |
 | The `ctx.fs` it sees | the target's real filesystem (`host-tinyjs`) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
+| The shell environment behind the `shell_*` tools | `BashEnvironment` (just-bash over the Host) | the backend's `HostlessEnvironment` (tinybash over the Host); same command records, views and artifacts |
 | Where files live | on the target | in `conversations/<id>.sqlite` |
 | Where full output lives | output files on the target | the tool result itself (bounded, no tee needed) |
 | Bytes on the wire | script, view, exit, rpc args/output | none |
@@ -373,4 +375,9 @@ sockets.
   Usable by any embedder that wants hostless execution, not only the
   backend.
 - `@demicodes/backend` assembles the roots, builds and serves the
-  manifest, and embeds the loader for hostless conversations.
+  manifest, and embeds the loader for hostless conversations: its
+  `HostlessEnvironment` implements the shell's `ShellEnvironment` contract
+  with tinybash, and the agent server's `shellEnvironment` factory picks it
+  for every `VirtualHost`. `shell_write` reaches a root command as the
+  script's stdin (`tinybash.md` § Interface), so `demi agent spawn` is
+  steerable hostless exactly as on a machine.

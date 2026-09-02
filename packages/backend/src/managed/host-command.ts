@@ -9,7 +9,7 @@ import {
   type HostStore,
 } from '@demicodes/shell'
 import { z } from 'zod'
-import { VIRTUAL_WORKSPACE_CWD } from '../conversation/scoped-transport'
+import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService, PrevTarget } from '../storage/control'
 
@@ -54,7 +54,7 @@ function currentCommand(deps: HostCommandDeps, conversationId: string): Command 
         const online = deps.registry.deviceOnline(workspace.deviceId) ? 'online' : 'offline'
         lines.push(`host: workspace "${workspace.name}" — ${workspace.path} on device "${device?.name ?? workspace.deviceId}" (${online})`)
       } else {
-        lines.push(`host: virtual (files under ${VIRTUAL_WORKSPACE_CWD})`)
+        lines.push(`host: virtual (files under ${HOSTLESS_HOME})`)
       }
       if (conversation.prevTarget) {
         lines.push(`prev: ${describePrev(conversation.prevTarget.target)} — reachable via \`demi host prev shell\` until \`demi host prev release\``)
@@ -181,7 +181,7 @@ async function runOnVirtualPrev(
     let view = await environment.exec({
       script,
       ephemeral: true,
-      cwd: VIRTUAL_WORKSPACE_CWD,
+      cwd: HOSTLESS_HOME,
       timeoutMs: 60_000,
       maxOutputBytes: PREV_SHELL_OUTPUT_BYTES,
     })
@@ -215,6 +215,6 @@ async function runOnVirtualPrev(
 }
 
 function describePrev(prev: PrevTarget): string {
-  if (prev.kind === 'virtual') return `virtual (files under ${VIRTUAL_WORKSPACE_CWD})`
+  if (prev.kind === 'virtual') return `virtual (files under ${HOSTLESS_HOME})`
   return `${prev.path} on device ${prev.deviceId}`
 }

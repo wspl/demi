@@ -1524,3 +1524,46 @@ manifest build's transpiler is injected rather than imported so the
 package stays pure; `RootPaths` moved to the shell ABI since both
 tinybash and the loader speak it. A comment-only change to a module is
 the same hash: the hash is over what runs.
+
+Steps 3 and 4 done — kinds in the trees and the hostless path:
+
+- `@demicodes/shell`: `ShellEnvironment` (the contract behind the
+  `shell_*` tools) with the API types in `shell-environment.ts`, and the
+  command records, status views, artifact persistence and the
+  final-stream (text / binary) boundary in `command-records.ts`, shared
+  by `BashEnvironment` and the hostless engine — one place computes what
+  `shell_status` shows, whichever engine ran the script.
+- `@demicodes/agent`: `AgentServer` takes a `shellEnvironment` factory
+  (`ShellEnvironmentFactory`, default `defaultShellEnvironment` =
+  `BashEnvironment`); `LiveSession` and the child supervisor build every
+  per-Host environment through it and are typed on the interface.
+- `@demicodes/backend`: `HostlessEnvironment` — tinybash over the
+  conversation's `VirtualHost`, roots dispatched through the loader with
+  `inProcessRpc`, the manifest built per session with Bun's transpiler
+  (memoized per module text). Observation window, `shell_status`,
+  `shell_write` (the script's stdin, steering `rpc` handlers such as
+  `demi agent spawn`), `shell_abort`, capture limit, binary final streams
+  and artifacts all behave as with bash. A script outside the subset
+  runs nothing and answers with tinybash's refusal line on stderr, exit 2
+  (the managed-host hand-over is M10). `createBackend` picks it for
+  every `VirtualHost`.
+- The hostless home is `/home/demi` (`HOSTLESS_HOME`, namespace
+  `['/home/demi', '/tmp']`), as `sessions-and-targets.md` says;
+  `VirtualHost.ensureLayout` creates the declared directories.
+- tinybash: `runTinybash` takes the script's `stdin`; a root command whose
+  stdin is not redirected receives it as `DispatchIO.stdinStream` (shared
+  iterator, `shareByteStream`), and the loader passes it to `rpc` handlers
+  as `stdinStream` and to `runtime` modules after the pipe.
+
+Pitfalls met:
+
+- A blanket `/workspace` → `/home/demi` rename in the backend tests also
+  rewrote `/api/workspaces`; the rename is by word boundary now.
+- `printf` is not in the tinybash subset, so two backend tests that used
+  it to seed a file were outside the subset; they use `echo -n`. Models
+  write `printf` often — a subset question for the user, not decided
+  here.
+- Artifact writes are chained asynchronously behind the status; a test
+  that reads `stdout.bin` right after the exited status polls for it.
+- `$?` is outside the grammar, so a test cannot echo an exit status; it
+  observes the status the environment reports instead.

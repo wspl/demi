@@ -1,12 +1,14 @@
 import { join } from 'node:path'
-import { AgentServer, type ProviderResolver } from '@demicodes/agent'
+import { AgentServer, type ProviderResolver, defaultShellEnvironment } from '@demicodes/agent'
 import { createCodingAgentHarness, createDemiCommand } from '@demicodes/coding-agent'
 import { LocalHost } from '@demicodes/host-local'
+import { VirtualHost } from '@demicodes/host-virtual'
 import type { Host } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import { STUB_USER } from './auth/identity'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
+import { createHostlessShell } from './conversation/hostless-shell'
 import { createHostCommandGroup } from './managed/host-command'
 import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
@@ -116,6 +118,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     }),
     providers: resolveProvider,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },
+    // A hostless conversation's shell is tinybash over its store-backed Host; real hosts keep bash.
+    shellEnvironment: (ctx) => (ctx.host instanceof VirtualHost ? createHostlessShell(ctx) : defaultShellEnvironment(ctx)),
     // Sessions persist as block rows in their conversation database; the
     // Host-store default never runs in the product backend.
     sessionStore: (agentSessionId) => conversationStores.sessionStore(agentSessionId),

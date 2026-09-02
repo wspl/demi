@@ -3,7 +3,10 @@ import type { ControlService, ConversationRecord } from '../storage/control'
 import { resolveAttachmentRefs } from './attachment-refs'
 
 /** Virtual working directory every virtual-target conversation starts in. */
-export const VIRTUAL_WORKSPACE_CWD = '/workspace'
+/** The hostless home: cwd of every hostless shell, and where the model's files live (`sessions-and-targets.md` § The namespace). */
+export const HOSTLESS_HOME = '/home/demi'
+/** The two subtrees a hostless script may touch, plus `/dev/null`. */
+export const HOSTLESS_NAMESPACE: readonly string[] = [HOSTLESS_HOME, '/tmp']
 
 /**
  * Scopes an incoming stream to its conversation: the session id and cwd are
@@ -17,7 +20,7 @@ export function conversationScopedTransport(
   inner: AgentServerTransport,
   conversation: ConversationRecord,
   control: ControlService,
-  cwd: string = VIRTUAL_WORKSPACE_CWD,
+  cwd: string = HOSTLESS_HOME,
   blobs?: BlobStore,
 ): AgentServerTransport {
   // Frame rewrites can await storage (attachment resolution); the chain keeps

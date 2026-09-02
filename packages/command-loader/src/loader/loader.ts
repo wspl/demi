@@ -46,6 +46,7 @@ export async function createLoader(options: LoaderOptions): Promise<Loader> {
         const result = await runRegisteredCommand(tree, {
           argv: [root, ...argv],
           stdin: io.stdin,
+          stdinStream: io.stdinStream,
           env: io.env,
           cwd: io.cwd,
           io: { stdout: io.stdout, stderr: io.stderr },

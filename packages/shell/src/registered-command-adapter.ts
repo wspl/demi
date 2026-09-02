@@ -1,4 +1,4 @@
-import { bytesStream, concatBytes, decodeLatin1, encodeLatin1, encodeUtf8 } from '@demicodes/utils'
+import { ByteQueue, bytesStream, concatBytes, decodeLatin1, encodeLatin1, encodeUtf8 } from '@demicodes/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
 import { isCommandGroup, runRegisteredCommand, type Command, type CommandIO } from './command'
 import { createOutputSinks, notifyForegroundWaiters, recordForegroundChunk } from './environment-output'
@@ -81,7 +81,7 @@ class VirtualForegroundJob {
   readonly foreground: ForegroundProcess
   readonly io: CommandIO
   private readonly abortController = new AbortController()
-  private readonly stdinQueue = new StdinChunkQueue()
+  private readonly stdinQueue = new ByteQueue()
   private settleExit!: (exit: HostSpawnExit) => void
   private killed!: (result: never) => void
   private readonly killedPromise: Promise<never>
@@ -199,45 +199,6 @@ class VirtualForegroundJob {
         `the shell buffers whole command outputs in memory — narrow the output at the source (filters, head, tighter paths)\n`,
       exitCode: 137,
     }
-  }
-}
-
-/** Async chunk queue: each pushed chunk is delivered once, in order; close ends the stream. */
-class StdinChunkQueue {
-  private readonly chunks: Uint8Array[] = []
-  private waiter: (() => void) | null = null
-  private isClosed = false
-
-  push(data: Uint8Array): void {
-    if (this.isClosed) return
-    this.chunks.push(data)
-    this.wake()
-  }
-
-  close(): void {
-    if (this.isClosed) return
-    this.isClosed = true
-    this.wake()
-  }
-
-  async *stream(): AsyncIterable<Uint8Array> {
-    while (true) {
-      const chunk = this.chunks.shift()
-      if (chunk) {
-        yield chunk
-        continue
-      }
-      if (this.isClosed) return
-      await new Promise<void>((resolve) => {
-        this.waiter = resolve
-      })
-    }
-  }
-
-  private wake(): void {
-    const waiter = this.waiter
-    this.waiter = null
-    waiter?.()
   }
 }
 

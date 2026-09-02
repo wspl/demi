@@ -1,4 +1,4 @@
-import { concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, isAbsolutePath, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
+import { concatBytes, decodeLatin1, decodeUtf8, encodeLatin1, encodeUtf8, isAbsolutePath } from '@demicodes/utils'
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
@@ -28,216 +28,39 @@ import { HostBackedFileSystem } from './host-fs'
 import { AgentSessionCommandStorage } from './storage'
 import { CommandArtifactStore } from './command-artifact-store'
 import { commandToForkCommand } from './registered-command-adapter'
+import {
+  appendRecordOutput,
+  commandStatusView,
+  createCommandRecord,
+  ensureRecordOutputCoverage,
+  finalStdoutBoundary,
+  type ShellCommandRecord,
+} from './command-records'
+import {
+  DEFAULT_BINARY_LIMIT_BYTES,
+  DEFAULT_CAPTURE_LIMIT_BYTES,
+  DEFAULT_OUTPUT_LIMIT_BYTES,
+  DEFAULT_TIMEOUT_MS,
+  MAX_TIMEOUT_MS,
+  normalizeTimeoutMs,
+  type BashAuditEvent,
+  type BinaryStdout,
+  type ShellAbortInput,
+  type ShellCommandStatus,
+  type ShellEnvironment,
+  type ShellEnvironmentOptions,
+  type ShellExecInput,
+  type ShellStatusInput,
+  type ShellViewInput,
+  type ShellWriteInput,
+} from './shell-environment'
 
-export interface BashEnvironmentOptions {
+export interface BashEnvironmentOptions extends ShellEnvironmentOptions {
   host: Host
   commands?: CommandRegistry
-  shellIdFactory?: () => string
-  commandIdFactory?: () => string
-  initialEnv?: Record<string, string>
-  /** Cap on a command's text stdout. Guards against log floods. */
-  maxOutputBytes?: number
-  /**
-   * Cap on a final stdout stream that is raw bytes rather than text.
-   *
-   * Separate from `maxOutputBytes` because the two guard different risks. Text
-   * costs context roughly in proportion to its bytes, so a tight cap is what
-   * stops a stray `cat` of a log file from flooding a window. Raw bytes are
-   * carried to be looked at — a picture, a clip — and there a megabyte buys far
-   * more than a megabyte of text does, so the same number would forbid the
-   * ordinary case. This layer deliberately stops at that distinction: which
-   * modality the bytes are, and what a given model should be shown, is decided
-   * above, where models are known.
-   */
-  maxBinaryBytes?: number
-  /**
-   * Ceiling for the bytes a single command's output capture may ingest.
-   *
-   * Distinct from `maxOutputBytes`, which sizes the rendered view: capture is
-   * what the environment holds in memory while a command runs, and it holds
-   * several copies (raw bytes for the pipe, text renders, replay chunks). A
-   * foreground process that produces more than this is SIGKILLed and the
-   * command fails with an explicit error; a background job keeps only the most
-   * recent bytes within the ceiling. Without this ceiling one stray
-   * `rg`/`cat` over a large tree balloons the embedding process by tens of
-   * gigabytes until the kernel OOM-kills it.
-   */
-  maxCaptureBytes?: number
 }
 
-export interface ShellExecInput {
-  script: string
-  shellId?: string
-  agentSessionId?: string
-  timeoutMs?: number
-  maxOutputBytes?: number
-  signal?: AbortSignal
-  /**
-   * Run in a dedicated one-shot shell instead of the session default shell, so
-   * cd/env side effects never leak into other execs sharing the session. The
-   * caller owns the shell and should `disposeShell(snapshot.shellId)` when done.
-   * Mutually exclusive with `shellId`.
-   */
-  ephemeral?: boolean
-  /**
-   * Initial working directory of the shell this exec creates. Requires
-   * `ephemeral` — a persistent shell owns its cwd (that is what `cd` is for).
-   */
-  cwd?: string
-}
-
-export interface ShellStatusInput {
-  commandId: string
-  stdoutOffset?: number
-  stderrOffset?: number
-  outputOffset?: number
-  maxOutputBytes?: number
-}
-
-export interface ShellWriteInput {
-  commandId: string
-  stdin: string | Uint8Array
-  maxOutputBytes?: number
-  signal?: AbortSignal
-}
-
-export interface ShellAbortInput {
-  commandId: string
-  maxOutputBytes?: number
-}
-
-export interface ShellStreamView {
-  path: string
-  offset: number
-  delta: string
-  tail: string
-  bytes: number
-  truncated: boolean
-}
-
-export interface ShellOutputChunk {
-  stream: 'stdout' | 'stderr'
-  text: string
-}
-
-export interface ShellOutputRecordChunk extends ShellOutputChunk {
-  offset: number
-  bytes: number
-}
-
-export interface ShellOutputView {
-  path: string
-  offset: number
-  text: string
-  tail: string
-  chunks: ShellOutputChunk[]
-  bytes: number
-  truncated: boolean
-}
-
-export type BashAuditEvent =
-  | { kind: 'registered-command'; name: string; args: string[]; exitCode: number }
-  | { kind: 'portable-command'; name: string; args: string[]; cwd: string; exitCode: number }
-  | { kind: 'system-command'; name: string; args: string[]; cwd: string; exitCode: number | null }
-
-/** Final stdout stream that is not valid UTF-8: raw bytes for the boundary above. */
-export interface BinaryStdout {
-  data: Uint8Array
-  /** True when the stream exceeded the applicable cap; data is capped. */
-  truncated: boolean
-  /** Total byte count of the un-capped stream. */
-  totalBytes: number
-  /** The byte ceiling that applied, so the boundary above can name it. */
-  limitBytes: number
-}
-
-export type ShellCommandStatus =
-  | {
-      status: 'exited'
-      shellId: string
-      commandId: string
-      /** Real directory holding this command's artifact files. */
-      artifactDir: string
-      exitCode: number
-      stdout: ShellStreamView
-      stderr: ShellStreamView
-      output: ShellOutputView
-      runningMs: number
-      idleMs: number
-      audit: BashAuditEvent[]
-      /** Present when the final stream was binary (bytes that are not valid UTF-8). */
-      binaryStdout?: BinaryStdout
-    }
-  | {
-      status: 'running'
-      shellId: string
-      commandId: string
-      artifactDir: string
-      stdout: ShellStreamView
-      stderr: ShellStreamView
-      output: ShellOutputView
-      runningMs: number
-      idleMs: number
-    }
-  | {
-      status: 'aborted'
-      shellId: string
-      commandId: string
-      artifactDir: string
-      stdout: ShellStreamView
-      stderr: ShellStreamView
-      output: ShellOutputView
-      runningMs: number
-      idleMs: number
-    }
-
-interface ShellCommandRecord {
-  id: string
-  shellId: string
-  commandStorageId: string
-  /** Real directory the artifact files (stdout.txt/stderr.txt/meta.json/stdout.bin) live in. */
-  artifactDir: string
-  script: string
-  startedAt: number
-  lastOutputAt: number
-  status: 'running' | 'exited' | 'aborted'
-  stdout: string
-  stderr: string
-  stdoutOffset: number
-  stderrOffset: number
-  outputChunks: ShellOutputRecordChunk[]
-  outputOffset: number
-  exitCode?: number
-  audit: BashAuditEvent[]
-  binaryStdout?: BinaryStdout
-  /** Full binary stream bytes awaiting their one-time write to stdout.bin. */
-  pendingBinaryArtifact?: Uint8Array
-  /** Output limit of the exec that started this command (binary carry cap). */
-  outputLimitBytes: number
-  persistedFingerprint?: string
-}
-
-// Fallback observation window for direct exec() calls that omit timeoutMs (internal instant
-// commands like demi/todo). The model-facing shell_exec tool requires timeoutMs, so the model
-// controls it per call — there is intentionally no configurable global default.
-const DEFAULT_TIMEOUT_MS = 10_000
-const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024
-/**
- * Ceiling for a raw-byte final stream. Sized so an ordinary viewing-grade clip
- * survives the shell and reaches the layer that decides what to do with it,
- * while still bounding a runaway producer.
- */
-const DEFAULT_BINARY_LIMIT_BYTES = 16 * 1024 * 1024
-/**
- * Ceiling for a single command's in-memory output capture. Sized to the same
- * order as the in-shell file read limit: the execution model buffers whole
- * command outputs (in several copies), so this is a hard memory-safety bound
- * on the embedding process, not a view budget.
- */
-const DEFAULT_CAPTURE_LIMIT_BYTES = 64 * 1024 * 1024
-/** Upper bound for a single exec observation window (also the command-bridge wait ceiling). */
-export const MAX_TIMEOUT_MS = 600_000
-export class BashEnvironment {
+export class BashEnvironment implements ShellEnvironment {
   private readonly host: Host
   private readonly commands: CommandRegistry
   private readonly shellIdFactory: () => string
@@ -608,25 +431,14 @@ export class BashEnvironment {
 
   private createCommandRecord(session: ShellSession, script: string): ShellCommandRecord {
     const id = this.commandIdFactory()
-    const now = Date.now()
-    const record: ShellCommandRecord = {
+    const record = createCommandRecord({
       id,
       shellId: session.id,
       commandStorageId: session.commandStorageId,
       artifactDir: this.artifacts.dirFor(session.commandStorageId, id),
       script,
-      startedAt: now,
-      lastOutputAt: now,
-      status: 'running',
-      stdout: '',
-      stderr: '',
-      stdoutOffset: 0,
-      stderrOffset: 0,
-      outputChunks: [],
-      outputOffset: 0,
-      audit: [],
       outputLimitBytes: this.defaultOutputLimitBytes,
-    }
+    })
     this.commandsById.set(id, record)
     return record
   }
@@ -1043,27 +855,11 @@ export class BashEnvironment {
       stdoutText = raw
     } else {
       const bytes = encodeLatin1(raw)
-      const strict = decodeUtf8Strict(bytes)
-      if (strict !== null) {
-        stdoutText = strict
-      } else {
-        // Raw bytes answer to their own ceiling, not the text budget: this
-        // stream exists to be looked at, and the text cap is sized to stop a
-        // log flood.
-        const cap = this.defaultBinaryLimitBytes
-        const truncated = bytes.length > cap
-        binary = {
-          data: truncated ? bytes.slice(0, cap) : bytes,
-          truncated,
-          totalBytes: bytes.length,
-          limitBytes: cap,
-        }
-        stdoutText = `<binary stdout: ${bytes.length} bytes${
-          truncated ? `, exceeds the ${cap}-byte binary limit` : ''
-        }; raw bytes at ${record.artifactDir}/stdout.bin>\n`
-        // The full stream goes to disk regardless of the in-memory carry cap.
-        record.pendingBinaryArtifact = bytes
-      }
+      const boundary = finalStdoutBoundary(bytes, this.defaultBinaryLimitBytes, record.artifactDir)
+      stdoutText = boundary.text
+      binary = boundary.binary
+      // The full stream goes to disk regardless of the in-memory carry cap.
+      if (binary) record.pendingBinaryArtifact = bytes
     }
     const stderrText = foreground ? resultOrError.stderr : decodeBytesToUtf8(unsafeBytesFromLatin1(resultOrError.stderr))
     session.accumulator.stdout += stdoutText
@@ -1147,10 +943,7 @@ export class BashEnvironment {
     return this.commandStatus(record, input)
   }
 
-  private commandStatus(
-    record: ShellCommandRecord,
-    input: { stdoutOffset?: number; stderrOffset?: number; outputOffset?: number; maxOutputBytes?: number } = {},
-  ): ShellCommandStatus {
+  private commandStatus(record: ShellCommandRecord, input: ShellViewInput = {}): ShellCommandStatus {
     const session = this.shells.get(record.shellId)
     const foreground = session?.foreground
     if (record.status === 'running' && foreground?.commandId === record.id) {
@@ -1159,47 +952,7 @@ export class BashEnvironment {
       record.outputChunks = [...foreground.outputChunks]
       record.lastOutputAt = foreground.lastOutputAt
     }
-    const maxOutputBytes = input.maxOutputBytes ?? this.defaultOutputLimitBytes
-    const stdout = streamView(record, 'stdout', input.stdoutOffset, maxOutputBytes)
-    const stderr = streamView(record, 'stderr', input.stderrOffset, maxOutputBytes)
-    const output = mergedOutputView(record, input.outputOffset, maxOutputBytes)
-    const base = {
-      shellId: record.shellId,
-      commandId: record.id,
-      artifactDir: record.artifactDir,
-      stdout,
-      stderr,
-      output,
-      runningMs: Date.now() - record.startedAt,
-      idleMs: Date.now() - record.lastOutputAt,
-    }
-    this.persistCommandArtifact(record)
-    if (record.status === 'exited') {
-      const result: ShellCommandStatus = {
-        ...base,
-        status: 'exited',
-        exitCode: record.exitCode ?? 0,
-        audit: record.audit,
-      }
-      if (record.binaryStdout) result.binaryStdout = record.binaryStdout
-      return result
-    }
-    if (record.status === 'aborted') return { ...base, status: 'aborted' }
-    return { ...base, status: 'running' }
-  }
-
-  private persistCommandArtifact(record: ShellCommandRecord): void {
-    const fingerprint = `${record.status}:${record.exitCode ?? ''}:${record.stdout.length}:${record.stderr.length}:${record.binaryStdout?.totalBytes ?? ''}`
-    if (record.persistedFingerprint === fingerprint) return
-    record.persistedFingerprint = fingerprint
-    const stdoutBin = record.pendingBinaryArtifact
-    record.pendingBinaryArtifact = undefined
-    this.artifacts.persist(record.commandStorageId, record.id, {
-      meta: `${JSON.stringify(commandArtifactMeta(record), null, 2)}\n`,
-      stdout: record.stdout,
-      stderr: record.stderr,
-      ...(stdoutBin ? { stdoutBin } : {}),
-    })
+    return commandStatusView(record, input, this.defaultOutputLimitBytes, this.artifacts)
   }
 }
 
@@ -1252,141 +1005,11 @@ function hasWideChar(value: string): boolean {
   return false
 }
 
-function normalizeTimeoutMs(value: number): number {
-  if (!Number.isFinite(value) || value < 1 || value > MAX_TIMEOUT_MS) {
-    throw new Error(`timeoutMs must be between 1 and ${MAX_TIMEOUT_MS}`)
-  }
-  return Math.floor(value)
-}
 
-function streamView(
-  record: ShellCommandRecord,
-  stream: 'stdout' | 'stderr',
-  explicitOffset: number | undefined,
-  maxOutputBytes: number,
-): ShellStreamView {
-  const text = stream === 'stdout' ? record.stdout : record.stderr
-  const totalBytes = utf8Bytes(text)
-  const offset = explicitOffset ?? (stream === 'stdout' ? record.stdoutOffset : record.stderrOffset)
-  const boundedOffset = clampOffset(offset, totalBytes)
-  const available = Math.max(0, totalBytes - boundedOffset)
-  const byteLimit = Math.max(0, Math.floor(maxOutputBytes))
-  const takeBytes = byteLimit === 0 ? available : Math.min(available, byteLimit)
-  const delta = utf8Slice(text, boundedOffset, boundedOffset + takeBytes)
-  const nextOffset = boundedOffset + utf8Bytes(delta)
-  const truncated = nextOffset < totalBytes
-  if (explicitOffset === undefined) {
-    if (stream === 'stdout') record.stdoutOffset = nextOffset
-    else record.stderrOffset = nextOffset
-  }
-  return {
-    path: `${record.artifactDir}/${stream}.txt`,
-    offset: nextOffset,
-    delta,
-    tail: tailString(text),
-    bytes: totalBytes,
-    truncated,
-  }
-}
 
-function mergedOutputView(
-  record: ShellCommandRecord,
-  explicitOffset: number | undefined,
-  maxOutputBytes: number,
-): ShellOutputView {
-  const totalBytes = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
-  const offset = clampOffset(explicitOffset ?? record.outputOffset, totalBytes)
-  const byteLimit = Math.max(0, Math.floor(maxOutputBytes))
-  const available = Math.max(0, totalBytes - offset)
-  let remaining = byteLimit === 0 ? available : Math.min(available, byteLimit)
-  const chunks: ShellOutputChunk[] = []
 
-  for (const chunk of record.outputChunks) {
-    if (remaining <= 0) break
-    const chunkStart = chunk.offset
-    const chunkEnd = chunk.offset + chunk.bytes
-    if (chunkEnd <= offset) continue
-    const start = Math.max(0, offset - chunkStart)
-    const take = Math.min(chunk.bytes - start, remaining)
-    const text = utf8Slice(chunk.text, start, start + take)
-    if (text.length > 0) {
-      chunks.push({ stream: chunk.stream, text })
-      remaining -= utf8Bytes(text)
-    } else {
-      remaining -= take
-    }
-  }
 
-  const text = chunks.map((chunk) => chunk.text).join('')
-  const nextOffset = offset + utf8Bytes(text)
-  const truncated = nextOffset < totalBytes
-  if (explicitOffset === undefined) record.outputOffset = nextOffset
-  return {
-    path: record.artifactDir,
-    offset: nextOffset,
-    text,
-    tail: tailOutputText(record.outputChunks),
-    chunks,
-    bytes: totalBytes,
-    truncated,
-  }
-}
 
-function appendRecordOutput(record: ShellCommandRecord, stream: 'stdout' | 'stderr', text: string): void {
-  if (text.length === 0) return
-  const offset = record.outputChunks.reduce((total, chunk) => total + chunk.bytes, 0)
-  record.outputChunks.push({ stream, text, offset, bytes: utf8Bytes(text) })
-}
 
-function ensureRecordOutputCoverage(record: ShellCommandRecord): void {
-  const stdoutBytes = record.outputChunks
-    .filter((chunk) => chunk.stream === 'stdout')
-    .reduce((total, chunk) => total + chunk.bytes, 0)
-  const stderrBytes = record.outputChunks
-    .filter((chunk) => chunk.stream === 'stderr')
-    .reduce((total, chunk) => total + chunk.bytes, 0)
-  if (stdoutBytes === utf8Bytes(record.stdout) && stderrBytes === utf8Bytes(record.stderr)) return
-  record.outputChunks = []
-  appendRecordOutput(record, 'stdout', record.stdout)
-  appendRecordOutput(record, 'stderr', record.stderr)
-}
 
-function commandArtifactMeta(record: ShellCommandRecord): Record<string, unknown> {
-  return {
-    status: record.status,
-    shellId: record.shellId,
-    commandId: record.id,
-    script: record.script,
-    startedAt: record.startedAt,
-    lastOutputAt: record.lastOutputAt,
-    exitCode: record.exitCode ?? null,
-    stdout: { path: `${record.artifactDir}/stdout.txt`, bytes: utf8Bytes(record.stdout) },
-    stderr: { path: `${record.artifactDir}/stderr.txt`, bytes: utf8Bytes(record.stderr) },
-    ...(record.binaryStdout
-      ? {
-          stdoutBinary: {
-            path: `${record.artifactDir}/stdout.bin`,
-            bytes: record.binaryStdout.totalBytes,
-          },
-        }
-      : {}),
-  }
-}
 
-function tailOutputText(chunks: readonly ShellOutputRecordChunk[]): string {
-  const maxChars = 4096
-  let text = ''
-  for (let i = chunks.length - 1; i >= 0 && text.length < maxChars; i -= 1) {
-    text = `${chunks[i]!.text}${text}`
-  }
-  return tailString(text)
-}
-
-function clampOffset(value: number, max: number): number {
-  if (!Number.isFinite(value) || value <= 0) return 0
-  return Math.min(Math.floor(value), max)
-}
-
-function tailString(value: string): string {
-  return tail(value, 4096)
-}

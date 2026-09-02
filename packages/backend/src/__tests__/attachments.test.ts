@@ -157,7 +157,7 @@ test('attachment upload limits and workspace file drop', async () => {
     body: 'dropped content',
   })
   expect(dropped.status).toBe(201)
-  expect(((await dropped.json()) as { path: string }).path).toBe('/workspace/notes/readme.md')
+  expect(((await dropped.json()) as { path: string }).path).toBe('/home/demi/notes/readme.md')
 
   // The agent's shell sees the dropped file on the execution target.
   const client = await connectClient(backend, conversation.id, selectionFor(connection.id))

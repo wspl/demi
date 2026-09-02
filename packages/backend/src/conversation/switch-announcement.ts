@@ -1,7 +1,7 @@
 import type { AgentHarness } from '@demicodes/agent'
 import type { CodingState } from '@demicodes/coding-agent'
 import type { ControlService, PrevTarget } from '../storage/control'
-import { VIRTUAL_WORKSPACE_CWD } from './scoped-transport'
+import { HOSTLESS_HOME } from './scoped-transport'
 
 /**
  * Injects the target-switch context block into the first round after a
@@ -16,11 +16,11 @@ export function switchAnnouncementPreamble(control: ControlService): AgentHarnes
 
     const workspace = conversation.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
     const prev = conversation.prevTarget.target
-    const prevDir = prev.kind === 'virtual' ? VIRTUAL_WORKSPACE_CWD : prev.path
+    const prevDir = prev.kind === 'virtual' ? HOSTLESS_HOME : prev.path
     const currentDesc = workspace
       ? `workspace "${workspace.name}" — directory ${workspace.path} on device ${await deviceName(control, workspace.deviceId)}`
-      : `the virtual environment (files under ${VIRTUAL_WORKSPACE_CWD})`
-    const currentDir = workspace ? workspace.path : VIRTUAL_WORKSPACE_CWD
+      : `the virtual environment (files under ${HOSTLESS_HOME})`
+    const currentDir = workspace ? workspace.path : HOSTLESS_HOME
 
     const lines = [
       '[Execution target switched]',
@@ -38,7 +38,7 @@ export function switchAnnouncementPreamble(control: ControlService): AgentHarnes
 }
 
 async function describePrev(control: ControlService, prev: PrevTarget): Promise<string> {
-  if (prev.kind === 'virtual') return `the virtual environment (files under ${VIRTUAL_WORKSPACE_CWD})`
+  if (prev.kind === 'virtual') return `the virtual environment (files under ${HOSTLESS_HOME})`
   return `directory ${prev.path} on device ${await deviceName(control, prev.deviceId)}`
 }
 

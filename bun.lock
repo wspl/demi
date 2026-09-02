@@ -52,6 +52,7 @@
       "dependencies": {
         "@demicodes/agent": "workspace:^",
         "@demicodes/coding-agent": "workspace:^",
+        "@demicodes/command-loader": "workspace:^",
         "@demicodes/core": "workspace:^",
         "@demicodes/host-local": "workspace:^",
         "@demicodes/host-virtual": "workspace:^",
@@ -64,6 +65,7 @@
         "@demicodes/provider-openai-api": "workspace:^",
         "@demicodes/runner-protocol": "workspace:^",
         "@demicodes/shell": "workspace:^",
+        "@demicodes/tinybash": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "hono": "^4.13.5",
         "zod": "^4.0.0",

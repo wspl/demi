@@ -1,6 +1,6 @@
 import { createId, decodeUtf8, errorMessage, noop, utf8Slice } from '@demicodes/utils'
 import {
-  BashEnvironment,
+  type ShellEnvironment,
   CommandRegistry,
   type BashEnvironmentOptions,
   type Command,
@@ -24,7 +24,7 @@ import type {
 import { createStandardAgentTools } from '../tools'
 import { hostAgentSessionStore } from '../store/session-store'
 import type { BlobStore } from '../store/media'
-import type { AgentServerSessionOptions, PrepareShell } from '../server/server'
+import type { AgentServerSessionOptions, PrepareShell, ShellEnvironmentFactory } from '../server/server'
 import { childAgentNode, injectSubagentCommand, subagentCommandNode } from './commands'
 import { formatDuration } from './format'
 
@@ -66,8 +66,8 @@ interface ChildJob<State> {
   session: AgentSession<State>
   commandRegistry: CommandRegistry
   commandNames: string[]
-  environments: Map<Host, BashEnvironment>
-  pendingEnvironments: Map<Host, Promise<BashEnvironment>>
+  environments: Map<Host, ShellEnvironment>
+  pendingEnvironments: Map<Host, Promise<ShellEnvironment>>
   readonlyHosts: WeakMap<Host, Host>
   spawnedAt: number
   lastEventAt: number
@@ -90,6 +90,7 @@ export interface ChildSupervisorOptions<State> {
   parentCommands: Command[]
   shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   prepareShell: PrepareShell | null
+  shellEnvironment: ShellEnvironmentFactory
   sessionOptions: AgentServerSessionOptions
   /** When false, a child closing never wakes an idle parent; the host app orchestrates the wakeup from the `subagent closed` frame. */
   notifyParentOnIdle: boolean
@@ -171,7 +172,7 @@ export class ChildSupervisor<State = unknown> {
   /** Resolves the child scope owning a shell, for the command bridge dispatch. */
   environmentScopeForShell(
     shellId: string,
-  ): { environment: BashEnvironment; commandNames: ReadonlySet<string>; agentSessionId: string } | null {
+  ): { environment: ShellEnvironment; commandNames: ReadonlySet<string>; agentSessionId: string } | null {
     for (const job of this.jobs.values()) {
       for (const environment of job.environments.values()) {
         if (environment.getShell(shellId)) {
@@ -674,7 +675,7 @@ export class ChildSupervisor<State = unknown> {
   private async childEnvironment(
     job: ChildJob<State>,
     ctx: Pick<AgentToolInvokeContext<State>, 'state' | 'metadata'>,
-  ): Promise<BashEnvironment> {
+  ): Promise<ShellEnvironment> {
     const resolved = await this.options.agent.host({
       agentSessionId: job.id,
       state: ctx.state,
@@ -702,7 +703,7 @@ export class ChildSupervisor<State = unknown> {
     }
   }
 
-  private async createChildEnvironment(job: ChildJob<State>, host: Host): Promise<BashEnvironment> {
+  private async createChildEnvironment(job: ChildJob<State>, host: Host): Promise<ShellEnvironment> {
     // A read-only child cannot spawn processes, so bridge shims are useless
     // (and un-materializable on a write-rejecting Host): skip prepareShell.
     const prepared =
@@ -714,16 +715,19 @@ export class ChildSupervisor<State = unknown> {
             shell: this.options.shellOptions,
           })
         : this.options.shellOptions
-    return new BashEnvironment({
-      ...prepared,
-      initialEnv: {
-        ...prepared.initialEnv,
-        DEMI_SUBAGENT_ID: job.id,
-        DEMI_PARENT_SESSION_ID: this.parentSession?.id() ?? '',
-        DEMI_SUBAGENT_DEPTH: '1',
-      },
+    return this.options.shellEnvironment({
+      agentSessionId: job.id,
       host,
       commands: job.commandRegistry,
+      shell: {
+        ...prepared,
+        initialEnv: {
+          ...prepared.initialEnv,
+          DEMI_SUBAGENT_ID: job.id,
+          DEMI_PARENT_SESSION_ID: this.parentSession?.id() ?? '',
+          DEMI_SUBAGENT_DEPTH: '1',
+        },
+      },
     })
   }
 

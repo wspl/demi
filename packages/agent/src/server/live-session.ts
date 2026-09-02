@@ -1,6 +1,6 @@
 import { bytesToBase64, errorCode, noop } from '@demicodes/utils'
 import {
-  BashEnvironment,
+  type ShellEnvironment,
   MAX_TIMEOUT_MS,
   heredocDelimiter,
   shellQuote,
@@ -12,7 +12,7 @@ import type { AgentSession } from '../session/session'
 import type { ChildSupervisor } from '../subagent/supervisor'
 import type { ServerFrame } from '../protocol/frames'
 import type { AgentHarness, AgentToolInvokeContext, SessionEvent } from '../types'
-import type { PrepareShell } from './server'
+import type { PrepareShell, ShellEnvironmentFactory } from './server'
 import { errorDiagnostics, progressToAudit, progressToOutput, progressToShellOutput } from './summaries'
 
 /** Options for {@link AgentServer.runCommandLine}. */
@@ -66,6 +66,7 @@ export interface LiveSessionOptions {
   providerId: string
   shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   prepareShell: PrepareShell | null
+  shellEnvironment: ShellEnvironmentFactory
 }
 
 /**
@@ -88,8 +89,9 @@ export class LiveSession {
 
   private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
   private readonly prepareShell: PrepareShell | null
-  private readonly environmentsByHost = new Map<Host, BashEnvironment>()
-  private readonly pendingEnvironmentsByHost = new Map<Host, Promise<BashEnvironment>>()
+  private readonly shellEnvironment: ShellEnvironmentFactory
+  private readonly environmentsByHost = new Map<Host, ShellEnvironment>()
+  private readonly pendingEnvironmentsByHost = new Map<Host, Promise<ShellEnvironment>>()
   private readonly unsubscribeSession: () => void
 
   constructor(options: LiveSessionOptions) {
@@ -103,6 +105,7 @@ export class LiveSession {
     this.providerId = options.providerId
     this.shellOptions = options.shellOptions
     this.prepareShell = options.prepareShell
+    this.shellEnvironment = options.shellEnvironment
     this.unsubscribeSession = options.session.subscribe((event) => this.handleSessionEvent(event))
   }
 
@@ -273,7 +276,7 @@ export class LiveSession {
   async resolveEnvironment(
     ctx: Pick<AgentToolInvokeContext<unknown>, 'agentSessionId' | 'state' | 'cwd' | 'metadata'>,
     handle: { shellId?: string; commandId?: string },
-  ): Promise<BashEnvironment> {
+  ): Promise<ShellEnvironment> {
     const host = await this.agent.host({
       agentSessionId: ctx.agentSessionId,
       state: ctx.state,
@@ -293,7 +296,7 @@ export class LiveSession {
     return environment
   }
 
-  private async environmentForHost(host: Host, commands: CommandRegistry): Promise<BashEnvironment> {
+  private async environmentForHost(host: Host, commands: CommandRegistry): Promise<ShellEnvironment> {
     const existing = this.environmentsByHost.get(host)
     if (existing) return existing
     const pending = this.pendingEnvironmentsByHost.get(host)
@@ -309,7 +312,7 @@ export class LiveSession {
     }
   }
 
-  private async createEnvironment(host: Host, commands: CommandRegistry): Promise<BashEnvironment> {
+  private async createEnvironment(host: Host, commands: CommandRegistry): Promise<ShellEnvironment> {
     const shellOptions = this.prepareShell
       ? await this.prepareShell({
           agentSessionId: this.agentSessionId,
@@ -318,17 +321,16 @@ export class LiveSession {
           shell: this.shellOptions,
         })
       : this.shellOptions
-    const environment = new BashEnvironment({ ...shellOptions, host, commands })
-    return environment
+    return this.shellEnvironment({ agentSessionId: this.agentSessionId, host, commands, shell: shellOptions })
   }
 
-  private environmentForShell(shellId: string): BashEnvironment | null {
+  private environmentForShell(shellId: string): ShellEnvironment | null {
     const matches = [...this.environmentsByHost.values()].filter((environment) => environment.getShell(shellId))
     if (matches.length > 1) throw new Error(`Shell id "${shellId}" is not unique in this session`)
     return matches[0] ?? null
   }
 
-  private environmentForCommand(commandId: string): BashEnvironment | null {
+  private environmentForCommand(commandId: string): ShellEnvironment | null {
     const matches = [...this.environmentsByHost.values()].filter((environment) => environment.hasCommand(commandId))
     if (matches.length > 1) throw new Error(`Command id "${commandId}" is not unique in this session`)
     return matches[0] ?? null

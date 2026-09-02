@@ -155,3 +155,61 @@ export async function collectBytes(stream: AsyncIterable<Uint8Array>): Promise<U
   for await (const chunk of stream) chunks.push(chunk)
   return concatBytes(chunks)
 }
+
+/**
+ * One iterator shared by several consumers in turn: a consumer that stops
+ * early leaves the stream open for the next, the way processes share a shell's
+ * stdin. The stream ends only when the source ends.
+ */
+export function shareByteStream(source: AsyncIterable<Uint8Array>): AsyncIterable<Uint8Array> {
+  const iterator = source[Symbol.asyncIterator]()
+  return {
+    [Symbol.asyncIterator]: () => ({
+      next: () => iterator.next(),
+      return: async () => ({ done: true, value: undefined }),
+    }),
+  }
+}
+
+/** Async chunk queue: each pushed chunk is delivered once, in order; close ends the stream. */
+export class ByteQueue {
+  private readonly chunks: Uint8Array[] = []
+  private waiter: (() => void) | null = null
+  private isClosed = false
+
+  push(data: Uint8Array): void {
+    if (this.isClosed) return
+    this.chunks.push(data)
+    this.wake()
+  }
+
+  close(): void {
+    if (this.isClosed) return
+    this.isClosed = true
+    this.wake()
+  }
+
+  get closed(): boolean {
+    return this.isClosed
+  }
+
+  async *stream(): AsyncIterable<Uint8Array> {
+    while (true) {
+      const chunk = this.chunks.shift()
+      if (chunk) {
+        yield chunk
+        continue
+      }
+      if (this.isClosed) return
+      await new Promise<void>((resolve) => {
+        this.waiter = resolve
+      })
+    }
+  }
+
+  private wake(): void {
+    const waiter = this.waiter
+    this.waiter = null
+    waiter?.()
+  }
+}

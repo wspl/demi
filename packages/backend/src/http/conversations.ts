@@ -4,7 +4,7 @@ import { errorMessage } from '@demicodes/utils'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { STUB_USER } from '../auth/identity'
-import { VIRTUAL_WORKSPACE_CWD } from '../conversation/scoped-transport'
+import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import { switchConversationTarget } from '../conversation/target-switch'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
 import type { ControlService } from '../storage/control'
@@ -89,7 +89,7 @@ export function conversationRoutes(options: {
       return c.json({ code: 'too_large', message: `File exceeds the ${ATTACHMENT_MAX_BYTES}-byte limit` }, 413)
     }
     const workspace = conversation.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
-    const cwd = workspace?.path ?? VIRTUAL_WORKSPACE_CWD
+    const cwd = workspace?.path ?? HOSTLESS_HOME
     try {
       const host = await hostFor(conversation.id)
       await host.fs.writeFile(name, bytes, { cwd, createParents: true })

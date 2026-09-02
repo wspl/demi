@@ -67,10 +67,10 @@ test('M6 acceptance: virtual→real switch with context block and migration pipe
   const stubRuntime = () =>
     new StubProvider([
       // Turn 1 (virtual): create a file that migration must carry over.
-      [events.toolCall('t1', 'shell_exec', { script: 'printf secret > notes.txt && demi host current', timeoutMs: 10_000 })],
+      [events.toolCall('t1', 'shell_exec', { script: 'echo -n secret > notes.txt && demi host current', timeoutMs: 10_000 })],
       [events.text('one'), events.response()],
       // Turn 2 (after switch to the device workspace): pull the virtual tree over the prev pipe.
-      [events.toolCall('t2', 'shell_exec', { script: 'demi host prev shell -- tar c -C /workspace . | tar x && cat notes.txt && demi host current', timeoutMs: 20_000 })],
+      [events.toolCall('t2', 'shell_exec', { script: 'demi host prev shell -- tar c -C /home/demi . | tar x && cat notes.txt && demi host current', timeoutMs: 20_000 })],
       [events.text('two'), events.response()],
       // Turn 3: release, then the pipe is closed.
       [events.toolCall('t3', 'shell_exec', { script: 'demi host prev release; demi host prev shell -- ls; echo exit=$?', timeoutMs: 10_000 })],

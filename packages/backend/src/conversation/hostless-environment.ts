@@ -1,0 +1,328 @@
+import type { Loader } from '@demicodes/command-loader'
+import { rootPaths } from '@demicodes/command-loader'
+import {
+  CommandArtifactStore,
+  DEFAULT_BINARY_LIMIT_BYTES,
+  DEFAULT_CAPTURE_LIMIT_BYTES,
+  DEFAULT_OUTPUT_LIMIT_BYTES,
+  DEFAULT_TIMEOUT_MS,
+  appendRecordOutput,
+  commandStatusView,
+  createCommandRecord,
+  finalStdoutBoundary,
+  normalizeTimeoutMs,
+  settleExited,
+  type BashAuditEvent,
+  type Host,
+  type ShellAbortInput,
+  type ShellCommandRecord,
+  type ShellCommandStatus,
+  type ShellEnvironment,
+  type ShellEnvironmentOptions,
+  type ShellExecInput,
+  type ShellStatusInput,
+  type ShellViewInput,
+  type ShellWriteInput,
+} from '@demicodes/shell'
+import { runTinybash, type ShellState } from '@demicodes/tinybash'
+import { ByteQueue, concatBytes, delay, errorMessage, isAbsolutePath, toBytes } from '@demicodes/utils'
+
+export interface HostlessEnvironmentOptions extends ShellEnvironmentOptions {
+  /** The conversation's store-backed Host. */
+  host: Host
+  /** Dispatches the manifest's roots; its trees give tinybash the path marks. */
+  loader: Loader
+  /** `$HOME`, and the first namespace prefix. */
+  home: string
+  /** Absolute prefixes a script may touch (`sessions-and-targets.md` § The namespace). */
+  namespace: readonly string[]
+  /** Owner names `ls -l` shows. */
+  identity: { user: string; group: string }
+}
+
+interface HostlessShell {
+  id: string
+  agentSessionId: string | null
+  commandStorageId: string
+  state: ShellState
+  foreground?: RunningCommand
+  exited: boolean
+}
+
+interface RunningCommand {
+  record: ShellCommandRecord
+  controller: AbortController
+  stdin: ByteQueue
+  settled: Promise<void>
+}
+
+/** How long `abort` waits for the statement in flight to honour the signal. */
+const ABORT_GRACE_MS = 2_000
+
+/**
+ * The shell behind the `shell_*` tools for a hostless conversation
+ * (`commands.md` § Hostless): tinybash over the conversation's Host, root
+ * commands through the loader, no process anywhere. Command records, views
+ * and artifacts are the ones every shell environment shares, so the tools
+ * cannot tell which engine ran the script.
+ */
+export class HostlessEnvironment implements ShellEnvironment {
+  private readonly host: Host
+  private readonly loader: Loader
+  private readonly home: string
+  private readonly namespace: readonly string[]
+  private readonly identity: { user: string; group: string }
+  private readonly shellIdFactory: () => string
+  private readonly commandIdFactory: () => string
+  private readonly initialEnv: Record<string, string>
+  private readonly defaultOutputLimitBytes: number
+  private readonly binaryLimitBytes: number
+  private readonly captureLimitBytes: number
+  private readonly artifacts: CommandArtifactStore
+  private readonly shells = new Map<string, HostlessShell>()
+  private readonly defaultShellByAgentSessionId = new Map<string, string>()
+  private readonly commandsById = new Map<string, ShellCommandRecord>()
+  private readonly runningById = new Map<string, RunningCommand>()
+
+  constructor(options: HostlessEnvironmentOptions) {
+    this.host = options.host
+    this.loader = options.loader
+    this.home = options.home
+    this.namespace = options.namespace
+    this.identity = options.identity
+    this.shellIdFactory = options.shellIdFactory ?? (() => globalThis.crypto.randomUUID())
+    this.commandIdFactory = options.commandIdFactory ?? (() => globalThis.crypto.randomUUID())
+    this.initialEnv = options.initialEnv ?? {}
+    this.defaultOutputLimitBytes = options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES
+    this.binaryLimitBytes = options.maxBinaryBytes ?? DEFAULT_BINARY_LIMIT_BYTES
+    this.captureLimitBytes = options.maxCaptureBytes ?? DEFAULT_CAPTURE_LIMIT_BYTES
+    this.artifacts = new CommandArtifactStore(this.host)
+  }
+
+  getShell(shellId: string): { id: string } | null {
+    return this.shells.get(shellId) ?? null
+  }
+
+  hasCommand(commandId: string): boolean {
+    return this.commandsById.has(commandId)
+  }
+
+  async exec(input: ShellExecInput): Promise<ShellCommandStatus> {
+    const timeoutMs = normalizeTimeoutMs(input.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+    if (input.shellId && input.ephemeral) {
+      throw new Error('ShellExecInput: "shellId" and "ephemeral" are mutually exclusive')
+    }
+    if (input.cwd !== undefined && !input.ephemeral) {
+      throw new Error('ShellExecInput: "cwd" requires "ephemeral"; a persistent shell owns its cwd')
+    }
+    if (input.cwd !== undefined) {
+      if (!isAbsolutePath(input.cwd) || !this.namespace.some((prefix) => input.cwd === prefix || input.cwd!.startsWith(`${prefix}/`))) {
+        throw new Error(`Shell exec cwd is outside the hostless namespace: ${input.cwd}`)
+      }
+      const stat = await this.host.fs.stat(input.cwd).catch(() => null)
+      if (!stat?.isDirectory) throw new Error(`Shell exec cwd is not a directory: ${input.cwd}`)
+    }
+    const shell = input.shellId
+      ? this.requireShell(input.shellId)
+      : input.ephemeral
+        ? this.createShell(input.agentSessionId, input.cwd)
+        : this.defaultShell(input.agentSessionId)
+    if (shell.exited) throw new Error(`Shell session "${shell.id}" has exited`)
+    if (shell.foreground) {
+      throw new Error(`Shell session "${shell.id}" is already running command "${shell.foreground.record.id}"`)
+    }
+    const running = this.start(shell, input.script, input.signal)
+    await Promise.race([running.settled, delay(timeoutMs)])
+    return this.view(running.record, input)
+  }
+
+  async status(input: ShellStatusInput): Promise<ShellCommandStatus> {
+    return this.view(this.requireCommand(input.commandId), input)
+  }
+
+  async write(input: ShellWriteInput): Promise<ShellCommandStatus> {
+    const record = this.requireCommand(input.commandId)
+    if (record.status !== 'running') throw new Error(`Command "${record.id}" is not running`)
+    const running = this.runningById.get(record.id)
+    if (!running) throw new Error(`Command "${record.id}" is not running`)
+    const data = toBytes(input.stdin)
+    if (data.byteLength === 0) throw new Error('shell_write field "stdin" must not be empty; use shell_status to poll')
+    running.stdin.push(data)
+    return this.view(record, input)
+  }
+
+  async abort(input: ShellAbortInput): Promise<ShellCommandStatus> {
+    const record = this.requireCommand(input.commandId)
+    const running = this.runningById.get(record.id)
+    if (record.status !== 'running' || !running) return this.view(record, input)
+    running.controller.abort()
+    running.stdin.close()
+    await Promise.race([running.settled, delay(ABORT_GRACE_MS)])
+    if (record.status === 'running') this.markAborted(running)
+    return this.view(record, input)
+  }
+
+  async releaseCommand(commandId: string): Promise<boolean> {
+    const record = this.commandsById.get(commandId)
+    if (!record) return false
+    if (record.status === 'running') await this.abort({ commandId })
+    this.commandsById.delete(commandId)
+    await this.artifacts.release(record.commandStorageId, commandId)
+    return true
+  }
+
+  async disposeShell(shellId: string): Promise<boolean> {
+    const shell = this.shells.get(shellId)
+    if (!shell) return false
+    if (shell.foreground) await this.abort({ commandId: shell.foreground.record.id })
+    shell.exited = true
+    this.shells.delete(shellId)
+    for (const [agentSessionId, id] of this.defaultShellByAgentSessionId) {
+      if (id === shellId) this.defaultShellByAgentSessionId.delete(agentSessionId)
+    }
+    return true
+  }
+
+  async disposeAllShells(): Promise<void> {
+    for (const shellId of [...this.shells.keys()]) await this.disposeShell(shellId)
+  }
+
+  private start(shell: HostlessShell, script: string, callerSignal: AbortSignal | undefined): RunningCommand {
+    const id = this.commandIdFactory()
+    const record = createCommandRecord({
+      id,
+      shellId: shell.id,
+      commandStorageId: shell.commandStorageId,
+      artifactDir: this.artifacts.dirFor(shell.commandStorageId, id),
+      script,
+      outputLimitBytes: this.defaultOutputLimitBytes,
+    })
+    this.commandsById.set(id, record)
+    const controller = new AbortController()
+    if (callerSignal) {
+      if (callerSignal.aborted) controller.abort()
+      else callerSignal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+    const stdin = new ByteQueue()
+    const audit: BashAuditEvent[] = []
+    const stdoutBytes: Uint8Array[] = []
+    const stdoutDecoder = new TextDecoder()
+    const stderrDecoder = new TextDecoder()
+    let captured = 0
+    let overflowed = false
+    const ingest = (stream: 'stdout' | 'stderr', data: string | Uint8Array): void => {
+      if (overflowed) return
+      const bytes = toBytes(data)
+      captured += bytes.byteLength
+      if (captured > this.captureLimitBytes) {
+        overflowed = true
+        controller.abort()
+        return
+      }
+      if (stream === 'stdout') stdoutBytes.push(bytes)
+      const text = (stream === 'stdout' ? stdoutDecoder : stderrDecoder).decode(bytes, { stream: true })
+      if (stream === 'stdout') record.stdout += text
+      else record.stderr += text
+      appendRecordOutput(record, stream, text)
+      record.lastOutputAt = Date.now()
+    }
+    const run = runTinybash({
+      script,
+      roots: rootPaths(this.loader.roots),
+      namespace: this.namespace,
+      dispatch: async (root, argv, io) => {
+        const exitCode = await this.loader.dispatch(root, argv, io)
+        audit.push({ kind: 'registered-command', name: root, args: [...argv], exitCode })
+        return exitCode
+      },
+      fs: this.host.fs,
+      state: shell.state,
+      io: { stdout: (data) => ingest('stdout', data), stderr: (data) => ingest('stderr', data) },
+      identity: this.identity,
+      stdin: stdin.stream(),
+      signal: controller.signal,
+    })
+    const running: RunningCommand = { record, controller, stdin, settled: Promise.resolve() }
+    running.settled = run
+      .then(
+        (result) => {
+          if (overflowed) {
+            const message = `hostless shell: output exceeded the ${this.captureLimitBytes}-byte capture limit and the command was stopped; narrow the output at the source (filters, head, tighter paths)\n`
+            return this.finish(running, 137, stdoutBytes, `${record.stderr}${message}`, audit)
+          }
+          if (result.kind === 'outside') return this.finish(running, 2, stdoutBytes, `${record.stderr}${result.message}\n`, audit)
+          if (controller.signal.aborted && result.exitCode === 130) return this.markAborted(running)
+          return this.finish(running, result.exitCode, stdoutBytes, record.stderr, audit)
+        },
+        (error: unknown) => this.finish(running, 1, stdoutBytes, `${record.stderr}hostless shell: ${errorMessage(error)}\n`, audit),
+      )
+      .finally(() => {
+        stdin.close()
+        this.runningById.delete(id)
+        if (shell.foreground === running) shell.foreground = undefined
+      })
+    shell.foreground = running
+    this.runningById.set(id, running)
+    return running
+  }
+
+  private finish(running: RunningCommand, exitCode: number, stdoutBytes: Uint8Array[], stderr: string, audit: BashAuditEvent[]): void {
+    const { record } = running
+    if (record.status !== 'running') return
+    const bytes = concatBytes(stdoutBytes)
+    const boundary = finalStdoutBoundary(bytes, this.binaryLimitBytes, record.artifactDir)
+    if (boundary.binary) record.pendingBinaryArtifact = bytes
+    settleExited(record, exitCode, boundary.text, stderr, boundary.binary, audit)
+  }
+
+  private markAborted(running: RunningCommand): void {
+    const { record } = running
+    if (record.status !== 'running') return
+    record.lastOutputAt = Date.now()
+    record.status = 'aborted'
+  }
+
+  private view(record: ShellCommandRecord, input: ShellViewInput): ShellCommandStatus {
+    return commandStatusView(record, input, this.defaultOutputLimitBytes, this.artifacts)
+  }
+
+  private requireShell(shellId: string): HostlessShell {
+    const shell = this.shells.get(shellId)
+    if (!shell) throw new Error(`Unknown shell session "${shellId}"`)
+    return shell
+  }
+
+  private requireCommand(commandId: string): ShellCommandRecord {
+    const record = this.commandsById.get(commandId)
+    if (!record) throw new Error(`Unknown command "${commandId}"`)
+    return record
+  }
+
+  private defaultShell(agentSessionId: string | undefined): HostlessShell {
+    const key = agentSessionId ?? ''
+    const existing = this.defaultShellByAgentSessionId.get(key)
+    if (existing) {
+      const shell = this.shells.get(existing)
+      if (shell && !shell.exited) return shell
+    }
+    const shell = this.createShell(agentSessionId)
+    this.defaultShellByAgentSessionId.set(key, shell.id)
+    return shell
+  }
+
+  private createShell(agentSessionId: string | undefined, initialCwd?: string): HostlessShell {
+    const id = this.shellIdFactory()
+    const vars: Record<string, string> = { ...this.initialEnv, HOME: this.home, USER: this.identity.user, DEMI_SHELL_ID: id }
+    if (agentSessionId) vars.DEMI_SESSION_ID = agentSessionId
+    const shell: HostlessShell = {
+      id,
+      agentSessionId: agentSessionId ?? null,
+      commandStorageId: agentSessionId ?? id,
+      state: { cwd: initialCwd ?? this.host.defaultCwd, home: this.home, vars },
+      exited: false,
+    }
+    this.shells.set(id, shell)
+    return shell
+  }
+}
+

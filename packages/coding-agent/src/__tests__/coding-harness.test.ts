@@ -10,6 +10,7 @@ import {
   injectSubagentCommand,
   type AgentHarness,
   type AgentHarnessRuntime,
+  defaultShellEnvironment,
 } from '@demicodes/agent'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
@@ -250,6 +251,7 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
     parentCommands: commands,
     shellOptions: {},
     prepareShell: null,
+    shellEnvironment: defaultShellEnvironment,
     sessionOptions: {},
     notifyParentOnIdle: true,
     store: new LocalHost(process.cwd()).store,

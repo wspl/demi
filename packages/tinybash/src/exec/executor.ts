@@ -21,6 +21,8 @@ export interface ExecutionEnvironment {
   identity: { user: string; group: string }
   stdout: Writer
   stderr: Writer
+  /** The script's stdin, shared by the root commands whose stdin is not redirected. */
+  stdin?: AsyncIterable<Uint8Array>
   signal?: AbortSignal
 }
 
@@ -47,7 +49,7 @@ async function runList(list: List, env: ExecutionEnvironment): Promise<number> {
 async function runPipeline(pipeline: Pipeline, env: ExecutionEnvironment): Promise<number> {
   const top: Channels = { stdin: emptyByteStream(), stdout: env.stdout, stderr: env.stderr }
   if (pipeline.commands.length === 1) {
-    return runCommand(pipeline.commands[0]!, top, env, true)
+    return runCommand(pipeline.commands[0]!, top, env, true, env.stdin)
   }
   // Every command of a pipeline runs in a subshell: no cd or assignment escapes.
   const pipes = pipeline.commands.slice(0, -1).map(() => new Pipe())
@@ -56,7 +58,7 @@ async function runPipeline(pipeline: Pipeline, env: ExecutionEnvironment): Promi
     const stdout: Writer = index === pipes.length ? top.stdout : pipes[index]!.write
     let status: number
     try {
-      status = await runCommand(command, { stdin, stdout, stderr: top.stderr }, env, false)
+      status = await runCommand(command, { stdin, stdout, stderr: top.stderr }, env, false, index === 0 ? env.stdin : undefined)
     } finally {
       if (index < pipes.length) pipes[index]!.close()
       if (index > 0) pipes[index - 1]!.abandon()
@@ -67,7 +69,7 @@ async function runPipeline(pipeline: Pipeline, env: ExecutionEnvironment): Promi
   return statuses[statuses.length - 1]!
 }
 
-async function runCommand(command: Command, inherited: Channels, env: ExecutionEnvironment, canMutate: boolean): Promise<number> {
+async function runCommand(command: Command, inherited: Channels, env: ExecutionEnvironment, canMutate: boolean, scriptStdin?: AsyncIterable<Uint8Array>): Promise<number> {
   const state = env.state
   const scope: ExpansionScope = { home: state.home, cwd: state.cwd, vars: state.vars }
   if (command.words.length === 0) {
@@ -117,8 +119,11 @@ async function runCommand(command: Command, inherited: Channels, env: ExecutionE
       }
       status = await builtin.run(ctx)
     } else {
+      // A root command whose stdin is the script's own gets the live stream too.
+      const stdinStream = channels.stdin === inherited.stdin ? scriptStdin : undefined
       status = await env.dispatch(name, argv.slice(1), {
         stdin: channels.stdin,
+        stdinStream,
         stdout: channels.stdout,
         stderr: channels.stderr,
         cwd: state.cwd,

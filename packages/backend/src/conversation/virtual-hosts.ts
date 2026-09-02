@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { VirtualHost, scopedFsBackend } from '@demicodes/host-virtual'
 import type { HostFileSystem } from '@demicodes/shell'
 import type { ConversationStores } from '../storage/conversation-store'
+import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from './scoped-transport'
 
 /**
  * One stable VirtualHost per conversation — `AgentHarness.host` must return
@@ -21,6 +22,8 @@ export function createVirtualHostFactory(options: {
         const virtual = new VirtualHost({
           backend: scopedFsBackend(join(options.dataDir, 'virtual', conversationId), options.localFs),
           store: options.conversationStores.hostStore(conversationId),
+          defaultCwd: HOSTLESS_HOME,
+          directories: HOSTLESS_NAMESPACE,
         })
         await virtual.ensureLayout()
         return virtual
