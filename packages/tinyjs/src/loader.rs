@@ -12,7 +12,7 @@ use rquickjs::loader::{Loader, Resolver};
 use rquickjs::module::Declared;
 use rquickjs::{Ctx, Error, Module, Result};
 
-use crate::embedded;
+use crate::payload::Payload;
 
 pub const SCHEME: &str = "tinyjs:";
 const EMBEDDED_PREFIX: &str = "/embedded/";
@@ -64,7 +64,22 @@ fn normalize(path: &str) -> String {
     format!("/{}", out.join("/"))
 }
 
-pub struct ShellLoader;
+pub struct ShellLoader {
+    payload: Payload,
+}
+
+impl ShellLoader {
+    pub fn new(payload: Payload) -> Self {
+        ShellLoader { payload }
+    }
+}
+
+/// Evaluates the entry module under its `/embedded/` name.
+pub fn evaluate_entry<'js>(ctx: &Ctx<'js>, name: &str, source: Vec<u8>) -> Result<rquickjs::Promise<'js>> {
+    let module = declare_with_meta(ctx, name, source)?;
+    let (_, promise) = module.eval()?;
+    Ok(promise)
+}
 
 impl Loader for ShellLoader {
     fn load<'js>(&mut self, ctx: &Ctx<'js>, name: &str) -> Result<Module<'js, Declared>> {
@@ -78,11 +93,12 @@ impl Loader for ShellLoader {
                 _ => Err(Error::new_loading(name)),
             };
         }
-        if let Some(source) = embedded::source(name) {
-            return declare_with_meta(ctx, name, source);
-        }
         if name.starts_with(EMBEDDED_PREFIX) {
-            return Err(Error::new_loading(name));
+            return match self.payload.source(name) {
+                Some(Ok(source)) => declare_with_meta(ctx, name, source),
+                Some(Err(e)) => Err(Error::new_loading_message(name, e.to_string())),
+                None => Err(Error::new_loading(name)),
+            };
         }
         let source = std::fs::read(name)
             .map_err(|e| Error::new_loading_message(name, e.to_string()))?;

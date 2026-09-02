@@ -32,8 +32,8 @@ impl ModuleDef for RuntimeModule {
 
     fn evaluate<'js>(ctx: &Ctx<'js>, exports: &Exports<'js>) -> Result<()> {
         let argv = Array::new(ctx.clone())?;
-        for (i, a) in std::env::args_os().enumerate() {
-            argv.set(i, a.to_string_lossy().into_owned())?;
+        for (i, a) in state(ctx).argv.iter().enumerate() {
+            argv.set(i, a.clone())?;
         }
         exports.export("argv", argv)?;
         let env = Object::new(ctx.clone())?;

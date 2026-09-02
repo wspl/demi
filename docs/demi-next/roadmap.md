@@ -49,8 +49,8 @@ by M8–M10 (`sessions-and-targets.md`).
 loop with its own liveness count, the module loader with `tinyjs:*`
 private to the embedded bundle, the five modules over `hyper`,
 `tokio-tungstenite`, `rustls`, `rmpv`; the JS conformance suite driven by
-`cargo test --features conformance`; static musl and macOS builds; the
-entry-mode skeletons. Measured in the Firecracker fixture: command-mode
+`cargo test`; static musl and macOS builds; the packed-binary entry
+(bundle appended to the prebuilt runtime, as Bun's `--compile`). Measured in the Firecracker fixture: command-mode
 hello 0.18 s first execution, tee at the pipe baseline.
 
 ## Planned

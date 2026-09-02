@@ -6,36 +6,45 @@
 //! completion, incoming signals and quiescence; primitives are futures the
 //! QuickJS scheduler polls in between.
 
-use rquickjs::{async_with, AsyncContext, AsyncRuntime, CatchResultExt, CaughtError, Ctx, Function, Module, Persistent, Value};
+use rquickjs::{async_with, AsyncContext, AsyncRuntime, CatchResultExt, CaughtError, Ctx, Function, Persistent, Value};
 use tokio::sync::mpsc;
 
 use crate::state::{state, State};
-use crate::{embedded, globals, loader};
+use crate::payload::Payload;
+use crate::{globals, loader};
 
-pub fn run() -> i32 {
+pub fn run(payload: Payload, argv: Vec<String>) -> i32 {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");
-    rt.block_on(run_async())
+    rt.block_on(run_async(payload, argv))
 }
 
-async fn run_async() -> i32 {
+async fn run_async(payload: Payload, argv: Vec<String>) -> i32 {
+    let entry_name = payload.entry_name();
+    let entry_source = match payload.source(&entry_name) {
+        Some(Ok(source)) => source,
+        Some(Err(e)) => {
+            eprintln!("tinyjs: cannot read entry '{entry_name}': {e}");
+            return 2;
+        }
+        None => unreachable!("the payload always has its entry"),
+    };
     let js = AsyncRuntime::new().expect("QuickJS runtime");
-    js.set_loader(loader::ShellResolver, loader::ShellLoader).await;
+    js.set_loader(loader::ShellResolver, loader::ShellLoader::new(payload)).await;
     js.set_host_promise_rejection_tracker(Some(Box::new(track_rejection)))
         .await;
     let context = AsyncContext::full(&js).await.expect("QuickJS context");
     let (signal_tx, mut signal_rx) = mpsc::unbounded_channel::<&'static str>();
 
     async_with!(context => |ctx| {
-        ctx.store_userdata(State::new(signal_tx)).expect("store state");
+        ctx.store_userdata(State::new(signal_tx, argv)).expect("store state");
         if let Err(e) = globals::install(&ctx).catch(&ctx) {
             report_uncaught(&e);
             return 1;
         }
-        let source = embedded::source(embedded::ENTRY).expect("embedded entry");
-        let entry = match Module::evaluate(ctx.clone(), embedded::ENTRY, source).catch(&ctx) {
+        let entry = match loader::evaluate_entry(&ctx, &entry_name, entry_source).catch(&ctx) {
             Ok(p) => p.into_future::<()>(),
             Err(e) => {
                 report_uncaught(&e);
