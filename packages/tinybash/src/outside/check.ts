@@ -1,11 +1,10 @@
+import type { RootPaths } from '@demicodes/shell'
 import type { Command, Script, Word } from '../grammar/ast'
 import { type ExpansionScope, type Piece, expandSingle, expandToFields, fieldText } from '../grammar/expand'
 import { globPrefixDir, hasGlobChars } from '../grammar/glob'
 import { BUILTINS } from '../builtins/table'
 import { insideNamespace, resolvePath } from './namespace'
 import { outside } from './reasons'
-
-export type RootPaths = (argv: readonly string[]) => readonly string[]
 
 export interface CheckContext {
   roots: ReadonlyMap<string, RootPaths>

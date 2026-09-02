@@ -254,17 +254,22 @@ module.
 dependency. It is the one place that knows how to run a command:
 
 ```
-loader = createLoader({ source, host, rpc?, cache? })
-loader.dispatch(root, argv, io) → exit code
+loader = await createLoader({ source, host, rpc? })
+loader.dispatch(root, argv, io) → exit code          io: DispatchIO (stdin stream, stdout, stderr, cwd, env, signal)
+loader.roots                                          the manifest as command trees
 ```
 
-- `source` yields the manifest and modules — from the runner's connection,
-  from a directory, from a URL.
+- `source` yields the manifest — held in memory (`inMemorySource`), read
+  from a directory, received over the runner's connection, fetched from a
+  URL. A directory source is also the cache on a target: modules are
+  files named by hash.
 - `host` is the Host the `runtime` modules run against.
-- `rpc`, when present, carries typed `rpc` invocations; an embedder without
-  one serves only `runtime` commands.
-- `cache` persists manifests and modules by hash (a directory on a target,
-  memory in the backend).
+- `rpc`, when present, carries typed `rpc` invocations (`RpcInvocation`:
+  root, path, parsed args, `--json`, the pipe's bytes, cwd, env, plus the
+  stdio and post-start stdin to relay); an embedder without one serves
+  only `runtime` commands, and an `rpc` leaf reports the missing
+  transport. `inProcessRpc(roots, { storage, host })` is the backend's
+  transport: the trees that declared the handlers are in the process.
 
 Dispatch selects the root's tree, resolves the path through it, prints help
 for a group, parses and validates the leaf's arguments against its schema,

@@ -129,7 +129,8 @@ export interface CommandExecutionContext {
   env: Record<string, string>
   cwd: string
   io: CommandIO
-  storage: CommandStorage
+  /** Session storage for `rpc` handlers run in this process; absent when every rpc leaf forwards elsewhere. */
+  storage?: CommandStorage
   host: Host
   signal?: AbortSignal
   /** Stdin written after the command started, for `rpc` handlers that steer. */
@@ -321,7 +322,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
       env: ctx.env,
       cwd: ctx.cwd,
       io,
-      storage: ctx.storage,
+      storage: ctx.storage ?? unavailableStorage(displayPath),
       host: ctx.host,
       signal,
       stdinStream,
@@ -453,6 +454,13 @@ export function validateCommandTree(command: Command, path: string): void {
   }
 }
 
+function unavailableStorage(displayPath: string): CommandStorage {
+  const refuse = () => {
+    throw new Error(`"${displayPath}" reads command storage, and this embedder runs rpc commands without one`)
+  }
+  return { readJson: refuse, writeJson: refuse, delete: refuse, list: refuse }
+}
+
 function setParsedValue(values: Record<string, unknown>, field: string, value: unknown): void {
   if (values[field] === undefined) {
     values[field] = value
@@ -493,7 +501,9 @@ function coerceValue(schema: z.ZodType, value: unknown): unknown {
 function formatField(field: string, schema: z.ZodType, positional: boolean, stdin: boolean): string {
   const prefix = positional ? `<${field}>` : `--${field}`
   const source = stdin ? ' (from stdin/heredoc)' : ''
-  const description = schema.description ? ` - ${schema.description}` : ''
+  // A reconstructed optional schema carries its description on the inner type.
+  const text = schema.description ?? unwrapSchema(schema).description
+  const description = text ? ` - ${text}` : ''
   return `${prefix}${source}${description}`
 }
 
