@@ -70,7 +70,7 @@ packages/agent/src/
     websocket-transport.ts
     stdio-transport.ts     #   ./stdio build entry (exports map updated)
   server/
-    server.ts              #   AgentServer facade + options types + runCommandLine
+    server.ts              #   AgentServer facade + options types
     binding.ts             #   AgentTransportBindingImpl — frame dispatch and
                            #   attach/detach lifecycle only
     open-session.ts        #   the session-assembly pipeline extracted from

@@ -321,7 +321,7 @@ running tinybash over a Host's `fs` (which satisfies `TinybashFs`) with
 the loader's `rootPaths` and `dispatch`; command records, views and
 artifacts are the ones every engine shares. The backend composes it for
 hostless conversations; tests compose it over `LocalHost`
-(`@demicodes/shell/testing`) wherever a shell is needed without a
+(`@demicodes/shell/node`) wherever a shell is needed without a
 machine.
 
 ## What tinybash is not
