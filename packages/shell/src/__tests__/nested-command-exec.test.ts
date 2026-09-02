@@ -23,6 +23,7 @@ const nestedSpec: Command = {
           },
           positionals: ['id'],
           stdinField: 'body',
+          kind: 'rpc',
           run: async ({ parsed, io }) => {
             await io.stdout(`created ${parsed.values.id} body=${parsed.values.body}`)
             return { exitCode: 0 }

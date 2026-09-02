@@ -2,7 +2,7 @@ import type { Builtin, BuiltinContext } from './io'
 import { type ParsedFlags, parseFlags, value } from './flags'
 import { SPECS } from './table'
 import { lazyInputs } from './inputs'
-import { collect, latin1, latin1Bytes } from '../exec/stream'
+import { collectBytes, decodeLatin1, encodeLatin1 } from '@demicodes/utils'
 import { outside } from '../outside/reasons'
 
 function parseCount(raw: string): number | null {
@@ -25,7 +25,7 @@ async function eachInput(ctx: BuiltinContext, program: string, operands: readonl
       await ctx.stdout(`${first ? '' : '\n'}==> ${input.name} <==\n`)
       first = false
     }
-    await emit(await collect(stream))
+    await emit(await collectBytes(stream))
   }
   return status
 }
@@ -80,8 +80,8 @@ export const head: Builtin = async (ctx) => {
       await ctx.stdout(bytes.subarray(0, count))
       return
     }
-    const parts = splitKeepNewlines(latin1(bytes)).slice(0, count)
-    if (parts.length > 0) await ctx.stdout(latin1Bytes(parts.join('')))
+    const parts = splitKeepNewlines(decodeLatin1(bytes)).slice(0, count)
+    if (parts.length > 0) await ctx.stdout(encodeLatin1(parts.join('')))
   })
 }
 
@@ -101,9 +101,9 @@ export const tail: Builtin = async (ctx) => {
       await ctx.stdout(bytes.subarray(Math.max(0, bytes.length - count)))
       return
     }
-    const parts = splitKeepNewlines(latin1(bytes))
+    const parts = splitKeepNewlines(decodeLatin1(bytes))
     const selected = fromStart ? parts.slice(Math.max(0, count - 1)) : count === 0 ? [] : parts.slice(Math.max(0, parts.length - count))
-    if (selected.length > 0) await ctx.stdout(latin1Bytes(selected.join('')))
+    if (selected.length > 0) await ctx.stdout(encodeLatin1(selected.join('')))
   })
 }
 

@@ -1,6 +1,6 @@
-import { concatBytes, decodeLatin1, decodeUtf8, encodeLatin1, encodeUtf8 } from '@demicodes/utils'
+import { bytesStream, concatBytes, decodeLatin1, encodeLatin1, encodeUtf8 } from '@demicodes/utils'
 import type { Command as ForkCommand, CommandContext as ForkCommandContext, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
-import { runRegisteredCommand, type Command, type CommandIO, type CommandStdin } from './command'
+import { isCommandGroup, runRegisteredCommand, type Command, type CommandIO } from './command'
 import { createOutputSinks, notifyForegroundWaiters, recordForegroundChunk } from './environment-output'
 import type { ForegroundProcess, ShellSession } from './environment-state'
 import type { AgentSessionCommandStorage } from './storage'
@@ -23,7 +23,6 @@ export function commandToForkCommand(
     name: command.name,
     consumesStdin: treeConsumesStdin(command),
     execute: async (args, ctx): Promise<ForkExecResult> => {
-      const stdin = decodeForkStdin(ctx.stdin)
       const argv = [command.name, ...args]
       const job = new VirtualForegroundJob(session, command.name, args, ctx.cwd, captureLimitBytes)
       job.install()
@@ -31,7 +30,7 @@ export function commandToForkCommand(
         const result = await Promise.race([
           runRegisteredCommand(command, {
             argv,
-            stdin,
+            stdin: bytesStream(decodeForkStdin(ctx.stdin)),
             env: mapToRecord(ctx.env),
             cwd: ctx.cwd,
             io: job.io,
@@ -49,14 +48,6 @@ export function commandToForkCommand(
           args,
           exitCode: result.exitCode,
         })
-        if (result.metadata !== undefined) {
-          session.accumulator.commandMetadata.push({
-            kind: 'registered-command',
-            name: command.name,
-            args,
-            metadata: result.metadata,
-          })
-        }
         return { stdout: job.stdoutLatin1(), stdoutKind: 'bytes', stderr: job.stderrText(), exitCode: result.exitCode }
       } catch (error) {
         if (job.foreground.captureOverflowed) return job.overflowResult()
@@ -257,8 +248,8 @@ function toBytes(data: string | Uint8Array): Uint8Array {
 async function* emptyByteStream(): AsyncIterable<Uint8Array> {}
 
 function treeConsumesStdin(command: Command): boolean {
-  if (command.stdinField) return true
-  return command.subcommands?.some(treeConsumesStdin) ?? false
+  if (isCommandGroup(command)) return command.subcommands.some(treeConsumesStdin)
+  return command.stdinField !== undefined
 }
 
 function mapToRecord(map: Map<string, string>): Record<string, string> {
@@ -267,22 +258,13 @@ function mapToRecord(map: Map<string, string>): Record<string, string> {
   return record
 }
 
-/** Pipes hand stdin over as a latin1-packed byte string; expose bytes and a UTF-8 text view. */
-function decodeForkStdin(stdin: ForkCommandContext['stdin']): CommandStdin {
-  if (!stdin) return { text: '', bytes: new Uint8Array(0) }
-  if (stdin instanceof Uint8Array) return { text: decodeUtf8(stdin), bytes: stdin }
+/** Pipes hand stdin over as a latin1-packed byte string, or as already-Unicode text. */
+function decodeForkStdin(stdin: ForkCommandContext['stdin']): Uint8Array {
+  if (!stdin) return new Uint8Array(0)
+  if (stdin instanceof Uint8Array) return stdin
   const latin1 = stdin as unknown as string
-  if (!latin1) return { text: '', bytes: new Uint8Array(0) }
-  const bytes = encodeLatin1(latin1)
-  let hasHighByte = false
-  let hasWideChar = false
   for (let i = 0; i < latin1.length; i += 1) {
-    const code = latin1.charCodeAt(i)
-    if (code > 0xff) hasWideChar = true
-    else if (code > 0x7f) hasHighByte = true
+    if (latin1.charCodeAt(i) > 0xff) return encodeUtf8(latin1)
   }
-  // Already-Unicode text (wide chars) passes through; latin1-packed UTF-8 decodes.
-  if (hasWideChar) return { text: latin1, bytes: encodeUtf8(latin1) }
-  if (!hasHighByte) return { text: latin1, bytes }
-  return { text: decodeUtf8(bytes), bytes }
+  return encodeLatin1(latin1)
 }

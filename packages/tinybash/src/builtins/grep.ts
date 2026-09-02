@@ -2,9 +2,9 @@ import type { Builtin, BuiltinContext } from './io'
 import { parseFlags, has, value } from './flags'
 import { SPECS } from './table'
 import { translatePattern } from './grep-pattern'
-import { lines, latin1Bytes } from '../exec/stream'
+import { lines } from '../exec/stream'
 import { strerror } from './errors'
-import { errorCode } from '@demicodes/utils'
+import { encodeLatin1, errorCode } from '@demicodes/utils'
 
 /** The files after the pattern; also the parse-time check of the flags and the pattern. */
 export function grepPaths(argv: readonly string[], line: number): string[] {
@@ -138,11 +138,11 @@ async function grepBytes(ctx: BuiltinContext, bytes: Uint8Array, display: string
   const count = selected.filter(Boolean).length
   const prefix = options.withNames ? `${display}` : ''
   if (options.count) {
-    await ctx.stdout(latin1Bytes(`${prefix ? `${prefix}:` : ''}${count}\n`))
+    await ctx.stdout(encodeLatin1(`${prefix ? `${prefix}:` : ''}${count}\n`))
     return count > 0
   }
   if (options.listFiles) {
-    if (count > 0) await ctx.stdout(latin1Bytes(`${display}\n`))
+    if (count > 0) await ctx.stdout(encodeLatin1(`${display}\n`))
     return count > 0
   }
   if (count === 0) return false
@@ -157,13 +157,13 @@ async function grepBytes(ctx: BuiltinContext, bytes: Uint8Array, display: string
     const from = Math.max(0, i - options.before, lastPrinted + 1)
     if (context && lastPrinted >= 0 && from > lastPrinted + 1) await ctx.stdout('--\n')
     for (let j = from; j < i; j++) {
-      await ctx.stdout(latin1Bytes(`${prefix ? `${prefix}-` : ''}${options.numbers ? `${j + 1}-` : ''}${all[j]}\n`))
+      await ctx.stdout(encodeLatin1(`${prefix ? `${prefix}-` : ''}${options.numbers ? `${j + 1}-` : ''}${all[j]}\n`))
     }
-    await ctx.stdout(latin1Bytes(`${prefix ? `${prefix}:` : ''}${options.numbers ? `${i + 1}:` : ''}${all[i]}\n`))
+    await ctx.stdout(encodeLatin1(`${prefix ? `${prefix}:` : ''}${options.numbers ? `${i + 1}:` : ''}${all[i]}\n`))
     lastPrinted = i
     for (let j = i + 1; j <= Math.min(all.length - 1, i + options.after); j++) {
       if (selected[j]) break
-      await ctx.stdout(latin1Bytes(`${prefix ? `${prefix}-` : ''}${options.numbers ? `${j + 1}-` : ''}${all[j]}\n`))
+      await ctx.stdout(encodeLatin1(`${prefix ? `${prefix}-` : ''}${options.numbers ? `${j + 1}-` : ''}${all[j]}\n`))
       lastPrinted = j
     }
   }

@@ -2,7 +2,6 @@ import { asRecord, asString, sliceHead } from '@demicodes/utils'
 import type {
   BashAuditEvent,
   BashEnvironment,
-  CommandMetadataRecord,
   ShellAbortInput,
   ShellCommandStatus,
   ShellExecInput,
@@ -261,7 +260,6 @@ export interface ShellToolView {
   /** True when chunks were capped; the artifact has the full output. */
   viewTruncated: boolean
   audit?: BashAuditEvent[]
-  commandMeta?: CommandMetadataRecord[]
 }
 
 function shellToolView(result: ShellCommandStatus): ShellToolView {
@@ -279,7 +277,6 @@ function shellToolView(result: ShellCommandStatus): ShellToolView {
   if (result.status === 'exited') {
     view.exitCode = result.exitCode
     if (result.audit.length > 0) view.audit = result.audit
-    if (result.commandMetadata && result.commandMetadata.length > 0) view.commandMeta = result.commandMetadata
   }
   return view
 }

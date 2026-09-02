@@ -2,7 +2,8 @@ import type { Builtin } from './io'
 import { parseFlags, has, value } from './flags'
 import { SPECS } from './table'
 import { openInputs } from './inputs'
-import { lines, latin1Bytes } from '../exec/stream'
+import { encodeLatin1 } from '@demicodes/utils'
+import { lines } from '../exec/stream'
 import { tryHelp } from './errors'
 
 function byteCompare(a: string, b: string): number {
@@ -67,7 +68,7 @@ export const sort: Builtin = async (ctx) => {
     if (unique && out.length > 0 && compareKeys(out[out.length - 1]!, item.text) === 0) continue
     out.push(item.text)
   }
-  if (out.length > 0) await ctx.stdout(latin1Bytes(`${out.join('\n')}\n`))
+  if (out.length > 0) await ctx.stdout(encodeLatin1(`${out.join('\n')}\n`))
   return 0
 }
 

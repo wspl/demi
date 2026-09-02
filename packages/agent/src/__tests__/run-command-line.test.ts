@@ -60,6 +60,7 @@ function greetCommand(): Command {
         summary: 'echoes its argument and stdin',
         positionals: ['name'],
         input: { name: z.string() },
+        kind: 'rpc',
         run: async (ctx) => {
           const name = String(ctx.parsed.values.name ?? '')
           await ctx.io.stdout(`hello ${name}\n`)
@@ -79,6 +80,7 @@ function failingCommand(): Command {
       {
         name: 'now',
         summary: 'fails',
+        kind: 'rpc',
         run: async (ctx) => {
           await ctx.io.stderr('boom\n')
           return { exitCode: 7 }
@@ -154,6 +156,7 @@ test('AgentServer.runCommandLine returns binary stdout as base64', async () => {
       {
         name: 'emit',
         summary: 'write raw bytes to stdout',
+        kind: 'rpc',
         run: async (ctx) => {
           await ctx.io.stdout(bytes)
           return { exitCode: 0 }

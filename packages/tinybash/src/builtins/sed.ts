@@ -2,7 +2,8 @@ import type { Builtin } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
 import { openInputs } from './inputs'
-import { lines, latin1Bytes } from '../exec/stream'
+import { encodeLatin1 } from '@demicodes/utils'
+import { lines } from '../exec/stream'
 import { outside } from '../outside/reasons'
 
 type Range = { from: number; to: number | 'last' }
@@ -52,7 +53,7 @@ export const sed: Builtin = async (ctx) => {
     const selected = n === from || (n > from && n <= to)
     if (!selected) continue
     const line = all[n - 1]!
-    await ctx.stdout(latin1Bytes(`${line.text}${line.newline ? '\n' : ''}`))
+    await ctx.stdout(encodeLatin1(`${line.text}${line.newline ? '\n' : ''}`))
   }
   return failed ? 2 : 0
 }

@@ -52,7 +52,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `just-bash`, `@demicodes/utils`.
-- Owns: Host contract (`defaultCwd`, `identity`, `fs`, `process` including `openCwd` / spawn-error kinds, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools.
+- Owns: Host contract (`defaultCwd`, `identity`, `fs`, `process` including `openCwd` / spawn-error kinds, `store`), command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, path marks, `runtimeModule`) with the `commandModulesAsText` build plugin under `@demicodes/shell/build`, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools.
 - Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`. It does not expose model-facing AgentTool ownership.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
@@ -99,7 +99,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: coding harness, coding prompt, coding commands (the `demi` platform command: every subcommand is a noun domain group — `file` and `todo` built in, product groups like the backend's `host` composed in), and file reference resolution.
+- Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in), and file reference resolution.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, or LocalHost.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate BashEnvironment/tool runtime.
@@ -205,6 +205,15 @@ Test code may depend upward for integration coverage. Production code must not.
 - Acceptance implies bash-equivalence: any script it runs means what it means in GNU bash + coreutils; anything else is `outside`, never approximated. The equivalence corpus against real bash is the guarantee's test.
 - Must not: know the backend, the manifest format or the loader (it receives a `RootPaths` function and a `dispatch`), spawn processes, perform IO outside the injected `fs`, or run on real hosts.
 
+### `@demicodes/command-loader`
+
+- Status: in progress (M8; `docs/demi-next/commands.md`).
+- Production deps: `@demicodes/shell`, `@demicodes/utils`.
+- Owns: the manifest types, the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, path-argument resolution, running a `runtime` module from its text, forwarding an `rpc` invocation) and `rootPaths`, the `RootPaths` derivation tinybash consumes.
+- Public boundary: `createLoader`, the `Manifest` types and `rootPaths` from root.
+- Pure JS with no runtime dependency: the same package runs in the backend, in tinyjs command mode and in tests. It never transpiles; the manifest build is the backend's.
+- Must not: know the backend, the runner, tinybash or any Host implementation (all injected), spawn processes, or hold a command definition of its own.
+
 ### `@demicodes/runner-protocol`
 
 - Status: implemented (M1; claim flow productized in M4).
@@ -301,7 +310,8 @@ provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
 host-virtual -> shell, utils
 tinybash -> shell, utils
-backend -> agent, coding-agent, core, host-local, host-virtual, provider, provider-anthropic-api, provider-google, provider-openai-api, shell, utils
+command-loader -> shell, utils
+backend -> agent, coding-agent, command-loader, core, host-local, host-virtual, provider, provider-anthropic-api, provider-google, provider-openai-api, shell, utils
 runner-protocol -> shell, utils
 runner -> host-local, runner-protocol, shell, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils

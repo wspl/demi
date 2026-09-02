@@ -4,6 +4,7 @@ import {
   CommandRegistry,
   type BashEnvironmentOptions,
   type Command,
+  type CommandGroup,
   type CommandIO,
   type Host,
   type HostStore,
@@ -139,7 +140,7 @@ export class ChildSupervisor<State = unknown> {
   }
 
   /** The `agent` node AgentServer grafts under the parent registry's `demi` root. */
-  rootCommandNode(): Command {
+  rootCommandNode(): CommandGroup {
     return subagentCommandNode<ChildJob<State>>({
       profileNames: () => this.configuredProfileNames(),
       spawn: (input) => this.spawn(input),
@@ -650,7 +651,7 @@ export class ChildSupervisor<State = unknown> {
     void parent.send([{ type: 'text', text: body }], job.metadata ? { metadata: job.metadata } : {}).catch(noop)
   }
 
-  private createChildAgentNode(childId: string, description: string): Command {
+  private createChildAgentNode(childId: string, description: string): CommandGroup {
     return childAgentNode((message) => this.deliverToParent(childId, description, message))
   }
 

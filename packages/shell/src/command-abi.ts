@@ -1,0 +1,92 @@
+import type { z } from 'zod'
+import type { HostFileSystem } from './host'
+
+/**
+ * The command ABI (`docs/demi-next/commands.md` § The command ABI): what a
+ * `runtime` module sees, and how a tree carries one.
+ */
+
+/** A writer for stdout or stderr: text is UTF-8, bytes pass through. */
+export type CommandWriter = (data: string | Uint8Array) => Promise<void> | void
+
+/** The whole world a `runtime` module sees. */
+export interface CommandContext<Args = Record<string, unknown>> {
+  /** The parsed arguments, already validated against the leaf's input schema. */
+  args: Args
+  /** The filesystem of the Host the command runs against. */
+  fs: HostFileSystem
+  /** The invoking shell's working directory. */
+  cwd: string
+  /** The invoking shell's exported environment. */
+  env: Record<string, string>
+  /** The command's stdin as a byte stream. */
+  stdin: AsyncIterable<Uint8Array>
+  stdout: CommandWriter
+  stderr: CommandWriter
+  signal: AbortSignal
+}
+
+export interface CommandResult {
+  exitCode: number
+}
+
+/** The one export of a `runtime` module. */
+export type CommandModule<Args = Record<string, unknown>> = (ctx: CommandContext<Args>) => Promise<CommandResult>
+
+/**
+ * The stdio and environment of one command invocation, as a shell hands it
+ * to a dispatcher (the loader): tinybash and the just-bash bridge both
+ * speak this.
+ */
+export interface DispatchIO {
+  stdin: AsyncIterable<Uint8Array>
+  stdout: CommandWriter
+  stderr: CommandWriter
+  cwd: string
+  env: Record<string, string>
+  signal?: AbortSignal
+}
+
+declare const runtimeModuleBrand: unique symbol
+
+/** The text of a `runtime` module, as a tree carries it. */
+export type RuntimeModule = string & { readonly [runtimeModuleBrand]: true }
+
+/**
+ * The one conversion from a text import (a `*.command.ts` file imported
+ * with the `text` attribute) to a `RuntimeModule`. TypeScript types that
+ * import as the module rather than as a string, and a build that lost the
+ * text (the `commandModulesAsText` plugin missing) delivers a function
+ * here; both are caught at this single point.
+ */
+export function runtimeModule(source: unknown): RuntimeModule {
+  if (typeof source !== 'string') {
+    throw new TypeError(`runtimeModule: expected the module text, received ${typeof source}; import the module with { type: 'text' } and build with commandModulesAsText`)
+  }
+  return source as RuntimeModule
+}
+
+const PATH_MARK = 'path'
+
+/** Marks an argument as naming a file or directory (`commands.md` § The command ABI). */
+export function pathArg<T extends z.ZodType>(schema: T): T {
+  return schema.meta({ ...schema.meta(), [PATH_MARK]: true }) as T
+}
+
+export function isPathArg(schema: z.ZodType): boolean {
+  return schema.meta()?.[PATH_MARK] === true
+}
+
+/** Loads a `runtime` module from its JavaScript text. */
+export async function loadCommandModule(javascript: string): Promise<CommandModule> {
+  const url = URL.createObjectURL(new Blob([javascript], { type: 'text/javascript' }))
+  try {
+    const loaded = (await import(url)) as { default?: unknown }
+    if (typeof loaded.default !== 'function') {
+      throw new TypeError('a runtime module must default-export its command function')
+    }
+    return loaded.default as CommandModule
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}

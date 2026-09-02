@@ -2,7 +2,8 @@ import type { Builtin } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
 import { lazyInputs } from './inputs'
-import { lines, latin1Bytes } from '../exec/stream'
+import { encodeLatin1 } from '@demicodes/utils'
+import { lines } from '../exec/stream'
 
 export const cat: Builtin = async (ctx) => {
   const flags = parseFlags('cat', ctx.argv, SPECS.cat, ctx.line)
@@ -19,7 +20,7 @@ export const cat: Builtin = async (ctx) => {
       continue
     }
     for await (const line of lines(stream)) {
-      await ctx.stdout(latin1Bytes(`${String(number++).padStart(6)}\t${line.text}${line.newline ? '\n' : ''}`))
+      await ctx.stdout(encodeLatin1(`${String(number++).padStart(6)}\t${line.text}${line.newline ? '\n' : ''}`))
     }
   }
   return status

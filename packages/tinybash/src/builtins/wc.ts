@@ -1,7 +1,7 @@
 import type { Builtin } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
-import { collect } from '../exec/stream'
+import { collectBytes } from '@demicodes/utils'
 import { strerror } from './errors'
 
 interface Counts {
@@ -47,7 +47,7 @@ export const wc: Builtin = async (ctx) => {
   for (const name of operands) {
     if (name === '-') {
       minimumWidth = 7
-      results.push({ name: null, counts: count(await collect(ctx.stdin)) })
+      results.push({ name: null, counts: count(await collectBytes(ctx.stdin)) })
       continue
     }
     try {

@@ -2,13 +2,12 @@ import type { Interpreter, InterpreterState } from '@demicodes/just-bash/interpr
 import type { CommandRegistry as ForkCommandRegistry, ExecResult as ForkExecResult } from '@demicodes/just-bash/types'
 import type { HostCwd, HostSpawnExit, HostSpawnHandle } from './host'
 import type { HostBackedFileSystem } from './host-fs'
-import type { BashAuditEvent, CommandMetadataRecord, ShellOutputRecordChunk } from './environment'
+import type { BashAuditEvent, ShellOutputRecordChunk } from './environment'
 
 export interface ExecAccumulator {
   stdout: string
   stderr: string
   audit: BashAuditEvent[]
-  commandMetadata: CommandMetadataRecord[]
 }
 
 export interface ShellSession {

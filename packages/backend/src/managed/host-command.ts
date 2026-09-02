@@ -4,6 +4,7 @@ import {
   CommandRegistry,
   shellQuote,
   type Command,
+  type CommandGroup,
   type Host,
   type HostStore,
 } from '@demicodes/shell'
@@ -24,13 +25,22 @@ export interface HostCommandDeps {
 
 /**
  * The backend-contributed `demi host` subcommand group (demi-next.md § The
- * `demi host` command). M6 surface: status, `prev shell`, `prev release`;
+ * `demi host` command). Surface: `current`, `prev shell`, `prev release`;
  * `switch` arrives with managed-host provisioning.
  */
-export function createHostCommandGroup(deps: HostCommandDeps, conversationId: string): Command {
+export function createHostCommandGroup(deps: HostCommandDeps, conversationId: string): CommandGroup {
   return {
     name: 'host',
     summary: 'Execution-target operations: show the current host, reach the previous host during migration.',
+    subcommands: [currentCommand(deps, conversationId), prevGroup(deps, conversationId)],
+  }
+}
+
+function currentCommand(deps: HostCommandDeps, conversationId: string): Command {
+  return {
+    name: 'current',
+    summary: 'The current execution target, and the previous one while a migration is in progress.',
+    kind: 'rpc',
     run: async ({ io }) => {
       const conversation = await deps.control.getConversation(conversationId)
       if (!conversation) {
@@ -52,13 +62,14 @@ export function createHostCommandGroup(deps: HostCommandDeps, conversationId: st
       await io.stdout(`${lines.join('\n')}\n`)
       return { exitCode: 0 }
     },
-    subcommands: [
-      {
-        name: 'prev',
-        summary: 'The previous execution target, reachable during migration.',
-        subcommands: [prevShellCommand(deps, conversationId), prevReleaseCommand(deps, conversationId)],
-      },
-    ],
+  }
+}
+
+function prevGroup(deps: HostCommandDeps, conversationId: string): CommandGroup {
+  return {
+    name: 'prev',
+    summary: 'The previous execution target, reachable during migration.',
+    subcommands: [prevShellCommand(deps, conversationId), prevReleaseCommand(deps, conversationId)],
   }
 }
 
@@ -70,6 +81,7 @@ function prevShellCommand(deps: HostCommandDeps, conversationId: string): Comman
     failureOutput: 'writes the reason to stderr and exits non-zero (127 when the previous host cannot run the command)',
     input: { argv: z.array(z.string()).optional() },
     restField: 'argv',
+    kind: 'rpc',
     run: async (ctx) => {
       const argv = ctx.parsed.values.argv as string[] | undefined
       if (!argv || argv.length === 0) {
@@ -98,6 +110,7 @@ function prevReleaseCommand(deps: HostCommandDeps, conversationId: string): Comm
   return {
     name: 'release',
     summary: 'Give the previous host back once migration is done; `prev shell` stops working afterwards.',
+    kind: 'rpc',
     run: async ({ io }) => {
       const conversation = await deps.control.getConversation(conversationId)
       if (!conversation?.prevTarget) {

@@ -32,6 +32,7 @@ test('a long-running registered command streams live stdout and honors the abort
     {
       name: 'pulse',
       summary: 'Writes a line, then waits for the abort signal.',
+      kind: 'rpc',
       run: async ({ io, signal }) => {
         await io.stdout('started\n')
         await new Promise<void>((resolve) => {
@@ -63,6 +64,7 @@ test('shell_write chunks arrive on the registered command stdin stream, one chun
     {
       name: 'listen',
       summary: 'Echoes each post-start stdin chunk until "quit".',
+      kind: 'rpc',
       run: async ({ io, stdinStream }) => {
         for await (const chunk of stdinStream) {
           const text = decodeUtf8(chunk)
@@ -97,6 +99,7 @@ test('piped stdin stays the snapshot; registered command pipes remain byte-clean
     {
       name: 'shout',
       summary: 'Uppercases piped stdin.',
+      kind: 'rpc',
       run: async ({ stdin, io }) => {
         await io.stdout(stdin.text.toUpperCase())
         return { exitCode: 0 }

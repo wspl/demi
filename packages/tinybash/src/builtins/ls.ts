@@ -3,7 +3,7 @@ import type { Builtin, BuiltinContext } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
 import { quoteC, strerror } from './errors'
-import { latin1Bytes } from '../exec/stream'
+import { encodeLatin1 } from '@demicodes/utils'
 
 interface Entry {
   name: string
@@ -90,7 +90,7 @@ export const ls: Builtin = async (ctx) => {
   const queue = [...dirs]
   while (queue.length > 0) {
     const dir = queue.shift()!
-    if (headers) await ctx.stdout(latin1Bytes(`${printedSomething ? '\n' : ''}${dir.path}:\n`))
+    if (headers) await ctx.stdout(encodeLatin1(`${printedSomething ? '\n' : ''}${dir.path}:\n`))
     printedSomething = true
     let names: string[]
     try {
@@ -126,7 +126,7 @@ export const ls: Builtin = async (ctx) => {
 
 async function printEntries(ctx: BuiltinContext, entries: Entry[], options: { long: boolean; now: Date; total: boolean }): Promise<void> {
   if (!options.long) {
-    for (const entry of entries) await ctx.stdout(latin1Bytes(`${entry.name}\n`))
+    for (const entry of entries) await ctx.stdout(encodeLatin1(`${entry.name}\n`))
     return
   }
   if (options.total) {
@@ -144,6 +144,6 @@ async function printEntries(ctx: BuiltinContext, entries: Entry[], options: { lo
   const width = (key: 'nlink' | 'user' | 'group' | 'size') => Math.max(...rows.map((row) => row[key].length))
   const w = { nlink: width('nlink'), user: width('user'), group: width('group'), size: width('size') }
   for (const row of rows) {
-    await ctx.stdout(latin1Bytes(`${row.mode} ${row.nlink.padStart(w.nlink)} ${row.user.padEnd(w.user)} ${row.group.padEnd(w.group)} ${row.size.padStart(w.size)} ${row.time} ${row.name}\n`))
+    await ctx.stdout(encodeLatin1(`${row.mode} ${row.nlink.padStart(w.nlink)} ${row.user.padEnd(w.user)} ${row.group.padEnd(w.group)} ${row.size.padStart(w.size)} ${row.time} ${row.name}\n`))
   }
 }

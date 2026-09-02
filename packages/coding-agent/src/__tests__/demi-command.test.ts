@@ -13,9 +13,10 @@ import {
   type HostProcess,
   type HostStore,
   createLogicalHostCwd,
+  runRegisteredCommand,
 } from '@demicodes/shell'
 import { LocalHost } from '@demicodes/host-local'
-import { bytesToBase64, encodeUtf8 } from '@demicodes/utils'
+import { bytesStream, bytesToBase64, encodeUtf8 } from '@demicodes/utils'
 import { createCodingCommandRegistry, createDemiCommand } from '../index'
 
 test('demi file read returns a text file as text', async () => {
@@ -74,14 +75,6 @@ test('demi file create writes a new file from heredoc content', async () => {
     script: "demi file create src/foo.txt <<'EOF'\nhello\nEOF",
   })
   expect(created.stdout.delta).toBe('Created src/foo.txt\n')
-  expect(fileDiffs(created)[0]).toMatchObject({
-    type: 'file_diff',
-    action: 'create',
-    path: 'src/foo.txt',
-    oldPath: null,
-    newPath: 'src/foo.txt',
-  })
-  expect(String(fileDiffs(created)[0].unifiedDiff)).toContain('+++ b/src/foo.txt')
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat src/foo.txt' })
   expect(read.stdout.delta).toBe('hello\n')
@@ -168,10 +161,6 @@ test('demi file edit replaces exact text and fails on ambiguous matches', async 
     script: 'demi file edit file.txt --old two --new changed --occurrence 2',
   })
   expect(edited.stdout.delta).toBe('Edited file.txt\n')
-  expect(fileDiffs(edited)[0]).toMatchObject({
-    action: 'edit',
-    path: 'file.txt',
-  })
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat file.txt' })
   expect(read.stdout.delta).toBe('one\ntwo\nchanged\n')
@@ -239,10 +228,6 @@ test('demi file patch applies a unified diff', async () => {
     script: "demi file patch <<'PATCH'\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
-  expect(fileDiffs(patched)[0]).toMatchObject({
-    action: 'patch',
-    path: 'patch.txt',
-  })
 
   const read = await env.exec({ shellId: created.shellId, script: 'cat patch.txt' })
   expect(read.stdout.delta).toBe('one\nthree\n')
@@ -279,13 +264,6 @@ test('demi file patch applies multiple files and creates new files', async () =>
       "demi file patch <<'PATCH'\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 2 file(s)\n')
-  expect(fileDiffs(patched)).toHaveLength(2)
-  expect(fileDiffs(patched)[1]).toMatchObject({
-    action: 'patch',
-    path: 'nested/new.txt',
-    oldPath: null,
-    newPath: 'nested/new.txt',
-  })
 
   const existing = await env.exec({ shellId: created.shellId, script: 'cat existing.txt' })
   expect(existing.stdout.delta).toBe('changed\n')
@@ -305,12 +283,6 @@ test('demi file patch deletes files with a /dev/null target', async () => {
     script: "demi file patch <<'PATCH'\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
   })
   expect(patched.stdout.delta).toBe('Patched 1 file(s)\n')
-  expect(fileDiffs(patched)[0]).toMatchObject({
-    action: 'delete',
-    path: 'doomed.txt',
-    oldPath: 'doomed.txt',
-    newPath: null,
-  })
 
   const missing = await env.exec({ shellId: created.shellId, script: 'test ! -e doomed.txt' })
   expect(missing.status).toBe('exited')
@@ -344,31 +316,17 @@ test('demi file patch rolls back files when a later write fails', async () => {
     'first.txt': 'first\n',
     'second.txt': 'second\n',
   })
-  const command = createDemiCommand()
-  const fileGroup = command.subcommands?.find((subcommand) => subcommand.name === 'file')
-  const patch = fileGroup?.subcommands?.find((subcommand) => subcommand.name === 'patch')
-  if (!patch?.run) throw new Error('missing demi file patch command')
   const output = commandOutput()
-
-  const result = await patch.run({
-    argv: ['demi', 'patch'],
-    parsed: {
-      path: ['demi', 'patch'],
-      help: false,
-      json: false,
-      values: {
-        patch:
-          '--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-second\n+changed\n',
-      },
-    },
-    stdin: { text: '', bytes: new Uint8Array(0) },
+  const patch =
+    '--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-second\n+changed\n'
+  const result = await runRegisteredCommand(createDemiCommand(), {
+    argv: ['demi', 'file', 'patch'],
+    stdin: bytesStream(encodeUtf8(patch)),
     env: {},
     cwd: '/workspace',
     io: output.io,
     storage: noopStorage,
     host,
-    signal: new AbortController().signal,
-    stdinStream: (async function* (): AsyncIterable<Uint8Array> {})(),
   })
 
   expect(result.exitCode).toBe(1)
@@ -387,22 +345,6 @@ async function createDemiEnvironment(): Promise<{ env: BashEnvironment; host: Lo
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
   return { env, host }
-}
-
-function fileDiffs(result: { status: string; commandMetadata?: Array<{ metadata: unknown }> }): Record<string, unknown>[] {
-  if (result.status !== 'exited') throw new Error('expected exited result')
-  const metadata = result.commandMetadata?.[0]?.metadata
-  if (!isRecord(metadata) || metadata.type !== 'file_diffs' || !Array.isArray(metadata.diffs)) {
-    throw new Error('missing demi file diff metadata')
-  }
-  return metadata.diffs.map((diff) => {
-    if (!isRecord(diff)) throw new Error('invalid demi diff metadata')
-    return diff
-  })
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 const noopStorage: CommandStorage = {

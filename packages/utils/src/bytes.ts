@@ -130,3 +130,28 @@ function base64Value(char: string | undefined): number {
   if (value === -1) throw new Error('Invalid base64 payload')
   return value
 }
+
+/** Text as UTF-8 bytes; bytes unchanged. */
+export function toBytes(data: string | Uint8Array): Uint8Array {
+  return typeof data === 'string' ? encoder.encode(data) : data
+}
+
+/** A byte stream that ends at once. */
+export async function* emptyByteStream(): AsyncIterable<Uint8Array> {}
+
+/** A byte stream of one chunk (none when the chunk is empty). */
+export async function* bytesStream(bytes: Uint8Array): AsyncIterable<Uint8Array> {
+  if (bytes.byteLength > 0) yield bytes
+}
+
+/** The streams one after another. */
+export async function* concatByteStreams(...streams: AsyncIterable<Uint8Array>[]): AsyncIterable<Uint8Array> {
+  for (const stream of streams) yield* stream
+}
+
+/** Drains a byte stream into one `Uint8Array`. */
+export async function collectBytes(stream: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = []
+  for await (const chunk of stream) chunks.push(chunk)
+  return concatBytes(chunks)
+}

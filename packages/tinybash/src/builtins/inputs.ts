@@ -1,6 +1,6 @@
 import type { BuiltinContext } from './io'
 import { strerror } from './errors'
-import { bytesStream } from '../exec/stream'
+import { bytesStream } from '@demicodes/utils'
 
 export interface Input {
   /** The operand as given; `standard input` for `-` or no operands. */

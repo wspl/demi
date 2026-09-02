@@ -140,13 +140,6 @@ export type BashAuditEvent =
   | { kind: 'portable-command'; name: string; args: string[]; cwd: string; exitCode: number }
   | { kind: 'system-command'; name: string; args: string[]; cwd: string; exitCode: number | null }
 
-export interface CommandMetadataRecord {
-  kind: 'registered-command'
-  name: string
-  args: string[]
-  metadata: unknown
-}
-
 /** Final stdout stream that is not valid UTF-8: raw bytes for the boundary above. */
 export interface BinaryStdout {
   data: Uint8Array
@@ -172,7 +165,6 @@ export type ShellCommandStatus =
       runningMs: number
       idleMs: number
       audit: BashAuditEvent[]
-      commandMetadata?: CommandMetadataRecord[]
       /** Present when the final stream was binary (bytes that are not valid UTF-8). */
       binaryStdout?: BinaryStdout
     }
@@ -217,7 +209,6 @@ interface ShellCommandRecord {
   outputOffset: number
   exitCode?: number
   audit: BashAuditEvent[]
-  commandMetadata: CommandMetadataRecord[]
   binaryStdout?: BinaryStdout
   /** Full binary stream bytes awaiting their one-time write to stdout.bin. */
   pendingBinaryArtifact?: Uint8Array
@@ -518,7 +509,7 @@ export class BashEnvironment {
       interpreter: undefined as unknown as Interpreter,
       forkCommands,
       cwdHandle,
-      accumulator: { stdout: '', stderr: '', audit: [], commandMetadata: [] },
+      accumulator: { stdout: '', stderr: '', audit: [] },
       foregroundWaiters: new Set(),
       backgroundJobs: new Map(),
       nextBackgroundJobId: 1,
@@ -586,7 +577,7 @@ export class BashEnvironment {
       }
       throw error
     }
-    session.accumulator = { stdout: '', stderr: '', audit: [], commandMetadata: [] }
+    session.accumulator = { stdout: '', stderr: '', audit: [] }
     session.abortController = new AbortController()
     session.activeCommandId = record.id
 
@@ -634,7 +625,6 @@ export class BashEnvironment {
       outputChunks: [],
       outputOffset: 0,
       audit: [],
-      commandMetadata: [],
       outputLimitBytes: this.defaultOutputLimitBytes,
     }
     this.commandsById.set(id, record)
@@ -1111,7 +1101,6 @@ export class BashEnvironment {
     record.status = 'exited'
     record.exitCode = exitCode
     record.audit = [...session.accumulator.audit]
-    record.commandMetadata = [...session.accumulator.commandMetadata]
     session.pendingExec = undefined
     if (session.activeCommandId === record.id) session.activeCommandId = undefined
     return this.commandStatus(record, input)
@@ -1192,7 +1181,6 @@ export class BashEnvironment {
         exitCode: record.exitCode ?? 0,
         audit: record.audit,
       }
-      if (record.commandMetadata.length > 0) result.commandMetadata = record.commandMetadata
       if (record.binaryStdout) result.binaryStdout = record.binaryStdout
       return result
     }

@@ -2,9 +2,9 @@ import type { HostFileSystem } from '@demicodes/shell'
 import type { Redirect } from '../grammar/ast'
 import { type ExpansionScope, expandHeredoc, expandSingle } from '../grammar/expand'
 import { resolvePath } from '../outside/namespace'
-import { type Writer, bytesStream, concatChunks, emptyStream, toBytes } from './stream'
+import { type Writer } from './stream'
 import { strerror } from '../builtins/errors'
-import { encodeUtf8 } from '@demicodes/utils'
+import { bytesStream, concatBytes, emptyByteStream, encodeUtf8, toBytes } from '@demicodes/utils'
 
 export interface Channels {
   stdin: AsyncIterable<Uint8Array>
@@ -22,7 +22,7 @@ class FileSink {
   }
   async flush(): Promise<void> {
     if (this.chunks.length === 0) return
-    await this.fs.appendFile(this.path, concatChunks(this.chunks))
+    await this.fs.appendFile(this.path, concatBytes(this.chunks))
     this.chunks.length = 0
   }
 }
@@ -68,7 +68,7 @@ export async function applyRedirects(redirects: readonly Redirect[], inherited: 
         const target = expandSingle(redirect.path, scope)
         const resolved = resolvePath(scope.cwd, target)
         if (resolved === '/dev/null') {
-          channels.stdin = emptyStream()
+          channels.stdin = emptyByteStream()
           break
         }
         try {

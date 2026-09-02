@@ -2,7 +2,8 @@ import type { Builtin } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
 import { openInputs } from './inputs'
-import { lines, latin1Bytes } from '../exec/stream'
+import { encodeLatin1 } from '@demicodes/utils'
+import { lines } from '../exec/stream'
 
 export const uniq: Builtin = async (ctx) => {
   const flags = parseFlags('uniq', ctx.argv, SPECS.uniq, ctx.line)
@@ -18,7 +19,7 @@ export const uniq: Builtin = async (ctx) => {
   const emit = async () => {
     if (previous === null) return
     const prefix = counting ? `${String(count).padStart(7)} ` : ''
-    await ctx.stdout(latin1Bytes(`${prefix}${previous}\n`))
+    await ctx.stdout(encodeLatin1(`${prefix}${previous}\n`))
   }
   for (const input of inputs) {
     for await (const line of lines(input.stream)) {
@@ -33,7 +34,7 @@ export const uniq: Builtin = async (ctx) => {
   }
   if (previous !== null) {
     const prefix = counting ? `${String(count).padStart(7)} ` : ''
-    await ctx.stdout(latin1Bytes(`${prefix}${previous}\n`))
+    await ctx.stdout(encodeLatin1(`${prefix}${previous}\n`))
   }
   return 0
 }
