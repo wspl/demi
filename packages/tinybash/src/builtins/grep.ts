@@ -1,4 +1,4 @@
-import type { Builtin, BuiltinContext } from './io'
+import { checkCancelled, type Builtin, type BuiltinContext } from './io'
 import { parseFlags, has, value } from './flags'
 import { SPECS } from './table'
 import { translatePattern } from './grep-pattern'
@@ -72,6 +72,7 @@ export const grep: Builtin = async (ctx) => {
 }
 
 async function grepPath(ctx: BuiltinContext, path: string, display: string, options: Options, recursive: boolean, topLevel: boolean): Promise<boolean | 'error'> {
+  checkCancelled(ctx)
   if (path === '-') {
     const stdin = guardedStdin(ctx, (detail) => ctx.stderr(`grep: ${display}: ${detail}\n`))
     const matched = await grepBytes(ctx, await collectBytes(stdin.stream), display, options)

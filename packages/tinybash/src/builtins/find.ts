@@ -1,4 +1,4 @@
-import type { Builtin, BuiltinContext } from './io'
+import { checkCancelled, type Builtin, type BuiltinContext } from './io'
 import { outside } from '../outside/reasons'
 import { quoteC, strerror } from './errors'
 import { compareUtf8Bytes, encodeLatin1, utf8AsLatin1 } from '@demicodes/utils'
@@ -101,6 +101,7 @@ export const find: Builtin = async (ctx) => {
 }
 
 async function walk(ctx: BuiltinContext, path: string, depth: number, expression: Expression, matcher: RegExp | null): Promise<boolean> {
+  checkCancelled(ctx)
   let stat
   try {
     stat = await ctx.fs.lstat(path, { cwd: ctx.cwd })
