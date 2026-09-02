@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (M1/M4 delivered on the Bun build; the shell build with jobs, tee and the relay lands in M9) |
+| Status | Design (M1/M4 delivered on the Bun build; the tinyjs build with jobs, tee and the relay lands in M9) |
 | Scope | The program on every execution target: identity and connection, Host RPC, the job table, the tee, the local relay, the wire rules |
 
 ## Role
@@ -17,7 +17,7 @@ keeps their full output on this machine, and the relay through which root
 commands (`commands.md`) reach the backend. Even the Claude Code CLI reaches the runner
 as an ordinary remote `spawn`; the runner has no claude-specific code.
 
-It is JS running on the shell (`shell.md`), so its protocol schemas are the
+It is JS running on tinyjs (`tinyjs.md`), so its protocol schemas are the
 same zod objects the backend uses. Design principle: no speculative
 constraints — no workspace restrictions, no local policy layer, no
 configuration beyond what the connection needs.
@@ -39,7 +39,7 @@ configuration beyond what the connection needs.
    machine with the conversation's cwd and env, the conversation and shell
    ids in the environment, the bounded output view streamed to the backend,
    the full output teed to an output file here.
-4. **Relaying root commands.** A Unix domain socket for command-mode shell
+4. **Relaying root commands.** A Unix domain socket for command-mode tinyjs
    processes: manifest cache misses, and `rpc` command invocations
    forwarded to the backend attributed to the invoking conversation. The
    runner also maintains the root-command symlinks in `PATH` from the
@@ -53,7 +53,7 @@ processes, `rpc` commands in the backend); provider logic.
 
 ## Process shape and local state
 
-The shell binary in runner mode: `demi-runner run [--backend <url>]`. First
+The tinyjs binary in runner mode: `demi-runner run [--backend <url>]`. First
 start prints the claim token and waits; later starts authenticate with the
 persisted device token. On a managed host the runner is PID 1 and performs
 init duties (`managed-hosts.md`).
@@ -66,7 +66,7 @@ init duties (`managed-hosts.md`).
   commands/<hash>/       manifest cache: tree + modules, by manifest hash
 ```
 
-Dependency footprint: `@demicodes/host-shell`, `@demicodes/runner-protocol`,
+Dependency footprint: `@demicodes/host-tinyjs`, `@demicodes/runner-protocol`,
 `@demicodes/command-loader` (cache and relay only), `@demicodes/utils`. No
 agent, coding-agent or provider packages.
 
@@ -153,7 +153,7 @@ conversation's cwd and env; a background job (`… &`) is the same with its
 handle kept after the tool call returns. The runner owns process groups,
 reaps children, and reports the count of running jobs in every `pong`.
 
-The **tee** is a shell primitive (`shell.md`): each job's stdout and
+The **tee** is a tinyjs primitive (`tinyjs.md`): each job's stdout and
 stderr are written in full to output files under the target's
 `commandOutputDir`, and only the first `viewLimit` bytes of each stream
 travel to the backend. The backend's tool result is built from the view;
@@ -170,7 +170,7 @@ names the agent's deliverables, and Demi keeps it free for that.
 
 ## The local relay
 
-`~/.demi/runner.sock` accepts connections only from command-mode shell
+`~/.demi/runner.sock` accepts connections only from command-mode tinyjs
 processes. Two request types: `manifest?` (answered from the cache or, on a
 miss, fetched over the socket) and `rpc { conversationId, shellId, root,
 command, args }` with stdin streamed in and stdout/stderr streamed out. The
