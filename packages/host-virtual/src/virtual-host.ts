@@ -7,7 +7,7 @@ import type {
   HostStore,
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
-import { dirnamePath, isAbsolutePath, normalizePath } from '@demicodes/utils'
+import { dirnamePath, errnoError, isAbsolutePath, normalizePath } from '@demicodes/utils'
 
 /**
  * The zero-setup execution target: a `Host` whose filesystem is a
@@ -134,12 +134,12 @@ export class VirtualHost implements Host {
     }
     const fileSize = append ? existingSize + incomingBytes : incomingBytes
     if (fileSize > this.maxFileBytes) {
-      throw fsError('EFBIG', `${path}: file exceeds the virtual workspace per-file limit (${this.maxFileBytes} bytes)`)
+      throw errnoError('EFBIG', `${path}: file exceeds the virtual workspace per-file limit (${this.maxFileBytes} bytes)`)
     }
     const total = await this.usage()
     const growth = append ? incomingBytes : Math.max(0, incomingBytes - existingSize)
     if (total + growth > this.maxTotalBytes) {
-      throw fsError('EDQUOT', `${path}: virtual workspace is over its total size limit (${this.maxTotalBytes} bytes)`)
+      throw errnoError('EDQUOT', `${path}: virtual workspace is over its total size limit (${this.maxTotalBytes} bytes)`)
     }
   }
 
@@ -179,7 +179,7 @@ export class VirtualHost implements Host {
       symlink: async (target, path, options) => {
         const linkPath = resolve(path, options)
         if (!symlinkTargetStaysInside(linkPath, target)) {
-          throw fsError('EPERM', `${path}: symlink target escapes the virtual workspace`)
+          throw errnoError('EPERM', `${path}: symlink target escapes the virtual workspace`)
         }
         await backend.symlink(target, linkPath)
       },
@@ -228,7 +228,3 @@ function refusedSpawn(): HostSpawnHandle {
 }
 
 async function* emptyStream(): AsyncIterable<never> {}
-
-function fsError(code: string, message: string): Error {
-  return Object.assign(new Error(message), { code })
-}
