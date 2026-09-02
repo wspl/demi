@@ -93,12 +93,13 @@ accepts only `demi` commands, and runs them in-process.
 
 
  tool call:  npm test
- demi-only parser ──▶ first word is not `demi` ──▶ refused: "this conversation has no machine;
-                                                   the first non-demi command starts one"
-                                              ──▶ backend auto-provisions a managed host,
-                                                  writes the hostless files into its home,
-                                                  injects the context block, re-runs the
-                                                  command on the real-host path above
+ demi-only parser ──▶ first word is not `demi`
+                        ├─ managed hosts configured ──▶ backend provisions a managed host bound to
+                        │                                the conversation, writes the hostless files
+                        │                                into its home, injects the context block,
+                        │                                runs the command on the real-host path above
+                        └─ not configured ───────────▶ refused: "this conversation has no machine;
+                                                        pair a device and move it there"
 ```
 
 ### Side by side
