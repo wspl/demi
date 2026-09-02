@@ -99,7 +99,7 @@ variables — to the real bash job. The environment table is shared: the hostles
 host's login environment is generated from, so `echo $PATH` prints the
 same string on both sides. Output formats are GNU's on both sides
 (`tinybash.md`). Hostless has no processes, no background jobs and no
-artifacts, so nothing else exists to move.
+output files, so nothing else exists to move.
 
 **Verification: split equivalence.** A sequence of tool calls is run
 twice — once entirely on a machine, once split at an arbitrary point with
@@ -127,7 +127,7 @@ host to the conversation** (below), and injects a context block stating the
 previous and new target and directory. Files are never moved by code except
 in the hostless → managed case, where the store holds them. The context
 block also states that full outputs of earlier commands live on the
-previous target: artifact paths the model saw before the switch are stale
+previous target: output paths the model saw before the switch are stale
 on the new Host, and `demi host shell --id` reaches them. When the new
 target is on the same device, the block notes the old directory is still
 directly accessible. A switch requested mid-turn is refused; concurrent
@@ -165,8 +165,8 @@ may switch it elsewhere.
 - **Hostless files** live as a tree in the conversation's database with
   their bytes in the blob store, and become the home image at upgrade
   (`storage.md`).
-- **Command artifacts** — full command output — are real files on the
-  execution target under `Host.commandArtifactsDir`, written by the runner's
+- **Command outputs** — full command output — are real files on the
+  execution target under `Host.commandOutputDir`, written by the runner's
   tee (`runner.md`). They follow the target: reachable while its runner is
   online, fetched by reference over HTTP when a user opens a past command's
   full output; a hibernated managed host is woken on demand to serve them;
