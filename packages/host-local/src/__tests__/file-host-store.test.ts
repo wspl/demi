@@ -2,12 +2,14 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { AgentSessionCommandStorage } from '@demicodes/shell'
-import { LocalHostStore } from '../local-store'
+import { AgentSessionCommandStorage, fileHostStore } from '@demicodes/shell'
+import { LocalHost } from '../local-host'
 
-test('LocalHostStore reads, writes, lists, and deletes JSON files', async () => {
+const storeAt = (root: string) => fileHostStore(new LocalHost(root, { storeRoot: root }).fs, root)
+
+test('fileHostStore reads, writes, lists, and deletes JSON files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalHostStore(root)
+  const store = storeAt(root)
 
   await store.writeJson('nested/todos.json', [{ text: 'a' }])
 
@@ -21,9 +23,9 @@ test('LocalHostStore reads, writes, lists, and deletes JSON files', async () => 
   expect(await store.list('')).toEqual([])
 })
 
-test('LocalHostStore works with agent-session-scoped command storage', async () => {
+test('fileHostStore works with agent-session-scoped command storage', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalHostStore(root)
+  const store = storeAt(root)
   const first = new AgentSessionCommandStorage(store, 'session-a')
   const second = new AgentSessionCommandStorage(store, 'session-b')
 
@@ -36,9 +38,9 @@ test('LocalHostStore works with agent-session-scoped command storage', async () 
   expect(await store.list('')).toEqual(['agent-sessions/session-a/todos.json', 'agent-sessions/session-b/todos.json'])
 })
 
-test('LocalHostStore round-trips Uint8Array values inside stored JSON', async () => {
+test('fileHostStore round-trips Uint8Array values inside stored JSON', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalHostStore(root)
+  const store = storeAt(root)
 
   await store.writeJson('session/checkpoint.json', {
     content: [{ type: 'image', source: { type: 'binary', data: new Uint8Array([137, 80, 78, 71]), mediaType: 'image/png' } }],
@@ -49,9 +51,9 @@ test('LocalHostStore round-trips Uint8Array values inside stored JSON', async ()
   expect([...(restored?.content[0].source.data ?? [])]).toEqual([137, 80, 78, 71])
 })
 
-test('LocalHostStore keeps a concurrently overwritten key complete and parseable', async () => {
+test('fileHostStore keeps a concurrently overwritten key complete and parseable', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalHostStore(root)
+  const store = storeAt(root)
   // Payloads large enough that a torn or interleaved write could not parse back.
   const payloads = Array.from({ length: 6 }, (_, writer) => ({ writer, filler: `${writer}`.repeat(2_000_000) }))
 
@@ -66,9 +68,9 @@ test('LocalHostStore keeps a concurrently overwritten key complete and parseable
   }
 })
 
-test('LocalHostStore rejects keys that are not relative store paths', async () => {
+test('fileHostStore rejects keys that are not relative store paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-store-'))
-  const store = new LocalHostStore(root)
+  const store = storeAt(root)
 
   await expect(store.writeJson('../outside.json', {})).rejects.toThrow('path traversal')
   await expect(store.writeJson('nested/../inside.json', {})).rejects.toThrow('path traversal')
