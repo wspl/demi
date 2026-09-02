@@ -74,18 +74,28 @@ init duties (`managed-hosts.md`).
 device name (default the hostname) and `DEMI_RUNNER_RECONNECT_MS` for the
 first reconnect delay (tests shorten it).
 
-Dependency footprint: `@demicodes/host-runner`, `@demicodes/runner-protocol`,
-`@demicodes/command-loader` (cache and relay only), `@demicodes/utils`. No
-agent, coding-agent or provider packages.
+Dependency footprint: `@demicodes/runner-protocol`, `@demicodes/shell`
+(the Host contract and the command system), `@demicodes/command-loader`
+(cache and relay only), `@demicodes/utils`. No agent, coding-agent or
+provider packages. The package's directories are its modules
+(`package-boundaries.md`): `machine/` — this machine as the runner sees
+it, the `Host` contract over tinyjs's primitives plus the links and the
+tee, the only code that imports `tinyjs:*`; `serve/` — the runner's end
+of the protocol, `HostRpcServer` and `JobTable`; `relay/` — the UDS relay;
+and the two entry modes with their shared state at the root.
 
 Nothing in the backend executes commands in-process; every real machine
 is reached through a runner.
 
-The Host a runner serves is `@demicodes/host-runner`, the `Host` contract
-over tinyjs's primitives. The backend's end of the same connection is
-`RemoteHost` (`@demicodes/runner-protocol`), which forwards each Host call
-over the socket. They are the two ends of one Host: what `RemoteHost` is
-asked, `host-runner` performs on the machine.
+Three packages carry a machine's Host, one per place: the wire itself is
+`@demicodes/runner-protocol` (schemas, messages, codec — both ends depend
+on it, it depends on neither); the backend's end is `@demicodes/host-remote`
+(`RemoteHost`, a `Host` that forwards each call over the socket, and
+`RemoteShellEnvironment`, the shell of a real host over jobs) — one of the
+two Hosts the backend injects into the agent, beside `@demicodes/host-virtual`;
+the machine's end is the runner's `machine/` layer, which performs what
+`RemoteHost` was asked. The agent never holds the machine layer; a
+machine is always reached through `host-remote`.
 
 ## Connection model
 
