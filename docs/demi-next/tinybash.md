@@ -199,25 +199,54 @@ offending token and line.
 ```ts
 runTinybash(input: {
   script: string
-  roots: ReadonlyMap<string, RootPathArgs>   // root names → which arguments are paths (from the manifest)
-  namespace: readonly string[]               // absolute prefixes the script may touch, e.g. ['/home/demi', '/tmp']
-  dispatch: (root: string, argv: string[], io: CommandIO) => Promise<number>
-  fs: HostFileSystem                 // the builtins' filesystem
+  roots: ReadonlyMap<string, RootPaths>   // root names → which of an argv's arguments are paths
+  namespace: readonly string[]            // absolute prefixes the script may touch, e.g. ['/home/demi', '/tmp']
+  dispatch: (root: string, argv: string[], io: DispatchIO) => Promise<number>
+  fs: HostFileSystem                      // the builtins' filesystem
   state: { cwd: string; home: string; vars: Record<string, string> }   // mutated by cd and assignments
-  io: CommandIO
+  io: CommandIO                           // the script's stdout and stderr
   signal?: AbortSignal
 }): Promise<
   | { kind: 'ran'; exitCode: number }
   | { kind: 'outside'; reason: OutsideReason; message: string }   // hand the whole script to a machine
 >
+
+type RootPaths = (argv: readonly string[]) => readonly string[]   // the path-typed arguments of this invocation
+
+interface DispatchIO {
+  stdin: AsyncIterable<Uint8Array>     // the pipeline, heredoc, `<` file, or empty
+  stdout: CommandIO['stdout']
+  stderr: CommandIO['stderr']
+  cwd: string
+  env: Record<string, string>
+  signal?: AbortSignal
+}
 ```
+
+`RootPaths` is a function because which argument is a path depends on the
+leaf the argv selects; the loader builds it from the manifest's path marks
+(`commands.md`) so tinybash never parses a root's arguments itself. Tests
+hand in a table. `DispatchIO` is what a root command's `ctx` is built
+from: the loader adds `args` and `fs`.
 
 `OutsideReason` names the construct, program or flag that put the script
 outside the subset, and `message` is the refusal line for embedders with
-nowhere to hand the script. `parseTinybash(script, roots)` is exported
-separately and returns the statement list or the `outside` result; the
-backend uses it to decide before touching the loader or the Host, and
-tests use it for the grammar table.
+nowhere to hand the script. `parseTinybash(script, roots, namespace, state)`
+is exported separately and returns the statement list or the `outside`
+result; the backend uses it to decide before touching the loader or the
+Host, and tests use it for the grammar table. Path conditions that need
+the filesystem — a glob whose expansion leaves the namespace — are decided
+by `runTinybash` before the first statement runs, still under parse-first.
+
+## Packages
+
+`@demicodes/tinybash` depends on `@demicodes/shell` for `HostFileSystem`
+and `CommandIO` and on `@demicodes/utils`; nothing else. Its directories
+mirror this document: `grammar/` (lexer, parser, AST, expansions),
+`outside/` (the refusal table and the parse-first checks), `exec/`
+(statements, pipelines, byte streams, redirections, session state) and
+`builtins/` (one file per builtin over a shared flag parser, the whitelist
+declared as a table).
 
 ## What tinybash is not
 
