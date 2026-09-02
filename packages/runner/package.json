@@ -24,13 +24,16 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "@demicodes/command-loader": "workspace:^",
     "@demicodes/host-local": "workspace:^",
+    "@demicodes/host-runner": "workspace:^",
     "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^"
   },
   "devDependencies": {
     "@demicodes/agent": "workspace:^",
+    "@demicodes/coding-agent": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/provider": "workspace:^"
   },
