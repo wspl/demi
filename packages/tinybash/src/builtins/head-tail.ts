@@ -11,7 +11,7 @@ function parseCount(raw: string): number | null {
 }
 
 async function eachInput(ctx: BuiltinContext, program: string, operands: readonly string[], emit: (bytes: Uint8Array) => Promise<void>): Promise<number> {
-  const inputs = lazyInputs(ctx, program, operands, (name, detail) => `${program}: cannot open '${name}' for reading: ${detail}\n`)
+  const inputs = lazyInputs(ctx, program, operands, (name, detail) => `${program}: cannot open '${name}' for reading: ${detail}\n`, (detail) => `${program}: error reading 'standard input': ${detail}\n`)
   const headers = inputs.length > 1
   let status = 0
   let first = true
@@ -26,6 +26,7 @@ async function eachInput(ctx: BuiltinContext, program: string, operands: readonl
       first = false
     }
     await emit(await collectBytes(stream))
+    if (input.readFailed()) status = 1
   }
   return status
 }

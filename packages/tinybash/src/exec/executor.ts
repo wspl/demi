@@ -6,6 +6,7 @@ import type { BuiltinContext } from '../builtins/io'
 import { type Channels, RedirectError, applyRedirects } from './redirect'
 import { emptyByteStream } from '@demicodes/utils'
 import { Pipe, PipeClosed, type Writer } from './stream'
+import { OutsideError } from '../outside/reasons'
 
 export interface ShellState {
   cwd: string
@@ -132,8 +133,16 @@ async function runCommand(command: Command, inherited: Channels, env: ExecutionE
       })
     }
   } catch (error) {
-    if (error instanceof PipeClosed) status = 141
-    else throw error
+    if (error instanceof PipeClosed) {
+      status = 141
+    } else if (error instanceof OutsideError) {
+      // The parse-first check saw the words as written; a glob can expand into a word (a file
+      // named like an option) that a builtin's whitelist does not cover. Reported, not crashed.
+      await channels.stderr(`${error.message}\n`)
+      status = 2
+    } else {
+      throw error
+    }
   }
   await redirected.flush()
   return status

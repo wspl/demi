@@ -61,7 +61,8 @@ export const printf: Builtin = async (ctx) => {
       const arg = args[index++]
       if (piece.conversion === 's' || piece.conversion === 'c') {
         let text = arg ?? ''
-        if (piece.conversion === 'c') text = text.slice(0, 1)
+        // bash prints a NUL for `%c` of an empty (or missing) argument.
+        if (piece.conversion === 'c') text = text.length > 0 ? text.slice(0, 1) : '\0'
         else if (piece.precision !== undefined) text = text.slice(0, piece.precision)
         out += pad(text, piece.width, piece.flags.includes('-'), false)
         continue

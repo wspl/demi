@@ -176,7 +176,7 @@ contract):
 blocks           one row per transcript block, append-only during streaming
 session state    checkpoint fields other than the transcript
 host_store       scope, key, value_json  ← this conversation's scope
-files            path, kind(file|dir|symlink), mode, mtime, size, sha256(NULL for dir), target(symlink)
+files            path, kind(file|dir), mode, mtime, size, sha256(NULL for dir)
                  ← the hostless filesystem's tree; bytes in the blob store by sha256;
                    emptied once the conversation has a home image
 ```
@@ -191,7 +191,7 @@ between them:
   file copies a row; the quota counts bytes referenced by the tree.
   Workspace files dropped into a hostless conversation land here.
 - **The upgrade** — the backend materialises the tree into a directory
-  (modes, mtimes and symlinks included) and runs `mke2fs -d <dir>` to
+  (modes and mtimes included; the tree holds no symlinks) and runs `mke2fs -d <dir>` to
   produce the home image with its contents in one step: no mount, no
   root, no guest cooperation. `/tmp` is materialised under the image's
   `.tmp` directory and bind-mounted to `/tmp` by the guest init. The image

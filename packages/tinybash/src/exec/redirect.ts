@@ -1,6 +1,7 @@
 import type { HostFileSystem } from '@demicodes/shell'
-import type { Redirect } from '../grammar/ast'
-import { type ExpansionScope, expandHeredoc, expandSingle } from '../grammar/expand'
+import type { Redirect, Word } from '../grammar/ast'
+import { type ExpansionScope, expandHeredoc, expandSingle, expandToFields, fieldText, wordSource } from '../grammar/expand'
+import { expandGlob, hasGlobChars } from '../grammar/glob'
 import { resolvePath } from '../outside/namespace'
 import { type Writer } from './stream'
 import { strerror } from '../builtins/errors'
@@ -34,6 +35,21 @@ export class RedirectError extends Error {
 }
 
 /**
+ * The one path a redirection names: the word after the operator is expanded,
+ * split and globbed like any other, and bash refuses it when that yields
+ * anything but exactly one word.
+ */
+async function redirectTarget(word: Word, scope: ExpansionScope, fs: HostFileSystem): Promise<string> {
+  const fields = expandToFields(word, scope)
+  if (fields.length !== 1) throw new RedirectError(wordSource(word), 'ambiguous redirect')
+  const field = fields[0]!
+  if (!hasGlobChars(field)) return fieldText(field)
+  const matches = await expandGlob(field, scope.cwd, fs)
+  if (matches.length !== 1) throw new RedirectError(wordSource(word), 'ambiguous redirect')
+  return matches[0]!
+}
+
+/**
  * Applies a command's redirections in order over the channels it inherits.
  * Files are created or truncated now, as the shell would before running the
  * command; `flush` writes what the command produced.
@@ -44,15 +60,16 @@ export async function applyRedirects(redirects: readonly Redirect[], inherited: 
   for (const redirect of redirects) {
     switch (redirect.kind) {
       case 'file': {
-        const target = expandSingle(redirect.path, scope)
+        const target = await redirectTarget(redirect.path, scope, fs)
         const resolved = resolvePath(scope.cwd, target)
         let writer: Writer
         if (resolved === '/dev/null') {
           writer = () => {}
         } else {
           try {
+            // Open now, as the shell does: a directory or a missing parent fails here, not after the command ran.
             if (redirect.mode === 'truncate') await fs.writeFile(resolved, new Uint8Array(0))
-            else if (!(await fs.exists(resolved))) await fs.writeFile(resolved, new Uint8Array(0))
+            else await fs.appendFile(resolved, new Uint8Array(0))
           } catch (error) {
             throw new RedirectError(target, strerror(error))
           }
@@ -65,7 +82,7 @@ export async function applyRedirects(redirects: readonly Redirect[], inherited: 
         break
       }
       case 'input': {
-        const target = expandSingle(redirect.path, scope)
+        const target = await redirectTarget(redirect.path, scope, fs)
         const resolved = resolvePath(scope.cwd, target)
         if (resolved === '/dev/null') {
           channels.stdin = emptyByteStream()

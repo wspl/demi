@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout": "alpha\nbeta\ngamma\nbeta\ndelta\n",
+  "stderr": "cat: -: Is a directory\n",
+  "user": "zan",
+  "group": "zan"
+}

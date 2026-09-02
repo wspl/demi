@@ -17,11 +17,12 @@ export const cat: Builtin = async (ctx) => {
     }
     if (!has(flags, 'n')) {
       for await (const chunk of stream) await ctx.stdout(chunk)
-      continue
+    } else {
+      for await (const line of lines(stream)) {
+        await ctx.stdout(encodeLatin1(`${String(number++).padStart(6)}\t${line.text}${line.newline ? '\n' : ''}`))
+      }
     }
-    for await (const line of lines(stream)) {
-      await ctx.stdout(encodeLatin1(`${String(number++).padStart(6)}\t${line.text}${line.newline ? '\n' : ''}`))
-    }
+    if (input.readFailed()) status = 1
   }
   return status
 }

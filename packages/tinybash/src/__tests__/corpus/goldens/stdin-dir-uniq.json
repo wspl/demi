@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout": "",
+  "stderr": "uniq: error reading '-': Is a directory\n",
+  "user": "zan",
+  "group": "zan"
+}

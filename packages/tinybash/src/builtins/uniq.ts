@@ -11,7 +11,7 @@ export const uniq: Builtin = async (ctx) => {
     await ctx.stderr(`uniq: extra operand '${flags.operands[2]}'\nTry 'uniq --help' for more information.\n`)
     return 1
   }
-  const { inputs, failed } = await openInputs(ctx, 'uniq', flags.operands.slice(0, 1))
+  const { inputs, failed } = await openInputs(ctx, 'uniq', flags.operands.slice(0, 1), undefined, (detail) => `uniq: error reading '-': ${detail}\n`)
   if (failed) return 1
   const counting = has(flags, 'c')
   let previous: string | null = null
@@ -36,5 +36,5 @@ export const uniq: Builtin = async (ctx) => {
     const prefix = counting ? `${String(count).padStart(7)} ` : ''
     await ctx.stdout(encodeLatin1(`${prefix}${previous}\n`))
   }
-  return 0
+  return inputs.some((input) => input.readFailed()) ? 1 : 0
 }

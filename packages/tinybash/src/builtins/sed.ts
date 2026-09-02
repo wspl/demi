@@ -37,7 +37,7 @@ export const sed: Builtin = async (ctx) => {
     return 1
   }
   const range = parseProgram(flags.operands[0]!, ctx.line)
-  const { inputs, failed } = await openInputs(ctx, 'sed', flags.operands.slice(1))
+  const { inputs, failed } = await openInputs(ctx, 'sed', flags.operands.slice(1), undefined, (detail) => `sed: read error on stdin: ${detail}\n`)
   if (inputs.length === 0) return failed ? 2 : 0
   if (range.from === 0 && range.to === 0) {
     await ctx.stderr(`sed: -e expression #1, char ${flags.operands[0]!.length}: invalid usage of line address 0\n`)
@@ -46,6 +46,7 @@ export const sed: Builtin = async (ctx) => {
   // All inputs form one stream, so `$` is the last line of the last file.
   const all: { text: string; newline: boolean }[] = []
   for (const input of inputs) for await (const line of lines(input.stream)) all.push(line)
+  if (inputs.some((input) => input.readFailed())) return 4
   const last = all.length
   const from = range.from === -1 ? last : range.from
   const to = range.to === 'last' ? last : range.to

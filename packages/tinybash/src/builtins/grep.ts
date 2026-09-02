@@ -4,7 +4,8 @@ import { SPECS } from './table'
 import { translatePattern } from './grep-pattern'
 import { lines } from '../exec/stream'
 import { strerror } from './errors'
-import { encodeLatin1, errorCode } from '@demicodes/utils'
+import { collectBytes, encodeLatin1, errorCode } from '@demicodes/utils'
+import { guardedStdin } from './inputs'
 
 /** The files after the pattern; also the parse-time check of the flags and the pattern. */
 export function grepPaths(argv: readonly string[], line: number): string[] {
@@ -71,7 +72,11 @@ export const grep: Builtin = async (ctx) => {
 }
 
 async function grepPath(ctx: BuiltinContext, path: string, display: string, options: Options, recursive: boolean, topLevel: boolean): Promise<boolean | 'error'> {
-  if (path === '-') return grepBytes(ctx, await collectStdin(ctx), display, options)
+  if (path === '-') {
+    const stdin = guardedStdin(ctx, (detail) => ctx.stderr(`grep: ${display}: ${detail}\n`))
+    const matched = await grepBytes(ctx, await collectBytes(stdin.stream), display, options)
+    return stdin.failed() ? 'error' : matched
+  }
   let stat
   try {
     stat = topLevel ? await ctx.fs.stat(path, { cwd: ctx.cwd }) : await ctx.fs.lstat(path, { cwd: ctx.cwd })
@@ -113,18 +118,6 @@ async function grepPath(ctx: BuiltinContext, path: string, display: string, opti
   }
 }
 
-async function collectStdin(ctx: BuiltinContext): Promise<Uint8Array> {
-  const chunks: Uint8Array[] = []
-  for await (const chunk of ctx.stdin) chunks.push(chunk)
-  const total = chunks.reduce((n, chunk) => n + chunk.length, 0)
-  const out = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    out.set(chunk, offset)
-    offset += chunk.length
-  }
-  return out
-}
 
 async function* oneChunk(bytes: Uint8Array): AsyncIterable<Uint8Array> {
   if (bytes.length > 0) yield bytes

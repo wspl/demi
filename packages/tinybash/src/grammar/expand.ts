@@ -104,6 +104,11 @@ export function expandHeredoc(body: HeredocBody, scope: ExpansionScope): string 
   return expandSingle({ parts: body.parts, line: 0 }, scope)
 }
 
+/** A word roughly as the script wrote it (`$NAME` and `~` unexpanded), for bash's own messages about it. */
+export function wordSource(word: Word): string {
+  return word.parts.map((part) => (part.kind === 'tilde' ? '~' : part.kind === 'param' ? `$${part.name}` : part.text)).join('')
+}
+
 /** The static text of a word, with parameters resolved, for parse-time checks. */
 export function staticText(parts: readonly WordPart[], scope: ExpansionScope): string {
   return expandSingle({ parts: [...parts], line: 0 }, scope)

@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "bash: line 1: [: too many arguments\n",
+  "user": "zan",
+  "group": "zan"
+}

@@ -1,0 +1,7 @@
+{
+  "exit": 2,
+  "stdout": "",
+  "stderr": "grep: (standard input): Is a directory\n",
+  "user": "zan",
+  "group": "zan"
+}

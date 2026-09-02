@@ -3,6 +3,7 @@ import { parseFlags, has } from './flags'
 import { SPECS } from './table'
 import { collectBytes } from '@demicodes/utils'
 import { strerror } from './errors'
+import { guardedStdin } from './inputs'
 
 interface Counts {
   lines: number
@@ -47,7 +48,9 @@ export const wc: Builtin = async (ctx) => {
   for (const name of operands) {
     if (name === '-') {
       minimumWidth = 7
-      results.push({ name: null, counts: count(await collectBytes(ctx.stdin)) })
+      const stdin = guardedStdin(ctx, (detail) => ctx.stderr(`wc: 'standard input': ${detail}\n`))
+      results.push({ name: null, counts: count(await collectBytes(stdin.stream)) })
+      if (stdin.failed()) status = 1
       continue
     }
     try {

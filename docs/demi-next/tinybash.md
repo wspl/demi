@@ -150,18 +150,54 @@ it is **outside**, and nothing runs: the backend provisions a machine and
 runs the entire script there, intact and silently
 (`sessions-and-targets.md`). Inside means all of: every construct in the
 grammar; every command word a builtin or a root; every flag on its
-whitelist; every absolute path — builtin arguments, redirection targets,
-`cd` targets, glob expansions, and root-command arguments the manifest
-marks as paths — inside the namespace the embedder declares (`/home/demi`
-and `/tmp` in the product). Hostless execution never leaves a script
-half-done, and the model never learns where the line is. Grammar,
-programs, flags and paths outside the subset are the same case; the
-distinction below exists only for the refusal messages an embedder shows
-when it has no machine to hand the script to.
+whitelist; every path — builtin arguments, redirection targets, `cd`
+targets, globs, and root-command arguments the manifest marks as paths —
+inside the namespace the embedder declares (`/home/demi` and `/tmp` in
+the product). Hostless execution never leaves a script half-done, and the
+model never learns where the line is. Grammar, programs, flags and paths
+outside the subset are the same case; the distinction below exists only
+for the refusal messages an embedder shows when it has no machine to hand
+the script to.
 
-The one run-time failure that is not an upgrade is the storage quota: a
-write that exceeds it fails with an `ENOSPC`-class error, as a full disk
-would on a machine.
+**The path decision is exact, not a guess**, because of one property of
+the subset: no string can be computed at run time. There is no command
+substitution, no `read`, no parameter operator; a variable holds a
+literal from an assignment or the session's previous value, so every
+word of every command is known before anything runs. The filesystem is
+the only run-time unknown, and it enters in three bounded ways:
+
+- **Whether a `cd` succeeds.** The check carries the set of shell states
+  the script can be in (cwd and variables) and accepts a path only if it
+  stays inside under every one of them. A `cd` that runs unconditionally
+  and whose outcome nothing before it could change is decided — the home
+  and the namespace roots exist by contract, any other target is looked
+  up when no earlier command could have created or removed a directory
+  (`mkdir`, `rm`, `mv`, `cp`, a root command) — and otherwise both the
+  state where it moved and the state where it stayed are kept. The same
+  holds for an assignment after `&&` or `||`, which may not run. `$PWD`
+  is the state's cwd.
+- **What a glob matches.** Each pattern segment matches exactly one name,
+  never `.` or `..`, and the pattern is kept literally when nothing
+  matches, so a glob never changes a path's depth: `*/../../x` is checked
+  as written and resolves to the same place whatever `*` matches.
+- **What exists.** Existence decides whether a command succeeds, never
+  which path it touches. The one exception is `mv`/`cp` into a
+  directory, which land at `dest/<last component of source>` — `..`
+  carries that outside — so every operand is also checked as a source
+  of the last one.
+
+**The hostless tree holds no symbolic links.** Nothing hostless can
+create one (`ln` is not a builtin, the root commands write files), and a
+drop or upload carrying one goes through the ordinary upgrade. Without
+links a path resolves where its text says, which is what makes the
+decision above exact.
+
+Two run-time failures are not upgrades. The storage quota: a write that
+exceeds it fails with an `ENOSPC`-class error, as a full disk would on a
+machine. And a glob expanding into a word the check never saw — a file
+named like an option, `cat *` with a file `-z` in it — which a builtin's
+whitelist does not cover: the command fails with the refusal line and
+exit 2. Both leave the script where it is.
 
 Execution:
 
@@ -171,7 +207,11 @@ Execution:
   non-zero; `;` and newline run the next statement regardless.
 - The script's exit code is the last statement's; an empty script exits 0.
 - Redirections open paths on the Host filesystem relative to the cwd;
-  `/dev/null` is a sink and an empty source.
+  `/dev/null` is a sink and an empty source. The word after the operator
+  is expanded, split and globbed like any other, and anything but exactly
+  one word is bash's `ambiguous redirect` error: the command does not
+  run, the script goes on. A target is opened before the command runs, so
+  a directory or a missing parent fails the command there, as in bash.
 - The **session shell state** is the cwd and the variables: `cd` and
   assignments change it for the rest of the script and for later tool
   calls, as in a real shell session. A prefix assignment
@@ -251,12 +291,12 @@ steers a running `demi agent spawn` in a hostless conversation.
 
 `OutsideReason` names the construct, program or flag that put the script
 outside the subset, and `message` is the refusal line for embedders with
-nowhere to hand the script. `parseTinybash(script, roots, namespace, state)`
-is exported separately and returns the statement list or the `outside`
-result; the backend uses it to decide before touching the loader or the
-Host, and tests use it for the grammar table. Path conditions that need
-the filesystem — a glob whose expansion leaves the namespace — are decided
-by `runTinybash` before the first statement runs, still under parse-first.
+nowhere to hand the script. `parseTinybash(script, roots, namespace,
+state, fs?)` is exported separately and resolves to the statement list or
+the `outside` result; the backend uses it to decide before touching the
+loader, and tests use it for the grammar table. `fs` is consulted only
+to decide a `cd` (§ Semantics); without it every `cd` keeps both states,
+which is still sound and merely hands more scripts to a machine.
 
 ## Packages
 
@@ -309,7 +349,15 @@ declared as a table).
 - **Parse-first**: a script whose last statement is outside the subset
   executes nothing, whether the cause is grammar, a program, a flag or a
   path; path cases cover builtin arguments, redirections, `cd`, globs and
-  path-typed root arguments, absolute and relative.
+  path-typed root arguments, absolute and relative; `cd` cases cover the
+  decided and the undecided forms.
+- **Namespace soundness** (`namespace-fuzz.test.ts`): random scripts built
+  from everything that moves or computes a path — `cd` that may fail,
+  `..`, globs, `$PWD`, variables, `&&`/`||`, the mutating builtins, a
+  path-typed root argument — run against a filesystem that records every
+  path it is asked for; an accepted script must have touched nothing
+  outside the namespace, and no script may crash the shell. Thousands of
+  rounds per run; the seed reproduces a failure.
 - **Split equivalence** (`sessions-and-targets.md`): tool-call sequences
   run hostless-then-machine at every split point match the all-machine
   run byte for byte.
