@@ -1,6 +1,7 @@
 import type { HostFileSystem } from '@demicodes/shell'
 import { outside } from '../outside/reasons'
 import type { Piece } from './expand'
+import { compareUtf8Bytes, utf8AsLatin1 } from '@demicodes/utils'
 
 /** Whether any non-literal piece carries a pattern character. */
 export function hasGlobChars(field: readonly Piece[]): boolean {
@@ -16,10 +17,10 @@ function segmentRegex(segment: readonly Piece[]): RegExp {
   let out = '^'
   for (const piece of segment) {
     if (piece.literal) {
-      out += escapeRegex(piece.text)
+      out += escapeRegex(utf8AsLatin1(piece.text))
       continue
     }
-    const text = piece.text
+    const text = utf8AsLatin1(piece.text)
     for (let i = 0; i < text.length; i++) {
       const ch = text[i]!
       if (ch === '*') {
@@ -133,10 +134,6 @@ function segmentText(segment: readonly Piece[]): string {
   return segment.map((piece) => piece.text).join('')
 }
 
-function byteCompare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0
-}
-
 /**
  * Pathname expansion against the filesystem, sorted; the literal word when
  * nothing matches, as bash does without `nullglob`.
@@ -174,10 +171,10 @@ export async function expandGlob(field: readonly Piece[], cwd: string, fs: HostF
       } catch {
         continue
       }
-      names.sort(byteCompare)
+      names.sort(compareUtf8Bytes)
       for (const name of names) {
         if (name.startsWith('.') && !explicitDot) continue
-        if (!regex.test(name)) continue
+        if (!regex.test(utf8AsLatin1(name))) continue
         const path = joinGlob(base, name)
         if (!last || trailingSlash) {
           if (!(await isDirectory(fs, path, cwd))) continue
@@ -190,7 +187,7 @@ export async function expandGlob(field: readonly Piece[], cwd: string, fs: HostF
   }
   if (candidates.length === 0) return [raw]
   const results = candidates.map((path) => (trailingSlash ? `${path}/` : path))
-  results.sort(byteCompare)
+  results.sort(compareUtf8Bytes)
   return results
 }
 

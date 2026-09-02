@@ -1,7 +1,7 @@
 import type { Builtin } from './io'
 import { parseFlags, has } from './flags'
 import { SPECS } from './table'
-import { collectBytes } from '@demicodes/utils'
+import { collectBytes, utf8AsLatin1 } from '@demicodes/utils'
 import { tryHelp } from './errors'
 import { guardedStdin } from './inputs'
 
@@ -86,7 +86,7 @@ export const tr: Builtin = async (ctx) => {
     await ctx.stderr(`tr: extra operand '${operands[deleting ? 1 : 2]}'\n${deleting ? 'Only one string may be given when deleting without squeezing repeats.\n' : ''}${tryHelp('tr')}`)
     return 1
   }
-  const set1 = parseSet(operands[0]!)
+  const set1 = parseSet(utf8AsLatin1(operands[0]!))
   if (typeof set1 === 'string') {
     await ctx.stderr(`tr: ${set1}\n`)
     return 1
@@ -102,7 +102,7 @@ export const tr: Builtin = async (ctx) => {
     await ctx.stdout(out.subarray(0, n))
     return 0
   }
-  const set2 = parseSet(operands[1]!)
+  const set2 = parseSet(utf8AsLatin1(operands[1]!))
   if (typeof set2 === 'string') {
     await ctx.stderr(`tr: ${set2}\n`)
     return 1

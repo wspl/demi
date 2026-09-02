@@ -1,7 +1,7 @@
 {
   "exit": 0,
-  "stdout": "bin.dat\ncsv.txt\ndocs\nempty.txt\nlink.txt\nnonl.txt\nnotes.txt\nnumbers.txt\nscript.sh\nspace dir\nwords.txt\n",
+  "stdout": "bin.dat\ncsv.txt\ndocs\nempty.txt\nlink.txt\nnonl.txt\nnotes.txt\nnumbers.txt\nscript.sh\nspace dir\nutf8.txt\nwords.txt\n",
   "stderr": "",
-  "user": "example-company",
-  "group": "example-company"
+  "user": "zan",
+  "group": "zan"
 }
