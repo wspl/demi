@@ -28,7 +28,7 @@ test('shell preview budget follows the 800k context threshold', () => {
   expect(shellPreviewBudgetTokens(2_000_000)).toBe(10_000)
 })
 
-test('shell tool result exposes artifact refs and bounded preview without stdout body sections', () => {
+test('shell tool result exposes output paths and a bounded preview without stdout body sections', () => {
   const longOutput = `${'x'.repeat(4_200)}tail`
   const result = toShellToolResult(shellSnapshot(longOutput), {
     includePreview: true,
@@ -38,7 +38,6 @@ test('shell tool result exposes artifact refs and bounded preview without stdout
 
   expect(text).toContain('stdoutPath: /artifacts/session-1/cmd-1/stdout.txt')
   expect(text).toContain('stderrPath: /artifacts/session-1/cmd-1/stderr.txt')
-  expect(text).toContain('metaPath: /artifacts/session-1/cmd-1/meta.json')
   expect(text).toContain('previewBudgetTokens: 1000')
   expect(text).toContain('previewTruncated: true')
   expect(text).not.toContain('stdout:\n')
@@ -211,7 +210,7 @@ function shellSnapshot(output: string): Extract<ShellCommandStatus, { status: 'e
     status: 'exited',
     shellId: 'shell-1',
     commandId: 'cmd-1',
-    artifactDir: '/artifacts/session-1/cmd-1',
+    outputDir: '/artifacts/session-1/cmd-1',
     exitCode: 0,
     stdout: {
       path: '/artifacts/session-1/cmd-1/stdout.txt',
@@ -240,7 +239,6 @@ function shellSnapshot(output: string): Extract<ShellCommandStatus, { status: 'e
     },
     runningMs: 1,
     idleMs: 0,
-    audit: [],
   }
 }
 
@@ -250,7 +248,7 @@ function runningShellSnapshot(output: string): Extract<ShellCommandStatus, { sta
     status: 'running',
     shellId: 'shell-1',
     commandId: 'cmd-1',
-    artifactDir: '/artifacts/session-1/cmd-1',
+    outputDir: '/artifacts/session-1/cmd-1',
     stdout: {
       path: '/artifacts/session-1/cmd-1/stdout.txt',
       offset: bytes,

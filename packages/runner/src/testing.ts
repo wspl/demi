@@ -1,16 +1,12 @@
 // Test helpers for Bun tests that run JS on tinyjs or need a runner
 // process: the binaries, the bundle, the packed runner, and a runner
 // process with its pairing code and status captured. Shipped as
-// `@demicodes/runner/testing`, never bundled. The runner's protocol end
-// (`HostRpcServer`) is re-exported for tests that join it to a
-// `RemoteHost` without a socket.
+// `@demicodes/runner/testing`, never bundled.
 import { existsSync } from 'node:fs'
 import { mkdir, realpath, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { waitFor } from '@demicodes/utils'
-
-export { HostRpcServer } from './serve/host-rpc-server'
 
 const CRATE = resolve(import.meta.dir, '..', '..', 'tinyjs')
 

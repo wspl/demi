@@ -9,7 +9,7 @@ import { ClaudeCliTransportFactory } from '../transport'
 // Compile-time contract: a real `Host.process.spawn` is assignable to the
 // structurally-typed injectable spawn (the package must not import shell at
 // runtime, so the shapes are duplicated and this assignment guards the drift).
-const _hostSpawnIsAssignable: ClaudeSpawn = null as unknown as HostProcess['spawn']
+const _hostSpawnIsAssignable: ClaudeSpawn = null as unknown as NonNullable<HostProcess['spawn']>
 void _hostSpawnIsAssignable
 
 function makeRequest(overrides: Partial<InferenceRequest> = {}): InferenceRequest {

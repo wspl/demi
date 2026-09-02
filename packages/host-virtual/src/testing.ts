@@ -1,17 +1,17 @@
-// Test helpers for packages that need a shell without a machine: the
-// hostless shell environment composed over any Host — the manifest built
-// from a command registry with Bun's transpiler, the loader with `rpc` in
-// process, tinybash running the scripts. Shipped as
-// `@demicodes/command-loader/testing`, never imported by runtime code.
+// Test helpers for packages that need a shell or a Host without a machine:
+// the hostless shell environment composed over any Host — the manifest
+// built from a command registry with Bun's transpiler, the loader with
+// `rpc` in process, tinybash running the scripts — the `probe` root that
+// stands in for `sleep` and `read`, and `LocalHost`, the Host over this
+// Node process's machine. Shipped as `@demicodes/host-virtual/testing`,
+// never imported by runtime code.
+import { buildManifest, createLoader, inMemorySource, inProcessRpc, rootPaths } from '@demicodes/command-loader'
 import { AgentSessionCommandStorage, type Command, type CommandRegistry, type Host, type ShellEnvironment, type ShellEnvironmentOptions } from '@demicodes/shell'
 import { delay, utf8Lines } from '@demicodes/utils'
 import { z } from 'zod'
-import { HostlessEnvironment } from '@demicodes/shell/hostless'
-import { buildManifest } from './manifest/build'
-import { createLoader } from './loader/loader'
-import { inProcessRpc } from './loader/rpc'
-import { inMemorySource } from './loader/source'
-import { rootPaths } from './paths'
+import { HostlessEnvironment } from './hostless-environment'
+
+export { LocalHost, type LocalHostOptions } from './testing/local-host'
 
 const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'browser' })
 

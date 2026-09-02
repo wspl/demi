@@ -56,7 +56,7 @@ export class RunnerMode {
   private relay: RelayServer | null = null
 
   constructor(private readonly options: RunnerModeOptions) {
-    this.host = createRunnerHost({ defaultCwd: identity.homeDir, commandArtifactsDir: `${options.stateDir}/output`, storeDir: `${options.stateDir}/store` })
+    this.host = createRunnerHost({ defaultCwd: identity.homeDir, storeDir: `${options.stateDir}/store` })
     this.state = new RunnerState(this.host.fs, options.stateDir)
     this.cache = new ManifestCache(this.host.fs, this.state.commandsDir, this.state.binDir, options.executable)
     this.transfers = new TransferClient(options.backendUrl, () => this.state.readToken())

@@ -29,8 +29,6 @@ export type RemoteJobExit = Omit<JobExitMessage, 'type' | 'jobId'>
 
 export interface RemoteHostOptions {
   defaultCwd: string
-  /** Artifact directory on the execution target (part of the remote fs namespace). */
-  commandArtifactsDir: string
   /** From the runner `hello` — read synchronously at shell creation. */
   identity: HostIdentity
   /** Backend-composed store; conversation state never crosses the runner protocol. */
@@ -51,7 +49,6 @@ export interface RemoteHostOptions {
  */
 export class RemoteHost implements Host {
   readonly defaultCwd: string
-  readonly commandArtifactsDir: string
   readonly identity: HostIdentity
   readonly store: HostStore
   readonly fs: HostFileSystem
@@ -64,7 +61,6 @@ export class RemoteHost implements Host {
 
   constructor(options: RemoteHostOptions) {
     this.defaultCwd = options.defaultCwd
-    this.commandArtifactsDir = options.commandArtifactsDir
     this.identity = options.identity
     this.store = options.store
     this.fs = createRemoteFs((op, params) => this.call(op, params))

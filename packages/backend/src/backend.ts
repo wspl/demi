@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { AgentServer, type ProviderResolver } from '@demicodes/agent'
 import { createCodingAgentHarness, createDemiCommand } from '@demicodes/coding-agent'
-import { nodeFileSystem } from '@demicodes/shell/node'
+import { nodeFileSystem } from '@demicodes/host-virtual/node'
 import { VirtualHost } from '@demicodes/host-virtual'
 import { buildManifest, inProcessRpc, type Manifest } from '@demicodes/command-loader'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
@@ -116,7 +116,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     if (resolved.provider.requiresProcessCapableHost) {
       const host = await hostFor(agentSessionId)
       resolved = await assembly.providerFor(providerId, {
-        spawn: (params) => host.process.spawn(params),
+        spawn: (params) => {
+          const spawn = host.process.spawn
+          if (!spawn) throw new Error('this provider needs a machine: the conversation runs hostless')
+          return spawn.call(host.process, params)
+        },
       })
       if (!resolved) return null
     }

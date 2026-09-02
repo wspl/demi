@@ -1,7 +1,7 @@
 import type { HostSpawnError, HostSpawnHandle } from '@demicodes/shell'
 import { errorMessage, noop } from '@demicodes/utils'
 import { deviceFallback } from './device-env'
-import { JOB_CWD_FILE_VAR, JOB_STDIN_FD, JOB_STDIN_FD_VAR, JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
+import { JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
 
 /**
  * The runner's job table (`runner.md` § Jobs and the tee): one `bash -c`
@@ -48,6 +48,13 @@ export interface JobTableOptions {
   fixedEnv?: Record<string, string>
   send(message: RunnerToBackendMessage): void
 }
+
+/** The env var naming the file a job's `EXIT` trap writes the final `pwd` to (`runner.md` § Jobs and the tee). */
+export const JOB_CWD_FILE_VAR = 'DEMI_JOB_CWD_FILE'
+/** The env var naming the descriptor the job prelude duplicated the job's stdin onto. */
+export const JOB_STDIN_FD_VAR = 'DEMI_JOB_STDIN_FD'
+/** That descriptor: fixed, high, and clear of the ones scripts and tools reach for (bash 3.2 has no `{var}<&0`). */
+export const JOB_STDIN_FD = 199
 
 interface Job {
   handle: JobSpawnHandle

@@ -2,11 +2,11 @@ import { expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { LocalHost } from '../node'
-import { hostConformanceCases } from '../testing'
+import { hostConformanceCases } from '@demicodes/shell/testing'
+import { LocalHost } from '../testing'
 
 const root = await mkdtemp(join(tmpdir(), 'demi-local-host-'))
-const host = new LocalHost(root, { storeRoot: join(root, 'store'), commandArtifactsDir: join(root, 'artifacts') })
+const host = new LocalHost(root, { storeRoot: join(root, 'store') })
 
 for (const conformance of hostConformanceCases({ host, root })) {
   test(`LocalHost ${conformance.name}`, conformance.run)
@@ -17,7 +17,7 @@ test('LocalHost spawn after unlinking cwd follows the platform cwd anchor', asyn
   await mkdir(dir)
   const cwd = await host.process.openCwd(dir)
   await rm(dir, { recursive: true, force: true })
-  const handle = await host.process.spawn({
+  const handle = await host.process.spawn!({
     command: '/bin/echo',
     args: ['ok'],
     cwd: cwd.spawnPath(),

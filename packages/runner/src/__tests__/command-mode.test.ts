@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDemiCommand } from '@demicodes/coding-agent'
 import { buildManifest, writeManifestDirectory } from '@demicodes/command-loader'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { bundleForTinyjs, tinyjsBinary } from '../testing'
 
 // tinyjs in command mode: the bundle packed by tinyjsc, reached through a

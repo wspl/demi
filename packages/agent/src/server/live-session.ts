@@ -1,11 +1,11 @@
 import { bytesToBase64, errorCode, noop } from '@demicodes/utils'
-import { type ShellEnvironment, MAX_TIMEOUT_MS, heredocDelimiter, shellQuote, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
+import { type ShellEnvironment, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
 import type { AgentSession } from '../session/session'
 import type { ChildSupervisor } from '../subagent/supervisor'
 import type { ServerFrame } from '../protocol/frames'
 import type { AgentHarness, AgentToolInvokeContext, SessionEvent } from '../types'
-import type { PrepareShell, ShellEnvironmentFactory } from './server'
-import { errorDiagnostics, progressToAudit, progressToOutput, progressToShellOutput } from './summaries'
+import type { ShellEnvironmentFactory } from './server'
+import { errorDiagnostics, progressToOutput, progressToShellOutput } from './summaries'
 
 export interface LiveSessionOptions {
   agentSessionId: string
@@ -16,7 +16,6 @@ export interface LiveSessionOptions {
   cwd: string
   providerId: string
   shellOptions: ShellEnvironmentOptions
-  prepareShell: PrepareShell | null
   shellEnvironment: ShellEnvironmentFactory
 }
 
@@ -39,7 +38,6 @@ export class LiveSession {
   sink: (frame: ServerFrame) => void = noop
 
   private readonly shellOptions: ShellEnvironmentOptions
-  private readonly prepareShell: PrepareShell | null
   private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly environmentsByHost = new Map<Host, ShellEnvironment>()
   private readonly pendingEnvironmentsByHost = new Map<Host, Promise<ShellEnvironment>>()
@@ -55,7 +53,6 @@ export class LiveSession {
     this.cwd = options.cwd
     this.providerId = options.providerId
     this.shellOptions = options.shellOptions
-    this.prepareShell = options.prepareShell
     this.shellEnvironment = options.shellEnvironment
     this.unsubscribeSession = options.session.subscribe((event) => this.handleSessionEvent(event))
   }
@@ -143,8 +140,6 @@ export class LiveSession {
         status: shell.status,
       })
     }
-    const audit = progressToAudit(progress)
-    if (audit.length > 0) this.sink({ type: 'audit', events: audit })
   }
 
   hasShell(shellId: string): boolean {
@@ -191,14 +186,7 @@ export class LiveSession {
   }
 
   private async createEnvironment(host: Host, commands: CommandRegistry): Promise<ShellEnvironment> {
-    const shellOptions = this.prepareShell
-      ? await this.prepareShell({
-          agentSessionId: this.agentSessionId,
-          host,
-          commandNames: commands.list().map((command) => command.name),
-          shell: this.shellOptions,
-        })
-      : this.shellOptions
+    const shellOptions = this.shellOptions
     return this.shellEnvironment({ agentSessionId: this.agentSessionId, host, commands, shell: shellOptions })
   }
 
