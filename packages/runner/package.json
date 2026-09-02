@@ -1,21 +1,10 @@
 {
   "name": "@demicodes/runner",
-  "description": "Demi runner: turns a machine into an execution target by serving the Host contract to a Demi backend.",
+  "description": "The Demi runner: the program that turns a machine into an execution target \u2014 runner mode over the backend socket, command mode for every root command.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
-  "main": "./dist/index.mjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
-  "bin": {
-    "demi-runner": "./dist/main.mjs"
-  },
   "exports": {
-    ".": {
-      "development": "./src/index.ts",
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs"
-    },
     "./testing": {
       "development": "./src/testing.ts",
       "types": "./dist/testing.d.mts",
@@ -30,8 +19,6 @@
   },
   "dependencies": {
     "@demicodes/command-loader": "workspace:^",
-    "@demicodes/host-local": "workspace:^",
-    "@demicodes/host-runner": "workspace:^",
     "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^"
@@ -40,6 +27,7 @@
     "@demicodes/agent": "workspace:^",
     "@demicodes/coding-agent": "workspace:^",
     "@demicodes/core": "workspace:^",
+    "@demicodes/host-remote": "workspace:^",
     "@demicodes/provider": "workspace:^"
   },
   "license": "Apache-2.0",

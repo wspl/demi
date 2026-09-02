@@ -1,11 +1,13 @@
 import type { Host, HostFileSystem, HostProcessOutputChunk, HostSpawnHandle } from '@demicodes/shell'
 import { errorCode, errorMessage } from '@demicodes/utils'
-import type { BackendToRunnerMessage, FsCallMessage, FsOp, FsParams, FsResult, RunnerToBackendMessage } from './messages'
+import type { BackendToRunnerMessage, FsCallMessage, FsOp, FsParams, FsResult, RunnerToBackendMessage } from '@demicodes/runner-protocol'
+import { deviceFallback } from './device-env'
 
 /**
  * Serves a `Host`'s `fs` and `process` facets over the runner protocol —
- * the runner instantiates this with a `LocalHost`; tests can serve any Host.
- * Platform-neutral: all IO happens through the injected Host and `send`.
+ * the runner instantiates this with its machine layer; tests can serve any
+ * Host. Platform-neutral: all IO happens through the injected Host and
+ * `send`. A spawn naming no `PATH` / `HOME` gets the device's own.
  */
 export class HostRpcServer {
   private readonly spawns = new Map<string, HostSpawnHandle>()
@@ -13,6 +15,7 @@ export class HostRpcServer {
   constructor(
     private readonly host: Pick<Host, 'fs' | 'process'>,
     private readonly send: (message: RunnerToBackendMessage) => void,
+    private readonly deviceEnv: Record<string, string> = {},
   ) {}
 
   async handleMessage(message: BackendToRunnerMessage): Promise<void> {
@@ -72,7 +75,7 @@ export class HostRpcServer {
         command: message.command,
         ...(message.args ? { args: message.args } : {}),
         ...(message.cwd !== undefined ? { cwd: message.cwd } : {}),
-        ...(message.env ? { env: message.env } : {}),
+        ...(message.env ? { env: deviceFallback(definedEnv(message.env), this.deviceEnv) } : {}),
         ...(message.killProcessGroup !== undefined ? { killProcessGroup: message.killProcessGroup } : {}),
       })
     } catch (error) {
@@ -176,4 +179,12 @@ async function* mergeStreams(
       wake = resolve
     })
   }
+}
+
+function definedEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const defined: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) defined[key] = value
+  }
+  return defined
 }

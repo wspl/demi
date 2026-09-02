@@ -1,6 +1,6 @@
 {
-  "name": "@demicodes/runner-protocol",
-  "description": "The Demi runner wire: MessagePack frames, the message schemas and the codec seam, shared by the backend and the runner.",
+  "name": "@demicodes/host-remote",
+  "description": "Demi Host over a runner connection: the backend's end of every user host and managed host, and its shell environment over jobs.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -12,11 +12,6 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
-    },
-    "./msgpack": {
-      "development": "./src/codec.ts",
-      "types": "./dist/codec.d.mts",
-      "import": "./dist/codec.mjs"
     }
   },
   "files": [
@@ -26,10 +21,9 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
-    "@demicodes/utils": "workspace:^",
-    "@msgpack/msgpack": "^3.1.3",
-    "zod": "^4.0.0"
+    "@demicodes/utils": "workspace:^"
   },
   "license": "Apache-2.0",
   "publishConfig": {
@@ -38,8 +32,11 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wspl/demi.git",
-    "directory": "packages/runner-protocol"
+    "directory": "packages/host-remote"
   },
-  "homepage": "https://github.com/wspl/demi/tree/main/packages/runner-protocol#readme",
-  "bugs": "https://github.com/wspl/demi/issues"
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/host-remote#readme",
+  "bugs": "https://github.com/wspl/demi/issues",
+  "devDependencies": {
+    "@demicodes/runner": "workspace:^"
+  }
 }

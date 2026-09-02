@@ -11,19 +11,19 @@ import {
   spawnTeed,
   version as tinyjsVersion,
   type WebSocketLink,
-} from '@demicodes/host-runner'
+} from './machine'
 import {
-  HostRpcServer,
-  JobTable,
   RUNNER_PROTOCOL_VERSION,
   createRunnerWire,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
+import { HostRpcServer } from './serve/host-rpc-server'
+import { JobTable } from './serve/jobs'
 import type { Host } from '@demicodes/shell'
 import { delay, errorMessage } from '@demicodes/utils'
 import { ManifestCache } from './manifest-cache'
-import { RelayServer } from './relay'
+import { RelayServer } from './relay/server'
 import { RunnerState } from './state'
 import { TransferClient } from './transfers'
 
@@ -113,7 +113,7 @@ export class RunnerMode {
       return 'closed'
     }
     this.link = link
-    const rpc = new HostRpcServer(this.host, (message) => this.sendToBackend(message))
+    const rpc = new HostRpcServer(this.host, (message) => this.sendToBackend(message), this.options.deviceEnv)
     const jobs = new JobTable({
       spawn: spawnTeed,
       outputDir: this.state.outputDir,

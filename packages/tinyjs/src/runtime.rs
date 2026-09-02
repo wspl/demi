@@ -13,7 +13,7 @@ use crate::state::state;
 
 /// Bumped when tinyjs changes in any way the runner `hello` reports.
 pub const VERSION: u32 = 1;
-/// Bumped when the `tinyjs:*` surface changes incompatibly; host-runner
+/// Bumped when the `tinyjs:*` surface changes incompatibly; the runner's machine layer
 /// checks it at start.
 pub const ABI: u32 = 1;
 

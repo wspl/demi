@@ -7,7 +7,7 @@
 //!
 //! `tinyjs:*` and `/embedded/*` resolve only when the importer is the
 //! embedded bundle; that check is what keeps the tinyjs API private to
-//! `@demicodes/host-runner` — a module loaded from a file cannot reach the
+//! the runner's machine layer — a module loaded from a file cannot reach the
 //! bundle's own modules (already declared, and served from the module cache
 //! if the name resolved) any more than the primitives.
 

@@ -1,8 +1,8 @@
 // The command-mode end of the local relay: the manifest on a cache miss,
 // and the `RpcTransport` the loader hands `rpc` invocations to.
-import { connectUnix, msgpackDecode, msgpackEncode } from '@demicodes/host-runner'
+import { connectUnix, msgpackDecode, msgpackEncode } from '../machine'
 import type { RpcTransport } from '@demicodes/command-loader'
-import { frameOf, framesOf, relayReplySchema, type RelayRequest } from './relay-protocol'
+import { frameOf, framesOf, relayReplySchema, type RelayRequest } from './protocol'
 
 const codec = { encode: msgpackEncode, decode: msgpackDecode }
 

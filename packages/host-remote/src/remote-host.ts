@@ -13,7 +13,7 @@ import type {
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
 import { createId, deferred, type Deferred } from '@demicodes/utils'
-import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, JobExitMessage, RunnerToBackendMessage } from './messages'
+import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, JobExitMessage, RunnerToBackendMessage } from '@demicodes/runner-protocol'
 
 /** One job on the runner as the backend drives it (`runner.md` § Jobs and the tee). */
 export interface RemoteJob {

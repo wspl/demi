@@ -3,19 +3,17 @@ import { createWriteStream, existsSync } from 'node:fs'
 import { mkdir, mkdtemp, open, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/shell/node'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { delay, waitFor } from '@demicodes/utils'
+import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
+import { JOB_VIEW_BYTES, createRunnerWire } from '@demicodes/runner-protocol'
+import { HostRpcServer } from '../serve/host-rpc-server'
 import {
-  HostRpcServer,
-  JOB_VIEW_BYTES,
   JobTable,
-  RemoteHost,
-  RemoteShellEnvironment,
-  createRunnerWire,
   type JobSpawnHandle,
   type JobSpawnParams,
-} from '../index'
+} from '../serve/jobs'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 
 // The job table on a local Host with a JavaScript tee (the tinyjs runner
@@ -103,7 +101,7 @@ test('a job outliving the timeout is running, counts in the job table, takes std
   const { shell, jobs } = await connected()
   const running = await shell.exec({ script: 'echo ready; head -n1; sleep 30', timeoutMs: 200 })
   expect(running.status).toBe('running')
-  for (let tries = 0; (await shell.status({ commandId: running.commandId, stdoutOffset: 0 })).stdout.delta !== 'ready\n'; tries += 1) {
+  for (let tries = 0; (await shell.status({ commandId: running.commandId })).stdout.tail !== 'ready\n'; tries += 1) {
     if (tries > 200) throw new Error('the head of the view never arrived')
     await delay(20)
   }

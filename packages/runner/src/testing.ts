@@ -1,11 +1,51 @@
-// Test helpers for driving the tinyjs runner from Bun tests: the packed
-// binary, and a runner process with its pairing code and status captured.
-// Shipped as `@demicodes/runner/testing`, never bundled.
+// Test helpers for Bun tests that run JS on tinyjs or need a runner
+// process: the binaries, the bundle, the packed runner, and a runner
+// process with its pairing code and status captured. Shipped as
+// `@demicodes/runner/testing`, never bundled. The runner's protocol end
+// (`HostRpcServer`) is re-exported for tests that join it to a
+// `RemoteHost` without a socket.
+import { existsSync } from 'node:fs'
 import { mkdir, realpath, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { bundleForTinyjs, tinyjsBinary } from '@demicodes/host-runner/testing'
 import { waitFor } from '@demicodes/utils'
+
+export { HostRpcServer } from './serve/host-rpc-server'
+
+const CRATE = resolve(import.meta.dir, '..', '..', 'tinyjs')
+
+/**
+ * The path of a tinyjs binary, building the crate in debug mode when it is
+ * missing. `TINYJS_BIN` names a prebuilt `tinyjs` instead.
+ */
+export function tinyjsBinary(name: 'tinyjs' | 'tinyjsc' = 'tinyjs'): string {
+  if (name === 'tinyjs' && process.env.TINYJS_BIN) return process.env.TINYJS_BIN
+  const path = join(CRATE, 'target', 'debug', name)
+  if (existsSync(path)) return path
+  const home = process.env.HOME ?? ''
+  const built = Bun.spawnSync(['cargo', 'build', '--bin', name], {
+    cwd: CRATE,
+    env: { ...process.env, PATH: `${process.env.PATH ?? ''}:/opt/homebrew/opt/rustup/bin:${home}/.cargo/bin` },
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  if (!built.success) throw new Error(`cargo build --bin ${name} failed in ${CRATE}`)
+  return path
+}
+
+/**
+ * Bundles an entry for tinyjs: one ESM file, workspace packages from their
+ * sources, `tinyjs:*` left to the runtime. Runs the bundler in its own
+ * process: an in-process `Bun.build` for a browser target leaves the test
+ * process unable to resolve some of the same packages afterwards.
+ */
+export async function bundleForTinyjs(entry: string, outfile: string): Promise<void> {
+  const built = Bun.spawnSync(
+    ['bun', 'build', entry, '--format=esm', '--target=browser', '--conditions=development', '--external', 'tinyjs:*', '--outfile', outfile],
+    { stdout: 'pipe', stderr: 'pipe' },
+  )
+  if (!built.success) throw new Error(`bundle failed:\n${built.stderr.toString()}${built.stdout.toString()}`)
+}
 
 let packed: Promise<string> | null = null
 
@@ -18,7 +58,7 @@ export function packedRunner(): Promise<string> {
         return realpath(join(tmpdir(), `demi-packed-${process.pid}`))
       })
     const bundle = join(work, 'entry.mjs')
-    await bundleForTinyjs(resolve(import.meta.dir, 'tinyjs', 'entry.ts'), bundle)
+    await bundleForTinyjs(resolve(import.meta.dir, 'entry.ts'), bundle)
     const file = join(work, 'demi-cli')
     const pack = Bun.spawnSync([tinyjsBinary('tinyjsc'), bundle, '--bin', tinyjsBinary(), '--out', file], { stdout: 'pipe', stderr: 'pipe' })
     if (pack.exitCode !== 0) throw new Error(`tinyjsc failed: ${pack.stderr.toString()}`)
