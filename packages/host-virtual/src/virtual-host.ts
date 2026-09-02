@@ -3,7 +3,6 @@ import type {
   HostFileSystem,
   HostIdentity,
   HostProcess,
-  HostSpawnHandle,
   HostStore,
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
@@ -12,18 +11,12 @@ import { dirnamePath, errnoError, isAbsolutePath, normalizePath } from '@demicod
 /**
  * The zero-setup execution target: a `Host` whose filesystem is a
  * per-conversation virtual namespace over a pluggable backend and whose
- * `process.spawn` always reports `executable_not_found` — the portable-command
- * fallback engages on exactly that error kind, so chat and portable tools work
- * while real programs surface upgrade guidance.
  */
 
 /** Per-file write cap. */
 export const VIRTUAL_MAX_FILE_BYTES = 16 * 1024 * 1024
 /** Per-conversation namespace cap. */
 export const VIRTUAL_MAX_TOTAL_BYTES = 256 * 1024 * 1024
-
-export const VIRTUAL_UPGRADE_GUIDANCE =
-  'virtual environment — real programs need a real machine; switch this conversation to a device workspace to run them'
 
 /**
  * A filesystem over the virtual namespace: every path is virtual-absolute and
@@ -72,7 +65,12 @@ export class VirtualHost implements Host {
     this.maxTotalBytes = options.quota?.maxTotalBytes ?? VIRTUAL_MAX_TOTAL_BYTES
     this.fs = this.createFs()
     this.process = {
-      spawn: async () => refusedSpawn(),
+      // A hostless conversation runs tinybash, which spawns nothing; a script
+      // that needs a program is handed to a machine by the backend
+      // (`sessions-and-targets.md`), never refused here.
+      spawn: async () => {
+        throw new Error('the hostless Host runs no processes')
+      },
       openCwd: async (path) => createLogicalHostCwd(this.resolve(path)),
     }
   }
@@ -212,19 +210,3 @@ function symlinkTargetStaysInside(linkPath: string, target: string): boolean {
   return true
 }
 
-function refusedSpawn(): HostSpawnHandle {
-  return {
-    stdout: emptyStream(),
-    stderr: emptyStream(),
-    output: emptyStream(),
-    writeStdin: async () => {},
-    closeStdin: async () => {},
-    kill: async () => {},
-    wait: async () => ({
-      exitCode: null,
-      spawnError: { kind: 'executable_not_found', detail: VIRTUAL_UPGRADE_GUIDANCE },
-    }),
-  }
-}
-
-async function* emptyStream(): AsyncIterable<never> {}

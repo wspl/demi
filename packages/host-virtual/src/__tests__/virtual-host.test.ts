@@ -3,10 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { expect, test } from 'bun:test'
-import { LocalHost } from '@demicodes/host-local'
-import { BashEnvironment } from '@demicodes/shell/bash'
+import { LocalHost } from '@demicodes/shell/node'
 import { memoryHostStore } from '@demicodes/shell/testing'
-import { VIRTUAL_UPGRADE_GUIDANCE, VirtualHost, scopedFsBackend } from '../index'
+import { VirtualHost, scopedFsBackend } from '../index'
 
 const text = (value: string) => new TextEncoder().encode(value)
 const read = async (host: VirtualHost, path: string) => new TextDecoder().decode(await host.fs.readFile(path))
@@ -87,33 +86,7 @@ test('quota: per-file and per-conversation caps; artifacts excluded', async () =
   expect(await host.usage()).toBe(20)
 })
 
-test('spawn refuses with executable_not_found and upgrade guidance', async () => {
+test('the hostless Host runs no processes', async () => {
   const { host } = await makeHost()
-  const handle = await host.process.spawn({ command: 'python3', args: ['-V'] })
-  const exit = await handle.wait()
-  expect(exit.exitCode).toBeNull()
-  expect(exit.spawnError?.kind).toBe('executable_not_found')
-  expect(exit.spawnError?.detail).toBe(VIRTUAL_UPGRADE_GUIDANCE)
-})
-
-test('BashEnvironment on a virtual host: portable commands work, real programs surface guidance', async () => {
-  const { host } = await makeHost()
-  const env = new BashEnvironment({
-    host,
-    shellIdFactory: () => 'virtual-shell',
-    initialEnv: { PATH: '/usr/bin:/bin' },
-  })
-
-  const portable = await env.exec({ script: 'printf hello > f.txt && cat f.txt && ls' })
-  expect(portable.status).toBe('exited')
-  if (portable.status !== 'exited') throw new Error('expected exited')
-  expect(portable.exitCode).toBe(0)
-  expect(portable.stdout.delta).toBe('hellof.txt\n')
-
-  const real = await env.exec({ script: 'python3 -V' })
-  expect(real.status).toBe('exited')
-  if (real.status !== 'exited') throw new Error('expected exited')
-  expect(real.exitCode).not.toBe(0)
-  expect(real.stderr.delta).toContain('command not found')
-  expect(real.stderr.delta).toContain(VIRTUAL_UPGRADE_GUIDANCE)
+  await expect(host.process.spawn({ command: 'python3', args: ['-V'] })).rejects.toThrow('runs no processes')
 })
