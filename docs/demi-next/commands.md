@@ -56,8 +56,8 @@ in `PATH`; everything else is whatever the machine has.
  backend                          runner on the target                 processes on the target
  ───────                          ────────────────────                 ───────────────────────
  job_start {script, cwd,   ────▶  spawn  bash -c "<script>"     ────▶  bash
-            env + conv/shell ids}   │  tee stdout/stderr → artifact       │
-                                    │  files under commandArtifactsDir     ├─ demi file edit src/a.ts        (shell, command mode)
+            env + conv/shell ids}   │  tee stdout/stderr → output         │
+                                    │  files under commandOutputDir        ├─ demi file edit src/a.ts        (shell, command mode)
                                     │                                      │    read ~/.demi/commands/<hash>/   manifest cache
                                     │                                      │    kind = runtime
                                     │                                      │    → run the module in-process, ctx.fs = real fs
@@ -66,7 +66,7 @@ in `PATH`; everything else is whatever the machine has.
                                     │                                      ├─ npm test 2>&1 | tail -20       (ordinary processes;
                                     │                                      │    the pipe is an OS pipe)
  ◀── job_output {view ≤ 1 MB} ──────┘                                      │
- ◀── job_exit {code, artifact paths} ◀── bash exits ◀──────────────────────┘
+ ◀── job_exit {code, output paths} ◀── bash exits ◀────────────────────────┘
 
  an rpc command inside the same script, e.g.  demi todo add "run the suite":
 
@@ -127,7 +127,7 @@ tinybash cannot run is run on a machine instead.
 | The `ctx.fs` it sees | the target's real filesystem (`host-shell`) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
 | Where files live | on the target | in `conversations/<id>.sqlite` |
-| Where full output lives | artifact files on the target | the tool result itself (bounded, no tee needed) |
+| Where full output lives | output files on the target | the tool result itself (bounded, no tee needed) |
 | Bytes on the wire | script, view, exit, rpc args/output | none |
 | Leaving this path | user switches the target in the picker | the first script outside the subset moves the conversation to a machine, silently |
 

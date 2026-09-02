@@ -1137,3 +1137,12 @@ mount, root or guest cooperation; the tree rows are then deleted, blobs
 stay. One direction, once. The tee/artifact mechanism was considered and
 rejected for hostless files: it is for command output on targets, and
 hostless output is bounded and lives in the transcript.
+
+### Naming: "artifact" → "command output" (2026-09-02)
+
+The tee's full-output files had been called artifacts. In agent products
+that word names the agent's deliverables, so it is now reserved for that
+and the files are **command outputs**: `commandOutputDir`,
+`output_upload`, `GET …/outputs/:ref`, output fetch. The code's
+`commandArtifactsDir` and `command-artifact-store` are renamed with the
+M9 runner rewrite.
