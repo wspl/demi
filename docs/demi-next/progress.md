@@ -1545,7 +1545,7 @@ Steps 3 and 4 done — kinds in the trees and the hostless path:
   `demi agent spawn`), `shell_abort`, capture limit, binary final streams
   and artifacts all behave as with bash. A script outside the subset
   runs nothing and answers with tinybash's refusal line on stderr, exit 2
-  (the managed-host hand-over is M10). `createBackend` picks it for
+  (the managed-host hand-over is M11). `createBackend` picks it for
   every `VirtualHost`.
 - The hostless home is `/home/demi` (`HOSTLESS_HOME`, namespace
   `['/home/demi', '/tmp']`), as `sessions-and-targets.md` says;
@@ -1587,7 +1587,7 @@ Left for later, by design:
 - Runtime-module conformance under tinyjs (the target-side command mode)
   is M9 with the runner; the modules are verified under Bun (LocalHost)
   and against the store-backed VirtualHost here.
-- The hostless → managed-host hand-over on `outside` is M10; today the
+- The hostless → managed-host hand-over on `outside` is M11; today the
   tool result carries tinybash's refusal line, exit 2.
 - The tinybash "Reference suites" (just-bash compat, oils spec, GNU tests
   filtered to the subset) from checkpoint 1 remain undone.
@@ -1966,7 +1966,7 @@ The plan as presented and accepted: the transfer's unit is a job's stdout
 file; `demi host shell --id` runs the script as a job on the named host
 and moves that file over HTTP; a caller on a device fetches it through
 its own runner (`rpc_transfer`), a hostless caller takes the bytes
-in-process; `transfer_receive` is the symmetric file end for M10's
+in-process; `transfer_receive` is the symmetric file end for M11's
 hostless → managed placement; the browser gets transcript media as
 `{ type: 'ref', ref, mediaType }` plus `GET /api/blobs/:sha256`.
 
@@ -1990,7 +1990,7 @@ Landed:
   the calling device as a `transferDestination`; the `demi host` group
   gains `list` and `shell --id`, with `prev shell` on a machine routed
   through the same `runOnHost`; the reachable set is one function
-  (`reachableHosts`) for M10's grant table to widen. `GET
+  (`reachableHosts`) for M11's grant table to widen. `GET
   /api/blobs/:sha256`; the conversation-scoped transport externalizes
   media on every outbound transcript frame; the web UI resolves a `ref`
   source to the blob URL.
@@ -2047,7 +2047,7 @@ the backing of the store-backed Host on the backend machine — the
 tinyjs; `AgentServer.shellEnvironment` is required;
 the old local products (`repl`, `agent-eval`, the web package's server)
 go with the Node Host they ran on rather than surviving to a rename in
-M12; the design records that described them (`bash-behavior`,
+M13; the design records that described them (`bash-behavior`,
 `command-bridge`, `just-bash-fork-policy`, the binary-stream and
 shell-yield plans, the REPL/eval/web/library plans under `docs/internal/`,
 the Host and UI guides, the `examples/` directory) are deleted, not
@@ -2094,13 +2094,13 @@ Landed, in the order the records were written:
   and `VIRTUAL_UPGRADE_GUIDANCE` deleted.
 - Backend: `nodeFileSystem(dataDir)` backs the virtual hosts; the shell
   factory has no third branch; `demi host prev shell` on a hostless prev
-  is refused with the reason (the switch places the files, M10); the
+  is refused with the reason (the switch places the files, M11); the
   claude-chain and llm tests run on the tinyjs runner.
 - Deleted outright: `packages/just-bash` (submodule, `.gitmodules`,
   workspace entry, tsconfig paths, the `test:just-bash-core` script),
   `packages/host-local`, `packages/repl`, `packages/agent-eval`,
   `packages/web/src/server` with its three e2e tests (the web package is
-  the Vite scaffold until M12), `examples/`, `packages/host-runner`; the
+  the Vite scaffold until M13), `examples/`, `packages/host-runner`; the
   changeset fixed group and the versioning record list the final set.
 - Tests: every suite runs a shell through `hostlessShell` over
   `LocalHost` where it needs one; scripts moved into the tinybash subset
@@ -2179,6 +2179,39 @@ Green: agent 243, coding-agent + providers 136, backend 41, runner 10,
 the rest 516 + core/host-virtual 44; typecheck and the web typecheck
 clean.
 
+## M10 — Scenario suite (2026-09-03)
+
+Status: planned; the design record is `scenarios.md`. Implementation
+waits for the owner's confirmation of the record.
+
+Why a milestone: M0–M9 proved each contract once, in one test file per
+milestone, with the model as an in-process script. What was never proved
+is the composition — the text the model reads after a tool call ran on a
+target — and the two restarts. The suite is also the place later
+milestones add their end-to-end cases, so it has to exist before M11
+stacks grants, provisioning and hibernation on the backend.
+
+Decisions:
+
+- The model stays a provider-event script. A wire-level fake upstream and
+  pinned `claude`/`codex` binaries in CI were considered and set aside as
+  not the risk right now; the real-CLI chain keeps its `skip` gate.
+- The browser is out; its acceptance is M13's manual checklist.
+- The suite's observation is what the model received, not frames. Frames,
+  files and databases confirm the mechanism.
+- The tests the suite subsumes move in rather than staying beside it: the
+  M2 detach case and the M3 restart case leave `backend.test.ts`. Pairing,
+  provider assembly and the M6 switch acceptance stay.
+- Renumbering: the former M10–M14 (access model and managed hosts,
+  multi-user, web UI, packaging, scaled deployment) became M11–M15.
+  Forward-pointing references in the records and the two test comments
+  were updated; the earlier log entries in this file keep the numbers they
+  were written with.
+
+Plan (each a commit): the world, the model queue and the driver with S1 on
+both targets; S2–S9 in order; R1–R4 with R2's verdict recorded here; the
+two moved tests deleted from `backend.test.ts`; the verification row.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
@@ -2186,7 +2219,7 @@ clean.
 - tinyjs, awaiting a proposal: tee writes synchronous on the loop thread;
   the TLS configuration rebuilt per request.
 - tinybash reference suites (just-bash compat, oils spec, GNU tests) and
-  the split-equivalence test (M10, needs auto-provision).
+  the split-equivalence test (M11, needs auto-provision).
 - CI re-deriving the corpus goldens from bash (`TINYBASH_CHECK_GOLDENS=1`
   on the Linux job), with the tinyjs CI.
 - A file named like an option matched by a glob in a builtin's operands

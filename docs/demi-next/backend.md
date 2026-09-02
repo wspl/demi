@@ -83,7 +83,7 @@ Spoken of as modules, not separate services:
   jailer via the privileged helper), images, the home-image store,
   lifecycle (`managed-hosts.md`).
 - **Auth module**: users, web login, device claiming. The data model is
-  multi-user from the first milestone; the login surface arrives at M11.
+  multi-user from the first milestone; the login surface arrives at M12.
 
 ## Media by reference
 
@@ -118,18 +118,18 @@ poll on open and on an interval.
 
 | Resource | Endpoints | Lands in |
 |---|---|---|
-| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M2 stub → M11 real |
+| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M2 stub → M12 real |
 | conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript`; `WS /api/conversations/:id/stream` | M2 |
 | models | `GET /api/models` (aggregated catalog, grouped by connection) | M2 |
 | devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…`, `POST /api/devices/:id/fs` (create directory) | M4 |
-| workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (never touches files); creation takes `cloud: true` in place of a deviceId | M6; cloud flag M10 |
+| workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (never touches files); creation takes `cloud: true` in place of a deviceId | M6; cloud flag M11 |
 | connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` | M5 |
 | usage | `GET /api/usage` | M5 |
 | attachments, blobs | `POST /api/attachments` (returns a reference id), `POST /api/conversations/:id/workspace-files`, `GET /api/blobs/:sha256` | M6; blobs M9 |
 | transfers | `PUT /api/transfers/:id` (source runner), `GET /api/transfers/:id` (destination runner); device-token authenticated, single-use, piped in flight (`runner.md` § Transfers) | M9 |
-| grants | `GET/POST/DELETE /api/conversations/:id/grants` | M10 |
+| grants | `GET/POST/DELETE /api/conversations/:id/grants` | M11 |
 | commands | `GET /api/commands/manifest`, `GET /api/commands/modules/:hash` (the manifest source for a standalone command-mode shell) | M8 |
-| admin | `GET/POST/PATCH /api/users`, `GET/PUT /api/settings` (instance mode) | M11 |
+| admin | `GET/POST/PATCH /api/users`, `GET/PUT /api/settings` (instance mode) | M12 |
 
 ## Packages
 

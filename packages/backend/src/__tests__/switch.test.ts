@@ -16,7 +16,7 @@ import { createBackend, type Backend } from '../index'
 // M6: target switching — turn-boundary switch over the conversations PATCH,
 // prev slot + context block, the `demi host` command frame, and the
 // `prev shell` reaching a workspace prev over its runner (a hostless prev has
-// no shell: the switch itself places its files, M10).
+// no shell: the switch itself places its files, M11).
 
 async function api(backend: Backend, path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${backend.url}${path}`, init)
@@ -70,7 +70,7 @@ test('M6 acceptance: virtual→real switch with context block and migration pipe
       [events.toolCall('t1', 'shell_exec', { script: 'echo -n secret > notes.txt && demi host current', timeoutMs: 10_000 })],
       [events.text('one'), events.response()],
       // Turn 2 (after switch to the device workspace): the hostless prev has no
-      // shell to reach (its files are placed by the switch itself, M10); the
+      // shell to reach (its files are placed by the switch itself, M11); the
       // workspace is live, and a file written here is what the later prev reaches.
       [events.toolCall('t2', 'shell_exec', { script: 'demi host prev shell -- cat notes.txt; echo exit=$?; printf secret > notes.txt && demi host current', timeoutMs: 20_000 })],
       [events.text('two'), events.response()],
