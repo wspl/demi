@@ -1,13 +1,12 @@
 import { expect, test } from 'bun:test'
 import type { Model, ModelSelection } from '@demicodes/core'
-import type { ShellCommandStatus } from '@demicodes/shell'
-import type { BashEnvironment } from '@demicodes/shell/bash'
+import type { ShellCommandStatus, ShellEnvironment } from '@demicodes/shell'
 import type { AgentToolInvokeContext } from '../types'
 import { createStandardAgentTools, shellCommandHandleRequired, shellPreviewBudgetTokens, toShellToolResult } from '../tools'
 
 test('standard shell tool schemas do not expose model-controlled output budgets or offsets', () => {
   const tools = createStandardAgentTools({
-    environment: {} as BashEnvironment,
+    environment: {} as ShellEnvironment,
     scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
   })
   const byName = new Map(tools.map((tool) => [tool.name, tool]))
@@ -69,7 +68,7 @@ test('completed short shell_exec hides and releases the command handle', async (
         released.push(commandId)
         return true
       },
-    } as unknown as BashEnvironment,
+    } as unknown as ShellEnvironment,
     scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
   })
   const shellExec = tools.find((tool) => tool.name === 'shell_exec')
@@ -98,7 +97,7 @@ test('completed truncated shell_exec keeps the command handle for artifacts', as
         released.push(commandId)
         return true
       },
-    } as unknown as BashEnvironment,
+    } as unknown as ShellEnvironment,
     scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
   })
   const shellExec = tools.find((tool) => tool.name === 'shell_exec')

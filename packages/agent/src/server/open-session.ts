@@ -1,5 +1,4 @@
-import { CommandRegistry, type Host } from '@demicodes/shell'
-import { RESERVED_COMMAND_NAMES, type BashEnvironmentOptions } from '@demicodes/shell/bash'
+import { CommandRegistry, type Host, RESERVED_COMMAND_NAMES, type ShellEnvironmentOptions } from '@demicodes/shell'
 import type { AgentProvider, ProviderSelection } from '@demicodes/provider'
 import { AgentSession } from '../session/session'
 import { createStandardAgentTools } from '../tools'
@@ -14,7 +13,7 @@ import type { AgentServerSessionOptions, PrepareShell, ShellEnvironmentFactory }
 /** Everything the assembly pipeline needs from the server/binding configuration. */
 export interface AssembleLiveSessionDeps {
   agent: AgentHarness<unknown>
-  shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shellOptions: ShellEnvironmentOptions
   sessionOptions: AgentServerSessionOptions
   prepareShell: PrepareShell | null
   shellEnvironment: ShellEnvironmentFactory

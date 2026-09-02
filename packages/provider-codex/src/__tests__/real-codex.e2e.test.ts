@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { CommandRegistry } from '@demicodes/shell'
 import { randomUUID } from 'node:crypto'
 import type { Block, ModelSelection, TokenUsage } from '@demicodes/core'
 import {
@@ -9,8 +10,8 @@ import {
   type AgentToolInvokeResult,
 } from '@demicodes/agent'
 import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
-import { BashEnvironment } from '@demicodes/shell/bash'
-import { LocalHost } from '@demicodes/host-local'
+import { hostlessShell } from '@demicodes/command-loader/testing'
+import { LocalHost } from '@demicodes/shell/node'
 import { FileCodexAuthStore } from '../auth'
 import { CodexProvider } from '../provider'
 
@@ -105,8 +106,9 @@ cacheE2e('CodexProvider reports provider cache usage on repeated stable-prefix r
 toolE2e('CodexProvider drives a real AgentSession shell tool roundtrip', async () => {
   await expectCodexAuthAvailable()
   const provider = new CodexProvider({ transport })
-  const environment = new BashEnvironment({
+  const environment = await hostlessShell({
     host: new LocalHost(process.cwd()),
+    commands: new CommandRegistry(),
     shellIdFactory: () => `codex-tool-e2e-shell-${randomUUID()}`,
     initialEnv: { PATH: process.env.PATH ?? '' },
   })

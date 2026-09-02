@@ -1,7 +1,8 @@
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
+import { hostlessShellFactory } from '@demicodes/command-loader/testing'
+import { LocalHost } from '@demicodes/shell/node'
 import { AgentServer } from '../index'
 import { createStdioServerTransport } from '../protocol/stdio-transport'
 
@@ -12,6 +13,7 @@ const childProvider = defineProvider({
 })
 
 const server = new AgentServer({
+  shellEnvironment: hostlessShellFactory,
   agent: createHarness(),
   providers: [childProvider],
 })

@@ -2,8 +2,9 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { BashEnvironment } from '@demicodes/shell/bash'
-import { LocalHost } from '@demicodes/host-local'
+import { type ShellEnvironment } from '@demicodes/shell'
+import { hostlessShell } from '@demicodes/command-loader/testing'
+import { LocalHost } from '@demicodes/shell/node'
 import { createCodingCommandRegistry } from '../index'
 
 test('todo command supports add/list/update/done with raw and JSON output', async () => {
@@ -46,11 +47,13 @@ test('todo command supports add/list/update/done with raw and JSON output', asyn
 })
 
 test('todo command state is isolated by agent session id', async () => {
-  let nextShell = 0
-  const env = await createTodoEnvironment(() => `todo-shell-${++nextShell}`)
+  // One shell environment per agent session, as the product composes them.
+  const host = await createTodoHost()
+  const agentA = await hostlessShell({ host, commands: createCodingCommandRegistry(), agentSessionId: 'agent-a', initialEnv: {} })
+  const agentB = await hostlessShell({ host, commands: createCodingCommandRegistry(), agentSessionId: 'agent-b', initialEnv: {} })
 
-  const first = await env.exec({ agentSessionId: 'agent-a', script: 'demi todo add "First session"' })
-  const second = await env.exec({ agentSessionId: 'agent-b', script: 'demi todo add "Second session"' })
+  const first = await agentA.exec({ agentSessionId: 'agent-a', script: 'demi todo add "First session"' })
+  const second = await agentB.exec({ agentSessionId: 'agent-b', script: 'demi todo add "Second session"' })
 
   expect(first.stdout.delta).toBe('[ ] T1 First session\n')
   expect(second.stdout.delta).toBe('[ ] T1 Second session\n')
@@ -58,16 +61,18 @@ test('todo command state is isolated by agent session id', async () => {
 
 test('todo command keeps agent-session storage across shell recreation', async () => {
   let nextShell = 0
-  const env = await createTodoEnvironment(() => `todo-recreated-shell-${++nextShell}`)
+  const host = await createTodoHost()
+  const env = await hostlessShell({ host, commands: createCodingCommandRegistry(), agentSessionId: 'todo-agent', shellIdFactory: () => `todo-recreated-shell-${++nextShell}`, initialEnv: {} })
+  const other = await hostlessShell({ host, commands: createCodingCommandRegistry(), agentSessionId: 'other-agent', shellIdFactory: () => 'other-shell', initialEnv: {} })
 
   const firstShell = await env.exec({ agentSessionId: 'todo-agent', script: 'demi todo add "First shell" --json' })
   expect(firstShell.shellId).toBe('todo-recreated-shell-1')
   expect(await env.disposeShell(firstShell.shellId)).toBe(true)
   const secondShell = await env.exec({ agentSessionId: 'todo-agent', script: 'demi todo add "Second shell" --json' })
-  const otherAgent = await env.exec({ agentSessionId: 'other-agent', script: 'demi todo add "Other agent" --json' })
+  const otherAgent = await other.exec({ agentSessionId: 'other-agent', script: 'demi todo add "Other agent" --json' })
 
   expect(secondShell.shellId).toBe('todo-recreated-shell-2')
-  expect(otherAgent.shellId).toBe('todo-recreated-shell-3')
+  expect(otherAgent.shellId).toBe('other-shell')
   const list = await env.exec({ agentSessionId: 'todo-agent', script: 'demi todo list --json' })
   expect(JSON.parse(list.stdout.delta)).toEqual({
     todos: [
@@ -75,19 +80,23 @@ test('todo command keeps agent-session storage across shell recreation', async (
       { id: 'T2', text: 'Second shell', status: 'pending' },
     ],
   })
-  const otherList = await env.exec({ agentSessionId: 'other-agent', script: 'demi todo list --json' })
+  const otherList = await other.exec({ agentSessionId: 'other-agent', script: 'demi todo list --json' })
   expect(JSON.parse(otherList.stdout.delta)).toEqual({
     todos: [{ id: 'T1', text: 'Other agent', status: 'pending' }],
   })
 })
 
-async function createTodoEnvironment(shellIdFactory: () => string): Promise<BashEnvironment> {
+async function createTodoHost(): Promise<LocalHost> {
   const root = await mkdtemp(join(tmpdir(), 'demi-todo-'))
-  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
-  return new BashEnvironment({
-    host,
+  return new LocalHost(root, { storeRoot: join(root, '.host-store') })
+}
+
+async function createTodoEnvironment(shellIdFactory: () => string): Promise<ShellEnvironment> {
+  return await hostlessShell({
+    host: await createTodoHost(),
     commands: createCodingCommandRegistry(),
+    agentSessionId: 'todo-agent',
     shellIdFactory,
-    initialEnv: { PATH: process.env.PATH ?? '' },
+    initialEnv: {},
   })
 }

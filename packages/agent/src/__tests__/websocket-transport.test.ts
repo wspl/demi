@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test'
+import { hostlessShellFactory } from '@demicodes/command-loader/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/shell/node'
 import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -114,6 +115,7 @@ test('WebSocket transports carry AgentClient and AgentServer traffic end to end'
   const [clientSocket, serverSocket] = createSocketPair()
 
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('ws-stub', () => new StubProvider([[events.text('over websocket'), events.response()]]))],
   })
@@ -136,6 +138,7 @@ test('WebSocket transports preserve complex AgentClient action convergence', asy
   const provider = new WebSocketScenarioProvider()
 
   const server = new AgentServer({
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('ws-scenario', provider)],
   })
