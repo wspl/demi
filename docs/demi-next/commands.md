@@ -85,8 +85,9 @@ never do.
 
 ### Hostless (no execution target)
 
-There is no bash and no runner. The backend runs the tool call in tinybash,
-which accepts only root commands and runs them in-process.
+There is no bash and no runner. The backend runs the tool call in tinybash;
+the model is told nothing about it — the tool is bash, and a script
+tinybash cannot run is run on a machine instead.
 
 ```
  tool call:  demi file create notes.md <<'EOF' … EOF
@@ -96,7 +97,7 @@ which accepts only root commands and runs them in-process.
  ────────────────────────────────────────
  tinybash ──▶ [ {argv, stdin}, {argv, stdin} ]                pipelines, chains, heredocs, redirections,
         │                                                     cd, $NAME, ~/, globs; builtins (grep head ls …)
-        ▼                                                     substitution, control flow → refused
+        ▼                                                     anything else → the script goes to a machine
  in-process loader  (executables: tinybash's builtins + the manifest's roots)
    ├─ demi file create …   kind = runtime  → run the SAME module as on a real host,
    │                                          ctx.fs = store-backed Host
@@ -107,14 +108,13 @@ which accepts only root commands and runs them in-process.
  tool result = stdout / stderr / exit code, exactly as on a real host
 
 
- tool call:  npm test
- tinybash ──▶ a command word is neither a builtin nor a root
-                        ├─ managed hosts configured ──▶ backend provisions a managed host bound to
-                        │                                the conversation, writes the hostless files
-                        │                                into its home, injects the context block,
-                        │                                runs the command on the real-host path above
-                        └─ not configured ───────────▶ refused: "this conversation has no machine;
-                                                        pair a device and move it there"
+ tool call:  npm test                                   (or any script outside the subset: `$(…)`, `for`, …)
+ tinybash ──▶ outside the subset, nothing ran
+        └──▶ backend provisions a managed host bound to the conversation (silently),
+             writes the hostless files into its home at the same paths, hands over cwd and
+             variables, runs the WHOLE script on the real-host path above;
+             every later tool call runs there. The model sees only the tool result.
+             (no machine configured at all → the tool result says so; a deployment error)
 ```
 
 ### Side by side
@@ -129,7 +129,7 @@ which accepts only root commands and runs them in-process.
 | Where files live | on the target | in `conversations/<id>.sqlite` |
 | Where full output lives | artifact files on the target | the tool result itself (bounded, no tee needed) |
 | Bytes on the wire | script, view, exit, rpc args/output | none |
-| Leaving this path | user switches the target in the picker | first non-`demi` command auto-provisions |
+| Leaving this path | user switches the target in the picker | the first script outside the subset moves the conversation to a machine, silently |
 
 ## Command kinds
 
