@@ -19,7 +19,7 @@ use std::task::{Context, Poll, Waker};
 use rquickjs::function::{Async, Func, Opt};
 use rquickjs::module::{Declarations, Exports, ModuleDef};
 use rquickjs::{Ctx, Object, Result, Value};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tokio::net::unix::pipe;
 use tokio::signal::unix::{signal, SignalKind};
 
@@ -161,16 +161,23 @@ pub struct TeeOutcome {
     done: tokio::sync::Notify,
 }
 
+/// Drains one child stream into its file and the bounded view.
+///
+/// The file is written synchronously on the loop thread: a page-cache
+/// write of one chunk is microseconds, while handing each chunk to the
+/// blocking pool costs a thread wake-up, which under nested
+/// virtualisation is what halved the throughput.
 async fn tee<'js>(
     ctx: Ctx<'js>,
     mut source: pipe::Receiver,
-    mut file: tokio::fs::File,
+    mut file: std::fs::File,
     view: Rc<RefCell<View>>,
     outcome: Rc<TeeOutcome>,
     is_stdout: bool,
 ) {
+    use std::io::Write;
     let _activity = Activity::begin(&ctx);
-    let mut buf = vec![0u8; 64 * 1024];
+    let mut buf = vec![0u8; 256 * 1024];
     let mut total: u64 = 0;
     let mut failed = false;
     loop {
@@ -184,18 +191,13 @@ async fn tee<'js>(
         };
         total += n as u64;
         if !failed {
-            if let Err(e) = file.write_all(&buf[..n]).await {
+            if let Err(e) = file.write_all(&buf[..n]) {
                 // Keep draining so the child never blocks; report at wait.
                 *outcome.error.borrow_mut() = Some(e);
                 failed = true;
             }
         }
         view.borrow_mut().push(&buf[..n]);
-    }
-    if !failed {
-        if let Err(e) = file.flush().await {
-            *outcome.error.borrow_mut() = Some(e);
-        }
     }
     view.borrow_mut().end();
     if is_stdout { outcome.stdout.set(Some(total)) } else { outcome.stderr.set(Some(total)) }
@@ -287,10 +289,9 @@ async fn spawn<'js>(ctx: Ctx<'js>, options: Object<'js>) -> Result<Object<'js>> 
             let stdout_path: String = t.get("stdoutPath")?;
             let stderr_path: String = t.get("stderrPath")?;
             let limit: u32 = t.get::<_, Option<u32>>("viewLimit")?.unwrap_or(0);
-            let open = |p: &str| -> Result<tokio::fs::File> {
-                let f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(p)
-                    .map_err(|e| throw_io(&ctx, e, "open", Some(p)))?;
-                Ok(tokio::fs::File::from_std(f))
+            let open = |p: &str| -> Result<std::fs::File> {
+                std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(p)
+                    .map_err(|e| throw_io(&ctx, e, "open", Some(p)))
             };
             Some((open(&stdout_path)?, open(&stderr_path)?, limit as usize))
         }

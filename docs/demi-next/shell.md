@@ -283,8 +283,9 @@ target.
 - Static musl builds for Linux x86_64 and aarch64 (the managed-host rootfs
   and user hosts), macOS arm64 and x86_64 builds (user hosts). Windows has
   no bash and is not a target.
-- **Size**: 2.3 MB on macOS arm64 with every primitive in (QuickJS,
-  rustls with ring, hyper, tungstenite, tokio). Every added primitive is
+- **Size**: 2.3 MB on macOS arm64, 2.6 MB Linux aarch64 musl, 3.0 MB
+  Linux x86_64 musl, with every primitive in (QuickJS, rustls with ring,
+  hyper, tungstenite, tokio). Every added primitive is
   weighed against the first-execution cost it adds, not against a byte
   budget.
 - **The startup path touches no network code.** First-execution cost in a
