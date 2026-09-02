@@ -1,9 +1,10 @@
 import type { Builtin } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { collectBytes } from '@demicodes/utils'
 import { strerror } from './errors'
 import { guardedStdin } from './inputs'
+
+export const wcSpec: FlagSpec = { switches: ['l', 'w', 'c'], valued: [] }
 
 interface Counts {
   lines: number
@@ -29,7 +30,7 @@ function count(bytes: Uint8Array): Counts {
 }
 
 export const wc: Builtin = async (ctx) => {
-  const flags = parseFlags('wc', ctx.argv, SPECS.wc, ctx.line)
+  const flags = parseFlags('wc', ctx.argv, wcSpec, ctx.line)
   const show = {
     lines: has(flags, 'l'),
     words: has(flags, 'w'),

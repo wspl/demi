@@ -11,7 +11,7 @@ interface Expression {
 }
 
 /** Splits argv into start paths and the accepted predicates; throws `OutsideError` beyond the table. */
-function parseFind(argv: readonly string[], line: number): { paths: string[]; expression: Expression; error: string | null } {
+function parseFind(argv: readonly string[], line: number): { paths: string[]; expression: Expression } {
   const paths: string[] = []
   let i = 0
   while (i < argv.length && !argv[i]!.startsWith('-')) paths.push(argv[i++]!)
@@ -47,7 +47,7 @@ function parseFind(argv: readonly string[], line: number): { paths: string[]; ex
     }
     outside({ kind: 'flag', program: 'find', flag: arg, line })
   }
-  return { paths: paths.length === 0 ? ['.'] : paths, expression, error: null }
+  return { paths: paths.length === 0 ? ['.'] : paths, expression }
 }
 
 class FindError extends Error {}

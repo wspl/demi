@@ -1,12 +1,13 @@
 import type { Builtin } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { lazyInputs } from './inputs'
 import { encodeLatin1 } from '@demicodes/utils'
 import { lines } from '../exec/stream'
 
+export const catSpec: FlagSpec = { switches: ['n'], valued: [] }
+
 export const cat: Builtin = async (ctx) => {
-  const flags = parseFlags('cat', ctx.argv, SPECS.cat, ctx.line)
+  const flags = parseFlags('cat', ctx.argv, catSpec, ctx.line)
   let status = 0
   let number = 1
   for (const input of lazyInputs(ctx, 'cat', flags.operands)) {
