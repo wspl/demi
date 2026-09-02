@@ -4,25 +4,40 @@
 |---|---|
 | Date | 2026-09-02 |
 | Status | Design (lands in M8; the CLI's `rpc` path completes in M9) |
-| Scope | The `demi` command tree: organizing rule, command kinds, the command ABI, the manifest, the loader, hostless execution, the `demi` CLI on a target |
+| Scope | The command system: root commands, organizing rule, command kinds, the command ABI, the manifest, the loader, hostless execution, root commands on a target |
+
+## Root commands
+
+The command system is a mechanism, not a command. A **root command** is a
+top-level name the manifest declares — `demi` is the built-in root Demi's
+agent ships with, and a library user who builds another agent on Demi
+declares their own root (`myagent`) with the same tree types, kinds, ABI,
+manifest, loader and target-side entry. Nothing below is specific to
+`demi` except its contents.
+
+On a target every root is a name in `PATH` — a symlink to the shell binary
+(`shell.md`) — so real bash runs `demi …` and `myagent …` the same way it
+runs anything else. In a hostless conversation the parser accepts exactly
+the manifest's roots as first words.
 
 ## Organizing rule
 
 Demi's agent works entirely through shell commands. **Every Demi-specific
-capability lives under the `demi` platform command, and every `demi`
-subcommand is a noun domain group** (`file`, `todo`, `agent`, `host`, …);
-anything outside `demi` is an ordinary shell command run by the target's
-real bash. **Group nodes navigate; leaf nodes execute**: a `Command` with
-`subcommands` has no `run`; invoking a group bare prints its help, and the
-dispatcher returns help rather than "requires a subcommand" when argv is
-exhausted on a group. `demi agent spawn [--profile] [--description]
-[prompt]` is the spawn leaf; `agent` itself is a group.
+capability lives under the `demi` root, and every `demi` subcommand is a
+noun domain group** (`file`, `todo`, `agent`, `host`, …); anything outside
+a root is an ordinary shell command run by the target's real bash. **Group
+nodes navigate; leaf nodes execute**: a `Command` with `subcommands` has no
+`run`; invoking a group bare prints its help, and the dispatcher returns
+help rather than "requires a subcommand" when argv is exhausted on a group.
+`demi agent spawn [--profile] [--description] [prompt]` is the spawn leaf;
+`agent` itself is a group. A user-defined root follows the same rule for
+its own groups.
 
-The tree is **defined once, in the backend**: `@demicodes/coding-agent`
-declares the agent-facing groups, the backend composition root contributes
-the groups that need backend state (`host`), and the backend builds the
-manifest from the assembled tree. No other process holds a command
-definition.
+The trees are **defined once, in the backend**: `@demicodes/coding-agent`
+declares the `demi` root's agent-facing groups, the backend composition
+root contributes the groups that need backend state (`host`), an embedding
+library user adds their roots, and the backend builds one manifest from
+all of them. No other process holds a command definition.
 
 ## Two execution paths
 
@@ -42,7 +57,7 @@ in `PATH`; everything else is whatever the machine has.
  ───────                          ────────────────────                 ───────────────────────
  job_start {script, cwd,   ────▶  spawn  bash -c "<script>"     ────▶  bash
             env + conv/shell ids}   │  tee stdout/stderr → artifact       │
-                                    │  files under commandArtifactsDir     ├─ demi file edit src/a.ts        (the demi CLI)
+                                    │  files under commandArtifactsDir     ├─ demi file edit src/a.ts        (shell, command mode)
                                     │                                      │    read ~/.demi/commands/<hash>/   manifest cache
                                     │                                      │    kind = runtime
                                     │                                      │    → run the module in-process, ctx.fs = real fs
@@ -55,13 +70,13 @@ in `PATH`; everything else is whatever the machine has.
 
  an rpc command inside the same script, e.g.  demi todo add "run the suite":
 
-                                                                        demi CLI: kind = rpc
+                                                                        command mode: kind = rpc
                                   runner  ◀───────── UDS ─────────────  → parsed args + stdin
  ◀── rpc_call {conv id, shell id, ──┘  attributes by the ids in the
-     command, args, stdin}             job's environment
+     root, command, args, stdin}       job's environment
      backend runs the command
      against conversation state
- ─── rpc_output / rpc_exit ─────▶ runner ──────────── UDS ────────────▶ demi CLI writes stdout, exits with the code
+ ─── rpc_output / rpc_exit ─────▶ runner ──────────── UDS ────────────▶ command mode writes stdout, exits with the code
 ```
 
 What crosses the wire: the script, the bounded view, the exit, and the
@@ -79,7 +94,7 @@ accepts only `demi` commands, and runs them in-process.
 
  backend (one process; nothing leaves it)
  ────────────────────────────────────────
- demi-only parser ──▶ [ {argv, stdin}, {argv, stdin} ]        tokens, heredocs, `;` `&&` newline
+ root-command parser ─▶ [ {argv, stdin}, {argv, stdin} ]      tokens, heredocs, `;` `&&` newline
         │                                                     anything else → refused (below)
         ▼
  in-process loader
@@ -93,7 +108,7 @@ accepts only `demi` commands, and runs them in-process.
 
 
  tool call:  npm test
- demi-only parser ──▶ first word is not `demi`
+ root-command parser ─▶ first word is not a root command
                         ├─ managed hosts configured ──▶ backend provisions a managed host bound to
                         │                                the conversation, writes the hostless files
                         │                                into its home, injects the context block,
@@ -106,9 +121,9 @@ accepts only `demi` commands, and runs them in-process.
 
 | | Real host | Hostless |
 |---|---|---|
-| Who parses the tool call | real bash on the target | the backend's demi-only parser |
-| What can appear in it | anything bash runs | `demi` commands, heredocs, `;` `&&` newline |
-| Where a `runtime` module runs | in the `demi` CLI process on the target | in the backend process |
+| Who parses the tool call | real bash on the target | the backend's root-command parser |
+| What can appear in it | anything bash runs | root commands, heredocs, `;` `&&` newline |
+| Where a `runtime` module runs | in a command-mode shell process on the target | in the backend process |
 | The `ctx.fs` it sees | the target's real filesystem (`host-shell`) | the conversation's store-backed Host (`host-virtual`) |
 | Where an `rpc` command runs | in the backend, reached via UDS → runner socket | in the backend, called directly |
 | Where files live | on the target | in `conversations/<id>.sqlite` |
@@ -129,7 +144,8 @@ Every leaf is one of two kinds:
 - **`runtime`** — the implementation is an ES module shipped to wherever the
   command is invoked and run there against that place's filesystem. `demi
   file read/create/edit/patch` and future `demi search` are `runtime`. On a
-  target the module runs inside the `demi` CLI with zero round trips; in a
+  target the module runs inside the shell in command mode with zero round
+  trips; in a
   hostless conversation it runs inside the backend against the
   conversation's store-backed Host.
 
@@ -178,8 +194,9 @@ whenever the tree changes:
 ```
 manifest
   hash                       content hash of everything below
-  tree                       groups and leaves: name, kind, help, input and output schemas (JSON Schema)
-  modules[name] = { hash }   one bundled ESM file per runtime leaf
+  roots[name]                one tree per root command (`demi`, `myagent`, …):
+    tree                     groups and leaves: name, kind, help, input and output schemas (JSON Schema)
+  modules[hash]              one bundled ESM file per runtime leaf, referenced from its leaf
 ```
 
 Each `runtime` leaf is bundled at build time into one self-contained module
@@ -196,7 +213,7 @@ dependency. It is the one place that knows how to run a command:
 
 ```
 loader = createLoader({ source, host, rpc?, cache? })
-loader.dispatch(argv, io) → exit code
+loader.dispatch(root, argv, io) → exit code
 ```
 
 - `source` yields the manifest and modules — from the runner's connection,
@@ -207,7 +224,8 @@ loader.dispatch(argv, io) → exit code
 - `cache` persists manifests and modules by hash (a directory on a target,
   memory in the backend).
 
-Dispatch resolves the path through the tree, prints help for a group,
+Dispatch selects the root's tree, resolves the path through it, prints help
+for a group,
 parses and validates the leaf's arguments against its schema, then either
 runs the cached module with a `ctx` built from `host`, `io` and the
 arguments, or sends the `rpc` message. Help text comes from the tree, so
@@ -219,23 +237,26 @@ Embedders:
 |---|---|---|---|
 | backend, hostless conversation | in-process tree | the conversation's store-backed Host | in-process |
 | runner | the backend socket, cached on disk under `~/.demi/commands/<hash>/` | — (the runner does not execute commands; it caches and relays) | the backend socket |
-| `demi` CLI on a target | the runner's disk cache; a miss asks the runner over the UDS | `@demicodes/host-shell` over the real filesystem | the runner over the UDS |
-| standalone `demi` (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
+| the shell in command mode on a target | the runner's disk cache; a miss asks the runner over the UDS | `@demicodes/host-shell` over the real filesystem | the runner over the UDS |
+| the shell in command mode, standalone (no runner) | a configured directory or URL | the real filesystem | none, or an embedder-supplied transport |
 | tests | in-memory | in-memory Host | stub |
 
 A third party who wants Demi's commands in another agent needs the loader,
 a Host implementation and a manifest source — no runner, no shell, no
 backend.
 
-## The `demi` CLI on a target
+## Root commands on a target
 
-`demi` on a target is the shell binary in CLI entry mode (`shell.md`)
-running the loader. Real bash spawns it like any other program; it reads
-the manifest cache the runner maintains, runs `runtime` commands in its own
-process, and forwards `rpc` commands to the runner over the local UDS. The
-CLI holds no credential: the runner attributes an `rpc` call to a
-conversation by the ids the backend injected into the bash environment at
-spawn time and forwards it on its authenticated socket (`runner.md`).
+A root command on a target is the shell binary in command mode
+(`shell.md`) running the loader, reached through a symlink named after the
+root: `argv[0]` selects the root's tree in the manifest. Real bash spawns it
+like any other program; it reads the manifest cache the runner maintains,
+runs `runtime` commands in its own process, and forwards `rpc` commands to
+the runner over the local UDS. The process holds no credential: the runner
+attributes an `rpc` call to a conversation by the ids the backend injected
+into the bash environment at spawn time and forwards it on its
+authenticated socket (`runner.md`). The runner creates and removes the
+symlinks as the manifest's root set changes.
 
 Stdin and stdout are byte-faithful in both kinds: a `runtime` module reads
 and writes its process streams; an `rpc` invocation streams stdin to the
@@ -244,9 +265,10 @@ backend and stdout/stderr back.
 ## Hostless execution
 
 A conversation with no execution target (`sessions-and-targets.md`) still
-executes `demi` commands. The backend parses the tool call with a
-**demi-only parser** and dispatches through an in-process loader whose Host
-is the conversation's store-backed filesystem (`@demicodes/host-virtual`).
+executes root commands. The backend parses the tool call with a
+**root-command parser** and dispatches through an in-process loader whose
+Host is the conversation's store-backed filesystem
+(`@demicodes/host-virtual`).
 
 The parser accepts exactly:
 
@@ -260,15 +282,15 @@ The parser accepts exactly:
 
 Anything else is refused with a message naming the way out: pipes,
 redirections, variables, command and process substitution, globs,
-background jobs, and any first word other than `demi`. The parser does not
-pretend to be bash, so there is no divergence catalogue. The tool
-description in the hostless state says which commands exist and that any
-other command starts a machine; the model reaches for `demi file` rather
-than `cat`.
+background jobs, and any first word that is not a manifest root. The
+parser does not pretend to be bash, so there is no divergence catalogue.
+The tool description in the hostless state says which commands exist and
+that any other command starts a machine; the model reaches for `demi file`
+rather than `cat`.
 
-The first non-`demi` command auto-provisions a managed host bound to the
-conversation, and the backend writes the hostless files into its home
-(`sessions-and-targets.md`).
+The first command whose first word is not a root auto-provisions a managed
+host bound to the conversation, and the backend writes the hostless files
+into its home (`sessions-and-targets.md`).
 
 ## The `demi host` group
 
@@ -295,10 +317,12 @@ sockets.
 - `@demicodes/shell` keeps the `Command` types (tree, input/output specs,
   `CommandContext`, `CommandResult`) and the Host contract; it loses the
   interpreter and the portable command set in M9.
-- `@demicodes/coding-agent` keeps the agent-facing groups and adds the
-  `kind` on each leaf; the `runtime` leaves' implementations are written
-  against the ABI.
-- `@demicodes/command-loader` is new: the loader, the manifest types, the
-  hostless parser (it is a parser of `demi` invocations, not of bash).
-- `@demicodes/backend` builds the manifest, serves it, and embeds the
-  loader for hostless conversations.
+- `@demicodes/coding-agent` declares the `demi` root's agent-facing groups
+  with the `kind` on each leaf; the `runtime` leaves' implementations are
+  written against the ABI. A library user declares their own root the same
+  way, with the same types.
+- `@demicodes/command-loader` is new: the loader, the manifest types and
+  build, the root-command parser (it is a parser of root-command
+  invocations, not of bash).
+- `@demicodes/backend` assembles the roots, builds and serves the
+  manifest, and embeds the loader for hostless conversations.

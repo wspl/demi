@@ -122,7 +122,7 @@ poll on open and on an interval.
 | attachments, blobs | `POST /api/attachments` (returns a reference id), `POST /api/conversations/:id/workspace-files`, `GET /api/blobs/:sha256` | M6; blobs M9 |
 | grants | `GET/POST/DELETE /api/conversations/:id/grants` | M10 |
 | artifacts | `GET /api/conversations/:id/artifacts/:ref` (full command output, fetched from the target by reference) | M9 |
-| commands | `GET /api/commands/manifest`, `GET /api/commands/modules/:hash` (the standalone `demi` source) | M8 |
+| commands | `GET /api/commands/manifest`, `GET /api/commands/modules/:hash` (the manifest source for a standalone command-mode shell) | M8 |
 | admin | `GET/POST/PATCH /api/users`, `GET/PUT /api/settings` (instance mode) | M11 |
 
 ## Packages
