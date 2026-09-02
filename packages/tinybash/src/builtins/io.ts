@@ -1,4 +1,4 @@
-import type { HostFileSystem } from '@demicodes/shell'
+import type { TinybashFs } from '../host'
 import type { Writer } from '../exec/stream'
 import { throwIfAborted } from '@demicodes/utils'
 
@@ -8,7 +8,7 @@ export interface BuiltinContext {
   stdin: AsyncIterable<Uint8Array>
   stdout: Writer
   stderr: Writer
-  fs: HostFileSystem
+  fs: TinybashFs
   cwd: string
   home: string
   env: Readonly<Record<string, string>>
