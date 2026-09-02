@@ -5,8 +5,11 @@
 //! modules. Relative specifiers resolve against the importer. There is no
 //! npm-style resolution of any kind.
 //!
-//! `tinyjs:*` resolves only when the importer is the embedded bundle;
-//! that check is what keeps the tinyjs API private to `@demicodes/host-tinyjs`.
+//! `tinyjs:*` and `/embedded/*` resolve only when the importer is the
+//! embedded bundle; that check is what keeps the tinyjs API private to
+//! `@demicodes/host-runner` — a module loaded from a file cannot reach the
+//! bundle's own modules (already declared, and served from the module cache
+//! if the name resolved) any more than the primitives.
 
 use rquickjs::loader::{Loader, Resolver};
 use rquickjs::module::Declared;
@@ -34,17 +37,21 @@ impl Resolver for ShellResolver {
                 _ => Err(Error::new_resolving(base, name)),
             };
         }
-        if name.starts_with('/') {
-            return Ok(normalize(name));
-        }
-        if name.starts_with("./") || name.starts_with("../") {
+        let resolved = if name.starts_with('/') {
+            normalize(name)
+        } else if name.starts_with("./") || name.starts_with("../") {
             let dir = match base.rfind('/') {
                 Some(i) => &base[..i],
                 None => "",
             };
-            return Ok(normalize(&format!("{dir}/{name}")));
+            normalize(&format!("{dir}/{name}"))
+        } else {
+            return Err(Error::new_resolving_message(base, name, "only absolute and relative paths resolve"));
+        };
+        if resolved.starts_with(EMBEDDED_PREFIX) && !base.starts_with(EMBEDDED_PREFIX) {
+            return Err(Error::new_resolving_message(base, name, "the embedded bundle is not available to modules loaded from files"));
         }
-        Err(Error::new_resolving_message(base, name, "only absolute and relative paths resolve"))
+        Ok(resolved)
     }
 }
 
@@ -83,7 +90,7 @@ pub fn evaluate_entry<'js>(ctx: &Ctx<'js>, name: &str, entry: Entry) -> Result<r
         Entry::Bytecode(bytes) => unsafe { Module::load(ctx.clone(), bytes)? },
         Entry::Source(source) => Module::declare(ctx.clone(), name, source)?,
     };
-    module.meta()?.set("url", name)?;
+    module.meta()?.set("url", file_url(name))?;
     let (_, promise) = module.eval()?;
     Ok(promise)
 }
@@ -113,9 +120,15 @@ impl Loader for ShellLoader {
     }
 }
 
-/// Declares a source module with `import.meta.url` set to its name.
+/// Declares a source module with `import.meta.url` set to its `file:` URL.
 fn declare_with_meta<'js, S: Into<Vec<u8>>>(ctx: &Ctx<'js>, name: &str, source: S) -> Result<Module<'js, Declared>> {
     let module = Module::declare(ctx.clone(), name, source)?;
-    module.meta()?.set("url", name)?;
+    module.meta()?.set("url", file_url(name))?;
     Ok(module)
+}
+
+/// `import.meta.url`: module names are absolute paths (`/embedded/…` for the
+/// bundle), so the URL is `file://` plus the name.
+fn file_url(name: &str) -> String {
+    format!("file://{name}")
 }

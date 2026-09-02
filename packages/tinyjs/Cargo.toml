@@ -4,9 +4,20 @@ version = "0.0.1"
 edition = "2021"
 publish = false
 
+[lib]
+name = "tinyjs"
+path = "src/lib.rs"
+
+# The runtime: what a target runs.
 [[bin]]
 name = "tinyjs"
 path = "src/main.rs"
+
+# The packer: compiles a bundle to bytecode and injects it into a bare
+# tinyjs of any platform. Never shipped to a target.
+[[bin]]
+name = "tinyjsc"
+path = "src/bin/tinyjsc.rs"
 
 [dependencies]
 rquickjs = { version = "0.11", features = ["loader", "futures", "macro", "array-buffer"] }

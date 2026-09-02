@@ -53,6 +53,17 @@ test("process: spawn errors map to errno", async () => {
   await assertCode(() => proc.kill(999999, "SIGTERM"), "ESRCH", "kill");
 });
 
+test("process: kill reaches only this process's children", async () => {
+  // Not children: our own pid, pid 0 (the group), -1 (everything).
+  for (const pid of [ownPid, 0, -1]) await assertCode(() => proc.kill(pid, "SIGTERM"), "ESRCH", "kill");
+  const child = await proc.spawn({ command: "sh", args: ["-c", "sleep 5"], env: baseEnv });
+  proc.kill(child.pid, "SIGKILL");
+  assertEq((await proc.wait(child.pid)).signal, "SIGKILL");
+  fs.close(child.stdout); fs.close(child.stderr);
+  // Reaped: the pid has left the table.
+  await assertCode(() => proc.kill(child.pid, "SIGTERM"), "ESRCH", "kill");
+});
+
 test("process: kill reports the signal", async () => {
   const child = await proc.spawn({ command: "sleep", args: ["30"], env: baseEnv });
   await sleep(20);
