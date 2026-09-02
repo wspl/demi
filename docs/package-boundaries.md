@@ -52,8 +52,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `just-bash`, `@demicodes/utils`.
-- Owns: Host contract (`defaultCwd`, `identity`, `fs`, `process` including `openCwd` / spawn-error kinds, `store`), command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `RootPaths`, path marks, `runtimeModule`) with the `commandModulesAsText` build plugin under `@demicodes/shell/build`, the `ShellEnvironment` contract behind the `shell_*` tools with its command records, status views and artifact store (shared by every engine), CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools.
-- Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`. It does not expose model-facing AgentTool ownership.
+- Owns: Host contract (`defaultCwd`, `identity`, `fs`, `process` including `openCwd` / spawn-error kinds, `store`), `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`), the Host conformance suite (`hostConformanceCases` under `@demicodes/shell/testing`, run by every Host implementation), command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `RootPaths`, path marks, `runtimeModule`, `importCommandModule`) with the `commandModulesAsText` build plugin under `@demicodes/shell/build`, the `ShellEnvironment` contract behind the `shell_*` tools with its command records, status views and artifact store (shared by every engine), CommandRegistry (the reserved-name set injected by the engine), HostStore-scoped command storage, HostBackedFileSystem, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools. Under `@demicodes/shell/bash`: `BashEnvironment` and the portable command set — the just-bash engine, deleted in M9.
+- Public boundary: the command system and the Host contract from root, which runs on every runtime (Bun, tinyjs); platform-neutral subpaths `storage`, `host-fs`, `testing`; the just-bash engine only under `bash`. It does not expose model-facing AgentTool ownership.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
@@ -210,10 +210,10 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/command-loader`
 
-- Status: implemented (M8; `docs/demi-next/commands.md`); the directory/socket manifest sources arrive with the runner in M9.
+- Status: implemented (M8; `docs/demi-next/commands.md`); the directory source and module import by path in M9 step 1; the socket source arrives with the runner port.
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the manifest types, the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, path-argument resolution, running a `runtime` module from its text, forwarding an `rpc` invocation) and `rootPaths`, the `RootPaths` derivation tinybash consumes.
-- Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest`, `rootPaths` from root.
+- Owns: the manifest types, the manifest sources (`inMemorySource`; `directorySource` with the `writeManifestDirectory` layout), the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, path-argument resolution, running a `runtime` module from its text or from the source's module file, forwarding an `rpc` invocation) and `rootPaths`, the `RootPaths` derivation tinybash consumes.
+- Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource` / `directorySource` / `writeManifestDirectory`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest`, `rootPaths` from root.
 - Pure JS with no runtime dependency: the same package runs in the backend, in tinyjs command mode and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
 - Must not: know the backend, the runner, tinybash or any Host implementation (all injected), spawn processes, or hold a command definition of its own.
 
@@ -227,16 +227,16 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-runner`
 
-- Status: planned (M9, `docs/demi-next/runner.md`, `docs/demi-next/tinyjs.md`).
-- Production deps: `@demicodes/shell`, `@demicodes/utils`; the `tinyjs:*` modules.
-- Owns: the `Host` contract over tinyjs's primitives — the Host every user host and managed host serves through its runner. Its counterpart on the backend is `RemoteHost` in `@demicodes/runner-protocol`: the two ends of one Host.
-- Public boundary: the Host factory from root.
+- Status: implemented (M9 step 1, `docs/demi-next/runner.md`, `docs/demi-next/tinyjs.md`): accepted by the Host conformance suite run on tinyjs.
+- Production deps: `@demicodes/shell`, `@demicodes/utils`; the `tinyjs:*` modules, declared once in `src/tinyjs.d.ts`.
+- Owns: the `Host` contract over tinyjs's primitives — the Host every user host and managed host serves through its runner. Its counterpart on the backend is `RemoteHost` in `@demicodes/runner-protocol`: the two ends of one Host. Also the typed access to the process itself (`argv`, `env`, `cwd`, `exit`, `onSignal`, the standard streams as byte streams and writers) for the runner and the command-mode entry, which never import `tinyjs:*` themselves.
+- Public boundary: `createRunnerHost` and the process access from root; `tinyjsBinary` and `bundleForTinyjs` under `@demicodes/host-runner/testing` for Bun tests that run JS on tinyjs.
 - Must not: import Node, `@demicodes/host-local`, `@demicodes/agent`, `@demicodes/coding-agent`, or run anywhere but tinyjs.
 
 ### `@demicodes/runner`
 
-- Status: implemented (M1: connection + Host RPC; M4: pairing against the product backend; ported to tinyjs and `@demicodes/host-runner` in M9; packaging in M10).
-- Production deps: `@demicodes/host-runner` (until M9: `@demicodes/host-local`), `@demicodes/runner-protocol`, `@demicodes/command-loader`, `@demicodes/utils`.
+- Status: implemented (M1: connection + Host RPC; M4: pairing against the product backend; the tinyjs bundle entry `src/tinyjs/entry.ts` with command mode in M9 step 1; runner mode ported to tinyjs and `@demicodes/host-runner` in M9 step 3; packaging in M10).
+- Production deps: `@demicodes/host-runner`, `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/utils`; `@demicodes/host-local` and `@demicodes/shell` until the runner port.
 - Owns: the runner program — the single outbound backend WebSocket with reconnect/backoff, the hello/claim handshake client, machine-local state (`~/.demi/runner.json`, `runner-token` 0600), serving the machine's Host over the runner protocol (spawn requests naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact), and the `demi-runner` CLI entry.
 - Public boundary: `RunnerClient`, `RunnerState` from root; the `demi-runner` bin.
 - Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, or provider packages in production code.
@@ -322,9 +322,10 @@ provider-google -> core, provider, utils
 host-virtual -> shell, utils
 tinybash -> shell, utils
 command-loader -> shell, utils
+host-runner -> shell, utils
 backend -> agent, coding-agent, command-loader, core, host-local, host-virtual, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, tinybash, utils
 runner-protocol -> shell, utils
-runner -> host-local, runner-protocol, shell, utils
+runner -> command-loader, host-local, host-runner, runner-protocol, shell, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils
 web-ui -> agent, core, utils
 web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
