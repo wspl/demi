@@ -266,34 +266,23 @@ backend and stdout/stderr back.
 
 A conversation with no execution target (`sessions-and-targets.md`) still
 executes root commands. The backend runs the tool call in **tinybash**
-(`@demicodes/tinybash`): a deliberately tiny shell — parser plus executor —
-whose only executables are the manifest's root commands, dispatched through
-an in-process loader whose Host is the conversation's store-backed
-filesystem (`@demicodes/host-virtual`). It is the in-process counterpart of
-real bash on a target: same tool, same commands, a fraction of the grammar.
+(`tinybash.md`): a deliberately tiny shell — parser plus executor — whose
+only executables are the manifest's root commands, dispatched through an
+in-process loader whose Host is the conversation's store-backed filesystem
+(`@demicodes/host-virtual`). It is the in-process counterpart of real bash
+on a target: same tool, same commands, a fraction of the grammar, and one
+guarantee — any script it accepts means the same thing in bash.
 
-tinybash accepts exactly:
-
-- one simple command per statement — words with single quotes, double
-  quotes and backslash escapes; `#` comments;
-- heredocs: `<<EOF`, `<<'EOF'`, `<<-EOF`, and here-strings `<<<`; `demi
-  file create` and `demi file patch` take their content on stdin and the
-  agent writes them this way;
-- statements joined by newline, `;`, `&&` or `||`, with bash's exit-status
-  semantics for the chains; the tool result's exit code is the last
-  statement's.
-
-Anything else is refused with a message naming the way out: pipes,
-redirections, variables, command and process substitution, globs,
-background jobs, and any first word that is not a manifest root. tinybash
-does not pretend to be bash, so there is no divergence catalogue — its
-grammar is the list above. The tool description in the hostless state says
-which commands exist and that any other command starts a machine; the
-model reaches for `demi file` rather than `cat`.
-
-The first command whose first word is not a root auto-provisions a managed
-host bound to the conversation, and the backend writes the hostless files
-into its home (`sessions-and-targets.md`).
+In outline: simple commands with bash quoting, `#` comments, the four
+heredoc forms (the file verbs take their content on stdin), and `;` `&&`
+`||` newline chains with bash's exit-status semantics. Pipes, redirections,
+expansions, globs, job control and control flow are refused with a message
+naming the way out. The whole script is parsed before anything runs; a
+script whose first word is not a root is handed intact to a provisioned
+machine, so hostless execution never leaves a script half-done. The tool
+description in the hostless state says which commands exist and that any
+other command starts a machine; the model reaches for `demi file` rather
+than `cat`.
 
 ## The `demi host` group
 
