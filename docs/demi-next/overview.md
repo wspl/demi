@@ -107,6 +107,20 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
    every execution surface by the loader; no target has a second
    implementation of a command (`commands.md`).
 
+## Vocabulary
+
+Four words are easy to confuse and are used in exactly one sense each:
+
+| Word | Means | Never means |
+|---|---|---|
+| **target** (execution target) | the conversation's pointer to where its commands run: a workspace, a session-bound managed host, or nothing (hostless) | a machine |
+| **device** | a row in the registry with a token: a paired user device or a managed one | |
+| **host** | a machine that executes for Demi, seen through the `Host` contract: a user host, a managed host, the store-backed hostless Host | the machine that runs a VM |
+| **guest** / **backend machine** | virtualization terms only: the microVM, and the machine running the backend and Firecracker | a Demi host |
+
+So a managed host is a *guest* on the *backend machine*; the word "host"
+on its own is always Demi's sense.
+
 ## Components
 
 - **Backend** (`@demicodes/backend`): one program — Web API, conversation
