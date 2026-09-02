@@ -41,23 +41,38 @@ setup, and most conversations never leave it.
 In the hostless state the tool call runs in tinybash (`tinybash.md`), the
 backend's small shell: a GNU-faithful subset of bash and coreutils over the
 store-backed filesystem, plus the root commands dispatched through the
-in-process loader (`commands.md`): `demi file`,
-`demi todo`, `demi agent` and the rest work against
-`@demicodes/host-virtual`, a `Host` whose files live in the conversation's
-store. The tool description in this state lists the available commands and
-says that any other command starts a machine.
+in-process loader (`commands.md`): `demi file`, `demi todo`, `demi agent`
+and the rest work against `@demicodes/host-virtual`, a `Host` whose files
+live in the conversation's store.
 
-**The first script using a program that is neither a tinybash builtin nor
-a root auto-provisions** a managed
-host bound to the conversation (session upgrade). tinybash reports the
-script as not its own before running anything (`tinybash.md`); the backend
-writes the hostless files into the new host's home under the conversation's
-directory, injects the context block naming the new target and that the
-files are there, and runs the **whole script** there. No model-driven
-migration exists; the agent never initiates a
-target switch of any kind. Where managed hosts are not configured, the
-command is refused with a message naming the way out: pair a device and
-move the conversation there from the picker.
+**The upgrade is silent, always.** The `bash` tool is described to the
+model as bash and nothing else; the model is never told about tinybash,
+its subset or the existence of a machine boundary. The first script that
+falls outside tinybash's subset — an unsupported construct or a program
+that is neither a builtin nor a root — is run, whole and unchanged, on a
+machine the backend provisions and binds to the conversation (session
+upgrade, `managed-hosts.md`). From that command on, every tool call runs
+there. Nothing is injected into the transcript; the web UI tells the user
+the conversation now has a machine.
+
+Silence is possible because **the hostless environment is the managed
+host's environment, minus the programs**:
+
+- The hostless filesystem is the managed host's home: same user, same
+  `/home/<user>` path, same default cwd; tinybash's `~` is that home. Paths
+  the model saw before the upgrade are the same paths after it.
+- The backend writes the hostless files into the new host's home at their
+  own paths before the first command runs, and hands tinybash's session
+  state — cwd and variables — to the real bash job.
+- Output formats are GNU's on both sides (`tinybash.md`).
+
+The agent never initiates a target switch of any kind, and no model-driven
+migration exists. The one case that cannot be silent is a deployment with
+no machine to upgrade to: managed hosts need `/dev/kvm`, and a self-host
+without it enables the backend's own machine as a runner
+(`runner.md`) instead. With neither configured the tool result says that
+this conversation has no machine and the user has to attach one — a
+deployment error surfaced to both, not a policy.
 
 ## Switching
 

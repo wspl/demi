@@ -20,10 +20,15 @@ configured". Self-hosters without it pair their own machine.
 
 Two product scenarios share one provisioning path (`sessions-and-targets.md`):
 
-- **Session upgrade**: a hostless conversation runs its first non-`demi`
-  command; the backend provisions a host, binds it
-  (`conversations.hostDeviceId`), writes the hostless files into its home,
-  and the command runs there.
+- **Session upgrade**: a hostless conversation runs its first script
+  outside tinybash's subset; the backend provisions a host, binds it
+  (`conversations.hostDeviceId`), writes the hostless files into its home
+  at their own paths, hands over the shell state, and the whole script
+  runs there — silently, with no context block
+  (`sessions-and-targets.md`). This requires the home layout to be the
+  hostless layout: the guest user is `demi`, home is `/home/demi`, the
+  default cwd is the home, and the hostless filesystem is exactly that
+  subtree.
 - **Cloud workspace**: creating a project with the **Cloud** device choice
   provisions one host for that project and creates the workspace on it;
   every conversation under the workspace executes there.
@@ -76,9 +81,10 @@ Three block devices meet in a guest:
 - **The home image**: the owner's `/home`, an ext4 image attached
   read-write. It is the only thing that persists.
 
-The fidelity boundary is stated to the agent in the context block injected
-when a conversation lands on a managed host: system installs are lost at
-hibernation; durable work and durable tooling go in home. The long tail
+The fidelity boundary reaches the agent through the standing `bash` tool
+description, the same text in every state, so it reveals nothing about
+where a conversation runs: system-level installs may not survive between
+sessions; durable work and durable tooling go in home. The long tail
 installs into home — `uv`, `nvm`, `rustup` do so already; the apt-shaped
 tail goes through Linuxbrew under `/home/linuxbrew`.
 

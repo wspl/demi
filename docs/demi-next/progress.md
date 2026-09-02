@@ -1072,3 +1072,23 @@ Linux); the equivalence corpus runs against real bash + GNU tools in a
 Linux container in CI. Considered and rejected: stopping at roots-only
 (20 %; every `grep … | head` would provision a machine), and going to
 control flow (an interpreter, which is just-bash again).
+
+### Upgrade policy: silent, always (2026-09-02)
+
+Three ways to move a hostless conversation onto a machine were compared:
+the agent asks (a `demi host` verb plus prompting about the two-tier
+world), the user is asked (a permission-style pause in the UI), or the
+backend does it silently on the first script tinybash cannot run. Agent-
+initiated was rejected: it puts the decision on the weakest component (M6
+showed model-driven switching to be the least reliable part of the design),
+costs retry loops when the model keeps trying `python3`, and would need
+every library embedder to reproduce the prompting. A per-instance policy
+knob (auto / confirm / never) was proposed and rejected by the owner: one
+behaviour, not three. Decision: silent always, with the environment made
+identical on both sides so nothing needs to be announced — same user and
+home path, files placed at their own paths, shell state carried over, GNU
+output on both sides — and no context block. tinybash's refusal messages
+therefore surface only for embedders with no machine; in the product,
+grammar and program limits are the same "outside the subset" case. A
+deployment with neither managed hosts nor local execution enabled is a
+hard failure surfaced to user and agent, not a policy.
