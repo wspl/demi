@@ -18,8 +18,8 @@ export function runnerSocketRoutes(options: { registry: RunnerRegistry; upgradeW
       return {
         onOpen(_event, ws) {
           handle = registry.openSocket({
-            send: (text) => {
-              ws.send(text)
+            send: (frame) => {
+              ws.send(frame as Uint8Array<ArrayBuffer>)
             },
             close: () => {
               ws.close()
@@ -27,7 +27,10 @@ export function runnerSocketRoutes(options: { registry: RunnerRegistry; upgradeW
           })
         },
         onMessage(event) {
-          handle?.handleMessage(typeof event.data === 'string' ? event.data : String(event.data))
+          // Frames are binary MessagePack; a text frame is malformed and the
+          // registry closes the socket over it.
+          const data = event.data
+          handle?.handleMessage(data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(0))
         },
         onClose() {
           handle?.handleClose()
