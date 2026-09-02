@@ -173,7 +173,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented through M3 (Web API skeleton + conversation module + two-plane storage + virtual default; runner management M4, LLM module/vault/accounting M5+).
 - Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`, `@demicodes/host-virtual`, `@demicodes/provider`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-google`, `@demicodes/provider-openai-api`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
-- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, runner management (pairing, device registry, remote-Host resolution, browse endpoints), the managed-hosts module (`ManagedHostProvisioner` driving runsc directly, lifecycle/hibernate, the backend-contributed `demi host` subcommand group), the LLM module (per-connection provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted connections, subscription device-login flows over per-connection provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
+- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, per-conversation block-row stores, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping), AgentServer assembly over per-conversation virtual Hosts, runner management (pairing, device registry, remote-Host resolution, browse endpoints), the managed-hosts module (`ManagedHostProvisioner` driving Firecracker under jailer through the privileged helper, images and the home-image store, lifecycle/hibernate, the backend-contributed `demi host` subcommand group), the LLM module (per-connection provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted connections, subscription device-login flows over per-connection provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, LocalHost (as the virtual-fs real backing), VirtualHost, and the coding harness.
 - Owns the hostless shell: `HostlessEnvironment` (tinybash over the conversation's `VirtualHost`, root commands through `@demicodes/command-loader`, `rpc` in process) behind the agent server's `shellEnvironment` factory; `HOSTLESS_HOME` (`/home/demi`) and `HOSTLESS_NAMESPACE`; the manifest build with Bun's transpiler.
@@ -187,7 +187,7 @@ Test code may depend upward for integration coverage. Production code must not.
   - `llm/` — provider assembly per connection (type factories, catalog, connection test) and the metering wrap at the inference entry.
   - `vault/` — instance secret, credential crypto, and the typed connection vault over the control plane.
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
-  - `managed/` — managed hosts: the provisioner seam + direct-runsc implementation (OCI bundle, shared rootfs + runsc overlay, cgroup caps), lifecycle (idle hibernate to home snapshots, wake, prev release), and the `demi host` subcommand group injected into the coding command registry.
+  - `managed/` — managed hosts: the provisioner seam + Firecracker implementation (jailer via the privileged helper, kernel and rootfs images, per-host home image, cgroup caps), lifecycle (idle hibernate to home snapshots, wake, prev release), and the `demi host` subcommand group injected into the coding command registry.
   - New modules get sibling directories — never new files at the root.
 
 ### `@demicodes/host-virtual`
@@ -314,7 +314,7 @@ provider-google -> core, provider, utils
 host-virtual -> shell, utils
 tinybash -> shell, utils
 command-loader -> shell, utils
-backend -> agent, coding-agent, command-loader, core, host-local, host-virtual, provider, provider-anthropic-api, provider-google, provider-openai-api, shell, utils
+backend -> agent, coding-agent, command-loader, core, host-local, host-virtual, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, tinybash, utils
 runner-protocol -> shell, utils
 runner -> host-local, runner-protocol, shell, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils

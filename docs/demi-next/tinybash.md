@@ -120,16 +120,16 @@ any other flag or form with a message. Output formats are GNU's.
 | `grep` | `-n -i -v -c -l -r -E -F -A N -B N -C N`, files or stdin | patterns are translated from ERE (or BRE without `\(` `\{`) to JS regex, with `-i` folding ASCII letters only, as the C locale does; a pattern that has no faithful translation is refused; `-r` visits entries in name order |
 | `head`, `tail` | `-n N`, `-N`, `-c N`, `tail -n +N` | |
 | `cat` | `-n` | |
-| `echo` | `-n -e` | |
+| `echo` | `-n -e -E` | |
 | `printf` | `%s %c %d %i %u %x %X %o %%` with `-` `+` space flags, width, precision; format escapes incl. `\NNN` `\xHH` | bash's builtin: the format is reused while arguments remain, a non-number is reported and counts as the parsed prefix; `-v`, `*`, `%N$`, `%b`, `%q`, floating conversions, `#`, `'` and `0` with `%s` are refused |
-| `ls` | `-l -a -1 -R`, paths | GNU column and long formats |
+| `ls` | `-l -a -1 -R`, paths | one name per line, as GNU prints to a pipe; `-l` is the long format |
 | `find` | paths, `-name`, `-iname`, `-type f\|d`, `-maxdepth N` | no other predicate, no `-exec`; entries come in name order, where GNU's order is whatever the filesystem returns |
 | `wc` | `-l -w -c` | |
 | `sort` | `-r -n -u -k N` | |
 | `uniq` | `-c` | |
 | `cut` | `-d X -f LIST` | |
 | `tr` | two sets, `-d` | |
-| `sed` | `-n` with `Np`, `N,Mp`, `$p` | printing line ranges only; `-i` and `s///` refused with `demi file edit` as the way out |
+| `sed` | `-n` with `Np`, `N,Mp`, `$p`, `N,$p` | printing line ranges only; `-i` and `s///` refused with `demi file edit` as the way out |
 | `mkdir` | `-p` | |
 | `rm` | `-r -f` | |
 | `mv`, `cp` | `cp -r` | |
