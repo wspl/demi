@@ -237,21 +237,28 @@ Each has no consumer today and is added only when one appears: pty
 servers (the runner is outbound-only; the relay is a UDS), mount and
 netlink primitives, fs watching, workers, WebAssembly, compression.
 
-### Everything is ours
+### Protocols come from crates
 
-The primitives are implemented directly, not assembled from a
-general-purpose runtime's module crates. LLRT publishes its modules as
-crates and a spike built a shell from them (`progress.md`): what worked
-was exactly the part that is trivial to write (timers, URL, encoders),
-while every primitive with semantics we depend on fell short — errors
-carry no errno code, sockets have no backpressure, fetch buffers whole
-bodies with no streams, whole-file reads grow a buffer incrementally. The
-Rust dependencies are therefore the runtime pieces only: `rquickjs`,
-`tokio` (current-thread runtime; the QuickJS context is single-threaded,
-so none of async Rust's `Send` friction applies), `rustls` on the `ring`
-backend, `rmp` for MessagePack, `sha2`, `getrandom`. HTTP/1.1 and
-WebSocket client framing are written in the crate — a few hundred lines
-each — rather than pulled from `hyper` and `tungstenite`.
+The shell does not implement a wire protocol itself. What the crate owns is
+the glue — URLs to connections, connections to integer handles, errors to
+`ShellError`, proxy discovery — and the primitives whose semantics we
+depend on (errno fidelity, pull-model reads, backpressure, one allocation
+per buffer). The protocol work is delegated:
+
+- `tokio-tungstenite` — WebSocket handshake and framing.
+- `hyper` (`client`, `http1`) with `hyper-util` — HTTP/1.1, and the
+  `CONNECT` tunnel and proxy-environment matcher for user hosts behind
+  corporate proxies.
+- `rustls` on `ring` through `tokio-rustls`; `rustls-platform-verifier` on
+  user hosts, `webpki-roots` in the guest build.
+- `rmpv` for MessagePack, `base64`, `sha2`, `getrandom`.
+- `rquickjs` for the interpreter and `tokio` (current-thread runtime; the
+  context is single-threaded, so none of async Rust's `Send` friction
+  applies).
+
+LLRT's module crates were evaluated and rejected (`progress.md`): what they
+provided correctly was the trivial part, while the primitives with
+semantics we depend on fell short.
 
 The Host implementation `@demicodes/host-shell` maps the `Host` contract
 (`packages/shell/src/host.ts`) onto these primitives, exactly as
@@ -276,9 +283,10 @@ target.
 - Static musl builds for Linux x86_64 and aarch64 (the managed-host rootfs
   and user hosts), macOS arm64 and x86_64 builds (user hosts). Windows has
   no bash and is not a target.
-- **Size budget: 2.5–3 MB** — QuickJS about 0.7 MB, rustls with ring
-  about 1 MB, tokio about 0.3 MB, the rest ours. Every added primitive is
-  weighed against the first-execution cost it adds.
+- **Size**: 2.3 MB on macOS arm64 with every primitive in (QuickJS,
+  rustls with ring, hyper, tungstenite, tokio). Every added primitive is
+  weighed against the first-execution cost it adds, not against a byte
+  budget.
 - **The startup path touches no network code.** First-execution cost in a
   guest is paid per page touched, not per byte on disk (a 5.5 MB spike
   binary started only 70 ms slower than a 1.45 MB one because its TLS and
@@ -300,11 +308,14 @@ target.
 
 ## Packages
 
-- `packages/demi-shell` — the Rust crate: `src/` split by area (loop, fs,
-  process, net, bytes, globals, entry, plus the HTTP/1.1 and WebSocket
-  client framing). Runtime dependencies are exactly those listed under
-  "Everything is ours".
+- `packages/demi-shell` — the Rust crate: `src/` split by area (event
+  loop, loader, handles, fs, process, net with connect/tls/ws/http/uds,
+  bytes, runtime, globals). Dependencies are those listed under "Protocols
+  come from crates".
 - `@demicodes/host-shell` — the Host over the shell API (TypeScript, runs
   only on the shell).
-- The primitive conformance suite is JS, run on every build target; it is
-  the shell's definition of done.
+- The primitive conformance suite is JS (`packages/demi-shell/conformance`),
+  embedded as the bundle by the `conformance` feature and driven by
+  `cargo test --features conformance`, which provisions ports, a test CA
+  and the Bun stub server. It runs on every build target and is the
+  shell's definition of done.

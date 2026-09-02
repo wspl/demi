@@ -109,6 +109,10 @@ pub fn throw_io(ctx: &Ctx<'_>, err: io::Error, syscall: &str, path: Option<&str>
 /// The code for an `io::Error` that has no errno.
 fn other_code(err: &io::Error) -> &'static str {
     use io::ErrorKind::*;
+    let text = err.to_string();
+    if text.contains("dns error") || text.contains("failed to lookup") {
+        return "ENOTFOUND";
+    }
     match err.kind() {
         UnexpectedEof | BrokenPipe => "EPIPE",
         InvalidInput | InvalidData => "EINVAL",

@@ -26,7 +26,7 @@ export const assertThrows = async (fn, check) => {
 export const assertCode = async (fn, code, syscall) => {
   const e = await assertThrows(fn);
   assertEq(e.name, "ShellError", `error name for ${code}`);
-  assertEq(e.code, code, "error code");
+  assertEq(e.code, code, `error code (${e.message})`);
   if (syscall) assertEq(e.syscall, syscall, "syscall");
   assert(typeof e.errno === "number", "errno is a number");
   return e;
@@ -38,7 +38,10 @@ export const run = async () => {
   for (const { name, fn } of tests) {
     const t0 = performance.now();
     try {
-      await fn();
+      let timer;
+      const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("test timed out after 30s")), 30000); });
+      await Promise.race([fn(), timeout]);
+      clearTimeout(timer);
       console.log(`ok   ${name} (${(performance.now() - t0).toFixed(1)}ms)`);
     } catch (e) {
       failed++;

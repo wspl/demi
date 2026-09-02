@@ -12,6 +12,7 @@ mod fs;
 mod globals;
 mod handles;
 mod loader;
+mod net;
 mod process;
 mod runtime;
 mod state;
