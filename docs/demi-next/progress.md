@@ -1122,3 +1122,18 @@ them. The storage quota is the one run-time-only failure and is an error,
 not an upgrade. Metadata (mode, mtime, symlinks, case sensitivity, owner
 `demi`), the environment table and GNU output are aligned on both sides;
 the "split equivalence" test defines silence.
+
+### Hostless files: tree + blobs → home image (2026-09-02)
+
+The hostless filesystem was specified as `host_store` rows in the
+conversation database, with "the backend writes the files into the home"
+at upgrade — bytes in a database, against the storage rule, and an
+unspecified placement mechanism (a guest-side copy or a privileged
+mount). Decision: a `files` tree table (path, kind, mode, mtime, size,
+sha256, symlink target) in the conversation database with contents in
+the content-addressed blob store; at upgrade the tree is materialised to
+a directory and `mke2fs -d` produces the populated home image without a
+mount, root or guest cooperation; the tree rows are then deleted, blobs
+stay. One direction, once. The tee/artifact mechanism was considered and
+rejected for hostless files: it is for command output on targets, and
+hostless output is bounded and lives in the transcript.

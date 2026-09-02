@@ -90,10 +90,11 @@ fails the command with an `ENOSPC`-class error, the same thing a full
 disk does on a machine; the quota is sized so that this is a genuine
 fault, not a normal event.
 
-**What moves.** Before the first command runs on the new host the backend
-places both subtrees at their own paths with mode, mtime and symlinks
-intact, and hands tinybash's session state — cwd and variables — to the
-real bash job. The environment table is shared: the hostless `env`
+**What moves.** The new host's home image is built from the hostless
+tree — both subtrees, with mode, mtime and symlinks intact — by `mke2fs
+-d` before the VM boots (`storage.md`), so the first command already runs
+on a complete home; the backend hands tinybash's session state — cwd and
+variables — to the real bash job. The environment table is shared: the hostless `env`
 (`HOME`, `USER`, `PATH`, `PWD`, `SHELL`, `LANG`) is the table the managed
 host's login environment is generated from, so `echo $PATH` prints the
 same string on both sides. Output formats are GNU's on both sides
@@ -161,8 +162,9 @@ may switch it elsewhere.
   goes through `Host.store` and is backend-local (`storage.md`). The journal
   (block rows appended during streaming, never a whole-transcript rewrite)
   is required design.
-- **Hostless files** live in the conversation's store and are the source
-  for placement on a managed host.
+- **Hostless files** live as a tree in the conversation's database with
+  their bytes in the blob store, and become the home image at upgrade
+  (`storage.md`).
 - **Command artifacts** — full command output — are real files on the
   execution target under `Host.commandArtifactsDir`, written by the runner's
   tee (`runner.md`). They follow the target: reachable while its runner is

@@ -19,12 +19,13 @@ follows the write-frequency line:
 - **`conversations/<id>.sqlite`** — one file per conversation, the data
   plane: the transcript as **one row per block** (the journal — streaming
   persists by appending block rows, never by rewriting a checkpoint JSON),
-  plus session state and that conversation's `host_store` scope, which also
-  holds the hostless filesystem. High write rate, but each file has exactly
-  one writer and the files never contend.
-- **Blob store** — attachment bytes and transcript media (`source.ref`),
-  content-addressed `blobs/<sha256>`: local directory at N=1, S3 at N>1.
-  Bytes never enter a database.
+  plus session state, that conversation's `host_store` scope, and the
+  **tree** of its hostless filesystem (paths and metadata; the bytes are
+  in the blob store). High write rate, but each file has exactly one
+  writer and the files never contend.
+- **Blob store** — attachment bytes, transcript media (`source.ref`) and
+  the contents of hostless files, content-addressed `blobs/<sha256>`:
+  local directory at N=1, S3 at N>1. Bytes never enter a database.
 - **Home-image store** — managed hosts' home images, one **named, mutable,
   owner-bound** object per owner (`homes/<ownerId>.ext4`), overwritten in
   place on hibernate (temp + atomic rename), streamed in and out: local
@@ -108,7 +109,7 @@ Interface topology — every endpoint by where its data lives:
  (c) conversation hot path — worker-LOCAL, never crosses the network
    WS /:id/stream ──▶ live session ──▶ conversations/<id>.sqlite (block append)
    GET /:id/transcript ─────────────▶ conversations/<id>.sqlite (cold read)
-   hostless Host fs ops ────────────▶ conversations/<id>.sqlite (host_store)
+   hostless Host fs ops ────────────▶ conversations/<id>.sqlite (files tree) + blob store (bytes)
    managed VM lifecycle ────────────▶ homes/<owner> (worker-local process, store upload)
 
  (d) mixed endpoints — local work + independent control-plane appends
@@ -174,8 +175,34 @@ contract):
 ```
 blocks           one row per transcript block, append-only during streaming
 session state    checkpoint fields other than the transcript
-host_store       scope, key, value_json  ← this conversation's scope, incl. the hostless files
+host_store       scope, key, value_json  ← this conversation's scope
+files            path, kind(file|dir|symlink), mode, mtime, size, sha256(NULL for dir), target(symlink)
+                 ← the hostless filesystem's tree; bytes in the blob store by sha256;
+                   emptied once the conversation has a home image
 ```
+
+## The hostless filesystem and the home image
+
+A conversation's files have two forms, one per phase, and one conversion
+between them:
+
+- **Before a machine** — the `files` tree plus blobs, served to tinybash
+  and the root commands as `@demicodes/host-virtual`'s `Host`. Copying a
+  file copies a row; the quota counts bytes referenced by the tree.
+  Workspace files dropped into a hostless conversation land here.
+- **The upgrade** — the backend materialises the tree into a directory
+  (modes, mtimes and symlinks included) and runs `mke2fs -d <dir>` to
+  produce the home image with its contents in one step: no mount, no
+  root, no guest cooperation. `/tmp` is materialised under the image's
+  `.tmp` directory and bind-mounted to `/tmp` by the guest init. The image
+  goes to the home-image store and the VM boots with it; the `files` rows
+  are then deleted. Blobs stay — they are content-addressed and may be
+  referenced elsewhere.
+- **After** — the home image is the only form (`managed-hosts.md`).
+  There is no way back to hostless, so no reverse conversion exists.
+
+A Cloud workspace's first image is the same `mke2fs` on an empty
+directory.
 
 Notes: pending claim tokens live in memory (an unclaimed runner socket
 holds them; a restart reprints); claim tokens are 128-bit random,
@@ -189,11 +216,12 @@ query time.
 ## Pluggability
 
 - Conversation state is fully behind `HostStore` (four methods) —
-  checkpoints, subagent records, the hostless filesystem. The backend
-  implements a DB-backed `HostStore` and composes it into every Host it
-  hands the harness. The DB-backed store provides the atomicity
-  `LocalHostStore` guarantees for `writeJson` and serves `list` and bulk
-  reads efficiently.
+  checkpoints and subagent records. The backend implements a DB-backed
+  `HostStore` and composes it into every Host it hands the harness. The
+  DB-backed store provides the atomicity `LocalHostStore` guarantees for
+  `writeJson` and serves `list` and bulk reads efficiently.
+- The hostless filesystem is behind the `Host` fs contract
+  (`@demicodes/host-virtual` over the `files` tree and the blob store).
 - The blob store is put/get by content hash with two backends (directory,
   S3). The home-image store is streaming write/read by owner id with the
   same two backends. Both live in `@demicodes/backend`.

@@ -22,10 +22,10 @@ KVM is a later design item.
 Two product scenarios share one provisioning path (`sessions-and-targets.md`):
 
 - **Session upgrade**: a hostless conversation runs its first script
-  outside tinybash's subset; the backend provisions a host, binds it
-  (`conversations.hostDeviceId`), writes the hostless files into its home
-  at their own paths, hands over the shell state, and the whole script
-  runs there — silently, with no context block
+  outside tinybash's subset; the backend builds the home image from the
+  hostless tree (`storage.md`), provisions a host with it, binds it
+  (`conversations.hostDeviceId`), hands over the shell state, and the
+  whole script runs there — silently, with no context block
   (`sessions-and-targets.md`). This requires the guest to match the
   hostless layout: the guest user is `demi`, home is `/home/demi`, the
   default cwd is the home, the login environment is generated from the
