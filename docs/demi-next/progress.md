@@ -1904,15 +1904,68 @@ Two owner decisions before step 3, both written into `runner.md`,
   `export` does not persist, matching the mainstream rather than inventing
   a half-persistent state.
 
+### Step 3: the runner on tinyjs (2026-09-03) — delivered
+
+Landed across `runner-protocol`, `host-runner`, `runner`, `backend` and
+`tinyjs`:
+
+- Protocol: `job_start` / `job_output` / `job_exit` (the view, the output
+  paths, the tails, the final `cwd`), `job_stdin` / `job_stdin_end` /
+  `job_kill`; `rpc_call` / `rpc_stdin` / `rpc_stdin_end` and `rpc_output`
+  / `rpc_exit`; `manifest`. `JobTable` (runner side, runtime-neutral over
+  an injected teed spawn) and `RemoteShellEnvironment` (backend side, the
+  `ShellEnvironment` of a real host). `msgpackCodec` moved under
+  `@demicodes/runner-protocol/msgpack`.
+- host-runner: `spawnTeed`, `readTail`, the WebSocket and Unix-socket
+  links, the codec re-export, `fdNode`. tinyjs: `read(fd, max, offset?)`
+  (pread) and `runtime.fdNode(fd)`; 57 conformance cases.
+- runner: `RunnerMode` (connect with backoff, hello/claim, the message
+  loop, the state files, jobs, manifest install, relay), `RelayServer` and
+  the command-mode relay client, `ManifestCache` with `current` and the
+  root symlinks, the stdin classification in command mode;
+  `@demicodes/runner/testing` packs the binary once per test process and
+  starts `demi-runner` with its lines captured.
+- backend: the shell environment is chosen per Host (`VirtualHost` →
+  hostless, `RemoteHost` → jobs), the registry pushes the manifest on
+  `hello_ok` and `claimed` and runs relayed rpc calls with the
+  conversation's tree, storage and Host.
+- Tests: M1 (bare AgentServer over a runner process, with the wire audit:
+  a `printf | tee | cat` turn is `job_output` and `job_exit` frames and
+  nothing else), M4 (pairing, restart, revoke, expiry, rate limit, the
+  acceptance with a `demi todo add && demi todo list` turn over the
+  relay, one connection per token), M6 (the switches, the tar pipe
+  through `demi host prev shell` relayed) all on the tinyjs runner.
+
+Pitfalls, each one a rule now:
+
+- macOS ships bash 3.2: `exec {var}<&0` is not there, so the prelude uses
+  a fixed descriptor (199) and the env names it.
+- On macOS `stat("/dev/fd/0")` reports the devfs node, not the pipe, and
+  the two ends of a pipe have different inodes: identifying the job's
+  stdin from the runner's side fails. Two `fstat`s in the same process
+  (`fdNode(0)` against the duplicated descriptor) is the OS-independent
+  check.
+- An explicit `undefined` for an optional argument of a tinyjs primitive
+  fails conversion (`wsConnect(url, undefined)`): pass fewer arguments.
+- A Unix socket path is at most 104 bytes on macOS; test state dirs must
+  be short (the scratchpad path was not).
+- A command-mode process could not find the relay: the job's env had no
+  `DEMI_HOME`; the runner now sets it in every job.
+- The relay client awaited its live-stdin forwarder after the exit, and a
+  job's stdin never ends: the forwarder is abandoned with the socket.
+- An in-process `Bun.build` for a browser target leaves the test process
+  unable to resolve `@msgpack/msgpack` from `codec.ts` afterwards (only
+  when the codec's package sits in the workspace package's own
+  `node_modules`); the bundler runs as a subprocess now.
+- A running command's `stdout.delta` was empty until exit: the record's
+  text must grow with the streamed chunks, not only its chunk list.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
   not now).
 - tinyjs, awaiting a proposal: tee writes synchronous on the loop thread;
   the TLS configuration rebuilt per request.
-- The manifest served to the runner and cached under
-  `~/.demi/commands/<hash>/`, the `current` symlink, the UDS relay for the
-  CLI's `rpc` path (M9 step 3).
 - `@demicodes/host-virtual` reduced to the store-backed Host and its
   spawn refusal deleted (M9, with just-bash).
 - `@demicodes/host-local` and the local open-box assembly deleted (M9,
