@@ -1265,3 +1265,12 @@ bundle under that feature so it sees `demishell:*`.
 - MessagePack follows `@msgpack/msgpack` defaults: integral numbers as
   ints, `Uint8Array` as bin, `Date` as the timestamp extension, `undefined`
   as nil.
+- `demishell:process` landed: spawn over `std::process::Command` with the
+  pipes handed to tokio (`pipe::Receiver`/`Sender`), the shell's own
+  SIGCHLD reaper (`waitpid(-1)`, which is also the PID 1 orphan reaper),
+  wait with tee byte counts, kill with process groups, the bounded view.
+  41 conformance cases pass.
+- macOS bash 3.2 reports exit 0 for a group-killed `sh -c "sleep & sleep;
+  wait"` about a quarter of the time (reproduced with Python's `killpg`
+  outside the shell); the conformance case asserts the grandchildren died
+  through pipe EOF and accepts either status.

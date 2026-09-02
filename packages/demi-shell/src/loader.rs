@@ -71,6 +71,7 @@ impl Loader for ShellLoader {
         if let Some(module) = name.strip_prefix(SCHEME) {
             return match module {
                 "fs" => Module::declare_def::<crate::fs::FsModule, _>(ctx.clone(), name),
+                "process" => Module::declare_def::<crate::process::ProcessModule, _>(ctx.clone(), name),
                 "bytes" => Module::declare_def::<crate::bytes::BytesModule, _>(ctx.clone(), name),
                 "runtime" => Module::declare_def::<crate::runtime::RuntimeModule, _>(ctx.clone(), name),
                 _ => Err(Error::new_loading(name)),

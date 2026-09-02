@@ -15,10 +15,12 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Notify;
 
 use crate::handles::Handles;
+use crate::process::Children;
 
 pub struct State {
     pub start: Instant,
     pub handles: RefCell<Handles>,
+    pub children: RefCell<Children>,
     active: Cell<usize>,
     pub quiesced: Notify,
     /// Signals the process receives are forwarded here and dispatched from
@@ -40,6 +42,7 @@ impl State {
         State {
             start: Instant::now(),
             handles: RefCell::new(Handles::new()),
+            children: RefCell::new(Children::default()),
             active: Cell::new(0),
             quiesced: Notify::new(),
             signal_tx,
