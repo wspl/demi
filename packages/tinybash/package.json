@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/tinybash",
-  "description": "Demi hostless shell: a parser and executor for a fixed bash subset with GNU-faithful builtins over an injected Host filesystem.",
+  "description": "Demi hostless shell: a parser and executor for a fixed bash subset with GNU-faithful builtins over an injected filesystem.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -26,11 +26,10 @@
     "build": "tsdown"
   },
   "dependencies": {
-    "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^"
   },
   "devDependencies": {
-    "@demicodes/host-local": "workspace:^"
+    "@demicodes/shell": "workspace:^"
   },
   "license": "Apache-2.0",
   "publishConfig": {

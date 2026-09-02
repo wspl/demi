@@ -1,4 +1,4 @@
-import type { HostFileSystem } from '@demicodes/shell'
+import type { TinybashFs } from '../host'
 import { outside } from '../outside/reasons'
 import { isDirectory } from '../exec/fs'
 import type { Piece } from './expand'
@@ -129,7 +129,7 @@ function segmentText(segment: readonly Piece[]): string {
  * Pathname expansion against the filesystem, sorted; the literal word when
  * nothing matches, as bash does without `nullglob`.
  */
-export async function expandGlob(field: readonly Piece[], cwd: string, fs: HostFileSystem): Promise<string[]> {
+export async function expandGlob(field: readonly Piece[], cwd: string, fs: TinybashFs): Promise<string[]> {
   const raw = field.map((piece) => piece.text).join('')
   if (/\*\*/.test(raw)) outside({ kind: 'grammar', found: '**', why: 'recursive globbing is not expanded here', wayOut: 'find, or list the names', line: 0 })
   const { absolute, segments } = splitSegments(field)

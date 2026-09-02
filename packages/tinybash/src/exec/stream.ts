@@ -1,7 +1,7 @@
 import { decodeLatin1, toBytes } from '@demicodes/utils'
-import type { CommandWriter } from '@demicodes/shell'
+import type { TinybashWriter } from '../host'
 
-export type Writer = CommandWriter
+export type Writer = TinybashWriter
 
 /** Thrown into a writer whose reader has gone away; the producing builtin stops quietly, as SIGPIPE would end it. */
 export class PipeClosed extends Error {

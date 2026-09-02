@@ -1,4 +1,4 @@
-import type { DispatchIO, HostFileSystem, RootPaths } from '@demicodes/shell'
+import type { DispatchIO, RootPaths, TinybashFs } from '../host'
 import type { Command, List, Pipeline, Script } from '../grammar/ast'
 import { type ExpansionScope, expandArgv, expandSingle } from '../grammar/expand'
 import { BUILTINS } from '../builtins/table'
@@ -15,7 +15,7 @@ export interface ShellState {
 }
 
 export interface ExecutionEnvironment {
-  fs: HostFileSystem
+  fs: TinybashFs
   state: ShellState
   roots: ReadonlyMap<string, RootPaths>
   dispatch: (root: string, argv: string[], io: DispatchIO) => Promise<number>
