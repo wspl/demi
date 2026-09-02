@@ -1,60 +1,11 @@
 import { bytesToBase64, errorCode, noop } from '@demicodes/utils'
-import {
-  type ShellEnvironment,
-  MAX_TIMEOUT_MS,
-  heredocDelimiter,
-  shellQuote,
-  type CommandRegistry,
-  type Host,
-} from '@demicodes/shell'
-import type { BashEnvironmentOptions } from '@demicodes/shell/bash'
+import { type ShellEnvironment, MAX_TIMEOUT_MS, heredocDelimiter, shellQuote, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
 import type { AgentSession } from '../session/session'
 import type { ChildSupervisor } from '../subagent/supervisor'
 import type { ServerFrame } from '../protocol/frames'
 import type { AgentHarness, AgentToolInvokeContext, SessionEvent } from '../types'
 import type { PrepareShell, ShellEnvironmentFactory } from './server'
 import { errorDiagnostics, progressToAudit, progressToOutput, progressToShellOutput } from './summaries'
-
-/** Options for {@link AgentServer.runCommandLine}. */
-export interface RunCommandLineOptions {
-  cwd: string
-  stdin: string
-  signal?: AbortSignal
-}
-
-/** Result of {@link AgentServer.runCommandLine}. */
-export interface RunCommandLineResult {
-  exitCode: number
-  /** UTF-8 text, or base64 when `stdoutEncoding` is 'base64'. */
-  stdout: string
-  stdoutEncoding?: 'base64'
-  stderr: string
-}
-
-export class RunCommandLineShellNotFoundError extends Error {
-  constructor(readonly shellId: string) {
-    super(`runCommandLine: shell "${shellId}" is not open in this process`)
-    this.name = 'RunCommandLineShellNotFoundError'
-  }
-}
-
-export class RunCommandLineCommandNotRegisteredError extends Error {
-  constructor(readonly commandName: string) {
-    super(`runCommandLine: command "${commandName}" is not registered for this session`)
-    this.name = 'RunCommandLineCommandNotRegisteredError'
-  }
-}
-
-export class RunCommandLineTimeoutError extends Error {
-  constructor(
-    readonly commandId: string,
-    readonly partialStdout: string,
-    readonly partialStderr: string,
-  ) {
-    super(`runCommandLine: command "${commandId}" exceeded the ${MAX_TIMEOUT_MS}ms ceiling and was aborted`)
-    this.name = 'RunCommandLineTimeoutError'
-  }
-}
 
 export interface LiveSessionOptions {
   agentSessionId: string
@@ -64,7 +15,7 @@ export interface LiveSessionOptions {
   commandRegistry: CommandRegistry
   cwd: string
   providerId: string
-  shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shellOptions: ShellEnvironmentOptions
   prepareShell: PrepareShell | null
   shellEnvironment: ShellEnvironmentFactory
 }
@@ -87,7 +38,7 @@ export class LiveSession {
   providerId: string
   sink: (frame: ServerFrame) => void = noop
 
-  private readonly shellOptions: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  private readonly shellOptions: ShellEnvironmentOptions
   private readonly prepareShell: PrepareShell | null
   private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly environmentsByHost = new Map<Host, ShellEnvironment>()
@@ -194,79 +145,6 @@ export class LiveSession {
     }
     const audit = progressToAudit(progress)
     if (audit.length > 0) this.sink({ type: 'audit', events: audit })
-  }
-
-  /** Backs `AgentServer.runCommandLine` — see its doc comment for the contract. */
-  async runCommandLine(
-    shellId: string,
-    name: string,
-    args: string[],
-    opts: RunCommandLineOptions,
-  ): Promise<RunCommandLineResult> {
-    // Scope resolution doubles as the subagent boundary: a child shell resolves
-    // to its own environment and command set, which has no spawn surface.
-    const parentEnvironment = this.environmentForShell(shellId)
-    const scope = parentEnvironment
-      ? {
-          environment: parentEnvironment,
-          commandNames: this.commandNames,
-          agentSessionId: this.agentSessionId,
-        }
-      : (this.supervisor.environmentScopeForShell(shellId) ?? null)
-    if (!scope) throw new Error('runCommandLine: session has no active shell environment')
-    const { environment, agentSessionId } = scope
-    if (!scope.commandNames.has(name)) throw new RunCommandLineCommandNotRegisteredError(name)
-
-    const words = [name, ...args].map(shellQuote).join(' ')
-    let script = words
-    if (opts.stdin.length > 0) {
-      const delimiter = heredocDelimiter(opts.stdin)
-      // A heredoc body always ends with a newline; add one only when the piped
-      // stdin lacks it, so newline-terminated input arrives byte-identical.
-      const body = opts.stdin.endsWith('\n') ? opts.stdin : `${opts.stdin}\n`
-      script = `${words} <<'${delimiter}'\n${body}${delimiter}`
-    }
-
-    // Ephemeral shell born in the caller's cwd: the bridge caller's directory
-    // and env must never leak into the model's persistent session shell.
-    const result = await environment.exec({
-      agentSessionId,
-      script,
-      timeoutMs: MAX_TIMEOUT_MS,
-      signal: opts.signal,
-      ephemeral: true,
-      cwd: opts.cwd,
-    })
-
-    try {
-      if (result.status === 'exited') {
-        // Binary final streams cross the bridge as base64; the shim writes the
-        // raw bytes to its OS stdout, keeping external pipes byte-clean.
-        if (result.binaryStdout) {
-          const truncationNote = result.binaryStdout.truncated
-            ? `command bridge: binary stdout truncated at the output limit (${result.binaryStdout.data.length} of ${result.binaryStdout.totalBytes} bytes)\n`
-            : ''
-          return {
-            exitCode: result.exitCode,
-            stdout: bytesToBase64(result.binaryStdout.data),
-            stdoutEncoding: 'base64',
-            stderr: `${result.stderr.delta}${truncationNote}`,
-          }
-        }
-        return { exitCode: result.exitCode, stdout: result.stdout.delta, stderr: result.stderr.delta }
-      }
-      if (result.status === 'aborted') {
-        throw new Error(`runCommandLine: call for "${name}" was cancelled before it completed`)
-      }
-      const aborted = await environment.abort({ commandId: result.commandId })
-      throw new RunCommandLineTimeoutError(
-        result.commandId,
-        aborted.status === 'aborted' ? aborted.stdout.delta : '',
-        aborted.status === 'aborted' ? aborted.stderr.delta : '',
-      )
-    } finally {
-      await environment.disposeShell(result.shellId).catch(() => {})
-    }
   }
 
   hasShell(shellId: string): boolean {
