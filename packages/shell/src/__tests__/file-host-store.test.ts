@@ -2,8 +2,8 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { AgentSessionCommandStorage, fileHostStore } from '@demicodes/shell'
-import { LocalHost } from '../local-host'
+import { AgentSessionCommandStorage, fileHostStore } from '../index'
+import { LocalHost } from '../node'
 
 const storeAt = (root: string) => fileHostStore(new LocalHost(root, { storeRoot: root }).fs, root)
 

@@ -35,7 +35,7 @@ export type CommandModule<Args = Record<string, unknown>> = (ctx: CommandContext
 
 /**
  * The stdio and environment of one command invocation, as a shell hands it
- * to a dispatcher (the loader): tinybash and the just-bash bridge both
+ * to a dispatcher (the loader); tinybash speaks the same shape
  * speak this.
  */
 export interface DispatchIO {
