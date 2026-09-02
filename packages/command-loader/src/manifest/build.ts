@@ -19,8 +19,6 @@ export async function buildManifest(roots: readonly Command[], options: BuildMan
     let hash = moduleHashes.get(source)
     if (hash) return hash
     const javascript = await options.transpile(source)
-    const stray = strayImport(javascript)
-    if (stray) throw new Error(`runtime module imports a value (${stray}); a module imports only types`)
     hash = await sha256(javascript)
     moduleHashes.set(source, hash)
     modules[hash] = javascript
@@ -56,12 +54,6 @@ function manifestLeaf(leaf: CommandLeaf, module: string | undefined): ManifestLe
   if (leaf.output?.json) node.output = { json: z.toJSONSchema(leaf.output.json) }
   if (module !== undefined) node.module = module
   return node
-}
-
-/** The first import or re-export left in transpiled JavaScript, if any. */
-function strayImport(javascript: string): string | null {
-  const match = /^\s*(?:import\b[^\n]*|export\s+(?:\*|\{[^}]*\})\s+from\b[^\n]*)/m.exec(javascript)
-  return match ? match[0].trim() : null
 }
 
 export async function sha256(text: string): Promise<string> {

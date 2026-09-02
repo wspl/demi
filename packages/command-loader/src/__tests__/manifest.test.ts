@@ -49,24 +49,6 @@ describe('buildManifest', () => {
     expect(add.output?.json).toMatchObject({ type: 'object' })
   })
 
-  test('a module that imports a value fails the build', async () => {
-    const roots: Command[] = [
-      {
-        name: 'bad',
-        summary: 'x',
-        subcommands: [
-          {
-            name: 'leaf',
-            kind: 'runtime',
-            summary: 'x',
-            module: runtimeModule("import { join } from 'node:path'\nexport default async () => ({ exitCode: 0 })\n"),
-          },
-        ],
-      },
-    ]
-    await expect(buildManifest(roots, { transpile })).rejects.toThrow('imports a value')
-  })
-
   test('duplicate roots are refused', async () => {
     await expect(buildManifest([...testRoots(), ...testRoots()], { transpile })).rejects.toThrow('duplicate root')
   })

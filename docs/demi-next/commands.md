@@ -189,14 +189,15 @@ be marked; an unmarked argument is never treated as one.
 | `stdout`, `stderr` | writers |
 | `signal` | an `AbortSignal` for cancellation |
 
-A module imports nothing from the runtime: no Node builtins, no Bun or
-tinyjs globals, no network, and no value import from any package — only
-`import type`. It sees the standard ECMAScript library plus the
-Web-platform globals every embedder guarantees (`TextEncoder`,
-`TextDecoder`, `URL`, `atob`, `btoa`, `crypto.randomUUID`, `AbortSignal`).
-This is what makes one module run identically inside tinyjs against a
-real filesystem, inside the backend against the store-backed Host, and
-inside a test with an in-memory Host. It is the public contract a third
+A module is one self-contained file: what it uses beyond its `ctx` is the
+standard ECMAScript library plus the Web-platform globals every embedder
+guarantees (`TextEncoder`, `TextDecoder`, `URL`, `atob`, `btoa`,
+`crypto.randomUUID`, `AbortSignal`). Nothing bundles the module, so an
+import of a value fails where the module loads, the same in every
+embedder; type imports are erased by the transpiler. This is what makes
+one module run identically inside tinyjs against a real filesystem,
+inside the backend against the store-backed Host, and inside a test with
+an in-memory Host. It is the public contract a third
 party builds on, versioned with the manifest.
 
 Byte-heavy work inside a module goes through `ctx.fs` and the streams,
@@ -241,9 +242,7 @@ manifest
 ```
 
 The build takes each `runtime` leaf's module text, transpiles it to
-JavaScript, and stores it under the hash of the result; a module that
-imports a value from anywhere fails the build, since nothing is there to
-bundle. The build runs where a transpiler is (the backend composition
+JavaScript, and stores it under the hash of the result. The build runs where a transpiler is (the backend composition
 root, on Bun); the loader itself never transpiles. The manifest is served
 by the backend to embedders over their existing connection (the runner
 socket) and by HTTP for the standalone case; modules are fetched by hash
