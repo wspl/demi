@@ -5,11 +5,11 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { createRunnerWire, msgpackCodec } from '@demicodes/runner-protocol'
-import { RunnerClient } from '@demicodes/runner'
+import { createRunnerWire } from '@demicodes/runner-protocol'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
+import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
@@ -23,45 +23,15 @@ async function api(backend: Backend, path: string, init?: RequestInit): Promise<
   return fetch(`${backend.url}${path}`, init)
 }
 
-function startRunner(backend: Backend, dirs: { stateDir: string; runnerDir: string }, capture: RunnerCapture) {
-  const runner = new RunnerClient({
-    backendUrl: backend.url,
-    stateDir: dirs.stateDir,
-    name: 'test-device',
-    host: new LocalHost(dirs.runnerDir),
-    reconnect: { initialDelayMs: 30, maxDelayMs: 100 },
-    onStatus: (status, detail) => {
-      capture.statuses.push(status)
-      if (detail) capture.details.push(detail)
-    },
-    onClaimPending: (code) => {
-      capture.codes.push(code)
-    },
-  })
-  runner.start()
-  return runner
-}
-
-interface RunnerCapture {
-  codes: string[]
-  statuses: string[]
-  details: string[]
-}
-
-function capture(): RunnerCapture {
-  return { codes: [], statuses: [], details: [] }
-}
-
 test('pairing: claim, reconnect with the device token, revoke refuses the reconnect', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m4-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m4-runner-'))
   const backend = await createBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
 
-  const first = capture()
-  const runner = startRunner(backend, { stateDir, runnerDir }, first)
-  await waitFor(() => first.codes.length > 0, undefined, { timeoutMs: 5_000 })
-  const code = first.codes[0]
+  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 5_000 })
+  const code = runner.codes[0]
   expect(code).toMatch(/^[0-9A-Z]{4}(-[0-9A-Z]{1,4}){6}$|^[0-9A-Z-]{26,}$/)
 
   // A wrong code is refused; the right one claims — entered messy, normalized server-side.
@@ -79,7 +49,7 @@ test('pairing: claim, reconnect with the device token, revoke refuses the reconn
   expect(claimed.status).toBe(201)
   const { device } = (await claimed.json()) as { device: { id: string; name: string; online: boolean } }
   expect(device.name).toBe('test-device')
-  await waitFor(() => first.statuses.includes('online'))
+  await waitFor(() => runner.statuses.includes('online'))
 
   // Claiming is single-use: the spent code is gone.
   const reuse = await api(backend, '/api/devices/claim', {
@@ -117,16 +87,15 @@ test('pairing: claim, reconnect with the device token, revoke refuses the reconn
     if (!offline) await delay(20)
   }
   expect(offline).toBe(true)
-  const second = capture()
-  const restarted = startRunner(backend, { stateDir, runnerDir }, second)
-  await waitFor(() => second.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
-  expect(second.codes).toHaveLength(0)
+  const restarted = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  await waitFor(() => restarted.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
+  expect(restarted.codes).toHaveLength(0)
 
   // Revoke: the row disappears and the live connection is refused for good.
   const revoked = await api(backend, `/api/devices/${device.id}`, { method: 'DELETE' })
   expect(revoked.status).toBe(204)
-  await waitFor(() => second.statuses.includes('rejected'))
-  expect(second.details.some((detail) => detail.includes('revoked'))).toBe(true)
+  await waitFor(() => restarted.statuses.includes('rejected'))
+  expect(restarted.details.some((detail) => detail.includes('revoked'))).toBe(true)
   const after = (await (await api(backend, '/api/devices')).json()) as { devices: unknown[] }
   expect(after.devices).toHaveLength(0)
 
@@ -143,20 +112,19 @@ test('claim codes expire and rotate on the waiting socket; the stale code is dea
     port: 0,
     runner: { pingIntervalMs: 0, claimTtlMs: 150 },
   })
-  const seen = capture()
-  const runner = startRunner(backend, { stateDir, runnerDir }, seen)
-  await waitFor(() => seen.codes.length >= 2, undefined, { timeoutMs: 5_000 })
-  expect(seen.codes[1]).not.toBe(seen.codes[0])
+  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  await waitFor(() => runner.codes.length >= 2, undefined, { timeoutMs: 5_000 })
+  expect(runner.codes[1]).not.toBe(runner.codes[0])
 
   const stale = await api(backend, '/api/devices/claim', {
     method: 'POST',
-    body: JSON.stringify({ code: seen.codes[0] }),
+    body: JSON.stringify({ code: runner.codes[0] }),
     headers: { 'content-type': 'application/json' },
   })
   expect(stale.status).toBe(404)
   const fresh = await api(backend, '/api/devices/claim', {
     method: 'POST',
-    body: JSON.stringify({ code: seen.codes[seen.codes.length - 1] }),
+    body: JSON.stringify({ code: runner.codes[runner.codes.length - 1] }),
     headers: { 'content-type': 'application/json' },
   })
   expect(fresh.status).toBe(201)
@@ -239,6 +207,10 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
         // Turn 3: after the runner comes back, the same session serves again.
         [events.toolCall('t3', 'shell_exec', { script: 'cat made.txt', timeoutMs: 10_000 })],
         [events.text('turn three done'), events.response()],
+        // Turn 4: an rpc command on the device round-trips the relay: the
+        // command-mode process asks the runner, the runner asks the backend.
+        [events.toolCall('t4', 'shell_exec', { script: 'demi todo add "run the suite" && demi todo list && demi todo list --json', timeoutMs: 10_000 })],
+        [events.text('turn four done'), events.response()],
       ])
   const backend = await createBackend({
     dataDir,
@@ -259,12 +231,11 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
   // Pair a device, then point the conversation's workspace at it (the M6
   // workspace endpoints do this over HTTP; here the control plane is written
   // directly).
-  const paired = capture()
-  const runner = startRunner(backend, { stateDir, runnerDir }, paired)
-  await waitFor(() => paired.codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
   const claimed = await api(backend, '/api/devices/claim', {
     method: 'POST',
-    body: JSON.stringify({ code: paired.codes[0] }),
+    body: JSON.stringify({ code: runner.codes[0] }),
     headers: { 'content-type': 'application/json' },
   })
   const { device } = (await claimed.json()) as { device: { id: string } }
@@ -309,19 +280,26 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
   expect(failed?.status.status).not.toBe('running')
 
   // A fresh runner process with the persisted device token: reconnect resumes.
-  const returned = capture()
-  const revived = startRunner(backend, { stateDir, runnerDir }, returned)
-  await waitFor(() => returned.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
+  const revived = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  await waitFor(() => revived.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
   const eventsBeforeTurn3 = shellEvents.length
   await client.send([{ type: 'text', text: 'read it back' }])
   const turn3 = shellEvents.slice(eventsBeforeTurn3).at(-1)
   expect(turn3?.status.status).toBe('exited')
   expect(turn3?.status.stdout.delta).toBe('hello')
 
+  const eventsBeforeTurn4 = shellEvents.length
+  await client.send([{ type: 'text', text: 'note a todo' }])
+  const turn4 = shellEvents.slice(eventsBeforeTurn4).at(-1)
+  expect(turn4?.status.status).toBe('exited')
+  expect(turn4?.status.status === 'exited' && turn4.status.exitCode).toBe(0)
+  expect(turn4?.status.stdout.delta).toContain('run the suite')
+  expect(turn4?.status.stdout.delta).toContain('"todos"')
+
   await client.close()
   await revived.stop()
   await backend.close()
-}, 30_000)
+}, 60_000)
 
 test('a device token holds one live connection: the newcomer is refused and retries once the first is gone', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m9-one-conn-'))
@@ -330,29 +308,27 @@ test('a device token holds one live connection: the newcomer is refused and retr
   const refusals: string[] = []
   const backend = await createBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0, log: (line) => refusals.push(line) } })
 
-  const first = capture()
-  const runner = startRunner(backend, { stateDir, runnerDir }, first)
-  await waitFor(() => first.codes.length > 0, undefined, { timeoutMs: 5_000 })
+  const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
   const claimed = await api(backend, '/api/devices/claim', {
     method: 'POST',
-    body: JSON.stringify({ code: first.codes[0] }),
+    body: JSON.stringify({ code: runner.codes[0] }),
     headers: { 'content-type': 'application/json' },
   })
   const { device } = (await claimed.json()) as { device: { id: string } }
-  await waitFor(() => first.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
+  await waitFor(() => runner.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
 
   // The same token from a second process: refused with already_connected,
   // logged, and the first connection is untouched.
-  const second = capture()
-  const twin = startRunner(backend, { stateDir, runnerDir }, second)
+  const twin = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => refusals.some((line) => line.includes('already_connected')), undefined, { timeoutMs: 5_000 })
   expect(refusals[0]).toContain(device.id)
-  expect(second.statuses).not.toContain('rejected')
+  expect(twin.statuses).not.toContain('rejected')
   expect(await deviceOnline(backend, device.id)).toBe(true)
 
   // Once the first connection is gone the newcomer's retry is accepted.
   await runner.stop()
-  await waitFor(() => second.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
+  await waitFor(() => twin.statuses.includes('online'), undefined, { timeoutMs: 5_000 })
   expect(await deviceOnline(backend, device.id)).toBe(true)
 
   await twin.stop()

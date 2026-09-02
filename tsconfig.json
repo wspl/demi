@@ -23,6 +23,8 @@
       "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
       "@demicodes/shell/bash": ["./packages/shell/src/bash.ts"],
       "@demicodes/host-runner/testing": ["./packages/host-runner/src/testing.ts"],
+      "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
+      "@demicodes/runner/testing": ["./packages/runner/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },

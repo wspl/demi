@@ -41,6 +41,10 @@ export interface JobTableOptions {
   }
   /** Device facts a job's env falls back to when the backend named none: `PATH`, `HOME`. */
   deviceEnv: Record<string, string>
+  /** Directories every job finds first in `PATH`: the root-command symlinks. */
+  pathPrefix?: string[]
+  /** Entries set in every job's env regardless of what the backend named: where the runner lives (`DEMI_HOME`). */
+  fixedEnv?: Record<string, string>
   send(message: RunnerToBackendMessage): void
 }
 
@@ -51,6 +55,10 @@ interface Job {
 
 /** The env var naming the file the `EXIT` trap writes the final `pwd` to. */
 export const JOB_CWD_FILE_VAR = 'DEMI_JOB_CWD_FILE'
+/** The env var naming the descriptor the prelude duplicated the job's stdin onto. */
+export const JOB_STDIN_FD_VAR = 'DEMI_JOB_STDIN_FD'
+/** That descriptor: fixed, high, and clear of the ones scripts and tools reach for (bash 3.2 has no `{var}<&0`). */
+export const JOB_STDIN_FD = 199
 
 export class JobTable {
   private readonly jobs = new Map<string, Job>()
@@ -101,7 +109,12 @@ export class JobTable {
         command: 'bash',
         args: ['-c', wrapScript(message.script)],
         cwd: message.cwd,
-        env: { ...deviceFallback(message.env, this.options.deviceEnv), [JOB_CWD_FILE_VAR]: cwdFile },
+        env: {
+          ...withPathPrefix(deviceFallback(message.env, this.options.deviceEnv), this.options.pathPrefix ?? []),
+          ...this.options.fixedEnv,
+          [JOB_CWD_FILE_VAR]: cwdFile,
+          [JOB_STDIN_FD_VAR]: String(JOB_STDIN_FD),
+        },
         tee: { stdoutPath, stderrPath, viewLimit: JOB_VIEW_BYTES },
       })
     } catch (error) {
@@ -151,16 +164,28 @@ export class JobTable {
 }
 
 /**
- * The script with an `EXIT` trap in front: bash writes the directory it
- * ends in — after an explicit `exit` too — and the backend carries it into
- * the next job. A script bash refuses to parse never runs the trap, and the
- * backend keeps the directory it had.
+ * The script with a prelude: an `EXIT` trap so bash writes the directory it
+ * ends in — after an explicit `exit` too — for the backend to carry into
+ * the next job (a script bash refuses to parse never runs it, and the
+ * backend keeps the directory it had); and the job's stdin duplicated onto
+ * a high descriptor every child inherits, so a command-mode process can
+ * tell the job's live stdin from a redirection (`tinyjs.md`, `fdNode`).
  */
 export function wrapScript(script: string): string {
-  return `trap 'printf %s "$PWD" > "$${JOB_CWD_FILE_VAR}"' EXIT\n${script}`
+  return [
+    `trap 'printf %s "$PWD" > "$${JOB_CWD_FILE_VAR}"' EXIT`,
+    `exec ${JOB_STDIN_FD}<&0`,
+    script,
+  ].join('\n')
 }
 
 /** Binary resolution and the home directory are device facts (`runner.md` § Responsibilities). */
+function withPathPrefix(env: Record<string, string>, prefix: string[]): Record<string, string> {
+  if (prefix.length === 0) return env
+  const rest = (env.PATH ?? '').split(':').filter((entry) => entry !== '' && !prefix.includes(entry))
+  return { ...env, PATH: [...prefix, ...rest].join(':') }
+}
+
 function deviceFallback(env: Record<string, string>, device: Record<string, string>): Record<string, string> {
   const merged = { ...env }
   for (const key of ['PATH', 'HOME']) {

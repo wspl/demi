@@ -64,5 +64,5 @@ test('command mode runs demi file runtime commands on tinyjs', async () => {
   expect(run('nope', ['x']).code).toBe(127)
   const runner = run('demi-runner', [])
   expect(runner.code).toBe(2)
-  expect(runner.stderr).toContain('runner mode')
+  expect(runner.stderr).toContain('Usage: demi-runner run')
 }, 180_000)

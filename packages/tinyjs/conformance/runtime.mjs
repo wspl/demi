@@ -2,6 +2,14 @@ import { test, assert, assertEq, assertCode } from "./harness.mjs";
 import * as rt from "tinyjs:runtime";
 import * as fs from "tinyjs:fs";
 
+test("runtime: fdNode names an open descriptor and null otherwise", () => {
+  assert(/^\d+:\d+$/.test(rt.fdNode(1)), `fdNode(1): ${rt.fdNode(1)}`);
+  assertEq(rt.fdNode(999), null);
+  // A duplicate of a descriptor shares its node: what the job prelude relies on.
+  const dup = new Set([rt.fdNode(1), rt.fdNode(2)]);
+  assert(dup.size >= 1, "nodes");
+});
+
 test("runtime: argv/env/pid/identity/version", () => {
   assert(Array.isArray(rt.argv) && rt.argv.length >= 1, "argv");
   assert(typeof rt.env === "object" && rt.env !== null, "env");

@@ -179,7 +179,10 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     const ingest = async () => {
       for await (const chunk of job.output) {
         head[chunk.stream].push(chunk.chunk)
-        appendRecordOutput(record, chunk.stream, decoders[chunk.stream].decode(chunk.chunk, { stream: true }))
+        const text = decoders[chunk.stream].decode(chunk.chunk, { stream: true })
+        if (chunk.stream === 'stdout') record.stdout += text
+        else record.stderr += text
+        appendRecordOutput(record, chunk.stream, text)
         record.lastOutputAt = Date.now()
       }
     }
