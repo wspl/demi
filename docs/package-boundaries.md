@@ -201,7 +201,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/tinybash`
 
-- Status: in progress (M8; `docs/demi-next/tinybash.md`).
+- Status: implemented (M8; `docs/demi-next/tinybash.md`).
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the hostless shell — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), and the closed set of GNU-faithful builtins over an injected `HostFileSystem`; root commands go to an injected `dispatch`.
 - Public boundary: `runTinybash`, `parseTinybash`, the `OutsideReason` and IO types from root; stub roots for embedders' tests from `@demicodes/tinybash/testing`.
@@ -210,7 +210,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/command-loader`
 
-- Status: in progress (M8; `docs/demi-next/commands.md`).
+- Status: implemented (M8; `docs/demi-next/commands.md`); the directory/socket manifest sources arrive with the runner in M9.
 - Production deps: `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the manifest types, the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, path-argument resolution, running a `runtime` module from its text, forwarding an `rpc` invocation) and `rootPaths`, the `RootPaths` derivation tinybash consumes.
 - Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest`, `rootPaths` from root.

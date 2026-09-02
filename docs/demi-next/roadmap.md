@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | M0–M7 delivered; M8 next |
+| Status | M0–M8 delivered; M9 next |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
