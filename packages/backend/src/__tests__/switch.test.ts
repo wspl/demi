@@ -15,7 +15,8 @@ import { createBackend, type Backend } from '../index'
 
 // M6: target switching — turn-boundary switch over the conversations PATCH,
 // prev slot + context block, the `demi host` command frame, and the
-// tar-over-`prev shell` migration pipe (portable tar on the virtual side).
+// `prev shell` reaching a workspace prev over its runner (a hostless prev has
+// no shell: the switch itself places its files, M10).
 
 async function api(backend: Backend, path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${backend.url}${path}`, init)
@@ -68,8 +69,10 @@ test('M6 acceptance: virtual→real switch with context block and migration pipe
       // Turn 1 (virtual): create a file that migration must carry over.
       [events.toolCall('t1', 'shell_exec', { script: 'echo -n secret > notes.txt && demi host current', timeoutMs: 10_000 })],
       [events.text('one'), events.response()],
-      // Turn 2 (after switch to the device workspace): pull the virtual tree over the prev pipe.
-      [events.toolCall('t2', 'shell_exec', { script: 'demi host prev shell -- tar c -C /home/demi . | tar x && cat notes.txt && demi host current', timeoutMs: 20_000 })],
+      // Turn 2 (after switch to the device workspace): the hostless prev has no
+      // shell to reach (its files are placed by the switch itself, M10); the
+      // workspace is live, and a file written here is what the later prev reaches.
+      [events.toolCall('t2', 'shell_exec', { script: 'demi host prev shell -- cat notes.txt; echo exit=$?; printf secret > notes.txt && demi host current', timeoutMs: 20_000 })],
       [events.text('two'), events.response()],
       // Turn 3: release, then the pipe is closed.
       [events.toolCall('t3', 'shell_exec', { script: 'demi host prev release; demi host prev shell -- ls; echo exit=$?', timeoutMs: 10_000 })],
@@ -129,10 +132,11 @@ test('M6 acceptance: virtual→real switch with context block and migration pipe
   expect(record?.workspaceId).toBe(workspace.id)
   expect(record?.prevTarget).toEqual({ target: { kind: 'virtual' }, announced: false })
 
-  // Turn 2: the context block is injected, and the migration pipe lands the file.
+  // Turn 2: the context block is injected; a hostless prev refuses `prev shell`.
   await client.send([{ type: 'text', text: 'bring my files' }])
   const migrated = lastExited(shellEvents)
-  expect(migrated?.stdout.delta).toContain('secret')
+  expect(migrated?.stderr.delta).toContain('previous target was hostless')
+  expect(migrated?.stdout.delta).toContain('exit=1')
   expect(migrated?.stdout.delta).toContain('host: workspace "m6 workspace"')
   expect(readFileSync(join(runnerDir, 'notes.txt'), 'utf8')).toBe('secret')
   const announced = client
