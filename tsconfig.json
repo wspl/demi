@@ -14,20 +14,18 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "paths": {
-      "@demicodes/just-bash/ast/types": ["./packages/just-bash/packages/just-bash/src/ast/types.ts"],
-      "@demicodes/just-bash/interpreter/helpers/ifs": ["./packages/just-bash/packages/just-bash/src/interpreter/helpers/ifs.ts"],
-      "@demicodes/just-bash/parser": ["./packages/just-bash/packages/just-bash/src/parser/parser.ts"],
       "@demicodes/agent/stdio": ["./packages/agent/src/protocol/stdio-transport.ts"],
       "@demicodes/shell/storage": ["./packages/shell/src/storage.ts"],
       "@demicodes/shell/host-fs": ["./packages/shell/src/host-fs.ts"],
       "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
-      "@demicodes/shell/bash": ["./packages/shell/src/bash.ts"],
-      "@demicodes/host-runner/testing": ["./packages/host-runner/src/testing.ts"],
+      "@demicodes/command-loader/testing": ["./packages/command-loader/src/testing.ts"],
+      "@demicodes/shell/hostless": ["./packages/shell/src/hostless.ts"],
+      "@demicodes/shell/node": ["./packages/shell/src/node.ts"],
       "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
       "@demicodes/runner/testing": ["./packages/runner/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "examples"],
+  "include": ["packages/*/src"],
   "exclude": ["packages/web-ui", "packages/web"]
 }

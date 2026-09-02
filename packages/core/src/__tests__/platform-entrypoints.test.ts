@@ -16,7 +16,7 @@ const platformNeutralEntries = [
   ['@demicodes/host-virtual', 'packages/host-virtual/src/index.ts'],
   ['@demicodes/command-loader', 'packages/command-loader/src/index.ts'],
   ['@demicodes/tinybash', 'packages/tinybash/src/index.ts'],
-  ['@demicodes/host-runner', 'packages/host-runner/src/index.ts'],
+  ['@demicodes/host-remote', 'packages/host-remote/src/index.ts'],
 ] as const
 
 const workspaceEntries = new Map<string, string>([
@@ -27,11 +27,7 @@ const workspaceEntries = new Map<string, string>([
   ['@demicodes/provider-anthropic-api', 'packages/provider-anthropic-api/src/index.ts'],
   ['@demicodes/provider-grok-build', 'packages/provider-grok-build/src/index.ts'],
   ['@demicodes/provider-google', 'packages/provider-google/src/index.ts'],
-  ['@demicodes/host-local', 'packages/host-local/src/index.ts'],
   ['@demicodes/backend', 'packages/backend/src/index.ts'],
-  ['@demicodes/runner', 'packages/runner/src/index.ts'],
-  ['@demicodes/repl', 'packages/repl/src/index.ts'],
-  ['@demicodes/agent-eval', 'packages/agent-eval/src/index.ts'],
 ])
 
 const productionPackageDirectories = new Map<string, string>([
@@ -39,7 +35,6 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demicodes/core', 'packages/core'],
   ['@demicodes/provider', 'packages/provider'],
   ['@demicodes/shell', 'packages/shell'],
-  ['@demicodes/host-local', 'packages/host-local'],
   ['@demicodes/agent', 'packages/agent'],
   ['@demicodes/coding-agent', 'packages/coding-agent'],
   ['@demicodes/provider-claude-code', 'packages/provider-claude-code'],
@@ -53,18 +48,15 @@ const productionPackageDirectories = new Map<string, string>([
   ['@demicodes/host-virtual', 'packages/host-virtual'],
   ['@demicodes/command-loader', 'packages/command-loader'],
   ['@demicodes/tinybash', 'packages/tinybash'],
-  ['@demicodes/host-runner', 'packages/host-runner'],
+  ['@demicodes/host-remote', 'packages/host-remote'],
   ['@demicodes/backend', 'packages/backend'],
-  ['@demicodes/repl', 'packages/repl'],
-  ['@demicodes/agent-eval', 'packages/agent-eval'],
 ])
 
 const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/utils', []],
   ['@demicodes/core', []],
   ['@demicodes/provider', ['@demicodes/core', '@demicodes/utils']],
-  ['@demicodes/shell', ['@demicodes/utils']],
-  ['@demicodes/host-local', ['@demicodes/agent', '@demicodes/provider', '@demicodes/shell', '@demicodes/utils']],
+  ['@demicodes/shell', ['@demicodes/tinybash', '@demicodes/utils']],
   ['@demicodes/agent', ['@demicodes/core', '@demicodes/provider', '@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/coding-agent', ['@demicodes/agent', '@demicodes/core', '@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/provider-claude-code', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
@@ -76,8 +68,8 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
   ['@demicodes/runner-protocol', ['@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/host-virtual', ['@demicodes/shell', '@demicodes/utils']],
   ['@demicodes/command-loader', ['@demicodes/shell', '@demicodes/utils']],
-  ['@demicodes/tinybash', ['@demicodes/shell', '@demicodes/utils']],
-  ['@demicodes/host-runner', ['@demicodes/shell', '@demicodes/utils']],
+  ['@demicodes/tinybash', ['@demicodes/utils']],
+  ['@demicodes/host-remote', ['@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils']],
   [
     '@demicodes/backend',
     [
@@ -85,7 +77,7 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
       '@demicodes/coding-agent',
       '@demicodes/command-loader',
       '@demicodes/core',
-      '@demicodes/host-local',
+      '@demicodes/host-remote',
       '@demicodes/host-virtual',
       '@demicodes/provider',
       '@demicodes/provider-anthropic-api',
@@ -96,54 +88,16 @@ const productionDependencyGraph = new Map<string, readonly string[]>([
       '@demicodes/provider-openai-api',
       '@demicodes/runner-protocol',
       '@demicodes/shell',
-      '@demicodes/tinybash',
       '@demicodes/utils',
     ],
   ],
   [
     '@demicodes/runner',
-    ['@demicodes/command-loader', '@demicodes/host-local', '@demicodes/host-runner', '@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils'],
-  ],
-  [
-    '@demicodes/repl',
-    [
-      '@demicodes/agent',
-      '@demicodes/coding-agent',
-      '@demicodes/core',
-      '@demicodes/host-local',
-      '@demicodes/provider',
-      '@demicodes/provider-anthropic-api',
-      '@demicodes/provider-claude-code',
-      '@demicodes/provider-codex',
-      '@demicodes/provider-grok-build',
-      '@demicodes/provider-openai-api',
-      '@demicodes/shell',
-      '@demicodes/utils',
-    ],
-  ],
-  [
-    '@demicodes/agent-eval',
-    [
-      '@demicodes/agent',
-      '@demicodes/coding-agent',
-      '@demicodes/core',
-      '@demicodes/host-local',
-      '@demicodes/provider',
-      '@demicodes/provider-anthropic-api',
-      '@demicodes/provider-claude-code',
-      '@demicodes/provider-codex',
-      '@demicodes/provider-grok-build',
-      '@demicodes/provider-openai-api',
-      '@demicodes/shell',
-      '@demicodes/utils',
-    ],
+    ['@demicodes/command-loader', '@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils'],
   ],
 ])
 
 const allowedWorkspaceSubpaths = new Map<string, string>([
-  ['@demicodes/just-bash/ast/types', 'packages/just-bash/packages/just-bash/src/ast/types.ts'],
-  ['@demicodes/just-bash/interpreter/helpers/ifs', 'packages/just-bash/packages/just-bash/src/interpreter/helpers/ifs.ts'],
-  ['@demicodes/just-bash/parser', 'packages/just-bash/packages/just-bash/src/parser/parser.ts'],
   ['@demicodes/shell/storage', 'packages/shell/src/storage.ts'],
   ['@demicodes/shell/bash', 'packages/shell/src/bash.ts'],
   ['@demicodes/shell/host-fs', 'packages/shell/src/host-fs.ts'],
@@ -199,9 +153,6 @@ test('runtime source uses the forked bash package without embedded upstream snap
   const forbiddenDirs = [
     'packages/bash',
     'packages/shell/vendor',
-    'packages/shell/src/internal/just-bash',
-    'packages/just-bash/upstream',
-    'packages/just-bash/src',
   ]
   const existingForbiddenDirs: string[] = []
   for (const directory of forbiddenDirs) {
@@ -214,8 +165,6 @@ test('runtime source uses the forked bash package without embedded upstream snap
   for (const file of files) {
     const source = await readFile(file, 'utf8')
     for (const specifier of findModuleSpecifiers(source)) {
-      // The fork ships as @demicodes/just-bash; importing the bare upstream `just-bash` or a vendored copy is banned.
-      if (specifier.includes('vendor/just-bash') || /^just-bash(?:\/|$)/.test(specifier)) violations.push(`${formatPath(file)} imports ${specifier}`)
     }
   }
 
@@ -248,7 +197,8 @@ test('package manifests preserve layering boundaries', async () => {
     '@demicodes/coding-agent',
   ]
   for (const packageName of platformNeutralPackages) {
-    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-local')
+    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-remote')
+    expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/host-virtual')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-claude-code')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-codex')
     expect(packageDependencyNames(manifests.get(packageName))).not.toContain('@demicodes/provider-openai-api')
@@ -262,7 +212,7 @@ test('package manifests preserve layering boundaries', async () => {
 
   const webUiDependencies = packageDependencyNames(manifests.get('@demicodes/web-ui'))
   for (const forbidden of [
-    '@demicodes/host-local',
+    '@demicodes/host-remote',
     '@demicodes/shell',
     '@demicodes/coding-agent',
     '@demicodes/provider-claude-code',
@@ -271,7 +221,6 @@ test('package manifests preserve layering boundaries', async () => {
     '@demicodes/provider-anthropic-api',
     '@demicodes/provider-grok-build',
     '@demicodes/provider-google',
-    '@demicodes/repl',
     '@demicodes/web',
   ]) {
     expect(webUiDependencies).not.toContain(forbidden)
@@ -561,7 +510,6 @@ async function listSourceFiles(directory: string): Promise<string[]> {
     const path = join(directory, entry.name)
     const relativePath = formatPath(path)
     if (entry.isDirectory()) {
-      if (relativePath === 'packages/just-bash') continue
       if (entry.name === '__tests__') continue
       files.push(...(await listSourceFiles(path)))
     } else if (entry.isFile() && entry.name.endsWith('.ts')) {
