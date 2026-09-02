@@ -10,6 +10,7 @@
  * UTC); the home path is normalized to `@HOME@` in the recorded output.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { decodeLatin1 } from '@demicodes/utils'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CASES, type CorpusCase } from './cases'
@@ -76,7 +77,7 @@ export async function runOnBash(testCase: CorpusCase): Promise<Golden> {
     fields.set(line.slice(0, space), line.slice(space + 1))
   }
   const home = fields.get('home')!
-  const decode = (b64: string) => normalizeHome(latin1(Buffer.from(b64, 'base64')), home)
+  const decode = (b64: string) => normalizeHome(decodeLatin1(Buffer.from(b64, 'base64')), home)
   return {
     exit: Number(fields.get('exit')),
     stdout: decode(fields.get('stdout') ?? ''),
@@ -90,11 +91,6 @@ export function normalizeHome(text: string, home: string): string {
   return text.split(home).join(HOME_TOKEN)
 }
 
-export function latin1(bytes: Uint8Array): string {
-  let out = ''
-  for (const b of bytes) out += String.fromCharCode(b)
-  return out
-}
 
 export function goldenPath(name: string): string {
   return join(GOLDENS_DIR, `${name}.json`)

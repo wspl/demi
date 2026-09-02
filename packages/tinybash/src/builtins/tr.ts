@@ -1,24 +1,11 @@
 import type { Builtin } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { collectBytes, utf8AsLatin1 } from '@demicodes/utils'
 import { tryHelp } from './errors'
 import { guardedStdin } from './inputs'
+import { classBytes } from '../grammar/posix-classes'
 
-const CLASSES: Record<string, (c: number) => boolean> = {
-  upper: (c) => c >= 65 && c <= 90,
-  lower: (c) => c >= 97 && c <= 122,
-  digit: (c) => c >= 48 && c <= 57,
-  alpha: (c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122),
-  alnum: (c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57),
-  space: (c) => c === 32 || (c >= 9 && c <= 13),
-  blank: (c) => c === 32 || c === 9,
-  punct: (c) => (c >= 33 && c <= 47) || (c >= 58 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126),
-  print: (c) => c >= 32 && c <= 126,
-  graph: (c) => c >= 33 && c <= 126,
-  cntrl: (c) => c < 32 || c === 127,
-  xdigit: (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102),
-}
+export const trSpec: FlagSpec = { switches: ['d'], valued: [] }
 
 /** A tr SET into its byte values: escapes, ranges and `[:class:]`. */
 export function parseSet(set: string): number[] | string {
@@ -53,9 +40,9 @@ export function parseSet(set: string): number[] | string {
       const end = set.indexOf(':]', i + 2)
       if (end !== -1) {
         const name = set.slice(i + 2, end)
-        const cls = CLASSES[name]
-        if (cls === undefined) return `invalid character class`
-        for (let c = 0; c < 256; c++) if (cls(c)) out.push(c)
+        const bytes = classBytes(name)
+        if (bytes === null) return `invalid character class`
+        out.push(...bytes)
         i = end + 2
         continue
       }
@@ -75,7 +62,7 @@ export function parseSet(set: string): number[] | string {
 }
 
 export const tr: Builtin = async (ctx) => {
-  const flags = parseFlags('tr', ctx.argv, SPECS.tr, ctx.line)
+  const flags = parseFlags('tr', ctx.argv, trSpec, ctx.line)
   const deleting = has(flags, 'd')
   const operands = flags.operands
   if (operands.length === 0 || (!deleting && operands.length === 1)) {

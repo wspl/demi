@@ -1,10 +1,11 @@
 import type { Builtin } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { quoteC, strerror, tryHelp } from './errors'
 
+export const mkdirSpec: FlagSpec = { switches: ['p'], valued: [] }
+
 export const mkdir: Builtin = async (ctx) => {
-  const flags = parseFlags('mkdir', ctx.argv, SPECS.mkdir, ctx.line)
+  const flags = parseFlags('mkdir', ctx.argv, mkdirSpec, ctx.line)
   if (flags.operands.length === 0) {
     await ctx.stderr(`mkdir: missing operand\n${tryHelp('mkdir')}`)
     return 1

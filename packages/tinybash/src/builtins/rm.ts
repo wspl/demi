@@ -1,11 +1,12 @@
 import type { Builtin } from './io'
-import { parseFlags, has } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags, has } from './flags'
 import { quoteC, strerror, tryHelp } from './errors'
 import { errorCode } from '@demicodes/utils'
 
+export const rmSpec: FlagSpec = { switches: ['r', 'f'], valued: [] }
+
 export const rm: Builtin = async (ctx) => {
-  const flags = parseFlags('rm', ctx.argv, SPECS.rm, ctx.line)
+  const flags = parseFlags('rm', ctx.argv, rmSpec, ctx.line)
   const force = has(flags, 'f')
   const recursive = has(flags, 'r')
   if (flags.operands.length === 0) {

@@ -1,10 +1,11 @@
 import type { Builtin } from './io'
-import { parseFlags } from './flags'
-import { SPECS } from './table'
+import { type FlagSpec, parseFlags } from './flags'
 import { quoteC, strerror, tryHelp } from './errors'
 
+export const touchSpec: FlagSpec = { switches: [], valued: [] }
+
 export const touch: Builtin = async (ctx) => {
-  const flags = parseFlags('touch', ctx.argv, SPECS.touch, ctx.line)
+  const flags = parseFlags('touch', ctx.argv, touchSpec, ctx.line)
   if (flags.operands.length === 0) {
     await ctx.stderr(`touch: missing file operand\n${tryHelp('touch')}`)
     return 1
