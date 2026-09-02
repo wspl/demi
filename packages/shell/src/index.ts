@@ -1,6 +1,5 @@
 export * from './command'
 export * from './command-abi'
-export * from './command-artifact-store'
 export * from './command-records'
 export * from './shell-environment'
 export * from './host'

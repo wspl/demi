@@ -1,6 +1,6 @@
 import { buildManifest, createLoader, inMemorySource, inProcessRpc, rootPaths } from '@demicodes/command-loader'
 import { AgentSessionCommandStorage, type CommandRegistry, type Host, type ShellEnvironment, type ShellEnvironmentOptions } from '@demicodes/shell'
-import { HostlessEnvironment } from '@demicodes/shell/hostless'
+import { HostlessEnvironment } from '@demicodes/host-virtual'
 import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from './scoped-transport'
 
 /** Every hostless file belongs to the session user (`sessions-and-targets.md` § The namespace). */

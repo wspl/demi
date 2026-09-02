@@ -2134,6 +2134,51 @@ Pitfalls, each a rule now:
   `!` in `test`; the scripts say so plainly now instead of pretending a
   machine is there.
 
+### The symmetries (2026-09-03) — delivered
+
+A review of what sat where after M9 closed, each item a place where two
+things of one kind lived in two kinds of home:
+
+- `HostlessEnvironment` moved from `shell/hostless` to `@demicodes/host-virtual`,
+  beside `VirtualHost`, the way `RemoteShellEnvironment` sits beside
+  `RemoteHost`: one execution target, its Host and its shell. `shell`
+  depends on `utils` alone again; `host-virtual → shell, tinybash, utils`.
+- The test fixtures moved with it: `hostlessShell`, `hostlessShellFactory`,
+  the `probe` root and `LocalHost` under `@demicodes/host-virtual/testing`;
+  `nodeFileSystem` under `@demicodes/host-virtual/node`. `shell/node` and
+  `command-loader/testing` are gone; the boundary test skips `testing`
+  entries when it builds the production graph, and the host-injection
+  rule for platform-neutral packages reads production dependencies only.
+- The job environment names (`JOB_CWD_FILE_VAR`, `JOB_STDIN_FD_VAR`,
+  `JOB_STDIN_FD`) returned to the runner's `serve/jobs.ts`: both users are
+  runner-internal. `HostRpcServer` and `JobTable` are reachable at
+  `@demicodes/runner/serve` for host-remote's tests; `runner/testing`
+  re-exports nothing of the runtime.
+- `Host.process.spawn` is optional: `VirtualHost` declares none, the
+  conformance suite's process cases apply only where `spawn` exists, the
+  backend refuses a process-capable provider on a hostless conversation
+  with the reason, and a read-only subagent Host denies every write.
+- No artifacts anywhere: `commandArtifactsDir` left the Host contract and
+  every implementation, `CommandArtifactStore` and the meta/bin files
+  are gone, the hostless environment keeps nothing beyond the view
+  (`commands.md`'s table was right; the code now agrees). The status
+  view's `outputDir` and stream `path` are present only when the target
+  keeps output files (the runner's tee); the tool text prints paths only
+  then, and a binary stream says "not kept beyond this view" hostless.
+- `audit` deleted end to end: `BashAuditEvent`, the record and status
+  fields, the `audit` frame, `progressToAudit`, the tool view field, the
+  rendering-spec bullet.
+- `prepareShell` and `heredocDelimiter` deleted (no caller since the
+  command bridge).
+- `commandModulesAsText` moved to `@demicodes/command-loader/build`.
+- Recorded, not changed: `RESERVED_COMMAND_NAMES` hand-lists the Unix
+  tools tinybash implements; shell cannot import tinybash, so the two are
+  kept in step by review.
+
+Green: agent 243, coding-agent + providers 136, backend 41, runner 10,
+the rest 516 + core/host-virtual 44; typecheck and the web typecheck
+clean.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

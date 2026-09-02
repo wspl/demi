@@ -18,9 +18,10 @@
       "@demicodes/shell/storage": ["./packages/shell/src/storage.ts"],
       "@demicodes/shell/host-fs": ["./packages/shell/src/host-fs.ts"],
       "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
-      "@demicodes/command-loader/testing": ["./packages/command-loader/src/testing.ts"],
-      "@demicodes/shell/hostless": ["./packages/shell/src/hostless.ts"],
-      "@demicodes/shell/node": ["./packages/shell/src/node.ts"],
+      "@demicodes/command-loader/build": ["./packages/command-loader/src/build.ts"],
+      "@demicodes/host-virtual/node": ["./packages/host-virtual/src/node.ts"],
+      "@demicodes/host-virtual/testing": ["./packages/host-virtual/src/testing.ts"],
+      "@demicodes/runner/serve": ["./packages/runner/src/serve/index.ts"],
       "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
       "@demicodes/runner/testing": ["./packages/runner/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]

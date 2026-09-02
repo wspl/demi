@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { AgentSessionCommandStorage, fileHostStore } from '../index'
-import { LocalHost } from '../node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 
 const storeAt = (root: string) => fileHostStore(new LocalHost(root, { storeRoot: root }).fs, root)
 

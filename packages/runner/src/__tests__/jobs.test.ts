@@ -3,7 +3,7 @@ import { createWriteStream, existsSync } from 'node:fs'
 import { mkdir, mkdtemp, open, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LocalHost } from '@demicodes/shell/node'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
@@ -25,7 +25,7 @@ const wire = createRunnerWire(msgpackCodec)
 async function connected() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'demi-jobs-')))
   const local = new LocalHost(dir)
-  const remote = new RemoteHost({ defaultCwd: dir, commandArtifactsDir: join(dir, '.out'), identity: local.identity, store: memoryHostStore() })
+  const remote = new RemoteHost({ defaultCwd: dir, identity: local.identity, store: memoryHostStore() })
   const send = (message: Parameters<typeof wire.encode>[0]) => remote.handleMessage(wire.decodeRunnerToBackend(wire.encode(message)))
   const rpc = new HostRpcServer(local, send)
   const jobs = new JobTable({
@@ -70,9 +70,10 @@ test('a job runs bash -c on the runner; its output files are the artifact direct
   expect(result.stdout.delta).toBe('hello\n')
   expect(result.stderr.delta).toBe('oops\n')
   expect(result.output.chunks).toEqual([{ stream: 'stdout', text: 'hello\n' }, { stream: 'stderr', text: 'oops\n' }])
-  expect(result.artifactDir.startsWith(join(dir, '.out'))).toBe(true)
-  expect(await readFile(join(result.artifactDir, 'stdout.txt'), 'utf8')).toBe('hello\n')
-  expect(existsSync(join(result.artifactDir, 'cwd'))).toBe(false)
+  expect(result.outputDir?.startsWith(join(dir, '.out'))).toBe(true)
+  expect(result.stdout.path).toBe(join(result.outputDir!, 'stdout.txt'))
+  expect(await readFile(join(result.outputDir!, 'stdout.txt'), 'utf8')).toBe('hello\n')
+  expect(existsSync(join(result.outputDir!, 'cwd'))).toBe(false)
   expect(jobs.count).toBe(0)
 })
 
@@ -124,9 +125,9 @@ test('output beyond the view is the head, a gap note and the true tail; the full
   const text = result.stdout.delta
   expect(text.startsWith('000000000\n000000001\n')).toBe(true)
   expect(text.endsWith(`${String(total / 10 - 1).padStart(9, '0')}\n`)).toBe(true)
-  expect(text).toContain(`bytes not shown; the full stream is at ${join(result.artifactDir, 'stdout.txt')}`)
+  expect(text).toContain(`bytes not shown; the full stream is at ${join(result.outputDir!, 'stdout.txt')}`)
   expect(text.length).toBeLessThan(2 * JOB_VIEW_BYTES + 200)
-  expect((await stat(join(result.artifactDir, 'stdout.txt'))).size).toBe(total)
+  expect((await stat(join(result.outputDir!, 'stdout.txt'))).size).toBe(total)
 })
 
 test('a dropped connection kills the job on the runner and fails it in the backend', async () => {
@@ -143,7 +144,7 @@ test('a dropped connection kills the job on the runner and fails it in the backe
 
 /** A tee in JavaScript over a Host without the primitive: the full streams to files, the head as the view. */
 async function teedSpawn(host: LocalHost, params: JobSpawnParams): Promise<JobSpawnHandle> {
-  const handle = await host.process.spawn({ command: params.command, args: params.args, cwd: params.cwd, env: params.env, killProcessGroup: true })
+  const handle = await host.process.spawn!({ command: params.command, args: params.args, cwd: params.cwd, env: params.env, killProcessGroup: true })
   const counts = { stdout: 0, stderr: 0 }
   const flushed: Promise<void>[] = []
   const tee = (stream: AsyncIterable<Uint8Array>, name: 'stdout' | 'stderr', path: string) => {

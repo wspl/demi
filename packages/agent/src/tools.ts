@@ -1,6 +1,5 @@
 import { asRecord, asString, sliceHead } from '@demicodes/utils'
 import type {
-  BashAuditEvent,
   ShellEnvironment,
   ShellAbortInput,
   ShellCommandStatus,
@@ -223,7 +222,7 @@ export function toShellToolResult(
 ): AgentToolInvokeResult {
   const output: ToolResultContentBlock[] = [{ type: 'text', text: formatShellToolResult(result, options) }]
   if (result.status === 'exited' && result.binaryStdout) {
-    const verdict = binaryStreamVerdict(result.binaryStdout, `${result.artifactDir}/stdout.bin`, options.model, {
+    const verdict = binaryStreamVerdict(result.binaryStdout, result.stdout.path, options.model, {
       ...DEFAULT_MAX_MEDIA_BYTES,
       ...options.maxMediaBytes,
     })
@@ -241,11 +240,9 @@ export function toShellToolResult(
 export const SHELL_VIEW_MAX_CHARS = 32_768
 
 /**
- * Bounded UI view of a shell command stored on the tool_call block. Full
- * output lives in the command artifact directory (real files on the host
- * filesystem, see `artifactDir`), keyed by
- * `commandId`; the view carries only the tail render window and never embeds
- * raw or base64 bytes.
+ * Bounded UI view of a shell command stored on the tool_call block: the tail
+ * render window and nothing else — what the model saw is what the browser
+ * shows; the view never embeds raw or base64 bytes.
  */
 export interface ShellToolView {
   kind: 'shell'
@@ -257,9 +254,8 @@ export interface ShellToolView {
   idleMs: number
   /** Tail of the merged output, capped at SHELL_VIEW_MAX_CHARS. */
   chunks: ShellOutputChunk[]
-  /** True when chunks were capped; the artifact has the full output. */
+  /** True when chunks were capped. */
   viewTruncated: boolean
-  audit?: BashAuditEvent[]
 }
 
 function shellToolView(result: ShellCommandStatus): ShellToolView {
@@ -276,7 +272,6 @@ function shellToolView(result: ShellCommandStatus): ShellToolView {
   }
   if (result.status === 'exited') {
     view.exitCode = result.exitCode
-    if (result.audit.length > 0) view.audit = result.audit
   }
   return view
 }
@@ -310,26 +305,27 @@ function tailChunkWindow(
  */
 function binaryStreamVerdict(
   binary: NonNullable<Extract<ShellCommandStatus, { status: 'exited' }>['binaryStdout']>,
-  binPath: string,
+  rawPath: string | undefined,
   model: Model | undefined,
   maxMediaBytes: Record<ModelMediaKind, number>,
 ): { block?: ToolResultContentBlock; note?: string } {
   const media = sniffModelMediaType(binary.data)
+  const where = rawPath ? `the raw bytes remain readable at ${rawPath}` : 'the raw bytes were not kept beyond this view'
   if (binary.truncated) {
     return {
       note: `Binary stdout (${binary.totalBytes} bytes${
         media ? `, ${media.mediaType}` : ''
-      }) exceeded the shell's ${binary.limitBytes}-byte binary limit (maxBinaryBytes) and was not attached; the raw bytes remain readable at ${binPath}. Produce a smaller version and re-run.`,
+      }) exceeded the shell's ${binary.limitBytes}-byte binary limit (maxBinaryBytes) and was not attached; ${where}. Produce a smaller version and re-run.`,
     }
   }
   if (!media) {
     return {
-      note: `Binary stdout does not match any model-viewable media type; the raw bytes remain readable at ${binPath}.`,
+      note: `Binary stdout does not match any model-viewable media type; ${where}.`,
     }
   }
   if (!model || !modelAcceptsMediaType(model, media.mediaType)) {
     return {
-      note: `Binary stdout is ${media.mediaType}, which this model does not accept natively; the raw bytes remain readable at ${binPath}.`,
+      note: `Binary stdout is ${media.mediaType}, which this model does not accept natively; ${where}.`,
     }
   }
   // Per-modality cap. This is the layer that knows both what the bytes are and
@@ -338,7 +334,7 @@ function binaryStreamVerdict(
   const cap = maxMediaBytes[media.kind]
   if (binary.totalBytes > cap) {
     return {
-      note: `Binary stdout is ${media.mediaType} (${binary.totalBytes} bytes), over the ${cap}-byte ${media.kind} cap; it was not attached and the raw bytes remain readable at ${binPath}. Produce a smaller version — for video, fewer frames or a lower resolution — and re-run.`,
+      note: `Binary stdout is ${media.mediaType} (${binary.totalBytes} bytes), over the ${cap}-byte ${media.kind} cap; it was not attached and ${where}. Produce a smaller version — for video, fewer frames or a lower resolution — and re-run.`,
     }
   }
   const source = { mediaType: media.mediaType, data: bytesToBase64(binary.data) }
@@ -442,9 +438,8 @@ function formatShellToolResult(result: ShellCommandStatus, options: ShellToolRes
     lines.push(`commandId: ${result.commandId}`)
     lines.push(`runningMs: ${result.runningMs}`)
     lines.push(`idleMs: ${result.idleMs}`)
-    appendArtifact(lines, 'stdout', result.stdout)
-    appendArtifact(lines, 'stderr', result.stderr)
-    lines.push(`metaPath: ${result.artifactDir}/meta.json`)
+    appendStream(lines, 'stdout', result.stdout)
+    appendStream(lines, 'stderr', result.stderr)
   }
 
   if (options.includePreview) {
@@ -458,15 +453,19 @@ function formatShellToolResult(result: ShellCommandStatus, options: ShellToolRes
   } else if (result.status === 'aborted') {
     lines.push('next: command was intentionally stopped.')
   } else if (exposeCommandHandle) {
-    lines.push('next: command is complete; read the artifact only if the preview is insufficient.')
+    lines.push(
+      result.stdout.path
+        ? 'next: command is complete; read the output files on the target only if the preview is insufficient.'
+        : 'next: command is complete.',
+    )
   }
 
   return lines.join('\n')
 }
 
-function appendArtifact(lines: string[], label: string, artifact: ShellStreamView): void {
-  lines.push(`${label}Path: ${artifact.path}`)
-  lines.push(`${label}Bytes: ${artifact.bytes}`)
+function appendStream(lines: string[], label: string, stream: ShellStreamView): void {
+  if (stream.path) lines.push(`${label}Path: ${stream.path}`)
+  lines.push(`${label}Bytes: ${stream.bytes}`)
 }
 
 function appendPreview(lines: string[], result: ShellCommandStatus, budgetTokens: number): void {
@@ -480,7 +479,9 @@ function appendPreview(lines: string[], result: ShellCommandStatus, budgetTokens
   lines.push(preview.text)
   if (preview.truncated || result.output.truncated) {
     lines.push(
-      `previewTruncated: true; read ${result.artifactDir}/stdout.txt or ${result.artifactDir}/stderr.txt for more.`,
+      result.stdout.path && result.stderr.path
+        ? `previewTruncated: true; read ${result.stdout.path} or ${result.stderr.path} on the target for more.`
+        : 'previewTruncated: true; nothing beyond this view was kept — re-run with a narrower command.',
     )
   }
 }

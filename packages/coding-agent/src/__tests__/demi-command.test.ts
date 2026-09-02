@@ -3,8 +3,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'bun:test'
 import { type CommandIO, type CommandStorage, type Host, type HostDirent, type HostFileStat, type HostFileSystem, type HostProcess, type HostStore, createLogicalHostCwd, runRegisteredCommand, type ShellEnvironment } from '@demicodes/shell'
-import { hostlessShell } from '@demicodes/command-loader/testing'
-import { LocalHost } from '@demicodes/shell/node'
+import { hostlessShell } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { bytesStream, bytesToBase64, encodeUtf8 } from '@demicodes/utils'
 import { createCodingCommandRegistry, createDemiCommand } from '../index'
 
@@ -25,7 +25,7 @@ test('demi file read emits raw bytes; binary files surface as binaryStdout at th
   if (read.status !== 'exited') throw new Error('expected exited result')
   expect(read.exitCode).toBe(0)
   expect(read.binaryStdout?.data).toEqual(png)
-  expect(read.stdout.delta).toContain(`<binary stdout: ${png.length} bytes; raw bytes at ${read.artifactDir}/stdout.bin`)
+  expect(read.stdout.delta).toContain(`<binary stdout: ${png.length} bytes; not kept beyond this view>`)
 
   // Bytes pipe cleanly into downstream commands.
   const counted = await env.exec({ shellId: read.shellId, script: 'demi file read shot.png | wc -c' })

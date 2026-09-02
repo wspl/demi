@@ -1,4 +1,7 @@
-// The Host filesystem contract over Node's `fs/promises`.
+// The Host filesystem contract over Node's `fs/promises`: the backend
+// machine's own filesystem, the backing directory of the store-backed Host
+// (`scopedFsBackend`). Shipped as `@demicodes/host-virtual/node`; the root
+// entry stays platform-neutral.
 import {
   appendFile,
   chmod,
@@ -20,7 +23,7 @@ import {
 import type { Dirent, Stats } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { isFileNotFoundError } from '@demicodes/utils'
-import type { HostDirent, HostFileStat, HostFileSystem } from '../host'
+import type { HostDirent, HostFileStat, HostFileSystem } from '@demicodes/shell'
 
 /** Relative paths resolve against `defaultCwd` unless a call names its own `cwd`. */
 export function nodeFileSystem(defaultCwd: string): HostFileSystem {

@@ -1,9 +1,6 @@
 export {
   RUNNER_PROTOCOL_VERSION,
   JOB_VIEW_BYTES,
-  JOB_CWD_FILE_VAR,
-  JOB_STDIN_FD,
-  JOB_STDIN_FD_VAR,
   FS_OPS,
   createRunnerWire,
   type BackendToRunnerMessage,

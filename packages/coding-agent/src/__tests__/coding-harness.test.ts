@@ -14,8 +14,8 @@ import {
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { CommandRegistry, type Command, type Host, type HostDirent, type HostFileSystem, type HostProcess, type HostStore, createLogicalHostCwd, type ShellEnvironment } from '@demicodes/shell'
-import { hostlessShell, hostlessShellFactory } from '@demicodes/command-loader/testing'
-import { LocalHost } from '@demicodes/shell/node'
+import { hostlessShell, hostlessShellFactory } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { createCodingAgentHarness } from '../index'
 
 const model: ModelSelection = {
@@ -240,7 +240,6 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
     profiles,
     parentCommands: commands,
     shellOptions: {},
-    prepareShell: null,
     shellEnvironment: hostlessShellFactory,
     sessionOptions: {},
     notifyParentOnIdle: true,

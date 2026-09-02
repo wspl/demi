@@ -37,6 +37,7 @@
   "homepage": "https://github.com/wspl/demi/tree/main/packages/host-remote#readme",
   "bugs": "https://github.com/wspl/demi/issues",
   "devDependencies": {
+    "@demicodes/host-virtual": "workspace:^",
     "@demicodes/runner": "workspace:^"
   }
 }

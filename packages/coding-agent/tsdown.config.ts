@@ -1,4 +1,4 @@
-import { commandModulesAsText } from '@demicodes/shell/build'
+import { commandModulesAsText } from '@demicodes/command-loader/build'
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
