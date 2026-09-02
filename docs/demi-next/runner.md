@@ -82,9 +82,14 @@ asked, `host-runner` performs on the machine.
 
 ## Connection model
 
-One outbound WebSocket. Frames are **MessagePack**, so `Uint8Array` and
-`Date` are native wire types; the schemas are `zod` in
-`@demicodes/runner-protocol`, shared verbatim by both ends.
+One outbound WebSocket. Frames are binary **MessagePack** (`Uint8Array` as
+bin, `Date` as the timestamp extension, `undefined` as nil), so bytes and
+times are native wire types; a text frame is malformed and closes the
+socket. The schemas are `zod` in `@demicodes/runner-protocol`, shared
+verbatim by both ends; the codec is the carrier's — `@msgpack/msgpack` on
+the backend, `tinyjs:bytes` on the runner — handed to `createRunnerWire`,
+and the two are held to the same bytes by a test that round-trips frames
+through both.
 
 Pairing, end to end — two user steps (run the command, paste the code):
 
@@ -103,10 +108,15 @@ Pairing, end to end — two user steps (run the command, paste the code):
    runner ◀──hello_ok { deviceId }──────── backend       from here: Host RPC, jobs, ping/pong
 ```
 
-Failure branch: a revoked or invalid token answers `hello_error { reason }`
-and the runner prompts to pair again. **A token holds at most one live
-connection**: a second `hello` carrying a token already connected is
-rejected and logged.
+Failure branch: a refused hello answers `hello_error { code, reason }` and
+closes the socket. `unknown_device`, `revoked` and `unsupported_protocol`
+cannot change without operator action: the runner stops and prompts to
+pair again. **A token holds at most one live connection**: a second
+`hello` carrying a token already connected is refused with
+`already_connected` and logged by the backend; that one outcome the runner
+retries with its backoff, because the live connection may be a half-open
+socket the backend has not timed out yet, and the retry succeeds once the
+old socket is gone.
 
 ### Messages
 
@@ -115,7 +125,7 @@ Handshake and liveness:
 | Direction | Message | Purpose |
 |---|---|---|
 | r → b | `hello { deviceToken?, runner: { name, platform, version, identity } }` | authenticate; `identity` because `HostIdentity` is read synchronously at shell creation |
-| b → r | `hello_ok { deviceId }` / `claim_pending { claimToken }` / `claimed { deviceToken }` / `hello_error { reason }` | outcomes |
+| b → r | `hello_ok { deviceId }` / `claim_pending { claimToken }` / `claimed { deviceToken }` / `hello_error { code, reason }` | outcomes; `code` is `unsupported_protocol`, `unknown_device`, `already_connected`, `revoked` or `internal` |
 | b → r | `ping` | liveness, backend-driven interval |
 | r → b | `pong { jobs }` | liveness plus the count of running jobs, which the idle rule reads (`managed-hosts.md`) |
 
@@ -124,8 +134,8 @@ facets (`Host.store` never crosses this protocol):
 
 | Direction | Message | Purpose |
 |---|---|---|
-| b → r | one message per fs operation, e.g. `fs_stat { id, path }`, `fs_read { id, path, offset?, length? }` — a discriminated union over the `HostFileSystem` method set | typed per op, so argument and result shapes are checked |
-| r → b | `fs_ok { id, op, result }` / `fs_error { id, code, message }` | result or a typed error carrying the errno code |
+| b → r | one message per fs operation, `fs_<method> { id, …params }` — `fs_stat { id, path, cwd? }`, `fs_writeFile { id, path, data, cwd?, createParents? }`, … — a union over the `HostFileSystem` method set, each with its parameters named | typed per op, so argument shapes are checked at decode |
+| r → b | `fs_ok { id, op, result }` / `fs_error { id, code?, message }` | the result typed by `op` (bytes, a stat, names or dirents, a path, `null`), or an error carrying the errno code when there is one |
 | b → r | `spawn { spawnId, command, args, cwd, env, stdin? }` | start a raw process (the Claude Code CLI, the directory browser) |
 | r → b | `spawn_output { spawnId, stream, bytes }` / `spawn_exit { spawnId, code, signal? }` | streamed stdio, exit |
 | b → r | `spawn_stdin { spawnId, bytes }` / `spawn_stdin_end` / `spawn_kill { spawnId, signal }` | input and termination |
@@ -150,8 +160,9 @@ Relay and outputs:
 | b → r | `output_upload { path, uploadUrl }` | the backend wants the full bytes of an output file: the runner `PUT`s the file to the one-shot URL over HTTP |
 | b → r | `transfer_send { path, uploadUrl }` / `transfer_receive { path, downloadUrl }` | a brokered cross-host copy: the source `PUT`s, the destination `GET`s, the backend pipes the two |
 
-The exact `fs_*` op set mirrors `HostFileSystem` and is fixed in the
-protocol package.
+The `fs_*` op set mirrors `HostFileSystem` one to one and is one table in
+the protocol package (`fsOps`: parameters and result schema per method),
+from which the request union, the reply union and the TS types derive.
 
 ## Jobs and the tee
 
