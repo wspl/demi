@@ -16,6 +16,8 @@ import { createHostlessShell, transpileCommandModule } from './conversation/host
 import { resolveExecutionTarget } from './conversation/execution-target'
 import { HOSTLESS_HOME } from './conversation/scoped-transport'
 import { createHostCommandGroup } from './managed/host-command'
+import { ManagedHostError, ManagedHosts, ownerOf, type ManagedHostsConfig } from './managed/lifecycle'
+import type { ManagedHostProvisioner } from './managed/provisioner'
 import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
 import { meterProvider } from './llm/metering'
@@ -27,7 +29,7 @@ import { loadOrCreateInstanceSecret } from './vault/secret'
 import { SubscriptionLoginFlows } from './vault/subscription-login'
 import { DirBlobStore } from './storage/blob-store'
 import { ConversationStores } from './storage/conversation-store'
-import { LocalControlService, type ControlService } from './storage/control'
+import { LocalControlService, type ControlService, type ManagedHostOwner } from './storage/control'
 import { openSqliteDatabase } from './storage/database'
 import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 
@@ -42,11 +44,19 @@ export interface BackendOptions {
   providerTypes?: Record<string, ProviderTypeFactory>
   /** Usage-enforcement tuning — tests only. */
   usage?: { providerRequestsPerMinute?: number }
+  /**
+   * Managed hosts (`managed-hosts.md`): the provisioner and the lifecycle
+   * sizes. A deployment requirement; a backend without it has no machine to
+   * upgrade a hostless conversation to, and says so as an ordinary tool error.
+   */
+  managedHosts?: { provisioner: ManagedHostProvisioner; config?: Partial<ManagedHostsConfig> }
 }
 
 export interface Backend {
   port: number
   url: string
+  /** The lifecycle, when configured. The product's triggers are the session upgrade and the Cloud workspace; tests drive it directly. */
+  managedHosts: ManagedHosts | null
   close(): Promise<void>
 }
 
@@ -143,15 +153,45 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     })
   }
 
+  // Whether the owner of a managed host has a turn in flight: the idle rule's
+  // first input. A workspace host counts turns across all its conversations.
+  const turnInFlight = async (owner: ManagedHostOwner): Promise<boolean> => {
+    const ids = owner.kind === 'conversation' ? [owner.id] : await control.listConversationIdsInWorkspace(owner.id)
+    return ids.some((id) => {
+      const phase = agentServer.sessionPhase(id)
+      return phase !== null && phase !== 'idle'
+    })
+  }
+  const managedHosts = options.managedHosts
+    ? new ManagedHosts({
+        control,
+        registry: runnerRegistry,
+        provisioner: options.managedHosts.provisioner,
+        config: options.managedHosts.config,
+        backendUrl: () => url,
+        turnInFlight,
+      })
+    : null
+
   // The execution target is resolved server-side from the conversation record
   // (`sessions-and-targets.md` § The three states): a workspace or a
   // session-bound managed host routes to the device's stable RemoteHost
   // (offline ⇒ tool errors until the runner reattaches), neither ⇒ virtual.
+  // A managed device is woken here — this is "the next action needing the
+  // host" — after the owner check every control-plane path makes.
   const hostFor = async (conversationId: string): Promise<Host> => {
     const conversation = await control.getConversation(conversationId)
     if (!conversation) return virtualHostFor(conversationId)
     const target = await resolveExecutionTarget(control, conversation)
     if (target.kind === 'hostless') return virtualHostFor(conversationId)
+    const device = await control.getDevice(target.deviceId)
+    if (device?.kind === 'managed') {
+      const owner = ownerOf(device)
+      const owned = target.kind === 'workspace' ? owner.kind === 'workspace' && owner.id === target.workspaceId : owner.kind === 'conversation' && owner.id === conversationId
+      if (!owned) throw new ManagedHostError('not_owner', `machine ${device.id} is bound to another owner`)
+      if (!managedHosts) throw new Error('this backend provisions no machines')
+      await managedHosts.ensureRunning(device)
+    }
     const path = target.kind === 'workspace' ? target.path : (runnerRegistry.deviceIdentity(target.deviceId)?.homeDir ?? '/')
     return runnerRegistry.hostFor({ deviceId: target.deviceId, path }, conversationId, conversationStores.hostStore(conversationId))
   }
@@ -160,6 +200,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     control,
     registry: runnerRegistry,
     transfers,
+    managedHosts,
     virtualHostFor: (conversationId: string): Promise<Host> => virtualHostFor(conversationId),
     hostStoreFor: (conversationId: string) => conversationStores.hostStore(conversationId),
   }
@@ -204,6 +245,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     upgradeWebSocket,
     blobs,
     hostFor,
+    managedHosts,
   })
 
   const server = Bun.serve({
@@ -211,11 +253,14 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     fetch: app.fetch,
     websocket,
   })
+  const url = `http://localhost:${server.port}`
 
   return {
     port: server.port ?? 0,
-    url: `http://localhost:${server.port}`,
+    url,
+    managedHosts,
     close: async () => {
+      await managedHosts?.close()
       await agentServer.close()
       transfers.close()
       await runnerRegistry.close()
