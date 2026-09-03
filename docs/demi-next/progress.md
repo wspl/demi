@@ -2286,8 +2286,8 @@ two moved tests deleted from `backend.test.ts`; the verification row.
 
 ## M11 — Access model and managed hosts (2026-09-03)
 
-Status: planned — the checkpoint order below, decided before any code;
-each checkpoint is a commit and ends runnable.
+Status: delivered — six checkpoints, each a commit; the rulings and the
+delivered entries follow the opener below.
 
 What the code holds against the two records (`sessions-and-targets.md`,
 `managed-hosts.md`) at the start of M11:
