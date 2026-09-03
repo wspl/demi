@@ -2489,6 +2489,31 @@ runner spends installing the manifest (the loop handles messages in
 order) — 500 ms in S10. A hibernate's `calls` entry precedes the process
 stop; the scenario waits for both.
 
+### Checkpoint 3 rulings (2026-09-03)
+
+- The hostless files take the form `storage.md` specifies: the `files`
+  tree table in the conversation database with contents in the blob
+  store, replacing the per-conversation directory under
+  `<dataDir>/virtual/`. Ruled on the deployment ground: the N>1 topology
+  replicates the conversation databases and the blob store, and a
+  directory beside them is the one piece of conversation data outside
+  that path. Done as the first step of the checkpoint, since the upgrade
+  is where the tree becomes a directory.
+- The upgrade lives in one backend wrapper over the two shell
+  environments: `parseTinybash` decides before anything runs; an outside
+  script materialises the tree, provisions, binds with
+  `bindConversationHost` (the pointer alone, no pending switch, so nothing
+  is announced), hands tinybash's cwd and variables to the first job as a
+  prefix, and runs the script whole on the machine. A provisioning
+  failure is that call's tool error; nothing is bound.
+- `/tmp` is materialised under the home's `.tmp/`; the guest mounts it in
+  checkpoint 5. The fake provisioner's `/tmp` is the test machine's own —
+  an allowed difference.
+- S11, split equivalence: the same script run whole on the machine and
+  split at every point, tool results and final files compared byte for
+  byte, over commands whose output is the same under BSD and GNU
+  coreutils; the GNU-faithful corpus stays in tinybash's Linux job.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
