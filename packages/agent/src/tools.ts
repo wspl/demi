@@ -18,8 +18,8 @@ import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from '.
 const MAX_CONSECUTIVE_IDENTICAL_EXEC = 6
 const REPEAT_WINDOW_MS = 60_000
 const MAX_DELAY_MS = 600_000
-const SMALL_CONTEXT_PREVIEW_TOKENS = 1_000
-const LARGE_CONTEXT_PREVIEW_TOKENS = 10_000
+const SMALL_CONTEXT_PREVIEW_TOKENS = 10_000
+const LARGE_CONTEXT_PREVIEW_TOKENS = 100_000
 const LARGE_CONTEXT_THRESHOLD_TOKENS = 800_000
 const APPROX_CHARS_PER_TOKEN = 4
 const TOOL_DESCRIPTION_FIELD =
@@ -41,6 +41,11 @@ export interface StandardAgentToolOptions<State = unknown> {
         handle: { shellId?: string; commandId?: string },
       ) => BashEnvironment | Promise<BashEnvironment>)
   scheduleYield(ctx: AgentToolInvokeContext<State>, durationMs: number): AgentToolInvokeResult
+  /**
+   * Fixed tool-result preview budget in tokens. When set, replaces the budget
+   * derived from the current model's context window.
+   */
+  previewBudgetTokens?: number
 }
 
 export function createStandardAgentTools<State = unknown>(
@@ -76,7 +81,7 @@ export function createStandardAgentTools<State = unknown>(
           signal: ctx.signal,
         })
         ctx.emitProgress(result)
-        return finishShellToolResult(environment, result, ctx)
+        return finishShellToolResult(environment, result, ctx, options.previewBudgetTokens)
       },
     },
     {
@@ -100,7 +105,7 @@ export function createStandardAgentTools<State = unknown>(
         const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
         const result = await environment.status(parsed)
         ctx.emitProgress(result)
-        return finishShellToolResult(environment, result, ctx)
+        return finishShellToolResult(environment, result, ctx, options.previewBudgetTokens)
       },
     },
     {
@@ -125,7 +130,7 @@ export function createStandardAgentTools<State = unknown>(
         const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
         const result = await environment.write({ ...parsed, signal: ctx.signal })
         ctx.emitProgress(result)
-        return finishShellToolResult(environment, result, ctx)
+        return finishShellToolResult(environment, result, ctx, options.previewBudgetTokens)
       },
     },
     {
@@ -149,7 +154,7 @@ export function createStandardAgentTools<State = unknown>(
         const environment = await resolveEnvironment(options.environment, ctx, { commandId: parsed.commandId })
         const result = await environment.abort(parsed)
         ctx.emitProgress(result)
-        return { ...(await finishShellToolResult(environment, result, ctx)), isError: false }
+        return { ...(await finishShellToolResult(environment, result, ctx, options.previewBudgetTokens)), isError: false }
       },
     },
     {
@@ -500,8 +505,9 @@ export async function finishShellToolResult<State>(
   environment: BashEnvironment,
   result: ShellCommandStatus,
   ctx: AgentToolInvokeContext<State>,
+  fixedPreviewBudgetTokens?: number,
 ): Promise<AgentToolInvokeResult> {
-  const previewBudgetTokens = shellPreviewBudgetTokens(ctx.model.model.contextWindow)
+  const previewBudgetTokens = fixedPreviewBudgetTokens ?? shellPreviewBudgetTokens(ctx.model.model.contextWindow)
   const exposeCommandHandle = shellCommandHandleRequired(result, previewBudgetTokens)
   const toolResult = toShellToolResult(result, {
     includePreview: true,
