@@ -10,6 +10,7 @@ import type { FirecrackerConfig } from './config'
 import type { Slot } from './slots'
 
 export interface VmStart {
+  /** Short and unique: it names the run directory and the jail; the API socket path under it must fit a unix socket address. */
   vmId: string
   slot: Slot
   /** The working home image on the host. */

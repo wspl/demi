@@ -115,7 +115,7 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
   }
 
   running(owner: ManagedHostOwner): boolean {
-    return this.guests.get(ownerKey(owner))?.vm !== null
+    return (this.guests.get(ownerKey(owner))?.vm ?? null) !== null
   }
 
   private guest(owner: ManagedHostOwner): Guest {
@@ -135,7 +135,8 @@ export class FirecrackerProvisioner implements ManagedHostProvisioner {
     if (!present) await this.store.get(key, guest.workImage)
     await growImage(guest.workImage, this.config.homeMib * 1024 * 1024)
     const slot = this.slots.take()
-    const vmId = `${key.replace(/[^A-Za-z0-9]/g, '-')}-${createId().slice(0, 8)}`
+    // Short: the API socket path under the run directory must fit a unix socket address (108 bytes).
+    const vmId = `vm-${createId().slice(0, 12)}`
     let vm: RunningVm
     try {
       vm = await startVm(this.config, { vmId, slot, homeImage: guest.workImage, bootArgs: bootArgs({ backendUrl: boot.backendUrl, deviceToken: boot.deviceToken, slot, dns: this.config.dns, firstBoot }) }, this.log)

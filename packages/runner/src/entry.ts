@@ -22,13 +22,17 @@ async function main(): Promise<number> {
 /** PID 1: the init duties, then the runner as a managed host with the guest user for every job; exiting is the VM's death. */
 async function initMain(): Promise<number> {
   const stderr = stderrWriter()
-  const log = (line: string) => void stderr(`${line}\n`)
+  // Every line reaches the serial console before PID 1 exits: an exit here is the VM's death, and the console is its only trace.
+  const pending: Promise<void>[] = []
+  const log = (line: string) => void pending.push(Promise.resolve(stderr(`${line}\n`)).catch(() => {}))
+  const flush = () => Promise.all(pending.splice(0))
   const host = createRunnerHost()
   let boot
   try {
     boot = await bootGuest(host, log)
   } catch (error) {
     log(`init failed: ${errorMessage(error)}`)
+    await flush()
     return 1
   }
   const runner = new RunnerMode({
@@ -44,7 +48,9 @@ async function initMain(): Promise<number> {
     log,
   })
   onSignal('SIGTERM', () => void runner.stop())
-  return (await runner.run()) === 'rejected' ? 1 : 0
+  const outcome = await runner.run()
+  await flush()
+  return outcome === 'rejected' ? 1 : 0
 }
 
 async function runnerMain(args: readonly string[]): Promise<number> {
