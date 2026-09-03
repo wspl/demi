@@ -76,6 +76,20 @@ by configuration (`DEMI_MANAGED_LAUNCH`).
 - **Crash-loop guard.** The backend supervises each Firecracker process. N
   VM deaths within M minutes for one owner stop auto-reprovisioning and
   surface an error to the conversation.
+- **Configuration.** `DEMI_MANAGED_FIRECRACKER` (the binary; unset ⇒ no
+  managed hosts), `DEMI_MANAGED_KERNEL`, `DEMI_MANAGED_ROOTFS`,
+  `DEMI_MANAGED_LAUNCH` (`direct`, the default, or `jailer`, which needs
+  `DEMI_MANAGED_JAILER`, `DEMI_MANAGED_HELPER`, and optionally
+  `DEMI_MANAGED_CHROOT_BASE`, `DEMI_MANAGED_UID_BASE`),
+  `DEMI_MANAGED_VCPUS`, `DEMI_MANAGED_MEM_MIB`, `DEMI_MANAGED_HOME_MIB`
+  (the nominal home size), `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS`,
+  `DEMI_MANAGED_DNS`; and `DEMI_BACKEND_PUBLIC_URL`, the URL guests dial.
+  The install script (`packages/backend/scripts/install-managed-hosts.sh`,
+  root, once) creates the tap pool, forwarding, NAT and the egress rules
+  from the same parameters. Per VM the backend keeps a working home image,
+  the API socket and the console log under `<dataDir>/firecracker/`; the
+  store is `<dataDir>/homes/`. The helper is `packages/fc-helper`, a Rust
+  binary; its sudoers line is the only privilege the backend user holds.
 - **In a container.** Both modes run inside a Linux container on a host
   with `/dev/kvm` (`--device /dev/kvm --device /dev/net/tun`); `jailer`
   mode needs the container privileged (or the explicit capability set,
