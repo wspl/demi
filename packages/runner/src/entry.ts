@@ -47,6 +47,7 @@ async function runnerMain(args: readonly string[]): Promise<number> {
     executable,
     ...(env.DEMI_RUNNER_NAME ? { name: env.DEMI_RUNNER_NAME } : {}),
     deviceEnv: { PATH: env.PATH ?? '/usr/bin:/bin', HOME: identity.homeDir },
+    ...(env.DEMI_RUNNER_MANAGED ? { managed: true } : {}),
     reconnect: env.DEMI_RUNNER_RECONNECT_MS ? { initialDelayMs: Number(env.DEMI_RUNNER_RECONNECT_MS) } : undefined,
   })
   return (await runner.run()) === 'rejected' ? 1 : 0

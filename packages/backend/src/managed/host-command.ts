@@ -6,11 +6,14 @@ import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import type { RpcTransferDestination, RunnerRegistry } from '../runner/registry'
 import type { TransferBroker } from '../runner/transfers'
 import type { ControlService, ExecutionTarget } from '../storage/control'
+import type { ManagedHosts } from './lifecycle'
 
 export interface HostCommandDeps {
   control: ControlService
   registry: RunnerRegistry
   transfers: TransferBroker
+  /** Wakes a hibernated managed host on `shell --id` (`sessions-and-targets.md` § Host grants); null when the backend provisions none. */
+  managedHosts: ManagedHosts | null
   virtualHostFor: (conversationId: string) => Promise<Host>
   hostStoreFor: (conversationId: string) => HostStore
 }
@@ -159,6 +162,8 @@ async function runOnHost(
   script: string,
   ctx: { io: CommandIO; stdin: { bytes: Uint8Array }; env: Record<string, string> },
 ): Promise<{ exitCode: number }> {
+  const device = await deps.control.getDevice(target.deviceId)
+  if (device?.kind === 'managed' && deps.managedHosts) await deps.managedHosts.ensureRunning(device)
   if (!deps.registry.deviceOnline(target.deviceId)) {
     await ctx.io.stderr(`host shell: host ${target.deviceId} is offline\n`)
     return { exitCode: 1 }
