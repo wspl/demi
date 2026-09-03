@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Block, UserContentBlock } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport, type ClientSessionEvent } from '@demicodes/agent'
@@ -133,9 +134,16 @@ export class Driver {
   }
 
   /** Where the target keeps a file under the conversation's home. */
+  /** Where a runner keeps a file under the conversation's home; a hostless conversation's files are rows, read with `readFile`. */
   filePath(relative: string): string {
-    if (this.target === 'hostless') return join(this.world.dataDir, 'virtual', this.id, HOSTLESS_HOME, relative)
+    if (this.target === 'hostless') throw new Error('a hostless conversation has no file path; use readFile')
     return join(this.world.device(this.target.slice('runner:'.length)).home, relative)
+  }
+
+  /** A file under the conversation's home as the current target keeps it, or null when absent. */
+  async readFile(relative: string): Promise<string | null> {
+    if (this.target === 'hostless') return this.world.hostlessFile(this.id, `${HOSTLESS_HOME}/${relative}`)
+    return readFile(this.filePath(relative), 'utf8').catch(() => null)
   }
 
   get agent(): AgentClient {

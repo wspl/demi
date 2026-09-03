@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { delay, waitFor } from '@demicodes/utils'
 import { World } from './world'
@@ -88,7 +87,7 @@ test('R3 — runner death mid-command is a tool error; the returned runner serve
   await world.returnRunner('alpha')
   const back = await driver.turn({ model: [model.shell('t3', 'cat before.txt'), model.say('back')] })
   expect(back.received[0]).toContain('before')
-  expect(await readFile(driver.filePath('before.txt'), 'utf8')).toBe('before')
+  expect(await driver.readFile('before.txt')).toBe('before')
 }, 60_000)
 
 test('R4 — hostless persistence: files, todos and the ledger survive a backend restart', async () => {
