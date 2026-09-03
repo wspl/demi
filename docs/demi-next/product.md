@@ -9,7 +9,8 @@
 ## Instance mode: shared vs isolated
 
 An instance runs in exactly one of two modes; there is no mixing and no
-per-connection ownership machinery:
+per-connection ownership machinery. The mode is a deployment decision
+made at startup (`DEMI_INSTANCE_MODE`), never changed from the product:
 
 - **Shared**: provider connections are instance-wide. Only admins create,
   modify or delete them; ordinary users just use the models. Typical
@@ -17,18 +18,25 @@ per-connection ownership machinery:
 - **Isolated**: every user manages their own provider connections; nothing
   is shared. Typical public host.
 
-Usage is metered per user in both modes. The mode is the only instance
-setting. A **provider connection** is an API key or a completed
+Usage is metered per user in both modes; in shared mode admins also
+see the instance's usage by user. There are no instance settings beyond
+the mode, and the page reads it (`GET /api/settings`) to know what to
+show. A **provider connection** is an API key or a completed
 subscription login; either mode allows multiple connections of the same
 provider type, so model selection is keyed by `(connectionId, modelId)` —
 one provider runtime per connection, the connectionId as its providerId.
 
 ## User system
 
-Username + password (modern hash), cookie session (httpOnly, sliding
-expiry); the conversation stream WebSocket and the Web API authenticate by
-the same same-origin cookie. **No self-registration and no password
-recovery** — zero mail dependency. Accounts are managed from an admin page:
+Username + password (argon2id), cookie session (httpOnly, 30 days
+sliding); the conversation stream WebSocket and the Web API authenticate
+by the same same-origin cookie. **No self-registration and no password
+recovery** — zero mail dependency. The instance's first account is made
+by the setup call while it has no users (`POST /api/setup`), which the
+login page routes to when `GET /api/setup` says so. Everyone can change
+their own password with the current one in hand; five failed logins in a
+row lock the username for a minute. Accounts are managed from an admin
+page:
 
 - **master**: the instance's first account, created at initial setup; can
   do everything, including creating admins.
@@ -37,7 +45,10 @@ recovery** — zero mail dependency. Accounts are managed from an admin page:
   edits instance settings.
 - **user**: uses the product.
 
-No organizations, teams or further roles.
+No organizations, teams or further roles. **User data is isolated
+absolutely**: a conversation, device, workspace, attachment or usage row
+is visible to its owner alone; master and admin manage accounts and, in
+shared mode, the providers — they never read another user's data.
 
 ## Conversation system
 

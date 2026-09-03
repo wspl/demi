@@ -1,9 +1,9 @@
 import type { AgentServer } from '@demicodes/agent'
 import type { Host } from '@demicodes/shell'
 import { errorMessage } from '@demicodes/utils'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { STUB_USER } from '../auth/identity'
+import type { AuthEnv } from '../auth/identity'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import { switchConversationTarget } from '../conversation/target-switch'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
@@ -28,19 +28,25 @@ export function conversationRoutes(options: {
   agentServer: AgentServer
   hostFor: (conversationId: string) => Promise<Host>
   managedHosts: ManagedHosts | null
-}): Hono {
+}): Hono<AuthEnv> {
   const { control, conversationStores, agentServer, hostFor, managedHosts } = options
-  const app = new Hono()
+  const app = new Hono<AuthEnv>()
+
+  // The caller's conversation, or null: another user's answers like a missing one.
+  const own = async (c: Context<AuthEnv>) => {
+    const conversation = await control.getConversation(c.req.param('id') ?? '')
+    return conversation && conversation.userId === c.get('user').id ? conversation : null
+  }
 
   app.get('/', async (c) => {
     const archived = c.req.query('archived') === 'true'
-    return c.json({ conversations: await control.listConversations(STUB_USER.id, { archived }) })
+    return c.json({ conversations: await control.listConversations(c.get('user').id, { archived }) })
   })
 
-  app.post('/', async (c) => c.json({ conversation: await control.createConversation(STUB_USER.id) }, 201))
+  app.post('/', async (c) => c.json({ conversation: await control.createConversation(c.get('user').id) }, 201))
 
   app.patch('/:id', async (c) => {
-    const conversation = await control.getConversation(c.req.param('id'))
+    const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     const parsed = patchConversationBodySchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) {
@@ -88,13 +94,13 @@ export function conversationRoutes(options: {
   // user's own paired devices; a managed host enters only by the automatic
   // grant on switching away from it.
   app.get('/:id/grants', async (c) => {
-    const conversation = await control.getConversation(c.req.param('id'))
+    const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     return c.json({ grants: await control.listHostGrants(conversation.id) })
   })
 
   app.post('/:id/grants', async (c) => {
-    const conversation = await control.getConversation(c.req.param('id'))
+    const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     const parsed = grantBodySchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { deviceId: string }' }, 400)
@@ -107,7 +113,7 @@ export function conversationRoutes(options: {
   })
 
   app.delete('/:id/grants/:deviceId', async (c) => {
-    const conversation = await control.getConversation(c.req.param('id'))
+    const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     await control.revokeHost(conversation.id, c.req.param('deviceId'))
     return c.body(null, 204)
@@ -117,7 +123,7 @@ export function conversationRoutes(options: {
   // directory over the ordinary Host fs — filesystem data, not conversation
   // data. The returned path is what the client inserts as a text reference.
   app.post('/:id/workspace-files', async (c) => {
-    const conversation = await control.getConversation(c.req.param('id'))
+    const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     const name = c.req.query('name')
     if (!name || !isSafeRelativePath(name)) {
@@ -140,7 +146,7 @@ export function conversationRoutes(options: {
   })
 
   app.get('/:id/transcript', async (c) => {
-    const conversation = await control.getConversation(c.req.param('id'))
+    const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     return c.json({ blocks: conversationStores.transcriptBlocks(conversation.id) })
   })

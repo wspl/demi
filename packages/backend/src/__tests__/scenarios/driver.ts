@@ -57,7 +57,7 @@ export class Driver {
 
   /** Opens a client on the conversation's stream; the previous client, if any, is dropped without a close frame. */
   async attach(): Promise<void> {
-    const socket = new WebSocket(`${this.world.url.replace('http', 'ws')}/api/conversations/${this.id}/stream`)
+    const socket = this.world.backend.session.socket(`/api/conversations/${this.id}/stream`)
     await new Promise<void>((resolve, reject) => {
       socket.addEventListener('open', () => resolve(), { once: true })
       socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
@@ -152,7 +152,7 @@ export class Driver {
 
   /** Drops a file into the conversation's working tree over the workspace-files route. */
   async upload(name: string, bytes: Uint8Array): Promise<void> {
-    const response = await fetch(`${this.world.url}/api/conversations/${this.id}/workspace-files?name=${encodeURIComponent(name)}`, {
+    const response = await this.world.backend.session.fetch(`/api/conversations/${this.id}/workspace-files?name=${encodeURIComponent(name)}`, {
       method: 'POST',
       body: bytes,
       headers: { 'content-type': 'application/octet-stream' },

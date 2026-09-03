@@ -82,8 +82,9 @@ Spoken of as modules, not separate services:
 - **Managed hosts module**: the `ManagedHostProvisioner` (Firecracker under
   jailer via the privileged helper), images, the home-image store,
   lifecycle (`managed-hosts.md`).
-- **Auth module**: users, web login, device claiming. The data model is
-  multi-user from the first milestone; the login surface arrives at M12.
+- **Auth module**: users and roles, password hashing (argon2id), the
+  cookie sessions with their sliding expiry, the login lockout. Device
+  claiming is the runner module's, over the session user.
 
 ## Media by reference
 
@@ -116,9 +117,24 @@ Two kinds of traffic:
 with fetch by the product shell. No server push beyond the stream; pages
 poll on open and on an interval.
 
+**Authentication.** One session gate covers `/api/*`: the `demi_session`
+cookie (`HttpOnly; SameSite=Lax; Path=/`, `Secure` over https) names a
+row in `web_sessions` by the SHA-256 of its 256-bit token; no row or an
+expired one is 401 `unauthenticated` and the cookie is cleared. The
+session lives 30 days from its last renewal; a request arriving with
+under 15 days left renews it (a fresh `Set-Cookie`), so an active
+browser never signs out and a silent one does. The stream WebSocket and
+the blob route ride the same cookie. Exempt from the gate: `/api/setup`
+and `/api/auth/login` (the entrances) and `/api/runner`, `/api/transfers`
+(device-token authenticated; runners never hold a cookie). Answers:
+another user's object 404 as if absent, a role short of the action 403,
+no session 401. Login failures lock the username for a minute after
+five in a row.
+
 | Resource | Endpoints | Lands in |
 |---|---|---|
-| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | M2 stub → M12 real |
+| setup | `GET /api/setup` (`{ needed }`), `POST /api/setup` (the master account, once; signs it in) | M12 |
+| auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `PUT /api/auth/password` (the caller's own) | M12 |
 | conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript`; `WS /api/conversations/:id/stream` | M2 |
 | models | `GET /api/models` (aggregated catalog, grouped by connection) | M2 |
 | devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id`, `GET /api/devices/:id/fs?path=…`, `POST /api/devices/:id/fs` (create directory) | M4 |
@@ -129,7 +145,7 @@ poll on open and on an interval.
 | transfers | `PUT /api/transfers/:id` (source runner), `GET /api/transfers/:id` (destination runner); device-token authenticated, single-use, piped in flight (`runner.md` § Transfers) | M9 |
 | grants | `GET/POST/DELETE /api/conversations/:id/grants` | M11 |
 | commands | `GET /api/commands/manifest`, `GET /api/commands/modules/:hash` (the manifest source for a standalone command-mode shell) | M8 |
-| admin | `GET/POST/PATCH /api/users`, `GET/PUT /api/settings` (instance mode) | M12 |
+| admin | `GET/POST/PATCH /api/users`, `GET /api/settings` (the instance mode, read-only: it is startup configuration) | M12 |
 
 ## Packages
 

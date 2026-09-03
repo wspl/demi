@@ -1,16 +1,16 @@
 import { Hono } from 'hono'
-import { STUB_USER } from '../auth/identity'
+import type { AuthEnv } from '../auth/identity'
 import type { ControlService, UsageRow } from '../storage/control'
 
 /**
  * `GET /api/usage` — the caller's ledger, aggregated at query time
  * (`connection × model`): request count and token sums, plus the raw total.
  */
-export function usageRoutes(options: { control: ControlService }): Hono {
-  const app = new Hono()
+export function usageRoutes(options: { control: ControlService }): Hono<AuthEnv> {
+  const app = new Hono<AuthEnv>()
 
   app.get('/', async (c) => {
-    const rows = await options.control.listUsage(STUB_USER.id)
+    const rows = await options.control.listUsage(c.get('user').id)
     return c.json({ totals: aggregate(rows) })
   })
 

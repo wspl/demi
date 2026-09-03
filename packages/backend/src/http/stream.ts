@@ -10,6 +10,7 @@ import type { UpgradeWebSocket } from 'hono/ws'
 import type { WSContext } from 'hono/ws'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
 import type { ControlService } from '../storage/control'
+import type { AuthEnv } from '../auth/identity'
 
 /**
  * `WS /api/conversations/:id/stream` — the live frame-protocol socket.
@@ -22,13 +23,13 @@ export function streamRoutes(options: {
   agentServer: AgentServer
   upgradeWebSocket: UpgradeWebSocket
   blobs: BlobStore
-}): Hono {
+}): Hono<AuthEnv> {
   const { control, agentServer, upgradeWebSocket, blobs } = options
-  const app = new Hono()
+  const app = new Hono<AuthEnv>()
 
   app.get('/:id/stream', async (c, next) => {
     const conversation = await control.getConversation(c.req.param('id'))
-    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    if (!conversation || conversation.userId !== c.get('user').id) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
     const workspace = conversation.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
     return upgradeWebSocket(() => {
       const adapter = new WsContextAdapter()
