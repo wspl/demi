@@ -39,6 +39,8 @@ export interface BackendOptions {
   dataDir: string
   /** HTTP port (0 = ephemeral, for tests). */
   port?: number
+  /** The URL managed guests dial (`managed-hosts.md` § Network); default the local one, which only the fake's guests can reach. */
+  publicUrl?: string
   /** Runner-management tuning (claim TTL, liveness interval) — tests only. */
   runner?: Omit<RunnerRegistryOptions, 'control'>
   /** Extra provider-type factories merged over the builtins — tests register stubs here. */
@@ -170,7 +172,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         registry: runnerRegistry,
         provisioner: options.managedHosts.provisioner,
         config: options.managedHosts.config,
-        backendUrl: () => url,
+        backendUrl: () => options.publicUrl ?? url,
         turnInFlight,
       })
     : null

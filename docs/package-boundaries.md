@@ -210,6 +210,10 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `RemoteHost`, `RemoteShellEnvironment` and their option types from root.
 - Must not: contain network IO (the wire is an injected send/handle pair), credentials, the device registry, or conversation state. `Host.store` never crosses the wire.
 
+### `packages/fc-helper` (Rust, not a workspace package)
+
+- Owns: `demi-fc-helper`, the privileged helper of `jailer` mode (`docs/demi-next/managed-hosts.md` § Provisioning): `vm start` prepares the jail (kernel and rootfs linked in, the home image shared with the backend group, the socket directory group-accessible), runs the jailer and stays as the VM's parent; `vm kill` signals the recorded pid. Two verbs, whitelisted arguments, no shell. Invoked by the backend through `sudo -n`; the sudoers line for it is the backend user's only privilege.
+
 ### `packages/guest-image` (not a workspace package)
 
 - Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` and `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
