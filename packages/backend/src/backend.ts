@@ -15,6 +15,7 @@ import { createHostlessShell, transpileCommandModule } from './conversation/host
 import { UpgradingShell, type Machine } from './conversation/upgrading-shell'
 import { resolveExecutionTarget } from './conversation/execution-target'
 import { HOSTLESS_HOME } from './conversation/scoped-transport'
+import { createCloudWorkspace } from './managed/cloud-workspace'
 import { createHostCommandGroup } from './managed/host-command'
 import { ManagedHostError, ManagedHosts, ownerOf, type ManagedHostsConfig } from './managed/lifecycle'
 import type { ManagedHostProvisioner } from './managed/provisioner'
@@ -279,6 +280,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     blobs,
     hostFor,
     managedHosts,
+    createCloudWorkspace: managedHosts
+      ? (userId, name) => createCloudWorkspace({ control, managedHosts, registry: runnerRegistry, stagingDir: join(options.dataDir, 'staging') }, userId, name)
+      : null,
   })
 
   const server = Bun.serve({

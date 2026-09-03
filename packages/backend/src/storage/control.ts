@@ -46,7 +46,8 @@ export interface ControlService {
   /** Metadata only — the bytes live in the blob store under `sha256`. */
   createAttachment(attachment: { userId: string; mediaType: string; sizeBytes: number; sha256: string }): Promise<AttachmentRecord>
   getAttachment(id: string): Promise<AttachmentRecord | null>
-  createWorkspace(workspace: { userId: string; deviceId: string; path: string; name: string }): Promise<WorkspaceRecord>
+  /** `id` pre-chosen by the caller when something must exist under it before the row does (a Cloud workspace's host). */
+  createWorkspace(workspace: { id?: string; userId: string; deviceId: string; path: string; name: string }): Promise<WorkspaceRecord>
   getWorkspace(id: string): Promise<WorkspaceRecord | null>
   listWorkspaces(userId: string): Promise<WorkspaceRecord[]>
   renameWorkspace(id: string, name: string): Promise<void>
@@ -416,13 +417,14 @@ export class LocalControlService implements ControlService {
   }
 
   async createWorkspace(workspace: {
+    id?: string
     userId: string
     deviceId: string
     path: string
     name: string
   }): Promise<WorkspaceRecord> {
     const record: WorkspaceRecord = {
-      id: createId(),
+      id: workspace.id ?? createId(),
       userId: workspace.userId,
       deviceId: workspace.deviceId,
       path: workspace.path,
