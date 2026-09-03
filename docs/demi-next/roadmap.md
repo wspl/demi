@@ -70,6 +70,18 @@ egress rules from the install script. S10–S12 over the fake provisioner;
 the env-gated smoke passes in both modes on nested KVM (cold provision
 8–14 s, wake 9–14 s there).
 
+**M12 — Multi-user systems.** The login surface (argon2id passwords,
+the setup call for the master, cookie sessions with sliding expiry, the
+session gate over `/api/*`, login lockout, the own password); the admin
+surface (`/api/users` by rank, the read-only mode); the instance mode as
+startup configuration with the connection scope through listings, the
+catalog, the model selection and the session's provider, admin-only
+provider configuration in shared mode, the instance ledger by user, the
+mode fixed once providers exist; the tenant-isolation matrix (every
+route naming a user's object, 404 to other users and admins alike),
+revoke refused under a workspace, revoke and re-claim. The API surface
+is frozen.
+
 ## Planned
 
 **M8 — Command system, loader, hostless execution** (`commands.md`,
@@ -204,13 +216,6 @@ Status: delivered — 26 scenario tests and the four restarts green; the
 suite's first run found and fixed seven composition defects (`progress.md`
 § M10) and recorded two limitations of real hosts in the allowed
 differences.
-
-**M12 — Multi-user systems** (`product.md`)
-Real auth (username/password, cookie sessions, master/admin/user roles, no
-registration, no recovery); user-management and instance-settings
-endpoints; shared/isolated instance-mode enforcement; the tenant-isolation
-authz matrix. At the end of M12 the entire API surface is complete and
-frozen.
 
 **M13 — Web UI** (`product.md`)
 The entire `@demicodes/web` package in one concentrated phase: scaffold,

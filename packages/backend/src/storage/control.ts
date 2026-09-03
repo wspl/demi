@@ -43,6 +43,9 @@ export interface ControlService {
   rotateDeviceToken(id: string, tokenHash: string): Promise<void>
   /** The user's paired devices — managed hosts never appear in a device list. */
   listDevices(userId: string): Promise<DeviceRecord[]>
+  /** Workspaces pointing at the device: a revoke is refused while any exist. */
+  countWorkspacesOnDevice(deviceId: string): Promise<number>
+  /** Drops the device with its grants — a grant is a permission, gone with the machine. */
   deleteDevice(id: string): Promise<void>
   touchDeviceSeen(id: string): Promise<void>
   /** `config` is opaque here — the vault encrypts/decrypts; storage never sees plaintext. */
@@ -374,8 +377,15 @@ export class LocalControlService implements ControlService {
     return rows.map(deviceFromRow)
   }
 
+  async countWorkspacesOnDevice(deviceId: string): Promise<number> {
+    return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM workspaces WHERE device_id = ?', [deviceId])?.n ?? 0
+  }
+
   async deleteDevice(id: string): Promise<void> {
-    this.db.run('DELETE FROM devices WHERE id = ?', [id])
+    this.db.transaction(() => {
+      this.db.run('DELETE FROM conversation_host_grants WHERE device_id = ?', [id])
+      this.db.run('DELETE FROM devices WHERE id = ?', [id])
+    })
   }
 
   async touchDeviceSeen(id: string): Promise<void> {

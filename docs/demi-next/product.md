@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (mechanisms and endpoints through M6; multi-user in M12; UI in M13) |
+| Status | Design (mechanisms and endpoints through M6; multi-user delivered in M12; UI in M13) |
 | Scope | What the product stores and exposes: instance mode, users, conversations, attachments, provider management, the web UI and frontend package |
 
 ## Instance mode: shared vs isolated
