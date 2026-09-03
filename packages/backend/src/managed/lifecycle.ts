@@ -19,6 +19,8 @@ export interface ManagedHostsConfig {
   bootTimeoutMs: number
   /** How often the idle rule and the checkpoint clock are evaluated. */
   sweepMs: number
+  /** How long the guest may take to answer the `sync` before hibernate; silence counts as a touched home. */
+  syncTimeoutMs: number
 }
 
 export const DEFAULT_MANAGED_HOSTS_CONFIG: ManagedHostsConfig = {
@@ -29,6 +31,7 @@ export const DEFAULT_MANAGED_HOSTS_CONFIG: ManagedHostsConfig = {
   hostsPerUser: 10,
   bootTimeoutMs: 60_000,
   sweepMs: 30_000,
+  syncTimeoutMs: 5_000,
 }
 
 export interface ManagedHostsOptions {
@@ -163,20 +166,28 @@ export class ManagedHosts {
     return false
   }
 
-  /** Kills the guest and saves its home; the next need wakes it. */
+  /** Flushes the home, kills the guest and saves its home; the next need wakes it. */
   async hibernate(owner: ManagedHostOwner): Promise<void> {
     const host = this.hosts.get(ownerKey(owner))
     if (!host || host.state !== 'running') return
     host.state = 'saving'
     host.save = (async () => {
       try {
-        await this.options.provisioner.hibernate(owner)
+        const report = await this.options.registry.sync(host.deviceId, this.config.syncTimeoutMs)
+        await this.options.provisioner.hibernate(owner, report)
       } finally {
         host.state = 'off'
         host.save = null
       }
     })()
     await host.save
+  }
+
+  /** A guest's `home_grow` (`managed-hosts.md` § Home persistence): its image becomes `bytes` large. */
+  async growHome(deviceId: string, bytes: number): Promise<void> {
+    const device = await this.options.control.getDevice(deviceId)
+    if (!device || device.kind !== 'managed') throw new Error(`device ${deviceId} has no managed home`)
+    await this.options.provisioner.growHome(ownerOf(device), bytes)
   }
 
   /** The owner is archived or deleted: the guest goes, the device row stays with the home (retention is a later item). */

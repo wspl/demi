@@ -83,6 +83,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const runnerRegistry = new RunnerRegistry({
     control,
     transfers,
+    // Bound late: the lifecycle is built over the registry below.
+    homeGrow: async (deviceId, bytes) => {
+      if (!managedHosts) throw new Error('this backend provisions no machines')
+      await managedHosts.growHome(deviceId, bytes)
+    },
     manifest: () =>
       (manifest ??= (async () => {
         const profiles = (await harness.agents?.({ state: harness.initialState(), cwd: HOSTLESS_HOME })) ?? []
