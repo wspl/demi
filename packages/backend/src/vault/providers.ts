@@ -1,16 +1,16 @@
-import type { ConnectionRecord, ConnectionScope, ControlService } from '../storage/control'
+import type { ProviderRecord, ProviderScope, ControlService } from '../storage/control'
 import { decryptJson, encryptJson } from './crypto'
 
 /**
- * A provider connection's credential payload. `provider` names a registered
+ * A provider's credential payload. `provider` names a registered
  * provider type in the LLM module's factory table; `modelIds` is the
  * user-entered model list for compatible endpoints (the one case where model
  * ids are stored — catalogs otherwise come live from the runtimes).
  * Subscription payloads arrive with the device-login flows (M5 step 2).
  */
-export interface ApiKeyConnectionConfig {
+export interface ApiKeyProviderConfig {
   kind: 'api_key'
-  provider: string
+  providerType: string
   apiKey: string
   baseUrl?: string
   modelIds?: string[]
@@ -19,21 +19,21 @@ export interface ApiKeyConnectionConfig {
 /**
  * A completed subscription login. The OAuth material itself lives in the
  * provider's own credential pool under the vault directory
- * (`<dataDir>/vault/<connectionId>/`) — the provider's login/refresh
+ * (`<dataDir>/vault/<providerId>/`) — the provider's login/refresh
  * machinery manages it; the row only names the provider type.
  */
-export interface SubscriptionConnectionConfig {
+export interface SubscriptionProviderConfig {
   kind: 'subscription'
-  provider: string
+  providerType: string
 }
 
-export type ConnectionConfig = ApiKeyConnectionConfig | SubscriptionConnectionConfig
+export type ProviderConfig = ApiKeyProviderConfig | SubscriptionProviderConfig
 
-export interface Connection {
+export interface ProviderEntry {
   id: string
   ownerUserId: string | null
   label: string
-  config: ConnectionConfig
+  config: ProviderConfig
   createdAt: string
 }
 
@@ -42,41 +42,41 @@ export interface Connection {
  * this process's memory — rows carry AES-256-GCM ciphertext under the
  * instance secret.
  */
-export class ConnectionVault {
+export class ProviderVault {
   constructor(
     private readonly control: ControlService,
     private readonly secret: Uint8Array,
   ) {}
 
-  async create(options: { ownerUserId: string | null; label: string; config: ConnectionConfig }): Promise<Connection> {
-    const record = await this.control.createConnection({
+  async create(options: { ownerUserId: string | null; label: string; config: ProviderConfig }): Promise<ProviderEntry> {
+    const record = await this.control.createProvider({
       ownerUserId: options.ownerUserId,
-      type: options.config.provider,
+      providerType: options.config.providerType,
       label: options.label,
       config: encryptJson(this.secret, options.config),
     })
     return this.decode(record)
   }
 
-  async get(id: string): Promise<Connection | null> {
-    const record = await this.control.getConnection(id)
+  async get(id: string): Promise<ProviderEntry | null> {
+    const record = await this.control.getProvider(id)
     return record ? this.decode(record) : null
   }
 
-  async list(scope: ConnectionScope): Promise<Connection[]> {
-    return (await this.control.listConnections(scope)).map((record) => this.decode(record))
+  async list(scope: ProviderScope): Promise<ProviderEntry[]> {
+    return (await this.control.listProviders(scope)).map((record) => this.decode(record))
   }
 
   async delete(id: string): Promise<void> {
-    await this.control.deleteConnection(id)
+    await this.control.deleteProvider(id)
   }
 
-  private decode(record: ConnectionRecord): Connection {
+  private decode(record: ProviderRecord): ProviderEntry {
     return {
       id: record.id,
       ownerUserId: record.ownerUserId,
       label: record.label,
-      config: decryptJson<ConnectionConfig>(this.secret, record.config),
+      config: decryptJson<ProviderConfig>(this.secret, record.config),
       createdAt: record.createdAt,
     }
   }

@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   })
   console.log(`demi-backend listening on ${backend.url} (data: ${dataDir}, ${mode} mode)`)
   if (firecracker) console.log(`managed hosts: firecracker ${firecracker.launch.mode} mode, ${firecracker.slots} slots on ${firecracker.subnet}`)
-  console.log('Providers come from connections: add one via POST /api/connections (or the web UI).')
+  console.log('Providers come from providers: add one via POST /api/providers (or the web UI).')
 
   const shutdown = () => {
     void backend.close().then(() => process.exit(0))

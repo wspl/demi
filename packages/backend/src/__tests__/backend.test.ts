@@ -13,9 +13,9 @@ import { openBackend, type TestBackend } from './session'
 // is refused with the reason, and cold history equals the live transcript.
 // Detach mid-turn and the backend restart live in `scenarios/` (S9, R1).
 
-function selectionFor(connectionId: string) {
+function selectionFor(providerId: string) {
   const model: ModelSelection = {
-    providerId: connectionId,
+    providerId: providerId,
     model: {
       id: 'test-model',
       name: 'Test Model',
@@ -26,26 +26,26 @@ function selectionFor(connectionId: string) {
     },
     thinking: null,
   }
-  return { providerId: connectionId, model }
+  return { providerId: providerId, model }
 }
 
-/** Registers `type: 'stub'` connections backed by the given runtime factory. */
+/** Registers `providerType: 'stub'` providers backed by the given runtime factory. */
 function stubTypes(createRuntime: () => import('@demicodes/provider').AgentProvider) {
   return {
-    stub: ({ connectionId, label }: { connectionId: string; label: string }) =>
-      defineProvider({ id: connectionId, displayName: label, createRuntime }),
+    stub: ({ providerId, label }: { providerId: string; label: string }) =>
+      defineProvider({ id: providerId, displayName: label, createRuntime }),
   }
 }
 
-async function createStubConnection(backend: TestBackend): Promise<string> {
-  const response = await backend.session.fetch(`/api/connections`, {
+async function createStubProvider(backend: TestBackend): Promise<string> {
+  const response = await backend.session.fetch(`/api/providers`, {
     method: 'POST',
-    body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'test-key' }),
+    body: JSON.stringify({ providerType: 'stub', label: 'Stub', apiKey: 'test-key' }),
     headers: { 'content-type': 'application/json' },
   })
-  if (response.status !== 201) throw new Error(`connection create failed: ${response.status}`)
-  const { connection } = (await response.json()) as { connection: { id: string } }
-  return connection.id
+  if (response.status !== 201) throw new Error(`provider create failed: ${response.status}`)
+  const { provider } = (await response.json()) as { provider: { id: string } }
+  return provider.id
 }
 
 async function api<T>(backend: TestBackend, path: string, init?: RequestInit): Promise<T> {
@@ -77,14 +77,14 @@ test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe 
     [events.text('refused as expected'), events.response()],
   ])
   const backend = await openBackend({ dataDir, port: 0, providerTypes: stubTypes(() => stub) })
-  const connectionId = await createStubConnection(backend)
+  const providerId = await createStubProvider(backend)
 
   // Web API basics.
   const me = await api<{ user: { id: string; role: string } }>(backend, '/api/auth/me')
   expect(me.user.role).toBe('master')
-  const models = await api<{ connections: Array<{ connectionId: string }> }>(backend, '/api/models')
-  expect(models.connections.map((connection) => connection.connectionId)).toEqual([connectionId])
-  const selection = selectionFor(connectionId)
+  const models = await api<{ providers: Array<{ providerId: string }> }>(backend, '/api/models')
+  expect(models.providers.map((provider) => provider.providerId)).toEqual([providerId])
+  const selection = selectionFor(providerId)
 
   const created = await api<{ conversation: { id: string; title: string } }>(backend, '/api/conversations', {
     method: 'POST',

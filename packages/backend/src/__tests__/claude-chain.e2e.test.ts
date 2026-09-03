@@ -10,7 +10,7 @@ import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
-import { ConnectionVault } from '../vault/connections'
+import { ProviderVault } from '../vault/providers'
 import { loadOrCreateInstanceSecret } from '../vault/secret'
 import { createClaudeCodeProvider } from '@demicodes/provider-claude-code'
 import { openBackend } from './session'
@@ -74,9 +74,9 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
     providerTypes: {
       // The builtin factory, plus the provider's public env overlay pointing
       // the CLI at the mock upstream.
-      'claude-code': ({ connectionId, label, vaultDir, session }) =>
+      'claude-code': ({ providerId, label, vaultDir, session }) =>
         createClaudeCodeProvider({
-          id: connectionId,
+          id: providerId,
           displayName: label,
           stateDir: vaultDir,
           ...(session ? { spawn: session.spawn } : {}),
@@ -96,19 +96,19 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   })
   const { device } = (await claimResponse.json()) as { device: { id: string } }
 
-  // A claude-code subscription connection whose vault pool holds the (fake)
+  // A claude-code subscription provider whose vault pool holds the (fake)
   // OAuth secret — written control-plane-side exactly as a completed login
   // would leave it. The runner never sees this value.
   const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
   const control = new LocalControlService(controlDb)
-  const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(dataDir))
-  const connection = await vault.create({
-    ownerUserId: null, // shared mode: the instance's connection
+  const vault = new ProviderVault(control, loadOrCreateInstanceSecret(dataDir))
+  const provider = await vault.create({
+    ownerUserId: null, // shared mode: the instance's provider
     label: 'Claude subscription',
-    config: { kind: 'subscription', provider: 'claude-code' },
+    config: { kind: 'subscription', providerType: 'claude-code' },
   })
   const pool = new FileCredentialPool({
-    stateDir: join(dataDir, 'vault', connection.id),
+    stateDir: join(dataDir, 'vault', provider.id),
     providerKey: 'claude-code',
     secretFileName: 'oauth.json',
   })
@@ -134,7 +134,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve(), { once: true }))
   const client = new AgentClient(createWebSocketClientTransport(socket as never))
   const model: ModelSelection = {
-    providerId: connection.id,
+    providerId: provider.id,
     model: {
       id: 'claude-sonnet-4-6',
       name: 'Claude Sonnet',
@@ -145,7 +145,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
     },
     thinking: null,
   }
-  await client.open({ providerId: connection.id, model }, '/ignored', 'ignored')
+  await client.open({ providerId: provider.id, model }, '/ignored', 'ignored')
   await client.send([{ type: 'text', text: 'Reply with exactly OK.' }])
 
   // The mock's answer streamed back through CLI → runner → backend → browser.
@@ -167,9 +167,9 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   // Metering: the CLI turn's usage landed in the ledger.
   await delay(100)
   const usage = (await (await backend.session.fetch(`/api/usage`)).json()) as {
-    totals: Array<{ connectionId: string; requests: number }>
+    totals: Array<{ providerId: string; requests: number }>
   }
-  expect(usage.totals.some((row) => row.connectionId === connection.id && row.requests >= 1)).toBe(true)
+  expect(usage.totals.some((row) => row.providerId === provider.id && row.requests >= 1)).toBe(true)
 
   await client.close()
   await runner.stop()

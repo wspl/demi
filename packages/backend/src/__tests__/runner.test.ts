@@ -183,13 +183,13 @@ test('a malformed runner frame closes the socket; a bad device token is rejected
   await backend.close()
 }, 15_000)
 
-function selectionFor(connectionId: string) {
+function selectionFor(providerId: string) {
   const model: ModelSelection = {
-    providerId: connectionId,
+    providerId: providerId,
     model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
-  return { providerId: connectionId, model }
+  return { providerId: providerId, model }
 }
 
 test('M4 acceptance: a session executes on the claimed device; disconnect is a tool error; reconnect resumes', async () => {
@@ -217,16 +217,16 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: stubRuntime }),
+      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }),
     },
   })
-  const connectionResponse = await api(backend, '/api/connections', {
+  const providerResponse = await api(backend, '/api/providers', {
     method: 'POST',
-    body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'test-key' }),
+    body: JSON.stringify({ providerType: 'stub', label: 'Stub', apiKey: 'test-key' }),
     headers: { 'content-type': 'application/json' },
   })
-  const { connection: stubConnection } = (await connectionResponse.json()) as { connection: { id: string } }
-  const selection = selectionFor(stubConnection.id)
+  const { provider: stubProviderId } = (await providerResponse.json()) as { provider: { id: string } }
+  const selection = selectionFor(stubProviderId.id)
 
   // Pair a device, then point the conversation's workspace at it (the M6
   // workspace endpoints do this over HTTP; here the control plane is written

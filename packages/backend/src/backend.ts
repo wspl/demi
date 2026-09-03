@@ -10,7 +10,7 @@ import type { Host, ShellEnvironment } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import type { InstanceMode } from './auth/identity'
 import { LoginLimiter, type LoginLimiterOptions } from './auth/login-limiter'
-import { connectionOwner, ownerFitsMode } from './vault/scope'
+import { providerOwner, ownerFitsMode } from './vault/scope'
 import { WebSessions, type WebSessionsOptions } from './auth/sessions'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
@@ -28,7 +28,7 @@ import { meterProvider } from './llm/metering'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { TransferBroker } from './runner/transfers'
 import { ProviderRateLimiter } from './usage/rate-limit'
-import { ConnectionVault } from './vault/connections'
+import { ProviderVault } from './vault/providers'
 import { loadOrCreateInstanceSecret } from './vault/secret'
 import { SubscriptionLoginFlows } from './vault/subscription-login'
 import { DirBlobStore } from './storage/blob-store'
@@ -75,12 +75,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
   migrate(controlDb, CONTROL_MIGRATIONS)
   const control: ControlService = new LocalControlService(controlDb)
-  // The mode is fixed for the instance's life: connections configured under
+  // The mode is fixed for the instance's life: providers configured under
   // the other mode would change owner meaning, so the process refuses to start.
-  const misfits = (await control.listConnections('all')).filter((row) => !ownerFitsMode(options.mode, row.ownerUserId))
+  const misfits = (await control.listProviders('all')).filter((row) => !ownerFitsMode(options.mode, row.ownerUserId))
   if (misfits.length > 0) {
     controlDb.close()
-    throw new Error(`${misfits.length} connection(s) were configured under the other instance mode; the mode cannot change once providers are configured`)
+    throw new Error(`${misfits.length} provider(s) were configured under the other instance mode; the mode cannot change once providers are configured`)
   }
   const sessions = new WebSessions(control, options.auth)
   const loginLimiter = new LoginLimiter(options.auth)
@@ -138,13 +138,13 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     ...options.runner,
   })
 
-  const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(options.dataDir))
+  const vault = new ProviderVault(control, loadOrCreateInstanceSecret(options.dataDir))
   const vaultRoot = join(options.dataDir, 'vault')
   const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot)
   const logins = new SubscriptionLoginFlows(vault, assembly, { vaultRoot })
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
-  // connectionId = providerId: the LLM module assembles the connection's base
+  // providerId = providerId: the LLM module assembles the provider's base
   // provider from vault credentials and wraps it with metering + enforcement
   // in the session's user/conversation context. Providers whose transport
   // runs on the execution target (requiresProcessCapableHost) get a
@@ -167,10 +167,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     const conversation = await control.getConversation(agentSessionId)
     if (!conversation) throw new Error(`no conversation ${agentSessionId} behind this session`)
     const userId = conversation.userId
-    // A connection outside the user's scope is unknown to the session.
-    if (resolved.connection.ownerUserId !== connectionOwner(options.mode, userId)) return null
+    // A provider outside the user's scope is unknown to the session.
+    if (resolved.entry.ownerUserId !== providerOwner(options.mode, userId)) return null
     return meterProvider(resolved.provider, {
-      observe: usageAppender(control, { userId, conversationId: agentSessionId, connectionId: providerId }),
+      observe: usageAppender(control, { userId, conversationId: agentSessionId, providerId: providerId }),
       beforeRequest: () => rateLimiter.take(userId),
     })
   }
