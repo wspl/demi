@@ -44,3 +44,6 @@ Thumbs.db
 
 # Rust build output
 packages/tinyjs/target/
+
+# A local reference clone, not part of the repository
+packages/just-bash/
