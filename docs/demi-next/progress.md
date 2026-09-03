@@ -2901,6 +2901,19 @@ What the code holds against `product.md` at the start of M12:
   ids became the session user's. `auth.test.ts` has the four cases.
   Backend suite: 92 pass, 2 skip.
 
+### Checkpoint 2: the admin surface (2026-09-03) — delivered
+
+- `http/users.ts` behind `requireAdmin` (a user is 403 `forbidden`):
+  `GET` lists every account; `POST { username, password, role }` with
+  `role` admin or user, refused 403 unless the actor outranks the role
+  (so only the master makes admins), 409 `username_taken`; `PATCH /:id
+  { password }` resets a lower-ranked account's password — admin → user,
+  master → admin or user; nobody resets the master, nobody resets a
+  peer. No deletion. `http/settings.ts`: `GET { mode }`.
+- `admin.test.ts`: the rank matrix through real logins after each reset;
+  the mode read back in both configurations, 401 without a session.
+  Backend suite: 94 pass, 2 skip.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

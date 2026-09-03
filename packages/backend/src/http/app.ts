@@ -15,6 +15,9 @@ import type { LoginLimiter } from '../auth/login-limiter'
 import type { WebSessions } from '../auth/sessions'
 import { authenticate } from './authenticate'
 import { setupRoutes } from './setup'
+import { settingsRoutes } from './settings'
+import { userRoutes } from './users'
+import type { InstanceMode } from '../backend'
 import { attachmentRoutes } from './attachments'
 import { authRoutes } from './auth'
 import { blobRoutes } from './blobs'
@@ -45,6 +48,7 @@ export function createApp(options: {
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
   sessions: WebSessions
   loginLimiter: LoginLimiter
+  mode: InstanceMode
 }): Hono {
   const app = new Hono()
 
@@ -57,6 +61,8 @@ export function createApp(options: {
 
   app.route('/api/setup', setupRoutes({ control: options.control, sessions: options.sessions }))
   app.route('/api/auth', authRoutes({ control: options.control, sessions: options.sessions, limiter: options.loginLimiter }))
+  app.route('/api/users', userRoutes({ control: options.control }))
+  app.route('/api/settings', settingsRoutes({ mode: options.mode }))
   app.route('/api/models', modelRoutes(options.assembly))
   app.route('/api/connections', connectionRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins }))
   app.route('/api/usage', usageRoutes({ control: options.control }))
