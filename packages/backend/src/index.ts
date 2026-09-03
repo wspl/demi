@@ -1,6 +1,7 @@
 export { createBackend, type Backend, type BackendOptions } from './backend'
 export type { User, Role, InstanceMode } from './auth/identity'
-export { ProviderAssembly, builtinProviderTypes, type ProviderTypeFactory, type CatalogProvider } from './llm/assembly'
+export { ProviderAssembly, builtinProviderTypes, type ProviderType, type ProviderTypeFactory, type CatalogProvider } from './llm/assembly'
+export { VendorCatalog, type Vendor } from './llm/vendors'
 export { ProviderVault, type ProviderEntry, type ProviderConfig, type ApiKeyProviderConfig } from './vault/providers'
 export { HOSTLESS_HOME } from './conversation/scoped-transport'
 export { openSqliteDatabase, type SqlDatabase, type SqlParams } from './storage/database'

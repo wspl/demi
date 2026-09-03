@@ -163,7 +163,8 @@ devices                 id, user_id, kind(user|managed), name, platform, token_h
                         owner_conversation_id(NULL), owner_workspace_id(NULL),   ← managed only
                         claimed_at, last_seen_at
 providers               id, owner_user_id(NULL in shared mode), provider_type, label,
-                        config(encrypted), created_at
+                        config(encrypted: key, endpoint, protocol, vendor id,
+                        typed model list — or the subscription marker), created_at
 usage_ledger            id, user_id, conversation_id, provider_id, model_id,
                         input_tokens, output_tokens, cache_tokens…, created_at
 attachments             id, user_id, media_type, size_bytes, sha256, created_at

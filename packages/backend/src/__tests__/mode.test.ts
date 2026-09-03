@@ -22,12 +22,15 @@ function stubOptions(dataDir: string, mode: 'shared' | 'isolated'): Parameters<t
     port: 0,
     mode,
     providerTypes: {
-      stub: ({ providerId, label }) =>
-        defineProvider({
-          id: providerId,
-          displayName: label,
-          createRuntime: () => new StubProvider([[events.text('hi'), events.response({ inputTokens: 10, outputTokens: 1 })]]),
-        }),
+      stub: {
+        credential: 'api_key',
+        create: ({ providerId, label }) =>
+          defineProvider({
+            id: providerId,
+            displayName: label,
+            createRuntime: () => new StubProvider([[events.text('hi'), events.response({ inputTokens: 10, outputTokens: 1 })]]),
+          }),
+      },
     },
   }
 }
