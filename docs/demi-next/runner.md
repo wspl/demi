@@ -141,7 +141,7 @@ Handshake and liveness:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| r → b | `hello { deviceToken?, runner: { name, platform, version, identity } }` | authenticate; `identity` because `HostIdentity` is read synchronously at shell creation |
+| r → b | `hello { deviceToken?, runner: { name, platform, version, identity, managed? } }` | authenticate; `identity` because `HostIdentity` is read synchronously at shell creation; `managed` marks a guest booted as init — without a token it is refused, never paired (`managed-hosts.md` § Joining) |
 | b → r | `hello_ok { deviceId }` / `claim_pending { claimToken }` / `claimed { deviceToken }` / `hello_error { code, reason }` | outcomes; `code` is `unsupported_protocol`, `unknown_device`, `already_connected`, `revoked` or `internal` |
 | b → r | `ping` | liveness, backend-driven interval |
 | r → b | `pong { jobs }` | liveness plus the count of running jobs, which the idle rule reads (`managed-hosts.md`) |

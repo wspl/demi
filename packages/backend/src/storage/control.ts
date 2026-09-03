@@ -22,6 +22,11 @@ export interface ControlService {
   }): Promise<DeviceRecord>
   getDevice(id: string): Promise<DeviceRecord | null>
   getDeviceByTokenHash(tokenHash: string): Promise<DeviceRecord | null>
+  /** The managed host bound to an owner, if one was ever provisioned. */
+  getManagedDevice(owner: ManagedHostOwner): Promise<DeviceRecord | null>
+  countManagedDevices(userId: string): Promise<number>
+  /** A managed host's token is minted fresh at every provision and wake; the row keeps only the current hash. */
+  rotateDeviceToken(id: string, tokenHash: string): Promise<void>
   /** The user's paired devices — managed hosts never appear in a device list. */
   listDevices(userId: string): Promise<DeviceRecord[]>
   deleteDevice(id: string): Promise<void>
@@ -47,6 +52,7 @@ export interface ControlService {
   renameWorkspace(id: string, name: string): Promise<void>
   deleteWorkspace(id: string): Promise<void>
   countConversationsInWorkspace(workspaceId: string): Promise<number>
+  listConversationIdsInWorkspace(workspaceId: string): Promise<string[]>
   setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void>
   /**
    * The target-switch write (`sessions-and-targets.md` § Switching): moves
@@ -95,6 +101,9 @@ export interface DeviceRecord {
   claimedAt: string
   lastSeenAt: string | null
 }
+
+/** What a managed host is bound to (`managed-hosts.md` § What a managed host is): exactly one of the two. */
+export type ManagedHostOwner = { kind: 'conversation'; id: string } | { kind: 'workspace'; id: string }
 
 export interface HostGrantRecord {
   conversationId: string
@@ -253,6 +262,20 @@ export class LocalControlService implements ControlService {
   async getDeviceByTokenHash(tokenHash: string): Promise<DeviceRecord | null> {
     const row = this.db.get<DeviceRow>(`${DEVICE_SELECT} WHERE token_hash = ?`, [tokenHash])
     return row ? deviceFromRow(row) : null
+  }
+
+  async getManagedDevice(owner: ManagedHostOwner): Promise<DeviceRecord | null> {
+    const column = owner.kind === 'conversation' ? 'owner_conversation_id' : 'owner_workspace_id'
+    const row = this.db.get<DeviceRow>(`${DEVICE_SELECT} WHERE kind = 'managed' AND ${column} = ?`, [owner.id])
+    return row ? deviceFromRow(row) : null
+  }
+
+  async countManagedDevices(userId: string): Promise<number> {
+    return this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM devices WHERE user_id = ? AND kind = 'managed'", [userId])?.n ?? 0
+  }
+
+  async rotateDeviceToken(id: string, tokenHash: string): Promise<void> {
+    this.db.run('UPDATE devices SET token_hash = ? WHERE id = ?', [tokenHash, id])
   }
 
   async listDevices(userId: string): Promise<DeviceRecord[]> {
@@ -450,6 +473,10 @@ export class LocalControlService implements ControlService {
 
   async countConversationsInWorkspace(workspaceId: string): Promise<number> {
     return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM conversations WHERE workspace_id = ?', [workspaceId])?.n ?? 0
+  }
+
+  async listConversationIdsInWorkspace(workspaceId: string): Promise<string[]> {
+    return this.db.all<{ id: string }>('SELECT id FROM conversations WHERE workspace_id = ?', [workspaceId]).map((row) => row.id)
   }
 
   async setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void> {

@@ -10,6 +10,7 @@ import type { ConnectionVault } from '../vault/connections'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { BlobStore } from '@demicodes/agent'
 import type { Host } from '@demicodes/shell'
+import type { ManagedHosts } from '../managed/lifecycle'
 import { attachmentRoutes } from './attachments'
 import { authRoutes } from './auth'
 import { blobRoutes } from './blobs'
@@ -36,6 +37,7 @@ export function createApp(options: {
   upgradeWebSocket: UpgradeWebSocket
   blobs: BlobStore
   hostFor: (conversationId: string) => Promise<Host>
+  managedHosts: ManagedHosts | null
 }): Hono {
   const app = new Hono()
 
@@ -49,7 +51,7 @@ export function createApp(options: {
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/transfers', transferRoutes({ control: options.control, broker: options.transfers }))
   app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
-  app.route('/api/workspaces', workspaceRoutes({ control: options.control }))
+  app.route('/api/workspaces', workspaceRoutes({ control: options.control, managedHosts: options.managedHosts }))
   app.route('/api/attachments', attachmentRoutes({ control: options.control, blobs: options.blobs }))
   app.route('/api/blobs', blobRoutes({ blobs: options.blobs }))
   // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
@@ -69,6 +71,7 @@ export function createApp(options: {
       conversationStores: options.conversationStores,
       agentServer: options.agentServer,
       hostFor: options.hostFor,
+      managedHosts: options.managedHosts,
     }),
   )
 
