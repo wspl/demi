@@ -2593,6 +2593,68 @@ Landed:
 - Tests: S12 (`s12-cloud-workspace.test.ts`). `bun test packages/
   backend`: 82 pass.
 
+### Checkpoint 5: the runner as PID 1 (2026-09-03) — rulings
+
+The topic: the runner's init mode on a managed guest, and the three
+protocol additions around the home. Rulings:
+
+- 5a. Init mode is chosen by `pid === 1`, no flag. Kernel command-line
+  keys: `demi.backend`, `demi.token`, `demi.ip`, `demi.gw`, `demi.dns`.
+- 5b. The runner's state directory is `/var/lib/demi` on the ephemeral
+  upper, never in the home, so the runner's own bookkeeping cannot make
+  the home "touched"; the command cache is rebuilt on every wake. The
+  relay socket is mode 0666 in init mode (single-tenant VM; the guest
+  user's command-mode processes must reach it).
+- 5c. The upper is an overlay over the whole `/`, made the root by
+  `pivot_root` from the rootfs, as the record says; the alternative of
+  overlaying only `/usr`, `/etc`, `/var`, `/opt` was not taken.
+- 5d. Messages: `sync { id }` → `sync_done { id, untouched }` before the
+  kill; `home_grow { bytes }` → `home_grown { bytes }` for growth. The
+  provisioner seam gains `growHome(owner, bytes)`; `hibernate` takes
+  `{ untouched }`. Untouched is the block layer's sectors-written count in
+  `/proc/diskstats` against a baseline taken after the mount.
+- 5e. Verification: the init plan, the command line and the home image
+  over recorded commands in Bun; `sync`/`sync_done` and the growth
+  handshake in S10; the real mounts, the pivot and `resize2fs` in the
+  checkpoint 6 smoke on Linux.
+
+### Checkpoint 5: the runner as PID 1 (2026-09-03) — delivered
+
+Landed:
+
+- No tinyjs change: the record already had reaping as the only PID 1
+  primitive behaviour and mount/network as spawns; `spawn` had uid/gid.
+- `packages/runner/src/init/`: `cmdline.ts` (the command line parsed,
+  `guestBootConfig`), `plan.ts` (`initPlan`: kernel filesystems, the
+  upper assembled under `/run/newroot` with the kernel filesystems moved
+  in and `pivot_root`, the home at `/home` and a tmpfs `/tmp`, `ip` for
+  the network; `runInit` with tolerated steps), `home-image.ts`
+  (`BlockHomeImage`: baseline and `sync` over diskstats, `wanted` over
+  `df` with the reserve rule — a tenth or 256 MB, asking for double —
+  `grown` running `resize2fs`; `DirectoryHome` for everything else),
+  `boot.ts` (`bootGuest` binding the plan to the machine layer, the guest
+  user constants, `/var/lib/demi`).
+- `entry.ts`: `pid === 1` → `initMain`: boot, then `RunnerMode` with the
+  token in memory, `managed`, the guest identity and `runAs` for every
+  job and spawn, the block home image, `SIGTERM` → stop.
+- `RunnerMode` options `deviceToken`, `guest`, `home`, `homeCheckMs`;
+  handles `sync` and `home_grown`; asks `home_grow` after a job exit or
+  on the minute check, one request in flight. The machine layer's host,
+  process and teed spawn take `runAs`/uid/gid; the relay socket mode is
+  an option. Protocol version 4; runner 0.21.0.
+- Backend: `RunnerRegistry.sync(deviceId, timeoutMs)` (offline or timeout
+  ⇒ touched) and the `home_grow` handler over a `homeGrow` option;
+  `ManagedHosts.hibernate` syncs first and hands `{ untouched }` to the
+  provisioner; `ManagedHosts.growHome`; `syncTimeoutMs` in the config.
+- Tests: `packages/runner/src/__tests__/init.test.ts` (6); S10 checks the
+  `sync`/`sync_done` frames and the provisioner's report, and a WebSocket
+  standing in for a runner exercises `home_grow`/`home_grown` against the
+  fake. `bun test packages/backend`: 83 pass; runner 16 pass plus the
+  environmental `jobs.test.ts` failure noted under checkpoint 2.
+
+Pitfall: the sync id must not come from the pairing-code generator; it is
+a plain `createId()`.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

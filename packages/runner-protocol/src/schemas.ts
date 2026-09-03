@@ -126,6 +126,10 @@ export const runnerToBackendMessageSchema = z.union([
   }),
   /** Liveness plus the count of running jobs, which the idle rule reads. */
   z.object({ type: z.literal('pong'), jobs: z.number().int().nonnegative() }),
+  /** The home is on disk; `untouched` when nothing wrote to it since this boot (`managed-hosts.md` § Home persistence). */
+  z.object({ type: z.literal('sync_done'), id: z.string(), untouched: z.boolean() }),
+  /** The home is nearly full: the runner asks for this total size; `home_grown` answers. */
+  z.object({ type: z.literal('home_grow'), bytes: z.number().int().positive() }),
   fsOkMessageSchema,
   /** A failed fs call; `code` carries the errno-style code (ENOENT, …) when there is one. */
   z.object({ type: z.literal('fs_error'), id: z.string(), code: z.string().optional(), message: z.string() }),
@@ -189,6 +193,10 @@ export const backendToRunnerMessageSchema = z.union([
     z.object({ type: z.literal('claimed'), deviceToken: z.string() }),
     z.object({ type: z.literal('hello_error'), code: helloErrorCodeSchema, reason: z.string() }),
     z.object({ type: z.literal('ping') }),
+    /** Flush the home to disk before the guest is killed; `sync_done` answers. */
+    z.object({ type: z.literal('sync'), id: z.string() }),
+    /** The home's backing image is now `bytes` large; the runner grows the filesystem into it. */
+    z.object({ type: z.literal('home_grown'), bytes: z.number().int().positive() }),
     z.object({
       type: z.literal('spawn'),
       spawnId: z.string(),

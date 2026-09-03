@@ -16,6 +16,8 @@ export interface RelayServerOptions {
   manifest(): Promise<unknown | null>
   /** `GET`s a brokered transfer with the device token (`rpc_transfer`). */
   download(url: string): Promise<AsyncIterable<Uint8Array>>
+  /** The socket's mode (default 0600: the runner's own user); PID 1 opens it to the guest user it spawns jobs as. */
+  socketMode?: number
 }
 
 export class RelayServer {
@@ -25,7 +27,7 @@ export class RelayServer {
   private closed = false
 
   static async listen(path: string, options: RelayServerOptions): Promise<RelayServer> {
-    const listener = await listenUnix(path, 0o600)
+    const listener = await listenUnix(path, options.socketMode ?? 0o600)
     const server = new RelayServer(listener, options)
     void server.acceptLoop()
     return server

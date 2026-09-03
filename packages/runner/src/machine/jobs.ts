@@ -12,6 +12,8 @@ export interface TeedSpawnParams {
   cwd: string
   env: Record<string, string>
   tee: { stdoutPath: string; stderrPath: string; viewLimit: number }
+  uid?: number
+  gid?: number
 }
 
 export interface TeedSpawnHandle {
@@ -40,6 +42,8 @@ export async function spawnTeed(params: TeedSpawnParams): Promise<TeedSpawnHandl
       stdin: 'pipe',
       processGroup: true,
       tee: params.tee,
+      ...(params.uid !== undefined ? { uid: params.uid } : {}),
+      ...(params.gid !== undefined ? { gid: params.gid } : {}),
     })
   } catch (error) {
     const kind: HostSpawnError['kind'] = errorCode(error) === 'ENOENT' ? 'executable_not_found' : 'other'

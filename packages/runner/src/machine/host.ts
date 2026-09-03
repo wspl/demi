@@ -12,6 +12,10 @@ export interface RunnerHostOptions {
   defaultCwd?: string
   /** Where `Host.store` keeps its JSON files (default `~/.demi/store`). */
   storeDir?: string
+  /** Spawn every process as this user — PID 1 running jobs as the guest user (`managed-hosts.md` § Lifecycle). */
+  runAs?: { uid: number; gid: number }
+  /** The identity reported (default the process's own): for PID 1, the guest user's. */
+  identity?: Host['identity']
 }
 
 /**
@@ -28,8 +32,8 @@ export function createRunnerHost(options: RunnerHostOptions = {}): Host {
   return {
     defaultCwd,
     fs,
-    process: createRunnerProcess(defaultCwd),
+    process: createRunnerProcess(defaultCwd, options.runAs),
     store: fileHostStore(fs, normalizePath(options.storeDir ?? `${identity.homeDir}/.demi/store`)),
-    identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir },
+    identity: options.identity ?? { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir },
   }
 }

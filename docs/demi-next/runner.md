@@ -56,7 +56,10 @@ processes, `rpc` commands in the backend); provider logic.
 The tinyjs binary in runner mode: `demi-runner run [--backend <url>]`. First
 start prints the claim token and waits; later starts authenticate with the
 persisted device token. On a managed host the runner is PID 1 and performs
-init duties (`managed-hosts.md`).
+init duties (`managed-hosts.md` § Lifecycle): the same binary, told by its
+pid; the token comes off the kernel command line and stays in memory, the
+state directory is `/var/lib/demi` on the ephemeral upper, every job and
+spawn runs as the guest user, and the hello reports that user's identity.
 
 ```
 ~/.demi/                 (`DEMI_HOME` names another place; every job and command-mode process inherits it)
@@ -145,6 +148,10 @@ Handshake and liveness:
 | b → r | `hello_ok { deviceId }` / `claim_pending { claimToken }` / `claimed { deviceToken }` / `hello_error { code, reason }` | outcomes; `code` is `unsupported_protocol`, `unknown_device`, `already_connected`, `revoked` or `internal` |
 | b → r | `ping` | liveness, backend-driven interval |
 | r → b | `pong { jobs }` | liveness plus the count of running jobs, which the idle rule reads (`managed-hosts.md`) |
+| b → r | `sync { id }` | before a hibernate: flush the home to disk |
+| r → b | `sync_done { id, untouched }` | flushed; `untouched` when nothing wrote to the home since boot, so the save can skip the upload (`managed-hosts.md` § Home persistence) |
+| r → b | `home_grow { bytes }` | the home nears its cap: grow its image to this total size |
+| b → r | `home_grown { bytes }` | the image is that large; the runner grows the filesystem into it |
 
 Host RPC — the wire form of the `Host` contract's `fs` and `process`
 facets (`Host.store` never crosses this protocol):
