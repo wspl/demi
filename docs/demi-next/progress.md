@@ -2914,6 +2914,30 @@ What the code holds against `product.md` at the start of M12:
   the mode read back in both configurations, 401 without a session.
   Backend suite: 94 pass, 2 skip.
 
+### Checkpoint 3: instance-mode enforcement (2026-09-03) — delivered
+
+- `vault/scope.ts`: `connectionOwner(mode, userId)` (shared → null,
+  isolated → the user), `canConfigureProviders(mode, role)`,
+  `ownerFitsMode`. One scope runs through everything that touches a
+  connection: `vault.list(scope)` / `control.listConnections(scope)`
+  (`{ ownerUserId }` or `'all'`), `assembly.catalog(owner)`, the
+  connections route (writes 403 for a shared-mode user; a connection
+  outside the scope 404 on delete/test), the subscription login flow
+  (owner per `start`, `status` visible to its scope), the conversation
+  PATCH (a `connectionId` outside the scope is 404), and
+  `resolveProvider` (owner mismatch ⇒ no provider for the session).
+- `GET /api/usage/instance`: shared mode, admins; the ledger per user
+  with the same aggregation (`control.listAllUsage`). 403 in isolated
+  mode.
+- `createBackend` refuses to start when any stored connection's owner
+  contradicts the mode: the mode is fixed once providers are
+  configured.
+- `mode.test.ts`: shared (user refused, uses the instance connection,
+  own ledger, the instance ledger by user, restart under isolated
+  refused) and isolated (own listings and catalog, another user's
+  connection 404 everywhere, the selection guard, ledgers apart).
+  Backend suite: 96 pass, 2 skip.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

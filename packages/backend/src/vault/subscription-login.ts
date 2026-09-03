@@ -13,6 +13,7 @@ export type SubscriptionLoginState =
 interface LoginFlow {
   type: string
   label: string
+  ownerUserId: string | null
   pendingDir: string
   state: SubscriptionLoginState
 }
@@ -30,11 +31,11 @@ export class SubscriptionLoginFlows {
   constructor(
     private readonly vault: ConnectionVault,
     private readonly assembly: ProviderAssembly,
-    private readonly options: { ownerUserId: string | null; vaultRoot: string },
+    private readonly options: { vaultRoot: string },
   ) {}
 
-  /** Starts one login; returns its poll id, or null for a type without a native login flow. */
-  start(type: string, label: string): { id: string } | null {
+  /** Starts one login for the connection scope's owner; returns its poll id, or null for a type without a native login flow. */
+  start(type: string, label: string, ownerUserId: string | null): { id: string } | null {
     const id = createId()
     const pendingDir = join(this.options.vaultRoot, `pending-${id}`)
     let begin: ((options?: ProviderCredentialLoginOptions) => Promise<ProviderCredentialLoginResult>) | undefined
@@ -47,7 +48,7 @@ export class SubscriptionLoginFlows {
     }
     if (!begin) return null
 
-    const flow: LoginFlow = { type, label, pendingDir, state: { status: 'pending', verificationUrl: null, userCode: null } }
+    const flow: LoginFlow = { type, label, ownerUserId, pendingDir, state: { status: 'pending', verificationUrl: null, userCode: null } }
     this.flows.set(id, flow)
     void (async () => {
       try {
@@ -67,7 +68,7 @@ export class SubscriptionLoginFlows {
           return
         }
         const connection = await this.vault.create({
-          ownerUserId: this.options.ownerUserId,
+          ownerUserId: flow.ownerUserId,
           label: flow.label,
           config: { kind: 'subscription', provider: flow.type },
         })
@@ -81,7 +82,9 @@ export class SubscriptionLoginFlows {
     return { id }
   }
 
-  status(id: string): SubscriptionLoginState | null {
-    return this.flows.get(id)?.state ?? null
+  /** A flow is visible to the scope that started it. */
+  status(id: string, ownerUserId: string | null): SubscriptionLoginState | null {
+    const flow = this.flows.get(id)
+    return flow && flow.ownerUserId === ownerUserId ? flow.state : null
   }
 }
