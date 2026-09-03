@@ -2655,6 +2655,45 @@ Landed:
 Pitfall: the sync id must not come from the pairing-code generator; it is
 a plain `createId()`.
 
+### Checkpoint 6: images and the Firecracker provisioner (2026-09-03) — rulings
+
+The topic: everything that lets the backend start a real guest. Rulings:
+
+- 6a. Delivered in three commits under one checkpoint: (i) the home-image
+  store, the image tools and the guest-image pipeline; (ii) the
+  Firecracker provisioner, the launch modes, the install script; (iii) the
+  env-gated smoke in the Lima `fc` instance with cold-provision and wake
+  latency recorded here.
+- **The jailer is a first-class option, not a requirement** (the user:
+  "做成开关。并且是第一公民支持。不是必选的"). Two launch modes,
+  `direct` (no root at runtime; KVM + Firecracker seccomp) and `jailer`
+  (a privileged helper starts the jailer; per-VM uid, chroot,
+  namespaces, cgroup), differing only in how the VMM process is started.
+  The record's Provisioning and Security baseline sections say so now.
+  Reasoning kept here: root is needed only by the jailer (chroot,
+  namespaces, cgroup, setuid) and by tap/nftables setup; the latter moves
+  to a one-time install script with a tap pool, so `direct` mode needs no
+  root at all. For public service the jailer is what keeps a VMM escape
+  inside one tenant; for self-hosting it is not needed.
+- 6b. The helper is a small Rust crate (`packages/fc-helper`), static,
+  two verbs, whitelisted arguments, one sudoers line.
+- 6c. Egress: the address the runner is told to dial is the one explicit
+  allow; private and link-local ranges denied; the rest allowed; no
+  inbound. Installed once for the tap pool.
+- 6d. The pipeline lives in `packages/guest-image/` (scripts and a kernel
+  config, not a TS package); `vmlinux` and `rootfs.ext4` are release
+  artifacts. The smoke may point at an existing kernel through the
+  environment; the pipeline builds one.
+- 6e. Production configuration by `DEMI_MANAGED_*` environment variables
+  (`LAUNCH`, `FIRECRACKER`, `JAILER`, `HELPER`, `KERNEL`, `ROOTFS`,
+  `VCPUS`, `MEM_MIB`, `HOME_MIB`, `SUBNET`); none set ⇒ no managed hosts.
+- 6f. The smoke is `real-firecracker.e2e.test.ts` under
+  `DEMI_FIRECRACKER_E2E=1`, run inside Lima `fc` (Bun and a Linux aarch64
+  tinyjs to be installed there).
+- 6g. Spawning `firecracker`, the jailer, `mke2fs`, `e2fsck`, `resize2fs`
+  is the provisioner's transport — the intentional external-process
+  exception — and `docs/package-boundaries.md` says so.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
