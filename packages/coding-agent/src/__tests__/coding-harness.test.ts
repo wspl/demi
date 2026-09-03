@@ -213,17 +213,14 @@ test('coding agent resolves file references outside default cwd when Host.fs all
   expect(resolved).toEqual([{ type: 'text', text: `<file path="${outsidePath}">\noutside\n\n</file>` }])
 })
 
-test('coding agent harness ships default and explore subagent profiles', async () => {
+test('coding agent harness ships only the explore subagent profile; omitting --profile inherits', async () => {
   const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
   const state = harness.initialState()
   const profiles = (await harness.agents?.({ state, cwd: process.cwd() })) ?? []
 
-  expect(profiles.map((profile) => profile.name)).toEqual(['default', 'explore'])
-  const defaultProfile = profiles[0]!
-  expect(defaultProfile.systemPrompt).toBeUndefined()
-  expect(defaultProfile.readonly).toBeUndefined()
+  expect(profiles.map((profile) => profile.name)).toEqual(['explore'])
 
-  const explore = profiles[1]!
+  const explore = profiles[0]!
   expect(explore.readonly).toBe(true)
   const explorePrompt = await explore.systemPrompt!({
     agentSessionId: 'explore-child',
@@ -276,7 +273,7 @@ test('the injected demi agent command help teaches self-contained spawn prompts'
   // The prompt field teaches that the child cannot see this conversation.
   expect(help).toContain('cannot see this conversation')
   expect(help).toContain('State the exact shape of the last assistant text it should return.')
-  expect(help).toContain('Available: default, explore')
+  expect(help).toContain('Available: explore')
 })
 
 test('coding agent harness leaves shell lifecycle to host assembly', () => {

@@ -17,6 +17,7 @@ import {
   type ClientSessionEvent,
   type SubagentProfile,
 } from '../index'
+import { ChildSupervisor } from '../subagent'
 
 type TurnScript = ConstructorParameters<typeof StubProvider>[0][number]
 
@@ -965,6 +966,46 @@ test('resuming an archived child whose profile is gone fails without orphaning t
   expect(listText).toContain('archived')
   expect(listText).toContain(childId)
   await second.client.close()
+})
+
+test('omitting --profile inherits even with declared profiles; "default" is not a profile name', async () => {
+  let listText = ''
+  let badProfileText = ''
+  const { client } = await openHarness({
+    agents: [{ name: 'worker', description: 'declared profile' }],
+    turns: [
+      [spawnCall('t1', "demi agent 'inherit me'", 5_000)],
+      [events.text('child done'), events.response()],
+      [spawnCall('t2', 'demi agent list', 5_000)],
+      (request) => {
+        listText = itemsText(request)
+        return [spawnCall('t3', "demi agent 'nope' --profile default", 5_000)]
+      },
+      (request) => {
+        badProfileText = itemsText(request)
+        return [events.text('checked'), events.response()]
+      },
+    ],
+  })
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'checked'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+  expect(listText).toContain('archived (completed')
+  expect(badProfileText).toContain('unknown profile')
+  expect(badProfileText).toContain('available: worker')
+  await client.close()
+})
+
+test('a harness may not declare a profile named "default"', () => {
+  expect(
+    () =>
+      new ChildSupervisor({
+        profiles: [{ name: 'default', description: 'reserved' }],
+      } as unknown as ConstructorParameters<typeof ChildSupervisor>[0]),
+  ).toThrow('reserved')
 })
 
 test('a readonly Host wrapped over a class-instance Host still reads; mutation and spawn are denied', async () => {
