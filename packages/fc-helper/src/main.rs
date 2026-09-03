@@ -111,10 +111,8 @@ fn start(flags: HashMap<String, String>) -> ! {
         .arg("--gid").arg(gid.to_string())
         .arg("--chroot-base-dir").arg(&chroot_base)
         .arg("--cgroup-version").arg("2")
-        .arg("--new-pid-ns")
-        .arg("--")
-        .arg("--api-sock").arg("/run/firecracker.socket")
-        .arg("--id").arg(id);
+        .arg("--new-pid-ns");
+    // The jailer itself hands Firecracker its `--id`; the API socket is Firecracker's default, `/run/firecracker.socket` in the jail.
     unsafe {
         command.pre_exec(|| {
             libc::umask(0o007);
@@ -124,8 +122,38 @@ fn start(flags: HashMap<String, String>) -> ! {
     let mut child = command.spawn().unwrap_or_else(|e| fail(&format!("spawn jailer: {e}")));
     fs::write(jail.join("pid"), child.id().to_string()).unwrap_or_else(|e| fail(&format!("write pid: {e}")));
     let status = child.wait().unwrap_or_else(|e| fail(&format!("wait: {e}")));
+    // With `--new-pid-ns` the jailer forks: the parent exits once Firecracker runs as the new
+    // namespace's init, its pid in `firecracker.pid`. The helper then stands in for the parent
+    // it no longer is — it outlives Firecracker by polling — so its exit stays the VM's exit.
+    let mut pid = None;
+    for _ in 0..40 {
+        if let Some(found) = fs::read_to_string(root.join("firecracker.pid")).ok().and_then(|text| text.trim().parse::<i32>().ok()).filter(|pid| *pid > 1) {
+            pid = Some(found);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let code = match pid {
+        Some(pid) if status.success() => {
+            fs::write(jail.join("pid"), pid.to_string()).unwrap_or_else(|e| fail(&format!("write pid: {e}")));
+            for _ in 0..40 {
+                if run.join("firecracker.socket").exists() { break; }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            // The jailer remade `root` and `run` as the VM uid, mode 0700: open them and the socket to the backend group.
+            for (path, mode) in [(root.clone(), 0o750), (run.clone(), 0o750), (run.join("firecracker.socket"), 0o660)] {
+                let _ = chown(&path, None, Some(backend_gid));
+                let _ = fs::set_permissions(&path, fs::Permissions::from_mode(mode));
+            }
+            while unsafe { libc::kill(pid, 0) } == 0 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            0
+        }
+        _ => status.code().unwrap_or(128),
+    };
     let _ = fs::remove_dir_all(&jail);
-    exit(status.code().unwrap_or(128))
+    exit(code)
 }
 
 fn kill(flags: HashMap<String, String>) -> ! {

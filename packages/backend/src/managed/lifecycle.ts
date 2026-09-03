@@ -175,6 +175,7 @@ export class ManagedHosts {
       try {
         const report = await this.options.registry.sync(host.deviceId, this.config.syncTimeoutMs)
         await this.options.provisioner.hibernate(owner, report)
+        this.options.registry.disconnect(host.deviceId)
       } finally {
         host.state = 'off'
         host.save = null
@@ -199,6 +200,7 @@ export class ManagedHosts {
     if (host.save) await host.save.catch(() => {})
     host.state = 'off'
     await this.options.provisioner.destroy(owner)
+    this.options.registry.disconnect(device.id)
   }
 
   async close(): Promise<void> {
@@ -245,6 +247,7 @@ export class ManagedHosts {
     if (!host || host.state === 'off' || host.state === 'saving') return
     host.deaths.push(this.now())
     host.state = 'off'
+    this.options.registry.disconnect(host.deviceId)
     this.log(`managed host of ${ownerKey(owner)} died (${host.deaths.length} deaths recorded)`)
   }
 

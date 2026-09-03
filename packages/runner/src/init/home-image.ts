@@ -46,18 +46,24 @@ export function parseDf(output: string): HomeUsage | null {
 export interface GrowthPolicy {
   /** Ask for growth when less than this fraction of the filesystem is free … */
   reserveFraction: number
-  /** … or less than this many bytes. */
+  /** … or less than this many bytes, for a filesystem large enough that a tenth is too little … */
   reserveBytes: number
+  /** … but never more than this fraction, so a small filesystem is not asked to grow at once. */
+  reserveCapFraction: number
   /** The size asked for is the current one times this. */
   factor: number
 }
 
-export const DEFAULT_GROWTH_POLICY: GrowthPolicy = { reserveFraction: 0.1, reserveBytes: 256 * 1024 * 1024, factor: 2 }
+export const DEFAULT_GROWTH_POLICY: GrowthPolicy = { reserveFraction: 0.1, reserveBytes: 256 * 1024 * 1024, reserveCapFraction: 0.25, factor: 2 }
+
+/** The reserve: a tenth of the filesystem, raised toward 256 MB but never past a quarter. */
+export function reserveBytes(totalBytes: number, policy: GrowthPolicy = DEFAULT_GROWTH_POLICY): number {
+  return Math.max(totalBytes * policy.reserveFraction, Math.min(policy.reserveBytes, totalBytes * policy.reserveCapFraction))
+}
 
 /** The size to ask for, or null while the reserve holds. */
 export function growthWanted(usage: HomeUsage, policy: GrowthPolicy = DEFAULT_GROWTH_POLICY): number | null {
-  const reserve = Math.max(usage.totalBytes * policy.reserveFraction, policy.reserveBytes)
-  if (usage.availableBytes >= reserve) return null
+  if (usage.availableBytes >= reserveBytes(usage.totalBytes, policy)) return null
   return Math.ceil(usage.totalBytes * policy.factor)
 }
 

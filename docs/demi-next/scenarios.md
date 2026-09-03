@@ -47,7 +47,14 @@ tools (`home-image.test.ts`; the e2fsprogs round trip runs where the tools
 are — the Linux fixture — and skips elsewhere), the guest init plan
 (`packages/runner`'s `init.test.ts`), the Firecracker provisioner's pure
 parts — slots, the kernel command line, the configuration from the
-environment (`firecracker.test.ts`) — the browser.
+environment (`firecracker.test.ts`) — the browser. The Firecracker smoke
+(`real-firecracker.e2e.test.ts`, gated by `DEMI_FIRECRACKER_E2E=1`, on a
+Linux machine with `/dev/kvm` after the install script, the Lima `fc`
+instance in development) is a world over the real provisioner: a hostless
+conversation upgraded to a guest, `sudo` into the upper, hibernate with
+the shrunk image in the store, wake over the same home with the upper
+gone, growth past the reserve, destroy on archive; it prints the
+cold-provision and wake latency.
 
 ## The world
 
