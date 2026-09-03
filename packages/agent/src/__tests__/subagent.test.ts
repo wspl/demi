@@ -17,6 +17,7 @@ import {
   type ClientSessionEvent,
   type SubagentProfile,
 } from '../index'
+import { ChildSupervisor } from '../subagent'
 
 type TurnScript = ConstructorParameters<typeof StubProvider>[0][number]
 
@@ -912,6 +913,99 @@ test('a parent restore skips archived children; the archive stays revivable', as
   expect(listText).toContain('archived')
   expect(listText).toContain('completed')
   await second.client.close()
+})
+
+test('resuming an archived child whose profile is gone fails without orphaning the archive', async () => {
+  let childId = ''
+  const first = await openHarness({
+    agents: [{ name: 'old', description: 'old profile' }],
+    turns: [
+      [spawnCall('t1', "demi agent 'finish fast' --profile old", 5_000)],
+      [events.text('done already'), events.response()],
+      (request) => {
+        childId = subagentIdFrom(request)
+        return [events.text('parent idle'), events.response()]
+      },
+    ],
+  })
+  await first.client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => first.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent idle'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+  await first.client.close()
+
+  let resumeText = ''
+  let listText = ''
+  const second = await openHarness({
+    root: first.root,
+    sessionId: first.sessionId,
+    agents: [{ name: 'new', description: 'replacement profile' }],
+    turns: [
+      [spawnCall('t2', `demi agent resume ${childId} 'again'`, 5_000)],
+      (request) => {
+        resumeText = itemsText(request)
+        return [spawnCall('t3', 'demi agent list', 5_000)]
+      },
+      (request) => {
+        listText = itemsText(request)
+        return [events.text('checked'), events.response()]
+      },
+    ],
+  })
+  await second.client.send([{ type: 'text', text: 'revive it' }])
+  await waitFor(
+    () => second.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'checked'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+  expect(resumeText).toContain('unknown profile')
+  expect(second.seen.some((event) => event.type === 'subagent')).toBe(false)
+  // The failed resume must not have rewritten the archive into a live record.
+  expect(listText).toContain('archived')
+  expect(listText).toContain(childId)
+  await second.client.close()
+})
+
+test('omitting --profile inherits even with declared profiles; "default" is not a profile name', async () => {
+  let listText = ''
+  let badProfileText = ''
+  const { client } = await openHarness({
+    agents: [{ name: 'worker', description: 'declared profile' }],
+    turns: [
+      [spawnCall('t1', "demi agent 'inherit me'", 5_000)],
+      [events.text('child done'), events.response()],
+      [spawnCall('t2', 'demi agent list', 5_000)],
+      (request) => {
+        listText = itemsText(request)
+        return [spawnCall('t3', "demi agent 'nope' --profile default", 5_000)]
+      },
+      (request) => {
+        badProfileText = itemsText(request)
+        return [events.text('checked'), events.response()]
+      },
+    ],
+  })
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'checked'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+  expect(listText).toContain('archived (completed')
+  expect(badProfileText).toContain('unknown profile')
+  expect(badProfileText).toContain('available: worker')
+  await client.close()
+})
+
+test('a harness may not declare a profile named "default"', () => {
+  expect(
+    () =>
+      new ChildSupervisor({
+        profiles: [{ name: 'default', description: 'reserved' }],
+      } as unknown as ConstructorParameters<typeof ChildSupervisor>[0]),
+  ).toThrow('reserved')
 })
 
 test('a readonly Host wrapped over a class-instance Host still reads; mutation and spawn are denied', async () => {
