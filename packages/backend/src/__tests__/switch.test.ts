@@ -11,7 +11,7 @@ import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { LocalControlService, type ControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
-import { createBackend, type Backend } from '../index'
+import { openBackend, type TestBackend } from './session'
 
 // M6 acceptance, on M11's access model: target switching at turn boundaries
 // over the conversations PATCH, the pending switch and its context block,
@@ -19,11 +19,11 @@ import { createBackend, type Backend } from '../index'
 // grant API (explicit grants for user devices only, revoke closes the door),
 // and offline degradation.
 
-async function api(backend: Backend, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${backend.url}${path}`, init)
+async function api(backend: TestBackend, path: string, init?: RequestInit): Promise<Response> {
+  return backend.session.fetch(path, init)
 }
 
-async function json(backend: Backend, path: string, body: unknown, method = 'POST'): Promise<Response> {
+async function json(backend: TestBackend, path: string, body: unknown, method = 'POST'): Promise<Response> {
   return api(backend, path, { method, body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
 }
 
@@ -36,8 +36,8 @@ function selectionFor(connectionId: string) {
   return { providerId: connectionId, model }
 }
 
-async function openClient(backend: Backend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
-  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversationId}/stream`)
+async function openClient(backend: TestBackend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
+  const socket = backend.session.socket(`/api/conversations/${conversationId}/stream`)
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => resolve(), { once: true })
     socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
@@ -61,7 +61,7 @@ function announcements(client: AgentClient): string[] {
     .blocks.flatMap((block) => (block.type === 'user' && block.preamble?.includes('[Execution target switched]') ? [block.preamble] : []))
 }
 
-async function stubConnection(backend: Backend): Promise<string> {
+async function stubConnection(backend: TestBackend): Promise<string> {
   const response = await json(backend, '/api/connections', { type: 'stub', label: 'Stub', apiKey: 'test-key' })
   const { connection } = (await response.json()) as { connection: { id: string } }
   return connection.id
@@ -83,7 +83,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m6-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m6-runner-'))
   const scripts: string[] = []
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -166,7 +166,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
   // The grant API: a user device grants idempotently, a managed host is never grantable, revoke closes the door.
   expect((await json(backend, `/api/conversations/${conversation.id}/grants`, { deviceId: device.id })).status).toBe(201)
   expect(await control.listHostGrants(conversation.id)).toHaveLength(1)
-  const managed = await control.createDevice({ userId: 'local', name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: conversation.id })
+  const managed = await control.createDevice({ userId: backend.session.user.id, name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: conversation.id })
   expect((await json(backend, `/api/conversations/${conversation.id}/grants`, { deviceId: managed.id })).status).toBe(404)
   const devices = (await (await api(backend, '/api/devices')).json()) as { devices: Array<{ id: string }> }
   expect(devices.devices.map((entry) => entry.id)).toEqual([device.id])
@@ -202,7 +202,7 @@ test('real→real switch: files stay, same-device note, the device granted once'
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m6-rr-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m6-rr-runner-'))
   const scripts: string[] = []
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -282,7 +282,7 @@ test('a running turn refuses the switch; concurrent switches have one winner; a 
       return this
     },
   }
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -298,8 +298,8 @@ test('a running turn refuses the switch; concurrent switches have one winner; a 
 
   const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
   const control: ControlService = new LocalControlService(controlDb)
-  const device = await control.createDevice({ userId: 'local', name: 'd', platform: 'test', tokenHash: 'x' })
-  const workspace = await control.createWorkspace({ userId: 'local', deviceId: device.id, path: '/tmp', name: 'w' })
+  const device = await control.createDevice({ userId: backend.session.user.id, name: 'd', platform: 'test', tokenHash: 'x' })
+  const workspace = await control.createWorkspace({ userId: backend.session.user.id, deviceId: device.id, path: '/tmp', name: 'w' })
 
   // Mid-turn: the PATCH is refused with 409 while the provider is streaming.
   const sendPromise = client.send([{ type: 'text', text: 'go' }])
@@ -314,7 +314,7 @@ test('a running turn refuses the switch; concurrent switches have one winner; a 
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: workspace.id }, 'PATCH')).status).toBe(200)
 
   // Concurrency: the compare-and-set gives exactly one winner from the same base.
-  const fresh = await control.createConversation('local')
+  const fresh = await control.createConversation(backend.session.user.id)
   const hostless = { workspaceId: null, hostDeviceId: null }
   const toWorkspace = { kind: 'workspace' as const, workspaceId: workspace.id, deviceId: device.id, path: '/tmp' }
   const results = await Promise.all([
@@ -324,8 +324,8 @@ test('a running turn refuses the switch; concurrent switches have one winner; a 
   expect(results.filter(Boolean)).toHaveLength(1)
 
   // A session-bound managed host: to a workspace is a switch that grants it; to hostless is refused.
-  const managed = await control.createDevice({ userId: 'local', name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: fresh.id })
-  const bound = await control.createConversation('local')
+  const managed = await control.createDevice({ userId: backend.session.user.id, name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: fresh.id })
+  const bound = await control.createConversation(backend.session.user.id)
   expect(
     await control.switchConversationTarget(bound.id, hostless, { workspaceId: null, hostDeviceId: managed.id }, { from: { kind: 'hostless' }, to: { kind: 'host', deviceId: managed.id } }, null),
   ).toBe(true)

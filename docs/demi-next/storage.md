@@ -13,7 +13,7 @@ follows the write-frequency line:
 
 - **`control.sqlite`** — one per deployment, the control-plane data: users,
   auth, devices, conversation index, workspaces, grants, connections/vault,
-  ledger, attachment metadata, settings. Low write rate (the hottest writer
+  ledger, attachment metadata. Low write rate (the hottest writer
   is one ledger row per provider request), read-heavy (auth check per
   request, absorbed by a short-TTL token cache).
 - **`conversations/<id>.sqlite`** — one file per conversation, the data
@@ -151,8 +151,8 @@ only; the `*Store` suffix stays reserved for storage backends.
 `control.sqlite` (final state, no speculative columns):
 
 ```
-users                   id, username, password_hash, role(master|admin|user), created_at
-web_sessions            token_hash, user_id, expires_at
+users                   id, username, password_hash(argon2id), role(master|admin|user), created_at
+web_sessions            token_hash(sha256 of the cookie token), user_id, expires_at
 conversations           id, user_id, title, archived, workspace_id(NULL), host_device_id(NULL),
                         pending_switch_json(NULL), connection_id, model_id, created_at, updated_at
                         ← workspace_id and host_device_id mutually exclusive; both NULL = hostless
@@ -167,7 +167,6 @@ connections             id, owner_user_id(NULL in shared mode), type, label,
 usage_ledger            id, user_id, conversation_id, connection_id, model_id,
                         input_tokens, output_tokens, cache_tokens…, created_at
 attachments             id, user_id, media_type, size_bytes, sha256, created_at
-settings                key, value                       ← instance mode only
 ```
 
 `conversations/<id>.sqlite` (shape owned by the agent persistence

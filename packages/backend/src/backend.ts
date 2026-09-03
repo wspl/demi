@@ -8,7 +8,8 @@ import { AgentSessionCommandStorage, type Command, type CommandIO, type CommandR
 import { toBytes } from '@demicodes/utils'
 import type { Host, ShellEnvironment } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
-import { STUB_USER } from './auth/identity'
+import { LoginLimiter, type LoginLimiterOptions } from './auth/login-limiter'
+import { WebSessions, type WebSessionsOptions } from './auth/sessions'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { createHostlessShell, transpileCommandModule } from './conversation/hostless-shell'
@@ -34,9 +35,14 @@ import { LocalControlService, type ControlService, type ManagedHostOwner } from 
 import { openSqliteDatabase } from './storage/database'
 import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 
+/** `product.md` § Instance mode: who configures providers. Fixed at startup. */
+export type InstanceMode = 'shared' | 'isolated'
+
 export interface BackendOptions {
   /** Data directory: control database, conversation databases, blobs, virtual filesystems. */
   dataDir: string
+  /** The instance mode, a deployment decision: `DEMI_INSTANCE_MODE`. */
+  mode: InstanceMode
   /** HTTP port (0 = ephemeral, for tests). */
   port?: number
   /** The URL managed guests dial (`managed-hosts.md` § Network); default the local one, which only the fake's guests can reach. */
@@ -47,6 +53,8 @@ export interface BackendOptions {
   providerTypes?: Record<string, ProviderTypeFactory>
   /** Usage-enforcement tuning — tests only. */
   usage?: { providerRequestsPerMinute?: number }
+  /** Session lifetime and login lockout tuning — tests only. */
+  auth?: WebSessionsOptions & LoginLimiterOptions
   /**
    * Managed hosts (`managed-hosts.md`): the provisioner and the lifecycle
    * sizes. A deployment requirement; a backend without it has no machine to
@@ -68,7 +76,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
   migrate(controlDb, CONTROL_MIGRATIONS)
   const control: ControlService = new LocalControlService(controlDb)
-  await control.ensureUser(STUB_USER)
+  const sessions = new WebSessions(control, options.auth)
+  const loginLimiter = new LoginLimiter(options.auth)
 
   const blobs = new DirBlobStore(join(options.dataDir, 'blobs'))
   const conversationStores = new ConversationStores(join(options.dataDir, 'conversations'), blobs)
@@ -126,7 +135,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(options.dataDir))
   const vaultRoot = join(options.dataDir, 'vault')
   const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot)
-  const logins = new SubscriptionLoginFlows(vault, assembly, { ownerUserId: STUB_USER.id, vaultRoot })
+  const logins = new SubscriptionLoginFlows(vault, assembly, { ownerUserId: null, vaultRoot })
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
   // connectionId = providerId: the LLM module assembles the connection's base
@@ -150,7 +159,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       if (!resolved) return null
     }
     const conversation = await control.getConversation(agentSessionId)
-    const userId = conversation?.userId ?? STUB_USER.id
+    if (!conversation) throw new Error(`no conversation ${agentSessionId} behind this session`)
+    const userId = conversation.userId
     return meterProvider(resolved.provider, {
       observe: usageAppender(control, { userId, conversationId: agentSessionId, connectionId: providerId }),
       beforeRequest: () => rateLimiter.take(userId),
@@ -290,6 +300,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     createCloudWorkspace: managedHosts
       ? (userId, name) => createCloudWorkspace({ control, managedHosts, registry: runnerRegistry, stagingDir: join(options.dataDir, 'staging') }, userId, name)
       : null,
+    sessions,
+    loginLimiter,
   })
 
   const server = Bun.serve({

@@ -40,7 +40,9 @@ processes.
 The provider wire (the model is scripted at the provider-event level, as
 in every other suite; the real-CLI chain in `claude-chain.e2e.test.ts`
 keeps its own gate), the tinybash grammar and builtins, the tinyjs
-primitives, the Host conformance cases, the pairing state machine
+primitives, the Host conformance cases, the login surface — setup, the
+cookie session and its sliding expiry over a test clock, the gate, the
+lockout, the own password (`auth.test.ts`) — the pairing state machine
 (`runner.test.ts`), vault and provider assembly (`llm.test.ts`), the M6
 switch acceptance (`switch.test.ts`), the home-image store and the image
 tools (`home-image.test.ts`; the e2fsprogs round trip runs where the tools

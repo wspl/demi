@@ -1,4 +1,5 @@
 import { createId } from '@demicodes/utils'
+import type { Role, User } from '../auth/identity'
 import type { SqlDatabase } from './database'
 
 /**
@@ -9,7 +10,20 @@ import type { SqlDatabase } from './database'
  * N>1 without changing a caller.
  */
 export interface ControlService {
-  ensureUser(user: { id: string; username: string; role: 'master' | 'admin' | 'user' }): Promise<void>
+  /** The instance's first account: inserted only while `users` is empty, so two concurrent setups yield one master. */
+  createMaster(user: { username: string; passwordHash: string }): Promise<User | null>
+  /** Null when the username is taken. */
+  createUser(user: { username: string; passwordHash: string; role: Role }): Promise<User | null>
+  getUser(id: string): Promise<User | null>
+  /** The login lookup: the row with its hash. */
+  findUserByUsername(username: string): Promise<(User & { passwordHash: string }) | null>
+  listUsers(): Promise<User[]>
+  countUsers(): Promise<number>
+  setUserPassword(id: string, passwordHash: string): Promise<void>
+  createWebSession(session: { tokenHash: string; userId: string; expiresAt: string }): Promise<void>
+  getWebSession(tokenHash: string): Promise<{ userId: string; expiresAt: string } | null>
+  extendWebSession(tokenHash: string, expiresAt: string): Promise<void>
+  deleteWebSession(tokenHash: string): Promise<void>
   /** A user device by default; a managed host names its owner (`managed-hosts.md` § What a managed host is). */
   createDevice(device: {
     userId: string
@@ -212,15 +226,79 @@ interface ConversationRow {
 const SELECT =
   'SELECT id, user_id, title, archived, workspace_id, host_device_id, pending_switch_json, connection_id, model_id, created_at, updated_at FROM conversations'
 
+interface UserRow {
+  id: string
+  username: string
+  role: Role
+  created_at: string
+}
+
+const USER_SELECT = 'SELECT id, username, role, created_at FROM users'
+const USER_INSERT = 'INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)'
+
+function userFromRow(row: UserRow): User {
+  return { id: row.id, username: row.username, role: row.role, createdAt: row.created_at }
+}
+
 /** In-process `ControlService` over the control database. */
 export class LocalControlService implements ControlService {
   constructor(private readonly db: SqlDatabase) {}
 
-  async ensureUser(user: { id: string; username: string; role: 'master' | 'admin' | 'user' }): Promise<void> {
-    this.db.run(
-      'INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING',
-      [user.id, user.username, '!', user.role, new Date().toISOString()],
-    )
+  async createMaster(user: { username: string; passwordHash: string }): Promise<User | null> {
+    const record: User = { id: createId(), username: user.username, role: 'master', createdAt: new Date().toISOString() }
+    return this.db.transaction(() => {
+      if (this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n) return null
+      this.db.run(USER_INSERT, [record.id, record.username, user.passwordHash, record.role, record.createdAt])
+      return record
+    })
+  }
+
+  async createUser(user: { username: string; passwordHash: string; role: Role }): Promise<User | null> {
+    const record: User = { id: createId(), username: user.username, role: user.role, createdAt: new Date().toISOString() }
+    return this.db.transaction(() => {
+      if (this.db.get(`${USER_SELECT} WHERE username = ?`, [user.username])) return null
+      this.db.run(USER_INSERT, [record.id, record.username, user.passwordHash, record.role, record.createdAt])
+      return record
+    })
+  }
+
+  async getUser(id: string): Promise<User | null> {
+    const row = this.db.get<UserRow>(`${USER_SELECT} WHERE id = ?`, [id])
+    return row ? userFromRow(row) : null
+  }
+
+  async findUserByUsername(username: string): Promise<(User & { passwordHash: string }) | null> {
+    const row = this.db.get<UserRow & { password_hash: string }>('SELECT id, username, role, created_at, password_hash FROM users WHERE username = ?', [username])
+    return row ? { ...userFromRow(row), passwordHash: row.password_hash } : null
+  }
+
+  async listUsers(): Promise<User[]> {
+    return this.db.all<UserRow>(`${USER_SELECT} ORDER BY created_at`).map(userFromRow)
+  }
+
+  async countUsers(): Promise<number> {
+    return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n ?? 0
+  }
+
+  async setUserPassword(id: string, passwordHash: string): Promise<void> {
+    this.db.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, id])
+  }
+
+  async createWebSession(session: { tokenHash: string; userId: string; expiresAt: string }): Promise<void> {
+    this.db.run('INSERT INTO web_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', [session.tokenHash, session.userId, session.expiresAt])
+  }
+
+  async getWebSession(tokenHash: string): Promise<{ userId: string; expiresAt: string } | null> {
+    const row = this.db.get<{ user_id: string; expires_at: string }>('SELECT user_id, expires_at FROM web_sessions WHERE token_hash = ?', [tokenHash])
+    return row ? { userId: row.user_id, expiresAt: row.expires_at } : null
+  }
+
+  async extendWebSession(tokenHash: string, expiresAt: string): Promise<void> {
+    this.db.run('UPDATE web_sessions SET expires_at = ? WHERE token_hash = ?', [expiresAt, tokenHash])
+  }
+
+  async deleteWebSession(tokenHash: string): Promise<void> {
+    this.db.run('DELETE FROM web_sessions WHERE token_hash = ?', [tokenHash])
   }
 
   async createDevice(device: {

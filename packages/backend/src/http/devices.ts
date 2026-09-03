@@ -1,7 +1,7 @@
 import { errorCode, errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { STUB_USER } from '../auth/identity'
+import type { AuthEnv } from '../auth/identity'
 import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService } from '../storage/control'
 
@@ -9,19 +9,19 @@ const claimBodySchema = z.object({ code: z.string().min(1) })
 const createDirectoryBodySchema = z.object({ path: z.string().min(1) })
 
 /** `/api/devices` — the device registry surface: list, claim, revoke, directory browse. */
-export function deviceRoutes(options: { control: ControlService; registry: RunnerRegistry }): Hono {
+export function deviceRoutes(options: { control: ControlService; registry: RunnerRegistry }): Hono<AuthEnv> {
   const { control, registry } = options
-  const app = new Hono()
+  const app = new Hono<AuthEnv>()
 
   app.get('/', async (c) => {
-    const devices = await control.listDevices(STUB_USER.id)
+    const devices = await control.listDevices(c.get('user').id)
     return c.json({ devices: devices.map((device) => ({ ...device, online: registry.deviceOnline(device.id) })) })
   })
 
   app.post('/claim', async (c) => {
     const parsed = claimBodySchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { code: string }' }, 400)
-    const result = await registry.claim(STUB_USER.id, parsed.data.code)
+    const result = await registry.claim(c.get('user').id, parsed.data.code)
     if (!result.ok) {
       if (result.code === 'rate_limited') return c.json({ code: 'rate_limited', message: 'Too many claim attempts' }, 429)
       return c.json({ code: 'invalid_code', message: 'Unknown or expired pairing code' }, 404)
@@ -31,7 +31,7 @@ export function deviceRoutes(options: { control: ControlService; registry: Runne
 
   app.delete('/:id', async (c) => {
     const device = await control.getDevice(c.req.param('id'))
-    if (!device || device.userId !== STUB_USER.id) {
+    if (!device || device.userId !== c.get('user').id) {
       return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
     }
     await registry.revoke(device.id)
@@ -39,7 +39,7 @@ export function deviceRoutes(options: { control: ControlService; registry: Runne
   })
 
   app.get('/:id/fs', async (c) => {
-    const outcome = await deviceFsFor(c.req.param('id'), control, registry)
+    const outcome = await deviceFsFor(c.req.param('id'), c.get('user').id, control, registry)
     if (!outcome.ok) return c.json(outcome.error, outcome.status)
     const path = c.req.query('path')
     if (!path) return c.json({ code: 'invalid_body', message: 'Missing path query parameter' }, 400)
@@ -54,7 +54,7 @@ export function deviceRoutes(options: { control: ControlService; registry: Runne
   })
 
   app.post('/:id/fs', async (c) => {
-    const outcome = await deviceFsFor(c.req.param('id'), control, registry)
+    const outcome = await deviceFsFor(c.req.param('id'), c.get('user').id, control, registry)
     if (!outcome.ok) return c.json(outcome.error, outcome.status)
     const parsed = createDirectoryBodySchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { path: string }' }, 400)
@@ -69,9 +69,9 @@ export function deviceRoutes(options: { control: ControlService; registry: Runne
   return app
 }
 
-async function deviceFsFor(deviceId: string, control: ControlService, registry: RunnerRegistry) {
+async function deviceFsFor(deviceId: string, userId: string, control: ControlService, registry: RunnerRegistry) {
   const device = await control.getDevice(deviceId)
-  if (!device || device.userId !== STUB_USER.id) {
+  if (!device || device.userId !== userId) {
     return { ok: false as const, status: 404 as const, error: { code: 'device_not_found', message: 'No such device' } }
   }
   const fs = registry.deviceFs(device.id)

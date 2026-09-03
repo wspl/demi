@@ -1,4 +1,5 @@
-export { createBackend, type Backend, type BackendOptions } from './backend'
+export { createBackend, type Backend, type BackendOptions, type InstanceMode } from './backend'
+export type { User, Role } from './auth/identity'
 export { ProviderAssembly, builtinProviderTypes, type ProviderTypeFactory, type CatalogConnection } from './llm/assembly'
 export { ConnectionVault, type Connection, type ConnectionConfig, type ApiKeyConnectionConfig } from './vault/connections'
 export { HOSTLESS_HOME } from './conversation/scoped-transport'

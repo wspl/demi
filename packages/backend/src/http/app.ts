@@ -11,6 +11,10 @@ import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { BlobStore } from '@demicodes/agent'
 import type { Host } from '@demicodes/shell'
 import type { ManagedHosts } from '../managed/lifecycle'
+import type { LoginLimiter } from '../auth/login-limiter'
+import type { WebSessions } from '../auth/sessions'
+import { authenticate } from './authenticate'
+import { setupRoutes } from './setup'
 import { attachmentRoutes } from './attachments'
 import { authRoutes } from './auth'
 import { blobRoutes } from './blobs'
@@ -39,13 +43,20 @@ export function createApp(options: {
   hostFor: (conversationId: string) => Promise<Host>
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
+  sessions: WebSessions
+  loginLimiter: LoginLimiter
 }): Hono {
   const app = new Hono()
 
   app.onError((error, c) => c.json({ code: 'internal_error', message: error.message }, 500))
   app.notFound((c) => c.json({ code: 'not_found', message: `No route for ${c.req.method} ${c.req.path}` }, 404))
 
-  app.route('/api/auth', authRoutes())
+  // Everything under /api needs a session except the two entrances and the
+  // routes runners dial with their device token.
+  app.use('/api/*', authenticate(options.sessions, ['/api/setup', '/api/auth/login', '/api/runner', '/api/transfers']))
+
+  app.route('/api/setup', setupRoutes({ control: options.control, sessions: options.sessions }))
+  app.route('/api/auth', authRoutes({ control: options.control, sessions: options.sessions, limiter: options.loginLimiter }))
   app.route('/api/models', modelRoutes(options.assembly))
   app.route('/api/connections', connectionRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins }))
   app.route('/api/usage', usageRoutes({ control: options.control }))

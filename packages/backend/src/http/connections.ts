@@ -1,7 +1,6 @@
 import { errorMessage } from '@demicodes/utils'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { STUB_USER } from '../auth/identity'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { Connection, ConnectionVault } from '../vault/connections'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
@@ -70,7 +69,7 @@ export function connectionRoutes(options: {
       return c.json({ code: 'unknown_provider_type', message: `Unknown provider type "${body.type}"` }, 400)
     }
     const connection = await vault.create({
-      ownerUserId: STUB_USER.id,
+      ownerUserId: null,
       label: body.label,
       config: {
         kind: 'api_key',

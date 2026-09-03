@@ -74,7 +74,7 @@ test('the Cloud choice provisions a host owned by the workspace and creates the 
   // One machine per user here: a second Cloud workspace is refused, and leaves no row behind.
   await expect(world.api('/api/workspaces', { cloud: true, name: 'second' })).rejects.toThrow('HTTP 409')
   expect((await world.api<{ workspaces: Workspace[] }>('/api/workspaces')).workspaces).toHaveLength(1)
-  expect(await control.countManagedDevices('local')).toBe(1)
+  expect(await control.countManagedDevices(world.backend.session.user.id)).toBe(1)
 }, 30_000)
 
 test('every conversation under the workspace executes on its host; idle counts across them; the next turn wakes it', async () => {
@@ -104,7 +104,7 @@ test('deleting the workspace is refused while conversations point at it, and des
   const owner: ManagedHostOwner = { kind: 'workspace', id: workspace.id }
   await expect(world.api(`/api/workspaces/${workspace.id}`, undefined, 'DELETE')).rejects.toThrow('HTTP 409')
   for (const driver of world.drivers) await world.api(`/api/conversations/${driver.id}`, { workspaceId: null }, 'PATCH')
-  const response = await fetch(`${world.url}/api/workspaces/${workspace.id}`, { method: 'DELETE' })
+  const response = await world.backend.session.fetch(`/api/workspaces/${workspace.id}`, { method: 'DELETE' })
   expect(response.status).toBe(204)
   expect(calls(owner, 'destroy')).toBe(1)
   expect(fake.running(owner)).toBe(false)

@@ -6,7 +6,7 @@ import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { createBackend, type Backend } from '../index'
+import { openBackend, type TestBackend } from './session'
 
 // M2 acceptance: a zero-setup virtual conversation over the real Web API +
 // conversation stream — tinybash builtins work, a script outside the subset
@@ -37,8 +37,8 @@ function stubTypes(createRuntime: () => import('@demicodes/provider').AgentProvi
   }
 }
 
-async function createStubConnection(backend: Backend): Promise<string> {
-  const response = await fetch(`${backend.url}/api/connections`, {
+async function createStubConnection(backend: TestBackend): Promise<string> {
+  const response = await backend.session.fetch(`/api/connections`, {
     method: 'POST',
     body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'test-key' }),
     headers: { 'content-type': 'application/json' },
@@ -48,17 +48,17 @@ async function createStubConnection(backend: Backend): Promise<string> {
   return connection.id
 }
 
-async function api<T>(backend: Backend, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${backend.url}${path}`, init)
+async function api<T>(backend: TestBackend, path: string, init?: RequestInit): Promise<T> {
+  const response = await backend.session.fetch(path, init)
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status} ${await response.text()}`)
   return (await response.json()) as T
 }
 
 async function connectClient(
-  backend: Backend,
+  backend: TestBackend,
   conversationId: string,
 ): Promise<{ client: AgentClient; socket: WebSocket }> {
-  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversationId}/stream`)
+  const socket = backend.session.socket(`/api/conversations/${conversationId}/stream`)
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => resolve(), { once: true })
     socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
@@ -76,7 +76,7 @@ test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe 
     [events.toolCall('t2', 'shell_exec', { script: 'python3 -V', timeoutMs: 10_000 })],
     [events.text('refused as expected'), events.response()],
   ])
-  const backend = await createBackend({ dataDir, port: 0, providerTypes: stubTypes(() => stub) })
+  const backend = await openBackend({ dataDir, port: 0, providerTypes: stubTypes(() => stub) })
   const connectionId = await createStubConnection(backend)
 
   // Web API basics.
@@ -121,10 +121,10 @@ test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe 
 
 test('a malformed PATCH body is rejected with 400 invalid_body', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-backend-badbody-'))
-  const backend = await createBackend({ dataDir, port: 0 })
+  const backend = await openBackend({ dataDir, port: 0 })
   const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
 
-  const bad = await fetch(`${backend.url}/api/conversations/${created.conversation.id}`, {
+  const bad = await backend.session.fetch(`/api/conversations/${created.conversation.id}`, {
     method: 'PATCH',
     body: JSON.stringify({ archived: 'yes' }),
     headers: { 'content-type': 'application/json' },
@@ -132,7 +132,7 @@ test('a malformed PATCH body is rejected with 400 invalid_body', async () => {
   expect(bad.status).toBe(400)
   expect(await bad.json()).toMatchObject({ code: 'invalid_body' })
 
-  const notJson = await fetch(`${backend.url}/api/conversations/${created.conversation.id}`, {
+  const notJson = await backend.session.fetch(`/api/conversations/${created.conversation.id}`, {
     method: 'PATCH',
     body: 'not json',
     headers: { 'content-type': 'application/json' },

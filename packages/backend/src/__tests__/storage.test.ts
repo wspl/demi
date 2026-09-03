@@ -37,7 +37,6 @@ test('control migrations apply once and are idempotent', () => {
     'connections',
     'usage_ledger',
     'attachments',
-    'settings',
   ]) {
     expect(tables).toContain(table)
   }
@@ -100,11 +99,11 @@ test('DbHostStore round-trips portable JSON and lists by literal prefix', async 
 test('ControlService conversation CRUD and ordering', async () => {
   const db = openControlDb()
   const control = new LocalControlService(db)
-  await control.ensureUser({ id: 'u1', username: 'local', role: 'master' })
-  await control.ensureUser({ id: 'u1', username: 'local', role: 'master' })
+  const user = (await control.createMaster({ username: 'local', passwordHash: '!' }))!
+  expect(await control.createMaster({ username: 'again', passwordHash: '!' })).toBeNull()
 
-  const first = await control.createConversation('u1')
-  const second = await control.createConversation('u1')
+  const first = await control.createConversation(user.id)
+  const second = await control.createConversation(user.id)
   expect(first.title).toBe('New conversation')
 
   await control.defaultConversationTitle(first.id, 'hello world')
@@ -115,14 +114,14 @@ test('ControlService conversation CRUD and ordering', async () => {
   expect((await control.getConversation(second.id))?.title).toBe('renamed')
 
   // Most recently updated first.
-  const list = await control.listConversations('u1')
+  const list = await control.listConversations(user.id)
   expect(list.map((record) => record.id)).toEqual([second.id, first.id])
 
   await control.setConversationArchived(first.id, true)
-  expect((await control.listConversations('u1')).map((record) => record.id)).toEqual([second.id])
-  expect((await control.listConversations('u1', { archived: true })).map((record) => record.id)).toEqual([first.id])
+  expect((await control.listConversations(user.id)).map((record) => record.id)).toEqual([second.id])
+  expect((await control.listConversations(user.id, { archived: true })).map((record) => record.id)).toEqual([first.id])
   await control.setConversationArchived(first.id, false)
-  expect(await control.listConversations('u1')).toHaveLength(2)
+  expect(await control.listConversations(user.id)).toHaveLength(2)
 
   await control.setConversationModel(second.id, 'conn-1', 'model-x')
   const updated = await control.getConversation(second.id)
@@ -134,9 +133,9 @@ test('ControlService conversation CRUD and ordering', async () => {
 test('ControlService device and workspace records', async () => {
   const db = openControlDb()
   const control = new LocalControlService(db)
-  await control.ensureUser({ id: 'u1', username: 'local', role: 'master' })
+  const user = (await control.createMaster({ username: 'local', passwordHash: '!' }))!
 
-  const device = await control.createDevice({ userId: 'u1', name: 'laptop', platform: 'darwin', tokenHash: 'hash-1' })
+  const device = await control.createDevice({ userId: user.id, name: 'laptop', platform: 'darwin', tokenHash: 'hash-1' })
   expect(device.lastSeenAt).toBeNull()
   expect(await control.getDevice(device.id)).toEqual(device)
   expect(await control.getDeviceByTokenHash('hash-1')).toEqual(device)
@@ -145,20 +144,20 @@ test('ControlService device and workspace records', async () => {
   await control.touchDeviceSeen(device.id)
   expect((await control.getDevice(device.id))?.lastSeenAt).not.toBeNull()
 
-  const other = await control.createDevice({ userId: 'u1', name: 'desktop', platform: 'linux', tokenHash: 'hash-2' })
-  expect((await control.listDevices('u1')).map((row) => row.id)).toEqual([device.id, other.id])
+  const other = await control.createDevice({ userId: user.id, name: 'desktop', platform: 'linux', tokenHash: 'hash-2' })
+  expect((await control.listDevices(user.id)).map((row) => row.id)).toEqual([device.id, other.id])
 
-  const workspace = await control.createWorkspace({ userId: 'u1', deviceId: device.id, path: '/proj', name: 'proj' })
+  const workspace = await control.createWorkspace({ userId: user.id, deviceId: device.id, path: '/proj', name: 'proj' })
   expect(await control.getWorkspace(workspace.id)).toEqual(workspace)
 
-  const conversation = await control.createConversation('u1')
+  const conversation = await control.createConversation(user.id)
   await control.setConversationWorkspace(conversation.id, workspace.id)
   expect((await control.getConversation(conversation.id))?.workspaceId).toBe(workspace.id)
   await control.setConversationWorkspace(conversation.id, null)
   expect((await control.getConversation(conversation.id))?.workspaceId).toBeNull()
 
   await control.deleteDevice(other.id)
-  expect((await control.listDevices('u1')).map((row) => row.id)).toEqual([device.id])
+  expect((await control.listDevices(user.id)).map((row) => row.id)).toEqual([device.id])
   db.close()
 })
 

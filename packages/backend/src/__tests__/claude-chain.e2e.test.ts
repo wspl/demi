@@ -13,7 +13,7 @@ import { openSqliteDatabase } from '../storage/database'
 import { ConnectionVault } from '../vault/connections'
 import { loadOrCreateInstanceSecret } from '../vault/secret'
 import { createClaudeCodeProvider } from '@demicodes/provider-claude-code'
-import { createBackend } from '../index'
+import { openBackend } from './session'
 
 // M5 step 2 acceptance, tier 2: the full Claude Code chain — backend spawns
 // the real `claude` CLI on the session's claimed runner; the provider
@@ -67,7 +67,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
     },
   })
 
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -89,7 +89,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'chain-device' })
   await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
   const codes = runner.codes
-  const claimResponse = await fetch(`${backend.url}/api/devices/claim`, {
+  const claimResponse = await backend.session.fetch(`/api/devices/claim`, {
     method: 'POST',
     body: JSON.stringify({ code: codes[0] }),
     headers: { 'content-type': 'application/json' },
@@ -103,7 +103,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   const control = new LocalControlService(controlDb)
   const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(dataDir))
   const connection = await vault.create({
-    ownerUserId: 'local',
+    ownerUserId: backend.session.user.id,
     label: 'Claude subscription',
     config: { kind: 'subscription', provider: 'claude-code' },
   })
@@ -119,10 +119,10 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   await pool.setActiveId(meta.id)
 
   // Conversation bound to the runner workspace.
-  const created = await fetch(`${backend.url}/api/conversations`, { method: 'POST' })
+  const created = await backend.session.fetch(`/api/conversations`, { method: 'POST' })
   const { conversation } = (await created.json()) as { conversation: { id: string } }
   const workspace = await control.createWorkspace({
-    userId: 'local',
+    userId: backend.session.user.id,
     deviceId: device.id,
     path: runnerDir,
     name: 'chain workspace',
@@ -130,7 +130,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   await control.setConversationWorkspace(conversation.id, workspace.id)
   controlDb.close()
 
-  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversation.id}/stream`)
+  const socket = backend.session.socket(`/api/conversations/${conversation.id}/stream`)
   await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve(), { once: true }))
   const client = new AgentClient(createWebSocketClientTransport(socket as never))
   const model: ModelSelection = {
@@ -166,7 +166,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
 
   // Metering: the CLI turn's usage landed in the ledger.
   await delay(100)
-  const usage = (await (await fetch(`${backend.url}/api/usage`)).json()) as {
+  const usage = (await (await backend.session.fetch(`/api/usage`)).json()) as {
     totals: Array<{ connectionId: string; requests: number }>
   }
   expect(usage.totals.some((row) => row.connectionId === connection.id && row.requests >= 1)).toBe(true)

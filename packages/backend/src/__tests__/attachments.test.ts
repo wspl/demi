@@ -7,7 +7,7 @@ import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider, type InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { waitFor } from '@demicodes/utils'
-import { createBackend, type Backend } from '../index'
+import { openBackend, type TestBackend } from './session'
 
 // M6 attachments: upload-then-reference for message media (bytes never ride
 // the frame socket), inline resolution before the provider, checkpoint
@@ -15,8 +15,8 @@ import { createBackend, type Backend } from '../index'
 
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01])
 
-async function api(backend: Backend, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${backend.url}${path}`, init)
+async function api(backend: TestBackend, path: string, init?: RequestInit): Promise<Response> {
+  return backend.session.fetch(path, init)
 }
 
 function selectionFor(connectionId: string) {
@@ -28,8 +28,8 @@ function selectionFor(connectionId: string) {
   return { providerId: connectionId, model }
 }
 
-async function connectClient(backend: Backend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
-  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversationId}/stream`)
+async function connectClient(backend: TestBackend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
+  const socket = backend.session.socket(`/api/conversations/${conversationId}/stream`)
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => resolve(), { once: true })
     socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
@@ -49,7 +49,7 @@ test('message attachment: upload → ref block → inline bytes at the provider 
         return [events.text('saw it'), events.response()]
       },
     ])
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -136,7 +136,7 @@ test('attachment upload limits and workspace file drop', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m6-drop-'))
   const stubRuntime = () =>
     new StubProvider([[events.toolCall('t1', 'shell_exec', { script: 'cat notes/readme.md', timeoutMs: 10_000 })], [events.text('ok'), events.response()]])
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
