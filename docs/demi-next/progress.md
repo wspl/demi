@@ -2724,6 +2724,38 @@ Landed:
   `~/demi` since the home mount is read-only): 3 pass. macOS: 2 pass, 1
   skip. `bun test packages/backend`: 85 pass, 1 skip.
 
+### Checkpoint 6 (ii): the Firecracker provisioner, the launch modes, the install script (2026-09-03) — delivered
+
+Landed:
+
+- `managed/firecracker/`: `config.ts` (`FirecrackerConfig`,
+  `firecrackerConfigFromEnv` over `DEMI_MANAGED_*`, defaults: 2 vCPU,
+  2 GB, 1 GB nominal home, `172.16.0.0/16`, 256 slots, Cloudflare and
+  Google DNS), `slots.ts` (`SlotPool`: a /30 per slot, host `.1`, guest
+  `.2`, tap `demi<n>`, a locally administered MAC), `boot-args.ts` (the
+  kernel command line: `console=ttyS0 reboot=k panic=1 pci=off
+  init=/demi-runner` plus the `demi.*` parameters), `api.ts`
+  (`FirecrackerApi` over the unix socket with Bun's `fetch({ unix })`:
+  ready-wait, configure, start, pause, resume, drive rescan), `vm.ts`
+  (`startVm` in both modes; the process's exit is the VM's death in both:
+  in `jailer` mode the helper stays as the parent), `provisioner.ts`
+  (`FirecrackerProvisioner`: provision = make, shrink, store, boot with
+  `firstboot`; wake = store copy, enlarge, boot; hibernate = kill, shrink,
+  store — or discard when untouched; checkpoint = pause, reflink copy,
+  resume, shrink the copy, store; growHome = enlarge the file, rescan;
+  destroy = kill and drop the working image, the store keeps its copy).
+- `BackendOptions.publicUrl` (guests dial it; `DEMI_BACKEND_PUBLIC_URL`);
+  `main.ts` builds the provisioner from the environment.
+- `packages/backend/scripts/install-managed-hosts.sh`: the tap pool, IP
+  forwarding, NAT, the `inet demi` nftables table (established, the
+  backend address, private ranges dropped, the rest accepted; input from
+  taps only to the backend port and DNS).
+- `packages/fc-helper`: the Rust helper, `vm start` / `vm kill`, built
+  with `cargo build --release` (compiles on macOS too, runs on Linux).
+- Tests: `firecracker.test.ts` (slots, boot args, configuration: 3).
+  `bun test packages/backend`: 88 pass, 1 skip. The VM path itself is
+  6 (iii)'s smoke.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

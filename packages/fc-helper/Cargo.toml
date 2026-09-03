@@ -1,0 +1,17 @@
+[package]
+name = "demi-fc-helper"
+version = "0.1.0"
+edition = "2021"
+description = "The privileged helper for Demi's managed hosts in jailer mode: prepares a VM's chroot and runs Firecracker's jailer; nothing else."
+
+[[bin]]
+name = "demi-fc-helper"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

@@ -45,7 +45,9 @@ primitives, the Host conformance cases, the pairing state machine
 switch acceptance (`switch.test.ts`), the home-image store and the image
 tools (`home-image.test.ts`; the e2fsprogs round trip runs where the tools
 are — the Linux fixture — and skips elsewhere), the guest init plan
-(`packages/runner`'s `init.test.ts`), the browser.
+(`packages/runner`'s `init.test.ts`), the Firecracker provisioner's pure
+parts — slots, the kernel command line, the configuration from the
+environment (`firecracker.test.ts`) — the browser.
 
 ## The world
 
