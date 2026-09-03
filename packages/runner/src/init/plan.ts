@@ -64,11 +64,16 @@ export function upperOverlay(layout: GuestLayout): InitStep[] {
   ]
 }
 
-/** The home image, read-write, journal replayed by the mount itself after a hibernate's `kill -9`. */
+/**
+ * The home image, read-write, journal replayed by the mount itself after a
+ * hibernate's `kill -9`; then grown into its backing file, which the
+ * backend re-enlarged to the nominal size after the shrink at hibernate.
+ */
 export function homeMount(layout: GuestLayout): InitStep[] {
   return [
     { command: 'mkdir', args: ['-p', layout.homeMount] },
     { command: 'mount', args: ['-t', 'ext4', layout.homeDevice, layout.homeMount] },
+    { command: 'resize2fs', args: [layout.homeDevice], tolerated: true },
     { command: 'mount', args: ['-t', 'tmpfs', 'tmp', '/tmp'] },
   ]
 }

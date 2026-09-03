@@ -7,6 +7,8 @@ export interface GuestBootConfig {
   backendUrl: string
   deviceToken: string
   network: GuestNetwork | null
+  /** The home image was just made from a directory: its files carry the backend user's ownership until this boot chowns them. */
+  firstBoot: boolean
 }
 
 export interface GuestNetwork {
@@ -44,5 +46,5 @@ export function guestBootConfig(cmdline: string): GuestBootConfig {
   const gateway = params.get('demi.gw')
   const network: GuestNetwork | null =
     address && gateway ? { address, gateway, dns: (params.get('demi.dns') ?? '').split(',').filter((entry) => entry.length > 0) } : null
-  return { backendUrl, deviceToken, network }
+  return { backendUrl, deviceToken, network, firstBoot: params.get('demi.firstboot') === '1' }
 }

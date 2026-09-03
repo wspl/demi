@@ -2694,6 +2694,36 @@ The topic: everything that lets the backend start a real guest. Rulings:
   is the provisioner's transport — the intentional external-process
   exception — and `docs/package-boundaries.md` says so.
 
+### Checkpoint 6 (i): the home-image store, the image tools, the pipeline (2026-09-03) — delivered
+
+Landed:
+
+- `storage/home-image-store.ts`: `HomeImageStore` (`has`, `put` — the
+  file renamed into place, atomically replacing —, `get` — a working copy,
+  reflinked where the filesystem offers it —, `delete`);
+  `DirHomeImageStore` at `<dataDir>/homes/<ownerKey>.ext4`.
+- `managed/firecracker/image-tools.ts`: `makeHomeImage(homeDir, image,
+  nominalBytes)` (the directory becomes `/demi` in the image, consumed),
+  `shrinkImage` (`e2fsck -fy` accepting 0 and 1, `resize2fs -M`, the
+  report parsed, `truncate`), `growImage` (the file only; the guest grows
+  the filesystem), `missingImageTools`, `runTool`.
+- The guest init grows the filesystem into its file at every boot
+  (`resize2fs /dev/vdb`, tolerated, right after the mount) and chowns the
+  home recursively on the first boot only (`demi.firstboot=1`), since
+  `mke2fs -d` keeps the backend user's ownership.
+- `packages/guest-image/`: `runner/build.sh` (musl tinyjs with
+  `guest-roots`, the bundle, `tinyjsc`), `kernel/build.sh` (Linux 6.1 on
+  Firecracker's microvm config plus `extra.config`), `rootfs/build.sh`
+  (debootstrap noble, `packages.txt`, the `demi` user with sudo, Bun/uv/
+  rustup in its home, the runner at `/demi-runner` and `/usr/bin/demi`,
+  `mke2fs -d`, shrunk). Scripts only; not a workspace package.
+- Tests: `home-image.test.ts` — the store and the parser everywhere, the
+  e2fsprogs round trip (make, `debugfs` reads the file back, shrink below
+  nominal, grow back, `e2fsck -fn` clean) where the tools exist. Run in
+  the Lima `fc` instance (Bun 1.4.0 installed there; the tree rsynced to
+  `~/demi` since the home mount is read-only): 3 pass. macOS: 2 pass, 1
+  skip. `bun test packages/backend`: 85 pass, 1 skip.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

@@ -42,7 +42,10 @@ in every other suite; the real-CLI chain in `claude-chain.e2e.test.ts`
 keeps its own gate), the tinybash grammar and builtins, the tinyjs
 primitives, the Host conformance cases, the pairing state machine
 (`runner.test.ts`), vault and provider assembly (`llm.test.ts`), the M6
-switch acceptance (`switch.test.ts`), the browser.
+switch acceptance (`switch.test.ts`), the home-image store and the image
+tools (`home-image.test.ts`; the e2fsprogs round trip runs where the tools
+are — the Linux fixture — and skips elsewhere), the guest init plan
+(`packages/runner`'s `init.test.ts`), the browser.
 
 ## The world
 
