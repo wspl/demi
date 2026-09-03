@@ -27,7 +27,7 @@ import type {
   SessionEvent,
 } from './types'
 import type { TurnRetryPolicy } from './retry-policy'
-import { createStandardAgentTools } from './tools'
+import { createStandardAgentTools, type ShellPreviewBudget } from './tools'
 import { AgentDirectory, ChildSupervisor, MAX_LIVE_SUBAGENTS, injectSubagentCommand } from './subagent'
 import { ProviderStreamError } from './provider-stream-error'
 
@@ -83,11 +83,11 @@ export interface AgentServerOptions {
   }
   tools?: {
     /**
-     * Fixed shell tool-result preview budget in tokens, applied to every
-     * session in the tree. Defaults to a budget derived from the current
-     * model's context window (see {@link shellPreviewBudgetTokens}).
+     * Shell tool-result preview budget in tokens as a function of the current
+     * model's context window, applied to every session in the tree. Defaults
+     * to the built-in 10k / 100k split at an 800k context window.
      */
-    shellPreviewBudgetTokens?: number
+    shellPreviewBudgetTokens?: ShellPreviewBudget
   }
   /**
    * Optional host-side shell prep (env, PATH, etc.). Implementation-agnostic —
@@ -149,7 +149,7 @@ export class AgentServer {
   private readonly prepareShell: PrepareShell | null
   private readonly notifyParentOnIdle: boolean
   private readonly maxLiveSubagents: number
-  private readonly shellPreviewBudgetTokens: number | null
+  private readonly shellPreviewBudgetTokens: ShellPreviewBudget | null
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -244,7 +244,7 @@ interface AgentTransportBindingOptions {
   prepareShell: PrepareShell | null
   notifyParentOnIdle: boolean
   maxLiveSubagents: number
-  shellPreviewBudgetTokens: number | null
+  shellPreviewBudgetTokens: ShellPreviewBudget | null
   sessions: SessionOwnershipRegistry
 }
 
@@ -257,7 +257,7 @@ class AgentTransportBindingImpl implements AgentTransportBinding {
   private readonly prepareShell: PrepareShell | null
   private readonly notifyParentOnIdle: boolean
   private readonly maxLiveSubagents: number
-  private readonly shellPreviewBudgetTokens: number | null
+  private readonly shellPreviewBudgetTokens: ShellPreviewBudget | null
   private readonly sessions: SessionOwnershipRegistry
   private session: AgentSession<unknown> | null = null
   private currentAgent: AgentHarness<unknown> | null = null
