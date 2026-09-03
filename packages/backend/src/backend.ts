@@ -13,6 +13,7 @@ import { STUB_USER } from './auth/identity'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { createHostlessShell, transpileCommandModule } from './conversation/hostless-shell'
+import { resolveExecutionTarget } from './conversation/execution-target'
 import { HOSTLESS_HOME } from './conversation/scoped-transport'
 import { createHostCommandGroup } from './managed/host-command'
 import { createApp } from './http/app'
@@ -142,14 +143,17 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     })
   }
 
-  // The execution target is resolved server-side from the conversation record:
-  // a workspace pointer routes to the device's stable RemoteHost (offline ⇒
-  // tool errors until the runner reattaches), no workspace ⇒ virtual.
+  // The execution target is resolved server-side from the conversation record
+  // (`sessions-and-targets.md` § The three states): a workspace or a
+  // session-bound managed host routes to the device's stable RemoteHost
+  // (offline ⇒ tool errors until the runner reattaches), neither ⇒ virtual.
   const hostFor = async (conversationId: string): Promise<Host> => {
     const conversation = await control.getConversation(conversationId)
-    const workspace = conversation?.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
-    if (workspace) return runnerRegistry.hostFor(workspace, conversationId, conversationStores.hostStore(conversationId))
-    return virtualHostFor(conversationId)
+    if (!conversation) return virtualHostFor(conversationId)
+    const target = await resolveExecutionTarget(control, conversation)
+    if (target.kind === 'hostless') return virtualHostFor(conversationId)
+    const path = target.kind === 'workspace' ? target.path : (runnerRegistry.deviceIdentity(target.deviceId)?.homeDir ?? '/')
+    return runnerRegistry.hostFor({ deviceId: target.deviceId, path }, conversationId, conversationStores.hostStore(conversationId))
   }
 
   const hostCommandDeps = {
@@ -167,7 +171,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     // session-less contexts get their own scratch namespace.
     host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
     commands: (ctx) => commandsFor(ctx.agentSessionId),
-    preamble: switchAnnouncementPreamble(control),
+    preamble: switchAnnouncementPreamble(control, runnerRegistry),
   })
   const agentServer = new AgentServer({
     agent: harness,

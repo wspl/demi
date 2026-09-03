@@ -56,7 +56,7 @@ export class VirtualHost implements Host {
     this.store = options.store
     this.defaultCwd = normalizePath(options.defaultCwd ?? '/workspace')
     this.directories = (options.directories ?? []).map((dir) => normalizePath(dir))
-    this.identity = options.identity ?? { uid: 1000, gid: 1000, hostname: 'virtual' }
+    this.identity = options.identity ?? { uid: 1000, gid: 1000, hostname: 'virtual', homeDir: this.defaultCwd }
     this.maxFileBytes = options.quota?.maxFileBytes ?? VIRTUAL_MAX_FILE_BYTES
     this.maxTotalBytes = options.quota?.maxTotalBytes ?? VIRTUAL_MAX_TOTAL_BYTES
     this.fs = this.createFs()

@@ -10,9 +10,19 @@ import type { SqlDatabase } from './database'
  */
 export interface ControlService {
   ensureUser(user: { id: string; username: string; role: 'master' | 'admin' | 'user' }): Promise<void>
-  createDevice(device: { userId: string; name: string; platform: string; tokenHash: string }): Promise<DeviceRecord>
+  /** A user device by default; a managed host names its owner (`managed-hosts.md` § What a managed host is). */
+  createDevice(device: {
+    userId: string
+    name: string
+    platform: string
+    tokenHash: string
+    kind?: DeviceKind
+    ownerConversationId?: string
+    ownerWorkspaceId?: string
+  }): Promise<DeviceRecord>
   getDevice(id: string): Promise<DeviceRecord | null>
   getDeviceByTokenHash(tokenHash: string): Promise<DeviceRecord | null>
+  /** The user's paired devices — managed hosts never appear in a device list. */
   listDevices(userId: string): Promise<DeviceRecord[]>
   deleteDevice(id: string): Promise<void>
   touchDeviceSeen(id: string): Promise<void>
@@ -39,20 +49,26 @@ export interface ControlService {
   countConversationsInWorkspace(workspaceId: string): Promise<number>
   setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void>
   /**
-   * The target-switch write: moves the workspace pointer and fills the prev
-   * slot in one compare-and-set — returns false (and writes nothing) when the
-   * pointer no longer equals `fromWorkspaceId`, so concurrent switches have
-   * exactly one winner. Overwriting an occupied prev slot IS the release of
-   * the departed target it held.
+   * The target-switch write (`sessions-and-targets.md` § Switching): moves
+   * the target pointers, records the switch for the next turn's announcement
+   * and grants the departed device, in one compare-and-set — returns false
+   * (and writes nothing) when the pointers no longer equal `from`, so
+   * concurrent switches have exactly one winner.
    */
-  switchConversationWorkspace(
+  switchConversationTarget(
     conversationId: string,
-    fromWorkspaceId: string | null,
-    toWorkspaceId: string | null,
-    prev: PrevTargetRecord,
+    from: ConversationTargetPointer,
+    to: ConversationTargetPointer,
+    pending: PendingSwitch,
+    grantDeviceId: string | null,
   ): Promise<boolean>
-  markConversationPrevAnnounced(conversationId: string): Promise<void>
-  clearConversationPrev(conversationId: string): Promise<void>
+  /** The announcement was injected; nothing is pending until the next switch. */
+  clearPendingSwitch(conversationId: string): Promise<void>
+  /** The grant set (`sessions-and-targets.md` § Host grants): idempotent add and remove. */
+  grantHost(conversationId: string, deviceId: string): Promise<void>
+  revokeHost(conversationId: string, deviceId: string): Promise<void>
+  listHostGrants(conversationId: string): Promise<HostGrantRecord[]>
+  isHostGranted(conversationId: string, deviceId: string): Promise<boolean>
   createConversation(userId: string, options?: { title?: string }): Promise<ConversationRecord>
   getConversation(id: string): Promise<ConversationRecord | null>
   listConversations(userId: string, options?: { archived?: boolean }): Promise<ConversationRecord[]>
@@ -64,13 +80,26 @@ export interface ControlService {
   touchConversation(id: string): Promise<void>
 }
 
+export type DeviceKind = 'user' | 'managed'
+
 export interface DeviceRecord {
   id: string
   userId: string
+  /** `user`: paired through the claim flow; `managed`: a VM the backend provisioned, bound to one owner. */
+  kind: DeviceKind
   name: string
   platform: string
+  /** Managed hosts only: exactly one of the two owners is set. */
+  ownerConversationId: string | null
+  ownerWorkspaceId: string | null
   claimedAt: string
   lastSeenAt: string | null
+}
+
+export interface HostGrantRecord {
+  conversationId: string
+  deviceId: string
+  grantedAt: string
 }
 
 export interface WorkspaceRecord {
@@ -114,13 +143,26 @@ export interface UsageRow {
   createdAt: string
 }
 
-/** The departed execution target a session can still reach via `demi host prev`. */
-export type PrevTarget = { kind: 'virtual' } | { kind: 'workspace'; deviceId: string; path: string }
+/**
+ * Where a conversation's commands run (`sessions-and-targets.md` § The three
+ * states), resolved from its record: a workspace, a session-bound managed
+ * host, or nothing.
+ */
+export type ExecutionTarget =
+  | { kind: 'hostless' }
+  | { kind: 'workspace'; workspaceId: string; deviceId: string; path: string }
+  | { kind: 'host'; deviceId: string }
 
-export interface PrevTargetRecord {
-  target: PrevTarget
-  /** True once the switch context block has been injected into a turn. */
-  announced: boolean
+/** The two mutually exclusive pointers on the conversation row; both null is hostless. */
+export interface ConversationTargetPointer {
+  workspaceId: string | null
+  hostDeviceId: string | null
+}
+
+/** A switch the model has not been told about yet: consumed by the next turn's announcement. */
+export interface PendingSwitch {
+  from: ExecutionTarget
+  to: ExecutionTarget
 }
 
 export interface ConversationRecord {
@@ -129,7 +171,8 @@ export interface ConversationRecord {
   title: string
   archived: boolean
   workspaceId: string | null
-  prevTarget: PrevTargetRecord | null
+  hostDeviceId: string | null
+  pendingSwitch: PendingSwitch | null
   connectionId: string | null
   modelId: string | null
   createdAt: string
@@ -142,7 +185,8 @@ interface ConversationRow {
   title: string
   archived: number
   workspace_id: string | null
-  prev_target_json: string | null
+  host_device_id: string | null
+  pending_switch_json: string | null
   connection_id: string | null
   model_id: string | null
   created_at: string
@@ -150,7 +194,7 @@ interface ConversationRow {
 }
 
 const SELECT =
-  'SELECT id, user_id, title, archived, workspace_id, prev_target_json, connection_id, model_id, created_at, updated_at FROM conversations'
+  'SELECT id, user_id, title, archived, workspace_id, host_device_id, pending_switch_json, connection_id, model_id, created_at, updated_at FROM conversations'
 
 /** In-process `ControlService` over the control database. */
 export class LocalControlService implements ControlService {
@@ -168,18 +212,35 @@ export class LocalControlService implements ControlService {
     name: string
     platform: string
     tokenHash: string
+    kind?: DeviceKind
+    ownerConversationId?: string
+    ownerWorkspaceId?: string
   }): Promise<DeviceRecord> {
     const record: DeviceRecord = {
       id: createId(),
       userId: device.userId,
+      kind: device.kind ?? 'user',
       name: device.name,
       platform: device.platform,
+      ownerConversationId: device.ownerConversationId ?? null,
+      ownerWorkspaceId: device.ownerWorkspaceId ?? null,
       claimedAt: new Date().toISOString(),
       lastSeenAt: null,
     }
     this.db.run(
-      'INSERT INTO devices (id, user_id, name, platform, token_hash, claimed_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [record.id, record.userId, record.name, record.platform, device.tokenHash, record.claimedAt, null],
+      'INSERT INTO devices (id, user_id, kind, name, platform, token_hash, owner_conversation_id, owner_workspace_id, claimed_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        record.id,
+        record.userId,
+        record.kind,
+        record.name,
+        record.platform,
+        device.tokenHash,
+        record.ownerConversationId,
+        record.ownerWorkspaceId,
+        record.claimedAt,
+        null,
+      ],
     )
     return record
   }
@@ -195,7 +256,7 @@ export class LocalControlService implements ControlService {
   }
 
   async listDevices(userId: string): Promise<DeviceRecord[]> {
-    const rows = this.db.all<DeviceRow>(`${DEVICE_SELECT} WHERE user_id = ? ORDER BY claimed_at`, [userId])
+    const rows = this.db.all<DeviceRow>(`${DEVICE_SELECT} WHERE user_id = ? AND kind = 'user' ORDER BY claimed_at`, [userId])
     return rows.map(deviceFromRow)
   }
 
@@ -399,38 +460,60 @@ export class LocalControlService implements ControlService {
     ])
   }
 
-  async switchConversationWorkspace(
+  async switchConversationTarget(
     conversationId: string,
-    fromWorkspaceId: string | null,
-    toWorkspaceId: string | null,
-    prev: PrevTargetRecord,
+    from: ConversationTargetPointer,
+    to: ConversationTargetPointer,
+    pending: PendingSwitch,
+    grantDeviceId: string | null,
   ): Promise<boolean> {
     return this.db.transaction(() => {
+      const now = new Date().toISOString()
       this.db.run(
-        'UPDATE conversations SET workspace_id = ?, prev_target_json = ?, updated_at = ? WHERE id = ? AND workspace_id IS ?',
-        [toWorkspaceId, JSON.stringify(prev), new Date().toISOString(), conversationId, fromWorkspaceId],
+        'UPDATE conversations SET workspace_id = ?, host_device_id = ?, pending_switch_json = ?, updated_at = ? WHERE id = ? AND workspace_id IS ? AND host_device_id IS ?',
+        [to.workspaceId, to.hostDeviceId, JSON.stringify(pending), now, conversationId, from.workspaceId, from.hostDeviceId],
       )
-      return (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+      const won = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+      if (won && grantDeviceId !== null) this.insertGrant(conversationId, grantDeviceId, now)
+      return won
     })
   }
 
-  async markConversationPrevAnnounced(conversationId: string): Promise<void> {
-    this.db.transaction(() => {
-      const row = this.db.get<{ prev_target_json: string | null }>(
-        'SELECT prev_target_json FROM conversations WHERE id = ?',
+  async clearPendingSwitch(conversationId: string): Promise<void> {
+    this.db.run('UPDATE conversations SET pending_switch_json = NULL WHERE id = ?', [conversationId])
+  }
+
+  async grantHost(conversationId: string, deviceId: string): Promise<void> {
+    this.insertGrant(conversationId, deviceId, new Date().toISOString())
+  }
+
+  async revokeHost(conversationId: string, deviceId: string): Promise<void> {
+    this.db.run('DELETE FROM conversation_host_grants WHERE conversation_id = ? AND device_id = ?', [conversationId, deviceId])
+  }
+
+  async listHostGrants(conversationId: string): Promise<HostGrantRecord[]> {
+    return this.db
+      .all<HostGrantRow>(
+        'SELECT conversation_id, device_id, granted_at FROM conversation_host_grants WHERE conversation_id = ? ORDER BY granted_at',
         [conversationId],
       )
-      if (!row?.prev_target_json) return
-      const prev = JSON.parse(row.prev_target_json) as PrevTargetRecord
-      this.db.run('UPDATE conversations SET prev_target_json = ? WHERE id = ?', [
-        JSON.stringify({ ...prev, announced: true }),
-        conversationId,
-      ])
-    })
+      .map((row) => ({ conversationId: row.conversation_id, deviceId: row.device_id, grantedAt: row.granted_at }))
   }
 
-  async clearConversationPrev(conversationId: string): Promise<void> {
-    this.db.run('UPDATE conversations SET prev_target_json = NULL WHERE id = ?', [conversationId])
+  async isHostGranted(conversationId: string, deviceId: string): Promise<boolean> {
+    return (
+      this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM conversation_host_grants WHERE conversation_id = ? AND device_id = ?', [
+        conversationId,
+        deviceId,
+      ])?.n ?? 0
+    ) > 0
+  }
+
+  private insertGrant(conversationId: string, deviceId: string, grantedAt: string): void {
+    this.db.run(
+      'INSERT INTO conversation_host_grants (conversation_id, device_id, granted_at) VALUES (?, ?, ?) ON CONFLICT (conversation_id, device_id) DO NOTHING',
+      [conversationId, deviceId, grantedAt],
+    )
   }
 
   async createConversation(userId: string, options: { title?: string } = {}): Promise<ConversationRecord> {
@@ -441,7 +524,8 @@ export class LocalControlService implements ControlService {
       title: options.title ?? 'New conversation',
       archived: false,
       workspaceId: null,
-      prevTarget: null,
+      hostDeviceId: null,
+      pendingSwitch: null,
       connectionId: null,
       modelId: null,
       createdAt: now,
@@ -506,10 +590,19 @@ export class LocalControlService implements ControlService {
 interface DeviceRow {
   id: string
   user_id: string
+  kind: DeviceKind
   name: string
   platform: string
+  owner_conversation_id: string | null
+  owner_workspace_id: string | null
   claimed_at: string
   last_seen_at: string | null
+}
+
+interface HostGrantRow {
+  conversation_id: string
+  device_id: string
+  granted_at: string
 }
 
 interface WorkspaceRow {
@@ -521,7 +614,7 @@ interface WorkspaceRow {
   created_at: string
 }
 
-const DEVICE_SELECT = 'SELECT id, user_id, name, platform, claimed_at, last_seen_at FROM devices'
+const DEVICE_SELECT = 'SELECT id, user_id, kind, name, platform, owner_conversation_id, owner_workspace_id, claimed_at, last_seen_at FROM devices'
 
 interface ConnectionRow {
   id: string
@@ -571,8 +664,11 @@ function deviceFromRow(row: DeviceRow): DeviceRecord {
   return {
     id: row.id,
     userId: row.user_id,
+    kind: row.kind,
     name: row.name,
     platform: row.platform,
+    ownerConversationId: row.owner_conversation_id,
+    ownerWorkspaceId: row.owner_workspace_id,
     claimedAt: row.claimed_at,
     lastSeenAt: row.last_seen_at,
   }
@@ -585,7 +681,8 @@ function fromRow(row: ConversationRow): ConversationRecord {
     title: row.title,
     archived: row.archived !== 0,
     workspaceId: row.workspace_id,
-    prevTarget: row.prev_target_json ? (JSON.parse(row.prev_target_json) as PrevTargetRecord) : null,
+    hostDeviceId: row.host_device_id,
+    pendingSwitch: row.pending_switch_json ? (JSON.parse(row.pending_switch_json) as PendingSwitch) : null,
     connectionId: row.connection_id,
     modelId: row.model_id,
     createdAt: row.created_at,

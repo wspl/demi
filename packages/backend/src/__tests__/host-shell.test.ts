@@ -104,7 +104,7 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
   for (let i = 0; i < payload.length; i += 1) payload[i] = (i * 31) & 0xff
   writeFileSync(join(a.home, 'notes.bin'), payload)
 
-  // The conversation starts on alpha and switches to beta: alpha is its previous host, hence reachable.
+  // The conversation starts on alpha and switches to beta: the switch granted alpha, hence reachable.
   const created = await api(backend, '/api/conversations', { method: 'POST' })
   const { conversation } = (await created.json()) as { conversation: { id: string } }
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: a.workspaceId }, 'PATCH')).status).toBe(200)
@@ -121,7 +121,7 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
   await client.send([{ type: 'text', text: 'copy the notes over' }])
   const copied = lastExited(shellEvents)
   expect(copied?.exitCode).toBe(0)
-  expect(copied?.stdout.delta).toContain(`${a.deviceId}  alpha  online  ${a.home}  (previous)`)
+  expect(copied?.stdout.delta).toContain(`${a.deviceId}  alpha  online  ${a.home}  (granted)`)
   expect(copied?.stdout.delta).toContain(`${b.deviceId}  beta  online  ${b.home}  (current)`)
   expect(copied?.stdout.delta).toContain('copied')
   expect(readFileSync(join(b.home, 'notes.bin')).equals(payload)).toBe(true)
@@ -143,7 +143,7 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
   expect(refused?.stderr.delta).toContain('host nope is not reachable')
   expect(refused?.stdout.delta).toContain('exit=1')
 
-  // Hostless caller: beta becomes the previous host, and the bytes land in this process's tinybash pipeline.
+  // Hostless caller: beta is granted by the switch, and the bytes land in this process's tinybash pipeline.
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: null }, 'PATCH')).status).toBe(200)
   await client.send([{ type: 'text', text: 'peek from nowhere' }])
   const peeked = lastExited(shellEvents)
