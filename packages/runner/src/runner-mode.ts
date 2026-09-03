@@ -21,9 +21,10 @@ import {
 import { HostRpcServer } from './serve/host-rpc-server'
 import { JobTable } from './serve/jobs'
 import type { Host } from '@demicodes/shell'
-import { delay, errorMessage } from '@demicodes/utils'
+import { collectBytes, delay, errorMessage } from '@demicodes/utils'
 import { ManifestCache } from './manifest-cache'
 import { RelayServer } from './relay/server'
+import { DirectoryHome, type HomeImage } from './init/home-image'
 import { RunnerState } from './state'
 import { TransferClient } from './transfers'
 
@@ -39,6 +40,14 @@ export interface RunnerModeOptions {
   deviceEnv: Record<string, string>
   /** Booted as a managed host: the hello says so, and a missing token is a refusal, not a pairing. */
   managed?: boolean
+  /** A token held in memory only — PID 1's, off the kernel command line — taking precedence over the state directory's. */
+  deviceToken?: string
+  /** The identity reported and the user every job and spawn runs as; PID 1 names the guest user here. */
+  guest?: { identity: Host['identity']; runAs: { uid: number; gid: number } }
+  /** The home as the guest sees it (default: a directory that only syncs). */
+  home?: HomeImage
+  /** How often the home's room is checked between jobs (default a minute; 0 disables). */
+  homeCheckMs?: number
   reconnect?: { initialDelayMs?: number; maxDelayMs?: number }
   log?: (line: string) => void
 }
@@ -53,16 +62,38 @@ export class RunnerMode {
   private readonly transfers: TransferClient
   private readonly wire = createRunnerWire({ encode: msgpackEncode, decode: msgpackDecode })
   private readonly log: (line: string) => void
+  private readonly home: HomeImage
   private stopped = false
   private link: WebSocketLink | null = null
   private relay: RelayServer | null = null
+  private homeCheckTimer: ReturnType<typeof setInterval> | null = null
+  private homeGrowPending = false
 
   constructor(private readonly options: RunnerModeOptions) {
-    this.host = createRunnerHost({ defaultCwd: identity.homeDir, storeDir: `${options.stateDir}/store` })
+    const guestIdentity = options.guest?.identity
+    this.host = createRunnerHost({
+      defaultCwd: guestIdentity?.homeDir ?? identity.homeDir,
+      storeDir: `${options.stateDir}/store`,
+      ...(options.guest ? { runAs: options.guest.runAs, identity: options.guest.identity } : {}),
+    })
     this.state = new RunnerState(this.host.fs, options.stateDir)
     this.cache = new ManifestCache(this.host.fs, this.state.commandsDir, this.state.binDir, options.executable)
-    this.transfers = new TransferClient(options.backendUrl, () => this.state.readToken())
+    this.transfers = new TransferClient(options.backendUrl, () => this.token())
     this.log = options.log ?? ((line) => console.error(line))
+    this.home = options.home ?? new DirectoryHome({ run: (command, args) => this.command(command, args) })
+  }
+
+  /** The device token: the one held in memory, else the state directory's. */
+  private async token(): Promise<string | null> {
+    return this.options.deviceToken ?? this.state.readToken()
+  }
+
+  /** A command from the runner's own machine, run to its end — the home's `sync`, `df`, `resize2fs`. */
+  private async command(command: string, args: string[]): Promise<{ code: number | null; stdout: Uint8Array }> {
+    const child = await this.host.process.spawn!({ command, args })
+    await child.closeStdin()
+    const [stdout, exit] = await Promise.all([collectBytes(child.stdout), child.wait()])
+    return { code: exit.exitCode, stdout }
   }
 
   /** Runs until stopped; resolves when the runner was told to stop or the backend refused it for good. */
@@ -76,7 +107,10 @@ export class RunnerMode {
       send: (message) => this.sendToBackend(message),
       manifest: () => this.cache.current(),
       download: (url) => this.transfers.download(url),
+      ...(this.options.guest ? { socketMode: 0o666 } : {}),
     })
+    const checkMs = this.options.homeCheckMs ?? 60_000
+    if (checkMs > 0) this.homeCheckTimer = setInterval(() => void this.checkHome(), checkMs)
     try {
       while (!this.stopped) {
         this.log('connecting…')
@@ -89,8 +123,27 @@ export class RunnerMode {
       }
       return 'stopped'
     } finally {
+      if (this.homeCheckTimer) clearInterval(this.homeCheckTimer)
+      this.homeCheckTimer = null
       this.relay.close()
       this.relay = null
+    }
+  }
+
+  /**
+   * The home growth request (`managed-hosts.md` § Home persistence): when
+   * the filesystem nears its cap, ask once; `home_grown` closes the
+   * request by growing the filesystem into the enlarged image.
+   */
+  private async checkHome(): Promise<void> {
+    if (this.homeGrowPending || !this.link) return
+    try {
+      const bytes = await this.home.wanted()
+      if (bytes === null || !this.link) return
+      this.homeGrowPending = true
+      this.sendToBackend({ type: 'home_grow', bytes })
+    } catch (error) {
+      this.log(`home check failed: ${errorMessage(error)}`)
     }
   }
 
@@ -103,6 +156,8 @@ export class RunnerMode {
     const link = this.link
     if (!link) throw new Error('runner: not connected')
     void link.send(this.wire.encode(message)).catch(() => {})
+    // A job that just ended may have filled the home.
+    if (message.type === 'job_exit') void this.checkHome()
   }
 
   /** One connection: hello, then the message loop until the socket closes. */
@@ -126,6 +181,7 @@ export class RunnerMode {
         rm: (path) => this.host.fs.rm(path, { force: true }),
       },
       deviceEnv: this.options.deviceEnv,
+      ...(this.options.guest ? { runAs: this.options.guest.runAs } : {}),
       pathPrefix: [this.state.binDir],
       // Command-mode processes find the relay socket and the manifest cache here.
       fixedEnv: { DEMI_HOME: this.options.stateDir },
@@ -133,7 +189,7 @@ export class RunnerMode {
     })
     let outcome: 'closed' | 'online' | 'rejected' = 'closed'
     try {
-      const deviceToken = await this.state.readToken()
+      const deviceToken = await this.token()
       await link.send(
         this.wire.encode({
           type: 'hello',
@@ -192,6 +248,25 @@ export class RunnerMode {
       case 'ping':
         this.sendToBackend({ type: 'pong', jobs: ends.jobs.count })
         return undefined
+      case 'sync': {
+        let untouched = false
+        try {
+          untouched = (await this.home.sync()).untouched
+        } catch (error) {
+          this.log(`sync failed: ${errorMessage(error)}`)
+        }
+        this.sendToBackend({ type: 'sync_done', id: message.id, untouched })
+        return undefined
+      }
+      case 'home_grown':
+        this.homeGrowPending = false
+        try {
+          await this.home.grown(message.bytes)
+          this.log(`home grown to ${message.bytes} bytes`)
+        } catch (error) {
+          this.log(`home growth failed: ${errorMessage(error)}`)
+        }
+        return undefined
       case 'manifest':
         try {
           const manifest = await this.cache.install(message.manifest)
@@ -240,7 +315,7 @@ export class RunnerMode {
 }
 
 /** Reported in `hello`; bumped with the runner program. */
-export const RUNNER_VERSION = '0.20.0'
+export const RUNNER_VERSION = '0.21.0'
 
 /** `--backend https://demi.example.com` ⇒ `wss://demi.example.com/api/runner`; an explicit path is kept as-is. */
 export function runnerSocketUrl(backendUrl: string): string {

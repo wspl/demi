@@ -11,7 +11,7 @@ import { readHandle } from './stdio'
  * env passed (the process's own when none is), a stdin pipe, and its own
  * process group when the caller wants to kill the group.
  */
-export function createRunnerProcess(defaultCwd: string): HostProcess {
+export function createRunnerProcess(defaultCwd: string, runAs?: { uid: number; gid: number }): HostProcess {
   return {
     openCwd: openRunnerCwd,
     spawn: async (params) => {
@@ -25,6 +25,7 @@ export function createRunnerProcess(defaultCwd: string): HostProcess {
           env: params.env ? definedEnv(params.env) : { ...processEnv },
           stdin: 'pipe',
           processGroup: params.killProcessGroup === true,
+          ...(runAs ?? {}),
         })
       } catch (error) {
         return failedSpawn(await classifySpawnFailure(error, cwd))

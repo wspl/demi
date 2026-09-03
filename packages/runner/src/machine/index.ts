@@ -5,5 +5,5 @@ export { connectWebSocket, connectUnix, listenUnix, type StreamSocket, type Unix
 export { msgpackDecode, msgpackEncode } from 'tinyjs:bytes'
 // The process itself, for the runner and the command-mode entry: the only
 // way they touch the tinyjs API.
-export { argv, cwd, env, exit, fdNode, identity, onSignal, openHandles, version } from 'tinyjs:runtime'
+export { argv, cwd, env, exit, fdNode, identity, onSignal, openHandles, pid, version } from 'tinyjs:runtime'
 export { httpGet, httpUploadFile, writeStreamToFile, type HttpResponse } from './http'

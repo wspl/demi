@@ -22,6 +22,8 @@ export interface JobSpawnParams {
   env: Record<string, string>
   /** Where the full streams go; the handle's streams yield the view only. */
   tee: { stdoutPath: string; stderrPath: string; viewLimit: number }
+  uid?: number
+  gid?: number
 }
 
 export interface JobSpawnHandle extends Omit<HostSpawnHandle, 'output' | 'wait'> {
@@ -46,6 +48,8 @@ export interface JobTableOptions {
   pathPrefix?: string[]
   /** Entries set in every job's env regardless of what the backend named: where the runner lives (`DEMI_HOME`). */
   fixedEnv?: Record<string, string>
+  /** Every job runs as this user: PID 1 spawning as the guest user. */
+  runAs?: { uid: number; gid: number }
   send(message: RunnerToBackendMessage): void
 }
 
@@ -117,6 +121,7 @@ export class JobTable {
           [JOB_STDIN_FD_VAR]: String(JOB_STDIN_FD),
         },
         tee: { stdoutPath, stderrPath, viewLimit: JOB_VIEW_BYTES },
+        ...(this.options.runAs ?? {}),
       })
     } catch (error) {
       this.options.send({ type: 'job_exit', jobId, exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })

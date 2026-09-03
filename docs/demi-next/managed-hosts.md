@@ -110,16 +110,26 @@ It is not the content-addressed blob store: an image is one object with one
 current version, streamed in and out (never a `Uint8Array` in the backend
 heap). Sizing:
 
-- Images start at a **small nominal size** and grow online: the backend
-  `truncate`s the backing file and the runner runs `resize2fs` in the
-  guest when usage nears the cap. An empty home therefore costs a few MB,
-  not the inode tables of a large nominal size.
+- Images start at a **small nominal size** and grow online: the runner
+  checks the home's room after every job and once a minute (`df`), and
+  when less than a tenth of it or 256 MB is free sends `home_grow` asking
+  for twice the current size; the backend `truncate`s the backing file,
+  tells Firecracker to rescan the drive, and answers `home_grown`, on
+  which the runner runs `resize2fs`. One request is in flight at a time.
+  An empty home therefore costs a few MB, not the inode tables of a large
+  nominal size.
 - Firecracker's virtio-block passes no discard, so a live image is a
   high-water mark. On hibernate the backend **shrinks** it offline
   (`e2fsck -f`, `resize2fs -M`, `truncate`; about 0.1 s) to retained data
   plus metadata, and re-grows it on wake (about 0.01 s).
-- If the runner reports the home untouched since wake, hibernation
-  **skips the upload**.
+- Hibernate starts with a `sync` message; the runner flushes the home and
+  answers `sync_done { untouched }`. **Untouched** is the block layer's own
+  count: the sectors written to the home device in `/proc/diskstats`,
+  taken as a baseline right after the mount, unchanged at the `sync`. A
+  guest that is offline or silent past the sync timeout counts as touched.
+  Untouched, hibernation **skips the upload**. The runner's own state (its
+  socket, command cache, job output) lives on the upper, never in the
+  home, so its bookkeeping cannot touch the count.
 
 Timing:
 
@@ -161,11 +171,20 @@ provision ──▶ running ──▶ hibernated ──▶ running (wake) ──
   action needing the host triggers it — a latency, not an error; idempotent
   per owner (at most one active VM per owner; concurrent triggers join the
   same wake). `demi host shell --id` on a hibernated granted host wakes it.
-- **Runner is PID 1** (`init=/demi-runner`, root): mounts `/proc`, `/sys`,
-  `/tmp`, the upper and `/home`, configures the network from the kernel
-  command line, reaps zombies, handles `SIGTERM`. It spawns every job and
-  process as the **guest user `demi`** (uid 1000, home `/home/demi`,
-  `HOME` and `PATH` set), who has **passwordless `sudo`**: `sudo apt
+- **Runner is PID 1** (`init=/demi-runner`, root; the binary knows it by
+  its pid, no flag): mounts `/proc`, `/sys`, `/dev`, `/run`; assembles the
+  upper — a tmpfs as the upper and work directories of an overlay over the
+  read-only rootfs — under `/run/newroot`, moves the kernel filesystems in
+  and `pivot_root`s it to `/` (the rootfs stays reachable at `/oldroot`);
+  mounts the home image (`/dev/vdb`) at `/home` and a tmpfs at `/tmp`;
+  configures the network (`ip`) from the kernel command line and writes
+  `/etc/resolv.conf`; reaps zombies; handles `SIGTERM` by stopping the
+  runner and exiting. Every step is a command from the rootfs, not a
+  primitive. Its state directory is `/var/lib/demi` on the upper — jobs
+  find it through `DEMI_HOME` — and the relay socket there is mode 0666 so
+  the guest user's command-mode processes can reach it. It spawns every job
+  and process as the **guest user `demi`** (uid 1000, home `/home/demi`,
+  `HOME`, `USER` and `PATH` set), who has **passwordless `sudo`**: `sudo apt
   install` works into the ephemeral upper, while tools that refuse to run
   as root (Linuxbrew, some package managers) work as themselves. The VM is
   single-tenant, so the user boundary is not a security boundary; it
@@ -182,9 +201,11 @@ provision ──▶ running ──▶ hibernated ──▶ running (wake) ──
 The backend pre-creates the device row (`kind: 'managed'`, token hash only)
 and passes the token plaintext on the **kernel command line** (`boot_args`),
 minted fresh at every spawn — provision or wake — so it rotates per VM
-lifetime and never touches persistent disk. The runner reads
-`/proc/cmdline` (it needs the command line for the backend URL and network
-configuration anyway) and starts on the `hello` path. **A managed runner
+lifetime and never touches persistent disk. The parameters are
+`demi.backend=<url>`, `demi.token=<token>`, and for the network
+`demi.ip=<address/prefix>`, `demi.gw=<gateway>`, `demi.dns=<a,b>`. The
+runner reads `/proc/cmdline`, keeps the token in memory only — it never
+writes `runner-token` — and starts on the `hello` path. **A managed runner
 without a token receives `hello_error` and never `claim_pending`** — a
 managed VM never appears in a user's pairing flow.
 
