@@ -51,7 +51,8 @@ export async function bootGuest(host: Host, log: (line: string) => void, layout:
   await home.baseline()
   await host.fs.mkdir(GUEST_STATE_DIR, { recursive: true })
   await host.fs.mkdir(GUEST_USER.homeDir, { recursive: true })
-  await run('chown', [`${GUEST_USER.uid}:${GUEST_USER.gid}`, GUEST_USER.homeDir])
+  // A freshly made image carries the backend user's ownership (`mke2fs -d`); every later boot finds the guest user's.
+  await run('chown', [...(config.firstBoot ? ['-R'] : []), `${GUEST_USER.uid}:${GUEST_USER.gid}`, GUEST_USER.homeDir])
   return { config, home, stateDir: GUEST_STATE_DIR }
 }
 
