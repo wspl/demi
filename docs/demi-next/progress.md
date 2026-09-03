@@ -2424,6 +2424,29 @@ cannot echo an exit status — `|| echo refused` instead. The runner suite's
 `jobs.test.ts` fails on this machine independently of the change: the
 developer's `~/.bashrc` sources a file under an empty `HOME`.
 
+### Checkpoint 2 rulings (2026-09-03)
+
+- The provisioner seam owns the VM and nothing else: `provision(owner,
+  homeDir, bootArgs)`, `wake`, `hibernate`, `checkpoint`, `destroy`, a
+  death notification. The Firecracker implementation composes the image
+  tools (`mke2fs -d`, shrink, grow) and the home-image store inside
+  itself; the fake implementation runs a local tinyjs runner over
+  `homeDir` and keeps the directory across hibernate and wake. The
+  lifecycle never touches an image, so every flow runs on macOS through
+  the fake. The untouched-skip needs a runner report and lands with the
+  wire work of checkpoint 5.
+- `hello.runner.managed` marks a runner booted as init; managed without a
+  token is `hello_error unknown_device`, never a pairing code.
+- Owner keys are `conversation:<id>` and `workspace:<id>`; the managed
+  device row is created at provision (name `cloud`), its token minted
+  fresh at every provision and wake (`rotateDeviceToken`).
+- The idle rule reads `sessionPhase` and `pong.jobs`; the registry gains
+  `pauseLiveness` / `resumeLiveness` for the checkpoint pause. Defaults,
+  all in `managedHosts` config: idle 10 min, hard cap 24 h, checkpoint
+  every 15 min, crash loop 3 deaths in 10 min, 10 managed hosts per user.
+- `BackendOptions.managedHosts` is optional; without it the upgrade hook
+  reports the missing machine as an ordinary tool error.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
