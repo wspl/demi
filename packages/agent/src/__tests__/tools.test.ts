@@ -22,10 +22,10 @@ test('standard shell tool schemas do not expose model-controlled output budgets 
 })
 
 test('shell preview budget follows the 800k context threshold', () => {
-  expect(shellPreviewBudgetTokens(0)).toBe(1_000)
-  expect(shellPreviewBudgetTokens(799_999)).toBe(1_000)
-  expect(shellPreviewBudgetTokens(800_000)).toBe(10_000)
-  expect(shellPreviewBudgetTokens(2_000_000)).toBe(10_000)
+  expect(shellPreviewBudgetTokens(0)).toBe(10_000)
+  expect(shellPreviewBudgetTokens(799_999)).toBe(10_000)
+  expect(shellPreviewBudgetTokens(800_000)).toBe(100_000)
+  expect(shellPreviewBudgetTokens(2_000_000)).toBe(100_000)
 })
 
 test('shell tool result exposes artifact refs and bounded preview without stdout body sections', () => {
@@ -89,7 +89,8 @@ test('completed short shell_exec hides and releases the command handle', async (
 
 test('completed truncated shell_exec keeps the command handle for artifacts', async () => {
   const released: string[] = []
-  const output = `${'x'.repeat(4_200)}tail`
+  // Default budget for a small-context model is 10k tokens → 40k chars.
+  const output = `${'x'.repeat(40_200)}tail`
   const tools = createStandardAgentTools({
     environment: {
       exec: async () => shellSnapshot(output),
@@ -110,6 +111,26 @@ test('completed truncated shell_exec keeps the command handle for artifacts', as
   expect(text).toContain('stdoutPath: /artifacts/session-1/cmd-1/stdout.txt')
   expect(text).toContain('previewTruncated: true')
   expect(released).toEqual([])
+})
+
+test('a fixed preview budget replaces the context-window heuristic', async () => {
+  const tools = createStandardAgentTools({
+    environment: {
+      exec: async () => shellSnapshot(`${'x'.repeat(100)}tail`),
+      releaseCommand: async () => true,
+    } as unknown as BashEnvironment,
+    scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
+    previewBudgetTokens: 10,
+  })
+  const shellExec = tools.find((tool) => tool.name === 'shell_exec')
+  if (!shellExec) throw new Error('missing shell_exec')
+
+  const result = await shellExec.invoke(toolContext(), { script: 'printf long', timeoutMs: 1 })
+  const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
+
+  expect(text).toContain('previewBudgetTokens: 10')
+  expect(text).toContain('previewTruncated: true')
+  expect(text).not.toContain('tail')
 })
 
 test('shell command handles are required only for running or over-budget output', () => {
