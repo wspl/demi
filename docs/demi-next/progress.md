@@ -2284,6 +2284,86 @@ Plan (each a commit): the world, the model queue and the driver with S1 on
 both targets; S2–S9 in order; R1–R4 with R2's verdict recorded here; the
 two moved tests deleted from `backend.test.ts`; the verification row.
 
+## M11 — Access model and managed hosts (2026-09-03)
+
+Status: planned — the checkpoint order below, decided before any code;
+each checkpoint is a commit and ends runnable.
+
+What the code holds against the two records (`sessions-and-targets.md`,
+`managed-hosts.md`) at the start of M11:
+
+- `control.sqlite` has no `conversation_host_grants`, no
+  `devices.kind` / owner columns, no `conversations.host_device_id`. The
+  prev slot (`prev_target_json`, `PrevTarget`, `demi host prev shell` /
+  `release`, the `announced` flag) is still the mechanism behind switching;
+  the records replace it with the grant set and M6's roadmap entry says so.
+- `demi host list` / `current` / `shell --id` exist (`managed/host-command.ts`)
+  over the current target and the prev slot; `reachableHosts` is the one
+  place the grant set plugs into, as the record intends.
+- tinybash reports a script outside the subset as `{ kind: 'outside' }`
+  and `HostlessEnvironment` turns that into exit 2 with the refusal text.
+  That is M8's stand-in for the upgrade: M11 replaces the exit with the
+  provision-bind-run path.
+- The hostless files live as a real directory under
+  `<dataDir>/virtual/<conversationId>` (`scopedFsBackend`), not as the
+  `files` tree with blobs that the 2026-09-02 decision and `storage.md`
+  describe. Raised as a topic under checkpoint 3, where the home image is
+  built from them.
+- The wire already carries what the lifecycle reads: `pong { jobs }`,
+  `hello_error`; `RunnerRegistry.runningJobs` and `AgentServer.sessionPhase`
+  give the idle rule its two inputs. Nothing exists for `sync` before a
+  kill, for the home-image growth request, or for a token on the kernel
+  command line.
+- tinyjs spawns with `uid`/`gid` (the guest-user drop); it has no mount,
+  reboot or `/proc/cmdline` path, which PID 1 needs.
+- The scenario world pairs packed tinyjs runners as user devices with a
+  workspace each; the fake provisioner reuses that runner as the "VM".
+
+Checkpoints, lowest dependency first:
+
+1. **Access model.** The schema made final in the init migration (no
+   deployment exists to migrate): `devices.kind`, `owner_conversation_id`,
+   `owner_workspace_id`; `conversations.host_device_id`;
+   `conversation_host_grants`. Resolution order workspace → session-bound
+   host → hostless. The prev slot deleted: switching grants the departed
+   host, the announcement names it and points at `demi host shell --id`.
+   `demi host list` / `current` / `shell --id` over the grant set, the
+   grant check in `reachableHosts`; the devices API gains grant and revoke
+   per conversation and hides managed devices. Tests: grant authz, the
+   switch scenario's announcement, the M6 switch acceptance re-pointed.
+2. **The provisioner seam and the lifecycle**, against a fake provisioner
+   and a local runner: `ManagedHostProvisioner` (provision, wake,
+   hibernate, destroy) and the home-image store seam; the managed device
+   row pre-created with its token; a managed hello without a token refused
+   and never pending a claim; one active VM per owner with concurrent
+   wakes joined; the idle rule (no in-flight turn and `pong.jobs = 0` for
+   the window; the hard cap), hibernate, wake on the next action needing
+   the host, the periodic checkpoint with the liveness exemption, the
+   crash-loop guard, the per-user host-count cap, destroy on archive or
+   delete; the `managedHosts` config. Owner-scoped authz on every check.
+3. **The session upgrade.** `HostlessEnvironment` hands an outside script
+   to an injected upgrade hook instead of exiting; the backend builds the
+   home from the hostless files, provisions, binds `host_device_id`, hands
+   tinybash's cwd and variables to the first bash job, and runs the script
+   whole there; `/tmp` placed; nothing enters the transcript. The
+   split-equivalence test (deferred from M8) and an S10 scenario in the
+   suite. Topic to rule on first: the hostless files' form.
+4. **Cloud workspaces.** The Cloud device choice on workspace creation
+   provisions a host owned by the workspace with an empty home; every
+   conversation under it runs there; idle counts turns across them.
+5. **The runner as PID 1.** The tinyjs primitives init needs (mount, the
+   command line, reaping, network configuration, reboot) and the runner's
+   init mode: token and backend URL from `/proc/cmdline`, the mounts, jobs
+   spawned as `demi`, `SIGTERM`; the `sync` message and the home growth
+   request on the wire. Verified in a Linux container under a PID
+   namespace where possible; the rest in the smoke.
+6. **Images and Firecracker.** The guest kernel and rootfs pipeline (the
+   preinstalled toolchain, `demi` with sudo, tinyjs as `/demi-runner` and
+   `/usr/bin/demi`), the image tools (`mke2fs -d`, shrink, grow), the
+   Firecracker provisioner under jailer with the privileged helper, tap
+   networking and the egress rules; the env-gated smoke on Linux with
+   `/dev/kvm` recording cold-provision and wake latency.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
