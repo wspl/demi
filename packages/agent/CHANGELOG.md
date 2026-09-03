@@ -1,5 +1,18 @@
 # @demicodes/agent
 
+## 0.23.0
+
+### Minor Changes
+
+- 6b0229c: Shell tool-result preview budgets are ten times larger (10k tokens below an 800k context window, 100k at and above), and `AgentServerOptions.tools.shellPreviewBudgetTokens` (`(contextWindow) => tokens`) replaces that split for the root session and every subagent.
+
+### Patch Changes
+
+- @demicodes/core@0.23.0
+- @demicodes/provider@0.23.0
+- @demicodes/shell@0.23.0
+- @demicodes/utils@0.23.0
+
 ## 0.22.1
 
 ### Patch Changes
