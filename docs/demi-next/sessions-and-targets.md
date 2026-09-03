@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (switching and offline semantics delivered in M6; hostless in M8; grants and auto-provision in M11) |
+| Status | Delivered (switching and offline semantics in M6; hostless in M8; grants, the session upgrade and managed hosts in M11) |
 | Scope | A conversation's execution target: the three states, hostless execution, switching, grants, offline behaviour, what persists where |
 
 ## The session
