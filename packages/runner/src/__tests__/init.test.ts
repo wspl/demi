@@ -22,7 +22,9 @@ test('the guest configuration: backend, token, network; backend or token missing
   expect(config.backendUrl).toBe('https://demi.example.com')
   expect(config.deviceToken).toBe('tok-123')
   expect(config.network).toEqual({ address: '172.16.5.2/30', gateway: '172.16.5.1', dns: ['1.1.1.1', '8.8.8.8'] })
+  expect(config.firstBoot).toBe(false)
   expect(guestBootConfig('demi.backend=http://b demi.token=t').network).toBeNull()
+  expect(guestBootConfig('demi.backend=http://b demi.token=t demi.firstboot=1').firstBoot).toBe(true)
   expect(() => guestBootConfig('demi.token=t')).toThrow('demi.backend')
   expect(() => guestBootConfig('demi.backend=http://b')).toThrow('demi.token')
   expect(resolvConf(config.network!)).toBe('nameserver 1.1.1.1\nnameserver 8.8.8.8\n')
@@ -36,9 +38,10 @@ test('the plan: kernel filesystems, the upper pivoted over /, the home, the netw
   expect(at('-t overlay')).toBeGreaterThan(at('-t tmpfs upper /run/upper'))
   expect(at('pivot_root /run/newroot /run/newroot/oldroot')).toBeGreaterThan(at('--move /proc /run/newroot/proc'))
   expect(at('-t ext4 /dev/vdb /home')).toBeGreaterThan(at('pivot_root'))
+  expect(at('resize2fs /dev/vdb')).toBe(at('-t ext4 /dev/vdb /home') + 1)
   expect(at('ip addr add 172.16.5.2/30 dev eth0')).toBeGreaterThan(at('-t ext4'))
   expect(lines[lines.length - 1]).toBe('ip route add default via 172.16.5.1 dev eth0')
-  expect(plan.filter((step) => step.tolerated).map((step) => step.args.join(' '))).toEqual(['-t devtmpfs dev /dev'])
+  expect(plan.filter((step) => step.tolerated).map((step) => step.args.join(' '))).toEqual(['-t devtmpfs dev /dev', '/dev/vdb'])
 })
 
 test('runInit stops at the first fatal failure and skips a tolerated one', async () => {
