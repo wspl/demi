@@ -2822,7 +2822,7 @@ the work tree removed) passes the same smoke with a clean console.
 
 ## M12 — Multi-user systems (2026-09-03)
 
-Status: in progress — four checkpoints, each a commit: (1) identity and
+Status: delivered — four checkpoints, each a commit: (1) identity and
 sessions, (2) the admin surface, (3) instance-mode enforcement, (4) the
 tenant-isolation matrix and the frozen API table.
 
@@ -2937,6 +2937,30 @@ What the code holds against `product.md` at the start of M12:
   refused) and isolated (own listings and catalog, another user's
   connection 404 everywhere, the selection guard, ledgers apart).
   Backend suite: 96 pass, 2 skip.
+
+### Checkpoint 4: the tenant-isolation matrix (2026-09-03) — delivered; M12 closed
+
+- `isolation.test.ts`: alice with a paired runner, a workspace on it, a
+  conversation with a grant and an attachment; fifteen routes naming her
+  objects tried by bob and by the master (transcript, rename, archive,
+  the grant set both ways, the workspace-file drop, bob's own
+  conversation switched to her workspace or granted her device, device
+  revoke and browse, workspace rename/delete/create-on-her-device): 404
+  each; her stream refused to both; their lists empty. The attachment
+  reference inbound already checks the owner (`attachment-refs.ts`); the
+  blob route stays content-addressed — the hash is the capability, and it
+  is only ever handed out inside an owned transcript.
+- The matrix found one defect: revoking a device under a workspace
+  pointer failed on the foreign key with a 500. Final state: `DELETE
+  /api/devices/:id` is 409 `device_in_use` while workspaces point at the
+  device (the mirror of the workspace rule), and `deleteDevice` drops
+  the device's grants with it. Then the runner is refused for good, and
+  re-pairing the machine is a fresh claim — by any user; the old id is
+  gone for everyone.
+- `backend.md`'s endpoint table is the frozen surface: the `commands`
+  row went (the manifest rides the runner socket since M9; no such
+  routes exist), the setup and password rows came, the scoped rows say
+  so. Backend suite: 97 pass, 2 skip.
 
 ## Open items (deferred, with their milestone)
 

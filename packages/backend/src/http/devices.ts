@@ -34,6 +34,9 @@ export function deviceRoutes(options: { control: ControlService; registry: Runne
     if (!device || device.userId !== c.get('user').id) {
       return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
     }
+    // A workspace is a pointer at a device; revoking under it would dangle it, so the workspace goes first.
+    const inUse = await control.countWorkspacesOnDevice(device.id)
+    if (inUse > 0) return c.json({ code: 'device_in_use', message: `${inUse} workspace(s) still point at this device` }, 409)
     await registry.revoke(device.id)
     return c.body(null, 204)
   })
