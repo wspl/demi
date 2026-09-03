@@ -30,6 +30,10 @@ Guidance on picking the right tool when handling data of uncertain shape:
 - Never re-implement, copy-paste, or create a same-purpose-but-differently-named helper; reuse the existing one and merge duplicates/similar functions instead of adding another.
 - Only truly generic code goes in `@demicodes/utils`; domain helpers stay in their owning package (provider wire mapping in the provider kit, `TokenUsage` helpers in `@demicodes/core`, etc.).
 
+## Presenting Designs
+
+- When presenting a design, a plan, or any structure with more than a few moving parts to the user, prefer an ASCII diagram over a list of bullet points whenever the content can be drawn: layers and who calls whom, a lifecycle as a timeline, the branches of a decision. Draw it with a named concrete example (a user, a conversation id), carry enough context that the picture stands on its own, and avoid ambiguous arrows or labels. Bullets remain for what cannot be drawn.
+
 ## Design Records
 
 - Keep project documentation under `docs/`.
