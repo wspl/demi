@@ -26,13 +26,13 @@ async function json(backend: TestBackend, path: string, body: unknown, method = 
   return api(backend, path, { method, body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
 }
 
-function selectionFor(connectionId: string) {
+function selectionFor(providerId: string) {
   const model: ModelSelection = {
-    providerId: connectionId,
+    providerId: providerId,
     model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
-  return { providerId: connectionId, model }
+  return { providerId: providerId, model }
 }
 
 async function openClient(backend: TestBackend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
@@ -78,9 +78,9 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
     port: 0,
     runner: { pingIntervalMs: 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },
     providerTypes: {
-      stub: ({ connectionId, label }) =>
+      stub: ({ providerId, label }) =>
         defineProvider({
-          id: connectionId,
+          id: providerId,
           displayName: label,
           createRuntime: () =>
             new StubProvider([
@@ -94,8 +94,8 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
         }),
     },
   })
-  const connection = (await (await json(backend, '/api/connections', { type: 'stub', label: 'Stub', apiKey: 'k' })).json()) as { connection: { id: string } }
-  const selection = selectionFor(connection.connection.id)
+  const provider = (await (await json(backend, '/api/providers', { providerType: 'stub', label: 'Stub', apiKey: 'k' })).json()) as { provider: { id: string } }
+  const selection = selectionFor(provider.provider.id)
 
   const a = await pairDevice(backend, 'alpha')
   const b = await pairDevice(backend, 'beta')

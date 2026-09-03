@@ -3,15 +3,15 @@ import { join } from 'node:path'
 import type { ProviderCredentialLoginOptions, ProviderCredentialLoginResult } from '@demicodes/provider'
 import { createId, errorMessage } from '@demicodes/utils'
 import type { ProviderAssembly } from '../llm/assembly'
-import type { ConnectionVault } from './connections'
+import type { ProviderVault } from './providers'
 
 export type SubscriptionLoginState =
   | { status: 'pending'; verificationUrl: string | null; userCode: string | null }
-  | { status: 'completed'; connectionId: string }
+  | { status: 'completed'; providerId: string }
   | { status: 'failed'; message: string }
 
 interface LoginFlow {
-  type: string
+  providerType: string
   label: string
   ownerUserId: string | null
   pendingDir: string
@@ -22,33 +22,33 @@ interface LoginFlow {
  * Subscription device-login flows: the provider runs its vendor's public
  * protocol natively against a throwaway credential pool; the web UI shows
  * the pending verification URL/code and polls. On completion the pool
- * directory becomes the new connection's vault directory and the connection
+ * directory becomes the new provider's vault directory and the provider
  * row is created — nothing token-shaped ever crosses the HTTP surface.
  */
 export class SubscriptionLoginFlows {
   private readonly flows = new Map<string, LoginFlow>()
 
   constructor(
-    private readonly vault: ConnectionVault,
+    private readonly vault: ProviderVault,
     private readonly assembly: ProviderAssembly,
     private readonly options: { vaultRoot: string },
   ) {}
 
-  /** Starts one login for the connection scope's owner; returns its poll id, or null for a type without a native login flow. */
-  start(type: string, label: string, ownerUserId: string | null): { id: string } | null {
+  /** Starts one login for the provider scope's owner; returns its poll id, or null for a type without a native login flow. */
+  start(providerType: string, label: string, ownerUserId: string | null): { id: string } | null {
     const id = createId()
     const pendingDir = join(this.options.vaultRoot, `pending-${id}`)
     let begin: ((options?: ProviderCredentialLoginOptions) => Promise<ProviderCredentialLoginResult>) | undefined
     try {
       // API-key types refuse subscription configs at construction — same answer: no login flow.
-      const provider = this.assembly.buildDetached(type, { id, label, vaultDir: pendingDir })
+      const provider = this.assembly.buildDetached(providerType, { id, label, vaultDir: pendingDir })
       begin = provider.credentials?.beginLogin?.bind(provider.credentials)
     } catch {
       return null
     }
     if (!begin) return null
 
-    const flow: LoginFlow = { type, label, ownerUserId, pendingDir, state: { status: 'pending', verificationUrl: null, userCode: null } }
+    const flow: LoginFlow = { providerType, label, ownerUserId, pendingDir, state: { status: 'pending', verificationUrl: null, userCode: null } }
     this.flows.set(id, flow)
     void (async () => {
       try {
@@ -67,13 +67,13 @@ export class SubscriptionLoginFlows {
           await rm(pendingDir, { recursive: true, force: true })
           return
         }
-        const connection = await this.vault.create({
+        const provider = await this.vault.create({
           ownerUserId: flow.ownerUserId,
           label: flow.label,
-          config: { kind: 'subscription', provider: flow.type },
+          config: { kind: 'subscription', providerType: flow.providerType },
         })
-        await rename(pendingDir, this.assembly.vaultDir(connection.id))
-        flow.state = { status: 'completed', connectionId: connection.id }
+        await rename(pendingDir, this.assembly.vaultDir(provider.id))
+        flow.state = { status: 'completed', providerId: provider.id }
       } catch (error) {
         flow.state = { status: 'failed', message: errorMessage(error) }
         await rm(pendingDir, { recursive: true, force: true }).catch(() => {})

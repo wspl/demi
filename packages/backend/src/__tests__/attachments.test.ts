@@ -19,13 +19,13 @@ async function api(backend: TestBackend, path: string, init?: RequestInit): Prom
   return backend.session.fetch(path, init)
 }
 
-function selectionFor(connectionId: string) {
+function selectionFor(providerId: string) {
   const model: ModelSelection = {
-    providerId: connectionId,
+    providerId: providerId,
     model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
-  return { providerId: connectionId, model }
+  return { providerId: providerId, model }
 }
 
 async function connectClient(backend: TestBackend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
@@ -54,16 +54,16 @@ test('message attachment: upload → ref block → inline bytes at the provider 
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: stubRuntime }),
+      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }),
     },
   })
-  const connectionResponse = await api(backend, '/api/connections', {
+  const providerResponse = await api(backend, '/api/providers', {
     method: 'POST',
-    body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'k' }),
+    body: JSON.stringify({ providerType: 'stub', label: 'Stub', apiKey: 'k' }),
     headers: { 'content-type': 'application/json' },
   })
-  const { connection } = (await connectionResponse.json()) as { connection: { id: string } }
-  const selection = selectionFor(connection.id)
+  const { provider } = (await providerResponse.json()) as { provider: { id: string } }
+  const selection = selectionFor(provider.id)
 
   // Upload: bytes to the blob store, metadata row back.
   const uploaded = await api(backend, '/api/attachments', {
@@ -141,19 +141,19 @@ test('attachment upload limits and workspace file drop', async () => {
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: stubRuntime }),
+      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }),
     },
   })
 
   // Empty and oversized uploads are refused.
   expect((await api(backend, '/api/attachments', { method: 'POST', body: new Uint8Array(0), headers: { 'content-type': 'image/png' } })).status).toBe(400)
 
-  const connectionResponse = await api(backend, '/api/connections', {
+  const providerResponse = await api(backend, '/api/providers', {
     method: 'POST',
-    body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'k' }),
+    body: JSON.stringify({ providerType: 'stub', label: 'Stub', apiKey: 'k' }),
     headers: { 'content-type': 'application/json' },
   })
-  const { connection } = (await connectionResponse.json()) as { connection: { id: string } }
+  const { provider } = (await providerResponse.json()) as { provider: { id: string } }
   const created = await api(backend, '/api/conversations', { method: 'POST' })
   const { conversation } = (await created.json()) as { conversation: { id: string } }
 
@@ -171,7 +171,7 @@ test('attachment upload limits and workspace file drop', async () => {
   expect(((await dropped.json()) as { path: string }).path).toBe('/home/demi/notes/readme.md')
 
   // The agent's shell sees the dropped file on the execution target.
-  const client = await connectClient(backend, conversation.id, selectionFor(connection.id))
+  const client = await connectClient(backend, conversation.id, selectionFor(provider.id))
   const outputs: string[] = []
   client.subscribe((event) => {
     if (event.type === 'shell_output' && event.status.status === 'exited') outputs.push(event.status.stdout.delta)

@@ -4,8 +4,8 @@ import { errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
-import type { ConnectionVault } from '../vault/connections'
-import { connectionOwner } from '../vault/scope'
+import type { ProviderVault } from '../vault/providers'
+import { providerOwner } from '../vault/scope'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import { switchConversationTarget } from '../conversation/target-switch'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
@@ -18,7 +18,7 @@ const grantBodySchema = z.object({ deviceId: z.string().min(1) })
 const patchConversationBodySchema = z.object({
   title: z.string().optional(),
   archived: z.boolean().optional(),
-  connectionId: z.string().nullable().optional(),
+  providerId: z.string().nullable().optional(),
   modelId: z.string().nullable().optional(),
   workspaceId: z.string().nullable().optional(),
 })
@@ -30,7 +30,7 @@ export function conversationRoutes(options: {
   agentServer: AgentServer
   hostFor: (conversationId: string) => Promise<Host>
   managedHosts: ManagedHosts | null
-  vault: ConnectionVault
+  vault: ProviderVault
   mode: InstanceMode
 }): Hono<AuthEnv> {
   const { control, conversationStores, agentServer, hostFor, managedHosts, vault, mode } = options
@@ -69,14 +69,14 @@ export function conversationRoutes(options: {
       // An archived owner's guest is destroyed; its home stays (`managed-hosts.md` § Lifecycle).
       if (body.archived) await managedHosts?.destroy({ kind: 'conversation', id: conversation.id })
     }
-    if (body.connectionId !== undefined || body.modelId !== undefined) {
-      if (body.connectionId) {
-        const connection = await vault.get(body.connectionId)
-        if (!connection || connection.ownerUserId !== connectionOwner(mode, conversation.userId)) {
-          return c.json({ code: 'connection_not_found', message: 'No such connection' }, 404)
+    if (body.providerId !== undefined || body.modelId !== undefined) {
+      if (body.providerId) {
+        const provider = await vault.get(body.providerId)
+        if (!provider || provider.ownerUserId !== providerOwner(mode, conversation.userId)) {
+          return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
         }
       }
-      await control.setConversationModel(conversation.id, body.connectionId ?? null, body.modelId ?? null)
+      await control.setConversationModel(conversation.id, body.providerId ?? null, body.modelId ?? null)
     }
     if (body.workspaceId !== undefined) {
       const result = await switchConversationTarget({ control, agentServer }, conversation.id, body.workspaceId)

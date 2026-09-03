@@ -5,7 +5,7 @@ import type { ControlService, UsageRow } from '../storage/control'
 
 /**
  * `GET /api/usage` — the caller's ledger, aggregated at query time
- * (`connection × model`): request count and token sums. `GET
+ * (`provider × model`): request count and token sums. `GET
  * /api/usage/instance` — in shared mode, the admin's view of the instance's
  * ledger, the same aggregation per user.
  */
@@ -34,10 +34,10 @@ export function usageRoutes(options: { control: ControlService; mode: InstanceMo
 function aggregate(rows: UsageRow[]) {
   const groups = new Map<string, ReturnType<typeof emptyGroup>>()
   for (const row of rows) {
-    const key = `${row.connectionId} ${row.modelId}`
+    const key = `${row.providerId} ${row.modelId}`
     let group = groups.get(key)
     if (!group) {
-      group = emptyGroup(row.connectionId, row.modelId)
+      group = emptyGroup(row.providerId, row.modelId)
       groups.set(key, group)
     }
     group.requests += 1
@@ -49,9 +49,9 @@ function aggregate(rows: UsageRow[]) {
   return [...groups.values()]
 }
 
-function emptyGroup(connectionId: string, modelId: string) {
+function emptyGroup(providerId: string, modelId: string) {
   return {
-    connectionId,
+    providerId,
     modelId,
     requests: 0,
     inputTokens: 0,
