@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Design (M11) |
+| Status | Delivered (M11) |
 | Scope | Operator-provisioned execution targets: Firecracker provisioning, images, home persistence, lifecycle, security, joining |
 
 ## What a managed host is

@@ -53,6 +53,23 @@ private to the embedded bundle, the five modules over `hyper`,
 (bundle appended to the prebuilt runtime, as Bun's `--compile`). Measured in the Firecracker fixture: command-mode
 hello 0.18 s first execution, tee at the pipe baseline.
 
+**M11 — Access model and managed hosts.** The grant set
+(`conversation_host_grants`, auto-grant on switch, the announcement in the
+next turn's preamble), `demi host list` / `current` / `shell --id` with
+wake; the provisioner seam and the lifecycle (idle rule across an owner's
+conversations, hard cap, hibernate with `sync` and the untouched report,
+wake with a fresh token, checkpoint under a liveness pause, crash-loop
+guard, per-user cap, owner checks); the session upgrade (the hostless
+files as the `files` tree, the parse-first upgrade with cwd and variables
+handed over, silent); Cloud workspaces; the runner as PID 1 (the kernel
+command line, the upper pivoted over `/`, the home image, the network,
+jobs as the guest user, `home_grow`/`home_grown`); the home-image store,
+the image tools, the guest-image pipeline; the Firecracker provisioner in
+`direct` and `jailer` launch modes with the Rust helper, the tap pool and
+egress rules from the install script. S10–S12 over the fake provisioner;
+the env-gated smoke passes in both modes on nested KVM (cold provision
+8–14 s, wake 9–14 s there).
+
 ## Planned
 
 **M8 — Command system, loader, hostless execution** (`commands.md`,
@@ -187,21 +204,6 @@ Status: delivered — 26 scenario tests and the four restarts green; the
 suite's first run found and fixed seven composition defects (`progress.md`
 § M10) and recorded two limitations of real hosts in the allowed
 differences.
-
-**M11 — Access model and managed hosts** (`sessions-and-targets.md`,
-`managed-hosts.md`; depends on M9)
-`conversation_host_grants`, auto-grant on switch, the grant check before a
-cross-host spawn, `demi host list` / `current` / `shell --id`, wake on
-`shell --id`; the Firecracker provisioner under jailer with the privileged
-helper, chroot layout, tap networking, egress rules, crash-loop guard; the
-guest kernel and preinstalled-rootfs pipeline, the ephemeral upper; the
-home-image store with small nominal size and online growth, shrink on
-hibernate, untouched-skip; idle rule, hibernate, wake, periodic checkpoint
-with the liveness exemption; auto-provision on the first non-`demi` command
-with placement of the hostless files; Cloud workspace provisioning. Accept:
-full flows against a fake provisioner plus a local runner, including
-owner-scoped authz; Firecracker smoke env-gated (Linux with `/dev/kvm`),
-including cold-provision and wake latency.
 
 **M12 — Multi-user systems** (`product.md`)
 Real auth (username/password, cookie sessions, master/admin/user roles, no
