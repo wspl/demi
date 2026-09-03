@@ -2559,6 +2559,40 @@ providerRequestsPerMinute`. On the fake the machine's home is not
 there; the sequence uses relative paths and the record notes the
 difference as the fake's.
 
+### Checkpoint 4: Cloud workspaces (2026-09-03) — rulings
+
+The topic: the Cloud device choice on workspace creation. Rulings:
+
+- 4a. The request body: `{ deviceId, path, name }` for a workspace on a
+  user device, `{ cloud: true, name }` for a Cloud one — a union, no
+  device-type field.
+- 4b. A Cloud workspace's directory is the host's home as the guest
+  reports it in its hello (`/home/demi` on a real guest, the staging
+  directory under the fake); the user picks no path.
+- Once per project: `provision` is keyed by owner, so the workspace's
+  host is one. A host that fails to come up is the request's error
+  (409 with the lifecycle's code) and no workspace row is written.
+
+### Checkpoint 4: Cloud workspaces (2026-09-03) — delivered
+
+Landed:
+
+- `managed/cloud-workspace.ts`: `createCloudWorkspace(deps, userId,
+  name)` — the workspace id chosen first, an empty home under
+  `<dataDir>/staging/<workspaceId>`, `managedHosts.provision` with the
+  workspace as owner, the workspace row at the home the registry holds
+  from the hello. A boot that fails destroys the guest and deletes the
+  device row, since nothing references it yet, so a retry starts clean
+  and the per-user count is not consumed.
+- `POST /api/workspaces` takes the union body; `ManagedHostError` maps
+  to 409 with its code; a backend without `managedHosts` answers
+  `no_cloud` 409. `createWorkspace` takes an optional `id`.
+- Nothing else was needed: the owner check and wake in `hostFor`, the
+  idle rule over the workspace's conversations, and destroy on delete
+  were checkpoint 2's.
+- Tests: S12 (`s12-cloud-workspace.test.ts`). `bun test packages/
+  backend`: 82 pass.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

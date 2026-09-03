@@ -4,7 +4,7 @@ import type { UpgradeWebSocket } from 'hono/ws'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { RunnerRegistry } from '../runner/registry'
 import type { TransferBroker } from '../runner/transfers'
-import type { ControlService } from '../storage/control'
+import type { ControlService, WorkspaceRecord } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ConnectionVault } from '../vault/connections'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
@@ -38,6 +38,7 @@ export function createApp(options: {
   blobs: BlobStore
   hostFor: (conversationId: string) => Promise<Host>
   managedHosts: ManagedHosts | null
+  createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
 }): Hono {
   const app = new Hono()
 
@@ -51,7 +52,7 @@ export function createApp(options: {
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/transfers', transferRoutes({ control: options.control, broker: options.transfers }))
   app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
-  app.route('/api/workspaces', workspaceRoutes({ control: options.control, managedHosts: options.managedHosts }))
+  app.route('/api/workspaces', workspaceRoutes({ control: options.control, managedHosts: options.managedHosts, createCloudWorkspace: options.createCloudWorkspace }))
   app.route('/api/attachments', attachmentRoutes({ control: options.control, blobs: options.blobs }))
   app.route('/api/blobs', blobRoutes({ blobs: options.blobs }))
   // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
