@@ -431,8 +431,11 @@ tool-result preview, not artifact storage:
 
 | Model context window | Tool-result preview budget |
 |---|---:|
-| Unknown or `< 800_000` tokens | `1_000` tokens |
-| `>= 800_000` tokens | `10_000` tokens |
+| Unknown or `< 800_000` tokens | `10_000` tokens |
+| `>= 800_000` tokens | `100_000` tokens |
+
+`AgentServerOptions.tools.shellPreviewBudgetTokens` (`(contextWindow) => tokens`) replaces this
+split for every session in the tree (root and subagents).
 
 The budget unit is tokens. The implementation prefers the provider/model tokenizer; with no
 tokenizer it uses a conservative estimate to convert `budgetTokens` into a character limit. A
@@ -676,7 +679,8 @@ Unit-test modules and their intended coverage:
     cleared only at the last abort layer or on session close.
   - Neither slow nor very large output wakes the model chunk by chunk.
   - The tool-result preview budget is chosen automatically from the current `Model.contextWindow`:
-    1k tokens when unknown or below 800k, 10k tokens at 800k and above.
+    10k tokens when unknown or below 800k, 100k tokens at 800k and above; the
+    `AgentServerOptions.tools.shellPreviewBudgetTokens` function replaces the split for root and children.
 
 - `packages/agent/src/__tests__/server.test.ts`
   - AgentServer exposes the new tool surface and corresponding events to the client.
