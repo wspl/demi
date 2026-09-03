@@ -62,7 +62,7 @@ test('ConnectionVault: rows carry ciphertext only; CRUD round-trips typed config
   expect(raw?.type).toBe('openai')
 
   expect((await vault.get(created.id))?.config).toEqual(created.config)
-  expect((await vault.list()).map((connection) => connection.id)).toEqual([created.id])
+  expect((await vault.list({ ownerUserId: user.id })).map((connection) => connection.id)).toEqual([created.id])
   await vault.delete(created.id)
   expect(await vault.get(created.id)).toBeNull()
   db.close()

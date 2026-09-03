@@ -1,3 +1,6 @@
+/** `product.md` § Instance mode: who configures providers. Fixed at startup. */
+export type InstanceMode = 'shared' | 'isolated'
+
 /** The three roles (`product.md` § User system): master is the instance's first account; no organizations, no further roles. */
 export type Role = 'master' | 'admin' | 'user'
 
