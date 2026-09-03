@@ -34,13 +34,19 @@ base=$(ip_to_int "$network")
 for ((i=0; i<slots; i++)); do
   tap="$prefix$i"
   if [ "$mode" = jailer ]; then owner=$((uid_base + i)); else owner=$user; fi
-  if ! ip link show "$tap" >/dev/null 2>&1; then ip tuntap add "$tap" mode tap user "$owner"; fi
+  # Recreated every run: the owner follows the mode, and a tap's owner cannot change in place.
+  ip link show "$tap" >/dev/null 2>&1 && ip link del "$tap"
+  ip tuntap add "$tap" mode tap user "$owner"
   gw=$(int_to_ip $((base + i*4 + 1)))
   ip addr replace "$gw/30" dev "$tap"
   ip link set "$tap" up
 done
 
 sysctl -qw net.ipv4.ip_forward=1
+
+# /dev/kvm for the backend user (direct mode spawns Firecracker as it; jailer mode's helper runs as root anyway):
+# the kvm group, effective at the user's next login.
+getent group kvm >/dev/null && usermod -aG kvm "$user"
 
 # The egress policy, one table, replaced whole so reruns converge.
 nft -f - <<RULES
@@ -70,4 +76,4 @@ table inet demi {
   }
 }
 RULES
-echo "managed hosts: $slots taps ($prefix0..$prefix$((slots-1))) on $subnet, mode $mode, egress via $egress, backend $backend_address:$backend_port"
+echo "managed hosts: $slots taps (${prefix}0..${prefix}$((slots-1))) on $subnet, mode $mode, egress via $egress, backend $backend_address:$backend_port"

@@ -33,12 +33,11 @@ export const GUEST_LAYOUT: GuestLayout = {
   oldRoot: '/oldroot',
 }
 
-/** The kernel's own filesystems, first: everything after reads `/proc` or `/dev`. */
+/** The kernel's own filesystems, first: everything after reads `/proc`. `/dev` is the kernel's (`CONFIG_DEVTMPFS_MOUNT`). */
 export function kernelMounts(): InitStep[] {
   return [
     { command: 'mount', args: ['-t', 'proc', 'proc', '/proc'] },
     { command: 'mount', args: ['-t', 'sysfs', 'sys', '/sys'] },
-    { command: 'mount', args: ['-t', 'devtmpfs', 'dev', '/dev'], tolerated: true },
     { command: 'mount', args: ['-t', 'tmpfs', 'run', '/run'] },
   ]
 }
@@ -46,10 +45,11 @@ export function kernelMounts(): InitStep[] {
 /**
  * The ephemeral upper (`managed-hosts.md` § Images): a tmpfs as the upper
  * and work directories of an overlay over the read-only rootfs, assembled
- * under `newRoot`, then made `/` by `pivot_root`. The kernel filesystems
- * mounted before move with the root: `/proc`, `/sys`, `/dev` and `/run` are
- * bind-moved into the new root before the pivot. After it the old root sits
- * at `oldRoot`, still read-only, still the source of every binary.
+ * under `newRoot`, then made `/` by `pivot_root`. `/proc`, `/sys` and
+ * `/dev` move into the new root before the pivot; `/run` cannot — the new
+ * root lives under it — so it stays with the old root (the overlay keeps
+ * it alive) and the new root gets a fresh `/run`. After the pivot the old
+ * root sits at `oldRoot`, still read-only, still the source of every binary.
  */
 export function upperOverlay(layout: GuestLayout): InitStep[] {
   const { upperMount, newRoot, oldRoot } = layout
@@ -59,8 +59,9 @@ export function upperOverlay(layout: GuestLayout): InitStep[] {
     { command: 'mkdir', args: ['-p', `${upperMount}/upper`, `${upperMount}/work`] },
     { command: 'mount', args: ['-t', 'overlay', 'overlay', '-o', `lowerdir=/,upperdir=${upperMount}/upper,workdir=${upperMount}/work`, newRoot] },
     { command: 'mkdir', args: ['-p', `${newRoot}${oldRoot}`] },
-    ...['/proc', '/sys', '/dev', '/run'].map((dir) => ({ command: 'mount', args: ['--move', dir, `${newRoot}${dir}`] })),
+    ...['/proc', '/sys', '/dev'].map((dir) => ({ command: 'mount', args: ['--move', dir, `${newRoot}${dir}`] })),
     { command: 'pivot_root', args: [newRoot, `${newRoot}${oldRoot}`] },
+    { command: 'mount', args: ['-t', 'tmpfs', 'run', '/run'] },
   ]
 }
 
@@ -78,9 +79,13 @@ export function homeMount(layout: GuestLayout): InitStep[] {
   ]
 }
 
+/** The guest's name (`/etc/hosts` in the rootfs resolves it, which sudo insists on). */
+export const GUEST_HOSTNAME = 'demi'
+
 /** One interface, one address, one default route, from the command line; the nameservers are a file the caller writes. */
 export function networkSteps(network: GuestNetwork, iface = 'eth0'): InitStep[] {
   return [
+    { command: 'hostname', args: [GUEST_HOSTNAME], tolerated: true },
     { command: 'ip', args: ['link', 'set', 'lo', 'up'] },
     { command: 'ip', args: ['link', 'set', iface, 'up'] },
     { command: 'ip', args: ['addr', 'add', network.address, 'dev', iface] },

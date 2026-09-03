@@ -292,6 +292,19 @@ export class RunnerRegistry {
   }
 
   /**
+   * Drops the device's socket now. A killed guest leaves its TCP side
+   * half-open — no FIN ever comes — and the liveness ping would take a
+   * whole interval to notice; a wake must not find the dead connection
+   * still counted as online.
+   */
+  disconnect(deviceId: string): void {
+    const connection = this.connections.get(deviceId)
+    if (!connection) return
+    this.handleSocketClose(connection)
+    connection.close()
+  }
+
+  /**
    * Flushes the device's home to disk before its guest is killed
    * (`managed-hosts.md` § Lifecycle) and learns whether the home was
    * touched since boot. Offline, or silent past `timeoutMs`, counts as

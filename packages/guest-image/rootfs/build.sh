@@ -37,7 +37,7 @@ rm -rf "$work/var/lib/apt/lists/"*
 # The guest user, its sudo, its shell.
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
-cp -a "$here/rootfs/overlay/." "$work/"
+cp -a --no-preserve=ownership "$here/rootfs/overlay/." "$work/"
 chmod 0440 "$work/etc/sudoers.d/demi"
 echo demi > "$work/etc/hostname"
 
@@ -58,4 +58,6 @@ rm -f "$out/rootfs.ext4"
 mke2fs -q -t ext4 -F -L rootfs -d "$work" "$out/rootfs.ext4" "$size"
 e2fsck -fy "$out/rootfs.ext4" >/dev/null || true
 resize2fs -M "$out/rootfs.ext4"
+# The work tree goes: a Debian tree carries symlink loops (usr/bin/X11 -> .) that recursive scanners never leave.
+[ "${KEEP_ROOTFS_WORK:-}" = 1 ] || rm -rf "$work"
 echo "$out/rootfs.ext4"
