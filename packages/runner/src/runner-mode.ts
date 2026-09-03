@@ -137,7 +137,7 @@ export class RunnerMode {
           type: 'hello',
           protocol: RUNNER_PROTOCOL_VERSION,
           ...(deviceToken ? { deviceToken } : {}),
-          runner: { name: this.options.name ?? identity.hostname, platform: `tinyjs/${tinyjsVersion}`, version: RUNNER_VERSION, identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname } },
+          runner: { name: this.options.name ?? identity.hostname, platform: `tinyjs/${tinyjsVersion}`, version: RUNNER_VERSION, identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir } },
         }),
       )
       for (;;) {

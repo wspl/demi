@@ -30,6 +30,6 @@ export function createRunnerHost(options: RunnerHostOptions = {}): Host {
     fs,
     process: createRunnerProcess(defaultCwd),
     store: fileHostStore(fs, normalizePath(options.storeDir ?? `${identity.homeDir}/.demi/store`)),
-    identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname },
+    identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir },
   }
 }

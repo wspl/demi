@@ -154,8 +154,9 @@ only; the `*Store` suffix stays reserved for storage backends.
 users                   id, username, password_hash, role(master|admin|user), created_at
 web_sessions            token_hash, user_id, expires_at
 conversations           id, user_id, title, archived, workspace_id(NULL), host_device_id(NULL),
-                        connection_id, model_id, created_at, updated_at
+                        pending_switch_json(NULL), connection_id, model_id, created_at, updated_at
                         ← workspace_id and host_device_id mutually exclusive; both NULL = hostless
+                        ← pending_switch_json: the switch the next turn announces ({from, to}), then NULL
 conversation_host_grants conversation_id, device_id, granted_at     ← the grant set
 workspaces              id, user_id, device_id, path, name, created_at
 devices                 id, user_id, kind(user|managed), name, platform, token_hash,

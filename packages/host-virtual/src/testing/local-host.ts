@@ -4,7 +4,7 @@
 // programs. The product's machines are reached through the runner.
 import { spawn } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
-import { hostname, tmpdir, userInfo } from 'node:os'
+import { homedir, hostname, tmpdir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import { stat } from 'node:fs/promises'
 import type { Readable } from 'node:stream'
@@ -45,7 +45,7 @@ export class LocalHost implements Host {
     this.process = new LocalHostProcess(this.defaultCwd)
     this.store = options.store ?? fileHostStore(this.fs, resolve(storeRoot))
     const info = userInfo()
-    this.identity = { uid: info.uid, gid: info.gid, hostname: hostname() }
+    this.identity = { uid: info.uid, gid: info.gid, hostname: hostname(), homeDir: homedir() }
   }
 }
 

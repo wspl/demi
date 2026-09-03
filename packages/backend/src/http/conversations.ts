@@ -10,6 +10,8 @@ import { ATTACHMENT_MAX_BYTES } from './attachments'
 import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 
+const grantBodySchema = z.object({ deviceId: z.string().min(1) })
+
 const patchConversationBodySchema = z.object({
   title: z.string().optional(),
   archived: z.boolean().optional(),
@@ -62,6 +64,8 @@ export function conversationRoutes(options: {
           break
         case 'workspace_not_found':
           return c.json({ code: 'workspace_not_found', message: 'No such workspace' }, 404)
+        case 'no_hostless_entrance':
+          return c.json({ code: 'no_hostless_entrance', message: 'A conversation with a machine of its own cannot go back to hostless' }, 409)
         case 'turn_in_flight':
           return c.json({ code: 'turn_in_flight', message: 'Target switches happen at turn boundaries; a turn is running' }, 409)
         case 'conflict':
@@ -71,6 +75,36 @@ export function conversationRoutes(options: {
       }
     }
     return c.json({ conversation: await control.getConversation(conversation.id) })
+  })
+
+  // The grant set (`sessions-and-targets.md` § Host grants): the hosts this
+  // conversation may reach besides its target. Explicit grants take the
+  // user's own paired devices; a managed host enters only by the automatic
+  // grant on switching away from it.
+  app.get('/:id/grants', async (c) => {
+    const conversation = await control.getConversation(c.req.param('id'))
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    return c.json({ grants: await control.listHostGrants(conversation.id) })
+  })
+
+  app.post('/:id/grants', async (c) => {
+    const conversation = await control.getConversation(c.req.param('id'))
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    const parsed = grantBodySchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { deviceId: string }' }, 400)
+    const device = await control.getDevice(parsed.data.deviceId)
+    if (!device || device.userId !== conversation.userId || device.kind !== 'user') {
+      return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
+    }
+    await control.grantHost(conversation.id, device.id)
+    return c.json({ grants: await control.listHostGrants(conversation.id) }, 201)
+  })
+
+  app.delete('/:id/grants/:deviceId', async (c) => {
+    const conversation = await control.getConversation(c.req.param('id'))
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    await control.revokeHost(conversation.id, c.req.param('deviceId'))
+    return c.body(null, 204)
   })
 
   // Workspace file drop: bytes land in the execution target's working

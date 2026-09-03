@@ -17,7 +17,7 @@ async function connectedPair() {
   const local = new LocalHost(dir)
   const remote = new RemoteHost({
     defaultCwd: dir,
-    identity: { uid: 501, gid: 20, hostname: 'test' },
+    identity: { uid: 501, gid: 20, hostname: 'test', homeDir: '/' },
     store: memoryHostStore(),
   })
   const server = new HostRpcServer(local, (message: RunnerToBackendMessage) => {
