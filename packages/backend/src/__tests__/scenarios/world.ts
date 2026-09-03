@@ -28,6 +28,8 @@ export interface WorldOptions {
   dataDir?: string
   /** Managed hosts through a provisioner (the fake, in tests) with the lifecycle sizes the scenario needs. */
   managedHosts?: BackendOptions['managedHosts']
+  /** The URL managed guests dial (real guests cannot reach localhost). */
+  publicUrl?: string
   /** The backend's liveness ping; on by default it is what carries `pong.jobs`, which the idle rule reads. Default 0 (off). */
   pingIntervalMs?: number
   /** The provider-request rate limit; a scenario with many short turns raises it. */
@@ -88,6 +90,7 @@ export class World {
         stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: () => model.runtime() }),
       },
       ...(options.managedHosts ? { managedHosts: options.managedHosts } : {}),
+      ...(options.publicUrl ? { publicUrl: options.publicUrl } : {}),
       ...(options.providerRequestsPerMinute ? { usage: { providerRequestsPerMinute: options.providerRequestsPerMinute } } : {}),
     })
   }

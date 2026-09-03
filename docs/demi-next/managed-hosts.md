@@ -52,7 +52,15 @@ by configuration (`DEMI_MANAGED_LAUNCH`).
   VM, every argument whitelisted) to run Firecracker's jailer, which
   builds a per-VM chroot, mount and PID namespaces, cgroup and rlimits,
   drops to a **per-VM uid** from a slot range, and starts Firecracker
-  under its seccomp allowlist. A VMM escape then lands in a process that
+  under its seccomp allowlist. The jailer forks for the PID namespace and
+  its parent exits at once, so the helper follows the pid the jailer
+  records and lives as long as Firecracker does: in both modes the
+  backend's child process ends when the VM does. The helper links the
+  kernel, the rootfs and the working home image into the jail (the home
+  shared with the backend's group, so the backend can still shrink it
+  afterwards) and, once Firecracker listens, opens the jail's `run/` and
+  the API socket to the backend's group; the jail must be on the same
+  filesystem as the data directory for the links. A VMM escape then lands in a process that
   sees its own kernel, rootfs, home image, API socket and tap and nothing
   else — the blast radius of one tenant. For public service.
 - **Guest kernel.** A minimal kernel we build (virtio net/block, ext4,
@@ -276,5 +284,8 @@ Tests drive the full flows — provision, bind, hibernate, wake, checkpoint,
 crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz,
 auto-provision with hostless-file placement, Cloud workspace once per
 project — through a fake provisioner plus a local runner everywhere. An
-env-gated smoke exercises real Firecracker on Linux with `/dev/kvm`,
-recording cold-provision and wake latency.
+env-gated smoke (`real-firecracker.e2e.test.ts`) exercises real
+Firecracker on Linux with `/dev/kvm` in both launch modes: the upgrade of
+a hostless conversation to a guest, `sudo` into the upper, hibernate with
+the shrunk image stored, wake over the same home, growth past the
+reserve, destroy on archive; it prints cold-provision and wake latency.

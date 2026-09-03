@@ -175,7 +175,11 @@ export class RunnerMode {
       spawn: spawnTeed,
       outputDir: this.state.outputDir,
       fs: {
-        mkdir: (path) => this.host.fs.mkdir(path, { recursive: true }),
+        // The job writes its final cwd into its output directory itself; as the guest user it needs the directory open.
+        mkdir: async (path) => {
+          await this.host.fs.mkdir(path, { recursive: true })
+          if (this.options.guest) await this.host.fs.chmod(path, 0o1777)
+        },
         readTail,
         readFile: (path) => this.host.fs.readFile(path),
         rm: (path) => this.host.fs.rm(path, { force: true }),
@@ -195,7 +199,7 @@ export class RunnerMode {
           type: 'hello',
           protocol: RUNNER_PROTOCOL_VERSION,
           ...(deviceToken ? { deviceToken } : {}),
-          runner: { name: this.options.name ?? identity.hostname, platform: `tinyjs/${tinyjsVersion}`, version: RUNNER_VERSION, identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir }, ...(this.options.managed ? { managed: true } : {}) },
+          runner: { name: this.options.name ?? identity.hostname, platform: `tinyjs/${tinyjsVersion}`, version: RUNNER_VERSION, identity: { ...this.host.identity }, ...(this.options.managed ? { managed: true } : {}) },
         }),
       )
       for (;;) {

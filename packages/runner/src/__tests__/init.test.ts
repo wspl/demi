@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { guestBootConfig, parseKernelCmdline } from '../init/cmdline'
-import { BlockHomeImage, DEFAULT_GROWTH_POLICY, growthWanted, parseDf, sectorsWritten } from '../init/home-image'
+import { BlockHomeImage, DEFAULT_GROWTH_POLICY, growthWanted, parseDf, reserveBytes, sectorsWritten } from '../init/home-image'
 import { GUEST_LAYOUT, initPlan, resolvConf, runInit, type InitStep } from '../init/plan'
 
 // PID 1 without a kernel: the command line, the plan of spawns the boot
@@ -37,11 +37,15 @@ test('the plan: kernel filesystems, the upper pivoted over /, the home, the netw
   expect(lines[0]).toBe('mount -t proc proc /proc')
   expect(at('-t overlay')).toBeGreaterThan(at('-t tmpfs upper /run/upper'))
   expect(at('pivot_root /run/newroot /run/newroot/oldroot')).toBeGreaterThan(at('--move /proc /run/newroot/proc'))
+  // /run holds the new root: it cannot move into it; a fresh one follows the pivot.
+  expect(lines.some((line) => line.includes('--move /run'))).toBe(false)
+  expect(lines[at('pivot_root') + 1]).toBe('mount -t tmpfs run /run')
   expect(at('-t ext4 /dev/vdb /home')).toBeGreaterThan(at('pivot_root'))
   expect(at('resize2fs /dev/vdb')).toBe(at('-t ext4 /dev/vdb /home') + 1)
   expect(at('ip addr add 172.16.5.2/30 dev eth0')).toBeGreaterThan(at('-t ext4'))
   expect(lines[lines.length - 1]).toBe('ip route add default via 172.16.5.1 dev eth0')
-  expect(plan.filter((step) => step.tolerated).map((step) => step.args.join(' '))).toEqual(['-t devtmpfs dev /dev', '/dev/vdb'])
+  expect(lines).toContain('hostname demi')
+  expect(plan.filter((step) => step.tolerated).map((step) => step.args.join(' '))).toEqual(['/dev/vdb', 'demi'])
 })
 
 test('runInit stops at the first fatal failure and skips a tolerated one', async () => {
@@ -105,4 +109,8 @@ test('df parsing and the growth reserve', () => {
   expect(growthWanted({ totalBytes: large, availableBytes: 9 * 1024 ** 3 })).toBe(2 * large)
   expect(growthWanted({ totalBytes: 1024 ** 3, availableBytes: DEFAULT_GROWTH_POLICY.reserveBytes })).toBeNull()
   expect(growthWanted({ totalBytes: 1024 ** 3, availableBytes: DEFAULT_GROWTH_POLICY.reserveBytes - 1 })).toBe(2 * 1024 ** 3)
+  // A small filesystem keeps a quarter, not 256 MB: an empty 64 MB home does not grow at once.
+  expect(reserveBytes(64 * 1024 ** 2)).toBe(16 * 1024 ** 2)
+  expect(growthWanted({ totalBytes: 64 * 1024 ** 2, availableBytes: 55 * 1024 ** 2 })).toBeNull()
+  expect(growthWanted({ totalBytes: 64 * 1024 ** 2, availableBytes: 5 * 1024 ** 2 })).toBe(128 * 1024 ** 2)
 })

@@ -2756,6 +2756,70 @@ Landed:
   `bun test packages/backend`: 88 pass, 1 skip. The VM path itself is
   6 (iii)'s smoke.
 
+### Checkpoint 6 (iii): the Firecracker smoke in both launch modes (2026-09-03) — delivered
+
+`real-firecracker.e2e.test.ts` (gated by `DEMI_FIRECRACKER_E2E=1`), run
+in the Lima `fc` instance (Ubuntu 24.04 aarch64, 4 vCPU, 8 GB, nested
+KVM; Firecracker v1.16.1; the CI kernel 6.1.155 at `/opt/fc/vmlinux`;
+the rootfs from `packages/guest-image/rootfs/build.sh`; the runner from
+`runner/build.sh` on macOS by `cargo zigbuild`). One world over the real
+provisioner: a hostless conversation upgraded by its first outside
+script, `sudo` writing into the upper and `/` seen as an overlay, idle →
+`sync` → kill → shrink → store, wake over the same home with the upper
+gone and the filesystem grown back, 50 MB written past the reserve →
+`home_grow` → `home_grown` → `resize2fs`, archive → destroy with the
+image kept. Passes in `direct` mode and in `jailer` mode (the helper at
+`/usr/local/bin/demi-fc-helper`, the pool re-created by the install
+script with `--mode jailer`). Measured (nested virtualization; the guest
+boot itself is about 5 s of each):
+
+| | direct | jailer |
+|---|---|---|
+| cold provision + first job | 8.3–13.7 s (the high end with a cold page cache after the rootfs build) | 8.4 s |
+| wake + job | 8.7–13.5 s | 13.3 s |
+| home stored after hibernate | 8.5 MB (64 MB nominal) | same |
+| home after growth | 64 MB → 128 MB file, 109 MB filesystem | same |
+
+What the smoke found and what changed for it:
+
+- A `bun test <file>` scans the whole tree for test files; the
+  debootstrap work tree under `out/` carries Debian's symlink loops
+  (`usr/bin/X11 -> .`) and the scan never returns — Bun was OOM-killed
+  at 7.5 GB. The rootfs build removes its work tree.
+- The API socket path must fit a unix address (108 bytes): VM ids are
+  `vm-<12 chars>`, not the owner key.
+- `/dev/kvm`: the install script adds the backend user to `kvm`.
+- `mount --move /run` into a root that lives under `/run` is `ELOOP`;
+  the old `/run` stays with the old root and the new root gets a fresh
+  tmpfs after the pivot. PID 1's stderr is flushed before it exits, or
+  the console never shows why init died.
+- The hello reported the process's identity (root, `/`) instead of the
+  guest user's: the backend ran the first job in `/`. `RunnerMode`
+  reports `host.identity`, which init overrides.
+- The job's `cwd` file is written by the job as the guest user into a
+  directory the runner made as root: the job directory is 1777 in init
+  mode.
+- A killed guest leaves a half-open socket the ping would take an
+  interval to notice, and the wake found the dead connection "online":
+  `RunnerRegistry.disconnect` on hibernate, death and destroy.
+- The growth reserve of 256 MB can never be met by a 64 MB home: the
+  reserve is a tenth, raised toward 256 MB but capped at a quarter.
+- The overlay copy kept the build host's uid on `/etc/sudoers.d` (sudo
+  refuses it) and the guest had no hostname (sudo warns): `cp
+  --no-preserve=ownership`, `/etc/hosts` in the overlay, `hostname demi`
+  in the plan. `/dev` is the kernel's (`CONFIG_DEVTMPFS_MOUNT`); the
+  plan no longer mounts it.
+- The jailer already passes `--id`; with `--new-pid-ns` it forks and its
+  parent exits, so the helper follows `firecracker.pid`; it remakes the
+  jail's `root` and `run` as the VM uid with mode 0700, so the helper
+  opens them and the socket to the backend's group once Firecracker
+  listens.
+- `FirecrackerProvisioner.running` after `destroy` (entry deleted) read
+  as true.
+
+The rootfs rebuilt by the corrected pipeline (ownership, `/etc/hosts`,
+the work tree removed) passes the same smoke with a clean console.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
