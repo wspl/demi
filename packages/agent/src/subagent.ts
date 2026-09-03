@@ -204,6 +204,14 @@ export interface AgentTreeNode {
   children: AgentTreeNode[]
 }
 
+/** The reserved word a harness may not use as a profile name: it is not a profile, it is the absence of one. */
+const INHERIT_PROFILE_NAME = 'default'
+const INHERIT_PROFILE_LABEL = '(inherit)'
+const INHERIT_PROFILE: SubagentProfile<unknown> = {
+  name: INHERIT_PROFILE_LABEL,
+  description: 'Inherits the parent harness, model, Host, and commands.',
+}
+
 export interface ChildSupervisorOptions<State> {
   agent: AgentHarness<State>
   cwd: string
@@ -268,6 +276,9 @@ export class ChildSupervisor<State = unknown> {
   private isDisposed = false
 
   constructor(options: ChildSupervisorOptions<State>) {
+    if (options.profiles?.some((profile) => profile.name === INHERIT_PROFILE_NAME)) {
+      throw new Error(`subagent profile name "${INHERIT_PROFILE_NAME}" is reserved: omitting --profile already inherits the parent`)
+    }
     this.options = options
   }
 
@@ -310,7 +321,9 @@ export class ChildSupervisor<State = unknown> {
         profile: z
           .string()
           .optional()
-          .describe(`Named subagent profile configured at harness assembly. Available: ${profileNames.join(', ')}.`),
+          .describe(
+            `Named subagent profile configured at harness assembly; omit to inherit the parent's model, prompt, Host and commands. Available: ${profileNames.length > 0 ? profileNames.join(', ') : 'none'}.`,
+          ),
         description: z
           .string()
           .optional()
@@ -621,6 +634,9 @@ export class ChildSupervisor<State = unknown> {
     if (!meta?.closedPhase) throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
     const checkpoint = await this.childSessionStore(id).loadCheckpoint()
     if (!checkpoint) throw new Error(`archived subagent "${id}" has no checkpoint left`)
+    // Validate before mutating: a profile that no longer exists must leave the
+    // archive intact instead of rewriting job.json into an orphaned live record.
+    this.resolveProfile(meta.profileName ?? undefined)
     const liveMeta: PersistedSubagentJob = {
       description: meta.description,
       profileName: meta.profileName,
@@ -677,7 +693,7 @@ export class ChildSupervisor<State = unknown> {
     const profile = this.resolveProfile(input.profileName)
     const id = createId()
     const metadata = parent.actionMetadata()
-    const profileName = input.profileName ?? (this.options.profiles ? profile.name : null)
+    const profileName = input.profileName ?? null
     const spawnedAt = Date.now()
     const canSpawnSubagents = !input.isSpawnForbidden && profile.canSpawnSubagents !== false
 
@@ -1135,28 +1151,21 @@ export class ChildSupervisor<State = unknown> {
     })
   }
 
+  /**
+   * No name means the unnamed inherit profile: the parent harness, model, Host
+   * and commands, always available and never configurable. A name must match a
+   * declared profile; "default" is not a name.
+   */
   private resolveProfile(name: string | undefined): SubagentProfile<State> {
-    const profiles = this.options.profiles
-    const implicitDefault: SubagentProfile<State> = {
-      name: 'default',
-      description: 'Inherits the parent harness, model, Host, and commands.',
-    }
-    if (!profiles || profiles.length === 0) {
-      if (name !== undefined && name !== 'default') {
-        throw new Error(`unknown profile "${name}" (available: default)`)
-      }
-      return implicitDefault
-    }
-    const target = name ?? 'default'
-    const profile = profiles.find((candidate) => candidate.name === target)
+    if (name === undefined) return INHERIT_PROFILE as SubagentProfile<State>
+    const profile = this.options.profiles?.find((candidate) => candidate.name === name)
     if (profile) return profile
-    if (name === undefined) return implicitDefault
-    throw new Error(`unknown profile "${name}" (available: ${this.configuredProfileNames().join(', ')})`)
+    const names = this.configuredProfileNames()
+    throw new Error(`unknown profile "${name}" (available: ${names.length > 0 ? names.join(', ') : 'none; omit --profile to inherit the parent'})`)
   }
 
   private configuredProfileNames(): string[] {
-    const names = (this.options.profiles ?? []).map((profile) => profile.name)
-    return names.includes('default') ? names : ['default', ...names]
+    return (this.options.profiles ?? []).map((profile) => profile.name)
   }
 
   private subagentPreamble(childId: string): string {
@@ -1270,7 +1279,7 @@ export class ChildSupervisor<State = unknown> {
       job.phase,
       `up ${formatDuration(now - job.spawnedAt)}`,
       `last-event ${formatDuration(now - job.lastEventAt)} ago`,
-      `profile=${job.profileName ?? 'default'}`,
+      `profile=${job.profileName ?? INHERIT_PROFILE_LABEL}`,
       job.description ? `"${job.description}"` : '(no description)',
       `execution=${execution}`,
       `activity=${this.activityOf(job, execution)}`,
@@ -1285,7 +1294,7 @@ export class ChildSupervisor<State = unknown> {
       `id: ${job.id}`,
       `parent: ${this.ownerId()}`,
       `description: ${job.description || '(none)'}`,
-      `profile: ${job.profileName ?? 'default'}`,
+      `profile: ${job.profileName ?? INHERIT_PROFILE_LABEL}`,
       `phase: ${job.phase}`,
       `elapsed: ${formatDuration(now - job.spawnedAt)}`,
       `execution: ${execution} (for ${formatDuration(this.executionForMs(job, execution, now))})`,

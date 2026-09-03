@@ -38,10 +38,6 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
     commands: () => [...commands],
     agents: () => [
       {
-        name: 'default',
-        description: 'Full coding worker: inherits the parent system prompt, commands, model, and Host.',
-      },
-      {
         name: 'explore',
         description: 'Read-only explorer for searching and reading the workspace; cannot write files or spawn processes.',
         readonly: true,
