@@ -78,7 +78,9 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
     port: 0,
     runner: { pingIntervalMs: 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },
     providerTypes: {
-      stub: ({ providerId, label }) =>
+      stub: {
+        credential: 'api_key',
+        create: ({ providerId, label }) =>
         defineProvider({
           id: providerId,
           displayName: label,
@@ -92,6 +94,7 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
               [events.text('three'), events.response()],
             ]),
         }),
+      },
     },
   })
   const provider = (await (await json(backend, '/api/providers', { providerType: 'stub', label: 'Stub', apiKey: 'k' })).json()) as { provider: { id: string } }

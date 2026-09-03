@@ -122,6 +122,7 @@
       "dependencies": {
         "@demicodes/core": "workspace:^",
         "@demicodes/utils": "workspace:^",
+        "zod": "^4.0.0",
       },
     },
     "packages/provider-anthropic-api": {

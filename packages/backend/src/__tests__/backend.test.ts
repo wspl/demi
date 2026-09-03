@@ -32,8 +32,11 @@ function selectionFor(providerId: string) {
 /** Registers `providerType: 'stub'` providers backed by the given runtime factory. */
 function stubTypes(createRuntime: () => import('@demicodes/provider').AgentProvider) {
   return {
-    stub: ({ providerId, label }: { providerId: string; label: string }) =>
-      defineProvider({ id: providerId, displayName: label, createRuntime }),
+    stub: {
+      credential: 'api_key' as const,
+      create: ({ providerId, label }: { providerId: string; label: string }) =>
+        defineProvider({ id: providerId, displayName: label, createRuntime }),
+    },
   }
 }
 

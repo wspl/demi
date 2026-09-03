@@ -50,7 +50,7 @@ exist (`mode.test.ts`), the tenant-isolation matrix — every route naming
 a user's object tried by another user and by an admin, the empty lists,
 revoke under a workspace refused, revoke and re-claim (`isolation.test.ts`)
 — the pairing state machine
-(`runner.test.ts`), vault and provider assembly (`llm.test.ts`), the M6
+(`runner.test.ts`), vault and provider assembly — key entries, the subscription login and its one-per-family rule, the vendor catalog over a models.dev fixture with vendor and custom entries and their edits (`llm.test.ts`), the M6
 switch acceptance (`switch.test.ts`), the home-image store and the image
 tools (`home-image.test.ts`; the e2fsprogs round trip runs where the tools
 are — the Linux fixture — and skips elsewhere), the guest init plan

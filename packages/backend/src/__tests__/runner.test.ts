@@ -217,7 +217,7 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }),
+      stub: { credential: 'api_key', create: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }) },
     },
   })
   const providerResponse = await api(backend, '/api/providers', {

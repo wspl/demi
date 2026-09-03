@@ -88,7 +88,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: scriptedStub(scripts) }),
+      stub: { credential: 'api_key', create: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: scriptedStub(scripts) }) },
     },
   })
   const selection = selectionFor(await stubProviderId(backend))
@@ -207,7 +207,7 @@ test('real→real switch: files stay, same-device note, the device granted once'
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: scriptedStub(scripts) }),
+      stub: { credential: 'api_key', create: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: scriptedStub(scripts) }) },
     },
   })
   const selection = selectionFor(await stubProviderId(backend))
@@ -287,8 +287,8 @@ test('a running turn refuses the switch; concurrent switches have one winner; a 
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ providerId, label }) =>
-        defineProvider({ id: providerId, displayName: label, createRuntime: () => slowProvider }),
+      stub: { credential: 'api_key', create: ({ providerId, label }) =>
+        defineProvider({ id: providerId, displayName: label, createRuntime: () => slowProvider }) },
     },
   })
   const selection = selectionFor(await stubProviderId(backend))

@@ -22,6 +22,7 @@ import { attachmentRoutes } from './attachments'
 import { authRoutes } from './auth'
 import { blobRoutes } from './blobs'
 import { providerRoutes } from './providers'
+import type { VendorCatalog } from '../llm/vendors'
 import { conversationRoutes } from './conversations'
 import { deviceRoutes } from './devices'
 import { modelRoutes } from './models'
@@ -37,6 +38,7 @@ export function createApp(options: {
   conversationStores: ConversationStores
   vault: ProviderVault
   assembly: ProviderAssembly
+  vendors: VendorCatalog
   logins: SubscriptionLoginFlows
   agentServer: AgentServer
   runnerRegistry: RunnerRegistry
@@ -64,7 +66,7 @@ export function createApp(options: {
   app.route('/api/users', userRoutes({ control: options.control }))
   app.route('/api/settings', settingsRoutes({ mode: options.mode }))
   app.route('/api/models', modelRoutes({ assembly: options.assembly, mode: options.mode }))
-  app.route('/api/providers', providerRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins, mode: options.mode }))
+  app.route('/api/providers', providerRoutes({ vault: options.vault, assembly: options.assembly, vendors: options.vendors, logins: options.logins, mode: options.mode }))
   app.route('/api/usage', usageRoutes({ control: options.control, mode: options.mode }))
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/transfers', transferRoutes({ control: options.control, broker: options.transfers }))

@@ -2978,6 +2978,44 @@ socket (the runner registry, the transfer broker, the Firecracker API
 wait). The frozen table in `backend.md` carries the new names; M13
 starts from them.
 
+### Provider entries and the vendor catalog (2026-09-03) — delivered
+
+Topic raised by the user after the rename: what the providers page's list
+really is. Ruling: the list's items are provider entries — one runtime
+family (`providerType`) with one credential, an endpoint, and a model
+source — and the families and the vendors are two different dimensions.
+Subscription families (claude-code, codex, grok-build) allow exactly one
+entry per scope; API-key families allow any number, each with its own
+label. The vendor catalog is models.dev, fetched live by the backend and
+never stored: each vendor's `npm` field (the client package opencode
+loads for it — the only protocol tag in that data, and what opencode
+itself decides by) maps onto our four families
+(`@ai-sdk/openai-compatible` → openai / chat-completions, `@ai-sdk/openai`
+→ openai / responses, `@ai-sdk/anthropic` → anthropic, `@ai-sdk/google` →
+google); vendors on other packages are not offered. A hand-maintained
+vendor table was proposed and rejected as the sillier option. Sub-rulings:
+(1) vendor baseUrl and model lists stay live, an entry stores only the
+vendor id; (2) native openai / anthropic / google key entries take their
+model list from models.dev too — the packages' static lists stay for the
+local products; (3) entries are editable: `PATCH /api/providers/:id`
+(label, baseUrl, apiKey, model list; a subscription entry only its label);
+(4) labels are not unique; (5) GitHub Copilot is not offered — it needs
+its own auth, nothing in the code ever supported it, so the catalog
+excludes it. The models.dev client (fetch, cache, entry mapping) moves
+from `provider-claude-code` into `@demicodes/provider`, which the Claude
+Code catalog reuses with its version filter. This corrects the M12
+frozen table before M13 consumes it: `GET /api/providers/catalog`
+(vendors + subscription families with a configured flag), the POST body
+in two shapes (from the catalog, or a custom endpoint naming the family),
+the PATCH row, 409 `provider_exists` on a second subscription login.
+Delivered: `@demicodes/provider`'s `models-dev.ts` (zod schema of the
+parts read, the cached fetch, entry mapping; the Claude Code catalog
+filters one shared snapshot), the backend's family registry with
+credential kinds, `llm/vendors.ts`, the vault `update`, the routes above,
+`llm.test.ts` over a models.dev fixture served by the test fixture's
+backend. Backend suite: 98 pass, 2 skip; the Claude Code catalog tests
+green over the shared client.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
