@@ -65,7 +65,7 @@ CREATE TABLE conversations (
   workspace_id  TEXT REFERENCES workspaces(id),
   host_device_id TEXT REFERENCES devices(id),
   pending_switch_json TEXT,
-  connection_id TEXT,
+  provider_id TEXT,
   model_id      TEXT,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
@@ -79,10 +79,10 @@ CREATE TABLE conversation_host_grants (
   PRIMARY KEY (conversation_id, device_id)
 );
 
-CREATE TABLE connections (
+CREATE TABLE providers (
   id            TEXT PRIMARY KEY,
   owner_user_id TEXT REFERENCES users(id),
-  type          TEXT NOT NULL,
+  provider_type TEXT NOT NULL,
   label         TEXT NOT NULL,
   config        TEXT NOT NULL,
   created_at    TEXT NOT NULL
@@ -92,7 +92,7 @@ CREATE TABLE usage_ledger (
   id              TEXT PRIMARY KEY,
   user_id         TEXT NOT NULL REFERENCES users(id),
   conversation_id TEXT NOT NULL,
-  connection_id   TEXT NOT NULL,
+  provider_id   TEXT NOT NULL,
   model_id        TEXT NOT NULL,
   input_tokens    INTEGER NOT NULL,
   output_tokens   INTEGER NOT NULL,

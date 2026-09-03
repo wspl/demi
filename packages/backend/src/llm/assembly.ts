@@ -9,17 +9,17 @@ import { createGoogleProvider } from '@demicodes/provider-google'
 import { createGrokBuildProvider } from '@demicodes/provider-grok-build'
 import { createOpenAIApiProvider } from '@demicodes/provider-openai-api'
 import type { ControlService } from '../storage/control'
-import type { ApiKeyConnectionConfig, Connection, ConnectionConfig, ConnectionVault } from '../vault/connections'
+import type { ApiKeyProviderConfig, ProviderEntry, ProviderConfig, ProviderVault } from '../vault/providers'
 
 /**
- * Builds a base provider for one connection; the connection id is the
- * provider id. `vaultDir` is the connection's private credential-pool root —
+ * Builds a base provider for one provider; the provider id is the
+ * provider id. `vaultDir` is the provider's private credential-pool root —
  * subscription providers keep their OAuth material there.
  */
 export type ProviderTypeFactory = (options: {
-  connectionId: string
+  providerId: string
   label: string
-  config: ConnectionConfig
+  config: ProviderConfig
   vaultDir: string
   /** Present when the provider needs the session's execution target (CLI transports). */
   session?: SessionProviderContext
@@ -34,14 +34,14 @@ export interface SessionProviderContext {
   spawn: ClaudeSpawn
 }
 
-function apiKey(config: ConnectionConfig): ApiKeyConnectionConfig {
-  if (config.kind !== 'api_key') throw new Error(`Provider type "${config.provider}" expects an API key connection`)
+function apiKey(config: ProviderConfig): ApiKeyProviderConfig {
+  if (config.kind !== 'api_key') throw new Error(`Provider type "${config.providerType}" expects an API key`)
   return config
 }
 
 export function builtinProviderTypes(): Record<string, ProviderTypeFactory> {
-  const common = ({ connectionId, label }: { connectionId: string; label: string }) => ({
-    id: connectionId,
+  const common = ({ providerId, label }: { providerId: string; label: string }) => ({
+    id: providerId,
     displayName: label,
   })
   const keyed =
@@ -69,8 +69,8 @@ export function builtinProviderTypes(): Record<string, ProviderTypeFactory> {
   }
 }
 
-export interface CatalogConnection {
-  connectionId: string
+export interface CatalogProvider {
+  providerId: string
   displayName: string
   requiresProcessCapableHost: boolean
   models: ProviderModelList['models']
@@ -78,105 +78,105 @@ export interface CatalogConnection {
 
 /**
  * The LLM module's provider assembly: one base provider runtime configuration
- * per connection (`connectionId` = `providerId`), built from vault
- * credentials through the registered type factories. Connections are
+ * per provider (`providerId` = `providerId`), built from vault
+ * credentials through the registered type factories. Providers are
  * immutable rows (create/delete only), so the cache invalidates on delete.
  */
 export class ProviderAssembly {
   private readonly cache = new Map<string, Provider>()
 
   constructor(
-    private readonly vault: ConnectionVault,
+    private readonly vault: ProviderVault,
     private readonly types: Record<string, ProviderTypeFactory>,
-    /** Per-connection credential-pool root: `<vaultRoot>/<connectionId>/`. */
+    /** Per-provider credential-pool root: `<vaultRoot>/<providerId>/`. */
     private readonly vaultRoot: string,
   ) {}
 
-  vaultDir(connectionId: string): string {
-    return join(this.vaultRoot, connectionId)
+  vaultDir(providerId: string): string {
+    return join(this.vaultRoot, providerId)
   }
 
-  /** Builds a provider through a registered type factory without a connection row (login flows). */
-  buildDetached(type: string, options: { id: string; label: string; vaultDir: string }): Provider {
-    const factory = this.types[type]
-    if (!factory) throw new Error(`Unknown provider type "${type}"`)
+  /** Builds a provider through a registered type factory without a provider row (login flows). */
+  buildDetached(providerType: string, options: { id: string; label: string; vaultDir: string }): Provider {
+    const factory = this.types[providerType]
+    if (!factory) throw new Error(`Unknown provider type "${providerType}"`)
     return factory({
-      connectionId: options.id,
+      providerId: options.id,
       label: options.label,
-      config: { kind: 'subscription', provider: type },
+      config: { kind: 'subscription', providerType },
       vaultDir: options.vaultDir,
     })
   }
 
-  /** Removes a deleted connection's credential-pool directory. */
-  async deleteConnectionState(connectionId: string): Promise<void> {
-    this.invalidate(connectionId)
-    await rm(this.vaultDir(connectionId), { recursive: true, force: true })
+  /** Removes a deleted provider's credential-pool directory. */
+  async deleteProviderState(providerId: string): Promise<void> {
+    this.invalidate(providerId)
+    await rm(this.vaultDir(providerId), { recursive: true, force: true })
   }
 
   /**
-   * The base (unmetered) provider for a connection, or null when unknown.
+   * The base (unmetered) provider instance behind a provider entry, or null when unknown.
    * With `session` the provider is built fresh and uncached — session-scoped
    * instances carry the target's spawn and a session passthrough token.
    */
   async providerFor(
-    connectionId: string,
+    providerId: string,
     session?: SessionProviderContext,
-  ): Promise<{ connection: Connection; provider: Provider } | null> {
-    const connection = await this.vault.get(connectionId)
-    if (!connection) return null
+  ): Promise<{ entry: ProviderEntry; provider: Provider } | null> {
+    const entry = await this.vault.get(providerId)
+    if (!entry) return null
     if (!session) {
-      const cached = this.cache.get(connectionId)
-      if (cached) return { connection, provider: cached }
+      const cached = this.cache.get(providerId)
+      if (cached) return { entry, provider: cached }
     }
-    const factory = this.types[connection.config.provider]
-    if (!factory) throw new Error(`Unknown provider type "${connection.config.provider}"`)
+    const factory = this.types[entry.config.providerType]
+    if (!factory) throw new Error(`Unknown provider type "${entry.config.providerType}"`)
     const provider = factory({
-      connectionId,
-      label: connection.label,
-      config: connection.config,
-      vaultDir: this.vaultDir(connectionId),
+      providerId,
+      label: entry.label,
+      config: entry.config,
+      vaultDir: this.vaultDir(providerId),
       ...(session ? { session } : {}),
     })
-    if (!session) this.cache.set(connectionId, provider)
-    return { connection, provider }
+    if (!session) this.cache.set(providerId, provider)
+    return { entry, provider }
   }
 
-  invalidate(connectionId: string): void {
-    this.cache.delete(connectionId)
+  invalidate(providerId: string): void {
+    this.cache.delete(providerId)
   }
 
-  /** Whether a connection type is registered — the create endpoint's validation. */
-  hasType(type: string): boolean {
-    return type in this.types
+  /** Whether a provider type is registered — the create endpoint's validation. */
+  hasType(providerType: string): boolean {
+    return providerType in this.types
   }
 
   /**
-   * The connection **Test** button: one cheap real request against the
+   * The provider **Test** button: one cheap real request against the
    * endpoint/key — first streamed event wins, errors report the provider's
    * own message.
    */
-  async testConnection(connectionId: string): Promise<{ ok: boolean; message?: string }> {
-    const resolved = await this.providerFor(connectionId)
-    if (!resolved) return { ok: false, message: 'Unknown connection' }
-    const { connection, provider } = resolved
+  async testProvider(providerId: string): Promise<{ ok: boolean; message?: string }> {
+    const resolved = await this.providerFor(providerId)
+    if (!resolved) return { ok: false, message: 'Unknown provider' }
+    const { entry, provider } = resolved
     const modelId =
-      (connection.config.kind === 'api_key' ? connection.config.modelIds?.[0] : undefined) ??
+      (entry.config.kind === 'api_key' ? entry.config.modelIds?.[0] : undefined) ??
       (provider.listModels ? (await provider.listModels()).models[0]?.id : undefined)
     if (!modelId) return { ok: false, message: 'No model available to test with' }
 
     const cancel = new AbortController()
     try {
       const runtime = await providerRuntime(provider, {
-        providerId: connection.id,
+        providerId: entry.id,
         model: {
-          providerId: connection.id,
+          providerId: entry.id,
           model: { id: modelId, name: modelId, contextWindow: 128_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
           thinking: null,
         },
       })
       const run = runtime.run({
-        sessionId: 'connection-test',
+        sessionId: 'provider-test',
         turnId: createId(),
         requestId: createId(),
         modelId,
@@ -200,26 +200,26 @@ export class ProviderAssembly {
   }
 
   /**
-   * The aggregated model catalog, grouped by connection. Model ids are never
+   * The aggregated model catalog, grouped by provider. Model ids are never
    * stored — lists come live from each provider runtime — except
-   * compatible-endpoint connections, whose user-entered `modelIds` become
+   * compatible-endpoint providers, whose user-entered `modelIds` become
    * minimal catalog entries.
    */
-  async catalog(ownerUserId: string | null): Promise<CatalogConnection[]> {
-    const connections = await this.vault.list({ ownerUserId })
+  async catalog(ownerUserId: string | null): Promise<CatalogProvider[]> {
+    const entries = await this.vault.list({ ownerUserId })
     return Promise.all(
-      connections.map(async (connection) => {
-        const resolved = await this.providerFor(connection.id)
+      entries.map(async (entry) => {
+        const resolved = await this.providerFor(entry.id)
         const provider = resolved?.provider
-        const modelIds = connection.config.kind === 'api_key' ? connection.config.modelIds : undefined
+        const modelIds = entry.config.kind === 'api_key' ? entry.config.modelIds : undefined
         const models = modelIds
-          ? modelIds.map((modelId) => userEnteredModel(connection.id, modelId))
+          ? modelIds.map((modelId) => userEnteredModel(entry.id, modelId))
           : provider?.listModels
-            ? withProviderId(await provider.listModels(), connection.id).models
+            ? withProviderId(await provider.listModels(), entry.id).models
             : []
         return {
-          connectionId: connection.id,
-          displayName: connection.label,
+          providerId: entry.id,
+          displayName: entry.label,
           requiresProcessCapableHost: provider?.requiresProcessCapableHost ?? false,
           models,
         }
@@ -233,9 +233,9 @@ export class ProviderAssembly {
  * capabilities are unknown to us, so everything capability-shaped is null
  * (unknown) and the context window uses a conservative mainstream default.
  */
-function userEnteredModel(connectionId: string, modelId: string) {
+function userEnteredModel(providerId: string, modelId: string) {
   return {
-    providerId: connectionId,
+    providerId: providerId,
     id: modelId,
     displayName: modelId,
     contextWindow: 128_000,
@@ -253,14 +253,14 @@ function userEnteredModel(connectionId: string, modelId: string) {
 /** The ledger row appender used by the metering wrap — one row per provider request. */
 export function usageAppender(
   control: ControlService,
-  context: { userId: string; conversationId: string; connectionId: string },
+  context: { userId: string; conversationId: string; providerId: string },
 ) {
   return (usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }, request: { modelId: string }) => {
     void control
       .appendUsage({
         userId: context.userId,
         conversationId: context.conversationId,
-        connectionId: context.connectionId,
+        providerId: context.providerId,
         modelId: request.modelId,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,

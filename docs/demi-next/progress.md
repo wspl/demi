@@ -2962,6 +2962,22 @@ What the code holds against `product.md` at the start of M12:
   routes exist), the setup and password rows came, the scoped rows say
   so. Backend suite: 97 pass, 2 skip.
 
+### Rename: connection → provider (2026-09-03) — delivered
+
+Ruling: "connection" was demi-next's own word for a provider type
+configured with one credential; the core packages already call that
+instance a provider and the backend was passing the connection id as the
+`providerId`, so the two names meant one thing. The word is gone from
+the product: table `providers` (column `provider_type`), `provider_id`
+on conversations and the ledger, `/api/providers` (request and response
+field `providerType`, body `{ provider }`, list `{ providers }`, code
+`provider_not_found`), `ProviderVault` / `ProviderEntry` /
+`ProviderRecord` / `ProviderScope` / `CatalogProvider`, `providerOwner`,
+the `providers page`. "Connection" survives only where it means a
+socket (the runner registry, the transfer broker, the Firecracker API
+wait). The frozen table in `backend.md` carries the new names; M13
+starts from them.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

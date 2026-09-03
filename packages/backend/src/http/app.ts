@@ -6,7 +6,7 @@ import type { RunnerRegistry } from '../runner/registry'
 import type { TransferBroker } from '../runner/transfers'
 import type { ControlService, WorkspaceRecord } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
-import type { ConnectionVault } from '../vault/connections'
+import type { ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { BlobStore } from '@demicodes/agent'
 import type { Host } from '@demicodes/shell'
@@ -21,7 +21,7 @@ import type { InstanceMode } from '../auth/identity'
 import { attachmentRoutes } from './attachments'
 import { authRoutes } from './auth'
 import { blobRoutes } from './blobs'
-import { connectionRoutes } from './connections'
+import { providerRoutes } from './providers'
 import { conversationRoutes } from './conversations'
 import { deviceRoutes } from './devices'
 import { modelRoutes } from './models'
@@ -35,7 +35,7 @@ import { workspaceRoutes } from './workspaces'
 export function createApp(options: {
   control: ControlService
   conversationStores: ConversationStores
-  vault: ConnectionVault
+  vault: ProviderVault
   assembly: ProviderAssembly
   logins: SubscriptionLoginFlows
   agentServer: AgentServer
@@ -64,7 +64,7 @@ export function createApp(options: {
   app.route('/api/users', userRoutes({ control: options.control }))
   app.route('/api/settings', settingsRoutes({ mode: options.mode }))
   app.route('/api/models', modelRoutes({ assembly: options.assembly, mode: options.mode }))
-  app.route('/api/connections', connectionRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins, mode: options.mode }))
+  app.route('/api/providers', providerRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins, mode: options.mode }))
   app.route('/api/usage', usageRoutes({ control: options.control, mode: options.mode }))
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/transfers', transferRoutes({ control: options.control, broker: options.transfers }))

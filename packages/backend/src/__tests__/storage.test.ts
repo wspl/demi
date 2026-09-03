@@ -34,7 +34,7 @@ test('control migrations apply once and are idempotent', () => {
     'devices',
     'workspaces',
     'conversations',
-    'connections',
+    'providers',
     'usage_ledger',
     'attachments',
   ]) {
@@ -125,7 +125,7 @@ test('ControlService conversation CRUD and ordering', async () => {
 
   await control.setConversationModel(second.id, 'conn-1', 'model-x')
   const updated = await control.getConversation(second.id)
-  expect(updated?.connectionId).toBe('conn-1')
+  expect(updated?.providerId).toBe('conn-1')
   expect(updated?.modelId).toBe('model-x')
   db.close()
 })

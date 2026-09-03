@@ -76,8 +76,8 @@ export class World {
     const model = new ScriptedModel()
     const frames: WireFrame[] = []
     const backend = await World.openBackend(dataDir, options, model, frames)
-    const connectionId = await stubConnection(backend)
-    const world = new World(frames, backend, dataDir, model, selectionFor(connectionId), new Map(), options)
+    const providerId = await stubProviderId(backend)
+    const world = new World(frames, backend, dataDir, model, selectionFor(providerId), new Map(), options)
     for (const name of options.runners ?? []) await world.pair(name)
     return world
   }
@@ -88,7 +88,7 @@ export class World {
       port: options.port ?? 0,
       runner: { pingIntervalMs: options.pingIntervalMs ?? 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },
       providerTypes: {
-        stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: () => model.runtime() }),
+        stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: () => model.runtime() }),
       },
       ...(options.managedHosts ? { managedHosts: options.managedHosts } : {}),
       ...(options.publicUrl ? { publicUrl: options.publicUrl } : {}),
@@ -225,22 +225,22 @@ export class World {
   }
 }
 
-function selectionFor(connectionId: string) {
+function selectionFor(providerId: string) {
   const model: ModelSelection = {
-    providerId: connectionId,
+    providerId: providerId,
     model: { id: 'scenario-model', name: 'Scenario Model', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
-  return { providerId: connectionId, model }
+  return { providerId: providerId, model }
 }
 
-async function stubConnection(backend: TestBackend): Promise<string> {
-  const response = await backend.session.fetch('/api/connections', {
+async function stubProviderId(backend: TestBackend): Promise<string> {
+  const response = await backend.session.fetch('/api/providers', {
     method: 'POST',
-    body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'test-key' }),
+    body: JSON.stringify({ providerType: 'stub', label: 'Stub', apiKey: 'test-key' }),
     headers: { 'content-type': 'application/json' },
   })
-  if (response.status !== 201) throw new Error(`connection create failed: ${response.status}`)
-  const { connection } = (await response.json()) as { connection: { id: string } }
-  return connection.id
+  if (response.status !== 201) throw new Error(`provider create failed: ${response.status}`)
+  const { provider } = (await response.json()) as { provider: { id: string } }
+  return provider.id
 }
