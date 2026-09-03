@@ -7,7 +7,8 @@ import { defineProvider } from '@demicodes/provider'
 import { JOB_VIEW_BYTES, type RunnerProtocolMessage } from '@demicodes/runner-protocol'
 import { startTinyjsRunner, type TinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
-import { createBackend, type Backend, type BackendOptions } from '../../index'
+import type { BackendOptions } from '../../index'
+import { openBackend, type TestBackend } from '../session'
 import { DirBlobStore } from '../../storage/blob-store'
 import { openSqliteDatabase } from '../../storage/database'
 import { ScriptedModel } from './model'
@@ -62,7 +63,7 @@ export class World {
 
   private constructor(
     readonly frames: WireFrame[],
-    public backend: Backend,
+    public backend: TestBackend,
     readonly dataDir: string,
     readonly model: ScriptedModel,
     readonly selection: { providerId: string; model: ModelSelection },
@@ -81,8 +82,8 @@ export class World {
     return world
   }
 
-  private static openBackend(dataDir: string, options: WorldOptions, model: ScriptedModel, frames: WireFrame[]): Promise<Backend> {
-    return createBackend({
+  private static openBackend(dataDir: string, options: WorldOptions, model: ScriptedModel, frames: WireFrame[]): Promise<TestBackend> {
+    return openBackend({
       dataDir,
       port: options.port ?? 0,
       runner: { pingIntervalMs: options.pingIntervalMs ?? 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },
@@ -178,7 +179,7 @@ export class World {
   }
 
   async api<T>(path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<T> {
-    const response = await fetch(`${this.url}${path}`, {
+    const response = await this.backend.session.fetch(path, {
       method,
       ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }),
     })
@@ -233,8 +234,8 @@ function selectionFor(connectionId: string) {
   return { providerId: connectionId, model }
 }
 
-async function stubConnection(backend: Backend): Promise<string> {
-  const response = await fetch(`${backend.url}/api/connections`, {
+async function stubConnection(backend: TestBackend): Promise<string> {
+  const response = await backend.session.fetch('/api/connections', {
     method: 'POST',
     body: JSON.stringify({ type: 'stub', label: 'Stub', apiKey: 'test-key' }),
     headers: { 'content-type': 'application/json' },

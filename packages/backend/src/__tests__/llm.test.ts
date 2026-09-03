@@ -12,7 +12,7 @@ import { startTinyjsRunner } from '@demicodes/runner/testing'
 import type { SessionProviderContext } from '../llm/assembly'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
-import { createBackend, type Backend, type BackendOptions } from '../index'
+import { openBackend, type TestBackend } from './session'
 
 // M5 step 1 (BYOK + metering): a pasted key becomes a usable connection —
 // providers assemble per connection from vault credentials, every provider
@@ -28,8 +28,8 @@ function selectionFor(connectionId: string) {
   return { providerId: connectionId, model }
 }
 
-async function api<T>(backend: Backend, path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
-  const response = await fetch(`${backend.url}${path}`, init)
+async function api<T>(backend: TestBackend, path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
+  const response = await backend.session.fetch(path, init)
   return { status: response.status, body: (await response.json().catch(() => null)) as T }
 }
 
@@ -37,7 +37,7 @@ function post(payload: unknown): RequestInit {
   return { method: 'POST', body: JSON.stringify(payload), headers: { 'content-type': 'application/json' } }
 }
 
-function stubBackendOptions(dataDir: string, turns: number): BackendOptions {
+function stubBackendOptions(dataDir: string, turns: number): Parameters<typeof openBackend>[0] {
   return {
     dataDir,
     port: 0,
@@ -58,9 +58,9 @@ function stubBackendOptions(dataDir: string, turns: number): BackendOptions {
   }
 }
 
-async function openConversation(backend: Backend, connectionId: string) {
+async function openConversation(backend: TestBackend, connectionId: string) {
   const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
-  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${created.body.conversation.id}/stream`)
+  const socket = backend.session.socket(`/api/conversations/${created.body.conversation.id}/stream`)
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => resolve(), { once: true })
     socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
@@ -72,7 +72,7 @@ async function openConversation(backend: Backend, connectionId: string) {
 
 test('connections: create/list redact key material, unknown types rejected, delete unresolves', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-conn-'))
-  const backend = await createBackend(stubBackendOptions(dataDir, 1))
+  const backend = await openBackend(stubBackendOptions(dataDir, 1))
 
   const unknown = await api(backend, '/api/connections', post({ type: 'nope', label: 'x', apiKey: 'k' }))
   expect(unknown.status).toBe(400)
@@ -101,7 +101,7 @@ test('connections: create/list redact key material, unknown types rejected, dele
   expect(models.body.connections[0]?.models.map((model) => model.id)).toEqual(['custom-1', 'custom-2'])
   expect(models.body.connections[0]?.models[0]?.providerId).toBe(connectionId)
 
-  const deleted = await fetch(`${backend.url}/api/connections/${connectionId}`, { method: 'DELETE' })
+  const deleted = await backend.session.fetch(`/api/connections/${connectionId}`, { method: 'DELETE' })
   expect(deleted.status).toBe(204)
   expect((await api<{ connections: unknown[] }>(backend, '/api/connections')).body.connections).toHaveLength(0)
   expect((await api<{ connections: unknown[] }>(backend, '/api/models')).body.connections).toHaveLength(0)
@@ -111,7 +111,7 @@ test('connections: create/list redact key material, unknown types rejected, dele
 
 test('metering: every provider request lands in the ledger; /api/usage aggregates', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-usage-'))
-  const backend = await createBackend(stubBackendOptions(dataDir, 3))
+  const backend = await openBackend(stubBackendOptions(dataDir, 3))
   const created = await api<{ connection: { id: string } }>(
     backend,
     '/api/connections',
@@ -144,7 +144,7 @@ test('metering: every provider request lands in the ledger; /api/usage aggregate
 
 test('enforcement: the provider request rate limit refuses at the inference entry', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-limit-'))
-  const backend = await createBackend({ ...stubBackendOptions(dataDir, 5), usage: { providerRequestsPerMinute: 1 } })
+  const backend = await openBackend({ ...stubBackendOptions(dataDir, 5), usage: { providerRequestsPerMinute: 1 } })
   const created = await api<{ connection: { id: string } }>(
     backend,
     '/api/connections',
@@ -168,7 +168,7 @@ test('enforcement: the provider request rate limit refuses at the inference entr
 test('subscription login: pending material surfaces, completion becomes a connection with a vault pool', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-sub-'))
   const approve = deferred<void>()
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     providerTypes: {
@@ -234,7 +234,7 @@ test('subscription login: pending material surfaces, completion becomes a connec
   // The login's pool became the connection's vault directory.
   expect(existsSync(join(dataDir, 'vault', connectionId, 'oauth.json'))).toBe(true)
 
-  const deleted = await fetch(`${backend.url}/api/connections/${connectionId}`, { method: 'DELETE' })
+  const deleted = await backend.session.fetch(`/api/connections/${connectionId}`, { method: 'DELETE' })
   expect(deleted.status).toBe(204)
   expect(existsSync(join(dataDir, 'vault', connectionId))).toBe(false)
 
@@ -246,7 +246,7 @@ test('a process-capable provider gets a session-scoped instance carrying the tar
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-runner-'))
   const sessions: SessionProviderContext[] = []
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -278,7 +278,7 @@ test('a process-capable provider gets a session-scoped instance carrying the tar
   const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
   const control = new LocalControlService(controlDb)
   const workspace = await control.createWorkspace({
-    userId: 'local',
+    userId: backend.session.user.id,
     deviceId: claimed.body.device.id,
     path: runnerDir,
     name: 'cli workspace',
@@ -286,7 +286,7 @@ test('a process-capable provider gets a session-scoped instance carrying the tar
   await control.setConversationWorkspace(conversation.body.conversation.id, workspace.id)
   controlDb.close()
 
-  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversation.body.conversation.id}/stream`)
+  const socket = backend.session.socket(`/api/conversations/${conversation.body.conversation.id}/stream`)
   await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve(), { once: true }))
   const client = new AgentClient(createWebSocketClientTransport(socket as never))
   await client.open(selectionFor(connectionId), '/ignored', 'ignored')

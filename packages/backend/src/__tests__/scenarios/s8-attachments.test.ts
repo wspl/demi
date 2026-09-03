@@ -22,7 +22,7 @@ const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
 describe.each<Target>(['hostless', 'runner:alpha'])('S8 attachments on %s', (target) => {
   test('upload → ref → bytes at the model → blob route', async () => {
     const driver = await world.conversation(target)
-    const uploaded = await fetch(`${world.url}/api/attachments`, { method: 'POST', body: PNG_BYTES, headers: { 'content-type': 'image/png' } })
+    const uploaded = await world.backend.session.fetch(`/api/attachments`, { method: 'POST', body: PNG_BYTES, headers: { 'content-type': 'image/png' } })
     expect(uploaded.status).toBe(201)
     const { attachment } = (await uploaded.json()) as { attachment: { id: string; sha256: string } }
 
@@ -46,7 +46,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S8 attachments on %s', (tar
     const image = user?.type === 'user' ? user.content.find((block) => block.type === 'image') : undefined
     expect(image && 'source' in image ? image.source : null).toEqual({ type: 'ref', ref: attachment.sha256, mediaType: 'image/png' } as never)
 
-    const blob = await fetch(`${world.url}/api/blobs/${attachment.sha256}?type=image/png`)
+    const blob = await world.backend.session.fetch(`/api/blobs/${attachment.sha256}?type=image/png`)
     expect(blob.status).toBe(200)
     expect(new Uint8Array(await blob.arrayBuffer())).toEqual(PNG_BYTES)
   }, 30_000)

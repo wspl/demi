@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { STUB_USER } from '../auth/identity'
+import type { AuthEnv } from '../auth/identity'
 import type { ControlService, WorkspaceRecord } from '../storage/control'
 import { ManagedHostError, type ManagedHosts } from '../managed/lifecycle'
 
@@ -23,11 +23,11 @@ export function workspaceRoutes(options: {
   managedHosts: ManagedHosts | null
   /** The Cloud choice; null when this backend provisions no machines. */
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
-}): Hono {
+}): Hono<AuthEnv> {
   const { control, managedHosts, createCloudWorkspace } = options
-  const app = new Hono()
+  const app = new Hono<AuthEnv>()
 
-  app.get('/', async (c) => c.json({ workspaces: await control.listWorkspaces(STUB_USER.id) }))
+  app.get('/', async (c) => c.json({ workspaces: await control.listWorkspaces(c.get('user').id) }))
 
   app.post('/', async (c) => {
     const parsed = createWorkspaceBodySchema.safeParse(await c.req.json().catch(() => null))
@@ -37,23 +37,23 @@ export function workspaceRoutes(options: {
     if ('cloud' in parsed.data) {
       if (!createCloudWorkspace) return c.json({ code: 'no_cloud', message: 'This backend provisions no machines' }, 409)
       try {
-        return c.json({ workspace: await createCloudWorkspace(STUB_USER.id, parsed.data.name) }, 201)
+        return c.json({ workspace: await createCloudWorkspace(c.get('user').id, parsed.data.name) }, 201)
       } catch (error) {
         if (error instanceof ManagedHostError) return c.json({ code: error.code, message: error.message }, 409)
         throw error
       }
     }
     const device = await control.getDevice(parsed.data.deviceId)
-    if (!device || device.userId !== STUB_USER.id) {
+    if (!device || device.userId !== c.get('user').id) {
       return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
     }
-    const workspace = await control.createWorkspace({ userId: STUB_USER.id, ...parsed.data })
+    const workspace = await control.createWorkspace({ userId: c.get('user').id, ...parsed.data })
     return c.json({ workspace }, 201)
   })
 
   app.patch('/:id', async (c) => {
     const workspace = await control.getWorkspace(c.req.param('id'))
-    if (!workspace || workspace.userId !== STUB_USER.id) {
+    if (!workspace || workspace.userId !== c.get('user').id) {
       return c.json({ code: 'workspace_not_found', message: 'No such workspace' }, 404)
     }
     const parsed = patchWorkspaceBodySchema.safeParse(await c.req.json().catch(() => null))
@@ -64,7 +64,7 @@ export function workspaceRoutes(options: {
 
   app.delete('/:id', async (c) => {
     const workspace = await control.getWorkspace(c.req.param('id'))
-    if (!workspace || workspace.userId !== STUB_USER.id) {
+    if (!workspace || workspace.userId !== c.get('user').id) {
       return c.json({ code: 'workspace_not_found', message: 'No such workspace' }, 404)
     }
     const inUse = await control.countConversationsInWorkspace(workspace.id)

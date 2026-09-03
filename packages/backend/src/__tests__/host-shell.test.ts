@@ -10,7 +10,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import type { RunnerProtocolMessage } from '@demicodes/runner-protocol'
 import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
-import { createBackend, type Backend } from '../index'
+import { openBackend, type TestBackend } from './session'
 
 // M9 step 4: `demi host shell --id` between two devices. The script runs as
 // a job on the named host; its stdout comes back as a brokered HTTP
@@ -18,11 +18,11 @@ import { createBackend, type Backend } from '../index'
 // crosses either runner socket — the wire audit below is the proof. A
 // hostless caller takes the bytes in-process.
 
-async function api(backend: Backend, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${backend.url}${path}`, init)
+async function api(backend: TestBackend, path: string, init?: RequestInit): Promise<Response> {
+  return backend.session.fetch(path, init)
 }
 
-async function json(backend: Backend, path: string, body: unknown, method = 'POST'): Promise<Response> {
+async function json(backend: TestBackend, path: string, body: unknown, method = 'POST'): Promise<Response> {
   return api(backend, path, { method, body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
 }
 
@@ -35,8 +35,8 @@ function selectionFor(connectionId: string) {
   return { providerId: connectionId, model }
 }
 
-async function openClient(backend: Backend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
-  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversationId}/stream`)
+async function openClient(backend: TestBackend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
+  const socket = backend.session.socket(`/api/conversations/${conversationId}/stream`)
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => resolve(), { once: true })
     socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
@@ -55,7 +55,7 @@ function lastExited(shellEvents: Extract<ClientSessionEvent, { type: 'shell_outp
   return status?.status === 'exited' ? status : undefined
 }
 
-async function pairDevice(backend: Backend, name: string) {
+async function pairDevice(backend: TestBackend, name: string) {
   const home = await mkdtemp(join(tmpdir(), `demi-hs-${name}-`))
   const stateDir = await mkdtemp(join(tmpdir(), `demi-hs-${name}-state-`))
   const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home, name })
@@ -73,7 +73,7 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
   /** Every message per device and direction: the wire audit. */
   const frames: Array<{ deviceId: string; direction: 'in' | 'out'; message: RunnerProtocolMessage }> = []
   const scripts: string[] = []
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },

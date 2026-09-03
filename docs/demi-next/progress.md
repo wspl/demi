@@ -2820,6 +2820,87 @@ What the smoke found and what changed for it:
 The rootfs rebuilt by the corrected pipeline (ownership, `/etc/hosts`,
 the work tree removed) passes the same smoke with a clean console.
 
+## M12 — Multi-user systems (2026-09-03)
+
+Status: in progress — four checkpoints, each a commit: (1) identity and
+sessions, (2) the admin surface, (3) instance-mode enforcement, (4) the
+tenant-isolation matrix and the frozen API table.
+
+What the code holds against `product.md` at the start of M12:
+
+- `control.sqlite` has `users`, `web_sessions` and `settings`, all unused
+  beyond `ensureUser(STUB_USER)`: a constant master named `local` that
+  seven route modules and the composition root read as "the current
+  user". No cookie is read or written anywhere; `/api/auth/*` answers
+  with the constant.
+- Connections have no owner in practice: `vault.list()`,
+  `assembly.catalog()` and `providerFor()` are instance-wide, and the
+  subscription login flow is built with the constant as owner.
+- Every test request (29 `fetch` sites, 12 stream sockets) is anonymous.
+
+### Rulings (2026-09-03)
+
+- **The instance mode is a startup configuration, not a setting.**
+  `DEMI_INSTANCE_MODE=shared|isolated` is required; `createBackend`
+  takes it as a required option; there is no endpoint that changes it,
+  and the `settings` table goes (nothing is left to store in it).
+  `GET /api/settings` stays as a read-only `{ mode }` for the page. A
+  restart under the other mode with connections in the table refuses to
+  start: the rows' ownership would contradict the mode.
+- **User data is isolated absolutely.** A conversation, device,
+  workspace, attachment or usage row is visible to its owner only; master
+  and admin manage accounts and, in shared mode, providers — they never
+  read another user's data. Another user's object answers 404, a role
+  short of the action 403, no session 401.
+- **The admin action in shared mode is "configuring providers"**: the
+  record and the progress log say it that way; `/api/connections` keeps
+  its M5 shape.
+- Initial setup is `POST /api/setup { username, password }`, accepted
+  while the instance has no users and 404 afterwards; `GET /api/setup`
+  says whether it is needed. Setup logs the master in.
+- Cookie `demi_session`: `HttpOnly; SameSite=Lax; Path=/`, `Secure` when
+  the request arrived over https (directly or by `X-Forwarded-Proto`);
+  30 days sliding, renewed when a request finds under 15 days left;
+  logout deletes the row. Passwords hash with argon2id (`Bun.password`).
+- A user changes their own password: `PUT /api/auth/password { current,
+  next }`.
+- Login lockout: five failures on a username lock it for a minute.
+- Usage: a user sees their own ledger; in shared mode admins also get
+  the instance's ledger grouped by user.
+
+### Checkpoint 1: identity and sessions (2026-09-03) — delivered
+
+- `auth/`: `User`/`Role` and `outranks` (a role acts on strictly lower
+  roles), argon2id through `Bun.password`, `WebSessions` (256-bit token
+  in the cookie, SHA-256 in `web_sessions`, 30 days sliding, renewed
+  under 15 days left, an injectable clock), `LoginLimiter` (five
+  failures lock a username for a minute).
+- `http/`: the gate `authenticate` over `/api/*` exempting `/api/setup`,
+  `/api/auth/login`, `/api/runner` and `/api/transfers`; the cookie
+  helpers (`Secure` over https or `X-Forwarded-Proto`); `setup.ts`
+  (`GET` `{ needed }`, `POST` creates the master atomically while
+  `users` is empty and signs it in, 404 `already_set_up` afterwards);
+  `auth.ts` (login with 401 `invalid_credentials` / 429
+  `too_many_attempts`, logout, me, `PUT /password`). Every route module
+  reads `c.get('user')`; conversations, devices, workspaces and the
+  stream answer another user's object with 404. Connections stay
+  instance-wide until checkpoint 3 (owner null, the login flow's owner
+  null).
+- `ControlService`: `createMaster` (insert-if-empty in a transaction),
+  `createUser`, `getUser`, `findUserByUsername` (with the hash),
+  `listUsers`, `countUsers`, `setUserPassword`, the four `web_sessions`
+  methods; `ensureUser` and the `settings` table are gone.
+- `createBackend` takes `mode` (required) and `auth` (test tuning);
+  `main.ts` requires `DEMI_INSTANCE_MODE`. The mode does nothing yet
+  beyond being named; checkpoints 2 and 3 read it.
+- Tests: `__tests__/session.ts` — `openBackend` (shared mode by default;
+  sets the master up on a fresh data directory, logs in over a reopened
+  one) returning the backend with a signed-in `session` whose `fetch`
+  and `socket` carry the cookie (Bun's WebSocket takes headers); every
+  test file and the scenario world go through it, and the fixed `local`
+  ids became the session user's. `auth.test.ts` has the four cases.
+  Backend suite: 92 pass, 2 skip.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

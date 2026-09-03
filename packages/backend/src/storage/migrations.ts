@@ -110,11 +110,6 @@ CREATE TABLE attachments (
   sha256     TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
-
-CREATE TABLE settings (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
 `,
   },
 ]

@@ -13,21 +13,21 @@ import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
-import { createBackend, type Backend } from '../index'
+import { openBackend, type TestBackend } from './session'
 
 // M4: the pairing flow end-to-end — unclaimed runner prints a code, the web
 // API claims it, the device token round-trips a restart, revoke refuses the
 // reconnect, and the browse endpoints ride the same Host RPC.
 
-async function api(backend: Backend, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${backend.url}${path}`, init)
+async function api(backend: TestBackend, path: string, init?: RequestInit): Promise<Response> {
+  return backend.session.fetch(path, init)
 }
 
 test('pairing: claim, reconnect with the device token, revoke refuses the reconnect', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m4-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m4-runner-'))
-  const backend = await createBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
+  const backend = await openBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
 
   const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 5_000 })
@@ -107,7 +107,7 @@ test('claim codes expire and rotate on the waiting socket; the stale code is dea
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-expiry-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m4-expiry-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m4-expiry-runner-'))
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0, claimTtlMs: 150 },
@@ -135,7 +135,7 @@ test('claim codes expire and rotate on the waiting socket; the stale code is dea
 
 test('the claim endpoint is rate-limited per user', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-rate-'))
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0, claimAttemptsPerMinute: 2 },
@@ -154,7 +154,7 @@ test('the claim endpoint is rate-limited per user', async () => {
 
 test('a malformed runner frame closes the socket; a bad device token is rejected', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m4-reject-'))
-  const backend = await createBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
+  const backend = await openBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
   const wsUrl = `${backend.url.replace('http', 'ws')}/api/runner`
 
   const garbage = new WebSocket(wsUrl)
@@ -212,7 +212,7 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
         [events.toolCall('t4', 'shell_exec', { script: 'demi todo add "run the suite" && demi todo list && demi todo list --json', timeoutMs: 10_000 })],
         [events.text('turn four done'), events.response()],
       ])
-  const backend = await createBackend({
+  const backend = await openBackend({
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -245,7 +245,7 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
   const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
   const control = new LocalControlService(controlDb)
   const workspace = await control.createWorkspace({
-    userId: 'local',
+    userId: backend.session.user.id,
     deviceId: device.id,
     path: runnerDir,
     name: 'test workspace',
@@ -253,7 +253,7 @@ test('M4 acceptance: a session executes on the claimed device; disconnect is a t
   await control.setConversationWorkspace(conversation.id, workspace.id)
   controlDb.close()
 
-  const socket = new WebSocket(`${backend.url.replace('http', 'ws')}/api/conversations/${conversation.id}/stream`)
+  const socket = backend.session.socket(`/api/conversations/${conversation.id}/stream`)
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => resolve(), { once: true })
     socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
@@ -306,7 +306,7 @@ test('a device token holds one live connection: the newcomer is refused and retr
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m9-one-conn-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m9-one-conn-runner-'))
   const refusals: string[] = []
-  const backend = await createBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0, log: (line) => refusals.push(line) } })
+  const backend = await openBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0, log: (line) => refusals.push(line) } })
 
   const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
   await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
@@ -335,7 +335,7 @@ test('a device token holds one live connection: the newcomer is refused and retr
   await backend.close()
 }, 15_000)
 
-async function deviceOnline(backend: Backend, deviceId: string): Promise<boolean> {
+async function deviceOnline(backend: TestBackend, deviceId: string): Promise<boolean> {
   const { devices } = (await (await api(backend, '/api/devices')).json()) as { devices: Array<{ id: string; online: boolean }> }
   return devices.find((device) => device.id === deviceId)?.online ?? false
 }
