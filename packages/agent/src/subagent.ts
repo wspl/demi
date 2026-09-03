@@ -224,6 +224,8 @@ export interface ChildSupervisorOptions<State> {
   directory: AgentDirectory<State>
   /** Live-children ceiling for this supervisor (from `AgentServerOptions.subagents.maxLiveSubagents`). */
   maxLiveSubagents: number
+  /** Fixed shell preview budget for every child (from `AgentServerOptions.tools.shellPreviewBudgetTokens`); null derives it from the model. */
+  shellPreviewBudgetTokens: number | null
   /** When false, this supervisor's owner may not spawn: its `demi agent` tree carries communication and reads only. */
   canSpawn: boolean
   /** Invoked whenever the live-children set changes; wired to the owning job's settle loop. */
@@ -790,6 +792,9 @@ export class ChildSupervisor<State = unknown> {
         createStandardAgentTools<State>({
           environment: (ctx) => this.childEnvironment(job, ctx),
           scheduleYield: (ctx, durationMs) => job.session.scheduleYieldWakeup(durationMs, ctx.metadata),
+          ...(this.options.shellPreviewBudgetTokens === null
+            ? {}
+            : { previewBudgetTokens: this.options.shellPreviewBudgetTokens }),
         }),
     }
     return { job, runtime }
