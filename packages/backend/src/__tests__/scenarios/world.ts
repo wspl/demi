@@ -88,7 +88,7 @@ export class World {
       port: options.port ?? 0,
       runner: { pingIntervalMs: options.pingIntervalMs ?? 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },
       providerTypes: {
-        stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: () => model.runtime() }),
+        stub: { credential: 'api_key', create: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: () => model.runtime() }) },
       },
       ...(options.managedHosts ? { managedHosts: options.managedHosts } : {}),
       ...(options.publicUrl ? { publicUrl: options.publicUrl } : {}),

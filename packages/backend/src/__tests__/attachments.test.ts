@@ -54,7 +54,7 @@ test('message attachment: upload → ref block → inline bytes at the provider 
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }),
+      stub: { credential: 'api_key', create: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }) },
     },
   })
   const providerResponse = await api(backend, '/api/providers', {
@@ -141,7 +141,7 @@ test('attachment upload limits and workspace file drop', async () => {
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }),
+      stub: { credential: 'api_key', create: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: stubRuntime }) },
     },
   })
 

@@ -58,6 +58,8 @@ export interface ControlService {
   getProvider(id: string): Promise<ProviderRecord | null>
   /** The providers of one scope — the instance's (owner null) or a user's — or every row for the startup check. */
   listProviders(scope: ProviderScope): Promise<ProviderRecord[]>
+  /** Rewrites label and/or config (already encrypted); null when the row is gone. */
+  updateProvider(id: string, patch: { label?: string; config?: string }): Promise<ProviderRecord | null>
   deleteProvider(id: string): Promise<void>
   appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void>
   listUsage(userId: string): Promise<UsageRow[]>
@@ -430,6 +432,12 @@ export class LocalControlService implements ControlService {
           ? this.db.all<ProviderRow>(`${PROVIDER_SELECT} WHERE owner_user_id IS NULL ORDER BY created_at`)
           : this.db.all<ProviderRow>(`${PROVIDER_SELECT} WHERE owner_user_id = ? ORDER BY created_at`, [scope.ownerUserId])
     return rows.map(providerFromRow)
+  }
+
+  async updateProvider(id: string, patch: { label?: string; config?: string }): Promise<ProviderRecord | null> {
+    if (patch.label !== undefined) this.db.run('UPDATE providers SET label = ? WHERE id = ?', [patch.label, id])
+    if (patch.config !== undefined) this.db.run('UPDATE providers SET config = ? WHERE id = ?', [patch.config, id])
+    return this.getProvider(id)
   }
 
   async deleteProvider(id: string): Promise<void> {

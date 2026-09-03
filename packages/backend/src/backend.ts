@@ -23,7 +23,9 @@ import { createHostCommandGroup } from './managed/host-command'
 import { ManagedHostError, ManagedHosts, ownerOf, type ManagedHostsConfig } from './managed/lifecycle'
 import type { ManagedHostProvisioner } from './managed/provisioner'
 import { createApp } from './http/app'
-import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderTypeFactory } from './llm/assembly'
+import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderType } from './llm/assembly'
+import { VendorCatalog } from './llm/vendors'
+import type { ModelsDevFetch } from '@demicodes/provider'
 import { meterProvider } from './llm/metering'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { TransferBroker } from './runner/transfers'
@@ -48,8 +50,10 @@ export interface BackendOptions {
   publicUrl?: string
   /** Runner-management tuning (claim TTL, liveness interval) — tests only. */
   runner?: Omit<RunnerRegistryOptions, 'control'>
-  /** Extra provider-type factories merged over the builtins — tests register stubs here. */
-  providerTypes?: Record<string, ProviderTypeFactory>
+  /** Extra provider families merged over the builtins — tests register stubs here. */
+  providerTypes?: Record<string, ProviderType>
+  /** The models.dev fetch behind the vendor catalog — tests serve a fixture. */
+  modelsDev?: { fetch?: ModelsDevFetch; url?: string }
   /** Usage-enforcement tuning — tests only. */
   usage?: { providerRequestsPerMinute?: number }
   /** Session lifetime and login lockout tuning — tests only. */
@@ -140,7 +144,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
 
   const vault = new ProviderVault(control, loadOrCreateInstanceSecret(options.dataDir))
   const vaultRoot = join(options.dataDir, 'vault')
-  const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot)
+  const vendors = new VendorCatalog(options.modelsDev ?? {})
+  const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot, vendors)
   const logins = new SubscriptionLoginFlows(vault, assembly, { vaultRoot })
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
@@ -297,6 +302,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     conversationStores,
     vault,
     assembly,
+    vendors,
     logins,
     agentServer,
     runnerRegistry,

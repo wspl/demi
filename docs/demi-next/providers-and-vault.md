@@ -10,10 +10,37 @@
 
 The provider runtimes (`createAnthropicApiProvider`, `createCodexProvider`,
 …) are instantiated **inside the backend** with vault credentials at their
-native endpoints, one runtime per provider, keyed by
+native endpoints, one runtime per provider entry, keyed by
 `(providerId, modelId)`. The backend never proxies or rewrites model
-traffic. The module exposes the aggregated model catalog (live from each
-runtime, never stored) and quota surfaces to the web UI.
+traffic. The module exposes the aggregated model catalog (live, never
+stored) and quota surfaces to the web UI.
+
+**Families and vendors.** The runtime families are the registered
+provider types — six factories, each declaring how it is credentialed:
+`anthropic`, `openai` (with a `wireApi` choice, Responses or Chat
+Completions), `google` by API key; `claude-code`, `codex`, `grok-build` by
+subscription login, of which a scope holds at most one entry each. The
+vendors are models.dev's: the backend reads `https://models.dev/api.json`
+through the provider kit's models.dev client (a day of freshness, etag
+revalidation, the last copy served stale on failure) and offers every
+vendor whose `npm` tag — the client package that catalog is written for,
+its only protocol tag — names a protocol one of our families speaks:
+
+```
+models.dev npm tag              our family / protocol
+@ai-sdk/openai-compatible  →    openai, chat-completions
+@ai-sdk/openai             →    openai, responses
+@ai-sdk/anthropic          →    anthropic
+@ai-sdk/google             →    google
+anything else              →    not offered (no runtime speaks it)
+github-copilot             →    not offered (needs its own auth scheme)
+```
+
+An API-key entry records its family, key, endpoint, protocol, the vendor
+id it came from and an optional typed model list; its catalog is the typed
+list if any, else the vendor's models.dev list, else the runtime's own
+(the packages' static lists, which stay for the local products). Vendor
+endpoints and model lists are never stored.
 
 Providers are assembled per user from the vault; for CLI transports the
 assembly is conversation-scoped, because the execution target's spawn is

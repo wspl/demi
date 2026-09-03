@@ -21,11 +21,13 @@ made at startup (`DEMI_INSTANCE_MODE`), never changed from the product:
 Usage is metered per user in both modes; in shared mode admins also
 see the instance's usage by user. There are no instance settings beyond
 the mode, and the page reads it (`GET /api/settings`) to know what to
-show. A **provider** is a provider type (openai, anthropic, claude-code…)
-configured with one credential: an API key or a completed subscription
-login. Either mode allows several providers of the same type, so model
-selection is keyed by `(providerId, modelId)` — one provider runtime per
-provider.
+show. A **provider** is one entry of the scope's list: a runtime family
+(openai, anthropic, google, claude-code, codex, grok-build) with one
+credential — an API key, or a completed subscription login — at an
+endpoint, with a model source. A scope holds at most one entry per
+subscription family and any number of API-key entries, each with its
+own label, so model selection is keyed by `(providerId, modelId)` — one
+provider runtime per entry.
 
 ## User system
 
@@ -93,15 +95,34 @@ API; cold history rides the same rendering path.
 ## Provider management
 
 The providers page (admin-only in shared mode, per-user in isolated
-mode): paste an API key (openai / anthropic / google, optional
-compatible-endpoint baseUrl), or connect a subscription — the backend runs
-the provider's device-login flow, the UI shows the code/URL and polls until
-claimed. Configuring a provider makes all of its models usable; model
-lists come live from the runtime's catalog and are never stored, except
-that compatible-endpoint providers take a user-entered model id list plus
-a **Test** button. Each provider shows auth state and the latest quota
-snapshot; providers can be deleted. No model-level configuration of any
-kind.
+mode) is a list of entries, and the model picker shows that list with
+each entry's models under it. Adding an entry has three doors:
+
+```
+Add provider
+ ├─ a subscription: Claude Code / Codex / Grok Build
+ │     one per scope per family (the door is closed once it exists);
+ │     the backend runs the family's device login, the UI shows the
+ │     code/URL and polls until claimed
+ ├─ from the vendor catalog: "DeepSeek", "Z.AI Coding Plan", "OpenAI" …
+ │     the vendor's family and endpoint are prefilled (the endpoint is
+ │     editable), the label defaults to the vendor's name, the key is
+ │     pasted; the model list is the vendor's, live — or a typed list
+ └─ a custom endpoint: the family and protocol chosen by hand
+       (OpenAI Chat Completions / OpenAI Responses / Anthropic Messages /
+       Google), endpoint, key, typed model list
+```
+
+The vendor catalog is models.dev, read live by the backend and never
+stored: the vendors whose protocol one of our runtimes speaks, which
+covers the first-party vendors and the third-party gateways and coding
+plans alike; the same vendor can be added more than once under different
+labels and keys. An entry stores only its vendor's id, so a vendor's
+model list follows models.dev. Entries are editable (label; and for an
+API-key entry the endpoint, the key, and the model list, where clearing
+the typed list returns to the live one) and deletable, and have a
+**Test** button; each shows auth state and the latest quota snapshot.
+Labels need not be unique. No model-level configuration of any kind.
 
 ## Web UI surface inventory
 

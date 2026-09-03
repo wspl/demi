@@ -37,23 +37,30 @@ function post(payload: unknown): RequestInit {
   return { method: 'POST', body: JSON.stringify(payload), headers: { 'content-type': 'application/json' } }
 }
 
+function patch(payload: unknown): RequestInit {
+  return { method: 'PATCH', body: JSON.stringify(payload), headers: { 'content-type': 'application/json' } }
+}
+
 function stubBackendOptions(dataDir: string, turns: number): Parameters<typeof openBackend>[0] {
   return {
     dataDir,
     port: 0,
     providerTypes: {
-      stub: ({ providerId, label }) =>
-        defineProvider({
-          id: providerId,
-          displayName: label,
-          createRuntime: () =>
-            new StubProvider(
-              Array.from({ length: turns }, (_, index) => [
-                events.text(`answer ${index}`),
-                events.response({ inputTokens: 100 + index, outputTokens: 10 }),
-              ]),
-            ),
-        }),
+      stub: {
+        credential: 'api_key',
+        create: ({ providerId, label }) =>
+          defineProvider({
+            id: providerId,
+            displayName: label,
+            createRuntime: () =>
+              new StubProvider(
+                Array.from({ length: turns }, (_, index) => [
+                  events.text(`answer ${index}`),
+                  events.response({ inputTokens: 100 + index, outputTokens: 10 }),
+                ]),
+              ),
+          }),
+      },
     },
   }
 }
@@ -172,7 +179,9 @@ test('subscription login: pending material surfaces, completion becomes a provid
     dataDir,
     port: 0,
     providerTypes: {
-      'stub-sub': ({ providerId, label, vaultDir }) =>
+      'stub-sub': {
+        credential: 'subscription',
+        create: ({ providerId, label, vaultDir }) =>
         defineProvider({
           id: providerId,
           displayName: label,
@@ -191,6 +200,7 @@ test('subscription login: pending material surfaces, completion becomes a provid
           },
           createRuntime: () => new StubProvider([[events.text('hello'), events.response()]]),
         }),
+      },
     },
   })
 
@@ -234,12 +244,74 @@ test('subscription login: pending material surfaces, completion becomes a provid
   // The login's pool became the provider's vault directory.
   expect(existsSync(join(dataDir, 'vault', providerId, 'oauth.json'))).toBe(true)
 
+  // One subscription per family per scope: the catalog says it is configured, a second login is refused.
+  const catalog = await api<{ subscriptions: Array<{ providerType: string; configured: boolean }> }>(backend, '/api/providers/catalog')
+  expect(catalog.body.subscriptions).toContainEqual({ providerType: 'stub-sub', configured: true })
+  const again = await api<{ code: string }>(backend, '/api/providers/subscription-login', post({ providerType: 'stub-sub' }))
+  expect(again.status).toBe(409)
+  expect(again.body.code).toBe('provider_exists')
+  // A subscription entry takes a new label and nothing else.
+  const relabel = await api<{ provider: { label: string } }>(backend, `/api/providers/${providerId}`, patch({ label: 'Work' }))
+  expect(relabel.body.provider.label).toBe('Work')
+  expect((await api(backend, `/api/providers/${providerId}`, patch({ apiKey: 'k' }))).status).toBe(400)
+
   const deleted = await backend.session.fetch(`/api/providers/${providerId}`, { method: 'DELETE' })
   expect(deleted.status).toBe(204)
   expect(existsSync(join(dataDir, 'vault', providerId))).toBe(false)
 
   await backend.close()
 }, 15_000)
+
+test('the vendor catalog: entries from models.dev vendors carry the family and a live model list; custom endpoints name theirs', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-vendors-'))
+  const backend = await openBackend(stubBackendOptions(dataDir, 1))
+
+  // Only vendors whose protocol one of our runtimes speaks are offered; Copilot is excluded by name.
+  const catalog = await api<{ vendors: Array<Record<string, unknown>> }>(backend, '/api/providers/catalog')
+  expect(catalog.status).toBe(200)
+  expect(catalog.body.vendors).toEqual([
+    { id: 'deepseek', name: 'DeepSeek', providerType: 'openai', wireApi: 'chat-completions', baseUrl: 'https://api.deepseek.com', doc: 'https://api-docs.deepseek.com' },
+    { id: 'minimax', name: 'MiniMax', providerType: 'anthropic', baseUrl: 'https://api.minimax.io/anthropic/v1', doc: null },
+  ])
+
+  expect((await api<{ code: string }>(backend, '/api/providers', post({ vendorId: 'amazon-bedrock', label: 'x', apiKey: 'k' }))).body.code).toBe('unknown_vendor')
+
+  // A vendor entry: the family, protocol and endpoint come from the vendor; the model list is the vendor's, live.
+  const created = await api<{ provider: Record<string, unknown> }>(backend, '/api/providers', post({ vendorId: 'deepseek', label: 'DeepSeek', apiKey: 'sk-1' }))
+  expect(created.status).toBe(201)
+  expect(created.body.provider).toEqual(
+    expect.objectContaining({ providerType: 'openai', wireApi: 'chat-completions', vendorId: 'deepseek', baseUrl: 'https://api.deepseek.com', modelIds: null }),
+  )
+  const providerId = created.body.provider.id as string
+  type Catalog = { providers: Array<{ providerId: string; models: Array<Record<string, unknown>> }> }
+  const live = (await api<Catalog>(backend, '/api/models')).body.providers.find((p) => p.providerId === providerId)!
+  expect(live.models.map((m) => m.id)).toEqual(['deepseek-v4', 'deepseek-v4-flash'])
+  expect(live.models[0]).toEqual(
+    expect.objectContaining({ providerId, displayName: 'DeepSeek V4', contextWindow: 128_000, outputLimit: 32_000, supportsTools: true, supportsReasoning: true }),
+  )
+
+  // Editing: a typed model list replaces the live one; null returns to it; the endpoint and key can change.
+  const typed = await api<{ provider: Record<string, unknown> }>(backend, `/api/providers/${providerId}`, patch({ label: 'DS', modelIds: ['deepseek-v4'], baseUrl: 'https://proxy.example/v1', apiKey: 'sk-2' }))
+  expect(typed.body.provider).toEqual(expect.objectContaining({ label: 'DS', modelIds: ['deepseek-v4'], baseUrl: 'https://proxy.example/v1', vendorId: 'deepseek' }))
+  expect(JSON.stringify(typed.body)).not.toContain('sk-2')
+  const typedCatalog = (await api<Catalog>(backend, '/api/models')).body.providers.find((p) => p.providerId === providerId)!
+  expect(typedCatalog.models.map((m) => m.id)).toEqual(['deepseek-v4'])
+  await api(backend, `/api/providers/${providerId}`, patch({ modelIds: null }))
+  const liveAgain = (await api<Catalog>(backend, '/api/models')).body.providers.find((p) => p.providerId === providerId)!
+  expect(liveAgain.models.map((m) => m.id)).toEqual(['deepseek-v4', 'deepseek-v4-flash'])
+
+  // A custom endpoint names its family and protocol itself; subscription families are not created this way.
+  const custom = await api<{ provider: Record<string, unknown> }>(
+    backend,
+    '/api/providers',
+    post({ providerType: 'openai', wireApi: 'chat-completions', label: 'Gateway', apiKey: 'k', baseUrl: 'https://gw.example/v1', modelIds: ['internal-70b'] }),
+  )
+  expect(custom.status).toBe(201)
+  expect(custom.body.provider).toEqual(expect.objectContaining({ providerType: 'openai', wireApi: 'chat-completions', vendorId: null, modelIds: ['internal-70b'] }))
+  expect((await api<{ code: string }>(backend, '/api/providers', post({ providerType: 'claude-code', label: 'x', apiKey: 'k' }))).body.code).toBe('subscription_only')
+
+  await backend.close()
+})
 
 test('a process-capable provider gets a session-scoped instance carrying the target spawn', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-cli-'))
@@ -251,14 +323,17 @@ test('a process-capable provider gets a session-scoped instance carrying the tar
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      'stub-cli': ({ providerId, label, session }) => {
-        if (session) sessions.push(session)
-        return defineProvider({
-          id: providerId,
-          displayName: label,
-          requiresProcessCapableHost: true,
-          createRuntime: () => new StubProvider([[events.text('cli turn'), events.response()]]),
-        })
+      'stub-cli': {
+        credential: 'api_key',
+        create: ({ providerId, label, session }) => {
+          if (session) sessions.push(session)
+          return defineProvider({
+            id: providerId,
+            displayName: label,
+            requiresProcessCapableHost: true,
+            createRuntime: () => new StubProvider([[events.text('cli turn'), events.response()]]),
+          })
+        },
       },
     },
   })

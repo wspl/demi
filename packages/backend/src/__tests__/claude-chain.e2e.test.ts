@@ -74,14 +74,17 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
     providerTypes: {
       // The builtin factory, plus the provider's public env overlay pointing
       // the CLI at the mock upstream.
-      'claude-code': ({ providerId, label, vaultDir, session }) =>
-        createClaudeCodeProvider({
-          id: providerId,
-          displayName: label,
-          stateDir: vaultDir,
-          ...(session ? { spawn: session.spawn } : {}),
-          env: { ANTHROPIC_BASE_URL: `http://localhost:${upstream.port}` },
-        }),
+      'claude-code': {
+        credential: 'subscription',
+        create: ({ providerId, label, vaultDir, session }) =>
+          createClaudeCodeProvider({
+            id: providerId,
+            displayName: label,
+            stateDir: vaultDir,
+            ...(session ? { spawn: session.spawn } : {}),
+            env: { ANTHROPIC_BASE_URL: `http://localhost:${upstream.port}` },
+          }),
+      },
     },
   })
 

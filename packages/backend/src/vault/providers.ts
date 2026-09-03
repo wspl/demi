@@ -2,17 +2,19 @@ import type { ProviderRecord, ProviderScope, ControlService } from '../storage/c
 import { decryptJson, encryptJson } from './crypto'
 
 /**
- * A provider's credential payload. `provider` names a registered
- * provider type in the LLM module's factory table; `modelIds` is the
- * user-entered model list for compatible endpoints (the one case where model
- * ids are stored — catalogs otherwise come live from the runtimes).
- * Subscription payloads arrive with the device-login flows (M5 step 2).
+ * An API-key entry: one runtime family (`providerType`, a registered
+ * provider type in the LLM module's factory table) at an endpoint. The model
+ * source is `modelIds` when the user typed a list, else the models.dev
+ * vendor named by `vendorId` (fetched live, never stored), else the
+ * runtime's own catalog. `wireApi` is the openai family's protocol choice.
  */
 export interface ApiKeyProviderConfig {
   kind: 'api_key'
   providerType: string
   apiKey: string
   baseUrl?: string
+  wireApi?: 'responses' | 'chat-completions'
+  vendorId?: string
   modelIds?: string[]
 }
 
@@ -65,6 +67,15 @@ export class ProviderVault {
 
   async list(scope: ProviderScope): Promise<ProviderEntry[]> {
     return (await this.control.listProviders(scope)).map((record) => this.decode(record))
+  }
+
+  /** Rewrites an entry's label and/or config; the row keeps its id, owner, type and creation time. */
+  async update(id: string, patch: { label?: string; config?: ProviderConfig }): Promise<ProviderEntry | null> {
+    const record = await this.control.updateProvider(id, {
+      ...(patch.label !== undefined ? { label: patch.label } : {}),
+      ...(patch.config ? { config: encryptJson(this.secret, patch.config) } : {}),
+    })
+    return record ? this.decode(record) : null
   }
 
   async delete(id: string): Promise<void> {

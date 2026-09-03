@@ -34,8 +34,18 @@ export class SubscriptionLoginFlows {
     private readonly options: { vaultRoot: string },
   ) {}
 
-  /** Starts one login for the provider scope's owner; returns its poll id, or null for a type without a native login flow. */
-  start(providerType: string, label: string, ownerUserId: string | null): { id: string } | null {
+  /**
+   * Starts one login for the provider scope's owner and returns its poll id.
+   * Refused for a family without a native login flow, and for one the scope
+   * already holds an entry of — a scope has at most one subscription per
+   * family.
+   */
+  async start(
+    providerType: string,
+    label: string,
+    ownerUserId: string | null,
+  ): Promise<{ id: string } | { refused: 'no_login_flow' | 'exists' }> {
+    if (await this.exists(providerType, ownerUserId)) return { refused: 'exists' }
     const id = createId()
     const pendingDir = join(this.options.vaultRoot, `pending-${id}`)
     let begin: ((options?: ProviderCredentialLoginOptions) => Promise<ProviderCredentialLoginResult>) | undefined
@@ -44,9 +54,9 @@ export class SubscriptionLoginFlows {
       const provider = this.assembly.buildDetached(providerType, { id, label, vaultDir: pendingDir })
       begin = provider.credentials?.beginLogin?.bind(provider.credentials)
     } catch {
-      return null
+      return { refused: 'no_login_flow' }
     }
-    if (!begin) return null
+    if (!begin) return { refused: 'no_login_flow' }
 
     const flow: LoginFlow = { providerType, label, ownerUserId, pendingDir, state: { status: 'pending', verificationUrl: null, userCode: null } }
     this.flows.set(id, flow)
@@ -67,6 +77,10 @@ export class SubscriptionLoginFlows {
           await rm(pendingDir, { recursive: true, force: true })
           return
         }
+        // A second login of the same family may have completed first.
+        if (await this.exists(flow.providerType, flow.ownerUserId)) {
+          throw new Error(`This scope already has a ${flow.providerType} subscription`)
+        }
         const provider = await this.vault.create({
           ownerUserId: flow.ownerUserId,
           label: flow.label,
@@ -80,6 +94,11 @@ export class SubscriptionLoginFlows {
       }
     })()
     return { id }
+  }
+
+  private async exists(providerType: string, ownerUserId: string | null): Promise<boolean> {
+    const entries = await this.vault.list({ ownerUserId })
+    return entries.some((entry) => entry.config.providerType === providerType)
   }
 
   /** A flow is visible to the scope that started it. */

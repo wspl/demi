@@ -10,11 +10,23 @@ import { createGrokBuildProvider } from '@demicodes/provider-grok-build'
 import { createOpenAIApiProvider } from '@demicodes/provider-openai-api'
 import type { ControlService } from '../storage/control'
 import type { ApiKeyProviderConfig, ProviderEntry, ProviderConfig, ProviderVault } from '../vault/providers'
+import type { VendorCatalog } from './vendors'
 
 /**
- * Builds a base provider for one provider; the provider id is the
- * provider id. `vaultDir` is the provider's private credential-pool root —
- * subscription providers keep their OAuth material there.
+ * A registered runtime family: how it is credentialed — an API key typed
+ * in, or a subscription claimed through the family's device login, of
+ * which a scope holds at most one entry — and how an entry's provider is
+ * built.
+ */
+export interface ProviderType {
+  credential: 'api_key' | 'subscription'
+  create: ProviderTypeFactory
+}
+
+/**
+ * Builds a base provider for one entry; the provider id is the entry id.
+ * `vaultDir` is the entry's private credential-pool root — subscription
+ * providers keep their OAuth material there.
  */
 export type ProviderTypeFactory = (options: {
   providerId: string
@@ -39,33 +51,49 @@ function apiKey(config: ProviderConfig): ApiKeyProviderConfig {
   return config
 }
 
-export function builtinProviderTypes(): Record<string, ProviderTypeFactory> {
+export function builtinProviderTypes(): Record<string, ProviderType> {
   const common = ({ providerId, label }: { providerId: string; label: string }) => ({
     id: providerId,
     displayName: label,
   })
-  const keyed =
-    (create: (options: { id: string; displayName: string; apiKey: () => string; baseUrl?: string }) => Provider): ProviderTypeFactory =>
-    (options) => {
+  const keyed = (
+    create: (options: { id: string; displayName: string; apiKey: () => string; baseUrl?: string }) => Provider,
+  ): ProviderType => ({
+    credential: 'api_key',
+    create: (options) => {
       const config = apiKey(options.config)
       return create({
         ...common(options),
         apiKey: () => config.apiKey,
         ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       })
-    }
+    },
+  })
+  const subscription = (create: ProviderTypeFactory): ProviderType => ({ credential: 'subscription', create })
   return {
     anthropic: keyed(createAnthropicApiProvider),
-    openai: keyed(createOpenAIApiProvider),
+    openai: {
+      credential: 'api_key',
+      create: (options) => {
+        const config = apiKey(options.config)
+        return createOpenAIApiProvider({
+          ...common(options),
+          apiKey: () => config.apiKey,
+          ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+          ...(config.wireApi ? { wireApi: config.wireApi } : {}),
+        })
+      },
+    },
     google: keyed(createGoogleProvider),
-    'claude-code': (options) =>
+    'claude-code': subscription((options) =>
       createClaudeCodeProvider({
         ...common(options),
         stateDir: options.vaultDir,
         ...(options.session ? { spawn: options.session.spawn } : {}),
       }),
-    codex: (options) => createCodexProvider({ ...common(options), stateDir: options.vaultDir }),
-    'grok-build': (options) => createGrokBuildProvider({ ...common(options), stateDir: options.vaultDir }),
+    ),
+    codex: subscription((options) => createCodexProvider({ ...common(options), stateDir: options.vaultDir })),
+    'grok-build': subscription((options) => createGrokBuildProvider({ ...common(options), stateDir: options.vaultDir })),
   }
 }
 
@@ -77,20 +105,27 @@ export interface CatalogProvider {
 }
 
 /**
- * The LLM module's provider assembly: one base provider runtime configuration
- * per provider (`providerId` = `providerId`), built from vault
- * credentials through the registered type factories. Providers are
- * immutable rows (create/delete only), so the cache invalidates on delete.
+ * The LLM module's provider assembly: one base provider runtime per entry,
+ * built from vault credentials through the registered families. The cache
+ * invalidates when an entry is edited or deleted.
  */
 export class ProviderAssembly {
   private readonly cache = new Map<string, Provider>()
 
   constructor(
     private readonly vault: ProviderVault,
-    private readonly types: Record<string, ProviderTypeFactory>,
-    /** Per-provider credential-pool root: `<vaultRoot>/<providerId>/`. */
+    private readonly types: Record<string, ProviderType>,
+    /** Per-entry credential-pool root: `<vaultRoot>/<providerId>/`. */
     private readonly vaultRoot: string,
+    private readonly vendors: VendorCatalog,
   ) {}
+
+  /** The registered families of one credential kind. */
+  typesOf(credential: ProviderType['credential']): string[] {
+    return Object.entries(this.types)
+      .filter(([, type]) => type.credential === credential)
+      .map(([name]) => name)
+  }
 
   vaultDir(providerId: string): string {
     return join(this.vaultRoot, providerId)
@@ -98,9 +133,9 @@ export class ProviderAssembly {
 
   /** Builds a provider through a registered type factory without a provider row (login flows). */
   buildDetached(providerType: string, options: { id: string; label: string; vaultDir: string }): Provider {
-    const factory = this.types[providerType]
-    if (!factory) throw new Error(`Unknown provider type "${providerType}"`)
-    return factory({
+    const type = this.types[providerType]
+    if (!type) throw new Error(`Unknown provider type "${providerType}"`)
+    return type.create({
       providerId: options.id,
       label: options.label,
       config: { kind: 'subscription', providerType },
@@ -129,9 +164,9 @@ export class ProviderAssembly {
       const cached = this.cache.get(providerId)
       if (cached) return { entry, provider: cached }
     }
-    const factory = this.types[entry.config.providerType]
-    if (!factory) throw new Error(`Unknown provider type "${entry.config.providerType}"`)
-    const provider = factory({
+    const type = this.types[entry.config.providerType]
+    if (!type) throw new Error(`Unknown provider type "${entry.config.providerType}"`)
+    const provider = type.create({
       providerId,
       label: entry.label,
       config: entry.config,
@@ -146,9 +181,9 @@ export class ProviderAssembly {
     this.cache.delete(providerId)
   }
 
-  /** Whether a provider type is registered — the create endpoint's validation. */
-  hasType(providerType: string): boolean {
-    return providerType in this.types
+  /** A registered family's credential kind, or null for an unknown type — the create endpoint's validation. */
+  credentialOf(providerType: string): ProviderType['credential'] | null {
+    return this.types[providerType]?.credential ?? null
   }
 
   /**
@@ -160,9 +195,7 @@ export class ProviderAssembly {
     const resolved = await this.providerFor(providerId)
     if (!resolved) return { ok: false, message: 'Unknown provider' }
     const { entry, provider } = resolved
-    const modelId =
-      (entry.config.kind === 'api_key' ? entry.config.modelIds?.[0] : undefined) ??
-      (provider.listModels ? (await provider.listModels()).models[0]?.id : undefined)
+    const modelId = (await this.modelsOf(entry, provider))[0]?.id
     if (!modelId) return { ok: false, message: 'No model available to test with' }
 
     const cancel = new AbortController()
@@ -200,31 +233,31 @@ export class ProviderAssembly {
   }
 
   /**
-   * The aggregated model catalog, grouped by provider. Model ids are never
-   * stored — lists come live from each provider runtime — except
-   * compatible-endpoint providers, whose user-entered `modelIds` become
-   * minimal catalog entries.
+   * The aggregated model catalog, grouped by entry. Lists come live: the
+   * user-entered ids of a custom endpoint, the models.dev vendor an entry
+   * names, or the runtime's own catalog.
    */
   async catalog(ownerUserId: string | null): Promise<CatalogProvider[]> {
     const entries = await this.vault.list({ ownerUserId })
     return Promise.all(
       entries.map(async (entry) => {
-        const resolved = await this.providerFor(entry.id)
-        const provider = resolved?.provider
-        const modelIds = entry.config.kind === 'api_key' ? entry.config.modelIds : undefined
-        const models = modelIds
-          ? modelIds.map((modelId) => userEnteredModel(entry.id, modelId))
-          : provider?.listModels
-            ? withProviderId(await provider.listModels(), entry.id).models
-            : []
+        const provider = (await this.providerFor(entry.id))?.provider ?? null
         return {
           providerId: entry.id,
           displayName: entry.label,
           requiresProcessCapableHost: provider?.requiresProcessCapableHost ?? false,
-          models,
+          models: await this.modelsOf(entry, provider),
         }
       }),
     )
+  }
+
+  private async modelsOf(entry: ProviderEntry, provider: Provider | null): Promise<ProviderModelList['models']> {
+    if (entry.config.kind === 'api_key') {
+      if (entry.config.modelIds) return entry.config.modelIds.map((modelId: string) => userEnteredModel(entry.id, modelId))
+      if (entry.config.vendorId) return (await this.vendors.models(entry.config.vendorId, entry.id))?.models ?? []
+    }
+    return provider?.listModels ? withProviderId(await provider.listModels(), entry.id).models : []
   }
 }
 
