@@ -9,6 +9,7 @@ import { switchConversationTarget } from '../conversation/target-switch'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
 import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
+import type { ManagedHosts } from '../managed/lifecycle'
 
 const grantBodySchema = z.object({ deviceId: z.string().min(1) })
 
@@ -26,8 +27,9 @@ export function conversationRoutes(options: {
   conversationStores: ConversationStores
   agentServer: AgentServer
   hostFor: (conversationId: string) => Promise<Host>
+  managedHosts: ManagedHosts | null
 }): Hono {
-  const { control, conversationStores, agentServer, hostFor } = options
+  const { control, conversationStores, agentServer, hostFor, managedHosts } = options
   const app = new Hono()
 
   app.get('/', async (c) => {
@@ -52,7 +54,11 @@ export function conversationRoutes(options: {
     if (body.title !== undefined && body.title.trim()) {
       await control.renameConversation(conversation.id, body.title.trim())
     }
-    if (body.archived !== undefined) await control.setConversationArchived(conversation.id, body.archived)
+    if (body.archived !== undefined) {
+      await control.setConversationArchived(conversation.id, body.archived)
+      // An archived owner's guest is destroyed; its home stays (`managed-hosts.md` § Lifecycle).
+      if (body.archived) await managedHosts?.destroy({ kind: 'conversation', id: conversation.id })
+    }
     if (body.connectionId !== undefined || body.modelId !== undefined) {
       await control.setConversationModel(conversation.id, body.connectionId ?? null, body.modelId ?? null)
     }

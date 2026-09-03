@@ -100,6 +100,8 @@ const runnerInfoSchema = z.object({
   version: z.string(),
   /** Read synchronously at shell creation, so it must arrive before any Host use. */
   identity: hostIdentitySchema,
+  /** A runner booted as a managed host's init: it presents its token or is refused, never paired (`managed-hosts.md` § Joining). */
+  managed: z.boolean().optional(),
 })
 
 const streamSchema = z.enum(['stdout', 'stderr'])

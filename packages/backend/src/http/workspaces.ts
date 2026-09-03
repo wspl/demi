@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { STUB_USER } from '../auth/identity'
 import type { ControlService } from '../storage/control'
+import type { ManagedHosts } from '../managed/lifecycle'
 
 const createWorkspaceBodySchema = z.object({
   deviceId: z.string().min(1),
@@ -17,8 +18,8 @@ const patchWorkspaceBodySchema = z.object({ name: z.string().min(1) })
  * touches files; deletion is refused while conversations still point at it
  * (moving them is a target switch, with its own turn-boundary rules).
  */
-export function workspaceRoutes(options: { control: ControlService }): Hono {
-  const { control } = options
+export function workspaceRoutes(options: { control: ControlService; managedHosts: ManagedHosts | null }): Hono {
+  const { control, managedHosts } = options
   const app = new Hono()
 
   app.get('/', async (c) => c.json({ workspaces: await control.listWorkspaces(STUB_USER.id) }))
@@ -56,6 +57,7 @@ export function workspaceRoutes(options: { control: ControlService }): Hono {
     if (inUse > 0) {
       return c.json({ code: 'workspace_in_use', message: `${inUse} conversation(s) still target this workspace` }, 409)
     }
+    await managedHosts?.destroy({ kind: 'workspace', id: workspace.id })
     await control.deleteWorkspace(workspace.id)
     return c.body(null, 204)
   })

@@ -76,6 +76,8 @@ interface RunnerConnection {
   claimTimer: ReturnType<typeof setTimeout> | null
   pingTimer: ReturnType<typeof setInterval> | null
   pongPending: boolean
+  /** A backend-initiated pause (the checkpoint copy): a missed pong is not a death while set. */
+  livenessPaused: boolean
   /** Running jobs as of the last `pong`; the idle rule reads it. */
   jobs: number
   /** Live stdin queues of the rpc calls relayed on this connection. */
@@ -109,6 +111,7 @@ export class RunnerRegistry {
   /** Last-known identity per device, so a Host can exist while its runner is offline. */
   private readonly identities = new Map<string, HostIdentity>()
   private readonly claimAttempts = new Map<string, number[]>()
+  private readonly onlineWaiters = new Map<string, Deferred<void>>()
   private closed = false
 
   constructor(options: RunnerRegistryOptions) {
@@ -141,6 +144,7 @@ export class RunnerRegistry {
       claimTimer: null,
       pingTimer: null,
       pongPending: false,
+      livenessPaused: false,
       jobs: 0,
       rpcStdin: new Map(),
       transfers: new Map(),
@@ -175,9 +179,10 @@ export class RunnerRegistry {
       platform: connection.runner.platform,
       tokenHash: hashDeviceToken(deviceToken),
     })
+    const manifest = await this.manifestFrame()
     this.bindDevice(connection, device.id)
     connection.send({ type: 'claimed', deviceToken })
-    await this.pushManifest(connection)
+    if (manifest) connection.send(manifest)
     return { ok: true, device }
   }
 
@@ -193,6 +198,34 @@ export class RunnerRegistry {
 
   deviceOnline(deviceId: string): boolean {
     return this.connections.has(deviceId)
+  }
+
+  /** Resolves once the device has an authenticated socket; at once if it has one now. */
+  whenOnline(deviceId: string): Promise<void> {
+    if (this.connections.has(deviceId)) return Promise.resolve()
+    let waiter = this.onlineWaiters.get(deviceId)
+    if (!waiter) {
+      waiter = deferred<void>()
+      this.onlineWaiters.set(deviceId, waiter)
+    }
+    return waiter.promise
+  }
+
+  /**
+   * Liveness detection exempts a host in a backend-initiated pause
+   * (`managed-hosts.md` § Home persistence): the checkpoint copy holds the
+   * guest paused for the copy time, and the ping loop must not read that as a death.
+   */
+  pauseLiveness(deviceId: string): void {
+    const connection = this.connections.get(deviceId)
+    if (connection) connection.livenessPaused = true
+  }
+
+  resumeLiveness(deviceId: string): void {
+    const connection = this.connections.get(deviceId)
+    if (!connection) return
+    connection.livenessPaused = false
+    connection.pongPending = false
   }
 
   /** The device's last-known identity (its home directory among it), from any hello it has sent; null before the first. */
@@ -260,6 +293,8 @@ export class RunnerRegistry {
 
   async close(): Promise<void> {
     this.closed = true
+    for (const waiter of this.onlineWaiters.values()) waiter.reject(new Error('registry closed'))
+    this.onlineWaiters.clear()
     for (const connection of [...this.pendingClaims.values(), ...this.connections.values()]) {
       this.teardown(connection)
       connection.close()
@@ -352,7 +387,10 @@ export class RunnerRegistry {
       return
     }
     if (message.deviceToken === undefined) {
-      this.issueClaimCode(connection)
+      // A managed host is born with its token; one without it is misbooted,
+      // never a device waiting to be paired (`managed-hosts.md` § Joining).
+      if (message.runner.managed) refuse('unknown_device', 'a managed host presents its device token; it is never paired')
+      else this.issueClaimCode(connection)
       return
     }
     let device: DeviceRecord | null
@@ -372,17 +410,21 @@ export class RunnerRegistry {
       refuse('already_connected', `device ${device.id} already has a live connection`)
       return
     }
+    // The manifest is built before the device counts as online, so the
+    // frame follows `hello_ok` at once and no job can precede it.
+    const manifest = await this.manifestFrame()
     this.bindDevice(connection, device.id)
     connection.send({ type: 'hello_ok', deviceId: device.id })
-    await this.pushManifest(connection)
+    if (manifest) connection.send(manifest)
   }
 
-  private async pushManifest(connection: RunnerConnection): Promise<void> {
-    if (!this.manifest) return
+  private async manifestFrame(): Promise<Extract<BackendToRunnerMessage, { type: 'manifest' }> | null> {
+    if (!this.manifest) return null
     try {
-      connection.send({ type: 'manifest', manifest: await this.manifest() })
+      return { type: 'manifest', manifest: await this.manifest() }
     } catch (error) {
       this.log(`manifest not sent: ${errorMessage(error)}`)
+      return null
     }
   }
 
@@ -401,6 +443,8 @@ export class RunnerRegistry {
   private bindDevice(connection: RunnerConnection, deviceId: string): void {
     connection.deviceId = deviceId
     this.connections.set(deviceId, connection)
+    this.onlineWaiters.get(deviceId)?.resolve()
+    this.onlineWaiters.delete(deviceId)
     if (connection.runner) this.identities.set(deviceId, connection.runner.identity)
     void this.control.touchDeviceSeen(deviceId).catch(() => {})
     const deviceHosts = this.hosts.get(deviceId)
@@ -409,6 +453,7 @@ export class RunnerRegistry {
     }
     if (this.pingIntervalMs > 0 && connection.pingTimer === null) {
       connection.pingTimer = setInterval(() => {
+        if (connection.livenessPaused) return
         if (connection.pongPending) {
           connection.close()
           return

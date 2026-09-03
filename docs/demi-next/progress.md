@@ -2447,6 +2447,48 @@ developer's `~/.bashrc` sources a file under an empty `HOME`.
 - `BackendOptions.managedHosts` is optional; without it the upgrade hook
   reports the missing machine as an ordinary tool error.
 
+### Checkpoint 2: the provisioner seam and the lifecycle (2026-09-03) — delivered
+
+Landed, in `packages/backend/src/managed/`:
+
+- `provisioner.ts`: `ManagedHostProvisioner` — `provision(owner, homeDir,
+  boot)`, `wake`, `hibernate`, `checkpoint`, `destroy`, `onDeath`; `BootArgs`
+  is the backend URL and the token. The seam owns the VM and nothing else.
+- `lifecycle.ts`: `ManagedHosts` — `provision` (the device row `kind:
+  managed`, name `cloud`, the owner column, the token minted and hashed,
+  the per-user cap), `ensureRunning` (a running guest returns, a boot in
+  flight is joined, a save in flight is awaited and then the guest woken
+  with a fresh token via `rotateDeviceToken`, the crash-loop guard),
+  `hibernate`, `destroy`, and the sweep: idle window over `turnInFlight`
+  and `pong.jobs`, the hard cap, the checkpoint clock under
+  `pauseLiveness`/`resumeLiveness`. `DEFAULT_MANAGED_HOSTS_CONFIG` holds
+  the ruled sizes plus `bootTimeoutMs` and `sweepMs`.
+- The backend: `BackendOptions.managedHosts` (provisioner and config),
+  `Backend.managedHosts`; `hostFor` checks the owner of a managed device
+  against the conversation or workspace and wakes it — the "next action
+  needing the host"; `demi host shell --id` wakes a granted managed host;
+  archiving a conversation and deleting a workspace destroy the guest.
+- The wire: `hello.runner.managed`; the registry refuses a managed hello
+  without a token (`unknown_device`), never issuing a pairing code.
+  `whenOnline(deviceId)`, `pauseLiveness`, `resumeLiveness`; the manifest
+  is now built before the device is bound, so the `manifest` frame follows
+  `hello_ok` at once and no job can precede it (found by S10: the first
+  job after a boot ran before the manifest and `demi` was not found).
+- Runner: `RunnerModeOptions.managed` (`DEMI_RUNNER_MANAGED` until the init
+  path of checkpoint 5 sets it from the command line); the test launcher
+  takes a pre-issued `deviceToken` and `managed`, and exposes `exited`.
+- Control: `getManagedDevice(owner)`, `countManagedDevices`,
+  `rotateDeviceToken`, `listConversationIdsInWorkspace`.
+- Tests: `scenarios/fake-provisioner.ts` and S10
+  (`s10-managed-lifecycle.test.ts`) over the world with `managedHosts` and
+  `pingIntervalMs`. `bun test packages/backend`: 75 pass.
+
+Pitfalls: the liveness ping closes a connection whose previous pong is
+still pending, so a test ping interval must exceed the time a debug
+runner spends installing the manifest (the loop handles messages in
+order) — 500 ms in S10. A hibernate's `calls` entry precedes the process
+stop; the scenario waits for both.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

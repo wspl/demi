@@ -7,7 +7,7 @@ import { defineProvider } from '@demicodes/provider'
 import { JOB_VIEW_BYTES, type RunnerProtocolMessage } from '@demicodes/runner-protocol'
 import { startTinyjsRunner, type TinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
-import { createBackend, type Backend } from '../../index'
+import { createBackend, type Backend, type BackendOptions } from '../../index'
 import { ScriptedModel } from './model'
 import { Driver, type Target } from './driver'
 
@@ -24,6 +24,10 @@ export interface WorldOptions {
   port?: number
   /** Reuse a data directory: the restart file reopens its world over the previous one. */
   dataDir?: string
+  /** Managed hosts through a provisioner (the fake, in tests) with the lifecycle sizes the scenario needs. */
+  managedHosts?: BackendOptions['managedHosts']
+  /** The backend's liveness ping; on by default it is what carries `pong.jobs`, which the idle rule reads. Default 0 (off). */
+  pingIntervalMs?: number
 }
 
 export interface Device {
@@ -57,28 +61,29 @@ export class World {
     readonly model: ScriptedModel,
     readonly selection: { providerId: string; model: ModelSelection },
     readonly devices: Map<string, Device>,
-    private readonly port: number | undefined,
+    private readonly options: WorldOptions,
   ) {}
 
   static async create(options: WorldOptions = {}): Promise<World> {
     const dataDir = options.dataDir ?? (await mkdtemp(join(tmpdir(), 'demi-scenario-')))
     const model = new ScriptedModel()
     const frames: WireFrame[] = []
-    const backend = await World.openBackend(dataDir, options.port, model, frames)
+    const backend = await World.openBackend(dataDir, options, model, frames)
     const connectionId = await stubConnection(backend)
-    const world = new World(frames, backend, dataDir, model, selectionFor(connectionId), new Map(), options.port)
+    const world = new World(frames, backend, dataDir, model, selectionFor(connectionId), new Map(), options)
     for (const name of options.runners ?? []) await world.pair(name)
     return world
   }
 
-  private static openBackend(dataDir: string, port: number | undefined, model: ScriptedModel, frames: WireFrame[]): Promise<Backend> {
+  private static openBackend(dataDir: string, options: WorldOptions, model: ScriptedModel, frames: WireFrame[]): Promise<Backend> {
     return createBackend({
       dataDir,
-      port: port ?? 0,
-      runner: { pingIntervalMs: 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },
+      port: options.port ?? 0,
+      runner: { pingIntervalMs: options.pingIntervalMs ?? 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },
       providerTypes: {
         stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: () => model.runtime() }),
       },
+      ...(options.managedHosts ? { managedHosts: options.managedHosts } : {}),
     })
   }
 
@@ -125,11 +130,11 @@ export class World {
 
   /** Closes the backend without the invariants and reopens it over the same data directory. */
   async restartBackend(): Promise<void> {
-    if (this.port === undefined) throw new Error('restartBackend needs a world with a fixed port')
+    if (this.options.port === undefined) throw new Error('restartBackend needs a world with a fixed port')
     for (const driver of this.drivers) await driver.detach()
     const seen = new Map([...this.devices.values()].map((device) => [device.name, device.runner.statuses.length]))
     await this.backend.close()
-    this.backend = await World.openBackend(this.dataDir, this.port, this.model, this.frames)
+    this.backend = await World.openBackend(this.dataDir, this.options, this.model, this.frames)
     for (const device of this.devices.values()) {
       const from = seen.get(device.name) ?? 0
       await waitFor(() => device.runner.statuses.slice(from).includes('online'), () => device.runner.log.join('\n'), { timeoutMs: 15_000 })

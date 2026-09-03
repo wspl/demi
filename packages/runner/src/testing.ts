@@ -3,7 +3,7 @@
 // process with its pairing code and status captured. Shipped as
 // `@demicodes/runner/testing`, never bundled.
 import { existsSync } from 'node:fs'
-import { mkdir, realpath, symlink } from 'node:fs/promises'
+import { mkdir, realpath, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { waitFor } from '@demicodes/utils'
@@ -70,6 +70,10 @@ export interface TinyjsRunnerOptions {
   /** `HOME` inside the runner: its default working directory. */
   home: string
   name?: string
+  /** A pre-issued device token written to the state directory before the start — how a managed host joins in tests. */
+  deviceToken?: string
+  /** Start as a managed host: the hello carries `managed: true`. */
+  managed?: boolean
 }
 
 export interface TinyjsRunner {
@@ -78,13 +82,18 @@ export interface TinyjsRunner {
   details: string[]
   /** Everything the runner printed. */
   log: string[]
+  /** Resolves when the process has exited, however it did. */
+  exited: Promise<void>
   stop(): Promise<void>
 }
 
 /** Starts `demi-runner run --backend <url>` and captures its lines. */
 export async function startTinyjsRunner(options: TinyjsRunnerOptions): Promise<TinyjsRunner> {
   const bin = await packedRunner()
-  const runner: TinyjsRunner = { codes: [], statuses: [], details: [], log: [], stop: async () => {} }
+  if (options.deviceToken) {
+    await mkdir(options.stateDir, { recursive: true })
+    await writeFile(join(options.stateDir, 'runner-token'), `${options.deviceToken}\n`, { mode: 0o600 })
+  }
   const child = Bun.spawn([bin, 'run', '--backend', options.backendUrl], {
     env: {
       PATH: process.env.PATH ?? '/usr/bin:/bin',
@@ -92,10 +101,12 @@ export async function startTinyjsRunner(options: TinyjsRunnerOptions): Promise<T
       DEMI_HOME: options.stateDir,
       DEMI_RUNNER_RECONNECT_MS: '30',
       ...(options.name ? { DEMI_RUNNER_NAME: options.name } : {}),
+      ...(options.managed ? { DEMI_RUNNER_MANAGED: '1' } : {}),
     },
     stdout: 'pipe',
     stderr: 'pipe',
   })
+  const runner: TinyjsRunner = { codes: [], statuses: [], details: [], log: [], exited: child.exited.then(() => {}), stop: async () => {} }
   const read = async (stream: ReadableStream<Uint8Array>) => {
     let buffer = ''
     for await (const chunk of stream) {

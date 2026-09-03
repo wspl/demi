@@ -37,6 +37,8 @@ export interface RunnerModeOptions {
   executable: string
   /** Device facts jobs fall back to: `PATH`, `HOME`. */
   deviceEnv: Record<string, string>
+  /** Booted as a managed host: the hello says so, and a missing token is a refusal, not a pairing. */
+  managed?: boolean
   reconnect?: { initialDelayMs?: number; maxDelayMs?: number }
   log?: (line: string) => void
 }
@@ -137,7 +139,7 @@ export class RunnerMode {
           type: 'hello',
           protocol: RUNNER_PROTOCOL_VERSION,
           ...(deviceToken ? { deviceToken } : {}),
-          runner: { name: this.options.name ?? identity.hostname, platform: `tinyjs/${tinyjsVersion}`, version: RUNNER_VERSION, identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir } },
+          runner: { name: this.options.name ?? identity.hostname, platform: `tinyjs/${tinyjsVersion}`, version: RUNNER_VERSION, identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir }, ...(this.options.managed ? { managed: true } : {}) },
         }),
       )
       for (;;) {
