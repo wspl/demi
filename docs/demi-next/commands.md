@@ -350,23 +350,22 @@ the grant table and the provisioner:
 ```
 demi host                                        help for the group
 demi host list                                   reachable hosts: id, name, online, directory; the current one marked
-demi host current                                the current execution target (and the previous one during a migration)
+demi host current                                the current execution target
 demi host shell --id <hostId> <shell_content>    run a shell string in that host's real bash; byte-faithful stdio
-demi host prev shell -- <argv…>                  run on the previous target during a migration; released with `prev release`
 ```
 
 `<shell_content>` is one positional argument executed by that host's
-`bash -c`, so pipes, redirections and globs apply remotely; it starts in
-the directory the conversation had on that host. The pipe's bytes are its
+`bash -c`, so pipes, redirections and globs apply remotely; on the current
+target it starts in the conversation's directory there, on a granted host
+in that host's home. The pipe's bytes are its
 stdin, its stderr and exit code pass through as they happen, and its
 stdout arrives whole once it exits — as a transfer brokered by the backend
 between the two runners over HTTP (`runner.md` § Transfers), never over
 the runner sockets — so `demi host shell --id A "tar c -C /work ." | tar x`
 lands a working tree byte for byte. The host id is the device id `demi
 host list` prints. The reachable set is the conversation's current target
-and its previous one; the grant table widens it and is checked in the same
-place (`sessions-and-targets.md` § Host grants). `prev shell` on a machine
-is the same path with the argv quoted into a script.
+plus its grant set, checked in one place (`sessions-and-targets.md` § Host
+grants).
 
 ## Packages
 

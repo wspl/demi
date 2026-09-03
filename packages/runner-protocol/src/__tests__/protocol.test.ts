@@ -13,7 +13,7 @@ test('runner messages round-trip through the MessagePack wire', () => {
     type: 'hello',
     protocol: RUNNER_PROTOCOL_VERSION,
     deviceToken: 'token',
-    runner: { name: 'dev-box', platform: 'darwin', version: '1.0.0', identity: { uid: 501, gid: 20, hostname: 'mac' } },
+    runner: { name: 'dev-box', platform: 'darwin', version: '1.0.0', identity: { uid: 501, gid: 20, hostname: 'mac', homeDir: '/Users/dev' } },
   }
   expect(roundTrip(hello)).toEqual(hello)
 

@@ -12,7 +12,7 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 test('frames encoded on Bun are read and reproduced identically by tinyjs', async () => {
   const wire = createRunnerWire(msgpackCodec)
   const messages: RunnerProtocolMessage[] = [
-    { type: 'hello', protocol: RUNNER_PROTOCOL_VERSION, deviceToken: 't', runner: { name: 'n', platform: 'p', version: '1', identity: { uid: 501, gid: 20, hostname: 'h' } } },
+    { type: 'hello', protocol: RUNNER_PROTOCOL_VERSION, deviceToken: 't', runner: { name: 'n', platform: 'p', version: '1', identity: { uid: 501, gid: 20, hostname: 'h', homeDir: '/h' } } },
     { type: 'pong', jobs: 3 },
     { type: 'fs_utimes', id: 'a', path: '/x', atime: new Date(1_600_000_000_000), mtime: new Date(1_600_000_000_250), cwd: '/' },
     { type: 'fs_ok', id: 'a', op: 'readFile', result: new Uint8Array([0, 1, 254, 255]) },
