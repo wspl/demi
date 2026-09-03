@@ -46,7 +46,10 @@ lockout, the own password (`auth.test.ts`), the admin surface — accounts
 by rank, resets down the ranks, the read-only mode (`admin.test.ts`),
 the instance mode — who configures providers, the connection scope on
 listings, catalog, selection and usage, the mode fixed once providers
-exist (`mode.test.ts`) — the pairing state machine
+exist (`mode.test.ts`), the tenant-isolation matrix — every route naming
+a user's object tried by another user and by an admin, the empty lists,
+revoke under a workspace refused, revoke and re-claim (`isolation.test.ts`)
+— the pairing state machine
 (`runner.test.ts`), vault and provider assembly (`llm.test.ts`), the M6
 switch acceptance (`switch.test.ts`), the home-image store and the image
 tools (`home-image.test.ts`; the e2fsprogs round trip runs where the tools
