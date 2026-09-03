@@ -1,5 +1,6 @@
 ---
-'@demicodes/agent': patch
+'@demicodes/agent': minor
+'@demicodes/coding-agent': minor
 ---
 
-`demi agent resume` now resolves the archived child's profile before rewriting its job record. A profile that no longer exists fails the resume and leaves the archive intact instead of turning it into an orphaned live record that neither `list` nor `resume` can reach.
+Subagent profiles: omitting `--profile` always selects the unnamed inherit profile (parent harness, model, Host, commands), which exists regardless of declared profiles and cannot be configured. `default` is now a reserved word rather than a profile name: a harness declaring a profile called `default` fails at assembly, `--profile default` is unknown, and persisted jobs store `profileName: null` for inherited children. `demi agent resume` resolves the profile before rewriting the archived job record, so a missing profile leaves the archive intact. `@demicodes/coding-agent` drops its declared `default` profile and ships only `explore`.
