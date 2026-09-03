@@ -1,14 +1,14 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { STUB_USER } from '../auth/identity'
-import type { ControlService } from '../storage/control'
-import type { ManagedHosts } from '../managed/lifecycle'
+import type { ControlService, WorkspaceRecord } from '../storage/control'
+import { ManagedHostError, type ManagedHosts } from '../managed/lifecycle'
 
-const createWorkspaceBodySchema = z.object({
-  deviceId: z.string().min(1),
-  path: z.string().min(1),
-  name: z.string().min(1),
-})
+/** A workspace on one of the user's devices at a path, or a Cloud one: a host provisioned for it, the path its home. */
+const createWorkspaceBodySchema = z.union([
+  z.object({ deviceId: z.string().min(1), path: z.string().min(1), name: z.string().min(1) }),
+  z.object({ cloud: z.literal(true), name: z.string().min(1) }),
+])
 
 const patchWorkspaceBodySchema = z.object({ name: z.string().min(1) })
 
@@ -18,8 +18,13 @@ const patchWorkspaceBodySchema = z.object({ name: z.string().min(1) })
  * touches files; deletion is refused while conversations still point at it
  * (moving them is a target switch, with its own turn-boundary rules).
  */
-export function workspaceRoutes(options: { control: ControlService; managedHosts: ManagedHosts | null }): Hono {
-  const { control, managedHosts } = options
+export function workspaceRoutes(options: {
+  control: ControlService
+  managedHosts: ManagedHosts | null
+  /** The Cloud choice; null when this backend provisions no machines. */
+  createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
+}): Hono {
+  const { control, managedHosts, createCloudWorkspace } = options
   const app = new Hono()
 
   app.get('/', async (c) => c.json({ workspaces: await control.listWorkspaces(STUB_USER.id) }))
@@ -27,7 +32,16 @@ export function workspaceRoutes(options: { control: ControlService; managedHosts
   app.post('/', async (c) => {
     const parsed = createWorkspaceBodySchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) {
-      return c.json({ code: 'invalid_body', message: 'Expected { deviceId, path, name }' }, 400)
+      return c.json({ code: 'invalid_body', message: 'Expected { deviceId, path, name } or { cloud: true, name }' }, 400)
+    }
+    if ('cloud' in parsed.data) {
+      if (!createCloudWorkspace) return c.json({ code: 'no_cloud', message: 'This backend provisions no machines' }, 409)
+      try {
+        return c.json({ workspace: await createCloudWorkspace(STUB_USER.id, parsed.data.name) }, 201)
+      } catch (error) {
+        if (error instanceof ManagedHostError) return c.json({ code: error.code, message: error.message }, 409)
+        throw error
+      }
     }
     const device = await control.getDevice(parsed.data.deviceId)
     if (!device || device.userId !== STUB_USER.id) {

@@ -162,7 +162,7 @@ Test code may depend upward for integration coverage. Production code must not.
   - `llm/` — provider assembly per connection (type factories, catalog, connection test) and the metering wrap at the inference entry.
   - `vault/` — instance secret, credential crypto, and the typed connection vault over the control plane.
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
-  - `managed/` — managed hosts: the provisioner seam + Firecracker implementation (jailer via the privileged helper, kernel and rootfs images, per-host home image, cgroup caps), lifecycle (idle hibernate to home snapshots, wake), and the `demi host` subcommand group over the current target and the grant set, injected into the coding command registry.
+  - `managed/` — managed hosts: the provisioner seam + Firecracker implementation (jailer via the privileged helper, kernel and rootfs images, per-host home image, cgroup caps), lifecycle (idle hibernate to home snapshots, wake), the Cloud workspace creation (a host owned by the workspace over an empty home, the workspace at that home), and the `demi host` subcommand group over the current target and the grant set, injected into the coding command registry.
   - New modules get sibling directories — never new files at the root.
 
 ### `@demicodes/host-virtual`
