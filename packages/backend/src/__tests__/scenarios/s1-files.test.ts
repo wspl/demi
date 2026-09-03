@@ -25,7 +25,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S1 file workflow on %s', (t
     })
     expect(created.received[0]).toContain('exitCode: 0')
     expect(created.received[0]).toContain('Created notes.md')
-    expect(await readFile(driver.filePath('src/notes.md'), 'utf8')).toBe('alpha\nbeta\ngamma\n')
+    expect(await driver.readFile('src/notes.md')).toBe('alpha\nbeta\ngamma\n')
 
     // The default shell keeps its cwd between turns.
     const read = await driver.turn({
@@ -37,7 +37,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S1 file workflow on %s', (t
       model: [model.shell('t3', 'demi file edit notes.md --old beta --new delta && cat notes.md'), model.say('edited')],
     })
     expect(edited.received[0]).toContain('Edited notes.md\nalpha\ndelta\ngamma')
-    expect(await readFile(driver.filePath('src/notes.md'), 'utf8')).toBe('alpha\ndelta\ngamma\n')
+    expect(await driver.readFile('src/notes.md')).toBe('alpha\ndelta\ngamma\n')
 
     const listed = await driver.turn({
       model: [model.shell('t4', 'ls && demi host current'), model.say('listed')],

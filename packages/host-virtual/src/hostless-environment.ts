@@ -25,7 +25,7 @@ import {
   type ShellStatusInput,
   type ShellWriteInput,
 } from '@demicodes/shell'
-import { runTinybash, type DispatchIO, type RootPaths, type ShellState } from '@demicodes/tinybash'
+import { parseTinybash, runTinybash, type DispatchIO, type RootPaths, type ShellState, type TinybashOutside } from '@demicodes/tinybash'
 import { ByteQueue, concatBytes, delay, errorMessage, isAbsolutePath, toBytes } from '@demicodes/utils'
 
 export interface HostlessEnvironmentOptions extends ShellEnvironmentOptions {
@@ -58,6 +58,9 @@ interface RunningCommand {
   stdin: ByteQueue
   settled: Promise<void>
 }
+
+/** The variables `createShell` sets on every shell; a session's own are the rest. */
+const STARTING_VARS = new Set(['HOME', 'USER', 'DEMI_SHELL_ID', 'DEMI_SESSION_ID'])
 
 /** How long `abort` waits for the statement in flight to honour the signal. */
 const ABORT_GRACE_MS = 2_000
@@ -108,6 +111,39 @@ export class HostlessEnvironment implements ShellEnvironment {
 
   hasCommand(commandId: string): boolean {
     return this.commandsById.has(commandId)
+  }
+
+  /**
+   * The parse-first decision for an exec, before anything runs
+   * (`sessions-and-targets.md` § The upgrade condition): null when the
+   * script is inside tinybash's subset under the state of the shell the
+   * exec would use, otherwise why it is outside. The embedder hands an
+   * outside script to a machine.
+   */
+  async outside(input: ShellExecInput): Promise<TinybashOutside | null> {
+    const parsed = await parseTinybash(input.script, this.roots, this.namespace, this.stateFor(input), this.host.fs)
+    return parsed.kind === 'outside' ? parsed : null
+  }
+
+  /**
+   * What a machine's shell must be told to continue where this exec's shell
+   * stands: the working directory, and the variables the session set beyond
+   * the ones every shell starts with.
+   */
+  handoverOf(input: ShellExecInput): { cwd: string; vars: Record<string, string> } {
+    const state = this.stateFor(input)
+    const vars: Record<string, string> = {}
+    for (const [key, value] of Object.entries(state.vars)) {
+      if (!(key in this.initialEnv) && !STARTING_VARS.has(key)) vars[key] = value
+    }
+    return { cwd: state.cwd, vars }
+  }
+
+  /** The shell state an exec would start from: the named shell's, the session default's, or a fresh one for an ephemeral exec. */
+  private stateFor(input: ShellExecInput): ShellState {
+    if (input.shellId) return this.requireShell(input.shellId).state
+    if (input.ephemeral) return this.initialState(undefined, input.cwd, '')
+    return this.defaultShell(input.agentSessionId).state
   }
 
   async exec(input: ShellExecInput): Promise<ShellCommandStatus> {
@@ -310,15 +346,19 @@ export class HostlessEnvironment implements ShellEnvironment {
     return shell
   }
 
+  private initialState(agentSessionId: string | undefined, initialCwd: string | undefined, shellId: string): ShellState {
+    const vars: Record<string, string> = { ...this.initialEnv, HOME: this.home, USER: this.identity.user, DEMI_SHELL_ID: shellId }
+    if (agentSessionId) vars.DEMI_SESSION_ID = agentSessionId
+    return { cwd: initialCwd ?? this.host.defaultCwd, home: this.home, vars }
+  }
+
   private createShell(agentSessionId: string | undefined, initialCwd?: string): HostlessShell {
     const id = this.shellIdFactory()
-    const vars: Record<string, string> = { ...this.initialEnv, HOME: this.home, USER: this.identity.user, DEMI_SHELL_ID: id }
-    if (agentSessionId) vars.DEMI_SESSION_ID = agentSessionId
     const shell: HostlessShell = {
       id,
       agentSessionId: agentSessionId ?? null,
       commandStorageId: agentSessionId ?? id,
-      state: { cwd: initialCwd ?? this.host.defaultCwd, home: this.home, vars },
+      state: this.initialState(agentSessionId, initialCwd, id),
       exited: false,
     }
     this.shells.set(id, shell)
