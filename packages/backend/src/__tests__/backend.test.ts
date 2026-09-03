@@ -72,7 +72,7 @@ test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe 
     // Turn 1: tinybash builtins over the hostless tree.
     [events.toolCall('t1', 'shell_exec', { script: 'echo -n hello > f.txt && cat f.txt', timeoutMs: 10_000 })],
     [events.text('files done'), events.response()],
-    // Turn 2: a real program puts the script outside the subset; nothing runs.
+    // Turn 2: a real program puts the script outside the subset; this backend provisions no machine, so the call is a tool error and nothing runs.
     [events.toolCall('t2', 'shell_exec', { script: 'python3 -V', timeoutMs: 10_000 })],
     [events.text('refused as expected'), events.response()],
   ])
@@ -108,7 +108,8 @@ test('hostless conversation end-to-end: tinybash builtins, refusal, detach-safe 
   expect(shellOutputs[0]).toBe('hello')
 
   await client.send([{ type: 'text', text: 'now run python' }])
-  expect(shellErrors[1]).toBe('tinybash: line 1: python3: no such program here; a machine\n')
+  expect(shellErrors).toHaveLength(1)
+  expect(JSON.stringify(client.transcript().blocks.filter((block) => block.type === 'tool_call').at(-1))).toContain('this backend provisions none')
 
   // The first user message became the title.
   const listed = await api<{ conversations: Array<{ id: string; title: string }> }>(backend, '/api/conversations')

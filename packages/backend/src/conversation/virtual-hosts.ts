@@ -1,26 +1,26 @@
-import { join } from 'node:path'
-import { VirtualHost, scopedFsBackend } from '@demicodes/host-virtual'
-import type { HostFileSystem } from '@demicodes/shell'
-import type { ConversationStores } from '../storage/conversation-store'
+import { VirtualHost, type VirtualFsBackend } from '@demicodes/host-virtual'
 import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from './scoped-transport'
+import type { ConversationStores } from '../storage/conversation-store'
 
 /**
  * One stable VirtualHost per conversation — `AgentHarness.host` must return
  * the same object for the same execution target (per-Host shell reuse). The
- * host's store is that conversation's own database scope.
+ * host's files are that conversation's `files` tree and its store is that
+ * conversation's own database scope.
  */
 export function createVirtualHostFactory(options: {
-  dataDir: string
   conversationStores: ConversationStores
-  localFs: HostFileSystem
+  /** The filesystem behind a conversation's namespace; the default is its files tree. */
+  backendFor?: (conversationId: string) => VirtualFsBackend
 }): (conversationId: string) => Promise<VirtualHost> {
   const virtualHosts = new Map<string, Promise<VirtualHost>>()
+  const backendFor = options.backendFor ?? ((conversationId: string) => options.conversationStores.filesBackend(conversationId))
   return (conversationId) => {
     let host = virtualHosts.get(conversationId)
     if (!host) {
       host = (async () => {
         const virtual = new VirtualHost({
-          backend: scopedFsBackend(join(options.dataDir, 'virtual', conversationId), options.localFs),
+          backend: backendFor(conversationId),
           store: options.conversationStores.hostStore(conversationId),
           defaultCwd: HOSTLESS_HOME,
           directories: HOSTLESS_NAMESPACE,

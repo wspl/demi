@@ -1,5 +1,5 @@
 import { buildManifest, createLoader, inMemorySource, inProcessRpc, rootPaths } from '@demicodes/command-loader'
-import { AgentSessionCommandStorage, type CommandRegistry, type Host, type ShellEnvironment, type ShellEnvironmentOptions } from '@demicodes/shell'
+import { AgentSessionCommandStorage, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
 import { HostlessEnvironment } from '@demicodes/host-virtual'
 import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from './scoped-transport'
 
@@ -29,7 +29,7 @@ export async function createHostlessShell(ctx: {
   host: Host
   commands: CommandRegistry
   shell: ShellEnvironmentOptions
-}): Promise<ShellEnvironment> {
+}): Promise<HostlessEnvironment> {
   const roots = ctx.commands.list()
   const manifest = await buildManifest(roots, { transpile: transpileCommandModule })
   const loader = await createLoader({

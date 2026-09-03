@@ -2514,6 +2514,51 @@ stop; the scenario waits for both.
   byte, over commands whose output is the same under BSD and GNU
   coreutils; the GNU-faithful corpus stays in tinybash's Linux job.
 
+### Checkpoint 3: the session upgrade (2026-09-03) — delivered
+
+Landed:
+
+- The hostless filesystem is the `files` tree: `files` table in the
+  conversation database (path, parent, kind, mode, mtime, size, sha256),
+  bytes in the blob store; `storage/files-tree.ts` implements the
+  `VirtualFsBackend` over it (no symlinks or hard links — EPERM),
+  `materializeFilesTree` writes placements (`/home/demi` → the home,
+  `/tmp` → its `.tmp/`) with modes and mtimes, `clearFilesTree` empties
+  the rows after the upgrade. `ConversationStores.filesBackend` /
+  `materializeFiles` / `clearFiles`. The `<dataDir>/virtual/` directory
+  is gone; `scopedFsBackend` moved to `@demicodes/host-virtual/testing`.
+- `HostlessEnvironment.outside(input)` — the parse-first decision under
+  the state of the shell the exec would use — and `handoverOf(input)` —
+  the cwd and the session's own variables.
+- `conversation/upgrading-shell.ts`: `UpgradingShell` over the hostless
+  environment and an upgrade callback; the first outside script provisions
+  through the lifecycle, binds with `bindConversationHost` (the pointer
+  alone, no pending switch), clears the tree, and runs on the machine's
+  shell with `cd <cwd> && K=v` prefixed once — the hostless home mapped to
+  the machine's home (`HostIdentity.homeDir`; `/home/demi` on a real
+  guest, the staging directory under the fake). The machine's shell
+  environment is the same instance the session uses afterwards: the
+  backend keeps one per (session, Host).
+- `bindConversationHost` on the `ControlService`; `Backend` materialises
+  under `<dataDir>/staging/<conversationId>` and hands the directory to
+  the provisioner, which owns it from then on.
+- Without `managedHosts` configured, an outside script is the tool error
+  "this script needs a machine, and this backend provisions none"; the M8
+  refusal text is gone.
+- Tests: S11 (`s11-upgrade.test.ts`) — the upgrade with files, `/tmp`,
+  cwd and a variable carried, silence checked on the request items, the
+  transcript and the record; a refusing provisioner; split equivalence
+  over a seven-step sequence at every split point. `driver.readFile` and
+  `world.hostlessFile` replace the hostless `filePath`. `bun test
+  packages/backend`: 78 pass; host-virtual 22 pass.
+
+Pitfalls: the split run makes ~130 provider requests in well under a
+minute, past the default 120/min limit — `WorldOptions.
+providerRequestsPerMinute`. On the fake the machine's home is not
+`/home/demi`, so `$HOME` and absolute `/tmp` paths differ from hostless
+there; the sequence uses relative paths and the record notes the
+difference as the fake's.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

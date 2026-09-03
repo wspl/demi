@@ -11,7 +11,9 @@ import {
   type BlobStore,
   type PersistedSessionState,
 } from '@demicodes/agent'
+import type { VirtualFsBackend } from '@demicodes/host-virtual'
 import { openSqliteDatabase, type SqlDatabase } from './database'
+import { clearFilesTree, filesTreeBackend, materializeFilesTree, type TreePlacement } from './files-tree'
 import { DbHostStore } from './host-store'
 import { CONVERSATION_MIGRATIONS, migrate } from './migrations'
 
@@ -88,6 +90,20 @@ export class ConversationStores {
 
   hostStore(conversationId: string): HostStore {
     return new DbHostStore(this.db(conversationId), 'host')
+  }
+
+  /** The hostless filesystem: the conversation's `files` tree over the blob store. */
+  filesBackend(conversationId: string): VirtualFsBackend {
+    return filesTreeBackend(this.db(conversationId), this.blobs)
+  }
+
+  /** The tree written into real directories for the home image, then emptied (`storage.md` § The upgrade). */
+  async materializeFiles(conversationId: string, placements: readonly TreePlacement[]): Promise<void> {
+    await materializeFilesTree(this.db(conversationId), this.blobs, placements)
+  }
+
+  clearFiles(conversationId: string): void {
+    clearFilesTree(this.db(conversationId))
   }
 
   /** Cold transcript read: the raw rows, media left as refs. */
