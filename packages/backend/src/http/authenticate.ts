@@ -23,3 +23,9 @@ export function authenticate(sessions: WebSessions, exempt: readonly string[]): 
     await next()
   }
 }
+
+/** The admin gate behind the session gate: master and admin pass, a user is 403. */
+export const requireAdmin: MiddlewareHandler<AuthEnv> = async (c, next) => {
+  if (c.get('user').role === 'user') return c.json({ code: 'forbidden', message: 'Administrators only' }, 403)
+  await next()
+}

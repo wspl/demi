@@ -302,6 +302,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       : null,
     sessions,
     loginLimiter,
+    mode: options.mode,
   })
 
   const server = Bun.serve({
