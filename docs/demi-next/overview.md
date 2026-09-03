@@ -75,7 +75,7 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
   like every other provider and spawns its CLI on the conversation's runner
   through the ordinary `spawn`, speaking stream-json over the spawned
   process's stdio. The CLI's HTTPS goes directly to the Claude backend with
-  the connection's vault OAuth token injected as process env. The backend
+  the provider's vault OAuth token injected as process env. The backend
   never proxies or rewrites any provider's model traffic.
 
 ## Invariants

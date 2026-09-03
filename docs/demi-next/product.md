@@ -9,22 +9,23 @@
 ## Instance mode: shared vs isolated
 
 An instance runs in exactly one of two modes; there is no mixing and no
-per-connection ownership machinery. The mode is a deployment decision
+per-provider ownership machinery. The mode is a deployment decision
 made at startup (`DEMI_INSTANCE_MODE`), never changed from the product:
 
-- **Shared**: provider connections are instance-wide. Only admins create,
+- **Shared**: providers are instance-wide. Only admins create,
   modify or delete them; ordinary users just use the models. Typical
   self-host.
-- **Isolated**: every user manages their own provider connections; nothing
+- **Isolated**: every user manages their own providers; nothing
   is shared. Typical public host.
 
 Usage is metered per user in both modes; in shared mode admins also
 see the instance's usage by user. There are no instance settings beyond
 the mode, and the page reads it (`GET /api/settings`) to know what to
-show. A **provider connection** is an API key or a completed
-subscription login; either mode allows multiple connections of the same
-provider type, so model selection is keyed by `(connectionId, modelId)` —
-one provider runtime per connection, the connectionId as its providerId.
+show. A **provider** is a provider type (openai, anthropic, claude-code…)
+configured with one credential: an API key or a completed subscription
+login. Either mode allows several providers of the same type, so model
+selection is keyed by `(providerId, modelId)` — one provider runtime per
+provider.
 
 ## User system
 
@@ -41,7 +42,7 @@ page:
 - **master**: the instance's first account, created at initial setup; can
   do everything, including creating admins.
 - **admin**: everything master can do except creating admins — creates
-  users, resets passwords, manages the instance's connections (shared mode),
+  users, resets passwords, manages the instance's providers (shared mode),
   edits instance settings.
 - **user**: uses the product.
 
@@ -91,15 +92,15 @@ API; cold history rides the same rendering path.
 
 ## Provider management
 
-The connections page (admin-only in shared mode, per-user in isolated
+The providers page (admin-only in shared mode, per-user in isolated
 mode): paste an API key (openai / anthropic / google, optional
 compatible-endpoint baseUrl), or connect a subscription — the backend runs
 the provider's device-login flow, the UI shows the code/URL and polls until
-claimed. Configuring a connection makes all of its models usable; model
+claimed. Configuring a provider makes all of its models usable; model
 lists come live from the runtime's catalog and are never stored, except
-that compatible-endpoint connections take a user-entered model id list plus
-a **Test** button. Each connection shows auth state and the latest quota
-snapshot; connections can be deleted. No model-level configuration of any
+that compatible-endpoint providers take a user-entered model id list plus
+a **Test** button. Each provider shows auth state and the latest quota
+snapshot; providers can be deleted. No model-level configuration of any
 kind.
 
 ## Web UI surface inventory
@@ -110,7 +111,7 @@ with a directory browser and directory creation, workspaces; the
 new-project device dropdown adds **Cloud**); grant management per
 conversation (the granted hosts, revoke); device management (claim-token
 entry, online status, revoke — user hosts only, managed hosts never
-appear); connections page; usage page; admin-only user management and
+appear); providers page; usage page; admin-only user management and
 instance settings. A command's output in the browser is the view the
 model saw, never more. Nothing else in the first final state — sharing,
 collaboration and search are explicitly out.
@@ -118,7 +119,7 @@ collaboration and search are explicitly out.
 ## The frontend package
 
 `@demicodes/web` is a pure SPA (no SSR): Vue 3 + Vite, vue-router for pages
-(login, chat, devices, connections, usage, admin), Pinia for app state,
+(login, chat, devices, providers, usage, admin), Pinia for app state,
 consuming `@demicodes/web-ui` (injected `AgentClient` + transport-agnostic
 control client) and the Web API. Production: the built assets ship inside
 the backend image and the backend serves them alongside `/api`;
@@ -139,7 +140,7 @@ Layout and information architecture:
   the hostless and session-bound conversations, then one group per
   workspace, plus an archived view.
 - **Settings are modal dialogs** from the sidebar user menu, with tabs:
-  devices, connections, usage, user management (admin), instance settings
+  devices, providers, usage, user management (admin), instance settings
   (admin). No settings routes.
 - Responsive (sidebar collapses to a drawer on mobile); no PWA, no
   offline, no push.

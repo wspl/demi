@@ -44,7 +44,7 @@ primitives, the Host conformance cases, the login surface — setup, the
 cookie session and its sliding expiry over a test clock, the gate, the
 lockout, the own password (`auth.test.ts`), the admin surface — accounts
 by rank, resets down the ranks, the read-only mode (`admin.test.ts`),
-the instance mode — who configures providers, the connection scope on
+the instance mode — who configures providers, the provider scope on
 listings, catalog, selection and usage, the mode fixed once providers
 exist (`mode.test.ts`), the tenant-isolation matrix — every route naming
 a user's object tried by another user and by an admin, the empty lists,

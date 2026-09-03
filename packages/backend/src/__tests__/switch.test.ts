@@ -27,13 +27,13 @@ async function json(backend: TestBackend, path: string, body: unknown, method = 
   return api(backend, path, { method, body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
 }
 
-function selectionFor(connectionId: string) {
+function selectionFor(providerId: string) {
   const model: ModelSelection = {
-    providerId: connectionId,
+    providerId: providerId,
     model: { id: 'm', name: 'M', contextWindow: 100_000, inputLimit: null, thinking: [], acceptedExtensions: [] },
     thinking: null,
   }
-  return { providerId: connectionId, model }
+  return { providerId: providerId, model }
 }
 
 async function openClient(backend: TestBackend, conversationId: string, selection: ReturnType<typeof selectionFor>) {
@@ -61,10 +61,10 @@ function announcements(client: AgentClient): string[] {
     .blocks.flatMap((block) => (block.type === 'user' && block.preamble?.includes('[Execution target switched]') ? [block.preamble] : []))
 }
 
-async function stubConnection(backend: TestBackend): Promise<string> {
-  const response = await json(backend, '/api/connections', { type: 'stub', label: 'Stub', apiKey: 'test-key' })
-  const { connection } = (await response.json()) as { connection: { id: string } }
-  return connection.id
+async function stubProviderId(backend: TestBackend): Promise<string> {
+  const response = await json(backend, '/api/providers', { providerType: 'stub', label: 'Stub', apiKey: 'test-key' })
+  const { provider } = (await response.json()) as { provider: { id: string } }
+  return provider.id
 }
 
 /** A stub whose turn N runs `scripts[N]` as one shell call — filled in once device ids are known. */
@@ -88,10 +88,10 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: scriptedStub(scripts) }),
+      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: scriptedStub(scripts) }),
     },
   })
-  const selection = selectionFor(await stubConnection(backend))
+  const selection = selectionFor(await stubProviderId(backend))
 
   // Pair a device and create the workspace over the M6 HTTP surface.
   const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'm6-device' })
@@ -207,10 +207,10 @@ test('real→real switch: files stay, same-device note, the device granted once'
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: scriptedStub(scripts) }),
+      stub: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label, createRuntime: scriptedStub(scripts) }),
     },
   })
-  const selection = selectionFor(await stubConnection(backend))
+  const selection = selectionFor(await stubProviderId(backend))
 
   const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'm6-rr-device' })
   await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
@@ -287,11 +287,11 @@ test('a running turn refuses the switch; concurrent switches have one winner; a 
     port: 0,
     runner: { pingIntervalMs: 0 },
     providerTypes: {
-      stub: ({ connectionId, label }) =>
-        defineProvider({ id: connectionId, displayName: label, createRuntime: () => slowProvider }),
+      stub: ({ providerId, label }) =>
+        defineProvider({ id: providerId, displayName: label, createRuntime: () => slowProvider }),
     },
   })
-  const selection = selectionFor(await stubConnection(backend))
+  const selection = selectionFor(await stubProviderId(backend))
   const created = await api(backend, '/api/conversations', { method: 'POST' })
   const { conversation } = (await created.json()) as { conversation: { id: string } }
   const { client } = await openClient(backend, conversation.id, selection)

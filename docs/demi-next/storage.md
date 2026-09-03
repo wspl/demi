@@ -12,7 +12,7 @@
 follows the write-frequency line:
 
 - **`control.sqlite`** — one per deployment, the control-plane data: users,
-  auth, devices, conversation index, workspaces, grants, connections/vault,
+  auth, devices, conversation index, workspaces, grants, providers/vault,
   ledger, attachment metadata. Low write rate (the hottest writer
   is one ledger row per provider request), read-heavy (auth check per
   request, absorbed by a short-TTL token cache).
@@ -101,7 +101,7 @@ Interface topology — every endpoint by where its data lives:
    POST /api/auth/login ────── createSession ─────────▶ ┌─────────┐
    GET  /api/conversations ─── listConversations ─────▶ │ demi-   │──▶ control
    POST /api/devices/claim ─── claimDevice ───────────▶ │ controld│    .sqlite
-   …(workspaces, grants, connections, usage, admin)     └─────────┘
+   …(workspaces, grants, providers, usage, admin)     └─────────┘
 
  (b) auth check on EVERY authed request — RPC, blunted by a local cache
    any request ──▶ worker token cache (short TTL) ──miss──▶ resolveSession
@@ -154,7 +154,7 @@ only; the `*Store` suffix stays reserved for storage backends.
 users                   id, username, password_hash(argon2id), role(master|admin|user), created_at
 web_sessions            token_hash(sha256 of the cookie token), user_id, expires_at
 conversations           id, user_id, title, archived, workspace_id(NULL), host_device_id(NULL),
-                        pending_switch_json(NULL), connection_id, model_id, created_at, updated_at
+                        pending_switch_json(NULL), provider_id, model_id, created_at, updated_at
                         ← workspace_id and host_device_id mutually exclusive; both NULL = hostless
                         ← pending_switch_json: the switch the next turn announces ({from, to}), then NULL
 conversation_host_grants conversation_id, device_id, granted_at     ← the grant set
@@ -162,9 +162,9 @@ workspaces              id, user_id, device_id, path, name, created_at
 devices                 id, user_id, kind(user|managed), name, platform, token_hash,
                         owner_conversation_id(NULL), owner_workspace_id(NULL),   ← managed only
                         claimed_at, last_seen_at
-connections             id, owner_user_id(NULL in shared mode), type, label,
+providers               id, owner_user_id(NULL in shared mode), provider_type, label,
                         config(encrypted), created_at
-usage_ledger            id, user_id, conversation_id, connection_id, model_id,
+usage_ledger            id, user_id, conversation_id, provider_id, model_id,
                         input_tokens, output_tokens, cache_tokens…, created_at
 attachments             id, user_id, media_type, size_bytes, sha256, created_at
 ```
@@ -210,7 +210,7 @@ directory.
 Notes: pending claim tokens live in memory (an unclaimed runner socket
 holds them; a restart reprints); claim tokens are 128-bit random,
 single-use, expiring, rate-limited per user; online status is runtime
-state, `last_seen_at` display-only. `connections.config` is encrypted at
+state, `last_seen_at` display-only. `providers.config` is encrypted at
 rest with an instance secret (generated into the data directory on first
 start; a shared secret across instances at N>1). Ledger granularity: one
 raw row per provider request as `TokenUsage` events arrive; aggregation at

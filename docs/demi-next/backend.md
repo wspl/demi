@@ -34,7 +34,7 @@ Every instance is a **complete** backend for its assigned users — user x's
 HTTP, conversation sockets, runner sockets, hostless Hosts, managed VMs and
 CLI processes are all pinned to the instance the user→worker map names. The
 affinity is natural because conversations, devices and (isolated mode)
-connections are all user-owned, so nothing stateful ever crosses instances.
+providers are all user-owned, so nothing stateful ever crosses instances.
 Self-host is the N=1 degenerate form with no router. v1 milestones implement
 N=1 only.
 
@@ -131,14 +131,14 @@ another user's object 404 as if absent, a role short of the action 403,
 no session 401. Login failures lock the username for a minute after
 five in a row.
 
-**The connection scope.** The instance mode names whose connections a
+**The provider scope.** The instance mode names whose providers a
 caller works with: in shared mode the instance's (owner null; created,
 tested, logged in and deleted by admins, listed and used by everyone),
 in isolated mode the caller's own. Listing, the catalog, the model
 selection on a conversation and the provider a session resolves all go
-through the same scope, so a connection outside it is unknown — 404 on
+through the same scope, so a provider outside it is unknown — 404 on
 the API, no provider at the session. The mode is fixed once providers
-are configured: a start under the other mode with connections in the
+are configured: a start under the other mode with providers in the
 table refuses with the reason.
 
 The surface below is complete and frozen at M12; M13 consumes it and adds
@@ -149,10 +149,10 @@ nothing.
 | setup | `GET /api/setup` (`{ needed }`), `POST /api/setup` (the master account, once; signs it in) | M12 |
 | auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `PUT /api/auth/password` (the caller's own) | M12 |
 | conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript`; `WS /api/conversations/:id/stream` | M2 |
-| models | `GET /api/models` (the caller's connection scope's catalog, grouped by connection) | M2; scoped M12 |
+| models | `GET /api/models` (the catalog of the caller's provider scope, grouped by provider) | M2; scoped M12 |
 | devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id` (revoke; 409 `device_in_use` while a workspace points at it; the device's grants go with it), `GET /api/devices/:id/fs?path=…`, `POST /api/devices/:id/fs` (create directory) | M4 |
 | workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (never touches files); creation takes `cloud: true` in place of a deviceId | M6; cloud flag M11 |
-| connections | `GET/POST /api/connections`, `DELETE /api/connections/:id`, `POST /api/connections/:id/test`, `POST /api/connections/subscription-login` + `GET …/subscription-login/:id` — in the caller's connection scope: the instance's in shared mode (writes are admin-only), the caller's own in isolated mode | M5; scoped M12 |
+| providers | `GET/POST /api/providers`, `DELETE /api/providers/:id`, `POST /api/providers/:id/test`, `POST /api/providers/subscription-login` + `GET …/subscription-login/:id` — in the caller's provider scope: the instance's in shared mode (writes are admin-only), the caller's own in isolated mode | M5; scoped M12 |
 | usage | `GET /api/usage` (the caller's), `GET /api/usage/instance` (shared mode, admins: by user) | M5; instance view M12 |
 | attachments, blobs | `POST /api/attachments` (returns a reference id), `POST /api/conversations/:id/workspace-files`, `GET /api/blobs/:sha256` | M6; blobs M9 |
 | transfers | `PUT /api/transfers/:id` (source runner), `GET /api/transfers/:id` (destination runner); device-token authenticated, single-use, piped in flight (`runner.md` § Transfers) | M9 |

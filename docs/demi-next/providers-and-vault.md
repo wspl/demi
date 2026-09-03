@@ -10,8 +10,8 @@
 
 The provider runtimes (`createAnthropicApiProvider`, `createCodexProvider`,
 …) are instantiated **inside the backend** with vault credentials at their
-native endpoints, one runtime per provider connection, keyed by
-`(connectionId, modelId)`. The backend never proxies or rewrites model
+native endpoints, one runtime per provider, keyed by
+`(providerId, modelId)`. The backend never proxies or rewrites model
 traffic. The module exposes the aggregated model catalog (live from each
 runtime, never stored) and quota surfaces to the web UI.
 
@@ -40,7 +40,7 @@ authStore implementations plus one `HostStore` implementation, all inside
 - Device-login flows return token material without persisting
   (`runCodexDeviceLogin(): CodexAuthDotJson`); the vault stores the return
   value.
-- `connections.config` is encrypted at rest with the instance secret
+- `providers.config` is encrypted at rest with the instance secret
   (`storage.md`). The backend never touches credential bytes beyond naming
   where a provider's pool lives.
 - The file-based implementations (`File*AuthStore`,
@@ -72,10 +72,10 @@ speaking stream-json over the spawned process's stdio.
 
 - `packages/provider-claude-code` runs the whole credential path itself:
   its auth store resolves and refreshes the OAuth token from the
-  connection's vault pool and injects it as `CLAUDE_CODE_OAUTH_TOKEN` into
+  provider's vault pool and injects it as `CLAUDE_CODE_OAUTH_TOKEN` into
   the spawned CLI's env. The backend contributes two public factory
   options: **injectable spawn** (a `Host.process`-shaped function targeting
-  the conversation's runner) and `stateDir` (the connection's vault
+  the conversation's runner) and `stateDir` (the provider's vault
   directory). The CLI's Anthropic traffic goes directly upstream with that
   token — no base-URL override, no proxying. The CLI consumes zero
   device-local state: any device with the binary behaves identically, and

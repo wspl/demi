@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { join } from 'node:path'
 
 /**
- * The instance secret encrypting `connections.config` at rest: generated into
+ * The instance secret encrypting `providers.config` at rest: generated into
  * the data directory on first start, a shared config value across instances
  * at N>1. Cheap protection against the database file leaking alone — no KMS
  * or per-user key machinery by design.

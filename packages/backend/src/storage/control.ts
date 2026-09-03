@@ -49,16 +49,16 @@ export interface ControlService {
   deleteDevice(id: string): Promise<void>
   touchDeviceSeen(id: string): Promise<void>
   /** `config` is opaque here — the vault encrypts/decrypts; storage never sees plaintext. */
-  createConnection(connection: {
+  createProvider(provider: {
     ownerUserId: string | null
-    type: string
+    providerType: string
     label: string
     config: string
-  }): Promise<ConnectionRecord>
-  getConnection(id: string): Promise<ConnectionRecord | null>
-  /** The connections of one scope — the instance's (owner null) or a user's — or every row for the startup check. */
-  listConnections(scope: ConnectionScope): Promise<ConnectionRecord[]>
-  deleteConnection(id: string): Promise<void>
+  }): Promise<ProviderRecord>
+  getProvider(id: string): Promise<ProviderRecord | null>
+  /** The providers of one scope — the instance's (owner null) or a user's — or every row for the startup check. */
+  listProviders(scope: ProviderScope): Promise<ProviderRecord[]>
+  deleteProvider(id: string): Promise<void>
   appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void>
   listUsage(userId: string): Promise<UsageRow[]>
   /** The whole ledger — the shared-mode admin view. */
@@ -107,7 +107,7 @@ export interface ControlService {
   listConversations(userId: string, options?: { archived?: boolean }): Promise<ConversationRecord[]>
   renameConversation(id: string, title: string): Promise<void>
   setConversationArchived(id: string, archived: boolean): Promise<void>
-  setConversationModel(id: string, connectionId: string | null, modelId: string | null): Promise<void>
+  setConversationModel(id: string, providerId: string | null, modelId: string | null): Promise<void>
   /** Sets the title only when it is still the creation default (first user message becomes the title). */
   defaultConversationTitle(id: string, title: string): Promise<void>
   touchConversation(id: string): Promise<void>
@@ -147,10 +147,10 @@ export interface WorkspaceRecord {
   createdAt: string
 }
 
-export interface ConnectionRecord {
+export interface ProviderRecord {
   id: string
   ownerUserId: string | null
-  type: string
+  providerType: string
   label: string
   /** Encrypted at rest (vault crypto); opaque to storage. */
   config: string
@@ -166,14 +166,14 @@ export interface AttachmentRecord {
   createdAt: string
 }
 
-/** A connection listing's scope: one owner (null = the instance's, shared mode) or every row. */
-export type ConnectionScope = { ownerUserId: string | null } | 'all'
+/** A provider listing's scope: one owner (null = the instance's, shared mode) or every row. */
+export type ProviderScope = { ownerUserId: string | null } | 'all'
 
 export interface UsageRow {
   id: string
   userId: string
   conversationId: string
-  connectionId: string
+  providerId: string
   modelId: string
   inputTokens: number
   outputTokens: number
@@ -212,7 +212,7 @@ export interface ConversationRecord {
   workspaceId: string | null
   hostDeviceId: string | null
   pendingSwitch: PendingSwitch | null
-  connectionId: string | null
+  providerId: string | null
   modelId: string | null
   createdAt: string
   updatedAt: string
@@ -226,14 +226,14 @@ interface ConversationRow {
   workspace_id: string | null
   host_device_id: string | null
   pending_switch_json: string | null
-  connection_id: string | null
+  provider_id: string | null
   model_id: string | null
   created_at: string
   updated_at: string
 }
 
 const SELECT =
-  'SELECT id, user_id, title, archived, workspace_id, host_device_id, pending_switch_json, connection_id, model_id, created_at, updated_at FROM conversations'
+  'SELECT id, user_id, title, archived, workspace_id, host_device_id, pending_switch_json, provider_id, model_id, created_at, updated_at FROM conversations'
 
 interface UserRow {
   id: string
@@ -392,24 +392,24 @@ export class LocalControlService implements ControlService {
     this.db.run('UPDATE devices SET last_seen_at = ? WHERE id = ?', [new Date().toISOString(), id])
   }
 
-  async createConnection(connection: {
+  async createProvider(provider: {
     ownerUserId: string | null
-    type: string
+    providerType: string
     label: string
     config: string
-  }): Promise<ConnectionRecord> {
-    const record: ConnectionRecord = {
+  }): Promise<ProviderRecord> {
+    const record: ProviderRecord = {
       id: createId(),
-      ownerUserId: connection.ownerUserId,
-      type: connection.type,
-      label: connection.label,
-      config: connection.config,
+      ownerUserId: provider.ownerUserId,
+      providerType: provider.providerType,
+      label: provider.label,
+      config: provider.config,
       createdAt: new Date().toISOString(),
     }
-    this.db.run('INSERT INTO connections (id, owner_user_id, type, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+    this.db.run('INSERT INTO providers (id, owner_user_id, provider_type, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
       record.id,
       record.ownerUserId,
-      record.type,
+      record.providerType,
       record.label,
       record.config,
       record.createdAt,
@@ -417,33 +417,33 @@ export class LocalControlService implements ControlService {
     return record
   }
 
-  async getConnection(id: string): Promise<ConnectionRecord | null> {
-    const row = this.db.get<ConnectionRow>(`${CONNECTION_SELECT} WHERE id = ?`, [id])
-    return row ? connectionFromRow(row) : null
+  async getProvider(id: string): Promise<ProviderRecord | null> {
+    const row = this.db.get<ProviderRow>(`${PROVIDER_SELECT} WHERE id = ?`, [id])
+    return row ? providerFromRow(row) : null
   }
 
-  async listConnections(scope: ConnectionScope): Promise<ConnectionRecord[]> {
+  async listProviders(scope: ProviderScope): Promise<ProviderRecord[]> {
     const rows =
       scope === 'all'
-        ? this.db.all<ConnectionRow>(`${CONNECTION_SELECT} ORDER BY created_at`)
+        ? this.db.all<ProviderRow>(`${PROVIDER_SELECT} ORDER BY created_at`)
         : scope.ownerUserId === null
-          ? this.db.all<ConnectionRow>(`${CONNECTION_SELECT} WHERE owner_user_id IS NULL ORDER BY created_at`)
-          : this.db.all<ConnectionRow>(`${CONNECTION_SELECT} WHERE owner_user_id = ? ORDER BY created_at`, [scope.ownerUserId])
-    return rows.map(connectionFromRow)
+          ? this.db.all<ProviderRow>(`${PROVIDER_SELECT} WHERE owner_user_id IS NULL ORDER BY created_at`)
+          : this.db.all<ProviderRow>(`${PROVIDER_SELECT} WHERE owner_user_id = ? ORDER BY created_at`, [scope.ownerUserId])
+    return rows.map(providerFromRow)
   }
 
-  async deleteConnection(id: string): Promise<void> {
-    this.db.run('DELETE FROM connections WHERE id = ?', [id])
+  async deleteProvider(id: string): Promise<void> {
+    this.db.run('DELETE FROM providers WHERE id = ?', [id])
   }
 
   async appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void> {
     this.db.run(
-      'INSERT INTO usage_ledger (id, user_id, conversation_id, connection_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO usage_ledger (id, user_id, conversation_id, provider_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         createId(),
         row.userId,
         row.conversationId,
-        row.connectionId,
+        row.providerId,
         row.modelId,
         row.inputTokens,
         row.outputTokens,
@@ -661,13 +661,13 @@ export class LocalControlService implements ControlService {
       workspaceId: null,
       hostDeviceId: null,
       pendingSwitch: null,
-      connectionId: null,
+      providerId: null,
       modelId: null,
       createdAt: now,
       updatedAt: now,
     }
     this.db.run(
-      'INSERT INTO conversations (id, user_id, title, archived, workspace_id, connection_id, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO conversations (id, user_id, title, archived, workspace_id, provider_id, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [record.id, userId, record.title, 0, null, null, null, now, now],
     )
     return record
@@ -699,9 +699,9 @@ export class LocalControlService implements ControlService {
     ])
   }
 
-  async setConversationModel(id: string, connectionId: string | null, modelId: string | null): Promise<void> {
-    this.db.run('UPDATE conversations SET connection_id = ?, model_id = ?, updated_at = ? WHERE id = ?', [
-      connectionId,
+  async setConversationModel(id: string, providerId: string | null, modelId: string | null): Promise<void> {
+    this.db.run('UPDATE conversations SET provider_id = ?, model_id = ?, updated_at = ? WHERE id = ?', [
+      providerId,
       modelId,
       new Date().toISOString(),
       id,
@@ -751,10 +751,10 @@ interface WorkspaceRow {
 
 const DEVICE_SELECT = 'SELECT id, user_id, kind, name, platform, owner_conversation_id, owner_workspace_id, claimed_at, last_seen_at FROM devices'
 
-interface ConnectionRow {
+interface ProviderRow {
   id: string
   owner_user_id: string | null
-  type: string
+  provider_type: string
   label: string
   config: string
   created_at: string
@@ -773,7 +773,7 @@ interface UsageLedgerRow {
   id: string
   user_id: string
   conversation_id: string
-  connection_id: string
+  provider_id: string
   model_id: string
   input_tokens: number
   output_tokens: number
@@ -782,17 +782,17 @@ interface UsageLedgerRow {
   created_at: string
 }
 
-const CONNECTION_SELECT = 'SELECT id, owner_user_id, type, label, config, created_at FROM connections'
+const PROVIDER_SELECT = 'SELECT id, owner_user_id, provider_type, label, config, created_at FROM providers'
 
 const USAGE_SELECT =
-  'SELECT id, user_id, conversation_id, connection_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM usage_ledger'
+  'SELECT id, user_id, conversation_id, provider_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM usage_ledger'
 
 function usageFromRow(row: UsageLedgerRow): UsageRow {
   return {
     id: row.id,
     userId: row.user_id,
     conversationId: row.conversation_id,
-    connectionId: row.connection_id,
+    providerId: row.provider_id,
     modelId: row.model_id,
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
@@ -802,11 +802,11 @@ function usageFromRow(row: UsageLedgerRow): UsageRow {
   }
 }
 
-function connectionFromRow(row: ConnectionRow): ConnectionRecord {
+function providerFromRow(row: ProviderRow): ProviderRecord {
   return {
     id: row.id,
     ownerUserId: row.owner_user_id,
-    type: row.type,
+    providerType: row.provider_type,
     label: row.label,
     config: row.config,
     createdAt: row.created_at,
@@ -836,7 +836,7 @@ function fromRow(row: ConversationRow): ConversationRecord {
     workspaceId: row.workspace_id,
     hostDeviceId: row.host_device_id,
     pendingSwitch: row.pending_switch_json ? (JSON.parse(row.pending_switch_json) as PendingSwitch) : null,
-    connectionId: row.connection_id,
+    providerId: row.provider_id,
     modelId: row.model_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
