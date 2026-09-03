@@ -318,9 +318,11 @@ interface AgentHarness<State> {
 }
 ```
 
-Omitted `agents()` yields one implicit profile named `default`: inherit the
-parent harness, model, Host, and commands. `--profile` is optional and must
-match a configured name. A profile's `commands()` filter applies to the
+Omitting `--profile` always selects the unnamed inherit profile: the parent
+harness, model, Host, and commands. It exists whether or not `agents()` is
+declared and cannot be configured or replaced; `default` is a reserved word,
+not a profile name, and a harness declaring a profile called `default` fails
+at assembly. A given `--profile` must match a declared name. A profile's `commands()` filter applies to the
 harness commands; the `demi agent` tree is injected after it and is not
 strippable by `commands()`. The only sanctioned narrowing is the spawn
 restriction (`--no-subagents` / `canSpawnSubagents: false`), which removes
@@ -357,8 +359,8 @@ summarize the parent transcript into the child.
 | preamble | `AgentServer`, every child | This session is a subagent; its id and its parent's id; ending the turn with an empty inbox returns the last assistant text as the result; `demi agent send` / `steer` reach the parent (`parent`) and any agent in `demi agent list`; spawn delegates further; do not address the product user as the root session. |
 | first user message | parent model | The spawn prompt (positional or stdin). Demi does not inspect or pad it. |
 
-The implicit `default` profile inherits the parent `systemPrompt` so the child
-already knows shell session rules and registered commands. A named profile
+The inherit profile carries the parent `systemPrompt` so the child already
+knows shell session rules and registered commands. A named profile
 that only states a role still uses that inherited prompt unless it sets
 `systemPrompt`.
 
@@ -524,7 +526,7 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
 |---|---|
 | `@demicodes/shell` | Foreground registered commands (signal, live IO, stdin stream) |
 | `@demicodes/agent` | Supervisors, agent directory, `demi agent` injection, protocol frames, child `AgentSession` |
-| `@demicodes/coding-agent` | Optional named profiles (`explore` read-only Host, `default`) |
+| `@demicodes/coding-agent` | Optional named profile (`explore` read-only Host) |
 | harness / product | Extra profiles, Host wrapping, UI over `AgentClient` |
 
 `@demicodes/coding-agent` does not instantiate `AgentSession`.
