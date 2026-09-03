@@ -205,8 +205,8 @@ export class ProviderAssembly {
    * compatible-endpoint connections, whose user-entered `modelIds` become
    * minimal catalog entries.
    */
-  async catalog(): Promise<CatalogConnection[]> {
-    const connections = await this.vault.list()
+  async catalog(ownerUserId: string | null): Promise<CatalogConnection[]> {
+    const connections = await this.vault.list({ ownerUserId })
     return Promise.all(
       connections.map(async (connection) => {
         const resolved = await this.providerFor(connection.id)

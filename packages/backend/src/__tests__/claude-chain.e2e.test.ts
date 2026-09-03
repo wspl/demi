@@ -103,7 +103,7 @@ chain('claude-code on a runner: vault token in the CLI env, native wire to a moc
   const control = new LocalControlService(controlDb)
   const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(dataDir))
   const connection = await vault.create({
-    ownerUserId: backend.session.user.id,
+    ownerUserId: null, // shared mode: the instance's connection
     label: 'Claude subscription',
     config: { kind: 'subscription', provider: 'claude-code' },
   })

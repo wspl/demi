@@ -1,4 +1,4 @@
-import type { ConnectionRecord, ControlService } from '../storage/control'
+import type { ConnectionRecord, ConnectionScope, ControlService } from '../storage/control'
 import { decryptJson, encryptJson } from './crypto'
 
 /**
@@ -63,8 +63,8 @@ export class ConnectionVault {
     return record ? this.decode(record) : null
   }
 
-  async list(): Promise<Connection[]> {
-    return (await this.control.listConnections()).map((record) => this.decode(record))
+  async list(scope: ConnectionScope): Promise<Connection[]> {
+    return (await this.control.listConnections(scope)).map((record) => this.decode(record))
   }
 
   async delete(id: string): Promise<void> {

@@ -1,7 +1,9 @@
 import { errorMessage } from '@demicodes/utils'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { z } from 'zod'
+import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderAssembly } from '../llm/assembly'
+import { canConfigureProviders, connectionOwner } from '../vault/scope'
 import type { Connection, ConnectionVault } from '../vault/connections'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 
@@ -19,16 +21,36 @@ const createConnectionBodySchema = z.object({
 })
 
 /**
- * `/api/connections` — the vault surface. Responses never carry key
- * material: a connection lists as its type, label, endpoint, and model list.
+ * `/api/connections` — the vault surface in the caller's connection scope
+ * (`vault/scope.ts`): the instance's connections in shared mode, where only
+ * admins configure providers; the caller's own in isolated mode. Responses
+ * never carry key material: a connection lists as its type, label,
+ * endpoint, and model list.
  */
 export function connectionRoutes(options: {
   vault: ConnectionVault
   assembly: ProviderAssembly
   logins: SubscriptionLoginFlows
-}): Hono {
-  const { vault, assembly, logins } = options
-  const app = new Hono()
+  mode: InstanceMode
+}): Hono<AuthEnv> {
+  const { vault, assembly, logins, mode } = options
+  const app = new Hono<AuthEnv>()
+
+  const ownerOf = (c: Context<AuthEnv>) => connectionOwner(mode, c.get('user').id)
+  // A connection outside the caller's scope answers like a missing one.
+  const scoped = async (c: Context<AuthEnv>) => {
+    const connection = await vault.get(c.req.param('id') ?? '')
+    return connection && connection.ownerUserId === ownerOf(c) ? connection : null
+  }
+
+  // Configuring providers — creating, logging in, testing, deleting — is
+  // the admin's in shared mode and everyone's own in isolated mode.
+  app.use('*', async (c, next) => {
+    if (c.req.method !== 'GET' && !canConfigureProviders(mode, c.get('user').role)) {
+      return c.json({ code: 'forbidden', message: 'Providers are configured by administrators on this instance' }, 403)
+    }
+    await next()
+  })
 
   // Registered before `/:id` so the literal path wins.
   app.post('/subscription-login', async (c) => {
@@ -37,7 +59,7 @@ export function connectionRoutes(options: {
     if (!assembly.hasType(parsed.data.type)) {
       return c.json({ code: 'unknown_provider_type', message: `Unknown provider type "${parsed.data.type}"` }, 400)
     }
-    const started = logins.start(parsed.data.type, parsed.data.label ?? `${parsed.data.type} subscription`)
+    const started = logins.start(parsed.data.type, parsed.data.label ?? `${parsed.data.type} subscription`, ownerOf(c))
     if (!started) {
       return c.json({ code: 'no_login_flow', message: `Provider type "${parsed.data.type}" has no native login flow` }, 400)
     }
@@ -45,13 +67,13 @@ export function connectionRoutes(options: {
   })
 
   app.get('/subscription-login/:id', async (c) => {
-    const state = logins.status(c.req.param('id'))
+    const state = logins.status(c.req.param('id') ?? '', ownerOf(c))
     if (!state) return c.json({ code: 'login_not_found', message: 'No such login flow' }, 404)
     return c.json({ login: state })
   })
 
   app.get('/', async (c) => {
-    const connections = await vault.list()
+    const connections = await vault.list({ ownerUserId: ownerOf(c) })
     return c.json({ connections: connections.map(redact) })
   })
 
@@ -69,7 +91,7 @@ export function connectionRoutes(options: {
       return c.json({ code: 'unknown_provider_type', message: `Unknown provider type "${body.type}"` }, 400)
     }
     const connection = await vault.create({
-      ownerUserId: null,
+      ownerUserId: ownerOf(c),
       label: body.label,
       config: {
         kind: 'api_key',
@@ -83,7 +105,7 @@ export function connectionRoutes(options: {
   })
 
   app.delete('/:id', async (c) => {
-    const connection = await vault.get(c.req.param('id'))
+    const connection = await scoped(c)
     if (!connection) return c.json({ code: 'connection_not_found', message: 'No such connection' }, 404)
     await vault.delete(connection.id)
     await assembly.deleteConnectionState(connection.id)
@@ -91,7 +113,7 @@ export function connectionRoutes(options: {
   })
 
   app.post('/:id/test', async (c) => {
-    const connection = await vault.get(c.req.param('id'))
+    const connection = await scoped(c)
     if (!connection) return c.json({ code: 'connection_not_found', message: 'No such connection' }, 404)
     try {
       const result = await assembly.testConnection(connection.id)

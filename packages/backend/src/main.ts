@@ -1,7 +1,8 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
-import { createBackend, type InstanceMode } from './backend'
+import { createBackend } from './backend'
+import type { InstanceMode } from './auth/identity'
 import { FirecrackerProvisioner, firecrackerConfigFromEnv } from './managed/firecracker'
 
 async function main(): Promise<void> {

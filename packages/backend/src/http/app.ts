@@ -17,7 +17,7 @@ import { authenticate } from './authenticate'
 import { setupRoutes } from './setup'
 import { settingsRoutes } from './settings'
 import { userRoutes } from './users'
-import type { InstanceMode } from '../backend'
+import type { InstanceMode } from '../auth/identity'
 import { attachmentRoutes } from './attachments'
 import { authRoutes } from './auth'
 import { blobRoutes } from './blobs'
@@ -63,9 +63,9 @@ export function createApp(options: {
   app.route('/api/auth', authRoutes({ control: options.control, sessions: options.sessions, limiter: options.loginLimiter }))
   app.route('/api/users', userRoutes({ control: options.control }))
   app.route('/api/settings', settingsRoutes({ mode: options.mode }))
-  app.route('/api/models', modelRoutes(options.assembly))
-  app.route('/api/connections', connectionRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins }))
-  app.route('/api/usage', usageRoutes({ control: options.control }))
+  app.route('/api/models', modelRoutes({ assembly: options.assembly, mode: options.mode }))
+  app.route('/api/connections', connectionRoutes({ vault: options.vault, assembly: options.assembly, logins: options.logins, mode: options.mode }))
+  app.route('/api/usage', usageRoutes({ control: options.control, mode: options.mode }))
   app.route('/api/runner', runnerSocketRoutes({ registry: options.runnerRegistry, upgradeWebSocket: options.upgradeWebSocket }))
   app.route('/api/transfers', transferRoutes({ control: options.control, broker: options.transfers }))
   app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
@@ -90,6 +90,8 @@ export function createApp(options: {
       agentServer: options.agentServer,
       hostFor: options.hostFor,
       managedHosts: options.managedHosts,
+      vault: options.vault,
+      mode: options.mode,
     }),
   )
 

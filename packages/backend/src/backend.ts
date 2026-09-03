@@ -8,7 +8,9 @@ import { AgentSessionCommandStorage, type Command, type CommandIO, type CommandR
 import { toBytes } from '@demicodes/utils'
 import type { Host, ShellEnvironment } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
+import type { InstanceMode } from './auth/identity'
 import { LoginLimiter, type LoginLimiterOptions } from './auth/login-limiter'
+import { connectionOwner, ownerFitsMode } from './vault/scope'
 import { WebSessions, type WebSessionsOptions } from './auth/sessions'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
@@ -34,9 +36,6 @@ import { ConversationStores } from './storage/conversation-store'
 import { LocalControlService, type ControlService, type ManagedHostOwner } from './storage/control'
 import { openSqliteDatabase } from './storage/database'
 import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
-
-/** `product.md` § Instance mode: who configures providers. Fixed at startup. */
-export type InstanceMode = 'shared' | 'isolated'
 
 export interface BackendOptions {
   /** Data directory: control database, conversation databases, blobs, virtual filesystems. */
@@ -76,6 +75,13 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
   migrate(controlDb, CONTROL_MIGRATIONS)
   const control: ControlService = new LocalControlService(controlDb)
+  // The mode is fixed for the instance's life: connections configured under
+  // the other mode would change owner meaning, so the process refuses to start.
+  const misfits = (await control.listConnections('all')).filter((row) => !ownerFitsMode(options.mode, row.ownerUserId))
+  if (misfits.length > 0) {
+    controlDb.close()
+    throw new Error(`${misfits.length} connection(s) were configured under the other instance mode; the mode cannot change once providers are configured`)
+  }
   const sessions = new WebSessions(control, options.auth)
   const loginLimiter = new LoginLimiter(options.auth)
 
@@ -135,7 +141,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const vault = new ConnectionVault(control, loadOrCreateInstanceSecret(options.dataDir))
   const vaultRoot = join(options.dataDir, 'vault')
   const assembly = new ProviderAssembly(vault, { ...builtinProviderTypes(), ...options.providerTypes }, vaultRoot)
-  const logins = new SubscriptionLoginFlows(vault, assembly, { ownerUserId: null, vaultRoot })
+  const logins = new SubscriptionLoginFlows(vault, assembly, { vaultRoot })
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
   // connectionId = providerId: the LLM module assembles the connection's base
@@ -161,6 +167,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     const conversation = await control.getConversation(agentSessionId)
     if (!conversation) throw new Error(`no conversation ${agentSessionId} behind this session`)
     const userId = conversation.userId
+    // A connection outside the user's scope is unknown to the session.
+    if (resolved.connection.ownerUserId !== connectionOwner(options.mode, userId)) return null
     return meterProvider(resolved.provider, {
       observe: usageAppender(control, { userId, conversationId: agentSessionId, connectionId: providerId }),
       beforeRequest: () => rateLimiter.take(userId),

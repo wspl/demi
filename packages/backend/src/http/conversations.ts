@@ -3,7 +3,9 @@ import type { Host } from '@demicodes/shell'
 import { errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import type { AuthEnv } from '../auth/identity'
+import type { AuthEnv, InstanceMode } from '../auth/identity'
+import type { ConnectionVault } from '../vault/connections'
+import { connectionOwner } from '../vault/scope'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import { switchConversationTarget } from '../conversation/target-switch'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
@@ -28,8 +30,10 @@ export function conversationRoutes(options: {
   agentServer: AgentServer
   hostFor: (conversationId: string) => Promise<Host>
   managedHosts: ManagedHosts | null
+  vault: ConnectionVault
+  mode: InstanceMode
 }): Hono<AuthEnv> {
-  const { control, conversationStores, agentServer, hostFor, managedHosts } = options
+  const { control, conversationStores, agentServer, hostFor, managedHosts, vault, mode } = options
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -66,6 +70,12 @@ export function conversationRoutes(options: {
       if (body.archived) await managedHosts?.destroy({ kind: 'conversation', id: conversation.id })
     }
     if (body.connectionId !== undefined || body.modelId !== undefined) {
+      if (body.connectionId) {
+        const connection = await vault.get(body.connectionId)
+        if (!connection || connection.ownerUserId !== connectionOwner(mode, conversation.userId)) {
+          return c.json({ code: 'connection_not_found', message: 'No such connection' }, 404)
+        }
+      }
       await control.setConversationModel(conversation.id, body.connectionId ?? null, body.modelId ?? null)
     }
     if (body.workspaceId !== undefined) {

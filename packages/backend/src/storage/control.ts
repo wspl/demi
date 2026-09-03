@@ -53,10 +53,13 @@ export interface ControlService {
     config: string
   }): Promise<ConnectionRecord>
   getConnection(id: string): Promise<ConnectionRecord | null>
-  listConnections(): Promise<ConnectionRecord[]>
+  /** The connections of one scope — the instance's (owner null) or a user's — or every row for the startup check. */
+  listConnections(scope: ConnectionScope): Promise<ConnectionRecord[]>
   deleteConnection(id: string): Promise<void>
   appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void>
   listUsage(userId: string): Promise<UsageRow[]>
+  /** The whole ledger — the shared-mode admin view. */
+  listAllUsage(): Promise<UsageRow[]>
   /** Metadata only — the bytes live in the blob store under `sha256`. */
   createAttachment(attachment: { userId: string; mediaType: string; sizeBytes: number; sha256: string }): Promise<AttachmentRecord>
   getAttachment(id: string): Promise<AttachmentRecord | null>
@@ -159,6 +162,9 @@ export interface AttachmentRecord {
   sha256: string
   createdAt: string
 }
+
+/** A connection listing's scope: one owner (null = the instance's, shared mode) or every row. */
+export type ConnectionScope = { ownerUserId: string | null } | 'all'
 
 export interface UsageRow {
   id: string
@@ -406,8 +412,14 @@ export class LocalControlService implements ControlService {
     return row ? connectionFromRow(row) : null
   }
 
-  async listConnections(): Promise<ConnectionRecord[]> {
-    return this.db.all<ConnectionRow>(`${CONNECTION_SELECT} ORDER BY created_at`).map(connectionFromRow)
+  async listConnections(scope: ConnectionScope): Promise<ConnectionRecord[]> {
+    const rows =
+      scope === 'all'
+        ? this.db.all<ConnectionRow>(`${CONNECTION_SELECT} ORDER BY created_at`)
+        : scope.ownerUserId === null
+          ? this.db.all<ConnectionRow>(`${CONNECTION_SELECT} WHERE owner_user_id IS NULL ORDER BY created_at`)
+          : this.db.all<ConnectionRow>(`${CONNECTION_SELECT} WHERE owner_user_id = ? ORDER BY created_at`, [scope.ownerUserId])
+    return rows.map(connectionFromRow)
   }
 
   async deleteConnection(id: string): Promise<void> {
@@ -475,24 +487,13 @@ export class LocalControlService implements ControlService {
   }
 
   async listUsage(userId: string): Promise<UsageRow[]> {
-    return this.db
-      .all<UsageLedgerRow>(
-        'SELECT id, user_id, conversation_id, connection_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM usage_ledger WHERE user_id = ? ORDER BY created_at',
-        [userId],
-      )
-      .map((row) => ({
-        id: row.id,
-        userId: row.user_id,
-        conversationId: row.conversation_id,
-        connectionId: row.connection_id,
-        modelId: row.model_id,
-        inputTokens: row.input_tokens,
-        outputTokens: row.output_tokens,
-        cacheReadTokens: row.cache_read_tokens,
-        cacheWriteTokens: row.cache_write_tokens,
-        createdAt: row.created_at,
-      }))
+    return this.db.all<UsageLedgerRow>(`${USAGE_SELECT} WHERE user_id = ? ORDER BY created_at`, [userId]).map(usageFromRow)
   }
+
+  async listAllUsage(): Promise<UsageRow[]> {
+    return this.db.all<UsageLedgerRow>(`${USAGE_SELECT} ORDER BY created_at`).map(usageFromRow)
+  }
+
 
   async createWorkspace(workspace: {
     id?: string
@@ -772,6 +773,24 @@ interface UsageLedgerRow {
 }
 
 const CONNECTION_SELECT = 'SELECT id, owner_user_id, type, label, config, created_at FROM connections'
+
+const USAGE_SELECT =
+  'SELECT id, user_id, conversation_id, connection_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM usage_ledger'
+
+function usageFromRow(row: UsageLedgerRow): UsageRow {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    conversationId: row.conversation_id,
+    connectionId: row.connection_id,
+    modelId: row.model_id,
+    inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens,
+    cacheReadTokens: row.cache_read_tokens,
+    cacheWriteTokens: row.cache_write_tokens,
+    createdAt: row.created_at,
+  }
+}
 
 function connectionFromRow(row: ConnectionRow): ConnectionRecord {
   return {

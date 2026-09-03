@@ -43,8 +43,10 @@ keeps its own gate), the tinybash grammar and builtins, the tinyjs
 primitives, the Host conformance cases, the login surface — setup, the
 cookie session and its sliding expiry over a test clock, the gate, the
 lockout, the own password (`auth.test.ts`), the admin surface — accounts
-by rank, resets down the ranks, the read-only mode (`admin.test.ts`) —
-the pairing state machine
+by rank, resets down the ranks, the read-only mode (`admin.test.ts`),
+the instance mode — who configures providers, the connection scope on
+listings, catalog, selection and usage, the mode fixed once providers
+exist (`mode.test.ts`) — the pairing state machine
 (`runner.test.ts`), vault and provider assembly (`llm.test.ts`), the M6
 switch acceptance (`switch.test.ts`), the home-image store and the image
 tools (`home-image.test.ts`; the e2fsprogs round trip runs where the tools
