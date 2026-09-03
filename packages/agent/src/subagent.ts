@@ -621,6 +621,9 @@ export class ChildSupervisor<State = unknown> {
     if (!meta?.closedPhase) throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
     const checkpoint = await this.childSessionStore(id).loadCheckpoint()
     if (!checkpoint) throw new Error(`archived subagent "${id}" has no checkpoint left`)
+    // Validate before mutating: a profile that no longer exists must leave the
+    // archive intact instead of rewriting job.json into an orphaned live record.
+    this.resolveProfile(meta.profileName ?? undefined)
     const liveMeta: PersistedSubagentJob = {
       description: meta.description,
       profileName: meta.profileName,
