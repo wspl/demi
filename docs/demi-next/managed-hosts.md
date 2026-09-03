@@ -37,33 +37,51 @@ Two product scenarios share one provisioning path (`sessions-and-targets.md`):
 
 ## Provisioning
 
-The `ManagedHostProvisioner` seam (provision, wake, hibernate, destroy) has
-one production implementation: Firecracker driven directly as child
-processes.
+The `ManagedHostProvisioner` seam (provision, wake, hibernate, checkpoint,
+growHome, destroy) has one production implementation: Firecracker driven
+directly as child processes, with two **launch modes** that differ only in
+how the VMM process is started. Both are first-class; the operator chooses
+by configuration (`DEMI_MANAGED_LAUNCH`).
 
-- **jailer.** Every Firecracker process runs under Firecracker's jailer:
-  per-VM chroot, unprivileged uid/gid, mount and PID namespaces, cgroup,
-  rlimits, plus Firecracker's own seccomp allowlist. It confines the VMM
-  process; KVM confines the guest. Invoking jailer needs root, so a small
-  **privileged provisioner helper** spawns it and drops back; the backend
-  proper stays unprivileged and holds only `/dev/kvm`. Kernel, rootfs and
-  the home image are hardlinked or bind-mounted into the chroot.
-- **Guest kernel.** A minimal kernel we build (virtio net/block/vsock,
-  ext4, overlayfs, tmpfs, cgroups; no modules). Boot to init is under a
-  second.
-- **Network.** One tap per VM. Egress policy, enforced on the backend machine by
-  per-tap nftables rules the guest cannot alter: internet allowed; RFC 1918
-  and link-local ranges, `169.254.169.254`, and the backend's own internal
-  network blocked; no inbound. The runner dials the backend's public URL like
-  a user host, so no private-network exception exists. Operators may tighten
-  the policy; fully-offline and allowlist variants are not offered, because
-  dependency installation and repository cloning are the core use.
+- **`direct`** (the default): the backend spawns `firecracker` itself, as
+  its own unprivileged user. Nothing at runtime is root. Isolation is KVM
+  plus Firecracker's built-in seccomp filter. For self-hosting, single
+  users and trusted teams.
+- **`jailer`**: the backend asks a small **privileged helper**
+  (`demi-fc-helper`, invoked through `sudo`, two verbs: start a VM, kill a
+  VM, every argument whitelisted) to run Firecracker's jailer, which
+  builds a per-VM chroot, mount and PID namespaces, cgroup and rlimits,
+  drops to a **per-VM uid** from a slot range, and starts Firecracker
+  under its seccomp allowlist. A VMM escape then lands in a process that
+  sees its own kernel, rootfs, home image, API socket and tap and nothing
+  else — the blast radius of one tenant. For public service.
+- **Guest kernel.** A minimal kernel we build (virtio net/block, ext4,
+  overlayfs, tmpfs, cgroups; no modules). Boot to init is under a second.
+- **Network.** A pool of taps, one per VM slot with a /30 from the managed
+  subnet, created once by the **install script** (root, at install time;
+  in `direct` mode the taps belong to the backend user, in `jailer` mode
+  each to its slot's uid), with the egress policy as nftables rules the
+  guest cannot alter, installed once for the pool: the address the runner
+  is told to dial is always reachable; RFC 1918 and link-local ranges
+  (`169.254.169.254` among them) are blocked; the rest of the internet is
+  allowed; no inbound. The runner dials the backend's public URL like a
+  user host. Operators may tighten the policy; fully-offline and allowlist
+  variants are not offered, because dependency installation and
+  repository cloning are the core use.
 - **Resources.** vCPU and memory are VM parameters — memory is hard by
-  construction (the guest sees its RAM and nothing more); the jailer cgroup
-  caps the VMM's own use; disk is the home image's nominal size.
+  construction (the guest sees its RAM and nothing more); disk is the home
+  image's nominal size. In `jailer` mode the per-VM cgroup caps the VMM's
+  own use; in `direct` mode the backend's service cgroup caps it as a
+  whole.
 - **Crash-loop guard.** The backend supervises each Firecracker process. N
   VM deaths within M minutes for one owner stop auto-reprovisioning and
   surface an error to the conversation.
+- **In a container.** Both modes run inside a Linux container on a host
+  with `/dev/kvm` (`--device /dev/kvm --device /dev/net/tun`); `jailer`
+  mode needs the container privileged (or the explicit capability set,
+  seccomp and AppArmor unconfined, the cgroup filesystem writable). The
+  container is then packaging, not a boundary; the boundary stays the
+  jailer. Docker Desktop exposes no KVM.
 
 ## Images
 
@@ -222,10 +240,12 @@ session-bound hosts.
 
 Uniform across deployments; sizes configurable, presence not.
 
-1. **Isolation = KVM + jailer.** The guest runs its own kernel; the VMM runs
-   jailed. No fallback runtime.
+1. **Isolation = KVM**, always: the guest runs its own kernel, the VMM
+   under Firecracker's seccomp filter. **Plus the jailer** in `jailer`
+   mode: the VMM confined to a per-VM chroot, namespaces, cgroup and uid.
+   No other runtime.
 2. **Resources**: vCPU, memory and disk are VM parameters; the VMM is
-   cgroup-capped.
+   cgroup-capped (per VM under the jailer, as a whole otherwise).
 3. **One network rule**: no inbound; egress to the public internet only.
 4. **No host mounts**: the guest sees three block devices and a tap.
 5. **Credential surface**: the only secret entering a VM is its own device
