@@ -21,7 +21,7 @@ import type {
   AgentToolInvokeContext,
   SubagentProfile,
 } from './types'
-import { createStandardAgentTools } from './tools'
+import { createStandardAgentTools, type ShellPreviewBudget } from './tools'
 import type { AgentServerSessionOptions, PrepareShell } from './server'
 
 /** Default per-session live-children ceiling; override with `AgentServerOptions.subagents.maxLiveSubagents`. */
@@ -224,6 +224,8 @@ export interface ChildSupervisorOptions<State> {
   directory: AgentDirectory<State>
   /** Live-children ceiling for this supervisor (from `AgentServerOptions.subagents.maxLiveSubagents`). */
   maxLiveSubagents: number
+  /** Shell preview budget for every child (from `AgentServerOptions.tools.shellPreviewBudgetTokens`); null uses the built-in split. */
+  shellPreviewBudgetTokens: ShellPreviewBudget | null
   /** When false, this supervisor's owner may not spawn: its `demi agent` tree carries communication and reads only. */
   canSpawn: boolean
   /** Invoked whenever the live-children set changes; wired to the owning job's settle loop. */
@@ -790,6 +792,9 @@ export class ChildSupervisor<State = unknown> {
         createStandardAgentTools<State>({
           environment: (ctx) => this.childEnvironment(job, ctx),
           scheduleYield: (ctx, durationMs) => job.session.scheduleYieldWakeup(durationMs, ctx.metadata),
+          ...(this.options.shellPreviewBudgetTokens === null
+            ? {}
+            : { previewBudgetTokens: this.options.shellPreviewBudgetTokens }),
         }),
     }
     return { job, runtime }
