@@ -2364,6 +2364,24 @@ Checkpoints, lowest dependency first:
    networking and the egress rules; the env-gated smoke on Linux with
    `/dev/kvm` recording cold-provision and wake latency.
 
+### Checkpoint 1 rulings (2026-09-03)
+
+- The schema is made final in the init migration; no second migration,
+  since no deployment exists to carry forward.
+- The switch announcement keeps its carrier: the `preamble` slot of the
+  next `user` block, filled by the harness preamble hook. The "switched,
+  not yet told" state moves from the prev slot to
+  `conversations.pending_switch_json` (`{ from, to }`), cleared on
+  injection. Appending a notice block to the transcript at switch time
+  was considered and set aside: it needs a new block type, replay and
+  compaction rules and a turn-external write API in the agent package,
+  for the same model-side effect.
+- Explicit grants accept user devices only (the devices page never shows
+  managed hosts); a managed host enters a grant set only by the automatic
+  grant on switching away from it.
+- `demi host shell --id` on a granted host starts in that device's home;
+  the announcement names the departed directory by absolute path.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
