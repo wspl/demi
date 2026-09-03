@@ -19,8 +19,15 @@ export interface ManagedHostProvisioner {
   provision(owner: ManagedHostOwner, homeDir: string, boot: BootArgs): Promise<void>
   /** A fresh guest over the home saved at the last hibernate or checkpoint. */
   wake(owner: ManagedHostOwner, boot: BootArgs): Promise<void>
-  /** Kills the guest and makes its home durable. */
-  hibernate(owner: ManagedHostOwner): Promise<void>
+  /**
+   * Kills the guest and makes its home durable. `untouched` is the guest's
+   * own report from the `sync` before the kill: nothing wrote to the home
+   * since this boot, so the saved copy is current and the upload can be
+   * skipped (`managed-hosts.md` § Home persistence).
+   */
+  hibernate(owner: ManagedHostOwner, report: { untouched: boolean }): Promise<void>
+  /** The guest asked for a bigger home: the backing image becomes `bytes` large; the guest grows the filesystem afterwards. */
+  growHome(owner: ManagedHostOwner, bytes: number): Promise<void>
   /** Saves the home of a running guest; the guest is paused for the copy. */
   checkpoint(owner: ManagedHostOwner): Promise<void>
   /** The guest is gone for good; whether the home is kept is retention policy, not the caller's concern. */

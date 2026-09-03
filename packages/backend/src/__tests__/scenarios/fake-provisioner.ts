@@ -13,6 +13,8 @@ interface Guest {
   runner: TinyjsRunner | null
   /** Set around a stop the provisioner itself performs, so the exit is not reported as a death. */
   stopping: boolean
+  /** The `untouched` report of each hibernate, in order. */
+  reports: boolean[]
 }
 
 /**
@@ -32,7 +34,7 @@ export class FakeProvisioner implements ManagedHostProvisioner {
   async provision(owner: ManagedHostOwner, homeDir: string, boot: BootArgs): Promise<void> {
     this.calls.push(`provision:${ownerKey(owner)}`)
     const stateDir = await mkdtemp(join(tmpdir(), 'demi-fake-vm-state-'))
-    const guest: Guest = { owner, homeDir, stateDir, runner: null, stopping: false }
+    const guest: Guest = { owner, homeDir, stateDir, runner: null, stopping: false, reports: [] }
     this.guests.set(ownerKey(owner), guest)
     await this.start(guest, boot)
   }
@@ -42,9 +44,14 @@ export class FakeProvisioner implements ManagedHostProvisioner {
     await this.start(this.guest(owner), boot)
   }
 
-  async hibernate(owner: ManagedHostOwner): Promise<void> {
+  async hibernate(owner: ManagedHostOwner, report: { untouched: boolean }): Promise<void> {
     this.calls.push(`hibernate:${ownerKey(owner)}`)
+    this.guest(owner).reports.push(report.untouched)
     await this.stop(this.guest(owner))
+  }
+
+  async growHome(owner: ManagedHostOwner, bytes: number): Promise<void> {
+    this.calls.push(`grow:${ownerKey(owner)}:${bytes}`)
   }
 
   async checkpoint(owner: ManagedHostOwner): Promise<void> {

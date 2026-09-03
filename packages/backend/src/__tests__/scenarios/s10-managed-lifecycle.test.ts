@@ -6,6 +6,8 @@ import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService, type ControlService, type ManagedHostOwner } from '../../storage/control'
 import { openSqliteDatabase } from '../../storage/database'
+import { RUNNER_PROTOCOL_VERSION, createRunnerWire, type BackendToRunnerMessage } from '@demicodes/runner-protocol'
+import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { ownerKey } from '../../managed/provisioner'
 import { FakeProvisioner } from './fake-provisioner'
 import { itemsText } from './model'
@@ -93,6 +95,10 @@ test('provision and bind, idle → hibernate, the next turn wakes with a fresh t
   // No turn, no jobs: the idle window passes and the guest is hibernated; the checkpoint clock fired before it.
   await waitFor(() => calls(owner, 'hibernate') === 1 && !fake.running(owner), () => fake.calls.join(','), { timeoutMs: 8_000 })
   expect(calls(owner, 'checkpoint')).toBeGreaterThanOrEqual(1)
+  // The `sync` went before the kill; a directory home never reports itself untouched.
+  const frames = world.wire().filter((frame) => frame.deviceId === device.id && ['sync', 'sync_done'].includes(frame.message.type))
+  expect(frames.map((frame) => `${frame.direction}:${frame.message.type}`)).toEqual(['out:sync', 'in:sync_done'])
+  expect(fake.guests.get(ownerKey(owner))!.reports).toEqual([false])
 
   // The next action needing the host wakes it: same home, new token.
   const second = await driver.turn({ model: [model.shell('t2', 'cat note.txt'), model.say('two')] })
@@ -155,6 +161,36 @@ test('crash loop: two deaths in the window stop the automatic restart, and the m
   const stuck = await first.turn({ model: [model.shell('t8', 'echo never'), model.say('stuck')] })
   expect(stuck.received[0]).toContain('died 2 times')
   expect(fake.running(owner)).toBe(false)
+}, 30_000)
+
+test('the home growth handshake: home_grow reaches the provisioner and home_grown answers with the size', async () => {
+  // The guest is off after the crash loop; its current token admits a socket standing in for the runner.
+  const first = world.drivers[0]!
+  const owner: ManagedHostOwner = { kind: 'conversation', id: first.id }
+  const wire = createRunnerWire(msgpackCodec)
+  const received: BackendToRunnerMessage[] = []
+  const socket = new WebSocket(`${world.url.replace(/^http/, 'ws')}/api/runner`)
+  socket.binaryType = 'arraybuffer'
+  socket.onmessage = (event) => received.push(wire.decodeBackendToRunner(new Uint8Array(event.data as ArrayBuffer)))
+  await new Promise<void>((resolve, reject) => {
+    socket.onopen = () => resolve()
+    socket.onerror = () => reject(new Error('runner socket failed'))
+  })
+  socket.send(
+    wire.encode({
+      type: 'hello',
+      protocol: RUNNER_PROTOCOL_VERSION,
+      deviceToken: await tokenOf(owner),
+      runner: { name: 'stand-in', platform: 'test', version: '0', identity: { uid: 1000, gid: 1000, hostname: 'guest', homeDir: '/home/demi' }, managed: true },
+    }),
+  )
+  await waitFor(() => received.some((message) => message.type === 'hello_ok'), () => JSON.stringify(received), { timeoutMs: 5_000 })
+  const bytes = 2 * 1024 ** 3
+  socket.send(wire.encode({ type: 'home_grow', bytes }))
+  await waitFor(() => received.some((message) => message.type === 'home_grown'), () => JSON.stringify(received), { timeoutMs: 5_000 })
+  expect(received.find((message) => message.type === 'home_grown')).toEqual({ type: 'home_grown', bytes })
+  expect(fake.calls).toContain(`grow:${ownerKey(owner)}:${bytes}`)
+  socket.close()
 }, 30_000)
 
 test('archiving the owner destroys the guest', async () => {
