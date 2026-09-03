@@ -113,14 +113,18 @@ test('completed truncated shell_exec keeps the command handle for artifacts', as
   expect(released).toEqual([])
 })
 
-test('a fixed preview budget replaces the context-window heuristic', async () => {
+test('a custom preview budget function replaces the built-in split', async () => {
+  const seen: number[] = []
   const tools = createStandardAgentTools({
     environment: {
       exec: async () => shellSnapshot(`${'x'.repeat(100)}tail`),
       releaseCommand: async () => true,
     } as unknown as BashEnvironment,
     scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
-    previewBudgetTokens: 10,
+    previewBudgetTokens: (contextWindow) => {
+      seen.push(contextWindow)
+      return 10
+    },
   })
   const shellExec = tools.find((tool) => tool.name === 'shell_exec')
   if (!shellExec) throw new Error('missing shell_exec')
@@ -128,6 +132,7 @@ test('a fixed preview budget replaces the context-window heuristic', async () =>
   const result = await shellExec.invoke(toolContext(), { script: 'printf long', timeoutMs: 1 })
   const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
 
+  expect(seen).toEqual([toolContext().model.model.contextWindow])
   expect(text).toContain('previewBudgetTokens: 10')
   expect(text).toContain('previewTruncated: true')
   expect(text).not.toContain('tail')

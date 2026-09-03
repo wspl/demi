@@ -42,11 +42,13 @@ export interface StandardAgentToolOptions<State = unknown> {
       ) => BashEnvironment | Promise<BashEnvironment>)
   scheduleYield(ctx: AgentToolInvokeContext<State>, durationMs: number): AgentToolInvokeResult
   /**
-   * Fixed tool-result preview budget in tokens. When set, replaces the budget
-   * derived from the current model's context window.
+   * Tool-result preview budget in tokens for a given model context window.
+   * Defaults to {@link shellPreviewBudgetTokens}.
    */
-  previewBudgetTokens?: number
+  previewBudgetTokens?: ShellPreviewBudget
 }
+
+export type ShellPreviewBudget = (contextWindow: number) => number
 
 export function createStandardAgentTools<State = unknown>(
   options: StandardAgentToolOptions<State>,
@@ -505,9 +507,9 @@ export async function finishShellToolResult<State>(
   environment: BashEnvironment,
   result: ShellCommandStatus,
   ctx: AgentToolInvokeContext<State>,
-  fixedPreviewBudgetTokens?: number,
+  previewBudget: ShellPreviewBudget = shellPreviewBudgetTokens,
 ): Promise<AgentToolInvokeResult> {
-  const previewBudgetTokens = fixedPreviewBudgetTokens ?? shellPreviewBudgetTokens(ctx.model.model.contextWindow)
+  const previewBudgetTokens = previewBudget(ctx.model.model.contextWindow)
   const exposeCommandHandle = shellCommandHandleRequired(result, previewBudgetTokens)
   const toolResult = toShellToolResult(result, {
     includePreview: true,
