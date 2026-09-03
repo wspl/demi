@@ -194,8 +194,11 @@ between them:
 - **The upgrade** — the backend materialises the tree into a directory
   (modes and mtimes included; the tree holds no symlinks) and runs `mke2fs -d <dir>` to
   produce the home image with its contents in one step: no mount, no
-  root, no guest cooperation. `/tmp` is materialised under the image's
-  `.tmp` directory and bind-mounted to `/tmp` by the guest init. The image
+  root, no guest cooperation. The directory becomes `/demi` inside the
+  image, which the guest mounts at `/home`; the files carry the backend
+  user's ownership until the guest's first boot chowns them to the guest
+  user (`demi.firstboot=1` on the kernel command line, that boot only).
+  `/tmp` is materialised under the home's `.tmp` directory. The image
   goes to the home-image store and the VM boots with it; the `files` rows
   are then deleted. Blobs stay — they are content-addressed and may be
   referenced elsewhere.

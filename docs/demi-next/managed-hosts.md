@@ -139,7 +139,9 @@ heap). Sizing:
 - Firecracker's virtio-block passes no discard, so a live image is a
   high-water mark. On hibernate the backend **shrinks** it offline
   (`e2fsck -f`, `resize2fs -M`, `truncate`; about 0.1 s) to retained data
-  plus metadata, and re-grows it on wake (about 0.01 s).
+  plus metadata, and re-enlarges the file to the nominal size on wake
+  (about 0.01 s); the guest init runs `resize2fs` on the home device after
+  the mount, so the filesystem grows back into the file at every boot.
 - Hibernate starts with a `sync` message; the runner flushes the home and
   answers `sync_done { untouched }`. **Untouched** is the block layer's own
   count: the sectors written to the home device in `/proc/diskstats`,
