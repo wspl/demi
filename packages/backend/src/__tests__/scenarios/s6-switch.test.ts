@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { World } from './world'
 import { itemsText } from './model'
@@ -26,7 +25,6 @@ test('hostless → runner → hostless, files staying with their target', async 
     model: [model.shell('t1', "demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF"), model.say('created')],
   })
   expect(created.received[0]).toContain('Created notes.md')
-  const hostlessCopy = driver.filePath('notes.md')
 
   // To the runner: the next turn opens with the context block; the file is not here.
   await driver.switchTo('runner:alpha')
@@ -43,9 +41,8 @@ test('hostless → runner → hostless, files staying with their target', async 
     model: [model.shell('t4', 'demi file edit notes.md --old beta --new delta && cat notes.md'), model.say('edited')],
   })
   expect(edited.received[0]).toContain('alpha\ndelta\ngamma')
-  const runnerCopy = driver.filePath('notes.md')
-  expect(await readFile(runnerCopy, 'utf8')).toBe('alpha\ndelta\ngamma\n')
-  expect(await readFile(hostlessCopy, 'utf8')).toBe('alpha\nbeta\ngamma\n')
+  expect(await driver.readFile('notes.md')).toBe('alpha\ndelta\ngamma\n')
+  expect(await world.hostlessFile(driver.id, '/home/demi/notes.md')).toBe('alpha\nbeta\ngamma\n')
 
   // Back to hostless: the original is untouched; the switch granted the runner, so `host shell --id` reaches it.
   await driver.switchTo('hostless')

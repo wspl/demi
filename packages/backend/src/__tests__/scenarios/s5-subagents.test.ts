@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { World } from './world'
 import { itemsText } from './model'
@@ -47,7 +46,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (targe
     expect(childSaw).toContain('Created blocked.md')
     expect(explored.received[0]).toContain('subagentId:')
     expect(explored.received[0]).toContain('the file says 42; I wrote too')
-    expect(await readFile(driver.filePath('blocked.md'), 'utf8')).toBe('nope\n')
+    expect(await driver.readFile('blocked.md')).toBe('nope\n')
 
     // The default child writes where the parent then reads.
     world.model.scriptChild(model.shell('c3', "demi file create reply.md <<'EOF'\nfrom the child\nEOF"), model.say('wrote reply.md'))

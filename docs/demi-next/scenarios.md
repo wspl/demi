@@ -142,6 +142,7 @@ Each scenario is one test, one conversation, a linear script of turns.
 | S7 | Concurrent sessions on one runner | two conversations on the same device interleaving commands that change `cwd` and shell state | each session sees only its own state; the frames carry the right session attribution |
 | S8 | Attachments | an image attached to a user message | the model receives the bytes inline; the transcript stores a `ref`; `GET /api/blobs/:sha256` serves it; the cold transcript carries the same ref |
 | S9 | Detach mid-turn | the client closes its socket while a command runs; a new client attaches | the turn completes server-side; the reattached client's transcript has the result; cold equals live |
+| S11 | Session upgrade (M11) | a hostless conversation working in a subdirectory with a variable set and a file under `/tmp`; a script outside tinybash's subset; further scripts; a world whose provisioner refuses; then the split-equivalence run: a seven-step sequence run whole on a machine and split at every point | the outside script runs on the machine from the directory and with the variable tinybash held; the files are in the home with `/tmp` under `.tmp`; no context block, no preamble, no pending switch; later scripts run there; a provisioning failure is that call's tool error and the conversation stays hostless with its files; every split's tool results and final files equal the whole run's byte for byte |
 | S10 | Managed-host lifecycle (M11) | a machine provisioned and bound over the fake provisioner, worked on, left idle, woken by the next turn, pinned by a job, capped, killed twice, archived | the device row and its owner; hibernate after the idle window and the checkpoint before it; wake with a fresh token over the same home; jobs pin past the idle window but not past the hard cap; the crash-loop guard reaches the model as a tool error; the per-user cap; another conversation refused; a token-less managed hello refused; archive destroys the guest |
 
 S9 moves in from `backend.test.ts`, where it was the M2 acceptance.
@@ -169,14 +170,17 @@ packages/backend/src/__tests__/scenarios/
   world.ts          the world fixture: backend, runners, claim, workspaces, trace, teardown invariants
   model.ts          the per-conversation script queue behind the stub provider type
   driver.ts         conversation(target) and turn()
-  s1-files.test.ts … s10-managed-lifecycle.test.ts
+  s1-files.test.ts … s11-upgrade.test.ts
   restart.test.ts   R1–R4
   fake-provisioner.ts  the provisioner seam over a local packed runner: the "VM" is a process over the owner's home directory
 ```
 
-A world takes `managedHosts` (a provisioner and the lifecycle sizes) and
-`pingIntervalMs`; the liveness ping is what carries `pong.jobs`, so the
-idle rule needs it on.
+A world takes `managedHosts` (a provisioner and the lifecycle sizes),
+`pingIntervalMs` (the liveness ping is what carries `pong.jobs`, so the
+idle rule needs it on) and `providerRequestsPerMinute` (a scenario with
+many short turns raises the limit). A hostless conversation's files are
+rows: `driver.readFile` and `world.hostlessFile` read them through the
+`files` table and the blob store; `driver.filePath` is a runner's path.
 
 The fixture is internal to the backend package: nothing here is exported
 from a `testing` entry, since no other package drives a backend.

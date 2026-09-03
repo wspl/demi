@@ -68,6 +68,12 @@ export interface ControlService {
     pending: PendingSwitch,
     grantDeviceId: string | null,
   ): Promise<boolean>
+  /**
+   * The session upgrade's write (`sessions-and-targets.md` § Hostless
+   * execution): a hostless conversation bound to the machine provisioned for
+   * it, silently — no pending switch. False when it is no longer hostless.
+   */
+  bindConversationHost(conversationId: string, deviceId: string): Promise<boolean>
   /** The announcement was injected; nothing is pending until the next switch. */
   clearPendingSwitch(conversationId: string): Promise<void>
   /** The grant set (`sessions-and-targets.md` § Host grants): idempotent add and remove. */
@@ -503,6 +509,17 @@ export class LocalControlService implements ControlService {
       const won = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
       if (won && grantDeviceId !== null) this.insertGrant(conversationId, grantDeviceId, now)
       return won
+    })
+  }
+
+  async bindConversationHost(conversationId: string, deviceId: string): Promise<boolean> {
+    return this.db.transaction(() => {
+      this.db.run('UPDATE conversations SET host_device_id = ?, updated_at = ? WHERE id = ? AND workspace_id IS NULL AND host_device_id IS NULL', [
+        deviceId,
+        new Date().toISOString(),
+        conversationId,
+      ])
+      return (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
     })
   }
 

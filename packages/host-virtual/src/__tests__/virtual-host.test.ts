@@ -5,7 +5,8 @@ import process from 'node:process'
 import { expect, test } from 'bun:test'
 import { LocalHost } from '@demicodes/host-virtual/testing'
 import { memoryHostStore } from '@demicodes/shell/testing'
-import { VirtualHost, scopedFsBackend } from '../index'
+import { VirtualHost } from '../index'
+import { scopedFsBackend } from '../testing'
 
 const text = (value: string) => new TextEncoder().encode(value)
 const read = async (host: VirtualHost, path: string) => new TextDecoder().decode(await host.fs.readFile(path))

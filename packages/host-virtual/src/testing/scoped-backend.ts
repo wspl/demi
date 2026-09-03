@@ -1,14 +1,15 @@
 import type { HostFileSystem } from '@demicodes/shell'
 import { isAbsolutePath, normalizePath } from '@demicodes/utils'
-import type { VirtualFsBackend } from './virtual-host'
+import type { VirtualFsBackend } from '../virtual-host'
 
 /**
- * A `VirtualFsBackend` over a real directory: virtual-absolute paths map to
- * `<realRoot>/<path>` through any `HostFileSystem` (the backend product uses a
+ * A `VirtualFsBackend` over a real directory, for tests: virtual-absolute
+ * paths map to `<realRoot>/<path>` through any `HostFileSystem` (a
  * `LocalHost`'s). Full fs semantics — symlinks, hardlinks, chmod — with the
  * real root never leaking back out: absolute symlink targets are translated on
  * write and untranslated on read, and `realpath` answers in virtual terms
- * (resolutions that leave the root fail).
+ * (resolutions that leave the root fail). The product's hostless files live
+ * in the conversation database (the backend's files tree), not a directory.
  */
 export function scopedFsBackend(realRoot: string, fs: HostFileSystem): VirtualFsBackend {
   const root = normalizePath(realRoot)

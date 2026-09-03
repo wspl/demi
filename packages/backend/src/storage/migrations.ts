@@ -121,9 +121,11 @@ CREATE TABLE settings (
 
 /**
  * Per-conversation database: the transcript as one row per block, the session
- * state row, and that conversation's host_store scope. Media bytes never
- * appear in block_json — they live in the blob store as content-addressed
- * refs.
+ * state row, that conversation's host_store scope, and the hostless
+ * filesystem's tree (`storage.md` § The hostless filesystem and the home
+ * image) — bytes in the blob store by sha256, emptied once the conversation
+ * has a home image. Media bytes never appear in block_json — they live in the
+ * blob store as content-addressed refs.
  */
 export const CONVERSATION_MIGRATIONS: Migration[] = [
   {
@@ -147,6 +149,17 @@ CREATE TABLE host_store (
   value_json TEXT NOT NULL,
   PRIMARY KEY (scope, key)
 );
+
+CREATE TABLE files (
+  path   TEXT PRIMARY KEY,
+  parent TEXT NOT NULL,
+  kind   TEXT NOT NULL CHECK (kind IN ('file', 'dir')),
+  mode   INTEGER NOT NULL,
+  mtime  INTEGER NOT NULL,
+  size   INTEGER NOT NULL,
+  sha256 TEXT
+);
+CREATE INDEX idx_files_parent ON files(parent);
 `,
   },
 ]

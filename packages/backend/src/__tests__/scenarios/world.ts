@@ -8,6 +8,8 @@ import { JOB_VIEW_BYTES, type RunnerProtocolMessage } from '@demicodes/runner-pr
 import { startTinyjsRunner, type TinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { createBackend, type Backend, type BackendOptions } from '../../index'
+import { DirBlobStore } from '../../storage/blob-store'
+import { openSqliteDatabase } from '../../storage/database'
 import { ScriptedModel } from './model'
 import { Driver, type Target } from './driver'
 
@@ -28,6 +30,8 @@ export interface WorldOptions {
   managedHosts?: BackendOptions['managedHosts']
   /** The backend's liveness ping; on by default it is what carries `pong.jobs`, which the idle rule reads. Default 0 (off). */
   pingIntervalMs?: number
+  /** The provider-request rate limit; a scenario with many short turns raises it. */
+  providerRequestsPerMinute?: number
 }
 
 export interface Device {
@@ -84,6 +88,7 @@ export class World {
         stub: ({ connectionId, label }) => defineProvider({ id: connectionId, displayName: label, createRuntime: () => model.runtime() }),
       },
       ...(options.managedHosts ? { managedHosts: options.managedHosts } : {}),
+      ...(options.providerRequestsPerMinute ? { usage: { providerRequestsPerMinute: options.providerRequestsPerMinute } } : {}),
     })
   }
 
@@ -154,6 +159,19 @@ export class World {
     if (!deviceName) return frames
     const id = this.device(deviceName).deviceId
     return frames.filter((frame) => frame.deviceId === id)
+  }
+
+  /** A hostless conversation's file as its `files` tree and the blob store hold it; null when absent. */
+  async hostlessFile(conversationId: string, virtualPath: string): Promise<string | null> {
+    const db = openSqliteDatabase(join(this.dataDir, 'conversations', `${conversationId}.sqlite`))
+    try {
+      const row = db.get<{ sha256: string | null }>("SELECT sha256 FROM files WHERE path = ? AND kind = 'file'", [virtualPath])
+      if (!row?.sha256) return null
+      const bytes = await new DirBlobStore(join(this.dataDir, 'blobs')).get(row.sha256)
+      return bytes ? new TextDecoder().decode(bytes) : null
+    } finally {
+      db.close()
+    }
   }
 
   async api<T>(path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<T> {

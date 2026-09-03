@@ -1,18 +1,18 @@
 import { join } from 'node:path'
-import { AgentServer, injectSubagentCommand, subagentCommandShape, type ProviderResolver } from '@demicodes/agent'
+import { AgentServer, injectSubagentCommand, subagentCommandShape, type ProviderResolver, type ShellEnvironmentFactory } from '@demicodes/agent'
 import { createCodingAgentHarness, createDemiCommand } from '@demicodes/coding-agent'
-import { nodeFileSystem } from '@demicodes/host-virtual/node'
 import { VirtualHost } from '@demicodes/host-virtual'
 import { buildManifest, inProcessRpc, type Manifest } from '@demicodes/command-loader'
 import { RemoteHost, RemoteShellEnvironment } from '@demicodes/host-remote'
 import { AgentSessionCommandStorage, type Command, type CommandIO, type CommandRegistry } from '@demicodes/shell'
 import { toBytes } from '@demicodes/utils'
-import type { Host } from '@demicodes/shell'
+import type { Host, ShellEnvironment } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import { STUB_USER } from './auth/identity'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { createHostlessShell, transpileCommandModule } from './conversation/hostless-shell'
+import { UpgradingShell, type Machine } from './conversation/upgrading-shell'
 import { resolveExecutionTarget } from './conversation/execution-target'
 import { HOSTLESS_HOME } from './conversation/scoped-transport'
 import { createHostCommandGroup } from './managed/host-command'
@@ -69,11 +69,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
 
   const blobs = new DirBlobStore(join(options.dataDir, 'blobs'))
   const conversationStores = new ConversationStores(join(options.dataDir, 'conversations'), blobs)
-  const virtualHostFor = createVirtualHostFactory({
-    dataDir: options.dataDir,
-    conversationStores,
-    localFs: nodeFileSystem(options.dataDir),
-  })
+  const virtualHostFor = createVirtualHostFactory({ conversationStores })
 
   // The command tree, defined once: the manifest every runner caches is built
   // from it plus the shape of the `agent` node every session grafts on. An
@@ -214,18 +210,55 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     commands: (ctx) => commandsFor(ctx.agentSessionId),
     preamble: switchAnnouncementPreamble(control, runnerRegistry),
   })
+  // The session upgrade (`sessions-and-targets.md` § Hostless execution):
+  // the conversation's files become the home of a machine provisioned for
+  // it, the conversation is bound to it silently, and the shell the first
+  // script runs in is the one the session uses from then on.
+  const upgradeToMachine = async (conversationId: string, ctx: Parameters<ShellEnvironmentFactory>[0]): Promise<Machine> => {
+    if (!managedHosts) throw new Error('this script needs a machine, and this backend provisions none')
+    const conversation = await control.getConversation(conversationId)
+    if (!conversation) throw new Error(`no conversation ${conversationId}`)
+    const home = join(options.dataDir, 'staging', conversationId)
+    await conversationStores.materializeFiles(conversationId, [
+      { from: HOSTLESS_HOME, to: home },
+      { from: '/tmp', to: join(home, '.tmp') },
+    ])
+    const device = await managedHosts.provision({ kind: 'conversation', id: conversationId }, conversation.userId, home)
+    if (!(await control.bindConversationHost(conversationId, device.id))) throw new Error('the conversation left the hostless state meanwhile')
+    conversationStores.clearFiles(conversationId)
+    const host = await hostFor(conversationId)
+    return { environment: await shellEnvironmentFor({ ...ctx, host }), home: host.identity.homeDir }
+  }
+
+  // One shell environment per (session, Host), whichever side asks first:
+  // the session through the server, or the upgrade for the machine it just
+  // bound. A hostless conversation's shell is tinybash over its files tree
+  // behind the upgrade; a machine's is the runner's job table.
+  const shellEnvironments = new Map<string, WeakMap<Host, Promise<ShellEnvironment>>>()
+  const shellEnvironmentFor = (ctx: Parameters<ShellEnvironmentFactory>[0]): Promise<ShellEnvironment> => {
+    let bySession = shellEnvironments.get(ctx.agentSessionId)
+    if (!bySession) {
+      bySession = new WeakMap()
+      shellEnvironments.set(ctx.agentSessionId, bySession)
+    }
+    let environment = bySession.get(ctx.host)
+    if (!environment) {
+      environment = (async () => {
+        sessionShells.set(ctx.agentSessionId, { host: ctx.host, commands: ctx.commands })
+        if (ctx.host instanceof VirtualHost) return new UpgradingShell(await createHostlessShell(ctx), () => upgradeToMachine(ctx.agentSessionId, ctx), HOSTLESS_HOME)
+        if (ctx.host instanceof RemoteHost) return new RemoteShellEnvironment({ ...ctx.shell, host: ctx.host })
+        throw new Error('the backend runs conversations hostless or through a runner; no other Host exists')
+      })()
+      bySession.set(ctx.host, environment)
+    }
+    return environment
+  }
+
   const agentServer = new AgentServer({
     agent: harness,
     providers: resolveProvider,
     shell: { initialEnv: { PATH: '/usr/bin:/bin' } },
-    // A hostless conversation's shell is tinybash over its store-backed Host;
-    // a real host's is the runner's job table; no other Host exists.
-    shellEnvironment: (ctx) => {
-      sessionShells.set(ctx.agentSessionId, { host: ctx.host, commands: ctx.commands })
-      if (ctx.host instanceof VirtualHost) return createHostlessShell(ctx)
-      if (ctx.host instanceof RemoteHost) return new RemoteShellEnvironment({ ...ctx.shell, host: ctx.host })
-      throw new Error('the backend runs conversations hostless or through a runner; no other Host exists')
-    },
+    shellEnvironment: shellEnvironmentFor,
     // Sessions persist as block rows in their conversation database; the
     // Host-store default never runs in the product backend.
     sessionStore: (agentSessionId) => conversationStores.sessionStore(agentSessionId),

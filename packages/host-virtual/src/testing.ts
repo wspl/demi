@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { HostlessEnvironment } from './hostless-environment'
 
 export { LocalHost, type LocalHostOptions } from './testing/local-host'
+export { scopedFsBackend } from './testing/scoped-backend'
 
 const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'browser' })
 
