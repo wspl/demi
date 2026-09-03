@@ -77,7 +77,7 @@ test('provision and bind, idle → hibernate, the next turn wakes with a fresh t
   const driver = await world.conversation('hostless')
   const owner: ManagedHostOwner = { kind: 'conversation', id: driver.id }
   const home = await mkdtemp(join(tmpdir(), 'demi-s10-home-'))
-  const device = await world.backend.managedHosts!.provision(owner, 'local', home)
+  const device = await world.backend.managedHosts!.provision(owner, world.backend.session.user.id, home)
   expect(device.kind).toBe('managed')
   expect(device.name).toBe('cloud')
   expect(device.ownerConversationId).toBe(driver.id)
@@ -113,7 +113,7 @@ test('running jobs pin the host past the idle window; the hard cap reclaims it a
   const owner: ManagedHostOwner = { kind: 'conversation', id: driver.id }
   // The one machine per user is taken; this conversation cannot get its own.
   const other = await mkdtemp(join(tmpdir(), 'demi-s10-other-'))
-  await expect(world.backend.managedHosts!.provision(owner, 'local', other)).rejects.toMatchObject({ code: 'host_limit' })
+  await expect(world.backend.managedHosts!.provision(owner, world.backend.session.user.id, other)).rejects.toMatchObject({ code: 'host_limit' })
 
   // On the first conversation's machine: a job that outlives its tool call keeps the host up.
   const first = world.drivers[0]!

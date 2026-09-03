@@ -46,11 +46,11 @@ test('ConnectionVault: rows carry ciphertext only; CRUD round-trips typed config
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
-  await control.ensureUser({ id: 'u1', username: 'local', role: 'master' })
+  const user = (await control.createMaster({ username: 'local', passwordHash: '!' }))!
   const vault = new ConnectionVault(control, crypto.getRandomValues(new Uint8Array(32)))
 
   const created = await vault.create({
-    ownerUserId: 'u1',
+    ownerUserId: user.id,
     label: 'My OpenAI',
     config: { kind: 'api_key', provider: 'openai', apiKey: 'sk-secret', baseUrl: 'https://proxy.example/v1' },
   })

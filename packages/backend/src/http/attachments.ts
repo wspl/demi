@@ -1,6 +1,6 @@
 import type { BlobStore } from '@demicodes/agent'
 import { Hono } from 'hono'
-import { STUB_USER } from '../auth/identity'
+import type { AuthEnv } from '../auth/identity'
 import type { ControlService } from '../storage/control'
 
 /** Hardcoded upload ceiling (demi-next.md § Attachments: one number, configurable later). */
@@ -11,9 +11,9 @@ export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
  * one metadata row, and the id goes back for the `send` frame's ref block.
  * Never inline media into the frame socket.
  */
-export function attachmentRoutes(options: { control: ControlService; blobs: BlobStore }): Hono {
+export function attachmentRoutes(options: { control: ControlService; blobs: BlobStore }): Hono<AuthEnv> {
   const { control, blobs } = options
-  const app = new Hono()
+  const app = new Hono<AuthEnv>()
 
   app.post('/', async (c) => {
     const mediaType = c.req.header('content-type')
@@ -27,7 +27,7 @@ export function attachmentRoutes(options: { control: ControlService; blobs: Blob
     }
     const sha256 = await blobs.put(bytes)
     const attachment = await control.createAttachment({
-      userId: STUB_USER.id,
+      userId: c.get('user').id,
       mediaType,
       sizeBytes: bytes.length,
       sha256,

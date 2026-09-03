@@ -155,7 +155,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: be imported by any other production package; put business logic in the HTTP layer beyond routing/validation; let providers or credentials cross to runners or browsers.
 - Layout (directories mirror the design record's backend modules):
   - `backend.ts` — the composition root (wire and mount only).
-  - `http/` — the external HTTP surface: app assembly, one route module per resource (transfers and blobs included), the WS upgrade adapter.
+  - `http/` — the external HTTP surface: app assembly, the session gate over `/api/*` with its exemptions, the cookie helpers, one route module per resource (setup, auth, transfers and blobs included), the WS upgrade adapter.
+  - `auth/` — identity: the roles and the authenticated user shape, password hashing, the cookie sessions over the control plane, the login lockout.
   - `conversation/` — conversation-module domain logic (frame scoping/rewrite, attachment references, the virtual-host factory, the hostless shell composition, the execution-target resolution, the target switch and its announcement, the session upgrade as `UpgradingShell` over the two shell environments).
   - `storage/` — the SQLite layer (database seam, migrations, control service, conversation stores, blob store, host store).
   - `runner/` — runner management: pairing-code/device-token primitives, the registry (pending claims, one live socket per device, stable per-target `RemoteHost`s, liveness, the rpc relay), the transfer broker.
