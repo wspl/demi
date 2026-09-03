@@ -1,5 +1,6 @@
 import { createBackend, type Backend, type BackendOptions, type User } from '../index'
 import { SESSION_COOKIE } from '../http/cookies'
+import { modelsDevFetch } from './models-dev'
 
 /** The master account every test backend is set up with. */
 export const MASTER = { username: 'master', password: 'master-pass-1' }
@@ -17,9 +18,9 @@ export interface TestBackend extends Backend {
   session: WebSession
 }
 
-/** A backend in shared mode unless said otherwise, with the master signed in: set up on a fresh data directory, logged in over a reopened one. */
+/** A backend in shared mode unless said otherwise, the models.dev fixture behind its vendor catalog, with the master signed in: set up on a fresh data directory, logged in over a reopened one. */
 export async function openBackend(options: Omit<BackendOptions, 'mode'> & { mode?: BackendOptions['mode'] }): Promise<TestBackend> {
-  const backend = await createBackend({ mode: 'shared', ...options })
+  const backend = await createBackend({ mode: 'shared', modelsDev: { fetch: modelsDevFetch() }, ...options })
   try {
     const { needed } = (await (await fetch(`${backend.url}/api/setup`)).json()) as { needed: boolean }
     const session = needed ? await setupMaster(backend) : await login(backend, MASTER.username, MASTER.password)
