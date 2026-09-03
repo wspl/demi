@@ -17,6 +17,7 @@ const hostIdentitySchema: z.ZodType<HostIdentity> = z.object({
   uid: z.number(),
   gid: z.number(),
   hostname: z.string(),
+  homeDir: z.string(),
 })
 
 const hostSpawnErrorSchema: z.ZodType<HostSpawnError> = z.object({

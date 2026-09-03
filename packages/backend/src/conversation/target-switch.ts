@@ -1,11 +1,13 @@
 import type { AgentServer } from '@demicodes/agent'
-import type { ControlService, PrevTarget, WorkspaceRecord } from '../storage/control'
+import type { ControlService, ExecutionTarget, WorkspaceRecord } from '../storage/control'
+import { resolveExecutionTarget, targetDeviceId } from './execution-target'
 
 export type SwitchTargetResult =
   | { outcome: 'switched' }
   | { outcome: 'noop' }
   | { outcome: 'conversation_not_found' }
   | { outcome: 'workspace_not_found' }
+  | { outcome: 'no_hostless_entrance' }
   | { outcome: 'turn_in_flight' }
   | { outcome: 'conflict' }
 
@@ -15,9 +17,11 @@ export interface SwitchTargetDeps {
 }
 
 /**
- * The one generic switch mechanism (demi-next.md § Session and host model):
- * refused mid-turn, compare-and-set so concurrent switches have one winner,
- * departed target recorded in the prev slot (unannounced), files untouched.
+ * The one generic switch mechanism (`sessions-and-targets.md` § Switching),
+ * user-initiated from the target picker: refused mid-turn, compare-and-set so
+ * concurrent switches have one winner, the departed device granted to the
+ * conversation, the switch recorded for the next turn's announcement. Files
+ * are never moved. A session-bound managed host has no hostless entrance.
  */
 export async function switchConversationTarget(
   deps: SwitchTargetDeps,
@@ -26,28 +30,29 @@ export async function switchConversationTarget(
 ): Promise<SwitchTargetResult> {
   const conversation = await deps.control.getConversation(conversationId)
   if (!conversation) return { outcome: 'conversation_not_found' }
-  if (conversation.workspaceId === toWorkspaceId) return { outcome: 'noop' }
+  if (conversation.workspaceId === toWorkspaceId && conversation.hostDeviceId === null) return { outcome: 'noop' }
 
   let toWorkspace: WorkspaceRecord | null = null
   if (toWorkspaceId !== null) {
     toWorkspace = await deps.control.getWorkspace(toWorkspaceId)
     if (!toWorkspace || toWorkspace.userId !== conversation.userId) return { outcome: 'workspace_not_found' }
+  } else if (conversation.hostDeviceId !== null) {
+    return { outcome: 'no_hostless_entrance' }
   }
 
   const phase = deps.agentServer.sessionPhase(conversationId)
   if (phase !== null && phase !== 'idle') return { outcome: 'turn_in_flight' }
 
-  const prevTarget = await departedTarget(deps.control, conversation.workspaceId)
-  const won = await deps.control.switchConversationWorkspace(conversationId, conversation.workspaceId, toWorkspaceId, {
-    target: prevTarget,
-    announced: false,
-  })
+  const from = await resolveExecutionTarget(deps.control, conversation)
+  const to: ExecutionTarget = toWorkspace
+    ? { kind: 'workspace', workspaceId: toWorkspace.id, deviceId: toWorkspace.deviceId, path: toWorkspace.path }
+    : { kind: 'hostless' }
+  const won = await deps.control.switchConversationTarget(
+    conversationId,
+    { workspaceId: conversation.workspaceId, hostDeviceId: conversation.hostDeviceId },
+    { workspaceId: toWorkspaceId, hostDeviceId: null },
+    { from, to },
+    targetDeviceId(from),
+  )
   return won ? { outcome: 'switched' } : { outcome: 'conflict' }
-}
-
-async function departedTarget(control: ControlService, workspaceId: string | null): Promise<PrevTarget> {
-  if (workspaceId === null) return { kind: 'virtual' }
-  const workspace = await control.getWorkspace(workspaceId)
-  if (!workspace) return { kind: 'virtual' }
-  return { kind: 'workspace', deviceId: workspace.deviceId, path: workspace.path }
 }

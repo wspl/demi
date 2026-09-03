@@ -36,13 +36,16 @@ CREATE TABLE web_sessions (
 );
 
 CREATE TABLE devices (
-  id           TEXT PRIMARY KEY,
-  user_id      TEXT NOT NULL REFERENCES users(id),
-  name         TEXT NOT NULL,
-  platform     TEXT NOT NULL,
-  token_hash   TEXT NOT NULL,
-  claimed_at   TEXT NOT NULL,
-  last_seen_at TEXT
+  id                    TEXT PRIMARY KEY,
+  user_id               TEXT NOT NULL REFERENCES users(id),
+  kind                  TEXT NOT NULL CHECK (kind IN ('user', 'managed')),
+  name                  TEXT NOT NULL,
+  platform              TEXT NOT NULL,
+  token_hash            TEXT NOT NULL,
+  owner_conversation_id TEXT,
+  owner_workspace_id    TEXT,
+  claimed_at            TEXT NOT NULL,
+  last_seen_at          TEXT
 );
 
 CREATE TABLE workspaces (
@@ -60,13 +63,21 @@ CREATE TABLE conversations (
   title         TEXT NOT NULL,
   archived      INTEGER NOT NULL DEFAULT 0,
   workspace_id  TEXT REFERENCES workspaces(id),
-  prev_target_json TEXT,
+  host_device_id TEXT REFERENCES devices(id),
+  pending_switch_json TEXT,
   connection_id TEXT,
   model_id      TEXT,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );
 CREATE INDEX idx_conversations_user ON conversations(user_id, archived, updated_at);
+
+CREATE TABLE conversation_host_grants (
+  conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  device_id       TEXT NOT NULL REFERENCES devices(id),
+  granted_at      TEXT NOT NULL,
+  PRIMARY KEY (conversation_id, device_id)
+);
 
 CREATE TABLE connections (
   id            TEXT PRIMARY KEY,

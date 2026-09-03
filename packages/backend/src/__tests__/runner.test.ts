@@ -175,7 +175,7 @@ test('a malformed runner frame closes the socket; a bad device token is rejected
       type: 'hello',
       protocol: RUNNER_PROTOCOL_VERSION,
       deviceToken: 'not-a-real-token',
-      runner: { name: 'x', platform: 'test', version: '0', identity: { uid: 0, gid: 0, hostname: 'x' } },
+      runner: { name: 'x', platform: 'test', version: '0', identity: { uid: 0, gid: 0, hostname: 'x', homeDir: '/' } },
     }),
   )
   expect(wire.decodeBackendToRunner(new Uint8Array(await reply))).toMatchObject({ type: 'hello_error', code: 'unknown_device', reason: 'unknown device' })

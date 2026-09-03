@@ -7,7 +7,8 @@ import { model } from './driver'
 // S6 — continuing across a switch: a file made hostless, the conversation
 // rebound to a runner over PATCH and worked there, then rebound back. The
 // script keeps working across both switches, the context block appears at
-// each, and files are where each target keeps them.
+// each, files are where each target keeps them, and the departed runner is
+// granted to the conversation.
 
 let world: World
 
@@ -46,13 +47,14 @@ test('hostless → runner → hostless, files staying with their target', async 
   expect(await readFile(runnerCopy, 'utf8')).toBe('alpha\ndelta\ngamma\n')
   expect(await readFile(hostlessCopy, 'utf8')).toBe('alpha\nbeta\ngamma\n')
 
-  // Back to hostless: the original is untouched; the workspace is the previous target, reachable by prev shell.
+  // Back to hostless: the original is untouched; the switch granted the runner, so `host shell --id` reaches it.
   await driver.switchTo('hostless')
+  const alpha = world.device('alpha').deviceId
   const back = await driver.turn({
-    model: [model.shell('t5', 'cat notes.md && demi host prev shell -- cat notes.md'), model.say('back')],
+    model: [model.shell('t5', `cat notes.md && demi host shell --id ${alpha} "cat notes.md"`), model.say('back')],
   })
   expect(itemsText(back.requests[0]!.items)).toContain('[Execution target switched]')
-  expect(itemsText(back.requests[0]!.items)).toContain('Previous target: directory ')
+  expect(itemsText(back.requests[0]!.items)).toContain('Previous target: workspace "alpha workspace"')
   expect(back.received[0]).toContain('alpha\nbeta\ngamma\nalpha\ndelta\ngamma')
   expect(driver.lastText()).toBe('back')
 }, 60_000)

@@ -1,10 +1,11 @@
 import { errorMessage } from '@demicodes/utils'
-import { shellQuote, type Command, type CommandGroup, type CommandIO, type Host, type HostStore } from '@demicodes/shell'
+import { type Command, type CommandGroup, type CommandIO, type Host, type HostStore } from '@demicodes/shell'
 import { z } from 'zod'
+import { resolveExecutionTarget, targetDeviceId } from '../conversation/execution-target'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import type { RpcTransferDestination, RunnerRegistry } from '../runner/registry'
 import type { TransferBroker } from '../runner/transfers'
-import type { ControlService, PrevTarget } from '../storage/control'
+import type { ControlService, ExecutionTarget } from '../storage/control'
 
 export interface HostCommandDeps {
   control: ControlService
@@ -16,57 +17,66 @@ export interface HostCommandDeps {
 
 /**
  * The backend-contributed `demi host` subcommand group (`commands.md` § The
- * `demi host` group): `list`, `current`, `shell --id`, `prev shell`, `prev
- * release`. A cross-host command runs as a job on that host; its stdout
- * comes back as a brokered transfer, never over the runner sockets.
+ * `demi host` group): `list`, `current`, `shell --id`. A cross-host command
+ * runs as a job on that host; its stdout comes back as a brokered transfer,
+ * never over the runner sockets.
  */
 export function createHostCommandGroup(deps: HostCommandDeps, conversationId: string): CommandGroup {
   return {
     name: 'host',
     summary: 'Execution-target operations: list reachable hosts, show the current one, run a command on another host.',
-    subcommands: [listCommand(deps, conversationId), currentCommand(deps, conversationId), shellCommand(deps, conversationId), prevGroup(deps, conversationId)],
+    subcommands: [listCommand(deps, conversationId), currentCommand(deps, conversationId), shellCommand(deps, conversationId)],
   }
 }
 
-/** A host this conversation may dispatch to besides running there: its device and the directory commands start in. */
+/** A host this conversation may dispatch to: its device and the directory commands start in. */
 interface ReachableHost {
   deviceId: string
   path: string
-  role: 'current' | 'prev'
+  role: 'current' | 'granted'
 }
 
 /**
- * The hosts `shell --id` accepts: the current target's device and the
- * previous target's. The grant table (`sessions-and-targets.md` § Host
- * grants) widens this set; the check stays this one function.
+ * The hosts `shell --id` accepts (`sessions-and-targets.md` § Host grants):
+ * the current target's device and the conversation's grant set. A granted
+ * host starts a shell in its home. The one place the check lives.
  */
 async function reachableHosts(deps: HostCommandDeps, conversationId: string): Promise<ReachableHost[]> {
   const conversation = await deps.control.getConversation(conversationId)
   if (!conversation) return []
+  const target = await resolveExecutionTarget(deps.control, conversation)
   const hosts: ReachableHost[] = []
-  const workspace = conversation.workspaceId ? await deps.control.getWorkspace(conversation.workspaceId) : null
-  if (workspace) hosts.push({ deviceId: workspace.deviceId, path: workspace.path, role: 'current' })
-  const prev = conversation.prevTarget?.target
-  if (prev?.kind === 'workspace') hosts.push({ deviceId: prev.deviceId, path: prev.path, role: 'prev' })
+  const currentDeviceId = targetDeviceId(target)
+  if (currentDeviceId !== null) hosts.push({ deviceId: currentDeviceId, path: targetDirectory(deps, target), role: 'current' })
+  for (const grant of await deps.control.listHostGrants(conversationId)) {
+    if (grant.deviceId === currentDeviceId) continue
+    hosts.push({ deviceId: grant.deviceId, path: deps.registry.deviceIdentity(grant.deviceId)?.homeDir ?? '', role: 'granted' })
+  }
   return hosts
+}
+
+function targetDirectory(deps: HostCommandDeps, target: ExecutionTarget): string {
+  if (target.kind === 'hostless') return HOSTLESS_HOME
+  if (target.kind === 'workspace') return target.path
+  return deps.registry.deviceIdentity(target.deviceId)?.homeDir ?? ''
 }
 
 function listCommand(deps: HostCommandDeps, conversationId: string): Command {
   return {
     name: 'list',
-    summary: 'Hosts this conversation can reach with `demi host shell --id`: id, name, online, and the current one marked.',
+    summary: 'Hosts this conversation can reach with `demi host shell --id`: id, name, online, directory; the current one marked.',
     kind: 'rpc',
     run: async ({ io }) => {
       const hosts = await reachableHosts(deps, conversationId)
       if (hosts.length === 0) {
-        await io.stdout('no hosts: this conversation runs hostless and has no previous host\n')
+        await io.stdout('no hosts: this conversation runs hostless and has been granted no host\n')
         return { exitCode: 0 }
       }
       const lines = await Promise.all(
         hosts.map(async (host) => {
           const device = await deps.control.getDevice(host.deviceId)
           const online = deps.registry.deviceOnline(host.deviceId) ? 'online' : 'offline'
-          return `${host.deviceId}  ${device?.name ?? '?'}  ${online}  ${host.path}${host.role === 'current' ? '  (current)' : '  (previous)'}`
+          return `${host.deviceId}  ${device?.name ?? '?'}  ${online}  ${host.path || '?'}  (${host.role})`
         }),
       )
       await io.stdout(`${lines.join('\n')}\n`)
@@ -109,7 +119,7 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
 function currentCommand(deps: HostCommandDeps, conversationId: string): Command {
   return {
     name: 'current',
-    summary: 'The current execution target, and the previous one while a migration is in progress.',
+    summary: 'The current execution target.',
     kind: 'rpc',
     run: async ({ io }) => {
       const conversation = await deps.control.getConversation(conversationId)
@@ -117,82 +127,20 @@ function currentCommand(deps: HostCommandDeps, conversationId: string): Command 
         await io.stderr('host: this session has no conversation record\n')
         return { exitCode: 1 }
       }
-      const lines: string[] = []
-      const workspace = conversation.workspaceId ? await deps.control.getWorkspace(conversation.workspaceId) : null
-      if (workspace) {
-        const device = await deps.control.getDevice(workspace.deviceId)
-        const online = deps.registry.deviceOnline(workspace.deviceId) ? 'online' : 'offline'
-        lines.push(`host: workspace "${workspace.name}" — ${workspace.path} on device "${device?.name ?? workspace.deviceId}" (${online})`)
+      const target = await resolveExecutionTarget(deps.control, conversation)
+      if (target.kind === 'hostless') {
+        await io.stdout(`host: virtual (files under ${HOSTLESS_HOME})\n`)
+        return { exitCode: 0 }
+      }
+      const device = await deps.control.getDevice(target.deviceId)
+      const name = device?.name ?? target.deviceId
+      const online = deps.registry.deviceOnline(target.deviceId) ? 'online' : 'offline'
+      if (target.kind === 'workspace') {
+        const workspace = await deps.control.getWorkspace(target.workspaceId)
+        await io.stdout(`host: workspace "${workspace?.name ?? target.workspaceId}" — ${target.path} on device "${name}" (${online})\n`)
       } else {
-        lines.push(`host: virtual (files under ${HOSTLESS_HOME})`)
+        await io.stdout(`host: machine "${name}" (${target.deviceId}, ${online}) — ${targetDirectory(deps, target) || 'home'}\n`)
       }
-      if (conversation.prevTarget) {
-        lines.push(`prev: ${describePrev(conversation.prevTarget.target)} — reachable via \`demi host prev shell\` until \`demi host prev release\``)
-      }
-      await io.stdout(`${lines.join('\n')}\n`)
-      return { exitCode: 0 }
-    },
-  }
-}
-
-function prevGroup(deps: HostCommandDeps, conversationId: string): CommandGroup {
-  return {
-    name: 'prev',
-    summary: 'The previous execution target, reachable during migration.',
-    subcommands: [prevShellCommand(deps, conversationId), prevReleaseCommand(deps, conversationId)],
-  }
-}
-
-function prevShellCommand(deps: HostCommandDeps, conversationId: string): Command {
-  return {
-    name: 'shell',
-    summary:
-      'Run a command on the previous host: `demi host prev shell -- <argv...>`. Stdout/stderr and the exit code pass through byte-faithfully, so archives pipe cleanly (e.g. `demi host prev shell -- tar cz -C <dir> . | tar xz`); on a machine the stdout arrives once the command exits.',
-    failureOutput: 'writes the reason to stderr and exits non-zero (127 when the previous host cannot run the command)',
-    input: { argv: z.array(z.string()).optional() },
-    restField: 'argv',
-    kind: 'rpc',
-    run: async (ctx) => {
-      const argv = ctx.parsed.values.argv as string[] | undefined
-      if (!argv || argv.length === 0) {
-        await ctx.io.stderr('usage: demi host prev shell -- <argv...>\n')
-        return { exitCode: 2 }
-      }
-      const conversation = await deps.control.getConversation(conversationId)
-      const prev = conversation?.prevTarget
-      if (!prev) {
-        await ctx.io.stderr('prev host released\n')
-        return { exitCode: 1 }
-      }
-      try {
-        if (prev.target.kind === 'virtual') {
-          // The hostless files are placed on the machine by the switch itself
-          // (`sessions-and-targets.md` § Upgrading); nothing runs "on" the hostless side.
-          await ctx.io.stderr('prev shell: the previous target was hostless; its files were placed here by the switch\n')
-          return { exitCode: 1 }
-        }
-        return await runOnHost(deps, conversationId, { deviceId: prev.target.deviceId, path: prev.target.path, role: 'prev' }, argv.map(shellQuote).join(' '), ctx)
-      } catch (error) {
-        await ctx.io.stderr(`prev shell: ${errorMessage(error)}\n`)
-        return { exitCode: 1 }
-      }
-    },
-  }
-}
-
-function prevReleaseCommand(deps: HostCommandDeps, conversationId: string): Command {
-  return {
-    name: 'release',
-    summary: 'Give the previous host back once migration is done; `prev shell` stops working afterwards.',
-    kind: 'rpc',
-    run: async ({ io }) => {
-      const conversation = await deps.control.getConversation(conversationId)
-      if (!conversation?.prevTarget) {
-        await io.stderr('prev host already released\n')
-        return { exitCode: 1 }
-      }
-      await deps.control.clearConversationPrev(conversationId)
-      await io.stdout('prev host released\n')
       return { exitCode: 0 }
     },
   }
@@ -251,9 +199,4 @@ async function runOnHost(
 /** The relayed-rpc io carries where its device can `GET` a transfer; any other io takes the bytes here. */
 function transferDestinationOf(io: CommandIO): RpcTransferDestination | null {
   return (io as { transferDestination?: RpcTransferDestination }).transferDestination ?? null
-}
-
-function describePrev(prev: PrevTarget): string {
-  if (prev.kind === 'virtual') return `virtual (files under ${HOSTLESS_HOME})`
-  return `${prev.path} on device ${prev.deviceId}`
 }

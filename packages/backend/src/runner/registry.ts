@@ -195,6 +195,11 @@ export class RunnerRegistry {
     return this.connections.has(deviceId)
   }
 
+  /** The device's last-known identity (its home directory among it), from any hello it has sent; null before the first. */
+  deviceIdentity(deviceId: string): HostIdentity | null {
+    return this.identities.get(deviceId) ?? null
+  }
+
   /** Jobs running on the device as of its last `pong`; 0 while offline. */
   runningJobs(deviceId: string): number {
     return this.connections.get(deviceId)?.jobs ?? 0
@@ -217,7 +222,7 @@ export class RunnerRegistry {
     if (!host) {
       host = new RemoteHost({
         defaultCwd: workspace.path,
-        identity: this.identities.get(workspace.deviceId) ?? { uid: 0, gid: 0, hostname: 'offline' },
+        identity: this.identities.get(workspace.deviceId) ?? { uid: 0, gid: 0, hostname: 'offline', homeDir: workspace.path },
         store,
       })
       deviceHosts.set(key, host)

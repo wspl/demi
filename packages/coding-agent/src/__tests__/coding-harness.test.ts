@@ -314,7 +314,7 @@ function renderCommandsPrompt(commands: readonly Command[]): string {
 class RecordingHost implements Host {
   readonly defaultCwd: string
   readonly commandArtifactsDir: string
-  readonly identity = { uid: 1000, gid: 1000, hostname: 'test' }
+  readonly identity = { uid: 1000, gid: 1000, hostname: 'test', homeDir: '/' }
   readonly fs: RecordingFileSystem
   readonly store: HostStore = new MemoryHostStore()
   processSpawnCalls = 0

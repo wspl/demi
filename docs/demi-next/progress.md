@@ -2382,6 +2382,48 @@ Checkpoints, lowest dependency first:
 - `demi host shell --id` on a granted host starts in that device's home;
   the announcement names the departed directory by absolute path.
 
+### Checkpoint 1: the access model (2026-09-03) — delivered
+
+Landed:
+
+- `control.sqlite` final for M11: `devices.kind`, `owner_conversation_id`,
+  `owner_workspace_id`; `conversations.host_device_id`,
+  `pending_switch_json`; `conversation_host_grants`. `ControlService`:
+  `createDevice` takes a kind and an owner, `listDevices` returns user
+  devices only, `switchConversationTarget` moves both pointers, records the
+  pending switch and grants the departed device in one compare-and-set,
+  `clearPendingSwitch`, `grantHost` / `revokeHost` / `listHostGrants` /
+  `isHostGranted`. The prev slot is gone with everything that read it.
+- `ExecutionTarget` (`hostless` | `workspace` | `host`) and
+  `resolveExecutionTarget` (`conversation/execution-target.ts`): the one
+  reading of the row as a target, used by the backend's Host resolution,
+  the switch, the announcement and `demi host`.
+- The switch (`conversation/target-switch.ts`): `no_hostless_entrance` for
+  a session-bound managed host (409 on the PATCH); a managed host switched
+  to a workspace is granted like any departed device.
+- The announcement reads the pending switch, names both targets and
+  directories, and points at `demi host shell --id <departed>` with the
+  departed directory by absolute path; cleared on injection.
+- `demi host list` / `current` / `shell --id` over the current target plus
+  the grant set (`reachableHosts` is the one check); a granted host's shell
+  starts in its home, which `HostIdentity.homeDir` now carries on the wire
+  (`hello.runner.identity`), from tinyjs's identity on a runner.
+- `GET/POST /api/conversations/:id/grants`, `DELETE
+  /api/conversations/:id/grants/:deviceId`; a grant takes the user's own
+  `user` devices only (404 otherwise); `GET /api/devices` never lists a
+  managed host.
+- Tests: `switch.test.ts` rewritten on the grant model (the announcement
+  once per switch, the departed device granted and reached, the grant API
+  with the managed-host refusal and the revoke, the hostless entrance
+  refused for a session-bound host, the compare-and-set); `host-shell` and
+  S6 re-pointed from `prev shell` to `shell --id`. `bun test
+  packages/backend`: 70 pass.
+
+Pitfalls: `$?` is outside tinybash's subset, so a hostless test script
+cannot echo an exit status — `|| echo refused` instead. The runner suite's
+`jobs.test.ts` fails on this machine independently of the change: the
+developer's `~/.bashrc` sources a file under an empty `HOME`.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

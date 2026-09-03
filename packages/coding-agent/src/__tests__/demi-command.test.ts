@@ -364,7 +364,7 @@ function commandOutput(): { io: CommandIO; stdout: () => string; stderr: () => s
 class FailingWriteHost implements Host {
   readonly defaultCwd: string
   readonly commandArtifactsDir: string
-  readonly identity = { uid: 1000, gid: 1000, hostname: 'test' }
+  readonly identity = { uid: 1000, gid: 1000, hostname: 'test', homeDir: '/' }
   readonly fs: FailingWriteFileSystem
   readonly store: HostStore = new MemoryHostStore()
   readonly process: HostProcess = {

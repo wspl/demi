@@ -10,6 +10,8 @@ export interface HostIdentity {
   uid: number
   gid: number
   hostname: string
+  /** The home directory of the user the Host runs as: where session-bound and granted hosts start a shell. */
+  homeDir: string
 }
 
 export interface HostFileSystem {
