@@ -77,8 +77,8 @@ Spoken of as modules, not separate services:
 - **Runner management module**: device registry (claim tokens, device
   tokens, online status = socket state, one live connection per token), the
   runner-protocol server, per-conversation `RemoteHost` handles
-  (`@demicodes/host-remote`) over connected runners, the rpc relay,
-  brokered cross-host transfers (`runner.md`).
+  (`@demicodes/host-remote`) over connected runners, the rpc relay, the
+  pipe broker (`runner.md` § Pipes).
 - **Managed hosts module**: the `ManagedHostProvisioner` (Firecracker under
   jailer via the privileged helper), images, the home-image store,
   lifecycle (`managed-hosts.md`).
@@ -125,7 +125,7 @@ session lives 30 days from its last renewal; a request arriving with
 under 15 days left renews it (a fresh `Set-Cookie`), so an active
 browser never signs out and a silent one does. The stream WebSocket and
 the blob route ride the same cookie. Exempt from the gate: `/api/setup`
-and `/api/auth/login` (the entrances) and `/api/runner`, `/api/transfers`
+and `/api/auth/login` (the entrances) and `/api/runner`, `/api/pipes`
 (device-token authenticated; runners never hold a cookie). Answers:
 another user's object 404 as if absent, a role short of the action 403,
 no session 401. Login failures lock the username for a minute after
@@ -155,7 +155,7 @@ nothing.
 | providers | `GET /api/providers/catalog` (the models.dev vendors our runtimes speak to, and each subscription family with whether the scope holds it), `GET/POST /api/providers` (creation from a vendor `{ vendorId, label, apiKey, baseUrl?, modelIds? }` or as a custom endpoint `{ providerType, wireApi?, label, apiKey, baseUrl?, modelIds? }`), `PATCH /api/providers/:id` (label; endpoint, key and model list of an API-key entry, `modelIds: null` returning to the live list), `DELETE /api/providers/:id`, `POST /api/providers/:id/test`, `POST /api/providers/subscription-login` (409 `provider_exists` when the scope already holds the family) + `GET …/subscription-login/:id` — in the caller's provider scope: the instance's in shared mode (writes are admin-only), the caller's own in isolated mode | M5; scoped M12; catalog and editing M12 |
 | usage | `GET /api/usage` (the caller's), `GET /api/usage/instance` (shared mode, admins: by user) | M5; instance view M12 |
 | attachments, blobs | `POST /api/attachments` (returns a reference id), `POST /api/conversations/:id/workspace-files`, `GET /api/blobs/:sha256` | M6; blobs M9 |
-| transfers | `PUT /api/transfers/:id` (source runner), `GET /api/transfers/:id` (destination runner); device-token authenticated, single-use, piped in flight (`runner.md` § Transfers) | M9 |
+| pipes | `PUT /api/pipes/:id` (the source runner), `GET /api/pipes/:id` (the sink runner); device-token authenticated, single-use, piped in flight (`runner.md` § Pipes) | M9 |
 | grants | `GET/POST/DELETE /api/conversations/:id/grants` | M11 |
 | admin | `GET/POST/PATCH /api/users`, `GET /api/settings` (the instance mode, read-only: it is startup configuration) | M12 |
 
