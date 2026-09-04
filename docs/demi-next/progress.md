@@ -3201,6 +3201,47 @@ The pipe primitive as `runner.md` § Pipes records it, bottom up.
   timeouts, the catalog-label check from the provider-entries commit, a
   `.bashrc` on this machine).
 
+### Attached hosts checkpoint (2026-09-04) — delivered
+
+The grant set becomes attached hosts as `sessions-and-targets.md`
+§ Attached hosts records.
+
+- **Storage**: `conversation_hosts (conversation_id, device_id, name, cwd,
+  attached_at)`, primary key on the device, `UNIQUE (conversation_id,
+  name)`, an index on the device; `conversations.hosts_changed` marks a
+  change for the next turn's announcement. `cwd` is nullable: `null` is
+  "its home", until a shell there ends somewhere. `attachHost` is
+  idempotent and seeds the name from the hostname, suffixed `-2`, `-3`, …
+  while taken in the conversation; `renameAttachedHost` answers
+  `renamed` / `name_taken` / `not_attached`; `setAttachedHostCwd` is the
+  write-back. The switch write attaches the departed device at the
+  directory it was left at (a workspace's path; a managed host's home)
+  and detaches the arriving device, in the same compare-and-set — a host
+  is main or attached, never both. Revoking a device drops its rows.
+- **HTTP**: `/api/conversations/:id/hosts` — GET (`{ hosts: [{ deviceId,
+  name, cwd, online, attachedAt }] }`), POST `{ deviceId }` (any device
+  the user owns; 409 `host_is_main` for the conversation's own main
+  host), PATCH `…/:deviceId { name }` (409 `name_taken`, 404
+  `host_not_attached`), DELETE. `/grants` is gone.
+- **`demi host`**: `list` prints name, id, online, the directory shells
+  start in, `(main)` / `(attached)`; `shell --host <name|id>` replaces
+  `--id`, resolving the name first and the device id second, starts an
+  attached host's shell where the last one ended, and writes the job's
+  exit directory back.
+- **Announcements**: the switch block names the departed host as it is
+  attached (`stays attached as "<name>"`, `demi host shell --host <name>`)
+  and ends with the attached-host line; a change to the set without a
+  switch is announced as `[Attached hosts changed]` with the same line;
+  both clear the pending state together.
+- **Tests**: `switch.test.ts` (attachment with the departed directory,
+  the row removed when the target moves onto the attached device, the
+  hosts API including a managed host, rename uniqueness, the change
+  announcement, name seeding and collision at the control level),
+  `host-shell.test.ts` (names in `--host` and `list`, the directory
+  carrying between shells on an attached host, the id accepted too),
+  `isolation.test.ts` and the s6 / s10 scenarios re-pointed. Backend
+  suite 99 pass.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

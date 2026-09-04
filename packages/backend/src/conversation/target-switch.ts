@@ -19,9 +19,10 @@ export interface SwitchTargetDeps {
 /**
  * The one generic switch mechanism (`sessions-and-targets.md` § Switching),
  * user-initiated from the target picker: refused mid-turn, compare-and-set so
- * concurrent switches have one winner, the departed device granted to the
- * conversation, the switch recorded for the next turn's announcement. Files
- * are never moved. A session-bound managed host has no hostless entrance.
+ * concurrent switches have one winner, the departed device attached to the
+ * conversation at the directory it was left at, the arriving device detached,
+ * the switch recorded for the next turn's announcement. Files are never
+ * moved. A session-bound managed host has no hostless entrance.
  */
 export async function switchConversationTarget(
   deps: SwitchTargetDeps,
@@ -47,12 +48,16 @@ export async function switchConversationTarget(
   const to: ExecutionTarget = toWorkspace
     ? { kind: 'workspace', workspaceId: toWorkspace.id, deviceId: toWorkspace.deviceId, path: toWorkspace.path }
     : { kind: 'hostless' }
+  const departedDeviceId = targetDeviceId(from)
   const won = await deps.control.switchConversationTarget(
     conversationId,
     { workspaceId: conversation.workspaceId, hostDeviceId: conversation.hostDeviceId },
     { workspaceId: toWorkspaceId, hostDeviceId: null },
     { from, to },
-    targetDeviceId(from),
+    {
+      departed: departedDeviceId === null ? null : { deviceId: departedDeviceId, cwd: from.kind === 'workspace' ? from.path : null },
+      arrivingDeviceId: targetDeviceId(to),
+    },
   )
   return won ? { outcome: 'switched' } : { outcome: 'conflict' }
 }
