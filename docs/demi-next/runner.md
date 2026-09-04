@@ -329,12 +329,12 @@ A hostless caller — the backend's own tinybash runs the command, so its
 end is in-process:
 
 ```
-hostless model:   demi host shell --host B "cat /work/notes.md" > notes.md
+hostless model:   demi host shell --host B "tar c -C /work ." | tar x
 
   backend                                                             B
-  P_out minted  B → backend (sink: the pipeline's next stage)
+  P_out minted  B → backend (sink: tinybash's pipeline, the `tar x` builtin)
   job_start { script, stdout: P_out } ────────────────────────────►  spawn; PUT P_out ← fd 1
-  ═══ body → the redirection, into the conversation's store ═══ ◄═══
+  ═══ body → tar x, entry by entry into the conversation's store ═══ ◄═══
 ```
 
 - **Streaming, both ways.** A job's stdout reaches the far end as the job
