@@ -5,7 +5,7 @@ import { createRunnerFileSystem } from './fs'
 import { createRunnerProcess } from './process'
 
 /** The `tinyjs:*` surface this package is written against. */
-export const TINYJS_ABI = 1
+export const TINYJS_ABI = 2
 
 export interface RunnerHostOptions {
   /** Default working directory (default: the process's cwd). */

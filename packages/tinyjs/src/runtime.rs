@@ -15,7 +15,7 @@ use crate::state::state;
 pub const VERSION: u32 = 1;
 /// Bumped when the `tinyjs:*` surface changes incompatibly; the runner's machine layer
 /// checks it at start.
-pub const ABI: u32 = 1;
+pub const ABI: u32 = 2;
 
 pub struct RuntimeModule;
 
