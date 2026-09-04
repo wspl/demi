@@ -3346,6 +3346,18 @@ real-model gates unset.
 
 Tests and conclusions are recorded here as each checkpoint is completed.
 
+### Shared queue primitive — verified
+
+`@demicodes/utils` owns `SerialQueue`: operations on one resource remain
+ordered, unrelated queues run independently, and rejection does not poison
+the next operation. The generic primitive is shared by file appends,
+scoped frame transport and runner stdin dispatch. Its `idle` state allows
+owners to release per-resource queues once work finishes.
+
+Verification: `utils/src/__tests__/serial-queue.test.ts`, **1 pass, 0 fail**,
+covering ordering, concurrent independent resources, rejection recovery
+and idle/settled state.
+
 ### Shell semantics checkpoint — verified
 
 Findings 12–17: cancellation closes pending stdin reads and removes signal
