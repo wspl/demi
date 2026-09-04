@@ -149,6 +149,12 @@ async function runCommand(command: Command, inherited: Channels, env: ExecutionE
       throw error
     }
   }
-  await redirected.flush()
+  try {
+    await redirected.flush()
+  } catch (error) {
+    if (!(error instanceof RedirectError)) throw error
+    await inherited.stderr(`bash: line ${command.line}: ${error.path}: ${error.detail}\n`)
+    return 1
+  }
   return status
 }

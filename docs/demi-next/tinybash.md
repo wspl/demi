@@ -398,5 +398,15 @@ needed without a machine.
   coreutils' own test cases for the accepted builtins and flags.
 - **Session state**: `cd` and assignments persist across tool calls;
   prefix assignments do not.
+- **Hostless lifecycle** (`packages/host-virtual/src/__tests__/hostless-environment.test.ts`):
+  external and explicit cancellation wake pending stdin reads, cancelled
+  dispatchers cannot report success, `head -c` completes without another
+  input chunk, and handover carries modified initial environment values.
+- **Redirection failures** (`session.test.ts`): ordinary filesystem errors
+  become command exit failures so `||` and subsequent statements run;
+  other output sinks still flush and implementation errors remain visible.
+- **Archive operands** (`tar.test.ts`): relative `-C` operands accumulate,
+  absolute ones reset the directory, missing requested members fail, and
+  overlapping selections and partial extraction preserve their semantics.
 - The backend's hostless integration (`roadmap.md` M8) runs `demi file`,
   `demi todo` and builtin pipelines through tinybash end to end.
