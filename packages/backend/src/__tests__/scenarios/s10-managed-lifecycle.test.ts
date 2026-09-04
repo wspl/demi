@@ -60,7 +60,7 @@ async function bind(conversationId: string, deviceId: string): Promise<void> {
     { workspaceId: null, hostDeviceId: null },
     { workspaceId: null, hostDeviceId: deviceId },
     { from: { kind: 'hostless' }, to: { kind: 'host', deviceId } },
-    null,
+    { departed: null, arrivingDeviceId: deviceId },
   )
   expect(won).toBe(true)
 }
@@ -89,7 +89,7 @@ test('provision and bind, idle → hibernate, the next turn wakes with a fresh t
   const first = await driver.turn({ model: [model.shell('t1', 'printf hi > note.txt && demi host current && demi host list'), model.say('one')] })
   expect(itemsText(first.requests[0]!.items)).toContain(`Current target: the machine "cloud" (host ${device.id})`)
   expect(first.received[0]).toContain('host: machine "cloud"')
-  expect(first.received[0]).toContain(`${device.id}  cloud  online  ${home}  (current)`)
+  expect(first.received[0]).toContain(`cloud  ${device.id}  online  ${home}  (main)`)
   expect(await readFile(join(home, 'note.txt'), 'utf8')).toBe('hi')
 
   // No turn, no jobs: the idle window passes and the guest is hibernated; the checkpoint clock fired before it.

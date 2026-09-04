@@ -65,6 +65,7 @@ CREATE TABLE conversations (
   workspace_id  TEXT REFERENCES workspaces(id),
   host_device_id TEXT REFERENCES devices(id),
   pending_switch_json TEXT,
+  hosts_changed INTEGER NOT NULL DEFAULT 0,
   provider_id TEXT,
   model_id      TEXT,
   created_at    TEXT NOT NULL,
@@ -72,12 +73,16 @@ CREATE TABLE conversations (
 );
 CREATE INDEX idx_conversations_user ON conversations(user_id, archived, updated_at);
 
-CREATE TABLE conversation_host_grants (
+CREATE TABLE conversation_hosts (
   conversation_id TEXT NOT NULL REFERENCES conversations(id),
   device_id       TEXT NOT NULL REFERENCES devices(id),
-  granted_at      TEXT NOT NULL,
-  PRIMARY KEY (conversation_id, device_id)
+  name            TEXT NOT NULL,
+  cwd             TEXT,
+  attached_at     TEXT NOT NULL,
+  PRIMARY KEY (conversation_id, device_id),
+  UNIQUE (conversation_id, name)
 );
+CREATE INDEX idx_conversation_hosts_device ON conversation_hosts(device_id);
 
 CREATE TABLE providers (
   id            TEXT PRIMARY KEY,

@@ -13,7 +13,8 @@ import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ManagedHosts } from '../managed/lifecycle'
 
-const grantBodySchema = z.object({ deviceId: z.string().min(1) })
+const attachBodySchema = z.object({ deviceId: z.string().min(1) })
+const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
 
 const patchConversationBodySchema = z.object({
   title: z.string().optional(),
@@ -32,8 +33,10 @@ export function conversationRoutes(options: {
   managedHosts: ManagedHosts | null
   vault: ProviderVault
   mode: InstanceMode
+  /** Whether a device has a live runner socket, for the host list. */
+  deviceOnline: (deviceId: string) => boolean
 }): Hono<AuthEnv> {
-  const { control, conversationStores, agentServer, hostFor, managedHosts, vault, mode } = options
+  const { control, conversationStores, agentServer, hostFor, managedHosts, vault, mode, deviceOnline } = options
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -99,33 +102,52 @@ export function conversationRoutes(options: {
     return c.json({ conversation: await control.getConversation(conversation.id) })
   })
 
-  // The grant set (`sessions-and-targets.md` § Host grants): the hosts this
-  // conversation may reach besides its target. Explicit grants take the
-  // user's own paired devices; a managed host enters only by the automatic
-  // grant on switching away from it.
-  app.get('/:id/grants', async (c) => {
+  // The attached hosts (`sessions-and-targets.md` § Attached hosts): the
+  // hosts this conversation reaches besides its main host. The route takes
+  // any device the user owns; which devices the product offers is its own
+  // choice. A change is announced to the model at the next turn boundary.
+  const hostsOf = async (conversationId: string) =>
+    (await control.listAttachedHosts(conversationId)).map((host) => ({ ...host, online: deviceOnline(host.deviceId) }))
+
+  app.get('/:id/hosts', async (c) => {
     const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
-    return c.json({ grants: await control.listHostGrants(conversation.id) })
+    return c.json({ hosts: await hostsOf(conversation.id) })
   })
 
-  app.post('/:id/grants', async (c) => {
+  app.post('/:id/hosts', async (c) => {
     const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
-    const parsed = grantBodySchema.safeParse(await c.req.json().catch(() => null))
+    const parsed = attachBodySchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { deviceId: string }' }, 400)
     const device = await control.getDevice(parsed.data.deviceId)
-    if (!device || device.userId !== conversation.userId || device.kind !== 'user') {
-      return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
-    }
-    await control.grantHost(conversation.id, device.id)
-    return c.json({ grants: await control.listHostGrants(conversation.id) }, 201)
+    if (!device || device.userId !== conversation.userId) return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
+    // A host is main or attached, never both.
+    const target = conversation.workspaceId ? (await control.getWorkspace(conversation.workspaceId))?.deviceId : conversation.hostDeviceId
+    if (target === device.id) return c.json({ code: 'host_is_main', message: 'That device is the conversation\'s main host' }, 409)
+    await control.attachHost(conversation.id, device.id, device.name, null, true)
+    return c.json({ hosts: await hostsOf(conversation.id) }, 201)
   })
 
-  app.delete('/:id/grants/:deviceId', async (c) => {
+  app.patch('/:id/hosts/:deviceId', async (c) => {
     const conversation = await own(c)
     if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
-    await control.revokeHost(conversation.id, c.req.param('deviceId'))
+    const parsed = renameHostBodySchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { name: string }' }, 400)
+    switch (await control.renameAttachedHost(conversation.id, c.req.param('deviceId'), parsed.data.name)) {
+      case 'not_attached':
+        return c.json({ code: 'host_not_attached', message: 'No such attached host' }, 404)
+      case 'name_taken':
+        return c.json({ code: 'name_taken', message: 'Another attached host has that name' }, 409)
+      case 'renamed':
+        return c.json({ hosts: await hostsOf(conversation.id) })
+    }
+  })
+
+  app.delete('/:id/hosts/:deviceId', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    await control.detachHost(conversation.id, c.req.param('deviceId'))
     return c.body(null, 204)
   })
 

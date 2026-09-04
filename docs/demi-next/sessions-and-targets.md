@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Delivered (switching and offline semantics in M6; hostless in M8; the session upgrade and managed hosts in M11); § Attached hosts pending implementation |
+| Status | Delivered (switching and offline semantics in M6; hostless in M8; the session upgrade and managed hosts in M11; attached hosts 2026-09) |
 | Scope | A conversation's execution target: the three states, hostless execution, switching, attached hosts, offline behaviour, what persists where |
 
 ## The session

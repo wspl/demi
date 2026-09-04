@@ -5,7 +5,7 @@ import { resolveExecutionTarget, targetDeviceId } from '../conversation/executio
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
 import type { RunnerRegistry } from '../runner/registry'
 import { relayedPipesOf, type Pipe, type PipeBroker } from '../runner/pipes'
-import type { ControlService, ExecutionTarget } from '../storage/control'
+import type { AttachedHostRecord, ControlService, ExecutionTarget } from '../storage/control'
 import type { ManagedHosts } from './lifecycle'
 
 export interface HostCommandDeps {
@@ -20,42 +20,51 @@ export interface HostCommandDeps {
 
 /**
  * The backend-contributed `demi host` subcommand group (`commands.md` § The
- * `demi host` group): `list`, `current`, `shell --id`. A cross-host command
+ * `demi host` group): `list`, `current`, `shell --host`. A cross-host command
  * runs as a job on that host with the caller's stdin and stdout attached to
  * the job's as pipes (`runner.md` § Pipes), never over the runner sockets.
  */
 export function createHostCommandGroup(deps: HostCommandDeps, conversationId: string): CommandGroup {
   return {
     name: 'host',
-    summary: 'Execution-target operations: list reachable hosts, show the current one, run a command on another host.',
+    summary: 'The hosts this conversation reaches: list them, show the main one, run a command on another.',
     subcommands: [listCommand(deps, conversationId), currentCommand(deps, conversationId), shellCommand(deps, conversationId)],
   }
 }
 
-/** A host this conversation may dispatch to: its device and the directory commands start in. */
+/** A host this conversation may dispatch to: its name, its device and the directory commands start in. */
 interface ReachableHost {
+  name: string
   deviceId: string
   path: string
-  role: 'current' | 'granted'
+  role: 'main' | 'attached'
 }
 
 /**
- * The hosts `shell --id` accepts (`sessions-and-targets.md` § Host grants):
- * the current target's device and the conversation's grant set. A granted
- * host starts a shell in its home. The one place the check lives.
+ * The hosts `shell --host` accepts (`sessions-and-targets.md` § Attached
+ * hosts): the main host and the attached ones. The main host's shell starts
+ * in the conversation's directory there, an attached host's where the last
+ * shell there ended, its home before one ran. The one place the check lives.
  */
 async function reachableHosts(deps: HostCommandDeps, conversationId: string): Promise<ReachableHost[]> {
   const conversation = await deps.control.getConversation(conversationId)
   if (!conversation) return []
   const target = await resolveExecutionTarget(deps.control, conversation)
   const hosts: ReachableHost[] = []
-  const currentDeviceId = targetDeviceId(target)
-  if (currentDeviceId !== null) hosts.push({ deviceId: currentDeviceId, path: targetDirectory(deps, target), role: 'current' })
-  for (const grant of await deps.control.listHostGrants(conversationId)) {
-    if (grant.deviceId === currentDeviceId) continue
-    hosts.push({ deviceId: grant.deviceId, path: deps.registry.deviceIdentity(grant.deviceId)?.homeDir ?? '', role: 'granted' })
+  const mainDeviceId = targetDeviceId(target)
+  if (mainDeviceId !== null) {
+    const device = await deps.control.getDevice(mainDeviceId)
+    hosts.push({ name: device?.name ?? mainDeviceId, deviceId: mainDeviceId, path: targetDirectory(deps, target), role: 'main' })
+  }
+  for (const attached of await deps.control.listAttachedHosts(conversationId)) {
+    if (attached.deviceId === mainDeviceId) continue
+    hosts.push({ name: attached.name, deviceId: attached.deviceId, path: attachedDirectory(deps, attached), role: 'attached' })
   }
   return hosts
+}
+
+function attachedDirectory(deps: HostCommandDeps, attached: AttachedHostRecord): string {
+  return attached.cwd ?? deps.registry.deviceIdentity(attached.deviceId)?.homeDir ?? ''
 }
 
 function targetDirectory(deps: HostCommandDeps, target: ExecutionTarget): string {
@@ -67,21 +76,18 @@ function targetDirectory(deps: HostCommandDeps, target: ExecutionTarget): string
 function listCommand(deps: HostCommandDeps, conversationId: string): Command {
   return {
     name: 'list',
-    summary: 'Hosts this conversation can reach with `demi host shell --id`: id, name, online, directory; the current one marked.',
+    summary: 'Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory shells start in; the main one marked.',
     kind: 'rpc',
     run: async ({ io }) => {
       const hosts = await reachableHosts(deps, conversationId)
       if (hosts.length === 0) {
-        await io.stdout('no hosts: this conversation runs hostless and has been granted no host\n')
+        await io.stdout('no hosts: this conversation runs hostless and has no attached host\n')
         return { exitCode: 0 }
       }
-      const lines = await Promise.all(
-        hosts.map(async (host) => {
-          const device = await deps.control.getDevice(host.deviceId)
-          const online = deps.registry.deviceOnline(host.deviceId) ? 'online' : 'offline'
-          return `${host.deviceId}  ${device?.name ?? '?'}  ${online}  ${host.path || '?'}  (${host.role})`
-        }),
-      )
+      const lines = hosts.map((host) => {
+        const online = deps.registry.deviceOnline(host.deviceId) ? 'online' : 'offline'
+        return `${host.name}  ${host.deviceId}  ${online}  ${host.path || '?'}  (${host.role})`
+      })
       await io.stdout(`${lines.join('\n')}\n`)
       return { exitCode: 0 }
     },
@@ -92,21 +98,22 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
   return {
     name: 'shell',
     summary:
-      'Run a shell string in another host\'s bash: `demi host shell --id <hostId> <script>`. The script runs in that host\'s default directory with this command\'s stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --id A "tar c -C /work ." | tar x`, `tar c . | demi host shell --id A "tar x -C /work"`). stderr and the exit code pass through.',
+      'Run a shell string in another host\'s bash: `demi host shell --host <name|id> <script>`. The script starts where the last shell on that host ended (its home before one ran) with this command\'s stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci "tar c -C /work ." | tar x`, `tar c . | demi host shell --host ci "tar x -C /work"`). stderr and the exit code pass through.',
     failureOutput: 'writes the reason to stderr and exits non-zero (127 when the host cannot run bash)',
-    input: { id: z.string(), script: z.string() },
+    input: { host: z.string(), script: z.string() },
     positionals: ['script'],
     kind: 'rpc',
     run: async (ctx) => {
-      const id = ctx.parsed.values.id as string
+      const wanted = ctx.parsed.values.host as string
       const script = ctx.parsed.values.script as string
       if (script.trim() === '') {
-        await ctx.io.stderr('usage: demi host shell --id <hostId> <script>\n')
+        await ctx.io.stderr('usage: demi host shell --host <name|id> <script>\n')
         return { exitCode: 2 }
       }
-      const host = (await reachableHosts(deps, conversationId)).find((candidate) => candidate.deviceId === id)
+      const hosts = await reachableHosts(deps, conversationId)
+      const host = hosts.find((candidate) => candidate.name === wanted) ?? hosts.find((candidate) => candidate.deviceId === wanted)
       if (!host) {
-        await ctx.io.stderr(`host shell: host ${id} is not reachable from this conversation (see \`demi host list\`)\n`)
+        await ctx.io.stderr(`host shell: host ${wanted} is not reachable from this conversation (see \`demi host list\`)\n`)
         return { exitCode: 1 }
       }
       try {
@@ -122,7 +129,7 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
 function currentCommand(deps: HostCommandDeps, conversationId: string): Command {
   return {
     name: 'current',
-    summary: 'The current execution target.',
+    summary: 'The main host: where the `bash` tool runs.',
     kind: 'rpc',
     run: async ({ io }) => {
       const conversation = await deps.control.getConversation(conversationId)
@@ -184,6 +191,8 @@ async function runOnHost(
   await view.catch(noop)
   await stdout.done.catch((error: unknown) => ctx.io.stderr(`host shell: stdout ${errorMessage(error)}\n`))
   stdin?.done.catch(noop)
+  // Where the shell ended is where the next one on this attached host starts.
+  if (target.role === 'attached' && exit.cwd !== undefined) await deps.control.setAttachedHostCwd(conversationId, target.deviceId, exit.cwd)
   if (exit.spawnError) {
     await ctx.io.stderr(`host shell: ${exit.spawnError.kind}${exit.spawnError.detail ? ` — ${exit.spawnError.detail}` : ''}\n`)
     return { exitCode: 127 }
