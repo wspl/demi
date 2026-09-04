@@ -212,7 +212,7 @@ provision ──▶ running ──▶ hibernated ──▶ running (wake) ──
 - **Wake** = mint a token, boot a fresh VM, attach the home image. The next
   action needing the host triggers it — a latency, not an error; idempotent
   per owner (at most one active VM per owner; concurrent triggers join the
-  same wake). `demi host shell --id` on a hibernated granted host wakes it.
+  same wake). `demi host shell --host` on a hibernated attached host wakes it.
 - **Runner is PID 1** (`init=/demi-runner`, root; the binary knows it by
   its pid, no flag): mounts `/proc`, `/sys`, `/dev`, `/run`; assembles the
   upper — a tmpfs as the upper and work directories of an overlay over the

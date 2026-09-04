@@ -143,7 +143,7 @@ Every leaf is one of two kinds:
 
 - **`rpc`** — the implementation runs in the backend. The command needs
   backend state: `todo` (`CommandStorage`), `agent` (the subagent
-  supervisor), `host` (registry, grants, provisioner). An invocation on a
+  supervisor), `host` (registry, attached hosts, provisioner). An invocation on a
   target travels to the backend as a typed message carrying the parsed
   arguments; its stdin and stdout are pipes brokered over HTTP
   (`runner.md` § Pipes), its stderr and exit code come back on the
@@ -352,28 +352,30 @@ execution never leaves a script half-done.
 ## The `demi host` group
 
 Contributed by the backend composition root because it needs the registry,
-the grant table and the provisioner:
+the attached-host table and the provisioner:
 
 ```
-demi host                                        help for the group
-demi host list                                   reachable hosts: id, name, online, directory; the current one marked
-demi host current                                the current execution target
-demi host shell --id <hostId> <shell_content>    run a shell string in that host's real bash; byte-faithful stdio
+demi host                                         help for the group
+demi host list                                    the main host, marked, and every attached host: name, id, online, directory
+demi host current                                 the main host
+demi host shell --host <name|id> <shell_content>  run a shell string in that host's real bash; byte-faithful stdio
 ```
 
 `<shell_content>` is one positional argument executed by that host's
-`bash -c`, so pipes, redirections and globs apply remotely; on the current
-target it starts in the conversation's directory there, on a granted host
-in that host's home. The caller's stdin and stdout are attached to the
-remote job's, both streaming while it runs — pipes brokered by the
-backend between the two runners over HTTP (`runner.md` § Pipes), never
-over the runner sockets — so `demi host shell --id A "tar c -C /work ." |
-tar x` lands a working tree byte for byte, and `tar c . | demi host shell
---id A "tar x -C /work"` does the same the other way; stderr and the exit
-code pass through as they happen. The host id is the device id `demi
-host list` prints. The reachable set is the conversation's current target
-plus its grant set, checked in one place (`sessions-and-targets.md` § Host
-grants).
+`bash -c`, so pipes, redirections and globs apply remotely. It starts in
+the host's recorded working directory — for the main host the
+conversation's directory there, for an attached host the directory its
+last `shell --host` ended in (`sessions-and-targets.md` § Attached hosts)
+— and the directory it ends in is recorded for the next. The caller's
+stdin and stdout are attached to the remote job's, both streaming while
+it runs — pipes brokered by the backend between the two runners over
+HTTP (`runner.md` § Pipes), never over the runner sockets — so `demi host
+shell --host ci "tar c -C /work ." | tar x` lands a working tree byte for
+byte, and `tar c . | demi host shell --host ci "tar x -C /work"` does the
+same the other way; stderr and the exit code pass through as they happen.
+`--host` takes the name `demi host list` prints or the device id. The
+reachable set is the main host plus the attached hosts, checked in one
+place.
 
 ## Packages
 

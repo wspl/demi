@@ -262,7 +262,7 @@ executing here, which it could already read and modify.
 
 A **pipe** is a finite byte stream with two ends. Every `rpc` command's
 stdin and its stdout is one, and so is a job's stdin or stdout when `demi
-host shell --id` attaches it to a process on another host. A pipe whose
+host shell --host` attaches it to a process on another host. A pipe whose
 ends are in different processes is carried as one HTTP exchange brokered
 by the backend — the producing end `PUT`s, the consuming end `GET`s, the
 backend pipes one body into the other and holds nothing — never as a
@@ -306,12 +306,12 @@ A's model:   demi file write notes.md < big.txt
   rpc_exit ◄──────────────────────────────────────────────  after P_out drained
 ```
 
-`demi host shell --id` — the caller's pipe ends attached to a job on
+`demi host shell --host` — the caller's pipe ends attached to a job on
 another host, both directions streaming while the job runs:
 
 ```
-A's model:   tar c . | demi host shell --id B "tar x -C /work"        (B's job reads A's pipe)
-             demi host shell --id B "tar c -C /work ." | tar x        (A's pipe reads B's job)
+A's model:   tar c . | demi host shell --host B "tar x -C /work"        (B's job reads A's pipe)
+             demi host shell --host B "tar c -C /work ." | tar x        (A's pipe reads B's job)
 
   A (caller)                     backend                              B (the job)
   rpc_call { stdin: true } ────►  P_in  minted  A → B
@@ -329,7 +329,7 @@ A hostless caller — the backend's own tinybash runs the command, so its
 end is in-process:
 
 ```
-hostless model:   demi host shell --id B "cat /work/notes.md" > notes.md
+hostless model:   demi host shell --host B "cat /work/notes.md" > notes.md
 
   backend                                                             B
   P_out minted  B → backend (sink: the pipeline's next stage)

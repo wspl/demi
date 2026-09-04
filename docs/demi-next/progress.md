@@ -3069,6 +3069,48 @@ its own checkpoint over `runner-protocol`, `shell`, `command-loader`,
 `runner` and `backend`, with the M9 transfer tests re-pointed at pipes
 and a push-direction copy added beside the pull.
 
+### Attached hosts (2026-09-04) — rulings
+
+Asked whether a conversation can work on several hosts at once. The
+main-host model stands: one execution target where the `bash` tool runs,
+which the agent never switches. The M11 grant set was already the second
+half — hosts the conversation may reach through `demi host shell` — but
+framed as a permission, keyed by device id, always starting in home, and
+mentioned to the model only in the switch announcement. Ruling: the grant
+set becomes **attached hosts**, a first-class part of the conversation.
+
+- Table `conversation_hosts (conversation_id, device_id, name, cwd,
+  attached_at)`, primary key on the device (one attachment per device per
+  conversation), `UNIQUE (conversation_id, name)`. It replaces
+  `conversation_host_grants`.
+- `name` is for the model and the user; the identity stays the device.
+  Seeded from the device's hostname, suffixed within the conversation on a
+  collision (hostnames are not unique), renamable. Considered and dropped:
+  a free per-conversation alias distinct from the hostname (the hostname
+  is the name people already use), and relying on the hostname alone (not
+  an identifier).
+- `cwd` is where work on that host last stood — written back from the
+  job's exit after every `shell --host`, the start of the next. Not a
+  scope or a permission. Considered and dropped: a user-set directory per
+  attachment (only an initial cwd, and it invited attaching a device twice
+  with two directories, which made the set ambiguous).
+- No copy verb. `tar | demi host shell --host` over a pipe is the idiom;
+  a `demi host cp` was proposed and rejected — it would restate `tar`'s
+  semantics and, on a hostless main host, need a tar codec in the backend
+  where the ordinary upgrade rule already applies.
+- `demi host shell --id` becomes `--host <name|id>`; `/api/conversations/
+  :id/grants` becomes `…/hosts` with `PATCH …/hosts/:deviceId { name }`;
+  a change to the set is announced at the next turn boundary like a
+  switch.
+
+Records rewritten: `sessions-and-targets.md` (§ Attached hosts replacing
+§ Host grants, § Switching), `commands.md` (§ The `demi host` group),
+`backend.md`, `storage.md`, `overview.md`, `product.md`,
+`managed-hosts.md`, `runner.md` (the flag in § Pipes). Implementation
+follows the pipes checkpoint; the split.test grant cases re-point at
+attachments, with name seeding and collision, cwd write-back, rename,
+and the announcement covered.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
