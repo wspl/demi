@@ -15,7 +15,7 @@
 | `backend.md` | the backend program: modules, deployment topology, routing, Web API |
 | `storage.md` | control and conversation databases, `ControlService`, blob and home-image stores, replication |
 | `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
-| `sessions-and-targets.md` | a conversation's execution target: hostless, user hosts, managed hosts, switching, grants |
+| `sessions-and-targets.md` | a conversation's execution target: hostless, user hosts, managed hosts, switching, attached hosts |
 | `commands.md` | the command system: root commands (`demi` built in, library users add their own), `rpc` and `runtime` kinds, the command ABI, manifest, loader, tinybash and hostless execution |
 | `tinybash.md` | the small shell hostless conversations run in: the corpus-placed boundary, grammar, GNU-faithful builtins, refusals, the equivalence guarantee |
 | `tinyjs.md` | tinyjs: the runtime under the runner and every root command on a target |
@@ -188,7 +188,7 @@ protocol**. It is empty for two reasons, in this order of importance:
    compromise turns every claimed device into a bot. We accept the
    asymmetry deliberately, with three answers: self-host-first positioning
    (the user controls the datacenter), a runner so thin and frozen it is
-   auditable, and explicit device claiming plus per-conversation host grants
+   auditable, and explicit device claiming plus per-conversation attached hosts
    (`sessions-and-targets.md`). If this product ever becomes public
    multi-tenant SaaS, device-side capability narrowing is the next step; the
    line exists and we know where it is.

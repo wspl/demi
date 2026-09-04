@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Date | 2026-09-02 |
-| Status | Delivered (switching and offline semantics in M6; hostless in M8; grants, the session upgrade and managed hosts in M11) |
-| Scope | A conversation's execution target: the three states, hostless execution, switching, grants, offline behaviour, what persists where |
+| Status | Delivered (switching and offline semantics in M6; hostless in M8; the session upgrade and managed hosts in M11); § Attached hosts pending implementation |
+| Scope | A conversation's execution target: the three states, hostless execution, switching, attached hosts, offline behaviour, what persists where |
 
 ## The session
 
@@ -125,31 +125,70 @@ hostless → user host, user host → user host, workspace ↔ another
 workspace, and the hostless → managed host entrance above. There is no
 managed → hostless entrance.
 
-At a turn boundary the backend re-resolves the Host, **grants the departed
-host to the conversation** (below), and injects a context block stating the
-previous and new target and directory. Files are never moved by code except
-in the hostless → managed case, where the store holds them. The context
-block also states that full outputs of earlier commands live on the
-previous target: output paths the model saw before the switch are stale
-on the new Host, and `demi host shell --id` reaches them. When the new
-target is on the same device, the block notes the old directory is still
-directly accessible. A switch requested mid-turn is refused; concurrent
-switches have one winner.
+At a turn boundary the backend re-resolves the Host, **attaches the
+departed host to the conversation** (below) with its directory as the
+attachment's working directory, and injects a context block stating the
+previous and new target and directory. Files are never moved by code
+except in the hostless → managed case, where the store holds them. The
+context block also states that full outputs of earlier commands live on
+the previous target: output paths the model saw before the switch are
+stale on the new Host, and `demi host shell --host` reaches them. When
+the new target is on the same device, the block notes the old directory
+is still directly accessible. A switch requested mid-turn is refused;
+concurrent switches have one winner.
 
-## Host grants
+## Attached hosts
 
-A conversation has a **grant set** (`conversation_host_grants`) of hosts
-it may reach besides its current target. Grants are created only by the
-user: switching the target in the picker automatically grants the departed
-host; the user can grant and revoke hosts explicitly on the devices page.
-The agent can never grant. The backend checks the grant set before
-dispatching a cross-host command (`demi host shell --id`); a host outside
-it is refused. Being a grant target does not pin a managed host against
-idle reclamation; `shell --id` on a hibernated one wakes it.
+A conversation has one **main host** — its execution target, where the
+`bash` tool runs — and a set of **attached hosts** it may reach besides
+it. The main host is what the three states above describe; attached hosts
+are rows of `conversation_hosts`:
 
-The grant set is the trust asymmetry's first answer inside the product
-(`overview.md`): the datacenter side reaches only the hosts a user has
-named for a conversation.
+```
+conversation_hosts
+  conversation_id   device_id   name    cwd             attached_at
+  c1                dev-9f2a    ci      /srv/ci/app     …             ← attached by the user
+  c1                dev-01c7    ci-2    /home/a/app     …             ← the departed target of a switch
+PRIMARY KEY (conversation_id, device_id)      UNIQUE (conversation_id, name)
+```
+
+- **Identity** is the device. A device is attached to a conversation at
+  most once.
+- **`name`** is what the model and the user call the host. It is seeded
+  from the device's hostname when the host is attached, made unique within
+  the conversation with a numeric suffix when two devices share one, and
+  renamable by the user. `demi host shell --host` resolves it, and also
+  accepts the device id; `demi host list` prints both.
+- **`cwd`** is where work on that host last stood: the directory the last
+  `demi host shell --host` there ended in, written back from the job's
+  exit (`runner.md` § Jobs and the tee), and where the next one starts.
+  An explicitly attached host starts in its home; the departed target of a
+  switch starts in the directory it was left at. The column carries no
+  permission and draws no boundary — it is the same thing the main host
+  carries between jobs, kept once per attached host.
+
+Attaching is the user's act alone: switching the target automatically
+attaches the departed host; the user attaches and detaches hosts on the
+conversation's host list (`POST /api/conversations/:id/hosts { deviceId
+}`, `PATCH …/hosts/:deviceId { name }`, `DELETE …/hosts/:deviceId`,
+`backend.md`). The agent can never attach. A change to the set is
+announced to the model at the next turn boundary by a context block
+listing the attached hosts with their directories, the same mechanism as
+the switch announcement. Revoking a device detaches it from every
+conversation — an attachment is a permission, gone with the machine.
+
+The backend checks the attachment set before dispatching a cross-host
+command (`demi host shell --host`); a host outside it is refused. Being
+attached does not pin a managed host against idle reclamation; `shell
+--host` on a hibernated one wakes it. Copying between hosts is the shell
+idiom over a pipe (`runner.md` § Pipes): `tar c . | demi host shell
+--host ci "tar x"` pushes, `demi host shell --host ci "tar c ." | tar x`
+pulls; there is no separate copy verb, `tar` already defines the
+semantics and the pipe carries it byte for byte.
+
+The attachment set is the trust asymmetry's first answer inside the
+product (`overview.md`): the datacenter side reaches only the hosts a
+user has named for a conversation.
 
 ## Offline targets
 

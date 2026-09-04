@@ -129,8 +129,9 @@ Labels need not be unique. No model-level configuration of any kind.
 Chat view (existing web-ui components) + conversation sidebar; model picker
 at the input area; execution-target picker (hostless, the user's devices
 with a directory browser and directory creation, workspaces; the
-new-project device dropdown adds **Cloud**); grant management per
-conversation (the granted hosts, revoke); device management (claim-token
+new-project device dropdown adds **Cloud**); the conversation's host list
+(the main host, the attached hosts with name and directory; attach,
+rename, detach); device management (claim-token
 entry, online status, revoke — user hosts only, managed hosts never
 appear); providers page; usage page; admin-only user management and
 instance settings. A command's output in the browser is the view the
