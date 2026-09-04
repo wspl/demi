@@ -12,7 +12,7 @@ export interface HostCommandDeps {
   control: ControlService
   registry: RunnerRegistry
   pipes: PipeBroker
-  /** Wakes a hibernated managed host on `shell --id` (`sessions-and-targets.md` § Host grants); null when the backend provisions none. */
+  /** Wakes a hibernated managed host on `shell --host` (`sessions-and-targets.md` § Attached hosts); null when the backend provisions none. */
   managedHosts: ManagedHosts | null
   virtualHostFor: (conversationId: string) => Promise<Host>
   hostStoreFor: (conversationId: string) => HostStore
