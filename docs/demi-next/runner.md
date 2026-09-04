@@ -351,6 +351,14 @@ hostless model:   demi host shell --host B "tar c -C /work ." | tar x
   the broker; a runner holds no more than the body in flight; the backend
   holds no pipe bytes at all. Nothing is sized by the payload: a
   gigabyte crosses like a kilobyte, slower.
+- **Bytes as they are.** The transport applies no encoding: no
+  compression, no framing, the body is the pipe's bytes. Compression is
+  the script's choice (`tar cz … | demi host shell --host ci "tar xz"`),
+  where both ends can see whether the data is worth compressing. A
+  negotiated `Content-Encoding` between two runners would be a
+  transport-internal addition that changes no contract; deferred until a
+  bandwidth-bound link is measured (§ Wire rules lists the other deferral
+  of this kind).
 - **Authorization and lifetime.** The `PUT` is accepted only from the
   pipe's source device and the `GET` only from its sink device; an
   in-process end needs neither. Each id serves one exchange; an end that
