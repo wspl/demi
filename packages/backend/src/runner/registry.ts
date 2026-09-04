@@ -45,6 +45,7 @@ export interface RunnerRegistryOptions {
  * socket; the live stdin is what the command is steered with.
  */
 export interface RpcRelayIO {
+  signal: AbortSignal
   stdin: Pipe | null
   stdout: Pipe
   stderr(bytes: Uint8Array): Promise<void>
@@ -65,6 +66,8 @@ export interface RunnerSocketHandle {
 export type ClaimResult = { ok: true; device: DeviceRecord } | { ok: false; code: 'rate_limited' | 'invalid_code' }
 
 interface RunnerConnection {
+  closed: boolean
+  helloStarted: boolean
   send(message: BackendToRunnerMessage): void
   close(): void
   runner: RunnerInfo | null
@@ -80,7 +83,7 @@ interface RunnerConnection {
   /** Running jobs as of the last `pong`; the idle rule reads it. */
   jobs: number
   /** Live stdin queues of the rpc calls relayed on this connection. */
-  rpcStdin: Map<string, ByteQueue>
+  rpcCalls: Map<string, { live: ByteQueue; controller: AbortController; pipes: Pipe[] }>
   /** `sync` requests in flight, settled by `sync_done`. */
   syncs: Map<string, Deferred<{ untouched: boolean }>>
 }
@@ -106,6 +109,7 @@ export class RunnerRegistry {
   private readonly trace: ((deviceId: string, direction: 'in' | 'out', message: RunnerProtocolMessage) => void) | null
   private readonly homeGrow: ((deviceId: string, bytes: number) => Promise<void>) | null
   private readonly pendingClaims = new Map<string, RunnerConnection>()
+  private readonly sockets = new Set<RunnerConnection>()
   private readonly connections = new Map<string, RunnerConnection>()
   private readonly hosts = new Map<string, Map<string, RemoteHost>>()
   /** Last-known identity per device, so a Host can exist while its runner is offline. */
@@ -130,7 +134,10 @@ export class RunnerRegistry {
   /** Binds one runner WebSocket; the route feeds frames and the close event in. */
   openSocket(io: { send(frame: Uint8Array): void; close(): void }): RunnerSocketHandle {
     const connection: RunnerConnection = {
+      closed: false,
+      helloStarted: false,
       send: (message) => {
+        if (connection.closed) return
         if (connection.deviceId !== null) this.trace?.(connection.deviceId, 'out', message)
         try {
           io.send(wire.encode(message))
@@ -138,7 +145,10 @@ export class RunnerRegistry {
           // A racing close drops the frame; the close event owns cleanup.
         }
       },
-      close: () => io.close(),
+      close: () => {
+        this.handleSocketClose(connection)
+        io.close()
+      },
       runner: null,
       deviceId: null,
       claimCode: null,
@@ -147,11 +157,13 @@ export class RunnerRegistry {
       pongPending: false,
       livenessPaused: false,
       jobs: 0,
-      rpcStdin: new Map(),
+      rpcCalls: new Map(),
       syncs: new Map(),
     }
+    this.sockets.add(connection)
     return {
       handleMessage: (frame) => {
+        if (connection.closed || this.closed) return
         let message: RunnerToBackendMessage
         try {
           message = wire.decodeRunnerToBackend(frame)
@@ -181,6 +193,10 @@ export class RunnerRegistry {
       tokenHash: hashDeviceToken(deviceToken),
     })
     const manifest = await this.manifestFrame()
+    if (connection.closed || this.closed) {
+      await this.control.deleteDevice(device.id)
+      return { ok: false, code: 'invalid_code' }
+    }
     this.bindDevice(connection, device.id)
     connection.send({ type: 'claimed', deviceToken })
     if (manifest) connection.send(manifest)
@@ -314,8 +330,7 @@ export class RunnerRegistry {
     this.closed = true
     for (const waiter of this.onlineWaiters.values()) waiter.reject(new Error('registry closed'))
     this.onlineWaiters.clear()
-    for (const connection of [...this.pendingClaims.values(), ...this.connections.values()]) {
-      this.teardown(connection)
+    for (const connection of [...this.sockets]) {
       connection.close()
     }
     this.pendingClaims.clear()
@@ -343,11 +358,15 @@ export class RunnerRegistry {
       return
     }
     if (message.type === 'rpc_stdin') {
-      connection.rpcStdin.get(message.callId)?.push(message.bytes)
+      connection.rpcCalls.get(message.callId)?.live.push(message.bytes)
       return
     }
     if (message.type === 'rpc_stdin_end') {
-      connection.rpcStdin.get(message.callId)?.close()
+      connection.rpcCalls.get(message.callId)?.live.close()
+      return
+    }
+    if (message.type === 'rpc_cancel') {
+      this.cancelRpc(connection, message.callId)
       return
     }
     if (message.type === 'pipe_done') {
@@ -393,8 +412,14 @@ export class RunnerRegistry {
    */
   private async relayRpc(connection: RunnerConnection, deviceId: string, message: RpcCallMessage): Promise<void> {
     const { type: _type, ...call } = message
+    if (connection.rpcCalls.has(call.callId)) {
+      connection.close()
+      return
+    }
     const live = new ByteQueue()
-    connection.rpcStdin.set(call.callId, live)
+    const controller = new AbortController()
+    const pipes: Pipe[] = []
+    connection.rpcCalls.set(call.callId, { live, controller, pipes })
     const stderr = async (bytes: Uint8Array) => connection.send({ type: 'rpc_output', callId: call.callId, bytes })
     let exitCode: number
     try {
@@ -402,9 +427,11 @@ export class RunnerRegistry {
       if (!this.pipes) throw new Error('this backend brokers no pipes')
       const stdin = call.stdin ? this.pipes.open({ deviceId }) : null
       const stdout = this.pipes.open(undefined, { deviceId })
+      pipes.push(stdout, ...(stdin ? [stdin] : []))
       connection.send({ type: 'rpc_pipes', callId: call.callId, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
       const writer = stdout.writer()
       const io: RpcRelayIO = {
+        signal: controller.signal,
         stdin,
         stdout,
         stderr,
@@ -425,17 +452,27 @@ export class RunnerRegistry {
       await stderr(new TextEncoder().encode(`${call.root}: ${errorMessage(error)}\n`))
       exitCode = 1
     } finally {
-      connection.rpcStdin.delete(call.callId)
+      connection.rpcCalls.delete(call.callId)
       live.close()
+      for (const pipe of pipes) this.pipes?.fail(pipe.id, 'rpc call ended')
     }
-    connection.send({ type: 'rpc_exit', callId: call.callId, exitCode })
+    connection.send({ type: 'rpc_exit', callId: call.callId, exitCode: controller.signal.aborted ? 130 : exitCode })
+  }
+
+  private cancelRpc(connection: RunnerConnection, callId: string): void {
+    const call = connection.rpcCalls.get(callId)
+    if (!call) return
+    call.controller.abort()
+    call.live.close()
+    for (const pipe of call.pipes) this.pipes?.fail(pipe.id, 'rpc call cancelled')
   }
 
   private async handleHello(
     connection: RunnerConnection,
     message: Extract<RunnerToBackendMessage, { type: 'hello' }>,
   ): Promise<void> {
-    if (connection.deviceId !== null || connection.claimCode !== null) return
+    if (connection.helloStarted || connection.closed || this.closed) return
+    connection.helloStarted = true
     connection.runner = message.runner
     const refuse = (code: HelloErrorCode, reason: string) => {
       this.log(`runner hello refused (${code}): ${reason} [${message.runner.name}, ${message.runner.platform}]`)
@@ -460,19 +497,19 @@ export class RunnerRegistry {
       refuse('internal', errorMessage(error))
       return
     }
+    if (connection.closed || this.closed) return
     if (!device) {
       refuse('unknown_device', 'unknown device')
       return
     }
-    // A token holds at most one live connection; the newcomer is refused
-    // and retries once the old socket has closed or timed out.
+    // Finish asynchronous preparation before atomically checking and binding
+    // the device. A socket closed during preparation cannot become online.
+    const manifest = await this.manifestFrame()
+    if (connection.closed || this.closed) return
     if (this.connections.has(device.id)) {
       refuse('already_connected', `device ${device.id} already has a live connection`)
       return
     }
-    // The manifest is built before the device counts as online, so the
-    // frame follows `hello_ok` at once and no job can precede it.
-    const manifest = await this.manifestFrame()
     this.bindDevice(connection, device.id)
     connection.send({ type: 'hello_ok', deviceId: device.id })
     if (manifest) connection.send(manifest)
@@ -489,7 +526,7 @@ export class RunnerRegistry {
   }
 
   private issueClaimCode(connection: RunnerConnection): void {
-    if (this.closed) return
+    if (this.closed || connection.closed) return
     if (connection.claimCode) this.pendingClaims.delete(connection.claimCode)
     const code = generateClaimCode()
     connection.claimCode = normalizeClaimCode(code)
@@ -525,6 +562,9 @@ export class RunnerRegistry {
   }
 
   private handleSocketClose(connection: RunnerConnection): void {
+    if (connection.closed) return
+    connection.closed = true
+    this.sockets.delete(connection)
     this.teardown(connection)
     if (connection.deviceId !== null && this.connections.get(connection.deviceId) === connection) {
       this.connections.delete(connection.deviceId)
@@ -542,6 +582,7 @@ export class RunnerRegistry {
 
   private teardown(connection: RunnerConnection): void {
     this.clearPendingClaim(connection)
+    for (const callId of connection.rpcCalls.keys()) this.cancelRpc(connection, callId)
     for (const done of connection.syncs.values()) done.resolve({ untouched: false })
     connection.syncs.clear()
     if (connection.pingTimer) {

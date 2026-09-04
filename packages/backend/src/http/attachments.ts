@@ -11,8 +11,8 @@ export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
  * one metadata row, and the id goes back for the `send` frame's ref block.
  * Never inline media into the frame socket.
  */
-export function attachmentRoutes(options: { control: ControlService; blobs: BlobStore }): Hono<AuthEnv> {
-  const { control, blobs } = options
+export function attachmentRoutes(options: { control: ControlService; blobsFor: (userId: string) => BlobStore }): Hono<AuthEnv> {
+  const { control, blobsFor } = options
   const app = new Hono<AuthEnv>()
 
   app.post('/', async (c) => {
@@ -25,7 +25,7 @@ export function attachmentRoutes(options: { control: ControlService; blobs: Blob
     if (bytes.length > ATTACHMENT_MAX_BYTES) {
       return c.json({ code: 'too_large', message: `Attachment exceeds the ${ATTACHMENT_MAX_BYTES}-byte limit` }, 413)
     }
-    const sha256 = await blobs.put(bytes)
+    const sha256 = await blobsFor(c.get('user').id).put(bytes)
     const attachment = await control.createAttachment({
       userId: c.get('user').id,
       mediaType,

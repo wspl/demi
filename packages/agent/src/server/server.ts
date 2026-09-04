@@ -67,8 +67,8 @@ export interface AgentServerOptions {
    * `agent-sessions/<id>`). Products with their own databases inject here.
    */
   sessionStore?: (agentSessionId: string, host: Host) => AgentSessionStore<unknown>
-  /** Media blob store used by the default host-backed persistence. */
-  blobs?: BlobStore
+  /** Media store for a root session and its children, scoped by the composing product. */
+  blobs?: (agentSessionId: string) => BlobStore
 }
 
 export interface AgentTransportBinding {
@@ -83,7 +83,7 @@ export class AgentServer {
   private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly notifyParentOnIdle: boolean
   private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
-  private readonly blobs: BlobStore | null
+  private readonly blobs: NonNullable<AgentServerOptions['blobs']> | null
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 

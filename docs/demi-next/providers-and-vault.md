@@ -10,8 +10,9 @@
 
 The provider runtimes (`createAnthropicApiProvider`, `createCodexProvider`,
 …) are instantiated **inside the backend** with vault credentials at their
-native endpoints, one runtime per provider entry, keyed by
-`(providerId, modelId)`. The backend never proxies or rewrites model
+native endpoints. The assembly caches public providers by entry identity
+and its current configuration and label; each session owns an independent
+runtime. The backend never proxies or rewrites model
 traffic. The module exposes the aggregated model catalog (live, never
 stored) and quota surfaces to the web UI.
 
@@ -42,9 +43,21 @@ list if any, else the vendor's models.dev list, else the runtime's own
 (the packages' static lists, which stay for the local products). Vendor
 endpoints and model lists are never stored.
 
-Providers are assembled per user from the vault; for CLI transports the
-assembly is conversation-scoped, because the execution target's spawn is
-injected at assembly. A provider declares an **execution-requirement
+Vendor request policy is selected alongside the runtime: DeepSeek Chat
+Completions replays prior reasoning content so thinking/tool exchanges
+retain the fields its endpoint requires.
+
+Every inference resolves the provider from the current user's scope and
+vault before rate-limit accounting. A missing or deleted entry refuses
+the request. Each session reuses its runtime while the provider snapshot,
+selected model and, for process providers, execution Host stay the same;
+configuration edits, a model switch or a Host switch recreate that
+runtime. Rebuilds use the current request's model, thinking and service
+tier. A request already running may finish with its original runtime.
+Each spawn also resolves the current Host at invocation time. Provider
+cache lookups compare the freshly read configuration and label, so an
+older lookup completing after an edit cannot leave later requests using
+its snapshot. A provider declares an **execution-requirement
 capability flag** when it needs a process-capable target; the hostless
 state refuses such a provider with upgrade guidance — gated by the flag,
 never by provider names.
@@ -66,7 +79,12 @@ authStore implementations plus one `HostStore` implementation, all inside
   the file/pool stores. API-key providers take resolver functions.
 - Device-login flows return token material without persisting
   (`runCodexDeviceLogin(): CodexAuthDotJson`); the vault stores the return
-  value.
+  value. A login publishes its completed credential pool into its final
+  provider directory before inserting the provider row. Storage atomically
+  enforces one subscription entry per owner scope and family, including
+  the shared owner scope. Concurrent losing logins fail with a scope conflict
+  and remove only their own unpublished pool; observers never see a row
+  whose credentials are still in a pending directory.
 - `providers.config` is encrypted at rest with the instance secret
   (`storage.md`). The backend never touches credential bytes beyond naming
   where a provider's pool lives.

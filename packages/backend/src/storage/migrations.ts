@@ -88,10 +88,14 @@ CREATE TABLE providers (
   id            TEXT PRIMARY KEY,
   owner_user_id TEXT REFERENCES users(id),
   provider_type TEXT NOT NULL,
+  credential_kind TEXT NOT NULL CHECK (credential_kind IN ('api_key', 'subscription')),
   label         TEXT NOT NULL,
   config        TEXT NOT NULL,
   created_at    TEXT NOT NULL
 );
+
+CREATE UNIQUE INDEX idx_providers_subscription_scope ON providers(COALESCE(owner_user_id, ''), provider_type)
+  WHERE credential_kind = 'subscription';
 
 CREATE TABLE usage_ledger (
   id              TEXT PRIMARY KEY,
