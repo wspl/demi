@@ -11,7 +11,8 @@ export interface TeedSpawnParams {
   args: string[]
   cwd: string
   env: Record<string, string>
-  tee: { stdoutPath: string; stderrPath: string; viewLimit: number }
+  /** With `stream`, the full stdout is also `stdoutStream` on the handle. */
+  tee: { stdoutPath: string; stderrPath: string; viewLimit: number; stream?: boolean }
   uid?: number
   gid?: number
 }
@@ -20,6 +21,8 @@ export interface TeedSpawnHandle {
   /** The view: the first `viewLimit` bytes of each stream, then the end. */
   stdout: AsyncIterable<Uint8Array>
   stderr: AsyncIterable<Uint8Array>
+  /** The full stdout, when asked for: a pipe end's source (`runner.md` § Pipes); dropping it early stops only this copy. */
+  stdoutStream?: AsyncIterable<Uint8Array>
   writeStdin(data: Uint8Array): Promise<void>
   closeStdin(): Promise<void>
   kill(signal?: string): Promise<void>
@@ -78,6 +81,7 @@ export async function spawnTeed(params: TeedSpawnParams): Promise<TeedSpawnHandl
   return {
     stdout: readHandle(child.stdout, true),
     stderr: readHandle(child.stderr, true),
+    ...(child.stdoutStream !== null ? { stdoutStream: readHandle(child.stdoutStream, true) } : {}),
     writeStdin: async (data) => {
       if (child.stdin === null || !stdinOpen) return
       await fs.write(child.stdin, data)

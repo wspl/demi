@@ -39,8 +39,8 @@ export type CommandModule<Args = Record<string, unknown>> = (ctx: CommandContext
  * speak this.
  */
 export interface DispatchIO {
-  /** The pipe: a pipeline, heredoc, `<` file, or empty. Finite. */
-  stdin: AsyncIterable<Uint8Array>
+  /** The pipe: a pipeline, heredoc, `<` file. Finite. Absent when fd 0 is not a pipe. */
+  stdin?: AsyncIterable<Uint8Array>
   /**
    * The script's own stdin, when this command's stdin is not redirected:
    * what the shell's caller writes after the command started (`shell_write`).

@@ -28,7 +28,7 @@ import { VendorCatalog } from './llm/vendors'
 import type { ModelsDevFetch } from '@demicodes/provider'
 import { meterProvider } from './llm/metering'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
-import { TransferBroker } from './runner/transfers'
+import { PipeBroker } from './runner/pipes'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ProviderVault } from './vault/providers'
 import { loadOrCreateInstanceSecret } from './vault/secret'
@@ -100,10 +100,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // shell was built with.
   let manifest: Promise<Manifest> | null = null
   const sessionShells = new Map<string, { host: Host; commands: CommandRegistry }>()
-  const transfers = new TransferBroker()
+  const pipes = new PipeBroker()
   const runnerRegistry = new RunnerRegistry({
     control,
-    transfers,
+    pipes,
     // Bound late: the lifecycle is built over the registry below.
     homeGrow: async (deviceId, bytes) => {
       if (!managedHosts) throw new Error('this backend provisions no machines')
@@ -128,12 +128,13 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         argv: call.argv,
         args: call.args,
         json: call.json,
-        stdin: call.stdin,
+        // The pipes are the caller's; a handler that attaches them to a job
+        // elsewhere finds them on the io (`host shell`), the rest read and
+        // write them here.
+        stdin: io.stdin?.stream() ?? null,
         cwd: call.cwd,
         env: call.env,
-        // The relayed io carries the calling device as a transfer destination
-        // (`host shell --id` streams its stdout there, not over the sockets).
-        io: { stdout: (data) => io.stdout(toBytes(data)), stderr: (data) => io.stderr(toBytes(data)), transferDestination: io.transferDestination } as CommandIO,
+        io: io.commandIO(),
         signal: new AbortController().signal,
         stdinStream: io.stdinStream,
       })
@@ -226,7 +227,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const hostCommandDeps = {
     control,
     registry: runnerRegistry,
-    transfers,
+    pipes,
     managedHosts,
     virtualHostFor: (conversationId: string): Promise<Host> => virtualHostFor(conversationId),
     hostStoreFor: (conversationId: string) => conversationStores.hostStore(conversationId),
@@ -306,7 +307,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     logins,
     agentServer,
     runnerRegistry,
-    transfers,
+    pipes,
     upgradeWebSocket,
     blobs,
     hostFor,
@@ -333,7 +334,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     close: async () => {
       await managedHosts?.close()
       await agentServer.close()
-      transfers.close()
+      pipes.close()
       await runnerRegistry.close()
       server.stop(true)
       conversationStores.close()

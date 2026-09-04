@@ -13,7 +13,7 @@ import type {
 } from '@demicodes/shell'
 import { createLogicalHostCwd } from '@demicodes/shell'
 import { createId, deferred, type Deferred } from '@demicodes/utils'
-import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, JobExitMessage, RunnerToBackendMessage } from '@demicodes/runner-protocol'
+import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, JobExitMessage, PipeRef, RunnerToBackendMessage } from '@demicodes/runner-protocol'
 
 /** One job on the runner as the backend drives it (`runner.md` § Jobs and the tee). */
 export interface RemoteJob {
@@ -109,8 +109,12 @@ export class RemoteHost implements Host {
     return this.activeJobs.size
   }
 
-  /** Starts `bash -c script` on the runner as one job; offline, the job fails at once. */
-  startJob(params: { script: string; cwd: string; env: Record<string, string> }): RemoteJob {
+  /**
+   * Starts `bash -c script` on the runner as one job; offline, the job fails
+   * at once. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes whose
+   * other ends are elsewhere (`runner.md` § Pipes).
+   */
+  startJob(params: { script: string; cwd: string; env: Record<string, string>; stdin?: PipeRef; stdout?: PipeRef }): RemoteJob {
     const jobId = createId()
     const job = new RemoteJobState(jobId, (message) => this.dispatch(message))
     if (!this.send) {
@@ -119,7 +123,15 @@ export class RemoteHost implements Host {
     }
     this.activeJobs.set(jobId, job)
     try {
-      this.send({ type: 'job_start', jobId, script: params.script, cwd: params.cwd, env: params.env })
+      this.send({
+        type: 'job_start',
+        jobId,
+        script: params.script,
+        cwd: params.cwd,
+        env: params.env,
+        ...(params.stdin ? { stdin: params.stdin } : {}),
+        ...(params.stdout ? { stdout: params.stdout } : {}),
+      })
     } catch (error) {
       this.activeJobs.delete(jobId)
       throw error

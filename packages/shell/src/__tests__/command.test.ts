@@ -10,7 +10,6 @@ import {
   type Command,
   type CommandGroup,
   type CommandIO,
-  type CommandStdin,
   type CommandStorage,
   type Host,
   type RuntimeModule,
@@ -18,10 +17,6 @@ import {
 import { RESERVED_COMMAND_NAMES } from '../reserved-names'
 
 const testHost = {} as Host
-
-function stdinOf(text: string): CommandStdin {
-  return { text, bytes: encodeUtf8(text) }
-}
 
 const filerSpec: Command = {
   name: 'filer',
@@ -140,7 +135,7 @@ const bareLeaf: Command = {
 }
 
 test('parseCommandInput maps positionals, flags, and stdin fields', () => {
-  const parsed = parseCommandInput(filerSpec, ['filer', 'create', 'src/foo.ts'], stdinOf('export const foo = 1\n'))
+  const parsed = parseCommandInput(filerSpec, ['filer', 'create', 'src/foo.ts'], 'export const foo = 1\n')
 
   expect(parsed).toEqual({
     path: ['filer', 'create'],
@@ -208,7 +203,7 @@ test('parseCommandInput rejects unknown options and invalid values', () => {
 })
 
 test('parseCommandInput walks nested groups down to a leaf', () => {
-  const parsed = parseCommandInput(nestedSpec, ['larkclaw', 'watch', 'create', 'my-id'], stdinOf('{"a":1}'))
+  const parsed = parseCommandInput(nestedSpec, ['larkclaw', 'watch', 'create', 'my-id'], '{"a":1}')
   expect(parsed).toEqual({
     path: ['larkclaw', 'watch', 'create'],
     help: false,

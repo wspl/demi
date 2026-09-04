@@ -1,17 +1,17 @@
-import { errorMessage } from '@demicodes/utils'
-import { type Command, type CommandGroup, type CommandIO, type Host, type HostStore } from '@demicodes/shell'
+import { errorMessage, noop } from '@demicodes/utils'
+import { type Command, type CommandGroup, type CommandIO, type CommandRunContext, type Host, type HostStore } from '@demicodes/shell'
 import { z } from 'zod'
 import { resolveExecutionTarget, targetDeviceId } from '../conversation/execution-target'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
-import type { RpcTransferDestination, RunnerRegistry } from '../runner/registry'
-import type { TransferBroker } from '../runner/transfers'
+import type { RunnerRegistry } from '../runner/registry'
+import { relayedPipesOf, type Pipe, type PipeBroker } from '../runner/pipes'
 import type { ControlService, ExecutionTarget } from '../storage/control'
 import type { ManagedHosts } from './lifecycle'
 
 export interface HostCommandDeps {
   control: ControlService
   registry: RunnerRegistry
-  transfers: TransferBroker
+  pipes: PipeBroker
   /** Wakes a hibernated managed host on `shell --id` (`sessions-and-targets.md` § Host grants); null when the backend provisions none. */
   managedHosts: ManagedHosts | null
   virtualHostFor: (conversationId: string) => Promise<Host>
@@ -21,8 +21,8 @@ export interface HostCommandDeps {
 /**
  * The backend-contributed `demi host` subcommand group (`commands.md` § The
  * `demi host` group): `list`, `current`, `shell --id`. A cross-host command
- * runs as a job on that host; its stdout comes back as a brokered transfer,
- * never over the runner sockets.
+ * runs as a job on that host with the caller's stdin and stdout attached to
+ * the job's as pipes (`runner.md` § Pipes), never over the runner sockets.
  */
 export function createHostCommandGroup(deps: HostCommandDeps, conversationId: string): CommandGroup {
   return {
@@ -92,7 +92,7 @@ function shellCommand(deps: HostCommandDeps, conversationId: string): Command {
   return {
     name: 'shell',
     summary:
-      'Run a shell string in another host\'s bash: `demi host shell --id <hostId> <script>`. The script runs in that host\'s default directory; its stdout arrives once it exits, byte-faithfully, so archives pipe cleanly (`demi host shell --id A "tar c -C /work ." | tar x`). stderr and the exit code pass through.',
+      'Run a shell string in another host\'s bash: `demi host shell --id <hostId> <script>`. The script runs in that host\'s default directory with this command\'s stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --id A "tar c -C /work ." | tar x`, `tar c . | demi host shell --id A "tar x -C /work"`). stderr and the exit code pass through.',
     failureOutput: 'writes the reason to stderr and exits non-zero (127 when the host cannot run bash)',
     input: { id: z.string(), script: z.string() },
     positionals: ['script'],
@@ -150,17 +150,19 @@ function currentCommand(deps: HostCommandDeps, conversationId: string): Command 
 }
 
 /**
- * A script on another host, as one job there (`runner.md` § Transfers): the
- * pipe's bytes are its stdin, its stderr view streams back as it runs, and
- * at exit its full stdout file is transferred — to the calling device when
- * the call was relayed from one, otherwise into this process.
+ * A script on another host, as one job there (`runner.md` § Pipes): the
+ * caller's stdin and stdout become the job's fd 0 and fd 1, both streaming
+ * while it runs. A caller on a device has its pipes already minted by the
+ * relay — their far ends are simply named as the job's host, so the bytes
+ * go device to device through the broker; a hostless caller's ends are this
+ * process's own streams. The stderr view and the exit code pass through.
  */
 async function runOnHost(
   deps: HostCommandDeps,
   conversationId: string,
   target: ReachableHost,
   script: string,
-  ctx: { io: CommandIO; stdin: { bytes: Uint8Array }; env: Record<string, string> },
+  ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env'>,
 ): Promise<{ exitCode: number }> {
   const device = await deps.control.getDevice(target.deviceId)
   if (device?.kind === 'managed' && deps.managedHosts) await deps.managedHosts.ensureRunning(device)
@@ -171,37 +173,56 @@ async function runOnHost(
   const host = deps.registry.hostFor(target, conversationId, deps.hostStoreFor(conversationId))
   const env: Record<string, string> = { DEMI_SESSION_ID: conversationId }
   if (ctx.env.DEMI_SHELL_ID) env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
-  const job = host.startJob({ script, cwd: target.path, env })
-  const stdinDone = (async () => {
-    if (ctx.stdin.bytes.length > 0) await job.writeStdin(ctx.stdin.bytes)
-    await job.closeStdin()
-  })().catch(() => {})
+  const { stdin, stdout } = attachEnds(deps.pipes, ctx, target.deviceId)
+  const job = host.startJob({ script, cwd: target.path, env, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
   const view = (async () => {
     for await (const chunk of job.output) {
       if (chunk.stream === 'stderr') await ctx.io.stderr(chunk.chunk)
     }
   })()
   const exit = await job.wait()
-  await view.catch(() => {})
-  await stdinDone
+  await view.catch(noop)
+  await stdout.done.catch((error: unknown) => ctx.io.stderr(`host shell: stdout ${errorMessage(error)}\n`))
+  stdin?.done.catch(noop)
   if (exit.spawnError) {
     await ctx.io.stderr(`host shell: ${exit.spawnError.kind}${exit.spawnError.detail ? ` — ${exit.spawnError.detail}` : ''}\n`)
     return { exitCode: 127 }
   }
-  const output = exit.output
-  if (output && output.stdoutBytes > 0) {
-    const destination = transferDestinationOf(ctx.io)
-    const transfer = deps.transfers.open(
-      target.deviceId,
-      destination ? { deviceId: destination.deviceId } : { consume: async (chunk) => void (await ctx.io.stdout(chunk)) },
-    )
-    destination?.receive(transfer.url)
-    await Promise.all([deps.registry.transferSend(target.deviceId, transfer.id, output.stdoutPath, transfer.url), transfer.done])
-  }
   return { exitCode: exit.exitCode ?? 1 }
 }
 
-/** The relayed-rpc io carries where its device can `GET` a transfer; any other io takes the bytes here. */
-function transferDestinationOf(io: CommandIO): RpcTransferDestination | null {
-  return (io as { transferDestination?: RpcTransferDestination }).transferDestination ?? null
+/**
+ * The pipes the job's ends attach to. Relayed from a device: the call's own
+ * pipes, their far ends named as the job's device. In this process: a pipe
+ * fed from the caller's stdin stream, and one drained into its stdout.
+ */
+function attachEnds(broker: PipeBroker, ctx: Pick<CommandRunContext, 'io' | 'stdin'>, deviceId: string): { stdin: Pipe | null; stdout: Pipe } {
+  const relayed = relayedPipesOf(ctx.io)
+  if (relayed) {
+    relayed.stdin?.sinkTo(deviceId)
+    relayed.stdout.sourceFrom(deviceId)
+    return relayed
+  }
+  let stdin: Pipe | null = null
+  if (ctx.stdin) {
+    stdin = broker.open(undefined, { deviceId })
+    const writer = stdin.writer()
+    void (async () => {
+      try {
+        for await (const chunk of ctx.stdin!) await writer.write(chunk)
+        writer.end()
+      } catch (error) {
+        writer.fail(error)
+      }
+    })()
+  }
+  const stdout = broker.open({ deviceId })
+  void (async () => {
+    try {
+      for await (const chunk of stdout.stream()) await ctx.io.stdout(chunk)
+    } catch {
+      // Reported through `done` by the caller.
+    }
+  })()
+  return { stdin, stdout }
 }

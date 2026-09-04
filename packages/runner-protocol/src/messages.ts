@@ -20,7 +20,7 @@ import { backendToRunnerMessageSchema, helloErrorCodeSchema, runnerToBackendMess
  * is the hardest component to update, so the backend must be able to tell an
  * incompatible runner apart from a broken one (`hello_error`).
  */
-export const RUNNER_PROTOCOL_VERSION = 4
+export const RUNNER_PROTOCOL_VERSION = 5
 
 /**
  * The view budget per stream of a job: what crosses the wire is the model's
@@ -29,7 +29,7 @@ export const RUNNER_PROTOCOL_VERSION = 4
  */
 export const JOB_VIEW_BYTES = 32 * 1024
 
-export type { FsCallMessage, FsOkMessage, FsOp, FsParams, FsResult } from './schemas'
+export type { FsCallMessage, FsOkMessage, FsOp, FsParams, FsResult, PipeRef } from './schemas'
 export { FS_OPS } from './schemas'
 
 export type RunnerToBackendMessage = z.infer<typeof runnerToBackendMessageSchema>

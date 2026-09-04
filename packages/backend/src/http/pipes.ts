@@ -1,14 +1,14 @@
 import { Hono } from 'hono'
-import type { TransferBroker } from '../runner/transfers'
+import type { PipeBroker } from '../runner/pipes'
 import type { ControlService } from '../storage/control'
 import { hashDeviceToken } from '../runner/claim-codes'
 
 /**
- * `/api/transfers/:id` — the two ends of a brokered transfer (`runner.md`
- * § Transfers): the source runner `PUT`s, the destination runner `GET`s,
- * both authenticated by their device token. Never reached by a browser.
+ * `/api/pipes/:id` — the device ends of a pipe (`runner.md` § Pipes): the
+ * source runner `PUT`s, the sink runner `GET`s, both authenticated by their
+ * device token. Never reached by a browser.
  */
-export function transferRoutes(options: { control: ControlService; broker: TransferBroker }): Hono {
+export function pipeRoutes(options: { control: ControlService; broker: PipeBroker }): Hono {
   const { control, broker } = options
   const app = new Hono()
 

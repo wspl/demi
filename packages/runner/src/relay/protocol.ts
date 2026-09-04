@@ -9,7 +9,11 @@ const bytesSchema = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
 export const relayRequestSchema = z.discriminatedUnion('type', [
   /** The manifest, on a cache miss. */
   z.object({ type: z.literal('manifest') }),
-  /** An `rpc` invocation with the pipe's bytes; the live stdin follows as `stdin` frames. */
+  /**
+   * An `rpc` invocation. `stdin` says whether fd 0 is a pipe; the pipe then
+   * follows as `pipe` frames ending in `pipe_end`, and the live stdin as
+   * `stdin` frames (`runner.md` § Pipes).
+   */
   z.object({
     type: z.literal('rpc'),
     agentSessionId: z.string(),
@@ -21,8 +25,12 @@ export const relayRequestSchema = z.discriminatedUnion('type', [
     json: z.boolean(),
     cwd: z.string(),
     env: z.record(z.string(), z.string()),
-    stdin: bytesSchema,
+    stdin: z.boolean(),
   }),
+  /** The pipe, as the process reads it from fd 0. */
+  z.object({ type: z.literal('pipe'), bytes: bytesSchema }),
+  z.object({ type: z.literal('pipe_end') }),
+  /** The live stdin the command is steered with. */
   z.object({ type: z.literal('stdin'), bytes: bytesSchema }),
   z.object({ type: z.literal('stdin_end') }),
 ])

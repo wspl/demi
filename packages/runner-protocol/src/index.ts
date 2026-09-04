@@ -18,5 +18,6 @@ export {
   type JobExitMessage,
   type JobOutput,
   type RpcCallMessage,
+  type PipeRef,
 } from './messages'
 export { runnerToBackendMessageSchema, backendToRunnerMessageSchema, fsOps } from './schemas'

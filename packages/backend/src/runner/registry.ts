@@ -10,11 +10,11 @@ import {
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import type { HostFileSystem, HostIdentity, HostStore } from '@demicodes/shell'
-import { ByteQueue, createId, deferred, errorMessage, type Deferred } from '@demicodes/utils'
+import type { CommandIO, HostFileSystem, HostIdentity, HostStore } from '@demicodes/shell'
+import { ByteQueue, createId, deferred, errorMessage, noop, toBytes, type Deferred } from '@demicodes/utils'
 import type { ControlService, DeviceRecord, WorkspaceRecord } from '../storage/control'
 import { generateClaimCode, generateDeviceToken, hashDeviceToken, normalizeClaimCode } from './claim-codes'
-import type { TransferBroker } from './transfers'
+import { withRelayedPipes, type Pipe, type PipeBroker } from './pipes'
 
 export interface RunnerRegistryOptions {
   control: ControlService
@@ -30,8 +30,8 @@ export interface RunnerRegistryOptions {
   manifest?: () => Promise<unknown>
   /** Runs an `rpc` command a runner relayed; output streams back through `io`, the result is its exit. */
   rpc?: RpcRelayHandler
-  /** Brokered transfers; the registry fails a device's transfers when its connection drops. */
-  transfers?: TransferBroker
+  /** The pipe broker; the registry mints a relayed call's pipes and fails a device's pipes when its connection drops. */
+  pipes?: PipeBroker
   /** Every message on every authenticated socket, by device — the wire audit tests run. */
   trace?: (deviceId: string, direction: 'in' | 'out', message: RunnerProtocolMessage) => void
   /** A guest's `home_grow`: grow the device's home image to `bytes`; `home_grown` is sent once this resolves. */
@@ -39,21 +39,18 @@ export interface RunnerRegistryOptions {
 }
 
 /**
- * Where a relayed rpc call's stdout can come from besides `rpc_output`
- * frames: a brokered transfer the calling device `GET`s itself, so bulk
- * bytes never cross the runner socket (`runner.md` § Transfers).
+ * A relayed rpc call's streams (`runner.md` § Pipes): its stdin and stdout
+ * are pipes whose device end is the caller — the handler reads and writes
+ * them here, or names their far ends — and its stderr view rides the
+ * socket; the live stdin is what the command is steered with.
  */
-export interface RpcTransferDestination {
-  deviceId: string
-  /** Tells the runner to stream the transfer at `url` as this call's stdout. */
-  receive(url: string): void
-}
-
 export interface RpcRelayIO {
-  stdinStream: AsyncIterable<Uint8Array>
-  stdout(bytes: Uint8Array): Promise<void>
+  stdin: Pipe | null
+  stdout: Pipe
   stderr(bytes: Uint8Array): Promise<void>
-  transferDestination: RpcTransferDestination
+  stdinStream: AsyncIterable<Uint8Array>
+  /** The `CommandIO` a handler runs with: stdout into the pipe, stderr to the view, the pipes attached for a handler that forwards them. */
+  commandIO(): CommandIO
 }
 
 /** One relayed `rpc` invocation: the call as it arrived, its live stdin, and where its output goes. */
@@ -84,8 +81,6 @@ interface RunnerConnection {
   jobs: number
   /** Live stdin queues of the rpc calls relayed on this connection. */
   rpcStdin: Map<string, ByteQueue>
-  /** Transfers this device was told to run, settled by `transfer_done`. */
-  transfers: Map<string, Deferred<void>>
   /** `sync` requests in flight, settled by `sync_done`. */
   syncs: Map<string, Deferred<{ untouched: boolean }>>
 }
@@ -107,7 +102,7 @@ export class RunnerRegistry {
   private readonly log: (line: string) => void
   private readonly manifest: (() => Promise<unknown>) | null
   private readonly rpc: RpcRelayHandler | null
-  private readonly transfers: TransferBroker | null
+  private readonly pipes: PipeBroker | null
   private readonly trace: ((deviceId: string, direction: 'in' | 'out', message: RunnerProtocolMessage) => void) | null
   private readonly homeGrow: ((deviceId: string, bytes: number) => Promise<void>) | null
   private readonly pendingClaims = new Map<string, RunnerConnection>()
@@ -127,7 +122,7 @@ export class RunnerRegistry {
     this.log = options.log ?? ((line) => console.warn(line))
     this.manifest = options.manifest ?? null
     this.rpc = options.rpc ?? null
-    this.transfers = options.transfers ?? null
+    this.pipes = options.pipes ?? null
     this.trace = options.trace ?? null
     this.homeGrow = options.homeGrow ?? null
   }
@@ -153,7 +148,6 @@ export class RunnerRegistry {
       livenessPaused: false,
       jobs: 0,
       rpcStdin: new Map(),
-      transfers: new Map(),
       syncs: new Map(),
     }
     return {
@@ -272,25 +266,6 @@ export class RunnerRegistry {
     return host
   }
 
-  /** Tells the device to `PUT` the file at `path` to `url`; resolves when the destination drained it. */
-  transferSend(deviceId: string, transferId: string, path: string, url: string): Promise<void> {
-    return this.transfer(deviceId, { type: 'transfer_send', transferId, path, url })
-  }
-
-  /** Tells the device to `GET` `url` into the file at `path`. */
-  transferReceive(deviceId: string, transferId: string, path: string, url: string): Promise<void> {
-    return this.transfer(deviceId, { type: 'transfer_receive', transferId, path, url })
-  }
-
-  private transfer(deviceId: string, message: Extract<BackendToRunnerMessage, { type: 'transfer_send' | 'transfer_receive' }>): Promise<void> {
-    const connection = this.connections.get(deviceId)
-    if (!connection) return Promise.reject(new Error(`device ${deviceId} is offline`))
-    const done = deferred<void>()
-    connection.transfers.set(message.transferId, done)
-    connection.send(message)
-    return done.promise
-  }
-
   /**
    * Drops the device's socket now. A killed guest leaves its TCP side
    * half-open — no FIN ever comes — and the liveness ping would take a
@@ -375,11 +350,9 @@ export class RunnerRegistry {
       connection.rpcStdin.get(message.callId)?.close()
       return
     }
-    if (message.type === 'transfer_done') {
-      const done = connection.transfers.get(message.transferId)
-      connection.transfers.delete(message.transferId)
-      if (message.ok) done?.resolve()
-      else done?.reject(new Error(message.error ?? 'transfer failed'))
+    if (message.type === 'pipe_done') {
+      // The broker settles a pipe by its HTTP exchange; the runner's report is for the log.
+      if (!message.ok) this.log(`pipe ${message.pipeId} on device ${connection.deviceId}: ${message.error ?? 'failed'}`)
       return
     }
     if (message.type === 'sync_done') {
@@ -412,29 +385,48 @@ export class RunnerRegistry {
     }
   }
 
-  /** An `rpc` command invoked on the device: run here, its output streamed back to the command-mode process. */
+  /**
+   * An `rpc` command invoked on the device: run here, its pipes minted with
+   * the device as the caller's end and named to the runner before anything
+   * else, its stderr view streamed back, and its exit sent once the stdout
+   * pipe drained (`runner.md` § Pipes).
+   */
   private async relayRpc(connection: RunnerConnection, deviceId: string, message: RpcCallMessage): Promise<void> {
     const { type: _type, ...call } = message
-    const stdin = new ByteQueue()
-    connection.rpcStdin.set(call.callId, stdin)
+    const live = new ByteQueue()
+    connection.rpcStdin.set(call.callId, live)
+    const stderr = async (bytes: Uint8Array) => connection.send({ type: 'rpc_output', callId: call.callId, bytes })
     let exitCode: number
     try {
       if (!this.rpc) throw new Error('this backend serves no rpc commands to runners')
-      exitCode = await this.rpc(call, {
-        stdinStream: stdin.stream(),
-        stdout: async (bytes) => connection.send({ type: 'rpc_output', callId: call.callId, stream: 'stdout', bytes }),
-        stderr: async (bytes) => connection.send({ type: 'rpc_output', callId: call.callId, stream: 'stderr', bytes }),
-        transferDestination: {
-          deviceId,
-          receive: (url) => connection.send({ type: 'rpc_transfer', callId: call.callId, url }),
-        },
-      })
+      if (!this.pipes) throw new Error('this backend brokers no pipes')
+      const stdin = call.stdin ? this.pipes.open({ deviceId }) : null
+      const stdout = this.pipes.open(undefined, { deviceId })
+      connection.send({ type: 'rpc_pipes', callId: call.callId, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
+      const writer = stdout.writer()
+      const io: RpcRelayIO = {
+        stdin,
+        stdout,
+        stderr,
+        stdinStream: live.stream(),
+        commandIO: () => withRelayedPipes({ stdout: (data) => writer.write(toBytes(data)), stderr: (data) => stderr(toBytes(data)) }, { stdin, stdout }),
+      }
+      try {
+        exitCode = await this.rpc(call, io)
+        writer.end()
+      } catch (error) {
+        writer.fail(error)
+        throw error
+      }
+      // The process has read everything before it exits with the code.
+      await stdout.done.catch(noop)
+      stdin?.done.catch(noop)
     } catch (error) {
-      connection.send({ type: 'rpc_output', callId: call.callId, stream: 'stderr', bytes: new TextEncoder().encode(`${call.root}: ${errorMessage(error)}\n`) })
+      await stderr(new TextEncoder().encode(`${call.root}: ${errorMessage(error)}\n`))
       exitCode = 1
     } finally {
       connection.rpcStdin.delete(call.callId)
-      stdin.close()
+      live.close()
     }
     connection.send({ type: 'rpc_exit', callId: call.callId, exitCode })
   }
@@ -538,7 +530,7 @@ export class RunnerRegistry {
       this.connections.delete(connection.deviceId)
       void this.control.touchDeviceSeen(connection.deviceId).catch(() => {})
       this.detachHosts(connection.deviceId, 'runner disconnected')
-      this.transfers?.deviceGone(connection.deviceId)
+      this.pipes?.deviceGone(connection.deviceId)
     }
   }
 
@@ -550,8 +542,6 @@ export class RunnerRegistry {
 
   private teardown(connection: RunnerConnection): void {
     this.clearPendingClaim(connection)
-    for (const done of connection.transfers.values()) done.reject(new Error('runner disconnected'))
-    connection.transfers.clear()
     for (const done of connection.syncs.values()) done.resolve({ untouched: false })
     connection.syncs.clear()
     if (connection.pingTimer) {
