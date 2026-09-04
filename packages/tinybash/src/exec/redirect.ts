@@ -5,7 +5,7 @@ import { expandGlob, hasGlobChars } from '../grammar/glob'
 import { resolvePath } from '../outside/namespace'
 import { type Writer } from './stream'
 import { strerror } from '../builtins/errors'
-import { bytesStream, concatBytes, emptyByteStream, encodeUtf8, toBytes } from '@demicodes/utils'
+import { bytesStream, concatBytes, emptyByteStream, encodeUtf8, errorCode, toBytes } from '@demicodes/utils'
 
 export interface Channels {
   stdin: AsyncIterable<Uint8Array>
@@ -23,7 +23,13 @@ class FileSink {
   }
   async flush(): Promise<void> {
     if (this.chunks.length === 0) return
-    await this.fs.appendFile(this.path, concatBytes(this.chunks))
+    try {
+      await this.fs.appendFile(this.path, concatBytes(this.chunks))
+    } catch (error) {
+      const code = errorCode(error)
+      if (code === null || !/^E[A-Z0-9]+$/.test(code)) throw error
+      throw new RedirectError(this.path, strerror(error))
+    }
     this.chunks.length = 0
   }
 }
@@ -115,7 +121,16 @@ export async function applyRedirects(redirects: readonly Redirect[], inherited: 
   return {
     channels,
     flush: async () => {
-      for (const sink of sinks) await sink.flush()
+      let failed: RedirectError | undefined
+      for (const sink of sinks) {
+        try {
+          await sink.flush()
+        } catch (error) {
+          if (!(error instanceof RedirectError)) throw error
+          failed ??= error
+        }
+      }
+      if (failed) throw failed
     },
   }
 }

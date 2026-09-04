@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LocalHost } from '@demicodes/host-virtual/testing'
+import { decodeUtf8, encodeUtf8, errnoError } from '@demicodes/utils'
 import { runTinybash, type ShellState } from '../index'
 import { stubRoots } from '../testing'
 
@@ -16,13 +17,13 @@ function world() {
   const state: ShellState = { cwd: home, home, vars: { HOME: home } }
   const { roots, dispatch, calls } = stubRoots({ demi: {} })
   let out = ''
-  const run = (script: string, signal?: AbortSignal) =>
+  const run = (script: string, signal?: AbortSignal, fs = host.fs) =>
     runTinybash({
       script,
       roots,
       namespace: [home],
       dispatch,
-      fs: host.fs,
+      fs,
       state,
       io: { stdout: (d) => void (out += typeof d === 'string' ? d : new TextDecoder().decode(d)), stderr: () => {} },
       identity: { user: 'demi', group: 'demi' },
@@ -59,6 +60,50 @@ describe('parse first', () => {
       expect(w.state.vars.X).toBeUndefined()
       expect(w.state.cwd).toBe(w.home)
       expect(w.output()).toBe('')
+    } finally {
+      w.dispose()
+    }
+  })
+})
+
+describe('redirection write failures', () => {
+  test('an ordinary write failure still flushes the other redirected stream', async () => {
+    const w = world()
+    try {
+      await w.host.fs.writeFile('source', encodeUtf8('payload\n'))
+      const fs = new Proxy(w.host.fs, {
+        get(target, key) {
+          if (key !== 'appendFile') return Reflect.get(target, key)
+          return async (...args: Parameters<typeof w.host.fs.appendFile>) => {
+            if (args[0] === `${w.home}/out` && args[1].byteLength > 0) throw errnoError('EIO', 'write failed')
+            return w.host.fs.appendFile(...args)
+          }
+        },
+      })
+      expect(await w.run('cat source missing > out 2> errors; echo done', undefined, fs)).toEqual({ kind: 'ran', exitCode: 0 })
+      expect(w.output()).toBe('done\n')
+      expect(decodeUtf8(await w.host.fs.readFile('errors'))).toBe('cat: missing: No such file or directory\n')
+    } finally {
+      w.dispose()
+    }
+  })
+
+  test('unexpected filesystem implementation errors still reject the script', async () => {
+    const w = world()
+    try {
+      for (const failure of [new Error('unexpected failure'), Object.assign(new TypeError('invalid argument'), { code: 'ERR_INVALID_ARG_TYPE' })]) {
+        const fs = new Proxy(w.host.fs, {
+          get(target, key) {
+            if (key !== 'appendFile') return Reflect.get(target, key)
+            return async (...args: Parameters<typeof w.host.fs.appendFile>) => {
+              if (args[1].byteLength > 0) throw failure
+              return w.host.fs.appendFile(...args)
+            }
+          },
+        })
+        await expect(w.run('echo payload > out || echo recovery; echo never', undefined, fs)).rejects.toBe(failure)
+        expect(w.output()).toBe('')
+      }
     } finally {
       w.dispose()
     }

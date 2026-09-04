@@ -98,6 +98,51 @@ describe('tar', () => {
     }
   })
 
+  test('relative -C options accumulate for creation and extraction, and an absolute -C resets them', async () => {
+    const w = world()
+    try {
+      w.seed()
+      mkdirSync(join(w.home, 'lib'))
+      writeFileSync(join(w.home, 'lib/deep.ts'), 'wrong directory\n')
+      expect(await w.run('tar cf nested.tar -C src -C lib deep.ts && tar tf nested.tar')).toEqual({
+        exit: 0, stdout: 'deep.ts\n', stderr: '',
+      })
+      expect(await w.run('mkdir -p out/nested && tar xf nested.tar -C out -C nested && cat out/nested/deep.ts')).toEqual({
+        exit: 0, stdout: 'deep\n', stderr: '',
+      })
+      expect(await w.run(`tar cf reset.tar -C src -C ${w.home} notes.txt && tar tf reset.tar`)).toEqual({
+        exit: 0, stdout: 'notes.txt\n', stderr: '',
+      })
+    } finally {
+      w.dispose()
+    }
+  })
+
+  test('missing selected members fail listing and extraction while preserving matched files', async () => {
+    const w = world()
+    try {
+      w.seed()
+      await w.run('tar cf selected.tar src notes.txt')
+      const missing = 'tar: missing.txt: Not found in archive\ntar: Exiting with failure status due to previous errors\n'
+      expect(await w.run('tar tf selected.tar notes.txt missing.txt')).toEqual({
+        exit: 2, stdout: 'notes.txt\n', stderr: missing,
+      })
+      expect(await w.run('mkdir partial && tar xf selected.tar -C partial src missing.txt && echo incorrect')).toEqual({
+        exit: 2, stdout: '', stderr: missing,
+      })
+      expect(readFileSync(join(w.home, 'partial/src/main.ts'), 'utf8')).toBe('export const main = 1\n')
+      expect(statSync(join(w.home, 'partial/src')).mtime.toISOString()).toBe('2024-01-15T12:00:00.000Z')
+      expect(await w.run('tar tf selected.tar missing.txt || echo recovery')).toEqual({
+        exit: 0, stdout: 'recovery\n', stderr: missing,
+      })
+      const overlapping = await w.run('tar tf selected.tar src src/lib')
+      expect(overlapping.exit).toBe(0)
+      expect(overlapping.stderr).toBe('')
+    } finally {
+      w.dispose()
+    }
+  })
+
   test('the errors GNU prints: a missing operand, an empty archive, a bad archive, a member with .., a link', async () => {
     const w = world()
     try {

@@ -134,7 +134,7 @@ export class HostlessEnvironment implements ShellEnvironment {
     const state = this.stateFor(input)
     const vars: Record<string, string> = {}
     for (const [key, value] of Object.entries(state.vars)) {
-      if (!(key in this.initialEnv) && !STARTING_VARS.has(key)) vars[key] = value
+      if (value !== this.initialEnv[key] && !STARTING_VARS.has(key)) vars[key] = value
     }
     return { cwd: state.cwd, vars }
   }
@@ -195,7 +195,6 @@ export class HostlessEnvironment implements ShellEnvironment {
     const running = this.runningById.get(record.id)
     if (record.status !== 'running' || !running) return this.view(record)
     running.controller.abort()
-    running.stdin.close()
     await settledOrElapsed(running.settled, ABORT_GRACE_MS)
     if (record.status === 'running') this.markAborted(running)
     return this.view(record)
@@ -236,11 +235,14 @@ export class HostlessEnvironment implements ShellEnvironment {
     })
     this.commandsById.set(id, record)
     const controller = new AbortController()
+    const stdin = new ByteQueue()
+    const closeStdin = () => stdin.close()
+    controller.signal.addEventListener('abort', closeStdin, { once: true })
+    const onCallerAbort = () => controller.abort()
     if (callerSignal) {
       if (callerSignal.aborted) controller.abort()
-      else callerSignal.addEventListener('abort', () => controller.abort(), { once: true })
+      else callerSignal.addEventListener('abort', onCallerAbort, { once: true })
     }
-    const stdin = new ByteQueue()
     const stdoutBytes: Uint8Array[] = []
     const stdoutDecoder = new TextDecoder()
     const stderrDecoder = new TextDecoder()
@@ -285,14 +287,18 @@ export class HostlessEnvironment implements ShellEnvironment {
             const message = `hostless shell: output exceeded the ${this.captureLimitBytes}-byte capture limit and the command was stopped; narrow the output at the source (filters, head, tighter paths)\n`
             return this.finish(running, 137, stdoutBytes, `${record.stderr}${message}`)
           }
+          if (controller.signal.aborted) return this.markAborted(running)
           if (result.kind === 'outside') return this.finish(running, 2, stdoutBytes, `${record.stderr}${result.message}\n`)
-          if (controller.signal.aborted && result.exitCode === 130) return this.markAborted(running)
           return this.finish(running, result.exitCode, stdoutBytes, record.stderr)
         },
-        (error: unknown) => this.finish(running, 1, stdoutBytes, `${record.stderr}hostless shell: ${errorMessage(error)}\n`),
+        (error: unknown) => controller.signal.aborted
+          ? this.markAborted(running)
+          : this.finish(running, 1, stdoutBytes, `${record.stderr}hostless shell: ${errorMessage(error)}\n`),
       )
       .finally(() => {
         stdin.close()
+        controller.signal.removeEventListener('abort', closeStdin)
+        callerSignal?.removeEventListener('abort', onCallerAbort)
         this.runningById.delete(id)
         if (shell.foreground === running) shell.foreground = undefined
       })
