@@ -78,16 +78,16 @@ export const head: Builtin = async (ctx) => {
   // never ends (the script's stdin) still lets head finish.
   return eachInput(ctx, 'head', flags.operands, async (stream) => {
     let left = count
+    if (left <= 0) return
     if (c !== undefined) {
       for await (const chunk of stream) {
-        if (left <= 0) break
         const take = chunk.subarray(0, left)
         await ctx.stdout(take)
         left -= take.byteLength
+        if (left <= 0) break
       }
       return
     }
-    if (left <= 0) return
     for await (const line of lines(stream)) {
       await ctx.stdout(encodeLatin1(line.newline ? `${line.text}\n` : line.text))
       left -= 1

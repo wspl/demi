@@ -1,6 +1,6 @@
 import { checkCancelled, type BuiltinContext } from './io'
 import { strerror } from './errors'
-import { bytesStream } from '@demicodes/utils'
+import { bytesStream, isAbortError } from '@demicodes/utils'
 
 export interface Input {
   /** The operand as given; `standard input` for `-` or no operands. */
@@ -23,7 +23,9 @@ export function guardedStdin(ctx: BuiltinContext, report: (detail: string) => vo
         checkCancelled(ctx)
         yield chunk
       }
+      checkCancelled(ctx)
     } catch (error) {
+      if (isAbortError(error)) throw error
       failed = true
       await report(strerror(error))
     }
