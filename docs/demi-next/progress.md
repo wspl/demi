@@ -3111,6 +3111,26 @@ follows the pipes checkpoint; the split.test grant cases re-point at
 attachments, with name seeding and collision, cwd write-back, rename,
 and the announcement covered.
 
+### `tar` as a tinybash builtin (2026-09-04) — ruling
+
+Follows from attached hosts: with `tar | demi host shell --host` as the
+copy idiom, a hostless conversation pulling a directory from an attached
+host would have hit the upgrade on `tar` and acquired a machine only to
+receive files. Ruling: `tar` joins the builtin table, admitted by
+structure (the wire format of a cross-host copy) rather than by corpus
+frequency, and the earlier note that the upgrade rule covers this case is
+withdrawn. Whitelist `c x t`, `-f` (default `-`), `-C`, `-v`, `-z` over
+the platform's gzip stream; `-j -J` and the rest refused. Three
+consequences recorded in `tinybash.md`: archives are compared by listing
+and extracted tree, not bytes (name-order entries, `demi` as owner); a
+link entry on extraction is the third run-time failure that is not an
+upgrade, keeping the tree link-free; extraction paths follow GNU's own
+rules inside the store, which is the namespace. `runner.md` § Pipes'
+hostless example now shows the pull. Implementation lands with the
+attached-hosts checkpoint, in `@demicodes/tinybash` beside the other
+builtins, with the corpus cases for `c`, `x`, `t`, `-C`, `-z`, the link
+refusal and the `..` member.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

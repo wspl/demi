@@ -66,7 +66,11 @@ is concentrated: `grep` in 48 % of calls, `head` 41 %, `tail` 24 %, `echo`
 or `grep`. A builtin set of a dozen commands with whitelisted flags covers
 what the model habitually reaches for; `sed` is admitted only for printing
 line ranges, because its `s///` dialect was the largest source of
-divergence in the previous portable-command effort.
+divergence in the previous portable-command effort. One builtin is
+admitted by structure rather than frequency: `tar`, the wire format of a
+copy between hosts (`sessions-and-targets.md` § Attached hosts) — without
+it a hostless conversation would need a machine to receive a directory
+from an attached host.
 
 ## Grammar
 
@@ -134,6 +138,7 @@ any other flag or form with a message. Output formats are GNU's.
 | `rm` | `-r -f` | |
 | `mv`, `cp` | `cp -r` | |
 | `touch` | | |
+| `tar` | `c`, `x`, `t` (also `-c -x -t`), `-f FILE` (default `-`: stdout or stdin), `-C DIR`, `-v`, `-z` | streaming in both directions; `-z` is the platform's gzip stream; `-j`, `-J` and every other option are refused. Archives are written in GNU format with entries in name order and `demi` as owner, where GNU writes them in readdir order — so `.tar` files are compared by their `tar t` listing and the extracted tree, never byte for byte (§ Verification). Mode and mtime are kept both ways. Extraction follows GNU's own path rules (a leading `/` stripped, a member containing `..` refused with the error), and the store is the namespace, so nothing lands outside it |
 | `pwd`, `true`, `false` | | |
 | `test`, `[` | `-e -f -d -s`, `=`, `!=`, `-z`, `-n` | |
 | `cd` | one path or none | changes the session cwd for subsequent tool calls |
@@ -192,12 +197,18 @@ drop or upload carrying one goes through the ordinary upgrade. Without
 links a path resolves where its text says, which is what makes the
 decision above exact.
 
-Two run-time failures are not upgrades. The storage quota: a write that
+Three run-time failures are not upgrades. The storage quota: a write that
 exceeds it fails with an `ENOSPC`-class error, as a full disk would on a
-machine. And a glob expanding into a word the check never saw — a file
+machine. A glob expanding into a word the check never saw — a file
 named like an option, `cat *` with a file `-z` in it — which a builtin's
 whitelist does not cover: the command fails with the refusal line and
-exit 2. Both leave the script where it is.
+exit 2. And a symbolic or hard link inside an archive `tar x` is
+extracting: the archive's contents are known only as they stream in, so
+the entry fails with GNU's line (`tar: <name>: Cannot create symlink:
+Operation not permitted`), the remaining entries are extracted, and `tar`
+exits 2 — what GNU tar does on a filesystem that refuses links. All three
+leave the script where it is, and the third keeps the tree free of
+links.
 
 Execution:
 
@@ -362,8 +373,11 @@ needed without a machine.
   `bun test` compares against them, and on Linux
   `TINYBASH_CHECK_GOLDENS=1` re-derives them from bash and fails on drift.
   Cases whose output depends on the filesystem underneath (`ls -l` block
-  totals and directory sizes) are compared on Linux only. This is the
-  guarantee's test and runs in CI on Linux.
+  totals and directory sizes) are compared on Linux only. An archive a
+  case writes is compared by its `tar t` listing and the tree `tar x`
+  produces from it, not by its bytes (entry order and owner names differ
+  by design, § Builtins). This is the guarantee's test and runs in CI on
+  Linux.
 - **Parse-first**: a script whose last statement is outside the subset
   executes nothing, whether the cause is grammar, a program, a flag or a
   path; path cases cover builtin arguments, redirections, `cd`, globs and

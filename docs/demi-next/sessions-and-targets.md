@@ -184,7 +184,9 @@ attached does not pin a managed host against idle reclamation; `shell
 idiom over a pipe (`runner.md` § Pipes): `tar c . | demi host shell
 --host ci "tar x"` pushes, `demi host shell --host ci "tar c ." | tar x`
 pulls; there is no separate copy verb, `tar` already defines the
-semantics and the pipe carries it byte for byte.
+semantics and the pipe carries it byte for byte. `tar` is a tinybash
+builtin (`tinybash.md` § Builtins), so a hostless conversation copies to
+and from its attached hosts without acquiring a machine.
 
 The attachment set is the trust asymmetry's first answer inside the
 product (`overview.md`): the datacenter side reaches only the hosts a
