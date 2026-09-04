@@ -11,6 +11,7 @@ import { createOpenAIApiProvider } from '@demicodes/provider-openai-api'
 import type { ControlService } from '../storage/control'
 import type { ApiKeyProviderConfig, ProviderEntry, ProviderConfig, ProviderVault } from '../vault/providers'
 import type { VendorCatalog } from './vendors'
+import { vendorRequestOptions } from './vendor-requests'
 
 /**
  * A registered runtime family: how it is credentialed — an API key typed
@@ -81,6 +82,7 @@ export function builtinProviderTypes(): Record<string, ProviderType> {
           apiKey: () => config.apiKey,
           ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
           ...(config.wireApi ? { wireApi: config.wireApi } : {}),
+          request: vendorRequestOptions(config.vendorId),
         })
       },
     },
@@ -110,7 +112,7 @@ export interface CatalogProvider {
  * invalidates when an entry is edited or deleted.
  */
 export class ProviderAssembly {
-  private readonly cache = new Map<string, Provider>()
+  private readonly cache = new Map<string, { entry: ProviderEntry; provider: Provider }>()
 
   constructor(
     private readonly vault: ProviderVault,
@@ -149,32 +151,34 @@ export class ProviderAssembly {
     await rm(this.vaultDir(providerId), { recursive: true, force: true })
   }
 
-  /**
-   * The base (unmetered) provider instance behind a provider entry, or null when unknown.
-   * With `session` the provider is built fresh and uncached — session-scoped
-   * instances carry the target's spawn and a session passthrough token.
-   */
-  async providerFor(
-    providerId: string,
-    session?: SessionProviderContext,
-  ): Promise<{ entry: ProviderEntry; provider: Provider } | null> {
+  /** The base provider instance behind an entry, or null when unknown; edits invalidate its identity. */
+  async providerFor(providerId: string): Promise<{ entry: ProviderEntry; provider: Provider } | null> {
     const entry = await this.vault.get(providerId)
     if (!entry) return null
-    if (!session) {
-      const cached = this.cache.get(providerId)
-      if (cached) return { entry, provider: cached }
+    const cached = this.cache.get(providerId)
+    if (cached && cached.entry.label === entry.label && JSON.stringify(cached.entry.config) === JSON.stringify(entry.config)) {
+      return { entry, provider: cached.provider }
     }
+    const provider = this.build(entry)
+    this.cache.set(providerId, { entry, provider })
+    return { entry, provider }
+  }
+
+  /** Builds an independent session provider from the entry snapshot selected for this request. */
+  forSession(entry: ProviderEntry, session: SessionProviderContext): Provider {
+    return this.build(entry, session)
+  }
+
+  private build(entry: ProviderEntry, session?: SessionProviderContext): Provider {
     const type = this.types[entry.config.providerType]
     if (!type) throw new Error(`Unknown provider type "${entry.config.providerType}"`)
-    const provider = type.create({
-      providerId,
+    return type.create({
+      providerId: entry.id,
       label: entry.label,
       config: entry.config,
-      vaultDir: this.vaultDir(providerId),
+      vaultDir: this.vaultDir(entry.id),
       ...(session ? { session } : {}),
     })
-    if (!session) this.cache.set(providerId, provider)
-    return { entry, provider }
   }
 
   invalidate(providerId: string): void {

@@ -22,9 +22,9 @@ export function streamRoutes(options: {
   control: ControlService
   agentServer: AgentServer
   upgradeWebSocket: UpgradeWebSocket
-  blobs: BlobStore
+  blobsFor: (userId: string) => BlobStore
 }): Hono<AuthEnv> {
-  const { control, agentServer, upgradeWebSocket, blobs } = options
+  const { control, agentServer, upgradeWebSocket, blobsFor } = options
   const app = new Hono<AuthEnv>()
 
   app.get('/:id/stream', async (c, next) => {
@@ -41,7 +41,7 @@ export function streamRoutes(options: {
             conversation,
             control,
             workspace?.path,
-            blobs,
+            blobsFor(conversation.userId),
           )
           binding = agentServer.attachTransport(transport)
         },

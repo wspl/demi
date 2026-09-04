@@ -4,7 +4,7 @@
 // runner over the relay.
 import { createRunnerHost, cwd, env, fdNode, identity, onSignal, stderrWriter, stdinStream, stdoutWriter } from './machine'
 import { createLoader, directorySource, inMemorySource, parseManifest, type ManifestSource } from '@demicodes/command-loader'
-import { JOB_STDIN_FD_VAR } from './serve/jobs'
+import { JOB_ID_VAR, JOB_STDIN_FD_VAR } from './serve/jobs'
 import { errorMessage } from '@demicodes/utils'
 import { fetchManifest, relayRpc } from './relay/client'
 
@@ -24,7 +24,7 @@ export async function runCommandMode(root: string, args: readonly string[]): Pro
     await stderrWriter()(`${root}: no command manifest: ${errorMessage(error)}\n`)
     return 127
   }
-  const ids = { agentSessionId: env.DEMI_SESSION_ID ?? '', shellId: env.DEMI_SHELL_ID ?? '' }
+  const ids = { agentSessionId: env.DEMI_SESSION_ID ?? '', shellId: env.DEMI_SHELL_ID ?? '', ...(env[JOB_ID_VAR] ? { jobId: env[JOB_ID_VAR] } : {}) }
   const loader = await createLoader({ source, host, ...(ids.agentSessionId ? { rpc: relayRpc(socketPath, ids) } : {}) })
   const controller = new AbortController()
   onSignal('SIGINT', () => controller.abort())

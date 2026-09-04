@@ -50,10 +50,12 @@ export class ProviderVault {
     private readonly secret: Uint8Array,
   ) {}
 
-  async create(options: { ownerUserId: string | null; label: string; config: ProviderConfig }): Promise<ProviderEntry> {
+  async create(options: { id?: string; ownerUserId: string | null; label: string; config: ProviderConfig }): Promise<ProviderEntry> {
     const record = await this.control.createProvider({
+      ...(options.id ? { id: options.id } : {}),
       ownerUserId: options.ownerUserId,
       providerType: options.config.providerType,
+      credentialKind: options.config.kind,
       label: options.label,
       config: encryptJson(this.secret, options.config),
     })

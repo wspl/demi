@@ -9,6 +9,7 @@ import { DbHostStore } from '../storage/host-store'
 import { LocalControlService } from '../storage/control'
 import { ConversationStores } from '../storage/conversation-store'
 import { DirBlobStore } from '../storage/blob-store'
+import { filesTreeBackend } from '../storage/files-tree'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -177,7 +178,7 @@ test('DirBlobStore content-addresses bytes and is idempotent', async () => {
 test('conversation session store writes block rows, media leaves the database', async () => {
   const root = mkdtempSync(join(tmpdir(), 'demi-conv-'))
   const blobs = new DirBlobStore(join(root, 'blobs'))
-  const stores = new ConversationStores(join(root, 'conversations'), blobs)
+  const stores = new ConversationStores(join(root, 'conversations'), () => blobs)
   const store = stores.sessionStore('conv-1')
   const imageBytes = new Uint8Array([9, 9, 9, 9])
 
@@ -243,7 +244,7 @@ test('conversation session store writes block rows, media leaves the database', 
 
 test('host_store scopes are isolated per conversation database', async () => {
   const root = mkdtempSync(join(tmpdir(), 'demi-conv-iso-'))
-  const stores = new ConversationStores(join(root, 'conversations'), new DirBlobStore(join(root, 'blobs')))
+  const stores = new ConversationStores(join(root, 'conversations'), () => new DirBlobStore(join(root, 'blobs')))
   await stores.hostStore('conv-a').writeJson('k', { from: 'a' })
   await stores.hostStore('conv-b').writeJson('k', { from: 'b' })
   expect(await stores.hostStore('conv-a').readJson<{ from: string }>('k')).toEqual({ from: 'a' })
@@ -252,4 +253,38 @@ test('host_store scopes are isolated per conversation database', async () => {
   expect(() => stores.db('../escape')).toThrow()
   stores.close()
   rmSync(root, { recursive: true, force: true })
+})
+
+test('concurrent file appends preserve every write and recover after a failed append', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'demi-file-appends-'))
+  const db = openSqliteDatabase(':memory:')
+  migrate(db, CONVERSATION_MIGRATIONS)
+  const blobs = new DirBlobStore(root)
+  let failNext = false
+  const fs = filesTreeBackend(db, {
+    get: (hash) => blobs.get(hash),
+    put: async (bytes) => {
+      if (failNext) { failNext = false; throw new Error('temporary blob write failure') }
+      return blobs.put(bytes)
+    },
+  })
+  const encode = (text: string) => new TextEncoder().encode(text)
+  try {
+    await fs.writeFile('/shared', encode('start\n'))
+    const lines = Array.from({ length: 20 }, (_, index) => `${index}\n`)
+    await Promise.all(lines.map((line) => fs.appendFile('/shared', encode(line))))
+    expect(new TextDecoder().decode(await fs.readFile('/shared'))).toBe(`start\n${lines.join('')}`)
+    failNext = true
+    const writes = await Promise.allSettled([
+      fs.appendFile('/shared', encode('failed\n')),
+      fs.appendFile('/shared', encode('recovered\n')),
+    ])
+    expect(writes.map((write) => write.status)).toEqual(['rejected', 'fulfilled'])
+    expect(new TextDecoder().decode(await fs.readFile('/shared'))).toBe(`start\n${lines.join('')}recovered\n`)
+    await Promise.all([fs.appendFile('/created', encode('A')), fs.appendFile('/created', encode('B'))])
+    expect(new TextDecoder().decode(await fs.readFile('/created'))).toBe('AB')
+  } finally {
+    db.close()
+    rmSync(root, { recursive: true, force: true })
+  }
 })

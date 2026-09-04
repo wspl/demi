@@ -53,12 +53,19 @@ test("the matrix: another user's objects answer 404 on every route, to users and
     await alice.fetch('/api/attachments', { method: 'POST', body: PNG_BYTES, headers: { 'content-type': 'image/png' } }),
     201,
   )
+  const privateFile = new TextEncoder().encode('alice private hostless file')
+  const fileHash = new Bun.CryptoHasher('sha256').update(privateFile).digest('hex')
+  await must(await alice.fetch(`/api/conversations/${conversation.id}/workspace-files?name=private.txt`, {
+    method: 'POST', body: privateFile,
+  }), 201)
   expect(await streamOpens(alice, `/api/conversations/${conversation.id}/stream`)).toBe(true)
 
   // Bob's own objects, to aim at alice's from.
   const { conversation: bobs } = await must<{ conversation: { id: string } }>(await bob.fetch('/api/conversations', { method: 'POST' }), 201)
 
   const denied: Array<[string, string, unknown?]> = [
+    ['GET', `/api/blobs/${attachment.sha256}`],
+    ['GET', `/api/blobs/${fileHash}`],
     ['GET', `/api/conversations/${conversation.id}/transcript`],
     ['PATCH', `/api/conversations/${conversation.id}`, { title: 'taken' }],
     ['PATCH', `/api/conversations/${conversation.id}`, { archived: true }],
@@ -94,7 +101,17 @@ test("the matrix: another user's objects answer 404 on every route, to users and
   // Alice still has everything.
   expect((await must<{ hosts: unknown[] }>(await alice.fetch(`/api/conversations/${conversation.id}/hosts`), 200)).hosts).toHaveLength(1)
   expect((await must<{ devices: unknown[] }>(await alice.fetch('/api/devices'), 200)).devices).toHaveLength(1)
-  void attachment
+  expect(new Uint8Array(await (await alice.fetch(`/api/blobs/${attachment.sha256}`)).arrayBuffer())).toEqual(PNG_BYTES)
+  const ownFile = await alice.fetch(`/api/blobs/${fileHash}`)
+  expect(new Uint8Array(await ownFile.arrayBuffer())).toEqual(privateFile)
+  expect(ownFile.headers.get('vary')).toBe('Cookie')
+  // Identical content is available to Bob only after he stores his own copy.
+  const { attachment: bobsAttachment } = await must<{ attachment: { sha256: string } }>(
+    await bob.fetch('/api/attachments', { method: 'POST', body: PNG_BYTES, headers: { 'content-type': 'image/png' } }), 201,
+  )
+  expect(bobsAttachment.sha256).toBe(attachment.sha256)
+  expect(new Uint8Array(await (await bob.fetch(`/api/blobs/${attachment.sha256}`)).arrayBuffer())).toEqual(PNG_BYTES)
+  expect((await bob.fetch(`/api/blobs/${fileHash}`)).status).toBe(404)
 
   // Revoke: refused under a workspace, then the runner is refused for good
   // and the attachment is gone; re-pairing the machine is a fresh claim, here by bob.

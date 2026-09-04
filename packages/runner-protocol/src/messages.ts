@@ -20,7 +20,7 @@ import { backendToRunnerMessageSchema, helloErrorCodeSchema, runnerToBackendMess
  * is the hardest component to update, so the backend must be able to tell an
  * incompatible runner apart from a broken one (`hello_error`).
  */
-export const RUNNER_PROTOCOL_VERSION = 5
+export const RUNNER_PROTOCOL_VERSION = 6
 
 /**
  * The view budget per stream of a job: what crosses the wire is the model's

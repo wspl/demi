@@ -1,4 +1,4 @@
-import { concatBytes, errorCode } from '@demicodes/utils'
+import { concatBytes, emptyByteStream, errorCode } from '@demicodes/utils'
 import type { DispatchIO, RootPaths } from './index'
 
 export interface RecordedCall {
@@ -28,7 +28,7 @@ export function stubRoots(spec: Record<string, { paths?: (argv: readonly string[
     dispatch: async (root, argv, io) => {
       const chunks: Uint8Array[] = []
       try {
-        for await (const chunk of io.stdin) chunks.push(chunk)
+        for await (const chunk of io.stdin ?? emptyByteStream()) chunks.push(chunk)
       } catch (error) {
         // The bash-side stub reads stdin with `cat`, which reports a directory this way and goes on.
         if (errorCode(error) !== 'EISDIR') throw error

@@ -5,7 +5,7 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 const wire = createRunnerWire(msgpackCodec)
 
 test('runner messages round-trip through the MessagePack wire', () => {
-  const runnerToBackend = new Set(['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'rpc_call', 'pipe_done'])
+  const runnerToBackend = new Set(['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'rpc_call', 'rpc_cancel', 'pipe_done'])
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>
     runnerToBackend.has(message.type) ? wire.decodeRunnerToBackend(wire.encode(message)) : wire.decodeBackendToRunner(wire.encode(message))
 
@@ -51,6 +51,8 @@ test('runner messages round-trip through the MessagePack wire', () => {
   // Pipes carry references only: an id and an origin-relative URL per end; the bytes go over HTTP.
   const rpcCall: RunnerProtocolMessage = { type: 'rpc_call', callId: 'c9', agentSessionId: 'a', shellId: 's', root: 'demi', path: ['demi', 'file', 'write'], argv: ['demi', 'file', 'write', 'x'], args: { path: 'x' }, json: false, cwd: '/work', env: {}, stdin: true }
   expect(roundTrip(rpcCall)).toEqual(rpcCall)
+  const cancel: RunnerProtocolMessage = { type: 'rpc_cancel', callId: 'c9' }
+  expect(roundTrip(cancel)).toEqual(cancel)
   const pipes: RunnerProtocolMessage = { type: 'rpc_pipes', callId: 'c9', stdin: { id: 'p1', url: '/api/pipes/p1' }, stdout: { id: 'p2', url: '/api/pipes/p2' } }
   expect(roundTrip(pipes)).toEqual(pipes)
   const job: RunnerProtocolMessage = { type: 'job_start', jobId: 'j1', script: 'tar x', cwd: '/work', env: {}, stdin: { id: 'p1', url: '/api/pipes/p1' } }

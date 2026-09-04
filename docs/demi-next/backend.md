@@ -94,11 +94,21 @@ transcript blocks (`transcript_reset`, `transcript_patch`, and the
 subagent pair): each inline media source becomes `{ type: 'ref', ref,
 mediaType }` — `ref` the blob's content hash, the same form the block rows
 hold at rest — and the page fetches `GET /api/blobs/:sha256?type=<media
-type>` (cookie-authenticated, `immutable`, cached for a year). Providers
+type>` (cookie-authenticated, private, `immutable`, cached for a year with
+`Vary: Cookie`). Every upload and conversation uses its owner's blob
+namespace; knowing another user's hash still returns 404. Providers
 still receive inline bytes: the conversation module resolves references
 before handing a message to the provider runtime. The same rule governs
 attachments in both directions (`product.md`): an upload's `ref` in a
-`send` frame is the attachment id, resolved inbound.
+`send` or `steer` frame is the attachment id, resolved inbound.
+
+The scoped transport validates the entire inbound frame before changing
+conversation metadata or resolving attachments. Its schema extends the
+agent's send/steer content schema with uploaded attachment references;
+the agent receives only resolved content. Inbound delivery and outbound
+media externalization each preserve frame order. A failed frame reports
+an error without rejecting the queue used by later frames; close and
+unsubscribe prevent delayed work from reaching the session.
 
 ## Web API (browser ↔ backend)
 

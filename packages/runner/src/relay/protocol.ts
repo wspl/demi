@@ -9,6 +9,8 @@ const bytesSchema = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
 export const relayRequestSchema = z.discriminatedUnion('type', [
   /** The manifest, on a cache miss. */
   z.object({ type: z.literal('manifest') }),
+  /** A control-only connection whose EOF cancels a call even when its data stream is blocked. */
+  z.object({ type: z.literal('watch'), callId: z.string() }),
   /**
    * An `rpc` invocation. `stdin` says whether fd 0 is a pipe; the pipe then
    * follows as `pipe` frames ending in `pipe_end`, and the live stdin as
@@ -16,6 +18,8 @@ export const relayRequestSchema = z.discriminatedUnion('type', [
    */
   z.object({
     type: z.literal('rpc'),
+    callId: z.string(),
+    jobId: z.string().optional(),
     agentSessionId: z.string(),
     shellId: z.string(),
     root: z.string(),
@@ -37,6 +41,7 @@ export const relayRequestSchema = z.discriminatedUnion('type', [
 
 /** The runner → a command-mode process. */
 export const relayReplySchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('ready') }),
   z.object({ type: z.literal('manifest'), manifest: z.unknown() }),
   z.object({ type: z.literal('output'), stream: z.enum(['stdout', 'stderr']), bytes: bytesSchema }),
   z.object({ type: z.literal('exit'), exitCode: z.number() }),

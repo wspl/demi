@@ -25,7 +25,7 @@ export interface AgentTransportBindingOptions {
   notifyParentOnIdle: boolean
   sessions: SessionOwnershipRegistry
   sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
-  blobs: BlobStore | null
+  blobs: ((agentSessionId: string) => BlobStore) | null
 }
 
 /**
@@ -44,7 +44,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
   private readonly notifyParentOnIdle: boolean
   private readonly sessions: SessionOwnershipRegistry
   private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
-  private readonly blobs: BlobStore | null
+  private readonly blobs: AgentTransportBindingOptions['blobs']
   private live: LiveSession | null = null
   private unsubscribeTransport: (() => void) | null = null
   private closed = false
@@ -267,7 +267,7 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
         shellEnvironment: this.shellEnvironment,
         notifyParentOnIdle: this.notifyParentOnIdle,
         sessionStore: this.sessionStore,
-        blobs: this.blobs,
+        blobs: this.blobs?.(agentSessionId) ?? null,
       },
       { agentSessionId, cwd: frame.cwd, provider, selection: frame.provider },
     )

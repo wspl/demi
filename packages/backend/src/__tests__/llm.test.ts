@@ -1,13 +1,13 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
-import { defineProvider } from '@demicodes/provider'
+import { defineProvider, type AgentProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { deferred, delay, waitFor } from '@demicodes/utils'
+import { decodeUtf8, deferred, delay, waitFor } from '@demicodes/utils'
 import { startTinyjsRunner } from '@demicodes/runner/testing'
 import type { SessionProviderContext } from '../llm/assembly'
 import { LocalControlService } from '../storage/control'
@@ -65,9 +65,9 @@ function stubBackendOptions(dataDir: string, turns: number): Parameters<typeof o
   }
 }
 
-async function openConversation(backend: TestBackend, providerId: string) {
-  const created = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
-  const socket = backend.session.socket(`/api/conversations/${created.body.conversation.id}/stream`)
+async function openConversation(backend: TestBackend, providerId: string, conversationId?: string) {
+  const id = conversationId ?? (await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })).body.conversation.id
+  const socket = backend.session.socket(`/api/conversations/${id}/stream`)
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener('open', () => resolve(), { once: true })
     socket.addEventListener('error', () => reject(new Error('stream connect failed')), { once: true })
@@ -172,7 +172,7 @@ test('enforcement: the provider request rate limit refuses at the inference entr
   await backend.close()
 }, 15_000)
 
-test('subscription login: pending material surfaces, completion becomes a provider with a vault pool', async () => {
+test('subscription login: concurrent completions publish one provider with its vault pool', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m5-sub-'))
   const approve = deferred<void>()
   const backend = await openBackend({
@@ -215,6 +215,8 @@ test('subscription login: pending material surfaces, completion becomes a provid
   )
   expect(started.status).toBe(202)
   const loginId = started.body.login.id
+  const competing = await api<{ login: { id: string } }>(backend, '/api/providers/subscription-login', post({ providerType: 'stub-sub', label: 'Competing' }))
+  expect(competing.status).toBe(202)
 
   await waitFor(() => false, undefined, { timeoutMs: 30, intervalMs: 10 }).catch(() => {})
   const pending = await api<{ login: { status: string; verificationUrl: string; userCode: string } }>(
@@ -228,21 +230,24 @@ test('subscription login: pending material surfaces, completion becomes a provid
   })
 
   approve.resolve()
-  let state: { status: string; providerId?: string } = { status: 'pending' }
+  let states: Array<{ status: string; providerId?: string; message?: string }> = []
   await waitFor(() => {
-    void api<{ login: typeof state }>(backend, `/api/providers/subscription-login/${loginId}`).then((polled) => {
-      state = polled.body.login
+    void Promise.all([loginId, competing.body.login.id].map((id) => api<{ login: (typeof states)[number] }>(backend, `/api/providers/subscription-login/${id}`))).then((polled) => {
+      states = polled.map((result) => result.body.login)
     })
-    return state.status === 'completed'
+    return states.length === 2 && states.every((state) => state.status !== 'pending')
   }, undefined, { timeoutMs: 5_000 })
 
-  const providerId = state.providerId as string
+  expect(states.filter((state) => state.status === 'completed')).toHaveLength(1)
+  expect(states.find((state) => state.status === 'failed')?.message).toContain('already has a stub-sub subscription')
+  const providerId = states.find((state) => state.status === 'completed')!.providerId!
   const listed = await api<{ providers: Array<Record<string, unknown>> }>(backend, '/api/providers')
   expect(listed.body.providers).toEqual([
-    expect.objectContaining({ id: providerId, kind: 'subscription', providerType: 'stub-sub', label: 'My Subscription' }),
+    expect.objectContaining({ id: providerId, kind: 'subscription', providerType: 'stub-sub' }),
   ])
   // The login's pool became the provider's vault directory.
   expect(existsSync(join(dataDir, 'vault', providerId, 'oauth.json'))).toBe(true)
+  expect(await readdir(join(dataDir, 'vault'))).toEqual([providerId])
 
   // One subscription per family per scope: the catalog says it is configured, a second login is refused.
   const catalog = await api<{ subscriptions: Array<{ providerType: string; configured: boolean }> }>(backend, '/api/providers/catalog')
@@ -378,3 +383,179 @@ test('a process-capable provider gets a session-scoped instance carrying the tar
   await runner.stop()
   await backend.close()
 }, 20_000)
+
+test('provider edits apply after the active request, unchanged requests retain state, and deletion blocks inference', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-provider-refresh-'))
+  const entered = deferred<void>()
+  const release = deferred<void>()
+  const calls: Array<{ key: string; request: number }> = []
+  let runtimes = 0
+  const backend = await openBackend({
+    dataDir,
+    port: 0,
+    providerTypes: {
+      changing: {
+        credential: 'api_key',
+        create: ({ providerId, label, config }) => defineProvider({
+          id: providerId,
+          displayName: label,
+          createRuntime: () => {
+            runtimes += 1
+            const makeRuntime = (cursor = 0): AgentProvider => ({
+              async *run() {
+                if (config.kind !== 'api_key') throw new Error('Expected API-key fixture')
+                calls.push({ key: config.apiKey, request: ++cursor })
+                if (calls.length === 1) {
+                  entered.resolve()
+                  await release.promise
+                }
+                yield events.text(`${config.apiKey}:${cursor}`)
+                yield events.response({ inputTokens: 1 })
+              },
+              clone: () => makeRuntime(cursor),
+            })
+            return makeRuntime()
+          },
+        }),
+      },
+    },
+  })
+  const created = await api<{ provider: { id: string } }>(backend, '/api/providers', post({ providerType: 'changing', label: 'Changing', apiKey: 'old-key' }))
+  const providerId = created.body.provider.id
+  const client = await openConversation(backend, providerId)
+  try {
+    const first = client.send([{ type: 'text', text: 'before edit' }])
+    await entered.promise
+    expect((await api(backend, `/api/providers/${providerId}`, patch({ apiKey: 'new-key' }))).status).toBe(200)
+    release.resolve()
+    await first
+    await client.send([{ type: 'text', text: 'after edit' }])
+    await client.send([{ type: 'text', text: 'same configuration' }])
+    expect(runtimes).toBe(2)
+    expect(calls).toEqual([{ key: 'old-key', request: 1 }, { key: 'new-key', request: 1 }, { key: 'new-key', request: 2 }])
+
+    expect((await backend.session.fetch(`/api/providers/${providerId}`, { method: 'DELETE' })).status).toBe(204)
+    const errors: string[] = []
+    client.subscribe((event) => { if (event.type === 'error') errors.push(event.message) })
+    await client.send([{ type: 'text', text: 'after deletion' }]).catch(() => {})
+    expect(errors.some((message) => message.includes('no longer available'))).toBe(true)
+    expect(calls).toHaveLength(3)
+    const usage = await api<{ totals: Array<{ requests: number }> }>(backend, '/api/usage')
+    expect(usage.body.totals[0]?.requests).toBe(3)
+  } finally {
+    release.resolve()
+    await client.close()
+    await backend.close()
+  }
+}, 15_000)
+
+test('a process provider reuses its process on one target and replaces it after a workspace switch', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-provider-target-'))
+  const observed: string[] = []
+  let runtimes = 0
+  const backend = await openBackend({
+    dataDir,
+    port: 0,
+    runner: { pingIntervalMs: 0 },
+    providerTypes: {
+      process: {
+        credential: 'api_key',
+        create: ({ providerId, label, session }) => defineProvider({
+          id: providerId,
+          displayName: label,
+          requiresProcessCapableHost: true,
+          createRuntime: () => {
+            runtimes += 1
+            const makeRuntime = (): AgentProvider => {
+              let processHome: string | undefined
+              return {
+                async *run() {
+                  if (processHome === undefined) {
+                    const handle = await session!.spawn({ command: '/bin/sh', args: ['-c', 'printf "$HOME"'], cwd: '/tmp' })
+                    processHome = ''
+                    for await (const chunk of handle.stdout) processHome += decodeUtf8(chunk)
+                    expect((await handle.wait()).exitCode).toBe(0)
+                  }
+                  observed.push(processHome)
+                  yield events.text(processHome)
+                  yield events.response()
+                },
+                clone: makeRuntime,
+              }
+            }
+            return makeRuntime()
+          },
+        }),
+      },
+    },
+  })
+  const runners: Awaited<ReturnType<typeof startTinyjsRunner>>[] = []
+  let client: AgentClient | undefined
+  try {
+    const workspaces: Array<{ id: string; path: string }> = []
+    for (const name of ['a', 'b']) {
+      const home = await mkdtemp(join(tmpdir(), `demi-provider-${name}-`))
+      const stateDir = await mkdtemp(join(tmpdir(), 'demi-provider-runner-'))
+      const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home, name })
+      runners.push(runner)
+      await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
+      const claimed = await api<{ device: { id: string } }>(backend, '/api/devices/claim', post({ code: runner.codes[0] }))
+      const workspace = await api<{ workspace: { id: string; path: string } }>(backend, '/api/workspaces', post({ deviceId: claimed.body.device.id, path: home, name }))
+      workspaces.push(workspace.body.workspace)
+    }
+    const created = await api<{ provider: { id: string } }>(backend, '/api/providers', post({ providerType: 'process', label: 'Process', apiKey: 'fake-key' }))
+    const conversation = await api<{ conversation: { id: string } }>(backend, '/api/conversations', { method: 'POST' })
+    const path = `/api/conversations/${conversation.body.conversation.id}`
+    expect((await api(backend, path, patch({ workspaceId: workspaces[0]!.id }))).status).toBe(200)
+    client = await openConversation(backend, created.body.provider.id, conversation.body.conversation.id)
+    await client.send([{ type: 'text', text: 'first target' }])
+    await client.send([{ type: 'text', text: 'same target' }])
+    expect(runtimes).toBe(1)
+    expect((await api(backend, path, patch({ workspaceId: workspaces[1]!.id }))).status).toBe(200)
+    await client.send([{ type: 'text', text: 'second target' }])
+    expect(observed).toEqual([workspaces[0]!.path, workspaces[0]!.path, workspaces[1]!.path])
+    expect(runtimes).toBe(2)
+  } finally {
+    await client?.close()
+    for (const runner of runners) await runner.stop()
+    await backend.close()
+  }
+}, 30_000)
+
+test('a DeepSeek vendor tool continuation replays reasoning to the compatible endpoint', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-deepseek-replay-'))
+  const requests: Array<{ messages: Array<{ role: string; reasoning_content?: string; tool_calls?: unknown[] }> }> = []
+  const upstream = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const body = await request.json() as (typeof requests)[number]
+      requests.push(body)
+      if (requests.length > 1) {
+        const assistant = body.messages.find((message) => message.tool_calls?.length)
+        if (assistant?.reasoning_content !== 'Read the current directory.') {
+          return Response.json({ error: { message: 'Missing reasoning_content in assistant tool-call message' } }, { status: 400 })
+        }
+      }
+      const delta = requests.length === 1
+        ? { reasoning_content: 'Read the current directory.', tool_calls: [{ index: 0, id: 'call-1', function: { name: 'shell_exec', arguments: JSON.stringify({ script: 'pwd', timeoutMs: 1000 }) } }] }
+        : { content: 'done' }
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } })
+    },
+  })
+  const backend = await openBackend({ dataDir, port: 0 })
+  let client: AgentClient | undefined
+  try {
+    const created = await api<{ provider: { id: string } }>(backend, '/api/providers', post({ vendorId: 'deepseek', label: 'DeepSeek', apiKey: 'fake-key', baseUrl: upstream.url.toString(), modelIds: ['test-model'] }))
+    client = await openConversation(backend, created.body.provider.id)
+    const errors: string[] = []
+    client.subscribe((event) => { if (event.type === 'error') errors.push(event.message) })
+    await client.send([{ type: 'text', text: 'read the current directory' }])
+    expect(errors).toEqual([])
+    expect(requests).toHaveLength(2)
+    expect(requests[1]?.messages.find((message) => message.tool_calls?.length)?.reasoning_content).toBe('Read the current directory.')
+  } finally {
+    await client?.close()
+    await backend.close()
+    upstream.stop(true)
+  }
+}, 15_000)

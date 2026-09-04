@@ -202,3 +202,70 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
   await b.runner.stop()
   await backend.close()
 }, 120_000)
+
+test('host shell streams stderr before stdout ends, forwards shell_write, and cancels the far job from device and hostless callers', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'demi-hs-control-'))
+  const frames: Array<{ deviceId: string; direction: 'in' | 'out'; message: RunnerProtocolMessage }> = []
+  let commandId = ''
+  let script = ''
+  const backend = await openBackend({ dataDir, port: 0,
+    runner: { pingIntervalMs: 0, trace: (deviceId, direction, message) => { frames.push({ deviceId, direction, message }) } },
+    providerTypes: { stub: { credential: 'api_key', create: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label,
+      createRuntime: () => new StubProvider([
+        () => [events.toolCall('start', 'shell_exec', { script, timeoutMs: 100 })],
+        [events.text('waiting'), events.response()],
+        () => [events.toolCall('stop', 'shell_abort', { commandId })],
+        [events.text('stopped'), events.response()],
+      ]),
+    }) } },
+  })
+  const provider = await (await json(backend, '/api/providers', { providerType: 'stub', label: 'Stub', apiKey: 'k' })).json() as { provider: { id: string } }
+  const a = await pairDevice(backend, 'alpha')
+  const b = await pairDevice(backend, 'beta')
+  try {
+    for (const caller of ['device', 'hostless', 'device-pipe', 'device-child-kill']) {
+      const onDevice = caller !== 'hostless'
+      script = caller === 'device-pipe'
+        ? 'head -c 20000000 /dev/zero | demi host shell --host alpha \'printf "ready\\n" >&2; sleep 30\''
+        : 'demi host shell --host alpha \'printf "ready\\n" >&2; read line; printf "got:%s\\n" "$line"; sleep 30\''
+      if (caller === 'device-child-kill') script = 'head -c 20000000 /dev/zero | demi host shell --host alpha \'printf "ready\\n" >&2; sleep 30\' & child=$!; sleep 1; kill -KILL "$child"; wait "$child"; sleep 30'
+      const { conversation } = await (await api(backend, '/api/conversations', { method: 'POST' })).json() as { conversation: { id: string } }
+      expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: a.workspaceId }, 'PATCH')).status).toBe(200)
+      expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: onDevice ? b.workspaceId : null }, 'PATCH')).status).toBe(200)
+      const { client, shellEvents } = await openClient(backend, conversation.id, selectionFor(provider.provider.id))
+      const start = frames.length
+      try {
+        await client.send([{ type: 'text', text: 'start the interactive command' }])
+        const running = shellEvents.find((event) => event.status.status === 'running')!.status
+        commandId = running.commandId
+        const since = () => frames.slice(start)
+        const textOf = (message: RunnerProtocolMessage) => message.type === 'job_output' ? new TextDecoder().decode(message.bytes) : ''
+        if (onDevice) {
+          await waitFor(() => since().some((frame) => frame.deviceId === b.deviceId && frame.direction === 'in' && frame.message.type === 'job_output' && frame.message.stream === 'stderr' && textOf(frame.message).includes('ready')), undefined, { timeoutMs: 5_000 })
+        } else {
+          await waitFor(() => since().some((frame) => frame.deviceId === a.deviceId && frame.message.type === 'job_output' && textOf(frame.message).includes('ready')))
+        }
+        if (caller === 'device' || caller === 'hostless') {
+          await client.shellWrite(commandId, 'hello\n')
+          await waitFor(() => since().some((frame) => frame.deviceId === a.deviceId && frame.message.type === 'job_output' && frame.message.stream === 'stdout' && textOf(frame.message).includes('got:hello')), () => `${caller}: ${JSON.stringify(since().map((frame) => ({ device: frame.deviceId, dir: frame.direction, type: frame.message.type, text: textOf(frame.message) })))}`, { timeoutMs: 5_000 })
+        }
+        const targetJob = since().find((frame) => frame.deviceId === a.deviceId && frame.message.type === 'job_start')!.message
+        if (targetJob.type !== 'job_start') throw new Error('missing target job')
+        if (caller === 'device-child-kill') {
+          await waitFor(() => since().some((frame) => frame.deviceId === a.deviceId && frame.message.type === 'job_exit' && frame.message.jobId === targetJob.jobId), undefined, { timeoutMs: 5_000 })
+          expect(since().some((frame) => frame.deviceId === b.deviceId && frame.message.type === 'job_exit')).toBe(false)
+        }
+        await client.send([{ type: 'text', text: 'abort the command' }])
+        await waitFor(() => since().some((frame) => frame.deviceId === a.deviceId && frame.message.type === 'job_exit' && frame.message.jobId === targetJob.jobId), undefined, { timeoutMs: 5_000 })
+        expect(since().find((frame) => frame.deviceId === a.deviceId && frame.message.type === 'job_exit' && frame.message.jobId === targetJob.jobId)?.message).toMatchObject({ signal: 'SIGTERM' })
+        if (onDevice) expect(since().some((frame) => frame.deviceId === b.deviceId && frame.message.type === 'rpc_cancel')).toBe(true)
+      } finally {
+        await client.close()
+      }
+    }
+  } finally {
+    await a.runner.stop()
+    await b.runner.stop()
+    await backend.close()
+  }
+}, 30_000)

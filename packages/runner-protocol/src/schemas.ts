@@ -188,6 +188,7 @@ export const runnerToBackendMessageSchema = z.union([
   }),
   z.object({ type: z.literal('rpc_stdin'), callId: z.string(), bytes: bytesSchema }),
   z.object({ type: z.literal('rpc_stdin_end'), callId: z.string() }),
+  z.object({ type: z.literal('rpc_cancel'), callId: z.string() }),
   /** This runner's end of a pipe closed: its HTTP exchange completed, or why it did not. */
   z.object({ type: z.literal('pipe_done'), pipeId: z.string(), ok: z.boolean(), error: z.string().optional() }),
 ])

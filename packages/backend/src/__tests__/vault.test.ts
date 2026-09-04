@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
-import { LocalControlService } from '../storage/control'
+import { LocalControlService, ProviderExistsError } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
 import { CONTROL_MIGRATIONS, migrate } from '../storage/migrations'
 import { ProviderVault } from '../vault/providers'
@@ -66,4 +66,27 @@ test('ProviderVault: rows carry ciphertext only; CRUD round-trips typed configs'
   await vault.delete(created.id)
   expect(await vault.get(created.id)).toBeNull()
   db.close()
+})
+
+test('subscription uniqueness belongs to the scope and family; API-key entries remain repeatable', async () => {
+  const db = openSqliteDatabase(':memory:')
+  migrate(db, CONTROL_MIGRATIONS)
+  const control = new LocalControlService(db)
+  const user = (await control.createMaster({ username: 'owner', passwordHash: '!' }))!
+  const vault = new ProviderVault(control, crypto.getRandomValues(new Uint8Array(32)))
+  try {
+    for (const ownerUserId of [null, user.id]) {
+      const options = { ownerUserId, label: 'Subscription', config: { kind: 'subscription' as const, providerType: 'mock-subscription' } }
+      const results = await Promise.allSettled([vault.create(options), vault.create(options)])
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+      const failed = results.find((result) => result.status === 'rejected') as PromiseRejectedResult
+      expect(failed.reason).toBeInstanceOf(ProviderExistsError)
+      expect(await vault.list({ ownerUserId })).toHaveLength(1)
+    }
+    const keyed = { ownerUserId: user.id, label: 'API', config: { kind: 'api_key' as const, providerType: 'mock-api', apiKey: 'fake' } }
+    const entries = await Promise.all([vault.create(keyed), vault.create(keyed)])
+    expect(entries[0]!.id).not.toBe(entries[1]!.id)
+  } finally {
+    db.close()
+  }
 })

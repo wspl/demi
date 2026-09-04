@@ -171,7 +171,7 @@ export class World {
     try {
       const row = db.get<{ sha256: string | null }>("SELECT sha256 FROM files WHERE path = ? AND kind = 'file'", [virtualPath])
       if (!row?.sha256) return null
-      const bytes = await new DirBlobStore(join(this.dataDir, 'blobs')).get(row.sha256)
+      const bytes = await new DirBlobStore(join(this.dataDir, 'blobs', this.backend.session.user.id)).get(row.sha256)
       return bytes ? new TextDecoder().decode(bytes) : null
     } finally {
       db.close()

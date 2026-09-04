@@ -24,7 +24,8 @@ follows the write-frequency line:
   in the blob store). High write rate, but each file has exactly one
   writer and the files never contend.
 - **Blob store** — attachment bytes, transcript media (`source.ref`) and
-  the contents of hostless files, content-addressed `blobs/<sha256>`:
+  the contents of hostless files, content-addressed within each user's
+  namespace at `blobs/<userId>/<sha256>`:
   local directory at N=1, S3 at N>1. Bytes never enter a database.
 - **Home-image store** — managed hosts' home images, one **named, mutable,
   owner-bound** object per owner (`homes/<ownerId>.ext4`), overwritten in
@@ -84,7 +85,7 @@ service:
                     └───────────────────────┘  repoint workers
 
  S3:  litestream/…     continuous replication of every *.sqlite
-      blobs/<sha256>   attachment bytes + transcript media
+      blobs/<userId>/<sha256>   attachment bytes + transcript media + hostless files
       homes/<owner>    managed-host home images
 ```
 
@@ -163,9 +164,11 @@ workspaces              id, user_id, device_id, path, name, created_at
 devices                 id, user_id, kind(user|managed), name, platform, token_hash,
                         owner_conversation_id(NULL), owner_workspace_id(NULL),   ← managed only
                         claimed_at, last_seen_at
-providers               id, owner_user_id(NULL in shared mode), provider_type, label,
+providers               id, owner_user_id(NULL in shared mode), provider_type, credential_kind, label,
                         config(encrypted: key, endpoint, protocol, vendor id,
                         typed model list — or the subscription marker), created_at
+                        ← one subscription entry per (owner scope, provider_type), enforced by
+                          a partial UNIQUE index with the shared NULL owner mapped to one scope
 usage_ledger            id, user_id, conversation_id, provider_id, model_id,
                         input_tokens, output_tokens, cache_tokens…, created_at
 attachments             id, user_id, media_type, size_bytes, sha256, created_at
@@ -192,6 +195,9 @@ between them:
   and the root commands as `@demicodes/host-virtual`'s `Host`. Copying a
   file copies a row; the quota counts bytes referenced by the tree.
   Workspace files dropped into a hostless conversation land here.
+  Concurrent appends to one path are serialized through the filesystem
+  backend's per-path queue, including the blob read and write; independent
+  paths proceed concurrently and a failed append does not block later ones.
 - **The upgrade** — the backend materialises the tree into a directory
   (modes and mtimes included; the tree holds no symlinks) and runs `mke2fs -d <dir>` to
   produce the home image with its contents in one step: no mount, no
@@ -227,8 +233,14 @@ query time.
   reads efficiently.
 - The hostless filesystem is behind the `Host` fs contract
   (`@demicodes/host-virtual` over the `files` tree and the blob store).
-- The blob store is put/get by content hash with two backends (directory,
-  S3). The home-image store is streaming write/read by owner id with the
+- The blob store is put/get by content hash within a user namespace, with
+  two backends (directory, S3). `UserBlobStores` resolves uploads and HTTP
+  downloads by authenticated user, and session persistence, transcript
+  media and hostless files by conversation owner. `ConversationStores`
+  and `AgentServer` receive a per-session BlobStore factory; child sessions
+  inherit their root's store. A hash identifies bytes within that scope
+  and grants no access to another user's namespace.
+  The home-image store is streaming write/read by owner id with the
   same two backends. Both live in `@demicodes/backend`.
 
 ## Precedents

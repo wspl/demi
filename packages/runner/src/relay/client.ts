@@ -2,6 +2,7 @@
 // and the `RpcTransport` the loader hands `rpc` invocations to.
 import { connectUnix, msgpackDecode, msgpackEncode, type StreamSocket } from '../machine'
 import type { RpcTransport } from '@demicodes/command-loader'
+import { createId, SerialQueue, throwIfAborted } from '@demicodes/utils'
 import { frameOf, framesOf, relayReplySchema, type RelayRequest } from './protocol'
 
 const codec = { encode: msgpackEncode, decode: msgpackDecode }
@@ -27,15 +28,25 @@ export async function fetchManifest(socketPath: string): Promise<unknown | null>
  * runner carries the pipe on as an HTTP stream (`runner.md` § Pipes); this
  * process never sees where.
  */
-export function relayRpc(socketPath: string, ids: { agentSessionId: string; shellId: string }): RpcTransport {
+export function relayRpc(socketPath: string, ids: { agentSessionId: string; shellId: string; jobId?: string }): RpcTransport {
   return async (invocation) => {
+    throwIfAborted(invocation.signal)
     const socket = await connectUnix(socketPath)
-    const write = serialWriter(socket)
-    const abort = () => socket.close()
+    const callId = createId()
+    const writes = new SerialQueue()
+    const write = (request: RelayRequest) => writes.run(() => socket.write(frameOf(codec, request)))
+    let control: StreamSocket | null = null
+    const abort = () => {
+      control?.close()
+      socket.close()
+    }
+    const replies = framesOf(socket.input, codec, relayReplySchema)[Symbol.asyncIterator]()
     invocation.signal.addEventListener('abort', abort, { once: true })
     try {
+      throwIfAborted(invocation.signal)
       await write({
         type: 'rpc',
+        callId,
         ...ids,
         root: invocation.root,
         path: invocation.path,
@@ -46,6 +57,14 @@ export function relayRpc(socketPath: string, ids: { agentSessionId: string; shel
         env: invocation.env,
         stdin: invocation.stdin !== null,
       })
+      const ready = await replies.next()
+      if (ready.done || ready.value.type !== 'ready') throw new Error('relay did not accept the invocation')
+      control = await connectUnix(socketPath)
+      if (invocation.signal.aborted) abort()
+      throwIfAborted(invocation.signal)
+      await control.write(frameOf(codec, { type: 'watch', callId } satisfies RelayRequest))
+      const watching = await framesOf(control.input, codec, relayReplySchema)[Symbol.asyncIterator]().next()
+      if (watching.done || watching.value.type !== 'ready') throw new Error('relay did not accept the lifetime connection')
       // The pipe is finite and forwarded to its end; the live stdin may never
       // end (it is the job's own) and is abandoned with the socket at exit.
       const pipe = invocation.stdin
@@ -72,7 +91,10 @@ export function relayRpc(socketPath: string, ids: { agentSessionId: string; shel
         }
       })()
       let exitCode: number | null = null
-      for await (const reply of framesOf(socket.input, codec, relayReplySchema)) {
+      for (;;) {
+        const next = await replies.next()
+        if (next.done) break
+        const reply = next.value
         if (reply.type === 'output') await (reply.stream === 'stdout' ? invocation.io.stdout : invocation.io.stderr)(reply.bytes)
         else if (reply.type === 'exit') {
           exitCode = reply.exitCode
@@ -85,16 +107,7 @@ export function relayRpc(socketPath: string, ids: { agentSessionId: string; shel
     } finally {
       invocation.signal.removeEventListener('abort', abort)
       socket.close()
+      control?.close()
     }
-  }
-}
-
-/** Frames written one after another: a stream socket takes one write at a time. */
-function serialWriter(socket: StreamSocket): (request: RelayRequest) => Promise<void> {
-  let chain = Promise.resolve()
-  return (request) => {
-    const next = chain.then(() => socket.write(frameOf(codec, request)))
-    chain = next.catch(() => {})
-    return next
   }
 }

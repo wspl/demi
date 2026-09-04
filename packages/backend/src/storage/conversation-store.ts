@@ -30,7 +30,7 @@ export class ConversationStores {
 
   constructor(
     private readonly root: string,
-    private readonly blobs: BlobStore,
+    private readonly blobsFor: (conversationId: string) => BlobStore,
   ) {}
 
   db(conversationId: string): SqlDatabase {
@@ -47,7 +47,7 @@ export class ConversationStores {
 
   sessionStore(conversationId: string): AgentSessionStore<unknown> {
     const db = this.db(conversationId)
-    const blobs = this.blobs
+    const blobs = this.blobsFor(conversationId)
     return {
       async save(update: AgentSessionPersistUpdate<unknown>): Promise<void> {
         const rows = await Promise.all(
@@ -94,12 +94,12 @@ export class ConversationStores {
 
   /** The hostless filesystem: the conversation's `files` tree over the blob store. */
   filesBackend(conversationId: string): VirtualFsBackend {
-    return filesTreeBackend(this.db(conversationId), this.blobs)
+    return filesTreeBackend(this.db(conversationId), this.blobsFor(conversationId))
   }
 
   /** The tree written into real directories for the home image, then emptied (`storage.md` § The upgrade). */
   async materializeFiles(conversationId: string, placements: readonly TreePlacement[]): Promise<void> {
-    await materializeFilesTree(this.db(conversationId), this.blobs, placements)
+    await materializeFilesTree(this.db(conversationId), this.blobsFor(conversationId), placements)
   }
 
   clearFiles(conversationId: string): void {

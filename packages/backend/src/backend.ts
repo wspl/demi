@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { AgentServer, injectSubagentCommand, subagentCommandShape, type ProviderResolver, type ShellEnvironmentFactory } from '@demicodes/agent'
+import { AgentServer, injectSubagentCommand, subagentCommandShape, type ShellEnvironmentFactory } from '@demicodes/agent'
 import { createCodingAgentHarness, createDemiCommand } from '@demicodes/coding-agent'
 import { VirtualHost } from '@demicodes/host-virtual'
 import { buildManifest, inProcessRpc, type Manifest } from '@demicodes/command-loader'
@@ -10,7 +10,7 @@ import type { Host, ShellEnvironment } from '@demicodes/shell'
 import { createBunWebSocket } from 'hono/bun'
 import type { InstanceMode } from './auth/identity'
 import { LoginLimiter, type LoginLimiterOptions } from './auth/login-limiter'
-import { providerOwner, ownerFitsMode } from './vault/scope'
+import { ownerFitsMode } from './vault/scope'
 import { WebSessions, type WebSessionsOptions } from './auth/sessions'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
@@ -23,17 +23,17 @@ import { createHostCommandGroup } from './managed/host-command'
 import { ManagedHostError, ManagedHosts, ownerOf, type ManagedHostsConfig } from './managed/lifecycle'
 import type { ManagedHostProvisioner } from './managed/provisioner'
 import { createApp } from './http/app'
-import { ProviderAssembly, builtinProviderTypes, usageAppender, type ProviderType } from './llm/assembly'
+import { ProviderAssembly, builtinProviderTypes, type ProviderType } from './llm/assembly'
 import { VendorCatalog } from './llm/vendors'
 import type { ModelsDevFetch } from '@demicodes/provider'
-import { meterProvider } from './llm/metering'
+import { createSessionProviderResolver } from './llm/session-providers'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { PipeBroker } from './runner/pipes'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ProviderVault } from './vault/providers'
 import { loadOrCreateInstanceSecret } from './vault/secret'
 import { SubscriptionLoginFlows } from './vault/subscription-login'
-import { DirBlobStore } from './storage/blob-store'
+import { UserBlobStores } from './storage/user-blobs'
 import { ConversationStores } from './storage/conversation-store'
 import { LocalControlService, type ControlService, type ManagedHostOwner } from './storage/control'
 import { openSqliteDatabase } from './storage/database'
@@ -89,8 +89,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const sessions = new WebSessions(control, options.auth)
   const loginLimiter = new LoginLimiter(options.auth)
 
-  const blobs = new DirBlobStore(join(options.dataDir, 'blobs'))
-  const conversationStores = new ConversationStores(join(options.dataDir, 'conversations'), blobs)
+  const blobs = new UserBlobStores(join(options.dataDir, 'blobs'), control)
+  const conversationStores = new ConversationStores(join(options.dataDir, 'conversations'), (id) => blobs.forConversation(id))
   const virtualHostFor = createVirtualHostFactory({ conversationStores })
 
   // The command tree, defined once: the manifest every runner caches is built
@@ -135,7 +135,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         cwd: call.cwd,
         env: call.env,
         io: io.commandIO(),
-        signal: new AbortController().signal,
+        signal: io.signal,
         stdinStream: io.stdinStream,
       })
       return result.exitCode
@@ -150,36 +150,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const logins = new SubscriptionLoginFlows(vault, assembly, { vaultRoot })
   const rateLimiter = new ProviderRateLimiter(options.usage?.providerRequestsPerMinute)
 
-  // providerId = providerId: the LLM module assembles the provider's base
-  // provider from vault credentials and wraps it with metering + enforcement
-  // in the session's user/conversation context. Providers whose transport
-  // runs on the execution target (requiresProcessCapableHost) get a
-  // session-scoped instance carrying the target's spawn; the provider itself
-  // resolves and injects its credential at spawn time.
-  const resolveProvider: ProviderResolver = async (providerId, { agentSessionId }) => {
-    let resolved = await assembly.providerFor(providerId)
-    if (!resolved) return null
-    if (resolved.provider.requiresProcessCapableHost) {
-      const host = await hostFor(agentSessionId)
-      resolved = await assembly.providerFor(providerId, {
-        spawn: (params) => {
-          const spawn = host.process.spawn
-          if (!spawn) throw new Error('this provider needs a machine: the conversation runs hostless')
-          return spawn.call(host.process, params)
-        },
-      })
-      if (!resolved) return null
-    }
-    const conversation = await control.getConversation(agentSessionId)
-    if (!conversation) throw new Error(`no conversation ${agentSessionId} behind this session`)
-    const userId = conversation.userId
-    // A provider outside the user's scope is unknown to the session.
-    if (resolved.entry.ownerUserId !== providerOwner(options.mode, userId)) return null
-    return meterProvider(resolved.provider, {
-      observe: usageAppender(control, { userId, conversationId: agentSessionId, providerId: providerId }),
-      beforeRequest: () => rateLimiter.take(userId),
-    })
-  }
+  const resolveProvider = createSessionProviderResolver({ assembly, control, mode: options.mode, hostFor: (id) => hostFor(id), rateLimiter })
 
   // Whether the owner of a managed host has a turn in flight: the idle rule's
   // first input. A workspace host counts turns across all its conversations.
@@ -294,7 +265,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     // Sessions persist as block rows in their conversation database; the
     // Host-store default never runs in the product backend.
     sessionStore: (agentSessionId) => conversationStores.sessionStore(agentSessionId),
-    blobs,
+    blobs: (id) => blobs.forConversation(id),
   })
 
   const { upgradeWebSocket, websocket } = createBunWebSocket()

@@ -122,3 +122,65 @@ test('a missing end times out; a device dropping fails what it was party to; a s
   await early.done
   stop()
 })
+
+test('arrival timeout stops once both ends connect, even when the producer is quiet', async () => {
+  const broker = new PipeBroker({ timeoutMs: 40 })
+  const pipe = broker.open()
+  const writer = pipe.writer()
+  const iterator = pipe.stream()[Symbol.asyncIterator]()
+  const first = iterator.next()
+  await delay(80)
+  await writer.write(encodeUtf8('late'))
+  expect((await first).value).toEqual(encodeUtf8('late'))
+  writer.end()
+  expect((await iterator.next()).done).toBe(true)
+  await pipe.done
+  broker.close()
+})
+
+test('device ends connect once and remain alive after the arrival timeout', async () => {
+  const broker = new PipeBroker({ timeoutMs: 40 })
+  const pipe = broker.open({ deviceId: 'a' }, { deviceId: 'b' })
+  let source!: ReadableStreamDefaultController<Uint8Array>
+  const put = broker.put(pipe.id, 'a', new ReadableStream({ start(controller) { source = controller } }))
+  const get = await broker.get(pipe.id, 'b')
+  expect((await broker.get(pipe.id, 'b')).status).toBe(409)
+  expect((await broker.put(pipe.id, 'a', new ReadableStream())).status).toBe(409)
+  if (!('body' in get)) throw new Error('missing pipe body')
+  const reader = get.body.getReader()
+  const read = reader.read()
+  await delay(80)
+  source.enqueue(encodeUtf8('late'))
+  source.close()
+  expect((await read).value).toEqual(encodeUtf8('late'))
+  expect((await reader.read()).done).toBe(true)
+  expect((await put).status).toBe(200)
+  await pipe.done
+  broker.close()
+})
+
+test('failure interrupts an active device body and its pending read', async () => {
+  const broker = new PipeBroker()
+  const pipe = broker.open({ deviceId: 'a' }, { deviceId: 'b' })
+  let cancelled = false
+  const put = broker.put(pipe.id, 'a', new ReadableStream({ cancel() { cancelled = true } }))
+  const get = await broker.get(pipe.id, 'b')
+  if (!('body' in get)) throw new Error('missing pipe body')
+  const read = get.body.getReader().read()
+  broker.fail(pipe.id, 'cancelled')
+  await expect(read).rejects.toThrow('cancelled')
+  expect((await put).status).toBe(409)
+  expect(cancelled).toBe(true)
+  broker.close()
+})
+
+test('handing a quiet process source to a device requires that device to arrive', async () => {
+  const broker = new PipeBroker({ timeoutMs: 40 })
+  const pipe = broker.open(undefined, { deviceId: 'b' })
+  pipe.writer()
+  const get = broker.get(pipe.id, 'b')
+  pipe.sourceFrom('a')
+  await expect(pipe.done).rejects.toThrow('never arrived')
+  expect((await get).status).toBe(409)
+  broker.close()
+})

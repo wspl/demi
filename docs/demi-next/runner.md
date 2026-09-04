@@ -103,7 +103,7 @@ machine is always reached through `host-remote`.
 
 ## Connection model
 
-One outbound WebSocket. Frames are binary **MessagePack** (`Uint8Array` as
+One outbound WebSocket, speaking runner protocol **version 6**. Frames are binary **MessagePack** (`Uint8Array` as
 bin, `Date` as the timestamp extension, `undefined` as nil), so bytes and
 times are native wire types; a text frame is malformed and closes the
 socket. The schemas are `zod` in `@demicodes/runner-protocol`, shared
@@ -139,6 +139,14 @@ retries with its backoff, because the live connection may be a half-open
 socket the backend has not timed out yet, and the retry succeeds once the
 old socket is gone.
 
+The registry tracks every open socket, including a hello still preparing
+its manifest. A socket accepts one hello attempt; asynchronous token and
+manifest reads finish before the registry checks device occupancy and binds
+the socket in one synchronous step. Closing a socket or shutting down the
+registry makes that attempt ineligible to bind. Claim codes are reserved
+by consuming them before device creation; if the socket closes before its
+token can be delivered, the newly created device row is rolled back.
+
 ### Messages
 
 Handshake and liveness:
@@ -161,27 +169,28 @@ facets (`Host.store` never crosses this protocol):
 |---|---|---|
 | b → r | one message per fs operation, `fs_<method> { id, …params }` — `fs_stat { id, path, cwd? }`, `fs_writeFile { id, path, data, cwd?, createParents? }`, … — a union over the `HostFileSystem` method set, each with its parameters named | typed per op, so argument shapes are checked at decode |
 | r → b | `fs_ok { id, op, result }` / `fs_error { id, code?, message }` | the result typed by `op` (bytes, a stat, names or dirents, a path, `null`), or an error carrying the errno code when there is one |
-| b → r | `spawn { spawnId, command, args, cwd, env, stdin? }` | start a raw process (the Claude Code CLI, the directory browser) |
-| r → b | `spawn_output { spawnId, stream, bytes }` / `spawn_exit { spawnId, code, signal? }` | streamed stdio, exit |
+| b → r | `spawn { spawnId, command, args?, cwd?, env?, killProcessGroup? }` | start a raw process (the Claude Code CLI, the directory browser) |
+| r → b | `spawn_output { spawnId, stream, bytes }` / `spawn_exit { spawnId, exitCode, signal?, spawnError? }` | streamed stdio, exit |
 | b → r | `spawn_stdin { spawnId, bytes }` / `spawn_stdin_end` / `spawn_kill { spawnId, signal }` | input and termination |
 
 Jobs — the agent's commands:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| b → r | `job_start { jobId, script, cwd, env, background, stdin?, stdout? }` | run `bash -c script`; `env` carries the conversation and shell ids; `stdin` / `stdout` are pipes the job's fd 0 / fd 1 are attached to when another process's ends are on the far side (§ Pipes) |
+| b → r | `job_start { jobId, script, cwd, env, stdin?, stdout? }` | run `bash -c script`; `env` carries the conversation and shell ids; `stdin` / `stdout` are pipes the job's fd 0 / fd 1 are attached to when another process's ends are on the far side (§ Pipes) |
 | r → b | `job_output { jobId, stream, bytes }` | live output while the job runs, up to the view budget per stream, then silence |
-| r → b | `job_exit { jobId, code, signal?, cwd, output: { stdoutPath, stderrPath, stdoutBytes, stderrBytes, stdoutTail, stderrTail } }` | exit, the working directory the script ended in, where the full output lives on this machine, and the last bytes of each stream |
-| b → r | `job_stdin { jobId, bytes }` / `job_kill { jobId, signal }` | interactive input (`shell_write`), termination |
-| r → b | `job_list` reply and `pong.jobs` | the job table is the runner's; the backend reads it |
+| r → b | `job_exit { jobId, exitCode, signal?, cwd, output: { stdoutPath, stderrPath, stdoutBytes, stderrBytes, stdoutTail, stderrTail } }` | exit, the working directory the script ended in, where the full output lives on this machine, and the last bytes of each stream |
+| b → r | `job_stdin { jobId, bytes }` / `job_stdin_end { jobId }` / `job_kill { jobId, signal }` | interactive input (`shell_write`), termination |
+| r → b | `pong { jobs }` | the job table is the runner's; the backend reads it |
 
 Relay and outputs:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| r → b | `rpc_call { callId, conversationId, shellId, root, command, args, cwd, env, stdin: boolean }` | an `rpc` command of some root invoked on this target; `stdin` says whether the process has a pipe on fd 0 |
+| r → b | `rpc_call { callId, agentSessionId, shellId, root, path, argv, args, json, cwd, env, stdin: boolean }` | an `rpc` command of some root invoked on this target; `stdin` says whether the process has a pipe on fd 0 |
 | b → r | `rpc_pipes { callId, stdin?, stdout }` | the call's pipe ends, sent before anything else for the call: the runner `PUT`s the process's pipe into `stdin` and `GET`s `stdout` into the process (§ Pipes) |
 | r → b | `rpc_stdin { callId, bytes }` / `rpc_stdin_end { callId }` | the live stdin the command is steered with (`shell_write`); never the pipe |
+| r → b | `rpc_cancel { callId }` | the invoking process or owning job ended; abort the backend handler, close its live stdin and fail its pipes |
 | b → r | `rpc_output { callId, bytes }` / `rpc_exit { callId, exitCode }` | the stderr view and the exit code back to the command-mode process; `rpc_exit` follows the stdout pipe's drain |
 | b → r | `manifest { manifest }` on connect and on change | the command manifest the runner caches for the CLI |
 | r → b | `pipe_done { pipeId, ok, error? }` | this runner's end of a pipe closed: its HTTP exchange completed, or why it did not |
@@ -208,12 +217,20 @@ the directory, which is the one thing a model reaches for.
 
 A job's environment is what the backend named — the shell's exports,
 `DEMI_SESSION_ID` and `DEMI_SHELL_ID` — with the device's `PATH` and `HOME`
-filled in when absent, `bin/` first in `PATH`, and three entries of the
+filled in when absent, `bin/` first in `PATH`, and four entries of the
 runner's own: `DEMI_HOME`, `DEMI_JOB_CWD_FILE` (where the `EXIT` trap
 writes `pwd`) and `DEMI_JOB_STDIN_FD` (the descriptor the prelude
 duplicated the job's stdin onto with `exec 199<&0`, so a command-mode
 process can tell the job's live stdin from a redirection by `fdNode`,
-`tinyjs.md`).
+`tinyjs.md`), plus `DEMI_JOB_ID`, which associates local relay calls with
+their owning job. The runner cancels those calls before killing the job
+and when the job exits.
+
+Each job and raw spawn has its own ordered stdin queue. Writes and EOF
+preserve their order for that process; waiting for a child to read its
+stdin does not stop the runner from receiving ping, filesystem, kill or
+other-job messages. A kill bypasses the stdin queue so it can release a
+blocked write.
 
 **The view is the model's view.** What crosses the wire, what the backend
 records, and what the browser shows are one and the same: the bytes the
@@ -239,18 +256,43 @@ names the agent's deliverables, and Demi keeps it free for that.
 
 `~/.demi/runner.sock` (mode 0600) accepts connections from command-mode
 tinyjs processes. Its frames are MessagePack behind a 32-bit big-endian
-length, one request per connection: `manifest` (answered from the cache;
-a process asks when `commands/current` is missing) or `rpc { agentSessionId,
-shellId, root, path, argv, args, json, cwd, env, stdin }` — the parsed
+length. A manifest request uses one connection and is answered from the
+cache; a process asks when `commands/current` is missing. An RPC uses a data
+connection and a lifetime connection. The data request is `rpc { callId,
+jobId?, agentSessionId, shellId, root, path, argv, args, json, cwd, env, stdin }` — the parsed
 invocation and whether fd 0 is a pipe — followed by the pipe itself as
 `pipe { bytes }` frames ending in `pipe_end`, and by `stdin { bytes }`
 frames for the live stdin and `stdin_end`; back come `output { stream,
-bytes }` frames and `exit { exitCode }`, or `error { message }`. The
-runner forwards `rpc` on its authenticated socket as `rpc_call` /
+bytes }` frames and `exit { exitCode }`, or `error { message }`. The runner
+first registers the call and replies `ready`; the process then opens the
+lifetime connection with `watch { callId }`. The runner binds that
+connection, forwards `rpc_call` to the backend and acknowledges the watch
+with `ready`. Only then does the process send input data. The lifetime
+connection carries no data: its EOF cancels the call even when the data
+connection is blocked by a slow stdin consumer.
+
+```text
+beta: job j12 invokes call c9                    beta runner             backend
+data socket: rpc {callId:c9, jobId:j12, ...} --> register c9
+data socket:                              <-- ready
+lifetime socket: watch {callId:c9}         --> bind lifetime
+                                               rpc_call c9 ----------> register handler
+lifetime socket:                          <-- ready
+data socket: pipe / stdin                 --> HTTP pipe / rpc_stdin
+
+process c9 exits or is killed:
+lifetime socket EOF                       --> rpc_cancel c9 ---------> abort handler
+                                                                        close live stdin
+                                                                        fail pipes
+```
+
+The runner forwards `rpc` on its authenticated socket as `rpc_call` /
 `rpc_stdin` / `rpc_stdin_end`, streams the `pipe` frames into the `PUT`
 that the backend's `rpc_pipes` names and the `GET` body back as `output`
-frames, and relays `rpc_output` / `rpc_exit`. The UDS is one ordered
-connection per request, so the pipe rides it as the byte stream it is;
+frames, and relays `rpc_output` / `rpc_exit`. Stdout and stderr frames share
+an ordered socket writer, so stderr remains visible while stdout is still
+streaming. Only the exit waits for the stdout stream to finish. The data
+connection is ordered, so the pipe rides it as the byte stream it is;
 the runner holds no more of it than an HTTP body in flight. The backend
 runs the leaf against the tree of the conversation `agentSessionId` names.
 The command-mode process never holds a credential. Attribution is by the
@@ -362,7 +404,14 @@ hostless model:   demi host shell --host B "tar c -C /work ." | tar x
 - **Authorization and lifetime.** The `PUT` is accepted only from the
   pipe's source device and the `GET` only from its sink device; an
   in-process end needs neither. Each id serves one exchange; an end that
-  never arrives times the pipe out; a device disconnecting fails the pipes
+  never arrives times the pipe out after two minutes. Assignment to a
+  device and arrival of its GET or PUT are distinct states; duplicate
+  GETs and PUTs are refused. A process source arrives when its writer is
+  acquired, even before its first byte, and a process sink arrives on its
+  first pull. Once both ends arrive the arrival timer is cancelled; a quiet
+  command or a slow transfer can continue for its full duration. Handing
+  an unwritten process source to a device requires that device's PUT to
+  arrive. A device disconnecting fails the pipes
   it is party to, and the command or job at the other end sees an
   ordinary error. The `PUT` completes only after the sink drained the
   body, so `pipe_done` is the end of the copy, and `rpc_exit` follows
@@ -373,6 +422,14 @@ hostless model:   demi host shell --host B "tar c -C /work ." | tar x
   what they see, not a data carrier. Live stdin (`shell_write`) is
   interactive input and rides `rpc_stdin` / `job_stdin`. Both are small
   by nature; the wire rules keep them so.
+
+`demi host shell` forwards the caller's live stdin to the far job when
+there is no finite stdin pipe. A hostless root invocation leaves its
+finite `stdin` absent in this case and supplies `stdinStream`. Cancelling
+the invoking command sends SIGTERM to the far job and escalates to SIGKILL
+after five seconds if needed. The signal is the caller's throughout the
+relay and backend handler; terminating a process also closes its lifetime
+connection, so cancellation is independent of input or output backpressure.
 
 ## Wire rules
 
@@ -398,7 +455,8 @@ appears.
 ## Disconnect semantics
 
 When the socket drops, running jobs and spawns on the runner are killed and
-pending calls fail; the backend surfaces the failure into the affected turns
+pending calls fail. Backend RPC handlers are aborted, their live stdin ends,
+and their active HTTP pipe bodies are interrupted; the backend surfaces the failure into the affected turns
 as ordinary tool errors — the session lives in the backend and is not lost.
 On reconnect the device is simply online again. On a managed host the
 runner is PID 1, so a runner crash is a VM death and the next tool call

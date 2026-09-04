@@ -92,7 +92,7 @@ const documentSourceSchema: z.ZodType<DocumentSource> = z.object({
   fileName: z.string(),
 })
 
-const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminatedUnion('type', [
+export const userContentBlockSchema: z.ZodType<UserContentBlock> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
   z.object({ type: z.literal('image'), source: imageSourceSchema }),
   z.object({ type: z.literal('video'), source: videoSourceSchema }),
@@ -120,19 +120,23 @@ const modelSwitchApplySchema: z.ZodType<ModelSwitchApply> = z.enum(['immediate',
 
 // ── the client frames (single source of truth for ClientFrame) ──────
 
+export const sendFrameSchema = z.object({
+  type: z.literal('send'),
+  messageId: z.string(),
+  content: z.array(userContentBlockSchema),
+  metadata: metadataSchema.optional(),
+})
+
+export const steerFrameSchema = z.object({ type: z.literal('steer'), steerId: z.string(), content: z.array(userContentBlockSchema) })
+
 export const clientFrameSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('open'), provider: providerSelectionSchema, cwd: z.string(), sessionId: z.string() }),
-  z.object({
-    type: z.literal('send'),
-    messageId: z.string(),
-    content: z.array(userContentBlockSchema),
-    metadata: metadataSchema.optional(),
-  }),
+  sendFrameSchema,
   z.object({ type: z.literal('dequeue_message'), messageId: z.string() }),
   z.object({ type: z.literal('send_queued_message'), messageId: z.string() }),
   z.object({ type: z.literal('steer_queued_message'), messageId: z.string(), steerId: z.string() }),
   z.object({ type: z.literal('clear_message_queue') }),
-  z.object({ type: z.literal('steer'), steerId: z.string(), content: z.array(userContentBlockSchema) }),
+  steerFrameSchema,
   z.object({ type: z.literal('cancel_pending_steer'), steerId: z.string() }),
   z.object({ type: z.literal('set_provider'), provider: providerSelectionSchema, apply: modelSwitchApplySchema.optional() }),
   z.object({ type: z.literal('abort') }),

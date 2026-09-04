@@ -48,7 +48,11 @@ interface PendingPipe {
   /** The body, from the source's `PUT` or from the in-process writer. */
   body: Deferred<ReadableStream<Uint8Array>>
   drained: Deferred<void>
-  timer: ReturnType<typeof setTimeout>
+  timer: ReturnType<typeof setTimeout> | null
+  sourceArrived: boolean
+  sinkArrived: boolean
+  failure: Error | null
+  cancelBody?: (error: Error) => void
   channel: ByteChannel | null
 }
 
@@ -70,6 +74,9 @@ export class PipeBroker {
       body: deferred(),
       drained: deferred(),
       timer: setTimeout(() => this.fail(id, 'an end never arrived'), this.options.timeoutMs ?? 120_000),
+      sourceArrived: false,
+      sinkArrived: false,
+      failure: null,
       channel: null,
     }
     // Unobserved rejections on the two internal promises are expected paths.
@@ -94,6 +101,10 @@ export class PipeBroker {
     const pipe = this.pipes.get(id)
     if (!pipe || pipe.source?.kind !== 'device' || pipe.source.deviceId !== deviceId) return { status: 404, message: 'no such pipe' }
     if (!body) return { status: 400, message: 'a body is required' }
+    if (pipe.sourceArrived) return { status: 409, message: 'source already connected' }
+    pipe.sourceArrived = true
+    this.updateArrivalTimer(id, pipe)
+    pipe.cancelBody = () => { void body.cancel().catch(noop) }
     pipe.body.resolve(body)
     try {
       await pipe.drained.promise
@@ -107,12 +118,16 @@ export class PipeBroker {
   async get(id: string, deviceId: string): Promise<{ status: 200; body: ReadableStream<Uint8Array> } | { status: number; message: string }> {
     const pipe = this.pipes.get(id)
     if (!pipe || pipe.sink?.kind !== 'device' || pipe.sink.deviceId !== deviceId) return { status: 404, message: 'no such pipe' }
+    if (pipe.sinkArrived) return { status: 409, message: 'sink already connected' }
+    pipe.sinkArrived = true
+    this.updateArrivalTimer(id, pipe)
     let body: ReadableStream<Uint8Array>
     try {
       body = await pipe.body.promise
     } catch (error) {
       return { status: 409, message: errorMessage(error) }
     }
+    if (pipe.failure) return { status: 409, message: pipe.failure.message }
     return { status: 200, body: this.settling(id, body) }
   }
 
@@ -129,7 +144,9 @@ export class PipeBroker {
     if (!pipe) return
     this.finish(id)
     const error = new Error(`pipe failed: ${reason}`)
+    pipe.failure = error
     pipe.channel?.fail(error)
+    pipe.cancelBody?.(error)
     pipe.body.reject(error)
     pipe.drained.reject(error)
   }
@@ -143,6 +160,18 @@ export class PipeBroker {
     if (!pipe) throw new Error('pipe: already settled')
     if (pipe[which] !== null) throw new Error(`pipe: the ${which} is already fixed`)
     pipe[which] = end
+    if (which === 'source') pipe.sourceArrived = false
+    else pipe.sinkArrived = false
+    this.updateArrivalTimer(id, pipe)
+  }
+
+  private updateArrivalTimer(id: string, pipe: PendingPipe): void {
+    if (pipe.sourceArrived && pipe.sinkArrived) {
+      if (pipe.timer !== null) clearTimeout(pipe.timer)
+      pipe.timer = null
+    } else if (pipe.timer === null) {
+      pipe.timer = setTimeout(() => this.fail(id, 'an end never arrived'), this.options.timeoutMs ?? 120_000)
+    }
   }
 
   /** The in-process sink: pulls the body chunk by chunk; stopping early counts as drained, the way a closed pipe does. */
@@ -151,15 +180,23 @@ export class PipeBroker {
     if (!pipe) throw new Error('pipe: already settled')
     if (pipe.sink === null) pipe.sink = { kind: 'process' }
     else if (pipe.sink.kind !== 'process') throw new Error('pipe: the sink is a device')
+    if (pipe.sinkArrived) throw new Error('pipe: sink already connected')
+    pipe.sinkArrived = true
+    this.updateArrivalTimer(id, pipe)
     const reader = (await pipe.body.promise).getReader()
+    pipe.cancelBody = () => { void reader.cancel().catch(noop) }
     let ended = false
     try {
       for (;;) {
         const next = await reader.read()
+        if (pipe.failure) throw pipe.failure
         if (next.done) break
         yield next.value
       }
       ended = true
+    } catch (error) {
+      this.fail(id, errorMessage(error))
+      throw error
     } finally {
       if (!ended) reader.cancel().catch(noop)
       this.finish(id)
@@ -169,6 +206,13 @@ export class PipeBroker {
 
   /** The in-process source: a bounded channel behind a readable body; the writer waits for the sink's pull. */
   private processSource(id: string): PipeWriter {
+    // A handler owns this writer before it produces its first byte. It may
+    // hand the source to a device before writing; that device must then PUT.
+    const pending = this.pipes.get(id)
+    if (pending && pending.source?.kind !== 'device') {
+      pending.sourceArrived = true
+      this.updateArrivalTimer(id, pending)
+    }
     const fixed = (): PendingPipe | null => {
       const pipe = this.pipes.get(id)
       if (!pipe) return null
@@ -205,12 +249,19 @@ export class PipeBroker {
   /** Wraps the source body so the pipe settles with the sink's read; a sink stopping early counts as drained. */
   private settling(id: string, body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
     const reader = body.getReader()
+    const pipe = this.pipes.get(id)
     const settle = (): void => {
       const pipe = this.pipes.get(id)
       this.finish(id)
       pipe?.drained.resolve()
     }
     return new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        if (pipe) pipe.cancelBody = (error) => {
+          controller.error(error)
+          void reader.cancel().catch(noop)
+        }
+      },
       pull: async (controller) => {
         let next: Awaited<ReturnType<typeof reader.read>>
         try {
@@ -237,7 +288,7 @@ export class PipeBroker {
   private finish(id: string): void {
     const pipe = this.pipes.get(id)
     if (!pipe) return
-    clearTimeout(pipe.timer)
+    if (pipe.timer !== null) clearTimeout(pipe.timer)
     this.pipes.delete(id)
   }
 }

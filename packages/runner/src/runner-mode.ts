@@ -21,7 +21,7 @@ import {
 import { HostRpcServer } from './serve/host-rpc-server'
 import { JobTable } from './serve/jobs'
 import type { Host } from '@demicodes/shell'
-import { collectBytes, delay, errorMessage } from '@demicodes/utils'
+import { collectBytes, delay, errorMessage, noop, SerialQueue } from '@demicodes/utils'
 import { ManifestCache } from './manifest-cache'
 import { RelayServer } from './relay/server'
 import { DirectoryHome, type HomeImage } from './init/home-image'
@@ -157,7 +157,10 @@ export class RunnerMode {
     if (!link) throw new Error('runner: not connected')
     void link.send(this.wire.encode(message)).catch(() => {})
     // A job that just ended may have filled the home.
-    if (message.type === 'job_exit') void this.checkHome()
+    if (message.type === 'job_exit') {
+      this.relay?.cancelJob(message.jobId)
+      void this.checkHome()
+    }
   }
 
   /** One connection: hello, then the message loop until the socket closes. */
@@ -193,6 +196,7 @@ export class RunnerMode {
       send: (message) => this.sendToBackend(message),
     })
     let outcome: 'closed' | 'online' | 'rejected' = 'closed'
+    const inputQueues = new Map<string, SerialQueue>()
     try {
       const deviceToken = await this.token()
       await link.send(
@@ -211,6 +215,19 @@ export class RunnerMode {
           message = this.wire.decodeBackendToRunner(frame)
         } catch (error) {
           this.log(`malformed frame from the backend: ${errorMessage(error)}`)
+          continue
+        }
+        if (message.type === 'job_stdin' || message.type === 'job_stdin_end' || message.type === 'spawn_stdin' || message.type === 'spawn_stdin_end') {
+          const key = 'jobId' in message ? `job:${message.jobId}` : `spawn:${message.spawnId}`
+          let queue = inputQueues.get(key)
+          if (!queue) {
+            queue = new SerialQueue()
+            inputQueues.set(key, queue)
+          }
+          const current = queue
+          void queue.run(() => this.handle(message, { rpc, jobs })).catch(noop).finally(() => {
+            if (current.idle && inputQueues.get(key) === current) inputQueues.delete(key)
+          })
           continue
         }
         const handled = await this.handle(message, { rpc, jobs })
@@ -289,6 +306,7 @@ export class RunnerMode {
       case 'job_stdin':
       case 'job_stdin_end':
       case 'job_kill':
+        if (message.type === 'job_kill') this.relay?.cancelJob(message.jobId)
         await ends.jobs.handleMessage(message)
         return undefined
       default:

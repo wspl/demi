@@ -62,6 +62,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: import concrete providers, Host implementations, or UI packages; must not own a shell interpreter.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
 - Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, the `shellEnvironment` factory, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target.
+- Media persistence rule: AgentServer accepts a BlobStore factory keyed by root session id; child sessions inherit that root's store. Product code selects the ownership scope, while the agent only handles the put/get media contract.
 - Layout (directories mirror the package's modules; root keeps entrypoints, `types.ts`, and single-file modules like `tools.ts`):
   - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction).
   - `transcript/` — the TranscriptLog mutation journal and patch application.
