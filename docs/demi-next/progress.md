@@ -3318,6 +3318,49 @@ runners instead): job-to-job pipes between two devices, and `tar`. The
 dev instance's tap pool was left in `jailer` mode by the last install
 run; either mode is one `install-managed-hosts.sh --mode …` away.
 
+## Review corrections (2026-09-05) — in progress
+
+Scope: the 19 findings against `f6b98a2e`, on
+`codex/demi-next-review-fixes`. Web and concrete Sandbox implementations
+remain outside this checkpoint. All verification uses scoped tests with
+real-model gates unset.
+
+| Finding | Milestone | Final-state correction | Status |
+|---|---|---|---|
+| 1 | M3/M12 | Blob namespaces belong to users; conversation and HTTP stores resolve the same owner. | implementing |
+| 2–3 | M5/M6 | Resolve current provider configuration before inference and current execution target at spawn. | implementing |
+| 4 | M9 | Order each stdin stream without blocking control-message dispatch. | implementing |
+| 5 | Pipes | Distinguish pipe endpoint assignment from arrival; stop the arrival timer when connected. | implementing |
+| 6, 10 | Attached hosts | Carry live stdin and cancellation through RPC to the remote job. | implementing |
+| 7 | M8/M11 | Serialize concurrent appends to a hostless file. | implementing |
+| 8 | M4/M9 | Reserve device ownership during handshake and refuse closed connections. | implementing |
+| 9 | Pipes | Stream stderr concurrently with stdout; only exit waits for both. | implementing |
+| 11 | M2/M6 | Validate inbound frames before rewriting; isolate each delivery failure. | implementing |
+| 12 | M8 | Cancel pending stdin reads and report an aborted command as aborted. | verified |
+| 13 | M8 | Treat redirection IO failure as the current command's failure. | verified |
+| 14 | M8/M11 | Preserve explicitly changed initial environment variables during handover. | verified |
+| 15 | M8 | Finish `head -c` immediately when its byte count is satisfied. | verified |
+| 16–17 | Tar | Accumulate relative `-C`; fail when requested members are absent. | verified |
+| 18 | Provider catalog | Apply the vendor's reasoning replay policy to compatible requests. | implementing |
+| 19 | M5 | Enforce subscription family uniqueness atomically in storage. | implementing |
+
+Tests and conclusions are recorded here as each checkpoint is completed.
+
+### Shell semantics checkpoint — verified
+
+Findings 12–17: cancellation closes pending stdin reads and removes signal
+listeners; an aborted dispatcher cannot turn the command into a success.
+Redirection flush distinguishes filesystem errno failures from implementation
+exceptions and flushes other sinks before reporting the command failure.
+Environment handover compares values with the initial environment. `head -c`
+finishes at the byte boundary. Tar accumulates `-C` and reports unmatched
+members while retaining metadata for members already extracted.
+
+Verification: host-virtual lifecycle and tinybash builtin/corpus/session/tar
+tests, **424 pass, 4 Linux-only skips, 0 fail**. New test coverage is listed
+in `tinybash.md`. The first test run exposed a fixture mistake: spreading a
+Host filesystem drops prototype methods; fault injection now uses a Proxy.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

@@ -97,7 +97,9 @@ fault, not a normal event.
 tree — both subtrees, with mode and mtime intact — by `mke2fs
 -d` before the VM boots (`storage.md`), so the first command already runs
 on a complete home; the backend hands tinybash's session state — cwd and
-variables — to the real bash job. The environment table is shared: the hostless `env`
+variables — to the real bash job. Values changed from the initial environment,
+including a modified `PATH`, are handed over with newly assigned variables.
+The environment table is shared: the hostless `env`
 (`HOME`, `USER`, `PATH`, `PWD`, `SHELL`, `LANG`) is the table the managed
 host's login environment is generated from, so `echo $PATH` prints the
 same string on both sides. Output formats are GNU's on both sides

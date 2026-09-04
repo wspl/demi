@@ -59,7 +59,7 @@ export function parseTarArgs(argv: readonly string[], line: number): TarArgs {
         args.file = valueOf()
         return
       case 'C':
-        currentDir = valueOf()
+        currentDir = under(currentDir, valueOf())
         args.dirs.push(currentDir)
         args.extractDir = currentDir
         return
@@ -347,16 +347,23 @@ function trimNul(bytes: Uint8Array): string {
 }
 
 /** Reads the archive member by member; a malformed or truncated archive ends it with GNU's line and exit 2. */
-async function readMembers(ctx: BuiltinContext, args: TarArgs, each: (header: TarHeader, reader: BlockReader) => Promise<void>): Promise<number> {
+async function readMembers(ctx: BuiltinContext, args: TarArgs, each: (header: TarHeader, reader: BlockReader, select: (name: string) => boolean) => Promise<void>): Promise<number> {
   const source = await openSource(ctx, args)
   if (source === null) return 2
   const reader = new BlockReader(source)
+  const missing = new Set(args.members)
+  const select = (name: string) => selected(args, name, missing)
   try {
     for (;;) {
       checkCancelled(ctx)
       const header = await nextMember(reader)
       if (header === null) break
-      await each(header, reader)
+      await each(header, reader, select)
+    }
+    if (missing.size > 0) {
+      for (const member of missing) await ctx.stderr(`tar: ${member.name}: Not found in archive\n`)
+      await ctx.stderr(FAILURE)
+      return 2
     }
     return 0
   } catch (error) {
@@ -376,13 +383,18 @@ async function readMembers(ctx: BuiltinContext, args: TarArgs, each: (header: Ta
 }
 
 /** Whether `x`/`t` operands select this member: the member or anything under a named directory. */
-function selected(args: TarArgs, name: string): boolean {
+function selected(args: TarArgs, name: string, missing: Set<TarArgs['members'][number]>): boolean {
   if (args.members.length === 0) return true
   const plain = name.replace(/\/+$/, '')
-  return args.members.some((member) => {
+  let matched = false
+  for (const member of args.members) {
     const wanted = member.name.replace(/\/+$/, '')
-    return plain === wanted || plain.startsWith(`${wanted}/`)
-  })
+    if (plain === wanted || plain.startsWith(`${wanted}/`)) {
+      missing.delete(member)
+      matched = true
+    }
+  }
+  return matched
 }
 
 // --- extract -----------------------------------------------------------------------
@@ -396,7 +408,7 @@ async function extract(ctx: BuiltinContext, args: TarArgs): Promise<number> {
     await ctx.stderr(line)
     status = 2
   }
-  const outcome = await readMembers(ctx, args, async (header, reader) => {
+  const outcome = await readMembers(ctx, args, async (header, reader, select) => {
     const skipData = () => reader.data(header.kind === 'file' || header.kind === 'other' ? header.size : 0)
     let name = header.name
     if (name.startsWith('/')) {
@@ -406,7 +418,7 @@ async function extract(ctx: BuiltinContext, args: TarArgs): Promise<number> {
       }
       name = name.replace(/^\/+/, '')
     }
-    if (!selected(args, name)) {
+    if (!select(name)) {
       await skipData()
       return
     }
@@ -459,7 +471,6 @@ async function extract(ctx: BuiltinContext, args: TarArgs): Promise<number> {
       await fail(`tar: ${name}: Cannot open: ${strerror(error)}\n`)
     }
   })
-  if (outcome !== 0) return outcome
   // Directory modes and times last, deepest first, as GNU defers them: extracting into a directory would touch them.
   for (const directory of directories.reverse()) {
     try {
@@ -469,8 +480,8 @@ async function extract(ctx: BuiltinContext, args: TarArgs): Promise<number> {
       await fail(`tar: ${directory.path}: Cannot utime: ${strerror(error)}\n`)
     }
   }
-  if (status !== 0) await ctx.stderr(FAILURE)
-  return status
+  if (status !== 0 && outcome === 0) await ctx.stderr(FAILURE)
+  return status || outcome
 }
 
 // --- list --------------------------------------------------------------------------
@@ -478,9 +489,9 @@ async function extract(ctx: BuiltinContext, args: TarArgs): Promise<number> {
 async function list(ctx: BuiltinContext, args: TarArgs): Promise<number> {
   // GNU widens the owner and size columns as it goes, never narrowing them.
   let ugswidth = 19
-  return readMembers(ctx, args, async (header, reader) => {
+  return readMembers(ctx, args, async (header, reader, select) => {
     if (header.kind === 'file' || header.kind === 'other') await reader.data(header.size)
-    if (!selected(args, header.name)) return
+    if (!select(header.name)) return
     if (!args.verbose) {
       await ctx.stdout(`${header.name}\n`)
       return
