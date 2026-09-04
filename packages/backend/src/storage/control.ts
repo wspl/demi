@@ -79,17 +79,19 @@ export interface ControlService {
   setConversationWorkspace(conversationId: string, workspaceId: string | null): Promise<void>
   /**
    * The target-switch write (`sessions-and-targets.md` § Switching): moves
-   * the target pointers, records the switch for the next turn's announcement
-   * and grants the departed device, in one compare-and-set — returns false
-   * (and writes nothing) when the pointers no longer equal `from`, so
-   * concurrent switches have exactly one winner.
+   * the target pointers, records the switch for the next turn's
+   * announcement, attaches the departed device with the directory it was
+   * left at, and detaches the device the target moves to — a host is main
+   * or attached, never both — in one compare-and-set. Returns false (and
+   * writes nothing) when the pointers no longer equal `from`, so concurrent
+   * switches have exactly one winner.
    */
   switchConversationTarget(
     conversationId: string,
     from: ConversationTargetPointer,
     to: ConversationTargetPointer,
     pending: PendingSwitch,
-    grantDeviceId: string | null,
+    ends: { departed: { deviceId: string; cwd: string | null } | null; arrivingDeviceId: string | null },
   ): Promise<boolean>
   /**
    * The session upgrade's write (`sessions-and-targets.md` § Hostless
@@ -97,13 +99,22 @@ export interface ControlService {
    * it, silently — no pending switch. False when it is no longer hostless.
    */
   bindConversationHost(conversationId: string, deviceId: string): Promise<boolean>
-  /** The announcement was injected; nothing is pending until the next switch. */
-  clearPendingSwitch(conversationId: string): Promise<void>
-  /** The grant set (`sessions-and-targets.md` § Host grants): idempotent add and remove. */
-  grantHost(conversationId: string, deviceId: string): Promise<void>
-  revokeHost(conversationId: string, deviceId: string): Promise<void>
-  listHostGrants(conversationId: string): Promise<HostGrantRecord[]>
-  isHostGranted(conversationId: string, deviceId: string): Promise<boolean>
+  /** The announcements were injected; nothing is pending until the next switch or change to the attached hosts. */
+  clearPendingAnnouncements(conversationId: string): Promise<void>
+  /**
+   * The attached hosts (`sessions-and-targets.md` § Attached hosts). `attachHost`
+   * is idempotent: an attached device keeps its row; a new one is named from
+   * `name`, suffixed while the name is taken in the conversation, and starts
+   * where `cwd` says (`null`: its home). `announce` marks the change for the
+   * next turn's context block.
+   */
+  attachHost(conversationId: string, deviceId: string, name: string, cwd: string | null, announce: boolean): Promise<AttachedHostRecord>
+  detachHost(conversationId: string, deviceId: string): Promise<boolean>
+  listAttachedHosts(conversationId: string): Promise<AttachedHostRecord[]>
+  getAttachedHost(conversationId: string, deviceId: string): Promise<AttachedHostRecord | null>
+  renameAttachedHost(conversationId: string, deviceId: string, name: string): Promise<'renamed' | 'name_taken' | 'not_attached'>
+  /** Where work on the attached host last stood: written back from the job's exit. */
+  setAttachedHostCwd(conversationId: string, deviceId: string, cwd: string): Promise<void>
   createConversation(userId: string, options?: { title?: string }): Promise<ConversationRecord>
   getConversation(id: string): Promise<ConversationRecord | null>
   listConversations(userId: string, options?: { archived?: boolean }): Promise<ConversationRecord[]>
@@ -134,10 +145,14 @@ export interface DeviceRecord {
 /** What a managed host is bound to (`managed-hosts.md` § What a managed host is): exactly one of the two. */
 export type ManagedHostOwner = { kind: 'conversation'; id: string } | { kind: 'workspace'; id: string }
 
-export interface HostGrantRecord {
+export interface AttachedHostRecord {
   conversationId: string
   deviceId: string
-  grantedAt: string
+  /** What the model and the user call the host; unique within the conversation. */
+  name: string
+  /** The directory the last `demi host shell --host` there ended in; `null` until one ran — its home. */
+  cwd: string | null
+  attachedAt: string
 }
 
 export interface WorkspaceRecord {
@@ -214,6 +229,8 @@ export interface ConversationRecord {
   workspaceId: string | null
   hostDeviceId: string | null
   pendingSwitch: PendingSwitch | null
+  /** The attached hosts changed since the model last heard of them: announced at the next turn boundary. */
+  hostsChanged: boolean
   providerId: string | null
   modelId: string | null
   createdAt: string
@@ -228,6 +245,7 @@ interface ConversationRow {
   workspace_id: string | null
   host_device_id: string | null
   pending_switch_json: string | null
+  hosts_changed: number
   provider_id: string | null
   model_id: string | null
   created_at: string
@@ -235,7 +253,7 @@ interface ConversationRow {
 }
 
 const SELECT =
-  'SELECT id, user_id, title, archived, workspace_id, host_device_id, pending_switch_json, provider_id, model_id, created_at, updated_at FROM conversations'
+  'SELECT id, user_id, title, archived, workspace_id, host_device_id, pending_switch_json, hosts_changed, provider_id, model_id, created_at, updated_at FROM conversations'
 
 interface UserRow {
   id: string
@@ -385,7 +403,7 @@ export class LocalControlService implements ControlService {
 
   async deleteDevice(id: string): Promise<void> {
     this.db.transaction(() => {
-      this.db.run('DELETE FROM conversation_host_grants WHERE device_id = ?', [id])
+      this.db.run('DELETE FROM conversation_hosts WHERE device_id = ?', [id])
       this.db.run('DELETE FROM devices WHERE id = ?', [id])
     })
   }
@@ -597,7 +615,7 @@ export class LocalControlService implements ControlService {
     from: ConversationTargetPointer,
     to: ConversationTargetPointer,
     pending: PendingSwitch,
-    grantDeviceId: string | null,
+    ends: { departed: { deviceId: string; cwd: string | null } | null; arrivingDeviceId: string | null },
   ): Promise<boolean> {
     return this.db.transaction(() => {
       const now = new Date().toISOString()
@@ -606,8 +624,13 @@ export class LocalControlService implements ControlService {
         [to.workspaceId, to.hostDeviceId, JSON.stringify(pending), now, conversationId, from.workspaceId, from.hostDeviceId],
       )
       const won = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
-      if (won && grantDeviceId !== null) this.insertGrant(conversationId, grantDeviceId, now)
-      return won
+      if (!won) return false
+      if (ends.arrivingDeviceId !== null) this.db.run('DELETE FROM conversation_hosts WHERE conversation_id = ? AND device_id = ?', [conversationId, ends.arrivingDeviceId])
+      if (ends.departed !== null && ends.departed.deviceId !== ends.arrivingDeviceId) {
+        const name = this.db.get<{ name: string }>('SELECT name FROM devices WHERE id = ?', [ends.departed.deviceId])?.name ?? ends.departed.deviceId
+        this.insertAttachedHost(conversationId, ends.departed.deviceId, name, ends.departed.cwd, now)
+      }
+      return true
     })
   }
 
@@ -622,40 +645,68 @@ export class LocalControlService implements ControlService {
     })
   }
 
-  async clearPendingSwitch(conversationId: string): Promise<void> {
-    this.db.run('UPDATE conversations SET pending_switch_json = NULL WHERE id = ?', [conversationId])
+  async clearPendingAnnouncements(conversationId: string): Promise<void> {
+    this.db.run('UPDATE conversations SET pending_switch_json = NULL, hosts_changed = 0 WHERE id = ?', [conversationId])
   }
 
-  async grantHost(conversationId: string, deviceId: string): Promise<void> {
-    this.insertGrant(conversationId, deviceId, new Date().toISOString())
+  async attachHost(conversationId: string, deviceId: string, name: string, cwd: string | null, announce: boolean): Promise<AttachedHostRecord> {
+    return this.db.transaction(() => {
+      const existing = this.attachedHost(conversationId, deviceId)
+      if (existing) return existing
+      this.insertAttachedHost(conversationId, deviceId, name, cwd, new Date().toISOString())
+      if (announce) this.db.run('UPDATE conversations SET hosts_changed = 1 WHERE id = ?', [conversationId])
+      return this.attachedHost(conversationId, deviceId)!
+    })
   }
 
-  async revokeHost(conversationId: string, deviceId: string): Promise<void> {
-    this.db.run('DELETE FROM conversation_host_grants WHERE conversation_id = ? AND device_id = ?', [conversationId, deviceId])
+  async detachHost(conversationId: string, deviceId: string): Promise<boolean> {
+    return this.db.transaction(() => {
+      this.db.run('DELETE FROM conversation_hosts WHERE conversation_id = ? AND device_id = ?', [conversationId, deviceId])
+      const removed = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+      if (removed) this.db.run('UPDATE conversations SET hosts_changed = 1 WHERE id = ?', [conversationId])
+      return removed
+    })
   }
 
-  async listHostGrants(conversationId: string): Promise<HostGrantRecord[]> {
+  async listAttachedHosts(conversationId: string): Promise<AttachedHostRecord[]> {
     return this.db
-      .all<HostGrantRow>(
-        'SELECT conversation_id, device_id, granted_at FROM conversation_host_grants WHERE conversation_id = ? ORDER BY granted_at',
-        [conversationId],
-      )
-      .map((row) => ({ conversationId: row.conversation_id, deviceId: row.device_id, grantedAt: row.granted_at }))
+      .all<AttachedHostRow>(`${ATTACHED_HOST_SELECT} WHERE conversation_id = ? ORDER BY attached_at, name`, [conversationId])
+      .map(attachedHostFromRow)
   }
 
-  async isHostGranted(conversationId: string, deviceId: string): Promise<boolean> {
-    return (
-      this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM conversation_host_grants WHERE conversation_id = ? AND device_id = ?', [
-        conversationId,
-        deviceId,
-      ])?.n ?? 0
-    ) > 0
+  async getAttachedHost(conversationId: string, deviceId: string): Promise<AttachedHostRecord | null> {
+    return this.attachedHost(conversationId, deviceId)
   }
 
-  private insertGrant(conversationId: string, deviceId: string, grantedAt: string): void {
+  async renameAttachedHost(conversationId: string, deviceId: string, name: string): Promise<'renamed' | 'name_taken' | 'not_attached'> {
+    return this.db.transaction(() => {
+      if (!this.attachedHost(conversationId, deviceId)) return 'not_attached'
+      const holder = this.db.get<{ device_id: string }>('SELECT device_id FROM conversation_hosts WHERE conversation_id = ? AND name = ?', [conversationId, name])
+      if (holder && holder.device_id !== deviceId) return 'name_taken'
+      this.db.run('UPDATE conversation_hosts SET name = ? WHERE conversation_id = ? AND device_id = ?', [name, conversationId, deviceId])
+      this.db.run('UPDATE conversations SET hosts_changed = 1 WHERE id = ?', [conversationId])
+      return 'renamed'
+    })
+  }
+
+  async setAttachedHostCwd(conversationId: string, deviceId: string, cwd: string): Promise<void> {
+    this.db.run('UPDATE conversation_hosts SET cwd = ? WHERE conversation_id = ? AND device_id = ?', [cwd, conversationId, deviceId])
+  }
+
+  private attachedHost(conversationId: string, deviceId: string): AttachedHostRecord | null {
+    const row = this.db.get<AttachedHostRow>(`${ATTACHED_HOST_SELECT} WHERE conversation_id = ? AND device_id = ?`, [conversationId, deviceId])
+    return row ? attachedHostFromRow(row) : null
+  }
+
+  /** Inserts the row under the first free name: `name`, then `name-2`, `name-3`, … within the conversation. */
+  private insertAttachedHost(conversationId: string, deviceId: string, name: string, cwd: string | null, attachedAt: string): void {
+    const base = name.trim() || deviceId
+    const taken = new Set(this.db.all<{ name: string }>('SELECT name FROM conversation_hosts WHERE conversation_id = ?', [conversationId]).map((row) => row.name))
+    let candidate = base
+    for (let n = 2; taken.has(candidate); n += 1) candidate = `${base}-${n}`
     this.db.run(
-      'INSERT INTO conversation_host_grants (conversation_id, device_id, granted_at) VALUES (?, ?, ?) ON CONFLICT (conversation_id, device_id) DO NOTHING',
-      [conversationId, deviceId, grantedAt],
+      'INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (conversation_id, device_id) DO NOTHING',
+      [conversationId, deviceId, candidate, cwd, attachedAt],
     )
   }
 
@@ -669,6 +720,7 @@ export class LocalControlService implements ControlService {
       workspaceId: null,
       hostDeviceId: null,
       pendingSwitch: null,
+      hostsChanged: false,
       providerId: null,
       modelId: null,
       createdAt: now,
@@ -742,10 +794,18 @@ interface DeviceRow {
   last_seen_at: string | null
 }
 
-interface HostGrantRow {
+interface AttachedHostRow {
   conversation_id: string
   device_id: string
-  granted_at: string
+  name: string
+  cwd: string | null
+  attached_at: string
+}
+
+const ATTACHED_HOST_SELECT = 'SELECT conversation_id, device_id, name, cwd, attached_at FROM conversation_hosts'
+
+function attachedHostFromRow(row: AttachedHostRow): AttachedHostRecord {
+  return { conversationId: row.conversation_id, deviceId: row.device_id, name: row.name, cwd: row.cwd, attachedAt: row.attached_at }
 }
 
 interface WorkspaceRow {
@@ -844,6 +904,7 @@ function fromRow(row: ConversationRow): ConversationRecord {
     workspaceId: row.workspace_id,
     hostDeviceId: row.host_device_id,
     pendingSwitch: row.pending_switch_json ? (JSON.parse(row.pending_switch_json) as PendingSwitch) : null,
+    hostsChanged: row.hosts_changed !== 0,
     providerId: row.provider_id,
     modelId: row.model_id,
     createdAt: row.created_at,

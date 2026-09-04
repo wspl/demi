@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,7 +12,7 @@ import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { openBackend, type TestBackend } from './session'
 
-// `demi host shell --id` between two devices (`runner.md` § Pipes). The
+// `demi host shell --host` between two devices (`runner.md` § Pipes). The
 // script runs as a job on the named host with the caller's stdin and stdout
 // attached to the job's as pipes: HTTP streams between the two runners,
 // brokered by the backend, so a working tree never crosses either runner
@@ -69,7 +69,7 @@ async function pairDevice(backend: TestBackend, name: string) {
   return { home, runner, deviceId: device.id, workspaceId: workspace.id }
 }
 
-test('host shell --id: the job runs on the named host with the caller\'s pipes attached both ways, nothing bulk crosses the sockets', async () => {
+test('host shell --host: the job runs on the named host with the caller\'s pipes attached both ways, nothing bulk crosses the sockets; the directory carries', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-hs-data-'))
   /** Every message per device and direction: the wire audit. */
   const frames: Array<{ deviceId: string; direction: 'in' | 'out'; message: RunnerProtocolMessage }> = []
@@ -95,6 +95,8 @@ test('host shell --id: the job runs on the named host with the caller\'s pipes a
               [events.text('three'), events.response()],
               [events.toolCall('t4', 'shell_exec', { script: scripts[3]!, timeoutMs: 30_000 })],
               [events.text('four'), events.response()],
+              [events.toolCall('t5', 'shell_exec', { script: scripts[4]!, timeoutMs: 30_000 })],
+              [events.text('five'), events.response()],
             ]),
         }),
       },
@@ -110,17 +112,19 @@ test('host shell --id: the job runs on the named host with the caller\'s pipes a
   for (let i = 0; i < payload.length; i += 1) payload[i] = (i * 31) & 0xff
   writeFileSync(join(a.home, 'notes.bin'), payload)
 
-  // The conversation starts on alpha and switches to beta: the switch granted alpha, hence reachable.
+  // The conversation starts on alpha and switches to beta: the switch attached alpha under its name, hence reachable.
   const created = await api(backend, '/api/conversations', { method: 'POST' })
   const { conversation } = (await created.json()) as { conversation: { id: string } }
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: a.workspaceId }, 'PATCH')).status).toBe(200)
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: b.workspaceId }, 'PATCH')).status).toBe(200)
 
   scripts.push(
-    `demi host list && demi host shell --id ${a.deviceId} "tar c -C ${a.home} notes.bin" | tar x && cmp notes.bin ${join(a.home, 'notes.bin')} && echo copied`,
-    `head -c 250000 notes.bin > push.bin && tar c push.bin | demi host shell --id ${a.deviceId} "tar x -C ${a.home}" && cmp push.bin ${join(a.home, 'push.bin')} && echo pushed`,
-    `demi host shell --id nope "echo hi"; echo exit=$?`,
-    `demi host shell --id ${b.deviceId} "head -c 5 notes.bin | od -An -tx1"`,
+    `demi host list && demi host shell --host alpha "tar c -C ${a.home} notes.bin" | tar x && cmp notes.bin ${join(a.home, 'notes.bin')} && echo copied`,
+    `head -c 250000 notes.bin > push.bin && tar c push.bin | demi host shell --host alpha "tar x -C ${a.home}" && cmp push.bin ${join(a.home, 'push.bin')} && echo pushed`,
+    // Where a shell on the attached host ends is where the next one starts; `--host` takes the id as well.
+    `demi host shell --host alpha "mkdir -p sub && cd sub && pwd" && demi host shell --host ${a.deviceId} "pwd" && demi host list`,
+    `demi host shell --host nope "echo hi"; echo exit=$?`,
+    `demi host shell --host beta "head -c 5 notes.bin | od -An -tx1"`,
   )
   const { client, shellEvents } = await openClient(backend, conversation.id, selection)
 
@@ -128,8 +132,8 @@ test('host shell --id: the job runs on the named host with the caller\'s pipes a
   await client.send([{ type: 'text', text: 'copy the notes over' }])
   const copied = lastExited(shellEvents)
   expect(copied?.exitCode).toBe(0)
-  expect(copied?.stdout.delta).toContain(`${a.deviceId}  alpha  online  ${a.home}  (granted)`)
-  expect(copied?.stdout.delta).toContain(`${b.deviceId}  beta  online  ${b.home}  (current)`)
+  expect(copied?.stdout.delta).toContain(`beta  ${b.deviceId}  online  ${b.home}  (main)`)
+  expect(copied?.stdout.delta).toContain(`alpha  ${a.deviceId}  online  ${a.home}  (attached)`)
   expect(copied?.stdout.delta).toContain('copied')
   expect(readFileSync(join(b.home, 'notes.bin')).equals(payload)).toBe(true)
   // The audit: alpha ran a job with its stdout attached to a pipe (its view
@@ -173,12 +177,20 @@ test('host shell --id: the job runs on the named host with the caller\'s pipes a
     expect(started?.type === 'job_start' && started.stdin?.id === (pipes?.type === 'rpc_pipes' ? pipes.stdin?.id : undefined)).toBe(true)
   }
 
+  await client.send([{ type: 'text', text: 'move around over there' }])
+  const moved = lastExited(shellEvents)
+  expect(moved?.exitCode).toBe(0)
+  // `pwd` and the recorded directory are the resolved path (`/private/var` on macOS).
+  const sub = join(realpathSync(a.home), 'sub')
+  expect(moved?.stdout.delta).toContain(`${sub}\n${sub}\n`)
+  expect(moved?.stdout.delta).toContain(`alpha  ${a.deviceId}  online  ${sub}  (attached)`)
+
   await client.send([{ type: 'text', text: 'try a stranger' }])
   const refused = lastExited(shellEvents)
   expect(refused?.stderr.delta).toContain('host nope is not reachable')
   expect(refused?.stdout.delta).toContain('exit=1')
 
-  // Hostless caller: beta is granted by the switch, and the bytes land in this process's tinybash pipeline through the backend's own end.
+  // Hostless caller: beta is attached by the switch, and the bytes land in this process's tinybash pipeline through the backend's own end.
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: null }, 'PATCH')).status).toBe(200)
   await client.send([{ type: 'text', text: 'peek from nowhere' }])
   const peeked = lastExited(shellEvents)
