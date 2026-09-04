@@ -12,7 +12,7 @@
 follows the write-frequency line:
 
 - **`control.sqlite`** — one per deployment, the control-plane data: users,
-  auth, devices, conversation index, workspaces, grants, providers/vault,
+  auth, devices, conversation index, workspaces, attached hosts, providers/vault,
   ledger, attachment metadata. Low write rate (the hottest writer
   is one ledger row per provider request), read-heavy (auth check per
   request, absorbed by a short-TTL token cache).
@@ -101,7 +101,7 @@ Interface topology — every endpoint by where its data lives:
    POST /api/auth/login ────── createSession ─────────▶ ┌─────────┐
    GET  /api/conversations ─── listConversations ─────▶ │ demi-   │──▶ control
    POST /api/devices/claim ─── claimDevice ───────────▶ │ controld│    .sqlite
-   …(workspaces, grants, providers, usage, admin)     └─────────┘
+   …(workspaces, attached hosts, providers, usage, admin) └─────────┘
 
  (b) auth check on EVERY authed request — RPC, blunted by a local cache
    any request ──▶ worker token cache (short TTL) ──miss──▶ resolveSession
@@ -157,7 +157,8 @@ conversations           id, user_id, title, archived, workspace_id(NULL), host_d
                         pending_switch_json(NULL), provider_id, model_id, created_at, updated_at
                         ← workspace_id and host_device_id mutually exclusive; both NULL = hostless
                         ← pending_switch_json: the switch the next turn announces ({from, to}), then NULL
-conversation_host_grants conversation_id, device_id, granted_at     ← the grant set
+conversation_hosts      conversation_id, device_id, name, cwd, attached_at
+                        ← the attached hosts; UNIQUE (conversation_id, name); cwd = where the last shell there ended
 workspaces              id, user_id, device_id, path, name, created_at
 devices                 id, user_id, kind(user|managed), name, platform, token_hash,
                         owner_conversation_id(NULL), owner_workspace_id(NULL),   ← managed only

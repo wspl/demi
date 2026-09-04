@@ -150,13 +150,13 @@ nothing.
 | auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `PUT /api/auth/password` (the caller's own) | M12 |
 | conversations | `GET/POST /api/conversations`; `PATCH /api/conversations/:id` (rename/archive/unarchive/target/model); `GET /api/conversations/:id/transcript`; `WS /api/conversations/:id/stream` | M2 |
 | models | `GET /api/models` (the catalog of the caller's provider scope, grouped by entry; each list live: the typed ids, the models.dev vendor, or the runtime's own) | M2; scoped M12 |
-| devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id` (revoke; 409 `device_in_use` while a workspace points at it; the device's grants go with it), `GET /api/devices/:id/fs?path=…`, `POST /api/devices/:id/fs` (create directory) | M4 |
+| devices | `GET /api/devices`, `POST /api/devices/claim`, `DELETE /api/devices/:id` (revoke; 409 `device_in_use` while a workspace points at it; the device's attachments go with it), `GET /api/devices/:id/fs?path=…`, `POST /api/devices/:id/fs` (create directory) | M4 |
 | workspaces | `GET/POST /api/workspaces`, `PATCH/DELETE /api/workspaces/:id` (never touches files); creation takes `cloud: true` in place of a deviceId | M6; cloud flag M11 |
 | providers | `GET /api/providers/catalog` (the models.dev vendors our runtimes speak to, and each subscription family with whether the scope holds it), `GET/POST /api/providers` (creation from a vendor `{ vendorId, label, apiKey, baseUrl?, modelIds? }` or as a custom endpoint `{ providerType, wireApi?, label, apiKey, baseUrl?, modelIds? }`), `PATCH /api/providers/:id` (label; endpoint, key and model list of an API-key entry, `modelIds: null` returning to the live list), `DELETE /api/providers/:id`, `POST /api/providers/:id/test`, `POST /api/providers/subscription-login` (409 `provider_exists` when the scope already holds the family) + `GET …/subscription-login/:id` — in the caller's provider scope: the instance's in shared mode (writes are admin-only), the caller's own in isolated mode | M5; scoped M12; catalog and editing M12 |
 | usage | `GET /api/usage` (the caller's), `GET /api/usage/instance` (shared mode, admins: by user) | M5; instance view M12 |
 | attachments, blobs | `POST /api/attachments` (returns a reference id), `POST /api/conversations/:id/workspace-files`, `GET /api/blobs/:sha256` | M6; blobs M9 |
 | pipes | `PUT /api/pipes/:id` (the source runner), `GET /api/pipes/:id` (the sink runner); device-token authenticated, single-use, piped in flight (`runner.md` § Pipes) | M9 |
-| grants | `GET/POST/DELETE /api/conversations/:id/grants` | M11 |
+| attached hosts | `GET /api/conversations/:id/hosts` (`{ hosts: [{ deviceId, name, cwd, online, attachedAt }] }`), `POST …/hosts { deviceId }`, `PATCH …/hosts/:deviceId { name }` (409 `name_taken` within the conversation), `DELETE …/hosts/:deviceId` (`sessions-and-targets.md` § Attached hosts) | M11 |
 | admin | `GET/POST/PATCH /api/users`, `GET /api/settings` (the instance mode, read-only: it is startup configuration) | M12 |
 
 ## Packages
