@@ -50,8 +50,10 @@ export interface ControlService {
   touchDeviceSeen(id: string): Promise<void>
   /** `config` is opaque here — the vault encrypts/decrypts; storage never sees plaintext. */
   createProvider(provider: {
+    id?: string
     ownerUserId: string | null
     providerType: string
+    credentialKind: ProviderCredentialKind
     label: string
     config: string
   }): Promise<ProviderRecord>
@@ -168,10 +170,22 @@ export interface ProviderRecord {
   id: string
   ownerUserId: string | null
   providerType: string
+  credentialKind: ProviderCredentialKind
   label: string
   /** Encrypted at rest (vault crypto); opaque to storage. */
   config: string
   createdAt: string
+}
+
+export type ProviderCredentialKind = 'api_key' | 'subscription'
+
+export class ProviderExistsError extends Error {
+  readonly code = 'provider_exists'
+
+  constructor(providerType: string) {
+    super(`This scope already has a ${providerType} subscription`)
+    this.name = 'ProviderExistsError'
+  }
 }
 
 export interface AttachmentRecord {
@@ -413,27 +427,32 @@ export class LocalControlService implements ControlService {
   }
 
   async createProvider(provider: {
+    id?: string
     ownerUserId: string | null
     providerType: string
+    credentialKind: ProviderCredentialKind
     label: string
     config: string
   }): Promise<ProviderRecord> {
     const record: ProviderRecord = {
-      id: createId(),
+      id: provider.id ?? createId(),
       ownerUserId: provider.ownerUserId,
       providerType: provider.providerType,
+      credentialKind: provider.credentialKind,
       label: provider.label,
       config: provider.config,
       createdAt: new Date().toISOString(),
     }
-    this.db.run('INSERT INTO providers (id, owner_user_id, provider_type, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+    const inserted = this.db.get<{ id: string }>("INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(COALESCE(owner_user_id, ''), provider_type) WHERE credential_kind = 'subscription' DO NOTHING RETURNING id", [
       record.id,
       record.ownerUserId,
       record.providerType,
+      record.credentialKind,
       record.label,
       record.config,
       record.createdAt,
     ])
+    if (!inserted) throw new ProviderExistsError(provider.providerType)
     return record
   }
 
@@ -823,6 +842,7 @@ interface ProviderRow {
   id: string
   owner_user_id: string | null
   provider_type: string
+  credential_kind: ProviderCredentialKind
   label: string
   config: string
   created_at: string
@@ -850,7 +870,7 @@ interface UsageLedgerRow {
   created_at: string
 }
 
-const PROVIDER_SELECT = 'SELECT id, owner_user_id, provider_type, label, config, created_at FROM providers'
+const PROVIDER_SELECT = 'SELECT id, owner_user_id, provider_type, credential_kind, label, config, created_at FROM providers'
 
 const USAGE_SELECT =
   'SELECT id, user_id, conversation_id, provider_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM usage_ledger'
@@ -875,6 +895,7 @@ function providerFromRow(row: ProviderRow): ProviderRecord {
     id: row.id,
     ownerUserId: row.owner_user_id,
     providerType: row.provider_type,
+    credentialKind: row.credential_kind,
     label: row.label,
     config: row.config,
     createdAt: row.created_at,

@@ -62,6 +62,8 @@ export interface JobTableOptions {
 export const JOB_CWD_FILE_VAR = 'DEMI_JOB_CWD_FILE'
 /** The env var naming the descriptor the job prelude duplicated the job's stdin onto. */
 export const JOB_STDIN_FD_VAR = 'DEMI_JOB_STDIN_FD'
+/** The owning job, carried only on the local relay for lifetime cancellation. */
+export const JOB_ID_VAR = 'DEMI_JOB_ID'
 /** That descriptor: fixed, high, and clear of the ones scripts and tools reach for (bash 3.2 has no `{var}<&0`). */
 export const JOB_STDIN_FD = 199
 
@@ -124,6 +126,7 @@ export class JobTable {
           ...this.options.fixedEnv,
           [JOB_CWD_FILE_VAR]: cwdFile,
           [JOB_STDIN_FD_VAR]: String(JOB_STDIN_FD),
+          [JOB_ID_VAR]: jobId,
         },
         tee: { stdoutPath, stderrPath, viewLimit: JOB_VIEW_BYTES, ...(message.stdout ? { stream: true } : {}) },
         ...(this.options.runAs ?? {}),

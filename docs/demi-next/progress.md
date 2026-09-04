@@ -3327,22 +3327,22 @@ real-model gates unset.
 
 | Finding | Milestone | Final-state correction | Status |
 |---|---|---|---|
-| 1 | M3/M12 | Blob namespaces belong to users; conversation and HTTP stores resolve the same owner. | implementing |
-| 2–3 | M5/M6 | Resolve current provider configuration before inference and current execution target at spawn. | implementing |
-| 4 | M9 | Order each stdin stream without blocking control-message dispatch. | implementing |
-| 5 | Pipes | Distinguish pipe endpoint assignment from arrival; stop the arrival timer when connected. | implementing |
-| 6, 10 | Attached hosts | Carry live stdin and cancellation through RPC to the remote job. | implementing |
-| 7 | M8/M11 | Serialize concurrent appends to a hostless file. | implementing |
-| 8 | M4/M9 | Reserve device ownership during handshake and refuse closed connections. | implementing |
-| 9 | Pipes | Stream stderr concurrently with stdout; only exit waits for both. | implementing |
-| 11 | M2/M6 | Validate inbound frames before rewriting; isolate each delivery failure. | implementing |
+| 1 | M3/M12 | Blob namespaces belong to users; conversation and HTTP stores resolve the same owner. | verified |
+| 2–3 | M5/M6 | Resolve current provider configuration before inference; rebuild process runtimes when their Host changes. | verified |
+| 4 | M9 | Order each stdin stream without blocking control-message dispatch. | verified |
+| 5 | Pipes | Distinguish pipe endpoint assignment from arrival; stop the arrival timer when connected. | verified |
+| 6, 10 | Attached hosts | Carry live stdin and cancellation through RPC to the remote job. | verified |
+| 7 | M8/M11 | Serialize concurrent appends to a hostless file. | verified |
+| 8 | M4/M9 | Bind each device once after asynchronous handshake preparation and refuse closed connections. | verified |
+| 9 | Pipes | Stream stderr concurrently with stdout; only exit waits for both. | verified |
+| 11 | M2/M6 | Validate inbound frames before rewriting; isolate each delivery failure. | verified |
 | 12 | M8 | Cancel pending stdin reads and report an aborted command as aborted. | verified |
 | 13 | M8 | Treat redirection IO failure as the current command's failure. | verified |
 | 14 | M8/M11 | Preserve explicitly changed initial environment variables during handover. | verified |
 | 15 | M8 | Finish `head -c` immediately when its byte count is satisfied. | verified |
 | 16–17 | Tar | Accumulate relative `-C`; fail when requested members are absent. | verified |
-| 18 | Provider catalog | Apply the vendor's reasoning replay policy to compatible requests. | implementing |
-| 19 | M5 | Enforce subscription family uniqueness atomically in storage. | implementing |
+| 18 | Provider catalog | Apply the vendor's reasoning replay policy to compatible requests. | verified |
+| 19 | M5 | Enforce subscription family uniqueness atomically in storage. | verified |
 
 Tests and conclusions are recorded here as each checkpoint is completed.
 
@@ -3372,6 +3372,90 @@ Verification: host-virtual lifecycle and tinybash builtin/corpus/session/tar
 tests, **424 pass, 4 Linux-only skips, 0 fail**. New test coverage is listed
 in `tinybash.md`. The first test run exposed a fixture mistake: spreading a
 Host filesystem drops prototype methods; fault injection now uses a Proxy.
+
+### Storage, protocol and provider checkpoint — verified
+
+Findings 1, 7 and 11: `UserBlobStores` binds every media/file consumer to
+`blobs/<userId>/<sha256>`; authenticated downloads use the same user store
+and `Vary: Cookie`. Root and child session media, uploads, cold/live
+transcripts and hostless files share that ownership contract. File appends
+serialize their whole read/modify/write operation per path. The scoped
+transport validates before metadata writes, resolves references on send
+and steer, and recovers its inbound/outbound queues after individual
+failures. The final schema and directory shape apply directly; no runtime
+historical-data lookup or migration path is added.
+
+Findings 2, 3, 18 and 19: inference rechecks provider scope and the current
+vault entry before charging rate limits. Config/label changes and process
+Host switches invalidate session runtime reuse. Runtime rebuilds use the
+current request's model id, thinking and service tier. DeepSeek gets the
+reasoning replay option at assembly. A partial unique index enforces one
+subscription entry per owner scope/family, and the login flow puts its
+credentials in the final directory before exposing the provider row.
+
+Independent review caught two additional edges within these fixes:
+cookie cache variants must separate users, and a delayed pre-edit vault
+lookup must not permanently repopulate the provider cache with an old
+snapshot. Both have regression coverage. Re-resolving only the spawn
+function was insufficient for process providers that retain a CLI between
+turns; their runtime identity now includes the stable Host object.
+
+Verification: the 27-file backend batch, **100 pass, 0 fail, 769
+assertions**, includes auth/admin/mode/isolation, storage, attachments,
+providers/vault, scoped transport, hostless shell, host switching,
+runner/registry/pipes/host shell, scenarios S1–S9 and restart R1–R4. The
+root storage/frame regression subset is **16 pass, 0 fail**; the final
+provider session/catalog subset is **11 pass, 0 fail**. These subsets are
+included in the backend batch, not additional unique test counts.
+
+### Runner control and pipe checkpoint — verified
+
+Findings 4–6, 8–10: runner stdin writes/EOF use per-process queues while
+control dispatch remains available. Pipe endpoint assignment and arrival
+are separate; both arrivals stop the timeout and duplicate HTTP endpoints
+are refused. Stdout streaming and stderr delivery share only the socket
+writer; the exit waits for stdout drain. Registry hello/claim completion
+checks socket/registry liveness and binds the device without an intervening
+await; a closed claim cannot leave an unusable device row.
+
+Protocol v6 carries `rpc_cancel` into a handler AbortSignal. `demi host
+shell` forwards live input, sends TERM on cancellation and escalates to
+KILL after five seconds. The tinybash dispatcher represents live stdin
+with `stdinStream` and no finite `stdin`. Local relay calls have a separate
+watch connection and job ownership, so cancellation does not depend on
+reading a blocked data socket. The RPC is registered before the watch-ready
+acknowledgement allows the client to send stdin.
+
+Pitfall: an explicit cancel frame on a second short connection covered
+cooperative abort but could not observe SIGKILL of the command process.
+The lifetime watch closes on process death; the regression kills only that
+process during a 20 MB blocked upload while its parent shell stays alive,
+and confirms the far job terminates. Independent review verified the final
+handshake ordering and cleanup paths.
+
+Verification: the 19-file runner/protocol/host-remote/backend control/
+tinybash/SerialQueue batch, **456 pass, 4 Linux-only skips, 0 fail, 1,797
+assertions**. After the final handshake-order adjustment, the affected
+backend runner/host-shell tests passed again: **8 pass, 0 fail, 79
+assertions**. These batches overlap the shell and backend counts above.
+
+### Regression modules and their intended coverage
+
+| Module | Coverage |
+|---|---|
+| `utils/src/__tests__/serial-queue.test.ts` | Ordered work, unrelated resource progress, failure recovery and idle cleanup. |
+| `backend/src/__tests__/isolation.test.ts` | Cross-user attachment and hostless-file hashes are inaccessible; same bytes uploaded by each user remain accessible only within their stores; Cookie cache variants. |
+| `backend/src/__tests__/storage.test.ts` | Concurrent existing/new-file appends retain every byte; failed writes release the queue; session/blob persistence. |
+| `backend/src/__tests__/scoped-transport.test.ts` | Malformed frames cause no metadata writes, a failed delivery does not block the next frame, send/steer resolve attachment references, outbound blob failures preserve later delivery. |
+| `backend/src/__tests__/session-providers.test.ts` | Delayed stale-cache lookup, current-model runtime rebuild after edits, clone isolation and steering. |
+| `backend/src/__tests__/llm.test.ts` | Credential edits/deletion, process Host switching and spawn targeting, DeepSeek thinking/tool replay, provider HTTP behavior, concurrent subscription completion and ready credential pools. |
+| `backend/src/__tests__/vault.test.ts` | Atomic per-scope subscription uniqueness, including shared scope; independent API-key entries. |
+| `backend/src/__tests__/runner-registry.test.ts` | Concurrent hello, repeated hello, closure during manifest preparation and closure during claim; RPC cancellation/disconnect abort handlers and release live stdin. |
+| `backend/src/__tests__/pipe-broker.test.ts` | Quiet/slow active streams survive the arrival deadline, abandoned endpoints expire, duplicate attachment fails, cancellation interrupts active flow. |
+| `backend/src/__tests__/host-shell.test.ts` | Two-runner and hostless live stdin, stderr before stdout EOF, far-job abort, blocked uploads and abrupt command-process death. |
+| `runner/src/__tests__/control.test.ts` | Blocked job/raw-spawn stdin does not block ping, filesystem work or kill; per-process input order is retained. |
+| `runner-protocol/src/__tests__/protocol.test.ts`, `runner/src/__tests__/tinyjs-codec.test.ts` | v6 cancellation message validation and MessagePack round trips on Bun/tinyjs. |
+| `host-virtual/src/__tests__/hostless-environment.test.ts`, tinybash builtin/session/tar suites | Findings 12–17 and the live-vs-finite stdin contract; detailed command coverage is in `tinybash.md`. |
 
 ## Open items (deferred, with their milestone)
 

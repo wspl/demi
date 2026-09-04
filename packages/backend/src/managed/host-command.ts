@@ -1,4 +1,4 @@
-import { errorMessage, noop } from '@demicodes/utils'
+import { abortable, errorMessage, noop } from '@demicodes/utils'
 import { type Command, type CommandGroup, type CommandIO, type CommandRunContext, type Host, type HostStore } from '@demicodes/shell'
 import { z } from 'zod'
 import { resolveExecutionTarget, targetDeviceId } from '../conversation/execution-target'
@@ -169,10 +169,11 @@ async function runOnHost(
   conversationId: string,
   target: ReachableHost,
   script: string,
-  ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env'>,
+  ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env' | 'stdinStream' | 'signal'>,
 ): Promise<{ exitCode: number }> {
   const device = await deps.control.getDevice(target.deviceId)
   if (device?.kind === 'managed' && deps.managedHosts) await deps.managedHosts.ensureRunning(device)
+  if (ctx.signal.aborted) return { exitCode: 130 }
   if (!deps.registry.deviceOnline(target.deviceId)) {
     await ctx.io.stderr(`host shell: host ${target.deviceId} is offline\n`)
     return { exitCode: 1 }
@@ -182,12 +183,47 @@ async function runOnHost(
   if (ctx.env.DEMI_SHELL_ID) env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
   const { stdin, stdout } = attachEnds(deps.pipes, ctx, target.deviceId)
   const job = host.startJob({ script, cwd: target.path, env, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
+  const forwarding = new AbortController()
+  let killTimer: ReturnType<typeof setTimeout> | undefined
+  const abort = () => {
+    forwarding.abort()
+    void job.kill('SIGTERM').catch(noop)
+    killTimer = setTimeout(() => void job.kill('SIGKILL').catch(noop), 5_000)
+    deps.pipes.fail(stdout.id, 'command aborted')
+    if (stdin) deps.pipes.fail(stdin.id, 'command aborted')
+  }
+  ctx.signal.addEventListener('abort', abort, { once: true })
+  if (ctx.signal.aborted) abort()
+  if (!stdin) {
+    const input = ctx.stdinStream[Symbol.asyncIterator]()
+    void (async () => {
+      try {
+        for (;;) {
+          const next = await abortable(input.next(), forwarding.signal)
+          if (next.done) {
+            await job.closeStdin()
+            return
+          }
+          await job.writeStdin(next.value)
+        }
+      } finally {
+        void input.return?.().catch(noop)
+      }
+    })().catch(noop)
+  }
   const view = (async () => {
     for await (const chunk of job.output) {
       if (chunk.stream === 'stderr') await ctx.io.stderr(chunk.chunk)
     }
   })()
-  const exit = await job.wait()
+  let exit: Awaited<ReturnType<typeof job.wait>>
+  try {
+    exit = await job.wait()
+  } finally {
+    forwarding.abort()
+    ctx.signal.removeEventListener('abort', abort)
+    clearTimeout(killTimer)
+  }
   await view.catch(noop)
   await stdout.done.catch((error: unknown) => ctx.io.stderr(`host shell: stdout ${errorMessage(error)}\n`))
   stdin?.done.catch(noop)
@@ -197,7 +233,7 @@ async function runOnHost(
     await ctx.io.stderr(`host shell: ${exit.spawnError.kind}${exit.spawnError.detail ? ` — ${exit.spawnError.detail}` : ''}\n`)
     return { exitCode: 127 }
   }
-  return { exitCode: exit.exitCode ?? 1 }
+  return { exitCode: ctx.signal.aborted ? 130 : exit.exitCode ?? 1 }
 }
 
 /**

@@ -122,11 +122,11 @@ async function runCommand(command: Command, inherited: Channels, env: ExecutionE
       status = await builtin.run(ctx)
     } else {
       // A root command whose stdin is the script's own gets it as the live
-      // stream, with an empty pipe: the script's stdin ends only when the
+      // stream, with no pipe: the script's stdin ends only when the
       // caller ends it, and a root reads the pipe for its stdin field.
       const live = channels.stdin === inherited.stdin && scriptStdin !== undefined
       status = await env.dispatch(name, argv.slice(1), {
-        stdin: live ? emptyByteStream() : channels.stdin,
+        ...(live ? {} : { stdin: channels.stdin }),
         stdinStream: live ? scriptStdin : undefined,
         stdout: channels.stdout,
         stderr: channels.stderr,

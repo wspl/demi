@@ -61,6 +61,7 @@ export class SubscriptionLoginFlows {
     const flow: LoginFlow = { providerType, label, ownerUserId, pendingDir, state: { status: 'pending', verificationUrl: null, userCode: null } }
     this.flows.set(id, flow)
     void (async () => {
+      let publishedDir: string | undefined
       try {
         const result = await begin({
           onPending: (pending) => {
@@ -77,20 +78,21 @@ export class SubscriptionLoginFlows {
           await rm(pendingDir, { recursive: true, force: true })
           return
         }
-        // A second login of the same family may have completed first.
-        if (await this.exists(flow.providerType, flow.ownerUserId)) {
-          throw new Error(`This scope already has a ${flow.providerType} subscription`)
-        }
+        const providerId = createId()
+        publishedDir = this.assembly.vaultDir(providerId)
+        await rename(pendingDir, publishedDir)
+        // The database arbitrates concurrent completions; a visible row always has its credential pool.
         const provider = await this.vault.create({
+          id: providerId,
           ownerUserId: flow.ownerUserId,
           label: flow.label,
           config: { kind: 'subscription', providerType: flow.providerType },
         })
-        await rename(pendingDir, this.assembly.vaultDir(provider.id))
         flow.state = { status: 'completed', providerId: provider.id }
       } catch (error) {
-        flow.state = { status: 'failed', message: errorMessage(error) }
         await rm(pendingDir, { recursive: true, force: true }).catch(() => {})
+        if (publishedDir) await rm(publishedDir, { recursive: true, force: true }).catch(() => {})
+        flow.state = { status: 'failed', message: errorMessage(error) }
       }
     })()
     return { id }
