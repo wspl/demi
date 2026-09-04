@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
-import { parseSync } from 'oxc-parser'
+import { parseSync, Visitor } from 'oxc-parser'
 
 const repoRoot = resolve(import.meta.dir, '../../../..')
 
@@ -117,7 +117,7 @@ const forbiddenSourcePatterns = [
 const neutralPackageLeakPatterns = [
   ['concrete provider package reference', /@demicodes\/provider-(?:claude-code|codex|openai-api|anthropic-api|grok-build|google)\b|provider-(?:claude-code|codex|openai-api|anthropic-api|grok-build|google)/i],
   ['concrete provider implementation class', /\b(?:ClaudeCodeProvider|CodexProvider|OpenAIApiProvider|AnthropicApiProvider|GrokBuildProvider|GoogleProvider)\b/],
-  ['concrete catalog source label', /\b(?:codex-backend|models\.dev)\b/i],
+  ['concrete catalog source label', /\bcodex-backend\b/i],
   ['provider backend identifier', /\b(?:backend-api|chatgpt\.com|api\.openai\.com|cli-chat-proxy\.grok\.com|generativelanguage\.googleapis\.com|responses_websockets)\b/i],
   ['concrete provider product name', /\bClaude Code\b|\bOpenAI Codex\b|\bGrok Build\b|\bGoogle Gemini\b/i],
 ] as const
@@ -136,7 +136,7 @@ for (const [entryName, entryPath] of platformNeutralEntries) {
 }
 
 test('only AgentServer imports AgentSession as a runtime value outside tests', async () => {
-  const files = await listSourceFiles(resolveRepoPath('packages'))
+  const files = await listProductionSourceFiles()
   const violations: string[] = []
 
   for (const file of files) {
@@ -159,7 +159,7 @@ test('runtime source uses the forked bash package without embedded upstream snap
     if (await isDirectory(resolveRepoPath(directory))) existingForbiddenDirs.push(directory)
   }
 
-  const files = await listSourceFiles(resolveRepoPath('packages'))
+  const files = await listProductionSourceFiles()
   const violations: string[] = []
 
   for (const file of files) {
@@ -239,14 +239,40 @@ test('@demicodes/core and @demicodes/provider contain no concrete provider produ
     const files = await listSourceFiles(resolveRepoPath(directory))
     for (const file of files) {
       const source = await readFile(file, 'utf8')
-      const semanticSource = sourceSemanticText(file, source)
-      for (const [label, pattern] of neutralPackageLeakPatterns) {
-        if (pattern.test(semanticSource)) violations.push(`${packageName}: ${formatPath(file)} contains ${label}`)
+      for (const label of findNeutralPackageLeaks(file, source)) {
+        violations.push(`${packageName}: ${formatPath(file)} contains ${label}`)
       }
     }
   }
 
   expect(violations.sort()).toEqual([])
+})
+
+test('models.dev client facts belong only to the provider catalog client', () => {
+  const source = `export const url = 'https://models.dev/api.json';
+    export const warning = 'Using stale models.dev catalog';`
+  expect(findNeutralPackageLeaks(resolveRepoPath('packages/provider/src/models-dev.ts'), source)).toEqual([])
+  for (const file of ['packages/provider/src/types.ts', 'packages/core/src/index.ts']) {
+    expect(findNeutralPackageLeaks(resolveRepoPath(file), source)).toContain('models.dev client outside its owning module')
+  }
+})
+
+test.each(['codex-backend', 'models.dev', 'cache'])('shared catalog types cannot expose the %s source label', (label) => {
+  for (const file of ['packages/provider/src/types.ts', 'packages/provider/src/models-dev.ts', 'packages/core/src/index.ts']) {
+    for (const source of [
+      `export interface ProviderModelList { source: '${label}' }`,
+      `export type CatalogSource = '${label}' | 'other'`,
+      `export enum CatalogSource { Remote = '${label}' }`,
+    ]) {
+      expect(findNeutralPackageLeaks(resolveRepoPath(file), source)).toContain('concrete catalog source label in metadata')
+    }
+  }
+})
+
+test('generic quota cache metadata is independent of model catalog source labels', () => {
+  const source = `export type ProviderQuotaSource = 'probe' | 'cache';
+    export const quota = { source: 'cache' };`
+  expect(findNeutralPackageLeaks(resolveRepoPath('packages/provider/src/quota.ts'), source)).toEqual([])
 })
 
 test('production source dependency graph follows documented package boundaries', async () => {
@@ -314,7 +340,7 @@ test('generic helpers provided by shared packages are not re-implemented in prod
     // normalizeErrorCode / providerErrorFromUnknown are NOT banned: codex ships intentionally different variants.)
     { name: 'httpErrorCode', home: 'packages/provider/', pkg: '@demicodes/provider' },
   ]
-  const files = await listSourceFiles(resolveRepoPath('packages'))
+  const files = await listProductionSourceFiles()
   const violations: string[] = []
 
   for (const file of files) {
@@ -447,7 +473,7 @@ function findModuleSpecifiers(source: string): string[] {
   return [...specifiers]
 }
 
-function sourceSemanticText(file: string, source: string): string {
+function findNeutralPackageLeaks(file: string, source: string): string[] {
   const parsed = parseSync(formatPath(file), source, { sourceType: 'module' })
   if (parsed.errors.length > 0) {
     const messages = parsed.errors.map((error) => error.message).join('; ')
@@ -456,7 +482,39 @@ function sourceSemanticText(file: string, source: string): string {
 
   const strings: string[] = []
   collectAstStrings(parsed.program, strings)
-  return strings.join('\n')
+  const semanticSource = strings.join('\n')
+  const violations = neutralPackageLeakPatterns
+    .filter(([, pattern]) => pattern.test(semanticSource))
+    .map(([label]) => label as string)
+  if (formatPath(file) !== 'packages/provider/src/models-dev.ts' && /\bmodels\.dev\b/i.test(semanticSource)) {
+    violations.push('models.dev client outside its owning module')
+  }
+
+  // Client URLs and diagnostics are implementation facts; source tags are not shared metadata.
+  const metadataStrings: string[] = []
+  const catalogTypeStrings: string[] = []
+  new Visitor({
+    TSLiteralType(node) { collectAstStrings(node, metadataStrings) },
+    TSEnumMember(node) { collectAstStrings(node.initializer, metadataStrings) },
+    TSInterfaceDeclaration(node) {
+      if (/Model|Catalog/.test(node.id.name)) collectAstStrings(node, catalogTypeStrings)
+    },
+    TSTypeAliasDeclaration(node) {
+      if (/Model|Catalog/.test(node.id.name)) collectAstStrings(node, catalogTypeStrings)
+    },
+    TSEnumDeclaration(node) {
+      if (/Model|Catalog/.test(node.id.name)) collectAstStrings(node, catalogTypeStrings)
+    },
+    Property(node) {
+      const key = node.key.type === 'Identifier' ? node.key.name : node.key.type === 'Literal' ? node.key.value : null
+      if (key === 'source') collectAstStrings(node.value, metadataStrings)
+    },
+  }).visit(parsed.program)
+  if (metadataStrings.some((value) => /^(?:codex-backend|models\.dev)$/i.test(value)) ||
+    catalogTypeStrings.some((value) => /^(?:codex-backend|models\.dev|cache)$/i.test(value))) {
+    violations.push('concrete catalog source label in metadata')
+  }
+  return violations
 }
 
 function collectAstStrings(value: unknown, output: string[]): void {
@@ -520,6 +578,13 @@ async function listSourceFiles(directory: string): Promise<string[]> {
   }
 
   return files
+}
+
+async function listProductionSourceFiles(): Promise<string[]> {
+  const files = await Promise.all([...productionPackageDirectories.values()].map((directory) =>
+    listSourceFiles(resolveRepoPath(`${directory}/src`)),
+  ))
+  return files.flat()
 }
 
 async function readPackageManifests(): Promise<Map<string, PackageManifest>> {
