@@ -1,6 +1,27 @@
 /** A no-op function. */
 export function noop(): void {}
 
+/** Orders operations on one resource without blocking unrelated resources. */
+export class SerialQueue {
+  private tail: Promise<unknown> = Promise.resolve()
+  private pending = 0
+
+  get idle(): boolean {
+    return this.pending === 0
+  }
+
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    this.pending += 1
+    const next = this.tail.then(operation).finally(() => { this.pending -= 1 })
+    this.tail = next.catch(noop)
+    return next
+  }
+
+  async settled(): Promise<void> {
+    await this.tail
+  }
+}
+
 /** An externally-resolvable promise handle. */
 export interface Deferred<T> {
   readonly promise: Promise<T>
