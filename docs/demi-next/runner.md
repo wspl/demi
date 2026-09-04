@@ -41,9 +41,10 @@ configuration beyond what the connection needs.
    the full output teed to an output file here.
 4. **Relaying root commands.** A Unix domain socket for command-mode tinyjs
    processes: manifest cache misses, and `rpc` command invocations
-   forwarded to the backend attributed to the invoking conversation. The
-   runner also maintains the root-command symlinks in `PATH` from the
-   manifest.
+   forwarded to the backend attributed to the invoking conversation, their
+   stdin and stdout carried as pipes — HTTP streams brokered by the
+   backend, never bytes on the runner socket (§ Pipes). The runner also
+   maintains the root-command symlinks in `PATH` from the manifest.
 
 Non-responsibilities: user authentication; credentials of any kind (the
 Claude Code CLI it spawns receives its token as process env from the
@@ -168,7 +169,7 @@ Jobs — the agent's commands:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| b → r | `job_start { jobId, script, cwd, env, background }` | run `bash -c script`; `env` carries the conversation and shell ids |
+| b → r | `job_start { jobId, script, cwd, env, background, stdin?, stdout? }` | run `bash -c script`; `env` carries the conversation and shell ids; `stdin` / `stdout` are pipes the job's fd 0 / fd 1 are attached to when another process's ends are on the far side (§ Pipes) |
 | r → b | `job_output { jobId, stream, bytes }` | live output while the job runs, up to the view budget per stream, then silence |
 | r → b | `job_exit { jobId, code, signal?, cwd, output: { stdoutPath, stderrPath, stdoutBytes, stderrBytes, stdoutTail, stderrTail } }` | exit, the working directory the script ended in, where the full output lives on this machine, and the last bytes of each stream |
 | b → r | `job_stdin { jobId, bytes }` / `job_kill { jobId, signal }` | interactive input (`shell_write`), termination |
@@ -178,12 +179,12 @@ Relay and outputs:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| r → b | `rpc_call { callId, conversationId, shellId, root, command, args, stdin }` streamed | an `rpc` command of some root invoked on this target |
-| b → r | `rpc_output { callId, stream, bytes }` / `rpc_exit { callId, exitCode }` | its result back to the command-mode process |
-| b → r | `rpc_transfer { callId, url }` | the call's stdout is a brokered transfer: the runner `GET`s it and relays the body, then `rpc_exit` follows |
+| r → b | `rpc_call { callId, conversationId, shellId, root, command, args, cwd, env, stdin: boolean }` | an `rpc` command of some root invoked on this target; `stdin` says whether the process has a pipe on fd 0 |
+| b → r | `rpc_pipes { callId, stdin?, stdout }` | the call's pipe ends, sent before anything else for the call: the runner `PUT`s the process's pipe into `stdin` and `GET`s `stdout` into the process (§ Pipes) |
+| r → b | `rpc_stdin { callId, bytes }` / `rpc_stdin_end { callId }` | the live stdin the command is steered with (`shell_write`); never the pipe |
+| b → r | `rpc_output { callId, bytes }` / `rpc_exit { callId, exitCode }` | the stderr view and the exit code back to the command-mode process; `rpc_exit` follows the stdout pipe's drain |
 | b → r | `manifest { manifest }` on connect and on change | the command manifest the runner caches for the CLI |
-| b → r | `transfer_send { transferId, path, url }` / `transfer_receive { transferId, path, url }` | a brokered cross-host copy: the source `PUT`s the file at `path`, the destination `GET`s into `path` |
-| r → b | `transfer_done { transferId, ok, error? }` | the HTTP exchange ended |
+| r → b | `pipe_done { pipeId, ok, error? }` | this runner's end of a pipe closed: its HTTP exchange completed, or why it did not |
 
 The `fs_*` op set mirrors `HostFileSystem` one to one and is one table in
 the protocol package (`fsOps`: parameters and result schema per method),
@@ -241,72 +242,140 @@ tinyjs processes. Its frames are MessagePack behind a 32-bit big-endian
 length, one request per connection: `manifest` (answered from the cache;
 a process asks when `commands/current` is missing) or `rpc { agentSessionId,
 shellId, root, path, argv, args, json, cwd, env, stdin }` — the parsed
-invocation with the pipe's bytes — followed by `stdin { bytes }` frames for
-the live stdin and `stdin_end`; back come `output { stream, bytes }` frames
-and `exit { exitCode }`, or `error { message }`. The runner forwards `rpc`
-on its authenticated socket as `rpc_call` / `rpc_stdin` / `rpc_stdin_end`
-and relays `rpc_output` / `rpc_exit` back; the backend runs the leaf
-against the tree of the conversation `agentSessionId` names. The
-command-mode process never holds a credential. Attribution is by the ids
-the backend put into the job's environment; a process on the same machine
-that forges them can only reach the conversations already executing here,
-which it could already read and modify.
+invocation and whether fd 0 is a pipe — followed by the pipe itself as
+`pipe { bytes }` frames ending in `pipe_end`, and by `stdin { bytes }`
+frames for the live stdin and `stdin_end`; back come `output { stream,
+bytes }` frames and `exit { exitCode }`, or `error { message }`. The
+runner forwards `rpc` on its authenticated socket as `rpc_call` /
+`rpc_stdin` / `rpc_stdin_end`, streams the `pipe` frames into the `PUT`
+that the backend's `rpc_pipes` names and the `GET` body back as `output`
+frames, and relays `rpc_output` / `rpc_exit`. The UDS is one ordered
+connection per request, so the pipe rides it as the byte stream it is;
+the runner holds no more of it than an HTTP body in flight. The backend
+runs the leaf against the tree of the conversation `agentSessionId` names.
+The command-mode process never holds a credential. Attribution is by the
+ids the backend put into the job's environment; a process on the same
+machine that forges them can only reach the conversations already
+executing here, which it could already read and modify.
 
-## Transfers
+## Pipes
 
-A cross-host copy is a file moved by HTTP between two runners with the
-backend in the middle, never a byte stream on a runner socket. The unit
-is a job's stdout file: `demi host shell --id A <script>` runs `script` as
-a job on A (the pipe's bytes as its stdin, its stderr view streaming back
-as it runs, its exit code passed through), and at exit the job's full
-`stdoutPath` is the file transferred. The backend mints a single-use
-transfer id, tells A `transfer_send { transferId, path, url }`, and
-delivers the bytes to the caller:
+A **pipe** is a finite byte stream with two ends. Every `rpc` command's
+stdin and its stdout is one, and so is a job's stdin or stdout when `demi
+host shell --id` attaches it to a process on another host. A pipe whose
+ends are in different processes is carried as one HTTP exchange brokered
+by the backend — the producing end `PUT`s, the consuming end `GET`s, the
+backend pipes one body into the other and holds nothing — never as a
+byte stream on a runner socket; the socket carries only the control
+frames that name the ends. A pipe both of whose ends are in the backend
+is one `AsyncIterable` handed from producer to consumer. One primitive,
+one broker: stdin and stdout are the same thing pointed in opposite
+directions, and a copy from host to host is the same thing with both
+ends on devices.
+
+An end is one of:
+
+| End | Where | How it produces or consumes |
+|---|---|---|
+| a command-mode process's fd 0 / fd 1 | a device | through the local relay: the pipe's frames on the UDS, the runner doing the HTTP |
+| a job's fd 0 / fd 1 | a device | the runner attaches the HTTP body to the process it spawns for `job_start` |
+| an `rpc` handler's `ctx.stdin` / `ctx.io.stdout` | the backend | an `AsyncIterable<Uint8Array>` / a writer |
+
+The backend mints a pipe (`PipeBroker.open(source, sink)`, each end
+either `{ deviceId }` or in-process) and tells each device end where to
+connect: an `rpc` call's ends in `rpc_pipes`, a job's in `job_start`. On
+the wire a pipe is `{ id, url }`; `url` is origin-relative
+(`/api/pipes/<id>`), resolved against the runner's backend URL and sent
+with `Authorization: Bearer <device token>`.
+
+The three shapes are one picture with different ends.
+
+An `rpc` command on a device — the handler runs in the backend:
 
 ```
-B's model:   demi host shell --id A "tar c -C /work ." | tar x
+A's model:   demi file write notes.md < big.txt
 
-  A (source)                 backend                          B (caller)
-  job_start ◄─────────────   the script as a job     ◄──── rpc_call (relayed)
-  tee → output/<job>/stdout.txt
-  job_exit ───────────────►  transfer minted
-  transfer_send ◄─────────   { transferId, path, url }
-                              rpc_transfer ─────────────────►  { callId, url }
-  PUT /api/transfers/<id> ─►  ═══ piped, held in flight only ═══ ◄─ GET /api/transfers/<id>
-                                                                body → relay output → stdout → tar x
-  transfer_done ──────────►
-                              rpc_exit ─────────────────────►  the job's exit code
+  A (command-mode process ─UDS─ runner)                backend
+  rpc { …, stdin: true } ─────────────────────────────►  rpc_call { …, stdin: true }
+                                                          P_in  minted  A → backend (sink: the handler's ctx.stdin)
+                                                          P_out minted  backend → A (source: the handler's stdout)
+  rpc_pipes { stdin: P_in, stdout: P_out } ◄──────────────
+  pipe frames ─UDS─► runner ─ PUT /api/pipes/P_in ──────►  ═══ body → ctx.stdin, as it arrives ═══
+  output frames ◄─UDS─ runner ◄─ GET /api/pipes/P_out ───  ═══ stdout writes → body, as they happen ═══
+  rpc_output (the stderr view) ◄──────────────────────────
+  rpc_exit ◄──────────────────────────────────────────────  after P_out drained
 ```
 
-- A caller on a device (a command-mode process, via the relay) receives
-  `rpc_transfer { callId, url }`: its runner `GET`s the URL with the
-  device token and writes the body to the process's stdout through the
-  relay, before `rpc_exit`. A hostless caller (the backend's own
-  tinybash) takes the `PUT` body straight into the command's stdout.
-- `transfer_receive { transferId, path, url }` is the symmetric end: the
-  destination runner `GET`s into a file. The hostless → managed upgrade
-  uses it to place the store's files (`managed-hosts.md`).
-- `url` is origin-relative (`/api/transfers/<id>`); a runner resolves it
-  against its backend URL and sends `Authorization: Bearer <device
-  token>`. The backend accepts the `PUT` only from the transfer's source
-  device and the `GET` only from its destination device; each id serves
-  one exchange; a side that never arrives times the transfer out; a
-  device disconnecting fails what it was party to. The `PUT` completes
-  only after the destination drained the body, so `transfer_done` is
-  the end of the copy.
-- The stdout of `host shell --id` arrives once the remote script has
-  exited: the transfer is of a finished file. Its caller is a pipe, not a
-  view, so nothing needs it earlier; the job's 32 KB view still streams to
-  the backend as the job runs and goes nowhere.
+`demi host shell --id` — the caller's pipe ends attached to a job on
+another host, both directions streaming while the job runs:
+
+```
+A's model:   tar c . | demi host shell --id B "tar x -C /work"        (B's job reads A's pipe)
+             demi host shell --id B "tar c -C /work ." | tar x        (A's pipe reads B's job)
+
+  A (caller)                     backend                              B (the job)
+  rpc_call { stdin: true } ────►  P_in  minted  A → B
+                                  P_out minted  B → A
+  rpc_pipes ◄────────────────────  { stdin: P_in, stdout: P_out }
+                                  job_start { script, stdin: P_in, stdout: P_out } ────►  spawn bash -c script
+  PUT P_in ══════════════════════► piped, held in flight only ═════════════════════════► GET P_in → fd 0
+  GET P_out ◄═════════════════════ piped, held in flight only ◄═════════════════════════ PUT P_out ← fd 1
+                                                                                          (teed to output/<job>/stdout.txt as well)
+  rpc_output ◄────────────────────  the job's stderr view ◄──────────────────────────────  job_output
+  rpc_exit ◄──────────────────────  after P_out drained ◄────────────────────────────────  job_exit
+```
+
+A hostless caller — the backend's own tinybash runs the command, so its
+end is in-process:
+
+```
+hostless model:   demi host shell --id B "cat /work/notes.md" > notes.md
+
+  backend                                                             B
+  P_out minted  B → backend (sink: the pipeline's next stage)
+  job_start { script, stdout: P_out } ────────────────────────────►  spawn; PUT P_out ← fd 1
+  ═══ body → the redirection, into the conversation's store ═══ ◄═══
+```
+
+- **Streaming, both ways.** A job's stdout reaches the far end as the job
+  writes it; the tee still writes the output file on that machine, for
+  the model's view and the transcript, and the pipe neither waits for it
+  nor reads it back. An `rpc` handler reads its stdin as it arrives and
+  its writes leave as they happen.
+- **A pipe both ends know.** A command-mode process whose fd 0 is the
+  job's live stdin (`DEMI_JOB_STDIN_FD`) declares `stdin: false` and no
+  stdin pipe is minted. Every call has a stdout pipe; one that never
+  writes closes it empty. A job gets a pipe only for the fd `job_start`
+  names.
+- **Backpressure is HTTP's.** A slow consumer stalls the producer through
+  the broker; a runner holds no more than the body in flight; the backend
+  holds no pipe bytes at all. Nothing is sized by the payload: a
+  gigabyte crosses like a kilobyte, slower.
+- **Authorization and lifetime.** The `PUT` is accepted only from the
+  pipe's source device and the `GET` only from its sink device; an
+  in-process end needs neither. Each id serves one exchange; an end that
+  never arrives times the pipe out; a device disconnecting fails the pipes
+  it is party to, and the command or job at the other end sees an
+  ordinary error. The `PUT` completes only after the sink drained the
+  body, so `pipe_done` is the end of the copy, and `rpc_exit` follows
+  the stdout pipe's drain so the process has written everything before it
+  exits with the code.
+- **What is not a pipe.** stderr is a view: it goes to the person and the
+  model, streams on the socket as `rpc_output` / `job_output`, and is
+  what they see, not a data carrier. Live stdin (`shell_write`) is
+  interactive input and rides `rpc_stdin` / `job_stdin`. Both are small
+  by nature; the wire rules keep them so.
 
 ## Wire rules
 
 **Protocols carry references, never bulk bytes.** File reads and writes
 happen on the target (`runtime` modules); the tee keeps full output on the
 target; media reaches the browser as `source.ref` plus a `GET`
-(`backend.md`); bulk transfer is an HTTP stream brokered by the backend.
-The runner socket is therefore small-message and latency-bound, and the
-backend never holds a command's whole output in memory.
+(`backend.md`); every pipe between processes — an `rpc` command's stdin
+and stdout, a cross-host job's — is an HTTP stream brokered by the backend
+(§ Pipes). The runner socket is therefore small-message and
+latency-bound, and the backend never holds a command's input or output in
+memory.
 
 **Recorded risk — control-message priority.** WebSocket is one ordered
 stream: a `ping` or a user `abort` queued behind a large frame waits for

@@ -102,8 +102,9 @@ web  ←— our protocol —→  backend  ←— official provider wires —→ 
 4. **Protocols carry references, never bulk bytes.** File reads and writes
    happen on the target; the runner tees full command output to output
    files on the target and the wire carries only the model's view of it;
-   media reaches the browser by reference; bulk transfer, when needed, is
-   an HTTP stream brokered by the backend (`runner.md`).
+   media reaches the browser by reference; every pipe between processes —
+   an `rpc` command's stdin and stdout, a cross-host job's — is an HTTP
+   stream brokered by the backend (`runner.md` § Pipes).
 5. **One command manifest.** Every root command — `demi`, and any root a
    library user declares — is defined once in the backend and served to
    every execution surface by the loader; no target has a second

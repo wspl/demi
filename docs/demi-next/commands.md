@@ -71,18 +71,21 @@ in `PATH`; everything else is whatever the machine has.
  an rpc command inside the same script, e.g.  demi todo add "run the suite":
 
                                                                         command mode: kind = rpc
-                                  runner  ◀───────── UDS ─────────────  → parsed args + stdin
+                                  runner  ◀───────── UDS ─────────────  → parsed args; the pipe as frames
  ◀── rpc_call {conv id, shell id, ──┘  attributes by the ids in the
-     root, command, args, stdin}       job's environment
-     backend runs the command
+     root, command, args, stdin?}      job's environment
+ ─── rpc_pipes {stdin, stdout} ─▶ runner: PUT the pipe, GET the stdout    HTTP streams brokered by the backend,
+     backend runs the command                                             never bytes on the socket
      against conversation state
  ─── rpc_output / rpc_exit ─────▶ runner ──────────── UDS ────────────▶ command mode writes stdout, exits with the code
 ```
 
-What crosses the wire: the script, the model's view of the output (the
-first bytes while running, the last bytes at exit — `runner.md`), the
-exit, and the arguments and output of `rpc` commands. File contents and
-pipeline bytes never do.
+What crosses the runner socket: the script, the model's view of the
+output (the first bytes while running, the last bytes at exit —
+`runner.md`), the exit, and the arguments, stderr and exit code of `rpc`
+commands. An `rpc` command's stdin and stdout are pipes — HTTP streams
+brokered by the backend (`runner.md` § Pipes). File contents and pipeline
+bytes never ride the socket.
 
 ### Hostless (no execution target)
 
@@ -142,8 +145,11 @@ Every leaf is one of two kinds:
   backend state: `todo` (`CommandStorage`), `agent` (the subagent
   supervisor), `host` (registry, grants, provisioner). An invocation on a
   target travels to the backend as a typed message carrying the parsed
-  arguments and stdin; the result streams back as stdout, stderr and exit
-  code.
+  arguments; its stdin and stdout are pipes brokered over HTTP
+  (`runner.md` § Pipes), its stderr and exit code come back on the
+  socket. The handler reads `ctx.stdin` as an `AsyncIterable<Uint8Array>`;
+  a leaf that declares `stdinField` has the loader collect the pipe into
+  that argument before parsing.
 - **`runtime`** — the implementation is an ES module shipped to wherever the
   command is invoked and run there against that place's filesystem. `demi
   file read/create/edit/patch` and future `demi search` are `runtime`. On a
@@ -270,8 +276,8 @@ loader.roots                                          the manifest as command tr
   is also the cache on a target.
 - `host` is the Host the `runtime` modules run against.
 - `rpc`, when present, carries typed `rpc` invocations (`RpcInvocation`:
-  root, path, parsed args, `--json`, the pipe's bytes, cwd, env, plus the
-  stdio and post-start stdin to relay); an embedder without one serves
+  root, path, parsed args, `--json`, the pipe as a stream, cwd, env, plus
+  the stdio and post-start stdin to relay); an embedder without one serves
   only `runtime` commands, and an `rpc` leaf reports the missing
   transport. `inProcessRpc(roots, { storage, host })` is the backend's
   transport: the trees that declared the handlers are in the process.
@@ -318,8 +324,9 @@ entry of the bundle is `packages/runner/src/tinyjs/entry.ts`: the name it
 was invoked by selects runner mode or the root.
 
 Stdin and stdout are byte-faithful in both kinds: a `runtime` module reads
-and writes its process streams; an `rpc` invocation streams stdin to the
-backend and stdout/stderr back.
+and writes its process streams; an `rpc` invocation's stdin and stdout
+are pipes — HTTP streams brokered by the backend — and its stderr and
+exit code ride the socket (`runner.md` § Pipes).
 
 ## Hostless execution
 
@@ -357,12 +364,13 @@ demi host shell --id <hostId> <shell_content>    run a shell string in that host
 `<shell_content>` is one positional argument executed by that host's
 `bash -c`, so pipes, redirections and globs apply remotely; on the current
 target it starts in the conversation's directory there, on a granted host
-in that host's home. The pipe's bytes are its
-stdin, its stderr and exit code pass through as they happen, and its
-stdout arrives whole once it exits — as a transfer brokered by the backend
-between the two runners over HTTP (`runner.md` § Transfers), never over
-the runner sockets — so `demi host shell --id A "tar c -C /work ." | tar x`
-lands a working tree byte for byte. The host id is the device id `demi
+in that host's home. The caller's stdin and stdout are attached to the
+remote job's, both streaming while it runs — pipes brokered by the
+backend between the two runners over HTTP (`runner.md` § Pipes), never
+over the runner sockets — so `demi host shell --id A "tar c -C /work ." |
+tar x` lands a working tree byte for byte, and `tar c . | demi host shell
+--id A "tar x -C /work"` does the same the other way; stderr and the exit
+code pass through as they happen. The host id is the device id `demi
 host list` prints. The reachable set is the conversation's current target
 plus its grant set, checked in one place (`sessions-and-targets.md` § Host
 grants).

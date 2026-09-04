@@ -142,7 +142,7 @@ scenario never repeats them:
   outside the protocol's control set appears (the audit `host-shell`
   introduced, generalized);
 - every job started on a runner reported its exit, except those running
-  when the world killed that runner; every transfer completed;
+  when the world killed that runner; every pipe drained;
 - the usage ledger has exactly one row per provider request the model
   answered (a request cut off by an abort carries no usage).
 
