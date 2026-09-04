@@ -3016,6 +3016,59 @@ credential kinds, `llm/vendors.ts`, the vault `update`, the routes above,
 backend. Backend suite: 98 pass, 2 skip; the Claude Code catalog tests
 green over the shared client.
 
+### Pipes: one streaming primitive for rpc stdin and stdout (2026-09-04) — rulings
+
+Raised while checking whether a conversation can copy files between its
+target and a granted host. It can, by `tar | demi host shell --id`, but
+the two directions were carried by unrelated mechanisms and neither was
+a stream:
+
+- stdin of every `rpc` command (not only `host shell`) was buffered
+  whole three times: the command-mode process read the pipe to its end
+  (`command-loader` tree), sent it as one `rpc_call` frame on the runner
+  socket, and the backend collected it again as bytes plus a UTF-8
+  decoding (`stdinOf` in `@demicodes/shell`); `host shell --id` then
+  wrote the whole block to the far job with `job_stdin`. Frame size
+  equalled payload size on two runner sockets, and the backend held two
+  copies. Data frames of that size on the socket are exactly the
+  head-of-line risk `runner.md` § Wire rules records.
+- stdout of `host shell --id` was a transfer of a finished file: the far
+  job ran to exit, then its stdout file was `PUT` to the caller. Correct
+  bytes, no streaming, disk on the far host sized by the payload.
+- stdout of an ordinary `rpc` command streamed as `rpc_output` frames on
+  the socket — a third carrier for the same concept.
+
+Ruling: a pipe is one primitive, fully isomorphic and fully streaming.
+Every `rpc` command's stdin and stdout is a pipe, and so is a job's fd
+when `host shell --id` attaches it; a pipe whose ends are in different
+processes is one HTTP exchange brokered by the backend (`PUT` from the
+source device, `GET` by the sink device, piped in flight, nothing held);
+a pipe with both ends in the backend is one `AsyncIterable`. The runner
+socket carries only the control frames naming the ends. stderr stays a
+view and live stdin stays interactive input — neither is a pipe, both
+ride the socket, both are small by nature. Rejected: streaming the pipe
+over socket frames (keeps the head-of-line risk the wire rules already
+name, and leaves two carriers); fixing memory first and the carrier later
+(the first is a subset of the second — rework). `transfer_receive` had no
+caller since the upgrade moved to `mke2fs -d` and is dropped rather than
+generalised into a file end.
+
+Protocol (next version): `rpc_call` carries `stdin: boolean` and no
+bytes; `rpc_pipes { callId, stdin?, stdout }` names the ends before any
+output; `job_start` gains optional `stdin` / `stdout` pipes; `rpc_output`
+carries the stderr view only; `pipe_done` replaces `transfer_done`;
+`rpc_transfer`, `transfer_send`, `transfer_receive` go. The local relay's
+`rpc` frame carries `stdin: boolean` followed by `pipe` / `pipe_end`
+frames; the runner streams them into the `PUT` with backpressure. Routes:
+`/api/pipes/:id`. Contract: `CommandContext.stdin` becomes
+`AsyncIterable<Uint8Array>`; `stdinField` leaves are collected by the
+loader. Records rewritten: `runner.md` (message tables, § The local
+relay, § Pipes replacing § Transfers, § Wire rules), `commands.md`,
+`backend.md`, `overview.md`, `scenarios.md`. Implementation follows as
+its own checkpoint over `runner-protocol`, `shell`, `command-loader`,
+`runner` and `backend`, with the M9 transfer tests re-pointed at pipes
+and a push-direction copy added beside the pull.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
