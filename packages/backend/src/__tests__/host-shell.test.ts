@@ -12,11 +12,12 @@ import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { openBackend, type TestBackend } from './session'
 
-// M9 step 4: `demi host shell --id` between two devices. The script runs as
-// a job on the named host; its stdout comes back as a brokered HTTP
-// transfer the calling device GETs itself, so the working tree never
-// crosses either runner socket — the wire audit below is the proof. A
-// hostless caller takes the bytes in-process.
+// `demi host shell --id` between two devices (`runner.md` § Pipes). The
+// script runs as a job on the named host with the caller's stdin and stdout
+// attached to the job's as pipes: HTTP streams between the two runners,
+// brokered by the backend, so a working tree never crosses either runner
+// socket in either direction — the wire audit below is the proof. A
+// hostless caller's ends are the backend's own streams.
 
 async function api(backend: TestBackend, path: string, init?: RequestInit): Promise<Response> {
   return backend.session.fetch(path, init)
@@ -68,7 +69,7 @@ async function pairDevice(backend: TestBackend, name: string) {
   return { home, runner, deviceId: device.id, workspaceId: workspace.id }
 }
 
-test('host shell --id: the job runs on the named host, its stdout arrives as a transfer, nothing bulk crosses the sockets', async () => {
+test('host shell --id: the job runs on the named host with the caller\'s pipes attached both ways, nothing bulk crosses the sockets', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-hs-data-'))
   /** Every message per device and direction: the wire audit. */
   const frames: Array<{ deviceId: string; direction: 'in' | 'out'; message: RunnerProtocolMessage }> = []
@@ -88,10 +89,12 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
             new StubProvider([
               [events.toolCall('t1', 'shell_exec', { script: scripts[0]!, timeoutMs: 30_000 })],
               [events.text('one'), events.response()],
-              [events.toolCall('t2', 'shell_exec', { script: scripts[1]!, timeoutMs: 10_000 })],
+              [events.toolCall('t2', 'shell_exec', { script: scripts[1]!, timeoutMs: 30_000 })],
               [events.text('two'), events.response()],
-              [events.toolCall('t3', 'shell_exec', { script: scripts[2]!, timeoutMs: 30_000 })],
+              [events.toolCall('t3', 'shell_exec', { script: scripts[2]!, timeoutMs: 10_000 })],
               [events.text('three'), events.response()],
+              [events.toolCall('t4', 'shell_exec', { script: scripts[3]!, timeoutMs: 30_000 })],
+              [events.text('four'), events.response()],
             ]),
         }),
       },
@@ -115,6 +118,7 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
 
   scripts.push(
     `demi host list && demi host shell --id ${a.deviceId} "tar c -C ${a.home} notes.bin" | tar x && cmp notes.bin ${join(a.home, 'notes.bin')} && echo copied`,
+    `head -c 250000 notes.bin > push.bin && tar c push.bin | demi host shell --id ${a.deviceId} "tar x -C ${a.home}" && cmp push.bin ${join(a.home, 'push.bin')} && echo pushed`,
     `demi host shell --id nope "echo hi"; echo exit=$?`,
     `demi host shell --id ${b.deviceId} "head -c 5 notes.bin | od -An -tx1"`,
   )
@@ -128,25 +132,53 @@ test('host shell --id: the job runs on the named host, its stdout arrives as a t
   expect(copied?.stdout.delta).toContain(`${b.deviceId}  beta  online  ${b.home}  (current)`)
   expect(copied?.stdout.delta).toContain('copied')
   expect(readFileSync(join(b.home, 'notes.bin')).equals(payload)).toBe(true)
-  // The audit: alpha ran a job (its view frames are the 32 KB head) and sent
-  // the transfer; beta was told to fetch it, and the only `rpc_output` bytes
-  // it received are `demi host list`'s lines — the archive went over HTTP.
-  const turn = frames.slice(before)
-  const of = (deviceId: string, direction: 'in' | 'out') => turn.filter((f) => f.deviceId === deviceId && f.direction === direction).map((f) => f.message)
-  const types = (deviceId: string, direction: 'in' | 'out') => new Set(of(deviceId, direction).map((m) => m.type))
-  expect(types(a.deviceId, 'out')).toEqual(new Set(['job_start', 'job_stdin_end', 'transfer_send']))
-  expect(types(a.deviceId, 'in')).toEqual(new Set(['job_output', 'job_exit', 'transfer_done']))
-  expect(types(b.deviceId, 'out').has('rpc_transfer')).toBe(true)
-  const relayedBytes = of(b.deviceId, 'out').reduce((total, m) => total + (m.type === 'rpc_output' ? m.bytes.byteLength : 0), 0)
-  expect(relayedBytes).toBeLessThan(1024)
-  expect(of(a.deviceId, 'in').reduce((total, m) => total + (m.type === 'job_output' ? m.bytes.byteLength : 0), 0)).toBeLessThanOrEqual(32 * 1024)
+  // The audit: alpha ran a job with its stdout attached to a pipe (its view
+  // frames are the 32 KB head); beta was named the pipe's sink in
+  // `rpc_pipes`, and `rpc_output` carries only stderr — nothing of the
+  // archive, which went over HTTP. `demi host list`'s lines went over
+  // beta's stdout pipe too.
+  const audit = (from: number) => {
+    const turn = frames.slice(from)
+    const of = (deviceId: string, direction: 'in' | 'out') => turn.filter((f) => f.deviceId === deviceId && f.direction === direction).map((f) => f.message)
+    const types = (deviceId: string, direction: 'in' | 'out') => new Set(of(deviceId, direction).map((m) => m.type))
+    return { of, types }
+  }
+  {
+    const { of, types } = audit(before)
+    expect(types(a.deviceId, 'out')).toEqual(new Set(['job_start']))
+    expect(types(a.deviceId, 'in')).toEqual(new Set(['job_output', 'job_exit', 'pipe_done']))
+    expect(types(b.deviceId, 'out').has('rpc_pipes')).toBe(true)
+    expect(of(b.deviceId, 'out').some((m) => m.type === 'rpc_output')).toBe(false)
+    expect(of(a.deviceId, 'in').reduce((total, m) => total + (m.type === 'job_output' ? m.bytes.byteLength : 0), 0)).toBeLessThanOrEqual(32 * 1024)
+    expect(of(a.deviceId, 'in').filter((m) => m.type === 'pipe_done').every((m) => m.type === 'pipe_done' && m.ok)).toBe(true)
+  }
+
+  // The other direction: beta's pipe is alpha's job's stdin. The runner sockets carry the same control frames and nothing of the archive.
+  const beforePush = frames.length
+  await client.send([{ type: 'text', text: 'push one back' }])
+  const pushed = lastExited(shellEvents)
+  expect(pushed?.exitCode).toBe(0)
+  expect(pushed?.stdout.delta).toContain('pushed')
+  expect(readFileSync(join(a.home, 'push.bin')).equals(payload.subarray(0, 250_000))).toBe(true)
+  // `tar x` prints nothing, so alpha sends no view frames; its stdin end reports once the body is in.
+  await waitFor(() => frames.slice(beforePush).some((f) => f.deviceId === a.deviceId && f.message.type === 'pipe_done'))
+  {
+    const { of, types } = audit(beforePush)
+    expect(types(a.deviceId, 'out')).toEqual(new Set(['job_start']))
+    expect(types(a.deviceId, 'in')).toEqual(new Set(['job_exit', 'pipe_done']))
+    const pipes = of(b.deviceId, 'out').find((m) => m.type === 'rpc_pipes')
+    expect(pipes?.type === 'rpc_pipes' && pipes.stdin !== undefined).toBe(true)
+    expect(of(b.deviceId, 'in').filter((m) => m.type === 'rpc_call').every((m) => m.type === 'rpc_call' && m.stdin)).toBe(true)
+    const started = of(a.deviceId, 'out').find((m) => m.type === 'job_start')
+    expect(started?.type === 'job_start' && started.stdin?.id === (pipes?.type === 'rpc_pipes' ? pipes.stdin?.id : undefined)).toBe(true)
+  }
 
   await client.send([{ type: 'text', text: 'try a stranger' }])
   const refused = lastExited(shellEvents)
   expect(refused?.stderr.delta).toContain('host nope is not reachable')
   expect(refused?.stdout.delta).toContain('exit=1')
 
-  // Hostless caller: beta is granted by the switch, and the bytes land in this process's tinybash pipeline.
+  // Hostless caller: beta is granted by the switch, and the bytes land in this process's tinybash pipeline through the backend's own end.
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: null }, 'PATCH')).status).toBe(200)
   await client.send([{ type: 'text', text: 'peek from nowhere' }])
   const peeked = lastExited(shellEvents)

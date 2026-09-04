@@ -5,7 +5,7 @@
 import { createRunnerHost, cwd, env, fdNode, identity, onSignal, stderrWriter, stdinStream, stdoutWriter } from './machine'
 import { createLoader, directorySource, inMemorySource, parseManifest, type ManifestSource } from '@demicodes/command-loader'
 import { JOB_STDIN_FD_VAR } from './serve/jobs'
-import { emptyByteStream, errorMessage } from '@demicodes/utils'
+import { errorMessage } from '@demicodes/utils'
 import { fetchManifest, relayRpc } from './relay/client'
 
 /** The runner's state directory: `DEMI_HOME`, else `~/.demi`. */
@@ -30,11 +30,11 @@ export async function runCommandMode(root: string, args: readonly string[]): Pro
   onSignal('SIGINT', () => controller.abort())
   onSignal('SIGTERM', () => controller.abort())
   // The job's own stdin is live — shell_write feeds it and it never ends
-  // on its own — so it is the post-start stream; a redirection is the pipe.
+  // on its own — so it is the post-start stream and there is no pipe; a
+  // redirection is the pipe.
   const live = isJobStdin()
   return loader.dispatch(root, args, {
-    stdin: live ? emptyByteStream() : stdinStream(),
-    ...(live ? { stdinStream: stdinStream() } : {}),
+    ...(live ? { stdinStream: stdinStream() } : { stdin: stdinStream() }),
     stdout: stdoutWriter(),
     stderr: stderrWriter(),
     cwd: cwd(),

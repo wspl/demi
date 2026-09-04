@@ -1,7 +1,8 @@
 import type { HostSpawnError, HostSpawnHandle } from '@demicodes/shell'
 import { errorMessage, noop } from '@demicodes/utils'
 import { deviceFallback } from './device-env'
-import { JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
+import { JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type PipeRef, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
+import type { PipeEnds } from '../pipes'
 
 /**
  * The runner's job table (`runner.md` § Jobs and the tee): one `bash -c`
@@ -20,13 +21,15 @@ export interface JobSpawnParams {
   args: string[]
   cwd: string
   env: Record<string, string>
-  /** Where the full streams go; the handle's streams yield the view only. */
-  tee: { stdoutPath: string; stderrPath: string; viewLimit: number }
+  /** Where the full streams go; the handle's streams yield the view only. With `stream`, the full stdout is `stdoutStream` too. */
+  tee: { stdoutPath: string; stderrPath: string; viewLimit: number; stream?: boolean }
   uid?: number
   gid?: number
 }
 
 export interface JobSpawnHandle extends Omit<HostSpawnHandle, 'output' | 'wait'> {
+  /** The full stdout when the spawn asked for it: the source of the job's stdout pipe. */
+  stdoutStream?: AsyncIterable<Uint8Array>
   wait(): Promise<{ exitCode: number | null; signal?: string; spawnError?: HostSpawnError; stdoutBytes: number; stderrBytes: number }>
 }
 
@@ -50,6 +53,8 @@ export interface JobTableOptions {
   fixedEnv?: Record<string, string>
   /** Every job runs as this user: PID 1 spawning as the guest user. */
   runAs?: { uid: number; gid: number }
+  /** The device ends of a job's pipes (`runner.md` § Pipes); absent, a job with pipes reports them failed. */
+  pipes?: PipeEnds
   send(message: RunnerToBackendMessage): void
 }
 
@@ -120,7 +125,7 @@ export class JobTable {
           [JOB_CWD_FILE_VAR]: cwdFile,
           [JOB_STDIN_FD_VAR]: String(JOB_STDIN_FD),
         },
-        tee: { stdoutPath, stderrPath, viewLimit: JOB_VIEW_BYTES },
+        tee: { stdoutPath, stderrPath, viewLimit: JOB_VIEW_BYTES, ...(message.stdout ? { stream: true } : {}) },
         ...(this.options.runAs ?? {}),
       })
     } catch (error) {
@@ -128,7 +133,43 @@ export class JobTable {
       return
     }
     this.jobs.set(jobId, { handle, cwdFile })
+    if (message.stdin) void this.feedStdin(handle, message.stdin)
+    if (message.stdout) void this.sendStdout(handle, message.stdout)
     void this.pump(jobId, handle, { stdoutPath, stderrPath, cwdFile })
+  }
+
+  /** The job's fd 0 is a pipe: its body is fetched and written in as it arrives, then stdin closes. */
+  private async feedStdin(handle: JobSpawnHandle, ref: PipeRef): Promise<void> {
+    try {
+      if (!this.options.pipes) throw new Error('this runner has no pipe ends')
+      for await (const chunk of await this.options.pipes.get(ref.url)) await handle.writeStdin(chunk)
+      this.report(ref, null)
+    } catch (error) {
+      this.report(ref, error)
+    } finally {
+      await handle.closeStdin().catch(noop)
+    }
+  }
+
+  /** The job's fd 1 is a pipe: the full stdout is `PUT` as the job writes it. */
+  private async sendStdout(handle: JobSpawnHandle, ref: PipeRef): Promise<void> {
+    const source = handle.stdoutStream
+    try {
+      if (!source) throw new Error('this runner cannot stream a job\'s stdout')
+      if (!this.options.pipes) {
+        // Released unread, so the child never blocks on a reader that is not coming.
+        await source[Symbol.asyncIterator]().return?.()
+        throw new Error('this runner has no pipe ends')
+      }
+      await this.options.pipes.put(ref.url, source)
+      this.report(ref, null)
+    } catch (error) {
+      this.report(ref, error)
+    }
+  }
+
+  private report(ref: PipeRef, error: unknown | null): void {
+    this.options.send(error === null ? { type: 'pipe_done', pipeId: ref.id, ok: true } : { type: 'pipe_done', pipeId: ref.id, ok: false, error: errorMessage(error) })
   }
 
   private async pump(jobId: string, handle: JobSpawnHandle, files: { stdoutPath: string; stderrPath: string; cwdFile: string }): Promise<void> {

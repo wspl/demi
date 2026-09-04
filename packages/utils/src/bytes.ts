@@ -1,3 +1,5 @@
+import { deferred, type Deferred } from './async'
+
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
@@ -229,5 +231,72 @@ export class ByteQueue {
     const waiter = this.waiter
     this.waiter = null
     waiter?.()
+  }
+}
+
+/**
+ * A byte channel with backpressure: `push` resolves once the consumer took
+ * the chunk, so a producer never runs ahead of its consumer by more than one
+ * chunk. `close` ends the stream after the chunks already taken; `fail` ends
+ * it with an error. A consumer that stops early fails the producer's next
+ * `push`, the way a closed pipe does.
+ */
+export class ByteChannel {
+  private pending: { chunk: Uint8Array; taken: Deferred<void> } | null = null
+  private waiting: Deferred<void> | null = null
+  private ended: { error?: unknown } | null = null
+
+  async push(chunk: Uint8Array): Promise<void> {
+    while (this.pending) await this.pending.taken.promise.catch(() => {})
+    if (this.ended) throw this.ended.error ?? new Error('channel closed')
+    const taken = deferred<void>()
+    this.pending = { chunk, taken }
+    this.wake()
+    await taken.promise
+  }
+
+  close(): void {
+    this.end({})
+  }
+
+  fail(error: unknown): void {
+    this.end({ error })
+  }
+
+  async *stream(): AsyncIterable<Uint8Array> {
+    try {
+      for (;;) {
+        const pending = this.pending
+        if (pending) {
+          this.pending = null
+          pending.taken.resolve()
+          yield pending.chunk
+          continue
+        }
+        if (this.ended) {
+          if ('error' in this.ended) throw this.ended.error
+          return
+        }
+        this.waiting = deferred<void>()
+        await this.waiting.promise
+      }
+    } finally {
+      // The consumer is gone: nothing pushed from here on can be delivered.
+      this.end({ error: new Error('channel consumer gone') })
+    }
+  }
+
+  private end(ended: { error?: unknown }): void {
+    if (this.ended) return
+    this.ended = ended
+    this.pending?.taken.reject(ended.error ?? new Error('channel closed'))
+    this.pending = null
+    this.wake()
+  }
+
+  private wake(): void {
+    const waiting = this.waiting
+    this.waiting = null
+    waiting?.resolve()
   }
 }
