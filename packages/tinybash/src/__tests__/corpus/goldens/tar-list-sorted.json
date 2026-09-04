@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "./\n./lib/\n./lib/.hidden\n./lib/deep.ts\n./main.ts\n./util.ts\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

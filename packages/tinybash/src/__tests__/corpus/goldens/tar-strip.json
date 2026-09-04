@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "lib\nmain.ts\nutil.ts\n-rw-r--r-- 1 bytedance bytedance 5 Jan 15  2024 flat/lib/deep.ts\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

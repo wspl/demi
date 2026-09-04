@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "-rw-r--r-- bytedance/bytedance 28 2024-01-15 12:00 notes.txt\n-rwxr-xr-x bytedance/bytedance 18 2024-01-15 12:00 script.sh\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

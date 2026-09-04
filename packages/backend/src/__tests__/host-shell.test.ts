@@ -124,7 +124,8 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
     // Where a shell on the attached host ends is where the next one starts; `--host` takes the id as well.
     `demi host shell --host alpha "mkdir -p sub && cd sub && pwd" && demi host shell --host ${a.deviceId} "pwd" && demi host list`,
     `demi host shell --host nope "echo hi"; echo exit=$?`,
-    `demi host shell --host beta "head -c 5 notes.bin | od -An -tx1"`,
+    // Hostless: the peek runs on beta; the pull lands in the store through tinybash's own `tar`, no machine acquired.
+    `demi host shell --host beta "head -c 5 notes.bin | od -An -tx1" && demi host shell --host beta "tar c -C ${b.home} notes.bin" | tar x && wc -c notes.bin && demi host current`,
   )
   const { client, shellEvents } = await openClient(backend, conversation.id, selection)
 
@@ -195,7 +196,7 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
   await client.send([{ type: 'text', text: 'peek from nowhere' }])
   const peeked = lastExited(shellEvents)
   expect(peeked?.exitCode).toBe(0)
-  expect(peeked?.stdout.delta.replace(/\s+/g, ' ').trim()).toBe('00 1f 3e 5d 7c')
+  expect(peeked?.stdout.delta.replace(/\s+/g, ' ').trim()).toBe(`00 1f 3e 5d 7c ${payload.length} notes.bin host: virtual (files under /home/demi)`)
 
   await a.runner.stop()
   await b.runner.stop()

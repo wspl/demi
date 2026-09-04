@@ -38,6 +38,7 @@ export interface TinybashFs {
   cp(path: string, destination: string, options?: { cwd?: string; recursive?: boolean }): Promise<void>
   mv(path: string, destination: string, options?: { cwd?: string }): Promise<void>
   readlink(path: string, options?: { cwd?: string }): Promise<string>
+  chmod(path: string, mode: number, options?: { cwd?: string }): Promise<void>
   utimes(path: string, atime: Date, mtime: Date, options?: { cwd?: string }): Promise<void>
 }
 

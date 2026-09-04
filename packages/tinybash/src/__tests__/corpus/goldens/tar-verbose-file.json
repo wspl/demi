@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "notes.txt\nempty.txt\nnotes.txt\nempty.txt\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}
