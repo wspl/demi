@@ -167,6 +167,12 @@ PRIMARY KEY (conversation_id, device_id)      UNIQUE (conversation_id, name)
   permission and draws no boundary — it is the same thing the main host
   carries between jobs, kept once per attached host.
 
+The attachment set is independent of the main host's state. A hostless,
+user-host, workspace or managed main host reaches its attached hosts the
+same way, attaching is offered in every state, and nothing in the product
+or the backend narrows the combination — a hostless conversation with
+attached hosts is not the expected shape, but it is a supported one.
+
 Attaching is the user's act alone: switching the target automatically
 attaches the departed host; the user attaches and detaches hosts on the
 conversation's host list (`POST /api/conversations/:id/hosts { deviceId
