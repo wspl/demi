@@ -3280,6 +3280,44 @@ spellings, `c` / `x` / `t`, `-f`, `-C`, `-v`, `-z` over
   conversation through `tar` without acquiring a machine. tinybash suite
   411 pass.
 
+### The Firecracker smoke on the pipes runner (2026-09-04) — delivered
+
+The leftover from the three checkpoints: the guest runner is the packed
+tinyjs binary, so the ABI-2 primitives and the new relay only reach a
+managed host once the image carries them. Rebuilt and re-run in the Lima
+`fc` instance (Ubuntu 24.04 aarch64, 4 vCPU, nested KVM; Firecracker
+v1.16.1; kernel 6.1.155 at `/opt/fc/vmlinux`).
+
+- `runner/build.sh aarch64` on macOS (`cargo zigbuild`, musl,
+  `guest-roots`) produced the new `demi-runner`; it replaced
+  `/demi-runner` in the existing `rootfs.ext4` rather than rebuilding the
+  image from debootstrap — the runner is the only input that changed
+  since the image was built.
+- `real-firecracker.e2e.test.ts` passes in **both** launch modes with
+  that runner. It calls no model (the scripted stub answers), so the
+  `real-*.e2e.test.ts` gate rule — which exists for real model calls —
+  is not what holds it back; `/dev/kvm` is, and the install script's
+  `kvm` group only takes effect in a new session (`sg kvm -c`).
+
+| | direct | jailer |
+|---|---|---|
+| cold provision + first job | 6.5 s | 8.2 s |
+| wake + job | 8.5 s | 7.0 s |
+| home stored after hibernate | 8.5 MB | same |
+| home filesystem after growth | 109 MB | same |
+
+What this validates of the pipes work: the smoke's first guest turn ends
+in `demi host current`, an `rpc` command relayed from inside the VM, so
+the whole new path ran over the real tap network — the command-mode
+process declaring `stdin: false` on the UDS, `rpc_call`, the backend
+minting the stdout pipe and sending `rpc_pipes`, the guest runner
+`GET`ting `/api/pipes/<id>` from the backend at 172.16.0.1:3277 and
+streaming the body back as relay frames, and `rpc_exit` after the drain.
+Not covered here (covered by `host-shell.test.ts` on two local tinyjs
+runners instead): job-to-job pipes between two devices, and `tar`. The
+dev instance's tap pool was left in `jailer` mode by the last install
+run; either mode is one `install-managed-hosts.sh --mode …` away.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
