@@ -17,6 +17,7 @@ import { falseBuiltin, pwd, pwdSpec, trueBuiltin } from './pwd-true-false'
 import { rm, rmSpec } from './rm'
 import { sed, sedPaths, sedSpec } from './sed'
 import { sort, sortSpec } from './sort'
+import { tar, tarPaths } from './tar'
 import { makeTest, testPaths } from './test'
 import { touch, touchSpec } from './touch'
 import { tr, trSpec } from './tr'
@@ -66,6 +67,7 @@ export const BUILTINS: ReadonlyMap<string, BuiltinEntry> = new Map<string, Built
   entry('mv', mvSpec, mv),
   entry('cp', cpSpec, cp),
   entry('touch', touchSpec, touch),
+  ['tar', { flags: null, paths: tarPaths, run: tar }],
   entry('pwd', pwdSpec, pwd),
   ['true', { flags: null, paths: none, run: trueBuiltin }],
   ['false', { flags: null, paths: none, run: falseBuiltin }],
