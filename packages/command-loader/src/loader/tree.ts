@@ -51,7 +51,7 @@ function leafFromNode(root: string, node: ManifestLeaf, modules: Record<string, 
         // Absent optionals leave no key: the wire carries `undefined` as nil.
         args: withoutUndefined(ctx.parsed.values),
         json: ctx.parsed.json,
-        stdin: ctx.stdin.bytes,
+        stdin: ctx.stdin,
         cwd: ctx.cwd,
         env: ctx.env,
         io: ctx.io,

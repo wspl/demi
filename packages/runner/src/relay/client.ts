@@ -1,6 +1,6 @@
 // The command-mode end of the local relay: the manifest on a cache miss,
 // and the `RpcTransport` the loader hands `rpc` invocations to.
-import { connectUnix, msgpackDecode, msgpackEncode } from '../machine'
+import { connectUnix, msgpackDecode, msgpackEncode, type StreamSocket } from '../machine'
 import type { RpcTransport } from '@demicodes/command-loader'
 import { frameOf, framesOf, relayReplySchema, type RelayRequest } from './protocol'
 
@@ -21,38 +21,52 @@ export async function fetchManifest(socketPath: string): Promise<unknown | null>
 }
 
 /**
- * Forwards one `rpc` invocation over the relay: the request with the pipe's
- * bytes, then the live stdin as it arrives, while stdout and stderr stream
- * back into the invocation's writers until the exit.
+ * Forwards one `rpc` invocation over the relay: the request, then the pipe
+ * as `pipe` frames and the live stdin as it arrives, while stdout and
+ * stderr stream back into the invocation's writers until the exit. The
+ * runner carries the pipe on as an HTTP stream (`runner.md` § Pipes); this
+ * process never sees where.
  */
 export function relayRpc(socketPath: string, ids: { agentSessionId: string; shellId: string }): RpcTransport {
   return async (invocation) => {
     const socket = await connectUnix(socketPath)
+    const write = serialWriter(socket)
     const abort = () => socket.close()
     invocation.signal.addEventListener('abort', abort, { once: true })
     try {
-      await socket.write(
-        frameOf(codec, {
-          type: 'rpc',
-          ...ids,
-          root: invocation.root,
-          path: invocation.path,
-          argv: invocation.argv,
-          args: invocation.args,
-          json: invocation.json,
-          cwd: invocation.cwd,
-          env: invocation.env,
-          stdin: invocation.stdin,
-        } satisfies RelayRequest),
-      )
-      // The live stdin may never end (it is the job's own); it is forwarded
-      // for as long as the call runs and abandoned with the socket at exit.
+      await write({
+        type: 'rpc',
+        ...ids,
+        root: invocation.root,
+        path: invocation.path,
+        argv: invocation.argv,
+        args: invocation.args,
+        json: invocation.json,
+        cwd: invocation.cwd,
+        env: invocation.env,
+        stdin: invocation.stdin !== null,
+      })
+      // The pipe is finite and forwarded to its end; the live stdin may never
+      // end (it is the job's own) and is abandoned with the socket at exit.
+      const pipe = invocation.stdin
+      if (pipe) {
+        void (async () => {
+          try {
+            for await (const bytes of pipe) {
+              if (bytes.byteLength > 0) await write({ type: 'pipe', bytes })
+            }
+            await write({ type: 'pipe_end' })
+          } catch {
+            // The socket closed with the exit; nothing more to send.
+          }
+        })()
+      }
       void (async () => {
         try {
           for await (const bytes of invocation.stdinStream) {
-            if (bytes.byteLength > 0) await socket.write(frameOf(codec, { type: 'stdin', bytes } satisfies RelayRequest))
+            if (bytes.byteLength > 0) await write({ type: 'stdin', bytes })
           }
-          await socket.write(frameOf(codec, { type: 'stdin_end' } satisfies RelayRequest))
+          await write({ type: 'stdin_end' })
         } catch {
           // The socket closed with the exit; nothing more to send.
         }
@@ -72,5 +86,15 @@ export function relayRpc(socketPath: string, ids: { agentSessionId: string; shel
       invocation.signal.removeEventListener('abort', abort)
       socket.close()
     }
+  }
+}
+
+/** Frames written one after another: a stream socket takes one write at a time. */
+function serialWriter(socket: StreamSocket): (request: RelayRequest) => Promise<void> {
+  let chain = Promise.resolve()
+  return (request) => {
+    const next = chain.then(() => socket.write(frameOf(codec, request)))
+    chain = next.catch(() => {})
+    return next
   }
 }

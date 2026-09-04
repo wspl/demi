@@ -3144,6 +3144,63 @@ host is main or attached, never both. The model learns of attached hosts
 through `demi host list`, whose help is in the system prompt like every
 root command's — no extra tool-description text.
 
+### Pipes checkpoint (2026-09-04) — delivered
+
+The pipe primitive as `runner.md` § Pipes records it, bottom up.
+
+- **tinyjs** (ABI 2): `fs.pipe()` — a bounded in-memory pair over
+  `tokio::io::duplex` (not `simplex`: closing either end must be seen by
+  the other as EOF or `EPIPE`, which the split halves of a simplex never
+  signal — the first draft hung on exactly that); `httpRequest` bodies
+  from `{ handle }`, the handle consumed by the request and the body sent
+  chunked, boxed without `Send` so a handle-table stream can be a body;
+  `spawn`'s `tee.stream` adding a third destination to the tee, the full
+  stdout as a handle whose backpressure reaches the child, a closed reader
+  stopping that copy and nothing else. Conformance cases for each; the
+  protocol fixture's `hello` had lacked `homeDir` and was failing before
+  this work.
+- **Protocol** (v5): `rpc_call.stdin` a boolean; `rpc_pipes`; `job_start`
+  with `stdin` / `stdout` pipe refs; `rpc_output` stderr only; `pipe_done`;
+  the four transfer messages gone.
+- **shell / command-loader**: `CommandRunContext.stdin` is the pipe as an
+  `AsyncIterable`, `null` when there is none; only a `stdinField` drains
+  it before parsing; `DispatchIO.stdin` optional (absent: fd 0 is not a
+  pipe); `RpcInvocation.stdin` the stream or `null`. `CommandStdin`,
+  `stdinOf`, `emptyStdin` removed.
+- **runner**: the local relay carries the pipe as `pipe` / `pipe_end`
+  frames behind an `rpc` frame with `stdin: boolean`; the relay server
+  feeds them through a `ByteChannel` (new in `@demicodes/utils`: one
+  chunk in flight, `push` resolves on take) into the `PUT` that
+  `rpc_pipes` names, streams the `GET` body back as `output` frames in
+  the call's write chain, and reports `pipe_done` per end. `PipeClient`
+  replaces `TransferClient`: `put(url, stream)` pumps into an `fs.pipe()`
+  whose read end is the request body, `get(url)` streams the response.
+  The job table attaches a job's fd 0 to a `GET` and its fd 1 to a `PUT`
+  of the tee's stream; a refused end is released so the child never
+  blocks on a reader that left (`readHandle` closes on `return()` before
+  the first read too). Command mode passes no pipe when fd 0 is the
+  job's live stdin. `pipes.test.ts` runs 3 MB through both ends of a job
+  on the tinyjs runner and both refusals.
+- **backend**: `PipeBroker` replaces the transfer broker — an end may be
+  left open at minting and fixed later by `stream()` / `writer()` (this
+  process, pull-based, `highWaterMark: 0` so the writer waits for the
+  sink's pull) or `sinkTo` / `sourceFrom` (a device); `/api/pipes/:id`;
+  the relay mints a call's pipes, sends `rpc_pipes` first, runs the
+  handler with the pipes on its `CommandIO`, and sends `rpc_exit` after
+  the stdout pipe drained; `host shell --id` names the far ends of a
+  relayed caller's pipes as the job's device (device to device through
+  the broker, zero bytes here) or, hostless, feeds and drains the job's
+  pipes from its own streams. A sink stopping early counts as drained,
+  the way a closed pipe does. `RemoteHost.startJob` takes the refs.
+  Tests: `pipe-broker.test.ts` (late ends, in-process ends with
+  backpressure, timeout, device loss, early sink); `host-shell.test.ts`
+  now copies both ways with the wire audit on each; the scenario
+  invariant counts pipe ends named against `pipe_done` reports, waiting
+  for reports that trail the turn. Backend suite 102 pass; the root suite's
+  five failures reproduce on the committed tree (repository-scan
+  timeouts, the catalog-label check from the provider-entries commit, a
+  `.bashrc` on this machine).
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

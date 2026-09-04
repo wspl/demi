@@ -1,7 +1,6 @@
 import {
   isCommandGroup,
   resolveCommand,
-  stdinOf,
   type Command,
   type CommandIO,
   type CommandResult,
@@ -11,8 +10,8 @@ import {
 
 /**
  * One `rpc` invocation as the loader hands it to a transport: the parsed
- * arguments and the pipe's bytes travel; stdout, stderr and the post-start
- * stdin stream are attached for the transport to relay.
+ * arguments travel; the pipe, stdout, stderr and the post-start stdin
+ * stream are attached for the transport to carry (`runner.md` § Pipes).
  */
 export interface RpcInvocation {
   root: string
@@ -21,7 +20,8 @@ export interface RpcInvocation {
   argv: string[]
   args: Record<string, unknown>
   json: boolean
-  stdin: Uint8Array
+  /** The pipe, finite; `null` when the process has none on fd 0 or a `stdinField` consumed it. */
+  stdin: AsyncIterable<Uint8Array> | null
   cwd: string
   env: Record<string, string>
   io: CommandIO
@@ -44,7 +44,7 @@ export function inProcessRpc(roots: readonly Command[], deps: { storage: Command
     return leaf.run({
       argv: invocation.argv,
       parsed: { path: invocation.path, help: false, values: invocation.args, json: invocation.json },
-      stdin: stdinOf(invocation.stdin),
+      stdin: invocation.stdin,
       env: invocation.env,
       cwd: invocation.cwd,
       io: invocation.io,

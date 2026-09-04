@@ -26,7 +26,7 @@ import { ManifestCache } from './manifest-cache'
 import { RelayServer } from './relay/server'
 import { DirectoryHome, type HomeImage } from './init/home-image'
 import { RunnerState } from './state'
-import { TransferClient } from './transfers'
+import { PipeClient } from './pipes'
 
 export interface RunnerModeOptions {
   backendUrl: string
@@ -59,7 +59,7 @@ export class RunnerMode {
   private readonly host: Host
   private readonly state: RunnerState
   private readonly cache: ManifestCache
-  private readonly transfers: TransferClient
+  private readonly pipes: PipeClient
   private readonly wire = createRunnerWire({ encode: msgpackEncode, decode: msgpackDecode })
   private readonly log: (line: string) => void
   private readonly home: HomeImage
@@ -78,7 +78,7 @@ export class RunnerMode {
     })
     this.state = new RunnerState(this.host.fs, options.stateDir)
     this.cache = new ManifestCache(this.host.fs, this.state.commandsDir, this.state.binDir, options.executable)
-    this.transfers = new TransferClient(options.backendUrl, () => this.token())
+    this.pipes = new PipeClient(options.backendUrl, () => this.token())
     this.log = options.log ?? ((line) => console.error(line))
     this.home = options.home ?? new DirectoryHome({ run: (command, args) => this.command(command, args) })
   }
@@ -106,7 +106,7 @@ export class RunnerMode {
     this.relay = await RelayServer.listen(this.state.socketPath, {
       send: (message) => this.sendToBackend(message),
       manifest: () => this.cache.current(),
-      download: (url) => this.transfers.download(url),
+      pipes: this.pipes,
       ...(this.options.guest ? { socketMode: 0o666 } : {}),
     })
     const checkMs = this.options.homeCheckMs ?? 60_000
@@ -189,6 +189,7 @@ export class RunnerMode {
       pathPrefix: [this.state.binDir],
       // Command-mode processes find the relay socket and the manifest cache here.
       fixedEnv: { DEMI_HOME: this.options.stateDir },
+      pipes: this.pipes,
       send: (message) => this.sendToBackend(message),
     })
     let outcome: 'closed' | 'online' | 'rejected' = 'closed'
@@ -279,14 +280,10 @@ export class RunnerMode {
           this.log(`manifest refused: ${errorMessage(error)}`)
         }
         return undefined
+      case 'rpc_pipes':
       case 'rpc_output':
-      case 'rpc_transfer':
       case 'rpc_exit':
         this.relay?.handleReply(message)
-        return undefined
-      case 'transfer_send':
-      case 'transfer_receive':
-        void this.transfer(message)
         return undefined
       case 'job_start':
       case 'job_stdin':
@@ -300,26 +297,10 @@ export class RunnerMode {
     }
   }
 
-  /** One brokered copy: the HTTP exchange runs to its end, then `transfer_done` reports it. */
-  private async transfer(message: Extract<BackendToRunnerMessage, { type: 'transfer_send' | 'transfer_receive' }>): Promise<void> {
-    const { transferId } = message
-    try {
-      if (message.type === 'transfer_send') await this.transfers.send(message.path, message.url)
-      else await this.transfers.receive(message.path, message.url)
-      this.sendToBackend({ type: 'transfer_done', transferId, ok: true })
-    } catch (error) {
-      this.log(`transfer ${transferId} failed: ${errorMessage(error)}`)
-      try {
-        this.sendToBackend({ type: 'transfer_done', transferId, ok: false, error: errorMessage(error) })
-      } catch {
-        // Offline: the backend already failed the transfer with the connection.
-      }
-    }
-  }
 }
 
 /** Reported in `hello`; bumped with the runner program. */
-export const RUNNER_VERSION = '0.21.0'
+export const RUNNER_VERSION = '0.22.0'
 
 /** `--backend https://demi.example.com` ⇒ `wss://demi.example.com/api/runner`; an explicit path is kept as-is. */
 export function runnerSocketUrl(backendUrl: string): string {
