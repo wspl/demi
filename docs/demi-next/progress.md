@@ -3318,7 +3318,7 @@ runners instead): job-to-job pipes between two devices, and `tar`. The
 dev instance's tap pool was left in `jailer` mode by the last install
 run; either mode is one `install-managed-hosts.sh --mode …` away.
 
-## Review corrections (2026-09-05) — in progress
+## Review corrections (2026-09-05) — complete
 
 Scope: the 19 findings against `f6b98a2e`, on
 `codex/demi-next-review-fixes`. Web and concrete Sandbox implementations
@@ -3456,6 +3456,27 @@ assertions**. These batches overlap the shell and backend counts above.
 | `runner/src/__tests__/control.test.ts` | Blocked job/raw-spawn stdin does not block ping, filesystem work or kill; per-process input order is retained. |
 | `runner-protocol/src/__tests__/protocol.test.ts`, `runner/src/__tests__/tinyjs-codec.test.ts` | v6 cancellation message validation and MessagePack round trips on Bun/tinyjs. |
 | `host-virtual/src/__tests__/hostless-environment.test.ts`, tinybash builtin/session/tar suites | Findings 12–17 and the live-vs-finite stdin contract; detailed command coverage is in `tinybash.md`. |
+| `core/src/__tests__/platform-entrypoints.test.ts` | Package dependency boundaries, production-only helper scans, the allowed models.dev client and prohibited catalog source labels in shared metadata. |
+
+### Final architecture checks — verified
+
+The broader agent/core/utils/shell/command-loader/host-virtual/host-remote
+batch first exposed two pre-existing test-rule mismatches: the catalog
+guard rejected the models.dev client that the package contract explicitly
+assigns to provider, and global source scans included a local reference
+checkout outside the production package registry. The guard now enumerates
+the existing production package directory table and distinguishes client
+implementation facts from shared catalog metadata. Five focused rule cases
+cover the allowed client, forbidden source tags and the separate legitimate
+quota-cache semantics. No local reference files are deleted or changed.
+
+Final seven-package batch: **380 pass, 0 fail, 2,355 assertions across 40
+files**. The architecture guard alone passes all 25 cases. Final
+`bun run typecheck` and `git diff --check` pass. All 19 review findings are
+implemented and verified; the separate test-rule corrections are complete.
+Test totals above are per batch and overlap. Web, concrete Sandbox
+implementation, managed/init test suites and real-model calls remain
+outside the review and verification scope.
 
 ## Open items (deferred, with their milestone)
 
