@@ -1,11 +1,7 @@
 import type { TokenUsage } from '@demicodes/core'
 import {
-  defineProvider,
-  providerRuntime,
   type AgentProvider,
   type InferenceRequest,
-  type Provider,
-  type ProviderFactoryDefinition,
   type ProviderRun,
 } from '@demicodes/provider'
 
@@ -24,13 +20,7 @@ export interface MeterOptions {
  * is exactly the ledger granularity — and enforcement runs before a request
  * starts. Everything else (steer, clone, dispose) delegates untouched.
  */
-export function meterProvider(inner: Provider, options: MeterOptions): Provider {
-  const definition = { ...inner, createRuntime: undefined } as unknown as ProviderFactoryDefinition
-  definition.createRuntime = async (selection) => meterRuntime(await providerRuntime(inner, selection), options)
-  return defineProvider(definition)
-}
-
-function meterRuntime(runtime: AgentProvider, options: MeterOptions): AgentProvider {
+export function meterRuntime(runtime: AgentProvider, options: MeterOptions): AgentProvider {
   const metered: AgentProvider = {
     run: (request) => {
       options.beforeRequest?.({ modelId: request.modelId })

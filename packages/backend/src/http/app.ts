@@ -8,7 +8,7 @@ import type { ControlService, WorkspaceRecord } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ProviderVault } from '../vault/providers'
 import type { SubscriptionLoginFlows } from '../vault/subscription-login'
-import type { BlobStore } from '@demicodes/agent'
+import type { UserBlobStores } from '../storage/user-blobs'
 import type { Host } from '@demicodes/shell'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { LoginLimiter } from '../auth/login-limiter'
@@ -44,7 +44,7 @@ export function createApp(options: {
   runnerRegistry: RunnerRegistry
   pipes: PipeBroker
   upgradeWebSocket: UpgradeWebSocket
-  blobs: BlobStore
+  blobs: UserBlobStores
   hostFor: (conversationId: string) => Promise<Host>
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
@@ -72,8 +72,8 @@ export function createApp(options: {
   app.route('/api/pipes', pipeRoutes({ control: options.control, broker: options.pipes }))
   app.route('/api/devices', deviceRoutes({ control: options.control, registry: options.runnerRegistry }))
   app.route('/api/workspaces', workspaceRoutes({ control: options.control, managedHosts: options.managedHosts, createCloudWorkspace: options.createCloudWorkspace }))
-  app.route('/api/attachments', attachmentRoutes({ control: options.control, blobs: options.blobs }))
-  app.route('/api/blobs', blobRoutes({ blobs: options.blobs }))
+  app.route('/api/attachments', attachmentRoutes({ control: options.control, blobsFor: (id) => options.blobs.forUser(id) }))
+  app.route('/api/blobs', blobRoutes({ blobsFor: (id) => options.blobs.forUser(id) }))
   // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
   app.route(
     '/api/conversations',
@@ -81,7 +81,7 @@ export function createApp(options: {
       control: options.control,
       agentServer: options.agentServer,
       upgradeWebSocket: options.upgradeWebSocket,
-      blobs: options.blobs,
+      blobsFor: (id) => options.blobs.forUser(id),
     }),
   )
   app.route(

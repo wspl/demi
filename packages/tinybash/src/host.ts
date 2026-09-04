@@ -52,8 +52,8 @@ export interface TinybashIO {
 
 /** The stdio and environment of one root-command invocation, as the shell hands it to the dispatcher. */
 export interface DispatchIO {
-  /** The pipe: a pipeline, heredoc, `<` file, or empty. Finite. */
-  stdin: AsyncIterable<Uint8Array>
+  /** The finite pipe: a pipeline, heredoc or `<` file. Absent for the script's live stdin. */
+  stdin?: AsyncIterable<Uint8Array>
   /**
    * The script's own stdin, when this command's stdin is not redirected:
    * what the shell's caller writes after the command started. Live — it

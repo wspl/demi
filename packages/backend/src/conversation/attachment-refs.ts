@@ -17,6 +17,11 @@ const refSourceSchema = z.object({
   fileName: z.string().optional(),
 })
 
+export const attachmentRefBlockSchema = z.object({
+  type: z.enum(['image', 'video', 'document']),
+  source: refSourceSchema,
+})
+
 export interface AttachmentRefDeps {
   control: ControlService
   blobs: BlobStore

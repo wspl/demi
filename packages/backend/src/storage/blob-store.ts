@@ -5,7 +5,7 @@ import { createId } from '@demicodes/utils'
 import type { BlobStore } from '@demicodes/agent'
 
 /**
- * The N=1 blob store: content-addressed files under `blobs/<sha256>`.
+ * The N=1 blob store: content-addressed files under the supplied root.
  * Writes go through a temp file + rename so a crash never leaves a partial
  * blob under its final name; an existing blob short-circuits (content
  * addressing makes puts idempotent).

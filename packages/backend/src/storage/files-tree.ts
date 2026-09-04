@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { BlobStore } from '@demicodes/agent'
 import type { VirtualFsBackend } from '@demicodes/host-virtual'
 import type { HostDirent, HostFileStat } from '@demicodes/shell'
-import { basenamePath, concatBytes, dirnamePath, errnoError, normalizePath } from '@demicodes/utils'
+import { basenamePath, concatBytes, dirnamePath, errnoError, normalizePath, SerialQueue } from '@demicodes/utils'
 import type { SqlDatabase } from './database'
 
 /**
@@ -34,6 +34,7 @@ const SELECT = 'SELECT path, parent, kind, mode, mtime, size, sha256 FROM files'
  * counts the bytes the rows reference.
  */
 export function filesTreeBackend(db: SqlDatabase, blobs: BlobStore): VirtualFsBackend {
+  const appends = new Map<string, SerialQueue>()
   const row = (path: string): FileRow | null => (path === '/' ? ROOT : db.get<FileRow>(`${SELECT} WHERE path = ?`, [path]))
   const require = (path: string): FileRow => {
     const found = row(path)
@@ -168,9 +169,20 @@ export function filesTreeBackend(db: SqlDatabase, blobs: BlobStore): VirtualFsBa
     writeFile: (path, data, options) => writeBytes(normalizePath(path), data, options?.createParents ?? false),
     appendFile: async (path, data, options) => {
       const target = normalizePath(path)
-      const existing = row(target)
-      if (existing?.kind === 'file') return writeBytes(target, concatBytes([await bytesOf(existing), data]), false)
-      return writeBytes(target, data, options?.createParents ?? false)
+      let queue = appends.get(target)
+      if (!queue) {
+        queue = new SerialQueue()
+        appends.set(target, queue)
+      }
+      try {
+        await queue.run(async () => {
+          const existing = row(target)
+          if (existing?.kind === 'file') return writeBytes(target, concatBytes([await bytesOf(existing), data]), false)
+          return writeBytes(target, data, options?.createParents ?? false)
+        })
+      } finally {
+        if (queue.idle) appends.delete(target)
+      }
     },
     exists: async (path) => row(normalizePath(path)) !== null,
     stat: async (path) => statOf(require(normalizePath(path))),

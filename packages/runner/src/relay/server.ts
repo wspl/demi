@@ -7,7 +7,7 @@
 // socket (`runner.md` § Pipes).
 import { listenUnix, msgpackDecode, msgpackEncode, type StreamSocket, type UnixListener } from '../machine'
 import type { BackendToRunnerMessage, PipeRef, RunnerToBackendMessage } from '@demicodes/runner-protocol'
-import { ByteChannel, createId, errorMessage, noop } from '@demicodes/utils'
+import { ByteChannel, errorMessage, noop, SerialQueue } from '@demicodes/utils'
 import type { PipeEnds } from '../pipes'
 import { frameOf, framesOf, relayRequestSchema, type RelayReply } from './protocol'
 
@@ -24,15 +24,18 @@ export interface RelayServerOptions {
 }
 
 interface Call {
+  jobId?: string
   socket: StreamSocket
+  control: StreamSocket | null
+  request: Extract<RunnerToBackendMessage, { type: 'rpc_call' }>
   /** The process's pipe, as its frames arrive; absent when the call declared none. */
   pipe: ByteChannel | null
+  writes: SerialQueue
+  stdout: Promise<void>
 }
 
 export class RelayServer {
   private readonly calls = new Map<string, Call>()
-  /** Per call, the replies still being written: the stdout body streams asynchronously and `rpc_exit` waits behind it. */
-  private readonly writes = new Map<string, Promise<void>>()
   private closed = false
 
   static async listen(path: string, options: RelayServerOptions): Promise<RelayServer> {
@@ -50,52 +53,68 @@ export class RelayServer {
   close(): void {
     this.closed = true
     this.listener.close()
-    for (const call of this.calls.values()) call.socket.close()
-    this.calls.clear()
+    for (const [callId, call] of this.calls) this.cancel(callId, call)
   }
 
   /** The backend went away: every call in flight fails. */
   connectionLost(): void {
     for (const call of this.calls.values()) {
       call.pipe?.fail(new Error('runner disconnected'))
-      void this.reply(call.socket, { type: 'error', message: 'runner disconnected' }).then(() => call.socket.close(), noop)
+      call.control?.close()
+      void this.replyCall(call, { type: 'error', message: 'runner disconnected' }).finally(() => call.socket.close()).catch(noop)
     }
     this.calls.clear()
+  }
+
+  /** Job termination also cancels calls whose data connection is backpressured. */
+  cancelJob(jobId: string): void {
+    for (const [callId, call] of this.calls) {
+      if (call.jobId === jobId) this.cancel(callId, call)
+    }
   }
 
   handleReply(message: Extract<BackendToRunnerMessage, { type: 'rpc_pipes' | 'rpc_output' | 'rpc_exit' }>): void {
     const call = this.calls.get(message.callId)
     if (!call) return
     const { callId } = message
-    if (message.type === 'rpc_pipes' && message.stdin) void this.sendPipe(call, message.stdin)
-    const queued = this.writes.get(callId) ?? Promise.resolve()
-    const next = queued.then(async () => {
-      if (!this.calls.has(callId)) return
-      switch (message.type) {
-        case 'rpc_pipes':
-          await this.receiveStdout(call, message.stdout)
-          return
-        case 'rpc_output':
-          await this.reply(call.socket, { type: 'output', stream: 'stderr', bytes: message.bytes })
-          return
-        case 'rpc_exit':
+    const failed = async (error: unknown) => {
+      await this.replyCall(call, { type: 'error', message: errorMessage(error) }).catch(noop)
+      this.cancel(callId, call)
+    }
+    switch (message.type) {
+      case 'rpc_pipes':
+        if (message.stdin) void this.sendPipe(call, message.stdin)
+        call.stdout = this.receiveStdout(call, message.stdout)
+        void call.stdout.catch(failed)
+        break
+      case 'rpc_output':
+        void this.replyCall(call, { type: 'output', stream: 'stderr', bytes: message.bytes }).catch(failed)
+        break
+      case 'rpc_exit':
+        void call.stdout.then(async () => {
+          if (this.calls.get(callId) !== call) return
+          await this.replyCall(call, { type: 'exit', exitCode: message.exitCode })
           this.calls.delete(callId)
-          this.writes.delete(callId)
-          await this.reply(call.socket, { type: 'exit', exitCode: message.exitCode })
+          call.pipe?.close()
+          call.control?.close()
           call.socket.close()
-          return
-      }
-    })
-    this.writes.set(
-      callId,
-      next.catch(async (error: unknown) => {
-        // A failed stdout pipe or a gone process ends the call on this side.
-        this.calls.delete(callId)
-        this.writes.delete(callId)
-        await this.reply(call.socket, { type: 'error', message: errorMessage(error) }).catch(noop)
-        call.socket.close()
-      }),
-    )
+        }).catch(failed)
+        break
+    }
+  }
+
+  /** A process that leaves before its exit reply cancels the backend handler. */
+  private cancel(callId: string, call: Call): void {
+    if (this.calls.get(callId) !== call) return
+    this.calls.delete(callId)
+    call.pipe?.fail(new Error('rpc call cancelled'))
+    try {
+      this.options.send({ type: 'rpc_cancel', callId })
+    } catch {
+      // The backend already cancels calls when the runner connection drops.
+    }
+    call.socket.close()
+    call.control?.close()
   }
 
   /** The process's pipe up to the backend; a failure is reported and is the far end's to judge. */
@@ -116,7 +135,7 @@ export class RelayServer {
   private async receiveStdout(call: Call, ref: PipeRef): Promise<void> {
     try {
       for await (const bytes of await this.options.pipes.get(ref.url)) {
-        await this.reply(call.socket, { type: 'output', stream: 'stdout', bytes })
+        await this.replyCall(call, { type: 'output', stream: 'stdout', bytes })
       }
       this.report(ref, null)
     } catch (error) {
@@ -148,19 +167,32 @@ export class RelayServer {
   private async serve(socket: StreamSocket): Promise<void> {
     let callId: string | null = null
     let call: Call | null = null
+    let watched: Call | null = null
     try {
       for await (const request of framesOf(socket.input, codec, relayRequestSchema)) {
+        if (watched) throw new Error('the lifetime connection carries only one watch request')
         switch (request.type) {
+          case 'watch': {
+            if (call) throw new Error('a lifetime connection carries no data')
+            watched = this.calls.get(request.callId) ?? null
+            if (!watched || watched.control) throw new Error('no unbound invocation for this lifetime connection')
+            watched.control = socket
+            if (this.calls.get(request.callId) === watched) this.options.send(watched.request)
+            await this.reply(socket, { type: 'ready' })
+            break
+          }
           case 'manifest':
             await this.reply(socket, { type: 'manifest', manifest: await this.options.manifest() })
             socket.close()
             return
           case 'rpc': {
-            callId = createId()
-            const { type: _type, ...rest } = request
-            call = { socket, pipe: request.stdin ? new ByteChannel() : null }
+            if (call) throw new Error('one rpc invocation per relay connection')
+            if (this.calls.has(request.callId)) throw new Error('duplicate rpc call id')
+            callId = request.callId
+            const { type: _type, jobId, ...rest } = request
+            call = { jobId, socket, control: null, request: { type: 'rpc_call', ...rest }, pipe: request.stdin ? new ByteChannel() : null, writes: new SerialQueue(), stdout: Promise.resolve() }
             this.calls.set(callId, call)
-            this.options.send({ type: 'rpc_call', callId, ...rest })
+            await this.replyCall(call, { type: 'ready' })
             break
           }
           case 'pipe':
@@ -181,11 +213,18 @@ export class RelayServer {
       // The process went away before `pipe_end`: what it sent is all there is.
       call?.pipe?.fail(new Error('the command-mode process closed its pipe early'))
     } catch (error) {
-      if (callId) this.calls.delete(callId)
       call?.pipe?.fail(error)
-      await this.reply(socket, { type: 'error', message: errorMessage(error) }).catch(noop)
+      if (call) await this.replyCall(call, { type: 'error', message: errorMessage(error) }).catch(noop)
+      else await this.reply(socket, { type: 'error', message: errorMessage(error) }).catch(noop)
       socket.close()
+    } finally {
+      if (callId && call) this.cancel(callId, call)
+      if (watched) this.cancel(watched.request.callId, watched)
     }
+  }
+
+  private replyCall(call: Call, reply: RelayReply): Promise<void> {
+    return call.writes.run(() => this.reply(call.socket, reply))
   }
 
   private reply(socket: StreamSocket, reply: RelayReply): Promise<void> {
