@@ -44,11 +44,10 @@ test('hostless → runner → hostless, files staying with their target', async 
   expect(await driver.readFile('notes.md')).toBe('alpha\ndelta\ngamma\n')
   expect(await world.hostlessFile(driver.id, '/home/demi/notes.md')).toBe('alpha\nbeta\ngamma\n')
 
-  // Back to hostless: the original is untouched; the switch granted the runner, so `host shell --id` reaches it.
+  // Back to hostless: the original is untouched; the switch attached the runner under its name, so `host shell --host` reaches it.
   await driver.switchTo('hostless')
-  const alpha = world.device('alpha').deviceId
   const back = await driver.turn({
-    model: [model.shell('t5', `cat notes.md && demi host shell --id ${alpha} "cat notes.md"`), model.say('back')],
+    model: [model.shell('t5', 'cat notes.md && demi host shell --host alpha "cat notes.md"'), model.say('back')],
   })
   expect(itemsText(back.requests[0]!.items)).toContain('[Execution target switched]')
   expect(itemsText(back.requests[0]!.items)).toContain('Previous target: workspace "alpha workspace"')

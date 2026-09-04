@@ -13,11 +13,12 @@ import { LocalControlService, type ControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
 import { openBackend, type TestBackend } from './session'
 
-// M6 acceptance, on M11's access model: target switching at turn boundaries
-// over the conversations PATCH, the pending switch and its context block,
-// the departed device granted and reached with `demi host shell --id`, the
-// grant API (explicit grants for user devices only, revoke closes the door),
-// and offline degradation.
+// M6 acceptance, on the attached-hosts model: target switching at turn
+// boundaries over the conversations PATCH, the pending switch and its
+// context block, the departed device attached under its name and reached
+// with `demi host shell --host`, the hosts API (attach any owned device,
+// rename with names unique per conversation, detach closes the door), and
+// offline degradation.
 
 async function api(backend: TestBackend, path: string, init?: RequestInit): Promise<Response> {
   return backend.session.fetch(path, init)
@@ -78,7 +79,7 @@ function scriptedStub(scripts: string[]) {
     )
 }
 
-test('M6 acceptance: virtual→real switch with context block, real→virtual grants the device, grant API, offline chat', async () => {
+test('M6 acceptance: virtual→real switch with context block, real→virtual attaches the device, hosts API, offline chat', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m6-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m6-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m6-runner-'))
@@ -104,12 +105,12 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
   scripts.push(
     // Turn 1 (virtual): a file that stays behind; the status names virtual.
     'echo -n secret > notes.txt && demi host current',
-    // Turn 2 (after the switch to the workspace): only the current host is reachable; a file written here is what the grant reaches later.
+    // Turn 2 (after the switch to the workspace): only the main host is reachable; a file written here is what the attachment reaches later.
     'demi host list; printf secret > notes.txt && demi host current',
-    // Turn 3 (after the switch back to virtual): the workspace's device was granted, its shell starts in its home.
-    `demi host list && demi host shell --id ${device.id} "cat notes.txt"`,
-    // Turn 4 (after the revoke): the door is closed.
-    `demi host shell --id ${device.id} "cat notes.txt" || echo refused`,
+    // Turn 3 (after the switch back to virtual): the workspace's device is attached under its name, its shell starts in the directory it was left at.
+    'demi host list && demi host shell --host m6-device "cat notes.txt"',
+    // Turn 4 (after the detach): the door is closed.
+    `demi host shell --host ${device.id} "cat notes.txt" || echo refused`,
     // Turn 5: chat-only while the bound workspace's runner is offline.
     'true',
   )
@@ -123,7 +124,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
   expect(lastExited(shellEvents)?.stdout.delta).toContain('host: virtual')
   expect(existsSync(join(runnerDir, 'notes.txt'))).toBe(false)
 
-  // Switch virtual→real over PATCH: the switch is pending, nothing granted (hostless has no device).
+  // Switch virtual→real over PATCH: the switch is pending, nothing attached (hostless has no device).
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: workspace.id }, 'PATCH')).status).toBe(200)
   const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
   const control: ControlService = new LocalControlService(controlDb)
@@ -133,12 +134,12 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
     from: { kind: 'hostless' },
     to: { kind: 'workspace', workspaceId: workspace.id, deviceId: device.id, path: runnerDir },
   })
-  expect(await control.listHostGrants(conversation.id)).toEqual([])
+  expect(await control.listAttachedHosts(conversation.id)).toEqual([])
 
   // Turn 2: the context block is injected once; the workspace is live.
   await client.send([{ type: 'text', text: 'bring my files' }])
   const onWorkspace = lastExited(shellEvents)
-  expect(onWorkspace?.stdout.delta).toContain(`${device.id}  m6-device  online  ${runnerDir}  (current)`)
+  expect(onWorkspace?.stdout.delta).toContain(`m6-device  ${device.id}  online  ${runnerDir}  (main)`)
   expect(onWorkspace?.stdout.delta).toContain('host: workspace "m6 workspace"')
   expect(readFileSync(join(runnerDir, 'notes.txt'), 'utf8')).toBe('secret')
   expect(announcements(client)).toHaveLength(1)
@@ -146,33 +147,45 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
   expect(announcements(client)[0]).not.toContain('demi host shell')
   expect((await control.getConversation(conversation.id))?.pendingSwitch).toBeNull()
 
-  // Switch real→virtual: the departed device is granted; the announcement points at `host shell --id`.
+  // Switch real→virtual: the departed device is attached under its name at the directory it was left at; the announcement points at `host shell --host`.
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: null }, 'PATCH')).status).toBe(200)
   record = await control.getConversation(conversation.id)
   expect(record?.workspaceId).toBeNull()
   expect(record?.pendingSwitch?.from).toEqual({ kind: 'workspace', workspaceId: workspace.id, deviceId: device.id, path: runnerDir })
-  expect((await control.listHostGrants(conversation.id)).map((grant) => grant.deviceId)).toEqual([device.id])
-  const listed = (await (await api(backend, `/api/conversations/${conversation.id}/grants`)).json()) as { grants: Array<{ deviceId: string }> }
-  expect(listed.grants.map((grant) => grant.deviceId)).toEqual([device.id])
+  expect((await control.listAttachedHosts(conversation.id)).map((host) => [host.deviceId, host.name, host.cwd])).toEqual([[device.id, 'm6-device', runnerDir]])
+  const listed = (await (await api(backend, `/api/conversations/${conversation.id}/hosts`)).json()) as { hosts: Array<{ deviceId: string; name: string; online: boolean }> }
+  expect(listed.hosts.map((host) => [host.deviceId, host.name, host.online])).toEqual([[device.id, 'm6-device', true]])
 
   await client.send([{ type: 'text', text: 'read from the old place' }])
   const reached = lastExited(shellEvents)
-  expect(reached?.stdout.delta).toContain(`${device.id}  m6-device  online  ${runnerDir}  (granted)`)
+  expect(reached?.stdout.delta).toContain(`m6-device  ${device.id}  online  ${runnerDir}  (attached)`)
   expect(reached?.stdout.delta).toContain('secret')
   expect(announcements(client)).toHaveLength(2)
-  expect(announcements(client)[1]).toContain(`demi host shell --id ${device.id}`)
+  expect(announcements(client)[1]).toContain('stays attached as "m6-device"')
+  expect(announcements(client)[1]).toContain('demi host shell --host m6-device')
   expect(announcements(client)[1]).toContain(`tar c -C ${runnerDir} .`)
+  expect(announcements(client)[1]).toContain(`Attached hosts: "m6-device" (online, shells start in ${runnerDir})`)
 
-  // The grant API: a user device grants idempotently, a managed host is never grantable, revoke closes the door.
-  expect((await json(backend, `/api/conversations/${conversation.id}/grants`, { deviceId: device.id })).status).toBe(201)
-  expect(await control.listHostGrants(conversation.id)).toHaveLength(1)
+  // The hosts API: attaching is idempotent, any owned device attaches (the product surface decides what it offers), a rename must be unique, detach closes the door.
+  expect((await json(backend, `/api/conversations/${conversation.id}/hosts`, { deviceId: device.id })).status).toBe(201)
+  expect(await control.listAttachedHosts(conversation.id)).toHaveLength(1)
   const managed = await control.createDevice({ userId: backend.session.user.id, name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: conversation.id })
-  expect((await json(backend, `/api/conversations/${conversation.id}/grants`, { deviceId: managed.id })).status).toBe(404)
+  expect((await json(backend, `/api/conversations/${conversation.id}/hosts`, { deviceId: managed.id })).status).toBe(201)
+  expect((await control.listAttachedHosts(conversation.id)).map((host) => host.name)).toEqual(['m6-device', 'vm'])
+  expect((await json(backend, `/api/conversations/${conversation.id}/hosts/${managed.id}`, { name: 'm6-device' }, 'PATCH')).status).toBe(409)
+  expect((await json(backend, `/api/conversations/${conversation.id}/hosts/${managed.id}`, { name: 'cloud' }, 'PATCH')).status).toBe(200)
+  expect((await control.listAttachedHosts(conversation.id)).map((host) => host.name)).toEqual(['m6-device', 'cloud'])
+  expect((await control.getConversation(conversation.id))?.hostsChanged).toBe(true)
   const devices = (await (await api(backend, '/api/devices')).json()) as { devices: Array<{ id: string }> }
   expect(devices.devices.map((entry) => entry.id)).toEqual([device.id])
-  expect((await api(backend, `/api/conversations/${conversation.id}/grants/${device.id}`, { method: 'DELETE' })).status).toBe(204)
-  expect(await control.listHostGrants(conversation.id)).toEqual([])
+  expect((await api(backend, `/api/conversations/${conversation.id}/hosts/${device.id}`, { method: 'DELETE' })).status).toBe(204)
+  expect((await api(backend, `/api/conversations/${conversation.id}/hosts/${managed.id}`, { method: 'DELETE' })).status).toBe(204)
+  expect(await control.listAttachedHosts(conversation.id)).toEqual([])
   await client.send([{ type: 'text', text: 'try again' }])
+  // The change was announced once, as the set now stands.
+  expect(client.transcript().blocks.filter((block) => block.type === 'user' && block.preamble?.includes('[Attached hosts changed]')).map((block) => (block.type === 'user' ? block.preamble : ''))).toEqual([
+    expect.stringContaining('Attached hosts: none.'),
+  ])
   const refused = lastExited(shellEvents)
   expect(refused?.stderr.delta).toContain(`host ${device.id} is not reachable`)
   expect(refused?.stdout.delta).toContain('refused')
@@ -197,7 +210,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual gr
   await backend.close()
 }, 30_000)
 
-test('real→real switch: files stay, same-device note, the device granted once', async () => {
+test('real→real switch: files stay, same-device note, the device attached once', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-m6-rr-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m6-rr-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m6-rr-runner-'))
@@ -229,8 +242,8 @@ test('real→real switch: files stay, same-device note, the device granted once'
   scripts.push(
     // Turn 1 (workspace A): leave a file behind.
     'printf alpha > a.txt',
-    // Turn 2 (after A→B on the same device): the old directory is directly reachable, and so is the device as a host.
-    `cat ${join(dirA, 'a.txt')} && demi host shell --id ${device.id} "cat ${join(dirA, 'a.txt')}"`,
+    // Turn 2 (after A→B on the same device): the old directory is directly reachable; the device is the main host, so `--host` names it too.
+    `cat ${join(dirA, 'a.txt')} && demi host shell --host ${device.id} "cat ${join(dirA, 'a.txt')}"`,
   )
 
   const created = await api(backend, '/api/conversations', { method: 'POST' })
@@ -252,13 +265,17 @@ test('real→real switch: files stay, same-device note, the device granted once'
   expect(note).toContain(dirA)
   expect(note).toContain('same device')
 
-  // Every switch away from the device grants it; the grant set holds it once.
-  expect((await patch({ workspaceId: null })).status).toBe(200)
+  // A switch within the device attaches nothing (main is main); the switch away attaches it once, at the directory it was left at.
   const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
   const control: ControlService = new LocalControlService(controlDb)
+  expect(await control.listAttachedHosts(conversation.id)).toEqual([])
+  expect((await patch({ workspaceId: null })).status).toBe(200)
   const record = await control.getConversation(conversation.id)
   expect(record?.pendingSwitch?.from).toEqual({ kind: 'workspace', workspaceId: workspaceB.id, deviceId: device.id, path: dirB })
-  expect((await control.listHostGrants(conversation.id)).map((grant) => grant.deviceId)).toEqual([device.id])
+  expect((await control.listAttachedHosts(conversation.id)).map((host) => [host.deviceId, host.cwd])).toEqual([[device.id, dirB]])
+  // Switching back onto the attached device makes it main again: the row goes.
+  expect((await patch({ workspaceId: workspaceA.id })).status).toBe(200)
+  expect(await control.listAttachedHosts(conversation.id)).toEqual([])
   controlDb.close()
 
   await client.close()
@@ -317,17 +334,30 @@ test('a running turn refuses the switch; concurrent switches have one winner; a 
   const fresh = await control.createConversation(backend.session.user.id)
   const hostless = { workspaceId: null, hostDeviceId: null }
   const toWorkspace = { kind: 'workspace' as const, workspaceId: workspace.id, deviceId: device.id, path: '/tmp' }
+  const noEnds = { departed: null, arrivingDeviceId: null }
   const results = await Promise.all([
-    control.switchConversationTarget(fresh.id, hostless, { workspaceId: workspace.id, hostDeviceId: null }, { from: { kind: 'hostless' }, to: toWorkspace }, null),
-    control.switchConversationTarget(fresh.id, hostless, hostless, { from: { kind: 'hostless' }, to: { kind: 'hostless' } }, null),
+    control.switchConversationTarget(fresh.id, hostless, { workspaceId: workspace.id, hostDeviceId: null }, { from: { kind: 'hostless' }, to: toWorkspace }, { departed: null, arrivingDeviceId: device.id }),
+    control.switchConversationTarget(fresh.id, hostless, hostless, { from: { kind: 'hostless' }, to: { kind: 'hostless' } }, noEnds),
   ])
   expect(results.filter(Boolean)).toHaveLength(1)
 
-  // A session-bound managed host: to a workspace is a switch that grants it; to hostless is refused.
+  // Names are unique within a conversation: two devices with one hostname attach as `d` and `d-2`.
+  const twin = await control.createDevice({ userId: backend.session.user.id, name: 'd', platform: 'test', tokenHash: 'y' })
+  expect((await control.attachHost(fresh.id, twin.id, twin.name, null, true)).name).toBe('d')
+  const third = await control.createDevice({ userId: backend.session.user.id, name: 'd', platform: 'test', tokenHash: 'z' })
+  expect((await control.attachHost(fresh.id, third.id, third.name, '/srv', true)).name).toBe('d-2')
+  expect((await control.attachHost(fresh.id, third.id, 'other', null, true)).name).toBe('d-2')
+  expect(await control.renameAttachedHost(fresh.id, third.id, 'd')).toBe('name_taken')
+  expect(await control.renameAttachedHost(fresh.id, third.id, 'ci')).toBe('renamed')
+  expect(await control.renameAttachedHost(fresh.id, 'nope', 'ci')).toBe('not_attached')
+  await control.setAttachedHostCwd(fresh.id, third.id, '/srv/app')
+  expect((await control.listAttachedHosts(fresh.id)).map((host) => [host.name, host.cwd]).sort()).toEqual([['ci', '/srv/app'], ['d', null]])
+
+  // A session-bound managed host: to a workspace is a switch that attaches it; to hostless is refused.
   const managed = await control.createDevice({ userId: backend.session.user.id, name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: fresh.id })
   const bound = await control.createConversation(backend.session.user.id)
   expect(
-    await control.switchConversationTarget(bound.id, hostless, { workspaceId: null, hostDeviceId: managed.id }, { from: { kind: 'hostless' }, to: { kind: 'host', deviceId: managed.id } }, null),
+    await control.switchConversationTarget(bound.id, hostless, { workspaceId: null, hostDeviceId: managed.id }, { from: { kind: 'hostless' }, to: { kind: 'host', deviceId: managed.id } }, { departed: null, arrivingDeviceId: managed.id }),
   ).toBe(true)
   const noEntrance = await json(backend, `/api/conversations/${bound.id}`, { workspaceId: null }, 'PATCH')
   expect(noEntrance.status).toBe(409)
@@ -336,7 +366,7 @@ test('a running turn refuses the switch; concurrent switches have one winner; a 
   const moved = await control.getConversation(bound.id)
   expect(moved?.hostDeviceId).toBeNull()
   expect(moved?.workspaceId).toBe(workspace.id)
-  expect((await control.listHostGrants(bound.id)).map((grant) => grant.deviceId)).toEqual([managed.id])
+  expect((await control.listAttachedHosts(bound.id)).map((host) => [host.deviceId, host.name, host.cwd])).toEqual([[managed.id, 'vm', null]])
 
   // Unknown workspace and unknown device surface as 404s on their routes.
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: 'nope' }, 'PATCH')).status).toBe(404)

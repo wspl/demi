@@ -42,13 +42,13 @@ test("the matrix: another user's objects answer 404 on every route, to users and
   const alice = await createUser(backend, 'alice')
   const bob = await createUser(backend, 'bob')
 
-  // Alice's world: a device, a workspace on it, a conversation with a grant, an attachment.
+  // Alice's world: a device, a workspace on it, a conversation with an attached host, an attachment.
   const runner = await startTinyjsRunner({ backendUrl: backend.url, stateDir, home, name: 'alice-laptop' })
   await waitFor(() => runner.codes.length > 0, () => runner.log.join('\n'), { timeoutMs: 10_000 })
   const { device } = await must<{ device: { id: string } }>(await alice.fetch('/api/devices/claim', json({ code: runner.codes[0] })), 201)
   const { workspace } = await must<{ workspace: { id: string } }>(await alice.fetch('/api/workspaces', json({ deviceId: device.id, path: home, name: 'proj' })), 201)
   const { conversation } = await must<{ conversation: { id: string } }>(await alice.fetch('/api/conversations', { method: 'POST' }), 201)
-  await must(await alice.fetch(`/api/conversations/${conversation.id}/grants`, json({ deviceId: device.id })), 201)
+  await must(await alice.fetch(`/api/conversations/${conversation.id}/hosts`, json({ deviceId: device.id })), 201)
   const { attachment } = await must<{ attachment: { id: string; sha256: string } }>(
     await alice.fetch('/api/attachments', { method: 'POST', body: PNG_BYTES, headers: { 'content-type': 'image/png' } }),
     201,
@@ -62,12 +62,13 @@ test("the matrix: another user's objects answer 404 on every route, to users and
     ['GET', `/api/conversations/${conversation.id}/transcript`],
     ['PATCH', `/api/conversations/${conversation.id}`, { title: 'taken' }],
     ['PATCH', `/api/conversations/${conversation.id}`, { archived: true }],
-    ['GET', `/api/conversations/${conversation.id}/grants`],
-    ['POST', `/api/conversations/${conversation.id}/grants`, { deviceId: device.id }],
-    ['DELETE', `/api/conversations/${conversation.id}/grants/${device.id}`],
+    ['GET', `/api/conversations/${conversation.id}/hosts`],
+    ['POST', `/api/conversations/${conversation.id}/hosts`, { deviceId: device.id }],
+    ['PATCH', `/api/conversations/${conversation.id}/hosts/${device.id}`, { name: 'taken' }],
+    ['DELETE', `/api/conversations/${conversation.id}/hosts/${device.id}`],
     ['POST', `/api/conversations/${conversation.id}/workspace-files?name=x.txt`, 'bytes'],
     ['PATCH', `/api/conversations/${bobs.id}`, { workspaceId: workspace.id }],
-    ['POST', `/api/conversations/${bobs.id}/grants`, { deviceId: device.id }],
+    ['POST', `/api/conversations/${bobs.id}/hosts`, { deviceId: device.id }],
     ['DELETE', `/api/devices/${device.id}`],
     ['GET', `/api/devices/${device.id}/fs?path=${encodeURIComponent(home)}`],
     ['POST', `/api/devices/${device.id}/fs`, { path: join(home, 'made') }],
@@ -91,18 +92,18 @@ test("the matrix: another user's objects answer 404 on every route, to users and
     expect(lists.map((list) => list?.length ?? 0), `${actor.user.username} lists`).toEqual(actor === bob ? [1, 0, 0] : [0, 0, 0])
   }
   // Alice still has everything.
-  expect((await must<{ grants: unknown[] }>(await alice.fetch(`/api/conversations/${conversation.id}/grants`), 200)).grants).toHaveLength(1)
+  expect((await must<{ hosts: unknown[] }>(await alice.fetch(`/api/conversations/${conversation.id}/hosts`), 200)).hosts).toHaveLength(1)
   expect((await must<{ devices: unknown[] }>(await alice.fetch('/api/devices'), 200)).devices).toHaveLength(1)
   void attachment
 
   // Revoke: refused under a workspace, then the runner is refused for good
-  // and the grant is gone; re-pairing the machine is a fresh claim, here by bob.
+  // and the attachment is gone; re-pairing the machine is a fresh claim, here by bob.
   const inUse = await alice.fetch(`/api/devices/${device.id}`, { method: 'DELETE' })
   expect(inUse.status).toBe(409)
   expect(await inUse.json()).toMatchObject({ code: 'device_in_use' })
   await must(await alice.fetch(`/api/workspaces/${workspace.id}`, { method: 'DELETE' }), 204)
   await must(await alice.fetch(`/api/devices/${device.id}`, { method: 'DELETE' }), 204)
-  expect((await must<{ grants: unknown[] }>(await alice.fetch(`/api/conversations/${conversation.id}/grants`), 200)).grants).toHaveLength(0)
+  expect((await must<{ hosts: unknown[] }>(await alice.fetch(`/api/conversations/${conversation.id}/hosts`), 200)).hosts).toHaveLength(0)
   await waitFor(() => runner.statuses.includes('rejected'), undefined, { timeoutMs: 5_000 })
   await runner.stop()
   const again = await startTinyjsRunner({ backendUrl: backend.url, stateDir: await mkdtemp(join(tmpdir(), 'demi-isolation-state2-')), home, name: 'alice-laptop' })

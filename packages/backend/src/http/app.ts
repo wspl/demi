@@ -94,6 +94,7 @@ export function createApp(options: {
       managedHosts: options.managedHosts,
       vault: options.vault,
       mode: options.mode,
+      deviceOnline: (deviceId) => options.runnerRegistry.deviceOnline(deviceId),
     }),
   )
 
