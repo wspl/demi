@@ -15,7 +15,7 @@ test(bundle ? "protocol: runner-protocol bundle frames on tinyjs over tinyjs:byt
   const hello = {
     type: "hello",
     protocol: rp.RUNNER_PROTOCOL_VERSION,
-    runner: { name: "tinyjs", platform: "tinyjs", version: "0.0.1", identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname } },
+    runner: { name: "tinyjs", platform: "tinyjs", version: "0.0.1", identity: { uid: identity.uid, gid: identity.gid, hostname: identity.hostname, homeDir: identity.homeDir } },
   };
   const frame = wire.encode(hello);
   assert(frame instanceof Uint8Array, "frame is bytes");

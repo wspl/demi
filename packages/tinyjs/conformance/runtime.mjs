@@ -17,7 +17,7 @@ test("runtime: argv/env/pid/identity/version", () => {
   assert(rt.pid > 0, "pid");
   assertEq([rt.stdin, rt.stdout, rt.stderr], [0, 1, 2]);
   assert(typeof rt.identity.uid === "number" && typeof rt.identity.hostname === "string" && rt.identity.homeDir.startsWith("/"), "identity");
-  assertEq([rt.version, rt.abi], [1, 1]);
+  assertEq([rt.version, rt.abi], [1, 2]);
   assert(typeof rt.openHandles() === "number", "openHandles");
 });
 

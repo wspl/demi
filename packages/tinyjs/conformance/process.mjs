@@ -103,6 +103,40 @@ test("process: tee writes full streams, view is bounded, wait counts bytes", asy
   assertEq(dec(await fs.readFile(`${tmp}/err`)), "abcdef");
 });
 
+test("process: tee stream carries the full stdout beside the file and the view; a closed stream does not stop the tee", async () => {
+  const child = await proc.spawn({
+    command: "sh", args: ["-c", "head -c 3000000 /dev/zero | tr '\\0' 'y'"], env: baseEnv,
+    tee: { stdoutPath: `${tmp}/out3`, stderrPath: `${tmp}/err3`, viewLimit: 100, stream: true },
+  });
+  assert(typeof child.stdoutStream === "number", "stdoutStream is a handle");
+  let total = 0;
+  for (;;) {
+    const c = await fs.read(child.stdoutStream, 200000);
+    if (c === null) break;
+    for (const b of c) if (b !== 121) throw new Error("stream byte is not y");
+    total += c.length;
+  }
+  fs.close(child.stdoutStream);
+  assertEq(total, 3000000);
+  assertEq((await drain(child.stdout)).length, 100);
+  fs.close(child.stderr);
+  assertEq((await proc.wait(child.pid)).stdoutBytes, 3000000);
+  assertEq((await fs.stat(`${tmp}/out3`)).size, 3000000);
+  // Without `stream` there is no handle; with it closed early the child still runs to its end.
+  const plain = await proc.spawn({ command: "true", env: baseEnv, tee: { stdoutPath: `${tmp}/out4`, stderrPath: `${tmp}/err4`, viewLimit: 0 } });
+  assertEq(plain.stdoutStream, null);
+  await proc.wait(plain.pid);
+  fs.close(plain.stdout); fs.close(plain.stderr);
+  const early = await proc.spawn({
+    command: "sh", args: ["-c", "head -c 2000000 /dev/zero"], env: baseEnv,
+    tee: { stdoutPath: `${tmp}/out5`, stderrPath: `${tmp}/err5`, viewLimit: 0, stream: true },
+  });
+  fs.close(early.stdoutStream);
+  assertEq((await proc.wait(early.pid)).stdoutBytes, 2000000);
+  fs.close(early.stdout); fs.close(early.stderr);
+  for (const f of ["out3", "err3", "out4", "err4", "out5", "err5"]) await fs.unlink(`${tmp}/${f}`);
+});
+
 test("process: tee drains even when the view is never read", async () => {
   const child = await proc.spawn({
     command: "sh", args: ["-c", "head -c 2000000 /dev/zero"], env: baseEnv,

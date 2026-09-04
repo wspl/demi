@@ -16,7 +16,7 @@ use rquickjs::{Array, Ctx, Object, Result, TypedArray, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::{bad_handle, busy_handle, invalid, throw_errno, throw_io};
-use crate::handles::{Reader, Resource, Slot, Writer};
+use crate::handles::{Reader, Resource, Slot, Stream, Writer};
 use crate::state::{state, Activity};
 
 pub struct FsModule;
@@ -26,7 +26,7 @@ impl ModuleDef for FsModule {
         for name in [
             "readFile", "writeFile", "stat", "lstat", "readdir", "mkdir", "rmdir", "unlink", "rename",
             "symlink", "link", "readlink", "realpath", "chmod", "utimes", "truncate", "open", "read",
-            "write", "close",
+            "write", "close", "pipe",
         ] {
             decl.declare(name)?;
         }
@@ -54,6 +54,7 @@ impl ModuleDef for FsModule {
         exports.export("read", Func::from(Async(read)))?;
         exports.export("write", Func::from(Async(write)))?;
         exports.export("close", Func::from(close))?;
+        exports.export("pipe", Func::from(pipe))?;
         Ok(())
     }
 }
@@ -406,3 +407,24 @@ pub fn close(ctx: Ctx<'_>, fd: i32) -> Result<()> {
         Some(Resource::File(_)) => Ok(()),
     }
 }
+
+/// A bounded in-memory pipe: `{ read, write }` handles. Bytes written to
+/// `write` are read from `read` in order; `write` blocks once the buffer is
+/// full, which is the backpressure; closing `write` ends `read` with EOF;
+/// closing `read` fails later writes with `EPIPE`.
+pub fn pipe(ctx: Ctx<'_>) -> Result<Object<'_>> {
+    // `duplex`, not `simplex`: dropping either end is seen by the other (EOF, EPIPE).
+    let (rx, tx) = tokio::io::duplex(PIPE_BUFFER);
+    let st = state(&ctx);
+    let mut handles = st.handles.borrow_mut();
+    let read = handles.insert(Resource::Stream(Stream::new(Some(Box::new(rx)), None)));
+    let write = handles.insert(Resource::Stream(Stream::new(None, Some(Box::new(tx)))));
+    drop(handles);
+    let result = Object::new(ctx.clone())?;
+    result.set("read", read)?;
+    result.set("write", write)?;
+    Ok(result)
+}
+
+/// How far a `pipe` writer runs ahead of its reader.
+const PIPE_BUFFER: usize = 256 * 1024;

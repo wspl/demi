@@ -1,6 +1,6 @@
 //! Streaming HTTP/1.1 client over `hyper`: one connection per request,
-//! request bodies from memory or streamed from a file, the response body
-//! exposed as a handle that streams to the reader.
+//! request bodies from memory, streamed from a file or streamed from a
+//! handle, the response body exposed as a handle that streams to the reader.
 
 use std::io;
 
@@ -14,11 +14,17 @@ use rquickjs::{Ctx, Object, Result, Value};
 use tokio_util::io::{ReaderStream, StreamReader};
 
 use super::connect::{self, Conn};
-use crate::error::{throw_code, throw_io};
-use crate::handles::{Resource, Stream};
+use crate::error::{bad_handle, busy_handle, throw_code, throw_io};
+use crate::handles::{Reader, Resource, Slot, Stream};
 use crate::state::{state, Activity};
 
-type Body = http_body_util::combinators::BoxBody<Bytes, io::Error>;
+/// The request body: boxed without `Send`, because a `{ handle }` body reads a
+/// handle-table stream, and the connection runs on this thread's loop.
+type Body = std::pin::Pin<Box<dyn hyper::body::Body<Data = Bytes, Error = io::Error>>>;
+
+fn boxed<B: hyper::body::Body<Data = Bytes, Error = io::Error> + 'static>(body: B) -> Body {
+    Box::pin(body)
+}
 
 fn throw_hyper(ctx: &Ctx<'_>, err: hyper::Error, syscall: &str) -> rquickjs::Error {
     let source = std::error::Error::source(&err).and_then(|s| s.downcast_ref::<io::Error>());
@@ -26,6 +32,25 @@ fn throw_hyper(ctx: &Ctx<'_>, err: hyper::Error, syscall: &str) -> rquickjs::Err
         Some(errno) => crate::error::throw_errno(ctx, errno, syscall, None),
         None if err.is_timeout() => throw_code(ctx, "ETIMEDOUT", &err.to_string(), syscall, None),
         None => throw_code(ctx, "EPROTO", &err.to_string(), syscall, None),
+    }
+}
+
+/// Removes `fd` from the handle table and returns what reads from it: a
+/// stream's reader, or a file reopened for tokio.
+fn take_body_reader<'js>(ctx: &Ctx<'js>, fd: i32) -> Result<Reader> {
+    let removed = state(ctx).handles.borrow_mut().remove(fd);
+    match removed {
+        Some(Resource::Stream(s)) => match s.reader {
+            Slot::Ready(reader) => Ok(reader),
+            Slot::Busy => Err(busy_handle(ctx, "request")),
+            Slot::Absent => Err(bad_handle(ctx, "request")),
+        },
+        Some(Resource::File(file)) => {
+            let file = file.try_clone().map_err(|e| throw_io(ctx, e, "dup", None))?;
+            Ok(Box::new(tokio::fs::File::from_std(file)))
+        }
+        Some(_) => Err(throw_code(ctx, "ENOTSUP", "the handle is not readable", "request", None)),
+        None => Err(bad_handle(ctx, "request")),
     }
 }
 
@@ -47,18 +72,24 @@ pub async fn http_request<'js>(ctx: Ctx<'js>, options: Object<'js>) -> Result<Ob
 
     // The body is prepared before connecting so a bad file fails first.
     let (body, length): (Body, Option<u64>) = if body.is_undefined() || body.is_null() {
-        (Full::new(Bytes::new()).map_err(|never| match never {}).boxed(), Some(0))
+        (boxed(Full::new(Bytes::new()).map_err(|never| match never {})), Some(0))
     } else if let Some(bytes) = body.as_object().and_then(|o| o.as_typed_array::<u8>()) {
         let data = Bytes::copy_from_slice(bytes.as_bytes().unwrap_or(&[]));
         let len = data.len() as u64;
-        (Full::new(data).map_err(|never| match never {}).boxed(), Some(len))
+        (boxed(Full::new(data).map_err(|never| match never {})), Some(len))
     } else if let Some(path) = body.as_object().and_then(|o| o.get::<_, Option<String>>("file").ok().flatten()) {
         let file = tokio::fs::File::open(&path).await.map_err(|e| throw_io(&ctx, e, "open", Some(&path)))?;
         let len = file.metadata().await.map_err(|e| throw_io(&ctx, e, "fstat", Some(&path)))?.len();
         let stream = ReaderStream::with_capacity(file, 256 * 1024).map_ok(Frame::data);
-        (StreamBody::new(stream).boxed(), Some(len))
+        (boxed(StreamBody::new(stream)), Some(len))
+    } else if let Some(fd) = body.as_object().and_then(|o| o.get::<_, Option<i32>>("handle").ok().flatten()) {
+        // The handle is consumed: the request owns it from here and it is
+        // gone from the table, so a stream's bytes are read once, to the wire.
+        let reader = take_body_reader(&ctx, fd)?;
+        let stream = ReaderStream::with_capacity(reader, 256 * 1024).map_ok(Frame::data);
+        (boxed(StreamBody::new(stream)), None)
     } else {
-        return Err(throw_code(&ctx, "EINVAL", "body must be a Uint8Array or { file }", "request", None));
+        return Err(throw_code(&ctx, "EINVAL", "body must be a Uint8Array, { file } or { handle }", "request", None));
     };
 
     let connected = connect::open(&uri, secure).await.map_err(|e| throw_io(&ctx, e, "connect", None))?;

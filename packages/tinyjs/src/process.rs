@@ -19,7 +19,7 @@ use std::task::{Context, Poll, Waker};
 use rquickjs::function::{Async, Func, Opt};
 use rquickjs::module::{Declarations, Exports, ModuleDef};
 use rquickjs::{Ctx, Object, Result, Value};
-use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, DuplexStream, ReadBuf};
 use tokio::net::unix::pipe;
 use tokio::signal::unix::{signal, SignalKind};
 
@@ -161,7 +161,9 @@ pub struct TeeOutcome {
     done: tokio::sync::Notify,
 }
 
-/// Drains one child stream into its file and the bounded view.
+/// Drains one child stream into its file, the bounded view and, when the
+/// caller asked for one, the full stream: a pipe whose reader sees every
+/// byte and whose backpressure reaches the child.
 ///
 /// The file is written synchronously on the loop thread: a page-cache
 /// write of one chunk is microseconds, while handing each chunk to the
@@ -172,6 +174,7 @@ async fn tee<'js>(
     mut source: pipe::Receiver,
     mut file: std::fs::File,
     view: Rc<RefCell<View>>,
+    mut stream: Option<DuplexStream>,
     outcome: Rc<TeeOutcome>,
     is_stdout: bool,
 ) {
@@ -198,8 +201,15 @@ async fn tee<'js>(
             }
         }
         view.borrow_mut().push(&buf[..n]);
+        // A reader that went away (its handle closed) stops the stream, not the tee.
+        if let Some(writer) = stream.as_mut() {
+            if writer.write_all(&buf[..n]).await.is_err() {
+                stream = None;
+            }
+        }
     }
     view.borrow_mut().end();
+    drop(stream);
     if is_stdout { outcome.stdout.set(Some(total)) } else { outcome.stderr.set(Some(total)) }
     outcome.done.notify_waiters();
 }
@@ -289,11 +299,12 @@ async fn spawn<'js>(ctx: Ctx<'js>, options: Object<'js>) -> Result<Object<'js>> 
             let stdout_path: String = t.get("stdoutPath")?;
             let stderr_path: String = t.get("stderrPath")?;
             let limit: u32 = t.get::<_, Option<u32>>("viewLimit")?.unwrap_or(0);
+            let stream: bool = t.get::<_, Option<bool>>("stream")?.unwrap_or(false);
             let open = |p: &str| -> Result<std::fs::File> {
                 std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(p)
                     .map_err(|e| throw_io(&ctx, e, "open", Some(p)))
             };
-            Some((open(&stdout_path)?, open(&stderr_path)?, limit as usize))
+            Some((open(&stdout_path)?, open(&stderr_path)?, limit as usize, stream))
         }
         None => None,
     };
@@ -316,21 +327,30 @@ async fn spawn<'js>(ctx: Ctx<'js>, options: Object<'js>) -> Result<Object<'js>> 
     let st = state(&ctx);
     let mut handles = st.handles.borrow_mut();
     let stdin_fd = stdin.map(|s| handles.insert(Resource::Stream(Stream::new(None, Some(Box::new(s))))));
-    let (stdout_fd, stderr_fd, outcome) = match tee_files {
+    let (stdout_fd, stderr_fd, stream_fd, outcome) = match tee_files {
         None => (
             handles.insert(Resource::Stream(Stream::new(Some(Box::new(stdout)), None))),
             handles.insert(Resource::Stream(Stream::new(Some(Box::new(stderr)), None))),
             None,
+            None,
         ),
-        Some((out_file, err_file, limit)) => {
+        Some((out_file, err_file, limit, with_stream)) => {
             let outcome = Rc::new(TeeOutcome::default());
             let new_view = || Rc::new(RefCell::new(View { chunks: VecDeque::new(), offset: 0, remaining: limit, ended: limit == 0, waker: None }));
             let (out_view, err_view) = (new_view(), new_view());
-            ctx.spawn(tee(ctx.clone(), stdout, out_file, out_view.clone(), outcome.clone(), true));
-            ctx.spawn(tee(ctx.clone(), stderr, err_file, err_view.clone(), outcome.clone(), false));
+            let (stream_fd, stream_writer) = if with_stream {
+                // `duplex`: a closed reader fails the tee's writes instead of blocking them.
+                let (rx, tx) = tokio::io::duplex(TEE_STREAM_BUFFER);
+                (Some(handles.insert(Resource::Stream(Stream::new(Some(Box::new(rx)), None)))), Some(tx))
+            } else {
+                (None, None)
+            };
+            ctx.spawn(tee(ctx.clone(), stdout, out_file, out_view.clone(), stream_writer, outcome.clone(), true));
+            ctx.spawn(tee(ctx.clone(), stderr, err_file, err_view.clone(), None, outcome.clone(), false));
             (
                 handles.insert(Resource::Stream(Stream::new(Some(Box::new(ViewReader(out_view))), None))),
                 handles.insert(Resource::Stream(Stream::new(Some(Box::new(ViewReader(err_view))), None))),
+                stream_fd,
                 Some(outcome),
             )
         }
@@ -346,8 +366,12 @@ async fn spawn<'js>(ctx: Ctx<'js>, options: Object<'js>) -> Result<Object<'js>> 
     result.set("stdin", match stdin_fd { Some(fd) => Value::new_int(ctx.clone(), fd), None => Value::new_null(ctx.clone()) })?;
     result.set("stdout", stdout_fd)?;
     result.set("stderr", stderr_fd)?;
+    result.set("stdoutStream", match stream_fd { Some(fd) => Value::new_int(ctx.clone(), fd), None => Value::new_null(ctx.clone()) })?;
     Ok(result)
 }
+
+/// How far the tee's full-stream writer runs ahead of its reader before the child blocks.
+const TEE_STREAM_BUFFER: usize = 256 * 1024;
 
 async fn wait<'js>(ctx: Ctx<'js>, pid: i32) -> Result<Object<'js>> {
     let _activity = Activity::begin(&ctx);

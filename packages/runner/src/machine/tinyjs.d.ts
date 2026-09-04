@@ -35,6 +35,12 @@ declare module 'tinyjs:fs' {
   export function read(fd: number, max: number, offset?: number): Promise<Uint8Array | null>
   export function write(fd: number, data: Uint8Array): Promise<void>
   export function close(fd: number): void
+  /**
+   * A bounded in-memory pipe. `write` blocks once the buffer is full (the
+   * backpressure); closing `write` ends `read` with EOF; closing `read`
+   * fails later writes with `EPIPE`.
+   */
+  export function pipe(): { read: number; write: number }
 }
 
 declare module 'tinyjs:process' {
@@ -47,13 +53,16 @@ declare module 'tinyjs:process' {
     uid?: number
     gid?: number
     processGroup?: boolean
-    tee?: { stdoutPath: string; stderrPath: string; viewLimit?: number }
+    /** With `stream`, the full stdout is also readable from `Child.stdoutStream`, with backpressure to the child. */
+    tee?: { stdoutPath: string; stderrPath: string; viewLimit?: number; stream?: boolean }
   }
   export interface Child {
     pid: number
     stdin: number | null
     stdout: number
     stderr: number
+    /** The full stdout as a stream when `tee.stream` was set; null otherwise. */
+    stdoutStream: number | null
   }
   export interface WaitResult {
     code: number | null
@@ -107,6 +116,7 @@ declare module 'tinyjs:net' {
     method: string
     url: string
     headers?: Record<string, string>
-    body?: Uint8Array | { file: string }
+    /** `{ handle }` streams a readable handle as the body and consumes it: the handle is closed by the request. */
+    body?: Uint8Array | { file: string } | { handle: number }
   }): Promise<{ status: number; headers: Record<string, string>; body: number }>
 }

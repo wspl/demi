@@ -117,6 +117,33 @@ if (stubDir && bun && ports.length === 3) {
     assertEq([seen["x-a"], seen["x-b"], seen["host"]], ["1", "two", `127.0.0.1:${httpPort}`]);
   });
 
+  test("net: http request body from a handle streams a pipe and a tee stream; the handle is consumed", async () => {
+    const { read, write } = fs.pipe();
+    const total = 3 * 1024 * 1024;
+    const chunk = new Uint8Array(64 * 1024);
+    for (let i = 0; i < chunk.length; i++) chunk[i] = (i * 3) & 0xff;
+    let sum = 0;
+    for (let i = 0; i < total; i++) sum = (sum + chunk[i % chunk.length]) & 0xffff;
+    const writer = (async () => {
+      for (let at = 0; at < total; at += chunk.length) await fs.write(write, chunk);
+      fs.close(write);
+    })();
+    const r = await net.httpRequest({ method: "PUT", url: `${http}/upload`, headers: {}, body: { handle: read } });
+    await writer;
+    assertEq(dec(await drain(r.body)), `got ${total} sum ${sum}`);
+    await assertCode(() => fs.read(read, 10), "EBADF", "read");
+    const child = await proc.spawn({
+      command: "sh", args: ["-c", "head -c 1000000 /dev/zero | tr '\\0' 'z'"], env: { PATH: env.PATH },
+      tee: { stdoutPath: `${tmp}/tee.out`, stderrPath: `${tmp}/tee.err`, viewLimit: 0, stream: true },
+    });
+    const r2 = await net.httpRequest({ method: "PUT", url: `${http}/upload`, headers: {}, body: { handle: child.stdoutStream } });
+    assertEq(dec(await drain(r2.body)), `got 1000000 sum ${(1000000 * 122) & 0xffff}`);
+    await proc.wait(child.pid);
+    fs.close(child.stdout); fs.close(child.stderr);
+    await fs.unlink(`${tmp}/tee.out`); await fs.unlink(`${tmp}/tee.err`);
+    await assertCode(() => net.httpRequest({ method: "PUT", url: `${http}/upload`, headers: {}, body: { handle: 9999 } }), "EBADF", "request");
+  });
+
   test("net: http connection errors carry errno codes", async () => {
     await assertCode(() => net.httpRequest({ method: "GET", url: "http://127.0.0.1:1/x", headers: {} }), "ECONNREFUSED", "connect");
     await assertCode(() => net.httpRequest({ method: "GET", url: "ftp://x/", headers: {} }), "EINVAL", "request");

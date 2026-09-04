@@ -140,6 +140,7 @@ open(path, flags, mode?): Promise<fd>          // streaming
 read(fd, max, offset?): Promise<Uint8Array | null>   // null at end of stream; offset: pread on a file, the cursor untouched
 write(fd, data): Promise<void>                 // resolves once the bytes are in the kernel buffer
 close(fd)
+pipe(): { read: fd, write: fd }                // a bounded in-memory pipe: write blocks when full, closing write ends read, closing read breaks write
 ```
 
 `rm -r`, `cp` and `mv` across devices are composed in the machine layer
@@ -152,8 +153,8 @@ spawn({
   command, args, cwd, env,                     // env is the complete table; nothing is inherited
   stdin: "pipe" | "null",
   uid?, gid?, processGroup?: boolean,          // uid/gid: how PID 1 runs jobs as the guest user
-  tee?: { stdoutPath, stderrPath, viewLimit }
-}): Promise<{ pid, stdin: fd | null, stdout: fd, stderr: fd }>   // stdin is null for stdin: "null"
+  tee?: { stdoutPath, stderrPath, viewLimit, stream? }
+}): Promise<{ pid, stdin: fd | null, stdout: fd, stderr: fd, stdoutStream: fd | null }>   // stdin is null for stdin: "null"
 wait(pid): Promise<{ code: number | null, signal?: string, stdoutBytes?, stderrBytes? }>
 kill(pid, signal: string, { group?: boolean })                  // a child of this process, not yet reaped
 ```
@@ -165,12 +166,16 @@ would take the machine down.
 
 With `tee`, the full streams are written to the two files inside
 tinyjs; the `stdout`/`stderr` fds yield only the first `viewLimit` bytes
-and then end, and `wait` reports the full byte counts. Spawn failures map
+and then end, and `wait` reports the full byte counts. With `tee.stream`,
+`stdoutStream` is a third destination: the whole stdout as a stream, with
+backpressure reaching the child — a job's stdout attached to a pipe
+(`runner.md` § Pipes) is read from here; a closed `stdoutStream` stops
+that copy and nothing else. Spawn failures map
 to the `HostSpawnError` kinds through errno: `ENOENT`, `EACCES`,
 `ENOTDIR`, `EISDIR`.
 
-**`tinyjs:net`** — the backend socket, the relay, uploads and
-transfers. TLS lives inside these; no TCP or TLS primitive is exposed:
+**`tinyjs:net`** — the backend socket, the relay, and the pipes'
+HTTP ends. TLS lives inside these; no TCP or TLS primitive is exposed:
 
 ```ts
 wsConnect(url, { headers? }): Promise<ws>
@@ -181,8 +186,8 @@ udsConnect(path): Promise<fd>                  // then read/write/close from tin
 udsListen(path, { mode }): Promise<listener>   // chmod applied before the first accept
 accept(listener): Promise<fd>
 close(listener)
-httpRequest({ method, url, headers, body?: Uint8Array | { file: path } })
-  : Promise<{ status, headers, body: fd }>     // request body streams from the file; response body streams to the reader
+httpRequest({ method, url, headers, body?: Uint8Array | { file: path } | { handle: fd } })
+  : Promise<{ status, headers, body: fd }>     // request body streams from the file or the handle (consumed, closed by the request); response body streams to the reader
 ```
 
 `wsConnect` and `httpRequest` honour the proxy environment variables and
