@@ -5,7 +5,7 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 const wire = createRunnerWire(msgpackCodec)
 
 test('runner messages round-trip through the MessagePack wire', () => {
-  const runnerToBackend = new Set(['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'transfer_done'])
+  const runnerToBackend = new Set(['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'rpc_call', 'pipe_done'])
   const roundTrip = (message: RunnerProtocolMessage): RunnerProtocolMessage =>
     runnerToBackend.has(message.type) ? wire.decodeRunnerToBackend(wire.encode(message)) : wire.decodeBackendToRunner(wire.encode(message))
 
@@ -48,14 +48,14 @@ test('runner messages round-trip through the MessagePack wire', () => {
   expect(decodedOutput.bytes).toBeInstanceOf(Uint8Array)
   expect([...decodedOutput.bytes]).toEqual([0, 255, 10])
 
-  // Transfers carry references only: a path on the device and an origin-relative URL.
-  const send: RunnerProtocolMessage = { type: 'transfer_send', transferId: 't1', path: '/home/x/.demi/output/j1/stdout.txt', url: '/api/transfers/t1' }
-  expect(roundTrip(send)).toEqual(send)
-  const receive: RunnerProtocolMessage = { type: 'transfer_receive', transferId: 't2', path: '/tmp/in.tar', url: '/api/transfers/t2' }
-  expect(roundTrip(receive)).toEqual(receive)
-  const relayed: RunnerProtocolMessage = { type: 'rpc_transfer', callId: 'c9', url: '/api/transfers/t1' }
-  expect(roundTrip(relayed)).toEqual(relayed)
-  const done: RunnerProtocolMessage = { type: 'transfer_done', transferId: 't2', ok: false, error: 'transfer refused (404)' }
+  // Pipes carry references only: an id and an origin-relative URL per end; the bytes go over HTTP.
+  const rpcCall: RunnerProtocolMessage = { type: 'rpc_call', callId: 'c9', agentSessionId: 'a', shellId: 's', root: 'demi', path: ['demi', 'file', 'write'], argv: ['demi', 'file', 'write', 'x'], args: { path: 'x' }, json: false, cwd: '/work', env: {}, stdin: true }
+  expect(roundTrip(rpcCall)).toEqual(rpcCall)
+  const pipes: RunnerProtocolMessage = { type: 'rpc_pipes', callId: 'c9', stdin: { id: 'p1', url: '/api/pipes/p1' }, stdout: { id: 'p2', url: '/api/pipes/p2' } }
+  expect(roundTrip(pipes)).toEqual(pipes)
+  const job: RunnerProtocolMessage = { type: 'job_start', jobId: 'j1', script: 'tar x', cwd: '/work', env: {}, stdin: { id: 'p1', url: '/api/pipes/p1' } }
+  expect(roundTrip(job)).toEqual(job)
+  const done: RunnerProtocolMessage = { type: 'pipe_done', pipeId: 'p2', ok: false, error: 'pipe refused (404)' }
   expect(roundTrip(done)).toEqual(done)
 
   expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode(42))).toThrow('Malformed')

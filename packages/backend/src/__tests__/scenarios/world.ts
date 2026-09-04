@@ -207,7 +207,7 @@ export class World {
       const cold = await this.api<{ blocks: Block[] }>(`/api/conversations/${driver.id}/transcript`)
       expect(cold.blocks.map((block) => block.id), `cold transcript of ${driver.label}`).toEqual(live)
     }
-    // Runner sockets carried the view only; every job exited; every transfer completed.
+    // Runner sockets carried the view only; every job exited; every pipe end reported.
     for (const device of this.devices.values()) {
       const of = (direction: 'in' | 'out') => this.frames.filter((f) => f.deviceId === device.deviceId && f.direction === direction).map((f) => f.message)
       const jobBytes = new Map<string, number>()
@@ -217,7 +217,17 @@ export class World {
       for (const [jobId, bytes] of jobBytes) expect(bytes, `job ${jobId} output on ${device.name}'s socket`).toBeLessThanOrEqual(JOB_FRAMES_BYTES)
       const count = (direction: 'in' | 'out', ...types: string[]) => of(direction).filter((m) => types.includes(m.type)).length
       expect(count('in', 'job_exit') + device.lost, `jobs exited on ${device.name}`).toBe(count('out', 'job_start'))
-      expect(count('in', 'transfer_done'), `transfers completed on ${device.name}`).toBe(count('out', 'transfer_send', 'transfer_receive'))
+      // Every pipe end named to a runner reports back — its report may trail
+      // the turn it belonged to, and a runner the world killed never sends it.
+      const endsNamed = of('out').reduce((n, m) => {
+        if (m.type === 'rpc_pipes') return n + (m.stdin ? 1 : 0) + 1
+        if (m.type === 'job_start') return n + (m.stdin ? 1 : 0) + (m.stdout ? 1 : 0)
+        return n
+      }, 0)
+      const reported = () => count('in', 'pipe_done')
+      if (device.lost === 0) await waitFor(() => reported() === endsNamed, undefined, { timeoutMs: 5_000 }).catch(() => {})
+      expect(reported(), `pipe ends reported on ${device.name}`).toBeLessThanOrEqual(endsNamed)
+      if (device.lost === 0) expect(reported(), `pipe ends reported on ${device.name}`).toBe(endsNamed)
     }
     // One ledger row per provider request the model answered.
     const usage = await this.api<{ totals: Array<{ requests: number }> }>('/api/usage')

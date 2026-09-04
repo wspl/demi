@@ -106,6 +106,14 @@ const runnerInfoSchema = z.object({
 
 const streamSchema = z.enum(['stdout', 'stderr'])
 
+/**
+ * One end of a pipe as the wire names it (`runner.md` § Pipes): the id the
+ * runner reports `pipe_done` under, and the origin-relative URL its end
+ * `PUT`s to or `GET`s from with its device token.
+ */
+export const pipeRefSchema = z.object({ id: z.string(), url: z.string() })
+export type PipeRef = z.infer<typeof pipeRefSchema>
+
 /** Where a job's full output lives on the target, and the last bytes of each stream. */
 const jobOutputSchema = z.object({
   stdoutPath: z.string(),
@@ -158,7 +166,12 @@ export const runnerToBackendMessageSchema = z.union([
     cwd: z.string().optional(),
     output: jobOutputSchema.optional(),
   }),
-  /** An `rpc` command invoked on the target, relayed with the pipe's bytes; later stdin streams after it. */
+  /**
+   * An `rpc` command invoked on the target. `stdin` says whether the process
+   * has a pipe on fd 0; the pipe itself travels as an HTTP stream once
+   * `rpc_pipes` names it (`runner.md` § Pipes). The live stdin follows as
+   * `rpc_stdin` frames.
+   */
   z.object({
     type: z.literal('rpc_call'),
     callId: z.string(),
@@ -171,12 +184,12 @@ export const runnerToBackendMessageSchema = z.union([
     json: z.boolean(),
     cwd: z.string(),
     env: z.record(z.string(), z.string()),
-    stdin: bytesSchema,
+    stdin: z.boolean(),
   }),
   z.object({ type: z.literal('rpc_stdin'), callId: z.string(), bytes: bytesSchema }),
   z.object({ type: z.literal('rpc_stdin_end'), callId: z.string() }),
-  /** The end of a `transfer_send` / `transfer_receive`: the HTTP exchange completed, or why it did not. */
-  z.object({ type: z.literal('transfer_done'), transferId: z.string(), ok: z.boolean(), error: z.string().optional() }),
+  /** This runner's end of a pipe closed: its HTTP exchange completed, or why it did not. */
+  z.object({ type: z.literal('pipe_done'), pipeId: z.string(), ok: z.boolean(), error: z.string().optional() }),
 ])
 
 /**
@@ -209,29 +222,33 @@ export const backendToRunnerMessageSchema = z.union([
     z.object({ type: z.literal('spawn_stdin'), spawnId: z.string(), bytes: bytesSchema }),
     z.object({ type: z.literal('spawn_stdin_end'), spawnId: z.string() }),
     z.object({ type: z.literal('spawn_kill'), spawnId: z.string(), signal: z.string().optional() }),
-    /** One job: `bash -c script` in `cwd` with exactly `env`; the shell ids ride in `env`. */
+    /**
+     * One job: `bash -c script` in `cwd` with exactly `env`; the shell ids
+     * ride in `env`. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes
+     * whose other ends are elsewhere (`runner.md` § Pipes).
+     */
     z.object({
       type: z.literal('job_start'),
       jobId: z.string(),
       script: z.string(),
       cwd: z.string(),
       env: z.record(z.string(), z.string()),
+      stdin: pipeRefSchema.optional(),
+      stdout: pipeRefSchema.optional(),
     }),
     z.object({ type: z.literal('job_stdin'), jobId: z.string(), bytes: bytesSchema }),
     z.object({ type: z.literal('job_stdin_end'), jobId: z.string() }),
     z.object({ type: z.literal('job_kill'), jobId: z.string(), signal: z.string().optional() }),
-    z.object({ type: z.literal('rpc_output'), callId: z.string(), stream: streamSchema, bytes: bytesSchema }),
-    /** The call's stdout comes from a brokered transfer: the runner `GET`s `url` and relays the body, then `rpc_exit` follows. */
-    z.object({ type: z.literal('rpc_transfer'), callId: z.string(), url: z.string() }),
-    z.object({ type: z.literal('rpc_exit'), callId: z.string(), exitCode: z.number() }),
     /**
-     * A brokered cross-host copy (`runner.md` § Transfers): the source `PUT`s
-     * the file at `path` to `url`, the destination `GET`s `url` into `path`.
-     * `url` is origin-relative; the runner resolves it against its backend
-     * URL and authenticates with its device token.
+     * The call's pipe ends, sent before anything else for the call: the runner
+     * `PUT`s the process's pipe into `stdin` (present when the call declared
+     * one) and `GET`s `stdout` into the process (`runner.md` § Pipes).
      */
-    z.object({ type: z.literal('transfer_send'), transferId: z.string(), path: z.string(), url: z.string() }),
-    z.object({ type: z.literal('transfer_receive'), transferId: z.string(), path: z.string(), url: z.string() }),
+    z.object({ type: z.literal('rpc_pipes'), callId: z.string(), stdin: pipeRefSchema.optional(), stdout: pipeRefSchema }),
+    /** The call's stderr view; stdout is the pipe. */
+    z.object({ type: z.literal('rpc_output'), callId: z.string(), bytes: bytesSchema }),
+    /** Follows the stdout pipe's drain, so the process has written everything before it exits with the code. */
+    z.object({ type: z.literal('rpc_exit'), callId: z.string(), exitCode: z.number() }),
     /**
      * The command manifest for the runner's cache. Its shape is the loader's
      * (`parseManifest` in `@demicodes/command-loader`), which the runner

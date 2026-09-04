@@ -76,8 +76,12 @@ export interface ParsedCommandInput {
 export interface CommandRunContext {
   argv: string[]
   parsed: ParsedCommandInput
-  /** The command's stdin (the pipe), complete. */
-  stdin: CommandStdin
+  /**
+   * The pipe: finite, read as it arrives (`runner.md` § Pipes). `null` when
+   * the command was invoked without one — fd 0 is the shell's live stdin —
+   * or when the leaf's `stdinField` consumed it into an argument.
+   */
+  stdin: AsyncIterable<Uint8Array> | null
   env: Record<string, string>
   cwd: string
   io: CommandIO
@@ -93,20 +97,6 @@ export interface CommandRunContext {
   stdinStream: AsyncIterable<Uint8Array>
 }
 
-export interface CommandStdin {
-  /** Stdin decoded as UTF-8 text (lossy for non-text input). */
-  text: string
-  /** Raw stdin bytes, byte-identical to what the pipe delivered. */
-  bytes: Uint8Array
-}
-
-export function emptyStdin(): CommandStdin {
-  return { text: '', bytes: new Uint8Array(0) }
-}
-
-export function stdinOf(bytes: Uint8Array): CommandStdin {
-  return { text: decodeUtf8(bytes), bytes }
-}
 
 export interface CommandIO {
   stdout: CommandWriter
@@ -186,10 +176,10 @@ export const COMMAND_HELP_DEFAULTS =
  * Resolves argv through the tree and parses the leaf's arguments. A group
  * with nothing after it is a help request for that group.
  */
-export function parseCommandInput(root: Command, argv: string[], stdin: CommandStdin = emptyStdin()): ParsedCommandInput {
+export function parseCommandInput(root: Command, argv: string[], stdinText = ''): ParsedCommandInput {
   const { node, path, index } = resolveArgv(root, argv)
   if (isCommandGroup(node)) return { path, help: true, values: {}, json: false }
-  return parseArgs(node, path, argv, index, stdin)
+  return parseArgs(node, path, argv, index, stdinText)
 }
 
 /** The node argv names, with the index of the first token that is an argument. */
@@ -220,7 +210,8 @@ function parseArgs(
   path: string[],
   argv: string[],
   startIndex: number,
-  stdin: CommandStdin,
+  /** The pipe as text, for a leaf whose `stdinField` reads it. */
+  stdinText: string,
 ): ParsedCommandInput {
   const displayPath = path.join(' ')
   const input = command.input ?? {}
@@ -265,7 +256,7 @@ function parseArgs(
   // A field can be both positional and stdin-fed ("positional, or stdin when
   // omitted"); an explicit positional wins over piped stdin.
   if (command.stdinField && values[command.stdinField] === undefined) {
-    values[command.stdinField] = stdin.text
+    values[command.stdinField] = stdinText
   }
 
   return {
@@ -309,11 +300,10 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
   }
   if (isCommandGroup(node)) return help()
 
-  // The pipe is drained before parsing when the leaf reads it into a field,
-  // or when it is an rpc handler (rpc carries stdin as bytes).
-  const needsBytes = node.stdinField !== undefined || node.kind === 'rpc'
-  const pipe = needsBytes ? stdinOf(await collectBytes(stdin)) : emptyStdin()
-  const parsed = parseArgs(node, path, ctx.argv, index, pipe)
+  // The pipe is drained before parsing only when the leaf reads it into a
+  // field; otherwise it streams into the handler or module as it arrives.
+  const consumed = node.stdinField !== undefined
+  const parsed = parseArgs(node, path, ctx.argv, index, consumed ? decodeUtf8(await collectBytes(stdin)) : '')
   if (parsed.help) return help()
   if (parsed.json && !node.output?.json) {
     throw new Error(`Command "${displayPath}" does not define JSON output`)
@@ -326,7 +316,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
     result = await node.run({
       argv: ctx.argv,
       parsed,
-      stdin: pipe,
+      stdin: consumed ? null : (ctx.stdin ?? null),
       env: ctx.env,
       cwd: ctx.cwd,
       io,
@@ -342,7 +332,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
       fs: ctx.host.fs,
       cwd: ctx.cwd,
       env: ctx.env,
-      stdin: needsBytes ? stdinStream : concatByteStreams(stdin, stdinStream),
+      stdin: consumed ? stdinStream : concatByteStreams(stdin, stdinStream),
       stdout: io.stdout,
       stderr: io.stderr,
       signal,
