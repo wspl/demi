@@ -110,6 +110,40 @@ test("fs: large file in one allocation and chunked reads", async () => {
   assertEq(chunks, 8);
 });
 
+test("fs: pipe carries bytes in order with backpressure; close ends or breaks the other side", async () => {
+  const { read, write } = fs.pipe();
+  const total = 4 * 1024 * 1024;
+  const chunk = new Uint8Array(64 * 1024);
+  for (let i = 0; i < chunk.length; i++) chunk[i] = i & 0xff;
+  // The writer runs ahead only as far as the buffer allows: a 4 MB write completes only as the reader drains.
+  let written = 0;
+  const writer = (async () => {
+    for (let at = 0; at < total; at += chunk.length) {
+      await fs.write(write, chunk);
+      written += chunk.length;
+    }
+    fs.close(write);
+  })();
+  await new Promise((r) => setTimeout(r, 50));
+  assert(written < total, `the writer blocked at ${written} bytes`);
+  let read_total = 0, mismatch = false;
+  for (;;) {
+    const got = await fs.read(read, 100000);
+    if (got === null) break;
+    for (let i = 0; i < got.length; i++) if (got[i] !== ((read_total + i) % chunk.length & 0xff)) mismatch = true;
+    read_total += got.length;
+  }
+  await writer;
+  assertEq(read_total, total);
+  assert(!mismatch, "bytes arrived in order");
+  fs.close(read);
+  // The reader gone: the writer sees EPIPE (after the buffer, at once here since the buffer is empty).
+  const other = fs.pipe();
+  fs.close(other.read);
+  await assertCode(() => fs.write(other.write, new Uint8Array(1024 * 1024)), "EPIPE", "write");
+  fs.close(other.write);
+});
+
 test("fs: cleanup", async () => {
   const rm = async (path) => {
     const st = await fs.lstat(path);
