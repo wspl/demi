@@ -138,7 +138,7 @@ any other flag or form with a message. Output formats are GNU's.
 | `rm` | `-r -f` | |
 | `mv`, `cp` | `cp -r` | |
 | `touch` | | |
-| `tar` | `c`, `x`, `t` (also `-c -x -t`), `-f FILE` (default `-`: stdout or stdin), `-C DIR`, `-v`, `-z` | streaming in both directions; `-z` is the platform's gzip stream; `-j`, `-J` and every other option are refused. Archives are written in GNU format with entries in name order and `demi` as owner, where GNU writes them in readdir order — so `.tar` files are compared by their `tar t` listing and the extracted tree, never byte for byte (§ Verification). Mode and mtime are kept both ways. Extraction follows GNU's own path rules (a leading `/` stripped, a member containing `..` refused with the error), and the store is the namespace, so nothing lands outside it |
+| `tar` | `c`, `x`, `t` (also `-c -x -t`), `-f FILE` (default `-`: stdout or stdin), `-C DIR`, `-v`, `-z`, `--strip-components=N` on `x` | streaming in both directions; `-z` is the platform's gzip stream; `-j`, `-J` and every other option are refused. Archives are written in GNU format with entries in name order and `demi` as owner, where GNU writes them in readdir order — so `.tar` files are compared by their `tar t` listing and the extracted tree, never byte for byte (§ Verification). Mode and mtime are kept both ways. Extraction follows GNU's own path rules (a leading `/` stripped, a member containing `..` refused with the error), and the store is the namespace, so nothing lands outside it |
 | `pwd`, `true`, `false` | | |
 | `test`, `[` | `-e -f -d -s`, `=`, `!=`, `-z`, `-n` | |
 | `cd` | one path or none | changes the session cwd for subsequent tool calls |

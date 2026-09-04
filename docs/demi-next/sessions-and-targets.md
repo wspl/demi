@@ -177,7 +177,14 @@ Attaching is the user's act alone: switching the target automatically
 attaches the departed host; the user attaches and detaches hosts on the
 conversation's host list (`POST /api/conversations/:id/hosts { deviceId
 }`, `PATCH …/hosts/:deviceId { name }`, `DELETE …/hosts/:deviceId`,
-`backend.md`). The agent can never attach. A change to the set is
+`backend.md`). The backend accepts any device the user owns; which
+devices the product offers for attaching is the product's choice
+(`product.md` — managed hosts never appear there, so they enter the set
+only as the departed target of a switch). The agent can never attach.
+Switching the main host to an attached host removes its row — a host is
+main or attached, never both — and the departed target takes a row in
+its place; the removed row's `cwd` goes with it, the new main host's
+directory is the one the picker named. A change to the set is
 announced to the model at the next turn boundary by a context block
 listing the attached hosts with their directories, the same mechanism as
 the switch announcement. Revoking a device detaches it from every
