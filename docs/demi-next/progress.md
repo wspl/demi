@@ -3132,8 +3132,17 @@ upgrade, keeping the tree link-free; extraction paths follow GNU's own
 rules inside the store, which is the namespace. `runner.md` § Pipes'
 hostless example now shows the pull. Implementation lands with the
 attached-hosts checkpoint, in `@demicodes/tinybash` beside the other
-builtins, with the corpus cases for `c`, `x`, `t`, `-C`, `-z`, the link
-refusal and the `..` member.
+builtins, with the corpus cases for `c`, `x`, `t`, `-C`, `-z`,
+`--strip-components`, the link refusal and the `..` member.
+
+Closing rulings (2026-09-04): `--strip-components=N` is whitelisted on
+`x` — the model's habitual form for unpacking a downloaded source tree.
+Explicit attaching is bounded by the product surface, not the backend:
+the route accepts any device the user owns, the devices page offers user
+hosts. Switching the main host to an attached host removes its row; a
+host is main or attached, never both. The model learns of attached hosts
+through `demi host list`, whose help is in the system prompt like every
+root command's — no extra tool-description text.
 
 ## Open items (deferred, with their milestone)
 
