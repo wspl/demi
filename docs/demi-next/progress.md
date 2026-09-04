@@ -3119,7 +3119,11 @@ host would have hit the upgrade on `tar` and acquired a machine only to
 receive files. Ruling: `tar` joins the builtin table, admitted by
 structure (the wire format of a cross-host copy) rather than by corpus
 frequency, and the earlier note that the upgrade rule covers this case is
-withdrawn. Whitelist `c x t`, `-f` (default `-`), `-C`, `-v`, `-z` over
+withdrawn. Ruling alongside: the attachment set is independent of the
+main host's state — hostless plus attached hosts is not a product shape
+anyone designs for, but capability is never narrowed to the expected
+combinations, and the record now says so. Whitelist `c x t`, `-f`
+(default `-`), `-C`, `-v`, `-z` over
 the platform's gzip stream; `-j -J` and the rest refused. Three
 consequences recorded in `tinybash.md`: archives are compared by listing
 and extracted tree, not bytes (name-order entries, `demi` as owner); a
