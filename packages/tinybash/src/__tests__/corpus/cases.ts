@@ -417,4 +417,14 @@ export const CASES: CorpusCase[] = [
   { name: 'utf8-var-heredoc', script: `X=é; echo "$X"; cat <<EOF\n$X ü\nEOF` },
   { name: 'utf8-sed-cat-n', script: `sed -n 2p utf8.txt; cat -n utf8.txt` },
   { name: 'utf8-head-c', script: `head -c 4 utf8.txt` },
+  // tar: listings are sorted where GNU's member order is the filesystem's; archives are never printed
+  { name: 'tar-list-sorted', script: `tar c -C src . | tar t | sort` },
+  { name: 'tar-roundtrip', script: `mkdir out && tar c src notes.txt | tar x -C out && cat out/src/main.ts out/notes.txt && ls -l out/src/main.ts out/notes.txt out/src/lib/deep.ts` },
+  { name: 'tar-gzip', script: `tar czf a.tgz notes.txt src/lib && tar tzf a.tgz | sort && tar xzf a.tgz -C docs && cat docs/notes.txt docs/src/lib/deep.ts` },
+  { name: 'tar-strip', script: `mkdir flat && tar c src | tar x -C flat --strip-components=1 && ls flat && ls -l flat/lib/deep.ts` },
+  { name: 'tar-verbose-file', script: `tar cvf v.tar notes.txt empty.txt && tar tf v.tar` },
+  { name: 'tar-tv', script: `tar cf v.tar notes.txt script.sh && tar tvf v.tar` },
+  { name: 'tar-select', script: `tar cf s.tar src && tar tf s.tar src/lib | sort && mkdir sel && tar xf s.tar -C sel src/lib/deep.ts && find sel -type f` },
+  { name: 'tar-empty-dirs', script: `mkdir -p e/d && tar c e | tar t` },
+  { name: 'tar-errors', script: `tar c nope > /dev/null; tar x < notes.txt; tar c > /dev/null; tar -f x.tar notes.txt; tar xf missing.tar` },
 ]

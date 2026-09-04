@@ -3242,6 +3242,44 @@ The grant set becomes attached hosts as `sessions-and-targets.md`
   `isolation.test.ts` and the s6 / s10 scenarios re-pointed. Backend
   suite 99 pass.
 
+### `tar` builtin checkpoint (2026-09-04) — delivered
+
+`tar` in `@demicodes/tinybash` as `tinybash.md` § Builtins records it:
+`builtins/tar-format.ts` (ustar/GNU/pax headers, GNU long names, the
+block reader, the record padding) and `builtins/tar.ts` (both option
+spellings, `c` / `x` / `t`, `-f`, `-C`, `-v`, `-z` over
+`CompressionStream`, `--strip-components` on `x`, GNU's messages).
+`TinybashFs` gains `chmod`, which extraction needs beside `utimes`.
+
+- Members are written in name order with the session identity as owner
+  and the archive padded to GNU's 10 KiB record; extraction applies the
+  umask (022) to modes as GNU does without `-p`, restores mtimes, and
+  defers directory modes and times to the end.
+- GNU's wording was taken from GNU tar 1.35 itself (the lima `fc` VM,
+  the corpus's bash): `Removing leading \`/' from member names` keeps
+  the literal backtick of tar's source whatever the locale; a member
+  with `..` gets `Removing leading \`a/../' from member names` once per
+  prefix and `Member name contains '..'`, and is skipped; an unreadable
+  `-f` is `Cannot open: … / Error is not recoverable: exiting now`; a
+  stream shorter than a block is `This does not look like a tar archive`,
+  a later cut is `Unexpected EOF in archive`. Every member failing still
+  writes the archive's end, as GNU does.
+- A link entry on extraction is refused with `Cannot create symlink to
+  '…': Operation not permitted` (a hard link: `Cannot hard link to`),
+  the third run-time failure that is not an upgrade; `tar notes.txt` (a
+  first word that is not options) is outside, as any letter beyond the
+  whitelist is.
+- Tests: `tar.test.ts` (round trip with modes and mtimes, name order,
+  the record size, both spellings, `-z`, `--strip-components`, member
+  selection, the error lines, the `..` and link refusals, the system
+  tar reading tinybash's archives and tinybash reading its, outside
+  cases); nine corpus cases with goldens from GNU tar 1.35 (`tar-*`,
+  listings piped through `sort` where GNU's order is the filesystem's;
+  `ls -l` on files only, since directory totals are Linux-only); the
+  host-shell end-to-end test pulls a directory into a hostless
+  conversation through `tar` without acquiring a machine. tinybash suite
+  411 pass.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
