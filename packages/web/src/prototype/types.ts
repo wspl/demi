@@ -28,6 +28,7 @@ export interface Device {
 }
 export interface Project extends SidebarProject {
   deviceId: string
+  branch: string | null
 }
 export interface PrototypeProvider extends ProviderInfo {
   models: ModelInfo[]
