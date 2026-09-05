@@ -57,7 +57,7 @@ function connect() {
     <template #trigger>
       <Button variant="ghost" class="max-w-full" aria-label="Manage conversation hosts">
         <component
-          :is="!project ? Link : project.hostKind === 'cloud' ? Cloud : Monitor"
+          :is="!project || project.hostKind === 'cloud' ? Cloud : Monitor"
           :size="ICON_PX.in28"
           class="shrink-0"
         />
@@ -72,9 +72,9 @@ function connect() {
     <template #content>
       <Menu class="w-80 max-w-[calc(100vw-2rem)]">
         <MenuItem
-          :icon="!project ? Link : project.hostKind === 'cloud' ? Cloud : Monitor"
+          :icon="!project || project.hostKind === 'cloud' ? Cloud : Monitor"
           label="Main host"
-          :value="project?.host ?? 'Hostless'"
+          :value="project?.host ?? 'Cloud'"
           :disabled="mainLocked"
           has-submenu
         >
@@ -83,7 +83,7 @@ function connect() {
               :devices="resources.devices"
               include-cloud
               require-online
-              :selected-id="project?.deviceId"
+              :selected-id="project?.deviceId ?? 'cloud'"
               @select="selectMain"
               @connect="connect"
             />
