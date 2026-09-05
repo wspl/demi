@@ -4051,3 +4051,10 @@ SquarePen/chevron without an extra flex gap. Idle rings are 8px with a 1px borde
 the status column alignment and running/error indicators stay consistent.
 Browser visual review and browser package typechecks passed. Both gallery and
 application use these shared components. M13.1 remains in progress.
+
+### M13.1 — Project hover background (2026-09-06)
+
+Owner requested no background on project-item hover. Removed the shared project
+row's hover/menu background classes and retained its keyboard focus ring.
+This applies to gallery and application. Verified the scoped presentation diff;
+no behavior or state changes. M13.1 remains in progress.
