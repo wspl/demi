@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout": "",
+  "stderr": "bash: line 1: s*: ambiguous redirect\n",
+  "user": "zan",
+  "group": "zan"
+}

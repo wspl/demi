@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout": "",
+  "stderr": "head: error reading 'standard input': Is a directory\n",
+  "user": "zan",
+  "group": "zan"
+}

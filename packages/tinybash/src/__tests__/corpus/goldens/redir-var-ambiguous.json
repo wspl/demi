@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "bin.dat\ncsv.txt\ndocs\nempty.txt\nlink.txt\nnonl.txt\nnotes.txt\nnumbers.txt\nscript.sh\nspace dir\nsrc\nutf8.txt\nwords.txt\n",
+  "stderr": "bash: line 1: $X: ambiguous redirect\n",
+  "user": "zan",
+  "group": "zan"
+}

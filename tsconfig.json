@@ -14,15 +14,23 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "paths": {
-      "@demicodes/just-bash/ast/types": ["./packages/just-bash/packages/just-bash/src/ast/types.ts"],
-      "@demicodes/just-bash/interpreter/helpers/ifs": ["./packages/just-bash/packages/just-bash/src/interpreter/helpers/ifs.ts"],
-      "@demicodes/just-bash/parser": ["./packages/just-bash/packages/just-bash/src/parser/parser.ts"],
-      "@demicodes/agent/stdio": ["./packages/agent/src/stdio-transport.ts"],
+      "@demicodes/agent/client": ["./packages/agent/src/client-entry.ts"],
+      "@demicodes/agent/stdio": ["./packages/agent/src/protocol/stdio-transport.ts"],
+      "@demicodes/agent/testing": ["./packages/agent/src/testing.ts"],
+      "@demicodes/command-loader/build": ["./packages/command-loader/src/build.ts"],
+      "@demicodes/host-virtual/node": ["./packages/host-virtual/src/node.ts"],
+      "@demicodes/host-virtual/testing": ["./packages/host-virtual/src/testing.ts"],
+      "@demicodes/provider/credentials-pool": ["./packages/provider/src/credentials-pool.ts"],
+      "@demicodes/provider/testing": ["./packages/provider/src/testing.ts"],
+      "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
+      "@demicodes/runner/serve": ["./packages/runner/src/serve/index.ts"],
+      "@demicodes/runner/testing": ["./packages/runner/src/testing.ts"],
       "@demicodes/shell/storage": ["./packages/shell/src/storage.ts"],
-      "@demicodes/shell/host-fs": ["./packages/shell/src/host-fs.ts"],
+      "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
+      "@demicodes/tinybash/testing": ["./packages/tinybash/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "examples"],
+  "include": ["packages/*/src"],
   "exclude": ["packages/web-ui", "packages/web"]
 }

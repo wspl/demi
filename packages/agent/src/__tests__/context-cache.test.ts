@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { events } from '@demicodes/provider/testing'
 import { TranscriptLog } from '../index'
-import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../session/compaction'
 import {
   createRuntime,
   createSession,

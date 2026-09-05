@@ -1,0 +1,50 @@
+{
+  "name": "@demicodes/runner",
+  "description": "The Demi runner: the program that turns a machine into an execution target \u2014 runner mode over the backend socket, command mode for every root command.",
+  "version": "0.20.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
+    },
+    "./serve": {
+      "development": "./src/serve/index.ts",
+      "types": "./dist/serve/index.d.mts",
+      "import": "./dist/serve/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/command-loader": "workspace:^",
+    "@demicodes/runner-protocol": "workspace:^",
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/utils": "workspace:^"
+  },
+  "devDependencies": {
+    "@demicodes/agent": "workspace:^",
+    "@demicodes/coding-agent": "workspace:^",
+    "@demicodes/core": "workspace:^",
+    "@demicodes/host-remote": "workspace:^",
+    "@demicodes/provider": "workspace:^",
+    "@demicodes/host-virtual": "workspace:^"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/runner"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/runner#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

@@ -1,6 +1,27 @@
 /** A no-op function. */
 export function noop(): void {}
 
+/** Orders operations on one resource without blocking unrelated resources. */
+export class SerialQueue {
+  private tail: Promise<unknown> = Promise.resolve()
+  private pending = 0
+
+  get idle(): boolean {
+    return this.pending === 0
+  }
+
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    this.pending += 1
+    const next = this.tail.then(operation).finally(() => { this.pending -= 1 })
+    this.tail = next.catch(noop)
+    return next
+  }
+
+  async settled(): Promise<void> {
+    await this.tail
+  }
+}
+
 /** An externally-resolvable promise handle. */
 export interface Deferred<T> {
   readonly promise: Promise<T>
@@ -19,9 +40,24 @@ export function deferred<T = void>(): Deferred<T> {
   return { promise, resolve, reject }
 }
 
-/** Resolves after `ms` milliseconds. */
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+/**
+ * Resolves after `ms` milliseconds. With `signal`, resolves as soon as the
+ * signal aborts instead, and the timer is cleared — for a `Promise.race`
+ * whose loser must not keep the process alive.
+ */
+export function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve()
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    function onAbort() {
+      clearTimeout(timer)
+      resolve()
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 /**

@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "csv.txt empty.txt link.txt nonl.txt notes.txt numbers.txt utf8.txt words.txt\n*.txt\n",
+  "stderr": "",
+  "user": "zan",
+  "group": "zan"
+}

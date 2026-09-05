@@ -33,3 +33,10 @@ export function numberOrZero(value: unknown): number {
 export function numberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
+
+/** The record without its `undefined`-valued keys: what a wire that carries `undefined` as nil should be handed. */
+export function withoutUndefined<T extends Record<string, unknown>>(record: T): Partial<T> {
+  const kept: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(record)) if (value !== undefined) kept[key] = value
+  return kept as Partial<T>
+}

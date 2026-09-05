@@ -41,3 +41,10 @@ Thumbs.db
 # Local agent/CLI session & config data
 .claude/
 .codex/
+
+# Rust build output
+packages/tinyjs/target/
+
+# A local reference clone, not part of the repository
+packages/just-bash/
+packages/fc-helper/target/
