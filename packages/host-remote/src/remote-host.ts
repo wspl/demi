@@ -51,19 +51,19 @@ export interface RemoteHostOptions {
  */
 export class RemoteHost implements Host {
   readonly defaultCwd: string
-  readonly identity: HostIdentity
   readonly store: HostStore
   readonly fs: HostFileSystem
   readonly process: HostProcess
 
   private send: ((message: BackendToRunnerMessage) => void) | null = null
+  private currentIdentity: HostIdentity
   private readonly pendingCalls = new Map<string, Deferred<unknown>>()
   private readonly activeSpawns = new Map<string, RemoteSpawn>()
   private readonly activeJobs = new Map<string, RemoteJobState>()
 
   constructor(options: RemoteHostOptions) {
     this.defaultCwd = options.defaultCwd
-    this.identity = options.identity
+    this.currentIdentity = options.identity
     this.store = options.store
     this.fs = createRemoteFs((op, params) => this.call(op, params))
     this.process = {
@@ -72,9 +72,15 @@ export class RemoteHost implements Host {
     }
   }
 
-  /** Binds the current connection. In-flight work from a previous connection must already be detached. */
-  attach(send: (message: BackendToRunnerMessage) => void): void {
+  /** The runner's identity from its hello; a Host made while its runner was offline carries a placeholder until the first attach. */
+  get identity(): HostIdentity {
+    return this.currentIdentity
+  }
+
+  /** Binds the current connection, and the runner's identity when the caller has it. In-flight work from a previous connection must already be detached. */
+  attach(send: (message: BackendToRunnerMessage) => void, identity?: HostIdentity): void {
     this.send = send
+    if (identity) this.currentIdentity = identity
   }
 
   /** Marks the runner offline: pending fs calls reject and in-flight spawns die. */

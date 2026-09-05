@@ -32,7 +32,7 @@ prompts should be aware of it:
 
 The shell runs against a `Host` abstraction. When running untrusted agents, supply
 a `Host` that enforces your sandbox (path jail, restricted `spawn`, ephemeral
-store) — see [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md) and
-the runnable [examples/sandboxed-host.ts](examples/sandboxed-host.ts) (a command
-allowlist over `@demicodes/host-local`). The default `@demicodes/host-local` grants full
-local filesystem and process access.
+store). The Host contract and the Hosts Demi ships — `@demicodes/host-virtual`,
+the hostless namespace over a pluggable filesystem with no processes at all, and
+`@demicodes/host-remote`, a paired runner's machine — are described in the package
+registry of [docs/package-boundaries.md](docs/package-boundaries.md).

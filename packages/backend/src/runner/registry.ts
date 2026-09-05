@@ -546,7 +546,7 @@ export class RunnerRegistry {
     void this.control.touchDeviceSeen(deviceId).catch(() => {})
     const deviceHosts = this.hosts.get(deviceId)
     if (deviceHosts) {
-      for (const host of deviceHosts.values()) host.attach((message) => connection.send(message))
+      for (const host of deviceHosts.values()) host.attach((message) => connection.send(message), connection.runner?.identity)
     }
     if (this.pingIntervalMs > 0 && connection.pingTimer === null) {
       connection.pingTimer = setInterval(() => {

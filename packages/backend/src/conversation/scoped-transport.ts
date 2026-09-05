@@ -22,13 +22,29 @@ export const HOSTLESS_NAMESPACE: readonly string[] = [HOSTLESS_HOME, '/tmp']
  * `{ type: 'ref', ref, mediaType }`, the same form the block rows hold, and
  * the page fetches `GET /api/blobs/:sha256`.
  */
+export interface ConversationTransportOptions {
+  control: ControlService
+  /** Whether the conversation's user may name this provider — the same rule as the PATCH route's. */
+  providerAllowed: (providerId: string) => Promise<boolean>
+  /** Where every session of the conversation opens; the hostless home unless the conversation has a workspace. */
+  cwd?: string
+  blobs?: BlobStore
+}
+
+/** A frame the conversation refuses; its code goes back to the client as the error frame's code. */
+class FrameRefused extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message)
+  }
+}
+
 export function conversationScopedTransport(
   inner: AgentServerTransport,
   conversation: ConversationRecord,
-  control: ControlService,
-  cwd: string = HOSTLESS_HOME,
-  blobs?: BlobStore,
+  options: ConversationTransportOptions,
 ): AgentServerTransport {
+  const { blobs } = options
+  const cwd = options.cwd ?? HOSTLESS_HOME
   // Frame rewrites can await storage (attachment resolution inbound, blob
   // puts outbound); one chain per direction keeps delivery in arrival order.
   const deliveries = new SerialQueue()
@@ -61,9 +77,9 @@ export function conversationScopedTransport(
             reportError('invalid_frame', `Invalid client frame: ${parsed.error.issues[0]?.message ?? 'invalid shape'}`)
             return
           }
-          const rewritten = await rewriteFrame(parsed.data, conversation, control, cwd, blobs)
+          const rewritten = await rewriteFrame(parsed.data, conversation, options, cwd)
           if (!closed && subscribed) handler(rewritten)
-        }).catch((error: unknown) => reportError('frame_delivery_failed', errorMessage(error)))
+        }).catch((error: unknown) => reportError(error instanceof FrameRefused ? error.code : 'frame_delivery_failed', errorMessage(error)))
       })
       return () => { subscribed = false; unsubscribe() }
     },
@@ -98,12 +114,16 @@ async function externalizeFrameMedia(frame: ServerFrame, blobs: BlobStore): Prom
 async function rewriteFrame(
   frame: ConversationClientFrame,
   conversation: ConversationRecord,
-  control: ControlService,
+  options: ConversationTransportOptions,
   cwd: string,
-  blobs: BlobStore | undefined,
 ): Promise<ClientFrame> {
+  const { control, blobs } = options
+  const recordProvider = async (provider: { providerId: string; model: { model: { id: string } } }) => {
+    if (!(await options.providerAllowed(provider.providerId))) throw new FrameRefused('provider_not_found', 'No such provider')
+    await control.setConversationModel(conversation.id, provider.providerId, provider.model.model.id)
+  }
   if (frame.type === 'open') {
-    await control.setConversationModel(conversation.id, frame.provider.providerId, frame.provider.model.model.id)
+    await recordProvider(frame.provider)
     return { ...frame, sessionId: conversation.id, cwd }
   }
   if (frame.type === 'send') {
@@ -123,7 +143,7 @@ async function rewriteFrame(
     return { ...frame, content }
   }
   if (frame.type === 'set_provider') {
-    await control.setConversationModel(conversation.id, frame.provider.providerId, frame.provider.model.model.id)
+    await recordProvider(frame.provider)
     return frame
   }
   return frame

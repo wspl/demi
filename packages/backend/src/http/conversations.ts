@@ -4,8 +4,7 @@ import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderVault } from '../vault/providers'
-import { providerOwner } from '../vault/scope'
-import { HOSTLESS_HOME } from '../conversation/scoped-transport'
+import { visibleProvider } from '../vault/scope'
 import type { SwitchTargetResult } from '../conversation/target'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
 import type { ControlService } from '../storage/control'
@@ -73,11 +72,8 @@ export function conversationRoutes(options: {
       await control.setConversationArchived(conversation.id, body.archived)
     }
     if (body.providerId !== undefined || body.modelId !== undefined) {
-      if (body.providerId) {
-        const provider = await vault.get(body.providerId)
-        if (!provider || provider.ownerUserId !== providerOwner(mode, conversation.userId)) {
-          return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
-        }
+      if (body.providerId && !(await visibleProvider(vault, mode, conversation.userId, body.providerId))) {
+        return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
       }
       await control.setConversationModel(conversation.id, body.providerId ?? null, body.modelId ?? null)
     }
@@ -166,15 +162,14 @@ export function conversationRoutes(options: {
     if (bytes.length > ATTACHMENT_MAX_BYTES) {
       return c.json({ code: 'too_large', message: `File exceeds the ${ATTACHMENT_MAX_BYTES}-byte limit` }, 413)
     }
-    const workspace = conversation.workspaceId ? await control.getWorkspace(conversation.workspaceId) : null
-    const cwd = workspace?.path ?? HOSTLESS_HOME
+    // The Host's own working directory: the workspace path, the hostless home, or the machine's home.
     try {
       const host = await hostFor(conversation.id)
-      await host.fs.writeFile(name, bytes, { cwd, createParents: true })
+      await host.fs.writeFile(name, bytes, { cwd: host.defaultCwd, createParents: true })
+      return c.json({ path: `${host.defaultCwd.replace(/\/+$/, '')}/${name}` }, 201)
     } catch (error) {
       return c.json({ code: 'write_failed', message: errorMessage(error) }, 409)
     }
-    return c.json({ path: `${cwd.replace(/\/+$/, '')}/${name}` }, 201)
   })
 
   app.get('/:id/transcript', async (c) => {

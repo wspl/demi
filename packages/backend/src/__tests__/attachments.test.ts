@@ -116,6 +116,13 @@ test('message attachment: upload → ref block → inline bytes at the provider 
   expect(blob.headers.get('content-type')).toBe('image/png')
   expect(blob.headers.get('cache-control')).toContain('immutable')
   expect(new Uint8Array(await blob.arrayBuffer())).toEqual(PNG_BYTES)
+  expect(blob.headers.get('x-content-type-options')).toBe('nosniff')
+  // Only render-safe types are served inline; anything else is an opaque download, never sniffed.
+  const html = await api(backend, `/api/blobs/${attachment.sha256}?type=text/html`)
+  expect(html.status).toBe(200)
+  expect(html.headers.get('content-type')).toBe('application/octet-stream')
+  expect(html.headers.get('content-disposition')).toBe('attachment')
+  expect(html.headers.get('x-content-type-options')).toBe('nosniff')
   expect((await api(backend, '/api/blobs/0000000000000000000000000000000000000000000000000000000000000000')).status).toBe(404)
 
   // A missing reference degrades loudly to a visible placeholder, never a crash.
