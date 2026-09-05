@@ -1,5 +1,6 @@
 import { computed, nextTick, ref, type Ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
+import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 
 type ScrollIntent = 'up' | 'down' | null
 interface VirtualizedBlock {
@@ -9,13 +10,14 @@ interface VirtualizedBlock {
 
 const OVERSCAN = 8
 const BLOCK_GAP = 4
-const BOTTOM_THRESHOLD = 100
 const AUTO_SCROLL_REENGAGE_THRESHOLD = 1
 
 const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   user: 40,
   steer: 40,
   pending_steer: 40,
+  queue_divider: 36,
+  queued_message: 40,
   resume: 0,
   thinking: 20,
   redacted_thinking: 0,
@@ -23,7 +25,7 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   response: 24,
   tool_call: 28,
   error: 28,
-  abort: 0,
+  abort: 28,
   compaction_boundary: 36,
   compaction_marker: 0,
   extension_state_snapshot: 0,
@@ -196,9 +198,9 @@ export function useBlockVirtualizer(
     const el = scrollContainer.value
     if (el) {
       scrollOffset.value = el.scrollTop
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight
-      isAtBottom.value = dist <= BOTTOM_THRESHOLD
-      updateAutoScrollState(dist, BOTTOM_THRESHOLD)
+      const dist = distanceFromBottom(el)
+      isAtBottom.value = dist <= BOTTOM_THRESHOLD_PX
+      updateAutoScrollState(dist, BOTTOM_THRESHOLD_PX)
       pendingIntent = null
     }
     updateAnchor()

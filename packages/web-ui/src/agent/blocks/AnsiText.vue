@@ -71,5 +71,5 @@ const renderedHtml = computed(() => {
 </script>
 
 <template>
-  <pre class="font-mono text-[13px] leading-[1.4] text-fg-body whitespace-pre-wrap break-words" v-html="renderedHtml" />
+  <pre class="font-mono text-chrome leading-[1.4] text-fg-body whitespace-pre-wrap break-words" v-html="renderedHtml" />
 </template>
