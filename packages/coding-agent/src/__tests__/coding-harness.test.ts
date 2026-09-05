@@ -4,29 +4,18 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import {
-  AgentDirectory,
   AgentSession,
-  ChildSupervisor,
   createStandardAgentTools,
   injectSubagentCommand,
+  subagentCommandShape,
   type AgentHarness,
   type AgentHarnessRuntime,
 } from '@demicodes/agent'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import {
-  BashEnvironment,
-  CommandRegistry,
-  type Command,
-  type Host,
-  type HostDirent,
-  type HostFileSystem,
-  type HostProcess,
-  type HostStore,
-  createLogicalHostCwd,
-} from '@demicodes/shell'
-import { LocalHost } from '@demicodes/host-local'
-import { createCodingAgentHarness, type CodingState } from '../index'
+import { CommandRegistry, type Command, type Host, type HostDirent, type HostFileSystem, type HostProcess, type HostStore, createLogicalHostCwd, type ShellEnvironment } from '@demicodes/shell'
+import { hostlessShell, hostlessShellFactory, LocalHost } from '@demicodes/host-virtual/testing'
+import { createCodingAgentHarness } from '../index'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -44,11 +33,11 @@ const model: ModelSelection = {
 test('coding agent harness exposes shell session tools and registered command prompt', async () => {
   const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
   const state = harness.initialState()
-  const commands = (await harness.commands?.({ state, cwd: process.cwd() })) ?? []
-  const { environment, runtime } = createRuntimeFromHarness(harness, process.cwd())
+  const commands = (await harness.commands?.({ state, cwd: process.cwd(), agentSessionId: 'test-session' })) ?? []
+  const { environment, runtime } = await createRuntimeFromHarness(harness, process.cwd())
 
   expect(harness.name).toBe('coding')
-  expect(commands.map((command) => command.name)).toEqual(['demi', 'todo'])
+  expect(commands.map((command) => command.name)).toEqual(['demi'])
   const tools = runtime.tools({ agentSessionId: 'coding-test-agent', state, cwd: process.cwd(), metadata: null })
   expect(tools.map((tool) => tool.name)).toEqual([
     'shell_exec',
@@ -69,10 +58,10 @@ test('coding agent harness exposes shell session tools and registered command pr
     commandsPrompt: renderCommandsPrompt(commands),
     metadata: null,
   })
-  expect(prompt).toContain('demi: Read, create, edit, and patch workspace files (text, images, and video).')
+  expect(prompt).toContain('demi: The Demi platform command')
   expect(prompt).toContain('Treat cwd as the task workspace')
   expect(prompt).toContain('do not create a separate project directory under /tmp')
-  expect(prompt).toContain('demi create')
+  expect(prompt).toContain('demi file create')
   expect(prompt).toContain('Success output: writes "Created <path>" to stdout')
   expect(prompt).toContain('Failure output: writes the reason to stderr and exits non-zero')
   expect(prompt).toContain('todo: Manage an agent-session-scoped task list')
@@ -86,10 +75,10 @@ test('coding agent harness exposes shell session tools and registered command pr
   expect(prompt).toContain('do not rely on the session script builtin read across turns')
   expect(prompt).toContain('File references attached by the client are expanded before provider calls.')
 
-  const todo = await environment.exec({ script: 'todo add "Verify default registration"' })
+  const todo = await environment.exec({ script: 'demi todo add "Verify default registration"' })
   expect(todo.stdout.delta).toBe('[ ] T1 Verify default registration\n')
   const demiHelp = await environment.exec({ shellId: todo.shellId, script: 'demi --help' })
-  expect(demiHelp.stdout.delta).toContain('demi create')
+  expect(demiHelp.stdout.delta).toContain('demi file create')
   expect(demiHelp.stdout.delta).toContain('Success output: writes "Created <path>" to stdout')
 })
 
@@ -161,7 +150,7 @@ test('coding agent resolves file references before AgentSession sends the provid
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-session-refs-'))
   await writeFile(join(root, 'note.txt'), 'hello from session file\n', 'utf8')
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-  const { runtime } = createRuntimeFromHarness(harness, root)
+  const { runtime } = await createRuntimeFromHarness(harness, root)
   const provider = new StubProvider([
     (request: InferenceRequest) => {
       expect(request.items).toEqual([
@@ -221,7 +210,6 @@ test('coding agent harness ships only the explore subagent profile; omitting --p
   expect(profiles.map((profile) => profile.name)).toEqual(['explore'])
 
   const explore = profiles[0]!
-  expect(explore.readonly).toBe(true)
   const explorePrompt = await explore.systemPrompt!({
     agentSessionId: 'explore-child',
     state,
@@ -230,41 +218,24 @@ test('coding agent harness ships only the explore subagent profile; omitting --p
     commandsPrompt: 'COMMANDS-MARKER',
     metadata: null,
   })
-  expect(explorePrompt).toContain('read-only exploration agent')
-  expect(explorePrompt).toContain('do not attempt to edit, create, or execute anything')
+  expect(explorePrompt).toContain('You are an exploration agent')
+  expect(explorePrompt).toContain('Do not edit, create, or execute anything')
   expect(explorePrompt).toContain('COMMANDS-MARKER')
 })
 
 test('the injected demi agent command help teaches self-contained spawn prompts', async () => {
   const harness = createCodingAgentHarness({ host: new LocalHost(process.cwd()) })
   const state = harness.initialState()
-  const harnessContext = { state, cwd: process.cwd() }
+  const harnessContext = { state, cwd: process.cwd(), agentSessionId: 'test-session' }
   const commands = (await harness.commands?.(harnessContext)) ?? []
   const profiles = (await harness.agents?.(harnessContext)) ?? []
-  const supervisor = new ChildSupervisor({
-    agent: harness,
-    cwd: process.cwd(),
-    profiles,
-    parentCommands: commands,
-    shellOptions: {},
-    prepareShell: null,
-    sessionOptions: {},
-    notifyParentOnIdle: true,
-    store: new LocalHost(process.cwd()).store,
-    storePrefix: 'agent-sessions/help-probe',
-    directory: new AgentDirectory<CodingState>(),
-    maxLiveSubagents: 8,
-    shellPreviewBudgetTokens: null,
-    canSpawn: true,
-    onJobsChanged: null,
-    emit: () => {},
-  })
+  const agentCommands = subagentCommandShape(profiles.map((profile) => profile.name))
   const registry = new CommandRegistry()
-  for (const command of injectSubagentCommand(commands, supervisor.rootCommandNode())) registry.register(command)
+  for (const command of injectSubagentCommand(commands, agentCommands)) registry.register(command)
   const help = registry.renderHelp()
 
   // Spawn is grafted under the harness's existing demi root, beside file editing.
-  expect(help).toContain('demi create')
+  expect(help).toContain('demi file create')
   expect(help).toContain('demi agent')
   expect(help).toContain('demi agent steer')
   expect(help).toContain('demi agent abort')
@@ -283,19 +254,19 @@ test('coding agent harness leaves shell lifecycle to host assembly', () => {
   expect(harness.dispose).toBeUndefined()
 })
 
-function createRuntimeFromHarness(
+async function createRuntimeFromHarness(
   harness: AgentHarness<Record<string, never>>,
   cwd: string,
-): { environment: BashEnvironment; runtime: AgentHarnessRuntime<Record<string, never>>; state: Record<string, never> } {
+): Promise<{ environment: ShellEnvironment; runtime: AgentHarnessRuntime<Record<string, never>>; state: Record<string, never> }> {
   const state = harness.initialState()
-  const harnessContext = { state, cwd }
+  const harnessContext = { state, cwd, agentSessionId: 'test-session' }
   const registry = new CommandRegistry()
   const commands = harness.commands?.(harnessContext) ?? []
   if (commands instanceof Promise) throw new Error('test harness commands must be synchronous')
   for (const command of commands) registry.register(command)
   const host = harness.host(harnessContext)
   if (host instanceof Promise) throw new Error('test harness host must be synchronous')
-  const environment = new BashEnvironment({
+  const environment = await hostlessShell({
     host,
     commands: registry,
     initialEnv: { PATH: process.env.PATH ?? '' },
@@ -328,7 +299,7 @@ function renderCommandsPrompt(commands: readonly Command[]): string {
 class RecordingHost implements Host {
   readonly defaultCwd: string
   readonly commandArtifactsDir: string
-  readonly identity = { uid: 1000, gid: 1000, hostname: 'test' }
+  readonly identity = { uid: 1000, gid: 1000, hostname: 'test', homeDir: '/' }
   readonly fs: RecordingFileSystem
   readonly store: HostStore = new MemoryHostStore()
   processSpawnCalls = 0

@@ -1,0 +1,78 @@
+import { importCommandModule, runRegisteredCommand, type Command, type CommandModule, type DispatchIO, type Host, type RuntimeModule } from '@demicodes/shell'
+import { errorMessage } from '@demicodes/utils'
+import type { Manifest } from '../manifest/schema'
+import type { RpcTransport } from './rpc'
+import type { ManifestSource } from './source'
+import { treeFromManifest } from './tree'
+
+export interface LoaderOptions {
+  source: ManifestSource
+  /** The Host `runtime` modules run against. */
+  host: Host
+  /** Carries `rpc` invocations; absent, the embedder serves only `runtime` commands. */
+  rpc?: RpcTransport
+}
+
+export interface Loader {
+  manifest: Manifest
+  /** The manifest's roots as command trees; help and `rootPaths` come from here. */
+  roots: Command[]
+  /** Runs `root argv…` with the given stdio; usage errors print to stderr and exit 1. */
+  dispatch(root: string, argv: readonly string[], io: DispatchIO): Promise<number>
+}
+
+/**
+ * The one place that knows how to run a command (`docs/demi-next/commands.md`
+ * § The loader). A `runtime` module runs in this process against `host`;
+ * an `rpc` invocation goes to the transport.
+ */
+export async function createLoader(options: LoaderOptions): Promise<Loader> {
+  const manifest = await options.source.manifest()
+  const roots = treeFromManifest(manifest, options.rpc)
+  const loadModule = moduleLoader(manifest, options.source)
+  return {
+    manifest,
+    roots,
+    dispatch: async (root, argv, io) => {
+      const tree = roots.find((candidate) => candidate.name === root)
+      if (!tree) {
+        await io.stderr(`${root}: not a root command of this manifest\n`)
+        return 127
+      }
+      try {
+        const result = await runRegisteredCommand(tree, {
+          argv: [root, ...argv],
+          stdin: io.stdin,
+          stdinStream: io.stdinStream,
+          env: io.env,
+          cwd: io.cwd,
+          io: { stdout: io.stdout, stderr: io.stderr },
+          host: options.host,
+          signal: io.signal,
+          loadModule,
+          onRunningHint: io.onRunningHint,
+        })
+        return result.exitCode
+      } catch (error) {
+        await io.stderr(`${root}: ${errorMessage(error)}\n`)
+        return 1
+      }
+    },
+  }
+}
+
+/**
+ * Module import by file when the source names files: the tree carries each
+ * module's text, the manifest maps the text back to its hash, the source
+ * maps the hash to a path.
+ */
+function moduleLoader(manifest: Manifest, source: ManifestSource): ((module: RuntimeModule) => Promise<CommandModule>) | undefined {
+  if (!source.modulePath) return undefined
+  const modulePath = source.modulePath.bind(source)
+  const hashes = new Map(Object.entries(manifest.modules).map(([hash, javascript]) => [javascript, hash]))
+  return (module) => {
+    const hash = hashes.get(module)
+    if (hash === undefined) throw new Error('loader: the module text is not in the manifest')
+    return importCommandModule(modulePath(hash))
+  }
+}

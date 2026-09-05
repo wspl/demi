@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@demicodes/agent": "workspace:^",
+    "@demicodes/host-virtual": "workspace:^",
     "@demicodes/shell": "workspace:^"
   },
   "license": "Apache-2.0",

@@ -1,50 +1,59 @@
-import type { AgentHarness } from '@demicodes/agent'
-import { CommandRegistry, type Command, type Host } from '@demicodes/shell'
+import type { AgentCommandsContext, AgentHarness } from '@demicodes/agent'
+import { CommandRegistry, RESERVED_COMMAND_NAMES, type Command, type Host } from '@demicodes/shell'
 import { createDemiCommand } from './demi-command'
 import { createFileReferenceResolver } from './reference-resolver'
-import { createTodoCommand } from './todo-command'
 
 export type CodingState = Record<string, never>
 
+/** Per-action Host resolution (`AgentHarness.host` signature) for multi-target products. */
+export type CodingHostResolver = AgentHarness<CodingState>['host']
+
+/** Session-aware command construction (`AgentHarness.commands` signature). */
+export type CodingCommandsBuilder = (ctx: AgentCommandsContext<CodingState>) => Promise<Command[]> | Command[]
+
 export interface CodingAgentHarnessOptions {
-  host: Host
+  /** A fixed Host, or a resolver routing each action to its execution target. */
+  host: Host | CodingHostResolver
   referenceHost?: Host
-  commands?: Command[]
+  /** Replaces the default command set; a builder closes over the session id. */
+  commands?: Command[] | CodingCommandsBuilder
+  /** Per-round context injection (`AgentHarness.preamble` signature). */
+  preamble?: AgentHarness<CodingState>['preamble']
 }
 
 export interface CodingCommandRegistryOptions {
-  includeDemi?: boolean
   commands?: Command[]
 }
 
 export function createCodingCommandRegistry(options: CodingCommandRegistryOptions = {}): CommandRegistry {
-  const registry = new CommandRegistry()
-  const commands = options.commands ?? [
-    ...(options.includeDemi ? [createDemiCommand()] : []),
-    createTodoCommand(),
-  ]
+  const registry = new CommandRegistry(RESERVED_COMMAND_NAMES)
+  const commands = options.commands ?? defaultCodingCommands()
   for (const command of commands) registry.register(command)
   return registry
 }
 
 export function createCodingAgentHarness(options: CodingAgentHarnessOptions): AgentHarness<CodingState> {
   const commands = options.commands ?? defaultCodingCommands()
-  const referenceHost = options.referenceHost ?? options.host
-  const resolveReferences = createFileReferenceResolver<CodingState>(referenceHost)
+  const buildCommands: CodingCommandsBuilder = typeof commands === 'function' ? commands : () => [...commands]
+  const resolveHost: CodingHostResolver =
+    typeof options.host === 'function' ? options.host : () => options.host as Host
+  const resolveReferences = createFileReferenceResolver<CodingState>(
+    options.referenceHost ?? ((ctx) => resolveHost(ctx)),
+  )
   return {
     name: 'coding',
     initialState: () => ({}),
-    host: () => options.host,
-    commands: () => [...commands],
+    host: resolveHost,
+    commands: buildCommands,
+    ...(options.preamble ? { preamble: options.preamble } : {}),
     agents: () => [
       {
         name: 'explore',
-        description: 'Read-only explorer for searching and reading the workspace; cannot write files or spawn processes.',
-        readonly: true,
+        description: 'Explorer for searching and reading the workspace; reports findings and changes nothing.',
         systemPrompt: (ctx) => {
           const sections = [
-            'You are a read-only exploration agent. Search and read the workspace with shell session tools; answer the task brief precisely.',
-            'The host rejects file writes and process spawns: do not attempt to edit, create, or execute anything — report findings instead.',
+            'You are an exploration agent. Search and read the workspace with shell session tools; answer the task brief precisely.',
+            'Do not edit, create, or execute anything — report findings instead.',
             'Use shell_exec with a required timeoutMs (an observation window, not a kill deadline); use shell_status to poll a running command.',
           ]
           if (ctx.commandsPrompt.trim()) sections.push(`Registered commands:\n\n${ctx.commandsPrompt}`)
@@ -83,5 +92,5 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
 }
 
 function defaultCodingCommands(): Command[] {
-  return [createDemiCommand(), createTodoCommand()]
+  return [createDemiCommand()]
 }

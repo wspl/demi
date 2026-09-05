@@ -35,8 +35,12 @@ const documentBlocks = computed(() =>
   props.content.filter((b): b is Extract<UserContentBlock, { type: 'document' }> => b.type === 'document'),
 )
 
-function imageSrc(source: ImageBlock['source']): string {
+/** Transcript frames carry media by reference: the bytes are one GET away. */
+type RefSource = { type: 'ref'; ref: string; mediaType: string }
+
+function imageSrc(source: ImageBlock['source'] | RefSource): string {
   if (source.type === 'url') return source.url
+  if (source.type === 'ref') return `/api/blobs/${source.ref}?type=${encodeURIComponent(source.mediaType)}`
   return URL.createObjectURL(new Blob([source.data as BlobPart], { type: source.mediaType }))
 }
 

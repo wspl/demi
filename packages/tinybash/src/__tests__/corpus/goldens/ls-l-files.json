@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "-rw-r--r-- 1 zan zan  0 Jan 15  2024 empty.txt\n-rw-r--r-- 1 zan zan 28 Jan 15  2024 notes.txt\n-rwxr-xr-x 1 zan zan 18 Jan 15  2024 script.sh\n",
+  "stderr": "",
+  "user": "zan",
+  "group": "zan"
+}

@@ -1,11 +1,13 @@
+import { memoryAgentStores } from '../testing'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { hostlessShellFactory } from '@demicodes/host-virtual/testing'
 import { waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { defineProvider, type Provider, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { AgentServer, type ClientSessionEvent } from '../index'
@@ -72,7 +74,7 @@ test('restored sessions share one live state object between harness and session'
     },
   }
 
-  const server = new AgentServer({ agent: harness, providers: [runtimeProvider(turns)] })
+  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: hostlessShellFactory, agent: harness, providers: [runtimeProvider(turns)] })
   const client = server.client()
   await client.open(selection, cwd, sessionId)
   await client.send([{ type: 'text', text: 'first' }])
@@ -102,7 +104,7 @@ test('opening an owned session id takes it over and closes the previous connecti
   const sessionId = globalThis.crypto.randomUUID()
   const harness: AgentHarness<CounterState> = createStatefulHarness(cwd, [])
   const turns = (): ConstructorParameters<typeof StubProvider>[0] => [[events.text('hi'), events.response()]]
-  const server = new AgentServer({ agent: harness, providers: [runtimeProvider(turns)] })
+  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: hostlessShellFactory, agent: harness, providers: [runtimeProvider(turns)] })
 
   const first = server.client()
   const firstEvents: ClientSessionEvent[] = []
@@ -128,7 +130,7 @@ test('a connection reopening after takeover does not disturb the new owner', asy
   const sessionId = globalThis.crypto.randomUUID()
   const harness: AgentHarness<CounterState> = createStatefulHarness(cwd, [])
   const turns = (): ConstructorParameters<typeof StubProvider>[0] => [[events.text('hi'), events.response()]]
-  const server = new AgentServer({ agent: harness, providers: [runtimeProvider(turns)] })
+  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: hostlessShellFactory, agent: harness, providers: [runtimeProvider(turns)] })
 
   const first = server.client()
   await first.open(selection, cwd, sessionId)

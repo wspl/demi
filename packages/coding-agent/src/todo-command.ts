@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Command, CommandStorage } from '@demicodes/shell'
+import type { CommandGroup, CommandStorage } from '@demicodes/shell'
 
 const TODO_STORAGE_KEY = 'todos.json'
 
@@ -15,7 +15,7 @@ const TodoListSchema = z.array(TodoItemSchema)
 
 type TodoItem = z.infer<typeof TodoItemSchema>
 
-export function createTodoCommand(): Command {
+export function createTodoCommand(): CommandGroup {
   return {
     name: 'todo',
     summary: 'Manage an agent-session-scoped task list for coding work.',
@@ -28,6 +28,7 @@ export function createTodoCommand(): Command {
         output: {
           json: z.object({ todos: TodoListSchema }),
         },
+        kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           if (parsed.json) {
@@ -52,6 +53,7 @@ export function createTodoCommand(): Command {
         output: {
           json: z.object({ todo: TodoItemSchema }),
         },
+        kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           const todo: TodoItem = {
@@ -80,6 +82,7 @@ export function createTodoCommand(): Command {
         output: {
           json: z.object({ todo: TodoItemSchema }),
         },
+        kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           const todo = findTodo(todos, String(parsed.values.id))
@@ -107,6 +110,7 @@ export function createTodoCommand(): Command {
         output: {
           json: z.object({ todo: TodoItemSchema }),
         },
+        kind: 'rpc',
         run: async ({ parsed, io, storage }) => {
           const todos = await readTodos(storage)
           const todo = findTodo(todos, String(parsed.values.id))

@@ -12,12 +12,9 @@ import {
   type AgentToolInvokeContext,
   type AgentToolInvokeResult,
 } from '@demicodes/agent'
-import {
-  BashEnvironment,
-  CommandRegistry,
-  type BashEnvironmentOptions,
-} from '@demicodes/shell'
-import { LocalHost } from '@demicodes/host-local'
+import { CommandRegistry, type ShellEnvironment, type ShellEnvironmentOptions } from '@demicodes/shell'
+import { hostlessShell, probeCommand } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import type { InferenceRequest } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { createCodingAgentHarness } from '../index'
@@ -39,21 +36,21 @@ test('coding agent completes an demi/todo workflow through shell session tools',
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-marathon-'))
   const host = new LocalHost(root)
   const harness = createCodingAgentHarness({ host })
-  const { environment, runtime } = createRuntimeFromHarness(harness, root, {
+  const { environment, runtime } = await createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-shell',
   })
   const provider = new StubProvider([
     [
       events.toolCall('create-file', 'shell_exec', {
         timeoutMs: 1_000,
-        script: "demi create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
+        script: "demi file create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
       }),
     ],
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.stdout).toBe('Created src/app.ts')
-      return [events.toolCall('add-todo', 'shell_exec', { shellId: result.shellId, script: 'todo add \"Run tests\" --json', timeoutMs: 1_000 })]
+      return [events.toolCall('add-todo', 'shell_exec', { shellId: result.shellId, script: 'demi todo add \"Run tests\" --json', timeoutMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -63,7 +60,7 @@ test('coding agent completes an demi/todo workflow through shell session tools',
         events.toolCall('edit-file', 'shell_exec', {
           shellId: result.shellId,
           timeoutMs: 1_000,
-          script: 'demi edit src/app.ts --old "1" --new "2"',
+          script: 'demi file edit src/app.ts --old "1" --new "2"',
         }),
       ]
     },
@@ -88,14 +85,14 @@ test('coding agent completes an demi/todo workflow through shell session tools',
   ])
   const file = await environment.exec({ shellId: 'coding-shell', script: 'cat src/app.ts' })
   expect(file.stdout.delta).toBe('export const value = 2\n')
-  const todos = await environment.exec({ agentSessionId: session.id(), shellId: 'coding-shell', script: 'todo list --json' })
+  const todos = await environment.exec({ agentSessionId: session.id(), shellId: 'coding-shell', script: 'demi todo list --json' })
   expect(JSON.parse(todos.stdout.delta)).toEqual({ todos: [{ id: 'T1', text: 'Run tests', status: 'pending' }] })
 })
 
 test('coding agent preserves workflow state across multiple user messages', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-multiturn-'))
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-  const { environment, runtime } = createRuntimeFromHarness(harness, root, {
+  const { environment, runtime } = await createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-multiturn-shell',
   })
   const provider = new StubProvider([
@@ -103,10 +100,10 @@ test('coding agent preserves workflow state across multiple user messages', asyn
       events.toolCall('start-workflow', 'shell_exec', {
         timeoutMs: 1_000,
         script: [
-          "demi create note.txt <<'EOF'",
+          "demi file create note.txt <<'EOF'",
           'first turn',
           'EOF',
-          'todo add "carry state" --json',
+          'demi todo add "carry state" --json',
         ].join('\n'),
       }),
     ],
@@ -126,7 +123,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
       return [
         events.toolCall('continue-workflow', 'shell_exec', {
           timeoutMs: 1_000,
-          script: ['todo done T1 --json', "printf '\\n'", 'todo list --json', "printf '\\n'", 'cat note.txt'].join('\n'),
+          script: ['demi todo done T1 --json', "printf '\\n'", 'demi todo list --json', "printf '\\n'", 'cat note.txt'].join('\n'),
         }),
       ]
     },
@@ -145,7 +142,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
   await session.send([{ type: 'text', text: 'Continue the workflow and close the todo.' }])
 
   expect(provider.consumedTurns).toBe(4)
-  const todos = await environment.exec({ agentSessionId: 'coding-multiturn-agent', script: 'todo list --json' })
+  const todos = await environment.exec({ agentSessionId: 'coding-multiturn-agent', script: 'demi todo list --json' })
   expect(JSON.parse(todos.stdout.delta)).toEqual({
     todos: [{ id: 'T1', text: 'carry state', status: 'done' }],
   })
@@ -154,7 +151,7 @@ test('coding agent preserves workflow state across multiple user messages', asyn
 test('coding agent preserves cwd and env when reusing a shell session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-shell-state-'))
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-  const { runtime } = createRuntimeFromHarness(harness, root, {
+  const { runtime } = await createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-state-shell',
   })
   const provider = new StubProvider([
@@ -164,7 +161,7 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
         script: [
           'mkdir -p pkg',
           'cd pkg',
-          'export WORKFLOW_TOKEN=kept',
+          'WORKFLOW_TOKEN=kept',
           'printf "prepared:%s:%s" "$PWD" "$WORKFLOW_TOKEN"',
         ].join('\n'),
       }),
@@ -195,11 +192,11 @@ test('coding agent preserves cwd and env when reusing a shell session', async ()
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
-test('coding agent iterates from a failing project test to a passing fix', async () => {
+test('coding agent iterates from a failing check to a passing fix', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-test-fix-'))
   const host = new LocalHost(root)
   const harness = createCodingAgentHarness({ host })
-  const { environment, runtime } = createRuntimeFromHarness(harness, root, {
+  const { environment, runtime } = await createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-fix-shell',
   })
   const provider = new StubProvider([
@@ -208,8 +205,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
         timeoutMs: 1_000,
         script: [
           'mkdir -p src',
-          "demi create src/todo.ts <<'EOF'\nexport function addTodo(items: string[], text: string): string[] {\n  return items\n}\nEOF",
-          "demi create src/todo.test.ts <<'EOF'\nimport { expect, test } from 'bun:test'\nimport { addTodo } from './todo'\n\ntest('adds a todo item', () => {\n  expect(addTodo([], 'ship tests')).toEqual(['ship tests'])\n})\nEOF",
+          "demi file create src/todo.ts <<'EOF'\nexport function addTodo(items: string[], text: string): string[] {\n  return items\n}\nEOF",
         ].join('\n'),
       }),
     ],
@@ -218,7 +214,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
       expect(result.status).toBe('exited')
       expect(result.exitCode).toBe(0)
       expect(result.stdout).toContain('Created src/todo.ts')
-      return [events.toolCall('run-failing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts', timeoutMs: 1_000 })]
+      return [events.toolCall('run-failing-tests', 'shell_exec', { shellId: result.shellId, script: "grep 'items, text' src/todo.ts > /dev/null || printf 'FAIL adds a todo item: ship tests\\n'; grep 'items, text' src/todo.ts > /dev/null && printf '1 pass\\n'", timeoutMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -234,7 +230,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
         events.toolCall('fix-source', 'shell_exec', {
           shellId: result.shellId,
           timeoutMs: 1_000,
-          script: 'demi edit src/todo.ts --old "return items" --new "return [...items, text]"',
+          script: 'demi file edit src/todo.ts --old "return items" --new "return [...items, text]"',
         }),
       ]
     },
@@ -242,7 +238,7 @@ test('coding agent iterates from a failing project test to a passing fix', async
       const result = latestShellResult(request)
       expect(result.status).toBe('exited')
       expect(result.exitCode).toBe(0)
-      return [events.toolCall('run-passing-tests', 'shell_exec', { shellId: result.shellId, script: 'bun test src/todo.test.ts', timeoutMs: 1_000 })]
+      return [events.toolCall('run-passing-tests', 'shell_exec', { shellId: result.shellId, script: "grep 'items, text' src/todo.ts > /dev/null || printf 'FAIL adds a todo item: ship tests\\n'; grep 'items, text' src/todo.ts > /dev/null && printf '1 pass\\n'", timeoutMs: 1_000 })]
     },
     (request: InferenceRequest) => {
       const result = latestShellResult(request)
@@ -263,13 +259,13 @@ test('coding agent iterates from a failing project test to a passing fix', async
 test('coding agent controls a long foreground command with status and abort', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-long-command-'))
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
-  const { runtime } = createRuntimeFromHarness(harness, root, {
+  const { runtime } = await createRuntimeFromHarness(harness, root, {
     shellIdFactory: () => 'coding-long-shell',
   })
   const provider = new StubProvider([
     [
       events.toolCall('start-long', 'shell_exec', {
-        script: "sh -c 'printf ready; sleep 10'",
+        script: 'printf ready && probe hold 10000',
         timeoutMs: 1_000,
       }),
     ],
@@ -296,7 +292,7 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
   const root = await mkdtemp(join(tmpdir(), 'demi-coding-standard-tools-'))
   const harness = createCodingAgentHarness({ host: new LocalHost(root) })
   let session: AgentSession<Record<string, never>> | null = null
-  const { runtime } = createRuntimeFromHarness(
+  const { runtime } = await createRuntimeFromHarness(
     harness,
     root,
     {
@@ -326,7 +322,7 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
     [
       events.toolCall('start-reader', 'shell_exec', {
         description: 'Start reader',
-        script: 'sh -c \'IFS= read -r line; printf "DEMI_FULL_INPUT:%s" "$line"\'',
+        script: 'probe stdin',
         timeoutMs: 1,
       }),
     ],
@@ -379,13 +375,13 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
           ]
         }
         expect(result.status).toBe('exited')
-        expect(result.stdout).toContain('DEMI_FULL_INPUT:typed')
+        expect(result.stdout).toContain('typed')
         phase = 'await-long-ready'
         poll = 0
         return [
           events.toolCall('start-long', 'shell_exec', {
             description: 'Start long command',
-            script: "sh -c 'printf long-ready; sleep 10'",
+            script: 'printf long-ready && probe hold 10000',
             timeoutMs: 20,
           }),
         ]
@@ -451,24 +447,25 @@ test('coding agent exercises all standard shell control tools in one flow', asyn
   expect(session.transcript().pendingToolCalls()).toHaveLength(0)
 })
 
-function createRuntimeFromHarness(
+async function createRuntimeFromHarness(
   harness: AgentHarness<Record<string, never>>,
   cwd: string,
-  options: Omit<BashEnvironmentOptions, 'host' | 'commands'> = {},
+  options: ShellEnvironmentOptions = {},
   scheduleYield?: (
     ctx: AgentToolInvokeContext<Record<string, never>>,
     durationMs: number,
   ) => AgentToolInvokeResult,
-): { environment: BashEnvironment; runtime: AgentHarnessRuntime<Record<string, never>> } {
+): Promise<{ environment: ShellEnvironment; runtime: AgentHarnessRuntime<Record<string, never>> }> {
   const state = harness.initialState()
-  const harnessContext = { state, cwd }
+  const harnessContext = { state, cwd, agentSessionId: 'test-session' }
   const registry = new CommandRegistry()
   const commands = harness.commands?.(harnessContext) ?? []
   if (commands instanceof Promise) throw new Error('test harness commands must be synchronous')
   for (const command of commands) registry.register(command)
+  registry.register(probeCommand())
   const host = harness.host(harnessContext)
   if (host instanceof Promise) throw new Error('test harness host must be synchronous')
-  const environment = new BashEnvironment({
+  const environment = await hostlessShell({
     initialEnv: { PATH: process.env.PATH ?? '' },
     ...options,
     host,
