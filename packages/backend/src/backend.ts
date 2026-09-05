@@ -99,7 +99,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // names — a conversation or a subagent — against the tree and the Host its
   // shell was built with.
   let manifest: Promise<Manifest> | null = null
-  const sessionShells = new Map<string, { host: Host; commands: CommandRegistry }>()
+  const sessionCommands = new Map<string, { rootSessionId: string; commands: CommandRegistry }>()
   const pipes = new PipeBroker()
   const runnerRegistry = new RunnerRegistry({
     control,
@@ -115,12 +115,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         const roots = injectSubagentCommand(commandsFor(''), subagentCommandShape(profiles.map((profile) => profile.name)))
         return buildManifest(roots, { transpile: transpileCommandModule })
       })()),
-    rpc: async (call, io) => {
-      const shell = sessionShells.get(call.agentSessionId)
-      if (!shell) throw new Error(`no live session ${call.agentSessionId} behind this job`)
+    rpc: async (call, io, execution) => {
+      const shell = sessionCommands.get(call.agentSessionId)
+      if (!shell || shell.rootSessionId !== execution.conversationId) throw new Error(`no authorized session ${call.agentSessionId} behind this job`)
       const transport = inProcessRpc(shell.commands.list(), {
-        storage: new AgentSessionCommandStorage(shell.host.store, call.agentSessionId),
-        host: shell.host,
+        storage: new AgentSessionCommandStorage(execution.host.store, call.agentSessionId),
+        host: execution.host,
       })
       const result = await transport({
         root: call.root,
@@ -133,7 +133,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         // write them here.
         stdin: io.stdin?.stream() ?? null,
         cwd: call.cwd,
-        env: call.env,
+        env: { ...call.env, DEMI_SESSION_ID: call.agentSessionId, DEMI_SHELL_ID: call.shellId },
         io: io.commandIO(),
         signal: io.signal,
         stdinStream: io.stdinStream,
@@ -233,7 +233,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     if (!environment) {
       const sessionHosts = bySession
       environment = (async (): Promise<ShellEnvironment> => {
-        sessionShells.set(ctx.agentSessionId, { host: ctx.host, commands: ctx.commands })
+        sessionCommands.set(ctx.agentSessionId, { rootSessionId: ctx.rootSessionId, commands: ctx.commands })
         const shell = shellOptionsFor(ctx)
         const info = targets.hostInfo(ctx.host)
         if (ctx.host instanceof VirtualHost) {

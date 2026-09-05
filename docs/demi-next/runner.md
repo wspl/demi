@@ -188,7 +188,7 @@ Relay and outputs:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| r → b | `rpc_call { callId, agentSessionId, shellId, root, path, argv, args, json, cwd, env, stdin: boolean }` | an `rpc` command of some root invoked on this target; `stdin` says whether the process has a pipe on fd 0 |
+| r → b | `rpc_call { callId, jobId, agentSessionId, shellId, root, path, argv, args, json, cwd, env, stdin: boolean }` | an `rpc` command of some root invoked on this target; `stdin` says whether the process has a pipe on fd 0 |
 | b → r | `rpc_pipes { callId, stdin?, stdout }` | the call's pipe ends, sent before anything else for the call: the runner `PUT`s the process's pipe into `stdin` and `GET`s `stdout` into the process (§ Pipes) |
 | r → b | `rpc_stdin { callId, bytes }` / `rpc_stdin_end { callId }` | the live stdin the command is steered with (`shell_write`); never the pipe |
 | r → b | `rpc_cancel { callId }` | the invoking process or owning job ended; abort the backend handler, close its live stdin and fail its pipes |
