@@ -15,9 +15,9 @@ export const demoAccount: SidebarAccount = {
 
 export function demoProjects(): SidebarProject[] {
   return [
-    { id: 'p-demi', name: 'demi', host: 'alex-mbp', hostKind: 'device', hostOnline: true, path: '/Users/alex/Projects/demi' },
-    { id: 'p-assets', name: 'renderfarm', host: 'build-01', hostKind: 'device', hostOnline: false, path: '/srv/renderfarm' },
-    { id: 'p-dotfiles', name: 'dotfiles', host: 'alex-mbp', hostKind: 'device', hostOnline: true, path: '/Users/alex/dotfiles' },
+    { id: 'p-demi', name: 'demi', host: 'alex-mbp', hostKind: 'device', path: '/Users/alex/Projects/demi' },
+    { id: 'p-assets', name: 'renderfarm', host: 'build-01', hostKind: 'device', path: '/srv/renderfarm' },
+    { id: 'p-dotfiles', name: 'dotfiles', host: 'alex-mbp', hostKind: 'device', path: '/Users/alex/dotfiles' },
   ]
 }
 
