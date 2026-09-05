@@ -120,3 +120,21 @@ test('hostless attachment names are unique', () => {
   store.attachHost(conversation, 'build', '/home/build', 'worker')
   expect(conversation.attachedHosts.map((host) => host.name)).toEqual(['worker', 'worker-2'])
 })
+
+test('manual order survives new activity and rejects cross-project reorder', () => {
+  const { store } = newConversation()
+  const one = store.create('demi')
+  const two = store.create('demi')
+  store.reorder(one, two)
+  expect(store.items.findIndex((item) => item.id === one)).toBeLessThan(
+    store.items.findIndex((item) => item.id === two),
+  )
+  const before = store.items.map((item) => item.id)
+  const item = store.items.find((item) => item.id === two)!
+  item.draft = 'Keep the order'
+  store.send(item)
+  finish(store)
+  expect(store.items.map((item) => item.id)).toEqual(before)
+  store.reorder(one, 'writing')
+  expect(store.items.map((item) => item.id)).toEqual(before)
+})
