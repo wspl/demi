@@ -4307,4 +4307,4 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Restarted the independent gallery service on port 18933 and reopened the catalog. Added the bidirectional synchronization requirement to AGENTS.md.
 - Audit found stale collapsed-rail/row-action descriptions and incomplete host-menu specimens. Corrected descriptions, restored unread attention fixtures, and aligned host submenu actions/icons.
 - Moved HostPicker into web-ui/hosts so product and gallery use the same filtering, Cloud and bound-device rules. Product-specific store workflows remain in web; the explicit coverage boundary is recorded in web-gallery-sync.md rather than claiming full application parity.
-- All three browser typechecks passed. GitHub SSL connectivity still prevents pushing checkpoints.
+- All three browser typechecks passed. GitHub connectivity recovered on the checkpoint push; the accumulated prototype changes and working principles are now pushed to feat/demi-next.
