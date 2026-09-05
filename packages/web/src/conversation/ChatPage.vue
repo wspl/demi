@@ -28,11 +28,6 @@ const project = computed(() =>
 const hasProvider = computed(() =>
   resources.providers.some((p) => p.id === conversation.value?.providerId && p.isAvailable),
 )
-
-function chooseTarget() {
-  resources.targetMode = 'switch'
-  resources.targetOpen = true
-}
 </script>
 
 <template>
@@ -56,7 +51,7 @@ function chooseTarget() {
         <WorkspaceInfo
           :project="project"
           :device="resources.devices.find((device) => device.id === project?.deviceId)"
-          @select="chooseTarget"
+          :conversation="conversation"
         />
       </div>
       <Tooltip content="Archive conversation" class="col-start-2 row-start-1 sm:col-start-3">
