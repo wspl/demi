@@ -1,3 +1,4 @@
+import { memoryAgentStores } from '../testing'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -197,7 +198,7 @@ test('AgentServer keeps the custom preview policy across model changes and live 
     })
   }
   const runtime = new StubProvider(turns)
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
     agent: { name: 'preview', initialState: () => ({}), host: () => host, systemPrompt: () => 'test' },
     providers: [defineProvider({ id: 'stub', displayName: 'Stub', createRuntime: () => runtime })],
     shellEnvironment: hostlessShellFactory,

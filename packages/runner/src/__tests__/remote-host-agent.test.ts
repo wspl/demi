@@ -1,3 +1,4 @@
+import { memoryAgentStores } from '@demicodes/agent/testing'
 import { mkdtemp } from 'node:fs/promises'
 import { existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -108,7 +109,7 @@ test('bare AgentServer executes over a live runner; death mid-command is a tool 
       ]),
   })
 
-  const agentServer = new AgentServer({
+  const agentServer = new AgentServer({ store: memoryAgentStores(),
     agent: harness,
     providers: [provider],
     shellEnvironment: (ctx) => new RemoteShellEnvironment({ ...ctx.shell, host: remoteHost }),

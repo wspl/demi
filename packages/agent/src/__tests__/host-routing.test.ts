@@ -1,3 +1,4 @@
+import { memoryAgentStores } from '../testing'
 import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -69,7 +70,7 @@ test('action metadata switches Host while the same Host keeps its shell state', 
         [events.text('done'), events.response()],
       ]),
   })
-  const server = new AgentServer({ shellEnvironment: hostlessShellFactory, agent: routedHarness(hosts), providers: [provider] })
+  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: hostlessShellFactory, agent: routedHarness(hosts), providers: [provider] })
   const client = server.client()
   const shellOutputs: ClientSessionEvent[] = []
   client.subscribe((event) => {
@@ -108,7 +109,7 @@ test('a command handle cannot be controlled from another action Host', async () 
   })
   const commandId = 'alice-command'
   let commandIndex = 0
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
     shellEnvironment: hostlessShellFactory,
     agent: routedHarness(hosts),
     providers: [provider],

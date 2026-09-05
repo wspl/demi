@@ -1,60 +1,45 @@
-import { bytesToBase64, errorCode, noop } from '@demicodes/utils'
-import { type ShellEnvironment, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
+import { errorCode, noop } from '@demicodes/utils'
+import type { ShellEnvironment } from '@demicodes/shell'
+import type { SessionNode } from '../node/node'
 import type { AgentSession } from '../session/session'
 import type { ChildSupervisor } from '../subagent/supervisor'
 import type { ServerFrame } from '../protocol/frames'
-import type { AgentHarness, AgentToolInvokeContext, SessionEvent } from '../types'
-import type { ShellEnvironmentFactory } from './server'
+import type { AgentToolInvokeContext, SessionEvent } from '../types'
 import { errorDiagnostics, progressToOutput, progressToShellOutput } from './summaries'
 
-export interface LiveSessionOptions {
-  agentSessionId: string
-  session: AgentSession<unknown>
-  supervisor: ChildSupervisor<unknown>
-  agent: AgentHarness<unknown>
-  commandRegistry: CommandRegistry
-  cwd: string
-  providerId: string
-  shellOptions: ShellEnvironmentOptions
-  shellEnvironment: ShellEnvironmentFactory
-}
-
 /**
- * One running session, owned by the server (via the ownership registry), not
- * by any transport binding. It carries everything session-scoped — the
- * AgentSession, subagent supervisor, per-Host shell environments — and emits
- * server frames through a swappable sink: the currently attached binding, or
- * nowhere while detached (turns keep running either way).
+ * The root node as a transport sees it, owned by the server (via the
+ * ownership registry), not by any transport binding: the node itself plus
+ * the frame sink — the currently attached binding, or nowhere while detached
+ * (turns keep running either way) — and the provider the client named.
  */
 export class LiveSession {
-  readonly agentSessionId: string
-  readonly session: AgentSession<unknown>
-  readonly supervisor: ChildSupervisor<unknown>
-  readonly agent: AgentHarness<unknown>
-  readonly commandRegistry: CommandRegistry
-  readonly commandNames: ReadonlySet<string>
-  readonly cwd: string
+  readonly node: SessionNode<unknown>
   providerId: string
   sink: (frame: ServerFrame) => void = noop
 
-  private readonly shellOptions: ShellEnvironmentOptions
-  private readonly shellEnvironment: ShellEnvironmentFactory
-  private readonly environmentsByHost = new Map<Host, ShellEnvironment>()
-  private readonly pendingEnvironmentsByHost = new Map<Host, Promise<ShellEnvironment>>()
   private readonly unsubscribeSession: () => void
 
-  constructor(options: LiveSessionOptions) {
-    this.agentSessionId = options.agentSessionId
-    this.session = options.session
-    this.supervisor = options.supervisor
-    this.agent = options.agent
-    this.commandRegistry = options.commandRegistry
-    this.commandNames = new Set(options.commandRegistry.list().map((command) => command.name))
-    this.cwd = options.cwd
-    this.providerId = options.providerId
-    this.shellOptions = options.shellOptions
-    this.shellEnvironment = options.shellEnvironment
-    this.unsubscribeSession = options.session.subscribe((event) => this.handleSessionEvent(event))
+  constructor(node: SessionNode<unknown>, providerId: string) {
+    this.node = node
+    this.providerId = providerId
+    this.unsubscribeSession = node.session.subscribe((event) => this.handleSessionEvent(event))
+  }
+
+  get agentSessionId(): string {
+    return this.node.id
+  }
+
+  get session(): AgentSession<unknown> {
+    return this.node.session
+  }
+
+  get supervisor(): ChildSupervisor<unknown> {
+    return this.node.supervisor
+  }
+
+  get cwd(): string {
+    return this.node.cwd
   }
 
   attachSink(sink: (frame: ServerFrame) => void): void {
@@ -67,26 +52,30 @@ export class LiveSession {
 
   async dispose(): Promise<void> {
     try {
-      await this.supervisor.dispose()
-      await this.session.dispose()
-      const pendingEnvironments = await Promise.allSettled(this.pendingEnvironmentsByHost.values())
-      const environments = new Set(this.environmentsByHost.values())
-      for (const result of pendingEnvironments) {
-        if (result.status === 'fulfilled') environments.add(result.value)
-      }
-      await Promise.all([...environments].map((environment) => environment.disposeAllShells()))
-      await this.agent.dispose?.({
-        agentSessionId: this.session.id(),
-        state: this.session.state(),
-        cwd: this.cwd,
-        transcript: this.session.transcript(),
+      await this.node.supervisor.dispose()
+      await this.node.session.dispose()
+      await this.node.disposeEnvironments()
+      await this.node.agent.dispose?.({
+        agentSessionId: this.node.id,
+        state: this.node.session.state(),
+        cwd: this.node.cwd,
+        transcript: this.node.session.transcript(),
       })
     } finally {
       this.unsubscribeSession()
       this.detachSink()
-      this.environmentsByHost.clear()
-      this.pendingEnvironmentsByHost.clear()
     }
+  }
+
+  hasShell(shellId: string): boolean {
+    return this.node.hasShell(shellId)
+  }
+
+  resolveEnvironment(
+    ctx: Pick<AgentToolInvokeContext<unknown>, 'state' | 'metadata'>,
+    handle: { shellId?: string; commandId?: string },
+  ): Promise<ShellEnvironment> {
+    return this.node.resolveEnvironment(ctx, handle)
   }
 
   private handleSessionEvent(event: SessionEvent): void {
@@ -140,70 +129,5 @@ export class LiveSession {
         status: shell.status,
       })
     }
-  }
-
-  hasShell(shellId: string): boolean {
-    return this.environmentForShell(shellId) !== null || this.supervisor.hasShell(shellId)
-  }
-
-  async resolveEnvironment(
-    ctx: Pick<AgentToolInvokeContext<unknown>, 'agentSessionId' | 'state' | 'cwd' | 'metadata'>,
-    handle: { shellId?: string; commandId?: string },
-  ): Promise<ShellEnvironment> {
-    const host = await this.agent.host({
-      agentSessionId: ctx.agentSessionId,
-      state: ctx.state,
-      cwd: ctx.cwd,
-      metadata: ctx.metadata,
-    })
-    const environment = await this.environmentForHost(host, this.commandRegistry)
-    const owner = handle.shellId
-      ? this.environmentForShell(handle.shellId)
-      : handle.commandId
-        ? this.environmentForCommand(handle.commandId)
-        : null
-    if (owner && owner !== environment) {
-      const id = handle.shellId ?? handle.commandId
-      throw new Error(`Shell handle "${id}" belongs to a different Host`)
-    }
-    return environment
-  }
-
-  private async environmentForHost(host: Host, commands: CommandRegistry): Promise<ShellEnvironment> {
-    const existing = this.environmentsByHost.get(host)
-    if (existing) return existing
-    const pending = this.pendingEnvironmentsByHost.get(host)
-    if (pending) return pending
-    const creation = this.createEnvironment(host, commands)
-    this.pendingEnvironmentsByHost.set(host, creation)
-    try {
-      const environment = await creation
-      this.environmentsByHost.set(host, environment)
-      return environment
-    } finally {
-      this.pendingEnvironmentsByHost.delete(host)
-    }
-  }
-
-  private async createEnvironment(host: Host, commands: CommandRegistry): Promise<ShellEnvironment> {
-    const shellOptions = this.shellOptions
-    return this.shellEnvironment({ agentSessionId: this.agentSessionId, host, commands, shell: shellOptions })
-  }
-
-  /** The distinct environments of this session: a product may serve two Hosts with one object (a target that changed engines underneath). */
-  private environments(): ShellEnvironment[] {
-    return [...new Set(this.environmentsByHost.values())]
-  }
-
-  private environmentForShell(shellId: string): ShellEnvironment | null {
-    const matches = this.environments().filter((environment) => environment.getShell(shellId))
-    if (matches.length > 1) throw new Error(`Shell id "${shellId}" is not unique in this session`)
-    return matches[0] ?? null
-  }
-
-  private environmentForCommand(commandId: string): ShellEnvironment | null {
-    const matches = this.environments().filter((environment) => environment.hasCommand(commandId))
-    if (matches.length > 1) throw new Error(`Command id "${commandId}" is not unique in this session`)
-    return matches[0] ?? null
   }
 }
