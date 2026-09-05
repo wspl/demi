@@ -4008,3 +4008,17 @@ Verification: three browser typechecks, 94 scoped web/web-ui tests and the web
 production build passed (existing large-chunk warning). Browser checks cover
 pin/unpin, archive/restore, project-header creation and updated header/sidebar
 appearance. M13.1 remains in progress.
+
+### M13.1 — Workspace metadata in the header (2026-09-06)
+
+Owner request: show useful context at the top right, including device, branch
+and workspace name. Added a target-owned WorkspaceInfo assembly using shared
+Button/Tooltip primitives, device status, workspace name and nullable branch
+metadata. Clicking opens the existing target picker; the tooltip carries the
+full path. Branches remain fixture data, not a read of local Git state. New
+workspaces explicitly display unavailable branch metadata.
+
+Verification: browser typechecks and production build passed. Browser review
+confirmed metadata to the right of the title, target picker opening, and a
+390px viewport with metadata below the title and no horizontal page overflow.
+M13.1 remains in progress.

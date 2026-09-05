@@ -53,6 +53,7 @@ function create() {
     deviceId: deviceId.value,
     host: cloud ? 'Cloud' : device!.name,
     path: cloud ? '/home/demi' : path.value.trim(),
+    branch: null,
   })
   if (resources.targetMode === 'switch') select(id)
   else close()

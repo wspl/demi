@@ -48,6 +48,7 @@ export function projects(): Project[] {
       deviceId: 'mac',
       host: 'zan-mbp',
       path: '/Users/zan/Projects/demi',
+      branch: 'main',
     },
     {
       id: 'notes',
@@ -55,6 +56,7 @@ export function projects(): Project[] {
       deviceId: 'mac',
       host: 'zan-mbp',
       path: '/Users/zan/Projects/notes',
+      branch: 'writing',
     },
   ]
 }
