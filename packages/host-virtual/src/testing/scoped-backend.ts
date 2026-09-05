@@ -1,4 +1,4 @@
-import type { HostFileSystem } from '@demicodes/shell'
+import type { HostDirent, HostFileSystem } from '@demicodes/shell'
 import { isAbsolutePath, normalizePath } from '@demicodes/utils'
 import type { VirtualFsBackend } from '../virtual-host'
 
@@ -36,7 +36,20 @@ export function scopedFsBackend(realRoot: string, fs: HostFileSystem): VirtualFs
     throw Object.assign(new Error(`${realPath}: resolves outside the virtual workspace`), { code: 'EPERM' })
   }
 
+  // The quota's measure over a real directory: every regular file's size, walked.
+  const usageUnder = async (dir: string): Promise<number> => {
+    const entries: HostDirent[] = await fs.readdir(toReal(dir), { withFileTypes: true }).catch(() => [])
+    let total = 0
+    for (const entry of entries) {
+      const path = dir === '/' ? `/${entry.name}` : `${dir}/${entry.name}`
+      if (entry.isDirectory) total += await usageUnder(path)
+      else if (entry.isFile) total += await fs.stat(toReal(path)).then((stat) => stat.size, () => 0)
+    }
+    return total
+  }
+
   return {
+    usage: () => usageUnder('/'),
     readFile: (path) => fs.readFile(toReal(path)),
     writeFile: (path, data, options) => fs.writeFile(toReal(path), data, options),
     appendFile: (path, data, options) => fs.appendFile(toReal(path), data, options),

@@ -16,7 +16,11 @@ async function fixture(blobs?: BlobStore, wrap: (control: ControlService) => Con
   const user = await control.createUser({ username: 'reader', passwordHash: 'unused', role: 'user' })
   const conversation = await control.createConversation(user!.id)
   const pair = createInProcessTransportPair()
-  const scoped = conversationScopedTransport(pair.server, conversation, wrap(control), undefined, blobs)
+  const scoped = conversationScopedTransport(pair.server, conversation, {
+    control: wrap(control),
+    blobs,
+    providerAllowed: async (providerId) => providerId !== 'someone-elses',
+  })
   const received: ClientFrame[] = []
   const replies: ServerFrame[] = []
   scoped.onFrame((frame) => received.push(frame))
@@ -38,6 +42,20 @@ test('malformed content and provider frames fail before mutation; later frames s
   expect(f.received).toEqual([{ type: 'abort' }])
   expect(f.replies.every((frame) => frame.type === 'error' && frame.code === 'invalid_frame')).toBe(true)
   expect((await f.control.getConversation(f.conversation.id))?.title).toBe('New conversation')
+})
+
+test('open and set_provider record only a provider the user may name', async () => {
+  const f = await fixture()
+  const selection = (providerId: string) => ({
+    providerId,
+    model: { providerId, model: { id: 'm', name: 'm', contextWindow: 1, inputLimit: null, thinking: [], acceptedExtensions: [] }, thinking: null },
+  })
+  f.client.send({ type: 'open', sessionId: 'ignored', cwd: '/ignored', provider: selection('someone-elses') } as never)
+  f.client.send({ type: 'set_provider', provider: selection('someone-elses') } as never)
+  f.client.send({ type: 'set_provider', provider: selection('mine') } as never)
+  await waitFor(() => f.received.length === 1 && f.replies.length === 2)
+  expect(f.replies.every((frame) => frame.type === 'error' && frame.code === 'provider_not_found')).toBe(true)
+  expect(await f.control.getConversation(f.conversation.id)).toMatchObject({ providerId: 'mine', modelId: 'm' })
 })
 
 test('a failed storage rewrite does not poison subsequent deliveries', async () => {

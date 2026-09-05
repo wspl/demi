@@ -12,7 +12,7 @@ import {
   type PersistedSessionState,
 } from '@demicodes/agent'
 import type { VirtualFsBackend } from '@demicodes/host-virtual'
-import { openSqliteDatabase, type SqlDatabase } from './database'
+import { openSqliteDatabase, type SqlDatabase, type SqlParams } from './database'
 import { clearFilesTree, filesTreeBackend, materializeFilesTree, type TreePlacement } from './files-tree'
 import { DbHostStore } from './host-store'
 import { CONVERSATION_MIGRATIONS, migrate } from './migrations'
@@ -23,26 +23,48 @@ type PersistedState = Omit<PersistedSessionState<unknown>, 'blockCount'>
  * The per-conversation databases: `conversations/<id>.sqlite`, one file per
  * conversation, holding the block-row transcript, the session state row, and
  * that conversation's host_store scope. Each file has exactly one writer
- * (this process); handles are opened on demand and live until `close`.
+ * (this process). The database object handed out for a conversation is
+ * stable; the SQLite handle behind it opens on first use and is one of at
+ * most `maxOpen` kept open, the least recently used closed first — so a
+ * cold transcript read holds a handle only until other conversations are
+ * touched, and a conversation in use is always the most recent.
  */
 export class ConversationStores {
-  private readonly open = new Map<string, SqlDatabase>()
+  private readonly databases = new Map<string, SqlDatabase>()
+  /** Insertion order is recency: a use re-inserts. */
+  private readonly handles = new Map<string, SqlDatabase>()
+  private readonly maxOpen: number
 
   constructor(
     private readonly root: string,
     private readonly blobsFor: (conversationId: string) => BlobStore,
-  ) {}
+    options: { maxOpen?: number } = {},
+  ) {
+    this.maxOpen = options.maxOpen ?? 64
+  }
 
+  /** The conversation's database: a stable object whose handle opens on demand. */
   db(conversationId: string): SqlDatabase {
-    const existing = this.open.get(conversationId)
+    const existing = this.databases.get(conversationId)
     if (existing) return existing
     if (!/^[A-Za-z0-9_-]+$/.test(conversationId)) {
       throw new Error(`ConversationStores: invalid conversation id "${conversationId}"`)
     }
-    const db = openSqliteDatabase(join(this.root, `${conversationId}.sqlite`))
-    migrate(db, CONVERSATION_MIGRATIONS)
-    this.open.set(conversationId, db)
+    const handle = () => this.handle(conversationId)
+    const db: SqlDatabase = {
+      run: (sql, params) => handle().run(sql, params),
+      all: <T>(sql: string, params?: SqlParams) => handle().all<T>(sql, params),
+      get: <T>(sql: string, params?: SqlParams) => handle().get<T>(sql, params),
+      transaction: <T>(fn: () => T) => handle().transaction(fn),
+      close: () => this.release(conversationId),
+    }
+    this.databases.set(conversationId, db)
     return db
+  }
+
+  /** Handles open right now (diagnostics and tests). */
+  get openHandles(): number {
+    return this.handles.size
   }
 
   sessionStore(conversationId: string): AgentSessionStore<unknown> {
@@ -112,8 +134,33 @@ export class ConversationStores {
   }
 
   close(): void {
-    for (const db of this.open.values()) db.close()
-    this.open.clear()
+    for (const handle of this.handles.values()) handle.close()
+    this.handles.clear()
+  }
+
+  private handle(conversationId: string): SqlDatabase {
+    const open = this.handles.get(conversationId)
+    if (open) {
+      this.handles.delete(conversationId)
+      this.handles.set(conversationId, open)
+      return open
+    }
+    const opened = openSqliteDatabase(join(this.root, `${conversationId}.sqlite`))
+    migrate(opened, CONVERSATION_MIGRATIONS)
+    this.handles.set(conversationId, opened)
+    while (this.handles.size > this.maxOpen) {
+      const oldest = this.handles.keys().next().value
+      if (oldest === undefined) break
+      this.release(oldest)
+    }
+    return opened
+  }
+
+  private release(conversationId: string): void {
+    const open = this.handles.get(conversationId)
+    if (!open) return
+    this.handles.delete(conversationId)
+    open.close()
   }
 
   private readSession(conversationId: string): { state: PersistedState; blocks: Block[] } | null {

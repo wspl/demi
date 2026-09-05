@@ -24,6 +24,8 @@ export interface ControlService {
   getWebSession(tokenHash: string): Promise<{ userId: string; expiresAt: string } | null>
   extendWebSession(tokenHash: string, expiresAt: string): Promise<void>
   deleteWebSession(tokenHash: string): Promise<void>
+  /** Drops every session whose expiry is at or before `before` (an ISO instant). */
+  deleteExpiredWebSessions(before: string): Promise<void>
   /** A user device by default; a managed host names its owner (`managed-hosts.md` § What a managed host is). */
   createDevice(device: {
     userId: string
@@ -342,6 +344,10 @@ export class LocalControlService implements ControlService {
 
   async deleteWebSession(tokenHash: string): Promise<void> {
     this.db.run('DELETE FROM web_sessions WHERE token_hash = ?', [tokenHash])
+  }
+
+  async deleteExpiredWebSessions(before: string): Promise<void> {
+    this.db.run('DELETE FROM web_sessions WHERE expires_at <= ?', [before])
   }
 
   async createDevice(device: {
