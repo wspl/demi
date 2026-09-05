@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight, Cloud, Folder, FolderOpen, Monitor, SquarePen } from '@lucide/vue'
+import { ChevronRight, Cloud, Folder, FolderOpen, SquarePen } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -25,7 +25,7 @@ const emit = defineEmits<{
   <div
     role="button"
     :aria-expanded="!collapsed"
-    class="group/project flex h-7 cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+    class="group/project flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1 text-chrome text-fg transition-colors duration-200 ease-out"
     :class="[focused ? 'ring-1 ring-inset ring-line-focus' : '']"
     @click="emit('toggle')"
     @contextmenu.prevent="emit('contextmenu', $event)"
@@ -49,17 +49,21 @@ const emit = defineEmits<{
         class="pointer-events-none col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
         :aria-label="project.host"
       >
-        <component
-          :is="project.hostKind === 'cloud' ? Cloud : Monitor"
-          :size="ICON_PX.in20"
-          class="shrink-0"
-        />
+        <Cloud v-if="project.hostKind === 'cloud'" :size="ICON_PX.in20" class="shrink-0" />
+        <span v-else class="flex size-3 shrink-0 items-center justify-center">
+          <span
+            class="size-1.5 rounded-full"
+            :class="project.hostOnline ? 'bg-on-success' : 'bg-fg-faint'"
+            role="img"
+            :aria-label="project.hostOnline ? 'Online' : 'Offline'"
+          />
+        </span>
         <span v-if="project.hostKind !== 'cloud'" class="truncate">{{ project.host }}</span>
       </span>
       <span
-        class="col-start-1 row-start-1 justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
+        class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
       >
-        <Tooltip content="New conversation">
+        <Tooltip content="New conversation" class="flex items-center">
           <IconButton
             :icon="SquarePen"
             size="sm"
