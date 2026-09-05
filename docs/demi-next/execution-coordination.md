@@ -46,19 +46,24 @@ owner, and actual in-flight execution when deciding whether a machine is idle.
 Guest transitions remain owned and serialized by the provisioner.
 
 Every node receives product execution context independently of its profile prompt.
-The context names the conversation, main target and attached hosts. Context
+The context carries the latest target switch and attached hosts. The backend
+uses `context_version` and `last_switch_json`; each node observes the revision
+from its own persisted context block before inference. Context
 observation is node-scoped and checkpointed with the transcript; one node cannot
 consume another node's pending change. The agent's generic context contracts carry
 root and node identity without depending on backend database types.
 
 ## Hostless eligibility
 
-Hostless scripts execute only finite local work: supported shell constructs and
+Hostless scripts execute local work: supported shell constructs and
 builtins, file commands, todo commands and observational command leaves. Scripts
 that start or resume agent work, or execute on another Host, require a machine
 before any statement runs. The backend declares this execution policy alongside
 the command manifest; the parser checks all invocations, including pipelines and
 expanded command arguments. Help and invalid invocations do not provision a VM.
+With an admission policy, root invocations containing unexpanded glob arguments
+require a machine: file creation could change their command or option tokens
+after preflight. Builtin globbing retains its normal hostless behavior.
 
 A hostless conversation may retain attached Hosts, but executing on one first
 upgrades its main target. Spawning a child first upgrades the root conversation;
@@ -71,7 +76,7 @@ c1: printf before > note; demi agent spawn ...; cat child.txt
     |
     +-- preflight: requires a machine; no statement has run
     +-- reserve c1's hostless execution and file-operation admission
-    +-- finish admitted finite local work; reject a blocked cutover without replay
+    +-- finish admitted local work; reject a blocked cutover without replay
     +-- prepare a home image from the quiescent files tree
     +-- provision and commit c1's machine target
     +-- run the entire original script with real bash
@@ -84,10 +89,14 @@ One conversation owns one cutover. Admission covers full hostless execution
 uploads. A cutover blocks new old-target work, waits for admitted operations and
 then materializes the files. Work admitted after the cutover resolves its Host
 again and executes on the committed target. A wait must be cancellable; a failed
-or cancelled attempt never replays a partially executed command.
+or cancelled attempt never replays a partially executed command. A hostless
+command awaiting live stdin may keep its admission lease; the cutover drain
+times out after 30 seconds, leaving that script and its files on the current
+target. No hostless script is replayed to force a cutover.
 
-The transition has durable evidence: preparing, a prepared owner image/device,
-and a committed conversation target. The target binding is the commit point.
+The control database records `conversation_upgrades`: `prepared` before
+materialization/provisioning, and `committed` in the same transaction as target
+binding. The recorded conversation owns the prepared image/device. The target binding is the commit point.
 Before it, the hostless tree is authoritative and an uncommitted machine cannot
 accept conversation jobs. After it, the home image is authoritative and the
 hostless tree cannot accept writes. Recovery completes or discards the recorded

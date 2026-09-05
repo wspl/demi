@@ -214,3 +214,18 @@ describe('refusal messages', () => {
     if (sed.kind === 'outside') expect(sed.message).toContain('demi file edit')
   })
 })
+
+test('root admission checks expanded invocations throughout the whole script and rejects dynamic argv', async () => {
+  const admitRoot = (_root: string, argv: string[]) => argv.join(' ') !== 'agent spawn'
+  for (const script of [
+    'printf before > note; demi agent spawn',
+    'ACTION=spawn; demi agent $ACTION | cat',
+    'false && demi agent spawn',
+    'demi agent sp*',
+  ]) {
+    const result = await parseTinybash(script, roots, namespace, state, undefined, admitRoot)
+    expect(result.kind).toBe('outside')
+    if (result.kind === 'outside') expect(result.reason.kind).toBe('admission')
+  }
+  expect((await parseTinybash('demi todo list', roots, namespace, state, undefined, admitRoot)).kind).toBe('script')
+})
