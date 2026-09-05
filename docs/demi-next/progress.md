@@ -4212,3 +4212,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 ### M13.1 — Remove project-row hover tooltip (2026-09-06)
 
 - Removed the host/path tooltip wrapper from shared sidebar project rows. Web-ui typecheck passed.
+
+### M13.1 — Hover chevron after the project name (2026-09-06)
+
+- Added a 12px chevron immediately after the project name. It fades in/out on row hover over 150ms and rotates with the fold state, respecting reduced motion. The reserved space prevents hover layout shifts; folder and right-side device/action positions remain stable.
+- Updated the shared sidebar and final-state design. Web-ui typecheck passed.
