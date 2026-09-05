@@ -3585,7 +3585,7 @@ point fixes. Each group is a checkpoint; status below.
 | Group | Root cause | Findings it covers | Status |
 |---|---|---|---|
 | 1 | The managed-host lifecycle kept its state in memory only: no record of running VMs on disk, no reconciliation against processes and images, several exit paths (destroy, backend close, crash) that did not save the home. | VMs orphaned by a backend restart and a second guest booted over their image; destroy dropping the work since the last checkpoint; a failed shrink leaving an image the next wake booted anyway; a guest dying during boot failing only at the boot timeout. | delivered |
-| 2 | The hostless → machine upgrade modelled as a per-(session, Host) shell decoration in the composition root rather than a conversation-level target transition. | Named shells and running commands unusable after the upgrade; a subagent's outside script failing the upgrade; a failed upgrade's retry booting the stale first image and dropping the hostless work in between; the managed → workspace → hostless loop. | pending |
+| 2 | The hostless → machine upgrade modelled as a per-(session, Host) shell decoration in the composition root rather than a conversation-level target transition. | Named shells and running commands unusable after the upgrade; a subagent's outside script failing the upgrade; a failed upgrade's retry booting the stale first image and dropping the hostless work in between; the managed → workspace → hostless loop. | delivered |
 | 3 | No single declaration of a job's environment per target kind. | `PATH=/usr/bin:/bin` forced on user hosts; `$USER` empty on managed hosts. | delivered |
 | 4 | Guards and documents written twice. | The boundary test admitting `shell → tinybash`; an unused backend dependency; scripts and path mappings pointing at deleted files; stale entry names in `backend.md`. | pending |
 
@@ -3642,6 +3642,41 @@ the job, a backend entry wins), S7 (a user host's `job_start` names no
 `PATH` or `HOME`), S11 (a managed host's jobs carry the table and the
 model sees the same `$PATH` after the upgrade); the host-remote,
 host-virtual and backend suites pass.
+
+### Group 2: the conversation target — delivered
+
+`conversation/target.ts` (`ConversationTargets`) owns what `backend.ts`
+and `target-switch.ts` held between them: the resolution of the three
+states to a Host (with the owner check and the wake of a managed device),
+the switch, the upgrade, and the rule that a conversation with a machine
+of its own — `devices.owner_conversation_id`, wherever its main host is —
+has no hostless entrance. The composition root wires and mounts again.
+The upgrade is one promise per conversation, joined by every session that
+asks; the conversation behind a Host is recorded when the Host is handed
+out, so a subagent's outside script (its `agentSessionId` is its own)
+upgrades its root's conversation. `ManagedHosts.provisionFresh` is the
+first boot that leaves nothing behind — device row, guest and image gone
+on failure — shared by the upgrade and the Cloud workspace; `provision`
+refuses an owner that has a machine. The shell side: `UpgradingShell` is
+the one environment a session keeps across the upgrade — the factory
+returns it for the machine's Host too and hands it the machine's
+`RemoteShellEnvironment` (`attach`), whether its own upgrade or another
+session's made the machine — and adopts each hostless shell there the
+first time it is used (`RemoteShellEnvironment.adoptShell`, from
+`HostlessEnvironment.handoverOf`, which now names the shell): same id, the
+machine's counterpart of its directory, its variables, the session's
+default staying the default. No script prefix any more, so line numbers
+in bash's messages are the script's. `LiveSession` compares environments
+by identity, since one object may now stand behind two Hosts.
+
+Verification: S11 gains four cases — a named shell continues on the
+machine under its id, in its directory and with its variables, and the
+default stays the default; a subagent's outside script upgrades the root's
+conversation and both continue there; a first boot that fails leaves no
+device row and the retry moves the tree as it stands then (a flaky
+provisioner); the return to hostless is refused from the machine and from
+a workspace it moved to. The M6 acceptance's attachable managed device is
+now owned by another conversation, as the case it tests requires.
 
 ## Open items (deferred, with their milestone)
 

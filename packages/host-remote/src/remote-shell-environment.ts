@@ -82,6 +82,28 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     return this.commandsById.has(commandId)
   }
 
+  /**
+   * A shell handed over by the session's previous engine (the hostless
+   * shell at the upgrade, `sessions-and-targets.md` § What moves): created
+   * here under the id the model already holds, in the directory and with
+   * the variables it had there, and the session's default when it was.
+   */
+  adoptShell(shell: { shellId: string; agentSessionId: string | null; isDefault: boolean; cwd: string; vars: Record<string, string> }): void {
+    if (this.shells.has(shell.shellId)) throw new Error(`Shell session "${shell.shellId}" already exists`)
+    if (!isAbsolutePath(shell.cwd)) throw new Error(`Adopted shell cwd must be absolute: ${shell.cwd}`)
+    const env: Record<string, string> = { ...this.initialEnv, ...shell.vars, DEMI_SHELL_ID: shell.shellId }
+    if (shell.agentSessionId) env.DEMI_SESSION_ID = shell.agentSessionId
+    this.shells.set(shell.shellId, {
+      id: shell.shellId,
+      agentSessionId: shell.agentSessionId,
+      commandStorageId: shell.agentSessionId ?? shell.shellId,
+      cwd: shell.cwd,
+      env,
+      exited: false,
+    })
+    if (shell.isDefault) this.defaultShellByAgentSessionId.set(shell.agentSessionId ?? '', shell.shellId)
+  }
+
   async exec(input: ShellExecInput): Promise<ShellCommandStatus> {
     const timeoutMs = normalizeTimeoutMs(input.timeoutMs ?? DEFAULT_TIMEOUT_MS)
     if (input.shellId && input.ephemeral) {

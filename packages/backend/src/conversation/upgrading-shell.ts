@@ -1,81 +1,116 @@
-import type { HostlessEnvironment } from '@demicodes/host-virtual'
-import { shellQuote, type ShellAbortInput, type ShellCommandStatus, type ShellEnvironment, type ShellExecInput, type ShellStatusInput, type ShellWriteInput } from '@demicodes/shell'
+import type { HostlessEnvironment, ShellHandover } from '@demicodes/host-virtual'
+import type { ShellAbortInput, ShellCommandStatus, ShellEnvironment, ShellExecInput, ShellStatusInput, ShellWriteInput } from '@demicodes/shell'
+
+/** The machine's shell engine: one that takes the hostless shells over under their ids. */
+export interface MachineShell extends ShellEnvironment {
+  adoptShell(shell: ShellHandover): void
+}
+
+export interface Machine {
+  environment: MachineShell
+  /** The machine's home: what the hostless home stands in for. */
+  home: string
+}
 
 /**
  * The session upgrade (`sessions-and-targets.md` § Hostless execution), as
  * the shell of a hostless conversation: every exec is decided at parse time
  * before anything runs. A script inside tinybash's subset runs hostless; the
  * first one outside it moves the conversation to a machine — the files, the
- * binding, the shell state — and runs there whole. Nothing enters the
+ * binding, the shell state — and runs there whole. From then on this object
+ * is the session's shell on the machine too: each hostless shell is adopted
+ * there under its id the first time it is used, in its directory and with
+ * its variables, so nothing the model holds goes stale. Nothing enters the
  * transcript; the model is never told. A provisioning failure is this
  * call's tool error, and the conversation stays hostless for the next one.
  */
-export interface Machine {
-  environment: ShellEnvironment
-  home: string
-}
-
 export class UpgradingShell implements ShellEnvironment {
-  private machine: Promise<Machine> | null = null
+  private upgrading: Promise<void> | null = null
+  private machine: Machine | null = null
+  private readonly adopted = new Set<string>()
 
   constructor(
     private readonly hostless: HostlessEnvironment,
-    /** Provisions and binds the machine and returns its shell environment — the same instance the session uses afterwards — and its home. */
-    private readonly upgrade: () => Promise<Machine>,
+    /** Provisions and binds the conversation's machine and attaches its shell here; the same instance the session uses afterwards. */
+    private readonly upgrade: () => Promise<void>,
     /** The hostless home: what the machine's home stands in for. */
     private readonly hostlessHome: string,
   ) {}
 
+  /** The machine this conversation now runs on — from this shell's own upgrade, or from the session that upgraded first. */
+  attach(machine: Machine): void {
+    this.machine ??= machine
+  }
+
   async exec(input: ShellExecInput): Promise<ShellCommandStatus> {
-    if (this.machine === null && (await this.hostless.outside(input)) === null) return this.hostless.exec(input)
-    const handover = this.machine === null ? this.hostless.handoverOf(input) : null
     if (this.machine === null) {
-      this.machine = this.upgrade().catch((error: unknown) => {
-        this.machine = null
-        throw error
-      })
+      if (this.upgrading === null) {
+        if ((await this.hostless.outside(input)) === null) return this.hostless.exec(input)
+        const upgrading = this.upgrade().catch((error: unknown) => {
+          if (this.upgrading === upgrading) this.upgrading = null
+          throw error
+        })
+        this.upgrading = upgrading
+      }
+      // An upgrade in flight takes every exec with it: the files are on their way to the machine.
+      await this.upgrading
+      if (this.machine === null) throw new Error('the conversation moved to a machine, but its shell was not attached')
     }
-    const machine = await this.machine
-    // The first job continues where tinybash's shell stood: its working
-    // directory (the hostless home is the machine's home) and the variables
-    // the session set; a machine's shell carries its cwd between jobs by
-    // itself afterwards.
-    const script = handover ? `${handoverPrefix({ ...handover, cwd: this.machinePath(handover.cwd, machine.home) })}${input.script}` : input.script
-    return machine.environment.exec({ ...input, script })
+    const machine = this.machine
+    return machine.environment.exec(this.onMachine(machine, input))
   }
 
   async status(input: ShellStatusInput): Promise<ShellCommandStatus> {
-    return (await this.ownerOfCommand(input.commandId)).status(input)
+    return this.ownerOfCommand(input.commandId).status(input)
   }
 
   async write(input: ShellWriteInput): Promise<ShellCommandStatus> {
-    return (await this.ownerOfCommand(input.commandId)).write(input)
+    return this.ownerOfCommand(input.commandId).write(input)
   }
 
   async abort(input: ShellAbortInput): Promise<ShellCommandStatus> {
-    return (await this.ownerOfCommand(input.commandId)).abort(input)
+    return this.ownerOfCommand(input.commandId).abort(input)
   }
 
   async releaseCommand(commandId: string): Promise<boolean> {
-    for (const environment of await this.environments()) if (await environment.releaseCommand(commandId)) return true
-    return false
+    let released = false
+    for (const environment of this.environments()) released = (await environment.releaseCommand(commandId)) || released
+    return released
   }
 
   async disposeShell(shellId: string): Promise<boolean> {
-    for (const environment of await this.environments()) if (await environment.disposeShell(shellId)) return true
-    return false
+    let disposed = false
+    for (const environment of this.environments()) disposed = (await environment.disposeShell(shellId)) || disposed
+    return disposed
   }
 
   async disposeAllShells(): Promise<void> {
-    for (const environment of await this.environments()) await environment.disposeAllShells()
+    for (const environment of this.environments()) await environment.disposeAllShells()
   }
 
   getShell(shellId: string): { id: string } | null {
-    return this.hostless.getShell(shellId)
+    return this.hostless.getShell(shellId) ?? this.machine?.environment.getShell(shellId) ?? null
   }
 
   hasCommand(commandId: string): boolean {
-    return this.hostless.hasCommand(commandId)
+    return this.environments().some((environment) => environment.hasCommand(commandId))
+  }
+
+  /**
+   * The exec as the machine's shell takes it: an ephemeral exec starts where
+   * the hostless path says on the machine; a hostless shell is adopted under
+   * its id — directory and variables carried — the first time it is used
+   * there; a shell the machine created itself passes through.
+   */
+  private onMachine(machine: Machine, input: ShellExecInput): ShellExecInput {
+    if (input.ephemeral) return input.cwd === undefined ? input : { ...input, cwd: this.machinePath(input.cwd, machine.home) }
+    if (input.shellId && !this.hostless.getShell(input.shellId)) return input
+    const handover = this.hostless.handoverOf(input)
+    if (!this.adopted.has(handover.shellId)) {
+      machine.environment.adoptShell({ ...handover, cwd: this.machinePath(handover.cwd, machine.home) })
+      this.adopted.add(handover.shellId)
+    }
+    return input
   }
 
   private machinePath(hostlessPath: string, machineHome: string): string {
@@ -84,19 +119,12 @@ export class UpgradingShell implements ShellEnvironment {
     return hostlessPath
   }
 
-  private async environments(): Promise<ShellEnvironment[]> {
-    const machine = this.machine ? await this.machine.catch(() => null) : null
-    return machine ? [this.hostless, machine.environment] : [this.hostless]
+  private environments(): ShellEnvironment[] {
+    return this.machine ? [this.hostless, this.machine.environment] : [this.hostless]
   }
 
-  private async ownerOfCommand(commandId: string): Promise<ShellEnvironment> {
-    for (const environment of await this.environments()) if (environment.hasCommand(commandId)) return environment
+  private ownerOfCommand(commandId: string): ShellEnvironment {
+    for (const environment of this.environments()) if (environment.hasCommand(commandId)) return environment
     throw new Error(`Unknown command "${commandId}"`)
   }
-}
-
-function handoverPrefix(handover: { cwd: string; vars: Record<string, string> }): string {
-  const parts = [`cd ${shellQuote(handover.cwd)}`]
-  for (const [key, value] of Object.entries(handover.vars)) parts.push(`${key}=${shellQuote(value)}`)
-  return `${parts.join(' && ')}\n`
 }

@@ -118,14 +118,11 @@ export class ManagedHosts {
   /**
    * The first boot for an owner: the device row with its token, the guest
    * over `homeDir`, online before this resolves. Refused past the per-user
-   * cap. An owner already provisioned gets its existing host, running.
+   * cap, and for an owner that has a machine already — one machine per
+   * owner, never reused.
    */
   async provision(owner: ManagedHostOwner, userId: string, homeDir: string): Promise<DeviceRecord> {
-    const existing = await this.options.control.getManagedDevice(owner)
-    if (existing) {
-      await this.ensureRunning(existing)
-      return existing
-    }
+    if (await this.options.control.getManagedDevice(owner)) throw new Error(`${ownerKey(owner)} already has a machine`)
     if ((await this.options.control.countManagedDevices(userId)) >= this.config.hostsPerUser) {
       throw new ManagedHostError('host_limit', `the limit of ${this.config.hostsPerUser} machines per user is reached`)
     }
@@ -141,6 +138,25 @@ export class ManagedHosts {
     const host = this.host(owner, device.id)
     await this.boot(host, () => this.options.provisioner.provision(owner, homeDir, { backendUrl: this.options.backendUrl(), deviceToken: token }))
     return device
+  }
+
+  /**
+   * A first boot that leaves nothing behind when it fails: the device row,
+   * the guest and whatever the provisioner made for the owner are removed,
+   * so the next attempt starts from the caller's home as it stands then.
+   */
+  async provisionFresh(owner: ManagedHostOwner, userId: string, homeDir: string): Promise<DeviceRecord> {
+    try {
+      return await this.provision(owner, userId, homeDir)
+    } catch (error) {
+      const device = await this.options.control.getManagedDevice(owner)
+      if (device) {
+        await this.destroy(owner).catch(noop)
+        await this.options.control.deleteDevice(device.id).catch(noop)
+        this.hosts.delete(ownerKey(owner))
+      }
+      throw error
+    }
   }
 
   /**

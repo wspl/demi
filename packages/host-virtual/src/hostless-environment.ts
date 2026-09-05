@@ -29,6 +29,17 @@ import {
 import { parseTinybash, runTinybash, type RootPaths, type ShellState, type TinybashOutside } from '@demicodes/tinybash'
 import { ByteQueue, concatBytes, delay, errorMessage, isAbsolutePath, toBytes } from '@demicodes/utils'
 
+/** A hostless shell as a machine's shell takes it over (`sessions-and-targets.md` § What moves). */
+export interface ShellHandover {
+  shellId: string
+  agentSessionId: string | null
+  /** The session's default shell: the machine's default for that session from now on. */
+  isDefault: boolean
+  cwd: string
+  /** The variables the session set beyond the ones every shell starts with. */
+  vars: Record<string, string>
+}
+
 export interface HostlessEnvironmentOptions extends ShellEnvironmentOptions {
   /** The conversation's store-backed Host. */
   host: Host
@@ -128,16 +139,25 @@ export class HostlessEnvironment implements ShellEnvironment {
 
   /**
    * What a machine's shell must be told to continue where this exec's shell
-   * stands: the working directory, and the variables the session set beyond
-   * the ones every shell starts with.
+   * stands: which shell it is — its id, its session, whether it is the
+   * session's default — its working directory, and the variables the
+   * session set beyond the ones every shell starts with. An ephemeral exec
+   * has no shell to hand over.
    */
-  handoverOf(input: ShellExecInput): { cwd: string; vars: Record<string, string> } {
-    const state = this.stateFor(input)
+  handoverOf(input: ShellExecInput): ShellHandover {
+    if (input.ephemeral) throw new Error('an ephemeral exec has no shell to hand over')
+    const shell = input.shellId ? this.requireShell(input.shellId) : this.defaultShell(input.agentSessionId)
     const vars: Record<string, string> = {}
-    for (const [key, value] of Object.entries(state.vars)) {
+    for (const [key, value] of Object.entries(shell.state.vars)) {
       if (value !== this.initialEnv[key] && !STARTING_VARS.has(key)) vars[key] = value
     }
-    return { cwd: state.cwd, vars }
+    return {
+      shellId: shell.id,
+      agentSessionId: shell.agentSessionId,
+      isDefault: this.defaultShellByAgentSessionId.get(shell.agentSessionId ?? '') === shell.id,
+      cwd: shell.state.cwd,
+      vars,
+    }
   }
 
   /** The shell state an exec would start from: the named shell's, the session default's, or a fresh one for an ephemeral exec. */

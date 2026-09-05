@@ -93,10 +93,15 @@ describe('hostless shell lifecycle', () => {
     const w = await world()
     try {
       await w.exec('PATH=/home/demi/bin:/usr/bin:/bin; CUSTOM=value')
-      expect(w.env.handoverOf({ script: '', agentSessionId: 'session-1' })).toEqual({
+      const handover = w.env.handoverOf({ script: '', agentSessionId: 'session-1' })
+      expect(handover).toMatchObject({
+        agentSessionId: 'session-1',
+        isDefault: true,
         cwd: '/home/demi',
         vars: { PATH: '/home/demi/bin:/usr/bin:/bin', CUSTOM: 'value' },
       })
+      expect(w.env.getShell(handover.shellId)?.id).toBe(handover.shellId)
+      expect(() => w.env.handoverOf({ script: '', ephemeral: true })).toThrow('no shell to hand over')
       await w.exec('PATH=/usr/bin:/bin')
       expect(w.env.handoverOf({ script: '', agentSessionId: 'session-1' }).vars).toEqual({ CUSTOM: 'value' })
     } finally {

@@ -169,7 +169,9 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual at
   // The hosts API: attaching is idempotent, any owned device attaches (the product surface decides what it offers), a rename must be unique, detach closes the door.
   expect((await json(backend, `/api/conversations/${conversation.id}/hosts`, { deviceId: device.id })).status).toBe(201)
   expect(await control.listAttachedHosts(conversation.id)).toHaveLength(1)
-  const managed = await control.createDevice({ userId: backend.session.user.id, name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: conversation.id })
+  // A managed device the user owns through another conversation: attachable like any owned device, and not this conversation's own machine.
+  const other = await control.createConversation(backend.session.user.id)
+  const managed = await control.createDevice({ userId: backend.session.user.id, name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: other.id })
   expect((await json(backend, `/api/conversations/${conversation.id}/hosts`, { deviceId: managed.id })).status).toBe(201)
   expect((await control.listAttachedHosts(conversation.id)).map((host) => host.name)).toEqual(['m6-device', 'vm'])
   expect((await json(backend, `/api/conversations/${conversation.id}/hosts/${managed.id}`, { name: 'm6-device' }, 'PATCH')).status).toBe(409)
