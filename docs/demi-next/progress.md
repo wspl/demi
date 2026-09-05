@@ -4188,3 +4188,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Sidebar title scrolling starts after a 500ms hover delay, shared by the application and gallery. Existing scroll speed and edge fades are unchanged.
 - Verified the shared web-ui typecheck. No new tests for this timing constant adjustment.
+
+### M13.1 — Sidebar section heading spacing (2026-09-06)
+
+- Added 6px below both Conversations and Projects headings in the shared sidebar, separating titles from the first item in the application and gallery.
+- Shared web-ui typecheck passed. No new tests for this spacing-only change.
