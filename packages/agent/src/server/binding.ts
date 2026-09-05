@@ -1,55 +1,41 @@
 import { errorCode, noop } from '@demicodes/utils'
-import type { Host, ShellEnvironmentOptions } from '@demicodes/shell'
 import { providerRuntime, type ProviderSelection } from '@demicodes/provider'
 import type { AgentSession } from '../session/session'
 import { cloneBlocks } from '../transcript/patch'
-import type { ClientFrame, ConversationSummary, ServerFrame } from '../protocol/frames'
+import type { ClientFrame, ServerFrame } from '../protocol/frames'
 import { clientFrameSchema } from '../protocol/schemas'
 import type { AgentServerTransport } from '../protocol/transport'
-import type { AgentHarness, AgentSessionStore, ModelSwitchApply } from '../types'
-import { loadPersistedSession, persistedSessionCheckpoint } from '../store/session-store'
-import type { BlobStore } from '../store/media'
-import type { ShellPreviewBudget } from '../tools'
-import type { LiveSession } from './live-session'
-import { assembleLiveSession } from './open-session'
+import type { AgentHarness, AgentNodeRecord, AgentTreeStore, ModelSwitchApply } from '../types'
+import { assembleNode, type NodeDeps, type TreeContext } from '../node/assemble'
+import { ROOT_POLICY } from '../node/node'
+import { AgentDirectory } from '../subagent/directory'
+import { LiveSession } from './live-session'
 import type { SessionAttachment, SessionOwnershipRegistry } from './ownership'
-import { errorDiagnostics, progressToOutput, progressToShellOutput, summarizeConversation } from './summaries'
-import type { AgentServerSessionOptions, AgentTransportBinding, ProviderResolver, ShellEnvironmentFactory } from './server'
+import { errorDiagnostics, progressToOutput, progressToShellOutput } from './summaries'
+import type { AgentTransportBinding, ProviderResolver } from './server'
 
 export interface AgentTransportBindingOptions {
   transport: AgentServerTransport
   agent: AgentHarness<unknown>
   resolveProvider: ProviderResolver
-  shell?: ShellEnvironmentOptions
-  session?: AgentServerSessionOptions
-  shellEnvironment: ShellEnvironmentFactory
-  notifyParentOnIdle: boolean
-  maxLiveSubagents: number
-  shellPreviewBudgetTokens: ShellPreviewBudget | null
+  deps: NodeDeps<unknown>
+  store: (rootSessionId: string) => AgentTreeStore<unknown>
   sessions: SessionOwnershipRegistry
-  sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
-  blobs: ((agentSessionId: string) => BlobStore) | null
 }
 
 /**
  * One attached transport: frame dispatch and the attach/detach lifecycle.
- * Session construction lives in `open-session.ts`; the running session itself
- * lives in the ownership registry, not here — this object is only ever the
- * currently attached view onto it.
+ * The root node comes from the node assembly (`node/assemble.ts`); the
+ * running session itself lives in the ownership registry, not here — this
+ * object is only ever the currently attached view onto it.
  */
 export class AgentTransportBindingImpl implements AgentTransportBinding, SessionAttachment {
   private readonly transport: AgentServerTransport
   private readonly agent: AgentHarness<unknown>
   private readonly resolveProvider: ProviderResolver
-  private readonly shellOptions: ShellEnvironmentOptions
-  private readonly sessionOptions: AgentServerSessionOptions
-  private readonly shellEnvironment: ShellEnvironmentFactory
-  private readonly notifyParentOnIdle: boolean
-  private readonly maxLiveSubagents: number
-  private readonly shellPreviewBudgetTokens: ShellPreviewBudget | null
+  private readonly deps: NodeDeps<unknown>
+  private readonly store: (rootSessionId: string) => AgentTreeStore<unknown>
   private readonly sessions: SessionOwnershipRegistry
-  private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
-  private readonly blobs: AgentTransportBindingOptions['blobs']
   private live: LiveSession | null = null
   private unsubscribeTransport: (() => void) | null = null
   private closed = false
@@ -58,15 +44,9 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     this.transport = options.transport
     this.agent = options.agent
     this.resolveProvider = options.resolveProvider
-    this.shellOptions = options.shell ?? {}
-    this.sessionOptions = options.session ?? {}
-    this.shellEnvironment = options.shellEnvironment
-    this.notifyParentOnIdle = options.notifyParentOnIdle
-    this.maxLiveSubagents = options.maxLiveSubagents
-    this.shellPreviewBudgetTokens = options.shellPreviewBudgetTokens
+    this.deps = options.deps
+    this.store = options.store
     this.sessions = options.sessions
-    this.sessionStore = options.sessionStore
-    this.blobs = options.blobs
     this.unsubscribeTransport = this.transport.onFrame((frame) => {
       void this.handleFrame(frame)
     })
@@ -223,9 +203,6 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
         case 'shell_write':
           await this.handleShellWrite(frame)
           return
-        case 'list_conversations':
-          await this.listConversations(frame.cwd)
-          return
         case 'sync_transcript': {
           const session = this.sessionFor('sync_transcript')
           if (!session) return
@@ -266,29 +243,61 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     }
 
     const provider = await this.createRuntime(frame.provider, agentSessionId)
-    const { live, restoring } = await assembleLiveSession(
-      {
-        agent: this.agent,
-        shellOptions: this.shellOptions,
-        sessionOptions: this.sessionOptions,
-        shellEnvironment: this.shellEnvironment,
-        notifyParentOnIdle: this.notifyParentOnIdle,
-        maxLiveSubagents: this.maxLiveSubagents,
-        shellPreviewBudgetTokens: this.shellPreviewBudgetTokens,
-        sessionStore: this.sessionStore,
-        blobs: this.blobs?.(agentSessionId) ?? null,
-      },
-      { agentSessionId, cwd: frame.cwd, provider, selection: frame.provider },
-    )
+    const agent = this.agent
+    // The tree this root heads: its store, its directory, its frame sink, the harness profiles.
+    let live: LiveSession | null = null
+    const tree: TreeContext<unknown> = {
+      store: this.store(agentSessionId),
+      directory: new AgentDirectory<unknown>(),
+      hostSessionId: agentSessionId,
+      profiles: (await agent.agents?.({ state: agent.initialState(), cwd: frame.cwd })) ?? null,
+      emit: (serverFrame) => live?.sink(serverFrame),
+    }
+    const record: AgentNodeRecord = {
+      id: agentSessionId,
+      parentId: null,
+      description: '',
+      profileName: null,
+      metadata: null,
+      spawnedAt: Date.now(),
+      canSpawnSubagents: true,
+      closedPhase: null,
+      closedAt: null,
+      result: null,
+      failure: null,
+      delivered: false,
+    }
+    const { node, restored } = await assembleNode(this.deps, tree, {
+      record,
+      cwd: frame.cwd,
+      provider,
+      model: frame.provider.model,
+      prompt: { systemPrompt: agent.systemPrompt.bind(agent), preamble: agent.preamble?.bind(agent) },
+      preambleSuffix: null,
+      commands: async (state) => (await agent.commands?.({ state, cwd: frame.cwd, agentSessionId })) ?? [],
+      shellEnv: {},
+      policy: ROOT_POLICY,
+      firstMessage: null,
+      onJobsChanged: null,
+    })
+    tree.directory.attachRoot(node)
+    live = new LiveSession(node, frame.provider.providerId)
     this.sessions.register(live)
     this.live = live
     live.attachSink((serverFrame) => this.send(serverFrame))
+    // A restored root keeps its checkpoint's model; align it with the model the
+    // client opened with (which may differ from when it was saved).
+    if (restored) node.session.updateModel(null, frame.provider.model)
 
     this.sendOpenHandshake(live)
-    // Children persisted by a previous process of this parent come back after the
-    // open handshake, so the client sees them exactly like a replay: started +
-    // transcript_reset frames, then live patches as their interrupted turns resume.
-    if (restoring) await live.supervisor.restore()
+    if (restored) {
+      // What the root had queued runs again; its interrupted turn is the client's
+      // to resume. Children persisted by a previous process come back after the
+      // open handshake, so the client sees them exactly like a replay: started +
+      // transcript_reset frames, then live patches as their turns continue.
+      node.continue((turn) => this.observeSessionAction(turn))
+      await node.supervisor.restore()
+    }
   }
 
   private sendOpenHandshake(live: LiveSession): void {
@@ -352,37 +361,13 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     await live.dispose()
   }
 
-  // List the persisted conversations for a workspace (cwd), newest first, read
-  // straight from Host.store — independent of any client-side state, so history
-  // survives a cleared browser / a different device. Summaries read the raw
-  // rows (no media rehydration — titles and timestamps need none).
-  private async listConversations(cwd: string): Promise<void> {
-    const host = await this.agent.host({ state: this.agent.initialState(), cwd })
-    const keys = await host.store.list('agent-sessions/')
-    const conversations: ConversationSummary[] = []
-    for (const key of keys) {
-      if (!key.endsWith('/state.json')) continue
-      const id = key.slice('agent-sessions/'.length, -'/state.json'.length)
-      const loaded = await loadPersistedSession(host.store, `agent-sessions/${id}`)
-      if (!loaded || loaded.state.cwd !== cwd) continue
-      conversations.push(summarizeConversation(id, persistedSessionCheckpoint(loaded)))
-    }
-    conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    this.send({ type: 'conversations', conversations })
-  }
-
   private async handleShellWrite(frame: Extract<ClientFrame, { type: 'shell_write' }>): Promise<void> {
     const live = this.live
     const session = this.sessionFor('shell_write')
     if (!session || !live) return
 
     const environment = await live.resolveEnvironment(
-      {
-        agentSessionId: session.id(),
-        state: session.state(),
-        cwd: live.cwd,
-        metadata: frame.metadata ?? null,
-      },
+      { state: session.state(), metadata: frame.metadata ?? null },
       { commandId: frame.commandId },
     )
     const result = await environment.write({

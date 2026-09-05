@@ -3,10 +3,10 @@ import type { SessionPhase } from '@demicodes/core'
 import type { Provider } from '@demicodes/provider'
 import { AgentClient } from '../client/client'
 import { createInProcessTransportPair, type AgentServerTransport } from '../protocol/transport'
-import type { AgentHarness, AgentSessionStore } from '../types'
+import type { AgentHarness, AgentTreeStore } from '../types'
 import type { TurnRetryPolicy } from '../session/retry-policy'
-import type { BlobStore } from '../store/media'
 import type { ShellPreviewBudget } from '../tools'
+import type { NodeDeps } from '../node/assemble'
 import { MAX_LIVE_SUBAGENTS } from '../subagent/supervisor'
 import { AgentTransportBindingImpl } from './binding'
 import { SessionOwnershipRegistry } from './ownership'
@@ -70,13 +70,12 @@ export interface AgentServerOptions {
   /** The shell engine per Host. */
   shellEnvironment: ShellEnvironmentFactory
   /**
-   * Per-session persistence override. When absent, sessions persist through
-   * the resolved Host's store (`hostAgentSessionStore` under
-   * `agent-sessions/<id>`). Products with their own databases inject here.
+   * The session tree's persistence, one store per root session id: the
+   * product's own database, never a Host's store (`docs/subagent.md` §
+   * Persistence). Tests and fixtures use `MemoryAgentStore` from
+   * `@demicodes/agent/testing`.
    */
-  sessionStore?: (agentSessionId: string, host: Host) => AgentSessionStore<unknown>
-  /** Media store for a root session and its children, scoped by the composing product. */
-  blobs?: (agentSessionId: string) => BlobStore
+  store: (rootSessionId: string) => AgentTreeStore<unknown>
 }
 
 export interface AgentTransportBinding {
@@ -86,14 +85,8 @@ export interface AgentTransportBinding {
 export class AgentServer {
   private readonly agent: AgentHarness<unknown>
   private readonly resolveProvider: ProviderResolver
-  private readonly shellOptions: ShellEnvironmentOptions
-  private readonly sessionOptions: AgentServerSessionOptions
-  private readonly shellEnvironment: ShellEnvironmentFactory
-  private readonly notifyParentOnIdle: boolean
-  private readonly maxLiveSubagents: number
-  private readonly shellPreviewBudgetTokens: ShellPreviewBudget | null
-  private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
-  private readonly blobs: NonNullable<AgentServerOptions['blobs']> | null
+  private readonly deps: NodeDeps<unknown>
+  private readonly store: (rootSessionId: string) => AgentTreeStore<unknown>
   private readonly bindings = new Set<AgentTransportBindingImpl>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
@@ -102,14 +95,16 @@ export class AgentServer {
     this.resolveProvider = Array.isArray(options.providers)
       ? staticResolver(createProviderMap(options.providers))
       : options.providers
-    this.shellOptions = options.shell ?? {}
-    this.sessionOptions = options.session ?? {}
-    this.shellEnvironment = options.shellEnvironment
-    this.notifyParentOnIdle = options.subagents?.notifyParentOnIdle ?? true
-    this.maxLiveSubagents = options.subagents?.maxLiveSubagents ?? MAX_LIVE_SUBAGENTS
-    this.shellPreviewBudgetTokens = options.tools?.shellPreviewBudgetTokens ?? null
-    this.sessionStore = options.sessionStore ?? null
-    this.blobs = options.blobs ?? null
+    this.deps = {
+      agent: options.agent,
+      shellOptions: options.shell ?? {},
+      shellEnvironment: options.shellEnvironment,
+      sessionOptions: options.session ?? {},
+      notifyParentOnIdle: options.subagents?.notifyParentOnIdle ?? true,
+      maxLiveSubagents: options.subagents?.maxLiveSubagents ?? MAX_LIVE_SUBAGENTS,
+      shellPreviewBudgetTokens: options.tools?.shellPreviewBudgetTokens ?? null,
+    }
+    this.store = options.store
   }
 
   client(): AgentClient {
@@ -123,15 +118,9 @@ export class AgentServer {
       transport,
       agent: this.agent,
       resolveProvider: this.resolveProvider,
-      shell: this.shellOptions,
-      session: this.sessionOptions,
-      shellEnvironment: this.shellEnvironment,
-      notifyParentOnIdle: this.notifyParentOnIdle,
-      maxLiveSubagents: this.maxLiveSubagents,
-      shellPreviewBudgetTokens: this.shellPreviewBudgetTokens,
+      deps: this.deps,
+      store: this.store,
       sessions: this.sessionOwnership,
-      sessionStore: this.sessionStore,
-      blobs: this.blobs,
     })
     this.bindings.add(binding)
     return binding

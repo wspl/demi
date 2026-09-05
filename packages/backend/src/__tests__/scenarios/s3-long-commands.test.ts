@@ -62,7 +62,10 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S3 long commands on %s', (t
     const last = turn.received.at(-1)!
     expect(last).toContain('status: exited')
     expect(last).toContain('exitCode: 0')
-    expect(last).toContain('child done')
+    // Each view carries the streams' deltas since the previous one: the child's
+    // result arrives in whichever poll follows the command's write, the exit in
+    // the same view or the next.
+    expect(turn.received.join('\n')).toContain('child done')
     expect(driver.lastText()).toBe('finished')
   }, 30_000)
 

@@ -150,7 +150,6 @@ export const clientFrameSchema = z.discriminatedUnion('type', [
     stdin: z.string(),
     metadata: metadataSchema.optional(),
   }),
-  z.object({ type: z.literal('list_conversations'), cwd: z.string() }),
   // Requests a fresh transcript_reset; sent by the client when it detects a
   // revision gap in the patch stream (defensive resync, transports are ordered).
   z.object({ type: z.literal('sync_transcript') }),

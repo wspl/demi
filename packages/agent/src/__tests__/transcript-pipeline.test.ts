@@ -31,11 +31,15 @@ function createRuntime(): AgentHarnessRuntime<Record<string, never>> {
 
 class CountingStore implements AgentSessionStore<Record<string, never>> {
   saves = 0
-  last: AgentSessionPersistUpdate<Record<string, never>> | null = null
+  readonly writes: AgentSessionPersistUpdate<Record<string, never>>[] = []
+
+  get last(): AgentSessionPersistUpdate<Record<string, never>> | null {
+    return this.writes.at(-1) ?? null
+  }
 
   save(update: AgentSessionPersistUpdate<Record<string, never>>): void {
     this.saves += 1
-    this.last = structuredClone(update)
+    this.writes.push(structuredClone(update))
   }
 
   load(): Promise<AgentSessionCheckpoint<Record<string, never>> | null> {
@@ -74,7 +78,7 @@ test('streaming delta cost does not scale with transcript length', () => {
   expect(large).toBeLessThan(Math.max(small * 25, 250))
 })
 
-test('a turn with tool calls persists at action boundaries, not per event', async () => {
+test('a turn with tool calls persists at each tool dispatch and the action boundary, not per event', async () => {
   const store = new CountingStore()
   const provider = new StubProvider([
     [events.toolCall('tool-1', 'noop', {}), events.response()],
@@ -99,17 +103,19 @@ test('a turn with tool calls persists at action boundaries, not per event', asyn
 
   await session.send([{ type: 'text', text: 'run tools' }])
 
-  // With the persist timer effectively disabled, only the boundary flush writes.
-  expect(store.saves).toBe(1)
-  expect(store.last?.changedBlocks.map(({ block }) => block.type)).toEqual([
-    'user',
-    'tool_call',
-    'response',
-    'tool_call',
-    'response',
-    'text',
-    'response',
+  // With the persist timer effectively disabled, only the dispatch barriers —
+  // one before each batch of tool calls runs, the calls already `executing` —
+  // and the boundary flush write; each carries just the rows changed since.
+  expect(store.saves).toBe(3)
+  const typesOf = (update: AgentSessionPersistUpdate<Record<string, never>>) =>
+    update.changedBlocks.map(({ block }) => (block.type === 'tool_call' ? `${block.type}:${block.status}` : block.type))
+  expect(store.writes.map(typesOf)).toEqual([
+    ['user', 'tool_call:executing', 'response'],
+    ['tool_call:completed', 'tool_call:executing', 'response'],
+    ['tool_call:completed', 'text', 'response'],
   ])
+  expect(store.last?.blockCount).toBe(7)
+  expect(store.last?.phase).toBe('idle')
 })
 
 test('client resyncs with a snapshot when the patch revision stream has a gap', async () => {

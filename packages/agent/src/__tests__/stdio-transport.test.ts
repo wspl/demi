@@ -1,3 +1,4 @@
+import { memoryAgentStores } from '../testing'
 import { PassThrough } from 'node:stream'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { access, mkdtemp } from 'node:fs/promises'
@@ -73,7 +74,7 @@ test('StdioTransport carries the same AgentClient/AgentServer frames over NDJSON
   const clientToServer = new PassThrough()
   const serverToClient = new PassThrough()
 
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
     shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('echo-stub', () => new StubProvider([[events.text('over stdio'), events.response()]]))],
@@ -95,7 +96,7 @@ test('StdioTransport preserves complex AgentClient action convergence over NDJSO
   const serverToClient = new PassThrough()
   const provider = new StdioScenarioProvider()
 
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
     shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('stdio-scenario', provider)],
@@ -158,7 +159,7 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
         [events.text('running'), events.response()],
       ]),
   )
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
     shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [provider],

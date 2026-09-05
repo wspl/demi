@@ -271,10 +271,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     agent: harness,
     providers: resolveProvider,
     shellEnvironment: shellEnvironmentFor,
-    // Sessions persist as block rows in their conversation database; the
-    // Host-store default never runs in the product backend.
-    sessionStore: (agentSessionId) => conversationStores.sessionStore(agentSessionId),
-    blobs: (id) => blobs.forConversation(id),
+    // A conversation's session tree — its root and every subagent — persists
+    // as node and block rows in the conversation's database.
+    store: (conversationId) => conversationStores.treeStore(conversationId),
   })
 
   const { upgradeWebSocket, websocket } = createBunWebSocket()

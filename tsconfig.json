@@ -16,6 +16,7 @@
     "paths": {
       "@demicodes/agent/client": ["./packages/agent/src/client-entry.ts"],
       "@demicodes/agent/stdio": ["./packages/agent/src/protocol/stdio-transport.ts"],
+      "@demicodes/agent/testing": ["./packages/agent/src/testing.ts"],
       "@demicodes/command-loader/build": ["./packages/command-loader/src/build.ts"],
       "@demicodes/host-virtual/node": ["./packages/host-virtual/src/node.ts"],
       "@demicodes/host-virtual/testing": ["./packages/host-virtual/src/testing.ts"],

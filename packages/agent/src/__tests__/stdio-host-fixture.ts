@@ -1,3 +1,4 @@
+import { memoryAgentStores } from '../testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { AgentHarness } from '@demicodes/agent'
@@ -12,7 +13,7 @@ const childProvider = defineProvider({
   createRuntime: () => new StubProvider([[events.text('from child'), events.response()]]),
 })
 
-const server = new AgentServer({
+const server = new AgentServer({ store: memoryAgentStores(),
   shellEnvironment: hostlessShellFactory,
   agent: createHarness(),
   providers: [childProvider],

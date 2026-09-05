@@ -1,3 +1,4 @@
+import { memoryAgentStores } from '../testing'
 import { expect, test } from 'bun:test'
 import { hostlessShellFactory } from '@demicodes/host-virtual/testing'
 import { deferred, waitFor } from '@demicodes/utils'
@@ -114,7 +115,7 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
 test('WebSocket transports carry AgentClient and AgentServer traffic end to end', async () => {
   const [clientSocket, serverSocket] = createSocketPair()
 
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
     shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('ws-stub', () => new StubProvider([[events.text('over websocket'), events.response()]]))],
@@ -137,7 +138,7 @@ test('WebSocket transports preserve complex AgentClient action convergence', asy
   const [clientSocket, serverSocket] = createSocketPair()
   const provider = new WebSocketScenarioProvider()
 
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
     shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('ws-scenario', provider)],
