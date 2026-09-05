@@ -43,18 +43,20 @@ async function openHarness(options: {
   agents?: SubagentProfile<Record<string, never>>[]
   notifyParentOnIdle?: boolean
   maxLiveSubagents?: number
+  context?: AgentHarness<Record<string, never>>['context']
   metadataLog?: (AgentMetadata | null)[]
   root?: string
   sessionId?: string
   /** The tree store a "previous process" left; a fresh one otherwise. */
   store?: MemoryAgentStore
   shellPreviewBudgetTokens?: ShellPreviewBudget
-}): Promise<{ client: AgentClient; seen: ClientSessionEvent[]; root: string; sessionId: string; store: MemoryAgentStore }> {
+}): Promise<{ server: AgentServer; client: AgentClient; seen: ClientSessionEvent[]; root: string; sessionId: string; store: MemoryAgentStore }> {
   const root = options.root ?? (await mkdtemp(join(tmpdir(), 'demi-subagent-')))
   const store = options.store ?? new MemoryAgentStore()
   const hosts = new Map<string, LocalHost>()
   const harness: AgentHarness<Record<string, never>> = {
     name: 'subagent-test',
+    context: options.context,
     initialState: () => ({}),
     commands: () => [probeCommand()],
     host: (ctx) => {
@@ -91,7 +93,7 @@ async function openHarness(options: {
   client.subscribe((event) => seen.push(event))
   const sessionId = options.sessionId ?? globalThis.crypto.randomUUID()
   await client.open(selection, root, sessionId)
-  return { client, seen, root, sessionId, store }
+  return { server, client, seen, root, sessionId, store }
 }
 
 function itemsText(request: InferenceRequest): string {
@@ -1306,4 +1308,36 @@ test('a close whose wakeup was never committed is delivered once at restore; a q
   expect(third.client.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(2)
   expect(third.seen.some((event) => event.type === 'error')).toBe(false)
   await third.client.close()
+})
+
+test('an idle root cannot reserve its running child tree; custom profiles retain product context', async () => {
+  const nodes = new Map<string, string>()
+  const { client, server, seen, sessionId } = await openHarness({
+    notifyParentOnIdle: false,
+    agents: [{ name: 'custom', description: 'custom prompt', systemPrompt: () => 'custom system' }],
+    context: ctx => {
+      nodes.set(ctx.agentSessionId, ctx.rootSessionId)
+      return ctx.transcript.blocks.some(block => block.type === 'user' && block.preamble === 'execution snapshot') ? null : 'execution snapshot'
+    },
+    turns: [
+      [spawnCall('spawn', "demi agent spawn 'wait' --profile custom", 30)],
+      [events.toolCall('hold', 'shell_exec', { script: 'probe hold 300', timeoutMs: 5_000 })],
+      [events.text('parent idle'), events.response()],
+      request => {
+        expect(request.systemPrompt).toContain('custom system')
+        expect(itemsText(request)).toContain('execution snapshot')
+        return [events.text('child done'), events.response()]
+      },
+    ],
+  })
+  await client.send([{ type: 'text', text: 'go' }])
+  expect(server.sessionPhase(sessionId)).toBe('idle')
+  expect(server.treeActive(sessionId)).toBe(true)
+  expect(server.reserveTreeMutation(sessionId)).toBeNull()
+  await waitFor(() => seen.some(event => event.type === 'subagent' && event.event === 'closed'))
+  await waitFor(() => !server.treeActive(sessionId))
+  expect(nodes.size).toBe(2)
+  expect([...nodes.values()]).toEqual([sessionId, sessionId])
+  server.reserveTreeMutation(sessionId)!()
+  await client.close()
 })

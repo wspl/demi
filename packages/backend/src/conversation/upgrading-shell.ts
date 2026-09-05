@@ -1,3 +1,4 @@
+import { noop, type ActivityGate } from '@demicodes/utils'
 import type { HostlessEnvironment, ShellHandover } from '@demicodes/host-virtual'
 import type { ShellAbortInput, ShellCommandStatus, ShellEnvironment, ShellExecInput, ShellStatusInput, ShellWriteInput } from '@demicodes/shell'
 
@@ -35,6 +36,9 @@ export class UpgradingShell implements ShellEnvironment {
     private readonly upgrade: () => Promise<void>,
     /** The hostless home: what the machine's home stands in for. */
     private readonly hostlessHome: string,
+    private readonly activity: ActivityGate,
+    /** Attaches a machine selected by another node before using this hostless shell. */
+    private readonly refresh: () => Promise<void>,
   ) {}
 
   /** The machine this conversation now runs on — from this shell's own upgrade, or from the session that upgraded first. */
@@ -44,17 +48,25 @@ export class UpgradingShell implements ShellEnvironment {
 
   async exec(input: ShellExecInput): Promise<ShellCommandStatus> {
     if (this.machine === null) {
-      if (this.upgrading === null) {
-        if ((await this.hostless.outside(input)) === null) return this.hostless.exec(input)
-        const upgrading = this.upgrade().catch((error: unknown) => {
-          if (this.upgrading === upgrading) this.upgrading = null
+      const release = await this.activity.enter(input.signal)
+      let running = false
+      try {
+        await this.refresh()
+        if (this.machine === null && (await this.hostless.outside(input)) === null) {
+          const result = await this.hostless.exec(input)
+          running = true
+          void this.hostless.waitCommand(result.commandId).finally(release).catch(noop)
+          return result
+        }
+      } finally { if (!running) release() }
+      if (this.machine === null) {
+        this.upgrading ??= this.upgrade().catch((error: unknown) => {
+          this.upgrading = null
           throw error
         })
-        this.upgrading = upgrading
+        await this.upgrading
+        if (this.machine === null) throw new Error('the conversation moved to a machine, but its shell was not attached')
       }
-      // An upgrade in flight takes every exec with it: the files are on their way to the machine.
-      await this.upgrading
-      if (this.machine === null) throw new Error('the conversation moved to a machine, but its shell was not attached')
     }
     const machine = this.machine
     return machine.environment.exec(this.onMachine(machine, input))

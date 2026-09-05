@@ -166,6 +166,18 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         config: options.managedHosts.config,
         backendUrl: () => options.publicUrl ?? url,
         turnInFlight,
+        reserveIdle: async owner => {
+          const ids = owner.kind === 'conversation' ? [owner.id] : await control.listConversationIdsInWorkspace(owner.id)
+          const releases: Array<() => void> = []
+          for (const id of ids) {
+            for (const reserve of [() => agentServer.reserveTreeMutation(id), () => targets.files(id).tryReserve()]) {
+              const release = reserve()
+              if (!release) { for (const held of releases) held(); return null }
+              releases.push(release)
+            }
+          }
+          return () => { for (const release of releases) release() }
+        },
       })
     : null
   // Whatever a previous process left running or unsaved is settled before the first need can boot anything.
@@ -183,6 +195,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     stagingDir: join(options.dataDir, 'staging'),
     reserveTree: (conversationId) => agentServer.reserveTreeMutation(conversationId),
   })
+  await targets.recoverUpgrades()
   const hostFor = (conversationId: string): Promise<Host> => targets.hostFor(conversationId)
 
   const hostCommandDeps = {
@@ -190,7 +203,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     registry: runnerRegistry,
     pipes,
     managedHosts,
-    virtualHostFor: (conversationId: string): Promise<Host> => virtualHostFor(conversationId),
     hostStoreFor: (conversationId: string) => conversationStores.hostStore(conversationId),
   }
   const commandsFor = (agentSessionId: string): Command[] => [
@@ -244,6 +256,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
               await shellEnvironmentFor({ ...ctx, host: machine.host })
             },
             HOSTLESS_HOME,
+            targets.files(conversationId),
+            async () => {
+              if ((await targets.resolve(conversationId)).kind !== 'hostless') {
+                await shellEnvironmentFor({ ...ctx, host: await targets.hostFor(conversationId) })
+              }
+            },
           )
         }
         if (ctx.host instanceof RemoteHost) {
@@ -286,7 +304,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     pipes,
     upgradeWebSocket,
     blobs,
-    hostFor,
+    withHost: (id, operation, signal) => targets.withHost(id, operation, signal),
     switchTarget: (conversationId, toWorkspaceId) => targets.switch(conversationId, toWorkspaceId),
     managedHosts,
     createCloudWorkspace: managedHosts

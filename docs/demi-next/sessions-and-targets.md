@@ -167,7 +167,7 @@ managed → hostless entrance: a conversation with a machine of its own
 never returns to hostless, on whichever target it stands — its files
 live in that machine's home, and the hostless tree it left is empty.
 
-At a turn boundary the backend re-resolves the Host, **attaches the
+With the whole conversation tree idle and file admission reserved, the backend re-resolves the Host, **attaches the
 departed host to the conversation** (below) with its directory as the
 attachment's working directory, and injects a context block stating the
 previous and new target and directory. Files are never moved by code
@@ -209,11 +209,9 @@ PRIMARY KEY (conversation_id, device_id)      UNIQUE (conversation_id, name)
   permission and draws no boundary — it is the same thing the main host
   carries between jobs, kept once per attached host.
 
-The attachment set is independent of the main host's state. A hostless,
-user-host, workspace or managed main host reaches its attached hosts the
-same way, attaching is offered in every state, and nothing in the product
-or the backend narrows the combination — a hostless conversation with
-attached hosts is not the expected shape, but it is a supported one.
+The attachment set is independent of the main host's state. Attaching is
+offered in every state. A hostless conversation may list attached hosts;
+executing on one acquires its own machine before the script starts.
 
 Attaching is the user's act alone: switching the target automatically
 attaches the departed host; the user attaches and detaches hosts on the
