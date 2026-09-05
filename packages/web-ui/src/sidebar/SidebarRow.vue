@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Archive, Pin } from '@lucide/vue'
+import { Archive, Pin, PinOff } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -157,10 +157,12 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       <Tooltip :content="conversation.pinned ? 'Unpin' : 'Pin'">
         <IconButton
           v-if="!hidePin"
-          :icon="Pin"
+          :icon="conversation.pinned ? PinOff : Pin"
+          :icon-size="ICON_PX.in20"
           size="sm"
           variant="ghost"
           :pressed="conversation.pinned"
+          :aria-pressed="conversation.pinned"
           :aria-label="conversation.pinned ? 'Unpin conversation' : 'Pin conversation'"
           @click.stop="emit('togglePin')"
         />
@@ -178,8 +180,8 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     </span>
     <Pin
       v-if="conversation.pinned && !menuOpen"
-      :size="ICON_PX.markIn28"
-      class="absolute right-2 text-fg-faint transition-opacity group-hover/row:opacity-0"
+      :size="ICON_PX.in20"
+      class="pointer-events-none absolute right-2 text-fg-faint transition-opacity group-hover/row:opacity-0"
     />
   </div>
 </template>
