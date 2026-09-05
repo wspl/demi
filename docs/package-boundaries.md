@@ -263,6 +263,14 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: the browser entry point.
 - Must not: be imported by any other production package, or carry a server.
 
+## Execution Coordination
+
+The final execution identity and admission contract is
+`docs/demi-next/execution-coordination.md`. The agent owns tree turn admission
+and root/node identity; the backend owns device authorization, target transitions
+and Hostless eligibility. Host and interpreter packages expose generic facts and
+callbacks only. Package dependency direction remains as registered above.
+
 ## Production Dependency Graph
 
 The canonical production source graph contains every Demi package and must stay acyclic:
