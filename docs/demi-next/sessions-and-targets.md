@@ -47,8 +47,12 @@ In the hostless state the tool call runs in tinybash (`tinybash.md`), the
 backend's small shell: a GNU-faithful subset of bash and coreutils over the
 store-backed filesystem, plus the root commands dispatched through the
 in-process loader (`commands.md`): `demi file`, `demi todo`, `demi agent`
-and the rest work against `@demicodes/host-virtual`, a `Host` whose files
+and local observational leaves work against `@demicodes/host-virtual`, a `Host` whose files
 live in the conversation's store.
+
+Hostless eligibility and the synchronized cutover follow
+`execution-coordination.md`. Scripts that spawn/resume agents or execute on an
+attached Host acquire a machine before any statement runs.
 
 **The upgrade is silent, always.** The `bash` tool is described to the
 model as bash and nothing else; the model is never told about tinybash,
@@ -236,8 +240,8 @@ idiom over a pipe (`runner.md` § Pipes): `tar c . | demi host shell
 --host ci "tar x"` pushes, `demi host shell --host ci "tar c ." | tar x`
 pulls; there is no separate copy verb, `tar` already defines the
 semantics and the pipe carries it byte for byte. `tar` is a tinybash
-builtin (`tinybash.md` § Builtins), so a hostless conversation copies to
-and from its attached hosts without acquiring a machine.
+builtin (`tinybash.md` § Builtins). A cross-host pipeline acquires a machine
+before the script runs, following `execution-coordination.md`.
 
 The attachment set is the trust asymmetry's first answer inside the
 product (`overview.md`): the datacenter side reaches only the hosts a
