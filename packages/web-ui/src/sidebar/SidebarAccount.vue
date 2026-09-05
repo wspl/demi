@@ -42,7 +42,7 @@ const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCas
       </div>
     </template>
     <template #content="{ close }">
-      <Menu class="w-60">
+      <Menu>
         <div class="flex items-center gap-2 px-2 py-1.5">
           <CircleUser :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
           <span class="flex min-w-0 flex-col leading-4">

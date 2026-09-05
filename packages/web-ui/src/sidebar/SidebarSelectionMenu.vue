@@ -34,7 +34,7 @@ const many = computed(() => (props.targets.length > 1 ? ` ${props.targets.length
 </script>
 
 <template>
-  <Menu class="w-64">
+  <Menu>
     <template v-if="single">
       <MenuItem :icon="ArrowRight" label="Open" shortcut="↵" @select="emit('open', single.id)" />
       <MenuItem :icon="Pencil" label="Rename" shortcut="F2" @select="emit('rename', single.id)" />
@@ -49,7 +49,7 @@ const many = computed(() => (props.targets.length > 1 ? ` ${props.targets.length
     <MenuItem :icon="FolderInput">
       <span class="min-w-0 flex-1 truncate">Move to</span>
       <template #submenu>
-        <Menu iconless class="min-w-[11rem]">
+        <Menu iconless>
           <MenuItem
             label="No project"
             choice

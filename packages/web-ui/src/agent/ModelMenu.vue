@@ -87,7 +87,7 @@ watch(
 </script>
 
 <template>
-  <Menu iconless class="w-64">
+  <Menu iconless>
     <MenuItem v-if="fastTier" :label="t('providers.fastMode')" @select="setFast(!fast)">
       <template #suffix>
         <Switch :model-value="fast" size="sm" @click.stop @update:model-value="setFast" />
@@ -95,7 +95,7 @@ watch(
     </MenuItem>
     <MenuItem v-if="reasoningState" :label="t('providers.reasoning')" :value="reasoningLabel">
       <template #submenu>
-        <Menu iconless class="min-w-[10rem]">
+        <Menu iconless>
           <MenuItem
             v-for="(option, index) in reasoningState.options"
             :key="option.label"
@@ -110,7 +110,7 @@ watch(
     <MenuDivider v-if="fastTier || reasoningState" />
     <MenuItem :label="t('providers.model')" :value="selectedModelLabel">
       <template #submenu>
-        <Menu iconless class="min-w-[12rem]">
+        <Menu iconless>
           <MenuGroup
             v-for="provider in providersWithModels"
             :key="provider.id"

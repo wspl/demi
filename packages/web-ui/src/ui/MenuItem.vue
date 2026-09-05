@@ -148,8 +148,8 @@ const toneClass = computed(() => {
         >
           <ChevronRight :size="ICON_PX.in28" />
         </span>
-        <span v-else class="w-7 shrink-0 text-right text-[11px] text-fg-faint">
-          {{ shortcut ?? '' }}
+        <span v-else-if="shortcut" class="shrink-0 text-right text-[11px] text-fg-faint">
+          {{ shortcut }}
         </span>
       </slot>
     </div>
