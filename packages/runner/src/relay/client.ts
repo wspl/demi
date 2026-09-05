@@ -2,6 +2,7 @@
 // and the `RpcTransport` the loader hands `rpc` invocations to.
 import { connectUnix, msgpackDecode, msgpackEncode, type StreamSocket } from '../machine'
 import type { RpcTransport } from '@demicodes/command-loader'
+import type { DispatchIO } from '@demicodes/shell'
 import { createId, SerialQueue, throwIfAborted } from '@demicodes/utils'
 import { frameOf, framesOf, relayReplySchema, type RelayRequest } from './protocol'
 
@@ -18,6 +19,35 @@ export async function fetchManifest(socketPath: string): Promise<unknown | null>
     throw new Error('relay closed without a manifest')
   } finally {
     socket.close()
+  }
+}
+
+/** The hint uses its own lifetime connection, so exit or process death clears it without output traffic. */
+export function relayRunningHint(socketPath: string, jobId: string, signal: AbortSignal): NonNullable<DispatchIO['onRunningHint']> {
+  let socket: StreamSocket | null = null
+  const close = () => {
+    socket?.close()
+    socket = null
+    signal.removeEventListener('abort', close)
+  }
+  return async (hint) => {
+    close()
+    if (hint === undefined) return
+    throwIfAborted(signal)
+    signal.addEventListener('abort', close, { once: true })
+    try {
+      const opened = await connectUnix(socketPath)
+      socket = opened
+      throwIfAborted(signal)
+      await opened.write(frameOf(codec, { type: 'running_hint', jobId, hint } satisfies RelayRequest))
+      const reply = await framesOf(opened.input, codec, relayReplySchema)[Symbol.asyncIterator]().next()
+      throwIfAborted(signal)
+      if (reply.done || reply.value.type !== 'ready') throw new Error('relay did not accept the running hint')
+    } catch (error) {
+      close()
+      throwIfAborted(signal)
+      throw error
+    }
   }
 }
 

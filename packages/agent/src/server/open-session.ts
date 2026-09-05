@@ -1,8 +1,9 @@
 import { CommandRegistry, type Host, RESERVED_COMMAND_NAMES, type ShellEnvironmentOptions } from '@demicodes/shell'
 import type { AgentProvider, ProviderSelection } from '@demicodes/provider'
 import { AgentSession } from '../session/session'
-import { createStandardAgentTools } from '../tools'
+import { createStandardAgentTools, type ShellPreviewBudget } from '../tools'
 import { ChildSupervisor, injectSubagentCommand } from '../subagent/supervisor'
+import { AgentDirectory } from '../subagent/directory'
 import { hostAgentSessionStore } from '../store/session-store'
 import type { BlobStore } from '../store/media'
 import type { ServerFrame } from '../protocol/frames'
@@ -17,6 +18,8 @@ export interface AssembleLiveSessionDeps {
   sessionOptions: AgentServerSessionOptions
   shellEnvironment: ShellEnvironmentFactory
   notifyParentOnIdle: boolean
+  maxLiveSubagents: number
+  shellPreviewBudgetTokens: ShellPreviewBudget | null
   sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
   blobs: BlobStore | null
 }
@@ -74,8 +77,8 @@ export async function assembleLiveSession(
   const liveSink = (serverFrame: ServerFrame): void => {
     live?.sink(serverFrame)
   }
-  // Root sessions get the subagent surface (`demi agent`); child sessions are
-  // supervisor-built with a send-parent-only tree, so spawn is root-only.
+  // Every session uses the same command surface and shares its root's directory.
+  const directory = new AgentDirectory<unknown>()
   const supervisor = new ChildSupervisor<unknown>({
     agent,
     agentSessionId,
@@ -87,6 +90,12 @@ export async function assembleLiveSession(
     sessionOptions: deps.sessionOptions,
     notifyParentOnIdle: deps.notifyParentOnIdle,
     store: provisionalHost.store,
+    storePrefix: `agent-sessions/${agentSessionId}`,
+    directory,
+    maxLiveSubagents: deps.maxLiveSubagents,
+    shellPreviewBudgetTokens: deps.shellPreviewBudgetTokens,
+    canSpawn: true,
+    onJobsChanged: null,
     blobs: deps.blobs ?? undefined,
     emit: liveSink,
   })
@@ -103,6 +112,7 @@ export async function assembleLiveSession(
       if (!sessionRef) throw new Error('AgentServer: session is not ready for yield scheduling')
       return sessionRef.scheduleYieldWakeup(durationMs, ctx.metadata)
     },
+    ...(deps.shellPreviewBudgetTokens === null ? {} : { previewBudgetTokens: deps.shellPreviewBudgetTokens }),
   })
   // Commands are fixed for the session's lifetime, so the rendered help is too.
   const commandsPrompt = commandRegistry.renderHelp()
@@ -126,6 +136,7 @@ export async function assembleLiveSession(
       )
   sessionRef = session
   supervisor.attachParent(session)
+  directory.attachRoot(session, supervisor)
   live = new LiveSession({
     agentSessionId,
     session,

@@ -1,6 +1,13 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { Model, ModelSelection } from '@demicodes/core'
+import { hostlessShellFactory, LocalHost } from '@demicodes/host-virtual/testing'
+import { defineProvider, type ProviderSelection } from '@demicodes/provider'
+import { StubProvider, events } from '@demicodes/provider/testing'
 import type { ShellCommandStatus, ShellEnvironment } from '@demicodes/shell'
+import { AgentServer } from '../server/server'
 import type { AgentToolInvokeContext } from '../types'
 import { createStandardAgentTools, shellCommandHandleRequired, shellPreviewBudgetTokens, toShellToolResult } from '../tools'
 
@@ -22,10 +29,10 @@ test('standard shell tool schemas do not expose model-controlled output budgets 
 })
 
 test('shell preview budget follows the 800k context threshold', () => {
-  expect(shellPreviewBudgetTokens(0)).toBe(1_000)
-  expect(shellPreviewBudgetTokens(799_999)).toBe(1_000)
-  expect(shellPreviewBudgetTokens(800_000)).toBe(10_000)
-  expect(shellPreviewBudgetTokens(2_000_000)).toBe(10_000)
+  expect(shellPreviewBudgetTokens(0)).toBe(10_000)
+  expect(shellPreviewBudgetTokens(799_999)).toBe(10_000)
+  expect(shellPreviewBudgetTokens(800_000)).toBe(100_000)
+  expect(shellPreviewBudgetTokens(2_000_000)).toBe(100_000)
 })
 
 test('shell tool result exposes output paths and a bounded preview without stdout body sections', () => {
@@ -88,7 +95,8 @@ test('completed short shell_exec hides and releases the command handle', async (
 
 test('completed truncated shell_exec keeps the command handle for artifacts', async () => {
   const released: string[] = []
-  const output = `${'x'.repeat(4_200)}tail`
+  // Default budget for a small-context model is 10k tokens → 40k chars.
+  const output = `${'x'.repeat(40_200)}tail`
   const tools = createStandardAgentTools({
     environment: {
       exec: async () => shellSnapshot(output),
@@ -111,10 +119,122 @@ test('completed truncated shell_exec keeps the command handle for artifacts', as
   expect(released).toEqual([])
 })
 
+test.each([
+  ['shell_exec', { script: 'printf long', timeoutMs: 1 }],
+  ['shell_status', { commandId: 'cmd-1' }],
+  ['shell_write', { commandId: 'cmd-1', stdin: 'input\n' }],
+  ['shell_abort', { commandId: 'cmd-1' }],
+])('%s evaluates the custom preview budget against the current model', async (name, input) => {
+  const seen: number[] = []
+  const released: string[] = []
+  const snapshot = () => shellSnapshot(`${'x'.repeat(100)}tail`)
+  const tools = createStandardAgentTools({
+    environment: {
+      exec: async () => snapshot(),
+      status: async () => snapshot(),
+      write: async () => snapshot(),
+      abort: async () => snapshot(),
+      releaseCommand: async (commandId: string) => {
+        released.push(commandId)
+        return true
+      },
+    } as unknown as ShellEnvironment,
+    scheduleYield: () => ({ output: [{ type: 'text', text: 'scheduled' }] }),
+    previewBudgetTokens: (contextWindow) => {
+      seen.push(contextWindow)
+      return contextWindow / 10_000
+    },
+  })
+  const tool = tools.find((tool) => tool.name === name)
+  if (!tool) throw new Error(`missing ${name}`)
+  const context = toolContext()
+
+  const result = await tool.invoke(context, input)
+  const text = result.output[0]?.type === 'text' ? result.output[0].text : ''
+
+  expect(seen).toEqual([context.model.model.contextWindow])
+  expect(text).toContain('previewBudgetTokens: 10')
+  expect(text).toContain('previewTruncated: true')
+  expect(text).toContain('commandId: cmd-1')
+  expect(text).not.toContain('tail')
+  expect(released).toEqual([])
+
+  const largerContext = {
+    ...context,
+    model: { ...context.model, model: { ...context.model.model, contextWindow: 1_000_000 } },
+  }
+  const largerResult = await tool.invoke(largerContext, input)
+  const largerText = largerResult.output[0]?.type === 'text' ? largerResult.output[0].text : ''
+
+  expect(seen).toEqual([context.model.model.contextWindow, 1_000_000])
+  expect(largerText).toContain('previewBudgetTokens: 100')
+  expect(largerText).not.toContain('previewTruncated: true')
+  expect(largerText).not.toContain('commandId:')
+  expect(largerText).toContain('tail')
+  expect(released).toEqual(['cmd-1'])
+})
+
 test('shell command handles are required only for running or over-budget output', () => {
   expect(shellCommandHandleRequired(runningShellSnapshot(''), 1_000)).toBe(true)
   expect(shellCommandHandleRequired(shellSnapshot('short\n'), 1_000)).toBe(false)
   expect(shellCommandHandleRequired(shellSnapshot('x'.repeat(4_001)), 1_000)).toBe(true)
+})
+
+test('AgentServer keeps the custom preview policy across model changes and live session takeover', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-preview-policy-'))
+  const host = new LocalHost(root, { storeRoot: join(root, '.store') })
+  const seenWindows: number[] = []
+  const seenResults: string[] = []
+  const turns: ConstructorParameters<typeof StubProvider>[0] = []
+  for (let index = 0; index < 3; index += 1) {
+    turns.push([events.toolCall(`preview-${index}`, 'shell_exec', {
+      script: `echo ${'x'.repeat(100)}tail`, timeoutMs: 100,
+    })])
+    turns.push((request) => {
+      const result = [...request.items].reverse().find((item) => item.type === 'tool_result')
+      seenResults.push(result?.output[0]?.type === 'text' ? result.output[0].text : '')
+      return [events.text('done'), events.response()]
+    })
+  }
+  const runtime = new StubProvider(turns)
+  const server = new AgentServer({
+    agent: { name: 'preview', initialState: () => ({}), host: () => host, systemPrompt: () => 'test' },
+    providers: [defineProvider({ id: 'stub', displayName: 'Stub', createRuntime: () => runtime })],
+    shellEnvironment: hostlessShellFactory,
+    tools: {
+      shellPreviewBudgetTokens: (contextWindow) => {
+        seenWindows.push(contextWindow)
+        return contextWindow / 10_000
+      },
+    },
+  })
+  const selection = (contextWindow: number): ProviderSelection => ({
+    providerId: 'stub', model: { ...model, model: { ...model.model, contextWindow } },
+  })
+  try {
+    const first = server.client()
+    await first.open(selection(100_000), root, 'preview-session')
+    await first.send([{ type: 'text', text: 'first preview' }])
+
+    first.setProvider(selection(1_000_000))
+    await first.send([{ type: 'text', text: 'larger preview' }])
+
+    const adopted = server.client()
+    await adopted.open(selection(200_000), root, 'preview-session')
+    await adopted.send([{ type: 'text', text: 'preview after takeover' }])
+
+    expect(seenWindows).toEqual([100_000, 1_000_000, 200_000])
+    expect(seenResults).toHaveLength(3)
+    expect(seenResults[0]).toContain('previewBudgetTokens: 10')
+    expect(seenResults[0]).not.toContain('tail')
+    expect(seenResults[1]).toContain('previewBudgetTokens: 100')
+    expect(seenResults[1]).toContain('tail')
+    expect(seenResults[2]).toContain('previewBudgetTokens: 20')
+    expect(seenResults[2]).not.toContain('tail')
+  } finally {
+    await server.close()
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 const PNG_STREAM = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01])

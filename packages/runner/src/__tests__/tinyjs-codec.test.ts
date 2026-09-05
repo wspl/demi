@@ -14,6 +14,8 @@ test('frames encoded on Bun are read and reproduced identically by tinyjs', asyn
   const messages: RunnerProtocolMessage[] = [
     { type: 'hello', protocol: RUNNER_PROTOCOL_VERSION, deviceToken: 't', runner: { name: 'n', platform: 'p', version: '1', identity: { uid: 501, gid: 20, hostname: 'h', homeDir: '/h' } } },
     { type: 'rpc_cancel', callId: 'cancelled-call' },
+    { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint: 'attending; do not poll' },
+    { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint: null },
     { type: 'pong', jobs: 3 },
     { type: 'fs_utimes', id: 'a', path: '/x', atime: new Date(1_600_000_000_000), mtime: new Date(1_600_000_000_250), cwd: '/' },
     { type: 'fs_ok', id: 'a', op: 'readFile', result: new Uint8Array([0, 1, 254, 255]) },
@@ -45,7 +47,7 @@ exit(0)
   expect(back.length).toBe(frames.length)
   for (const [index, frame] of frames.entries()) {
     expect(Buffer.from(back[index]!).equals(Buffer.from(frame)), `frame ${index} (${messages[index]!.type})`).toBe(true)
-    const runnerToBackend = ['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'rpc_cancel'].includes(messages[index]!.type)
+    const runnerToBackend = ['hello', 'pong', 'fs_ok', 'fs_error', 'spawn_output', 'spawn_exit', 'rpc_cancel', 'job_running_hint'].includes(messages[index]!.type)
     const decoded = runnerToBackend ? wire.decodeRunnerToBackend(back[index]!) : wire.decodeBackendToRunner(back[index]!)
     expect(decoded).toEqual(messages[index])
   }

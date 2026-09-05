@@ -7,7 +7,7 @@
 // socket (`runner.md` § Pipes).
 import { listenUnix, msgpackDecode, msgpackEncode, type StreamSocket, type UnixListener } from '../machine'
 import type { BackendToRunnerMessage, PipeRef, RunnerToBackendMessage } from '@demicodes/runner-protocol'
-import { ByteChannel, errorMessage, noop, SerialQueue } from '@demicodes/utils'
+import { ByteChannel, createId, errorMessage, noop, SerialQueue } from '@demicodes/utils'
 import type { PipeEnds } from '../pipes'
 import { frameOf, framesOf, relayRequestSchema, type RelayReply } from './protocol'
 
@@ -36,6 +36,7 @@ interface Call {
 
 export class RelayServer {
   private readonly calls = new Map<string, Call>()
+  private readonly hints = new Map<string, { jobId: string; socket: StreamSocket }>()
   private closed = false
 
   static async listen(path: string, options: RelayServerOptions): Promise<RelayServer> {
@@ -54,6 +55,7 @@ export class RelayServer {
     this.closed = true
     this.listener.close()
     for (const [callId, call] of this.calls) this.cancel(callId, call)
+    for (const invocationId of this.hints.keys()) this.clearHint(invocationId)
   }
 
   /** The backend went away: every call in flight fails. */
@@ -64,12 +66,16 @@ export class RelayServer {
       void this.replyCall(call, { type: 'error', message: 'runner disconnected' }).finally(() => call.socket.close()).catch(noop)
     }
     this.calls.clear()
+    for (const invocationId of this.hints.keys()) this.clearHint(invocationId)
   }
 
   /** Job termination also cancels calls whose data connection is backpressured. */
   cancelJob(jobId: string): void {
     for (const [callId, call] of this.calls) {
       if (call.jobId === jobId) this.cancel(callId, call)
+    }
+    for (const [invocationId, hint] of this.hints) {
+      if (hint.jobId === jobId) this.clearHint(invocationId)
     }
   }
 
@@ -115,6 +121,18 @@ export class RelayServer {
     }
     call.socket.close()
     call.control?.close()
+  }
+
+  private clearHint(invocationId: string): void {
+    const hint = this.hints.get(invocationId)
+    if (!hint) return
+    this.hints.delete(invocationId)
+    try {
+      this.options.send({ type: 'job_running_hint', jobId: hint.jobId, invocationId, hint: null })
+    } catch {
+      // Disconnect already cleared the backend's active jobs.
+    }
+    hint.socket.close()
   }
 
   /** The process's pipe up to the backend; a failure is reported and is the far end's to judge. */
@@ -168,10 +186,19 @@ export class RelayServer {
     let callId: string | null = null
     let call: Call | null = null
     let watched: Call | null = null
+    let hintId: string | null = null
     try {
       for await (const request of framesOf(socket.input, codec, relayRequestSchema)) {
-        if (watched) throw new Error('the lifetime connection carries only one watch request')
+        if (watched || hintId) throw new Error('a lifetime connection carries only one request')
         switch (request.type) {
+          case 'running_hint': {
+            if (call) throw new Error('a hint lifetime connection carries no data')
+            hintId = createId()
+            this.hints.set(hintId, { jobId: request.jobId, socket })
+            this.options.send({ type: 'job_running_hint', jobId: request.jobId, invocationId: hintId, hint: request.hint })
+            await this.reply(socket, { type: 'ready' })
+            break
+          }
           case 'watch': {
             if (call) throw new Error('a lifetime connection carries no data')
             watched = this.calls.get(request.callId) ?? null
@@ -220,6 +247,7 @@ export class RelayServer {
     } finally {
       if (callId && call) this.cancel(callId, call)
       if (watched) this.cancel(watched.request.callId, watched)
+      if (hintId) this.clearHint(hintId)
     }
   }
 
