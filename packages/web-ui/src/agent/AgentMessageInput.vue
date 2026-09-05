@@ -1,19 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { UserContentBlock } from '@demicodes/core'
-import { ArrowUp, File as FileIcon, Plus, Square } from '@lucide/vue'
 import { EditorContent } from '@tiptap/vue-3'
 import { useAgentWorkspace } from './workspace'
-import AttachmentTile from './AttachmentTile.vue'
-import ComposerShell from './ComposerShell.vue'
-import ModelSelector from './ModelSelector.vue'
-import ContextUsageIndicator from './ContextUsageIndicator.vue'
-import IconButton from '../ui/IconButton.vue'
-import Tooltip from '../ui/Tooltip.vue'
-import Dropdown from '../ui/Dropdown.vue'
-import Menu from '../ui/Menu.vue'
-import MenuItem from '../ui/MenuItem.vue'
-import { appOverlayStore } from '../overlay/appOverlay'
+import SessionComposer from './SessionComposer.vue'
 import { t } from '../infra/i18n'
 import { showToast } from '../infra/toast'
 import { useAgentInputActions } from './message-input/useAgentInputActions'
@@ -21,7 +11,13 @@ import { useAgentInputEditor } from './message-input/useAgentInputEditor'
 import { useAgentInputSessionState } from './message-input/useAgentInputSessionState'
 import { docToContent, type InputModel } from './message-input/input-model'
 import { composerHasLineBreak } from './message-input/composer-multiline'
-import { acceptAttribute, dataTransferFiles, filePreviewUrl, fileToUserContent, partitionAcceptedFiles } from './message-input/attachments'
+import {
+  acceptAttribute,
+  dataTransferFiles,
+  filePreviewUrl,
+  fileToUserContent,
+  partitionAcceptedFiles,
+} from './message-input/attachments'
 
 interface ComposerAttachment {
   name: string
@@ -44,8 +40,6 @@ const {
   selectedModelId,
   serviceTierId,
   thinkingConfig,
-  contextWindow,
-  inputLimit,
   acceptedExtensions,
   isRunning,
   isCompacting,
@@ -55,8 +49,6 @@ const {
 
 const attachments = ref<ComposerAttachment[]>([])
 const isMultiline = ref(false)
-const fileInputRef = ref<HTMLInputElement>()
-const expanded = computed(() => isMultiline.value || attachments.value.length > 0)
 
 function buildSubmitPayload(): UserContentBlock[] | null {
   const currentEditor = editor.value
@@ -76,7 +68,14 @@ function clearInput(): void {
   attachments.value = []
 }
 
-const { handleSubmit, handleSelectModel, handleChangeThinking, handleChangeServiceTier, handleAbort, handleCompact } = useAgentInputActions({
+const {
+  handleSubmit,
+  handleSelectModel,
+  handleChangeThinking,
+  handleChangeServiceTier,
+  handleAbort,
+  handleCompact,
+} = useAgentInputActions({
   workspace,
   conversationId: props.conversationId,
   buildSubmitPayload,
@@ -89,17 +88,23 @@ const { handleSubmit, handleSelectModel, handleChangeThinking, handleChangeServi
 async function addFiles(files: File[]): Promise<void> {
   const { accepted, rejected } = partitionAcceptedFiles(files, acceptedExtensions.value)
   if (rejected.length > 0) {
-    showToast({ title: t('agent.input.unsupportedFiles'), message: rejected.map((file) => file.name).join(', '), tone: 'danger' })
+    showToast({
+      title: t('agent.input.unsupportedFiles'),
+      message: rejected.map((file) => file.name).join(', '),
+      tone: 'danger',
+    })
   }
   if (accepted.length === 0) return
-  const next = await Promise.all(accepted.map(async (file) => {
-    const block = await fileToUserContent(file)
-    return {
-      name: file.name,
-      block,
-      previewUrl: block.type === 'image' ? filePreviewUrl(file) : undefined,
-    }
-  }))
+  const next = await Promise.all(
+    accepted.map(async (file) => {
+      const block = await fileToUserContent(file)
+      return {
+        name: file.name,
+        block,
+        previewUrl: block.type === 'image' ? filePreviewUrl(file) : undefined,
+      }
+    }),
+  )
   attachments.value = [...attachments.value, ...next]
 }
 
@@ -118,31 +123,24 @@ const { editor, isFocused, hasContent } = useAgentInputEditor({
   handlePasteAttachments,
 })
 
-watch(editor, (current) => {
-  if (!current) {
-    isMultiline.value = false
-    return
-  }
-  const sync = () => {
-    isMultiline.value = composerHasLineBreak(
-      current.state.doc.childCount,
-      current.getText({ blockSeparator: '\n' }),
-    )
-  }
-  sync()
-  current.on('update', sync)
-}, { immediate: true })
-
-function pickFiles(): void {
-  fileInputRef.value?.click()
-}
-
-function onFileChange(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const files = input.files ? [...input.files] : []
-  input.value = ''
-  void addFiles(files)
-}
+watch(
+  editor,
+  (current) => {
+    if (!current) {
+      isMultiline.value = false
+      return
+    }
+    const sync = () => {
+      isMultiline.value = composerHasLineBreak(
+        current.state.doc.childCount,
+        current.getText({ blockSeparator: '\n' }),
+      )
+    }
+    sync()
+    current.on('update', sync)
+  },
+  { immediate: true },
+)
 
 function removeAttachment(index: number): void {
   const item = attachments.value[index]
@@ -168,79 +166,46 @@ defineExpose({
     nextTick(() => editor.value?.commands.focus('end', { scrollIntoView: false }))
   },
 })
+const displayAttachments = computed(() =>
+  attachments.value.map((item) => ({
+    name: attachmentName(item),
+    src: item.previewUrl,
+  })),
+)
 </script>
 
 <template>
-  <div>
-    <input
-      ref="fileInputRef"
-      type="file"
-      class="hidden"
-      multiple
-      :accept="acceptAttribute(acceptedExtensions)"
-      @change="onFileChange"
-    />
-    <ComposerShell :focused="isFocused" :expanded="expanded" @drop-files="addFiles">
-      <template v-if="attachments.length > 0" #chips>
-        <AttachmentTile
-          v-for="(item, index) in attachments"
-          :key="`${item.name}-${index}`"
-          :name="attachmentName(item)"
-          :src="item.previewUrl"
-          removable
-          @remove="removeAttachment(index)"
-        />
-      </template>
-      <template #editor>
-        <EditorContent v-if="editor" :editor="editor" />
-      </template>
-      <template #attach>
-        <Dropdown :overlay-store="appOverlayStore" placement="top-start">
-          <template #trigger="{ isOpen }">
-            <Tooltip :content="t('agent.input.attach')">
-              <IconButton :icon="Plus" variant="ghost" circle :pressed="isOpen" />
-            </Tooltip>
-          </template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem :icon="FileIcon" :label="t('agent.input.attachFiles')" @select="close(); pickFiles()" />
-            </Menu>
-          </template>
-        </Dropdown>
-      </template>
-      <template #model>
-        <ModelSelector
-          :providers="workspace.providers.value"
-          :models="workspace.models"
-          :selected-provider-id="selectedProviderId"
-          :selected-model-id="selectedModelId"
-          :service-tier-id="serviceTierId"
-          v-bind="thinkingConfig ? { thinkingConfig } : {}"
-          @select-model="handleSelectModel"
-          @change-thinking="handleChangeThinking"
-          @change-service-tier="handleChangeServiceTier"
-        />
-      </template>
-      <template #actions>
-        <ContextUsageIndicator
-          :conversation-id="props.conversationId"
-          :usage="usage"
-          :context-window="contextWindow"
-          :input-limit="inputLimit"
-          :is-compacting="isCompacting"
-          :is-clickable="!isRunning && canCompact"
-          @compact="handleCompact"
-        />
-        <Tooltip v-if="hasContent || attachments.length > 0" :content="isRunning ? 'Queue next turn' : 'Send message'">
-          <IconButton :icon="ArrowUp" variant="accent" circle @click="handleSubmit" />
-        </Tooltip>
-        <Tooltip v-else-if="isRunning || isCompacting" content="Stop">
-          <IconButton :icon="Square" variant="ghost" circle @click="handleAbort" />
-        </Tooltip>
-        <IconButton v-else :icon="ArrowUp" variant="ghost" circle disabled />
-      </template>
-    </ComposerShell>
-  </div>
+  <SessionComposer
+    placeholder="Ask Demi…"
+    :conversation-id="conversationId"
+    :focused="isFocused"
+    :multiline="isMultiline"
+    :has-content="hasContent"
+    :attachments="displayAttachments"
+    :accept="acceptAttribute(acceptedExtensions)"
+    :providers="workspace.providers.value"
+    :models="workspace.models"
+    :selected-provider-id="selectedProviderId"
+    :selected-model-id="selectedModelId"
+    :thinking-config="thinkingConfig"
+    :service-tier-id="serviceTierId"
+    :usage="usage"
+    :running="isRunning"
+    :compacting="isCompacting"
+    :can-compact="canCompact"
+    @submit="handleSubmit"
+    @add-files="addFiles"
+    @remove-attachment="removeAttachment"
+    @select-model="handleSelectModel"
+    @change-thinking="handleChangeThinking"
+    @change-service-tier="handleChangeServiceTier"
+    @stop="handleAbort"
+    @compact="handleCompact"
+  >
+    <template #editor>
+      <EditorContent v-if="editor" :editor="editor" />
+    </template>
+  </SessionComposer>
 </template>
 
 <style>

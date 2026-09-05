@@ -1,5 +1,5 @@
 import type { ProjectGroup } from './group-conversations'
-import type { SidebarConversation } from './sidebar-data'
+import type { SidebarConversation } from './types'
 
 /** One navigable line of the list, in display order: a conversation row or a project header. */
 export type ListEntry =

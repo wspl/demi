@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, useSlots } from 'vue'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<{
   modelValue?: string
   placeholder?: string
@@ -31,6 +33,7 @@ defineExpose({
   >
     <input
       ref="inputRef"
+      v-bind="$attrs"
       type="text"
       :value="modelValue"
       :placeholder="placeholder"

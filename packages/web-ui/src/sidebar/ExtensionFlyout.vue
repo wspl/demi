@@ -6,7 +6,7 @@ import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SidebarExtension } from './sidebar-data'
+import type { SidebarExtension } from './types'
 
 /** The list behind a Plugins or Skills entry: each item toggles in place; managing goes to its own surface. */
 const props = defineProps<{

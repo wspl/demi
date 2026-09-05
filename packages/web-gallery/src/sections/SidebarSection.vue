@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { SidebarConversation, SidebarExtension } from '@demicodes/web-ui/sidebar/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import AppSidebar from '../sidebar/AppSidebar.vue'
+import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import {
   demoAccount,
   demoConversations,
   demoPlugins,
   demoProjects,
   demoSkills,
-  type SidebarConversation,
-  type SidebarExtension,
 } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
