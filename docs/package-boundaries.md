@@ -269,7 +269,7 @@ The canonical production source graph contains every Demi package and must stay 
 ```text
 core -> none
 utils -> none
-provider -> core
+provider -> core, utils
 tinybash -> utils
 shell -> utils
 agent -> core, provider, shell, utils
@@ -295,9 +295,14 @@ is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not 
 production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
 enforced at the manifest level by that test; `web` is a product leaf like `backend`.
 
-The graph is a compact view of the `Production deps` fields in the package registry. Every
-package in the registry is implemented; keep the registry, this graph, and the maps in
-`packages/core/src/__tests__/platform-entrypoints.test.ts` in lockstep.
+The graph is a compact view of the `Production deps` fields in the package registry; keep the
+two in lockstep. `packages/core/src/__tests__/platform-entrypoints.test.ts` reads this block
+rather than a copy of it: every workspace package must have a line, each package manifest's
+`@demicodes/*` dependencies must equal its line, production source imports must stay within it,
+and it must be acyclic. The same test reads the workspace: each package's `exports` names the
+source file of every entry under a `development` condition, the root `tsconfig.json` `paths`
+mirror every subpath entry (roots resolve through the `@demicodes/*` wildcard, so a root entry
+is always `src/index.ts`), and the root `test` script names every package that has tests.
 
 ## Module Layout Conventions
 

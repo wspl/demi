@@ -177,8 +177,8 @@ nothing.
 
 `@demicodes/backend` is a product leaf: nothing imports it. Its production
 dependencies are the agent, coding-agent, core, provider, the provider
-runtimes, shell (the Host contract and command types; `hostless` for the
-hostless shell environment; `node` for the data directory's filesystem),
-host-virtual and host-remote (the two Hosts it injects into the agent),
+runtimes, shell (the Host and shell-environment contracts and the command
+types), host-virtual and host-remote (the two Hosts it injects into the
+agent, and with them the hostless shell and the filesystem over Node),
 command-loader, runner-protocol and utils, plus `hono` on Bun. The module
 directories mirror the modules above (`docs/package-boundaries.md`).
