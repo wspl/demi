@@ -51,6 +51,8 @@ export interface ProviderTurnLoopHost<State> {
   runCompaction(): Promise<boolean>
   runWithCompactingPhase<T>(fn: () => Promise<T>): Promise<T>
   commitTranscript(): Promise<void>
+  /** Writes the checkpoint now: what the transcript holds is durable before the caller acts on it. */
+  persistNow(): Promise<void>
   emit(event: SessionEvent): void
   materializeSteersArrivedSince(continuationCount: number): Promise<boolean>
   materializePendingSteers(): Promise<boolean>
@@ -223,6 +225,10 @@ export class ProviderTurnLoop<State> {
     let stopAfterToolResult = false
     const previousActivePhase = this.host.getActiveTurnPhase()
     this.host.setActiveTurnPhase('tool_executing')
+    // The dispatch is durable before any Host is called: a process that dies
+    // during a tool finds the call `executing` at restore, and the outcome
+    // unknown is never re-run (`sessions-and-targets.md` § Recovery).
+    await this.host.persistNow()
 
     try {
       for (const toolCall of pending) {

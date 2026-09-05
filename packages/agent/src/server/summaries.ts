@@ -1,33 +1,11 @@
-// View mapping between session-side values and server frames: conversation
-// summaries for `list_conversations`, and the untyped tool-progress channel
-// rendered into typed frame payloads (tools are arbitrary, so their progress
-// is a real validation boundary).
-import { isRecord, safeJsonStringify } from '@demicodes/utils'
+// View mapping between session-side values and server frames: the untyped
+// tool-progress channel rendered into typed frame payloads (tools are
+// arbitrary, so their progress is a real validation boundary).
+import { safeJsonStringify } from '@demicodes/utils'
 import { z } from 'zod'
-import type { Block, ProviderErrorDiagnostics, ToolResultContentBlock } from '@demicodes/core'
-import type { } from '@demicodes/shell'
-import type { ConversationSummary, ShellCommandStatusLike } from '../protocol/frames'
-import type { AgentSessionCheckpoint } from '../types'
+import type { ProviderErrorDiagnostics, ToolResultContentBlock } from '@demicodes/core'
+import type { ShellCommandStatusLike } from '../protocol/frames'
 import { ProviderStreamError } from '../session/provider-stream-error'
-
-export function summarizeConversation(id: string, checkpoint: AgentSessionCheckpoint<unknown>): ConversationSummary {
-  const blocks = checkpoint.transcript.blocks
-  const first = blocks[0]
-  const last = blocks[blocks.length - 1]
-  return {
-    id,
-    title: conversationTitle(blocks),
-    createdAt: first?.createdAt ?? '',
-    updatedAt: last?.createdAt ?? first?.createdAt ?? '',
-  }
-}
-
-function conversationTitle(blocks: Block[]): string {
-  const user = blocks.find((block): block is Extract<Block, { type: 'user' }> => block.type === 'user')
-  const text = user?.content.find((item): item is { type: 'text'; text: string } => item.type === 'text')?.text
-  const title = (text ?? '').replace(/\s+/g, ' ').trim()
-  return title ? title.slice(0, 80) : 'Untitled conversation'
-}
 
 export function progressToOutput(progress: unknown): ToolResultContentBlock[] {
   return [{ type: 'text', text: progressToText(progress) }]

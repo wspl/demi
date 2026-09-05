@@ -1,24 +1,14 @@
 import { createId, decodeUtf8, errorMessage, noop, utf8Slice } from '@demicodes/utils'
-import { type ShellEnvironment, CommandRegistry, type Command, type CommandGroup, type CommandIO, type Host, type HostStore, RESERVED_COMMAND_NAMES, type ShellEnvironmentOptions } from '@demicodes/shell'
-import type { Block, UserContentBlock } from '@demicodes/core'
-import { AgentSession } from '../session/session'
+import type { Command, CommandGroup, CommandIO, ShellEnvironment } from '@demicodes/shell'
+import type { Block, QueuedMessage, UserContentBlock } from '@demicodes/core'
+import { textContentSummary, type AgentSession } from '../session/session'
 import type { ServerFrame, SubagentJob, TranscriptPatch } from '../protocol/frames'
-import type {
-  AgentHarness,
-  AgentHarnessRuntime,
-  AgentMetadata,
-  AgentSessionCheckpoint,
-  AgentSessionStore,
-  AgentToolInvokeContext,
-  SubagentProfile,
-} from '../types'
-import { createStandardAgentTools, type ShellPreviewBudget } from '../tools'
-import { hostAgentSessionStore } from '../store/session-store'
-import type { BlobStore } from '../store/media'
-import type { AgentServerSessionOptions, ShellEnvironmentFactory } from '../server/server'
+import type { AgentHarness, AgentMetadata, AgentNodeClosePhase, AgentNodeRecord, SubagentProfile } from '../types'
+import type { AssembledNode, NodeDeps, NodeParams, TreeContext } from '../node/assemble'
+import { CHILD_POLICY, type SessionNode } from '../node/node'
+import { completionMessageId } from '../store/tree-store'
 import { injectSubagentCommand, subagentCommandNode, subagentCommandShape } from './commands'
 import { formatDuration } from './format'
-import type { AgentDirectory } from './directory'
 
 export { injectSubagentCommand, subagentCommandShape }
 
@@ -36,9 +26,19 @@ export type SubagentExecution =
   | 'pending_yield'
 
 interface SubagentClose {
-  phase: 'completed' | 'aborted' | 'error'
+  phase: AgentNodeClosePhase
   result?: string
   failure?: string
+}
+
+/** A closed child as its parent hears of it, live or from the store. */
+interface Completion {
+  id: string
+  description: string
+  metadata: AgentMetadata | null
+  phase: AgentNodeClosePhase
+  result: string | null
+  failure: string | null
 }
 
 interface ChildToolRecord {
@@ -49,19 +49,13 @@ interface ChildToolRecord {
   status: 'executing' | 'completed' | 'error'
 }
 
+/** A live child as its supervisor sees it: the node plus the relationship's bookkeeping. */
 export interface ChildJob<State> {
   id: string
+  node: SessionNode<State>
   description: string
-  profile: SubagentProfile<State>
   profileName: string | null
   metadata: AgentMetadata | null
-  session: AgentSession<State>
-  /** Supervisor of this child's own children (the grandchildren of this supervisor's owner). */
-  ownSupervisor: ChildSupervisor<State>
-  commandRegistry: CommandRegistry
-  commandNames: string[]
-  environments: Map<Host, ShellEnvironment>
-  pendingEnvironments: Map<Host, Promise<ShellEnvironment>>
   spawnedAt: number
   lastEventAt: number
   tools: ChildToolRecord[]
@@ -72,6 +66,8 @@ export interface ChildJob<State> {
   closed: Promise<SubagentClose>
   settleClosed: (close: SubagentClose) => void
   isClosing: boolean
+  /** True while the spawn or resume command awaits this child in this process: its exit is the result's return path. */
+  attended: boolean
   /** Wakes the settle loop when the child set or an inbound send changes the picture. */
   wake: (() => void) | null
 }
@@ -85,85 +81,44 @@ const INHERIT_PROFILE: SubagentProfile<unknown> = {
 }
 
 export interface ChildSupervisorOptions<State> {
-  agent: AgentHarness<State>
-  /** The root session: children resolve their Host as it, since a child shares its parent's execution target. */
-  agentSessionId: string
+  deps: NodeDeps<State>
+  tree: TreeContext<State>
+  /** The owner node's id; its children are the store's rows under it. */
+  ownerId: string
   cwd: string
-  /** Harness-configured named profiles; an unnamed inherit profile is always available. */
-  profiles: SubagentProfile<State>[] | null
-  /** The owner session's harness commands, before the `demi agent` injection. */
+  /** The owner's harness commands, before the `demi agent` injection: what an inheriting child receives. */
   parentCommands: Command[]
-  shellOptions: ShellEnvironmentOptions
-  shellEnvironment: ShellEnvironmentFactory
-  sessionOptions: AgentServerSessionOptions
-  /** When false, a child closing never wakes an idle parent; the host app orchestrates the wakeup from the `subagent closed` frame. */
-  notifyParentOnIdle: boolean
-  /** Backing store for child checkpoints and job metadata. */
-  store: HostStore
-  /** Store key prefix of the owner session's directory (e.g. `agent-sessions/<id>`); children nest under `<prefix>/subagents/<childId>`. */
-  storePrefix: string
-  /** Root-session-scoped registry shared by every supervisor in the tree. */
-  directory: AgentDirectory<State>
-  /** Live-children ceiling for this supervisor (from `AgentServerOptions.subagents.maxLiveSubagents`). */
-  maxLiveSubagents: number
-  /** Shell preview budget for every child (from `AgentServerOptions.tools.shellPreviewBudgetTokens`); null uses the built-in split. */
-  shellPreviewBudgetTokens: ShellPreviewBudget | null
-  /** When false, this supervisor's owner may not spawn: its `demi agent` tree carries communication and reads only. */
+  /** The owner's prompt: what an inheriting child speaks with. */
+  prompt: Pick<AgentHarness<State>, 'systemPrompt' | 'preamble'>
+  /** When false, the owner may not spawn: its `demi agent` tree carries communication and reads only. */
   canSpawn: boolean
+  /** When false, a child closing never wakes the idle owner; the product orchestrates the wakeup from the `closed` frame. */
+  notifyParentOnIdle: boolean
   /** Invoked whenever the live-children set changes; wired to the owning job's settle loop. */
   onJobsChanged: (() => void) | null
-  /** Media blob store for child session persistence. */
-  blobs?: BlobStore
-  emit(frame: ServerFrame): void
+  /** The node assembly: the supervisor asks it for every child and never builds one. */
+  assemble(params: NodeParams<State>): Promise<AssembledNode<State>>
 }
 
 /**
- * The on-store shape of a child (`<prefix>/subagents/<id>/job.json`); its
- * checkpoint sits beside it. Without `closedPhase` the child is live (a parent
- * restore resumes it); with `closedPhase` it is archived — finished but
- * revivable with `demi agent resume`, skipped by restore, never pruned: it
- * lives exactly as long as the owning session directory.
- */
-interface PersistedSubagentJob {
-  description: string
-  profileName: string | null
-  metadata: AgentMetadata | null
-  spawnedAt: number
-  /** Absent means true; false pins the child to a communication-only `demi agent` tree across restores. */
-  canSpawnSubagents?: boolean
-  closedPhase?: SubagentClose['phase']
-  closedAt?: number
-}
-
-/**
- * Per-session subagent supervisor. Every session — root or subagent — owns one
- * and carries the identical `demi agent` command tree, so spawn nests to any
- * depth. The supervisor owns its direct children's lifecycle (spawn / abort /
- * resume / natural end), their shell environments, and the `subagent*`
- * protocol frames; communication and reads (`send` / `steer` / `show` /
- * `list`) resolve through the shared AgentDirectory and reach any live agent
- * in the tree. Children persist under the owner's session directory,
- * recursively, and reopening a session restores its whole subtree.
+ * The relationship module of one node (`docs/subagent.md`): its direct
+ * children's lifecycle — spawn, resume, abort, the natural close and its
+ * delivery — over the tree store, their frames, and the `demi agent`
+ * command tree; communication and reads (`send` / `steer` / `show` /
+ * `list`) resolve through the shared AgentDirectory and reach any live
+ * agent in the tree. Every node — root or subagent — owns one.
  */
 export class ChildSupervisor<State = unknown> {
   private readonly options: ChildSupervisorOptions<State>
-  private readonly parentPrompt: Pick<AgentHarness<State>, 'systemPrompt' | 'preamble'>
   private readonly jobs = new Map<string, ChildJob<State>>()
   private parentSession: AgentSession<State> | null = null
   private isDisposed = false
 
-  constructor(
-    options: ChildSupervisorOptions<State>,
-    parentPrompt?: Pick<AgentHarness<State>, 'systemPrompt' | 'preamble'>,
-  ) {
-    if (options.profiles?.some((profile) => profile.name === INHERIT_PROFILE_NAME)) {
+  constructor(options: ChildSupervisorOptions<State>) {
+    if (options.tree.profiles?.some((profile) => profile.name === INHERIT_PROFILE_NAME)) {
       throw new Error(`subagent profile name "${INHERIT_PROFILE_NAME}" is reserved: omitting --profile already inherits the parent`)
     }
     this.options = options
-    this.parentPrompt = parentPrompt ?? {
-      systemPrompt: options.agent.systemPrompt.bind(options.agent),
-      preamble: options.agent.preamble?.bind(options.agent),
-    }
   }
 
   attachParent(session: AgentSession<State>): void {
@@ -171,8 +126,7 @@ export class ChildSupervisor<State = unknown> {
   }
 
   ownerId(): string {
-    if (!this.parentSession) throw new Error('subagent supervisor has no owner session')
-    return this.parentSession.id()
+    return this.options.ownerId
   }
 
   hasLiveJobs(): boolean {
@@ -191,10 +145,10 @@ export class ChildSupervisor<State = unknown> {
       send: (id, message) => this.deliverSend(id, message),
       steer: (id, message) => this.deliverSteer(id, message),
       abortSubtree: (id) => this.abortSubtree(id),
-      tree: () => this.options.directory.tree(),
+      tree: () => this.options.tree.directory.tree(),
       ownerId: () => this.ownerId(),
       show: (id) => {
-        const entry = this.options.directory.liveEntry(id)
+        const entry = this.options.tree.directory.liveEntry(id)
         return entry ? { snapshot: entry.owner.snapshot(entry.job, true), text: entry.owner.renderShow(entry.job) } : null
       },
     })
@@ -209,12 +163,12 @@ export class ChildSupervisor<State = unknown> {
     shellId: string,
   ): { environment: ShellEnvironment; commandNames: ReadonlySet<string>; agentSessionId: string } | null {
     for (const job of this.jobs.values()) {
-      for (const environment of job.environments.values()) {
+      for (const environment of job.node.environments()) {
         if (environment.getShell(shellId)) {
-          return { environment, commandNames: new Set(job.commandNames), agentSessionId: job.id }
+          return { environment, commandNames: job.node.commandNames, agentSessionId: job.id }
         }
       }
-      const nested = job.ownSupervisor.environmentScopeForShell(shellId)
+      const nested = job.node.supervisor.environmentScopeForShell(shellId)
       if (nested) return nested
     }
     return null
@@ -223,23 +177,24 @@ export class ChildSupervisor<State = unknown> {
   /** Re-emits `subagent started` + transcript reset for the whole live subtree (transcript resync). */
   replay(): void {
     for (const job of this.jobs.values()) {
-      this.options.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
-      const transcript = job.session.transcript()
-      this.options.emit({
+      this.options.tree.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
+      const transcript = job.node.session.transcript()
+      this.options.tree.emit({
         type: 'subagent_transcript_reset',
         subagentId: job.id,
         blocks: structuredClone(transcript.blocks),
         revision: transcript.revision,
       })
-      job.ownSupervisor.replay()
+      job.node.supervisor.replay()
     }
   }
 
   /**
    * Detaches the live subtree on connection teardown: aborts in-flight turns,
-   * flushes checkpoints, and keeps the persisted jobs so the next open of the
-   * owner restores them — the same dispose semantics as the owner session.
-   * No `closed` frame is emitted: the children are not done, just paused.
+   * flushes checkpoints, and keeps the persisted nodes so the next open of
+   * the owner restores them — the same dispose semantics as the owner
+   * session. No `closed` frame is emitted: the children are not done, just
+   * paused.
    */
   async dispose(): Promise<void> {
     this.isDisposed = true
@@ -247,125 +202,77 @@ export class ChildSupervisor<State = unknown> {
       job.isClosing = true
       job.unsubscribe()
       this.jobs.delete(job.id)
-      this.options.directory.unregister(job.id)
-      await job.ownSupervisor.dispose()
-      await job.session.dispose().catch(noop)
-      await this.disposeJobShells(job)
+      this.options.tree.directory.unregister(job.id)
+      await job.node.supervisor.dispose()
+      await job.node.session.dispose().catch(noop)
+      await job.node.disposeEnvironments()
       job.settleClosed({ phase: 'aborted' })
       job.wake?.()
     }
   }
 
   /**
-   * Rebuilds every persisted live child of this owner and finishes what it was
-   * doing: an interrupted turn resumes from its resume point; an already
-   * quiescent child closes with its result. Recursive: each restored child
-   * restores its own subtree. Children share the owner's persistence
-   * lifecycle — a session restore is a subtree restore.
+   * Brings the owner's children back from the store (`docs/subagent.md` §
+   * Persistence): a live child is rebuilt and continues what it was doing —
+   * its interrupted turn, its queued messages — and closes if it is
+   * quiescent; a closed child whose completion never reached the owner is
+   * delivered now. Recursive: each restored child restores its own subtree.
    */
   async restore(): Promise<void> {
     if (!this.parentSession || this.isDisposed) return
-    const prefix = `${this.options.storePrefix}/subagents/`
-    const keys = await this.options.store.list(prefix).catch(() => [] as string[])
-    const ids = [...new Set(keys.map((key) => key.slice(prefix.length).split('/')[0] ?? '').filter(Boolean))]
-    for (const id of ids) {
-      if (this.jobs.has(id)) continue
+    for (const record of await this.options.tree.store.children(this.options.ownerId)) {
+      if (this.jobs.has(record.id)) continue
+      if (record.closedPhase !== null) {
+        if (!record.delivered) await this.deliverCompletion(record)
+        continue
+      }
       try {
-        await this.restoreJob(id)
+        await this.restoreJob(record)
       } catch {
-        // A half-written or profile-orphaned child cannot be rebuilt; drop its remains.
-        await this.deletePersistedJob(id)
+        // A child that cannot be rebuilt (its profile gone, its rows incomplete) drops with its subtree.
+        await this.options.tree.store.deleteNode(record.id).catch(noop)
       }
     }
   }
 
-  private async restoreJob(id: string): Promise<void> {
-    if (!this.parentSession) return
-    const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
-    // Archived children are finished: only `demi agent resume` revives them.
-    if (meta?.closedPhase) return
-    const checkpoint = await this.childSessionStore(id).load()
-    if (!meta || !checkpoint) throw new Error('incomplete persisted subagent')
-    const job = this.reassembleJob(id, meta, checkpoint)
-    // A live persisted job is by definition unfinished (closeJob archives it),
-    // so always resume: findResumePoint decides how far to unwind, exactly like
-    // an interrupted parent session. A child that had already produced its final
-    // text re-infers one turn and closes through the normal quiescence path.
-    this.trackTurn(job, job.session.resume(meta.metadata ? { metadata: meta.metadata } : {}))
-    await job.ownSupervisor.restore()
-    void this.settleJob(job)
-  }
-
-  /** Shared by restore and resume: rebuild a persisted child's job and session from its checkpoint. */
-  private reassembleJob(id: string, meta: PersistedSubagentJob, checkpoint: AgentSessionCheckpoint<State>): ChildJob<State> {
-    const parent = this.parentSession
-    if (!parent) throw new Error('subagent supervisor has no owner session')
-    const profile = this.resolveProfile(meta.profileName ?? undefined)
-    const { job, runtime } = this.assembleJob({
-      id,
-      description: meta.description,
-      profileName: meta.profileName,
-      profile,
-      metadata: meta.metadata,
-      spawnedAt: meta.spawnedAt,
-      canSpawnSubagents: meta.canSpawnSubagents !== false,
-    })
-    const session = AgentSession.fromCheckpoint<State>(
-      { provider: parent.cloneProviderRuntime(), runtime, checkpoint },
-      { agentSessionId: id, store: this.childSessionStore(id), ...this.options.sessionOptions },
-    )
-    this.attachSession(job, session)
-    return job
+  private async restoreJob(record: AgentNodeRecord): Promise<void> {
+    const profile = this.resolveProfile(record.profileName ?? undefined)
+    await this.startChild(record, profile, null)
   }
 
   /**
-   * Revives an archived child: its job record turns live again (this round's
-   * metadata, a fresh spawnedAt), the session rebuilds from the preserved
-   * checkpoint, and the message opens its next turn on top of the old
-   * transcript.
+   * Revives an archived child: its node is live again in one commit — this
+   * round's metadata, a fresh spawn time, the message queued — and the
+   * session rebuilds from the preserved transcript with the message opening
+   * its next turn on top of it.
    */
   private async resumeArchived(id: string, message: string): Promise<ChildJob<State>> {
-    const parent = this.parentSession
-    if (!parent) throw new Error('subagent supervisor has no owner session')
+    const parent = this.requireParent()
     if (this.isDisposed) throw new Error('owner session is closing')
     if (this.jobs.has(id)) throw new Error(`subagent "${id}" is still running; send or steer it instead`)
-    if (this.jobs.size >= this.options.maxLiveSubagents) {
-      throw new Error(`at most ${this.options.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
+    if (this.jobs.size >= this.options.deps.maxLiveSubagents) {
+      throw new Error(`at most ${this.options.deps.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
     }
-    const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
-    if (!meta?.closedPhase) throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
-    const checkpoint = await this.childSessionStore(id).load()
-    if (!checkpoint) throw new Error(`archived subagent "${id}" has no checkpoint left`)
-    // Validate before mutating: a profile that no longer exists must leave the
-    // archive intact instead of rewriting job.json into an orphaned live record.
-    this.resolveProfile(meta.profileName ?? undefined)
-    const liveMeta: PersistedSubagentJob = {
-      description: meta.description,
-      profileName: meta.profileName,
-      metadata: parent.actionMetadata(),
-      spawnedAt: Date.now(),
-      ...(meta.canSpawnSubagents === false ? { canSpawnSubagents: false } : {}),
+    const record = await this.options.tree.store.node(id)
+    if (!record || record.closedPhase === null || record.parentId !== this.options.ownerId) {
+      throw new Error(`no archived subagent "${id}" (see \`demi agent list\`)`)
     }
-    await this.options.store.writeJson(this.childStoreKey(id, 'job.json'), liveMeta)
-    const job = this.reassembleJob(id, liveMeta, checkpoint)
-    this.trackTurn(job, job.session.send([{ type: 'text', text: message }], liveMeta.metadata ? { metadata: liveMeta.metadata } : {}))
-    void this.settleJob(job)
-    return job
+    // Validate before mutating: a profile that no longer exists must leave the archive intact.
+    const profile = this.resolveProfile(record.profileName ?? undefined)
+    const fields = { metadata: parent.actionMetadata(), spawnedAt: Date.now() }
+    const content: UserContentBlock[] = [{ type: 'text', text: message }]
+    await this.options.tree.store.reopenNode(id, fields, { id: createId(), text: textContentSummary(content), content })
+    const live: AgentNodeRecord = { ...record, ...fields, closedPhase: null, closedAt: null, result: null, failure: null, delivered: false }
+    return this.startChild(live, profile, null)
   }
 
   /** Every archived (finished, revivable) child of this owner, newest first. */
-  async listArchivedJobs(): Promise<{ id: string; meta: PersistedSubagentJob }[]> {
+  async listArchivedJobs(): Promise<AgentNodeRecord[]> {
     if (!this.parentSession) return []
-    const prefix = `${this.options.storePrefix}/subagents/`
-    const keys = await this.options.store.list(prefix).catch(() => [] as string[])
-    const ids = [...new Set(keys.map((key) => key.slice(prefix.length).split('/')[0] ?? '').filter(Boolean))]
-    const archived: { id: string; meta: PersistedSubagentJob }[] = []
-    for (const id of ids) {
-      if (this.jobs.has(id)) continue
-      const meta = await this.options.store.readJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'))
-      if (meta?.closedPhase) archived.push({ id, meta })
-    }
-    return archived.sort((a, b) => (b.meta.closedAt ?? 0) - (a.meta.closedAt ?? 0))
+    const children = await this.options.tree.store.children(this.options.ownerId)
+    return children
+      .filter((record) => record.closedPhase !== null && !this.jobs.has(record.id))
+      .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
   }
 
   async abortSubtree(id: string): Promise<void> {
@@ -385,88 +292,77 @@ export class ChildSupervisor<State = unknown> {
     description: string
     isSpawnForbidden: boolean
   }): Promise<ChildJob<State>> {
-    const parent = this.parentSession
-    if (!parent) throw new Error('subagent supervisor has no owner session')
+    const parent = this.requireParent()
     if (!this.options.canSpawn) throw new Error('this session may not spawn subagents')
     if (this.isDisposed) throw new Error('owner session is closing')
-    if (this.jobs.size >= this.options.maxLiveSubagents) {
-      throw new Error(`at most ${this.options.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
+    if (this.jobs.size >= this.options.deps.maxLiveSubagents) {
+      throw new Error(`at most ${this.options.deps.maxLiveSubagents} running subagents per session; abort one or wait for a result`)
     }
     const profile = this.resolveProfile(input.profileName)
-    const id = createId()
-    const metadata = parent.actionMetadata()
-    const profileName = input.profileName ?? null
-    const spawnedAt = Date.now()
-    const canSpawnSubagents = !input.isSpawnForbidden && profile.canSpawnSubagents !== false
+    const record: AgentNodeRecord = {
+      id: createId(),
+      parentId: this.options.ownerId,
+      description: input.description,
+      profileName: input.profileName ?? null,
+      metadata: parent.actionMetadata(),
+      spawnedAt: Date.now(),
+      canSpawnSubagents: !input.isSpawnForbidden && profile.canSpawnSubagents !== false,
+      closedPhase: null,
+      closedAt: null,
+      result: null,
+      failure: null,
+      delivered: false,
+    }
+    const content: UserContentBlock[] = [{ type: 'text', text: input.prompt }]
+    return this.startChild(record, profile, { id: createId(), text: textContentSummary(content), content })
+  }
 
-    const { job, runtime } = this.assembleJob({
-      id,
-      description: input.description,
-      profileName,
-      profile,
-      metadata,
-      spawnedAt,
-      canSpawnSubagents,
-    })
-    await this.options.store.writeJson<PersistedSubagentJob>(this.childStoreKey(id, 'job.json'), {
-      description: input.description,
-      profileName,
-      metadata,
-      spawnedAt,
-      ...(canSpawnSubagents ? {} : { canSpawnSubagents }),
-    })
-    const session = new AgentSession<State>(
-      {
-        provider: parent.cloneProviderRuntime(),
-        model: profile.model ?? structuredClone(parent.modelSelection),
-        cwd: this.options.cwd,
-        runtime,
-        state: this.options.agent.initialState(),
+  /**
+   * Everything spawn, resume and restore share: the child's node from the
+   * assembly — fresh with its brief queued in the create commit, or from the
+   * store — then the job, the continuation of what it has to run, its own
+   * subtree, and the settle loop that closes it when it is done.
+   */
+  private async startChild(record: AgentNodeRecord, profile: SubagentProfile<State>, firstMessage: QueuedMessage | null): Promise<ChildJob<State>> {
+    const parent = this.requireParent()
+    const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
+    let job: ChildJob<State> | null = null
+    const { node } = await this.options.assemble({
+      record,
+      cwd: this.options.cwd,
+      provider: parent.cloneProviderRuntime(),
+      model: profile.model ?? structuredClone(parent.modelSelection),
+      prompt: {
+        systemPrompt: profile.systemPrompt?.bind(this.options.deps.agent) ?? this.options.prompt.systemPrompt,
+        preamble: profile.systemPrompt ? undefined : this.options.prompt.preamble,
       },
-      { agentSessionId: id, store: this.childSessionStore(id), ...this.options.sessionOptions },
-    )
-    this.attachSession(job, session)
-    this.trackTurn(job, session.send([{ type: 'text', text: input.prompt }], metadata ? { metadata } : {}))
+      preambleSuffix: this.subagentPreamble(record.id, record.canSpawnSubagents),
+      commands: () => inherited,
+      shellEnv: { DEMI_SUBAGENT_ID: record.id, DEMI_PARENT_SESSION_ID: this.options.ownerId },
+      policy: CHILD_POLICY,
+      firstMessage,
+      onJobsChanged: () => job?.wake?.(),
+    })
+    job = this.attachNode(node, record)
+    const tracked = job
+    node.continue((turn) => this.trackTurn(tracked, turn))
+    await node.supervisor.restore()
     void this.settleJob(job)
     return job
   }
 
-  /**
-   * Everything spawn and restore share: the command tree (identical to the
-   * owner's — children spawn, message, and observe exactly like any session),
-   * the child's own supervisor, the harness runtime, and the job record
-   * (session attached separately).
-   */
-  private assembleJob(input: {
-    id: string
-    description: string
-    profileName: string | null
-    profile: SubagentProfile<State>
-    metadata: AgentMetadata | null
-    spawnedAt: number
-    canSpawnSubagents: boolean
-  }): { job: ChildJob<State>; runtime: AgentHarnessRuntime<State> } {
-    const { id, profile } = input
-    const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
-
+  private attachNode(node: SessionNode<State>, record: AgentNodeRecord): ChildJob<State> {
     let settleClosed!: (close: SubagentClose) => void
     const closed = new Promise<SubagentClose>((resolve) => {
       settleClosed = resolve
     })
-
     const job: ChildJob<State> = {
-      id,
-      description: input.description,
-      profile,
-      profileName: input.profileName,
-      metadata: input.metadata,
-      session: null as unknown as AgentSession<State>,
-      ownSupervisor: null as unknown as ChildSupervisor<State>,
-      commandRegistry: new CommandRegistry(RESERVED_COMMAND_NAMES),
-      commandNames: [],
-      environments: new Map(),
-      pendingEnvironments: new Map(),
-      spawnedAt: input.spawnedAt,
+      id: record.id,
+      node,
+      description: record.description,
+      profileName: record.profileName,
+      metadata: record.metadata,
+      spawnedAt: record.spawnedAt,
       lastEventAt: Date.now(),
       tools: [],
       lastAssistantTextAt: null,
@@ -476,62 +372,17 @@ export class ChildSupervisor<State = unknown> {
       closed,
       settleClosed,
       isClosing: false,
+      attended: false,
       wake: null,
     }
-
-    const prompt: Pick<AgentHarness<State>, 'systemPrompt' | 'preamble'> = {
-      systemPrompt: profile.systemPrompt?.bind(this.options.agent) ?? this.parentPrompt.systemPrompt,
-      preamble: profile.systemPrompt ? undefined : this.parentPrompt.preamble,
-    }
-    job.ownSupervisor = new ChildSupervisor<State>({
-      ...this.options,
-      parentCommands: inherited,
-      storePrefix: `${this.options.storePrefix}/subagents/${id}`,
-      canSpawn: input.canSpawnSubagents,
-      // `notifyParentOnIdle: false` hands root-level wakeups to the host app,
-      // which can only drive the root session — a subagent parent has no
-      // host-side message channel, so deeper levels always self-notify.
-      notifyParentOnIdle: true,
-      onJobsChanged: () => job.wake?.(),
-    }, prompt)
-    const commands = injectSubagentCommand(inherited, job.ownSupervisor.rootCommandNode())
-    for (const command of commands) job.commandRegistry.register(command)
-    job.commandNames = job.commandRegistry.list().map((command) => command.name)
-    const commandsPrompt = job.commandRegistry.renderHelp()
-
-    const agent = this.options.agent
-    const preamble = this.subagentPreamble(id, input.canSpawnSubagents)
-    const runtime: AgentHarnessRuntime<State> = {
-      harnessName: agent.name,
-      initialState: () => agent.initialState(),
-      systemPrompt: (ctx) => prompt.systemPrompt({ ...ctx, commandsPrompt }),
-      preamble: async (ctx) => {
-        const inheritedPreamble = (await prompt.preamble?.(ctx)) ?? null
-        return inheritedPreamble ? `${inheritedPreamble}\n\n${preamble}` : preamble
-      },
-      tools: () =>
-        createStandardAgentTools<State>({
-          environment: (ctx) => this.childEnvironment(job, ctx),
-          scheduleYield: (ctx, durationMs) => job.session.scheduleYieldWakeup(durationMs, ctx.metadata),
-          ...(this.options.shellPreviewBudgetTokens === null
-            ? {}
-            : { previewBudgetTokens: this.options.shellPreviewBudgetTokens }),
-        }),
-    }
-    return { job, runtime }
-  }
-
-  private attachSession(job: ChildJob<State>, session: AgentSession<State>): void {
-    job.session = session
-    job.ownSupervisor.attachParent(session)
-    job.unsubscribe = session.subscribe((event) => {
+    job.unsubscribe = node.session.subscribe((event) => {
       if (event.type === 'phase_changed') {
         job.wake?.()
         return
       }
       if (event.type !== 'transcript_changed') return
       this.recordTelemetry(job, event.patches)
-      this.options.emit({
+      this.options.tree.emit({
         type: 'subagent_transcript_patch',
         subagentId: job.id,
         patches: event.patches,
@@ -539,36 +390,17 @@ export class ChildSupervisor<State = unknown> {
       })
     })
     this.jobs.set(job.id, job)
-    this.options.directory.register(job, this)
+    this.options.tree.directory.register(job, this)
     this.options.onJobsChanged?.()
-    this.options.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
-    const transcript = session.transcript()
-    this.options.emit({
+    this.options.tree.emit({ type: 'subagent', event: 'started', job: this.wireJob(job) })
+    const transcript = node.session.transcript()
+    this.options.tree.emit({
       type: 'subagent_transcript_reset',
       subagentId: job.id,
       blocks: structuredClone(transcript.blocks),
       revision: transcript.revision,
     })
-  }
-
-  private childStoreKey(childId: string, file: string): string {
-    return `${this.options.storePrefix}/subagents/${childId}/${file}`
-  }
-
-  private childSessionStore(childId: string): AgentSessionStore<State> {
-    return hostAgentSessionStore<State>(this.options.store, this.childStorePrefix(childId), {
-      blobs: this.options.blobs,
-    })
-  }
-
-  private childStorePrefix(childId: string): string {
-    return `${this.options.storePrefix}/subagents/${childId}`
-  }
-
-  private async deletePersistedJob(id: string): Promise<void> {
-    for (const key of await this.options.store.list(`${this.childStorePrefix(id)}/`).catch(() => [] as string[])) {
-      await this.options.store.delete(key).catch(noop)
-    }
+    return job
   }
 
   /** Shared spawn/resume foreground behaviour: announce the id, wire abort and stdin steers, wait for close, report the outcome. */
@@ -586,7 +418,9 @@ export class ChildSupervisor<State = unknown> {
     else signal.addEventListener('abort', onAbort, { once: true })
     void this.pumpStdinSteers(job.id, stdinStream)
 
+    job.attended = true
     const close = await job.closed
+    job.attended = false
     signal.removeEventListener('abort', onAbort)
     if (close.phase === 'completed') {
       const text = close.result ?? ''
@@ -612,23 +446,24 @@ export class ChildSupervisor<State = unknown> {
     job: ChildJob<State> | null
     owner: ChildSupervisor<State> | null
   } {
+    const directory = this.options.tree.directory
     const selfId = this.ownerId()
     let id = rawId
     if (id === 'parent') {
-      const parentId = this.options.directory.parentIdOf(selfId)
+      const parentId = directory.parentIdOf(selfId)
       if (parentId === null) throw new Error('the root session has no parent')
       if (parentId === undefined) throw new Error('this session is not in the agent directory')
       id = parentId
     }
     if (id === selfId) throw new Error('cannot message your own session')
-    if (id === this.options.directory.rootId()) {
-      return { id, session: this.options.directory.rootSession(), job: null, owner: null }
+    if (id === directory.rootId()) {
+      return { id, session: directory.rootSession(), job: null, owner: null }
     }
-    const entry = this.options.directory.liveEntry(id)
+    const entry = directory.liveEntry(id)
     if (!entry || entry.job.isClosing) {
       throw new Error(`no live agent "${id}" (see \`demi agent list\`; an archived child is revived only by its parent via resume)`)
     }
-    return { id, session: entry.job.session, job: entry.job, owner: entry.owner }
+    return { id, session: entry.job.node.session, job: entry.job, owner: entry.owner }
   }
 
   /**
@@ -664,28 +499,28 @@ export class ChildSupervisor<State = unknown> {
 
   private senderPrefix(): string {
     const selfId = this.ownerId()
-    const entry = this.options.directory.liveEntry(selfId)
+    const entry = this.options.tree.directory.liveEntry(selfId)
     const description = entry ? entry.job.description : 'root session'
     return `[agent ${selfId}${description ? ` — ${description}` : ''}]`
   }
 
   /** Metadata for a turn on the root: the sender subtree's spawning round, or null from the root itself. */
   private senderMetadata(): AgentMetadata | null {
-    return this.options.directory.liveEntry(this.ownerId())?.job.metadata ?? null
+    return this.options.tree.directory.liveEntry(this.ownerId())?.job.metadata ?? null
   }
 
   /** Delivers one stdin chunk from the attending spawner: mid-turn as a steer, otherwise as a new user turn. */
   private async steerChild(job: ChildJob<State>, message: string): Promise<void> {
     const content: UserContentBlock[] = [{ type: 'text', text: message }]
-    if (job.session.phase() !== 'idle') {
+    if (job.node.session.phase() !== 'idle') {
       try {
-        await job.session.steer(content)
+        await job.node.session.steer(content)
         return
       } catch {
         // Turn boundary raced the steer; fall through to a fresh turn.
       }
     }
-    this.trackTurn(job, job.session.send(content))
+    this.trackTurn(job, job.node.session.send(content))
   }
 
   private async pumpStdinSteers(id: string, stdinStream: AsyncIterable<Uint8Array>): Promise<void> {
@@ -711,16 +546,16 @@ export class ChildSupervisor<State = unknown> {
   }
 
   /**
-   * The one place a child closes naturally. Loops until the child is
-   * quiescent: no running or queued turn (the session action queue doubles as
-   * the mailbox), no pending yield wakeups, and no live children of its own.
-   * The final check-and-close is synchronous, so a send that lands before it
-   * is processed and one that lands after it fails on `isClosing` — nothing
-   * drops silently.
+   * The one place a child closes naturally — the close-when-done policy.
+   * Loops until the child is quiescent: no running or queued turn (the
+   * session action queue doubles as the mailbox), no pending yield wakeups,
+   * and no live children of its own. The final check-and-close is
+   * synchronous, so a send that lands before it is processed and one that
+   * lands after it fails on `isClosing` — nothing drops silently.
    */
   private async settleJob(job: ChildJob<State>): Promise<void> {
     while (!job.isClosing) {
-      if (job.session.isSettled() && !job.session.hasPendingYields() && !job.ownSupervisor.hasLiveJobs()) {
+      if (job.node.session.isSettled() && !job.node.session.hasPendingYields() && !job.node.supervisor.hasLiveJobs()) {
         void this.closeJob(job, 'completed')
         return
       }
@@ -734,119 +569,100 @@ export class ChildSupervisor<State = unknown> {
         }
         job.wake = finish
         void job.closed.then(finish)
-        if (job.session.isSettled()) return
-        void job.session.waitUntilDone().then(finish)
+        if (job.node.session.isSettled()) return
+        void job.node.session.waitUntilDone().then(finish)
       })
     }
   }
 
-  private async closeJob(job: ChildJob<State>, phase: SubagentClose['phase']): Promise<void> {
+  private async closeJob(job: ChildJob<State>, phase: AgentNodeClosePhase): Promise<void> {
     if (job.isClosing) return
     job.isClosing = true
     job.phase = phase
     job.unsubscribe()
     this.jobs.delete(job.id)
-    this.options.directory.unregister(job.id)
+    this.options.tree.directory.unregister(job.id)
     job.wake?.()
 
     // A natural completion has no live descendants by construction; an abort
     // or error tears the subtree down with it.
-    await job.ownSupervisor.abortAll()
+    await job.node.supervisor.abortAll()
 
-    const result = phase === 'completed' ? boundedResultText(lastAssistantText(job.session.transcript().blocks)) : undefined
-    // dispose() flushes the final checkpoint; the archived job record beside it
-    // marks the child finished-but-revivable.
-    await job.session.dispose().catch(noop)
-    await this.disposeJobShells(job)
-    await this.options.store
-      .writeJson<PersistedSubagentJob>(this.childStoreKey(job.id, 'job.json'), {
-        description: job.description,
-        profileName: job.profileName,
-        metadata: job.metadata,
-        spawnedAt: job.spawnedAt,
-        ...(job.ownSupervisor.options.canSpawn ? {} : { canSpawnSubagents: false }),
-        closedPhase: phase,
-        closedAt: Date.now(),
-      })
-      .catch(noop)
+    const result = phase === 'completed' ? boundedResultText(lastAssistantText(job.node.session.transcript().blocks)) : null
+    // dispose() flushes the final checkpoint; the close row is the next commit
+    // (`docs/subagent.md` § Persistence), the node quiescent between the two.
+    await job.node.session.dispose().catch(noop)
+    await job.node.disposeEnvironments()
+    await this.options.tree.store.closeNode(job.id, { phase, closedAt: Date.now(), result, failure: job.failure }).catch(noop)
 
     const close: SubagentClose = {
       phase,
-      ...(result !== undefined ? { result } : {}),
+      ...(result !== null ? { result } : {}),
       ...(job.failure ? { failure: job.failure } : {}),
     }
-    this.options.emit({ type: 'subagent', event: 'closed', job: this.wireJob(job, result) })
+    this.options.tree.emit({ type: 'subagent', event: 'closed', job: this.wireJob(job, result ?? undefined) })
     job.settleClosed(close)
     this.options.onJobsChanged?.()
-    this.notifyIdleParent(job, close)
+    await this.deliverClose({ id: job.id, description: job.description, metadata: job.metadata, phase, result, failure: job.failure }, job.attended)
   }
 
-  private async disposeJobShells(job: ChildJob<State>): Promise<void> {
-    const environments = new Set([...job.environments.values()])
-    for (const pending of job.pendingEnvironments.values()) {
-      const environment = await pending.catch(() => null)
-      if (environment) environments.add(environment)
-    }
-    for (const environment of environments) await environment.disposeAllShells().catch(noop)
-  }
-
-  /** Wakes an idle owner with a user send; an owner blocked in the spawn gets the tool result instead. */
-  private notifyIdleParent(job: ChildJob<State>, close: SubagentClose): void {
-    if (this.isDisposed || !this.options.notifyParentOnIdle) return
+  /**
+   * Where a completion goes (`docs/subagent.md` § Persistence): a product that
+   * drives the root itself has the `closed` frame, and an owner busy in the
+   * spawn command has that command's exit — the store is told at once in both
+   * cases. Otherwise the owner gets a user message — now if idle, at its next
+   * turn boundary if busy — that its own checkpoint records as delivered. A
+   * detached owner waits for the restore.
+   */
+  private async deliverClose(completion: Completion, attended: boolean): Promise<void> {
     const parent = this.parentSession
-    if (!parent || parent.phase() !== 'idle') return
-    const label = `subagent ${job.id}${job.description ? ` — ${job.description}` : ''}`
-    const body =
-      close.phase === 'completed'
-        ? `[${label}] completed.\nResult:\n${close.result || '(empty)'}`
-        : close.phase === 'aborted'
-          ? `[${label}] aborted.`
-          : `[${label}] failed: ${close.failure ?? 'unknown error'}`
-    // The wakeup round runs on behalf of the round that spawned the child, so it carries that round's metadata.
-    void parent.send([{ type: 'text', text: body }], job.metadata ? { metadata: job.metadata } : {}).catch(noop)
-  }
-
-  private async childEnvironment(
-    job: ChildJob<State>,
-    ctx: Pick<AgentToolInvokeContext<State>, 'state' | 'metadata'>,
-  ): Promise<ShellEnvironment> {
-    const resolved = await this.options.agent.host({
-      agentSessionId: this.options.agentSessionId,
-      state: ctx.state,
-      cwd: this.options.cwd,
-      metadata: ctx.metadata,
-    })
-    const host = resolved
-    const existing = job.environments.get(host)
-    if (existing) return existing
-    const pending = job.pendingEnvironments.get(host)
-    if (pending) return pending
-    const creation = this.createChildEnvironment(job, host)
-    job.pendingEnvironments.set(host, creation)
-    try {
-      const environment = await creation
-      job.environments.set(host, environment)
-      return environment
-    } finally {
-      job.pendingEnvironments.delete(host)
+    if (!parent || this.isDisposed) return
+    if (!this.options.notifyParentOnIdle || (attended && parent.phase() !== 'idle')) {
+      await this.options.tree.store.markDelivered(completion.id).catch(noop)
+      return
     }
+    this.sendCompletion(parent, completion)
   }
 
-  private async createChildEnvironment(job: ChildJob<State>, host: Host): Promise<ShellEnvironment> {
-    const prepared = this.options.shellOptions
-    return this.options.shellEnvironment({
-      agentSessionId: job.id,
-      host,
-      commands: job.commandRegistry,
-      shell: {
-        ...prepared,
-        initialEnv: {
-          ...prepared.initialEnv,
-          DEMI_SUBAGENT_ID: job.id,
-          DEMI_PARENT_SESSION_ID: this.ownerId(),
-        },
-      },
+  /** A completion the owner never received before the process ended, from the store at restore. */
+  private async deliverCompletion(record: AgentNodeRecord): Promise<void> {
+    const parent = this.requireParent()
+    if (!this.options.notifyParentOnIdle || record.closedPhase === null) {
+      await this.options.tree.store.markDelivered(record.id).catch(noop)
+      return
+    }
+    this.sendCompletion(parent, {
+      id: record.id,
+      description: record.description,
+      metadata: record.metadata,
+      phase: record.closedPhase,
+      result: record.result,
+      failure: record.failure,
     })
+  }
+
+  private sendCompletion(parent: AgentSession<State>, completion: Completion): void {
+    const label = `subagent ${completion.id}${completion.description ? ` — ${completion.description}` : ''}`
+    const body =
+      completion.phase === 'completed'
+        ? `[${label}] completed.\nResult:\n${completion.result || '(empty)'}`
+        : completion.phase === 'aborted'
+          ? `[${label}] aborted.`
+          : `[${label}] failed: ${completion.failure ?? 'unknown error'}`
+    // The wakeup round runs on behalf of the round that spawned the child, so it
+    // carries that round's metadata; its id names the child, so the owner's
+    // checkpoint that carries it marks the completion delivered.
+    void parent
+      .send([{ type: 'text', text: body }], {
+        id: completionMessageId(completion.id),
+        ...(completion.metadata ? { metadata: completion.metadata } : {}),
+      })
+      .catch(noop)
+  }
+
+  private requireParent(): AgentSession<State> {
+    if (!this.parentSession) throw new Error('subagent supervisor has no owner session')
+    return this.parentSession
   }
 
   /**
@@ -856,14 +672,14 @@ export class ChildSupervisor<State = unknown> {
    */
   private resolveProfile(name: string | undefined): SubagentProfile<State> {
     if (name === undefined) return INHERIT_PROFILE as SubagentProfile<State>
-    const profile = this.options.profiles?.find((candidate) => candidate.name === name)
+    const profile = this.options.tree.profiles?.find((candidate) => candidate.name === name)
     if (profile) return profile
     const names = this.configuredProfileNames()
     throw new Error(`unknown profile "${name}" (available: ${names.length > 0 ? names.join(', ') : 'none; omit --profile to inherit the parent'})`)
   }
 
   private configuredProfileNames(): string[] {
-    return (this.options.profiles ?? []).map((profile) => profile.name)
+    return (this.options.tree.profiles ?? []).map((profile) => profile.name)
   }
 
   private subagentPreamble(childId: string, canSpawn: boolean): string {
@@ -898,7 +714,7 @@ export class ChildSupervisor<State = unknown> {
         continue
       }
       if (patch.op === 'append_text') {
-        const block = job.session.transcript().blocks[patch.path[1]]
+        const block = job.node.session.transcript().blocks[patch.path[1]]
         if (block?.type === 'text') {
           job.lastAssistantTextAt = now
           job.lastEventAt = now
@@ -919,10 +735,10 @@ export class ChildSupervisor<State = unknown> {
   }
 
   private executionOf(job: ChildJob<State>): SubagentExecution {
-    const phase = job.session.phase()
+    const phase = job.node.session.phase()
     if (phase === 'compacting') return 'compacting'
-    if (phase === 'idle') return job.session.hasPendingYields() ? 'pending_yield' : 'idle'
-    return job.session.turnPhase() ?? 'provider_streaming'
+    if (phase === 'idle') return job.node.session.hasPendingYields() ? 'pending_yield' : 'idle'
+    return job.node.session.turnPhase() ?? 'provider_streaming'
   }
 
   private activityOf(job: ChildJob<State>, execution: SubagentExecution): string {
@@ -955,7 +771,7 @@ export class ChildSupervisor<State = unknown> {
       activity: this.activityOf(job, execution),
     }
     if (!detailed) return base
-    const text = lastAssistantText(job.session.transcript().blocks)
+    const text = lastAssistantText(job.node.session.transcript().blocks)
     return {
       ...base,
       executionForMs: this.executionForMs(job, execution, now),
@@ -1013,7 +829,7 @@ export class ChildSupervisor<State = unknown> {
         }
       }
     }
-    const text = boundedResultText(lastAssistantText(job.session.transcript().blocks))
+    const text = boundedResultText(lastAssistantText(job.node.session.transcript().blocks))
     if (text && job.lastAssistantTextAt !== null) {
       lines.push(`last assistant text (${formatDuration(now - job.lastAssistantTextAt)} ago):`)
       lines.push(text)

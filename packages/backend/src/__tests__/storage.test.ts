@@ -10,6 +10,7 @@ import { LocalControlService } from '../storage/control'
 import { ConversationStores } from '../storage/conversation-store'
 import { DirBlobStore } from '../storage/blob-store'
 import { filesTreeBackend } from '../storage/files-tree'
+import { completionMessageId } from '@demicodes/agent'
 import { WebSessions } from '../auth/sessions'
 
 const model: ModelSelection = {
@@ -54,7 +55,7 @@ test('conversation migrations create the data-plane tables', () => {
   const tables = db
     .all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .map((row) => row.name)
-  for (const table of ['blocks', 'session', 'host_store']) expect(tables).toContain(table)
+  for (const table of ['nodes', 'blocks', 'host_store', 'files']) expect(tables).toContain(table)
   db.close()
 })
 
@@ -176,14 +177,33 @@ test('DirBlobStore content-addresses bytes and is idempotent', async () => {
   rmSync(root, { recursive: true, force: true })
 })
 
-test('conversation session store writes block rows, media leaves the database', async () => {
+const rootRecord = (id: string, parentId: string | null = null) => ({
+  id,
+  parentId,
+  description: '',
+  profileName: null,
+  metadata: null,
+  spawnedAt: 1,
+  canSpawnSubagents: true,
+  closedPhase: null,
+  closedAt: null,
+  result: null,
+  failure: null,
+  delivered: false,
+})
+const emptyCheckpoint = () => ({ changedBlocks: [], blockCount: 0, state: {}, phase: 'idle' as const, queue: [], cwd: '/home/demi', model, harnessName: 'h' })
+
+test('the tree store writes node and block rows, media leaves the database, the cold read is the root', async () => {
   const root = mkdtempSync(join(tmpdir(), 'demi-conv-'))
   const blobs = new DirBlobStore(join(root, 'blobs'))
   const stores = new ConversationStores(join(root, 'conversations'), () => blobs)
-  const store = stores.sessionStore('conv-1')
+  const tree = stores.treeStore('conv-1')
+  await tree.createNode(rootRecord('conv-1'), emptyCheckpoint())
+  const store = tree.sessionStore('conv-1')
   const imageBytes = new Uint8Array([9, 9, 9, 9])
 
   await store.save({
+    ...emptyCheckpoint(),
     changedBlocks: [
       {
         index: 0,
@@ -203,17 +223,11 @@ test('conversation session store writes block rows, media leaves the database', 
       { index: 1, block: { type: 'text', id: 'a1', createdAt: '2026-01-01T00:00:01.000Z', model, text: 'hello' } },
     ],
     blockCount: 2,
-    state: {},
-    phase: 'idle',
-    queue: [],
-    cwd: '/home/demi',
-    model,
-    harnessName: 'h',
   })
 
-  // Rows are per block; no byte payload appears in the database.
+  // Rows are per node and block; no byte payload appears in the database.
   const db = stores.db('conv-1')
-  const rows = db.all<{ idx: number; block_json: string }>('SELECT idx, block_json FROM blocks ORDER BY idx')
+  const rows = db.all<{ idx: number; block_json: string }>('SELECT idx, block_json FROM blocks WHERE node_id = ? ORDER BY idx', ['conv-1'])
   expect(rows.map((row) => row.idx)).toEqual([0, 1])
   expect(rows[0].block_json).toContain('"ref"')
   expect(rows[0].block_json).not.toContain('"data"')
@@ -226,18 +240,52 @@ test('conversation session store writes block rows, media leaves the database', 
   if (image?.type !== 'image' || image.source.type !== 'binary') throw new Error('expected binary image')
   expect([...image.source.data]).toEqual([...imageBytes])
 
-  // Shrinking deletes stale rows.
-  await store.save({
-    changedBlocks: [],
-    blockCount: 1,
-    state: {},
-    phase: 'idle',
-    queue: [],
-    cwd: '/home/demi',
-    model,
-    harnessName: 'h',
-  })
+  // Shrinking deletes stale rows; the cold transcript read is the root node's rows.
+  await store.save({ ...emptyCheckpoint(), blockCount: 1 })
   expect(stores.transcriptBlocks('conv-1').map((block) => block.id)).toEqual(['u1'])
+  expect(stores.transcriptBlocks('conv-none')).toEqual([])
+
+  stores.close()
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('the tree store keeps the tree contract: the brief in the create, delivery by the parent save, reopen, cascade', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'demi-conv-tree-'))
+  const stores = new ConversationStores(join(root, 'conversations'), () => new DirBlobStore(join(root, 'blobs')))
+  const tree = stores.treeStore('c')
+  await tree.createNode(rootRecord('c'), emptyCheckpoint())
+  const brief = { id: 'm1', text: 'brief', content: [{ type: 'text' as const, text: 'brief' }] }
+  await tree.createNode({ ...rootRecord('a', 'c'), description: 'first', metadata: { round: 1 } }, { ...emptyCheckpoint(), queue: [brief] })
+  await tree.createNode({ ...rootRecord('b', 'c'), spawnedAt: 2 }, emptyCheckpoint())
+  await tree.createNode(rootRecord('a1', 'a'), emptyCheckpoint())
+  expect((await tree.children('c')).map((node) => [node.id, node.description, node.metadata])).toEqual([['a', 'first', { round: 1 }], ['b', '', null]])
+  expect((await tree.sessionStore('a').load())?.queue).toEqual([brief])
+
+  await tree.closeNode('a', { phase: 'completed', closedAt: 3, result: 'a done', failure: null })
+  await tree.closeNode('b', { phase: 'error', closedAt: 4, result: null, failure: 'boom' })
+  expect(await tree.node('a')).toMatchObject({ closedPhase: 'completed', result: 'a done', delivered: false })
+  expect(await tree.node('b')).toMatchObject({ closedPhase: 'error', failure: 'boom', delivered: false })
+
+  // The root's save carrying a's wakeup as a user turn marks a delivered; b waits.
+  await tree.sessionStore('c').save({
+    ...emptyCheckpoint(),
+    changedBlocks: [{ index: 0, block: { type: 'user', id: 'u1', turnId: completionMessageId('a'), createdAt: '2026-01-01T00:00:00.000Z', model, content: [{ type: 'text', text: 'x' }], preamble: null } }],
+    blockCount: 1,
+  })
+  expect((await tree.node('a'))?.delivered).toBe(true)
+  expect((await tree.node('b'))?.delivered).toBe(false)
+  await tree.markDelivered('b')
+  expect((await tree.node('b'))?.delivered).toBe(true)
+
+  const reviving = { id: 'm2', text: 'again', content: [{ type: 'text' as const, text: 'again' }] }
+  await tree.reopenNode('a', { metadata: { round: 2 }, spawnedAt: 9 }, reviving)
+  expect(await tree.node('a')).toMatchObject({ closedPhase: null, result: null, delivered: false, metadata: { round: 2 }, spawnedAt: 9 })
+  expect((await tree.sessionStore('a').load())?.queue).toEqual([reviving])
+
+  await tree.deleteNode('a')
+  expect(await tree.node('a')).toBeNull()
+  expect(await tree.node('a1')).toBeNull()
+  expect((await tree.children('c')).map((node) => node.id)).toEqual(['b'])
 
   stores.close()
   rmSync(root, { recursive: true, force: true })

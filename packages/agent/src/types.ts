@@ -270,14 +270,78 @@ export interface AgentSessionPersistUpdate<State> extends AgentSessionStateSnaps
 }
 
 /**
- * Session persistence: block rows plus a state row. Implementations write
+ * One node's persistence: block rows plus a state row. Implementations write
  * `changedBlocks` as individual rows — never the whole transcript — and
- * reassemble the checkpoint on load.
+ * reassemble the checkpoint on load. A save is one commit.
  */
 export interface AgentSessionStore<State = unknown> {
   save(update: AgentSessionPersistUpdate<State>): Promise<void> | void
   /** Load the persisted session, or null if none exists. */
   load(): Promise<AgentSessionCheckpoint<State> | null>
+}
+
+/** The phase a node closed in. */
+export type AgentNodeClosePhase = 'completed' | 'aborted' | 'error'
+
+/**
+ * A node of the session tree as the store holds it: identity and
+ * relationship, never runtime state (`docs/subagent.md` § Persistence). The
+ * root has no parent; a node is archived once `closedPhase` is set.
+ */
+export interface AgentNodeRecord {
+  id: string
+  parentId: string | null
+  /** Short title; empty for the root. */
+  description: string
+  /** The profile the node was spawned with; null inherits the parent's setup (and for the root). */
+  profileName: string | null
+  /** Action metadata of the round that spawned it — Host routing; null for the root. */
+  metadata: AgentMetadata | null
+  spawnedAt: number
+  canSpawnSubagents: boolean
+  /** null while live; the phase it closed in once archived. */
+  closedPhase: AgentNodeClosePhase | null
+  closedAt: number | null
+  /** The bounded last assistant text of a completed close; null otherwise. */
+  result: string | null
+  /** The reason of an error close; null otherwise. */
+  failure: string | null
+  /** Whether the completion has reached its return path (`docs/subagent.md` § Persistence). */
+  delivered: boolean
+}
+
+/** What a close writes, in one commit after the node's final checkpoint. */
+export interface AgentNodeClose {
+  phase: AgentNodeClosePhase
+  closedAt: number
+  result: string | null
+  failure: string | null
+}
+
+/**
+ * The session tree's persistence, one store per root: node rows with their
+ * checkpoints. Create, a node's save and close are each one commit whatever
+ * the realization (`docs/subagent.md` § Persistence).
+ */
+export interface AgentTreeStore<State = unknown> {
+  node(id: string): Promise<AgentNodeRecord | null>
+  /** Direct children in spawn order, live and archived alike. */
+  children(parentId: string): Promise<AgentNodeRecord[]>
+  /** The node row and its initial checkpoint — the first message queued in it — as one commit. */
+  createNode(record: AgentNodeRecord, checkpoint: AgentSessionPersistUpdate<State>): Promise<void>
+  /**
+   * The node's journal. A save is one commit that also marks delivered every
+   * child completion the saved state carries (`completedChildrenCarriedBy`).
+   */
+  sessionStore(id: string): AgentSessionStore<State>
+  /** The close row, one commit after the final checkpoint; the completion starts undelivered. */
+  closeNode(id: string, close: AgentNodeClose): Promise<void>
+  /** An archived node live again — this round's metadata, a fresh spawn time, the reviving message queued — as one commit. */
+  reopenNode(id: string, fields: { metadata: AgentMetadata | null; spawnedAt: number }, message: QueuedMessage): Promise<void>
+  /** The completion reached its parent by a path the parent's checkpoint cannot show. */
+  markDelivered(id: string): Promise<void>
+  /** The node and every descendant with all their rows. */
+  deleteNode(id: string): Promise<void>
 }
 
 export interface AgentSessionRestoreParams<State> {

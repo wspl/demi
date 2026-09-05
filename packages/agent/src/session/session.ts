@@ -278,6 +278,7 @@ export class AgentSession<State> {
       runCompaction: () => self.compaction.run(),
       runWithCompactingPhase: (fn) => self.runWithCompactingPhase(fn),
       commitTranscript: () => self.commitTranscript(),
+      persistNow: () => self.flushPersist(),
       emit: (event) => self.emit(event),
       materializeSteersArrivedSince: (count) => self.materializePendingSteersArrivedSince(count),
       materializePendingSteers: () => self.materializePendingSteersForCurrentTurn(),
@@ -799,29 +800,24 @@ export class AgentSession<State> {
         this.activeMetadata = action.metadata
         this.abortRecorded = false
 
+        let outcome: { kind: 'done' } | { kind: 'aborted' } | { kind: 'failed'; error: Error }
         try {
           await this.executeAction(action)
-          await this.flushPersist()
-          action.resolve()
+          outcome = { kind: 'done' }
         } catch (error) {
           if (isAbortError(error)) {
             await this.recordAbort()
-            await this.flushPersist().catch((flushError: unknown) => {
-              this.emit({ type: 'error', error: asError(flushError) })
-            })
-            action.resolve()
+            outcome = { kind: 'aborted' }
           } else {
-            const normalized = asError(error)
             try {
               await this.materializePendingSteersForCurrentTurn()
             } catch (materializeError) {
               this.emit({ type: 'error', error: asError(materializeError) })
             }
-            await this.flushPersist().catch((flushError: unknown) => {
-              this.emit({ type: 'error', error: asError(flushError) })
-            })
+            const normalized = asError(error)
+            // Announced before the phase turns idle: observers settle the action on the phase.
             this.emit({ type: 'error', error: normalized })
-            action.reject(normalized)
+            outcome = { kind: 'failed', error: normalized }
           }
         } finally {
           this.discardPendingSteersForCurrentTurn()
@@ -836,6 +832,24 @@ export class AgentSession<State> {
           this.setPhase('idle')
           this.yields.arm()
         }
+        // The boundary flush, after the phase is idle: the checkpoint says the
+        // action ended before its caller learns so, and a checkpoint that says
+        // otherwise is one the process died in (`docs/subagent.md` § Persistence).
+        if (outcome.kind === 'done') {
+          try {
+            await this.flushPersist()
+          } catch (flushError) {
+            const normalized = asError(flushError)
+            this.emit({ type: 'error', error: normalized })
+            outcome = { kind: 'failed', error: normalized }
+          }
+        } else {
+          await this.flushPersist().catch((flushError: unknown) => {
+            this.emit({ type: 'error', error: asError(flushError) })
+          })
+        }
+        if (outcome.kind === 'failed') action.reject(outcome.error)
+        else action.resolve()
       }
     } finally {
       this.workerRunning = false
@@ -1253,7 +1267,8 @@ export class AgentSession<State> {
   }
 }
 
-function textContentSummary(content: UserContentBlock[]): string {
+/** The one-line text a queued message shows for its content. */
+export function textContentSummary(content: UserContentBlock[]): string {
   const text = content
     .map((block) => (block.type === 'text' ? block.text : `[${block.type}]`))
     .join('\n')
