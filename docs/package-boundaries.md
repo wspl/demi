@@ -63,13 +63,15 @@ Test code may depend upward for integration coverage. Production code must not.
 - Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
 - Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, the `shellEnvironment` factory, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target.
 - Media persistence rule: AgentServer accepts a BlobStore factory keyed by root session id; child sessions inherit that root's store. Product code selects the ownership scope, while the agent only handles the put/get media contract.
+- Session-tree options: `subagents.maxLiveSubagents` limits each session's live direct children (default 8); `notifyParentOnIdle` controls only the root's automatic wakeups. Every descendant shares the root's agent directory and inherits its tool options.
+- Shell previews: `tools.shellPreviewBudgetTokens(contextWindow)` selects the token budget against each request's current model, across the entire session tree. The default is 10,000 tokens below an 800,000-token context window and 100,000 at or above it.
 - Layout (directories mirror the package's modules; root keeps entrypoints, `types.ts`, and single-file modules like `tools.ts`):
   - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction).
   - `transcript/` — the TranscriptLog mutation journal and patch application.
   - `store/` — the session persistence realization over `HostStore` and the media blob contract (externalize/rehydrate).
   - `protocol/` — frame types, the inbound-frame zod schemas (`ClientFrame`'s single source of truth), and the transports (`stdio-transport.ts` backs the `./stdio` entry).
   - `server/` — the server facade, transport binding (frame dispatch, ingress validation), session-assembly pipeline, live-session runtime, ownership registry, and frame-view mappers.
-  - `subagent/` — supervisor lifecycle and the declarative `demi agent` command tree behind the `SubagentCommandOps` seam.
+  - `subagent/` — supervisor lifecycle, the root-session agent directory, tree formatting, and the declarative `demi agent` command tree behind the `SubagentCommandOps` seam.
   - `client/` — AgentClient.
 
 ### `@demicodes/coding-agent`

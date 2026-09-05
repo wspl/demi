@@ -15,6 +15,7 @@ import {
   finalStdoutBoundary,
   normalizeTimeoutMs,
   settleExited,
+  type DispatchIO,
   type Host,
   type ShellAbortInput,
   type ShellCommandRecord,
@@ -25,7 +26,7 @@ import {
   type ShellStatusInput,
   type ShellWriteInput,
 } from '@demicodes/shell'
-import { parseTinybash, runTinybash, type DispatchIO, type RootPaths, type ShellState, type TinybashOutside } from '@demicodes/tinybash'
+import { parseTinybash, runTinybash, type RootPaths, type ShellState, type TinybashOutside } from '@demicodes/tinybash'
 import { ByteQueue, concatBytes, delay, errorMessage, isAbsolutePath, toBytes } from '@demicodes/utils'
 
 export interface HostlessEnvironmentOptions extends ShellEnvironmentOptions {
@@ -248,6 +249,7 @@ export class HostlessEnvironment implements ShellEnvironment {
     const stderrDecoder = new TextDecoder()
     let captured = 0
     let overflowed = false
+    const runningHints = new Map<symbol, string>()
     const ingest = (stream: 'stdout' | 'stderr', data: string | Uint8Array): void => {
       if (overflowed) return
       const bytes = toBytes(data)
@@ -269,8 +271,17 @@ export class HostlessEnvironment implements ShellEnvironment {
       roots: this.roots,
       namespace: this.namespace,
       dispatch: async (root, argv, io) => {
-        const exitCode = await this.dispatch(root, argv, io)
-        return exitCode
+        const invocation = Symbol()
+        const onRunningHint = (hint: string | undefined) => {
+          if (hint === undefined) runningHints.delete(invocation)
+          else runningHints.set(invocation, hint)
+          record.runningHint = [...runningHints.values()].at(-1)
+        }
+        try {
+          return await this.dispatch(root, argv, { ...io, onRunningHint })
+        } finally {
+          onRunningHint(undefined)
+        }
       },
       fs: this.host.fs,
       state: shell.state,

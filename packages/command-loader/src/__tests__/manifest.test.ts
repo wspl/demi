@@ -58,6 +58,18 @@ describe('buildManifest', () => {
     expect(parseManifest(JSON.parse(JSON.stringify(manifest)))).toEqual(manifest)
     expect(() => parseManifest({ hash: 'x' })).toThrow()
   })
+
+  test('rpc and runtime running hints survive the wire and affect the manifest hash', async () => {
+    const roots: Command[] = [{ name: 'rpc', summary: 'RPC.', kind: 'rpc', runningHint: 'rpc hint', run: () => ({ exitCode: 0 }) },
+      { name: 'runtime', summary: 'Runtime.', kind: 'runtime', runningHint: 'runtime hint', module: runtimeModule('export default async () => ({ exitCode: 0 })') }]
+    const manifest = await buildManifest(roots, { transpile })
+    const rebuilt = treeFromManifest(parseManifest(JSON.parse(JSON.stringify(manifest))), undefined)
+    expect(rebuilt.map((root) => !isCommandGroup(root) && root.runningHint)).toEqual(['rpc hint', 'runtime hint'])
+    const leaf = roots[0]!
+    if (isCommandGroup(leaf)) throw new Error('fixture')
+    leaf.runningHint = 'changed hint'
+    expect((await buildManifest(roots, { transpile })).hash).not.toBe(manifest.hash)
+  })
 })
 
 describe('treeFromManifest', () => {

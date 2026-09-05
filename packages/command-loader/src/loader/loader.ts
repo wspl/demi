@@ -50,6 +50,7 @@ export async function createLoader(options: LoaderOptions): Promise<Loader> {
           host: options.host,
           signal: io.signal,
           loadModule,
+          onRunningHint: io.onRunningHint,
         })
         return result.exitCode
       } catch (error) {

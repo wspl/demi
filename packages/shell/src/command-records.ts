@@ -23,6 +23,7 @@ export interface ShellCommandRecord {
   startedAt: number
   lastOutputAt: number
   status: 'running' | 'exited' | 'aborted'
+  runningHint?: string
   stdout: string
   stderr: string
   stdoutOffset: number
@@ -91,7 +92,7 @@ export function commandStatusView(record: ShellCommandRecord, maxOutputBytes: nu
     return result
   }
   if (record.status === 'aborted') return { ...base, status: 'aborted' }
-  return { ...base, status: 'running' }
+  return { ...base, status: 'running', ...(record.runningHint !== undefined ? { runningHint: record.runningHint } : {}) }
 }
 
 /**

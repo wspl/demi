@@ -9,6 +9,8 @@ const bytesSchema = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
 export const relayRequestSchema = z.discriminatedUnion('type', [
   /** The manifest, on a cache miss. */
   z.object({ type: z.literal('manifest') }),
+  /** One registered leaf's hint; this connection's EOF clears it. */
+  z.object({ type: z.literal('running_hint'), jobId: z.string(), hint: z.string() }),
   /** A control-only connection whose EOF cancels a call even when its data stream is blocked. */
   z.object({ type: z.literal('watch'), callId: z.string() }),
   /**

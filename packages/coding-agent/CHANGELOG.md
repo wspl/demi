@@ -1,5 +1,59 @@
 # @demicodes/coding-agent
 
+## 0.24.0
+
+### Minor Changes
+
+- 33731b0: Subagent profiles: omitting `--profile` always selects the unnamed inherit profile (parent harness, model, Host, commands), which exists regardless of declared profiles and cannot be configured. `default` is now a reserved word rather than a profile name: a harness declaring a profile called `default` fails at assembly, `--profile default` is unknown, and persisted jobs store `profileName: null` for inherited children. `demi agent resume` resolves the profile before rewriting the archived job record, so a missing profile leaves the archive intact. `@demicodes/coding-agent` drops its declared `default` profile and ships only `explore`.
+
+### Patch Changes
+
+- Updated dependencies [33731b0]
+  - @demicodes/agent@0.24.0
+  - @demicodes/core@0.24.0
+  - @demicodes/shell@0.24.0
+  - @demicodes/utils@0.24.0
+
+## 0.23.0
+
+### Patch Changes
+
+- Updated dependencies [6b0229c]
+  - @demicodes/agent@0.23.0
+  - @demicodes/core@0.23.0
+  - @demicodes/shell@0.23.0
+  - @demicodes/utils@0.23.0
+
+## 0.22.1
+
+### Patch Changes
+
+- Updated dependencies [837e0f7]
+  - @demicodes/agent@0.22.1
+  - @demicodes/core@0.22.1
+  - @demicodes/shell@0.22.1
+  - @demicodes/utils@0.22.1
+
+## 0.22.0
+
+### Patch Changes
+
+- Updated dependencies [2e3da08]
+  - @demicodes/agent@0.22.0
+  - @demicodes/core@0.22.0
+  - @demicodes/shell@0.22.0
+  - @demicodes/utils@0.22.0
+
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [9d1e56c]
+  - @demicodes/shell@0.21.0
+  - @demicodes/agent@0.21.0
+  - @demicodes/core@0.21.0
+  - @demicodes/utils@0.21.0
+
 ## 0.20.0
 
 ### Patch Changes

@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/shell",
   "description": "Demi's Host contract, command system and shell-environment contract.",
-  "version": "0.20.0",
+  "version": "0.24.0",
   "private": false,
   "type": "module",
   "exports": {

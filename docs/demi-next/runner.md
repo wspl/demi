@@ -103,7 +103,7 @@ machine is always reached through `host-remote`.
 
 ## Connection model
 
-One outbound WebSocket, speaking runner protocol **version 6**. Frames are binary **MessagePack** (`Uint8Array` as
+One outbound WebSocket, speaking runner protocol **version 7**. Frames are binary **MessagePack** (`Uint8Array` as
 bin, `Date` as the timestamp extension, `undefined` as nil), so bytes and
 times are native wire types; a text frame is malformed and closes the
 socket. The schemas are `zod` in `@demicodes/runner-protocol`, shared
@@ -179,6 +179,7 @@ Jobs — the agent's commands:
 |---|---|---|
 | b → r | `job_start { jobId, script, cwd, env, stdin?, stdout? }` | run `bash -c script`; `env` carries the conversation and shell ids; `stdin` / `stdout` are pipes the job's fd 0 / fd 1 are attached to when another process's ends are on the far side (§ Pipes) |
 | r → b | `job_output { jobId, stream, bytes }` | live output while the job runs, up to the view budget per stream, then silence |
+| r → b | `job_running_hint { jobId, invocationId, hint }` | a registered leaf's model-facing guidance while that invocation is active; `hint: null` clears that invocation |
 | r → b | `job_exit { jobId, exitCode, signal?, cwd, output: { stdoutPath, stderrPath, stdoutBytes, stderrBytes, stdoutTail, stderrTail } }` | exit, the working directory the script ended in, where the full output lives on this machine, and the last bytes of each stream |
 | b → r | `job_stdin { jobId, bytes }` / `job_stdin_end { jobId }` / `job_kill { jobId, signal }` | interactive input (`shell_write`), termination |
 | r → b | `pong { jobs }` | the job table is the runner's; the backend reads it |
@@ -270,6 +271,23 @@ connection, forwards `rpc_call` to the backend and acknowledges the watch
 with `ready`. Only then does the process send input data. The lifetime
 connection carries no data: its EOF cancels the call even when the data
 connection is blocked by a slow stdin consumer.
+
+A registered leaf may declare `runningHint` in its command manifest. After
+argument validation, the loader reports that hint for the actual invocation
+through a separate `running_hint { jobId, hint }` lifetime connection, for
+both `runtime` and `rpc` leaves. The relay assigns an `invocationId`, sends
+`job_running_hint` to the backend and replies `ready`; only then does the
+leaf execute. Completion, failure or cancellation closes the connection.
+Its EOF sends the clearing message even if the command process was killed
+and the surrounding bash job continues. Job termination and disconnect
+also clear its active hints.
+
+The remote shell keeps each invocation's hint independently. In a concurrent
+pipeline it shows the latest active hint and restores another active hint
+when that invocation ends. After all hinted invocations finish, ordinary
+running guidance resumes; exited and aborted statuses never carry a hint.
+Help and invalid invocations do not register one. Hints travel separately
+from stdout and stderr and do not consume the job's output view budget.
 
 ```text
 beta: job j12 invokes call c9                    beta runner             backend
@@ -488,3 +506,11 @@ takes the wake path (`managed-hosts.md`).
 - Spawn streams: the runner pushes one ordered, stream-tagged chunk
   sequence per spawn or job; the proxy derives `stdout`/`stderr`/merged
   views from it without double-counting.
+
+The running-hint contract is covered by `runner/src/__tests__/running-hint.test.ts`
+against a live tinyjs runner and a local mock backend: runtime and RPC
+invocations, live stdin, shell chains, abort, command-process death with bash
+still running, and help/error/plain-command exclusions. The matching
+`host-remote/src/__tests__/running-hint.test.ts` checks concurrent invocation
+ownership, late messages and disconnect; `runner-protocol/src/__tests__/protocol.test.ts`
+checks the hint message and explicit clearing value on the wire.

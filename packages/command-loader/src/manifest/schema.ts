@@ -16,6 +16,7 @@ const manifestLeafSchema = z.object({
   kind: z.enum(['rpc', 'runtime']),
   successOutput: z.string().optional(),
   failureOutput: z.string().optional(),
+  runningHint: z.string().optional(),
   /** JSON Schema of an object whose properties are the leaf's input fields. */
   input: jsonSchema.optional(),
   positionals: z.array(z.string()).optional(),

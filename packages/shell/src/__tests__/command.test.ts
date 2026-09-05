@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
-import { bytesStream, encodeUtf8 } from '@demicodes/utils'
+import { bytesStream, deferred, encodeUtf8 } from '@demicodes/utils'
 import {
   COMMAND_HELP_DEFAULTS,
   CommandRegistry,
@@ -380,6 +380,25 @@ test('runRegisteredCommand runs bare leaf roots', async () => {
   expect(bare.exitCode).toBe(0)
   expect(bareIO.stdoutText()).toBe('HOME')
 
+})
+
+test('cancellation during hint registration clears the hint without entering the leaf', async () => {
+  const ready = deferred<void>()
+  const entered = deferred<void>()
+  const controller = new AbortController()
+  const hints: (string | undefined)[] = []
+  let ran = false
+  const command: Command = { name: 'attend', summary: 'Wait.', kind: 'rpc', runningHint: 'attending', run: () => { ran = true; return { exitCode: 0 } } }
+  const run = runRegisteredCommand(command, {
+    argv: ['attend'], env: {}, cwd: '/', host: testHost, io: new MemoryIO(), signal: controller.signal,
+    onRunningHint: async (hint) => { hints.push(hint); if (hint !== undefined) { entered.resolve(); await ready.promise } },
+  })
+  await entered.promise
+  controller.abort()
+  ready.resolve()
+  await expect(run).rejects.toThrow('Aborted')
+  expect(ran).toBe(false)
+  expect(hints).toEqual(['attending', undefined])
 })
 
 test('runRegisteredCommand validates JSON output when --json is set', async () => {
