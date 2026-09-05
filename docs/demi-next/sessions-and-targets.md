@@ -99,10 +99,24 @@ tree — both subtrees, with mode and mtime intact — by `mke2fs
 on a complete home; the backend hands tinybash's session state — cwd and
 variables — to the real bash job. Values changed from the initial environment,
 including a modified `PATH`, are handed over with newly assigned variables.
-The environment table is shared: the hostless `env`
-(`HOME`, `USER`, `PATH`, `PWD`, `SHELL`, `LANG`) is the table the managed
-host's login environment is generated from, so `echo $PATH` prints the
-same string on both sides. Output formats are GNU's on both sides
+The environment table is shared: the hostless `env` is the table the
+managed host's jobs run with, so `echo $PATH` prints the same string on
+both sides. The table is declared once, in the backend
+(`conversation/hostless-shell.ts`), and a managed host's jobs receive it
+from the backend with every `job_start`:
+
+| Variable | Value | Set by |
+|---|---|---|
+| `HOME` | `/home/demi` | the hostless shell; the guest's login table |
+| `USER` | `demi` | the hostless shell; the guest's login table |
+| `PATH` | `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` | the table |
+| `SHELL` | `/bin/bash` | the table |
+| `LANG` | `C` | the table |
+| `PWD` | the shell's working directory | both shells, per command |
+
+A user host is different: its jobs run in the device user's own
+environment, and the backend names only the `DEMI_*` ids
+(`runner.md` § Jobs and the tee). Output formats are GNU's on both sides
 (`tinybash.md`). Hostless has no processes, no background jobs and no
 output files, so nothing else exists to move.
 

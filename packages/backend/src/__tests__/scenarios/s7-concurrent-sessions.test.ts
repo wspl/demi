@@ -41,7 +41,8 @@ test('two sessions on one runner keep their cwd and state apart', async () => {
   expect(fourth.received[0]).toContain(`b: ${b.filePath('')}`.replace(/\/$/, ''))
   expect(fourth.received[0]).toContain('mark=unset')
 
-  // Every job on the wire names the session it ran for.
-  const starts = world.wire('alpha').filter((f) => f.message.type === 'job_start').map((f) => (f.message.type === 'job_start' ? f.message.env.DEMI_SESSION_ID : ''))
-  expect(starts.sort()).toEqual([a.id, a.id, b.id, b.id].sort())
+  // Every job on the wire names the session it ran for, and names no PATH: a user host's jobs run in the device user's own environment.
+  const starts = world.wire('alpha').filter((f) => f.message.type === 'job_start').map((f) => (f.message.type === 'job_start' ? f.message.env : {}))
+  expect(starts.map((env) => env.DEMI_SESSION_ID).sort()).toEqual([a.id, a.id, b.id, b.id].sort())
+  expect(starts.every((env) => env.PATH === undefined && env.HOME === undefined)).toBe(true)
 }, 30_000)

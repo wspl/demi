@@ -33,8 +33,8 @@ configuration beyond what the connection needs.
 2. **Serving the Host contract.** Filesystem operations and process spawns
    from the backend, scoped per request to a working directory the
    conversation names. Any existing directory is a valid workspace. Binary
-   resolution is a device fact: a spawn naming no `PATH`/`HOME` resolves
-   against the device's own.
+   resolution is a device fact: a raw spawn naming no `PATH`/`HOME` resolves
+   against the device's own, and a job runs in the device's environment.
 3. **Running commands.** A tool call becomes one job: real `bash -c` on this
    machine with the conversation's cwd and env, the conversation and shell
    ids in the environment, the bounded output view streamed to the backend,
@@ -216,16 +216,21 @@ options do not carry: a fresh process per job is the norm across coding
 agents (Claude Code, Codex, Gemini, Aider), and only Claude Code carries
 the directory, which is the one thing a model reaches for.
 
-A job's environment is what the backend named — the shell's exports,
-`DEMI_SESSION_ID` and `DEMI_SHELL_ID` — with the device's `PATH` and `HOME`
-filled in when absent, `bin/` first in `PATH`, and four entries of the
+A job's environment is the device's underneath and the backend's on top:
+the environment the runner was started with — the device user's own on a
+user host, the guest's login table on a managed host — with what the
+backend named over it (the shell's starting table where the target has
+one, `sessions-and-targets.md` § What moves, plus `DEMI_SESSION_ID` and
+`DEMI_SHELL_ID`), `bin/` first in `PATH`, and four entries of the
 runner's own: `DEMI_HOME`, `DEMI_JOB_CWD_FILE` (where the `EXIT` trap
 writes `pwd`) and `DEMI_JOB_STDIN_FD` (the descriptor the prelude
 duplicated the job's stdin onto with `exec 199<&0`, so a command-mode
 process can tell the job's live stdin from a redirection by `fdNode`,
 `tinyjs.md`), plus `DEMI_JOB_ID`, which associates local relay calls with
 their owning job. The runner cancels those calls before killing the job
-and when the job exits.
+and when the job exits. A raw spawn (the Claude Code CLI) is different:
+its spawner owns the environment it named, and the runner fills in only
+`PATH` and `HOME` when they are absent.
 
 Each job and raw spawn has its own ordered stdin queue. Writes and EOF
 preserve their order for that process; waiting for a child to read its
