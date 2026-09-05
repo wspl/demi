@@ -1,0 +1,7 @@
+{
+  "exit": 2,
+  "stdout": "",
+  "stderr": "tar: nope: Cannot stat: No such file or directory\ntar: Exiting with failure status due to previous errors\ntar: This does not look like a tar archive\ntar: Exiting with failure status due to previous errors\ntar: Cowardly refusing to create an empty archive\nTry 'tar --help' or 'tar --usage' for more information.\ntar: You must specify one of the '-Acdtrux', '--delete' or '--test-label' options\nTry 'tar --help' or 'tar --usage' for more information.\ntar: missing.tar: Cannot open: No such file or directory\ntar: Error is not recoverable: exiting now\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

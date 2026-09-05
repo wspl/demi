@@ -12,24 +12,28 @@
 
 # Demi
 
-Demi is a TypeScript toolkit for building agents and coding agents. It gives you a
-provider-agnostic agent runtime, a sandboxable shell, a transport-neutral
-client/server protocol, and a ready-made coding-agent harness — composable
-packages you assemble into your own app.
+Demi is a hosted coding-agent product and the TypeScript packages it is
+built from: a provider-agnostic agent runtime, a command system with one
+manifest for every execution surface, a hostless shell, and a runner that
+turns any machine into an execution target. The design is recorded under
+[docs/demi-next/](docs/demi-next/overview.md); the package contract is
+[docs/package-boundaries.md](docs/package-boundaries.md).
 
-- **Provider-agnostic** — one inference contract (`@demicodes/provider`); ship adapters
-  for Claude Code, Codex, the Anthropic API, the OpenAI API, Google Gemini, Grok Build,
-  or your own.
-- **Host-abstracted** — the shell runs against a `Host` (`fs` / `process` / `store`),
-  with a Node reference (`@demicodes/host-local`) and room for remote/container/sandbox backends.
-- **Transport-neutral** — drive a session in-process, over stdio, or over WebSocket;
-  the same `AgentClient` protocol powers the REPL and the web UI.
-- **Long-running shell control** — `shell_exec` / `shell_status` / `shell_write` /
-  `shell_abort` / `yield`, with delayed wakeups and budgeted output. See
-  [docs/shell-yield-control-plan.md](docs/shell-yield-control-plan.md).
+- **Provider-agnostic** — one inference contract (`@demicodes/provider`) with
+  adapters for Claude Code, Codex, the Anthropic API, the OpenAI API, Google
+  Gemini and Grok Build.
+- **One backend, many targets** — a conversation runs hostless (files in its
+  own store, scripts in `@demicodes/tinybash`) or on a machine reached through
+  its runner; switching targets is a first-class operation.
+- **One command manifest** — every root command (`demi …`) is defined once in
+  the backend and served to every surface; the runner caches it and makes the
+  roots real executables.
+- **Protocols carry references, never bulk bytes** — output stays on the
+  target, media reaches the browser by reference, transfers are brokered HTTP
+  streams.
 
-> Status: pre-1.0. The package layout and runtime are stable and tested; the public
-> API may still shift before the first published release.
+> Status: pre-1.0, delivered milestone by milestone
+> ([docs/demi-next/roadmap.md](docs/demi-next/roadmap.md)).
 
 ## Architecture
 
@@ -37,98 +41,28 @@ Packages depend strictly downward (enforced by a boundary test):
 
 ```
 utils, core            shared helpers + data types (zero deps)
-provider               abstract inference contract  -> core, utils
-shell                  bash engine + Host contract  -> just-bash, utils
-host-local             Node Host + local assembly   -> agent, provider, shell, utils
-agent                  session runtime + protocol   -> core, provider, shell, utils
-coding-agent           coding harness + commands    -> agent, core, shell, utils
-provider-*             concrete providers           -> core, provider, utils
-repl / web / web-ui    apps (leaves)
-agent-eval             benchmark harness (leaf)
+provider               abstract inference contract          -> core, utils
+tinybash               the hostless shell (standalone)      -> utils
+shell                  Host contract + command system       -> tinybash (hostless entry), utils
+agent                  session runtime + protocol           -> core, provider, shell, utils
+coding-agent           coding harness + the demi root       -> agent, core, shell, utils
+provider-*             concrete providers                   -> core, provider, utils
+host-virtual           the hostless Host                    -> shell, utils
+command-loader         manifest + loader                    -> shell, utils
+runner-protocol        the runner wire                      -> shell, utils
+host-remote            the backend's Host over a runner     -> runner-protocol, shell, utils
+runner                 the machine-side program (tinyjs)    -> command-loader, runner-protocol, shell, utils
+backend                the product server (leaf)
+web-ui, web            the browser UI (leaves)
 ```
 
-The boundary contract is [docs/package-boundaries.md](docs/package-boundaries.md);
-runtime/shell design lives under [docs/](docs/). Notable design docs:
+Notable design records outside `docs/demi-next/`:
 
 - [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
 - [Provider global credentials](docs/provider-global-credentials.md) — multi-account pool + global `setActive`
 - [Provider / session clone](docs/provider-session-clone.md) — required `.clone()` for isolated forks
-- [Command bridge](docs/command-bridge.md) — LocalHost PATH shims + UDS for agent tools
+- [Subagents](docs/subagent.md) — child sessions as `demi agent`, subagent events on the parent `AgentClient`
 - [Provider errors & retries](docs/provider-errors-and-retries.md) — classified failures and resume recovery
-
-## Install
-
-```sh
-npm install @demicodes/agent @demicodes/coding-agent @demicodes/host-local @demicodes/provider-claude-code
-```
-
-(Packages publish as ESM with bundled `.d.ts`.)
-
-## Quickstart
-
-Assemble a coding agent and drive it through an in-process client:
-
-```ts
-import { AgentServer } from '@demicodes/agent'
-import { createCodingAgentHarness } from '@demicodes/coding-agent'
-import { LocalHost } from '@demicodes/host-local'
-import { modelSelectionFromCatalog } from '@demicodes/provider'
-import { createClaudeCodeProvider, listClaudeCodeModels } from '@demicodes/provider-claude-code'
-
-// 1. A Host gives the agent a filesystem, process spawning, and a scoped store.
-const host = new LocalHost(process.cwd())
-
-// 2. A harness supplies the system prompt, registered commands, and reference resolution.
-const harness = createCodingAgentHarness({ host })
-
-// 3. One or more inference providers.
-const providers = [createClaudeCodeProvider()]
-
-// 4. The server owns the session lifecycle; get an in-process client.
-const server = new AgentServer({
-  agent: harness,
-  providers,
-  shell: { initialEnv: { PATH: process.env.PATH ?? '' } },
-})
-const client = server.client()
-
-// 5. Render transcript updates (the same blocks the REPL and web UI render).
-client.subscribe((event) => {
-  if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
-    // event.blocks -> your UI
-  }
-})
-
-// 6. Open a session with a model from the provider's catalog, then send a turn.
-// sessionId is caller-owned: reconnecting with the same id resumes that conversation.
-const catalog = await listClaudeCodeModels()
-const model = catalog.models.find((m) => m.id === catalog.defaultModelId) ?? catalog.models[0] ?? null
-const sessionId = crypto.randomUUID()
-await client.open(
-  { providerId: 'claude-code', model: modelSelectionFromCatalog('claude-code', model) },
-  process.cwd(),
-  sessionId,
-)
-await client.send([{ type: 'text', text: 'Create hello.txt with "hi", then read it back.' }])
-```
-
-For a terminal UI over the same protocol, see `@demicodes/repl`; for a browser UI that
-consumes an injected `AgentClient`, see `@demicodes/web-ui`.
-
-## Extending
-
-- **A new provider** — implement the `@demicodes/provider` contract (`run()` returning a
-  `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
-  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md), optional
-  [quota](docs/provider-quota.md) / [credentials](docs/provider-global-credentials.md),
-  and the runnable template [examples/custom-provider.ts](examples/custom-provider.ts).
-- **A new Host** — implement `{ defaultCwd, fs, process, store }`; `@demicodes/host-local`
-  is the reference for a remote/container/sandboxed backend.
-  See [docs/guides/implement-a-host.md](docs/guides/implement-a-host.md) and the
-  sandbox template [examples/sandboxed-host.ts](examples/sandboxed-host.ts).
-- **A new UI** — consume an `AgentClient` (in-process, stdio via `@demicodes/agent/stdio`,
-  or WebSocket) and render `Block`s per [docs/tool-rendering-spec.md](docs/tool-rendering-spec.md).
-  See [docs/guides/embed-the-ui.md](docs/guides/embed-the-ui.md).
 
 ## Development
 
@@ -137,18 +71,28 @@ bun install
 bun run typecheck      # type-check all packages
 bun run typecheck:web  # type-check the Vue UI packages
 bun run test           # run the test suite
-bun run agent-eval     # run agent benchmarks (see packages/agent-eval)
 bun run build          # build every library package to dist/ (tsdown)
 bun run llms           # regenerate llms-full.txt from the docs
 ```
 
+The tinyjs runtime is a Rust crate under `packages/tinyjs`
+([docs/demi-next/tinyjs.md](docs/demi-next/tinyjs.md)); tests that need it
+build it once through `@demicodes/runner/testing`.
+
 Workspaces resolve `@demicodes/*` from source in dev/test (the `development` export
 condition); a build is only needed to publish.
 
+## Extending
+
+- **A new provider** — implement the `@demicodes/provider` contract (`run()` returning a
+  `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
+  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md).
+- **A new UI** — consume an `AgentClient` and render `Block`s per
+  [docs/tool-rendering-spec.md](docs/tool-rendering-spec.md).
+
 ## License
 
-[Apache-2.0](LICENSE). Demi bundles a fork of `just-bash` (also Apache-2.0) as the
-bash engine behind `@demicodes/shell`; see [NOTICE](NOTICE).
+[Apache-2.0](LICENSE).
 
 ---
 
@@ -330,206 +274,6 @@ const server = new AgentServer({ agent, providers: [createEchoProvider()] })
 
 ---
 
-# Guide: Implement a Host
-<!-- source: docs/guides/implement-a-host.md -->
-
-# Implement a Host
-
-A `Host` is the sandbox boundary for `@demicodes/shell`. The bash engine never touches
-a real filesystem or spawns a real process directly — it goes through the `Host`
-you give it. Swap the Host and the same agent runs against a container, a remote
-machine, an in-memory sandbox, or a restricted subset of the local disk.
-
-`@demicodes/host-local` is the Node reference implementation; this guide describes the
-contract it satisfies.
-
-## The contract
-
-```ts
-interface Host {
-  defaultCwd: string
-  fs: HostFileSystem      // file operations
-  process: HostProcess    // spawning
-  store: HostStore        // a small key/value JSON store (scoped per agent session)
-}
-```
-
-### `fs` — file operations
-
-Every call takes an optional `{ cwd }` to resolve relative paths. The full surface
-(see `packages/shell/src/host.ts`):
-
-```ts
-interface HostFileSystem {
-  readFile(path, opts?): Promise<Uint8Array>
-  writeFile(path, data, opts?): Promise<void>      // opts.createParents to mkdir -p
-  appendFile(path, data, opts?): Promise<void>
-  exists(path, opts?): Promise<boolean>
-  stat(path, opts?): Promise<HostFileStat>
-  lstat(path, opts?): Promise<HostFileStat>
-  readdir(path, opts?): Promise<string[] | HostDirent[]>  // withFileTypes toggles the shape
-  mkdir(path, opts?): Promise<void>
-  rm(path, opts?): Promise<void>
-  cp(path, dest, opts?): Promise<void>
-  mv(path, dest, opts?): Promise<void>
-  chmod(path, mode, opts?): Promise<void>
-  symlink(target, path, opts?): Promise<void>
-  link(existingPath, path, opts?): Promise<void>
-  readlink(path, opts?): Promise<string>
-  realpath(path, opts?): Promise<string>
-  utimes(path, atime, mtime, opts?): Promise<void>
-}
-```
-
-File contents are always `Uint8Array` — encode/decode text with `encodeUtf8` /
-`decodeUtf8` from `@demicodes/utils`.
-
-### `process` — spawning
-
-```ts
-interface HostProcess {
-  spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
-}
-
-interface HostSpawnHandle {
-  stdout: AsyncIterable<Uint8Array>
-  stderr: AsyncIterable<Uint8Array>
-  output?: AsyncIterable<HostProcessOutputChunk>  // optional interleaved stream (preferred when present)
-  writeStdin(data: Uint8Array): Promise<void>
-  closeStdin(): Promise<void>
-  kill(signal?: string): Promise<void>
-  wait(): Promise<HostSpawnExit>                  // { exitCode, signal }
-}
-```
-
-If you can preserve the real interleaving of stdout/stderr, expose `output`; the
-shell uses it to render output in true order and falls back to the separate
-streams otherwise.
-
-### `store` — scoped JSON KV
-
-```ts
-interface HostStore {
-  readJson<T>(key: string): Promise<T | null>
-  writeJson<T>(key: string, value: T): Promise<void>
-  delete(key: string): Promise<void>
-  list(prefix: string): Promise<string[]>
-}
-```
-
-Used for agent session checkpoints (`agent-sessions/<id>/checkpoint.json`) and
-command artifacts (the `/@` virtual filesystem). Implementations must round-trip
-`Uint8Array` and `bigint` (e.g. via `stringifyPortableJson` /
-`parsePortableJson` from `@demicodes/utils`). A throwaway in-memory map is a
-valid implementation for ephemeral sandboxes.
-
-## Wiring it up
-
-```ts
-const host: Host = new MyContainerHost(/* ... */)
-const harness = createCodingAgentHarness({ host })
-const server = new AgentServer({ agent: harness, providers })
-```
-
-## Tips
-
-- Enforce your sandbox in the Host, not above it — reject paths that escape the
-  jail inside `fs`, restrict `spawn`'s command set, etc. The agent cannot bypass it.
-- Keep operations `cwd`-relative; the shell passes a `cwd` per call.
-- Reuse `@demicodes/utils` (`normalizePath`, `isAbsolutePath`, byte helpers) rather than
-  re-implementing path math.
-
----
-
-# Guide: Embed the UI
-<!-- source: docs/guides/embed-the-ui.md -->
-
-# Embed the UI
-
-Every front-end in Demi — the terminal REPL and the browser UI — talks to the
-same `AgentClient` protocol. To embed Demi in your own app you consume an
-`AgentClient`: subscribe to its events to render, and call its methods to drive a
-turn. You never couple to the session internals.
-
-## Get a client
-
-An `AgentClient` wraps a transport. Pick the one that matches where the session runs:
-
-```ts
-import { AgentClient, AgentServer, createWebSocketClientTransport } from '@demicodes/agent'
-import { createStdioClientTransport } from '@demicodes/agent/stdio'
-
-// 1. In-process — the server runs in the same process (tests, a local app):
-const server = new AgentServer({ agent, providers })
-const client = server.client()
-
-// 2. Over stdio — the session runs in a child process (Node-only subpath):
-const client = new AgentClient(createStdioClientTransport(child.stdout, child.stdin))
-
-// 3. Over WebSocket — the session runs on a server:
-const client = new AgentClient(createWebSocketClientTransport(socket))
-```
-
-All three expose the identical surface, so your UI code is transport-agnostic.
-
-## Render from events
-
-`subscribe(listener)` returns an unsubscribe function. The listener receives
-protocol events; the two that carry the transcript are `transcript_reset`
-(full block list replacing client state) and `transcript_patch` (incremental
-updates). Render the `Block`s — the same blocks the REPL and web UI render:
-
-```ts
-const unsubscribe = client.subscribe((event) => {
-  switch (event.type) {
-    case 'transcript_reset':
-    case 'transcript_patch':
-      render(event.blocks)             // Block[] -> your view
-      break
-    case 'phase':
-      setBusy(event.phase === 'running')
-      break
-    case 'shell_output':               // streaming shell output for a running command
-    case 'tool_progress':              // long-running tool progress
-      // optional: live-update the matching block
-      break
-  }
-})
-```
-
-Block-to-view rules (titles, output truncation, stdout/stderr interleaving, the
-`shell_exec` / `yield` blocks) are specified in
-[docs/tool-rendering-spec.md](../tool-rendering-spec.md). `@demicodes/web-ui` ships
-shared, platform-neutral helpers (e.g. `trimToolSummary`) you can reuse. Tool blocks
-carry bounded UI data on `block.view` (for shell tools, a `ShellToolView` with
-`chunks`), not unbounded command status dumps.
-
-## Drive a turn
-
-```ts
-const sessionId = crypto.randomUUID()
-await client.open(selection, cwd, sessionId)       // ProviderSelection + cwd + caller-owned session id
-await client.send([{ type: 'text', text: 'hi' }])  // queue/run a user turn
-await client.steer([{ type: 'text', text: 'also…' }])  // interject into a running turn
-const result = await client.abort()                // interrupt
-await client.close()                               // tear down
-```
-
-`sessionId` is stable and caller-owned: reconnecting with the same id resumes that
-conversation. Build the `ProviderSelection` from a provider's catalog with
-`modelSelectionFromCatalog` (see [add-a-provider.md](add-a-provider.md)) rather than
-hand-assembling a `Model`.
-
-## Reference UIs
-
-- `@demicodes/repl` — a terminal renderer over the in-process/stdio client.
-- `@demicodes/web-ui` — a Vue UI that consumes an **injected** `AgentClient`, so the same
-  components work against any transport. It is the template for a custom browser UI.
-- `@demicodes/web` — the Demi web product (Vite browser app + embedded Node/Bun backend)
-  that wires `@demicodes/web-ui` to a local `AgentServer`.
-
----
-
 # Reference: Package Boundaries
 <!-- source: docs/package-boundaries.md -->
 
@@ -547,21 +291,13 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ## Package Registry
 
-### `just-bash`
-
-- Status: implemented.
-- Production deps: none.
-- Owns: forked Bash parser, interpreter, builtins, expansion, portable command registry, filesystem interface, host-spawn hook, registered command hook, output hooks, audit hooks, and core bash compatibility tests.
-- Public boundary: exposes the fork APIs consumed by `@demicodes/shell`; it is not a Demi agent runtime package.
-- Must not: import Demi runtime packages or know about AgentSession, providers, REPL, or local host adapters.
-
 ### `@demicodes/core`
 
 - Status: implemented.
 - Production deps: none.
 - Owns: shared data types only: transcript blocks, content blocks, model selection, thinking config, usage, and session phase.
 - Public boundary: type/data contracts shared across packages.
-- Must not: contain concrete provider names, catalog source names, shell runtime details, local host details, UI concepts, transport URLs, or backend identifiers.
+- Must not: contain concrete provider names, catalog source names, shell runtime details, Host details, UI concepts, transport URLs, or backend identifiers.
 
 ### `@demicodes/utils`
 
@@ -575,66 +311,67 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/utils`.
-- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, required `AgentProvider.clone()` for independent per-session runtimes, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), the shared node-only credential pool IO behind the `@demicodes/provider/credentials-pool` subpath (the main entry stays platform-neutral), and model catalog shape.
+- Owns: abstract provider contract, inference request items, provider events, public provider shell, hidden provider runtime factory helper, auth/runtime status, required `AgentProvider.clone()` for independent per-session runtimes, unified subscription/rate-limit quota types (`ProviderQuota` / `ProviderQuotaSnapshot`; see `docs/provider-quota.md`), optional multi-credential types (`ProviderCredentials` / `ProviderCredentialInfo` — global active switch, not multi-instance providers; see `docs/provider-global-credentials.md`), the shared node-only credential pool IO behind the `@demicodes/provider/credentials-pool` subpath (the main entry stays platform-neutral), model catalog shape, and the models.dev catalog client (`models-dev.ts`: the fetch with its cache and stale fallback, the zod schema of the parts read, the entry-to-catalog-model mapping) that concrete providers and the backend filter for their own lists.
 - Public boundary: provider contract, direct `Provider[]` composition types, quota helpers (`createProviderQuota`, `ensureQuota`), credential public types, provider test helpers only from `@demicodes/provider/testing`, and pool IO only from `@demicodes/provider/credentials-pool`.
 - Model catalog boundary: common catalog state exposes portable fields only: model ids, display metadata, capability metadata, service tiers, `sourceFetchedAt`, `stale`, and `warnings`.
 - Model catalog must not: expose provider-specific `source` labels such as `codex-backend`, `models.dev`, or `cache` in public types.
-- Must not: import concrete providers, agent runtime, shell runtime, local host adapters, or REPL.
+- Must not: import concrete providers, the agent runtime, the shell packages, or Host implementations.
 
 ### `@demicodes/shell`
 
 - Status: implemented.
-- Production deps: `just-bash`, `@demicodes/utils`.
-- Owns: Host contract (`defaultCwd`, `fs`, `process`, `store`), command specs, CommandRegistry, HostStore-scoped command storage, HostBackedFileSystem, BashEnvironment, shell sessions, command records, command artifacts, shell output, audit, storage abstractions, and shell runtime primitives used by agent-owned tools.
-- Public boundary: platform-neutral shell contract and runtime from root; platform-neutral subpaths such as `storage` and `host-fs`. It does not expose model-facing AgentTool ownership.
+- Production deps: `@demicodes/utils`.
+- Owns three contracts and nothing that implements them. **The Host contract** (`host.ts`): `defaultCwd`, `identity`, `fs`, `process` (`openCwd`; `spawn` optional — absent on a Host that runs no processes), `store`; `fileHostStore` (a `HostStore` as JSON files on any `HostFileSystem`). **The command system** (`command.ts`, `command-abi.ts`, `storage.ts`, `reserved-names.ts`, `shell-quote.ts`): command specs and kinds, the command ABI (`CommandContext`, `CommandResult`, `DispatchIO`, `RootPaths`, path marks, `runtimeModule`, `importCommandModule`), `CommandRegistry` with the one reserved-name table, HostStore-scoped command storage. **The shell-environment contract** (`shell-environment.ts`, `command-records.ts`): `ShellEnvironment` behind the `shell_*` tools, the command record, the model's status view (each stream's delta since the last view, its tail, and the output path when the target keeps one). Engines live with their Hosts: `HostlessEnvironment` in `host-virtual`, `RemoteShellEnvironment` in `host-remote`.
+- Entries: the root runs on every runtime (Bun, tinyjs; the runner bundles it); `storage` too. `testing` is the in-memory store and the Host conformance suite (`hostConformanceCases`, run by every Host implementation; the process cases apply only to a Host with `spawn`), runtime-neutral so the suite runs on tinyjs. No entry imports Node.
 - `Host.defaultCwd` is a default working-directory helper only. It is not a sandbox, workspace boundary, permission boundary, or access-control source.
 - Runtime file operations go through `Host.fs`; `Host.fs` is a system-level file access facet whose allowed paths are decided by the Host backend policy, not by `defaultCwd`.
 - True external process execution goes through `Host.process.spawn`.
-- Registered `Command.run` receives the `BashEnvironment` Host in its execution context; command implementations use that Host instead of closing over an assembly-time Host.
-- Runtime state such as command JSON state and agent session snapshots goes through `Host.store`; do not keep a separate top-level store adapter boundary.
-- HostBackedFileSystem adapts just-bash `IFileSystem` operations to `Host.fs` and works for local, remote, container, virtual, or policy-restricted hosts.
-- BashEnvironment must register fork portable commands before falling back to `Host.process.spawn`; `cat`/`ls`/`grep`/redirection should not require local coreutils.
+- An `rpc` command's `run` receives the invoking shell's Host in its context; command implementations use that Host instead of closing over an assembly-time Host.
+- Command JSON state (`CommandStorage`) goes through `Host.store`, scoped per agent node; agent session state does not — it belongs to the agent's own store contract (`AgentTreeStore`, `@demicodes/agent`), which a product injects independently of any Host.
 - HostSpawnHandle must use platform-neutral types; `kill` must not expose `NodeJS.Signals`.
-- Must not: import `@demicodes/agent`, `@demicodes/provider`, concrete providers, `@demicodes/coding-agent`, `@demicodes/host-local`, `@demicodes/repl`, or own local Node adapters.
-
-### `@demicodes/host-local`
-
-- Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: local Node Host adapter (`LocalHost`); open-box local agent assembly (`createLocalAgentServer`) with command bridge **on by default**; command-bridge UDS listener, PATH shim materialization, and `~/.demi` / `$DEMI_HOME` state layout (`bridges/`, `bridge-bin/`).
-- Public boundary: Node-only local Host + local AgentServer factory + command-bridge primitives. Store is a Host facet, not a separate adapter family.
-- May use: `node:child_process`, `node:fs`, `node:http`, `node:net`, `node:path`, `process.env`, Node streams, Buffer, process-group signaling, and `@demicodes/agent` for assembly.
-- Must not: depend on concrete providers, `@demicodes/coding-agent`, or `@demicodes/repl`.
-- Assembly rule: products that run on LocalHost should use `createLocalAgentServer` rather than hand-wiring command-bridge sockets. Bin dirs and UDS are LocalHost-internal, not user-facing product options.
+- Must not: import `@demicodes/agent`, `@demicodes/provider`, concrete providers, `@demicodes/coding-agent`, a Host implementation, tinybash, or Node.
 
 ### `@demicodes/agent`
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: AgentSession, AgentServer, AgentClient, action-scoped caller metadata, transcript replay, compaction, `AgentSession.clone()` for isolated snapshot copies (see `docs/provider-session-clone.md`), transport frames, transcript patches, action-aware Host resolution, per-Host BashEnvironment reuse and shell-handle ownership checks, the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`), AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, host-agnostic `prepareShell` and shell-origin `runCommandLine` on AgentServer, and assembly of one harness with the standard shell runtime.
-- Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpath `@demicodes/agent/stdio` for stdio transport only.
-- Must not: import concrete providers, `@demicodes/host-local`, or UI packages; must not own UDS sockets, PATH shim materialization, or `bridge-bin` layout.
-- Runtime rule: AgentServer is the only runtime consumer that instantiates AgentSession.
-- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, optional `prepareShell`, and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target. Local open-box assembly (bridge default on, UDS + shims) lives entirely in `@demicodes/host-local` via `createLocalAgentServer`.
+- Owns: AgentSession, AgentServer, AgentClient, action-scoped caller metadata, transcript replay, compaction, `AgentSession.clone()` for isolated snapshot copies (see `docs/provider-session-clone.md`), transport frames, transcript patches, the session-tree node — one assembly for the root and every subagent (`node/`), with action-aware Host resolution, per-Host shell-environment reuse and shell-handle ownership checks — the `AgentTreeStore` persistence contract (node rows, per-node journals, the three atomic commits, completion delivery; see `docs/subagent.md` § Persistence), the model-facing standard tool surface (`shell_exec`, `shell_status`, `shell_write`, `shell_abort`, `yield`) with the durable dispatch of every tool call before it runs, AgentTool schemas/results, yield delayed-wakeup scheduling and steer-based wakeup delivery, repeated layered abort semantics, in-parent subagent supervision (ChildSupervisor as the relationship module, the injected `demi agent` command, subagent profiles, and the `subagent*` protocol frames; see `docs/subagent.md`), and assembly of one harness with the standard shell runtime.
+- Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpath `@demicodes/agent/stdio` for stdio transport only; `MemoryAgentStore`, the in-memory `AgentTreeStore` for tests and fixtures, from `@demicodes/agent/testing`.
+- The shell behind the `shell_*` tools is the `ShellEnvironment` contract; `AgentServer` takes a required `shellEnvironment` factory per Host, so a product supplies the engine and the agent never knows which one runs (the backend: `HostlessEnvironment` for a `VirtualHost`, `RemoteShellEnvironment` for a `RemoteHost`; tests: `HostlessEnvironment` over `LocalHost`).
+- Must not: import concrete providers, Host implementations, or UI packages; must not own a shell interpreter.
+- Runtime rule: the node assembly (`node/assemble.ts`) is the only runtime consumer that instantiates AgentSession; the supervisor asks it for a child and never builds one.
+- Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, the `shellEnvironment` factory, the `store` factory (an `AgentTreeStore` per root session id — a product's own database, never a Host's store), and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target; it is never called to reach storage.
+- Media persistence rule: the agent defines the put/get `BlobStore` contract and the externalize/rehydrate mapping; where media bytes go is the tree store realization's decision — the backend's store externalizes every node's media into the conversation owner's blob namespace. AgentServer itself never sees a blob store.
+- Session-tree options: `subagents.maxLiveSubagents` limits each session's live direct children (default 8); `notifyParentOnIdle` controls only the root's automatic wakeups. Every descendant shares the root's agent directory and inherits its tool options.
+- Shell previews: `tools.shellPreviewBudgetTokens(contextWindow)` selects the token budget against each request's current model, across the entire session tree. The default is 10,000 tokens below an 800,000-token context window and 100,000 at or above it.
+- Layout (directories mirror the package's modules; root keeps entrypoints, `types.ts`, and single-file modules like `tools.ts`):
+  - `session/` — the AgentSession state machine and its collaborators (turn loop, steer queue, yield scheduler, recovery, retry policy, compaction).
+  - `transcript/` — the TranscriptLog mutation journal and patch application.
+  - `store/` — the persistence contract's helpers (the completion-message id and which completions a checkpoint carries) and the media blob contract (externalize/rehydrate); realizations live with the products (`@demicodes/backend`) and in `testing.ts`.
+  - `node/` — the session-tree node: the one assembly that builds a root or a subagent (session from the store or fresh, supervisor, command tree, tools), the node's per-Host shell environments with handle ownership checks, and the lifecycle policy applied on restore.
+  - `protocol/` — frame types, the inbound-frame zod schemas (`ClientFrame`'s single source of truth), and the transports (`stdio-transport.ts` backs the `./stdio` entry).
+  - `server/` — the server facade, transport binding (frame dispatch, ingress validation), the root node's transport view (the frame sink), ownership registry, and frame-view mappers.
+  - `subagent/` — the relationship module: the supervisor (spawn, resume, abort, messages, the close policy and completion delivery over the store), the root-session agent directory, tree formatting, and the declarative `demi agent` command tree behind the `SubagentCommandOps` seam.
+  - `client/` — AgentClient.
 
 ### `@demicodes/coding-agent`
 
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: coding harness, coding prompt, coding commands, todo command, and file reference resolution.
+- Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in), and file reference resolution.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
-- Must not: instantiate AgentSession, AgentServer, BashEnvironment, concrete providers, or LocalHost.
-- Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate BashEnvironment/tool runtime.
+- Must not: instantiate AgentSession, AgentServer, a shell environment, concrete providers, or a Host implementation.
+- Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate shell/tool runtime.
 
 ### `@demicodes/provider-claude-code`
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Claude Code provider transport, JSONL/MCP mapping (including preservation of model-emitted parallel tool batches across the sequential SDK-MCP callback channel; see `docs/tool-call-concurrency.md`), model catalog mapping, provider event mapping, OAuth usage quota probe (`/api/oauth/usage`), active OAuth resolution for CLI env overlay, provider glue over the shared credential pool (`@demicodes/provider/credentials-pool`; see `docs/provider-global-credentials.md`), and provider-specific tests.
+- Owns: Claude Code provider transport, JSONL/MCP mapping (including preservation of model-emitted parallel tool batches across the sequential SDK-MCP callback channel; see `docs/tool-call-concurrency.md`), model catalog mapping, provider event mapping, OAuth usage quota probe (`/api/oauth/usage`), active OAuth resolution injected into the CLI env at spawn, device-config isolation for injected-spawn runs (`CLAUDE_CONFIG_DIR` pinned inside the workspace artifacts dir — a managed device's CLI consumes zero device-local settings), provider glue over the shared credential pool (`@demicodes/provider/credentials-pool`; see `docs/provider-global-credentials.md`), and provider-specific tests.
 - Public boundary: `createClaudeCodeProvider`, model catalog function, quota helpers, and public option types from root.
 - Secret boundary: OAuth tokens and pool secret files stay inside the provider creator/auth resolver and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: CLI, JSONL, output, transport, parser, credential pool IO, and test cache helpers stay behind implementation files.
-- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-codex`
 
@@ -644,7 +381,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: `createCodexProvider`, auth status helper, model catalog function, quota helpers, transport mode type, and public option types from root.
 - Secret boundary: auth.json material and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: auth stores, Responses builders, SSE/WebSocket transports, stream parsers, credential pool IO, and test cache helpers stay behind implementation files.
-- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-openai-api`
 
@@ -655,7 +392,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.openai.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `OPENAI`. `wireApi` defaults to `responses`; compatible endpoints can pass `wireApi: 'chat-completions'`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: Responses body builders, Chat Completions body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
-- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-anthropic-api`
 
@@ -666,18 +403,18 @@ Test code may depend upward for integration coverage. Production code must not.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://api.anthropic.com/v1`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `ANTHROPIC`. `baseUrl` must already include the API version prefix (typically `/v1`); the provider only appends `/messages` (or leaves the URL alone when it already ends with `/messages`). Claude Code / Kimi-style roots such as `https://api.kimi.com/coding/` are not drop-in values — pass `…/coding/v1` instead.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: Messages body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
-- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-grok-build`
 
 - Status: implemented.
 - Production deps: `@demicodes/core`, `@demicodes/provider`, `@demicodes/utils`.
-- Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, billing/subscription quota probe (`/v1/billing`, `/v1/user?include=subscription`), demi credential pool for global multi-credential switch (see `docs/provider-global-credentials.md`), provider event mapping, and provider-specific tests.
+- Owns: Grok Build CLI OAuth session reuse (`~/.grok/auth.json`), native RFC 8628 device login against auth.x.ai using the official frozen OAuth2 scopes, OIDC token refresh, cli-chat-proxy Chat Completions transport, model catalog mapping from `/v1/models`, billing/subscription quota probe (`/v1/billing?format=credits`, `/v1/user?include=subscription`), demi credential pool for global multi-credential switch, provider event mapping, and provider-specific tests.
 - Public boundary: `createGrokBuildProvider`, auth status helper, model catalog function, quota helpers, and public option types from root.
-- Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session only (no independent login flow, no API-key product path).
+- Endpoint boundary: explicit `baseUrl` wins, then `https://cli-chat-proxy.grok.com/v1`. Auth is the Grok CLI OAuth session or native device login against `https://auth.x.ai` (no API-key product path).
 - Secret boundary: session tokens, refresh tokens, raw auth file contents, and pool secret files stay inside the provider creator/auth store and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: auth stores, Chat Completions builders, SSE readers, stream mappers, runtime classes, credential pool IO, and test helpers stay behind implementation files.
-- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
 ### `@demicodes/provider-google`
 
@@ -688,16 +425,96 @@ Test code may depend upward for integration coverage. Production code must not.
 - Endpoint boundary: explicit `baseUrl` wins, then `${envPrefix}_BASE_URL`, then `https://generativelanguage.googleapis.com/v1beta`; explicit `apiKey` wins, then `${envPrefix}_API_KEY`. `envPrefix` defaults to `GOOGLE`.
 - Secret boundary: API keys, custom headers, raw endpoint values, env prefixes, and raw provider options stay inside the provider creator closure and must not cross AgentClient/Web browser-visible frames.
 - Internal boundary: generateContent body builders, SSE readers, stream mappers, runtime classes, and test helpers stay behind implementation files.
-- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, `@demicodes/host-local`, or `@demicodes/repl` in production code.
+- Must not: import `@demicodes/agent`, `@demicodes/shell`, `@demicodes/coding-agent`, or a Host implementation in production code.
 
-### `@demicodes/repl`
+### `@demicodes/backend`
 
-- Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`, `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`, `@demicodes/shell`, `@demicodes/host-local`, `@demicodes/utils`.
-- Owns: local REPL process, command-line parsing, renderer, input loop, real-provider smoke entry points, and local composition.
-- Public boundary: local application entry point and test/acceptance shell.
-- May assemble: concrete providers, AgentServer, LocalHost, and the coding harness.
-- Must not: be imported by any other production package.
+- Status: implemented through M9 (Web API, conversation module, two-plane storage, runner management, LLM module/vault/accounting, the hostless shell, brokered transfers, media by reference; managed hosts M11, auth M12).
+- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/host-virtual`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
+- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, home-image store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the transfer broker, browse endpoints), the managed-hosts module (`ManagedHostProvisioner` driving Firecracker under jailer through the privileged helper, images and the home-image store, lifecycle/hibernate, the backend-contributed `demi host` subcommand group), the LLM module (per-provider provider assembly, live model catalog, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend never touches credential bytes (it names where a provider's pool lives) and never proxies model traffic.
+- Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
+- May assemble: concrete providers, AgentServer, `VirtualHost` over the conversation's files tree (`storage/files-tree.ts`: the `files` table and the blob store as a `VirtualFsBackend`), `RemoteHost`, and the coding harness.
+- Composes the hostless shell: `createHostlessShell` builds the manifest with Bun's transpiler, the loader over the conversation's `VirtualHost` with `rpc` in process, and hands `HostlessEnvironment` (`@demicodes/host-virtual`) the root paths and the dispatcher; `HOSTLESS_HOME` (`/home/demi`) and `HOSTLESS_NAMESPACE` are the backend's constants.
+- Must not: be imported by any other production package; put business logic in the HTTP layer beyond routing/validation; let providers or credentials cross to runners or browsers.
+- Layout (directories mirror the design record's backend modules):
+  - `backend.ts` — the composition root (wire and mount only).
+  - `http/` — the external HTTP surface: app assembly, the session gate over `/api/*` with its exemptions, the cookie helpers, one route module per resource (setup, auth, transfers and blobs included), the WS upgrade adapter.
+  - `auth/` — identity: the roles and the authenticated user shape, password hashing, the cookie sessions over the control plane, the login lockout.
+  - `conversation/` — conversation-module domain logic (frame scoping/rewrite, attachment references, the virtual-host factory, the hostless shell composition; `target.ts`, the conversation's execution target as one module — the resolution of the three states to a Host, the switch, the silent upgrade and the hostless re-entry rule, keyed by the conversation whichever session asks — and its announcement; the session upgrade as `UpgradingShell`, the one shell object a session keeps across the upgrade, adopting its hostless shells on the machine under their ids).
+  - `storage/` — the SQLite layer (database seam, migrations, control service, the conversation stores with the `AgentTreeStore` realization, blob store, host store).
+  - `runner/` — runner management: pairing-code/device-token primitives, the registry (pending claims, one live socket per device, stable per-target `RemoteHost`s, liveness, the rpc relay), the transfer broker.
+  - `llm/` — the provider runtime assembled per provider entry (the family registry with each family's credential kind, the vendor catalog over models.dev, the model catalog, the Test button) and the metering wrap at the inference entry.
+  - `vault/` — instance secret, credential crypto, the typed provider vault over the control plane, and the provider scope (whose providers a caller works with under the instance mode).
+  - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
+  - `managed/` — managed hosts: the provisioner seam, lifecycle (idle hibernate to home snapshots, wake, checkpoint, growth), the Cloud workspace creation (a host owned by the workspace over an empty home, the workspace at that home), and the `demi host` subcommand group over the current target and the grant set, injected into the coding command registry.
+  - `managed/firecracker/` — the Firecracker implementation of the seam: the image tools over e2fsprogs (`mke2fs -d` from a directory, shrink after hibernate, grow the backing file), the VM process in its two launch modes (direct, or the jailer through the privileged helper), the Firecracker API over its socket, the tap slots and the per-VM kernel command line. Spawning `firecracker`, the jailer and e2fsprogs is this module's transport — the intentional external-process exception; nothing else in the backend spawns.
+  - New modules get sibling directories — never new files at the root.
+
+### `@demicodes/host-virtual`
+
+- Status: implemented (M2; the hostless target's shell joined it in M9).
+- Production deps: `@demicodes/shell`, `@demicodes/tinybash`, `@demicodes/utils`.
+- Owns: the hostless execution target — its Host and its shell, the way `host-remote` owns a machine's. `VirtualHost`: a platform-neutral `Host` over a pluggable `VirtualFsBackend` (virtual-absolute normalized paths) with per-conversation namespace clamping, symlink containment, hardcoded per-file/per-conversation quotas and a logical cwd; no `spawn` — a hostless conversation runs no processes. `HostlessEnvironment`: the `ShellEnvironment` of a hostless conversation, tinybash over the Host with the loader's root paths and dispatcher injected — where Demi's Host contract and command ABI meet tinybash's own system interface; nothing beyond the model's view is kept. `HostlessEnvironment.outside` is the parse-first decision an embedder acts on before anything runs, and `handoverOf` what a machine's shell must be told to continue.
+- Entries: `node` is `nodeFileSystem`, the Host filesystem over Node's `fs/promises` — the backing of the store-backed Host on the backend machine. `testing` is `hostlessShell` (the hostless shell composed over any Host with Bun's transpiler), `hostlessShellFactory`, the `probe` root (`hold`, `stdin`) that stands in for `sleep` and `read`, and `LocalHost`, the whole Host contract over this Node process's machine (`nodeFileSystem` plus child processes and a directory-fd cwd), which tests run against a real directory.
+- Public boundary: `VirtualHost`, `HostlessEnvironment`, quota constants from root; `nodeFileSystem` from `node`; the fixtures from `testing`, `scopedFsBackend` among them (a `VirtualFsBackend` over a real directory, for tests; the product's hostless files are the backend's files tree).
+- `ensureLayout` creates the working directory and the declared `directories` (the backend passes the hostless namespace).
+- Must not: perform its own IO in the root entry (all bytes flow through the injected backend), spawn processes, or hold conversation state (`store` is injected by the composing product).
+
+### `@demicodes/tinybash`
+
+- Status: implemented (M8; `docs/demi-next/tinybash.md`).
+- Production deps: `@demicodes/utils`.
+- Owns: the hostless shell as standalone infrastructure — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths under every shell state the script can reach), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), the closed set of GNU-faithful builtins, and its own system interface (`src/host.ts`: `TinybashFs`, `TinybashIO`, `DispatchIO`, `RootPaths`) — what it asks of an embedder, declared by tinybash the way any shell declares its system calls. Demi's Host contract and loader are adapted to it by `HostlessEnvironment` in `@demicodes/host-virtual`, never the other way round.
+- Public boundary: `runTinybash`, `parseTinybash`, the `OutsideReason`, the system-interface types from root; stub roots for embedders' tests from `@demicodes/tinybash/testing`.
+- Acceptance implies bash-equivalence: any script it runs means what it means in GNU bash + coreutils; anything else is `outside`, never approximated. The equivalence corpus against real bash is the guarantee's test.
+- Must not: import any Demi package but `@demicodes/utils` in production code (`@demicodes/shell` and `@demicodes/host-virtual` appear only as test dependencies for the corpus fixtures), know the backend, the manifest format or the loader, spawn processes, perform IO outside the injected `fs`, or run on real hosts.
+
+### `@demicodes/command-loader`
+
+- Status: implemented (M8; `docs/demi-next/commands.md`); the directory source and module import by path in M9 step 1; the socket source arrives with the runner port.
+- Production deps: `@demicodes/shell`, `@demicodes/utils`.
+- Owns: the manifest types, the manifest sources (`inMemorySource`; `directorySource` with the `writeManifestDirectory` layout), the loader (`createLoader` → `dispatch(root, argv, io)`: tree resolution, group help, argument parsing and validation, path-argument resolution, running a `runtime` module from its text or from the source's module file, forwarding an `rpc` invocation) and `rootPaths`, the `RootPaths` derivation tinybash consumes.
+- Public boundary: `buildManifest`, `parseManifest` and the `Manifest` types, `createLoader` / `inMemorySource` / `directorySource` / `writeManifestDirectory`, `inProcessRpc` and the `RpcTransport` types, `treeFromManifest`, `rootPaths` from root; the `commandModulesAsText` build plugin (a `*.command.ts` file served as its text at build time) under `build`, Node-only.
+- Pure JS with no runtime dependency: the same package runs in the backend, in tinyjs command mode and in tests. `buildManifest` takes the transpiler as a parameter (the backend passes Bun's); the package never transpiles on its own.
+- Must not: know the backend, the runner, tinybash or any Host implementation (all injected), spawn processes, or hold a command definition of its own.
+
+### `@demicodes/runner-protocol`
+
+- Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
+- Production deps: `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
+- Owns: the runner wire and nothing else — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive, streaming spawn, jobs, the rpc relay, the manifest push, transfers), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` for Bun, `tinyjs:bytes` on tinyjs), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`).
+- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`. Both ends of the wire depend on this package; it depends on neither end.
+- Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
+
+### `@demicodes/host-remote`
+
+- Status: implemented (M9).
+- Production deps: `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
+- Owns: the backend's end of a runner — `RemoteHost`, a `Host` over a connection with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). One of the two Hosts the backend injects into the agent, beside `@demicodes/host-virtual`.
+- Public boundary: `RemoteHost`, `RemoteShellEnvironment` and their option types from root.
+- Must not: contain network IO (the wire is an injected send/handle pair), credentials, the device registry, or conversation state. `Host.store` never crosses the wire.
+
+### `packages/fc-helper` (Rust, not a workspace package)
+
+- Owns: `demi-fc-helper`, the privileged helper of `jailer` mode (`docs/demi-next/managed-hosts.md` § Provisioning): `vm start` prepares the jail (kernel and rootfs linked in, the home image shared with the backend group, the socket directory group-accessible), runs the jailer and stays as the VM's parent; `vm kill` signals the recorded pid. Two verbs, whitelisted arguments, no shell. Invoked by the backend through `sudo -n`; the sudoers line for it is the backend user's only privilege.
+
+### `packages/guest-image` (not a workspace package)
+
+- Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` and `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
+
+### `@demicodes/runner`
+
+- Status: implemented on tinyjs (`src/tinyjs/entry.ts` is the bundle entry — command mode for any root name, runner mode for `demi-runner`; packaging in M14).
+- Production deps: `@demicodes/command-loader`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; the `tinyjs:*` modules, declared once in `src/machine/tinyjs.d.ts` and imported nowhere outside `src/machine/`.
+- Owns: the runner program (`runner.md`) — the single outbound backend WebSocket with reconnect/backoff and the hello/claim handshake; machine-local state under `DEMI_HOME` (`~/.demi`: `runner.json`, `runner-token` 0600, `runner.sock`, `commands/`, `bin/`, `output/`); the machine served over the protocol (spawns naming no `PATH`/`HOME` resolve against the device's own — binary resolution is a device fact); the job table over the tee; brokered transfers; the local relay and its command-mode client; the manifest cache with the `current` and root symlinks. Command mode: the loader over the machine layer, `rpc` leaves through the relay, the job's live stdin told from a redirection by `fdNode`.
+- Public boundary: the packed `demi-runner` binary; `packedRunner`, `startTinyjsRunner`, `tinyjsBinary` and `bundleForTinyjs` under `@demicodes/runner/testing` for Bun tests that need a runner process or run JS on tinyjs; `HostRpcServer` and `JobTable` under `@demicodes/runner/serve` for tests that join the runner's end to a `RemoteHost` without a socket.
+- Layout (directories mirror the runner's modules):
+  - `machine/` — this machine as the runner sees it: the `Host` contract over tinyjs's primitives (`fs`, `process`, `cwd`, `stdio`), the teed spawn and tail reads for jobs, the WebSocket, Unix-socket and HTTP links, the codec re-export, the process itself (`argv`, `env`, `exit`, `onSignal`, `fdNode`). Accepted by the Host conformance suite on tinyjs. Internal to the runner: the agent never holds it — a machine is reached through `@demicodes/host-remote`.
+  - `serve/` — the runner's end of the protocol: `HostRpcServer` (the `fs_*` and spawn messages over the machine layer) and `JobTable` (jobs over the teed spawn: the `EXIT` trap prelude, the stdin duplicate, the view budget, the job environment names).
+  - `relay/` — the UDS relay: server, client, and its length-prefixed wire.
+  - `init/` — PID 1 on a managed guest: the kernel command line as the guest's configuration, the boot as a plan of rootfs commands (kernel filesystems, the upper pivoted over `/`, the home, the network), the home image (the diskstats untouched report, the growth decision over `df`, `resize2fs` on `home_grown`). Pure over injected spawn and read, so Bun tests cover it without a kernel; `boot.ts` binds it to the machine layer.
+  - `runner-mode.ts`, `command-mode.ts`, `entry.ts`, `manifest-cache.ts`, `state.ts`, `transfers.ts` — the two entry modes and the machine-local state they share.
+- Must not: hold credentials other than the backend-issued device token, store any conversation or transcript state, or import `@demicodes/agent`, `@demicodes/coding-agent`, provider packages, or Node in production code.
 
 ### `@demicodes/web-ui`
 
@@ -710,56 +527,31 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
   by supplying an `AgentClient` and a control client. External products consume the published
   package (registry semver), not `link:` paths into this repo.
-- Must not: import Node, `@demicodes/host-local`, `@demicodes/shell`, `@demicodes/coding-agent`, concrete
-  providers, `@demicodes/web`, or `@demicodes/repl`. It may import the `@demicodes/agent` client surface
-  only (`AgentClient`, WebSocket client transport, frame/event/block types).
+- Must not: import Node, `@demicodes/shell`, `@demicodes/coding-agent`, concrete providers, or
+  `@demicodes/web`. It may import the `@demicodes/agent` client surface only (`AgentClient`,
+  WebSocket client transport, frame/event/block types).
 - Enforcement: because the components are `.vue` (not scanned by the `.ts` boundary test),
   the web-ui boundary is enforced at the package-manifest level (no Node/adapter/provider
   dependencies declared), not by the production import-graph scan.
 
 ### `@demicodes/web`
 
-- Status: implemented.
-- Production deps: `@demicodes/web-ui`, `@demicodes/agent`, `@demicodes/host-local`, `@demicodes/coding-agent`,
-  `@demicodes/core`, `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
-  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`,
-  `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the Demi web product — the Vite-dev-only browser app plus its embedded Node/Bun
-  backend. The server serves only the WebSocket/API endpoints (per-session `/agent` + a
-  `/control` RPC), assembling shared public providers and a per-cwd `AgentServer` over
-  `LocalHost` and the coding harness. It must not serve built browser assets, preview pages,
-  or production fallback HTML. The server is not split into its own package.
-- Public boundary: top-level product application entry points (browser `main.ts`, server
-  `index.ts`).
-- Must not: be imported by any other production package.
-
-### `@demicodes/agent-eval`
-
-- Status: implemented.
-- Production deps: `@demicodes/agent`, `@demicodes/coding-agent`, `@demicodes/core`, `@demicodes/host-local`,
-  `@demicodes/provider`, `@demicodes/provider-claude-code`, `@demicodes/provider-codex`,
-  `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`,
-  `@demicodes/shell`, `@demicodes/utils`.
-- Owns: agent benchmark case loading, fixture setup, Evaluator supervision/judging loop,
-  oracle execution, metrics aggregation, run artifacts, reports, and gated real-provider
-  evaluation entry points.
-- Public boundary: local evaluation CLI and artifact schema. This package is a product leaf
-  like `@demicodes/repl` and `@demicodes/web`.
-- Must not: be imported by any other production package, place benchmark-specific behavior in
-  runtime/provider packages, bypass provider config parsers, directly instantiate
-  `AgentSession`, or mutate Worker workspaces outside declared oracle side effects.
+- Status: the browser application; rebuilt in M13 on the backend's API (`docs/demi-next/roadmap.md`). Until then it carries the Vite scaffold only: no server of its own exists.
+- Production deps: `@demicodes/web-ui`, `@demicodes/agent`, `@demicodes/core`, `@demicodes/utils`.
+- Owns: the Demi web product's browser application — the Vite-built app over `@demicodes/web-ui`, talking to `@demicodes/backend` over its REST and WebSocket API. The backend serves the built assets in deployment (M14).
+- Public boundary: the browser entry point.
+- Must not: be imported by any other production package, or carry a server.
 
 ## Production Dependency Graph
 
 The canonical production source graph contains every Demi package and must stay acyclic:
 
 ```text
-just-bash -> none
 core -> none
 utils -> none
-provider -> core
-shell -> just-bash, utils
-host-local -> agent, provider, shell, utils
+provider -> core, utils
+tinybash -> utils
+shell -> utils
 agent -> core, provider, shell, utils
 coding-agent -> agent, core, shell, utils
 provider-claude-code -> core, provider, utils
@@ -768,27 +560,60 @@ provider-openai-api -> core, provider, utils
 provider-anthropic-api -> core, provider, utils
 provider-grok-build -> core, provider, utils
 provider-google -> core, provider, utils
-repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils
+host-virtual -> shell, tinybash, utils
+command-loader -> shell, utils
+runner-protocol -> shell, utils
+host-remote -> runner-protocol, shell, utils
+runner -> command-loader, runner-protocol, shell, utils
+backend -> agent, coding-agent, command-loader, core, host-remote, host-virtual, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, core, utils
-web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
-agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
+web -> web-ui, agent, core, utils
 ```
 
 `web-ui` and `web` are browser/product packages built with Vite/Vue; their internal source
 is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not scan them as
 production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
-enforced at the manifest level by that test; `web` is a product leaf like `repl`.
+enforced at the manifest level by that test; `web` is a product leaf like `backend`.
 
-The graph is a compact view of the `Production deps` fields in the package registry. Every
-package in the registry is implemented; keep the registry, this graph, and the maps in
-`packages/core/src/__tests__/platform-entrypoints.test.ts` in lockstep.
+The graph is a compact view of the `Production deps` fields in the package registry; keep the
+two in lockstep. `packages/core/src/__tests__/platform-entrypoints.test.ts` reads this block
+rather than a copy of it: every workspace package must have a line, each package manifest's
+`@demicodes/*` dependencies must equal its line, production source imports must stay within it,
+and it must be acyclic. The same test reads the workspace: each package's `exports` names the
+source file of every entry under a `development` condition, the root `tsconfig.json` `paths`
+mirror every subpath entry (roots resolve through the `@demicodes/*` wildcard, so a root entry
+is always `src/index.ts`), and the root `test` script names every package that has tests.
+
+## Module Layout Conventions
+
+How files and directories are organized inside a package. These are design
+rules, enforceable in review — not taste:
+
+1. **One composition root per product package.** Exactly one file assembles
+   the package (`backend.ts`, `main.ts`): it may construct, inject, mount,
+   and return — never branch on business state. Any domain logic appearing
+   in a composition root is a violation.
+2. **Directories mirror design modules; files carry one responsibility.**
+   A subdirectory must be nameable as a module of the owning package's
+   design record entry (e.g. the backend's conversation/LLM/runner/vault/
+   usage/auth modules). No domain-less catch-all directories (`misc/`,
+   `helpers/`) — generic code goes to `@demicodes/utils`, domain helpers
+   sit next to their module.
+3. **Split by responsibility, not by line count.** A file that carries two
+   of {route handling, domain logic, storage access, wire adaptation} gets
+   split, regardless of size; a long file with one responsibility may stay.
+
+Packages small enough to be a single module (e.g. `host-virtual`,
+`host-remote`, `runner-protocol`) need no subdirectories; the registry
+entry's Layout section appears only where a package has more than one
+module.
 
 ## Global Boundary Rules
 
 - Platform-neutral package roots must not statically pull Node-only adapters, concrete providers, UI code, or test helpers into their import closure.
 - Public roots expose stable package contracts only; internal parser, transport, protocol, local adapter, auth-store, stream, and test helpers stay behind implementation files unless a package registry entry explicitly says otherwise.
 - Any workspace package imported by production source must be declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
-- Local Node adapters must live in adapter packages, not in platform-neutral runtime packages.
+- Runtime-specific code (Node, tinyjs) lives behind an entry or directory named for it (`@demicodes/host-virtual/node`, the runner's `machine/`), never in a platform-neutral root.
 - Do not keep compatibility shims when a package split moves an implementation to its final package.
 
 ## Verification
@@ -797,10 +622,10 @@ Existing boundary coverage:
 
 - `packages/core/src/__tests__/platform-entrypoints.test.ts` checks platform-neutral root entries for Node-only static closure leaks.
 - The same test checks that only AgentServer imports AgentSession as a runtime value outside tests.
-- The same test checks that runtime source uses the forked `just-bash` package without embedded upstream snapshots or vendor imports.
 - The same test checks that `@demicodes/shell` does not depend on the agent runtime.
 - The same test checks selected package manifest layering boundaries.
 - The same test scans `@demicodes/core` and `@demicodes/provider` production source for concrete provider names, concrete catalog source labels, backend identifiers, and product-specific source identifiers.
+- Repository-wide production scans enumerate the existing production package directory table. The models.dev client's endpoint and diagnostics belong only in `provider/src/models-dev.ts`; shared model/catalog metadata still cannot expose concrete source labels. Quota cache metadata follows its separate domain contract.
 - The same test builds the production source package graph and fails on cycles or edges outside the enforced graph.
 - The same test checks that production workspace imports are declared in package `dependencies`.
 - The same test checks public provider root exports so internal transport, parser, protocol, auth-store, stream, and testing helpers do not leak through by accident.
@@ -822,10 +647,12 @@ package in the group.
 The fixed group contains:
 
 - `@demicodes/agent`
-- `@demicodes/agent-eval` (private)
+- `@demicodes/backend` (private)
 - `@demicodes/coding-agent`
+- `@demicodes/command-loader`
 - `@demicodes/core`
-- `@demicodes/host-local`
+- `@demicodes/host-remote`
+- `@demicodes/host-virtual`
 - `@demicodes/provider`
 - `@demicodes/provider-anthropic-api`
 - `@demicodes/provider-claude-code`
@@ -833,15 +660,15 @@ The fixed group contains:
 - `@demicodes/provider-google`
 - `@demicodes/provider-grok-build`
 - `@demicodes/provider-openai-api`
-- `@demicodes/repl` (private)
+- `@demicodes/runner`
+- `@demicodes/runner-protocol`
 - `@demicodes/shell`
+- `@demicodes/tinybash`
 - `@demicodes/utils`
 - `@demicodes/web` (private)
 - `@demicodes/web-ui`
 
 Private workspaces participate in the shared version but are not published.
-`@demicodes/just-bash` remains outside the group because its version tracks the
-upstream just-bash release plus the Demi fork revision.
 
 ## Version Selection
 
@@ -874,7 +701,7 @@ Each vendor exposes usage and rate-limit data differently:
 |---|---|---|
 | Codex | Minimal Responses request (headers only) | `x-codex-*` on live Responses |
 | Claude Code | `GET /api/oauth/usage` | Stream-json `rate_limits` / unified rate-limit headers |
-| Grok Build | `/v1/billing` + `/v1/user?include=subscription` | Short-window `x-ratelimit-*` on chat |
+| Grok Build | `/v1/billing?format=credits` + `/v1/user?include=subscription` | Short-window `x-ratelimit-*` on chat |
 
 Products need **one snapshot shape** and two fill paths (probe vs observe), without
 vendor-specific UI branches for every header name.
@@ -1001,7 +828,7 @@ Token resolution follows the same auth path as inference (credential pool active
 
 | Path | Behavior |
 |---|---|
-| **probe** | Active session → `GET /v1/user?include=subscription` + `GET /v1/billing`. `probeCost: 'free'`. |
+| **probe** | Active session → `GET /v1/user?include=subscription` + `GET /v1/billing?format=credits`. `probeCost: 'free'`. |
 | **observe** | Short-window `x-ratelimit-*` style headers on chat responses (separate from monthly subscription windows). |
 | **Windows** | e.g. `monthly` (billing) plus optional short RPM/TPM-style windows from headers. |
 
@@ -1295,7 +1122,7 @@ export interface Provider {
 
 ## 5. Storage layout (demi pool)
 
-Authoritative multi-credential pool lives under demi state root (same root as command-bridge layout):
+Authoritative multi-credential pool lives under the demi state root:
 
 ```text
 $DEMI_HOME|~/.demi/
@@ -1327,7 +1154,7 @@ Rules:
 - File mode `0600` for secret files; directories `0700` when created by demi.
 - Credential ids: opaque stable strings (e.g. `import-<hash>` or product-supplied slug). Labels are display-only and may change.
 
-**Not** under workspace cwd. Use `resolveDemiHome()` / `$DEMI_HOME` (host-local already owns this concept for bridges; credential pool path helpers may live in each provider kit or a small shared path helper in `utils` only if truly generic — prefer provider-local layout constants next to each auth store to avoid a new package).
+**Not** under workspace cwd. Use `$DEMI_HOME` (default `~/.demi`); credential pool path helpers live in each provider kit — prefer provider-local layout constants next to each auth store.
 
 ## 6. Per-provider behavior
 
@@ -1455,7 +1282,6 @@ Optional flags or subcommands later (`--credential`, `demi auth use`); not requi
 | `@demicodes/provider-codex` | Codex pool layout, import, `CodexAuthStore` pool implementation, wire `credentials` on `createCodexProvider` |
 | `@demicodes/provider-grok-build` | Same for Grok |
 | `@demicodes/provider-claude-code` | Auth resolver abstraction, env overlay on CLI spawn, pool, wire `credentials` |
-| `@demicodes/host-local` | Unchanged for assembly; may document that `$DEMI_HOME/credentials` is reserved. Does **not** own provider secrets |
 | `@demicodes/agent` | **No** credential APIs |
 | `@demicodes/web` / web-ui | Optional control RPC + UI; secrets stay server-side |
 
@@ -1481,7 +1307,7 @@ return defineProvider({
 })
 ```
 
-`stateDir` defaults via `DEMI_HOME` / `~/.demi` (same resolution story as host-local; duplicate a 5-line resolver in each package or share a non-host helper in `utils` only if we already have path helpers — avoid depending on `host-local` from providers).
+`stateDir` defaults via `DEMI_HOME` / `~/.demi`; each provider kit resolves it with its own few lines.
 
 ## 11. Testing
 
@@ -1705,857 +1531,6 @@ Coverage lives in:
 
 ---
 
-# Reference: Command Bridge
-<!-- source: docs/command-bridge.md -->
-
-# Command Bridge
-
-Make every top-level registered `Command` available as a normal OS executable to subprocesses under a **local** agent session (`LocalHost` + Node).
-
-Depends on the recursive `Command` model in `@demicodes/shell`. Bridge does not reimplement parse/run.
-
----
-
-## Product shape (open box)
-
-**Default: on** via `createLocalAgentServer` from `@demicodes/host-local`.
-
-```ts
-import { LocalHost, createLocalAgentServer } from '@demicodes/host-local'
-
-const host = new LocalHost(cwd)
-const { server, close } = createLocalAgentServer({
-  host,
-  agent: harness,
-  providers,
-  // commandBridge: true   ← default
-  // commandBridge: false  ← only way to turn off
-  // stateDir: '…'         ← optional; default ~/.demi or $DEMI_HOME
-})
-await close()
-```
-
-No product-side socket/shim assembly. Bin paths and UDS are **not** user-facing options — they are internal to LocalHost assembly (`stateDir` layout only).
-
----
-
-## State layout (fixed under `stateDir`, not workspace cwd)
-
-| | Default |
-|--|---------|
-| State root | `$DEMI_HOME` or `~/.demi` (`stateDir` option) |
-| Socket | **always** `<stateDir>/bridges/<id>.sock` (or `commandBridgeSocketPath` override for the socket file only) |
-| Command shims | **always** `<stateDir>/bridge-bin/<sessionId>/` — **not** separately configurable |
-
-```text
-~/.demi/                         # stateDir
-  bridges/
-    <serverId>.sock
-  bridge-bin/                    # fixed name under stateDir
-    <sessionId>/
-      package.json
-      .dispatch
-      demi -> .dispatch
-```
-
-- Workspace **cwd** is only for project files / shell PWD.
-- There is **no** `bridgeBinDir` option — bin root is fixed as `bridge-bin` under `stateDir`.
-
----
-
-## Goals
-
-1. Open box on LocalHost; bridge **on** by default.
-2. State under home (or `stateDir`), not project cwd.
-3. Fixed `bridge-bin` under stateDir.
-4. Same `Command` execution path as in-shell registered commands.
-5. Off switch: `commandBridge: false` only.
-6. **AgentServer never knows about UDS or bin dirs** — only host-agnostic hooks/APIs.
-
----
-
-## Architecture
-
-```text
-createLocalAgentServer (host-local)
-  stateDir = resolveDemiHome(options.stateDir)
-  socket   = stateDir/bridges/<id>.sock
-  AgentServer({
-    prepareShell → materialize stateDir/bridge-bin/<sessionId>/
-                          inject PATH + DEMI_COMMAND_BRIDGE_SOCK
-  })
-  startCommandBridge(server) → UDS POST /run → server.runCommandLine(...)
-```
-
-### Layering
-
-| Layer | Knows about |
-|-------|-------------|
-| `@demicodes/agent` `AgentServer` | `prepareShell` hook; `runCommandLine` for a live shell. **No** socket, shim, or bin layout. |
-| `@demicodes/host-local` | UDS listener, `.dispatch` shim, `bridge-bin/`, `bridges/`, default-on assembly. |
-
-`AgentServer` is intentionally transport-agnostic: another Host can supply a different `prepareShell` / IPC without AgentServer growing LocalHost concepts.
-
----
-
-## Package responsibilities
-
-| Package | Role |
-|---------|------|
-| `@demicodes/shell` | Command tree, exec, quoting. |
-| `@demicodes/agent` | `prepareShell`; `runCommandLine` (shell-origin registered command exec). |
-| `@demicodes/host-local` | `LocalHost`, `resolveDemiHome`, shim materialize, UDS bridge, `createLocalAgentServer`. |
-
----
-
-## Protocol / exec / stdin
-
-- UDS `POST /run` → `{ shellId, name, args, cwd, stdin }` → `{ exitCode, stdout, stderr }`
-- The shim reads `shellId` from `DEMI_SHELL_ID`. It sends neither action metadata
-  nor `agentSessionId`; the shell id locates the live binding and originating
-  `BashEnvironment` directly.
-- Exec: `name args…` (+ heredoc if stdin non-empty) via `AgentServer.runCommandLine`,
-  always in an ephemeral shell born in the caller's cwd — bridge calls never
-  share (or mutate) the model's session shell
-- Stdin: 300ms grace to first byte, then read to EOF; newline-terminated stdin arrives
-  byte-identical, stdin without a trailing newline gains exactly one (heredoc normalization)
-
----
-
-## Key decisions
-
-| Decision | Choice |
-|----------|--------|
-| State root | `~/.demi` / `$DEMI_HOME` / `stateDir` |
-| Shim path | **Fixed** `<stateDir>/bridge-bin/<sessionId>` |
-| Custom bin dir | **Not supported** (not user-facing) |
-| Socket | `<stateDir>/bridges/<id>.sock` (path override only) |
-| Default bridge | **On** for `createLocalAgentServer` |
-| AgentServer bridge awareness | **None** — hook + `runCommandLine` only |
-
-The current action may already use another Host when a child process calls the
-bridge. Routing by the creating `shellId` keeps the invocation on its original
-Host instead of following current action metadata.
-
----
-
-# Reference: Shell & Yield Control
-<!-- source: docs/shell-yield-control-plan.md -->
-
-# Shell Control Surface + Yield Wakeup Design
-
-| | |
-|---|---|
-| Date | 2026-06-26 |
-| Status | Implemented |
-| Scope | The `@demicodes/shell` control surface, `@demicodes/agent` delayed yield wakeups, and the `@demicodes/core` invisible user_message |
-
-This document is the **single source of truth** for the shell control surface and the
-yield wakeup mechanism. `docs/tool-rendering-spec.md` only references it and does not
-restate these semantics.
-
-## 1. Conclusion
-
-Demi splits shell control and delayed wakeup into **two orthogonal concepts** that do
-not depend on each other:
-
-- **Shell control surface**: `shell_exec` / `shell_status` / `shell_write` / `shell_abort`.
-  These express only "do something to a command" — they have **nothing to do with turns,
-  timing, or wakeups**.
-- **Yield wakeup**: `yield`. The single cross-turn delayed-wakeup mechanism. It expresses
-  only "end the current turn and wake the session later with an invisible user_message" —
-  it has **nothing to do with the shell**.
-
-The model still sees exactly five tools:
-
-```text
-shell_exec
-shell_status
-shell_write
-shell_abort
-yield
-```
-
-Two key semantics (the two misunderstandings this rewrite corrects):
-
-1. **`shell_exec` does not yield.** It has a `timeoutMs`, which is the **upper bound on a
-   synchronous observation window**, not a kill deadline. When it elapses the process is
-   not terminated, the command record is not released, the tool returns
-   `running + commandId`, and **the current turn continues**. The model decides what to do
-   next: `shell_status` immediately, `yield` for a while and look again, `shell_write`, or
-   `shell_abort`. `shell_exec` never ends a turn on its own.
-
-2. **A `yield` wakeup is delivered in only two ways — steer / send — both carrying the same
-   invisible user_message.**
-   - **steer**: when the session is **running**, insert this user_message into the current
-     active turn (interjection).
-   - **send**: when the session is **idle**, send this user_message to the session as a new
-     turn (the ordinary `send` path, just with a `hidden` user_message). **This is not the
-     `resume` used after abort/compaction — do not conflate the two.**
-
-   This user_message is visible to the model (replayed normally) and not rendered to the user.
-
-`shell_abort` is the only entry point that terminates a command. When `timeoutMs` elapses
-nothing is terminated and nothing is implicitly killed; if a command seems stuck, the model
-or user terminates it explicitly with `shell_abort`.
-
-## 2. Motivation
-
-### 2.1 What the old design got wrong
-
-The old design had two conflations that must be cleaned up along with the implementation:
-
-- **It wrapped the observation window as `yieldAfterMs` and forced a manual `shell_exec →
-  yield` chain.** The parameter was named "yield after Ms" but the behavior was only "return
-  running when it elapses, the turn continues, and rely on the model to add another
-  `yield`." The name promised an automatic yield while the semantics were an observation
-  window, and the model had to write two steps for every long command. Shell control and
-  yield were wrongly coupled.
-
-- **The wakeup payload was inconsistent across the two paths.** The active path turned the
-  wakeup into a **visible steer block** (disguising an internal framework instruction as a
-  user utterance), while the idle path pushed an empty resume turn and discarded the wakeup
-  text entirely. The two paths gave the model different things, and neither was "one
-  invisible user_message."
-
-### 2.2 Principles after the rewrite
-
-- **Orthogonal.** Shell tools never touch turns / timing / wakeups; `yield` never touches
-  the shell / process / command record. Their only point of contact is that the model may
-  **choose** to schedule a later re-check with `yield` while a shell command is still running.
-- **A single wakeup payload.** Every yield wakeup delivers the same invisible user_message;
-  steer / send is only the difference between "insert into a running turn" and "start a new
-  turn on an idle session," not two different contents.
-- **`timeoutMs` is only a synchronous wait bound.** It decides how long `shell_exec` waits
-  inline before returning a running handle — it never terminates the process.
-
-## 3. Tool semantics
-
-### 3.1 `shell_exec`
-
-Start a shell script and observe it synchronously within `timeoutMs`.
-
-```ts
-type ShellExecInput = {
-  script: string
-  shellId?: string
-  timeoutMs: number
-  description?: string
-}
-```
-
-Semantics:
-
-- `timeoutMs` is required, in the range `1..600000` (max 10 minutes). It is the **upper
-  bound on the synchronous observation window**; when it elapses the process is **not
-  terminated** and the command record is not released.
-- `timeoutMs` is a pure per-call parameter, decided by the model on each `shell_exec` call:
-  there is **no global or configurable default**, and no CLI flag or `BashEnvironment`
-  option can change it. Only direct, non-model `exec()` paths (internal transient commands
-  like `editor` / `todo`) fall back to a fixed internal constant when they omit it.
-- If `shellId` is given, the command runs in that shell session.
-- If `shellId` is omitted, the current agent session's default shell is used; an auxiliary
-  shell is created when the default shell is running a foreground command.
-- If the caller explicitly names a `shellId` that is running a foreground command, an error
-  is returned with the current `commandId` — the running command is not overwritten.
-- Command exits within `timeoutMs` with a complete preview: returns `status: "exited"`,
-  `exitCode`, and the preview, does not expose a `commandId`, and releases the command record.
-- Command exits within `timeoutMs` but the preview is truncated: returns `status: "exited"`,
-  `exitCode`, the preview, and artifact paths, keeping the artifact read path.
-- Command still running after `timeoutMs`: returns `status: "running"`, `commandId`, the
-  preview, and artifact paths. **The command keeps running; the current turn does not end.**
-- `shell_exec` itself **never ends a turn, schedules a wakeup, or terminates a process**.
-
-`running` is a decision point for the model, not automatic framework behavior. The model may:
-
-- `shell_status(commandId)` immediately to look again;
-- `yield(durationMs)` to end the current turn and be woken later to `shell_status`;
-- `shell_write(commandId, stdin)` (when it knows the command is waiting for input);
-- `shell_abort(commandId)` (when it seems stuck or is no longer needed).
-
-The tool result includes an output preview auto-budgeted to the current model context
-window, so the model can quickly judge ordinary output, an obvious failure, or completion.
-Ordinary short commands must be judged straight from the preview and should not re-read
-`/@`. Only a truncated preview, a long-running command whose history must be inspected, or a
-need for text search calls for the `/@` artifact.
-
-### 3.2 `shell_status`
-
-Read the current state of a running command handle. It does not wait or write stdin.
-
-```ts
-type ShellStatusInput = {
-  commandId: string
-  description?: string
-}
-```
-
-Semantics:
-
-- `commandId` points at a foreground command, not a shell session.
-- Still running: returns `status: "running"`.
-- Already exited: returns `status: "exited"`, `exitCode`, and a budgeted preview; releases
-  the command record after returning when the preview is complete.
-- Already aborted: returns `status: "aborted"`; releases the command record after returning
-  when the preview is complete.
-- Returns `runningMs`, `idleMs`, stdout/stderr byte counts, and artifact paths, so the model
-  can judge whether there is new output or unusual silence.
-- The new budgeted preview it returns exists only so the model can judge the result directly
-  when the command completes or produces a little new output — it is **not an output
-  pagination interface**.
-- A `commandId` that has completed with a complete preview is no longer valid; only a
-  truncated preview keeps the artifact read path.
-
-### 3.3 `shell_write`
-
-Write stdin to a foreground command; only non-empty input is accepted.
-
-```ts
-type ShellWriteInput = {
-  commandId: string
-  stdin: string
-  description?: string
-}
-```
-
-Semantics:
-
-- `stdin` must be non-empty; polling must use `shell_status` — there is no empty-input
-  compatibility path.
-- After writing to the target command's stdin it immediately returns a status snapshot and a
-  new budgeted preview; if the command thereby completes with a complete preview, the command
-  record is released after returning.
-- Returns an error when the command does not exist, has ended, or has no writable stdin.
-- Whether to wait for output after the write is up to the model, by scheduling a follow-up
-  turn with `yield` and calling `shell_status` after the wakeup.
-
-### 3.4 `shell_abort`
-
-Explicitly terminate a foreground command. This is the **only** tool that terminates a command.
-
-```ts
-type ShellAbortInput = {
-  commandId: string
-  description?: string
-}
-```
-
-Semantics:
-
-- Terminates the foreground process group the command runs in.
-- Returns the final status snapshot and artifact paths.
-- When called on a command that has already ended, returns that command's final status; it
-  does not re-kill the shell session.
-- `shell_abort` is a control action and does not by default signal agent task failure.
-
-### 3.5 `yield`
-
-End the current turn and schedule the runtime, after the turn completes, to wait a while and
-then wake the session with an **invisible user_message**.
-
-```ts
-type YieldInput = {
-  durationMs: number
-  description?: string
-}
-```
-
-Semantics:
-
-- `durationMs` is required, in the range `1..600000` (max 10 minutes).
-- `yield` **does not read the shell, write the shell, manage processes, or hold a
-  commandId**. It is a pure agent-level mechanism.
-- The `yield` tool result is a terminal result: once written to the transcript the current
-  provider continuation ends; sampling does not continue in the same turn.
-- `durationMs` is timed from **after the current turn completes and the session enters a
-  waitable state**, not from the tool call.
-- When it elapses, an invisible user_message is delivered (see §4):
-  - session **idle** → **send**: start a new turn with this user_message (the ordinary
-    `send` path, not an abort `resume`).
-  - session **active** → **steer**: insert this user_message as an internal steer into the
-    current active turn, reusing the user-steer insertion-point semantics — **never queued**.
-- During the wait the user may freely send a new topic; this does not automatically cancel
-  the pending wakeup.
-- `yield` is a one-shot delayed wakeup; there is no `repeat` / `start_yield` / `stop_yield`.
-
-The combination of `yield` and the shell is expressed entirely by the model; the framework
-never chains them automatically:
-
-```text
-shell_exec(..., timeoutMs)        # running + commandId
-yield(durationMs)                 # ends the turn
-
-# wakeup turn / wakeup steer
-shell_status(commandId)
-yield(durationMs)
-
-# next wakeup
-shell_status(commandId)
-```
-
-## 4. The yield wakeup mechanism
-
-A wakeup has three steps, and the timing is the heart of the mechanism:
-
-1. **The current turn ends naturally.** The terminal `yield` tool result ends the current
-   provider continuation and the turn settles to idle. `yield` does not preempt or interrupt
-   ongoing sampling or tools; it simply lets the round finish normally.
-2. **Timing starts only after the turn completes.** The timer is armed only after the turn
-   has fully ended and the session has entered a waitable state — not from the moment `yield`
-   was called. So "wait `durationMs`" means "wait `durationMs` after the turn ends."
-3. **Deliver the invisible user_message when it elapses.** The delivery method is chosen by
-   the session state at that moment:
-   - **idle → send**: send this user_message to the idle session as an ordinary `send`,
-     starting a new turn (just with a `hidden` user_message). **This is `send`, not the
-     `resume` after abort/compaction; `resume` is a different mechanism — do not mix them.**
-   - **active → steer**: insert this user_message as an internal steer into the current
-     active turn, visible to the model at the nearest provider / tool boundary, **never
-     entering the queue**.
-
-The wakeup payload is **the same invisible user_message** regardless of delivery method:
-
-- It is visible to the model — replayed normally as a `user_message` (send path) or
-  `user_steer` (steer path), and the model reasons from it.
-- It is not rendered to the user — the UI / REPL does not show it as a user utterance (see §5).
-- Its content is a **shell-agnostic internal hint**, e.g. "the wait you scheduled earlier is
-  over; continue your previous work, and use `shell_status` if a command is still running."
-  `yield` knows no commandId; the model knows what it is waiting for from context.
-
-Why a wakeup must not enter the queue: queuing it would let a long-command re-check be
-deferred indefinitely behind the user's new topics, defeating yield's purpose. When active it
-must be inserted into the current turn as a steer; when idle it is itself a new turn.
-
-## 5. The invisible user_message
-
-The wakeup payload needs a first-class "visible to the model, not rendered to the user" user
-input.
-
-The core layer adds a `hidden` flag to the two kinds of user input — user / steer:
-
-```ts
-type Block =
-  | { type: 'user'; id: string; turnId: string; createdAt: string; model: ModelSelection
-      content: UserContentBlock[]; preamble: string | null; hidden?: boolean }
-  | { type: 'steer'; id: string; turnId: string; createdAt: string; model: ModelSelection
-      content: UserContentBlock[]; hidden?: boolean }
-  // all other blocks unchanged
-```
-
-Rules:
-
-- `hidden` defaults to `false`. Ordinary user input carries no such flag and its behavior is
-  entirely unchanged.
-- `collectInferenceItems()` treats `hidden` and non-`hidden` identically: it still emits
-  `user_message` / `user_steer`, so **the model always sees the wakeup input**. `hidden` does
-  not enter provider replay and does not affect the turn grouping of compaction / retry / resume.
-- The render layer (the Web UI's visible-block filter, the REPL renderer) **skips** user /
-  steer blocks with `hidden === true` and does not show them as user bubbles.
-- Yield wakeup delivery:
-  - idle → start a new turn with a `hidden: true` user input (`pushUserTurn(..., { hidden: true })`).
-  - active → insert a `hidden: true` steer (`pushSteer(..., { hidden: true })`).
-
-`hidden` only affects whether the UI renders — that is its sole effect; it does not create a
-second replay semantics, nor change turn boundaries.
-
-## 6. The identifier model
-
-`shellId` and `commandId` must be kept separate:
-
-- `shellId`: a long-lived shell session handle, carrying cwd, env, functions, background jobs,
-  and the current foreground command.
-- `commandId`: a single foreground command handle, carrying process state, the stdout/stderr
-  artifacts, byte counts, and exit info.
-
-A shell session has at most one foreground command at a time. Background jobs remain shell
-session state, but every long-running foreground task the model can observe and control uses a
-`commandId`.
-
-Default-shell rules:
-
-- Every AgentSession has one default shell.
-- When the default shell is idle, a `shell_exec` without `shellId` reuses it.
-- When the default shell is busy, a `shell_exec` without `shellId` creates an auxiliary shell,
-  so the model can run one-off check commands while a dev server is running.
-- When an explicit busy `shellId` is passed, no auxiliary shell is created automatically,
-  avoiding the model's mistaken belief that the command ran inside the named shell's state.
-
-`commandId` belongs to the shell control surface; `yield` does not hold it. After a yield
-wakeup the model calls `shell_status` with the `commandId` it remembers.
-
-## 7. stdout/stderr artifacts
-
-Every command has two read-only, append-only output artifacts and a metadata file:
-
-```ts
-type ShellArtifactRef = {
-  path: string
-  bytes: number
-}
-
-// Ephemeral API result from BashEnvironment.exec/status/write/abort.
-// Tool blocks persist a bounded ShellToolView on block.view instead of this full status.
-type ShellCommandStatus = {
-  status: 'running' | 'exited' | 'aborted'
-  shellId: string
-  commandId: string
-  stdout: ShellArtifactRef
-  stderr: ShellArtifactRef
-  runningMs: number
-  idleMs: number
-  exitCode?: number
-  preview?: {
-    text: string
-    budgetTokens: number
-    truncated: boolean
-  }
-}
-```
-
-Paths use the shell virtual-filesystem namespace:
-
-```text
-/@/commands/<commandId>/stdout.txt
-/@/commands/<commandId>/stderr.txt
-/@/commands/<commandId>/meta.json
-```
-
-For a retained command artifact, `stdout.txt` / `stderr.txt` keep their respective streams;
-`meta.json` exposes status, exitCode, runningMs, idleMs, bytes, and timestamps. These files are
-not written into the task cwd and do not pollute the user workspace. An ordinary short command
-that completes with a complete preview is not retained; only running, preview-truncated, or
-search-needing commands keep the full output as a durable audit sink. When a session snapshot is
-saved or a session is restored, the runtime must be able to rebuild the still-needed
-`/@/commands/<commandId>/...` from the durable command artifacts. The model-visible tool result
-in the transcript prefers to store the auto-budgeted preview, storing a reference only when an
-artifact must be retained; the UI/runtime may store interleaved output events for display, but
-the interleaved stdout/stderr terminal transcript is not saved as a `/@` file.
-
-Artifact content is the **model-visible stdout/stderr after shell redirection**, not raw process
-fds:
-
-- `cmd > file` should not leak stdout into the stdout artifact.
-- `cmd 2>/dev/null` should not leak stderr into the stderr artifact.
-- `cmd >&2` should go into the stderr artifact.
-- The target file of `cmd > file` is still written through `Host.fs` per shell semantics.
-
-`/@` is overlaid onto `HostBackedFileSystem` via just-bash's `IFileSystem` and is a read-only
-virtual namespace:
-
-- Portable commands like `cat` / `head` / `tail` / `grep` / `rg` / `sed` / `awk` / `wc` / `cut`
-  / `sort` / `jq` reading `/@` paths must go through the just-bash command registry and the
-  virtual FS.
-- A real host external process cannot see the in-memory `/@` paths; a text-read command that
-  includes a `/@` path must not fall back to host coreutils. When it cannot be executed via a
-  portable path it should error explicitly.
-- `/@` artifacts are read-only by default; any write, delete, rename, chmod, or link operation
-  should be rejected.
-- Only a retained command artifact's lifecycle follows the AgentSession's durable history; an
-  ordinary short command that completes with a complete preview releases the command record and
-  no longer exposes `/@`. Closing a live session releases the in-memory overlay, but a saved
-  session snapshot must retain the artifact content or a restorable reference for anything that
-  still needs reading.
-
-Output sinks stream as they write: visible stdout/stderr chunks append to the matching command
-artifact in real time; the file-redirection sink also writes to `Host.fs` chunk by chunk, so a
-long command's target file is visible while it runs.
-
-The model reads an artifact with an ordinary shell text command only when the preview is
-truncated, a long-running command's history must be inspected, or text search is needed:
-
-```bash
-tail -n 80 /@/commands/<commandId>/stdout.txt
-grep -n "ERROR" /@/commands/<commandId>/stderr.txt
-sed -n '200,260p' /@/commands/<commandId>/stdout.txt
-awk '/failed|error/i { print NR ":" $0 }' /@/commands/<commandId>/stderr.txt
-```
-
-`maxOutputBytes` is not part of the final model-visible schema. The output budget is decided
-automatically by `@demicodes/agent` from the current model's `contextWindow`; it affects only the
-tool-result preview, not artifact storage:
-
-| Model context window | Tool-result preview budget |
-|---|---:|
-| Unknown or `< 800_000` tokens | `1_000` tokens |
-| `>= 800_000` tokens | `10_000` tokens |
-
-The budget unit is tokens. The implementation prefers the provider/model tokenizer; with no
-tokenizer it uses a conservative estimate to convert `budgetTokens` into a character limit. A
-truncated preview must carry `truncated: true` and prompt the model to read the needed part via
-`/@/commands/<commandId>/...`; a complete preview does not expose artifact paths and so does not
-invite a second read.
-
-## 8. Agent loop behavior
-
-The agent loop resumes the model only at well-defined boundaries:
-
-- `shell_exec`'s `timeoutMs` elapses (the tool result returns, **the turn continues**).
-- A command exits.
-- A `shell_status` / `shell_write` / `shell_abort` tool result returns.
-- A `yield` tool result returns and **ends the current turn**.
-- A pending yield wakeup elapses: when idle, start a new turn with the invisible user_message;
-  when active, insert it as an internal steer into the current turn.
-- The provider stream itself completes or errors.
-
-The arrival of an output chunk does **not** wake the model directly. The UI may display terminal
-output live from the artifact or progress events; the model only resumes reasoning after a tool
-returns, an internal wakeup turn, or an internal wakeup steer.
-
-Slow output and very large output share one mechanism: the model lets a long command run in the
-foreground, and `shell_exec` returns `running` at `timeoutMs`; the model `yield`s as needed and,
-after waking, uses `shell_status` to judge whether the command is still running, has new bytes,
-or has been idle too long; ordinary new output is judged straight from the budgeted preview; only
-a truncated preview or a need for search calls for reading the `/@` artifact with `tail` / `grep`
-/ `awk` / `sed`. The runtime never wakes the model automatically because output is slow or large,
-and never stuffs a large chunk of output into `shell_status`.
-
-## 9. Typical flows
-
-### A long test command
-
-```text
-Turn A
-shell_exec({ script: "pnpm test", timeoutMs: 10000 })
-→ running + commandId (turn not ended)
-
-yield({ durationMs: 30000 })
-→ scheduled, Turn A completes
-
-Turn B (internal wakeup 30s later, sends an invisible user_message)
-shell_status({ commandId })
-→ running, output bytes growing
-
-yield({ durationMs: 30000 })
-→ scheduled, Turn B completes
-
-Turn C (internal wakeup 30s later)
-shell_status({ commandId })
-→ exited + exitCode
-
-tail -n 80 /@/commands/<commandId>/stdout.txt
-grep -n -E "ERROR|FAIL" /@/commands/<commandId>/stderr.txt
-```
-
-### Dev-server smoke check
-
-```text
-shell_exec({ script: "pnpm dev", timeoutMs: 3000 })
-→ running + commandId=server
-
-shell_exec({ script: "curl -I http://127.0.0.1:18922", timeoutMs: 10000 })
-→ exited (default shell busy, an auxiliary shell is used automatically, without
-  interrupting the dev server)
-
-shell_abort({ commandId: server })
-```
-
-### Interactive input
-
-```text
-Turn A
-shell_exec({ script: "node prompt.js", timeoutMs: 1000 })
-→ running + commandId
-
-shell_write({ commandId, stdin: "Alice\n" })
-yield({ durationMs: 500 })
-→ scheduled, Turn A completes
-
-Turn B (internal wakeup 500ms later)
-shell_status({ commandId })
-→ running
-
-tail -n 40 /@/commands/<commandId>/stdout.txt
-```
-
-### Suspected hang
-
-```text
-shell_status({ commandId })
-→ running, idleMs very large
-
-shell_abort({ commandId })
-→ aborted + last output
-```
-
-### The user starts a new topic during the wait
-
-```text
-Turn A
-shell_exec({ script: "pnpm test", timeoutMs: 10000 })
-→ running + commandId
-yield({ durationMs: 30000 })
-→ scheduled, Turn A completes
-
-Turn B (user sends a new topic 10s later)
-...the model is handling the user's new topic (session active)...
-
-30s elapses
-→ the runtime inserts the wakeup user_message into Turn B as an internal steer
-  (not rendered, not queued)
-→ the model sees it at Turn B's nearest provider/tool boundary, then decides whether
-  to shell_status({ commandId })
-```
-
-## 10. The `abort` hierarchy
-
-Here `abort` is the AgentSession / AgentClient session-control action, not the model-visible
-`shell_abort`.
-
-`abort` is a repeatable, layered settling action. Each call cancels only the current
-highest-priority layer that can still be cancelled, and returns what it cancelled plus whether
-`abort` can continue:
-
-```ts
-type AbortTarget =
-  | 'active_provider_stream'
-  | 'active_tool'
-  | 'active_compaction'
-  | 'active_turn'
-  | 'queued_message'
-  | 'queued_action'
-  | 'pending_yield_wakeup'
-```
-
-Priority, highest to lowest:
-
-1. The current active provider stream, reference resolution, compaction, or tool invocation.
-2. The current active turn's remaining settling state.
-3. A queued action awaiting execution — send / retry / resume / compact, etc.
-4. A pending `yield` wakeup.
-
-A pending `yield` wakeup is the lowest priority. An ordinary active-turn abort should not also
-clear the wakeup, because it may be a schedule left by a previous long-command re-check. Only
-when there is no active work, no queued action, and the caller aborts again is the pending
-wakeup cancelled. Closing the session clears all pending wakeups outright.
-
-`shell_abort(commandId)` does not go through this hierarchy; it is the tool with which the model
-or user explicitly terminates a foreground command. Unless the currently executing shell tool
-invocation is itself aborted, AgentSession `abort` should not implicitly terminate a shell
-command that has already returned `running`.
-
-## 11. Why there is no repeat yield
-
-`yield({ repeat: true })` would mix two different mechanisms:
-
-- A timed wakeup after a single turn ends: `yield`.
-- Long-lived repeated wakeups: heartbeat / automation.
-
-If every wakeup hands control back to the model, it is equivalent to the model explicitly
-calling a one-shot `yield` again in each wakeup turn. So `yield` stays one-shot; long-lived
-automatic polling will use a separate heartbeat design later.
-
-## 12. Package responsibilities
-
-The five model-visible tools are one complete agent base toolset, not split across packages by
-tool name:
-
-- `@demicodes/core` owns the shared `Block` types, including the `hidden` flag on user / steer.
-- `@demicodes/agent` owns the model-visible tool surface: the names, schemas, and tool-call/result
-  transcript semantics of `shell_exec` / `shell_status` / `shell_write` / `shell_abort` /
-  `yield`, plus the post-turn delayed-wakeup scheduling, the idle-send invisible-user_message
-  turn, the active-steer invisible user_message, and the explicit-abort / session-close cleanup.
-  `yield`'s wakeup payload is constructed by `@demicodes/agent` and does not depend on the shell.
-- `@demicodes/shell` owns the shell runtime services: BashEnvironment, shell sessions, command
-  records, command artifacts, the Host-backed stream sink, and the exec/status/write/abort
-  primitives. It **owns no model-visible AgentTool, and knows nothing of `yield`, turns, or
-  wakeups**.
-- `@demicodes/coding-agent` only explains the usage policy for these five tools in the prompt.
-- `@demicodes/web-ui` and `@demicodes/repl` consume the unified protocol events to display state, and skip
-  `hidden` user/steer blocks per §5.
-
-So the final layering is: `@demicodes/agent` owns the complete tool surface and the yield wakeup
-semantics, `@demicodes/shell` provides only shell execution, and the two are orthogonal.
-
-## 13. Tests & acceptance
-
-Unit-test modules and their intended coverage:
-
-- `packages/agent/src/tools.ts` (covered by agent/coding/provider integration tests)
-  - The tool schema exposes only `shell_exec` / `shell_status` / `shell_write` / `shell_abort`
-    / `yield`.
-  - `shell_exec` exposes `timeoutMs` (required, max 10 minutes) and **does not expose
-    `yieldAfterMs`**.
-  - `shell_write` rejects empty stdin.
-  - The tool result contains only status, exitCode, and preview for an ordinary completion;
-    `shellId`, `commandId`, artifact paths, and a next action appear only when running or the
-    preview is truncated.
-  - The final schema exposes neither `maxOutputBytes`, stdout/stderr offsets, nor a
-    model-controlled output budget.
-  - When `shell_exec` returns `running` it carries no implicit "end the turn / schedule a yield"
-    semantics; `yield` and the shell tools are independent schemas.
-
-- `packages/shell/src/__tests__/environment.test.ts`
-  - `shell_exec` past `timeoutMs` returns `running` and **does not kill the process or release
-    the record**.
-  - `timeoutMs` is the synchronous observation-window bound, not a kill deadline.
-  - `shell_status` reads state and a new budgeted preview non-blockingly, and does not do output
-    pagination.
-  - After an ordinary short command completes, the command record is released and subsequent
-    status and `/@` reads both fail.
-  - A retained command artifact exposes `/@/commands/<commandId>/stdout.txt`, `stderr.txt`, and
-    `meta.json`.
-  - `tail` / `grep` / `sed` / `awk` / `wc` can read `/@` artifacts via just-bash portable
-    commands; a text-read command containing `/@` does not fall back to a host external process.
-  - The final artifact is still readable after the command exits.
-  - `shell_abort` terminates the foreground process group and retains the final output.
-  - Redirection does not leak into the visible stdout/stderr artifacts; the file-redirection sink
-    is visible while a long command runs.
-  - When the default shell is busy, a `shell_exec` without `shellId` creates an auxiliary shell;
-    a named busy `shellId` is rejected.
-
-- `packages/agent/src/__tests__/session.test.ts`
-  - The `yield` tool result is a terminal result; the current provider continuation stops
-    sampling and the turn ends naturally.
-  - The `yield` duration is timed from **after** the current turn completes.
-  - When it elapses with the session idle: a new turn starts with the invisible user_message
-    (send, not an abort `resume`), the model sees that user_message on replay, and can go on to
-    call `shell_status`.
-  - When it elapses with the session active: the invisible user_message is inserted into the
-    current active turn as an internal steer and does not enter the queue.
-  - The wakeup user_message's `hidden` is true: `collectInferenceItems()` still emits
-    `user_message` / `user_steer` (model-visible), and the render layer filters it (user-invisible).
-  - `yield` neither reads nor writes shell state, holds no commandId, and does not implicitly
-    abort a shell command.
-  - `abort` settles layer by layer in priority order — active work, queued action, pending yield
-    wakeup; an active-work abort does not clear a pending yield wakeup; a pending wakeup is
-    cleared only at the last abort layer or on session close.
-  - Neither slow nor very large output wakes the model chunk by chunk.
-  - The tool-result preview budget is chosen automatically from the current `Model.contextWindow`:
-    1k tokens when unknown or below 800k, 10k tokens at 800k and above.
-
-- `packages/agent/src/__tests__/server.test.ts`
-  - AgentServer exposes the new tool surface and corresponding events to the client.
-  - A pending yield wakeup is observable in the protocol state; idle elapse opens a new turn,
-    active elapse sends an internal steer.
-  - The abort response/frame exposes `target` and `canAbortAgain`.
-
-- The render layer (`packages/web-ui`, `packages/repl`)
-  - User / steer blocks with `hidden === true` are not rendered as user bubbles; non-hidden
-    behavior is unchanged.
-
-- Real-model acceptance
-  - A real model monitors a long command to completion with `shell_exec(timeoutMs) → yield →
-    shell_status`, and reads `/@` artifacts with `tail` / `grep` / `sed`.
-  - A real model starts a dev server, verifies it with an auxiliary shell, then `shell_abort`s to
-    clean up.
-
-Acceptance criteria:
-
-- A long command past 120 seconds is not killed by `timeoutMs`; `timeoutMs` only decides when
-  `shell_exec` returns `running` synchronously.
-- When `shell_exec` returns `running` the current turn continues, the model may `shell_status`
-  immediately or `yield` on its own; the framework does not chain yield automatically.
-- A yield wakeup delivers the same invisible user_message whether idle or active; the model
-  always sees it and the user never does.
-- A user's new topic does not push the pending yield into the queue; the elapsed wakeup enters
-  the active turn as an internal steer and does not implicitly abort the shell command.
-- `abort` is repeatable; a pending yield wakeup is the lowest priority.
-- Every command-termination path shows an explicit `shell_abort` in the transcript.
-- After a session is restored, a historical command's `/@/commands/<commandId>/stdout.txt`,
-  `stderr.txt`, and `meta.json` are still readable, with content identical to the original
-  complete visible output.
-
----
-
 # Reference: Tool Rendering Spec
 <!-- source: docs/tool-rendering-spec.md -->
 
@@ -2598,8 +1573,8 @@ Persistent history is governed by `Block`:
 - `streamingOutput` / `output` is the tool's output text or media blocks.
 - `view` may carry bounded UI enhancement data such as a `ShellToolView` (`chunks`,
   `commandId`, status counters). The render layer may use it to enrich the display, but
-  must not treat it as the sole source of truth for full command output (that lives in
-  `/@/commands/<commandId>/…` artifacts).
+  must not treat it as more than the model's own view: what the model saw is what the
+  browser shows (`docs/demi-next/runner.md` § Jobs and the tee).
 
 Real-time events are governed by `ClientSessionEvent`:
 
@@ -2608,8 +1583,6 @@ Real-time events are governed by `ClientSessionEvent`:
   tool that is currently executing.
 - `shell_write_result` / `abort_result` are acknowledgements of user control actions;
   they do not replace the `tool_call` rendering in the transcript.
-- `audit` may surface registered-command or system-command detail inside the
-  `shell_exec` card, but must not change the standard-tool dispatch key.
 
 So the Web UI, the REPL, and future shells share the protocol and event structures, but
 not a single abstract UI-model package.
@@ -2638,7 +1611,7 @@ Rendering rules:
 | Tool | Render form | Title fallback | Key content | In-progress state |
 |---|---|---|---|---|
 | `shell_exec` | Terminal command block | `input.script` | The script, plus stdout/stderr terminal output interleaved in arrival order | Sweep loading; output is expandable |
-| `shell_status` | Command-status inline block | `Check <commandId>` | status, runningMs, idleMs, bytes, artifact paths; no output body; no expand panel | Sweep loading; must not masquerade as shell_exec |
+| `shell_status` | Command-status inline block | `Check <commandId>` | status, runningMs, idleMs, bytes, output paths on the target; no output body; no expand panel | Sweep loading; must not masquerade as shell_exec |
 | `shell_write` | stdin-write inline block | `Send input to <commandId>` | Preferred title states the user-visible result being advanced; no expand panel | Sweep loading; success ≠ command completion |
 | `shell_abort` | Stop-command inline block | `Stop <commandId>` | Preferred title states the user-visible state being settled; no expand panel | Sweep loading; completed/aborted are not UI errors |
 | `yield` | Wait-for-wakeup inline block | `Wait <durationMs>ms` | Preferred title states the user-visible state to observe or confirm next; no expand panel | Sweep loading consistent with thinking |
@@ -2657,17 +1630,18 @@ a badge or an inline summary, never behind a disclosure.
 The `shell_exec` expanded content shows only the command and the user-visible terminal
 output. That terminal output comes from the interleaved output stream in runtime/progress
 or from the auto-budgeted preview, merged into a single transcript in stdout/stderr arrival
-order; this is purely a UI/runtime rendering and is not saved as a `/@` file. The
-authoritative full-output read path the model sees is
-`/@/commands/<commandId>/stdout.txt` and `stderr.txt` — not `shell_status`. When an older
+order; this is purely a UI/runtime rendering. On a machine the full output lives in the
+job's output files on the target (`stdoutPath` / `stderrPath`), which the model reads with
+ordinary commands — not through `shell_status`; hostless, nothing beyond the view exists.
+When an older
 transcript lacks interleaved output it may fall back to stdout-then-stderr, but it must not
 show stderr alone, nor show protocol fields such as `status`, `shellId`, `commandId`, path,
 offset, bytes, or truncation.
 
 `shell_status` may show only a command-status summary. Even when its metadata carries
-artifact paths, byte counters, or a preview, it must not be rendered as an expandable
+output paths, byte counters, or a preview, it must not be rendered as an expandable
 terminal-output block; the user path to output content is to view the corresponding
-`shell_exec` block or to have the model read the `/@` artifact with a shell text command.
+`shell_exec` block or to have the model read the output files with a shell text command.
 
 ## 5. Web specification
 
@@ -2851,23 +1825,32 @@ internal command-artifact storage key.
 - **checkpoint.json** (implemented) — the restorable session state. Transcript
   blocks carry text, tool views (bounded), and (eventually) refs. No unbounded
   command-status dump is stored inline.
-- **commands/\<id\>/artifact.json** (implemented) — the lossless record of one
-  command: full stdout/stderr text and binary stdout. Exposed read-only at
-  `/@/commands/<id>/{meta.json,stdout.txt,stderr.txt,stdout.bin}`.
+- **command artifacts** (implemented) — the lossless record of one command,
+  written as plain files under `Host.commandArtifactsDir/<storageId>/<commandId>/`
+  (`meta.json`, `stdout.txt`, `stderr.txt`, `stdout.bin`): one filesystem
+  namespace shared with spawned processes, so any tool reads and searches them
+  with ordinary file operations.
 - **blobs/\<sha256\>** (remaining) — media/binary bytes referenced from content
   blocks (`source.ref`). Session-scoped content addressing; deleting the session
   directory reclaims everything.
-- **journal.jsonl** (remaining) — the same `TranscriptPatch` stream that already
-  feeds live UIs (`TranscriptLog.takePatches()`), appended during streaming.
-  Restore = checkpoint + replay journal.
+- **journal** (remaining, **required design**) —
+  incremental transcript persistence: streaming appends finished blocks;
+  nothing rewrites the whole transcript per interval. `journal.jsonl` is its
+  file-backed realization here; the product backend realizes the same
+  contract as one row per block in a per-conversation SQLite database (see
+  `docs/demi-next/storage.md`). The persistence contract therefore
+  becomes append-block + save-state, not save-whole-checkpoint.
 
 ### Write path (today vs final)
 
 - Today: throttled full-checkpoint writes (`persistIntervalMs`, default 1 s) plus
   boundary rewrites at turn end / abort / dispose. After view slimming this is
-  ~100s of KB for ordinary sessions, not tens of MB.
-- Final with journal: append patches to `journal.jsonl` during streaming; rewrite
-  `checkpoint.json` and truncate the journal at action boundaries.
+  ~100s of KB for ordinary sessions, not tens of MB — still a whole-transcript
+  rewrite per interval, which is not the final write path.
+- Final with journal: append finished blocks during streaming; persist the
+  non-transcript state at action boundaries. In the file realization that is
+  `journal.jsonl` + a slim `checkpoint.json`; in the product backend it is
+  block rows + a state row in `conversations/<id>.sqlite`.
 - Command artifacts (and future blobs) are written by their owners — the
   checkpoint never embeds them.
 
@@ -3014,86 +1997,14 @@ SDK-MCP session; it does not add a proxy process or alternate MCP transport.
 
 ---
 
-# Reference: Binary Stream Boundary
-<!-- source: docs/binary-stream-boundary.md -->
-
-# Binary stream boundary
-
-Commands produce byte streams; the model boundary decides how the final
-stream is presented. There is no attachment side-channel: the `CommandAsset`
-/ `io.asset()` mechanism is removed, and with it every `supportedAssetTypes`
-thread through exec/session/ctx.
-
-## Verified transport contract (just-bash)
-
-- Fork pipes carry bytes packed as latin1 strings (`ByteString`); commands
-  declare `stdoutKind: 'text' | 'bytes'` on `ExecResult`.
-- The `hostSpawn` callback receives `stdin: string` in the **same latin1
-  convention** (the identical value is tagged `unsafeBytesFromLatin1` when
-  handed to registered commands), and its returned `ExecResult` participates
-  in pipeline continuation via `stdoutKind`.
-- The top-level `executeScript` result reaches `BashEnvironment.collectExited`
-  with `stdoutKind` intact — that is the single boundary where stream shape
-  is decided.
-
-## Byte fidelity fixes
-
-- `hostSpawn` stdin: write latin1 bytes to the real process (the previous
-  `encodeUtf8` mojibaked every byte > 0x7F).
-- `hostSpawn` result: return raw output bytes as latin1 + `stdoutKind:
-  'bytes'` so real-process output (ffmpeg) pipes onward losslessly. The
-  streaming observation channel keeps its lossy UTF-8 text render; file
-  redirect sinks already preserve bytes.
-- Registered-command adapter: `CommandIO.stdout(Uint8Array)` returns latin1
-  + `stdoutKind: 'bytes'` to the pipe; `CommandStdin` carries `bytes`
-  alongside `text`.
-- `demi read` is `cat`: it emits raw file bytes for every file type. Media
-  summaries and model-capability errors move to the boundary.
-
-## Boundary decision tree (agent layer, where the model is known)
-
-For the final stream of an exited exec:
-
-1. `stdoutKind: 'text'` → tool-result text (unchanged).
-2. bytes that strictly decode as UTF-8 → text (covers real-process text
-   output).
-3. bytes whose magic matches the closed model-media set (png, jpeg, gif,
-   webp, mp4/m4v, mov, webm) **and** the model accepts that media type and
-   the stream was not truncated → native image/video block, with a one-line
-   text summary in the tool result.
-4. anything else → placeholder text stating byte count, sniffed type when
-   known, and the reason no media was attached (truncated by the output
-   limit / model does not accept the type / unknown binary). Raw bytes never
-   enter the transcript; they stay addressable at
-   `/@/commands/<commandId>/stdout.bin` for further shell processing.
-
-The shell layer only detects and reports (`binaryStdout: { data, mediaType,
-truncated }` on exited snapshots plus a placeholder text render); model
-capability gating lives in the agent layer where the tool result is built.
-Sniffing a closed set by magic bytes is deterministic; there is no
-content-type guessing beyond it.
-
-Accepted edge: a mixed stream (`demi read a.png; echo done`) matches magic at
-offset 0 and ships with trailing bytes — decoders tolerate trailing data, and
-the fix is to not mix streams.
-
-## Bridge
-
-The UDS `/run` result carries `stdoutEncoding: 'base64'` when the final
-stream is binary; the shim decodes and writes raw bytes to its OS stdout, so
-`demi read a.png | ffmpeg -i - …` works in external shells too. A truncated
-binary stream is reported on stderr alongside the capped payload.
-
----
-
 # Reference: Command Help
 <!-- source: docs/command-help.md -->
 
 # Command help
 
 Registered `Command` trees render into agent `commandsPrompt` and `--help` via
-`renderCommandHelp` in `@demicodes/shell`. Help carries summary, usage, effects,
-outputs, parameters, stdin/heredoc fields, `--json`, and subcommands.
+`renderCommandHelp` in `@demicodes/shell`. Help carries summary, usage, outputs,
+parameters, stdin/heredoc fields, `--json`, and subcommands.
 
 Command specs intentionally omit invocation examples. Concrete example lines
 tend to overfit the model toward copying those strings instead of composing from

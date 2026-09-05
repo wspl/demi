@@ -23,7 +23,8 @@
   },
   "dependencies": {
     "@demicodes/core": "workspace:^",
-    "@demicodes/utils": "workspace:^"
+    "@demicodes/utils": "workspace:^",
+    "zod": "^4.0.0"
   },
   "license": "Apache-2.0",
   "main": "./dist/index.mjs",

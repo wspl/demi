@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
-import { encodeUtf8 } from '@demicodes/utils'
+import { bytesStream, deferred, encodeUtf8 } from '@demicodes/utils'
 import {
   COMMAND_HELP_DEFAULTS,
   CommandRegistry,
@@ -8,17 +8,15 @@ import {
   renderCommandHelp,
   runRegisteredCommand,
   type Command,
+  type CommandGroup,
   type CommandIO,
-  type CommandStdin,
   type CommandStorage,
   type Host,
+  type RuntimeModule,
 } from '../index'
+import { RESERVED_COMMAND_NAMES } from '../reserved-names'
 
 const testHost = {} as Host
-
-function stdinOf(text: string): CommandStdin {
-  return { text, bytes: encodeUtf8(text) }
-}
 
 const filerSpec: Command = {
   name: 'filer',
@@ -35,6 +33,7 @@ const filerSpec: Command = {
       },
       positionals: ['path'],
       stdinField: 'content',
+      kind: 'rpc',
       run: () => ({ exitCode: 0 }),
     },
     {
@@ -47,6 +46,7 @@ const filerSpec: Command = {
         occurrence: z.number().optional().describe('1-based occurrence to replace'),
       },
       positionals: ['path'],
+      kind: 'rpc',
       run: () => ({ exitCode: 0 }),
     },
     {
@@ -59,6 +59,7 @@ const filerSpec: Command = {
       output: {
         json: z.object({ files: z.array(z.string()) }),
       },
+      kind: 'rpc',
       run: async ({ io }) => {
         await io.stdout(JSON.stringify({ files: ['src/foo.ts'] }))
         return { exitCode: 0 }
@@ -84,6 +85,7 @@ const nestedSpec: Command = {
           },
           positionals: ['id'],
           stdinField: 'body',
+          kind: 'rpc',
           run: async ({ parsed, io }) => {
             await io.stdout(`created ${parsed.values.id} body=${parsed.values.body}`)
             return { exitCode: 0 }
@@ -98,6 +100,7 @@ const nestedSpec: Command = {
               summary: 'Read poller state.',
               input: { id: z.string().describe('Poller id') },
               positionals: ['id'],
+              kind: 'rpc',
               run: async ({ parsed, io }) => {
                 await io.stdout(`state of ${parsed.values.id}`)
                 return { exitCode: 0 }
@@ -110,6 +113,7 @@ const nestedSpec: Command = {
     {
       name: 'ping',
       summary: 'Liveness check.',
+      kind: 'rpc',
       run: async ({ io }) => {
         await io.stdout('pong')
         return { exitCode: 0 }
@@ -123,35 +127,15 @@ const bareLeaf: Command = {
   summary: 'Read a key from the environment map.',
   input: { key: z.string().describe('Env key') },
   positionals: ['key'],
+  kind: 'rpc',
   run: async ({ parsed, io }) => {
     await io.stdout(String(parsed.values.key))
     return { exitCode: 0 }
   },
 }
 
-const dualMode: Command = {
-  name: 'tool',
-  summary: 'Dual-mode parent with a child.',
-  input: { x: z.number().optional().describe('Parent flag') },
-  run: async ({ parsed, io }) => {
-    await io.stdout(`parent x=${parsed.values.x ?? 'none'}`)
-    return { exitCode: 0 }
-  },
-  subcommands: [
-    {
-      name: 'sub',
-      summary: 'Child leaf.',
-      input: { y: z.number().optional().describe('Child flag') },
-      run: async ({ parsed, io }) => {
-        await io.stdout(`child y=${parsed.values.y ?? 'none'}`)
-        return { exitCode: 0 }
-      },
-    },
-  ],
-}
-
 test('parseCommandInput maps positionals, flags, and stdin fields', () => {
-  const parsed = parseCommandInput(filerSpec, ['filer', 'create', 'src/foo.ts'], stdinOf('export const foo = 1\n'))
+  const parsed = parseCommandInput(filerSpec, ['filer', 'create', 'src/foo.ts'], 'export const foo = 1\n')
 
   expect(parsed).toEqual({
     path: ['filer', 'create'],
@@ -219,7 +203,7 @@ test('parseCommandInput rejects unknown options and invalid values', () => {
 })
 
 test('parseCommandInput walks nested groups down to a leaf', () => {
-  const parsed = parseCommandInput(nestedSpec, ['larkclaw', 'watch', 'create', 'my-id'], stdinOf('{"a":1}'))
+  const parsed = parseCommandInput(nestedSpec, ['larkclaw', 'watch', 'create', 'my-id'], '{"a":1}')
   expect(parsed).toEqual({
     path: ['larkclaw', 'watch', 'create'],
     help: false,
@@ -245,18 +229,9 @@ test('parseCommandInput supports bare root leaves', () => {
   })
 })
 
-test('parseCommandInput dual-mode: child name wins over parent args', () => {
-  const parent = parseCommandInput(dualMode, ['tool', '--x', '1'])
-  expect(parent).toEqual({ path: ['tool'], help: false, values: { x: 1 }, json: false })
-
-  const child = parseCommandInput(dualMode, ['tool', 'sub', '--y', '2'])
-  expect(child).toEqual({ path: ['tool', 'sub'], help: false, values: { y: 2 }, json: false })
-})
-
 test('parseCommandInput treats --help as help at every node', () => {
-  // Groups, dual-mode parents, leaves, and bare run-only roots all render help.
+  // Groups, leaves, and bare leaf roots all render help.
   expect(parseCommandInput(filerSpec, ['filer', '--help']).help).toBe(true)
-  expect(parseCommandInput(dualMode, ['tool', '--help']).help).toBe(true)
   expect(parseCommandInput(bareLeaf, ['kcenv', '--help'])).toEqual({
     path: ['kcenv'],
     help: true,
@@ -274,7 +249,8 @@ test('parseCommandInput treats --help as help at every node', () => {
 })
 
 test('parseCommandInput reports full paths for nested errors', () => {
-  expect(() => parseCommandInput(nestedSpec, ['larkclaw', 'watch'])).toThrow('Command "larkclaw watch" requires a subcommand')
+  // A group with nothing after it is a help request for that group.
+  expect(parseCommandInput(nestedSpec, ['larkclaw', 'watch'])).toEqual({ path: ['larkclaw', 'watch'], help: true, values: {}, json: false })
   expect(() => parseCommandInput(nestedSpec, ['larkclaw', 'watch', 'missing'])).toThrow(
     'Unknown subcommand "larkclaw watch missing"',
   )
@@ -309,7 +285,7 @@ test('CommandRegistry registers commands and renders all prompts', () => {
 })
 
 test('CommandRegistry rejects names reserved for shell and system commands', () => {
-  const registry = new CommandRegistry()
+  const registry = new CommandRegistry(RESERVED_COMMAND_NAMES)
   for (const name of reservedCommandNames) {
     expect(() => registry.register({ ...filerSpec, name })).toThrow('reserved for shell/system commands')
   }
@@ -324,27 +300,28 @@ test('CommandRegistry rejects command names that are unsafe as CLI path segments
     registry.register({
       name: 'safe-root',
       summary: 'x',
-      subcommands: [{ name: '../escape', summary: 'x', run: () => ({ exitCode: 0 }) }],
+      subcommands: [{ name: '../escape', summary: 'x', kind: 'rpc', run: () => ({ exitCode: 0 }) }],
     }),
   ).toThrow('has invalid name')
 })
 
-test('CommandRegistry rejects empty nodes and dead fields', () => {
+test('CommandRegistry rejects empty groups, handlerless leaves, and dangling field references', () => {
   const registry = new CommandRegistry()
-  expect(() => registry.register({ name: 'empty', summary: 'x' })).toThrow('must have run() and/or subcommands')
+  expect(() => registry.register({ name: 'empty', summary: 'x', subcommands: [] })).toThrow('has no subcommands')
   expect(() =>
-    registry.register({
-      name: 'dead',
-      summary: 'x',
-      subcommands: [{ name: 'c', summary: 'c', run: () => ({ exitCode: 0 }) }],
-      successOutput: 'nope',
-    }),
-  ).toThrow('sets successOutput without run()')
+    registry.register({ name: 'noRun', summary: 'x', kind: 'rpc', run: undefined as unknown as () => { exitCode: number } }),
+  ).toThrow('has no run()')
+  expect(() =>
+    registry.register({ name: 'noModule', summary: 'x', kind: 'runtime', module: undefined as unknown as RuntimeModule }),
+  ).toThrow('has no module text')
+  expect(() =>
+    registry.register({ name: 'dangling', summary: 'x', kind: 'rpc', positionals: ['nope'], run: () => ({ exitCode: 0 }) }),
+  ).toThrow('positional "nope" is not in input')
   // With help moved to --help, 'prompt' is an ordinary (legal) child name.
   registry.register({
     name: 'okprompt',
     summary: 'x',
-    subcommands: [{ name: 'prompt', summary: 'fine', run: () => ({ exitCode: 0 }) }],
+    subcommands: [{ name: 'prompt', summary: 'fine', kind: 'rpc', run: () => ({ exitCode: 0 }) }],
   })
   expect(registry.get('okprompt')).not.toBeNull()
 })
@@ -370,7 +347,7 @@ test('runRegisteredCommand executes nested leaves and renders help at any group'
     const io = new MemoryIO()
     const result = await runRegisteredCommand(nestedSpec, {
       argv,
-      stdin: stdinOf(stdin),
+      stdin: bytesStream(encodeUtf8(stdin)),
       env: {},
       cwd: '/workspace',
       io,
@@ -390,7 +367,7 @@ test('runRegisteredCommand executes nested leaves and renders help at any group'
   expect(help.io.stdoutText()).toContain('larkclaw watch create')
 })
 
-test('runRegisteredCommand runs bare roots and dual-mode parents', async () => {
+test('runRegisteredCommand runs bare leaf roots', async () => {
   const bareIO = new MemoryIO()
   const bare = await runRegisteredCommand(bareLeaf, {
     argv: ['kcenv', 'HOME'],
@@ -403,27 +380,25 @@ test('runRegisteredCommand runs bare roots and dual-mode parents', async () => {
   expect(bare.exitCode).toBe(0)
   expect(bareIO.stdoutText()).toBe('HOME')
 
-  const parentIO = new MemoryIO()
-  await runRegisteredCommand(dualMode, {
-    argv: ['tool', '--x', '3'],
-    env: {},
-    cwd: '/',
-    io: parentIO,
-    storage: memoryStorage(),
-    host: testHost,
-  })
-  expect(parentIO.stdoutText()).toBe('parent x=3')
+})
 
-  const childIO = new MemoryIO()
-  await runRegisteredCommand(dualMode, {
-    argv: ['tool', 'sub', '--y', '4'],
-    env: {},
-    cwd: '/',
-    io: childIO,
-    storage: memoryStorage(),
-    host: testHost,
+test('cancellation during hint registration clears the hint without entering the leaf', async () => {
+  const ready = deferred<void>()
+  const entered = deferred<void>()
+  const controller = new AbortController()
+  const hints: (string | undefined)[] = []
+  let ran = false
+  const command: Command = { name: 'attend', summary: 'Wait.', kind: 'rpc', runningHint: 'attending', run: () => { ran = true; return { exitCode: 0 } } }
+  const run = runRegisteredCommand(command, {
+    argv: ['attend'], env: {}, cwd: '/', host: testHost, io: new MemoryIO(), signal: controller.signal,
+    onRunningHint: async (hint) => { hints.push(hint); if (hint !== undefined) { entered.resolve(); await ready.promise } },
   })
-  expect(childIO.stdoutText()).toBe('child y=4')
+  await entered.promise
+  controller.abort()
+  ready.resolve()
+  await expect(run).rejects.toThrow('Aborted')
+  expect(ran).toBe(false)
+  expect(hints).toEqual(['attending', undefined])
 })
 
 test('runRegisteredCommand validates JSON output when --json is set', async () => {
@@ -476,7 +451,6 @@ test('runRegisteredCommand rejects JSON mode when the command has no JSON output
   await expect(
     runRegisteredCommand(filerSpec, {
       argv: ['filer', 'create', 'src/foo.ts', '--json'],
-      stdin: stdinOf(''),
       env: {},
       cwd: '/workspace',
       io,
@@ -588,10 +562,11 @@ function memoryStorage(): CommandStorage {
 function filerSpecWithListOutput(output: string): Command {
   return {
     ...filerSpec,
-    subcommands: filerSpec.subcommands!.map((subcommand) =>
+    subcommands: (filerSpec as CommandGroup).subcommands.map((subcommand): Command =>
       subcommand.name === 'list'
         ? {
             ...subcommand,
+            kind: 'rpc',
             run: async ({ io }) => {
               await io.stdout(output)
               return { exitCode: 0 }

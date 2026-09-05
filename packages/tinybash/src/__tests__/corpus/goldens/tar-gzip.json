@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "notes.txt\nsrc/lib/\nsrc/lib/.hidden\nsrc/lib/deep.ts\nalpha\nbeta\ngamma\nbeta\ndelta\ndeep\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

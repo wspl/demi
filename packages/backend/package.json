@@ -1,0 +1,60 @@
+{
+  "name": "@demicodes/backend",
+  "description": "Demi backend: the hosted multi-user chat product's server \u2014 conversations, LLM module, runner management, vault, accounting.",
+  "version": "0.20.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "bin": {
+    "demi-backend": "./dist/main.mjs"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/agent": "workspace:^",
+    "@demicodes/coding-agent": "workspace:^",
+    "@demicodes/command-loader": "workspace:^",
+    "@demicodes/core": "workspace:^",
+    "@demicodes/host-remote": "workspace:^",
+    "@demicodes/host-virtual": "workspace:^",
+    "@demicodes/provider": "workspace:^",
+    "@demicodes/provider-anthropic-api": "workspace:^",
+    "@demicodes/provider-claude-code": "workspace:^",
+    "@demicodes/provider-codex": "workspace:^",
+    "@demicodes/provider-google": "workspace:^",
+    "@demicodes/provider-grok-build": "workspace:^",
+    "@demicodes/provider-openai-api": "workspace:^",
+    "@demicodes/runner-protocol": "workspace:^",
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/utils": "workspace:^",
+    "hono": "^4.13.5",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@demicodes/runner": "workspace:^"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/backend"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/backend#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

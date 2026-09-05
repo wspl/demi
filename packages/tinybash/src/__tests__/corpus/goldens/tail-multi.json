@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "==> notes.txt <==\ndelta\n\n==> numbers.txt <==\n2\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

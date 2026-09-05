@@ -38,6 +38,13 @@ export function dirnamePath(path: string): string {
   return normalized.slice(0, index)
 }
 
+/** The last component of a path, trailing slashes ignored (POSIX `basename`: `/` stays `/`). */
+export function basenamePath(path: string): string {
+  const trimmed = path.replace(/\/+$/, '')
+  if (trimmed === '') return path.startsWith('/') ? '/' : ''
+  return trimmed.slice(trimmed.lastIndexOf('/') + 1)
+}
+
 /** Whether a path is absolute (leading `/` or a `DRIVE:` prefix). */
 export function isAbsolutePath(path: string): boolean {
   return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)

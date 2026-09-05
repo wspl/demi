@@ -1,9 +1,11 @@
+import { memoryAgentStores } from '../testing'
 import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
 import type { ModelSelection } from '@demicodes/core'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { AgentServer, type AgentHarness, type ClientSessionEvent } from '../index'
@@ -41,6 +43,7 @@ function routedHarness(hosts: Awaited<ReturnType<typeof createHosts>>): AgentHar
   return {
     name: 'host-routing-test',
     initialState: () => ({}),
+    commands: () => [probeCommand()],
     host: (ctx) => {
       if (!('metadata' in ctx)) return hosts.base
       const identity = ctx.metadata?.identity
@@ -67,7 +70,7 @@ test('action metadata switches Host while the same Host keeps its shell state', 
         [events.text('done'), events.response()],
       ]),
   })
-  const server = new AgentServer({ agent: routedHarness(hosts), providers: [provider] })
+  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: hostlessShellFactory, agent: routedHarness(hosts), providers: [provider] })
   const client = server.client()
   const shellOutputs: ClientSessionEvent[] = []
   client.subscribe((event) => {
@@ -97,7 +100,7 @@ test('a command handle cannot be controlled from another action Host', async () 
       new StubProvider([
         [
           events.toolCall('alice-running', 'shell_exec', {
-            script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
+            script: 'probe stdin',
             timeoutMs: 1,
           }),
         ],
@@ -106,7 +109,8 @@ test('a command handle cannot be controlled from another action Host', async () 
   })
   const commandId = 'alice-command'
   let commandIndex = 0
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
+    shellEnvironment: hostlessShellFactory,
     agent: routedHarness(hosts),
     providers: [provider],
     shell: { commandIdFactory: () => (commandIndex++ === 0 ? commandId : `${commandId}-${commandIndex}`) },
@@ -121,50 +125,6 @@ test('a command handle cannot be controlled from another action Host', async () 
   await expect(
     client.shellWrite(commandId, 'right\n', { metadata: { identity: 'alice' } }),
   ).resolves.toBeUndefined()
-
-  await client.close()
-  await server.close()
-})
-
-test('runCommandLine follows its source shell after the current action switches Host', async () => {
-  const hosts = await createHosts()
-  const originCommand: Command = {
-    name: 'origin',
-    summary: 'print the command Host cwd',
-    run: async ({ host, io }) => {
-      await io.stdout(host.defaultCwd)
-      return { exitCode: 0 }
-    },
-  }
-  const provider = defineProvider({
-    id: 'stub',
-    displayName: 'Stub',
-    createRuntime: () =>
-      new StubProvider([
-        [events.toolCall('alice-shell', 'shell_exec', { script: 'printf alice', timeoutMs: 1_000 })],
-        [events.text('done'), events.response()],
-        [events.toolCall('bob-shell', 'shell_exec', { script: 'printf bob', timeoutMs: 1_000 })],
-        [events.text('done'), events.response()],
-      ]),
-  })
-  const shellIds = ['alice-shell', 'bob-shell', 'bridge-shell']
-  const harness = routedHarness(hosts)
-  harness.commands = () => [originCommand]
-  const server = new AgentServer({
-    agent: harness,
-    providers: [provider],
-    shell: { shellIdFactory: () => shellIds.shift() ?? globalThis.crypto.randomUUID() },
-  })
-  const client = server.client()
-  await client.open(selection, hosts.base.defaultCwd, globalThis.crypto.randomUUID())
-  await client.send([{ type: 'text', text: 'alice' }], { metadata: { identity: 'alice' } })
-  await client.send([{ type: 'text', text: 'bob' }], { metadata: { identity: 'bob' } })
-
-  const result = await server.runCommandLine('alice-shell', 'origin', [], {
-    cwd: hosts.paths.alice,
-    stdin: '',
-  })
-  expect(result.stdout).toBe(hosts.paths.alice)
 
   await client.close()
   await server.close()

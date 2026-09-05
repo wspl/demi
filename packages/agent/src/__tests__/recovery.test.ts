@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { StubProvider, events } from '@demicodes/provider/testing'
-import { findResumePoint } from '../recovery'
+import { findResumePoint } from '../session/recovery'
 import { createSession, createRuntime, makeTranscript, model, text } from './helpers'
 
 type Leftover = 'text' | 'thinking' | 'toolCall' | 'toolCallPending' | 'response' | 'error' | 'abort'

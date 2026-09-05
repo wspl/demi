@@ -1,0 +1,7 @@
+{
+  "exit": 2,
+  "stdout": "src:\nlib\nmain.ts\nutil.ts\n",
+  "stderr": "ls: cannot access 'nofile': No such file or directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

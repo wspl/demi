@@ -1,8 +1,10 @@
+import { memoryAgentStores } from '../testing'
 import { expect, test } from 'bun:test'
+import { hostlessShellFactory } from '@demicodes/host-virtual/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -15,7 +17,7 @@ import {
   type JsonWebSocket,
   type ServerFrame,
 } from '../index'
-import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../session/compaction'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -113,7 +115,8 @@ test('WebSocket transports serialize frames as JSON text messages and preserve b
 test('WebSocket transports carry AgentClient and AgentServer traffic end to end', async () => {
   const [clientSocket, serverSocket] = createSocketPair()
 
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('ws-stub', () => new StubProvider([[events.text('over websocket'), events.response()]]))],
   })
@@ -135,7 +138,8 @@ test('WebSocket transports preserve complex AgentClient action convergence', asy
   const [clientSocket, serverSocket] = createSocketPair()
   const provider = new WebSocketScenarioProvider()
 
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('ws-scenario', provider)],
   })

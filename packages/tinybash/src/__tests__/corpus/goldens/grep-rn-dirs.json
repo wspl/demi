@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "src/main.ts:1:export function main() {\nsrc/util.ts:1:export const x = 1\nsrc/util.ts:2:export const y = 2\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

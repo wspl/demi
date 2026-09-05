@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "a\na/b\na/b/c\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

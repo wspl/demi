@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "find: Unknown argument to -type: x\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

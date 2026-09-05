@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "docs/readme.md:Some text with TODO here\ndocs/readme.md:and more TODO\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

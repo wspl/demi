@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "ff FF 10 42 18446744073709551615\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

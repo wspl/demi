@@ -16,9 +16,14 @@
       "import": "./dist/client-entry.mjs"
     },
     "./stdio": {
-      "development": "./src/stdio-transport.ts",
+      "development": "./src/protocol/stdio-transport.ts",
       "types": "./dist/stdio-transport.d.mts",
       "import": "./dist/stdio-transport.mjs"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
     }
   },
   "dependencies": {
@@ -47,5 +52,8 @@
     "directory": "packages/agent"
   },
   "homepage": "https://github.com/wspl/demi/tree/main/packages/agent#readme",
-  "bugs": "https://github.com/wspl/demi/issues"
+  "bugs": "https://github.com/wspl/demi/issues",
+  "devDependencies": {
+    "@demicodes/host-virtual": "workspace:^"
+  }
 }

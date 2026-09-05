@@ -37,8 +37,8 @@ Persistent history is governed by `Block`:
 - `streamingOutput` / `output` is the tool's output text or media blocks.
 - `view` may carry bounded UI enhancement data such as a `ShellToolView` (`chunks`,
   `commandId`, status counters). The render layer may use it to enrich the display, but
-  must not treat it as the sole source of truth for full command output (that lives in
-  the command's artifact directory as plain files, see `artifactDir`).
+  must not treat it as more than the model's own view: what the model saw is what the
+  browser shows (`docs/demi-next/runner.md` § Jobs and the tee).
 
 Real-time events are governed by `ClientSessionEvent`:
 
@@ -47,8 +47,6 @@ Real-time events are governed by `ClientSessionEvent`:
   tool that is currently executing.
 - `shell_write_result` / `abort_result` are acknowledgements of user control actions;
   they do not replace the `tool_call` rendering in the transcript.
-- `audit` may surface registered-command or system-command detail inside the
-  `shell_exec` card, but must not change the standard-tool dispatch key.
 
 So the Web UI, the REPL, and future shells share the protocol and event structures, but
 not a single abstract UI-model package.
@@ -77,7 +75,7 @@ Rendering rules:
 | Tool | Render form | Title fallback | Key content | In-progress state |
 |---|---|---|---|---|
 | `shell_exec` | Terminal command block | `input.script` | The script, plus stdout/stderr terminal output interleaved in arrival order | Sweep loading; output is expandable |
-| `shell_status` | Command-status inline block | `Check <commandId>` | status, runningMs, idleMs, bytes, artifact paths; no output body; no expand panel | Sweep loading; must not masquerade as shell_exec |
+| `shell_status` | Command-status inline block | `Check <commandId>` | status, runningMs, idleMs, bytes, output paths on the target; no output body; no expand panel | Sweep loading; must not masquerade as shell_exec |
 | `shell_write` | stdin-write inline block | `Send input to <commandId>` | Preferred title states the user-visible result being advanced; no expand panel | Sweep loading; success ≠ command completion |
 | `shell_abort` | Stop-command inline block | `Stop <commandId>` | Preferred title states the user-visible state being settled; no expand panel | Sweep loading; completed/aborted are not UI errors |
 | `yield` | Wait-for-wakeup inline block | `Wait <durationMs>ms` | Preferred title states the user-visible state to observe or confirm next; no expand panel | Sweep loading consistent with thinking |
@@ -96,17 +94,18 @@ a badge or an inline summary, never behind a disclosure.
 The `shell_exec` expanded content shows only the command and the user-visible terminal
 output. That terminal output comes from the interleaved output stream in runtime/progress
 or from the auto-budgeted preview, merged into a single transcript in stdout/stderr arrival
-order; this is purely a UI/runtime rendering, distinct from the artifact files. The
-authoritative full-output read path the model sees is
-`<artifactDir>/stdout.txt` and `stderr.txt` — not `shell_status`. When an older
+order; this is purely a UI/runtime rendering. On a machine the full output lives in the
+job's output files on the target (`stdoutPath` / `stderrPath`), which the model reads with
+ordinary commands — not through `shell_status`; hostless, nothing beyond the view exists.
+When an older
 transcript lacks interleaved output it may fall back to stdout-then-stderr, but it must not
 show stderr alone, nor show protocol fields such as `status`, `shellId`, `commandId`, path,
 offset, bytes, or truncation.
 
 `shell_status` may show only a command-status summary. Even when its metadata carries
-artifact paths, byte counters, or a preview, it must not be rendered as an expandable
+output paths, byte counters, or a preview, it must not be rendered as an expandable
 terminal-output block; the user path to output content is to view the corresponding
-`shell_exec` block or to have the model read the artifact files with a shell text command.
+`shell_exec` block or to have the model read the output files with a shell text command.
 
 ## 5. Web specification
 

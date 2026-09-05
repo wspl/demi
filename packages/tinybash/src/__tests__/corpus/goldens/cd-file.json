@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "@HOME@\n",
+  "stderr": "bash: line 1: cd: notes.txt: Not a directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

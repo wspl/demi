@@ -8,10 +8,12 @@
 
 A subagent is an isolated child `AgentSession` that any session starts as a
 registered command. Sessions form a tree of arbitrary depth rooted at the
-product-facing root session: every session — root or subagent — carries the
-same `demi agent` command tree and supervises its own children. The
-model-facing tool surface stays the five standard tools. Products subscribe to
-subagent events on the same `AgentClient` connection as the root session.
+product-facing root session: every node of the tree — the root included — is
+the same kind of session, built by the same assembly, stored under the same
+contract (§ Runtime, § Persistence), carrying the same `demi agent` command
+tree and supervising its own children. The model-facing tool surface stays
+the five standard tools. Products subscribe to subagent events on the same
+`AgentClient` connection as the root session.
 
 This is not `AgentSession.clone()`. Clone copies a conversation prefix for
 compaction and recall. A subagent starts with an empty transcript.
@@ -36,7 +38,7 @@ child loses spawn, `abort`, and `resume`, and keeps `send` / `steer` /
 
 ## Topology and the agent directory
 
-Each `AgentServer` connection keeps one **agent directory**: a flat registry
+Each root session keeps one **agent directory**: a flat registry
 of every live session in the tree, keyed by session id. Each entry carries the
 parent session id, description, profile, and phase. Spawn registers, close
 unregisters.
@@ -72,7 +74,7 @@ registered `demi`, the subcommands attach to that tree; otherwise
 `AgentServer` registers a `demi` root that only contains them.
 
 ```text
-demi agent [--profile <name>] [--description <title>] [--no-subagents] [prompt]
+demi agent spawn [--profile <name>] [--description <title>] [--no-subagents] [prompt]
 demi agent abort <id>
 demi agent resume <id> [message]
 demi agent send <id|parent> [message]
@@ -81,7 +83,7 @@ demi agent show <id>
 demi agent list
 ```
 
-`demi agent` with a prompt (or stdin) starts a child and waits until that
+`demi agent spawn` with a prompt (or stdin) starts a child and waits until that
 child session ends. Stdout is the child's last assistant text. Stderr's first
 line is `subagentId: <id>`.
 
@@ -99,12 +101,11 @@ Parallel children are multiple `demi agent` invocations in separate
 status at the cap and the parent turn continues; the child keeps running.
 A short window is the idiomatic way to fan out.
 
-Spawn is a direct in-process registered command only. `demi agent … &` is
-not a spawn path: `&` host-spawns the command-bridge shim, and the bridge's
-`runCommandLine` **aborts** the invocation (and with it the child) at its
-`MAX_TIMEOUT_MS` ceiling, delivers stderr — including the `subagentId` line —
-only at exit, closes stdin immediately, and exists only on local hosts. The
-bridge stays fine for the short subcommands.
+Spawn is an `rpc` command: on a machine the command-mode process relays it
+to the backend and stays attached for its stdin (`runner.md` § The local
+relay); hostless, the backend calls it directly. `demi agent … &` is not a
+spawn path: a backgrounded job's stdin is not the tool call's, so nothing
+steers the child. The short subcommands below are fine either way.
 
 Prompt and `send` / `steer` / `resume` messages use an optional positional, or
 stdin/heredoc when the positional is omitted. An empty message fails.
@@ -186,14 +187,20 @@ reports, handing over results, and non-urgent questions.
 ### Result
 
 There is no result command. The child's natural session end (quiescent, empty
-inbox) is the result: `demi agent` exits 0 and stdout is the child's last
+inbox) is the result: `demi agent spawn` exits 0 and stdout is the child's last
 assistant text, truncated at 32 KiB. Empty last text is a valid 0 exit. A
 child `yield` keeps the spawn command running; the child is not finished.
 
-If the parent is still blocked in that `demi agent` invocation, the tool
+If the parent is still blocked in that `demi agent spawn` invocation, the tool
 result is the return path. If the parent is idle, Demi also delivers a user
 send so the parent is woken; the body carries `subagentId`, description, and
-the same result text.
+the same result text. The store records which path took the completion, so a
+process ending between the child's close and the parent's next checkpoint
+loses nothing (§ Persistence).
+
+`AgentServerOptions.subagents.notifyParentOnIdle: false` leaves root-session
+wakeups to the product. Parents inside the tree always wake on child
+completion so they can integrate the result and finish their own work.
 
 Ask-and-answer needs no live channel: a child that needs a decision ends its
 turn with the question as its last assistant text — the session closes, the
@@ -227,7 +234,7 @@ Three pulls, none of them a wait:
 
 ### `demi agent list`
 
-Renders the session tree of this connection from the root down, marking the
+Renders the session tree of this root session from the root down, marking the
 caller's own position. Live agents show phase, execution, elapsed and
 last-event ages; each node's archived children render greyed beneath it with
 their closed phase and age:
@@ -304,8 +311,6 @@ interface SubagentProfile {
   description: string
   systemPrompt?: AgentHarness<State>['systemPrompt']
   commands?(parent: Command[]): Command[]
-  /** When true, `host()` must reject writes. Command allowlists are not enough. */
-  readonly?: boolean
   /** When false, children of this profile cannot spawn subagents (communication and reads remain). */
   canSpawnSubagents?: boolean
   /** Same provider runtime as the parent (`provider.clone()`), optional model override. */
@@ -368,8 +373,9 @@ that only states a role still uses that inherited prompt unless it sets
 memory, or a roster dump. A harness that loads those for the parent (for
 example in `systemPrompt` / `preamble`) loads them for a child that inherits
 that harness. A profile that replaces `systemPrompt` opts out. Explore-style
-profiles that want a cheap, instruction-light worker replace the prompt and
-keep the Host read-only.
+profiles that want a cheap, instruction-light worker replace the prompt; a
+profile is a prompt and a command set, never a restriction the Host
+enforces.
 
 Never copied into a non-clone child:
 
@@ -393,47 +399,103 @@ parent is idle, a user send reports abort or error the same way.
 
 ## Persistence
 
-Children persist exactly like their parent. Each live child keeps a
-checkpoint and a job record under its parent's session directory, recursively:
+A session tree is stored as **nodes** in one store: the `AgentTreeStore` the
+product injects into `AgentServer`, one per root session id (the backend:
+the conversation's database, `storage.md`). A node row carries identity and
+relationship — id, `parentId` (null for the root), description, profile, the
+spawning round's metadata, spawn time, the spawn restriction, and once
+closed its phase, time and bounded result — and the node's checkpoint beside
+it: the transcript as one row per block and the state row (phase, queue,
+cwd, model, harness). Parent–child is a column, never a key path. Nothing
+about a node depends on a Host: a Host executes, the store remembers, and a
+node is readable while its target is offline.
 
 ```text
-agent-sessions/<root>/subagents/<a>/
-agent-sessions/<root>/subagents/<a>/subagents/<b>/
+conversation c1's store
+  node a1  parent=null              root: blocks, state
+  node a2  parent=a1  closed=completed  result="…"  delivered=1
+  node a3  parent=a1                live: blocks, state (queue holds its brief until the first save)
+  node a4  parent=a3                live
 ```
 
-Reopening a session restores and resumes its live children, which restore
-theirs — a tree restore. An interrupted child turn resumes from its resume
-point; a child that was already quiescent closes through the normal path.
+Three commits are atomic, whatever the store:
 
-A closed child moves to the **archive**: its transcript checkpoint stays on
-store, marked with the closed phase. Archived children are listed by
-`demi agent list` and skipped by restore. Nothing prunes the archive: an
-archived child lives exactly as long as its parent's session directory and is
-deleted only with it — a revivable id stays revivable.
-`demi agent resume <id> <message>` — the archived child's parent
-only — revives one: the session rebuilds from the preserved checkpoint and
-the message opens its next turn on top of the old transcript. From there the
-command behaves exactly like spawn (foreground job, steers via `shell_write`,
-result at exit).
+| Commit | Rows written together |
+|---|---|
+| **create** | the node row with its parent link, the initial state, and the first message — queued in the checkpoint, so a child the process loses before its first turn still has its brief |
+| **save** | the changed block rows, the state row, and the consumption of every completion message the checkpoint now carries (below) |
+| **close** | the closed phase, the time, the bounded result, and the completion marked not yet delivered |
+
+A close follows the node's final checkpoint, which its session flushes on
+dispose. A process ending between the two leaves a live node that is
+quiescent — idle, empty inbox, no live children — and the next restore
+closes it with the same result, so the two orders cannot be told apart.
+
+**Completion delivery.** A closed child's result reaches its parent on one
+of three paths, and the store records that it has: the parent was busy with
+the spawn command still awaiting the child in this process, and that
+command's exit carries the result; the product took it from the `closed`
+frame (`notifyParentOnIdle: false`, root level only); otherwise the parent
+receives a user message whose id names the child — now if idle, at its next
+turn boundary if busy — and the parent's save that carries that message,
+queued or as its user turn, marks the completion delivered in the same
+commit. A restore delivers every completion still marked undelivered as that
+message, and closes a quiescent live child the same way. A completion is
+therefore never lost between the child's close and the parent's next
+checkpoint, and never delivered twice.
+
+**Restore.** Reopening a root node restores its live children, each of
+which restores its own — a tree restore, one rule per node: a turn the
+process interrupted resumes from its resume point (`session/recovery.ts`);
+the messages queued in the checkpoint are re-enqueued in order; a child that
+is quiescent closes with its result. Live nodes come back with the metadata
+of the round that spawned them. The root's interrupted turn is its client's
+to resume (`resume`); its queued messages run.
+
+A closed child is **archived**: its rows stay, marked with the closed phase.
+Archived children are listed by `demi agent list` and skipped by restore.
+Nothing prunes the archive: an archived child lives exactly as long as its
+root and is deleted only with it — a revivable id stays revivable.
+`demi agent resume <id> <message>` — the archived child's parent only —
+revives one in one commit: the node row is live again with this round's
+metadata and a fresh spawn time, and the message is queued in the
+checkpoint; the session rebuilds from the preserved transcript and the
+message opens its next turn on top of it. From there the command behaves
+exactly like spawn (foreground job, steers via `shell_write`, result at
+exit).
 
 ## Runtime
 
-`AgentServer` is the only place that instantiates `AgentSession`. Every
-session owns a supervisor for its direct children; the connection owns the
-agent directory:
+Every agent is one kind of node, built by one assembly
+(`packages/agent/src/node/`): the same `AgentSession`, the same store
+contract, the same standard tools over per-Host shell environments with
+handle ownership checks, the same supervisor for its own children, the same
+`demi agent` command tree, the same events. Parent–child is a relationship
+the supervisor manages — delegation, messages, result delivery — never a
+second runtime; the supervisor asks the assembly for a node and never builds
+one itself. What differs between nodes is configuration: the prompt (a
+profile's or the parent's, the subagent preamble on top), the model
+(`profile.model` or the parent's), the commands (`profile.commands` over the
+parent's), the spawn restriction, and the **lifecycle policy** — a child
+resumes its interrupted turn on restore and closes when quiescent; the root
+leaves both to its client. The policy is a node option, not a depth.
 
-- `provider.clone()`, empty transcript, checkpoint under the parent's session
-  directory (not listed by `listConversations`)
-- inherit spawner cwd and the current action's `metadata` (Host routing)
-- at most `maxLiveSubagents` running children per session — an `AgentServer`
+- the provider runtime is `provider.clone()` of the parent's; the transcript
+  starts empty
+- a node inherits the spawner's cwd and the current action's `metadata`
+  (Host routing); every node resolves its Host as the root, since the
+  execution target is the conversation's
+- at most `maxLiveSubagents` running children per node — an `AgentServer`
   assembly option (default 8), one value for every supervisor in the tree,
   not a CLI flag; spawn and `resume` fail when full
+- `tools.shellPreviewBudgetTokens` applies to every descendant using that
+  node's current model context window
 - dispose detaches the subtree without closing it (checkpoints flush; the
   next open restores); abort closes it
 
 ### Registered commands as foreground jobs
 
-`demi agent` is a long-running in-process command. Registered commands use
+`demi agent spawn` is a long-running RPC command. Registered commands use
 the same control surface as host processes:
 
 - `CommandRunContext.signal` is the job abort signal
@@ -525,11 +587,12 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
 | Package | Role |
 |---|---|
 | `@demicodes/shell` | Foreground registered commands (signal, live IO, stdin stream) |
-| `@demicodes/agent` | Supervisors, agent directory, `demi agent` injection, protocol frames, child `AgentSession` |
-| `@demicodes/coding-agent` | Optional named profile (`explore` read-only Host) |
+| `@demicodes/agent` | The node assembly, supervisors, agent directory, `demi agent` injection, protocol frames, the `AgentTreeStore` contract |
+| `@demicodes/backend` | The `AgentTreeStore` over `conversations/<id>.sqlite` |
+| `@demicodes/coding-agent` | Optional named profile (`explore`) |
 | harness / product | Extra profiles, Host wrapping, UI over `AgentClient` |
 
-`@demicodes/coding-agent` does not instantiate `AgentSession`.
+Only the node assembly instantiates `AgentSession`.
 
 ## Non-goals
 
@@ -541,7 +604,7 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
   it does not turn subagents into daemons that idle waiting for mail
 - Synchronous messaging (`send --wait`, request/response): fire-and-forget
   only; ask-and-answer is close + `resume`
-- Cross-connection addressing: the directory scopes one root connection
+- Cross-root addressing: the directory scopes one root session
 - Cross-agent lifecycle authority (steering is talking; killing and reviving
   stay with the parent)
 - `demi agent wait` / `result` (blocking spawn, `shell_status` / `yield`, and
@@ -561,11 +624,21 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
   empty last text exits 0, `subagent*` protocol frames from nested depths,
   inherited vs replaced `systemPrompt` with unknown-profile rejection,
   spawn restriction (`--no-subagents` and profile `canSpawnSubagents: false`)
-  with communication intact,
+  with communication intact across archive/reopen/resume, descendant prompt/model
+  inheritance after command filtering, recursive shell preview budget propagation,
   `resume` on the preserved transcript, list tree rendering
-  with self marker, parent close detaches (not aborts) live children
-- `packages/shell/src/__tests__/foreground-command.test.ts` — registered command abort
+  with self marker, parent close detaches (not aborts) live children, the
+  three commits across a restart: a child lost before its first save runs
+  its brief, a close whose wakeup was not committed is delivered once at
+  restore, a quiescent live child closes at restore
+- `packages/agent/src/__tests__/tree-store.test.ts` — the store contract
+  over the in-memory realization: create with the queued brief, save marking
+  a carried completion delivered, close and reopen, delete with descendants
+- `packages/backend/src/__tests__/storage.test.ts` — the SQLite realization:
+  the same contract over the conversation database, media by reference, the
+  cold transcript read of the root node
+- `packages/host-virtual/src/__tests__/hostless-environment.test.ts` — registered command abort
   signal, live stdout, `shell_write` as stdin stream, byte-clean pipes around
   a virtual foreground job
-- `packages/coding-agent/src/__tests__/coding-harness.test.ts` — `default` / `explore`
+- `packages/coding-agent/src/__tests__/coding-harness.test.ts` — unnamed inherit / `explore`
   profiles and the injected `demi agent` prompt-field help

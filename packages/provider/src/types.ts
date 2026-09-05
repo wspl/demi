@@ -273,6 +273,14 @@ export interface Provider {
   quota?: ProviderQuota
   /** Optional multi-credential pool + global active switch. */
   credentials?: ProviderCredentials
+  /**
+   * The provider's transport spawns a real process on the session's execution
+   * target (e.g. a CLI transport). Hosts without real process execution (a
+   * virtual filesystem target) must refuse such a provider with guidance to
+   * switch to a process-capable target — gate on this flag, never on provider
+   * ids. Unset means no requirement.
+   */
+  requiresProcessCapableHost?: boolean
   state?(): Promise<ProviderRuntimeState> | ProviderRuntimeState
   listModels?(): Promise<ProviderModelList> | ProviderModelList
 }

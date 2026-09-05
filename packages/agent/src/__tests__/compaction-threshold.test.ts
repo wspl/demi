@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { resolveCompactionThreshold } from '../compaction-support'
+import { resolveCompactionThreshold } from '../session/compaction'
 
 test('resolveCompactionThreshold uses ratio when absolute tokens are unset', () => {
   expect(resolveCompactionThreshold(272_000, 0.8, null)).toBe(217_600)

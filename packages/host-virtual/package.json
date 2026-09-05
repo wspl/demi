@@ -1,0 +1,53 @@
+{
+  "name": "@demicodes/host-virtual",
+  "description": "The hostless execution target: the store-backed Host and its shell environment (tinybash), with the Node filesystem under /node and the test fixtures under /testing.",
+  "version": "0.20.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./node": {
+      "development": "./src/node.ts",
+      "types": "./dist/node.d.mts",
+      "import": "./dist/node.mjs"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.mts",
+      "import": "./dist/testing.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@demicodes/shell": "workspace:^",
+    "@demicodes/tinybash": "workspace:^",
+    "@demicodes/utils": "workspace:^"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/host-virtual"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/host-virtual#readme",
+  "bugs": "https://github.com/wspl/demi/issues",
+  "devDependencies": {
+    "@demicodes/command-loader": "workspace:^",
+    "zod": "^4.0.0"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "cp: -r not specified; omitting directory 'src'\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

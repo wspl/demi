@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test'
+import { CommandRegistry } from '@demicodes/shell'
 import { waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentSession, createStandardAgentTools, type AgentHarnessRuntime } from '@demicodes/agent'
-import { BashEnvironment } from '@demicodes/shell'
-import { LocalHost } from '@demicodes/host-local'
+import { hostlessShell } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -92,6 +93,8 @@ test('Claude Code public provider reports auth via credential store and defers r
     message: 'Runtime is checked when a Claude Code request runs',
   })
   expect(provider.credentials).toBeDefined()
+  // The CLI transport needs a process-capable execution target.
+  expect(provider.requiresProcessCapableHost).toBe(true)
 })
 
 test('ClaudeCodeProvider streams text and response events from transport messages', async () => {
@@ -863,8 +866,9 @@ test('ClaudeCodeProvider integrates with AgentSession and shell tools for contro
     { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
   ])
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
-  const environment = new BashEnvironment({
+  const environment = await hostlessShell({
     host: new LocalHost(process.cwd()),
+    commands: new CommandRegistry(),
     shellIdFactory: () => 'claude-shell-session',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })
@@ -915,8 +919,9 @@ test('ClaudeCodeProvider keeps repeated MCP request ids distinct in AgentSession
     { type: 'result', usage: { input_tokens: 4, output_tokens: 2 } },
   ])
   const provider = new ClaudeCodeProvider({ transportFactory: fakeFactory(transport) })
-  const environment = new BashEnvironment({
+  const environment = await hostlessShell({
     host: new LocalHost(process.cwd()),
+    commands: new CommandRegistry(),
     shellIdFactory: () => 'claude-repeated-id-shell',
     initialEnv: { PATH: process.env.PATH ?? '' },
   })

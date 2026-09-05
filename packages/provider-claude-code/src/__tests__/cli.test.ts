@@ -33,6 +33,24 @@ test('buildClaudeArgs and env match the planned CLI contract', () => {
   expect(env.CLAUDECODE).toBeUndefined()
 })
 
+test('buildClaudeEnv public overlay is applied last and wins over the OAuth token', () => {
+  const env = buildClaudeEnv(
+    { PATH: '/bin' },
+    {
+      oauthAccessToken: 'vault-token',
+      overlay: {
+        ANTHROPIC_BASE_URL: 'http://backend/passthrough',
+        CLAUDE_CODE_OAUTH_TOKEN: 'runner-token',
+        MAX_MCP_OUTPUT_TOKENS: '5',
+      },
+    },
+  )
+  expect(env.ANTHROPIC_BASE_URL).toBe('http://backend/passthrough')
+  expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('runner-token')
+  expect(env.MAX_MCP_OUTPUT_TOKENS).toBe('5')
+  expect(env.PATH).toBe('/bin')
+})
+
 test('buildClaudeArgsForRequest maps summary thinking effort to CLI args', () => {
   const args = buildClaudeArgsForRequest({
     sessionId: 'test-session',

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { SessionEvent } from '../types'
-import { DEFAULT_TURN_RETRY_POLICY, isRetryableCode, retryDelayMs, resolveRetryPolicy } from '../retry-policy'
+import { DEFAULT_TURN_RETRY_POLICY, isRetryableCode, retryDelayMs, resolveRetryPolicy } from '../session/retry-policy'
 import { createSession, createRuntime, text } from './helpers'
 
 const fastRetry = { baseDelayMs: 1, maxDelayMs: 2 }

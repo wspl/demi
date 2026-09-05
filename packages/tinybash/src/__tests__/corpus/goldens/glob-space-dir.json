@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "space dir/a file.txt\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

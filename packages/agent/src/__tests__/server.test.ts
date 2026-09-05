@@ -1,12 +1,14 @@
+import { MemoryAgentStore } from '../testing'
 import { access, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { type ShellEnvironmentOptions } from '@demicodes/shell'
+import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
-import type { AgentHarness, AgentSessionCheckpoint } from '@demicodes/agent'
-import type { BashEnvironmentOptions } from '@demicodes/shell'
-import { LocalHost } from '@demicodes/host-local'
+import type { AgentHarness } from '@demicodes/agent'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import {
   defineProvider,
   type AgentProvider,
@@ -22,6 +24,7 @@ import {
   AgentClient,
   AgentServer,
   ProviderStreamError,
+  createInProcessTransportPair,
   type ClientSessionEvent,
 } from '../index'
 
@@ -114,9 +117,9 @@ test('AgentClient clears its local transcript view when the session is closed', 
   expect(client.transcript().blocks).toEqual([])
 })
 
-test('AgentServer persists session snapshots through Host.store', async () => {
+test('AgentServer persists the root as a node with its journal in the tree store', async () => {
   const root = await mkdtemp(join(tmpdir(), 'demi-agent-server-store-'))
-  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
+  const host = new LocalHost(root)
   const harness: AgentHarness<Record<string, never>> = {
     name: 'stored-session',
     initialState: () => ({}),
@@ -124,22 +127,20 @@ test('AgentServer persists session snapshots through Host.store', async () => {
     systemPrompt: () => 'system',
   }
   const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('stored'), events.response()]]
-  const { client } = createAgentClientHarness({ harness, providerTurns: turns })
+  const { client, store } = createAgentClientHarness({ harness, providerTurns: turns })
+  const id = globalThis.crypto.randomUUID()
 
-  await client.open(providerConfig(turns), root, globalThis.crypto.randomUUID())
+  await client.open(providerConfig(turns), root, id)
   await client.send([{ type: 'text', text: 'persist me' }])
   await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
 
-  const keys = await host.store.list('agent-sessions')
-  expect(keys).toHaveLength(1)
-  expect(keys[0]).toEndWith('/checkpoint.json')
-  const snapshot = await host.store.readJson<AgentSessionCheckpoint<Record<string, never>>>(keys[0])
-  expect(snapshot).toMatchObject({
-    cwd: root,
-    harnessName: 'stored-session',
-    phase: 'running',
-  })
-  expect(snapshot?.transcript.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  // The root is a node row — no parent — and its journal: one row per block, the state beside them,
+  // which says the turn ended.
+  expect(await store.node(id)).toMatchObject({ id, parentId: null, closedPhase: null })
+  const stored = store.nodes.get(id)
+  expect(stored?.blockCount).toBe(3)
+  expect(stored?.state).toMatchObject({ cwd: root, harnessName: 'stored-session', phase: 'idle' })
+  expect((await store.sessionStore(id).load())?.transcript.blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 
 test('AgentServer resumes a conversation by session id and restores its transcript', async () => {
@@ -191,7 +192,7 @@ test('AgentServer renders registered command help into the harness system prompt
       {
         name: 'greet',
         summary: 'Greets the caller.',
-        subcommands: [{ name: 'hello', summary: 'Say hello.', run: () => ({ exitCode: 0 }) }],
+        subcommands: [{ name: 'hello', summary: 'Say hello.', kind: 'rpc', run: () => ({ exitCode: 0 }) }],
       },
     ],
     systemPrompt: (ctx) => {
@@ -209,39 +210,6 @@ test('AgentServer renders registered command help into the harness system prompt
   expect(seenCommandsPrompt ?? '').toContain('greet: Greets the caller.')
   expect(seenCommandsPrompt ?? '').toContain('greet hello')
   await client.close()
-})
-
-test('AgentServer lists persisted conversations for a workspace, server-side', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'demi-agent-list-'))
-  const host = new LocalHost(root, { storeRoot: join(root, '.host-store') })
-  const harness: AgentHarness<Record<string, never>> = {
-    name: 'listable',
-    initialState: () => ({}),
-    host: () => host,
-    systemPrompt: () => 'system',
-  }
-  const turns: ConstructorParameters<typeof StubProvider>[0] = [[events.text('ok'), events.response()]]
-  const { client, server } = createAgentClientHarness({ harness, providerTurns: turns })
-
-  await client.open(providerConfig(turns), root, 'c1')
-  await client.send([{ type: 'text', text: 'first conversation' }])
-  await waitFor(() => client.transcript().blocks.some((block) => block.type === 'response'))
-  await client.close()
-
-  const c2 = server.client()
-  await c2.open(providerConfig(turns), root, 'c2')
-  await c2.send([{ type: 'text', text: 'second conversation' }])
-  await waitFor(() => c2.transcript().blocks.some((block) => block.type === 'response'))
-  await c2.close()
-
-  // Listing reads from the store, not from any client — no open session needed.
-  const lister = server.client()
-  const conversations = await lister.listConversations(root)
-  expect(conversations.map((conversation) => conversation.id).sort()).toEqual(['c1', 'c2'])
-  expect(conversations.find((conversation) => conversation.id === 'c1')?.title).toBe('first conversation')
-  expect(conversations.find((conversation) => conversation.id === 'c2')?.title).toBe('second conversation')
-  expect(await lister.listConversations('/elsewhere')).toEqual([])
-  await lister.close()
 })
 
 test('AgentServer forwards provider error codes once and preserves the transcript error block', async () => {
@@ -285,14 +253,14 @@ test('AgentServer forwards provider error codes once and preserves the transcrip
   })
 })
 
-test('AgentServer maps shell tool progress into shell_output and audit frames', async () => {
+test('AgentServer maps shell tool progress into shell_output frames', async () => {
   const { client } = createAgentClientHarness({
     shell: {
       initialEnv: { PATH: process.env.PATH ?? '' },
       shellIdFactory: () => 'agent-shell',
     },
     providerTurns: [
-      [events.toolCall('tool-1', 'shell_exec', { script: 'sh -c "printf hi"', timeoutMs: 1_000 })],
+      [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi', timeoutMs: 1_000 })],
       [events.text('done'), events.response()],
     ],
   })
@@ -300,7 +268,7 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
   client.subscribe((event) => seen.push(event))
 
   await client.open(providerConfig([
-      [events.toolCall('tool-1', 'shell_exec', { script: 'sh -c "printf hi"', timeoutMs: 1_000 })],
+      [events.toolCall('tool-1', 'shell_exec', { script: 'printf hi', timeoutMs: 1_000 })],
       [events.text('done'), events.response()],
     ]),
     process.cwd(),
@@ -316,7 +284,6 @@ test('AgentServer maps shell tool progress into shell_output and audit frames', 
     commandId: expect.any(String),
     status: { stdout: { delta: 'hi' } },
   })
-  expect(seen.some((event) => event.type === 'audit')).toBe(true)
 })
 
 test('AgentServer bridges shell_write frames to the active shell command', async () => {
@@ -329,7 +296,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
+          script: 'probe stdin',
           timeoutMs: 1,
         }),
       ],
@@ -342,7 +309,7 @@ test('AgentServer bridges shell_write frames to the active shell command', async
   await client.open(providerConfig([
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c \'IFS= read -r line; printf %s "$line"\'',
+          script: 'probe stdin',
           timeoutMs: 1,
         }),
       ],
@@ -366,7 +333,6 @@ test('AgentServer bridges shell_write frames to the active shell command', async
       status: 'running',
       shellId: 'agent-input-shell',
       commandId: 'agent-input-command',
-      artifactDir: expect.any(String),
       stdout: expect.objectContaining({ delta: '', truncated: false }),
       stderr: expect.objectContaining({ delta: '', tail: '', bytes: 0, truncated: false }),
       output: expect.objectContaining({ chunks: expect.any(Array) }),
@@ -395,7 +361,7 @@ test('AgentClient.shellWrite waits for shell_write_result and rejects when no se
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c \'IFS= read -r line; sleep 0.05; printf %s "$line"\'',
+          script: 'probe stdin --delay 50',
           timeoutMs: 1,
         }),
       ],
@@ -406,7 +372,7 @@ test('AgentClient.shellWrite waits for shell_write_result and rejects when no se
   const turns: ConstructorParameters<typeof StubProvider>[0] = [
     [
       events.toolCall('tool-1', 'shell_exec', {
-        script: 'sh -c \'IFS= read -r line; sleep 0.05; printf %s "$line"\'',
+        script: 'probe stdin --delay 50',
         timeoutMs: 1,
       }),
     ],
@@ -478,6 +444,8 @@ test('AgentServer queues send frames while the session is busy and drains them i
   const gate = deferred<void>()
   const provider = new DelayedProvider(gate.promise)
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('delayed', provider)],
   })
@@ -519,6 +487,8 @@ test('AgentServer queues send frames while the session is busy and drains them i
 test('AgentClient.steer resolves correlated accepted acks and receives transcript patches without queueing', async () => {
   const provider = new ServerGateProvider({ supportsSteer: true })
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-steerable', provider)],
   })
@@ -571,6 +541,8 @@ test('AgentClient.steer rejects when no session is open and does not create tran
 test('AgentClient.steer accepts active provider without native steer and materializes at the continuation boundary', async () => {
   const provider = new ServerGateProvider({ supportsSteer: false })
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-no-native-steer', provider)],
   })
@@ -623,6 +595,8 @@ test('AgentClient.steer accepts active provider without native steer and materia
 test('AgentClient.cancelPendingSteer removes an accepted steer before transcript materialization', async () => {
   const provider = new ServerGateProvider({ supportsSteer: false })
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('server-cancel-pending-steer', provider)],
   })
@@ -658,6 +632,8 @@ test('AgentClient.cancelPendingSteer removes an accepted steer before transcript
 
 test('AgentClient.cancelPendingSteer is silent without an open session', async () => {
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [],
   })
@@ -677,6 +653,8 @@ test('AgentServer rejects retry, resume, and compact frames while the session is
   const gate = deferred<void>()
   const provider = new DelayedProvider(gate.promise)
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('delayed-rejects', provider)],
   })
@@ -707,6 +685,8 @@ test('AgentClient resolves each queued send promise on its own phase cycle', asy
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -759,6 +739,8 @@ test('AgentClient.dequeueMessage resolves the removed queued send without runnin
   const gates = [deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -798,6 +780,8 @@ test('AgentClient.sendQueuedMessage moves a queued send to the next phase cycle'
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -849,6 +833,8 @@ test('AgentClient.steerQueuedMessage converts a queued send into an active steer
   const gates = [deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -899,6 +885,8 @@ test('AgentClient.clearMessageQueue resolves queued sends without canceling the 
   const gates = [deferred<void>(), deferred<void>(), deferred<void>()]
   const provider = new SequencedDelayedProvider(gates.map((gate) => gate.promise))
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('sequenced-delayed', provider)],
   })
@@ -943,6 +931,8 @@ test('AgentClient rejects only the active action when queued sends continue afte
   const successGate = deferred<void>()
   const provider = new ErrorThenDelayedProvider(errorGate.promise, successGate.promise)
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('error-then-delayed', provider)],
   })
@@ -978,6 +968,8 @@ test('AgentClient rejects only the active action when queued sends continue afte
 test('AgentClient.abort returns false while idle and true after aborting active work', async () => {
   const provider = new AbortAwareProvider()
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('abort-aware', provider)],
   })
@@ -996,6 +988,8 @@ test('AgentClient.abort returns false while idle and true after aborting active 
 test('AgentServer aborts the active session when a close frame is received', async () => {
   const provider = new AbortAwareProvider()
   const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
     agent: createTextHarness(),
     providers: [runtimeProvider('abort-aware', provider)],
   })
@@ -1026,7 +1020,7 @@ test('AgentServer disposes shell resources when a close frame is received', asyn
     providerTurns: [
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c "sleep 0.2; printf leaked > agent-leaked.txt"',
+          script: 'probe hold 200 && printf leaked > agent-leaked.txt',
           timeoutMs: 1,
         }),
       ],
@@ -1037,7 +1031,7 @@ test('AgentServer disposes shell resources when a close frame is received', asyn
   await client.open(providerConfig([
       [
         events.toolCall('tool-1', 'shell_exec', {
-          script: 'sh -c "sleep 0.2; printf leaked > agent-leaked.txt"',
+          script: 'probe hold 200 && printf leaked > agent-leaked.txt',
           timeoutMs: 1,
         }),
       ],
@@ -1079,16 +1073,19 @@ test('AgentServer.close disposes harness resources directly', async () => {
 
 function createAgentClientHarness(options: {
   harness?: AgentHarness<unknown>
-  shell?: Omit<BashEnvironmentOptions, 'host' | 'commands'>
+  shell?: ShellEnvironmentOptions
   providerTurns: ConstructorParameters<typeof StubProvider>[0]
-}): { client: AgentClient; server: AgentServer } {
+}): { client: AgentClient; server: AgentServer; store: MemoryAgentStore } {
+  const store = new MemoryAgentStore()
   const server = new AgentServer({
+    store: () => store,
+    shellEnvironment: hostlessShellFactory,
     agent: options.harness ?? createTextHarness(),
     providers: [runtimeProvider('stub', () => new StubProvider(options.providerTurns))],
     shell: options.shell,
   })
   const client = server.client()
-  return { client, server }
+  return { client, server, store }
 }
 
 class DelayedProvider implements AgentProvider {
@@ -1227,6 +1224,7 @@ function createTextHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
     initialState: () => ({}),
+    commands: () => [probeCommand()],
     host: (ctx) => {
       const existing = hosts.get(ctx.cwd)
       if (existing) return existing
@@ -1278,3 +1276,58 @@ function latestQueueTexts(events: ClientSessionEvent[]): string[] {
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+test('a malformed client frame is rejected at ingress with invalid_frame', async () => {
+  const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
+    agent: createTextHarness(),
+    providers: [runtimeProvider('stub', () => new StubProvider([[events.text('ok'), events.response()]]))],
+  })
+  const pair = createInProcessTransportPair()
+  server.attachTransport(pair.server)
+  const received: unknown[] = []
+  pair.client.onFrame((frame) => received.push(frame))
+
+  // Missing required fields: `send` without messageId/content.
+  pair.client.send({ type: 'send' } as never)
+  await waitFor(() => received.length > 0)
+  expect(received[0]).toMatchObject({ type: 'error', code: 'invalid_frame' })
+
+  // An unknown frame type is equally rejected.
+  pair.client.send({ type: 'definitely_not_a_frame' } as never)
+  await waitFor(() => received.length > 1)
+  expect(received[1]).toMatchObject({ type: 'error', code: 'invalid_frame' })
+  await server.close()
+})
+
+test('AgentServer accepts a ProviderResolver: session context arrives, unknown ids error', async () => {
+  const contexts: Array<{ providerId: string; agentSessionId: string }> = []
+  const server = new AgentServer({
+    store: () => new MemoryAgentStore(),
+    shellEnvironment: hostlessShellFactory,
+    agent: createTextHarness(),
+    providers: (providerId, context) => {
+      contexts.push({ providerId, agentSessionId: context.agentSessionId })
+      if (providerId !== 'dynamic') return null
+      return runtimeProvider('dynamic', new StubProvider([[events.text('resolved'), events.response()]]))
+    },
+  })
+
+  const client = server.client()
+  const sessionId = globalThis.crypto.randomUUID()
+  await client.open(providerSelection('dynamic'), '/workspace', sessionId)
+  await client.send([{ type: 'text', text: 'go' }])
+  expect(client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'resolved')).toBe(true)
+  expect(contexts).toEqual([{ providerId: 'dynamic', agentSessionId: sessionId }])
+
+  const other = server.client()
+  const errors: string[] = []
+  other.subscribe((event) => {
+    if (event.type === 'error') errors.push(event.message)
+  })
+  void other.open(providerSelection('missing'), '/workspace', globalThis.crypto.randomUUID()).catch(() => {})
+  await waitFor(() => errors.length > 0)
+  expect(errors[0]).toContain('not available')
+  await server.close()
+})

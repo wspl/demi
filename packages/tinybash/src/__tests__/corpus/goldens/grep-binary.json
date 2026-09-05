@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "status-after\n",
+  "stderr": "grep: bin.dat: binary file matches\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

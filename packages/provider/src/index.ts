@@ -1,5 +1,19 @@
 export * from './types'
 export { toolResultContentToText } from './content'
+export {
+  DEFAULT_MODELS_DEV_URL,
+  fetchModelsDev,
+  modelFromModelsDev,
+  modelListFromModelsDev,
+  modelsDevCatalogSchema,
+  resetModelsDevCacheForTests,
+  type ModelsDevCatalog,
+  type ModelsDevFetch,
+  type ModelsDevModel,
+  type ModelsDevOptions,
+  type ModelsDevProvider,
+  type ModelsDevSnapshot,
+} from './models-dev'
 export { applyModelPolicy, defineProvider, providerRuntime } from './provider'
 export {
   DEFAULT_ATTACHMENT_EXTENSIONS,

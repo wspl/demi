@@ -1,0 +1,188 @@
+import type { Host } from '@demicodes/shell'
+import { errorMessage } from '@demicodes/utils'
+import { Hono, type Context } from 'hono'
+import { z } from 'zod'
+import type { AuthEnv, InstanceMode } from '../auth/identity'
+import type { ProviderVault } from '../vault/providers'
+import { visibleProvider } from '../vault/scope'
+import type { SwitchTargetResult } from '../conversation/target'
+import { ATTACHMENT_MAX_BYTES } from './attachments'
+import type { ControlService } from '../storage/control'
+import type { ConversationStores } from '../storage/conversation-store'
+import type { ManagedHosts } from '../managed/lifecycle'
+
+const attachBodySchema = z.object({ deviceId: z.string().min(1) })
+const renameHostBodySchema = z.object({ name: z.string().trim().min(1).max(64) })
+
+const patchConversationBodySchema = z.object({
+  title: z.string().optional(),
+  archived: z.boolean().optional(),
+  providerId: z.string().nullable().optional(),
+  modelId: z.string().nullable().optional(),
+  workspaceId: z.string().nullable().optional(),
+})
+
+/** `/api/conversations` REST surface (the live stream is `stream.ts`). */
+export function conversationRoutes(options: {
+  control: ControlService
+  conversationStores: ConversationStores
+  hostFor: (conversationId: string) => Promise<Host>
+  /** The target switch (`conversation/target.ts`): the domain decides, the route maps the outcome. */
+  switchTarget: (conversationId: string, toWorkspaceId: string | null) => Promise<SwitchTargetResult>
+  managedHosts: ManagedHosts | null
+  vault: ProviderVault
+  mode: InstanceMode
+  /** Whether a device has a live runner socket, for the host list. */
+  deviceOnline: (deviceId: string) => boolean
+}): Hono<AuthEnv> {
+  const { control, conversationStores, hostFor, switchTarget, managedHosts, vault, mode, deviceOnline } = options
+  const app = new Hono<AuthEnv>()
+
+  // The caller's conversation, or null: another user's answers like a missing one.
+  const own = async (c: Context<AuthEnv>) => {
+    const conversation = await control.getConversation(c.req.param('id') ?? '')
+    return conversation && conversation.userId === c.get('user').id ? conversation : null
+  }
+
+  app.get('/', async (c) => {
+    const archived = c.req.query('archived') === 'true'
+    return c.json({ conversations: await control.listConversations(c.get('user').id, { archived }) })
+  })
+
+  app.post('/', async (c) => c.json({ conversation: await control.createConversation(c.get('user').id) }, 201))
+
+  app.patch('/:id', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    const parsed = patchConversationBodySchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      return c.json(
+        { code: 'invalid_body', message: `Invalid request body${issue ? `: ${issue.path.join('.')} ${issue.message}` : ''}` },
+        400,
+      )
+    }
+    const body = parsed.data
+    if (body.title !== undefined && body.title.trim()) {
+      await control.renameConversation(conversation.id, body.title.trim())
+    }
+    if (body.archived !== undefined) {
+      // An archived owner's guest is destroyed — its home saved and kept (`managed-hosts.md` § Lifecycle); the flag follows a successful save.
+      if (body.archived) await managedHosts?.destroy({ kind: 'conversation', id: conversation.id })
+      await control.setConversationArchived(conversation.id, body.archived)
+    }
+    if (body.providerId !== undefined || body.modelId !== undefined) {
+      if (body.providerId && !(await visibleProvider(vault, mode, conversation.userId, body.providerId))) {
+        return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+      }
+      await control.setConversationModel(conversation.id, body.providerId ?? null, body.modelId ?? null)
+    }
+    if (body.workspaceId !== undefined) {
+      const result = await switchTarget(conversation.id, body.workspaceId)
+      switch (result.outcome) {
+        case 'switched':
+        case 'noop':
+          break
+        case 'workspace_not_found':
+          return c.json({ code: 'workspace_not_found', message: 'No such workspace' }, 404)
+        case 'no_hostless_entrance':
+          return c.json({ code: 'no_hostless_entrance', message: 'A conversation with a machine of its own cannot go back to hostless' }, 409)
+        case 'turn_in_flight':
+          return c.json({ code: 'turn_in_flight', message: 'Target switches happen at turn boundaries; a turn is running' }, 409)
+        case 'conflict':
+          return c.json({ code: 'switch_conflict', message: 'A concurrent switch won; re-read the conversation' }, 409)
+        case 'conversation_not_found':
+          return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+      }
+    }
+    return c.json({ conversation: await control.getConversation(conversation.id) })
+  })
+
+  // The attached hosts (`sessions-and-targets.md` § Attached hosts): the
+  // hosts this conversation reaches besides its main host. The route takes
+  // any device the user owns; which devices the product offers is its own
+  // choice. A change is announced to the model at the next turn boundary.
+  const hostsOf = async (conversationId: string) =>
+    (await control.listAttachedHosts(conversationId)).map((host) => ({ ...host, online: deviceOnline(host.deviceId) }))
+
+  app.get('/:id/hosts', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    return c.json({ hosts: await hostsOf(conversation.id) })
+  })
+
+  app.post('/:id/hosts', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    const parsed = attachBodySchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { deviceId: string }' }, 400)
+    const device = await control.getDevice(parsed.data.deviceId)
+    if (!device || device.userId !== conversation.userId) return c.json({ code: 'device_not_found', message: 'No such device' }, 404)
+    // A host is main or attached, never both.
+    const target = conversation.workspaceId ? (await control.getWorkspace(conversation.workspaceId))?.deviceId : conversation.hostDeviceId
+    if (target === device.id) return c.json({ code: 'host_is_main', message: 'That device is the conversation\'s main host' }, 409)
+    await control.attachHost(conversation.id, device.id, device.name, null, true)
+    return c.json({ hosts: await hostsOf(conversation.id) }, 201)
+  })
+
+  app.patch('/:id/hosts/:deviceId', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    const parsed = renameHostBodySchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ code: 'invalid_body', message: 'Expected { name: string }' }, 400)
+    switch (await control.renameAttachedHost(conversation.id, c.req.param('deviceId'), parsed.data.name)) {
+      case 'not_attached':
+        return c.json({ code: 'host_not_attached', message: 'No such attached host' }, 404)
+      case 'name_taken':
+        return c.json({ code: 'name_taken', message: 'Another attached host has that name' }, 409)
+      case 'renamed':
+        return c.json({ hosts: await hostsOf(conversation.id) })
+    }
+  })
+
+  app.delete('/:id/hosts/:deviceId', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    await control.detachHost(conversation.id, c.req.param('deviceId'))
+    return c.body(null, 204)
+  })
+
+  // Workspace file drop: bytes land in the execution target's working
+  // directory over the ordinary Host fs — filesystem data, not conversation
+  // data. The returned path is what the client inserts as a text reference.
+  app.post('/:id/workspace-files', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    const name = c.req.query('name')
+    if (!name || !isSafeRelativePath(name)) {
+      return c.json({ code: 'invalid_body', message: 'Provide ?name= as a relative file path' }, 400)
+    }
+    const bytes = new Uint8Array(await c.req.arrayBuffer())
+    if (bytes.length === 0) return c.json({ code: 'invalid_body', message: 'Empty upload' }, 400)
+    if (bytes.length > ATTACHMENT_MAX_BYTES) {
+      return c.json({ code: 'too_large', message: `File exceeds the ${ATTACHMENT_MAX_BYTES}-byte limit` }, 413)
+    }
+    // The Host's own working directory: the workspace path, the hostless home, or the machine's home.
+    try {
+      const host = await hostFor(conversation.id)
+      await host.fs.writeFile(name, bytes, { cwd: host.defaultCwd, createParents: true })
+      return c.json({ path: `${host.defaultCwd.replace(/\/+$/, '')}/${name}` }, 201)
+    } catch (error) {
+      return c.json({ code: 'write_failed', message: errorMessage(error) }, 409)
+    }
+  })
+
+  app.get('/:id/transcript', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    return c.json({ blocks: conversationStores.transcriptBlocks(conversation.id) })
+  })
+
+  return app
+}
+
+function isSafeRelativePath(name: string): boolean {
+  if (name.includes('\0') || name.startsWith('/')) return false
+  const segments = name.split('/')
+  return segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+}

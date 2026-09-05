@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "mv: cannot stat 'nofile': No such file or directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

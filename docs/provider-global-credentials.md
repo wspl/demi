@@ -224,7 +224,7 @@ export interface Provider {
 
 ## 5. Storage layout (demi pool)
 
-Authoritative multi-credential pool lives under demi state root (same root as command-bridge layout):
+Authoritative multi-credential pool lives under the demi state root:
 
 ```text
 $DEMI_HOME|~/.demi/
@@ -256,7 +256,7 @@ Rules:
 - File mode `0600` for secret files; directories `0700` when created by demi.
 - Credential ids: opaque stable strings (e.g. `import-<hash>` or product-supplied slug). Labels are display-only and may change.
 
-**Not** under workspace cwd. Use `resolveDemiHome()` / `$DEMI_HOME` (host-local already owns this concept for bridges; credential pool path helpers may live in each provider kit or a small shared path helper in `utils` only if truly generic — prefer provider-local layout constants next to each auth store to avoid a new package).
+**Not** under workspace cwd. Use `$DEMI_HOME` (default `~/.demi`); credential pool path helpers live in each provider kit — prefer provider-local layout constants next to each auth store.
 
 ## 6. Per-provider behavior
 
@@ -384,7 +384,6 @@ Optional flags or subcommands later (`--credential`, `demi auth use`); not requi
 | `@demicodes/provider-codex` | Codex pool layout, import, `CodexAuthStore` pool implementation, wire `credentials` on `createCodexProvider` |
 | `@demicodes/provider-grok-build` | Same for Grok |
 | `@demicodes/provider-claude-code` | Auth resolver abstraction, env overlay on CLI spawn, pool, wire `credentials` |
-| `@demicodes/host-local` | Unchanged for assembly; may document that `$DEMI_HOME/credentials` is reserved. Does **not** own provider secrets |
 | `@demicodes/agent` | **No** credential APIs |
 | `@demicodes/web` / web-ui | Optional control RPC + UI; secrets stay server-side |
 
@@ -410,7 +409,7 @@ return defineProvider({
 })
 ```
 
-`stateDir` defaults via `DEMI_HOME` / `~/.demi` (same resolution story as host-local; duplicate a 5-line resolver in each package or share a non-host helper in `utils` only if we already have path helpers — avoid depending on `host-local` from providers).
+`stateDir` defaults via `DEMI_HOME` / `~/.demi`; each provider kit resolves it with its own few lines.
 
 ## 11. Testing
 

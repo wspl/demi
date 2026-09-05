@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "12|\n0|\nfailed\n",
+  "stderr": "bash: line 1: printf: 12abc: invalid number\nbash: line 1: printf: abc: invalid number\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

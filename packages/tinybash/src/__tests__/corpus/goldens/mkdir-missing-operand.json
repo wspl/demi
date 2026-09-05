@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "mkdir: missing operand\nTry 'mkdir --help' for more information.\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

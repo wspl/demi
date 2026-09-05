@@ -29,7 +29,7 @@ export interface FileCredentialPoolOptions {
 }
 
 /**
- * Demi local state root (`$DEMI_HOME` / `~/.demi`). Canonical copy — host-local
+ * Demi local state root (`$DEMI_HOME` / `~/.demi`). Canonical copy — the runner
  * re-exports this for its bridge layout.
  */
 export function resolveDemiHome(explicit?: string): string {

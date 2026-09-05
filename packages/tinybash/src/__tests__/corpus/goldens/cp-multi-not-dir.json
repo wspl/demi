@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "after\n",
+  "stderr": "cp: target 'nonl.txt': Not a directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}

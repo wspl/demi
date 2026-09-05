@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "src:\nlib\nmain.ts\nutil.ts\n\nsrc/lib:\ndeep.ts\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

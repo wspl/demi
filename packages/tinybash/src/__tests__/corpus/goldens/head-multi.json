@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "==> notes.txt <==\nalpha\n\n==> words.txt <==\nThe quick brown fox\n",
+  "stderr": "",
+  "user": "bytedance",
+  "group": "bytedance"
+}

@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "      0       0       0 src\nafter\n",
+  "stderr": "wc: src: Is a directory\n",
+  "user": "bytedance",
+  "group": "bytedance"
+}
