@@ -4203,3 +4203,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Removed project hover chevrons and their crossfade. Folder icons remain visible and reflect the fold state; clicking the row still folds/unfolds the project.
 - Shared sidebar change applies to app and gallery. Web-ui typecheck passed; no new tests for the glyph-only adjustment.
+
+### M13.1 — Compact pin marks and distinct toggle glyphs (2026-09-06)
+
+- Reduced the idle pinned mark from 16px to 12px and the pin action glyph from 14px to 12px, preserving its hit target. The pinned action shows PinOff and exposes aria-pressed; the unpinned action shows Pin.
+- Made the decorative pinned mark pointer-transparent. Browser verification toggled pin/unpin and confirmed the 12px PinOff glyph and pressed state. Shared web-ui typecheck passed.
