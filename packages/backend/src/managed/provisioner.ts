@@ -9,12 +9,22 @@ export interface BootArgs {
 /**
  * The provisioner seam (`managed-hosts.md` § Provisioning): the VM and
  * nothing else. One owner has at most one guest; the provisioner keeps the
- * owner's home across hibernate and wake by whatever means it has — the
- * Firecracker implementation as an ext4 image in the home-image store, the
- * test fake as the directory it was given. The lifecycle above never sees
- * an image.
+ * owner's home across hibernate, wake, destroy and backend restarts by
+ * whatever means it has — the Firecracker implementation as an ext4 image
+ * in the home-image store, the test fake as the directory it was given. The
+ * lifecycle above never sees an image.
+ *
+ * Every path that ends a guest — hibernate, destroy, the backend closing,
+ * a crash found at the next start — saves its home: the store holds the
+ * current home whenever no guest is running.
  */
 export interface ManagedHostProvisioner {
+  /**
+   * The backend starting: whatever a previous process left running or
+   * unsaved is killed and saved before any guest is booted. Completes
+   * before the lifecycle accepts its first need.
+   */
+  reconcile(): Promise<void>
   /** The first boot: `homeDir` is the owner's home, already materialised (the hostless tree, or empty). */
   provision(owner: ManagedHostOwner, homeDir: string, boot: BootArgs): Promise<void>
   /** A fresh guest over the home saved at the last hibernate or checkpoint. */
@@ -30,12 +40,24 @@ export interface ManagedHostProvisioner {
   growHome(owner: ManagedHostOwner, bytes: number): Promise<void>
   /** Saves the home of a running guest; the guest is paused for the copy. */
   checkpoint(owner: ManagedHostOwner): Promise<void>
-  /** The guest is gone for good; whether the home is kept is retention policy, not the caller's concern. */
+  /** The guest is gone for good: killed if it runs, its home saved and kept (retention is a later item). */
   destroy(owner: ManagedHostOwner): Promise<void>
+  /** The backend closing: every running guest killed and its home saved. */
+  close(): Promise<void>
   /** Called once per guest death the provisioner did not cause itself. */
   onDeath(listener: (owner: ManagedHostOwner) => void): void
 }
 
 export function ownerKey(owner: ManagedHostOwner): string {
   return `${owner.kind}:${owner.id}`
+}
+
+/** The owner an `ownerKey` names; null for a string that is not one. */
+export function ownerFromKey(key: string): ManagedHostOwner | null {
+  const colon = key.indexOf(':')
+  if (colon === -1) return null
+  const kind = key.slice(0, colon)
+  const id = key.slice(colon + 1)
+  if ((kind !== 'conversation' && kind !== 'workspace') || id.length === 0) return null
+  return { kind, id }
 }

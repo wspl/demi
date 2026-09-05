@@ -175,8 +175,11 @@ heap). Sizing:
 
 Timing:
 
-1. **On hibernate** — the authoritative save: VM dead, image consistent,
-   shrunk, uploaded.
+1. **Whenever a guest ends** — the authoritative save: VM dead, image
+   consistent, shrunk, uploaded. Every path that ends a guest is this one:
+   the idle rule and the hard cap, the owner archived or the workspace
+   deleted, the backend closing, and a guest found still running by the
+   next backend start.
 2. **Periodic while running** (default 15 min, configurable) — durability
    against backend-machine disk loss during a multi-day workspace: Firecracker
    `PATCH /vm {state: Paused}` → copy the image (reflink when the backend
@@ -184,6 +187,22 @@ Timing:
    copy asynchronously. The pause window equals the copy time; the copy is
    crash-consistent and at most a writeback interval stale. Liveness
    detection exempts a host in a backend-initiated pause.
+
+**The working image is the invariant's carrier.** A working image
+(`<dataDir>/firecracker/homes/<owner>.ext4`) exists only while its guest
+runs or until its save succeeded; the store holds the current home
+whenever no working image exists. A save that fails — `e2fsck` refusing
+the filesystem — keeps the working image where it is, logs it, and
+refuses that owner's next boot until a save succeeds; nothing is ever
+booted over a home the store does not hold. Each VM's run directory
+(`<dataDir>/firecracker/<vmId>/`) carries a record of its process from the
+moment the process exists. **Reconciliation** runs before the backend
+accepts its first need: every recorded process still alive is killed and
+waited for (a second guest over the same image would corrupt it, and its
+tap belongs to this pool), every working image left behind is saved (it is
+newer than the store), stale checkpoint copies are removed. One guest's
+transitions — boot, hibernate, checkpoint, growth, destroy — run one at a
+time, so a checkpoint never copies under a kill and two saves never race.
 
 Backend-machine filesystem: xfs with reflink recommended; ext4 acceptable; btrfs a poor
 fit for VM images. Guest filesystem: ext4, the one mainstream choice with
@@ -236,7 +255,13 @@ provision ──▶ running ──▶ hibernated ──▶ running (wake) ──
   process death, and the next tool call takes the wake path. Nothing in the
   runner is worth preserving across a crash — the job table describes
   processes that die with it.
-- **Owner archived or deleted**: VM destroyed, image kept (see Retention).
+- **Owner archived or deleted**: the guest is hibernated — synced, killed,
+  its home saved — then forgotten; the image is kept (see Retention). The
+  archive flag follows the save, so a save that fails leaves the
+  conversation unarchived and the error with the caller.
+- **Backend closing**: every running guest is hibernated the same way
+  before the process exits. A backend that dies without closing leaves its
+  guests running; the next start's reconciliation kills and saves them.
 
 ## Joining
 
