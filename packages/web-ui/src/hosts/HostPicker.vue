@@ -3,10 +3,14 @@ import { computed } from 'vue'
 import { Cloud, Monitor, Plus } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
-import type { Device } from '../prototype/types'
+interface DeviceOption {
+  id: string
+  name: string
+  online: boolean
+}
 
 const props = defineProps<{
-  devices: Device[]
+  devices: DeviceOption[]
   includeCloud?: boolean
   selectedId?: string
   requireOnline?: boolean
@@ -20,7 +24,7 @@ const items = computed(() =>
     icon: Monitor,
   })),
 )
-function disabled(device: Device) {
+function disabled(device: DeviceOption) {
   return (
     device.id === props.selectedId ||
     props.boundIds?.includes(device.id) ||
