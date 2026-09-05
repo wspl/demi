@@ -19,6 +19,9 @@ export const useConversations = defineStore('conversations', {
       this.items.unshift(c)
       return c.id
     },
+    pin(ids: string[], pinned: boolean) {
+      for (const c of this.items.filter((item) => ids.includes(item.id))) c.pinned = pinned
+    },
     rename(id: string, title: string) {
       const c = this.items.find((item) => item.id === id)
       if (c && title.trim()) c.title = title.trim()

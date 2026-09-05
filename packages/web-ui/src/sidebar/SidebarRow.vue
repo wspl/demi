@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Ellipsis, Pin } from '@lucide/vue'
+import { Archive, Circle, Pin } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -29,7 +29,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   click: [event: MouseEvent]
   contextmenu: [event: MouseEvent]
-  menu: [event: MouseEvent]
+  archive: []
   renameSubmit: [title: string]
   renameCancel: []
   togglePin: []
@@ -38,14 +38,17 @@ const emit = defineEmits<{
 const renameInputRef = ref<HTMLInputElement>()
 const renameValue = ref(props.conversation.title)
 
-watch(() => props.renaming, (renaming) => {
-  if (!renaming) return
-  renameValue.value = props.conversation.title
-  nextTick(() => {
-    renameInputRef.value?.focus()
-    renameInputRef.value?.select()
-  })
-})
+watch(
+  () => props.renaming,
+  (renaming) => {
+    if (!renaming) return
+    renameValue.value = props.conversation.title
+    nextTick(() => {
+      renameInputRef.value?.focus()
+      renameInputRef.value?.select()
+    })
+  },
+)
 
 // One quiet mark: a breathing dot while running, green for a result waiting to be read, orange
 // when the conversation needs the user (it failed or was stopped). Nothing when settled.
@@ -60,8 +63,12 @@ const dotClass = computed(() => {
 // Selected rows are lit; the open one is also emphasized, so it stays visible inside a wider selection.
 const rowClass = computed(() => [
   props.selected
-    ? props.open ? 'bg-active text-fg-emphasis' : 'bg-active text-fg'
-    : props.menuOpen ? 'bg-hover text-fg' : 'text-fg-body hover:bg-hover hover:text-fg',
+    ? props.open
+      ? 'bg-active text-fg-emphasis'
+      : 'bg-active text-fg'
+    : props.menuOpen
+      ? 'bg-hover text-fg'
+      : 'text-fg-body hover:bg-hover hover:text-fg',
   props.focused ? 'ring-1 ring-inset ring-line-focus' : '',
 ])
 
@@ -77,7 +84,10 @@ function startMarquee(): void {
     if (!clip) return
     const overflow = clip.scrollWidth - clip.clientWidth
     if (overflow <= 2) return
-    marquee.value = { shift: overflow, ms: (overflow / MARQUEE_PX_PER_S) * 1000 * 2 + MARQUEE_HOLD_MS * 2 }
+    marquee.value = {
+      shift: overflow,
+      ms: (overflow / MARQUEE_PX_PER_S) * 1000 * 2 + MARQUEE_HOLD_MS * 2,
+    }
   }, HOVER_SETTLE_MS)
 }
 
@@ -101,6 +111,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
       <span v-if="dotClass" class="size-1.5 rounded-full" :class="dotClass" />
+      <Circle v-else :size="12" class="text-fg-subtle" />
     </span>
     <input
       v-if="renaming"
@@ -122,24 +133,49 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       :class="[
         marquee ? 'is-playing' : '',
         conversation.unread && !open ? 'text-fg-emphasis' : '',
-        menuOpen ? 'mr-12' : conversation.pinned ? 'mr-8 group-hover/row:mr-12' : 'group-hover/row:mr-12',
+        menuOpen
+          ? 'mr-12'
+          : conversation.pinned
+            ? 'mr-8 group-hover/row:mr-12'
+            : 'group-hover/row:mr-12',
       ]"
     >
       <span
         v-if="marquee"
         class="sidebar-marquee inline-block"
         :style="{ '--marquee-shift': `${-marquee.shift}px`, '--marquee-ms': `${marquee.ms}ms` }"
-      >{{ conversation.title }}</span>
+      >
+        {{ conversation.title }}
+      </span>
       <template v-else>{{ conversation.title }}</template>
     </span>
     <span
       class="absolute inset-y-0 right-1 flex items-center transition-opacity"
-      :class="menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'"
+      :class="
+        menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'
+      "
     >
       <Tooltip :content="conversation.pinned ? 'Unpin' : 'Pin'">
-        <IconButton v-if="!hidePin" :icon="Pin" size="sm" variant="ghost" :pressed="conversation.pinned" @click.stop="emit('togglePin')" />
+        <IconButton
+          v-if="!hidePin"
+          :icon="Pin"
+          size="sm"
+          variant="ghost"
+          :pressed="conversation.pinned"
+          :aria-label="conversation.pinned ? 'Unpin conversation' : 'Pin conversation'"
+          @click.stop="emit('togglePin')"
+        />
       </Tooltip>
-      <IconButton :icon="Ellipsis" size="sm" variant="ghost" :pressed="menuOpen" @click.stop="emit('menu', $event)" />
+      <Tooltip content="Archive conversation">
+        <IconButton
+          :icon="Archive"
+          size="sm"
+          variant="ghost"
+          aria-label="Archive conversation"
+          :disabled="conversation.status === 'active'"
+          @click.stop="emit('archive')"
+        />
+      </Tooltip>
     </span>
     <Pin
       v-if="conversation.pinned && !menuOpen"
@@ -155,17 +191,30 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
 }
 
 @keyframes sidebar-breath {
-  0%, 100% { opacity: 0.35; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.15); }
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
-/* The fade only shows where text reaches it; a short title is untouched. */
+/* Both edge fades enter and leave with the marquee. */
 .sidebar-title {
-  mask-image: linear-gradient(to right, black calc(100% - 1.5rem), transparent);
+  text-overflow: ellipsis;
 }
 
 .sidebar-title.is-playing {
-  mask-image: linear-gradient(to right, transparent, black 1rem, black calc(100% - 1rem), transparent);
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 1rem,
+    black calc(100% - 1rem),
+    transparent
+  );
 }
 
 .sidebar-marquee {
@@ -175,9 +224,18 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
 
 /* Hold, glide to the end, hold, glide back. */
 @keyframes sidebar-marquee {
-  0%, 12% { transform: translateX(0); }
-  44%, 56% { transform: translateX(var(--marquee-shift)); }
-  88%, 100% { transform: translateX(0); }
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  44%,
+  56% {
+    transform: translateX(var(--marquee-shift));
+  }
+  88%,
+  100% {
+    transform: translateX(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
