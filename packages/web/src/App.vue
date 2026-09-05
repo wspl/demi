@@ -17,7 +17,6 @@ const conversations = useConversations()
 const resources = useResources()
 const router = useRouter()
 const route = useRoute()
-const collapsed = ref(false)
 const folded = ref<string[]>([])
 const showArchived = ref(false)
 const sidebarProjects = computed(() => resources.projects.map((project) => ({
@@ -106,7 +105,6 @@ watch(
       :class="resources.sidebarOpen ? 'fixed inset-y-0 left-0 z-40 md:static' : 'hidden md:block'"
     >
       <AppSidebar
-        v-model:collapsed="collapsed"
         v-model:collapsed-projects="folded"
         :account="account"
         :projects="sidebarProjects"
@@ -133,7 +131,6 @@ watch(
             <SidebarNavItem
               :icon="Archive"
               label="Archived"
-              :collapsed="collapsed"
               :pressed="showArchived"
               @click="showArchived = !showArchived"
             />

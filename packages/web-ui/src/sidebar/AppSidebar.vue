@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Blocks, FolderPlus, PanelLeftClose, PanelLeftOpen, Settings, SquarePen, WandSparkles } from '@lucide/vue'
+import { Blocks, FolderPlus, Settings, SquarePen, WandSparkles } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -25,7 +25,7 @@ import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
 /**
  * Top: the app and its entries (new, plugins, skills). Middle: plain conversations, then every
  * project as a collapsible group of its conversations, with one selection across all of them.
- * Bottom: the account and settings. Collapsed, the same entries as an icon rail.
+ * Bottom: the account and settings.
  */
 const props = defineProps<{
   account: SidebarAccount
@@ -58,7 +58,6 @@ const emit = defineEmits<{
   signOut: []
 }>()
 
-const collapsed = defineModel<boolean>('collapsed', { default: false })
 const collapsedProjects = defineModel<string[]>('collapsedProjects', { default: () => [] })
 const renamingId = ref<string | null>(null)
 const listRef = ref<HTMLElement>()
@@ -188,25 +187,18 @@ function selectProjectConversations(project: SidebarProject): void {
 
 <template>
   <aside
-    class="flex h-full shrink-0 select-none flex-col bg-surface-base text-fg transition-[width] duration-200 ease-out"
-    :class="collapsed ? 'w-12' : 'w-64'"
+    class="flex h-full shrink-0 select-none flex-col bg-surface-base text-fg w-64"
   >
-    <!-- The app, and the fold. -->
-    <div class="flex h-11 shrink-0 items-center px-2.5" :class="collapsed ? 'justify-center' : 'gap-2'">
-      <template v-if="!collapsed">
-        <span class="min-w-0 flex-1 truncate text-chrome font-medium text-fg-emphasis">Demi</span>
-        <Tooltip content="Collapse sidebar" placement="right">
-          <IconButton :icon="PanelLeftClose" variant="ghost" @click="collapsed = true" />
-        </Tooltip>
-      </template>
+    <div class="flex h-11 shrink-0 items-center px-2.5">
+      <span class="min-w-0 flex-1 truncate text-chrome font-medium text-fg-emphasis">Demi</span>
     </div>
 
     <!-- The entries: one primary action, and what the agent can use. -->
-    <div class="flex shrink-0 flex-col gap-px px-2.5" :class="collapsed ? 'items-center' : ''">
-      <SidebarNavItem :icon="SquarePen" label="New conversation" shortcut="⌘N" :collapsed="collapsed" emphasis @click="emit('create', null)" />
+    <div class="flex shrink-0 flex-col gap-px px-2.5">
+      <SidebarNavItem :icon="SquarePen" label="New conversation" shortcut="⌘N" emphasis @click="emit('create', null)" />
       <Dropdown v-if="!hideExtensions" :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" v-bind="pinnedFlyout === 'plugins' ? { open: true } : {}">
         <template #trigger="{ isOpen }">
-          <SidebarNavItem :icon="Blocks" label="Plugins" :count="collapsed ? undefined : enabledPlugins" :collapsed="collapsed" :pressed="isOpen" />
+          <SidebarNavItem :icon="Blocks" label="Plugins" :count="enabledPlugins" :pressed="isOpen" />
         </template>
         <template #content="{ close }">
           <ExtensionFlyout
@@ -220,7 +212,7 @@ function selectProjectConversations(project: SidebarProject): void {
       </Dropdown>
       <Dropdown v-if="!hideExtensions" :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" v-bind="pinnedFlyout === 'skills' ? { open: true } : {}">
         <template #trigger="{ isOpen }">
-          <SidebarNavItem :icon="WandSparkles" label="Skills" :count="collapsed ? undefined : enabledSkills" :collapsed="collapsed" :pressed="isOpen" />
+          <SidebarNavItem :icon="WandSparkles" label="Skills" :count="enabledSkills" :pressed="isOpen" />
         </template>
         <template #content="{ close }">
           <ExtensionFlyout
@@ -234,11 +226,10 @@ function selectProjectConversations(project: SidebarProject): void {
       </Dropdown>
     </div>
 
-    <slot name="navigation" :collapsed="collapsed" />
+    <slot name="navigation" />
 
     <!-- Plain conversations first, then the projects. One focusable list; rows are not tab stops. -->
     <div
-      v-if="!collapsed"
       ref="listRef"
       class="mt-4 min-h-0 flex-1 overflow-y-auto sidebar-scroll px-2.5 pb-2 outline-none"
       :class="list.keyboardNav.value ? 'is-keyboard' : ''"
@@ -299,7 +290,6 @@ function selectProjectConversations(project: SidebarProject): void {
         </div>
       </TransitionGroup>
     </div>
-    <div v-else class="flex-1" />
     <Teleport to="body">
       <div v-if="drag.source.value" class="pointer-events-none fixed z-50 max-w-56 truncate rounded-md border border-line bg-surface-raised px-3 py-1 text-chrome text-fg shadow-md" :style="{ left: `${drag.pointer.value.x + 12}px`, top: `${drag.pointer.value.y + 12}px` }" aria-hidden="true">
         {{ drag.source.value.kind === 'project' ? projectById.get(drag.source.value.id)?.name : byId.get(drag.source.value.id)?.title }}
@@ -307,13 +297,10 @@ function selectProjectConversations(project: SidebarProject): void {
     </Teleport>
 
     <!-- The account, and settings. -->
-    <div class="flex shrink-0 items-center gap-1 border-t border-line px-2.5 py-2" :class="collapsed ? 'flex-col' : ''">
-      <SidebarAccountRow :account="account" :collapsed="collapsed" @open-settings="emit('openSettings')" @sign-out="emit('signOut')" />
+    <div class="flex shrink-0 items-center gap-1 border-t border-line px-2.5 py-2">
+      <SidebarAccountRow :account="account" @open-settings="emit('openSettings')" @sign-out="emit('signOut')" />
       <Tooltip content="Settings" placement="right">
         <IconButton :icon="Settings" variant="ghost" @click="emit('openSettings')" />
-      </Tooltip>
-      <Tooltip v-if="collapsed" content="Expand sidebar" placement="right">
-        <IconButton :icon="PanelLeftOpen" variant="ghost" @click="collapsed = false" />
       </Tooltip>
     </div>
 

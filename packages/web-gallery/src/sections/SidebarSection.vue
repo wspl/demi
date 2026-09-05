@@ -19,7 +19,6 @@ const conversations = ref(demoConversations())
 const plugins = ref(demoPlugins())
 const skills = ref(demoSkills())
 const activeId = ref<string | null>('c-login')
-const collapsed = ref(false)
 const collapsedProjects = ref<string[]>(['p-dotfiles'])
 const emptyList = ref<SidebarConversation[]>([])
 let nextId = 1
@@ -113,7 +112,6 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
       <GallerySpecimen variant="expanded · live" wide>
         <div class="gallery-frame flex h-[40rem] w-full overflow-hidden">
           <AppSidebar
-            v-model:collapsed="collapsed"
             v-model:collapsed-projects="collapsedProjects"
             :account="demoAccount"
             :projects="projects"
@@ -141,22 +139,8 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
       </GallerySpecimen>
     </GallerySection>
 
-    <GallerySection title="States" note="Collapsed rail, and a first run with no conversations.">
+    <GallerySection title="States" note="A first run with no conversations.">
       <div class="specimen-row specimen-row-wide items-start">
-        <GallerySpecimen variant="collapsed">
-          <div class="gallery-frame flex h-[28rem] overflow-hidden">
-            <AppSidebar
-              :collapsed="true"
-              :account="demoAccount"
-              :projects="fixedProjects"
-              :conversations="fixedConversations"
-              active-id="c-login"
-              :plugins="plugins"
-              :skills="skills"
-            />
-            <div class="w-40 bg-surface" />
-          </div>
-        </GallerySpecimen>
         <GallerySpecimen variant="first run">
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
             <AppSidebar
