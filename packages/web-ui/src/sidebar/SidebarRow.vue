@@ -6,8 +6,8 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { SidebarConversation } from './types'
 
-/** Matches the row's hover margin transition, so the marquee measures the settled width. */
-const HOVER_SETTLE_MS = 100
+/** Wait before scrolling a hovered title; the row layout has settled by then. */
+const MARQUEE_DELAY_MS = 500
 /** Reading pace for the marquee: pixels per second, plus holds at both ends. */
 const MARQUEE_PX_PER_S = 36
 const MARQUEE_HOLD_MS = 250
@@ -88,7 +88,7 @@ function startMarquee(): void {
       shift: overflow,
       ms: (overflow / MARQUEE_PX_PER_S) * 1000 * 2 + MARQUEE_HOLD_MS * 2,
     }
-  }, HOVER_SETTLE_MS)
+  }, MARQUEE_DELAY_MS)
 }
 
 function stopMarquee(): void {

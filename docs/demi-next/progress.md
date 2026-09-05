@@ -4183,3 +4183,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Both seeded devices start online so switching is immediately reviewable. Attachment selection shows every owned device, disabling already-bound devices rather than removing them.
 - Fixed Menu's explicit iconless override and let HostPicker reserve its icon gutter. Empty item lists therefore cannot hide the fixed Connect new device plus icon.
 - Verified browser switching from zan-mbp to build-01 through folder selection, complete attachment lists when all devices are bound, and the fixed header icon with empty search results. Browser typechecks, 98 scoped web/web-ui tests and production build passed.
+
+### M13.1 — Sidebar marquee hover delay (2026-09-06)
+
+- Sidebar title scrolling starts after a 500ms hover delay, shared by the application and gallery. Existing scroll speed and edge fades are unchanged.
+- Verified the shared web-ui typecheck. No new tests for this timing constant adjustment.
