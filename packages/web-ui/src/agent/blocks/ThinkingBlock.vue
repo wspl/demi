@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { BrainLine } from '@mingcute/vue/brain'
-import { md } from '@demicodes/web-ui/markdown/md'
-import { t } from '@demicodes/web-ui/infra/i18n'
+import { Brain } from '@lucide/vue'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
+import { thinkingFaceLabel } from '../thinking-label'
 
 const props = defineProps<{
   thinking: string
@@ -15,7 +16,6 @@ const props = defineProps<{
 
 const hasContent = computed(() => props.thinking.trim().length > 0)
 const isOpen = ref(false)
-const renderedMarkdown = computed(() => md.render(props.thinking))
 
 // Live timer while thinking; once done the elapsed is frozen to (next block's createdAt - this
 // block's createdAt), so the duration survives reload instead of growing from the original time.
@@ -48,22 +48,8 @@ const elapsedMs = computed(() => {
   if (end === null || Number.isNaN(startMs.value)) return null
   return Math.max(0, end - startMs.value)
 })
-const label = computed(() => {
-  if (elapsedMs.value === null) return t('agent.block.thinking')
-  const prefix = t(props.isStreaming ? 'agent.block.thinkingFor' : 'agent.block.thoughtFor')
-  return `${prefix} ${formatDuration(elapsedMs.value)}`
-})
-
-function formatDuration(ms: number): string {
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  const rs = s % 60
-  if (m < 60) return rs ? `${m}m${rs}s` : `${m}m`
-  const h = Math.floor(m / 60)
-  const rm = m % 60
-  return rm ? `${h}h${rm}m` : `${h}h`
-}
+const label = computed(() => thinkingFaceLabel(props.isStreaming, elapsedMs.value))
+const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
 </script>
 
 <template>
@@ -73,13 +59,18 @@ function formatDuration(ms: number): string {
       :expandable="hasContent"
       :open-while="isStreaming && hasContent"
       :stick-bottom="isStreaming"
+      :roll-key="rollKey"
     >
       <template #icon>
-        <BrainLine :size="16" />
+        <Brain :size="ICON_PX.in28" />
       </template>
       <span class="min-w-0 truncate" :class="isStreaming ? 'thinking-shimmer' : ''">{{ label }}</span>
       <template v-if="hasContent" #body>
-        <div class="markdown-body px-3 py-1 text-[13px] leading-relaxed text-fg-muted" v-html="renderedMarkdown" />
+        <StreamedMarkdown
+          :content="thinking"
+          :streaming="isStreaming"
+          class="px-3 py-1 text-conversation text-fg-muted"
+        />
       </template>
     </FunctionalBlock>
   </div>

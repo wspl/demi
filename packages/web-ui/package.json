@@ -28,7 +28,7 @@
     "@demicodes/core": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "@floating-ui/vue": "^2.0.0",
-    "@mingcute/vue": "^1.4.1",
+    "@lucide/vue": "^1.40.0",
     "@tanstack/vue-virtual": "^3.13.29",
     "@tiptap/extension-placeholder": "^3.27.1",
     "@tiptap/pm": "^3.27.1",

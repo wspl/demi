@@ -306,6 +306,8 @@ export interface ProviderServiceTier {
   id: string
   label: string
   description?: string
+  /** The provider's Fast Mode tier. The UI's Fast switch writes this tier's id and nothing else. */
+  fast: boolean
 }
 
 export interface ProviderModel {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CloseLine } from '@mingcute/vue/close'
+import { X } from '@lucide/vue'
 
 defineProps<{
   message: string
@@ -16,10 +16,10 @@ const emit = defineEmits<{
     <p class="min-w-0 flex-1 text-[12px] leading-4 text-on-danger">{{ message }}</p>
     <div
       v-if="dismissible"
-      class="flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-on-danger-muted transition-colors hover:bg-hover hover:text-on-danger"
+      class="flex shrink-0 cursor-default items-center justify-center rounded p-0.5 text-on-danger-muted transition-colors hover:bg-hover hover:text-on-danger"
       @click="emit('dismiss')"
     >
-      <CloseLine :size="12" />
+      <X :size="12" />
     </div>
   </div>
 </template>

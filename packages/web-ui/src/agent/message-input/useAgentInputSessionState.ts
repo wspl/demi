@@ -9,6 +9,7 @@ export function useAgentInputSessionState(workspace: AgentWorkspace, conversatio
 
   const selectedProviderId = computed<string | null>(() => session.value?.model.providerId ?? null)
   const selectedModelId = computed<string | null>(() => session.value?.model.modelId ?? null)
+  const serviceTierId = computed<string | null>(() => session.value?.model.serviceTierId ?? null)
 
   const selectedModel = computed(() => {
     const providerId = selectedProviderId.value
@@ -36,6 +37,7 @@ export function useAgentInputSessionState(workspace: AgentWorkspace, conversatio
     selectedProviderId,
     selectedModelId,
     selectedModel,
+    serviceTierId,
     thinkingConfig,
     contextWindow,
     inputLimit,

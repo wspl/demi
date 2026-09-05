@@ -45,6 +45,16 @@ test('tail loading appears after a materialized steer before the model continues
   expect(shouldShowTailLoading('running', [thinkingBlock(), steerBlock()])).toBe(true)
 })
 
+test('queued tail does not hide loading while the turn still waits for the model', () => {
+  const transcript = [userBlock()]
+  expect(shouldShowTailLoading('running', transcript, [...transcript, ...queuedTail()])).toBe(true)
+})
+
+test('queued tail does not add loading while thinking is already the latest transcript block', () => {
+  const transcript = [thinkingBlock()]
+  expect(shouldShowTailLoading('running', transcript, [...transcript, ...queuedTail()])).toBe(false)
+})
+
 const createdAt = '2026-06-24T00:00:00.000Z'
 const model = null as unknown as BlockWithModel['model']
 
@@ -107,6 +117,18 @@ function toolCallBlock(status: ToolCallStatus): MessageListBlock {
     output: [],
     view: null,
   }
+}
+
+function queuedTail(): MessageListBlock[] {
+  return [
+    { type: 'queue_divider', id: 'queue-divider', count: 1 },
+    {
+      type: 'queued_message',
+      id: 'queued:q1',
+      queueId: 'q1',
+      content: [{ type: 'text', text: 'follow-up' }],
+    },
+  ]
 }
 
 function thinkingBlock(): MessageListBlock {

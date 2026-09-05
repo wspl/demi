@@ -22,15 +22,15 @@ const label = computed(() => {
 
 <template>
   <div class="flex items-center gap-3 px-[var(--agent-pad-x,2rem)]">
-    <div class="h-px flex-1 bg-overlay/6" />
+    <div class="h-px flex-1 bg-line-subtle" />
     <span
       v-if="isCompacting"
-      class="thinking-shimmer text-[11px] font-medium tracking-wide text-fg-subtle"
+      class="thinking-shimmer text-chrome text-fg-subtle"
     >{{ label }}</span>
     <span
       v-else
-      class="text-[11px] font-medium tracking-wide text-fg-subtle"
+      class="text-chrome text-fg-subtle"
     >{{ label }}</span>
-    <div class="h-px flex-1 bg-overlay/6" />
+    <div class="h-px flex-1 bg-line-subtle" />
   </div>
 </template>
