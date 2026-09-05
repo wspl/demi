@@ -4295,3 +4295,9 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Sidebar pin actions use the ghost button's resting appearance for both states; Pin/PinOff and aria-pressed communicate pinned state. Hover feedback remains available.
 - Web-ui typecheck passed.
+
+### M13.1 — Content-sized menus (2026-09-06)
+
+- Shared floating menus size to content within viewport and 384px bounds, with compact 160px/192px plain/search minimums. Removed unused shortcut gutters and prevented search input intrinsic width from widening the panel.
+- Removed fixed widths from host, directory, model, sidebar actions/account/extensions and gallery examples. Virtualized history retains a deliberate 320px title/time layout; embedded panels explicitly fill their container.
+- Browser measurements: host menu 199px, directory menu 236px, model menu 173px, host search 192px including empty results, without horizontal overflow. Three frontend typechecks and 104 scoped web/web-ui tests passed.

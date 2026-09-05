@@ -38,7 +38,6 @@ function disabled(device: Device) {
     filterable
     filter-placeholder="Search hosts…"
     empty-text="No hosts found"
-    class="w-64"
     @select="emit('select', $event)"
   >
     <template #header>

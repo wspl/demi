@@ -129,7 +129,8 @@ function handleKeydown(event: KeyboardEvent) {
 <template>
   <div
     ref="panelRef"
-    class="overlay-panel overlay-menu min-w-[160px] rounded-lg text-fg outline-none"
+    class="overlay-panel overlay-menu rounded-lg text-fg outline-none"
+    :class="filterable ? 'min-w-48' : 'min-w-40'"
     tabindex="-1"
     @keydown="handleKeydown"
   >
@@ -143,7 +144,7 @@ function handleKeydown(event: KeyboardEvent) {
         v-model="filterQuery"
         type="text"
         :placeholder="filterPlaceholder"
-        class="min-w-0 flex-1 bg-transparent text-chrome text-fg-body placeholder-fg-subtle outline-none"
+        class="w-0 min-w-0 flex-1 bg-transparent text-chrome text-fg-body placeholder-fg-subtle outline-none"
       />
       <span
         v-if="filterQuery"

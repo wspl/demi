@@ -146,7 +146,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       </div>
       <GalleryOverlayWell size="wide">
         <GallerySpecimen variant="iconless · submenu">
-          <Menu iconless class="w-44">
+          <Menu iconless>
             <MenuItem label="Fast Mode" @select="submenuFast = !submenuFast">
               <template #suffix>
                 <Switch v-model="submenuFast" size="sm" @click.stop />
@@ -154,7 +154,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
             </MenuItem>
             <MenuItem submenu-open label="Reasoning" :value="submenuReasoningLabels[submenuReasoning]">
               <template #submenu>
-                <Menu iconless class="min-w-[10rem]">
+                <Menu iconless>
                   <MenuItem
                     v-for="(label, index) in submenuReasoningLabels"
                     :key="label"
@@ -167,7 +167,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
             </MenuItem>
             <MenuItem label="Model" :value="itemLabel(submenuModel, submenuModels)">
               <template #submenu>
-                <Menu iconless class="min-w-[10rem]">
+                <Menu iconless>
                   <MenuItem label="Claude Sonnet" choice :is-selected="submenuModel === 'sonnet'" @select="submenuModel = 'sonnet'" />
                   <MenuItem label="Claude Opus" choice :is-selected="submenuModel === 'opus'" @select="submenuModel = 'opus'" />
                   <MenuItem label="GPT-5" choice :is-selected="submenuModel === 'gpt'" @select="submenuModel = 'gpt'" />
@@ -178,10 +178,10 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         </GallerySpecimen>
       </GalleryOverlayWell>
       <GallerySpecimen variant="host menu · label/value and status">
-        <Menu class="w-72">
+        <Menu>
           <MenuItem :icon="Monitor" label="Main host" value="zan-mbp" has-submenu>
             <template #submenu>
-              <Menu class="w-64" filterable filter-placeholder="Search hosts…" :items="[{ id: 'mac', label: 'zan-mbp', icon: Monitor }]" selected-id="mac">
+              <Menu filterable filter-placeholder="Search hosts…" :items="[{ id: 'mac', label: 'zan-mbp', icon: Monitor }]" selected-id="mac">
                 <template #header>
                   <MenuItem :icon="Cloud" label="Cloud" />
                   <MenuItem :icon="Plus" label="Connect new device" />
@@ -199,7 +199,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
           <MenuDivider />
           <MenuItem :icon="Plus" label="Attach device…" has-submenu>
             <template #submenu>
-              <Menu class="w-64" filterable filter-placeholder="Search hosts…" :items="[{ id: 'studio', label: 'studio', icon: Monitor }]">
+              <Menu filterable filter-placeholder="Search hosts…" :items="[{ id: 'studio', label: 'studio', icon: Monitor }]">
                 <template #header>
                   <MenuItem :icon="Plus" label="Connect new device" />
                 </template>
@@ -211,13 +211,12 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
       </GallerySpecimen>
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="tall">
-          <Menu iconless class="w-56">
+          <Menu iconless>
             <MenuItem v-for="label in tallActions" :key="label" :label="label" />
           </Menu>
         </GallerySpecimen>
         <GallerySpecimen variant="tall · filter">
           <Menu
-            class="w-56"
             filterable
             :autofocus="false"
             filter-placeholder="Filter options"
@@ -228,7 +227,6 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         </GallerySpecimen>
         <GallerySpecimen variant="virtual">
           <Menu
-            class="w-56"
             :items="tallOptions"
             :selected-id="virtualMenuSelected"
             :item-height="28"
@@ -238,7 +236,6 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         </GallerySpecimen>
         <GallerySpecimen variant="filter · empty">
           <Menu
-            class="w-56"
             filterable
             :autofocus="false"
             filter-placeholder="Filter options"
@@ -249,7 +246,6 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         </GallerySpecimen>
         <GallerySpecimen variant="empty list">
           <Menu
-            class="w-56"
             filterable
             :autofocus="false"
             filter-placeholder="Search conversations"
@@ -355,7 +351,6 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
             <template #trigger>{{ itemLabel(dropdownFilterSelected) }}</template>
             <template #content="{ close }">
               <Menu
-                class="w-72"
                 filterable
                 filter-placeholder="Filter paradigms"
                 :items="items"

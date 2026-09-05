@@ -24,7 +24,7 @@ const enabledCount = computed(() => props.items.filter((item) => item.enabled).l
 </script>
 
 <template>
-  <Menu iconless class="w-72">
+  <Menu iconless>
     <div class="flex h-7 items-center justify-between px-2 text-[11px] uppercase tracking-wide text-fg-subtle">
       <span>{{ title }}</span>
       <span>{{ enabledCount }} / {{ items.length }} on</span>

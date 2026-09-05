@@ -252,6 +252,13 @@ svg.lucide {
   box-shadow: var(--shadow-overlay);
 }
 
+@layer components {
+  .overlay-menu {
+    width: max-content;
+    max-width: min(24rem, calc(100vw - 2rem));
+  }
+}
+
 /* Menu: hug content up to half the viewport, or the space left around
    the anchor when Popover sets --overlay-available-height. */
 .overlay-menu {

@@ -92,7 +92,7 @@ function selectFolder(path: string) {
           </Tooltip>
         </template>
         <template #content>
-          <Menu class="w-80 max-w-[calc(100vw-2rem)]">
+          <Menu>
             <div class="max-h-64 overflow-y-auto">
               <MenuItem
                 v-for="item in recentDirectories"

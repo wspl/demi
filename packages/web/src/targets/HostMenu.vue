@@ -70,7 +70,7 @@ function connect() {
       </Button>
     </template>
     <template #content>
-      <Menu class="w-80 max-w-[calc(100vw-2rem)]">
+      <Menu>
         <MenuItem
           :icon="!project || project.hostKind === 'cloud' ? Cloud : Monitor"
           label="Main host"
@@ -99,7 +99,7 @@ function connect() {
             has-submenu
           >
             <template #submenu>
-              <Menu class="w-64">
+              <Menu>
                 <MenuItem
                   label="Use as main environment…"
                   :icon="Monitor"

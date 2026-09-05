@@ -20,6 +20,11 @@ page and settings layout only; component appearance belongs to `web-ui`.
 Menus use `MenuGroup` for section headings and `MenuItem` for rows. Its `value`
 field owns right-aligned metadata; its indicator owns status-dot size and color.
 The model menu, host menu, project picker and gallery share these row contracts.
+Floating menus use intrinsic content width with a 160px minimum (192px with a
+search field), capped at 384px and the viewport width minus 32px. Labels truncate
+at the cap. Shortcut space exists only for actual shortcuts. The virtualized
+conversation history uses 320px for titles and timestamps; embedded file and
+target lists fill their containing panel. Ordinary menus do not set fixed widths.
 
 `main.ts` composes the app, router and stores, and advances a deterministic
 scripted response clock. The fixture provider's model names are illustrative. Both seeded devices start

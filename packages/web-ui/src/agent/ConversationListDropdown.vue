@@ -58,7 +58,7 @@ function formatTime(iso: string): string {
     </template>
     <template #content="{ close }">
       <Menu
-        class="w-96"
+        class="w-80"
         filterable
         :filter-placeholder="t('agent.conversationList.placeholder')"
         :empty-text="t('agent.conversationList.empty')"
