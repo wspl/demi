@@ -30,7 +30,6 @@ export interface Device {
 export interface Project extends SidebarProject {
   deviceId: string
   branch: string | null
-  branches: string[]
 }
 export interface PrototypeProvider extends ProviderInfo {
   models: ModelInfo[]

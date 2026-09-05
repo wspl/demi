@@ -50,7 +50,6 @@ export function projects(): Project[] {
       hostKind: 'device',
       path: '/Users/alex/Projects/demi',
       branch: 'main',
-      branches: ['main', 'codex/web-prototype', 'feature/settings'],
     },
     {
       id: 'notes',
@@ -60,7 +59,6 @@ export function projects(): Project[] {
       hostKind: 'device',
       path: '/Users/alex/Projects/notes',
       branch: 'writing',
-      branches: ['main', 'writing'],
     },
   ]
 }

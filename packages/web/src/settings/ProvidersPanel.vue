@@ -18,7 +18,7 @@ function add() {
   const provider = providers()[0]!
   resources.providers.push({ ...provider, id: crypto.randomUUID(), label: label.value.trim() })
   label.value = ''
-  message.value = 'Demo provider added. Choose it in the message input.'
+  message.value = 'Provider added.'
 }
 
 function remove(id: string) {
@@ -32,7 +32,6 @@ function remove(id: string) {
 
 <template>
   <h3>Providers</h3>
-  <p class="hint">Explore model selection with demo providers. No credentials are needed.</p>
   <div v-for="provider in resources.providers" :key="provider.id" class="provider-card">
     <div class="resource-row">
       <div class="resource-description">
@@ -45,8 +44,8 @@ function remove(id: string) {
       <Button
         @click="
           message = provider.isAvailable
-            ? 'Demo connection successful.'
-            : 'Demo connection failed. Enable this provider to retry.'
+            ? 'Connection successful.'
+            : 'Connection failed.'
         "
       >
         Test
@@ -56,14 +55,14 @@ function remove(id: string) {
     <Checkbox v-model="provider.isAvailable" label="Available for conversations" />
   </div>
   <p v-if="!resources.providers.length" class="empty-note">
-    Add a provider to choose a model and start chatting.
+    No providers.
   </p>
   <form class="add-resource" @submit.prevent="add">
     <label>
       Provider label
       <TextInput v-model="label" placeholder="My provider" required maxlength="64" />
     </label>
-    <Button @click="add" :disabled="!label.trim()">Add demo provider</Button>
+    <Button @click="add" :disabled="!label.trim()">Add provider</Button>
   </form>
   <p v-if="message" role="status" class="hint">{{ message }}</p>
 </template>
