@@ -162,8 +162,10 @@ the API, no provider at the session. The mode is fixed once providers
 are configured: a start under the other mode with providers in the
 table refuses with the reason.
 
-The surface below is complete and frozen at M12; M13 consumes it and adds
-nothing.
+The surface below is the implemented M12 API baseline. M13.1 and M13.2
+exercise product behavior in a standalone frontend prototype. M13.3 completes
+the browser integration and any contract changes required by accepted prototype
+features; update this inventory when those contracts are defined.
 
 | Resource | Endpoints | Lands in |
 |---|---|---|
