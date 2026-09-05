@@ -4270,3 +4270,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Project drag derives an all-folded view while retaining the saved project fold preferences. Drop, Escape and pointer cancellation restore that view; after header motion settles, the dragged project is revealed in the sidebar viewport.
 - Recompute drop targets every animation frame during layout changes. Exiting rows cannot intercept pointer hit testing.
 - Web-ui typecheck and four sidebar ordering tests passed. Browser smoke check confirmed project expansion is restored after pointer release; automated short drags did not establish a successful reordered drop, so destination scrolling still needs interactive acceptance.
+
+### M13.1 — Smooth project drop positioning (2026-09-06)
+
+- Project reveal after drop or cancellation uses smooth scrolling once layout settles. Drag-start positioning stays immediate, and reduced-motion preference disables animated scrolling.
+- Web-ui typecheck passed.

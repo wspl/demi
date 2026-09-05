@@ -34,7 +34,8 @@ floating title + insertion line; real order stays intact
 
 Project dragging temporarily folds every project without modifying stored fold
 preferences. Drop or cancellation restores those preferences, then reveals the
-dragged project in the scroll viewport after layout transitions finish. Targets
+dragged project with smooth scrolling after layout transitions finish. Reduced-motion
+preference uses instant positioning. Targets
 are refreshed each animation frame as headers move. Conversation drag is restricted to its existing project and pin partition; reordering cannot
 change the execution environment. Binding changes use the existing project/host
 controls. Dragging one row moves that row, independently of multi-selection.

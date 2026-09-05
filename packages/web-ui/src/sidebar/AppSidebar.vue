@@ -99,7 +99,10 @@ watch(drag.source, async (source, previous, onCleanup) => {
   const item = row.getBoundingClientRect()
   const delta = item.top < bounds.top ? item.top - bounds.top
     : item.bottom > bounds.bottom ? item.bottom - bounds.bottom : 0
-  if (delta) container.scrollBy({ top: delta, behavior: 'instant' })
+  if (delta) container.scrollBy({
+    top: delta,
+    behavior: source || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+  })
 })
 
 function isFolded(projectId: string): boolean {
