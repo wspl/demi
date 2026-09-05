@@ -14,7 +14,7 @@ The stack continues the existing browser packages and the product design.
 Gallery and application import sidebar presentation from `web-ui/sidebar`.
 `SessionComposer` owns the shared input surface used by the gallery, prototype
 and `AgentMessageInput`; each caller supplies its own state and editor behavior.
-The application assembles `AgentTabItem`, `AgentMessageList`, `SessionSurface`,
+The application assembles `AgentMessageList`, `SessionSurface`,
 `SessionDock` and the shared dialog, menu and form controls. Application CSS owns
 page and settings layout only; component appearance belongs to `web-ui`.
 
@@ -27,9 +27,9 @@ placement is simulated. No credential fields send or persist secrets.
 ## Prototype behavior under review
 
 Zan opens `demi`, then creates a conversation and sends a message. The local
-clock streams a scripted answer. A second message queues behind it. Closing a
-tab leaves the conversation and simulation running; archiving is refused while
-a turn is running. Restore brings an archived conversation back into the list.
+clock streams a scripted answer. A second message queues behind it. Selecting
+another conversation in the sidebar leaves the simulation running; archiving
+is refused while a turn is running. Restore brings an archived conversation back into the list.
 
 The project picker changes the conversation's working environment and sidebar
 group together, and refuses changes while running. A project cannot be removed
@@ -44,9 +44,13 @@ prototype additions are decided in M13.2.
 - `packages/core/src/__tests__/platform-entrypoints.test.ts`: workspace and browser
   package boundary enforcement.
 - Existing `packages/web-ui` tests: shared rendering and interaction contracts.
-- Browser walkthrough: new/open/close conversations, streaming/queue/stop,
+- Browser walkthrough: create/switch conversations, streaming/queue/stop,
   failure/Retry, archive/restore, project creation/switch, settings, light/dark,
   mobile sidebar, attachment preview, and unknown-conversation navigation.
 - `bun run typecheck:web` and `bun run web:build`: browser compilation.
 
 Progress and remaining M13.1 coverage are recorded in `progress.md`.
+
+Navigation uses the sidebar and URL only, with no conversation tabs. Interface
+labels and controls are not selectable; message content, paths and editable
+fields remain selectable. Selected sidebar conversations retain normal weight.

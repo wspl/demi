@@ -6,7 +6,6 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
-import ConversationTabs from './conversation/ConversationTabs.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import SettingsDialog from './settings/SettingsDialog.vue'
@@ -27,7 +26,6 @@ const account = computed(() => ({
   plan: 'Personal workspace',
 }))
 function open(id: string) {
-  conversations.open(id)
   resources.sidebarOpen = false
   void router.push(`/chat/${id}`)
 }
@@ -51,11 +49,6 @@ function restore(id: string) {
   conversations.archive([id], false)
   showArchived.value = false
   open(id)
-}
-function closeTab(id: string) {
-  conversations.close(id)
-  if (id === activeId.value)
-    void router.push(conversations.tabs.length ? `/chat/${conversations.tabs[0]}` : '/chat')
 }
 function signOut() {
   resources.signedIn = false
@@ -135,7 +128,7 @@ watch(
       </AppSidebar>
     </div>
     <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <div class="flex items-center px-2 md:hidden">
+      <div class="flex select-none items-center px-2 md:hidden">
         <IconButton
           :icon="PanelLeft"
           variant="ghost"
@@ -145,7 +138,7 @@ watch(
         <span class="px-2 text-chrome text-fg-muted">Demi · Prototype</span>
       </div>
       <section v-if="showArchived" class="flex-1 overflow-auto bg-surface p-6">
-        <h1 class="mb-2 text-[18px] font-medium">Archived conversations</h1>
+        <h1 class="mb-2 select-none text-[18px] font-medium">Archived conversations</h1>
         <p class="mb-5 text-chrome text-fg-subtle">
           Your conversations stay here until you restore them.
         </p>
@@ -168,12 +161,6 @@ watch(
         </Button>
       </section>
       <template v-else>
-        <ConversationTabs
-          :active-id="activeId"
-          @open="open"
-          @close="closeTab"
-          @create="create(null)"
-        />
         <RouterView />
       </template>
     </main>

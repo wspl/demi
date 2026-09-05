@@ -61,13 +61,12 @@ test('simulated failure is recoverable and does not replay the user message', ()
   expect(conversation.blocks.filter((b) => b.type === 'user')).toHaveLength(1)
 })
 
-test('running conversations refuse archive and target changes; closing a tab keeps the turn', () => {
+test('running conversations refuse archive and target changes', () => {
   const { store, conversation } = newConversation()
   conversation.draft = 'Work'
   store.send(conversation)
   store.archive([conversation.id])
   store.move([conversation.id], 'demi')
-  store.close(conversation.id)
   expect(conversation.archived).toBe(false)
   expect(conversation.projectId).toBeNull()
   expect(conversation.stream).not.toBeNull()

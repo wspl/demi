@@ -188,7 +188,7 @@ onBeforeUnmount(() => {
       <div
         v-if="visible"
         ref="floatingRef"
-        class="overlay-shell pointer-events-none z-40 w-max min-w-max rounded-md text-fg"
+        class="overlay-shell select-none pointer-events-none z-40 w-max min-w-max rounded-md text-fg"
         :class="hasOverlay
           ? 'max-w-xs px-3 py-2 text-xs leading-relaxed'
           : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4'"

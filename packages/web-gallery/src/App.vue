@@ -22,7 +22,7 @@ const mainClass = computed(() => {
 
 <template>
   <div class="flex h-full bg-surface-base text-fg">
-    <aside class="flex w-56 shrink-0 flex-col border-r border-line bg-surface">
+    <aside class="select-none flex w-56 shrink-0 flex-col border-r border-line bg-surface">
       <div class="px-4 py-4">
         <div class="text-[13px] font-medium text-fg-emphasis">Demi Gallery</div>
         <div class="mt-1 text-[12px] leading-4 text-fg-subtle">@demicodes/web-ui</div>
@@ -43,7 +43,7 @@ const mainClass = computed(() => {
     </aside>
 
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="shrink-0 border-b border-line bg-surface px-5 py-3">
+      <header class="select-none shrink-0 border-b border-line bg-surface px-5 py-3">
         <div class="flex flex-wrap items-start gap-6">
           <div class="flex min-w-[220px] flex-1 flex-col gap-1.5">
             <div class="gallery-label">Paradigm</div>

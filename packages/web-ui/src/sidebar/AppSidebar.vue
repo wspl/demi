@@ -160,7 +160,7 @@ function selectProjectConversations(project: SidebarProject): void {
 
 <template>
   <aside
-    class="flex h-full shrink-0 flex-col bg-surface-base text-fg transition-[width] duration-200 ease-out"
+    class="flex h-full shrink-0 select-none flex-col bg-surface-base text-fg transition-[width] duration-200 ease-out"
     :class="collapsed ? 'w-12' : 'w-64'"
   >
     <!-- The app, and the fold. -->

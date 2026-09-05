@@ -12,19 +12,12 @@ function meta(c: Conversation) {
 }
 
 export const useConversations = defineStore('conversations', {
-  state: () => ({ items: conversations(), tabs: ['welcome'], notice: '', failNext: false }),
+  state: () => ({ items: conversations(), notice: '', failNext: false }),
   actions: {
     create(projectId: string | null = null): string {
       const c = conversation(crypto.randomUUID(), 'New conversation', projectId)
       this.items.unshift(c)
-      this.open(c.id)
       return c.id
-    },
-    open(id: string) {
-      if (!this.tabs.includes(id)) this.tabs.push(id)
-    },
-    close(id: string) {
-      this.tabs = this.tabs.filter((tab) => tab !== id)
     },
     rename(id: string, title: string) {
       const c = this.items.find((item) => item.id === id)
@@ -37,7 +30,6 @@ export const useConversations = defineStore('conversations', {
           continue
         }
         c.archived = archived
-        if (archived) this.close(c.id)
       }
     },
     move(ids: string[], projectId: string | null) {

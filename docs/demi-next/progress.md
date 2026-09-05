@@ -3960,3 +3960,26 @@ existing large-chunk warning); browser walkthroughs cover
 scripted send/recovery, navigation and the shared controls above. No real-model
 tests. This checkpoint remains partial M13.1 coverage pending the listed flows
 and owner review of the corrected baseline.
+
+### M13.1 — Sidebar navigation and text interaction (2026-09-05)
+
+Owner decisions: remove the application's conversation tabs; section labels and
+interface controls must not select text; selected conversation titles keep normal
+weight; long gallery input must not display a horizontal scrollbar.
+
+Removed the app tab component, tab state and open/close wiring. Sidebar selection
+and the route own navigation. Shared sidebar, menu headings, tooltips, semantic
+controls, application dialog headings and gallery chrome now prevent text
+selection. Inputs explicitly retain selection, as do transcript content and the
+workspace path. Removed the selected-row font-weight override.
+
+The single-line shared composer used overflow-x:auto, which exposed a scrollbar.
+It now clips the scrollbar while retaining caret scrolling; expanded input wraps
+long unbroken strings and scrolls vertically. Browser checks confirm zero app
+tabs, 400 weight for all conversation rows, non-selectable sidebar headings,
+selectable message content/input/path, 960-character single-line caret scrolling,
+and a 1200-character unbroken multiline value with no horizontal overflow.
+
+Validation: all three browser typechecks, 94 scoped web/web-ui tests and the web
+production build passed. The build retains the existing large-chunk warning.
+M13.1 remains in progress; this checkpoint addresses the owner's interaction review.
