@@ -4233,3 +4233,11 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Kept the composer transition branch stable across conversation IDs so navigation only replaces its content, without running the archive transition. Entrance styles apply only to the archived notice, so the composer itself does not fade or slide in on restoration either.
 - Archived-bar transitions remain available. Web typecheck passed; no new tests for this presentation-only adjustment.
+
+### M13.1 — Sidebar ordering, list motion and scrollable fixtures (2026-09-06)
+
+- Shared AppSidebar uses one keyed list for headings, projects and visible conversations, animating layout changes for inserts/removals, folds, pins and reorder operations. Pointer dragging supplies an insertion line and title preview, Escape/cancellation, click suppression and edge scrolling. Alt+Up/Down provides keyboard ordering.
+- Array order is canonical; conversation activity cannot overwrite manual placement. Pin partitions stay first, and conversation reorder stays within its project and pin partition. App stores and the live gallery apply committed moves using one generic utils helper. Added direct utils dependencies to both consumers and updated the boundary registry/lockfile.
+- Added 40 demo conversations across three groups, including pins and long names. Browser measured 1272px content against a 547px scroll viewport. Removed the old transparent scrollbar style and verified a visible thin thumb.
+- Native HTML drag generated inconsistent dragover behavior in browser automation; implemented pointer-based dragging with the same commit-on-release model. Verified actual conversation and project pointer reorders and Alt+Down. Shared utility tests initially resolved stale compiled utils exports; rebuilt utils, then all checks passed. Restarted the independent preview service after adding the workspace dependency so Vite could resolve it.
+- Validation: 163 scoped web/web-ui/utils and architecture-boundary tests passed; all three browser package typechecks and web build passed. Existing bundle-size warning remains. Coverage and ordering contract are documented in sidebar-order.md.

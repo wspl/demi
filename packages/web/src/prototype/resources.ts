@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { moveBefore } from '@demicodes/utils'
 import { devices, projects, providers } from './fixtures'
 
 export const useResources = defineStore('resources', {
@@ -19,6 +20,12 @@ export const useResources = defineStore('resources', {
     }
   },
   actions: {
+    reorderProject(id: string, beforeId: string | null) {
+      const item = this.projects.find((item) => item.id === id)
+      const before = beforeId === null ? null : this.projects.find((item) => item.id === beforeId)
+      if (!item || before === undefined) return
+      this.projects = moveBefore(this.projects, item, before)
+    },
     rememberProject(id: string) {
       this.recentProjectIds = [id, ...this.recentProjectIds.filter((item) => item !== id)]
     },

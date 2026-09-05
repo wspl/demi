@@ -12,3 +12,12 @@ test('recent workspace selection deduplicates without reordering the project sid
   expect(resources.recentProjectIds).toEqual(['notes', 'demi'])
   expect(resources.projects.map((project) => project.id)).toEqual(projectOrder)
 })
+
+test('project ordering is separate from recent directory history', () => {
+  setActivePinia(createPinia())
+  const resources = useResources()
+  resources.reorderProject('notes', 'demi')
+  expect(resources.projects.map((project) => project.id)).toEqual(['notes', 'demi'])
+  resources.rememberProject('demi')
+  expect(resources.projects.map((project) => project.id)).toEqual(['notes', 'demi'])
+})

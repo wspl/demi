@@ -258,7 +258,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/web`
 
 - Status: frontend prototype in development (M13.1).
-- Production deps: `@demicodes/web-ui`, `@demicodes/core`.
+- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
 - Owns: the Vue SPA application frame, route navigation, product state and frontend
   prototype workflows. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
 - Public boundary: `bun run web:dev` and `bun run web:build`; no published library API.
@@ -275,7 +275,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/web-gallery`
 
 - Status: implemented.
-- Production deps: `@demicodes/web-ui`, `@demicodes/core`.
+- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`.
 - Owns: the Vite-only component catalog for `@demicodes/web-ui`. It remaps `web-ui` tokens so paradigms
   (tone, accent, density, radius, shadow, light/dark) can be compared against the catalog.
   Pages are vue-router paths; Markdown and Code are full-pane preview routes. Roadmap
@@ -311,8 +311,8 @@ host-remote -> runner-protocol, shell, utils
 runner -> command-loader, runner-protocol, shell, utils
 backend -> agent, coding-agent, command-loader, core, host-remote, host-virtual, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, core, utils
-web-gallery -> web-ui, core
-web -> web-ui, core
+web-gallery -> web-ui, core, utils
+web -> web-ui, core, utils
 ```
 
 `web-ui`, `web-gallery` and `web` are browser/product packages built with Vite/Vue; their internal source

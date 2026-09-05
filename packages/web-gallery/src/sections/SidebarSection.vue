@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { SidebarConversation, SidebarExtension } from '@demicodes/web-ui/sidebar/types'
+import { moveBefore } from '@demicodes/utils'
+import type { SidebarConversation, SidebarExtension, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
@@ -25,16 +26,27 @@ let nextId = 1
 
 const anatomy: [string, string][] = [
   ['Top', 'The app mark, then the entries: New conversation, Plugins, Skills. Plugins and skills open a flyout that toggles items in place; managing goes to its own surface.'],
-  ['Conversations', 'Plain conversations that run in no checkout. Most recent first, pinned on top.'],
-  ['Projects', 'Every checkout the agent works in, most recently active first, each with the host it lives on. A project folds; its rows sit at the same inset as plain conversations. An empty project offers its first conversation.'],
+  ['Conversations', 'Plain conversations that run in no checkout. Manual order, pinned on top.'],
+  ['Projects', 'Every checkout the agent works in, in manual order, each with the host it lives on. A project folds; its rows sit at the same inset as plain conversations. An empty project offers its first conversation.'],
   ['Row', 'A title and one quiet dot: breathing while running, green for a result waiting to be read, orange when the conversation needs the user. A cut title fades at the edge and plays as a marquee on hover. Pin and a menu appear on hover; rename is inline.'],
-  ['Selection', 'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. The open conversation reads heavier so it stays visible inside a wider selection. Right-click acts on the selection: open and rename for one row; pin, move to a project, archive, and delete for any count. Project headers have their own menu.'],
-  ['Keys', 'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌫ deletes, ⌘⇧P pins.'],
+  ['Selection', 'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Right-click acts on the selection: open and rename for one row; pin, move to a project, archive, and delete for any count. Project headers have their own menu.'],
+  ['Keys', 'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌫ deletes, ⌘⇧P pins; Alt+↑↓ reorders the focused entry.'],
   ['Bottom', 'The account (avatar, name, plan) with settings and sign-out behind it, and Settings itself.'],
   ['Collapsed', 'A 48px rail keeps the mark, the entries, and the account as icons with tooltips. The list needs width, so it hides.'],
   ['Search', 'Not designed yet.'],
 ]
 
+function reorder(request: SidebarReorder): void {
+  if (request.kind === 'project') {
+    const item = projects.value.find((item) => item.id === request.id)
+    const before = projects.value.find((item) => item.id === request.beforeId) ?? null
+    if (item) projects.value = moveBefore(projects.value, item, before)
+  } else {
+    const item = conversations.value.find((item) => item.id === request.id)
+    const before = conversations.value.find((item) => item.id === request.beforeId) ?? null
+    if (item) conversations.value = moveBefore(conversations.value, item, before)
+  }
+}
 function select(id: string): void {
   activeId.value = id
   conversations.value = conversations.value.map((conversation) => (
@@ -109,6 +121,7 @@ const activeTitle = computed(() => conversations.value.find((conversation) => co
             :active-id="activeId"
             :plugins="plugins"
             :skills="skills"
+            @reorder="reorder"
             @select="select"
             @create="create"
             @add-project="addProject"

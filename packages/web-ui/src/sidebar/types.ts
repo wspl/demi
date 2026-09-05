@@ -13,7 +13,7 @@ export interface SidebarProject {
 export interface SidebarConversation {
   id: string
   title: string
-  /** Last activity; groups sort by it. */
+  /** Last activity metadata; display order follows the supplied array. */
   updatedAt: string
   status: ConversationStatus
   /** Null for a plain conversation that runs in no project. */
@@ -37,3 +37,10 @@ export interface SidebarAccount {
   plan: string
 }
 
+
+/** Reordering stays within a project and pin partition; it never changes execution bindings. */
+export interface SidebarReorder {
+  kind: 'project' | 'conversation'
+  id: string
+  beforeId: string | null
+}

@@ -6,6 +6,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
+import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import SettingsDialog from './settings/SettingsDialog.vue'
@@ -25,6 +26,10 @@ const account = computed(() => ({
   email: '',
   plan: 'Personal workspace',
 }))
+function reorder(request: SidebarReorder) {
+  if (request.kind === 'project') resources.reorderProject(request.id, request.beforeId)
+  else conversations.reorder(request.id, request.beforeId)
+}
 function open(id: string) {
   resources.sidebarOpen = false
   void router.push(`/chat/${id}`)
@@ -100,6 +105,7 @@ watch(
         :skills="[]"
         hide-extensions
         hide-delete
+        @reorder="reorder"
         @select="open"
         @create="create"
         @add-project="addProject"

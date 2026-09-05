@@ -8,8 +8,10 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SidebarAccount, SidebarConversation, SidebarExtension, SidebarProject } from './types'
+import type { SidebarAccount, SidebarConversation, SidebarExtension, SidebarProject, SidebarReorder } from './types'
 import { plainConversations, projectGroups } from './group-conversations'
+import { useSidebarDrag } from './useSidebarDrag'
+import { reorderPeers } from './reorder'
 import { visibleEntries } from './list-model'
 import { useSidebarList } from './useSidebarList'
 import ExtensionFlyout from './ExtensionFlyout.vue'
@@ -40,6 +42,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  reorder: [request: SidebarReorder]
   select: [id: string]
   create: [projectId: string | null]
   addProject: []
@@ -65,6 +68,14 @@ const groups = computed(() => projectGroups(props.projects, props.conversations)
 const foldedSet = computed(() => new Set(collapsedProjects.value))
 const entries = computed(() => visibleEntries(plain.value, groups.value, foldedSet.value))
 const byId = computed(() => new Map(props.conversations.map((conversation) => [conversation.id, conversation])))
+const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
+const displayEntries = computed(() => [
+  { kind: 'heading' as const, id: 'conversations-heading' },
+  ...entries.value.filter((entry) => entry.kind === 'conversation' && entry.projectId === null),
+  { kind: 'heading' as const, id: 'projects-heading' },
+  ...entries.value.filter((entry) => entry.kind === 'project' || entry.projectId !== null),
+])
+const drag = useSidebarDrag(listRef, () => props.projects, () => props.conversations, (request) => emit('reorder', request))
 const enabledPlugins = computed(() => props.plugins.filter((plugin) => plugin.enabled).length)
 const enabledSkills = computed(() => props.skills.filter((skill) => skill.enabled).length)
 
@@ -127,6 +138,23 @@ function openProjectMenu(project: SidebarProject, event: MouseEvent): void {
 
 // A key closes an open menu first: its targets are the selection the key is about to change.
 function onListKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && drag.source.value) {
+    event.preventDefault()
+    drag.cancel()
+    return
+  }
+  if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+    const entry = entries.value.find((item) => item.id === list.focusedId.value)
+    if (!entry) return
+    event.preventDefault()
+    const peers = reorderPeers(entry, props.projects, props.conversations)
+    const index = peers.indexOf(entry.id)
+    if (event.key === 'ArrowUp' && index > 0)
+      emit('reorder', { kind: entry.kind, id: entry.id, beforeId: peers[index - 1]! })
+    if (event.key === 'ArrowDown' && index >= 0 && index < peers.length - 1)
+      emit('reorder', { kind: entry.kind, id: entry.id, beforeId: peers[index + 2] ?? null })
+    return
+  }
   if (rowMenu.isOpen.value || projectMenu.isOpen.value) {
     rowMenu.close()
     projectMenu.close()
@@ -213,84 +241,71 @@ function selectProjectConversations(project: SidebarProject): void {
     <div
       v-if="!collapsed"
       ref="listRef"
-      class="mt-4 min-h-0 flex-1 overflow-y-auto scrollbar-hidden px-2.5 pb-2 outline-none"
+      class="mt-4 min-h-0 flex-1 overflow-y-auto sidebar-scroll px-2.5 pb-2 outline-none"
       :class="list.keyboardNav.value ? 'is-keyboard' : ''"
       tabindex="0"
       role="listbox"
       aria-multiselectable="true"
       @keydown="onListKeydown"
-      @pointerdown="list.keyboardNav.value = false"
-    >
-      <section class="mb-4">
-        <div class="mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle">Conversations</div>
-        <div v-if="plain.length === 0" class="px-2 py-1 text-[12px] leading-5 text-fg-faint">Nothing outside a project yet.</div>
-        <div v-else class="flex flex-col gap-px">
-          <SidebarRow
-            v-for="conversation in plain"
-            :key="conversation.id"
-            :conversation="conversation"
-            :hide-pin="hidePin"
-            :open="conversation.id === activeId"
-            :selected="list.isSelected(conversation.id)"
-            :focused="list.keyboardNav.value && list.focusedId.value === conversation.id"
-            :menu-open="rowMenuOpenFor(conversation.id)"
-            :renaming="renamingId === conversation.id"
-            @click="(event) => list.onRowClick(conversation.id, event)"
-            @contextmenu="(event) => openRowMenu(conversation.id, event)"
-            @archive="emit('archive', [conversation.id])"
-            @rename-submit="(title) => submitRename(conversation.id, title)"
-            @rename-cancel="renamingId = null"
-            @toggle-pin="togglePin([conversation.id])"
-          />
-        </div>
-      </section>
+      @pointerdown="list.keyboardNav.value = false; drag.pointerDown()"
+      @click.capture="drag.click"
 
-      <section>
-        <div class="group/projects mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle">
-          <span class="flex-1">Projects</span>
-          <Tooltip content="Add project" placement="right">
-            <IconButton :icon="FolderPlus" size="xs" variant="ghost" class="opacity-0 transition-opacity group-hover/projects:opacity-100" @click="emit('addProject')" />
-          </Tooltip>
-        </div>
-        <div v-if="groups.length === 0" class="px-2 py-1 text-[12px] leading-5 text-fg-faint">Open a folder to start a project.</div>
-        <div v-for="group in groups" :key="group.project.id" class="mb-3 last:mb-0">
+    >
+      <TransitionGroup name="sidebar-items" tag="div" class="relative">
+        <div
+          v-for="(entry, index) in displayEntries"
+          :key="entry.id"
+          class="sidebar-entry relative"
+          :class="[
+            entry.kind === 'project' && displayEntries[index - 1]?.id !== 'projects-heading' ? 'mt-3' : '',
+            drag.source.value?.id === entry.id ? 'opacity-40' : '',
+            drag.target.value?.id === entry.id ? (drag.target.value.after ? 'drop-after' : 'drop-before') : '',
+          ]"
+          :data-sidebar-id="entry.id"
+          :data-sidebar-kind="entry.kind"
+          @pointerdown="entry.kind !== 'heading' && renamingId !== entry.id && drag.start($event, entry)"
+        >
+          <div v-if="entry.kind === 'heading'" class="group/projects mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle" :class="entry.id === 'projects-heading' ? 'mt-4' : ''">
+            <span class="flex-1">{{ entry.id === 'projects-heading' ? 'Projects' : 'Conversations' }}</span>
+            <Tooltip v-if="entry.id === 'projects-heading'" content="Add project" placement="right">
+              <IconButton :icon="FolderPlus" size="xs" variant="ghost" class="opacity-0 transition-opacity group-hover/projects:opacity-100" @click="emit('addProject')" />
+            </Tooltip>
+          </div>
           <SidebarProjectHeader
-            :project="group.project"
-            :collapsed="isFolded(group.project.id)"
-            :focused="list.keyboardNav.value && list.focusedId.value === group.project.id"
-            :menu-open="projectMenu.isOpen.value && menuProject?.id === group.project.id"
-            @toggle="list.onProjectClick(group.project.id)"
-            @create="emit('create', group.project.id)"
-            @contextmenu="(event) => openProjectMenu(group.project, event)"
+            v-else-if="entry.kind === 'project'"
+            :project="projectById.get(entry.id)!"
+            :collapsed="isFolded(entry.id)"
+            :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
+            :menu-open="projectMenu.isOpen.value && menuProject?.id === entry.id"
+            @toggle="list.onProjectClick(entry.id)"
+            @create="emit('create', entry.id)"
+            @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
           />
-          <!-- The fold animates on grid rows, so the rows stay mounted and their state survives. -->
-          <div class="sidebar-fold" :class="isFolded(group.project.id) ? '' : 'is-open'" :aria-hidden="isFolded(group.project.id) || undefined">
-          <div class="overflow-hidden">
-          <div class="flex flex-col gap-px">
-            <SidebarRow
-              v-for="conversation in group.items"
-              :key="conversation.id"
-              :conversation="conversation"
+          <SidebarRow
+            v-else
+            :conversation="byId.get(entry.id)!"
             :hide-pin="hidePin"
-              :open="conversation.id === activeId"
-              :selected="list.isSelected(conversation.id)"
-              :focused="list.keyboardNav.value && list.focusedId.value === conversation.id"
-              :menu-open="rowMenuOpenFor(conversation.id)"
-              :renaming="renamingId === conversation.id"
-              @click="(event) => list.onRowClick(conversation.id, event)"
-              @contextmenu="(event) => openRowMenu(conversation.id, event)"
-              @archive="emit('archive', [conversation.id])"
-              @rename-submit="(title) => submitRename(conversation.id, title)"
-              @rename-cancel="renamingId = null"
-              @toggle-pin="togglePin([conversation.id])"
-            />
-          </div>
-          </div>
-          </div>
+            :open="entry.id === activeId"
+            :selected="list.isSelected(entry.id)"
+            :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
+            :menu-open="rowMenuOpenFor(entry.id)"
+            :renaming="renamingId === entry.id"
+            @click="(event) => list.onRowClick(entry.id, event)"
+            @contextmenu="(event) => openRowMenu(entry.id, event)"
+            @archive="emit('archive', [entry.id])"
+            @rename-submit="(title) => submitRename(entry.id, title)"
+            @rename-cancel="renamingId = null"
+            @toggle-pin="togglePin([entry.id])"
+          />
         </div>
-      </section>
+      </TransitionGroup>
     </div>
     <div v-else class="flex-1" />
+    <Teleport to="body">
+      <div v-if="drag.source.value" class="pointer-events-none fixed z-50 max-w-56 truncate rounded-md border border-line bg-surface-raised px-3 py-1 text-chrome text-fg shadow-md" :style="{ left: `${drag.pointer.value.x + 12}px`, top: `${drag.pointer.value.y + 12}px` }" aria-hidden="true">
+        {{ drag.source.value.kind === 'project' ? projectById.get(drag.source.value.id)?.name : byId.get(drag.source.value.id)?.title }}
+      </div>
+    </Teleport>
 
     <!-- The account, and settings. -->
     <div class="flex shrink-0 items-center gap-1 border-t border-line px-2.5 py-2" :class="collapsed ? 'flex-col' : ''">
@@ -351,13 +366,35 @@ function selectProjectConversations(project: SidebarProject): void {
 </template>
 
 <style scoped>
-.sidebar-fold {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.2s ease;
+.sidebar-scroll {
+  scrollbar-color: var(--fg-faint) transparent;
+  scrollbar-gutter: stable;
 }
 
-.sidebar-fold.is-open {
-  grid-template-rows: 1fr;
+.sidebar-items-move,
+.sidebar-items-enter-active,
+.sidebar-items-leave-active {
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+.sidebar-items-enter-from,
+.sidebar-items-leave-to { opacity: 0; }
+.sidebar-items-leave-active { position: absolute; width: 100%; }
+.drop-before::before,
+.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: var(--on-accent);
+  pointer-events: none;
+  z-index: 1;
+}
+.drop-before::before { top: 0; }
+.drop-after::after { bottom: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-items-move,
+  .sidebar-items-enter-active,
+  .sidebar-items-leave-active { transition: none; }
 }
 </style>

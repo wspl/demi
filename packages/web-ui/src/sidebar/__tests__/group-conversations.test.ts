@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { projectGroups } from '../group-conversations'
+import { plainConversations, projectGroups } from '../group-conversations'
 import type { SidebarConversation, SidebarProject } from '../types'
 
 test('conversation activity and pinning never reorder projects, including empty projects', () => {
@@ -42,4 +42,29 @@ test('conversation activity and pinning never reorder projects, including empty 
     'empty',
   ])
   expect(projectGroups(projects, [])[2]!.items).toEqual([])
+})
+
+test('conversation order is stable across activity and pinned rows retain their manual order', () => {
+  const items: SidebarConversation[] = ['first', 'second', 'third', 'fourth'].map((id, index) => ({
+    id,
+    title: id,
+    projectId: null,
+    updatedAt: String(index),
+    status: 'idle',
+    pinned: index % 2 === 1,
+    unread: false,
+  }))
+  expect(plainConversations(items).map((item) => item.id)).toEqual([
+    'second',
+    'fourth',
+    'first',
+    'third',
+  ])
+  items[2]!.updatedAt = '9999'
+  expect(plainConversations(items).map((item) => item.id)).toEqual([
+    'second',
+    'fourth',
+    'first',
+    'third',
+  ])
 })

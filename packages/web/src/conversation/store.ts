@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { moveBefore } from '@demicodes/utils'
 import type { Block, UserContentBlock } from '@demicodes/core'
 import { conversation, conversations, modelSelection } from '../prototype/fixtures'
 import type { Conversation } from '../prototype/types'
@@ -19,6 +20,17 @@ export const useConversations = defineStore('conversations', {
       const c = conversation(crypto.randomUUID(), 'New conversation', projectId)
       this.items.unshift(c)
       return c.id
+    },
+    reorder(id: string, beforeId: string | null) {
+      const item = this.items.find((item) => item.id === id)
+      const before = beforeId === null ? null : this.items.find((item) => item.id === beforeId)
+      if (!item || item.archived || before === undefined) return
+      if (
+        before &&
+        (before.archived || before.projectId !== item.projectId || before.pinned !== item.pinned)
+      )
+        return
+      this.items = moveBefore(this.items, item, before)
     },
     pin(ids: string[], pinned: boolean) {
       for (const c of this.items.filter((item) => ids.includes(item.id))) c.pinned = pinned
@@ -192,8 +204,7 @@ export const useConversations = defineStore('conversations', {
       c.blocks.push({
         ...meta(c),
         type: 'compaction_boundary',
-        summary:
-          'The conversation’s goals and decisions are retained for the next turn.',
+        summary: 'The conversation’s goals and decisions are retained for the next turn.',
         summaryTokens: 28,
       })
       this.notice = 'Context compacted.'

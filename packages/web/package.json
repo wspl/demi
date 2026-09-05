@@ -14,7 +14,8 @@
     "@lucide/vue": "^1.40.0",
     "vue": "^3.5.21",
     "vue-router": "^5.3.1",
-    "pinia": "^3.0.3"
+    "pinia": "^3.0.3",
+    "@demicodes/utils": "workspace:^"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
