@@ -55,7 +55,11 @@ Navigation uses the sidebar and URL only, with no conversation tabs. Interface
 labels and controls are not selectable; message content, paths and editable
 fields remain selectable. Selected sidebar conversations retain normal weight.
 
-Conversation headers show the title with the device to its right. Sidebar rows
+Conversation headers show the title with device name/status, workspace name and
+branch to its right. Metadata moves below the title on narrow screens. The
+environment control opens workspace selection and its tooltip shows the full
+path. Fixture branches are simulated; new workspaces display unavailable branch
+metadata until a branch is supplied. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
 and multi-selection actions. Project headers create conversations with the plus
 button beside the fold control. Idle conversations have a hollow status ring.
