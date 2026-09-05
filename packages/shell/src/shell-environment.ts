@@ -109,6 +109,8 @@ export type ShellCommandStatus =
       output: ShellOutputView
       runningMs: number
       idleMs: number
+      /** The active registered command's model-facing guidance, when declared. */
+      runningHint?: string
     }
   | {
       status: 'aborted'

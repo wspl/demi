@@ -1,6 +1,6 @@
-import { asError, collectBytes, concatByteStreams, concatBytes, decodeUtf8, emptyByteStream, encodeUtf8 } from '@demicodes/utils'
+import { asError, collectBytes, concatByteStreams, concatBytes, decodeUtf8, emptyByteStream, encodeUtf8, throwIfAborted } from '@demicodes/utils'
 import type { z } from 'zod'
-import { loadCommandModule, type CommandModule, type CommandResult, type CommandWriter, type RuntimeModule } from './command-abi'
+import { loadCommandModule, type CommandModule, type CommandResult, type CommandWriter, type DispatchIO, type RuntimeModule } from './command-abi'
 import type { Host } from './host'
 
 export type CommandInputSpec = Record<string, z.ZodType>
@@ -42,6 +42,13 @@ interface CommandLeafBase {
    */
   restField?: string
   output?: CommandOutputSpec
+  /**
+   * Replaces the generic "check again with shell_status, or call yield" next
+   * hint in model-facing shell results while this command is the running
+   * foreground job. For long-running commands whose running state should not
+   * be watched with status/yield polling (e.g. an attended child agent).
+   */
+  runningHint?: string
 }
 
 /** A leaf whose implementation runs in the backend, against conversation or platform state. */
@@ -130,6 +137,7 @@ export interface CommandExecutionContext {
    * files (tinyjs) supplies the import from its module cache.
    */
   loadModule?: (module: RuntimeModule) => Promise<CommandModule>
+  onRunningHint?: DispatchIO['onRunningHint']
 }
 
 const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
@@ -311,51 +319,58 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
 
   const capture = new CapturingIO(ctx.io)
   const io = parsed.json ? capture : ctx.io
-  let result: CommandResult
-  if (node.kind === 'rpc') {
-    result = await node.run({
-      argv: ctx.argv,
-      parsed,
-      stdin: consumed ? null : (ctx.stdin ?? null),
-      env: ctx.env,
-      cwd: ctx.cwd,
-      io,
-      storage: ctx.storage ?? unavailableStorage(displayPath),
-      host: ctx.host,
-      signal,
-      stdinStream,
-    })
-  } else {
-    const run = await (ctx.loadModule ?? loadCommandModule)(node.module)
-    result = await run({
-      args: parsed.values,
-      fs: ctx.host.fs,
-      cwd: ctx.cwd,
-      env: ctx.env,
-      stdin: consumed ? stdinStream : concatByteStreams(stdin, stdinStream),
-      stdout: io.stdout,
-      stderr: io.stderr,
-      signal,
-    })
-  }
-
-  if (parsed.json && result.exitCode === 0) {
-    const raw = capture.stdoutText()
-    let json: unknown
-    try {
-      json = JSON.parse(raw)
-    } catch (error) {
-      throw new Error(`Invalid JSON output for "${displayPath}": ${asError(error).message}`)
+  try {
+    if (node.runningHint !== undefined) await ctx.onRunningHint?.(node.runningHint)
+    throwIfAborted(signal)
+    let result: CommandResult
+    if (node.kind === 'rpc') {
+      result = await node.run({
+        argv: ctx.argv,
+        parsed,
+        stdin: consumed ? null : (ctx.stdin ?? null),
+        env: ctx.env,
+        cwd: ctx.cwd,
+        io,
+        storage: ctx.storage ?? unavailableStorage(displayPath),
+        host: ctx.host,
+        signal,
+        stdinStream,
+      })
+    } else {
+      const run = await (ctx.loadModule ?? loadCommandModule)(node.module)
+      throwIfAborted(signal)
+      result = await run({
+        args: parsed.values,
+        fs: ctx.host.fs,
+        cwd: ctx.cwd,
+        env: ctx.env,
+        stdin: consumed ? stdinStream : concatByteStreams(stdin, stdinStream),
+        stdout: io.stdout,
+        stderr: io.stderr,
+        signal,
+      })
     }
-    const validation = node.output?.json?.safeParse(json)
-    if (!validation?.success) {
-      const issue = validation?.error.issues[0]
-      throw new Error(`JSON output failed validation for "${displayPath}": ${issue?.message}`)
-    }
-    await ctx.io.stdout(raw)
-  }
 
-  return { exitCode: result.exitCode }
+    if (parsed.json && result.exitCode === 0) {
+      const raw = capture.stdoutText()
+      let json: unknown
+      try {
+        json = JSON.parse(raw)
+      } catch (error) {
+        throw new Error(`Invalid JSON output for "${displayPath}": ${asError(error).message}`)
+      }
+      const validation = node.output?.json?.safeParse(json)
+      if (!validation?.success) {
+        const issue = validation?.error.issues[0]
+        throw new Error(`JSON output failed validation for "${displayPath}": ${issue?.message}`)
+      }
+      await ctx.io.stdout(raw)
+    }
+
+    return { exitCode: result.exitCode }
+  } finally {
+    if (node.runningHint !== undefined) await ctx.onRunningHint?.(undefined)
+  }
 }
 
 export function renderCommandHelp(command: Command, parentPath = ''): string {
@@ -547,4 +562,3 @@ class CapturingIO implements CommandIO {
     return decodeUtf8(concatBytes(this.chunks))
   }
 }
-

@@ -91,6 +91,8 @@ export interface SubagentProfile<State = unknown> {
   systemPrompt?(ctx: AgentSystemPromptContext<State>): Promise<string> | string
   /** Derives the child's registered commands from the parent's list. */
   commands?(parentCommands: Command[]): Command[]
+  /** When false, the child cannot spawn subagents of its own (communication and reads remain). */
+  canSpawnSubagents?: boolean
   model?: ModelSelection
 }
 
@@ -101,8 +103,8 @@ export interface AgentHarness<State = unknown> {
   host(ctx: AgentHarnessContext<State> | AgentHostContext<State>): Host | Promise<Host>
   commands?(ctx: AgentCommandsContext<State>): Promise<Command[]> | Command[]
   /**
-   * Named subagent profiles for `demi agent`. Omitted: one implicit profile
-   * named `default` that fully inherits the parent's setup.
+   * Named subagent profiles for `demi agent`. Omitting --profile inherits
+   * the parent's setup; the name `default` is reserved.
    */
   agents?(ctx: AgentHarnessContext<State>): Promise<SubagentProfile<State>[]> | SubagentProfile<State>[]
   systemPrompt(ctx: AgentSystemPromptContext<State>): Promise<string> | string

@@ -52,6 +52,8 @@ export interface DispatchIO {
   cwd: string
   env: Record<string, string>
   signal?: AbortSignal
+  /** The executing leaf's hint, cleared when it settles; help and invalid invocations never set one. */
+  onRunningHint?: (hint: string | undefined) => void | Promise<void>
 }
 
 /**

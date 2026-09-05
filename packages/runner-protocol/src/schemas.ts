@@ -156,6 +156,8 @@ export const runnerToBackendMessageSchema = z.union([
   }),
   /** Live output while the job runs, up to the view budget per stream. */
   z.object({ type: z.literal('job_output'), jobId: z.string(), stream: streamSchema, bytes: bytesSchema }),
+  /** A registered leaf's guidance while its invocation is active; null clears that invocation. */
+  z.object({ type: z.literal('job_running_hint'), jobId: z.string(), invocationId: z.string(), hint: z.string().nullable() }),
   z.object({
     type: z.literal('job_exit'),
     jobId: z.string(),

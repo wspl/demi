@@ -1,5 +1,100 @@
 # @demicodes/web
 
+## 0.24.0
+
+### Patch Changes
+
+- Updated dependencies [33731b0]
+  - @demicodes/agent@0.24.0
+  - @demicodes/coding-agent@0.24.0
+  - @demicodes/host-local@0.24.0
+  - @demicodes/provider-claude-code@0.24.0
+  - @demicodes/provider-codex@0.24.0
+  - @demicodes/web-ui@0.24.0
+  - @demicodes/core@0.24.0
+  - @demicodes/provider@0.24.0
+  - @demicodes/provider-anthropic-api@0.24.0
+  - @demicodes/provider-grok-build@0.24.0
+  - @demicodes/provider-openai-api@0.24.0
+  - @demicodes/shell@0.24.0
+  - @demicodes/utils@0.24.0
+
+## 0.23.0
+
+### Patch Changes
+
+- Updated dependencies [6b0229c]
+  - @demicodes/agent@0.23.0
+  - @demicodes/coding-agent@0.23.0
+  - @demicodes/host-local@0.23.0
+  - @demicodes/provider-claude-code@0.23.0
+  - @demicodes/provider-codex@0.23.0
+  - @demicodes/web-ui@0.23.0
+  - @demicodes/core@0.23.0
+  - @demicodes/provider@0.23.0
+  - @demicodes/provider-anthropic-api@0.23.0
+  - @demicodes/provider-grok-build@0.23.0
+  - @demicodes/provider-openai-api@0.23.0
+  - @demicodes/shell@0.23.0
+  - @demicodes/utils@0.23.0
+
+## 0.22.1
+
+### Patch Changes
+
+- Updated dependencies [837e0f7]
+  - @demicodes/agent@0.22.1
+  - @demicodes/coding-agent@0.22.1
+  - @demicodes/core@0.22.1
+  - @demicodes/host-local@0.22.1
+  - @demicodes/provider@0.22.1
+  - @demicodes/provider-anthropic-api@0.22.1
+  - @demicodes/provider-claude-code@0.22.1
+  - @demicodes/provider-codex@0.22.1
+  - @demicodes/provider-grok-build@0.22.1
+  - @demicodes/provider-openai-api@0.22.1
+  - @demicodes/shell@0.22.1
+  - @demicodes/utils@0.22.1
+  - @demicodes/web-ui@0.22.1
+
+## 0.22.0
+
+### Patch Changes
+
+- Updated dependencies [2e3da08]
+  - @demicodes/agent@0.22.0
+  - @demicodes/coding-agent@0.22.0
+  - @demicodes/host-local@0.22.0
+  - @demicodes/provider-claude-code@0.22.0
+  - @demicodes/provider-codex@0.22.0
+  - @demicodes/web-ui@0.22.0
+  - @demicodes/core@0.22.0
+  - @demicodes/provider@0.22.0
+  - @demicodes/provider-anthropic-api@0.22.0
+  - @demicodes/provider-grok-build@0.22.0
+  - @demicodes/provider-openai-api@0.22.0
+  - @demicodes/shell@0.22.0
+  - @demicodes/utils@0.22.0
+
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [9d1e56c]
+  - @demicodes/shell@0.21.0
+  - @demicodes/agent@0.21.0
+  - @demicodes/coding-agent@0.21.0
+  - @demicodes/host-local@0.21.0
+  - @demicodes/provider-claude-code@0.21.0
+  - @demicodes/provider-codex@0.21.0
+  - @demicodes/core@0.21.0
+  - @demicodes/provider@0.21.0
+  - @demicodes/provider-anthropic-api@0.21.0
+  - @demicodes/provider-grok-build@0.21.0
+  - @demicodes/provider-openai-api@0.21.0
+  - @demicodes/utils@0.21.0
+  - @demicodes/web-ui@0.21.0
+
 ## 0.20.0
 
 ### Patch Changes

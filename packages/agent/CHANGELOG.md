@@ -1,5 +1,64 @@
 # @demicodes/agent
 
+## 0.24.0
+
+### Minor Changes
+
+- 33731b0: Subagent profiles: omitting `--profile` always selects the unnamed inherit profile (parent harness, model, Host, commands), which exists regardless of declared profiles and cannot be configured. `default` is now a reserved word rather than a profile name: a harness declaring a profile called `default` fails at assembly, `--profile default` is unknown, and persisted jobs store `profileName: null` for inherited children. `demi agent resume` resolves the profile before rewriting the archived job record, so a missing profile leaves the archive intact. `@demicodes/coding-agent` drops its declared `default` profile and ships only `explore`.
+
+### Patch Changes
+
+- @demicodes/core@0.24.0
+- @demicodes/provider@0.24.0
+- @demicodes/shell@0.24.0
+- @demicodes/utils@0.24.0
+
+## 0.23.0
+
+### Minor Changes
+
+- 6b0229c: Shell tool-result preview budgets are ten times larger (10k tokens below an 800k context window, 100k at and above), and `AgentServerOptions.tools.shellPreviewBudgetTokens` (`(contextWindow) => tokens`) replaces that split for the root session and every subagent.
+
+### Patch Changes
+
+- @demicodes/core@0.23.0
+- @demicodes/provider@0.23.0
+- @demicodes/shell@0.23.0
+- @demicodes/utils@0.23.0
+
+## 0.22.1
+
+### Patch Changes
+
+- 837e0f7: `subagents.notifyParentOnIdle: false` now applies to the root level only. A subagent parent has no host-side message channel, so deeper levels always self-notify — a mid-tree parent that dispatched a background child is woken by that child's completion instead of closing with an unintegrated result.
+  - @demicodes/core@0.22.1
+  - @demicodes/provider@0.22.1
+  - @demicodes/shell@0.22.1
+  - @demicodes/utils@0.22.1
+
+## 0.22.0
+
+### Minor Changes
+
+- 2e3da08: Subagents form an unbounded session tree: every session carries the identical `demi agent` command tree, so spawn nests to any depth, persisted recursively and restored as a subtree. A new connection-wide agent directory backs cross-tree communication: `demi agent send <id|parent>` leaves a mailbox message delivered at the target's next turn boundary (a pending message defers a subagent's close by one turn), `demi agent steer <id|parent>` chimes into a running turn, `demi agent show` snapshots any live agent, and `demi agent list` renders the whole tree with a self marker. Lifecycle verbs (spawn / abort / resume) stay with the spawning session. `demi agent send-parent` and `DEMI_SUBAGENT_DEPTH` are removed; the archive is never pruned; the live-children ceiling is configurable via `AgentServerOptions.subagents.maxLiveSubagents`; a child can be barred from delegating with `--no-subagents` or profile `canSpawnSubagents: false`.
+
+### Patch Changes
+
+- @demicodes/core@0.22.0
+- @demicodes/provider@0.22.0
+- @demicodes/shell@0.22.0
+- @demicodes/utils@0.22.0
+
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [9d1e56c]
+  - @demicodes/shell@0.21.0
+  - @demicodes/core@0.21.0
+  - @demicodes/provider@0.21.0
+  - @demicodes/utils@0.21.0
+
 ## 0.20.0
 
 ### Minor Changes

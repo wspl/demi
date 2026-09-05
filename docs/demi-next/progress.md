@@ -3478,6 +3478,62 @@ Test totals above are per batch and overlap. Web, concrete Sandbox
 implementation, managed/init test suites and real-model calls remain
 outside the review and verification scope.
 
+## Main synchronization (2026-09-05) — complete
+
+Target: `feat/demi-next`. The completed review fixes through `d8bb3776`
+were fast-forwarded into Next and pushed before integrating `origin/main`
+at `92e852ea`. Work continues directly on Next, as requested.
+
+The main-line changes span shell running hints, context-window preview
+budgets, the subagent tree/message model, unnamed inherited profiles,
+profile validation before archive revival, root-only notification policy,
+and releases through 0.24.0. Their runtime behavior is integrated into
+Next's product composition and module boundaries.
+
+Conflict decisions: retain Next's removed-package/source decisions and
+port behavior into its current modules. `host-remote` is a distinct new
+package, so Git's apparent rename from `host-local/package.json` does not
+transfer the local package's identity. The lockfile combines main's
+dependency updates with Next's package graph and current workspace
+versions; `bun install --frozen-lockfile --ignore-scripts` passes.
+
+Server integration passes `maxLiveSubagents` and the shell preview callback
+through the facade, transport binding and session assembly; each root gets
+an AgentDirectory shared with its descendants. Existing per-root BlobStore
+ownership, action-aware Host routing and injected ShellEnvironment remain
+the composition contracts.
+
+`AgentDirectory` lives in its own module and follows the root session
+across transport takeovers. Unnamed descendants inherit a named parent's
+effective prompt/model/commands; restricted children retain that setting
+through archive and resume. Recursive checkpoint paths and descendant
+restore ordering preserve the full subtree before its parent can settle.
+
+The command loader carries `runningHint` from the real executable leaf
+through the manifest into each Host's status view. Runner protocol v7 adds
+the per-invocation hint lifecycle; a dedicated local lifetime connection
+clears it on completion, abort, disconnect or command-process death,
+including while its parent shell remains alive. The existing RPC watch,
+cancellation, stdin backpressure and concurrent stderr contracts remain.
+
+Validation:
+
+| Scoped batch | Result and intended coverage |
+|---|---|
+| Agent/core/utils/shell/coding-agent/command-loader/host-virtual/host-remote | 439 pass, 0 fail, 2,693 assertions across 46 files; includes architecture, nested subagents, model-aware previews, Host ownership and command execution. |
+| Backend 27-file regression | 100 cases exercised; 98 passed initially. Two S2 expectations still asserted the generic polling hint for a subagent spawn. They now require the custom no-polling guidance on both targets; the entire S2 module rerun passed all 8 cases with 46 assertions. No implementation regression remained. |
+| Running-hint and runner/protocol scoped checks | 95 pass, 0 fail, 482 assertions across 22 files, including actual tinyjs execution, pipe/control regressions, help/validation exclusions, hint-handshake cancellation and command-only SIGKILL cleanup. |
+| Final static/package checks | `bun run typecheck`, staged/working `git diff --check`, frozen lockfile installation, and all 21 workspace name/version matches pass. |
+
+The subagent module includes 31 cases covering tree messaging, root-only
+notification policy, per-parent caps, reserved profile names, revival
+validation, recursive persistence and inherited restrictions. The preview
+regressions exercise the real AgentServer assembly through a model switch
+and live transport takeover. Batch counts overlap. Concrete Sandbox/init
+implementations, Web runtime review and real-model tests stayed outside
+this synchronization's verification. The fetched main head was rechecked
+as `92e852ea` before completing the merge.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

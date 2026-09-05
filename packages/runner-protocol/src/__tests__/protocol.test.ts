@@ -71,3 +71,15 @@ test('runner messages round-trip through the MessagePack wire', () => {
   expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'fs_ok', id: 'x', op: 'stat', result: 'nope' }))).toThrow('Malformed')
   expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({ type: 'pong' }))).toThrow('Malformed')
 })
+
+test('job hint lifetimes cross the wire independently of output and use explicit null to clear', () => {
+  for (const hint of ['next: attending; do not poll.', null]) {
+    const message = { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint } as const
+    expect(wire.decodeRunnerToBackend(wire.encode(message))).toEqual(message)
+  }
+  for (const message of [
+    { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1' },
+    { type: 'job_running_hint', jobId: 'j1', hint: 'hint' },
+    { type: 'job_running_hint', jobId: 'j1', invocationId: 'i1', hint: 1 },
+  ]) expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode(message))).toThrow('Malformed')
+})

@@ -47,6 +47,7 @@ function manifestLeaf(leaf: CommandLeaf, module: string | undefined): ManifestLe
   const node: ManifestLeaf = { name: leaf.name, summary: leaf.summary, kind: leaf.kind }
   if (leaf.successOutput !== undefined) node.successOutput = leaf.successOutput
   if (leaf.failureOutput !== undefined) node.failureOutput = leaf.failureOutput
+  if (leaf.runningHint !== undefined) node.runningHint = leaf.runningHint
   if (leaf.input) node.input = z.toJSONSchema(z.object(leaf.input))
   if (leaf.positionals) node.positionals = [...leaf.positionals]
   if (leaf.stdinField !== undefined) node.stdinField = leaf.stdinField

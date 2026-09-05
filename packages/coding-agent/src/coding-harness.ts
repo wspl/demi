@@ -48,10 +48,6 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
     ...(options.preamble ? { preamble: options.preamble } : {}),
     agents: () => [
       {
-        name: 'default',
-        description: 'Full coding worker: inherits the parent system prompt, commands, model, and Host.',
-      },
-      {
         name: 'explore',
         description: 'Explorer for searching and reading the workspace; reports findings and changes nothing.',
         systemPrompt: (ctx) => {

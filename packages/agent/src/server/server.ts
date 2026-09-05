@@ -6,6 +6,8 @@ import { createInProcessTransportPair, type AgentServerTransport } from '../prot
 import type { AgentHarness, AgentSessionStore } from '../types'
 import type { TurnRetryPolicy } from '../session/retry-policy'
 import type { BlobStore } from '../store/media'
+import type { ShellPreviewBudget } from '../tools'
+import { MAX_LIVE_SUBAGENTS } from '../subagent/supervisor'
 import { AgentTransportBindingImpl } from './binding'
 import { SessionOwnershipRegistry } from './ownership'
 
@@ -53,11 +55,17 @@ export interface AgentServerOptions {
   session?: AgentServerSessionOptions
   subagents?: {
     /**
-     * When false, a child closing never wakes an idle parent with an automatic
-     * user send; the host app observes the `subagent closed` frame and drives
-     * the parent itself. Defaults to true.
+     * When false, a child of the root session closing never wakes the idle
+     * root with an automatic user send; the host app drives the root instead.
+     * Deeper levels always self-notify. Defaults to true.
      */
     notifyParentOnIdle?: boolean
+    /** Maximum live direct children per session; defaults to MAX_LIVE_SUBAGENTS. */
+    maxLiveSubagents?: number
+  }
+  tools?: {
+    /** Shell preview token budget as a function of the current model's context window. */
+    shellPreviewBudgetTokens?: ShellPreviewBudget
   }
   /** The shell engine per Host. */
   shellEnvironment: ShellEnvironmentFactory
@@ -82,6 +90,8 @@ export class AgentServer {
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly notifyParentOnIdle: boolean
+  private readonly maxLiveSubagents: number
+  private readonly shellPreviewBudgetTokens: ShellPreviewBudget | null
   private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
   private readonly blobs: NonNullable<AgentServerOptions['blobs']> | null
   private readonly bindings = new Set<AgentTransportBindingImpl>()
@@ -96,6 +106,8 @@ export class AgentServer {
     this.sessionOptions = options.session ?? {}
     this.shellEnvironment = options.shellEnvironment
     this.notifyParentOnIdle = options.subagents?.notifyParentOnIdle ?? true
+    this.maxLiveSubagents = options.subagents?.maxLiveSubagents ?? MAX_LIVE_SUBAGENTS
+    this.shellPreviewBudgetTokens = options.tools?.shellPreviewBudgetTokens ?? null
     this.sessionStore = options.sessionStore ?? null
     this.blobs = options.blobs ?? null
   }
@@ -115,6 +127,8 @@ export class AgentServer {
       session: this.sessionOptions,
       shellEnvironment: this.shellEnvironment,
       notifyParentOnIdle: this.notifyParentOnIdle,
+      maxLiveSubagents: this.maxLiveSubagents,
+      shellPreviewBudgetTokens: this.shellPreviewBudgetTokens,
       sessions: this.sessionOwnership,
       sessionStore: this.sessionStore,
       blobs: this.blobs,

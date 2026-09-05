@@ -17,6 +17,8 @@ import type { BackendToRunnerMessage, FsOp, FsParams, FsResult, JobExitMessage, 
 
 /** One job on the runner as the backend drives it (`runner.md` § Jobs and the tee). */
 export interface RemoteJob {
+  /** The latest active registered invocation's hint; absent when none declares one. */
+  readonly runningHint?: string
   /** The view: ordered, stream-tagged chunks while the job runs. */
   output: AsyncIterable<HostProcessOutputChunk>
   writeStdin(data: Uint8Array): Promise<void>
@@ -166,6 +168,10 @@ export class RemoteHost implements Host {
     }
     if (message.type === 'job_output') {
       this.activeJobs.get(message.jobId)?.pushChunk({ stream: message.stream, chunk: message.bytes })
+      return
+    }
+    if (message.type === 'job_running_hint') {
+      this.activeJobs.get(message.jobId)?.setRunningHint(message.invocationId, message.hint)
       return
     }
     if (message.type === 'job_exit') {
@@ -327,6 +333,7 @@ class RemoteSpawn {
 /** One job's chunk log and exit, the same cursor model as a spawn. */
 class RemoteJobState {
   private readonly chunks: HostProcessOutputChunk[] = []
+  private readonly runningHints = new Map<string, string>()
   private done = false
   private readonly exitPromise = deferred<RemoteJobExit>()
   private readonly waiters = new Set<() => void>()
@@ -342,15 +349,24 @@ class RemoteJobState {
     this.wake()
   }
 
+  setRunningHint(invocationId: string, hint: string | null): void {
+    if (this.done) return
+    if (hint === null) this.runningHints.delete(invocationId)
+    else this.runningHints.set(invocationId, hint)
+  }
+
   finish(exit: RemoteJobExit): void {
     if (this.done) return
     this.done = true
+    this.runningHints.clear()
     this.exitPromise.resolve(exit)
     this.wake()
   }
 
   handle(): RemoteJob {
+    const hints = this.runningHints
     return {
+      get runningHint() { return [...hints.values()].at(-1) },
       output: this.entries(),
       writeStdin: async (data) => {
         if (this.done) return

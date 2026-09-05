@@ -139,6 +139,15 @@ tinybash cannot run is run on a machine instead.
 
 ## Command kinds
 
+An executable leaf may declare `runningHint`, model-facing guidance shown
+while that invocation is active. The manifest preserves it, and the loader
+reports it only after help and argument validation have selected an actual
+execution. Each invocation clears its hint on completion or cancellation;
+concurrent pipelines keep independent hints. Hostless dispatch updates the
+command view in process; the runner reports the same lifecycle over its
+relay (`runner.md`). `demi agent spawn` and `resume` use this to explain
+steering, abort and completion wakeups instead of suggesting polling.
+
 Every leaf is one of two kinds:
 
 - **`rpc`** — the implementation runs in the backend. The command needs
