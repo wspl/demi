@@ -4308,3 +4308,9 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Audit found stale collapsed-rail/row-action descriptions and incomplete host-menu specimens. Corrected descriptions, restored unread attention fixtures, and aligned host submenu actions/icons.
 - Moved HostPicker into web-ui/hosts so product and gallery use the same filtering, Cloud and bound-device rules. Product-specific store workflows remain in web; the explicit coverage boundary is recorded in web-gallery-sync.md rather than claiming full application parity.
 - All three browser typechecks passed. GitHub connectivity recovered on the checkpoint push; the accumulated prototype changes and working principles are now pushed to feat/demi-next.
+
+### M13.1 — Distinct Hairline overlay shadows (2026-09-06)
+
+- Hairline overlay shadows duplicated the default Carved overlay token in both modes. This was present in the initial gallery commit, while other shadow families remained distinct.
+- Hairline overlays now reuse their own large-surface shadow token, giving them a fine outline and shallow shadow. Carved keeps the shared product default.
+- Gallery typecheck passed. Browser switching confirmed distinct computed menu box-shadow values for Hairline and Carved in light mode.
