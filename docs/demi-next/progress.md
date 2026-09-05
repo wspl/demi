@@ -4117,3 +4117,23 @@ duplicate binding and alias collisions alongside existing conversation behavior.
 Browser walkthrough passed attach-offline, count update, submenu inspection,
 rename, detach and Hostless menu access. Browser typechecks and web build passed
 with the existing chunk-size warning. M13.1 remains in progress.
+
+### M13.1 — Sidebar motion and focused host menu (2026-09-06)
+
+Owner changes: right-align project devices, crossfade device/create and
+folder/chevron on hover, start marquees promptly with coordinated masks, and
+remove directories, renaming and help copy from the host menu.
+
+Project controls share grid positions and 150ms opacity transitions without
+changing title width. Reduced-motion preferences disable these transitions.
+Marquees measure after an 80ms width transition (100ms delay), start moving at
+the first keyframe instead of holding for 12% of the total animation, and use
+one registered opacity property for both mask edges. Removed the prototype host
+rename action/editor and its tests; generated unique names remain internal state.
+Host-menu design and prototype documentation reflect the focused device actions.
+
+Verification: browser inspection confirmed early marquee movement, identical edge
+alpha, 150ms device/create fades and a host menu without paths or help paragraphs.
+Browser typechecks, scoped web/web-ui tests and production build passed. Restarted
+the independent preview service after branch switching interrupted its watcher;
+the review endpoint returns HTTP 200. M13.1 remains in progress.
