@@ -93,9 +93,7 @@ watch(
         <Switch :model-value="fast" size="sm" @click.stop @update:model-value="setFast" />
       </template>
     </MenuItem>
-    <MenuItem v-if="reasoningState">
-      <span class="min-w-0 flex-1 truncate">{{ t('providers.reasoning') }}</span>
-      <span class="max-w-[7rem] truncate text-right text-fg-muted">{{ reasoningLabel }}</span>
+    <MenuItem v-if="reasoningState" :label="t('providers.reasoning')" :value="reasoningLabel">
       <template #submenu>
         <Menu iconless class="min-w-[10rem]">
           <MenuItem
@@ -110,9 +108,7 @@ watch(
       </template>
     </MenuItem>
     <MenuDivider v-if="fastTier || reasoningState" />
-    <MenuItem>
-      <span class="min-w-0 flex-1 truncate">{{ t('providers.model') }}</span>
-      <span class="max-w-[7rem] truncate text-right text-fg-muted">{{ selectedModelLabel }}</span>
+    <MenuItem :label="t('providers.model')" :value="selectedModelLabel">
       <template #submenu>
         <Menu iconless class="min-w-[12rem]">
           <MenuGroup

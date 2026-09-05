@@ -13,6 +13,9 @@ defineOptions({ inheritAttrs: false })
 const props = defineProps<{
   icon?: Component
   label?: string
+  value?: string
+  indicator?: 'success' | 'muted'
+  indicatorLabel?: string
   isDanger?: boolean
   disabled?: boolean
   disabledReason?: string
@@ -120,6 +123,16 @@ const toneClass = computed(() => {
       <slot>
         <span class="min-w-0 flex-1 truncate">{{ label }}</span>
       </slot>
+      <span v-if="value" class="max-w-[7rem] truncate text-right text-fg-muted" :title="value">
+        {{ value }}
+      </span>
+      <span
+        v-if="indicator"
+        class="size-1.5 shrink-0 rounded-full"
+        :class="indicator === 'success' ? 'bg-on-success' : 'bg-fg-faint'"
+        role="img"
+        :aria-label="indicatorLabel"
+      />
       <slot name="suffix">
         <span
           v-if="isChoice"
