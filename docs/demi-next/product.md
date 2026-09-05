@@ -141,15 +141,21 @@ collaboration and search are explicitly out.
 ## The frontend package
 
 `@demicodes/web` is a pure SPA (no SSR): Vue 3 + Vite, vue-router for pages
-(login, chat, devices, providers, usage, admin), Pinia for app state,
+(login and chat; settings in tabbed dialogs), Pinia for app state,
 consuming `@demicodes/web-ui` (injected `AgentClient` + transport-agnostic
 control client) and the Web API. Production: the built assets ship inside
 the backend image and the backend serves them alongside `/api`;
 development: Vite dev server proxying `/api`.
 
-The existing dev-only `@demicodes/web` product is renamed `web-demo` when
-the new package is scaffolded (M13), lives on as a deprecated demo, and is
-deleted once the product covers it.
+M13 develops the web product in three parts: a standalone frontend prototype,
+then incremental feature design and development in that prototype, then full
+frontend/backend integration. The prototype uses local fixtures and simulated
+behavior without a running backend or real models. It reuses web-ui and the
+gallery's visual work; gallery remains a component catalog. Accepted additions
+are recorded here with their behavior and state ownership before integration.
+The backend contract is completed to support the reviewed product experience;
+the existing API inventory is not a limit on prototype design. See `roadmap.md`
+for each part's acceptance criteria.
 
 Layout and information architecture:
 
