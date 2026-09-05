@@ -73,8 +73,11 @@ Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
 and multi-selection actions. Project headers place hostnames after project names
-and create conversations with the new-conversation button beside the fold control.
-Idle conversations have an 8px hollow status ring.
+and reveal the new-conversation button on hover. The left folder icon becomes
+the fold chevron while hovering; idle conversations have no status glyph.
+Cloud workspaces use a cloud icon, while device workspaces show a computer icon
+and hostname, centered beside the workspace name. The sidebar has no prototype
+caption; simulated file/branch surfaces retain their own explanatory labels.
 The composer and archived-conversation bar transition in both directions and
 respect reduced-motion preferences. Shared typography uses macOS grayscale
 antialiasing with normal-weight interface text.
