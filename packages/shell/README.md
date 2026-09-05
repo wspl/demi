@@ -10,7 +10,7 @@ same agent can target local, container, remote, or in-memory backends.
 - `Host` contract (see [Implement a Host](../../docs/guides/implement-a-host.md)).
 - Built on a forked `just-bash` workspace package.
 
-Subpaths: `@demicodes/shell/storage`, `@demicodes/shell/host-fs`.
+Subpaths: `@demicodes/shell/storage`, `@demicodes/shell/testing`.
 See [docs/shell-yield-control-plan.md](../../docs/shell-yield-control-plan.md) for
 the model-facing control surface and yield wakeups, and
 [docs/bash-behavior.md](../../docs/bash-behavior.md) for Host-backed behavior
