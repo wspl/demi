@@ -36,8 +36,8 @@ export function providers(): PrototypeProvider[] {
 }
 export function devices(): Device[] {
   return [
-    { id: 'mac', name: 'zan-mbp', online: true },
-    { id: 'build', name: 'build-01', online: false },
+    { id: 'mac', name: 'zan-mbp', online: true, home: '/Users/zan' },
+    { id: 'build', name: 'build-01', online: false, home: '/home/build' },
   ]
 }
 export function projects(): Project[] {

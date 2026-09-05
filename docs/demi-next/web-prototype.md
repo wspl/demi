@@ -58,17 +58,20 @@ labels and controls are not selectable; message content, paths and editable
 fields remain selectable. Selected sidebar conversations retain normal weight.
 
 Conversation headers show the title with device name/status, workspace name and
-branch to its right. Metadata moves below the title on narrow screens. Device,
-workspace and branch are independent controls. Device selection opens a directory
-chooser on the selected device; choosing a folder moves only this conversation
+branch to its right. Metadata moves below the title on narrow screens. Hosts,
+workspace and branch are independent controls. The host menu separates the main
+execution environment from named attached devices, and offers attach, rename,
+detach and device registration entry points (see `host-menu.md`). Main-host
+selection opens a directory chooser on the selected device; choosing a folder moves only this conversation
 to the matching workspace, creating its prototype record when needed. Offline
-devices cannot be selected. The workspace control opens a simulated file browser
+devices can be attached but cannot be selected as the main environment. The workspace control opens a simulated file browser
 with parent navigation, filtering, file previews and folder selection. Its tooltip
 shows the full path. Branch selection supports search and creation, rejects invalid
 or duplicate names, and updates the workspace's in-memory branch list. Switching
 is disabled during a running turn or for an archived conversation, while file
 browsing remains available. Files and branches are fixtures; no real filesystem,
-Git repository or device is modified. Hostless conversations omit these controls.
+Git repository or device is modified. Hostless conversations retain only the
+host-management icon and attachment count.
 Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move

@@ -94,3 +94,32 @@ test('file-only input is represented in the transcript', () => {
     expect(block.content).toEqual([{ type: 'text', text: 'Workspace file: notes.md' }])
   expect(conversation.files).toEqual([])
 })
+
+test('switching main hosts preserves the departed directory and promotes attachments once', () => {
+  const { store, conversation } = newConversation()
+  store.move([conversation.id], 'demi')
+  store.attachHost(conversation, 'mac')
+  expect(conversation.attachedHosts).toEqual([])
+  store.attachHost(conversation, 'build')
+  store.attachHost(conversation, 'build')
+  expect(conversation.attachedHosts).toHaveLength(1)
+  expect(conversation.attachedHosts[0]!.cwd).toBe('/home/build')
+  store.move([conversation.id], null)
+  expect(conversation.attachedHosts.find((host) => host.deviceId === 'mac')?.cwd).toBe(
+    '/Users/zan/Projects/demi',
+  )
+  store.move([conversation.id], 'notes')
+  expect(conversation.attachedHosts.map((host) => host.deviceId)).toEqual(['build'])
+  expect(store.renameHost(conversation, 'build', 'ci')).toBe(true)
+  store.detachHost(conversation, 'build')
+  expect(conversation.attachedHosts).toEqual([])
+})
+
+test('hostless attachment aliases are unique and duplicate rename is rejected', () => {
+  const { store, conversation } = newConversation()
+  store.attachHost(conversation, 'mac', '/Users/zan', 'worker')
+  store.attachHost(conversation, 'build', '/home/build', 'worker')
+  expect(conversation.attachedHosts.map((host) => host.name)).toEqual(['worker', 'worker-2'])
+  expect(store.renameHost(conversation, 'build', 'worker')).toBe(false)
+  expect(store.renameHost(conversation, 'build', '')).toBe(false)
+})

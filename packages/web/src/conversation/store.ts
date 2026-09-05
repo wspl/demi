@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type { Block, UserContentBlock } from '@demicodes/core'
 import { conversation, conversations, modelSelection } from '../prototype/fixtures'
 import type { Conversation } from '../prototype/types'
+import { useResources } from '../prototype/resources'
 
 function meta(c: Conversation) {
   return {
@@ -36,13 +37,53 @@ export const useConversations = defineStore('conversations', {
       }
     },
     move(ids: string[], projectId: string | null) {
+      const resources = useResources()
+      const next = resources.projects.find((project) => project.id === projectId)
       for (const c of this.items.filter((item) => ids.includes(item.id))) {
         if (c.stream) {
           this.notice = 'Wait for the turn to finish before changing its environment.'
           continue
         }
+        const previous = resources.projects.find((project) => project.id === c.projectId)
         c.projectId = projectId
+        if (next)
+          c.attachedHosts = c.attachedHosts.filter((host) => host.deviceId !== next.deviceId)
+        if (previous && previous.deviceId !== next?.deviceId)
+          this.attachHost(c, previous.deviceId, previous.path, previous.host)
       }
+    },
+    attachHost(c: Conversation, deviceId: string, cwd?: string, name?: string) {
+      const resources = useResources()
+      const main = resources.projects.find((project) => project.id === c.projectId)
+      if (
+        c.archived ||
+        main?.deviceId === deviceId ||
+        c.attachedHosts.some((host) => host.deviceId === deviceId)
+      )
+        return
+      const device = resources.devices.find((item) => item.id === deviceId)
+      if (!device && !cwd) return
+      const base = name ?? device!.name
+      let alias = base
+      let suffix = 2
+      while (c.attachedHosts.some((host) => host.name === alias)) alias = `${base}-${suffix++}`
+      c.attachedHosts.push({ deviceId, name: alias, cwd: cwd ?? device!.home })
+    },
+    renameHost(c: Conversation, deviceId: string, name: string): boolean {
+      const host = c.attachedHosts.find((item) => item.deviceId === deviceId)
+      if (
+        c.archived ||
+        !host ||
+        !name.trim() ||
+        c.attachedHosts.some((item) => item !== host && item.name === name.trim())
+      )
+        return false
+      host.name = name.trim()
+      return true
+    },
+    detachHost(c: Conversation, deviceId: string) {
+      if (!c.archived)
+        c.attachedHosts = c.attachedHosts.filter((host) => host.deviceId !== deviceId)
     },
     send(c: Conversation) {
       if (c.archived || (!c.draft.trim() && !c.files.length)) return

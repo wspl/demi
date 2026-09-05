@@ -15,7 +15,12 @@ const message = ref('')
 
 function claim() {
   if (!name.value.trim()) return
-  resources.devices.push({ id: crypto.randomUUID(), name: name.value.trim(), online: true })
+  resources.devices.push({
+    id: crypto.randomUUID(),
+    name: name.value.trim(),
+    online: true,
+    home: '/home/demo',
+  })
   name.value = ''
   message.value = 'Demo device connected.'
 }
@@ -27,7 +32,7 @@ function revoke(id: string) {
   }
   resources.devices = resources.devices.filter((d) => d.id !== id)
   for (const c of conversations.items)
-    c.attachedHosts = c.attachedHosts.filter((host) => host !== id)
+    c.attachedHosts = c.attachedHosts.filter((host) => host.deviceId !== id)
   message.value = 'Device revoked.'
 }
 </script>

@@ -4,7 +4,6 @@ import { X, Plus } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
@@ -23,9 +22,6 @@ const path = ref('/Users/zan/Projects/')
 const deviceId = ref(resources.devices[0]?.id ?? 'cloud')
 const showCreate = ref(resources.targetMode === 'create')
 const current = computed(() => conversations.items.find((c) => c.id === props.conversationId))
-const mainDevice = computed(
-  () => resources.projects.find((p) => p.id === current.value?.projectId)?.deviceId,
-)
 const message = ref('')
 
 function close() {
@@ -59,14 +55,6 @@ function create() {
   })
   if (resources.targetMode === 'switch') select(id)
   else close()
-}
-
-function attach(id: string, checked: boolean) {
-  const c = current.value
-  if (!c) return
-  c.attachedHosts = checked
-    ? [...c.attachedHosts, id]
-    : c.attachedHosts.filter((host) => host !== id)
 }
 </script>
 
@@ -120,21 +108,6 @@ function attach(id: string, checked: boolean) {
           <Plus :size="14" />
           New project
         </Button>
-        <template v-if="current">
-          <h3 class="mt-5">Attached hosts</h3>
-          <p class="hint">Additional devices this conversation can work with.</p>
-          <div
-            v-for="device in resources.devices.filter((d) => d.id !== mainDevice)"
-            :key="device.id"
-            class="py-1"
-          >
-            <Checkbox
-              :model-value="current.attachedHosts.includes(device.id)"
-              :label="`${device.name} · ${device.online ? 'Online' : 'Offline'}`"
-              @update:model-value="attach(device.id, $event)"
-            />
-          </div>
-        </template>
       </template>
       <form v-else class="space-y-4" @submit.prevent="create">
         <p class="hint">Keep related conversations around a working directory.</p>
