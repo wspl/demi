@@ -171,5 +171,5 @@ export function populateTranscript(c: Conversation, model: ModelSelection, index
       usage(),
     ]
   }
-  c.unread = index % 7 === 0
+  c.unread = c.status === 'error' || c.status === 'aborted' || index % 7 === 0
 }

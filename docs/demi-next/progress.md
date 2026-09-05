@@ -4248,3 +4248,9 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Standardized project and conversation action targets to the same 4px right inset, centered their tooltip wrappers, and added a 2px conversation-action gap. Increased title clearance accordingly and aligned the idle pin mark.
 - Populated all 40 seeded conversations with typed content fixtures. Curated examples cover multi-turn text, tables, checklists, code, thinking, successful/failed tool output, context summaries, retry and resume states. New conversations remain empty. Fixture timestamps provide meaningful durations.
 - Browser verification measured identical action bounds (x=207..231) and a 2px gap, and inspected rendered reading/table and web-review/tool/code conversations. 103 scoped web/web-ui tests, browser typechecks and build passed.
+
+### M13.1 — Read-aware conversation indicators (2026-09-06)
+
+- Green completion and orange error/abort dots require unread state and disappear when the conversation is viewed. Route changes mark the current chat read; completion while already viewing it is acknowledged too. The active-turn breathing indicator remains a live status.
+- Store completion/error/abort events create a new unread result. Marking read preserves transcript and error/abort state so Retry/Resume remain available. Fixtures mark attention states unread initially.
+- Browser package typechecks and 104 scoped web/web-ui tests passed, including read acknowledgement, retained error state and fresh completion markers after retry.

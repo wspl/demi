@@ -16,6 +16,10 @@ function meta(c: Conversation) {
 export const useConversations = defineStore('conversations', {
   state: () => ({ items: conversations(), notice: '', failNext: false }),
   actions: {
+    markRead(id: string) {
+      const conversation = this.items.find((item) => item.id === id)
+      if (conversation) conversation.unread = false
+    },
     create(projectId: string | null = null): string {
       const c = conversation(crypto.randomUUID(), 'New conversation', projectId)
       this.items.unshift(c)
@@ -123,6 +127,7 @@ export const useConversations = defineStore('conversations', {
       const block: Block = { ...meta(c), type: 'text', text: '' }
       c.blocks.push(block)
       c.status = 'active'
+      c.unread = false
       c.updatedAt = new Date().toISOString()
       c.stream = {
         blockId: block.id,
@@ -145,6 +150,7 @@ export const useConversations = defineStore('conversations', {
             message: 'The demo provider is unavailable. Retry to continue.',
           })
           c.status = 'error'
+          c.unread = true
           c.stream = null
           continue
         }
@@ -154,6 +160,7 @@ export const useConversations = defineStore('conversations', {
         if (stream.remaining) continue
         c.stream = null
         c.status = 'done'
+        c.unread = true
         c.updatedAt = new Date().toISOString()
         const queued = c.queue.shift()
         if (queued) {
@@ -197,6 +204,7 @@ export const useConversations = defineStore('conversations', {
       if (!c.stream) return
       c.stream = null
       c.status = 'aborted'
+      c.unread = true
       c.blocks.push({ ...meta(c), type: 'abort', isResumed: false })
     },
     compact(c: Conversation) {
