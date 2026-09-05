@@ -4170,3 +4170,10 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Moved the shared MenuItem status dot into the left icon gutter, replacing the attached device glyph. The right side keeps the submenu arrow. Updated the gallery specimen and host-menu design.
 - Verified all browser package typechecks, production build and browser rendering with an attached device. Status color and accessible label are preserved. No new tests for this presentation-only adjustment.
 - Fast-forwarded the new requirement branch before switching the checkout, keeping the independent acceptance server running throughout.
+
+### M13.1 — Unified host selection menus (2026-09-06)
+
+- Main host and Attach device share HostPicker. Main selection shows Cloud and Connect new device above the search field and device results; attachment selection omits Cloud. Neither picker lists Hostless as a binding target.
+- Shared Menu owns the fixed header slot and separators. Its disabled-item predicate covers pointer and keyboard selection, so offline/current main devices remain visible without being selectable. Existing attachment filtering excludes the current main and already-bound devices.
+- Updated gallery specimens and the host-menu design. Verified 98 scoped web/web-ui tests, all browser typechecks and web build; repeated gallery typecheck after correcting a duplicate icon import in its specimen. Browser checks covered both picker layouts, filtering, persistent header actions and blocked keyboard selection of an offline main host.
+- Acceptance service remained running throughout the branch switch and checks.
