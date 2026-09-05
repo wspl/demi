@@ -48,6 +48,7 @@ export function projects(): Project[] {
       deviceId: 'mac',
       host: 'alex-mbp',
       path: '/Users/alex/Projects/demi',
+      branch: 'main',
     },
     {
       id: 'notes',
@@ -55,6 +56,7 @@ export function projects(): Project[] {
       deviceId: 'mac',
       host: 'alex-mbp',
       path: '/Users/alex/Projects/notes',
+      branch: 'writing',
     },
   ]
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Archive, Monitor, Play, RotateCcw } from '@lucide/vue'
+import { Archive, Play, RotateCcw } from '@lucide/vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
@@ -11,6 +11,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import ConversationComposer from './ConversationComposer.vue'
+import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import { useConversations } from './store'
 import { useResources } from '../prototype/resources'
 
@@ -39,20 +40,23 @@ function chooseTarget() {
     v-if="conversation"
     class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-xl bg-surface"
   >
-    <header class="flex h-11 shrink-0 items-center gap-2 px-3">
+    <header
+      class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+    >
       <h1
-        class="min-w-0 flex-1 select-none truncate text-chrome font-normal text-fg"
+        class="col-start-1 row-start-1 min-w-0 select-none truncate text-chrome font-normal text-fg"
         :title="conversation.title"
       >
         {{ conversation.title }}
       </h1>
-      <Tooltip :content="project ? `${project.host}:${project.path}` : 'Hostless workspace'">
-        <Button variant="ghost" @click="chooseTarget">
-          <Monitor :size="ICON_PX.in28" />
-          <span class="max-w-40 truncate">{{ project?.host ?? 'Hostless' }}</span>
-        </Button>
-      </Tooltip>
-      <Tooltip content="Archive conversation">
+      <div class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
+        <WorkspaceInfo
+          :project="project"
+          :device="resources.devices.find((device) => device.id === project?.deviceId)"
+          @select="chooseTarget"
+        />
+      </div>
+      <Tooltip content="Archive conversation" class="col-start-2 row-start-1 sm:col-start-3">
         <IconButton
           :icon="Archive"
           variant="ghost"
