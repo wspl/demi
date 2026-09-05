@@ -10,7 +10,7 @@ import {
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
-import type { CommandIO, HostFileSystem, HostIdentity, HostStore } from '@demicodes/shell'
+import type { CommandIO, Host, HostFileSystem, HostIdentity, HostStore } from '@demicodes/shell'
 import { ByteQueue, createId, deferred, errorMessage, noop, toBytes, type Deferred } from '@demicodes/utils'
 import type { ControlService, DeviceRecord, WorkspaceRecord } from '../storage/control'
 import { generateClaimCode, generateDeviceToken, hashDeviceToken, normalizeClaimCode } from './claim-codes'
@@ -55,7 +55,13 @@ export interface RpcRelayIO {
 }
 
 /** One relayed `rpc` invocation: the call as it arrived, its live stdin, and where its output goes. */
-export type RpcRelayHandler = (call: Omit<RpcCallMessage, 'type'>, io: RpcRelayIO) => Promise<number>
+export interface RpcExecution {
+  conversationId: string
+  host: Host
+  env: Readonly<Record<string, string>>
+}
+
+export type RpcRelayHandler = (call: Omit<RpcCallMessage, 'type'>, io: RpcRelayIO, execution: RpcExecution) => Promise<number>
 
 export interface RunnerSocketHandle {
   /** One MessagePack frame from the runner. */
@@ -83,7 +89,7 @@ interface RunnerConnection {
   /** Running jobs as of the last `pong`; the idle rule reads it. */
   jobs: number
   /** Live stdin queues of the rpc calls relayed on this connection. */
-  rpcCalls: Map<string, { live: ByteQueue; controller: AbortController; pipes: Pipe[] }>
+  rpcCalls: Map<string, { jobId: string; live: ByteQueue; controller: AbortController; pipes: Pipe[] }>
   /** `sync` requests in flight, settled by `sync_done`. */
   syncs: Map<string, Deferred<{ untouched: boolean }>>
 }
@@ -112,6 +118,7 @@ export class RunnerRegistry {
   private readonly sockets = new Set<RunnerConnection>()
   private readonly connections = new Map<string, RunnerConnection>()
   private readonly hosts = new Map<string, Map<string, RemoteHost>>()
+  private readonly conversationOfHost = new WeakMap<RemoteHost, string>()
   /** Last-known identity per device, so a Host can exist while its runner is offline. */
   private readonly identities = new Map<string, HostIdentity>()
   private readonly claimAttempts = new Map<string, number[]>()
@@ -276,6 +283,7 @@ export class RunnerRegistry {
         store,
       })
       deviceHosts.set(key, host)
+      this.conversationOfHost.set(host, conversationId)
       const connection = this.connections.get(workspace.deviceId)
       if (connection) host.attach((message) => connection.send(message))
     }
@@ -384,6 +392,9 @@ export class RunnerRegistry {
       void this.growHome(connection, connection.deviceId, message.bytes)
       return
     }
+    if (message.type === 'job_exit') {
+      for (const [callId, call] of connection.rpcCalls) if (call.jobId === message.jobId) this.cancelRpc(connection, callId)
+    }
     // fs results, spawn and job streams: each per-target host claims its own ids.
     const deviceHosts = this.hosts.get(connection.deviceId)
     if (!deviceHosts) return
@@ -410,6 +421,19 @@ export class RunnerRegistry {
    * else, its stderr view streamed back, and its exit sent once the stdout
    * pipe drained (`runner.md` § Pipes).
    */
+  private executionFor(deviceId: string, call: Omit<RpcCallMessage, 'type'>): RpcExecution {
+    for (const host of this.hosts.get(deviceId)?.values() ?? []) {
+      const env = host.jobEnvironment(call.jobId)
+      if (!env) continue
+      if (env.DEMI_SESSION_ID !== call.agentSessionId || env.DEMI_SHELL_ID !== call.shellId) {
+        throw new Error('rpc identity does not match the dispatched job')
+      }
+      const conversationId = this.conversationOfHost.get(host)!
+      return { conversationId, host, env }
+    }
+    throw new Error('rpc requires a live job dispatched to this device')
+  }
+
   private async relayRpc(connection: RunnerConnection, deviceId: string, message: RpcCallMessage): Promise<void> {
     const { type: _type, ...call } = message
     if (connection.rpcCalls.has(call.callId)) {
@@ -419,10 +443,11 @@ export class RunnerRegistry {
     const live = new ByteQueue()
     const controller = new AbortController()
     const pipes: Pipe[] = []
-    connection.rpcCalls.set(call.callId, { live, controller, pipes })
+    connection.rpcCalls.set(call.callId, { jobId: call.jobId, live, controller, pipes })
     const stderr = async (bytes: Uint8Array) => connection.send({ type: 'rpc_output', callId: call.callId, bytes })
     let exitCode: number
     try {
+      const execution = this.executionFor(deviceId, call)
       if (!this.rpc) throw new Error('this backend serves no rpc commands to runners')
       if (!this.pipes) throw new Error('this backend brokers no pipes')
       const stdin = call.stdin ? this.pipes.open({ deviceId }) : null
@@ -439,7 +464,7 @@ export class RunnerRegistry {
         commandIO: () => withRelayedPipes({ stdout: (data) => writer.write(toBytes(data)), stderr: (data) => stderr(toBytes(data)) }, { stdin, stdout }),
       }
       try {
-        exitCode = await this.rpc(call, io)
+        exitCode = await this.rpc(call, io, execution)
         writer.end()
       } catch (error) {
         writer.fail(error)

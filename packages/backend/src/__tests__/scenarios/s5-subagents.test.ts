@@ -65,3 +65,18 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (targe
     expect(lifecycle).toEqual(['started', 'closed', 'started', 'closed'])
   }, 60_000)
 })
+
+
+test('a cross-host command preserves the child node storage scope', async () => {
+  const driver = await world.conversation('runner:alpha')
+  await driver.turn({ model: [model.shell('scope-root', 'demi todo add root-only'), model.say('ready')] })
+  world.model.scriptChild(
+    model.shell('scope-remote', 'demi host shell --host alpha "demi todo add child-only"'),
+    model.shell('scope-child-list', 'demi todo list'), model.say('child done'),
+  )
+  const parent = await driver.turn({ model: [model.shell('scope-spawn', "demi agent spawn 'add a todo on alpha'"), model.shell('scope-root-list', 'demi todo list'), model.say('done')] })
+  expect(parent.received.at(-1)).toContain('root-only')
+  expect(parent.received.at(-1)).not.toContain('child-only')
+  const child = world.model.requests.filter(request => request.sessionId !== driver.id && request.items.some(item => item.type === 'tool_result' && item.toolUseId === 'scope-child-list')).at(-1)
+  expect(itemsText(child!.items)).toContain('child-only')
+})

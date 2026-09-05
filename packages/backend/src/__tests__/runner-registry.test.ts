@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test'
 import { createRunnerWire, RUNNER_PROTOCOL_VERSION, type BackendToRunnerMessage } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
+import { memoryHostStore } from '@demicodes/shell/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import { RunnerRegistry } from '../runner/registry'
+import { hashDeviceToken } from '../runner/claim-codes'
 import { PipeBroker } from '../runner/pipes'
 import type { ControlService } from '../storage/control'
 
@@ -90,7 +92,10 @@ test('rpc cancellation and runner disconnect abort the handler and release its l
     const a = socket(registry)
     a.handleMessage(hello)
     await waitFor(() => registry.deviceOnline(device.id))
-    a.handleMessage(wire.encode({ type: 'rpc_call', callId: 'call', agentSessionId: 'session', shellId: 'shell', root: 'demi', path: ['host', 'shell'], argv: [], args: {}, json: false, cwd: '/', env: {}, stdin: false }))
+    const host = registry.hostFor({ deviceId: device.id, path: '/' }, 'session', memoryHostStore())
+    host.startJob({ script: 'demi host shell', cwd: '/', env: { DEMI_SESSION_ID: 'session', DEMI_SHELL_ID: 'shell' } })
+    const jobId = a.frames.find((frame) => frame.type === 'job_start')!.jobId
+    a.handleMessage(wire.encode({ type: 'rpc_call', jobId, callId: 'call', agentSessionId: 'session', shellId: 'shell', root: 'demi', path: ['host', 'shell'], argv: [], args: {}, json: false, cwd: '/', env: {}, stdin: false }))
     await started.promise
     if (disconnect) a.handleClose()
     else a.handleMessage(wire.encode({ type: 'rpc_cancel', callId: 'call' }))
@@ -100,4 +105,40 @@ test('rpc cancellation and runner disconnect abort the handler and release its l
     await registry.close()
     pipes.close()
   }
+})
+
+
+test('rpc authority comes from a live job on the authenticated device, with matching node and shell', async () => {
+  let invoked = 0
+  const pipes = new PipeBroker()
+  const registry = new RunnerRegistry({ control: {
+    ...control,
+    getDeviceByTokenHash: async (hash: string) => hash === hashDeviceToken('other-token') ? { id: 'other-device' } : device,
+  } as ControlService, pipes, pingIntervalMs: 0, rpc: async () => { invoked++; throw new Error('authorized handler reached') } })
+  const a = socket(registry)
+  const b = socket(registry)
+  try {
+    a.handleMessage(hello)
+    b.handleMessage(wire.encode({ type: 'hello', protocol: RUNNER_PROTOCOL_VERSION, deviceToken: 'other-token', runner }))
+    await waitFor(() => registry.deviceOnline(device.id) && registry.deviceOnline('other-device'))
+    const host = registry.hostFor({ deviceId: device.id, path: '/' }, 'root', memoryHostStore())
+    host.startJob({ script: 'demi todo list', cwd: '/', env: { DEMI_SESSION_ID: 'child', DEMI_SHELL_ID: 'shell' } })
+    const jobId = a.frames.find((frame) => frame.type === 'job_start')!.jobId
+    const call = { type: 'rpc_call' as const, jobId, callId: 'call', agentSessionId: 'child', shellId: 'shell', root: 'demi', path: ['demi', 'todo', 'list'], argv: ['todo', 'list'], args: {}, json: false, cwd: '/', env: {}, stdin: false }
+    for (const [name, target, changes] of [
+      ['wrong-device', b, {}], ['wrong-node', a, { agentSessionId: 'root' }],
+      ['wrong-shell', a, { shellId: 'invented' }], ['unknown-job', a, { jobId: 'invented' }],
+    ] as const) {
+      target.handleMessage(wire.encode({ ...call, ...changes, callId: name }))
+      await waitFor(() => target.frames.some(frame => frame.type === 'rpc_exit' && frame.callId === name))
+      expect(invoked).toBe(0)
+      expect(target.frames.some(frame => frame.type === 'rpc_pipes' && frame.callId === name)).toBe(false)
+    }
+    a.handleMessage(wire.encode(call))
+    await waitFor(() => invoked === 1)
+    a.handleMessage(wire.encode({ type: 'job_exit', jobId, exitCode: 0, cwd: '/' }))
+    a.handleMessage(wire.encode({ ...call, callId: 'after-exit' }))
+    await waitFor(() => a.frames.some(frame => frame.type === 'rpc_exit' && frame.callId === 'after-exit'))
+    expect(invoked).toBe(1)
+  } finally { await registry.close(); pipes.close() }
 })

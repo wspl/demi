@@ -117,6 +117,11 @@ export class RemoteHost implements Host {
     return this.activeJobs.size
   }
 
+  /** The immutable environment of a live job, recorded before dispatch; absent after exit/disconnect. */
+  jobEnvironment(jobId: string): Readonly<Record<string, string>> | null {
+    return this.activeJobs.get(jobId)?.env ?? null
+  }
+
   /**
    * Starts `bash -c script` on the runner as one job; offline, the job fails
    * at once. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes whose
@@ -124,7 +129,7 @@ export class RemoteHost implements Host {
    */
   startJob(params: { script: string; cwd: string; env: Record<string, string>; stdin?: PipeRef; stdout?: PipeRef }): RemoteJob {
     const jobId = createId()
-    const job = new RemoteJobState(jobId, (message) => this.dispatch(message))
+    const job = new RemoteJobState(jobId, (message) => this.dispatch(message), Object.freeze({ ...params.env }))
     if (!this.send) {
       job.finish({ exitCode: null, signal: 'runner disconnected', spawnError: { kind: 'other' } })
       return job.handle()
@@ -347,6 +352,7 @@ class RemoteJobState {
   constructor(
     private readonly jobId: string,
     private readonly send: (message: BackendToRunnerMessage) => void,
+    readonly env: Readonly<Record<string, string>>,
   ) {}
 
   pushChunk(chunk: HostProcessOutputChunk): void {

@@ -179,7 +179,7 @@ async function runOnHost(
     return { exitCode: 1 }
   }
   const host = deps.registry.hostFor(target, conversationId, deps.hostStoreFor(conversationId))
-  const env: Record<string, string> = { DEMI_SESSION_ID: conversationId }
+  const env: Record<string, string> = { DEMI_SESSION_ID: ctx.env.DEMI_SESSION_ID ?? conversationId }
   if (ctx.env.DEMI_SHELL_ID) env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
   const { stdin, stdout } = attachEnds(deps.pipes, ctx, target.deviceId)
   const job = host.startJob({ script, cwd: target.path, env, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
