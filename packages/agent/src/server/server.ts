@@ -23,6 +23,8 @@ export interface AgentServerSessionOptions {
 }
 
 export interface ShellEnvironmentContext {
+  /** The tree owner; distinct from a child node id. */
+  rootSessionId: string
   agentSessionId: string
   host: Host
   commands: CommandRegistry
