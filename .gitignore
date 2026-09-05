@@ -9,6 +9,9 @@ dist/
 # Kept locally for the team, excluded from the published/open-source repo.
 docs/internal/
 
+# Gallery color-review decisions (reviewer-local)
+packages/web-gallery/.color-review/
+
 # Test & coverage
 coverage/
 .test-cache/
