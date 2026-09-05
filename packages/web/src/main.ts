@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
+import { productAppearance } from '@demicodes/web-ui/theme/productAppearance'
 import { applyThemeToDocument } from '@demicodes/web-ui/theme/appTheme'
 import { useConversations } from './conversation/store'
 import { useResources } from './prototype/resources'
@@ -22,6 +23,9 @@ const router = createRouter({
 const resources = useResources(pinia)
 const conversations = useConversations(pinia)
 router.beforeEach((to) => (!resources.signedIn && to.path !== '/login' ? '/login' : true))
+for (const [axis, value] of Object.entries(productAppearance)) {
+  document.documentElement.setAttribute(`data-${axis}`, value)
+}
 applyThemeToDocument()
 createApp(App).use(pinia).use(router).mount('#app')
 const timer = window.setInterval(() => conversations.advance(), 80)
