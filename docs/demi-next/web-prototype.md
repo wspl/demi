@@ -64,7 +64,9 @@ execution environment from named attached devices, and offers attach,
 detach and device registration entry points (see `host-menu.md`). Main-host
 selection opens a directory chooser on the selected device; choosing a folder moves only this conversation
 to the matching workspace, creating its prototype record when needed. Offline
-devices can be attached but cannot be selected as the main environment. The workspace control opens a simulated file browser
+devices can be attached but cannot be selected as the main environment. The workspace control
+opens up to eight recent directories on the current device, marks the current one,
+and switches directly when selected. The bottom action opens a simulated file browser
 with parent navigation, filtering, file previews and folder selection. Its tooltip
 shows the full path. Branch selection supports search and creation, rejects invalid
 or duplicate names, and updates the workspace's in-memory branch list. Switching
