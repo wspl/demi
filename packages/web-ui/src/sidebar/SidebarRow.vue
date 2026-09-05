@@ -55,6 +55,7 @@ watch(
 const dotClass = computed(() => {
   const { status, unread } = props.conversation
   if (status === 'active') return 'sidebar-breath bg-fg'
+  if (props.open || !unread) return null
   if (status === 'error' || status === 'aborted') return 'bg-on-warning'
   if (status === 'done' && unread) return 'bg-on-success'
   return null

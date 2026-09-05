@@ -25,6 +25,13 @@ const sidebarProjects = computed(() => resources.projects.map((project) => ({
   hostOnline: project.hostKind === 'cloud' || !!resources.devices.find((device) => device.id === project.deviceId)?.online,
 })))
 const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
+watch(
+  () => [activeId.value, showArchived.value, conversations.items.find((item) => item.id === activeId.value)?.unread],
+  () => {
+    if (activeId.value && !showArchived.value) conversations.markRead(activeId.value)
+  },
+  { immediate: true },
+)
 const account = computed(() => ({
   name: resources.username || 'Zan',
   email: '',
