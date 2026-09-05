@@ -92,3 +92,8 @@ right of the conversation title.
 The composer appears immediately on conversation changes and restoration.
 The archived-conversation bar retains its transition and respects reduced motion. Shared typography uses macOS grayscale
 antialiasing with normal-weight interface text.
+
+Sidebar ordering and motion follow `sidebar-order.md`. Projects and conversations
+can be reordered by dragging or Alt+Up/Down. The fixture contains 40 conversations
+to exercise scrolling and animation. Ordering follows the supplied arrays, with
+pinned conversations first within each project; activity does not reorder rows.

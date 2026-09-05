@@ -247,6 +247,7 @@
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/core": "workspace:^",
+        "@demicodes/utils": "workspace:^",
         "@demicodes/web-ui": "workspace:^",
         "@lucide/vue": "^1.40.0",
         "pinia": "^3.0.3",
@@ -268,6 +269,7 @@
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/core": "workspace:^",
+        "@demicodes/utils": "workspace:^",
         "@demicodes/web-ui": "workspace:^",
         "@lucide/vue": "^1.40.0",
         "vue": "^3.5.21",
