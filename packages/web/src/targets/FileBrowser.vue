@@ -100,7 +100,7 @@ function open(entry: { path: string; directory: boolean }) {
       <TextInput v-model="search" aria-label="Filter files" placeholder="Filter files…" />
     </div>
     <div class="grid min-h-64 sm:grid-cols-2">
-      <Menu class="max-h-80 overflow-y-auto rounded-none" :autofocus="false">
+      <Menu class="w-full max-h-80 overflow-y-auto rounded-none" :autofocus="false">
         <MenuItem
           v-for="entry in entries"
           :key="entry.path"
