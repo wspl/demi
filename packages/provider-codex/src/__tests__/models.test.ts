@@ -37,7 +37,7 @@ test('Codex backend model catalog maps slug ids and explicit capabilities', () =
     supportsReasoning: true,
     supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh', 'ultra'],
     defaultThinkingEffort: null,
-    serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
+    serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage', fast: true }],
     defaultServiceTierId: null,
     sourceFetchedAt: '2026-06-20T00:00:00.000Z',
     stale: false,

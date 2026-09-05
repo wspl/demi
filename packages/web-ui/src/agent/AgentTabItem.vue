@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { CloseLine } from '@mingcute/vue/close'
+import { X } from '@lucide/vue'
 import type { ConversationState } from './types'
 import type { ConversationStatus } from './conversation-status'
 import ProviderIcon from './providers/ProviderIcon.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import ConversationStatusDot from './ConversationStatusDot.vue'
 import { useAgentUiOptions } from './ui-options'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 const uiOptions = useAgentUiOptions()
 
@@ -74,7 +75,8 @@ const tabStyle = computed(() => {
 
 <template>
   <span
-    class="relative flex shrink cursor-pointer items-center overflow-hidden rounded-lg text-[13px] select-none touch-none"
+    role="tab"
+    class="relative flex h-7 shrink cursor-default items-center overflow-hidden rounded-md text-chrome select-none touch-none"
     :class="[
       isActive
         ? 'bg-surface text-fg-emphasis'
@@ -101,7 +103,7 @@ const tabStyle = computed(() => {
       <ProviderIcon
         v-if="providerIconId"
         :provider-id="providerIconId"
-        :size="18"
+        :size="ICON_PX.markIn28"
         class="text-fg-subtle"
       />
       <span
@@ -116,7 +118,7 @@ const tabStyle = computed(() => {
       v-if="isRenaming"
       ref="renameInputRef"
       :value="renameValue"
-      class="w-32 truncate bg-transparent pl-1.5 pr-1.5 py-1.5 outline-none"
+      class="w-32 truncate bg-transparent px-1.5 outline-none"
       @input="emit('update:renameValue', ($event.target as HTMLInputElement).value)"
       @keydown.enter="emit('renameSubmit')"
       @keydown.escape="emit('renameCancel')"
@@ -124,7 +126,7 @@ const tabStyle = computed(() => {
       @pointerdown.stop
       @click.stop
     />
-    <Tooltip v-else :content="tab.title" placement="bottom" class="w-32 truncate whitespace-nowrap pl-1.5 pr-1.5 py-1.5">{{ tab.title }}</Tooltip>
+    <Tooltip v-else :content="tab.title" placement="bottom" class="w-32 truncate whitespace-nowrap px-1.5">{{ tab.title }}</Tooltip>
     <span
       class="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-9 items-center justify-end pr-1.5 opacity-0 transition-opacity group-hover:opacity-100"
     >
@@ -143,7 +145,7 @@ const tabStyle = computed(() => {
         @pointerdown.stop
         @click.stop="emit('close')"
       >
-        <CloseLine :size="12" />
+        <X :size="ICON_PX.in20" />
       </span>
     </span>
   </span>
