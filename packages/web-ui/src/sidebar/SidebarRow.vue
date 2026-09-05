@@ -162,7 +162,6 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
           :icon-size="ICON_PX.in20"
           size="sm"
           variant="ghost"
-          :pressed="conversation.pinned"
           :aria-pressed="conversation.pinned"
           :aria-label="conversation.pinned ? 'Unpin conversation' : 'Pin conversation'"
           @click.stop="emit('togglePin')"

@@ -4290,3 +4290,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Project chevrons animate the CSS rotate property between explicit 0deg and 90deg states. Tailwind rotation uses the individual rotate property, so a transform-only transition did not animate angle changes. Hover opacity and reduced-motion behavior remain part of the shared component.
 - Web-ui typecheck passed.
+
+### M13.1 — Pin action without persistent background (2026-09-06)
+
+- Sidebar pin actions use the ghost button's resting appearance for both states; Pin/PinOff and aria-pressed communicate pinned state. Hover feedback remains available.
+- Web-ui typecheck passed.
