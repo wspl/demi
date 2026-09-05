@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Date | 2026-09-03 |
-| Status | M0–M10 delivered |
+| Date | 2026-09-05 |
+| Status | M0–M12 delivered; M13 planned in three parts |
 | Scope | Milestone order, contents and acceptance for the records in this directory |
 
 Ordering principles: **lowest dependency first** — nothing is built before
@@ -218,12 +218,39 @@ suite's first run found and fixed seven composition defects (`progress.md`
 differences.
 
 **M13 — Web UI** (`product.md`)
-The entire `@demicodes/web` package in one concentrated phase: scaffold,
-workspace-grouped sidebar, chat view on web-ui, settings dialogs, the target
-picker with the hostless state, grant management, media by reference.
-Consumes the M12-frozen API; adds no backend surface. The old local dev
-product was deleted in M9 with the Node Host it ran on; until M13 the web
-package is the Vite scaffold alone.
+Three sequential parts, each with a runnable, reviewable result. The frontend
+prototype does not require a running backend or real models. Existing APIs
+inform integration work; they do not constrain prototype feature design.
+
+**M13.1 — Frontend prototype development.** Build the application prototype
+with the shared web-ui components and gallery's existing visual work: the
+application frame, workspace-grouped sidebar, chat, settings dialogs, target
+selection, host management and attachment interactions. Use local fixtures and
+simulated state transitions to exercise complete user flows, including empty,
+loading, success and failure states. Resolve baseline interaction choices in
+the prototype. Gallery remains the component catalog; the prototype is the
+application experience. This part does not connect to backend APIs.
+Accept: a user can walk through the baseline product flows in the browser
+without a backend, with simulated behavior clearly identified.
+
+**M13.2 — Incremental feature design and development in the prototype.**
+Review the runnable prototype, decide which additional capabilities belong in
+the product, and implement their interactions and simulated behavior there.
+Record each accepted feature's semantics, state ownership and acceptance
+cases in the design records; track open decisions and API gaps in the progress
+log. Gallery demonstrations are candidates, not automatic product commitments.
+Accept: accepted additions are usable in the prototype, their behavior is
+specified, and the backend contract work needed for integration is identified.
+
+**M13.3 — Complete frontend/backend integration.** Connect the reviewed
+frontend to authentication, REST resources and the agent conversation stream.
+Implement the contract and backend changes required by accepted prototype
+features, respecting package boundaries. Verify persistence, permissions,
+reconnection, target operations and media by reference against the real backend.
+Keep fixtures in development/test surfaces, outside the production runtime.
+Accept: all accepted prototype flows work against the backend, including the
+“everything Demi implements gets exposed” sweep, with scripted providers for
+automated acceptance and no real-model tests.
 
 **M14 — Deployment packaging**
 Container image for the backend (carrying the built web assets); tinyjs
@@ -263,6 +290,8 @@ Test modules and their intended coverage, per milestone.
 | M10 | The scenario suite (`packages/backend/src/__tests__/scenarios/`): the world fixture and the scripted model; S1 file workflow, S2 output view, S3 long commands and steering, S4 todo, S5 subagents, S6 continuing across a switch, S7 concurrent sessions on one runner, S8 attachments by reference, S9 detach mid-turn — each on the hostless engine and on a runner; R1 backend restart idle with the runner reconnecting, R2 backend restart mid-turn, R3 runner death and return, R4 hostless persistence across a restart; the teardown invariants on every scenario. |
 | M11 | Grant table and cross-host spawn authz; `demi host` command surface; fake-provisioner flows (provision, bind, hibernate, wake, checkpoint, crash-loop guard, idle rule with jobs, untouched-skip, owner-scoped authz); auto-provision with hostless-file placement; Cloud workspace once per project; env-gated Firecracker smoke with latency numbers. |
 | M12 | Tenant-isolation authz matrix (every API action by user A against user B's data denied); instance-mode enforcement; device revoke + re-claim. |
-| M13 | Manual checklist over the full layout, including the "everything Demi implements gets exposed" sweep. |
+| M13.1 | Browser walkthrough of the baseline prototype using local fixtures: navigation, chat, settings, target/host selection, attachments and empty/loading/error states; no backend or real model required. |
+| M13.2 | Per-feature prototype acceptance cases documented with each accepted design; browser verification of interactions and state transitions; record integration contract gaps. |
+| M13.3 | Backend-connected browser checklist over all accepted flows, including the "everything Demi implements gets exposed" sweep; scoped tests for changed packages and scripted-provider integration coverage for persistence, permissions and recovery. |
 | M14 | Scripted smoke: build the images, claim a containerized runner against a local backend, one full turn; managed-host image boots and joins via the pre-issued token; optional CI stage. |
 | M15 | `ControlService` contract tests against both implementations; two workers + one controld behind a mapped proxy; user migration preserves history; S3 round-trips; domain errors survive the RPC wire. |

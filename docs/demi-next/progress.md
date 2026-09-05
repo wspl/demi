@@ -3889,3 +3889,27 @@ the production build then passed.
 ## M13 — web package removal
 
 Removed the `packages/web` scaffold and its workspace, command, and boundary graph entries at the user’s request. `web-ui` and `web-gallery` remain. Validation: lockfile refreshed; `bun test --conditions development packages/core` passed all 30 tests, including workspace scripts and package boundary coverage.
+
+
+## M13 — Three-part delivery plan (2026-09-05)
+
+Status: planned; M13.1 is next. No application implementation in this checkpoint.
+
+Owner decision: split the web milestone into frontend prototype development
+(M13.1), incremental feature design and development in the prototype (M13.2),
+and complete frontend/backend integration (M13.3). The first two parts do not
+require backend integration. The existing gallery and web-ui are available;
+the application package is absent following the requested scaffold removal.
+
+Conclusion: prototype review determines the frontend experience and accepted
+additions. The M12 API freeze must not block that work; identify required
+contract changes during feature design and implement them in M13.3. Gallery
+features such as pinning, unread state and extensions have not been approved
+merely by splitting the milestone. Navigation, workspace semantics, preference
+ownership, upload behavior and the visual baseline remain prototype design
+questions, not prerequisites for backend integration now.
+
+Updated roadmap acceptance and verification coverage for all three parts,
+product delivery guidance and the backend API baseline wording. Removed stale
+product text about retaining a web-demo. Verification: documentation diff and
+cross-record consistency review; no runtime code changed or tests run.
