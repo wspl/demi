@@ -6,6 +6,20 @@ import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from './scoped-transport'
 /** Every hostless file belongs to the session user (`sessions-and-targets.md` § The namespace). */
 export const HOSTLESS_IDENTITY = { user: 'demi', group: 'demi' } as const
 
+/**
+ * The environment table (`sessions-and-targets.md` § What moves): what a
+ * hostless shell starts with beyond `HOME`, `USER` and the `DEMI_*` ids,
+ * and the table a managed host's jobs run with — the same values on both
+ * sides, so `echo $PATH` prints the same string before and after the
+ * upgrade. A user host's jobs run in the device user's own environment
+ * instead and get none of this.
+ */
+export const HOSTLESS_ENV: Readonly<Record<string, string>> = {
+  PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+  SHELL: '/bin/bash',
+  LANG: 'C',
+}
+
 const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'browser' })
 const transpiled = new Map<string, string>()
 

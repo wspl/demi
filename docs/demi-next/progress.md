@@ -3586,7 +3586,7 @@ point fixes. Each group is a checkpoint; status below.
 |---|---|---|---|
 | 1 | The managed-host lifecycle kept its state in memory only: no record of running VMs on disk, no reconciliation against processes and images, several exit paths (destroy, backend close, crash) that did not save the home. | VMs orphaned by a backend restart and a second guest booted over their image; destroy dropping the work since the last checkpoint; a failed shrink leaving an image the next wake booted anyway; a guest dying during boot failing only at the boot timeout. | delivered |
 | 2 | The hostless → machine upgrade modelled as a per-(session, Host) shell decoration in the composition root rather than a conversation-level target transition. | Named shells and running commands unusable after the upgrade; a subagent's outside script failing the upgrade; a failed upgrade's retry booting the stale first image and dropping the hostless work in between; the managed → workspace → hostless loop. | pending |
-| 3 | No single declaration of a job's environment per target kind. | `PATH=/usr/bin:/bin` forced on user hosts; `$USER` empty on managed hosts. | pending |
+| 3 | No single declaration of a job's environment per target kind. | `PATH=/usr/bin:/bin` forced on user hosts; `$USER` empty on managed hosts. | delivered |
 | 4 | Guards and documents written twice. | The boundary test admitting `shell → tinybash`; an unused backend dependency; scripts and path mappings pointing at deleted files; stale entry names in `backend.md`. | pending |
 
 Point fixes (independent): the blob route's reflected content type; device
@@ -3618,6 +3618,30 @@ over injected image tools and process control (a still-running VM killed
 and its image saved, a dead one's directory removed, a failed save kept and
 refusing the next wake, destroy saving before it forgets); S10–S12 pass
 unchanged in behaviour (the fake's `reconcile` is a no-op).
+
+### Group 3: the environment table — delivered
+
+One table, declared once: `HOSTLESS_ENV` in
+`conversation/hostless-shell.ts` (`PATH`, `SHELL`, `LANG`; `HOME` and
+`USER` are the shell's and the guest's own) is what the hostless shell
+starts with and what the backend names in every `job_start` to a managed
+host, so `echo $PATH` and `$LANG` agree across the upgrade. A user host's
+shell starts with nothing of it: the backend names only the `DEMI_*` ids
+(`shellOptionsFor` in the composition root picks the table by the device
+kind behind the Host; the `AgentServer` no longer carries a `PATH`). On the
+runner a job's environment is the device's underneath and the backend's on
+top — `{ ...deviceEnv, ...job.env }` in `JobTable` — where `deviceEnv` is
+the environment the runner was started with on a user host and the guest's
+login table (now with `SHELL` and `LANG`) as PID 1; the narrow `PATH`/`HOME`
+fallback stays for raw spawns, whose spawner owns the environment it named.
+`runner.md` § Jobs and `sessions-and-targets.md` § What moves carry the
+rule and the table.
+
+Verification: `runner/src/__tests__/jobs.test.ts` (a device entry reaches
+the job, a backend entry wins), S7 (a user host's `job_start` names no
+`PATH` or `HOME`), S11 (a managed host's jobs carry the table and the
+model sees the same `$PATH` after the upgrade); the host-remote,
+host-virtual and backend suites pass.
 
 ## Open items (deferred, with their milestone)
 

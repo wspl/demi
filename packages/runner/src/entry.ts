@@ -40,7 +40,8 @@ async function initMain(): Promise<number> {
     stateDir: boot.stateDir,
     executable: '/demi-runner',
     name: identity.hostname,
-    deviceEnv: { PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', HOME: GUEST_USER.homeDir, USER: GUEST_USER.name },
+    // The guest's login table: the same values the backend names for the hostless shell (`sessions-and-targets.md` § What moves).
+    deviceEnv: { PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', HOME: GUEST_USER.homeDir, USER: GUEST_USER.name, SHELL: '/bin/bash', LANG: 'C' },
     managed: true,
     deviceToken: boot.config.deviceToken,
     guest: { identity: { uid: GUEST_USER.uid, gid: GUEST_USER.gid, hostname: identity.hostname, homeDir: GUEST_USER.homeDir }, runAs: { uid: GUEST_USER.uid, gid: GUEST_USER.gid } },
@@ -83,7 +84,8 @@ async function runnerMain(args: readonly string[]): Promise<number> {
     stateDir: dir,
     executable,
     ...(env.DEMI_RUNNER_NAME ? { name: env.DEMI_RUNNER_NAME } : {}),
-    deviceEnv: { PATH: env.PATH ?? '/usr/bin:/bin', HOME: identity.homeDir },
+    // Jobs run in the environment the runner was started with: the device user's own.
+    deviceEnv: { PATH: '/usr/bin:/bin', HOME: identity.homeDir, ...env },
     ...(env.DEMI_RUNNER_MANAGED ? { managed: true } : {}),
     reconnect: env.DEMI_RUNNER_RECONNECT_MS ? { initialDelayMs: Number(env.DEMI_RUNNER_RECONNECT_MS) } : undefined,
   })

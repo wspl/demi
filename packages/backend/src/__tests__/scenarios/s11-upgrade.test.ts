@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, test } from 'bun:test'
+import { HOSTLESS_ENV } from '../../conversation/hostless-shell'
 import { LocalControlService, type ControlService } from '../../storage/control'
 import { openSqliteDatabase } from '../../storage/database'
 import { FakeProvisioner } from './fake-provisioner'
@@ -65,8 +66,13 @@ test('the first outside script moves the conversation to a machine, silently, wi
   expect(await readFile(join(home, '.tmp', 'scratch.txt'), 'utf8')).toBe('tmp\n')
 
   // From then on every call runs there; the machine's shell carries its cwd.
-  const after = await driver.turn({ model: [model.shell('t3', 'printf beta >> a.txt && cat a.txt'), model.say('done')] })
+  const after = await driver.turn({ model: [model.shell('t3', 'printf beta >> a.txt && cat a.txt && echo "$PATH|$LANG"'), model.say('done')] })
   expect(after.received[0]).toContain('alpha\nbeta')
+  // The machine's jobs run with the hostless environment table: the same `$PATH` the model saw before the upgrade.
+  expect(after.received[0]).toContain(`${HOSTLESS_ENV.PATH}|${HOSTLESS_ENV.LANG}`)
+  const starts = world.wire().filter((f) => f.deviceId === record!.hostDeviceId && f.message.type === 'job_start').map((f) => (f.message.type === 'job_start' ? f.message.env : {}))
+  expect(starts.length).toBeGreaterThan(0)
+  expect(starts.every((env) => env.PATH === HOSTLESS_ENV.PATH && env.SHELL === HOSTLESS_ENV.SHELL)).toBe(true)
   expect(fake.calls.filter((call) => call.startsWith('provision:'))).toHaveLength(1)
 }, 60_000)
 

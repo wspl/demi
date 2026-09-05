@@ -245,7 +245,8 @@ provision ──▶ running ──▶ hibernated ──▶ running (wake) ──
   find it through `DEMI_HOME` — and the relay socket there is mode 0666 so
   the guest user's command-mode processes can reach it. It spawns every job
   and process as the **guest user `demi`** (uid 1000, home `/home/demi`,
-  `HOME`, `USER` and `PATH` set), who has **passwordless `sudo`**: `sudo apt
+  the login table of `sessions-and-targets.md` § What moves set), who has
+  **passwordless `sudo`**: `sudo apt
   install` works into the ephemeral upper, while tools that refuse to run
   as root (Linuxbrew, some package managers) work as themselves. The VM is
   single-tenant, so the user boundary is not a security boundary; it
