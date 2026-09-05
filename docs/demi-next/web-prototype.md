@@ -80,7 +80,9 @@ of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
 and multi-selection actions. Project headers right-align device metadata and
 replace it with the new-conversation button on hover using a crossfade. The left folder icon stays visible
-while hovering and reflects the collapsed/expanded state; idle conversations have no status glyph.
+while hovering and reflects the collapsed/expanded state. A chevron immediately
+after the project name fades in on hover over 150ms and rotates with the fold
+state; idle conversations have no status glyph.
 Cloud workspaces use a cloud icon, while device workspaces show a computer icon
 and hostname, centered beside the workspace name. The sidebar has no prototype
 caption. Menus, dialogs, settings and the entry page omit instructional and

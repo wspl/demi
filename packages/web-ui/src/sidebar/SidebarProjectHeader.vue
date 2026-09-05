@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Cloud, Folder, FolderOpen, Monitor, SquarePen } from '@lucide/vue'
+import { ChevronRight, Cloud, Folder, FolderOpen, Monitor, SquarePen } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -35,7 +35,15 @@ const emit = defineEmits<{
       :size="ICON_PX.in28"
       class="shrink-0 text-fg-muted"
     />
-    <span class="min-w-0 flex-1 truncate font-medium">{{ project.name }}</span>
+    <span class="flex min-w-0 flex-1 items-center gap-1">
+      <span class="min-w-0 truncate font-medium">{{ project.name }}</span>
+      <ChevronRight
+        :size="ICON_PX.in20"
+        aria-hidden="true"
+        class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,transform] duration-150 motion-reduce:transition-none group-hover/project:opacity-100"
+        :class="collapsed ? '' : 'rotate-90'"
+      />
+    </span>
     <span class="grid min-w-6 max-w-[45%] items-center">
       <span
         class="pointer-events-none col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
