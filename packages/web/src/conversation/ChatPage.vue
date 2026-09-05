@@ -32,7 +32,6 @@ function chooseTarget() {
   resources.targetMode = 'switch'
   resources.targetOpen = true
 }
-
 </script>
 
 <template>
@@ -41,13 +40,18 @@ function chooseTarget() {
     class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-xl bg-surface"
   >
     <header class="flex h-11 shrink-0 items-center gap-2 px-3">
-      <Button variant="ghost" @click="chooseTarget">
-        <Monitor :size="ICON_PX.in28" />
-        {{ project?.name ?? 'No project' }}
-      </Button>
-      <span class="min-w-0 flex-1 truncate text-[11px] text-fg-faint">
-        {{ project?.path ?? 'Hostless workspace' }}
-      </span>
+      <h1
+        class="min-w-0 flex-1 select-none truncate text-chrome font-normal text-fg"
+        :title="conversation.title"
+      >
+        {{ conversation.title }}
+      </h1>
+      <Tooltip :content="project ? `${project.host}:${project.path}` : 'Hostless workspace'">
+        <Button variant="ghost" @click="chooseTarget">
+          <Monitor :size="ICON_PX.in28" />
+          <span class="max-w-40 truncate">{{ project?.host ?? 'Hostless' }}</span>
+        </Button>
+      </Tooltip>
       <Tooltip content="Archive conversation">
         <IconButton
           :icon="Archive"
@@ -93,14 +97,17 @@ function chooseTarget() {
               {{ conversation.status === 'error' ? 'Retry' : 'Resume' }}
             </SessionDockChip>
           </template>
-          <div
-            v-if="conversation.archived"
-            class="flex items-center justify-between rounded-lg bg-surface-raised p-3 text-chrome text-fg-muted"
-          >
-            <span>This conversation is archived.</span>
-            <Button @click="store.archive([conversation.id], false)">Restore conversation</Button>
-          </div>
-          <ConversationComposer v-else :key="conversation.id" :conversation="conversation" />
+          <Transition name="composer-archive" mode="out-in">
+            <div
+              v-if="conversation.archived"
+              key="archived"
+              class="flex items-center justify-between rounded-lg bg-surface-raised p-3 text-chrome text-fg-muted"
+            >
+              <span>This conversation is archived.</span>
+              <Button @click="store.archive([conversation.id], false)">Restore conversation</Button>
+            </div>
+            <ConversationComposer v-else :key="conversation.id" :conversation="conversation" />
+          </Transition>
         </SessionDock>
       </template>
     </SessionSurface>
@@ -118,3 +125,23 @@ function chooseTarget() {
     </Button>
   </section>
 </template>
+
+<style scoped>
+.composer-archive-enter-active,
+.composer-archive-leave-active {
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+.composer-archive-enter-from,
+.composer-archive-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-archive-enter-active,
+  .composer-archive-leave-active {
+    transition: none;
+  }
+}
+</style>
