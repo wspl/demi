@@ -190,14 +190,19 @@ export class LiveSession {
     return this.shellEnvironment({ agentSessionId: this.agentSessionId, host, commands, shell: shellOptions })
   }
 
+  /** The distinct environments of this session: a product may serve two Hosts with one object (a target that changed engines underneath). */
+  private environments(): ShellEnvironment[] {
+    return [...new Set(this.environmentsByHost.values())]
+  }
+
   private environmentForShell(shellId: string): ShellEnvironment | null {
-    const matches = [...this.environmentsByHost.values()].filter((environment) => environment.getShell(shellId))
+    const matches = this.environments().filter((environment) => environment.getShell(shellId))
     if (matches.length > 1) throw new Error(`Shell id "${shellId}" is not unique in this session`)
     return matches[0] ?? null
   }
 
   private environmentForCommand(commandId: string): ShellEnvironment | null {
-    const matches = [...this.environmentsByHost.values()].filter((environment) => environment.hasCommand(commandId))
+    const matches = this.environments().filter((environment) => environment.hasCommand(commandId))
     if (matches.length > 1) throw new Error(`Command id "${commandId}" is not unique in this session`)
     return matches[0] ?? null
   }

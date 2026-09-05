@@ -1,4 +1,3 @@
-import type { AgentServer } from '@demicodes/agent'
 import type { Host } from '@demicodes/shell'
 import { errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
@@ -7,7 +6,7 @@ import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderVault } from '../vault/providers'
 import { providerOwner } from '../vault/scope'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
-import { switchConversationTarget } from '../conversation/target-switch'
+import type { SwitchTargetResult } from '../conversation/target'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
 import type { ControlService } from '../storage/control'
 import type { ConversationStores } from '../storage/conversation-store'
@@ -28,15 +27,16 @@ const patchConversationBodySchema = z.object({
 export function conversationRoutes(options: {
   control: ControlService
   conversationStores: ConversationStores
-  agentServer: AgentServer
   hostFor: (conversationId: string) => Promise<Host>
+  /** The target switch (`conversation/target.ts`): the domain decides, the route maps the outcome. */
+  switchTarget: (conversationId: string, toWorkspaceId: string | null) => Promise<SwitchTargetResult>
   managedHosts: ManagedHosts | null
   vault: ProviderVault
   mode: InstanceMode
   /** Whether a device has a live runner socket, for the host list. */
   deviceOnline: (deviceId: string) => boolean
 }): Hono<AuthEnv> {
-  const { control, conversationStores, agentServer, hostFor, managedHosts, vault, mode, deviceOnline } = options
+  const { control, conversationStores, hostFor, switchTarget, managedHosts, vault, mode, deviceOnline } = options
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -82,7 +82,7 @@ export function conversationRoutes(options: {
       await control.setConversationModel(conversation.id, body.providerId ?? null, body.modelId ?? null)
     }
     if (body.workspaceId !== undefined) {
-      const result = await switchConversationTarget({ control, agentServer }, conversation.id, body.workspaceId)
+      const result = await switchTarget(conversation.id, body.workspaceId)
       switch (result.outcome) {
         case 'switched':
         case 'noop':

@@ -15,12 +15,12 @@ import { WebSessions, type WebSessionsOptions } from './auth/sessions'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { createVirtualHostFactory } from './conversation/virtual-hosts'
 import { HOSTLESS_ENV, createHostlessShell, transpileCommandModule } from './conversation/hostless-shell'
-import { UpgradingShell, type Machine } from './conversation/upgrading-shell'
-import { resolveExecutionTarget } from './conversation/execution-target'
+import { UpgradingShell } from './conversation/upgrading-shell'
+import { ConversationTargets } from './conversation/target'
 import { HOSTLESS_HOME } from './conversation/scoped-transport'
 import { createCloudWorkspace } from './managed/cloud-workspace'
 import { createHostCommandGroup } from './managed/host-command'
-import { ManagedHostError, ManagedHosts, ownerOf, type ManagedHostsConfig } from './managed/lifecycle'
+import { ManagedHosts, type ManagedHostsConfig } from './managed/lifecycle'
 import type { ManagedHostProvisioner } from './managed/provisioner'
 import { createApp } from './http/app'
 import { ProviderAssembly, builtinProviderTypes, type ProviderType } from './llm/assembly'
@@ -35,7 +35,7 @@ import { loadOrCreateInstanceSecret } from './vault/secret'
 import { SubscriptionLoginFlows } from './vault/subscription-login'
 import { UserBlobStores } from './storage/user-blobs'
 import { ConversationStores } from './storage/conversation-store'
-import { LocalControlService, type ControlService, type DeviceKind, type ManagedHostOwner } from './storage/control'
+import { LocalControlService, type ControlService, type ManagedHostOwner } from './storage/control'
 import { openSqliteDatabase } from './storage/database'
 import { CONTROL_MIGRATIONS, migrate } from './storage/migrations'
 
@@ -174,32 +174,19 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // Whatever a previous process left running or unsaved is settled before the first need can boot anything.
   await managedHosts?.reconcile()
 
-  // The execution target is resolved server-side from the conversation record
-  // (`sessions-and-targets.md` § The three states): a workspace or a
-  // session-bound managed host routes to the device's stable RemoteHost
-  // (offline ⇒ tool errors until the runner reattaches), neither ⇒ virtual.
-  // A managed device is woken here — this is "the next action needing the
-  // host" — after the owner check every control-plane path makes.
-  // The kind of device behind each RemoteHost: the environment a job runs in depends on it.
-  const deviceKinds = new WeakMap<Host, DeviceKind>()
-  const hostFor = async (conversationId: string): Promise<Host> => {
-    const conversation = await control.getConversation(conversationId)
-    if (!conversation) return virtualHostFor(conversationId)
-    const target = await resolveExecutionTarget(control, conversation)
-    if (target.kind === 'hostless') return virtualHostFor(conversationId)
-    const device = await control.getDevice(target.deviceId)
-    if (device?.kind === 'managed') {
-      const owner = ownerOf(device)
-      const owned = target.kind === 'workspace' ? owner.kind === 'workspace' && owner.id === target.workspaceId : owner.kind === 'conversation' && owner.id === conversationId
-      if (!owned) throw new ManagedHostError('not_owner', `machine ${device.id} is bound to another owner`)
-      if (!managedHosts) throw new Error('this backend provisions no machines')
-      await managedHosts.ensureRunning(device)
-    }
-    const path = target.kind === 'workspace' ? target.path : (runnerRegistry.deviceIdentity(target.deviceId)?.homeDir ?? '/')
-    const host = runnerRegistry.hostFor({ deviceId: target.deviceId, path }, conversationId, conversationStores.hostStore(conversationId))
-    deviceKinds.set(host, device?.kind ?? 'user')
-    return host
-  }
+  // Where a conversation's actions run (`sessions-and-targets.md`): one
+  // module resolves the three states to a Host and moves between them — the
+  // user's switch, the silent upgrade, the hostless re-entry rule.
+  const targets = new ConversationTargets({
+    control,
+    registry: runnerRegistry,
+    managedHosts,
+    virtualHostFor,
+    stores: conversationStores,
+    stagingDir: join(options.dataDir, 'staging'),
+    sessionPhase: (conversationId) => agentServer.sessionPhase(conversationId),
+  })
+  const hostFor = (conversationId: string): Promise<Host> => targets.hostFor(conversationId)
 
   const hostCommandDeps = {
     control,
@@ -219,40 +206,23 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     commands: (ctx) => commandsFor(ctx.agentSessionId),
     preamble: switchAnnouncementPreamble(control, runnerRegistry),
   })
-  // The session upgrade (`sessions-and-targets.md` § Hostless execution):
-  // the conversation's files become the home of a machine provisioned for
-  // it, the conversation is bound to it silently, and the shell the first
-  // script runs in is the one the session uses from then on.
-  const upgradeToMachine = async (conversationId: string, ctx: Parameters<ShellEnvironmentFactory>[0]): Promise<Machine> => {
-    if (!managedHosts) throw new Error('this script needs a machine, and this backend provisions none')
-    const conversation = await control.getConversation(conversationId)
-    if (!conversation) throw new Error(`no conversation ${conversationId}`)
-    const home = join(options.dataDir, 'staging', conversationId)
-    await conversationStores.materializeFiles(conversationId, [
-      { from: HOSTLESS_HOME, to: home },
-      { from: '/tmp', to: join(home, '.tmp') },
-    ])
-    const device = await managedHosts.provision({ kind: 'conversation', id: conversationId }, conversation.userId, home)
-    if (!(await control.bindConversationHost(conversationId, device.id))) throw new Error('the conversation left the hostless state meanwhile')
-    conversationStores.clearFiles(conversationId)
-    const host = await hostFor(conversationId)
-    return { environment: await shellEnvironmentFor({ ...ctx, host }), home: host.identity.homeDir }
-  }
 
-  // One shell environment per (session, Host), whichever side asks first:
-  // the session through the server, or the upgrade for the machine it just
-  // bound. A hostless conversation's shell is tinybash over its files tree
-  // behind the upgrade; a machine's is the runner's job table.
   // The environment a shell starts with (`sessions-and-targets.md` § What
   // moves): the hostless table for the hostless shell and for a managed
   // host, so the two sides agree; nothing for a user host, whose jobs run
   // in the device user's own environment. The session's own entries (the
   // subagent ids) come on top.
-  const shellEnvironments = new Map<string, WeakMap<Host, Promise<ShellEnvironment>>>()
   const shellOptionsFor = (ctx: Parameters<ShellEnvironmentFactory>[0]) => {
-    const table = ctx.host instanceof VirtualHost || deviceKinds.get(ctx.host) === 'managed' ? HOSTLESS_ENV : {}
+    const table = ctx.host instanceof VirtualHost || targets.hostInfo(ctx.host)?.device === 'managed' ? HOSTLESS_ENV : {}
     return { ...ctx.shell, initialEnv: { ...table, ...ctx.shell.initialEnv } }
   }
+
+  // One shell environment per (session, Host). A hostless conversation's is
+  // tinybash over its files tree behind the upgrade; a machine's is the
+  // runner's job table. Across the upgrade they are one object: the
+  // conversation's own machine is served by the session's hostless shell,
+  // which adopts its shells there under the ids the model holds.
+  const shellEnvironments = new Map<string, WeakMap<Host, Promise<ShellEnvironment>>>()
   const shellEnvironmentFor = (ctx: Parameters<ShellEnvironmentFactory>[0]): Promise<ShellEnvironment> => {
     let bySession = shellEnvironments.get(ctx.agentSessionId)
     if (!bySession) {
@@ -261,11 +231,35 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     }
     let environment = bySession.get(ctx.host)
     if (!environment) {
-      environment = (async () => {
+      const sessionHosts = bySession
+      environment = (async (): Promise<ShellEnvironment> => {
         sessionShells.set(ctx.agentSessionId, { host: ctx.host, commands: ctx.commands })
         const shell = shellOptionsFor(ctx)
-        if (ctx.host instanceof VirtualHost) return new UpgradingShell(await createHostlessShell({ ...ctx, shell }), () => upgradeToMachine(ctx.agentSessionId, ctx), HOSTLESS_HOME)
-        if (ctx.host instanceof RemoteHost) return new RemoteShellEnvironment({ ...shell, host: ctx.host })
+        const info = targets.hostInfo(ctx.host)
+        if (ctx.host instanceof VirtualHost) {
+          // The conversation's, whichever session asks: a subagent's outside script upgrades its root's conversation.
+          const conversationId = info?.conversationId ?? ctx.agentSessionId
+          return new UpgradingShell(
+            await createHostlessShell({ ...ctx, shell }),
+            async () => {
+              const machine = await targets.upgrade(conversationId)
+              // Through this factory, so the session's environment for the machine is the hostless shell itself.
+              await shellEnvironmentFor({ ...ctx, host: machine.host })
+            },
+            HOSTLESS_HOME,
+          )
+        }
+        if (ctx.host instanceof RemoteHost) {
+          const remote = new RemoteShellEnvironment({ ...shell, host: ctx.host })
+          if (info?.target === 'host') {
+            const hostless = await sessionHosts.get(await virtualHostFor(info.conversationId))
+            if (hostless instanceof UpgradingShell) {
+              hostless.attach({ environment: remote, home: ctx.host.identity.homeDir })
+              return hostless
+            }
+          }
+          return remote
+        }
         throw new Error('the backend runs conversations hostless or through a runner; no other Host exists')
       })()
       bySession.set(ctx.host, environment)
@@ -297,6 +291,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     upgradeWebSocket,
     blobs,
     hostFor,
+    switchTarget: (conversationId, toWorkspaceId) => targets.switch(conversationId, toWorkspaceId),
     managedHosts,
     createCloudWorkspace: managedHosts
       ? (userId, name) => createCloudWorkspace({ control, managedHosts, registry: runnerRegistry, stagingDir: join(options.dataDir, 'staging') }, userId, name)

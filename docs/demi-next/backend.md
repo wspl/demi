@@ -66,7 +66,11 @@ Spoken of as modules, not separate services:
 - **Conversation module**: AgentServer/AgentSession hosting, transcript
   persistence, session index, cold-history reads on the same rendering
   path as live (a full-sync `transcript_reset`), compaction, session
-  concurrency via client-owned session ids and the ownership registry.
+  concurrency via client-owned session ids and the ownership registry;
+  the conversation's execution target (`sessions-and-targets.md`) — the
+  resolution of its three states to a Host, the switch, the silent
+  upgrade and the hostless re-entry rule — as one module keyed by the
+  conversation, which every session of it (root or subagent) asks.
 - **Command module**: assembles the roots (`demi` from
   `@demicodes/coding-agent` plus the backend-contributed `host` group),
   builds and serves the manifest, runs hostless conversations' tool calls
