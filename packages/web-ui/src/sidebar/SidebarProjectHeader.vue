@@ -40,8 +40,8 @@ const emit = defineEmits<{
       <ChevronRight
         :size="ICON_PX.in20"
         aria-hidden="true"
-        class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,transform] duration-150 motion-reduce:transition-none group-hover/project:opacity-100"
-        :class="collapsed ? '' : 'rotate-90'"
+        class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100"
+        :class="collapsed ? 'rotate-0' : 'rotate-90'"
       />
     </span>
     <span class="grid min-w-6 max-w-[45%] items-center">
