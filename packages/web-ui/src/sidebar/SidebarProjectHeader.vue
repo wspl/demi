@@ -28,7 +28,6 @@ const emit = defineEmits<{
       :aria-expanded="!collapsed"
       class="flex h-7 cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
       :class="[
-        menuOpen ? 'bg-hover' : 'hover:bg-hover',
         focused ? 'ring-1 ring-inset ring-line-focus' : '',
       ]"
       @click="emit('toggle')"
