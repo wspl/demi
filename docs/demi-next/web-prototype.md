@@ -59,7 +59,9 @@ Conversation headers show the title with device name/status, workspace name and
 branch to its right. Metadata moves below the title on narrow screens. The
 environment control opens workspace selection and its tooltip shows the full
 path. Fixture branches are simulated; new workspaces display unavailable branch
-metadata until a branch is supplied. Sidebar rows
+metadata until a branch is supplied. Hostless conversations omit the environment
+information control. Project groups retain the project list's order regardless
+of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
 and multi-selection actions. Project headers create conversations with the plus
 button beside the fold control. Idle conversations have a hollow status ring.
