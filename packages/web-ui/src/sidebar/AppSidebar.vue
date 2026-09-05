@@ -97,8 +97,10 @@ watch(drag.source, async (source, previous, onCleanup) => {
   if (cancelled || !row.isConnected) return
   const bounds = container.getBoundingClientRect()
   const item = row.getBoundingClientRect()
-  const delta = item.top < bounds.top ? item.top - bounds.top
-    : item.bottom > bounds.bottom ? item.bottom - bounds.bottom : 0
+  const delta = source
+    ? item.top < bounds.top ? item.top - bounds.top
+      : item.bottom > bounds.bottom ? item.bottom - bounds.bottom : 0
+    : item.top + item.height / 2 - (bounds.top + bounds.height / 2)
   if (delta) container.scrollBy({
     top: delta,
     behavior: source || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
