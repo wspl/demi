@@ -4280,3 +4280,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Removed the project host status dot and its unused sidebar data field/mapping. Device projects show the host name; Cloud projects retain the cloud icon.
 - Web, web-ui and web-gallery typechecks passed.
+
+### M13.1 — Center project after drag (2026-09-06)
+
+- After project drag ends, smooth scrolling aligns the project header midpoint with the sidebar viewport midpoint, including when the header is already visible. Native scroll limits provide the closest reachable position near the list edges.
+- Web-ui typecheck passed.
