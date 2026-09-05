@@ -5,4 +5,4 @@ export {
   type VirtualFsBackend,
   type VirtualHostOptions,
 } from './virtual-host'
-export { HostlessEnvironment, type HostlessEnvironmentOptions } from './hostless-environment'
+export { HostlessEnvironment, type HostlessEnvironmentOptions, type ShellHandover } from './hostless-environment'
