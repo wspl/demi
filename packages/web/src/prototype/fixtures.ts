@@ -1,5 +1,6 @@
 import type { FileExtension, ModelSelection } from '@demicodes/core'
 import type { Conversation, Device, Project, PrototypeProvider } from './types'
+import { populateTranscript } from './transcripts'
 
 export function providers(): PrototypeProvider[] {
   return [
@@ -109,7 +110,7 @@ export function conversations(): Conversation[] {
       text: 'Everything starts with a conversation.\n\nWe can shape an idea, work through a question, or build something together. Your projects keep related conversations close, and each conversation has its own working environment.\n\n**What would you like to work on?**',
     },
   ]
-  return [
+  const items = [
     c,
     conversation('ideas', 'Ideas for the week'),
     conversation('writing', 'Find a clearer way to say it', 'notes'),
@@ -161,6 +162,10 @@ export function conversations(): Conversation[] {
       'A concise summary for readers',
     ].map((title, index) => conversation(`notes-${index}`, title, 'notes')),
   ]
+  items.forEach((item, index) => {
+    if (item.id !== 'welcome') populateTranscript(item, modelSelection(item), index)
+  })
+  return items
 }
 
 export function modelSelection(c: Conversation): ModelSelection {

@@ -7,6 +7,7 @@ export interface SidebarProject {
   /** The machine the checkout lives on; the row shows it beside the name. */
   host: string
   hostKind: 'device' | 'cloud'
+  hostOnline?: boolean
   path: string
 }
 

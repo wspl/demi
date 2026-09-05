@@ -132,10 +132,10 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
         marquee ? 'is-playing' : '',
         conversation.unread && !open ? 'text-fg-emphasis' : '',
         menuOpen
-          ? 'mr-12'
+          ? 'mr-[50px]'
           : conversation.pinned
-            ? 'mr-8 group-hover/row:mr-12'
-            : 'group-hover/row:mr-12',
+            ? 'mr-8 group-hover/row:mr-[50px]'
+            : 'group-hover/row:mr-[50px]',
       ]"
     >
       <span
@@ -149,12 +149,12 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       <span v-else ref="titleText">{{ conversation.title }}</span>
     </span>
     <span
-      class="absolute inset-y-0 right-1 flex items-center transition-opacity"
+      class="absolute inset-y-0 right-1 flex items-center gap-0.5 transition-opacity"
       :class="
         menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'
       "
     >
-      <Tooltip :content="conversation.pinned ? 'Unpin' : 'Pin'">
+      <Tooltip :content="conversation.pinned ? 'Unpin' : 'Pin'" class="flex items-center">
         <IconButton
           v-if="!hidePin"
           :icon="conversation.pinned ? PinOff : Pin"
@@ -167,7 +167,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
           @click.stop="emit('togglePin')"
         />
       </Tooltip>
-      <Tooltip content="Archive conversation">
+      <Tooltip content="Archive conversation" class="flex items-center">
         <IconButton
           :icon="Archive"
           size="sm"
@@ -181,7 +181,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     <Pin
       v-if="conversation.pinned && !menuOpen"
       :size="ICON_PX.in20"
-      class="pointer-events-none absolute right-2 text-fg-faint transition-opacity group-hover/row:opacity-0"
+      class="pointer-events-none absolute right-[10px] text-fg-faint transition-opacity group-hover/row:opacity-0"
     />
   </div>
 </template>
