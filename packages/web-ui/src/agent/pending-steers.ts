@@ -1,4 +1,5 @@
 import type { Block, ImageSource, UserContentBlock } from '@demicodes/core'
+import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage } from './types'
 
 export interface PendingSteerRenderBlock {
@@ -8,7 +9,7 @@ export interface PendingSteerRenderBlock {
   content: UserContentBlock[]
 }
 
-export type MessageListBlock = Block | PendingSteerRenderBlock
+export type MessageListBlock = Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock
 
 export function createPendingSteerMessage(
   id: string,

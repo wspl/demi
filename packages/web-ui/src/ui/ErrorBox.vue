@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { useClipboard } from '@vueuse/core'
-import { CheckLine } from '@mingcute/vue/check'
-import { CopyLine } from '@mingcute/vue/copy'
-import { CloseLine } from '@mingcute/vue/close'
+import { Check, Copy, X } from '@lucide/vue'
 
 const props = defineProps<{
   message: string
@@ -24,18 +22,18 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
       <div v-if="copyable || dismissible" class="flex shrink-0 items-center gap-0.5">
         <span
           v-if="copyable"
-          class="flex cursor-pointer items-center rounded-md p-1 text-on-danger-muted transition-colors hover:bg-tint-danger-strong hover:text-on-danger"
+          class="flex cursor-default items-center rounded-md p-1 text-on-danger-muted transition-colors hover:bg-tint-danger-strong hover:text-on-danger"
           @click="copy(props.message)"
         >
-          <CheckLine v-if="copied" :size="12" class="text-on-success" />
-          <CopyLine v-else :size="12" />
+          <Check v-if="copied" :size="12" class="text-on-success" />
+          <Copy v-else :size="12" />
         </span>
         <div
           v-if="dismissible"
-          class="flex cursor-pointer items-center justify-center rounded p-1 text-on-danger-muted transition-colors hover:bg-tint-danger-strong hover:text-on-danger"
+          class="flex cursor-default items-center justify-center rounded p-1 text-on-danger-muted transition-colors hover:bg-tint-danger-strong hover:text-on-danger"
           @click="emit('dismiss')"
         >
-          <CloseLine :size="12" />
+          <X :size="12" />
         </div>
       </div>
     </div>

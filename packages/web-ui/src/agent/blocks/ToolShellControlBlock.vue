@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { HistoryLine } from '@mingcute/vue/history'
-import { TerminalBoxLine } from '@mingcute/vue/terminal-box'
+import { History, SquareTerminal } from '@lucide/vue'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
@@ -24,9 +24,9 @@ const iconComponent = computed(() => {
     case 'shell_status':
     case 'shell_write':
     case 'shell_abort':
-      return TerminalBoxLine
+      return SquareTerminal
     case 'yield':
-      return HistoryLine
+      return History
   }
 })
 </script>
@@ -34,10 +34,10 @@ const iconComponent = computed(() => {
 <template>
   <FunctionalBlock
     :loading="block.status === 'executing'"
-    :error="block.status === 'error'"
+    :tone="block.status === 'error' ? 'danger' : undefined"
   >
     <template #icon>
-      <component :is="iconComponent" :size="16" />
+      <component :is="iconComponent" :size="ICON_PX.in28" />
     </template>
 
     <template #default="{ loading }">

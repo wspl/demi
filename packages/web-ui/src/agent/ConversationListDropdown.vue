@@ -2,14 +2,15 @@
 import { computed } from 'vue'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import { HistoryLine } from '@mingcute/vue/history'
-import { Chat1Line } from '@mingcute/vue/chat-1'
+import { History, MessageSquare } from '@lucide/vue'
+import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 
 dayjs.extend(relativeTime)
 import { t } from '@demicodes/web-ui/infra/i18n'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
-import SelectDropdown from '@demicodes/web-ui/ui/SelectDropdown.vue'
+import Menu from '@demicodes/web-ui/ui/Menu.vue'
 
 // Open tabs and server-side history summaries both satisfy this shape.
 interface ConversationListItem {
@@ -28,7 +29,12 @@ const emit = defineEmits<{
 }>()
 
 const items = computed(() =>
-  props.conversations.map((c) => ({ id: c.id, label: c.title, createdAt: c.createdAt })),
+  props.conversations.map((c) => ({
+    id: c.id,
+    label: c.title,
+    createdAt: c.createdAt,
+    icon: MessageSquare,
+  })),
 )
 
 function formatTime(iso: string): string {
@@ -37,35 +43,39 @@ function formatTime(iso: string): string {
 </script>
 
 <template>
-  <SelectDropdown
+  <Dropdown
     :overlay-store="appOverlayStore"
-    :items="items"
-    :selected-id="activeTabId ?? undefined"
-    searchable
-    :search-placeholder="t('agent.conversationList.placeholder')"
-    :empty-text="t('agent.conversationList.empty')"
-    panel-class="w-96"
-    :item-height="32"
     placement="bottom-end"
     :offset="6"
-    @select="emit('select', $event)"
   >
     <template #trigger="{ isOpen }">
-      <span
-        class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-hover hover:text-fg-muted"
-        :class="isOpen && 'bg-overlay/6 text-fg-muted'"
+      <IconButton
+        :icon="History"
+        size="sm"
+        variant="ghost"
+        :pressed="isOpen"
+      />
+    </template>
+    <template #content="{ close }">
+      <Menu
+        class="w-96"
+        filterable
+        :filter-placeholder="t('agent.conversationList.placeholder')"
+        :empty-text="t('agent.conversationList.empty')"
+        :items="items"
+        :selected-id="activeTabId ?? undefined"
+        :item-height="28"
+        @select="emit('select', $event); close()"
       >
-        <HistoryLine :size="14" />
-      </span>
+        <template #item="{ item, query }">
+          <span class="flex min-w-0 flex-1 items-baseline gap-1.5">
+            <span class="truncate">
+              <HighlightText :text="item.label" :query="query" />
+            </span>
+            <span class="shrink-0 text-[11px] text-fg-faint">{{ formatTime(item.createdAt) }}</span>
+          </span>
+        </template>
+      </Menu>
     </template>
-    <template #item="{ item, query }">
-      <Chat1Line :size="13" class="shrink-0" />
-      <span class="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <span class="truncate text-[13px]">
-          <HighlightText :text="item.label" :query="query" />
-        </span>
-        <span class="shrink-0 text-[11px] text-fg-faint">{{ formatTime(item.createdAt) }}</span>
-      </span>
-    </template>
-  </SelectDropdown>
+  </Dropdown>
 </template>

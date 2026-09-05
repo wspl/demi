@@ -226,6 +226,7 @@ test('package manifests preserve layering boundaries', async () => {
     '@demicodes/provider-google',
     '@demicodes/repl',
     '@demicodes/web',
+    '@demicodes/web-gallery',
   ]) {
     expect(webUiDependencies).not.toContain(forbidden)
   }
