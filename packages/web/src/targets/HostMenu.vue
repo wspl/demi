@@ -28,10 +28,15 @@ const available = computed(() =>
     )
     .map((device) => ({
       id: device.id,
-      label: `${device.name} · ${device.online ? 'Online' : 'Offline'}`,
+      label: device.name,
       icon: Monitor,
     })),
 )
+function isOnline(deviceId: string) {
+  return (
+    deviceId === 'cloud' || !!resources.devices.find((device) => device.id === deviceId)?.online
+  )
+}
 function switchMain(deviceId: string, cwd?: string) {
   if (mainLocked.value) return
   open.value = false
@@ -76,74 +81,51 @@ function connect() {
     </template>
     <template #content>
       <Menu class="w-80 max-w-[calc(100vw-2rem)]">
-        <MenuGroup label="Main execution environment">
-          <div class="px-3 py-2 text-chrome">
-            <p class="flex items-center justify-between gap-2 text-fg">
-              <span>{{ project?.host ?? 'Hostless' }}</span>
-              <span v-if="project" class="text-[11px] text-fg-subtle">
-                {{
-                  project.hostKind === 'cloud' ||
-                  resources.devices.find((device) => device.id === project.deviceId)?.online
-                    ? 'Online'
-                    : 'Offline'
-                }}
-              </span>
-            </p>
-          </div>
-          <MenuItem
-            :icon="Monitor"
-            label="Switch main environment…"
-            :disabled="mainLocked"
-            has-submenu
-          >
-            <template #submenu>
-              <Menu class="w-60">
-                <MenuItem
-                  v-for="device in resources.devices"
-                  :key="device.id"
-                  :icon="Monitor"
-                  :label="device.name"
-                  :disabled="!device.online || device.id === project?.deviceId"
-                  :disabled-reason="!device.online ? 'Device offline' : undefined"
-                  @select="
-                    switchMain(
-                      device.id,
-                      conversation.attachedHosts.find((host) => host.deviceId === device.id)?.cwd,
-                    )
-                  "
-                />
-                <MenuItem
-                  :icon="Cloud"
-                  label="Cloud"
-                  :disabled="project?.hostKind === 'cloud'"
-                  @select="switchMain('cloud')"
-                />
-                <MenuItem :icon="Unlink" label="Hostless" :disabled="!project" @select="hostless" />
-              </Menu>
-            </template>
-          </MenuItem>
-        </MenuGroup>
-        <MenuGroup :label="`Attached hosts · ${conversation.attachedHosts.length}`">
-          <p v-if="!conversation.attachedHosts.length" class="px-3 py-2 text-[12px] text-fg-subtle">
-            No additional devices attached.
-          </p>
+        <MenuItem
+          :icon="!project ? Link : project.hostKind === 'cloud' ? Cloud : Monitor"
+          label="Main host"
+          :value="project?.host ?? 'Hostless'"
+          :disabled="mainLocked"
+          has-submenu
+        >
+          <template #submenu>
+            <Menu class="w-60">
+              <MenuItem
+                v-for="device in resources.devices"
+                :key="device.id"
+                :icon="Monitor"
+                :label="device.name"
+                :disabled="!device.online || device.id === project?.deviceId"
+                :disabled-reason="!device.online ? 'Device offline' : undefined"
+                @select="
+                  switchMain(
+                    device.id,
+                    conversation.attachedHosts.find((host) => host.deviceId === device.id)?.cwd,
+                  )
+                "
+              />
+              <MenuItem
+                :icon="Cloud"
+                label="Cloud"
+                :disabled="project?.hostKind === 'cloud'"
+                @select="switchMain('cloud')"
+              />
+              <MenuItem :icon="Unlink" label="Hostless" :disabled="!project" @select="hostless" />
+            </Menu>
+          </template>
+        </MenuItem>
+        <MenuGroup v-if="conversation.attachedHosts.length" label="Attached hosts">
           <MenuItem
             v-for="host in conversation.attachedHosts"
             :key="host.deviceId"
-            :label="`${host.name} · ${host.deviceId === 'cloud' || resources.devices.find((device) => device.id === host.deviceId)?.online ? 'Online' : 'Offline'}`"
+            :label="host.name"
+            :indicator="isOnline(host.deviceId) ? 'success' : 'muted'"
+            :indicator-label="isOnline(host.deviceId) ? 'Online' : 'Offline'"
             :icon="host.deviceId === 'cloud' ? Cloud : Monitor"
             has-submenu
           >
             <template #submenu>
               <Menu class="w-64">
-                <div class="px-3 py-2 text-[11px] text-fg-subtle">
-                  <p>
-                    {{
-                      resources.devices.find((device) => device.id === host.deviceId)?.name ??
-                      'Cloud'
-                    }}
-                  </p>
-                </div>
                 <MenuItem
                   label="Use as main environment…"
                   :icon="Monitor"
