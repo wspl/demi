@@ -156,10 +156,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // first input. A workspace host counts turns across all its conversations.
   const turnInFlight = async (owner: ManagedHostOwner): Promise<boolean> => {
     const ids = owner.kind === 'conversation' ? [owner.id] : await control.listConversationIdsInWorkspace(owner.id)
-    return ids.some((id) => {
-      const phase = agentServer.sessionPhase(id)
-      return phase !== null && phase !== 'idle'
-    })
+    return ids.some((id) => agentServer.treeActive(id))
   }
   const managedHosts = options.managedHosts
     ? new ManagedHosts({
@@ -184,7 +181,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     virtualHostFor,
     stores: conversationStores,
     stagingDir: join(options.dataDir, 'staging'),
-    sessionPhase: (conversationId) => agentServer.sessionPhase(conversationId),
+    reserveTree: (conversationId) => agentServer.reserveTreeMutation(conversationId),
   })
   const hostFor = (conversationId: string): Promise<Host> => targets.hostFor(conversationId)
 
@@ -204,7 +201,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     // session-less contexts get their own scratch namespace.
     host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
     commands: (ctx) => commandsFor(ctx.agentSessionId),
-    preamble: switchAnnouncementPreamble(control, runnerRegistry),
+    context: switchAnnouncementPreamble(control, runnerRegistry),
   })
 
   // The environment a shell starts with (`sessions-and-targets.md` § What
