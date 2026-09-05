@@ -3,6 +3,7 @@
   --color-surface: var(--surface);
   --color-surface-editor: var(--surface-editor);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-float: var(--surface-float);
   --color-overlay: var(--overlay);
   --color-fg-emphasis: var(--fg-emphasis);
   --color-fg: var(--fg);
@@ -35,6 +36,13 @@
   --shadow-lg: var(--th-shadow-lg);
   --shadow-xl: var(--th-shadow-xl);
   --shadow-2xl: var(--th-shadow-2xl);
+  --text-conversation: var(--agent-text);
+  --text-conversation--line-height: var(--agent-leading);
+  --text-chrome: var(--agent-chrome);
+  --spacing-hit-xs: 20px;
+  --spacing-hit-sm: 24px;
+  --spacing-hit: 28px;
+  --spacing-hit-lg: 32px;
 }
 
 :root,
@@ -44,6 +52,7 @@
   --surface: #171717;
   --surface-editor: #1e1e1e;
   --surface-raised: #262626;
+  --surface-float: #303030;
   --overlay: white;
   --fg-emphasis: #f5f5f5;
   --fg: #e5e5e5;
@@ -58,6 +67,7 @@
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.10);
   --line-focus: rgba(255, 255, 255, 0.18);
+  --line-overlay: #4a4a4a;
   --tint-danger: rgba(239, 68, 68, 0.15);
   --tint-danger-strong: rgba(239, 68, 68, 0.25);
   --tint-success: rgba(16, 185, 129, 0.15);
@@ -71,14 +81,45 @@
   --on-accent: #60a5fa;
   --on-highlight: #fde68a;
   --on-violet: #a78bfa;
-  --th-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
-  --th-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --th-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
-  --th-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
-  --th-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  --shadow-float: 0 -8px 24px rgba(0, 0, 0, 0.12);
-  --shadow-btn: 0 0 0 1px rgba(255, 255, 255, 0.10), 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.15);
-  --shadow-btn-hover: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 1px 3px rgba(0, 0, 0, 0.5), 0 3px 8px rgba(0, 0, 0, 0.2);
+  --th-shadow-sm:
+    rgba(119, 119, 113, 0.35) 0 0 0 0.5px,
+    rgba(0, 0, 0, 0.16) 0 0 0 1px,
+    rgba(0, 0, 0, 0.08) 0 1.5px 0;
+  --th-shadow-md:
+    rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
+    rgba(0, 0, 0, 0.2) 0 0 0 1px,
+    rgba(0, 0, 0, 0.12) 0 1.5px 1px,
+    rgba(0, 0, 0, 0.1) 0 4px 8px;
+  --th-shadow-lg:
+    rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
+    rgba(0, 0, 0, 0.16) 0 0 0 1px,
+    rgba(0, 0, 0, 0.08) 0 1.5px 0,
+    rgba(0, 0, 0, 0.12) 0 8px 16px -4px;
+  --th-shadow-xl:
+    rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
+    rgba(0, 0, 0, 0.16) 0 0 0 1px,
+    rgba(0, 0, 0, 0.16) 0 16px 24px -8px;
+  --th-shadow-2xl:
+    rgba(119, 119, 113, 0.45) 0 0 0 0.5px,
+    rgba(0, 0, 0, 0.28) 0 0 0 1px,
+    rgba(0, 0, 0, 0.2) 0 24px 32px -12px;
+  --shadow-float:
+    rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
+    rgba(0, 0, 0, 0.16) 0 0 0 1px,
+    rgba(0, 0, 0, 0.08) 0 1.5px 0,
+    rgba(0, 0, 0, 0.12) 0 12px 24px -8px;
+  --shadow-overlay:
+    0 0 0 0.5px var(--line-overlay),
+    rgba(0, 0, 0, 0.125) 0 3px 8px,
+    rgba(0, 0, 0, 0.125) 0 2px 5px,
+    rgba(0, 0, 0, 0.125) 0 1px 1px;
+  --shadow-btn:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -0.5px 0 rgba(255, 255, 255, 0.04),
+    0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  --shadow-btn-hover:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.22),
+    0 0 0 0.5px rgba(255, 255, 255, 0.18);
   --btn-bg: rgba(255, 255, 255, 0.06);
   --btn-bg-hover: rgba(255, 255, 255, 0.10);
 }
@@ -89,6 +130,7 @@
   --surface: #f9fafb;
   --surface-editor: #f9fafb;
   --surface-raised: #edeef3;
+  --surface-float: #ffffff;
   --overlay: black;
   --fg-emphasis: #1a1d24;
   --fg: #2e3138;
@@ -103,6 +145,7 @@
   --line: rgba(0, 0, 0, 0.09);
   --line-strong: rgba(0, 0, 0, 0.13);
   --line-focus: rgba(0, 0, 0, 0.28);
+  --line-overlay: rgba(0, 0, 0, 0.12);
   --tint-danger: rgba(220, 38, 38, 0.08);
   --tint-danger-strong: rgba(220, 38, 38, 0.12);
   --tint-success: rgba(22, 163, 74, 0.08);
@@ -116,14 +159,36 @@
   --on-accent: #2563eb;
   --on-highlight: #92400e;
   --on-violet: #7c3aed;
-  --th-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --th-shadow-md: 0 3px 10px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
-  --th-shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.03);
-  --th-shadow-xl: 0 10px 32px rgba(0, 0, 0, 0.07), 0 4px 12px rgba(0, 0, 0, 0.03);
-  --th-shadow-2xl: 0 20px 48px rgba(0, 0, 0, 0.08), 0 8px 20px rgba(0, 0, 0, 0.04);
-  --shadow-float: 0 -4px 16px rgba(0, 0, 0, 0.03);
-  --shadow-btn: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  --shadow-btn-hover: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  --th-shadow-sm: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  --th-shadow-md:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.8),
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  --th-shadow-lg:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.85),
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 8px 20px rgba(0, 0, 0, 0.05);
+  --th-shadow-xl:
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 12px 28px rgba(0, 0, 0, 0.06);
+  --th-shadow-2xl:
+    0 0 0 0.5px rgba(0, 0, 0, 0.1),
+    0 20px 40px rgba(0, 0, 0, 0.08);
+  --shadow-float:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 8px 20px rgba(0, 0, 0, 0.04);
+  --shadow-overlay:
+    0 0 0 0.5px var(--line-overlay),
+    rgba(0, 0, 0, 0.06) 0 3px 8px,
+    rgba(0, 0, 0, 0.04) 0 2px 5px,
+    rgba(0, 0, 0, 0.04) 0 1px 1px;
+  --shadow-btn:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  --shadow-btn-hover:
+    inset 0 0.5px 0 rgba(255, 255, 255, 1),
+    0 0 0 0.5px rgba(0, 0, 0, 0.14);
   --btn-bg: #ffffff;
   --btn-bg-hover: #f7f8fa;
 }
@@ -135,6 +200,241 @@ body,
   height: 100%;
   -webkit-font-smoothing: auto;
   -moz-osx-font-smoothing: auto;
+}
+
+html {
+  --icon-stroke-width: 1.75;
+  --agent-text: 15px;
+  --agent-leading: 1.6;
+  --agent-chrome: 14px;
+}
+
+button,
+[role="button"],
+[role="checkbox"],
+[role="switch"],
+[role="radio"],
+[role="tab"],
+[role="menuitem"],
+[role="option"] {
+  cursor: default;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+svg.lucide {
+  stroke-width: var(--icon-stroke-width);
+}
+
+.btn {
+  background: var(--btn-bg);
+  box-shadow: var(--shadow-btn);
+}
+
+.btn:hover,
+.btn[data-pressed="true"] {
+  background: var(--btn-bg-hover);
+  box-shadow: var(--shadow-btn-hover);
+}
+
+.btn-primary {
+  background: var(--on-accent);
+}
+
+/* Floating shell: one step above raised + a hairline brighter
+   than the fill. Composer stays on surface-raised; menus must not. */
+.overlay-shell,
+.overlay-panel {
+  background: var(--surface-float);
+  box-shadow: var(--shadow-overlay);
+}
+
+/* Menu: hug content up to half the viewport, or the space left around
+   the anchor when Popover sets --overlay-available-height. */
+.overlay-menu {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: min(50vh, var(--overlay-available-height, 50vh));
+}
+
+.overlay-menu-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.overlay-menu-scroll > .menu-group:first-child > :first-child {
+  display: none;
+}
+
+[data-menu-item]:not(.absolute) + [data-menu-item]:not(.absolute) {
+  margin-top: 1px;
+}
+
+.input-float {
+  box-shadow: var(--shadow-float);
+}
+
+/* 44px capsule. Chip is 28, so 8px inset — concentric with the end caps.
+   Inset is padding, not grid tracks, so column-gap cannot push the + off-center.
+   Attach-to-field space is on the editor side — never steal from the left inset.
+   Editor stays on one node; capsule vs expanded only changes grid placement. */
+.composer-shell {
+  --composer-shell-height: 44px;
+  --composer-chip: var(--spacing-hit);
+  --composer-inset: calc((var(--composer-shell-height) - var(--composer-chip)) / 2);
+  --composer-shell-radius: calc(var(--composer-shell-height) / 2);
+  --composer-line: calc(var(--agent-text) * var(--agent-leading));
+  --composer-attach-gap: 8px;
+  --composer-editor-pad-top: 16px;
+  --composer-editor-pad-x: 16px;
+  --composer-editor-pad-bottom: 12px;
+  --composer-editor-max-lines: 6;
+  --composer-editor-max-height: calc(
+    (var(--composer-line) * var(--composer-editor-max-lines))
+    + var(--composer-editor-pad-top)
+    + var(--composer-editor-pad-bottom)
+  );
+  display: grid;
+  align-items: center;
+  column-gap: 0.25rem;
+  border-radius: var(--composer-shell-radius);
+}
+
+.composer-chips { grid-area: chips; }
+.composer-attach {
+  grid-area: attach;
+  display: flex;
+  align-items: center;
+  /* Kill the inline strut so Tooltip/Dropdown wrappers cannot lift the 28px disc. */
+  line-height: 0;
+}
+.composer-editor { grid-area: editor; min-width: 0; }
+.composer-model { grid-area: model; }
+.composer-actions { grid-area: actions; }
+
+.composer-shell-capsule {
+  height: var(--composer-shell-height);
+  padding: var(--composer-inset);
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "attach editor model actions";
+}
+
+.composer-shell-capsule:has(.composer-chips) {
+  height: auto;
+  padding-top: 0;
+  grid-template-areas:
+    "chips chips chips chips"
+    "attach editor model actions";
+}
+
+.composer-shell-capsule:has(.composer-chips) .composer-chips {
+  margin-inline: calc(-1 * var(--composer-inset));
+}
+
+.composer-shell-expanded {
+  align-items: start;
+  row-gap: 0.25rem;
+  padding: 0 var(--composer-inset) var(--composer-inset);
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "editor editor editor editor"
+    "attach model . actions";
+}
+
+.composer-shell-expanded .composer-attach,
+.composer-shell-expanded .composer-model,
+.composer-shell-expanded .composer-actions {
+  align-self: center;
+}
+
+.composer-shell-expanded .composer-editor {
+  box-sizing: border-box;
+  min-width: 0;
+  max-height: var(--composer-editor-max-height);
+  margin-inline: calc(-1 * var(--composer-inset));
+  padding: var(--composer-editor-pad-top) var(--composer-editor-pad-x) var(--composer-editor-pad-bottom);
+}
+
+.composer-shell-expanded:has(.composer-chips) {
+  grid-template-areas:
+    "chips chips chips chips"
+    "editor editor editor editor"
+    "attach model . actions";
+}
+
+.composer-shell-expanded:has(.composer-chips) .composer-chips {
+  margin-inline: calc(-1 * var(--composer-inset));
+}
+
+.composer-shell-capsule .composer-editor {
+  display: flex;
+  height: var(--composer-chip);
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  margin-inline-start: calc(var(--composer-attach-gap) - 0.25rem);
+}
+
+.composer-shell-capsule .composer-editor .tiptap,
+.composer-shell-capsule .composer-editor textarea {
+  display: block;
+  width: 100%;
+  height: var(--composer-chip);
+  max-height: none;
+  margin: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+  font-size: var(--agent-text);
+  line-height: var(--composer-chip);
+  white-space: nowrap;
+}
+
+.composer-shell-capsule .composer-editor .tiptap p {
+  margin: 0;
+  line-height: inherit;
+}
+
+.composer-shell-capsule .composer-editor .tiptap p.is-editor-empty:first-child::before {
+  float: none;
+  height: auto;
+  line-height: inherit;
+}
+
+.composer-shell-expanded .composer-editor .tiptap,
+.composer-shell-expanded .composer-editor textarea {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: calc(var(--composer-line) * 2);
+  max-height: calc(var(--composer-line) * var(--composer-editor-max-lines));
+  field-sizing: content;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0;
+  font-size: var(--agent-text);
+  line-height: var(--composer-line);
+  white-space: pre-wrap;
+}
+
+.composer-shell-expanded .composer-editor .tiptap p {
+  margin: 0;
+  line-height: inherit;
+}
+
+.composer-shell-expanded:has(.composer-chips) .composer-editor {
+  padding-top: 8px;
+  max-height: calc(
+    (var(--composer-line) * var(--composer-editor-max-lines))
+    + 8px
+    + var(--composer-editor-pad-bottom)
+  );
 }
 
 * {
@@ -153,23 +453,41 @@ body,
 
 .thinking-shimmer {
   background: linear-gradient(
-    100deg,
-    rgb(105 105 105) 0%,
-    rgb(105 105 105) 38%,
-    rgb(250 250 250) 50%,
-    rgb(105 105 105) 62%,
-    rgb(105 105 105) 100%
+    90deg,
+    currentColor 0%,
+    currentColor 26%,
+    color-mix(in oklch, currentColor 55%, white) 38%,
+    color-mix(in oklch, currentColor 28%, white) 44%,
+    color-mix(in oklch, currentColor 28%, white) 60%,
+    color-mix(in oklch, currentColor 55%, white) 66%,
+    currentColor 78%,
+    currentColor 100%
   );
   background-size: 200% 100%;
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: thinking-shimmer 1.6s ease-in-out infinite;
+  animation: thinking-shimmer 1.4s linear infinite;
 }
 
 @keyframes thinking-shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0% { background-position: 140% 0; }
+  100% { background-position: -30% 0; }
+}
+
+.stream-ink {
+  animation: stream-ink 180ms ease-out;
+}
+
+@keyframes stream-ink {
+  from { opacity: 0.22; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-ink {
+    animation: none;
+  }
 }
 
 .markdown-body > *:first-child {
@@ -213,7 +531,6 @@ body,
   text-decoration: underline;
   text-decoration-style: dotted;
   text-decoration-color: transparent;
-  cursor: pointer;
 }
 
 .markdown-body a.file-link:hover {
@@ -227,7 +544,7 @@ body,
 .markdown-body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.85em;
-  background: color-mix(in srgb, var(--color-overlay) 8%, transparent);
+  background: color-mix(in srgb, var(--color-overlay) 4%, transparent);
   padding: 0.15em 0.35em;
   border-radius: 4px;
 }
@@ -308,32 +625,62 @@ body,
   background-color: color-mix(in srgb, var(--color-overlay) 4%, transparent);
 }
 
+/* Chrome Checkbox mark. Tick is a 14×14 background on the border box so it
+   maps 1:1 to the visible square — no overlay SVG / translate / padding-box.
+   Markdown task inputs use the same paint. */
+.checkbox-mark,
+.markdown-body li > input[type="checkbox"] {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--fg-faint);
+  border-radius: 3px;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-origin: border-box;
+  background-size: 14px 14px;
+  transition: background-color 0.2s ease-out, border-color 0.2s ease-out;
+}
+
+.markdown-body li > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-right: 0.4em;
+  vertical-align: -2px;
+}
+
+.checkbox-mark[data-state="checked"],
+.checkbox-mark[data-state="partial"],
+.markdown-body li > input[type="checkbox"]:checked {
+  border-color: var(--on-accent);
+  background-color: var(--on-accent);
+}
+
+.checkbox-mark[data-state="checked"],
+.markdown-body li > input[type="checkbox"]:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 7L6 9.5L10.5 4.5' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.checkbox-mark[data-state="partial"] {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 7H10.5' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.group:hover .checkbox-mark[data-state="unchecked"],
+.markdown-body li > input[type="checkbox"]:hover:not(:checked) {
+  border-color: var(--fg-subtle);
+}
+
 .markdown-body li:has(> input[type="checkbox"]) {
   list-style: none;
   margin-inline-start: -1.5em;
 }
 
-.markdown-body li > input[type="checkbox"] {
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-right: 0.4em;
-  border: 1.5px solid var(--fg-faint);
-  border-radius: 3px;
-  background: transparent;
-  vertical-align: -2px;
-  cursor: pointer;
-}
-
-.markdown-body li > input[type="checkbox"]:checked {
-  border-color: #519aba;
-  background: #519aba;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 14 14' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 7L6 9.5L10.5 4.5' stroke='%231e1e1e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-}
-
 .markdown-body li:has(> input[type="checkbox"]:checked) {
+  color: var(--fg-subtle);
   text-decoration: line-through;
-  opacity: 0.5;
 }
 
 .markdown-body img {

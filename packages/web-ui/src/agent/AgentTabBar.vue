@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { AddLine } from '@mingcute/vue/add'
+import { Plus } from '@lucide/vue'
+import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { showToast } from '@demicodes/web-ui/infra/toast'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import { t } from '@demicodes/web-ui/infra/i18n'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -9,7 +11,6 @@ import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
-import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { useAgentWorkspace } from './workspace'
 import { conversationStatus } from './conversation-status'
 import type { ConversationState } from './types'
@@ -51,6 +52,7 @@ const {
   isOpen: isContextMenuOpen,
   anchorX: contextMenuX,
   anchorY: contextMenuY,
+  anchorContextEl: contextMenuEl,
   open: openContextMenu,
   close: closeContextMenu,
 } = useContextMenuOwner(() => {
@@ -146,7 +148,11 @@ function handleTabContextMenu(event: MouseEvent, tabId: string) {
 
 function handleCopyConversationId() {
   const id = focusedTabId.value ?? props.activeTabId
-  if (id) void navigator.clipboard.writeText(id)
+  if (!id) return
+  void navigator.clipboard.writeText(id).then(
+    () => showToast({ title: t('common.copied') }),
+    (error) => reportError('Failed to copy conversation ID', error, { userVisible: true }),
+  )
 }
 
 function handleNewTabToRight() {
@@ -382,13 +388,13 @@ function finishSettle() {
         @update:rename-value="renameValue = $event"
       />
     </div>
-    <Tooltip
-      content=""
-      class="titlebar-no-drag ml-1 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-hover hover:text-fg-muted"
+    <IconButton
+      class="titlebar-no-drag ml-1"
+      :icon="Plus"
+      size="sm"
+      variant="ghost"
       @click="handleCreateTab()"
-    >
-      <AddLine :size="14" />
-    </Tooltip>
+    />
     <span class="titlebar-no-drag ml-auto">
       <ConversationListDropdown
         :conversations="historyConversations"
@@ -402,6 +408,7 @@ function finishSettle() {
     :is-open="isContextMenuOpen"
     :anchor-x="contextMenuX"
     :anchor-y="contextMenuY"
+    :anchor-context-el="contextMenuEl"
     :offset="0"
     @close="closeContextMenu"
   >

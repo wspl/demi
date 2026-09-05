@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { TerminalBoxLine } from '@mingcute/vue/terminal-box'
+import { SquareTerminal } from '@lucide/vue'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AnsiText from './AnsiText.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
@@ -25,12 +26,12 @@ const isOpen = ref(false)
     v-model:open="isOpen"
     :open-while="block.status === 'executing' || isStreaming"
     :loading="block.status === 'executing'"
-    :error="block.status === 'error'"
+    :tone="block.status === 'error' ? 'danger' : undefined"
     :error-text="errorText"
     :stick-bottom="block.status === 'executing' || isStreaming"
   >
     <template #icon>
-      <TerminalBoxLine :size="16" />
+      <SquareTerminal :size="ICON_PX.in28" />
     </template>
 
     <template #default="{ loading }">

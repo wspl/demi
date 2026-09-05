@@ -2,6 +2,7 @@
 import { AgentWorkspace, provideAgentWorkspace } from './workspace'
 import { provideAgentUiOptions, type AgentUiOptions } from './ui-options'
 import AgentPanel from './AgentPanel.vue'
+import ToastHost from '../ui/ToastHost.vue'
 
 const props = defineProps<{
   workspace: AgentWorkspace
@@ -14,4 +15,5 @@ provideAgentUiOptions(props.uiOptions)
 
 <template>
   <AgentPanel />
+  <ToastHost />
 </template>
