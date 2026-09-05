@@ -257,9 +257,11 @@ export class RunnerRegistry {
     return this.identities.get(deviceId) ?? null
   }
 
-  /** Jobs running on the device as of its last `pong`; 0 while offline. */
+  /** Running work known from dispatched jobs/spawns and the latest runner report. */
   runningJobs(deviceId: string): number {
-    return this.connections.get(deviceId)?.jobs ?? 0
+    const hosts = [...(this.hosts.get(deviceId)?.values() ?? [])]
+    const dispatched = hosts.reduce((count, host) => count + host.activeJobCount + host.activeSpawnCount, 0)
+    return Math.max(this.connections.get(deviceId)?.jobs ?? 0, dispatched)
   }
 
   /**
