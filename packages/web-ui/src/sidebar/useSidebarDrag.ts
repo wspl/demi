@@ -52,9 +52,9 @@ export function useSidebarDrag(
             : 0
       if (distance) {
         element.scrollTop += Math.max(-10, Math.min(10, distance / 3))
-        locate()
       }
     }
+    locate()
     frame = requestAnimationFrame(scroll)
   }
 
