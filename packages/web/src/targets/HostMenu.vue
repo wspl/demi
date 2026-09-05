@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Cloud, Link, Monitor, Pencil, Plus, Unlink, X } from '@lucide/vue'
+import { Cloud, Link, Monitor, Plus, Unlink } from '@lucide/vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { Conversation, Project } from '../prototype/types'
@@ -21,9 +18,6 @@ const emit = defineEmits<{ switchMain: [deviceId: string, cwd?: string] }>()
 const resources = useResources()
 const store = useConversations()
 const open = ref(false)
-const renaming = ref<string | null>(null)
-const name = ref('')
-const error = ref('')
 const mainLocked = computed(() => !!props.conversation.stream || props.conversation.archived)
 const available = computed(() =>
   resources.devices
@@ -46,17 +40,6 @@ function switchMain(deviceId: string, cwd?: string) {
 function attach(id: string) {
   store.attachHost(props.conversation, id)
   open.value = false
-}
-function rename(deviceId: string, alias: string) {
-  open.value = false
-  name.value = alias
-  error.value = ''
-  renaming.value = deviceId
-}
-function saveName() {
-  if (!renaming.value) return
-  if (store.renameHost(props.conversation, renaming.value, name.value)) renaming.value = null
-  else error.value = 'Enter a nonempty name unique within this conversation.'
 }
 function detach(id: string) {
   store.detachHost(props.conversation, id)
@@ -106,9 +89,6 @@ function connect() {
                 }}
               </span>
             </p>
-            <p class="truncate text-[11px] text-fg-subtle" :title="project?.path">
-              {{ project?.path ?? 'No main device' }}
-            </p>
           </div>
           <MenuItem
             :icon="Monitor"
@@ -142,9 +122,6 @@ function connect() {
               </Menu>
             </template>
           </MenuItem>
-          <p class="px-3 py-1 text-[11px] text-fg-subtle">
-            When switched, the previous main host stays attached.
-          </p>
         </MenuGroup>
         <MenuGroup :label="`Attached hosts · ${conversation.attachedHosts.length}`">
           <p v-if="!conversation.attachedHosts.length" class="px-3 py-2 text-[12px] text-fg-subtle">
@@ -166,7 +143,6 @@ function connect() {
                       'Cloud'
                     }}
                   </p>
-                  <p class="break-all select-text">{{ host.cwd }}</p>
                 </div>
                 <MenuItem
                   label="Use as main environment…"
@@ -178,12 +154,7 @@ function connect() {
                   "
                   @select="switchMain(host.deviceId, host.cwd)"
                 />
-                <MenuItem
-                  label="Rename…"
-                  :icon="Pencil"
-                  :disabled="conversation.archived"
-                  @select="rename(host.deviceId, host.name)"
-                />
+
                 <MenuItem
                   label="Detach"
                   :icon="Unlink"
@@ -208,32 +179,7 @@ function connect() {
           </template>
         </MenuItem>
         <MenuItem label="Connect new device…" :icon="Link" @select="connect" />
-        <p v-if="conversation.stream" class="px-3 py-2 text-[11px] text-fg-subtle">
-          Main environment can change after this turn finishes.
-        </p>
       </Menu>
     </template>
   </Dropdown>
-  <Dialog
-    :is-open="!!renaming"
-    :overlay-store="appOverlayStore"
-    label="Rename attached host"
-    @close="renaming = null"
-  >
-    <form class="space-y-4 p-4" @submit.prevent="saveName">
-      <div class="flex items-center justify-between">
-        <h2 class="text-chrome font-medium">Rename attached host</h2>
-        <IconButton :icon="X" variant="ghost" aria-label="Close rename" @click="renaming = null" />
-      </div>
-      <label class="block text-chrome">
-        Conversation name
-        <TextInput v-model="name" required aria-label="Attached host name" />
-      </label>
-      <p class="text-[12px] text-fg-subtle">
-        The agent uses this name to address the host in this conversation.
-      </p>
-      <p v-if="error" class="text-chrome text-on-warning">{{ error }}</p>
-      <Button @click="saveName">Save name</Button>
-    </form>
-  </Dialog>
 </template>

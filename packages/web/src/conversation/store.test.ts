@@ -110,16 +110,13 @@ test('switching main hosts preserves the departed directory and promotes attachm
   )
   store.move([conversation.id], 'notes')
   expect(conversation.attachedHosts.map((host) => host.deviceId)).toEqual(['build'])
-  expect(store.renameHost(conversation, 'build', 'ci')).toBe(true)
   store.detachHost(conversation, 'build')
   expect(conversation.attachedHosts).toEqual([])
 })
 
-test('hostless attachment aliases are unique and duplicate rename is rejected', () => {
+test('hostless attachment names are unique', () => {
   const { store, conversation } = newConversation()
   store.attachHost(conversation, 'mac', '/Users/zan', 'worker')
   store.attachHost(conversation, 'build', '/home/build', 'worker')
   expect(conversation.attachedHosts.map((host) => host.name)).toEqual(['worker', 'worker-2'])
-  expect(store.renameHost(conversation, 'build', 'worker')).toBe(false)
-  expect(store.renameHost(conversation, 'build', '')).toBe(false)
 })

@@ -35,18 +35,18 @@ const emit = defineEmits<{
         <component
           :is="collapsed ? Folder : FolderOpen"
           :size="ICON_PX.in28"
-          class="absolute inset-0 group-hover/project:opacity-0"
+          class="absolute inset-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0"
         />
         <ChevronRight
           :size="ICON_PX.in28"
-          class="absolute inset-0 opacity-0 transition-transform duration-200 group-hover/project:opacity-100"
+          class="absolute inset-0 opacity-0 transition-[opacity,transform] duration-150 motion-reduce:transition-none group-hover/project:opacity-100"
           :class="collapsed ? '' : 'rotate-90'"
         />
       </span>
-      <span class="flex min-w-0 flex-1 items-center gap-1.5">
-        <span class="min-w-0 truncate font-medium">{{ project.name }}</span>
+      <span class="min-w-0 flex-1 truncate font-medium">{{ project.name }}</span>
+      <span class="grid min-w-6 max-w-[45%] items-center">
         <span
-          class="flex min-w-0 max-w-[45%] items-center gap-1 text-[11px] leading-none text-fg-subtle"
+          class="col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
           :aria-label="project.host"
         >
           <component
@@ -56,22 +56,22 @@ const emit = defineEmits<{
           />
           <span v-if="project.hostKind !== 'cloud'" class="truncate">{{ project.host }}</span>
         </span>
-      </span>
-      <span
-        class="flex shrink-0 items-center opacity-0 pointer-events-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
-      >
-        <Tooltip content="New conversation">
-          <IconButton
-            :icon="SquarePen"
-            size="sm"
-            variant="ghost"
-            aria-label="New conversation in project"
-            tabindex="0"
-            @keydown.enter.stop.prevent="emit('create')"
-            @keydown.space.stop.prevent="emit('create')"
-            @click.stop="emit('create')"
-          />
-        </Tooltip>
+        <span
+          class="col-start-1 row-start-1 justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
+        >
+          <Tooltip content="New conversation">
+            <IconButton
+              :icon="SquarePen"
+              size="sm"
+              variant="ghost"
+              aria-label="New conversation in project"
+              tabindex="0"
+              @keydown.enter.stop.prevent="emit('create')"
+              @keydown.space.stop.prevent="emit('create')"
+              @click.stop="emit('create')"
+            />
+          </Tooltip>
+        </span>
       </span>
     </div>
   </Tooltip>

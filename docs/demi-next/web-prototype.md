@@ -60,7 +60,7 @@ fields remain selectable. Selected sidebar conversations retain normal weight.
 Conversation headers show the title with device name/status, workspace name and
 branch to its right. Metadata moves below the title on narrow screens. Hosts,
 workspace and branch are independent controls. The host menu separates the main
-execution environment from named attached devices, and offers attach, rename,
+execution environment from named attached devices, and offers attach,
 detach and device registration entry points (see `host-menu.md`). Main-host
 selection opens a directory chooser on the selected device; choosing a folder moves only this conversation
 to the matching workspace, creating its prototype record when needed. Offline
@@ -75,9 +75,9 @@ host-management icon and attachment count.
 Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
-and multi-selection actions. Project headers place hostnames after project names
-and reveal the new-conversation button on hover. The left folder icon becomes
-the fold chevron while hovering; idle conversations have no status glyph.
+and multi-selection actions. Project headers right-align device metadata and
+replace it with the new-conversation button on hover using a crossfade. The left folder icon becomes
+the fold chevron with the same crossfade while hovering; idle conversations have no status glyph.
 Cloud workspaces use a cloud icon, while device workspaces show a computer icon
 and hostname, centered beside the workspace name. The sidebar has no prototype
 caption; simulated file/branch surfaces retain their own explanatory labels.
