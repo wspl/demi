@@ -3862,3 +3862,28 @@ realization against the same contract, all scenarios), runner 19, core 30
   change deliberate designs (`runner.md` § Disconnect semantics,
   `managed-hosts.md`); until then a command whose process died has an
   unknown outcome by definition (`sessions-and-targets.md` § Recovery).
+
+
+## Execution contracts (2026-09-05) — implementation in progress
+
+Worktree: `/Users/zan/Projects/demi-worktrees/execution-contracts`; branch
+`codex/execution-contracts`, created from main and merged with the reviewed
+Demi Next baseline `f7ef6272`. The Web product work stays in its original tree.
+
+The audit ran 15 existing scoped backend tests (all passed) and five isolated
+scripted-provider probes. Reproduced: a different user's runner adding a todo
+to a known live session despite the HTTP route returning 404; target switch
+accepted while a child runs; an acknowledged upload lost during upgrade; a
+parent script reading the old filesystem after a child's upgrade; a cross-host
+child todo landing in the root's scope.
+
+Design: `execution-coordination.md`. Accepted early machine admission for
+spawn/resume and cross-host execution. Waiting for every old shell before a
+child-triggered upgrade was rejected: the parent shell may be awaiting that child.
+The final protocol binds callbacks to existing live jobs, preserves node scope,
+and uses tree-wide turn admission and conversation-wide cutover admission.
+
+Checkpoints: design record; RPC identity and scope; tree admission and node
+context; Hostless eligibility and cutover; scoped regressions and final review.
+Implementation has not yet changed runtime behavior. Multi-worker fencing is
+a scaled-deployment item.

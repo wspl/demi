@@ -12,6 +12,7 @@
 |---|---|
 | `overview.md` | motivation, protocol layering, invariants, component map, prior art |
 | `roadmap.md` | milestones, acceptance, deferred items |
+| `execution-coordination.md` | execution identity, tree admission, Hostless eligibility and cutover |
 | `backend.md` | the backend program: modules, deployment topology, routing, Web API |
 | `storage.md` | control and conversation databases, `ControlService`, blob and home-image stores, replication |
 | `product.md` | instance mode, users, conversations, attachments, provider management, web UI |
