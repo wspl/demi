@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 
 import { ref } from 'vue'
 import { Monitor, Plus } from '@lucide/vue'
@@ -22,7 +21,7 @@ function claim() {
     home: '/home/demo',
   })
   name.value = ''
-  message.value = 'Demo device connected.'
+  message.value = 'Device connected.'
 }
 
 function revoke(id: string) {
@@ -39,7 +38,6 @@ function revoke(id: string) {
 
 <template>
   <h3>Your devices</h3>
-  <p class="hint">Connect a machine to work with its files. Connections here are simulated.</p>
   <div v-for="device in resources.devices" :key="device.id" class="resource-row">
     <Monitor :size="17" />
     <div class="resource-description">
@@ -54,12 +52,12 @@ function revoke(id: string) {
   <p v-if="!resources.devices.length" class="empty-note">No devices connected.</p>
   <form class="add-resource" @submit.prevent="claim">
     <label>
-      Demo device name
+      Device name
       <TextInput v-model="name" placeholder="My laptop" required maxlength="64" />
     </label>
     <Button @click="claim" :disabled="!name.trim()">
       <Plus :size="14" />
-      Add demo device
+      Add device
     </Button>
   </form>
   <p v-if="message" role="status" class="hint">{{ message }}</p>

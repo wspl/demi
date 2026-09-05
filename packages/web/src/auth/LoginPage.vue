@@ -16,7 +16,6 @@ function enter() {
   <main class="grid h-full place-items-center bg-surface-base">
     <form class="w-80 space-y-5 p-4" @submit.prevent="enter">
       <h1 class="select-none text-[20px] font-medium text-fg-emphasis">Welcome to Demi</h1>
-      <p class="text-chrome text-fg-subtle">A place to think and build.</p>
       <label class="flex flex-col gap-2 text-chrome text-fg-muted">
         Your name
         <TextInput
@@ -28,9 +27,8 @@ function enter() {
         />
       </label>
       <Button variant="primary" :disabled="!resources.username.trim()" @click="enter">
-        Enter prototype
+        Continue
       </Button>
-      <p class="text-[11px] text-fg-faint">Local demo · No account or password required.</p>
     </form>
   </main>
 </template>

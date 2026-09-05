@@ -3,7 +3,6 @@ import { X } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
@@ -19,7 +18,7 @@ const emit = defineEmits<{ signOut: [] }>()
 const resources = useResources()
 const conversations = useConversations()
 const { theme } = useTheme()
-const tabs = ['Account', 'Devices', 'Providers', 'Usage', 'Prototype']
+const tabs = ['Account', 'Devices', 'Providers', 'Usage']
 </script>
 
 <template>
@@ -58,7 +57,6 @@ const tabs = ['Account', 'Devices', 'Providers', 'Usage', 'Prototype']
       <section class="settings-content min-w-0 flex-1 p-5">
         <template v-if="resources.settingsTab === 'Account'">
           <h3>Your workspace</h3>
-          <p class="hint">Make this space feel like yours.</p>
           <label>
             Display name
             <TextInput v-model="resources.username" maxlength="50" />
@@ -66,7 +64,6 @@ const tabs = ['Account', 'Devices', 'Providers', 'Usage', 'Prototype']
           <div class="setting-row">
             <div>
               <strong>Appearance</strong>
-              <p class="hint">Light and dark, with Demi’s shared theme.</p>
             </div>
             <Dropdown :overlay-store="appOverlayStore" variant="default">
               <template #trigger>{{ theme === 'light' ? 'Light' : 'Dark' }}</template>
@@ -91,7 +88,6 @@ const tabs = ['Account', 'Devices', 'Providers', 'Usage', 'Prototype']
           <div class="setting-row">
             <div>
               <strong>Session</strong>
-              <p class="hint">Local demo identity.</p>
             </div>
             <Button @click="emit('signOut')">Sign out</Button>
           </div>
@@ -100,7 +96,6 @@ const tabs = ['Account', 'Devices', 'Providers', 'Usage', 'Prototype']
         <ProvidersPanel v-else-if="resources.settingsTab === 'Providers'" />
         <template v-else-if="resources.settingsTab === 'Usage'">
           <h3>Usage</h3>
-          <p class="hint">This session · simulated activity, no billed requests.</p>
           <div class="grid grid-cols-3 gap-3 py-6">
             <div>
               <strong class="text-[24px] font-normal">{{ conversations.items.length }}</strong>
@@ -122,15 +117,6 @@ const tabs = ['Account', 'Devices', 'Providers', 'Usage', 'Prototype']
               <p class="hint">Actual cost</p>
             </div>
           </div>
-        </template>
-        <template v-else>
-          <h3>Prototype controls</h3>
-          <p class="hint">Conversations and settings reset on reload. Appearance is remembered.</p>
-          <Checkbox v-model="conversations.failNext" label="Next response fails" />
-          <p class="hint mt-2">Exercise the error state and Retry action.</p>
-          <p class="hint">
-            Connections, uploads and responses are simulated. Files stay in this browser.
-          </p>
         </template>
       </section>
     </div>

@@ -2,7 +2,7 @@
 
 The conversation's host menu manages one main execution host and any number of
 attached hosts, following `sessions-and-targets.md`. These are execution devices,
-not other chat conversations. Workspace files and Git branches remain separate
+not other chat conversations. Workspace selection and read-only Git branch metadata remain separate
 header controls for the main environment.
 
 ```text

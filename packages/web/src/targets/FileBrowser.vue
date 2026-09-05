@@ -27,14 +27,8 @@ const roots = new Set([
 const files = new Map<string, string>()
 for (const root of roots) {
   const base = root === '/' ? '' : root
-  files.set(
-    `${base}/README.md`,
-    '# Workspace preview\n\nThese are simulated files for reviewing the file browser.\n',
-  )
-  files.set(
-    `${base}/src/index.ts`,
-    '// Prototype file preview\nexport const greeting = "Hello, Demi"\n',
-  )
+  files.set(`${base}/README.md`, '# Workspace\n\nProject source and documentation.\n')
+  files.set(`${base}/src/index.ts`, 'export const greeting = "Hello, Demi"\n')
   files.set(`${base}/docs/notes.md`, '# Notes\n\nA place for the next idea.\n')
 }
 const directories = new Set(['/'])
@@ -84,7 +78,6 @@ function open(entry: { path: string; directory: boolean }) {
     <header class="flex select-none items-center justify-between border-b border-line px-4 py-3">
       <div>
         <h2 class="text-chrome font-medium">Workspace files · {{ device?.name ?? 'Cloud' }}</h2>
-        <p class="text-[11px] text-fg-subtle">Simulated filesystem · prototype</p>
       </div>
       <IconButton
         :icon="X"
@@ -126,19 +119,9 @@ function open(entry: { path: string; directory: boolean }) {
             files.get(preview)
           }}</pre>
         </template>
-        <p v-else class="text-chrome text-fg-subtle">
-          Open a folder to browse, or select a file to preview it.
-        </p>
       </div>
     </div>
-    <footer class="flex items-center justify-between gap-3 border-t border-line p-3">
-      <span class="text-[11px] text-fg-subtle">
-        {{
-          locked
-            ? 'Stop the turn or restore the conversation before switching.'
-            : 'Use this folder as the conversation workspace.'
-        }}
-      </span>
+    <footer class="flex items-center justify-end gap-3 border-t border-line p-3">
       <Button
         :disabled="locked || (deviceId !== 'cloud' && !device?.online)"
         @click="emit('select', path)"
