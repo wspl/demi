@@ -186,7 +186,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
             </template>
           </MenuItem>
           <MenuGroup label="Attached hosts">
-            <MenuItem :icon="Monitor" label="build-01" indicator="success" indicator-label="Online" has-submenu>
+            <MenuItem label="build-01" indicator="success" indicator-label="Online" has-submenu>
               <template #submenu>
                 <Menu><MenuItem label="Detach" /></Menu>
               </template>

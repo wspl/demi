@@ -121,7 +121,6 @@ function connect() {
             :label="host.name"
             :indicator="isOnline(host.deviceId) ? 'success' : 'muted'"
             :indicator-label="isOnline(host.deviceId) ? 'Online' : 'Offline'"
-            :icon="host.deviceId === 'cloud' ? Cloud : Monitor"
             has-submenu
           >
             <template #submenu>

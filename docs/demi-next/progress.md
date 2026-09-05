@@ -4164,3 +4164,9 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Added value and indicator presentation to shared MenuItem. ModelMenu, the project picker and gallery examples use the same label/value contract. Gallery includes the host section/status pattern. Product containers retain only menu dimensions and domain state.
 - Verified 98 scoped web/web-ui tests, all browser package typechecks and production build. Browser checks covered main-host submenu, attachment selection, gray-to-green status changes (6px shared dot), click-outside dismissal and model-menu label/value rendering. No business-state change or additional unit tests were needed for this presentation change.
 - The branch checkout interrupted the Vite watcher; restarted the independent background service for acceptance at port 18934.
+
+### M13.1 — Attached-host status in the icon gutter (2026-09-06)
+
+- Moved the shared MenuItem status dot into the left icon gutter, replacing the attached device glyph. The right side keeps the submenu arrow. Updated the gallery specimen and host-menu design.
+- Verified all browser package typechecks, production build and browser rendering with an attached device. Status color and accessible label are preserved. No new tests for this presentation-only adjustment.
+- Fast-forwarded the new requirement branch before switching the checkout, keeping the independent acceptance server running throughout.

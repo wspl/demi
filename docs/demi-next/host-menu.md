@@ -11,8 +11,8 @@ Conversation c1 header: [zan-mbp +2] [demi] [main]
                          +-- [computer] Main host       zan-mbp > devices / Cloud / Hostless
                          |   ----------------------------------
                          |   Attached hosts
-                         +-- [computer] build-01       gray dot > Use as main / Detach
-                         +-- [computer] studio        green dot > Use as main / Detach
+                         +-- [gray dot] build-01                > Use as main / Detach
+                         +-- [green dot] studio                 > Use as main / Detach
                          |   ----------------------------------
                          +-- Attach device… > searchable owned devices
                          +-- Connect new device… > account device settings
@@ -33,7 +33,8 @@ particular conversation access to that device.
 Attachment names are generated from device names and kept unique within the
 conversation. The menu uses shared `MenuItem` label/value and status-indicator presentation,
 and shared `MenuGroup` section titles. Online devices have a green dot; offline
-devices have a gray dot. Both include accessible status labels. Main host is a
+devices have a gray dot. The dot replaces the device icon in the left icon gutter;
+the right side retains the submenu arrow. Both include accessible status labels. Main host is a
 single label/value submenu row, without a section heading.
 The menu exposes device identity, online status, promotion and
 detach; it has no rename action or directory display. Directory selection and
