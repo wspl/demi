@@ -9,6 +9,7 @@ import SidebarSection from './sections/SidebarSection.vue'
 import MarkdownSection from './sections/MarkdownSection.vue'
 import CodeSection from './sections/CodeSection.vue'
 import RoadmapSection from './sections/RoadmapSection.vue'
+import ColorReviewSection from './sections/ColorReviewSection.vue'
 
 export type GalleryLayout = 'catalog' | 'session' | 'preview'
 
@@ -23,6 +24,7 @@ export const NAV: { path: string; label: string }[] = [
   { path: '/markdown', label: 'Markdown' },
   { path: '/code', label: 'Code' },
   { path: '/roadmap', label: 'Roadmap' },
+  { path: '/color-review', label: 'Color review' },
 ]
 
 export const router = createRouter({
@@ -39,6 +41,7 @@ export const router = createRouter({
     { path: '/markdown', component: MarkdownSection, meta: { layout: 'preview' } },
     { path: '/code', component: CodeSection, meta: { layout: 'preview' } },
     { path: '/roadmap', component: RoadmapSection, meta: { layout: 'catalog' } },
+    { path: '/color-review', component: ColorReviewSection, meta: { layout: 'catalog' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },
   ],
 })

@@ -1,0 +1,63 @@
+/* Proposed fixes, scoped to the "after" half of each review case. Once a fix is
+   accepted it moves into web-ui and the matching block here goes away. */
+
+/* sidebar-scrollbar: the list uses the shared thumb tone. */
+.cr-after[data-fix="sidebar-scrollbar"] .sidebar-scroll.sidebar-scroll {
+  scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
+}
+
+/* scrollbar-reveal: transparent until the pointer is inside the scroller. */
+.cr-after[data-fix="scrollbar-reveal"] *,
+.cr-after[data-fix="scrollbar-reveal"] .sidebar-scroll.sidebar-scroll {
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 250ms ease;
+}
+
+.cr-after[data-fix="scrollbar-reveal"] *:hover,
+.cr-after[data-fix="scrollbar-reveal"] .scrollbar-active {
+  scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
+}
+
+/* accent-fill: one fill token for primary controls; --on-accent stays a text color. */
+html[data-theme="dark"] .cr-after[data-fix="accent-fill"] {
+  --accent-fill: #2b74dc;
+}
+
+html[data-theme="light"] .cr-after[data-fix="accent-fill"] {
+  --accent-fill: #2563eb;
+}
+
+.cr-after[data-fix="accent-fill"] .btn-primary,
+.cr-after[data-fix="accent-fill"] .switch-on.switch-on {
+  background: var(--accent-fill);
+}
+
+.cr-after[data-fix="accent-fill"] .checkbox-mark[data-state="checked"],
+.cr-after[data-fix="accent-fill"] .checkbox-mark[data-state="partial"] {
+  border-color: var(--accent-fill);
+  background-color: var(--accent-fill);
+}
+
+/* md-table-border: same hairline family as hr and blockquote. */
+.cr-after[data-fix="md-table-border"] .markdown-body th,
+.cr-after[data-fix="md-table-border"] .markdown-body td {
+  border-color: color-mix(in srgb, var(--color-overlay) 12%, transparent);
+}
+
+/* file-link: accent tokens instead of a fixed light blue. */
+.cr-after[data-fix="file-link"] .markdown-body a.file-link {
+  color: var(--on-accent);
+  background: var(--tint-accent);
+  text-decoration-color: transparent;
+}
+
+.cr-after[data-fix="file-link"] .markdown-body a.file-link:hover {
+  color: var(--on-accent);
+  background: color-mix(in srgb, var(--on-accent) 22%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--on-accent) 40%, transparent);
+}
+
+/* menu-shortcut: shortcut hints one step up on the float surface. */
+.cr-after[data-fix="menu-shortcut"] [role="menuitem"] span.text-fg-faint.text-right {
+  color: var(--fg-subtle);
+}
