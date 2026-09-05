@@ -220,6 +220,9 @@ function supportedReasoningLevels(value: unknown): ProviderModel['supportedThink
   return efforts.length > 0 ? efforts : []
 }
 
+/** Codex advertises its Fast Mode as the `priority` service tier. */
+const CODEX_FAST_SERVICE_TIER_ID = 'priority'
+
 function serviceTiers(value: unknown): ProviderModel['serviceTiers'] {
   if (!Array.isArray(value)) return null
   const tiers = value.flatMap((tier) => {
@@ -230,6 +233,7 @@ function serviceTiers(value: unknown): ProviderModel['serviceTiers'] {
       id,
       label: nonEmptyString(tier.name) ?? id,
       ...(nonEmptyString(tier.description) ? { description: nonEmptyString(tier.description) } : {}),
+      fast: id === CODEX_FAST_SERVICE_TIER_ID,
     }]
   })
   return tiers.length > 0 ? tiers : []

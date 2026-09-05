@@ -2,6 +2,7 @@ import { Marked } from 'marked'
 import markedKatex from 'marked-katex-extension'
 import type { MarkdownRenderOptions } from './types'
 import { codeToHtml } from './highlight'
+import { liveCheckboxHtml } from './gfm-task'
 import { isHttpUrl, isLikelyFilePath, normalizeFilePath, resolveAbsolutePath, toLocalFileUrl } from './filePath'
 
 // `$...$` inline / `$$...$$` block LaTeX, rendered to self-contained HTML (KaTeX CSS is loaded
@@ -62,23 +63,27 @@ function resolveImageSource(href: string, basePath?: string): string {
   return absPath ? toLocalFileUrl(absPath) : trimmedHref
 }
 
-function createMarked(options?: MarkdownRenderOptions) {
-  const knownPaths = options?.knownPaths
-  const basePath = options?.basePath
+// Parsing is synchronous, so the renderer reads the options of the parse in flight instead of
+// building a Marked instance (and re-registering KaTeX) per call.
+let activeOptions: MarkdownRenderOptions | undefined
 
+function createMarked() {
   const marked = new Marked({
     gfm: true,
     breaks: true,
     renderer: {
+      checkbox({ checked }) {
+        return liveCheckboxHtml(!!checked)
+      },
       html({ text }) {
         return escapeHtml(text)
       },
       code({ text, lang }) {
-        return codeToHtml(text, lang ?? '', options?.theme)
+        return codeToHtml(text, lang ?? '', activeOptions?.theme)
       },
       codespan({ text }) {
         const normalizedPath = normalizeFilePath(text)
-        if (isLikelyFilePath(text) && knownPaths?.has(normalizedPath)) {
+        if (isLikelyFilePath(text) && activeOptions?.knownPaths?.has(normalizedPath)) {
           return `<a class="file-link" href="${escapeHtml(normalizedPath)}" data-file-link>${escapeHtml(text)}</a>`
         }
         return `<code>${escapeHtml(text)}</code>`
@@ -91,6 +96,7 @@ function createMarked(options?: MarkdownRenderOptions) {
         }
         if (isLikelyFilePath(href)) {
           const normalizedPath = normalizeFilePath(href)
+          const knownPaths = activeOptions?.knownPaths
           if (!knownPaths || knownPaths.has(normalizedPath)) {
             return `<a href="${escapeHtml(normalizedPath)}" data-file-link>${body}</a>`
           }
@@ -99,7 +105,7 @@ function createMarked(options?: MarkdownRenderOptions) {
       },
       image(token) {
         const href = extractLinkHref(token.href)
-        const safeSrc = resolveImageSource(href, basePath)
+        const safeSrc = resolveImageSource(href, activeOptions?.basePath)
         if (!safeSrc) return escapeHtml(token.text)
 
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
@@ -112,6 +118,13 @@ function createMarked(options?: MarkdownRenderOptions) {
   return marked
 }
 
+const assistantMarked = createMarked()
+
 export function renderMarkdown(src: string, options?: MarkdownRenderOptions): string {
-  return createMarked(options).parse(src, { async: false }) as string
+  activeOptions = options
+  try {
+    return assistantMarked.parse(src, { async: false }) as string
+  } finally {
+    activeOptions = undefined
+  }
 }

@@ -427,7 +427,7 @@ test('REPL model resolver validates provider-advertised service tier ids', async
           supportsReasoning: true,
           supportedThinkingEfforts: ['medium'],
           defaultThinkingEffort: null,
-          serviceTiers: [{ id: 'priority', label: 'Fast' }],
+          serviceTiers: [{ id: 'priority', label: 'Fast', fast: true }],
           defaultServiceTierId: null,
           sourceFetchedAt: '2026-06-20T00:00:00.000Z',
           stale: false,

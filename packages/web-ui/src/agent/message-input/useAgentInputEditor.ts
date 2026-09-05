@@ -43,7 +43,7 @@ export function useAgentInputEditor(params: UseAgentInputEditorParams) {
     ],
     editorProps: {
       attributes: {
-        class: 'w-full resize-none bg-transparent px-4 pt-4 pb-4 text-[13px] leading-relaxed text-fg outline-none max-h-40 overflow-y-auto',
+        class: 'w-full bg-transparent text-conversation text-fg outline-none',
       },
       handleKeyDown(_view, event) {
         if (event.isComposing) return false

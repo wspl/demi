@@ -70,10 +70,6 @@ export class ConversationRuntime {
     }
   }
 
-  clearMessageQueue(messageIds: string[]): void {
-    this.client?.clearMessageQueue(messageIds)
-  }
-
   async steer(content: UserContentBlock[]): Promise<void> {
     const steerId = globalThis.crypto.randomUUID()
     const pending = createPendingSteerMessage(steerId, content, this.state.blocks)
@@ -104,6 +100,15 @@ export class ConversationRuntime {
     if (!this.activePendingSteerRequests.has(id)) this.canceledPendingSteers.delete(id)
   }
 
+  /** Stops the running turn and sends the pending steer as the next user turn instead. */
+  async interruptPendingSteer(id: string): Promise<void> {
+    const pending = this.state.pendingSteers.find((candidate) => candidate.id === id)
+    if (!pending) return
+    this.deletePendingSteer(id)
+    await this.abort()
+    await this.send(pending.content)
+  }
+
   /**
    * Pushes a model/provider switch to an already-open session so the next turn uses it. If the
    * session has not been opened yet, this is a no-op: openSession reads the latest state.model.
@@ -130,10 +135,9 @@ export class ConversationRuntime {
 
   async resume(): Promise<void> {
     const client = await this.ensureOpen()
-    // Optimistic: the server only reports `running` after a round-trip, which
-    // reads as a dead Continue button in the meantime. Flip immediately; the
-    // next phase_changed event carries the real phase either way, and a failed
-    // resume rolls back so the recovery action reappears.
+    // Optimistic: the server only reports `running` after a round-trip.
+    // Flip immediately; the next phase_changed event carries the real phase,
+    // and a failed resume rolls back so the dock recovery action reappears.
     this.state.phase = 'running'
     try {
       await client.resume()

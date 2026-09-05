@@ -30,6 +30,7 @@ export function toModelInfo(model: ProviderModel): ModelInfo {
             canDisable: model.canDisableThinking ?? true,
           }
         : null,
+    serviceTiers: model.serviceTiers?.map((tier) => ({ id: tier.id, label: tier.label, fast: tier.fast })) ?? null,
   }
 }
 

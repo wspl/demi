@@ -1,6 +1,7 @@
 import { Marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { renderMarkdown } from './render'
+import { liveCheckboxHtml } from './gfm-task'
 import { isHttpUrl } from './filePath'
 import { codeToHtml } from './highlight'
 import type { MarkdownRenderOptions } from './types'
@@ -17,6 +18,9 @@ const userMarked = new Marked({
   gfm: true,
   breaks: true,
   renderer: {
+    checkbox({ checked }) {
+      return liveCheckboxHtml(!!checked)
+    },
     html({ text }) {
       return escapeHtml(text)
     },

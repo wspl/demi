@@ -7,9 +7,9 @@ const props = defineProps<{
 }>()
 
 const dotColor = computed(() => {
-  if (props.status === 'active') return 'var(--color-blue-400)'
-  if (props.status === 'error' || props.status === 'aborted') return 'var(--color-red-400)'
-  if (props.status === 'done') return 'var(--color-emerald-400)'
+  if (props.status === 'active') return 'var(--on-accent)'
+  if (props.status === 'error' || props.status === 'aborted') return 'var(--on-danger)'
+  if (props.status === 'done') return 'var(--on-success)'
   return null
 })
 </script>

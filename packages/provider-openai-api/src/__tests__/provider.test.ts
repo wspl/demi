@@ -71,7 +71,7 @@ test('OpenAI API model catalog mirrors Codex-visible defaults and explicit model
     displayName: 'GPT-5.5',
     contextWindow: 272_000,
     supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
-    serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
+    serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage', fast: true }],
   })
 
   const custom = await createOpenAIApiProvider({

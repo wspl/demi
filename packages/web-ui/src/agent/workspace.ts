@@ -235,17 +235,16 @@ export class AgentWorkspace {
     return this.runtime(id).steerQueuedMessage(messageId)
   }
 
-  clearMessageQueue(id: string): void {
-    const messageIds = this.sessions[id]?.queue.map((message) => message.id) ?? []
-    this.runtimes.get(id)?.clearMessageQueue(messageIds)
-  }
-
   steer(id: string, content: UserContentBlock[]): Promise<void> {
     return this.runtime(id).steer(content)
   }
 
   deletePendingSteer(id: string, steerId: string): void {
     this.runtimes.get(id)?.deletePendingSteer(steerId)
+  }
+
+  interruptPendingSteer(id: string, steerId: string): Promise<void> {
+    return this.runtime(id).interruptPendingSteer(steerId)
   }
 
   abort(id: string): Promise<void> {

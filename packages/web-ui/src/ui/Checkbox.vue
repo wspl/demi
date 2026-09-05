@@ -1,25 +1,39 @@
 <script setup lang="ts">
-import { CheckFill } from '@mingcute/vue/check'
-import { MinimizeLine } from '@mingcute/vue/minimize'
+import { computed } from 'vue'
+import { checkboxMark, nextCheckbox } from './checkbox'
 
 defineProps<{
-  state: 'checked' | 'unchecked' | 'partial'
+  label: string
 }>()
 
-const emit = defineEmits<{
-  toggle: []
-}>()
+const checked = defineModel<boolean>({ required: true })
+const partial = defineModel<boolean>('partial', { default: false })
+
+const mark = computed(() => checkboxMark(checked.value, partial.value))
+
+function toggle() {
+  const next = nextCheckbox(checked.value, partial.value)
+  checked.value = next.checked
+  partial.value = next.partial
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key !== ' ' && event.key !== 'Enter') return
+  event.preventDefault()
+  toggle()
+}
 </script>
 
 <template>
   <span
-    class="flex size-3.5 shrink-0 cursor-pointer items-center justify-center rounded-[3px] transition-colors"
-    :class="state === 'unchecked'
-      ? 'bg-fg-subtle/10 hover:bg-fg-subtle/20'
-      : 'bg-fg-subtle/20 text-fg hover:bg-fg-subtle/30'"
-    @click.stop="emit('toggle')"
+    class="group inline-flex h-7 cursor-default items-center gap-2"
+    role="checkbox"
+    tabindex="0"
+    :aria-checked="partial ? 'mixed' : checked"
+    @click="toggle"
+    @keydown="onKeydown"
   >
-    <MinimizeLine v-if="state === 'partial'" class="size-2.5" />
-    <CheckFill v-if="state === 'checked'" class="size-2.5" />
+    <span class="checkbox-mark" :data-state="mark" />
+    <span class="select-none text-chrome text-fg-body">{{ label }}</span>
   </span>
 </template>

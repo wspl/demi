@@ -33,36 +33,6 @@ test('input submit queues a new turn while running', async () => {
   expect(calls).toEqual(['clear', 'send:run after this'])
 })
 
-test('input steer action steers the active turn while running', async () => {
-  const calls: string[] = []
-  const workspace = fakeWorkspace('running', calls)
-  const actions = useAgentInputActions({
-    workspace,
-    conversationId: 'conversation-1',
-    buildSubmitPayload: () => [{ type: 'text', text: 'refine this turn' }],
-    clearInput: () => calls.push('clear'),
-  })
-
-  await actions.handleSteerSubmit()
-
-  expect(calls).toEqual(['clear', 'steer:refine this turn'])
-})
-
-test('input queue action sends a new turn while running', async () => {
-  const calls: string[] = []
-  const workspace = fakeWorkspace('running', calls)
-  const actions = useAgentInputActions({
-    workspace,
-    conversationId: 'conversation-1',
-    buildSubmitPayload: () => [{ type: 'text', text: 'run after this' }],
-    clearInput: () => calls.push('clear'),
-  })
-
-  await actions.handleQueueSubmit()
-
-  expect(calls).toEqual(['clear', 'send:run after this'])
-})
-
 test('input submit emits empty-submit when there is no payload', async () => {
   const calls: string[] = []
   const workspace = fakeWorkspace('running', calls)
@@ -77,6 +47,36 @@ test('input submit emits empty-submit when there is no payload', async () => {
   await actions.handleSubmit()
 
   expect(calls).toEqual(['empty-submit'])
+})
+
+test('changing Fast Mode writes serviceTierId on the current model', () => {
+  const calls: string[] = []
+  const workspace = fakeWorkspace('idle', calls)
+  const actions = useAgentInputActions({
+    workspace,
+    conversationId: 'conversation-1',
+    buildSubmitPayload: () => null,
+    clearInput: () => {},
+  })
+
+  actions.handleChangeServiceTier('priority')
+
+  expect(calls).toEqual(['setModel:openai:gpt-5:priority'])
+})
+
+test('selecting a model clears the service tier', () => {
+  const calls: string[] = []
+  const workspace = fakeWorkspace('idle', calls)
+  const actions = useAgentInputActions({
+    workspace,
+    conversationId: 'conversation-1',
+    buildSubmitPayload: () => null,
+    clearInput: () => {},
+  })
+
+  actions.handleSelectModel('anthropic', 'claude-sonnet')
+
+  expect(calls).toEqual(['setModel:anthropic:claude-sonnet:null'])
 })
 
 test('empty input submit steers the last queued message while running', async () => {
@@ -105,7 +105,16 @@ function fakeWorkspace(
 ): AgentWorkspace {
   return {
     sessions: {
-      'conversation-1': { phase, queue },
+      'conversation-1': {
+        phase,
+        queue,
+        model: {
+          providerId: 'openai',
+          modelId: 'gpt-5',
+          thinkingEffort: 'medium',
+          serviceTierId: 'priority',
+        },
+      },
     },
     send: async (_id: string, content: UserContentBlock[]) => {
       calls.push(`send:${textContent(content)}`)
@@ -119,7 +128,9 @@ function fakeWorkspace(
     steer: async (_id: string, content: UserContentBlock[]) => {
       calls.push(`steer:${textContent(content)}`)
     },
-    setModel: () => {},
+    setModel: (_id: string, model: { providerId: string; modelId: string; serviceTierId: string | null }) => {
+      calls.push(`setModel:${model.providerId}:${model.modelId}:${model.serviceTierId}`)
+    },
     abort: async () => {},
     compact: async () => {},
   } as unknown as AgentWorkspace

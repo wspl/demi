@@ -17,6 +17,13 @@ export interface ModelReasoning {
   canDisable: boolean
 }
 
+export interface ModelServiceTier {
+  id: string
+  label: string
+  /** The provider's Fast Mode tier; the Fast switch writes this id. */
+  fast: boolean
+}
+
 export interface ModelInfo {
   id: string
   name: string
@@ -24,6 +31,8 @@ export interface ModelInfo {
   inputLimit: number | null
   acceptedExtensions: string[]
   reasoning: ModelReasoning | null
+  /** Provider-advertised speed tiers. Fast Mode is the tier flagged `fast`; models without one have no Fast switch. */
+  serviceTiers: ModelServiceTier[] | null
 }
 
 export interface PrepareSessionParams {
