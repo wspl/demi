@@ -181,7 +181,7 @@ Test code may depend upward for integration coverage. Production code must not.
   by supplying an `AgentClient` and a control client. External products consume the published
   package (registry semver), not `link:` paths into this repo.
 - Must not: import Node, `@demicodes/host-local`, `@demicodes/shell`, `@demicodes/coding-agent`, concrete
-  providers, `@demicodes/web`, or `@demicodes/repl`. It may import the `@demicodes/agent` client surface
+  providers, `@demicodes/web`, `@demicodes/web-gallery`, or `@demicodes/repl`. It may import the `@demicodes/agent` client surface
   only (`AgentClient`, WebSocket client transport, frame/event/block types).
 - Enforcement: because the components are `.vue` (not scanned by the `.ts` boundary test),
   the web-ui boundary is enforced at the package-manifest level (no Node/adapter/provider
@@ -202,6 +202,20 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: top-level product application entry points (browser `main.ts`, server
   `index.ts`).
 - Must not: be imported by any other production package.
+
+### `@demicodes/web-gallery`
+
+- Status: implemented.
+- Production deps: `@demicodes/web-ui`, `@demicodes/core`.
+- Owns: the Vite-only component catalog for `@demicodes/web-ui`. It remaps `web-ui` tokens so paradigms
+  (tone, accent, density, radius, shadow, light/dark) can be compared against the catalog.
+  Pages are vue-router paths; Markdown and Code are full-pane preview routes. Roadmap
+  lists shipped and next library work. It is not a product surface and does not
+  ship multiple themes into runtime.
+- Public boundary: local `bun run web:gallery` entry (`packages/web-gallery`).
+- Must not: import Node, `@demicodes/host-local`, `@demicodes/shell`, `@demicodes/coding-agent`,
+  concrete providers, `@demicodes/web`, or `@demicodes/repl`. Must not be imported by any
+  other production package.
 
 ### `@demicodes/agent-eval`
 
@@ -241,13 +255,15 @@ provider-google -> core, provider, utils
 repl -> agent, coding-agent, core, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, host-local, utils
 web-ui -> agent, core, utils
 web -> web-ui, agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
+web-gallery -> web-ui, core
 agent-eval -> agent, coding-agent, core, host-local, provider, provider-claude-code, provider-codex, provider-openai-api, provider-anthropic-api, provider-grok-build, shell, utils
 ```
 
-`web-ui` and `web` are browser/product packages built with Vite/Vue; their internal source
-is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not scan them as
-production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
-enforced at the manifest level by that test; `web` is a product leaf like `repl`.
+`web-ui`, `web`, and `web-gallery` are browser packages built with Vite/Vue; their internal
+source is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not scan
+them as production source. `web-ui`'s outward boundary (no Node/adapter/provider
+dependencies) is enforced at the manifest level by that test; `web` and `web-gallery` are
+product leaves like `repl`.
 
 The graph is a compact view of the `Production deps` fields in the package registry. Every
 package in the registry is implemented; keep the registry, this graph, and the maps in

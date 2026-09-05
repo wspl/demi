@@ -1,5 +1,6 @@
 import type { SessionPhase } from '@demicodes/core'
 import type { MessageListBlock } from './pending-steers'
+import { isQueueTailBlock } from './queued-messages'
 
 export function shouldShowTailLoading(
   phase: SessionPhase,
@@ -10,7 +11,8 @@ export function shouldShowTailLoading(
   if (hasActiveOutput(transcriptBlocks)) return false
   if (renderBlocks.length === 0) return true
 
-  const last = renderBlocks[renderBlocks.length - 1]!
+  const last = lastNonQueueBlock(renderBlocks)
+  if (!last) return true
   if (last.type === 'tool_call') return last.status !== 'executing'
 
   return (
@@ -19,6 +21,13 @@ export function shouldShowTailLoading(
     || last.type === 'pending_steer'
     || last.type === 'compaction_boundary'
   )
+}
+
+function lastNonQueueBlock(blocks: readonly MessageListBlock[]): MessageListBlock | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
+    if (block && !isQueueTailBlock(block)) return block
+  }
 }
 
 function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {

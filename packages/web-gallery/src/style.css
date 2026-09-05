@@ -1,0 +1,154 @@
+@import "tailwindcss";
+@import "@demicodes/web-ui/styles/base.css";
+@import "./paradigms.css";
+
+@source "../../web-ui/src";
+@source ".";
+
+html,
+body,
+#app {
+  height: 100%;
+  overflow: hidden;
+}
+
+.gallery-frame {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+}
+
+.gallery-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+
+.specimen-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  align-items: start;
+  gap: 1.5rem 1.25rem;
+}
+
+.specimen-row-wide {
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+}
+
+.specimen-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.specimen-stack-loose {
+  gap: 2.25rem;
+}
+
+/* Transcript-like frame inset. FunctionalBlock has no pad-x of its own. */
+.gallery-block-frame {
+  padding: 1.5rem var(--agent-pad-x, 2rem);
+}
+
+/* Vertical inset only — the block already owns --agent-pad-x. */
+.gallery-block-frame-y {
+  padding-block: 1.5rem;
+}
+
+/* One activity row on a session surface. Frame owns the turn inset so the 28px face is not on the border. */
+.gallery-activity-frame {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  padding: 1.5rem var(--agent-pad-x, 2rem);
+}
+
+.gallery-activity-frame > * {
+  --agent-pad-x: 0;
+}
+
+/* One UserBlock per frame. Extra bottom only when hover actions are pinned (always visible). */
+.gallery-user-frame {
+  overflow: visible;
+  padding: 1.75rem var(--agent-pad-x, 2rem);
+}
+
+.gallery-user-frame-actions {
+  padding-bottom: 2.75rem;
+}
+
+/* Overflow specimen only: conversation-column width so max-h-48 reads as a tall clipped box, not a last-line fade on a page-wide bubble. */
+.gallery-user-overflow {
+  margin-left: auto;
+  width: 100%;
+  max-width: 36rem;
+}
+
+/* Pinned-open overlays only. The well is a containing block (`contain: paint`), so the
+   fixed-positioned panel that would teleport to <body> stays inside and is clipped to it;
+   the min-height is the room it takes. Click-to-open overlays do not need a well. */
+.gallery-overlay-well {
+  position: relative;
+  contain: paint;
+  isolation: isolate;
+  min-height: 10rem;
+}
+
+.gallery-overlay-well-lg {
+  min-height: 16rem;
+}
+
+.gallery-overlay-well-wide {
+  min-height: 16rem;
+  min-width: 28rem;
+}
+
+.gallery-specimen {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.gallery-specimen-wide {
+  width: 100%;
+}
+
+.gallery-specimen-wide .gallery-specimen-stage {
+  display: block;
+  width: 100%;
+}
+
+.gallery-specimen-meta {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.gallery-specimen-meta-tight {
+  height: auto;
+  min-height: 0;
+}
+
+.gallery-specimen-variant {
+  min-height: 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1rem;
+  color: var(--fg-faint);
+}
+
+.gallery-specimen-stage {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.input-float {
+  box-shadow: var(--shadow-float);
+}

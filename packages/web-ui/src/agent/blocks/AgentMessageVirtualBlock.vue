@@ -8,6 +8,7 @@ import ToolCallBlock from './ToolCallBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
 import AbortedBlock from './AbortedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
+import QueueDivider from './QueueDivider.vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -15,17 +16,15 @@ const props = defineProps<{
   block: MessageListBlock
   conversationId: string
   isThinkingStreaming: boolean
+  isTextStreaming?: boolean
   thinkingEndedAt?: string | null
-  /** Whether this block may offer recovery actions (Continue) — true only for
-   * the conversation's tail block while the session is idle, so stale error
-   * blocks never present a second, competing recovery entry point. */
-  recoverable: boolean
 }>()
 
 const emit = defineEmits<{
-  continue: []
-  retry: []
   deletePendingSteer: [id: string]
+  interruptPendingSteer: [id: string]
+  deleteQueued: [id: string]
+  sendQueued: [id: string]
 }>()
 
 const attrs = useAttrs()
@@ -50,7 +49,25 @@ const attrs = useAttrs()
     variant="steer"
     pending
     deletable
+    interruptible
     @delete="emit('deletePendingSteer', block.pendingSteerId)"
+    @interrupt="emit('interruptPendingSteer', block.pendingSteerId)"
+  />
+  <UserBlock
+    v-else-if="block.type === 'queued_message'"
+    v-bind="attrs"
+    :content="block.content"
+    variant="steer"
+    pending
+    deletable
+    sendable
+    @delete="emit('deleteQueued', block.queueId)"
+    @send-now="emit('sendQueued', block.queueId)"
+  />
+  <QueueDivider
+    v-else-if="block.type === 'queue_divider'"
+    v-bind="attrs"
+    :count="block.count"
   />
   <div v-else v-bind="attrs">
     <ThinkingBlock
@@ -63,6 +80,7 @@ const attrs = useAttrs()
     <AssistantTextBlock
       v-else-if="block.type === 'text'"
       :content="block.text"
+      :is-streaming="isTextStreaming"
     />
     <div v-else-if="block.type === 'tool_call'" class="overflow-hidden px-[var(--agent-pad-x,2rem)]">
       <ToolCallBlock :block="block" :conversation-id="props.conversationId" :is-streaming="block.status === 'executing'" />
@@ -71,17 +89,11 @@ const attrs = useAttrs()
       <ErrorBlock
         :message="block.message"
         :code="block.code"
-        :recoverable="props.recoverable"
-        @continue="emit('continue')"
-        @retry="emit('retry')"
+        :diagnostics="block.diagnostics"
       />
     </div>
     <div v-else-if="block.type === 'abort'" class="px-[var(--agent-pad-x,2rem)]">
-      <AbortedBlock
-        :recoverable="props.recoverable"
-        @continue="emit('continue')"
-        @retry="emit('retry')"
-      />
+      <AbortedBlock />
     </div>
     <CompactionBlock
       v-else-if="block.type === 'compaction_boundary'"
