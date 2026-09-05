@@ -22,7 +22,7 @@ const showArchived = ref(false)
 const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
 const account = computed(() => ({
   name: resources.username || 'Zan',
-  email: 'Local prototype',
+  email: '',
   plan: 'Personal workspace',
 }))
 function open(id: string) {
@@ -132,13 +132,10 @@ watch(
           aria-label="Open sidebar"
           @click="resources.sidebarOpen = true"
         />
-        <span class="px-2 text-chrome text-fg-muted">Demi · Prototype</span>
+        <span class="px-2 text-chrome text-fg-muted">Demi</span>
       </div>
       <section v-if="showArchived" class="flex-1 overflow-auto bg-surface p-6">
         <h1 class="mb-2 select-none text-[18px] font-medium">Archived conversations</h1>
-        <p class="mb-5 text-chrome text-fg-subtle">
-          Your conversations stay here until you restore them.
-        </p>
         <p
           v-if="!conversations.items.some((c) => c.archived)"
           class="py-8 text-chrome text-fg-faint"

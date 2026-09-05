@@ -4150,3 +4150,10 @@ Verification: prototype/resources.test.ts checks recency deduplication without
 reordering sidebar projects. Nine scoped web tests, browser typechecks and build
 passed. Browser walkthrough confirmed direct switching, recency promotion and the
 bottom action opening the current directory. M13.1 remains in progress.
+
+### M13.1 — Product copy cleanup and read-only branch metadata (2026-09-06)
+
+- Completed a product-surface audit across menus, workspace/project dialogs, account/settings, login, archive and notices. Removed instructional and simulation commentary and the Prototype settings section; retained field labels, actual status and validation errors.
+- Current branch is read-only icon/text. Removed branch switching, creation, branch-list state and the obsolete branch validation module/test. Archive sits directly beside the conversation title.
+- Verified 98 scoped web/web-ui tests, all three browser package typechecks and production build. Browser walkthrough confirmed title/archive placement, static branch metadata and the cleaned directory chooser. Existing large-chunk build warning remains.
+- Branch checkout interrupted the development watcher; restarted the independent launchctl service and verified the acceptance page at port 18934. Product UI should not carry developer guidance; simulation constraints remain in this document and the prototype design record.

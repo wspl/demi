@@ -43,26 +43,28 @@ const hasProvider = computed(() =>
     class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-xl bg-surface"
   >
     <header
-      class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+      class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2"
     >
-      <h1
-        class="col-start-1 row-start-1 min-w-0 select-none truncate text-chrome font-normal text-fg"
-        :title="conversation.title"
-      >
-        {{ conversation.title }}
-      </h1>
+      <div class="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
+        <h1
+          class="min-w-0 select-none truncate text-chrome font-normal text-fg"
+          :title="conversation.title"
+        >
+          {{ conversation.title }}
+        </h1>
+        <Tooltip content="Archive conversation" class="shrink-0">
+          <IconButton
+            :icon="Archive"
+            variant="ghost"
+            aria-label="Archive conversation"
+            :disabled="!!conversation.stream || conversation.archived"
+            @click="store.archive([conversation.id])"
+          />
+        </Tooltip>
+      </div>
       <div class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
         <WorkspaceInfo :project="project" :conversation="conversation" />
       </div>
-      <Tooltip content="Archive conversation" class="col-start-2 row-start-1 sm:col-start-3">
-        <IconButton
-          :icon="Archive"
-          variant="ghost"
-          aria-label="Archive conversation"
-          :disabled="!!conversation.stream || conversation.archived"
-          @click="store.archive([conversation.id])"
-        />
-      </Tooltip>
     </header>
     <SessionSurface ref="surface">
       <AgentMessageList
@@ -116,11 +118,7 @@ const hasProvider = computed(() =>
   </section>
   <section v-else class="grid flex-1 place-content-center gap-3 bg-surface p-8 text-center">
     <p class="text-conversation text-fg-muted">
-      {{
-        route.params.id
-          ? 'Conversation not found in this prototype session.'
-          : 'Open a conversation or start a new one.'
-      }}
+      {{ route.params.id ? 'Conversation not found.' : 'Open a conversation or start a new one.' }}
     </p>
     <Button class="justify-self-center" @click="router.push(`/chat/${store.create()}`)">
       New conversation

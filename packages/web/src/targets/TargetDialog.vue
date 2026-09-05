@@ -51,7 +51,6 @@ function create() {
     hostKind: cloud ? 'cloud' : 'device',
     path: cloud ? '/home/demi' : path.value.trim(),
     branch: null,
-    branches: [],
   })
   if (resources.targetMode === 'switch') select(id)
   else close()
@@ -73,12 +72,6 @@ function create() {
     </header>
     <div class="settings-content p-4">
       <template v-if="!showCreate">
-        <p class="hint">
-          A project sets the machine and directory. Existing files stay where they are.
-        </p>
-        <p v-if="current?.stream" class="hint">
-          Finish the running turn before switching environments.
-        </p>
         <Menu class="mb-3 w-full" iconless>
           <MenuItem
             label="No project"
@@ -110,7 +103,6 @@ function create() {
         </Button>
       </template>
       <form v-else class="space-y-4" @submit.prevent="create">
-        <p class="hint">Keep related conversations around a working directory.</p>
         <label>
           Project name
           <TextInput v-model="name" focused required maxlength="64" placeholder="My next idea" />
@@ -120,7 +112,7 @@ function create() {
           <template #trigger>
             {{
               deviceId === 'cloud'
-                ? 'Cloud · simulated'
+                ? 'Cloud'
                 : resources.devices.find((d) => d.id === deviceId)?.name
             }}
           </template>
@@ -135,7 +127,7 @@ function create() {
                 @select="deviceId = device.id"
               />
               <MenuItem
-                label="Cloud · simulated"
+                label="Cloud"
                 choice
                 :is-selected="deviceId === 'cloud'"
                 @select="deviceId = 'cloud'"
@@ -147,7 +139,6 @@ function create() {
           Directory
           <TextInput v-model="path" required placeholder="/path/to/project" />
         </label>
-        <p v-else class="hint">A simulated cloud environment will be assigned to this project.</p>
         <p v-if="message" class="hint" role="alert">{{ message }}</p>
         <Button variant="primary" :disabled="!name.trim()" @click="create">Create project</Button>
       </form>

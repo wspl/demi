@@ -193,10 +193,10 @@ export const useConversations = defineStore('conversations', {
         ...meta(c),
         type: 'compaction_boundary',
         summary:
-          'The conversation’s goals and decisions are retained for the next turn. This is a simulated context summary.',
+          'The conversation’s goals and decisions are retained for the next turn.',
         summaryTokens: 28,
       })
-      this.notice = 'Context compacted in this prototype.'
+      this.notice = 'Context compacted.'
     },
   },
 })

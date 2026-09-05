@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { Folder, GitBranch, Plus } from '@lucide/vue'
+import { computed, ref } from 'vue'
+import { Folder, GitBranch } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { Conversation, Project } from '../prototype/types'
@@ -15,12 +14,10 @@ import { useResources } from '../prototype/resources'
 import { useConversations } from '../conversation/store'
 import FileBrowser from './FileBrowser.vue'
 import HostMenu from './HostMenu.vue'
-import { branchNameError } from './branches'
 
 const props = defineProps<{ project?: Project; conversation: Conversation }>()
 const resources = useResources()
 const conversations = useConversations()
-const branchOpen = ref(false)
 const directoryOpen = ref(false)
 const recentDirectories = computed(() =>
   resources.recentProjectIds
@@ -28,24 +25,9 @@ const recentDirectories = computed(() =>
     .filter((item) => item.deviceId === props.project?.deviceId)
     .slice(0, 8),
 )
-const query = ref('')
-const branchSearch = ref<{ focus: () => void }>()
-watch(branchOpen, async (open) => {
-  if (!open) return
-  query.value = ''
-  await nextTick()
-  branchSearch.value?.focus()
-})
 const browsingDevice = ref<string | null>(null)
 const browserPath = ref('')
 const locked = computed(() => !!props.conversation.stream || props.conversation.archived)
-const matches = computed(() =>
-  (props.project?.branches ?? []).filter((branch) =>
-    branch.toLowerCase().includes(query.value.toLowerCase()),
-  ),
-)
-const createError = computed(() => branchNameError(query.value))
-
 function browse(deviceId = props.project?.deviceId ?? 'cloud', cwd?: string) {
   directoryOpen.value = false
   browserPath.value =
@@ -83,30 +65,12 @@ function selectFolder(path: string) {
       hostKind: deviceId === 'cloud' ? 'cloud' : 'device',
       path,
       branch: null,
-      branches: [],
     }
     resources.projects.push(project)
   }
   conversations.move([props.conversation.id], project.id)
   resources.rememberProject(project.id)
   browsingDevice.value = null
-}
-function selectBranch(branch: string) {
-  if (locked.value || !props.project || !props.project.branches.includes(branch)) return
-  props.project.branch = branch
-  branchOpen.value = false
-}
-function createBranch() {
-  if (
-    locked.value ||
-    !props.project ||
-    createError.value ||
-    props.project.branches.includes(query.value)
-  )
-    return
-  props.project.branches.push(query.value)
-  selectBranch(query.value)
-  query.value = ''
 }
 </script>
 
@@ -150,66 +114,15 @@ function createBranch() {
           </Menu>
         </template>
       </Dropdown>
-      <Dropdown
-        class="min-w-0 [&>div]:min-w-0"
-        v-model:open="branchOpen"
-        :overlay-store="appOverlayStore"
-        placement="bottom-end"
+      <span
+        v-if="project.branch"
+        class="flex min-w-0 select-none items-center gap-2 px-2 text-chrome text-fg-muted"
+        aria-label="Current branch"
+        :title="project.branch"
       >
-        <template #trigger>
-          <Button class="max-w-full" variant="ghost" aria-label="Switch branch" :disabled="locked">
-            <GitBranch :size="ICON_PX.in28" />
-            <span class="max-w-32 truncate">{{ project.branch ?? 'No branch' }}</span>
-          </Button>
-        </template>
-        <template #content>
-          <Menu class="w-72" :autofocus="false">
-            <div class="p-2">
-              <TextInput
-                ref="branchSearch"
-                v-model="query"
-                aria-label="Search or create branch"
-                placeholder="Search or create branch…"
-                @keydown.stop
-              />
-            </div>
-            <div class="max-h-52 overflow-y-auto">
-              <MenuItem
-                v-for="branch in matches"
-                :key="branch"
-                :icon="GitBranch"
-                :label="branch"
-                choice
-                :is-selected="branch === project.branch"
-                :disabled="locked"
-                @select="selectBranch(branch)"
-              />
-            </div>
-            <p v-if="!matches.length" class="px-3 py-2 text-chrome text-fg-subtle">
-              No matching branches.
-            </p>
-            <MenuDivider />
-            <MenuItem
-              :icon="Plus"
-              :label="query ? `Create ${query}` : 'Type a name to create a branch'"
-              :disabled="locked || !!createError || project.branches.includes(query)"
-              @select="createBranch"
-            />
-            <p v-if="query && createError" class="px-3 py-2 text-[11px] text-on-warning">
-              {{ createError }}
-            </p>
-            <p
-              v-else-if="project.branches.includes(query)"
-              class="px-3 py-2 text-[11px] text-fg-subtle"
-            >
-              This branch already exists. Select it above.
-            </p>
-            <p class="px-3 py-1 text-[11px] text-fg-subtle">
-              Prototype branches · changes stay in memory.
-            </p>
-          </Menu>
-        </template>
-      </Dropdown>
+        <GitBranch class="shrink-0" :size="ICON_PX.in28" />
+        <span class="max-w-32 truncate">{{ project.branch }}</span>
+      </span>
     </template>
     <FileBrowser
       v-if="browsingDevice"
