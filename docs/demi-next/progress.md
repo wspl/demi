@@ -4193,3 +4193,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Added 6px below both Conversations and Projects headings in the shared sidebar, separating titles from the first item in the application and gallery.
 - Shared web-ui typecheck passed. No new tests for this spacing-only change.
+
+### M13.1 — Project create-button hit target (2026-09-06)
+
+- Reproduced the fading hostname intercepting the create button's center hit target even at opacity zero. Made the decorative host layer pointer-transparent so clicks reach the overlaid new-conversation button.
+- Browser verification created conversations from both collapsed and expanded project rows; the route changed and the project fold state was preserved. Shared web-ui typecheck passed. The fix is shared with gallery and retains the crossfade.
