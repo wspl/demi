@@ -4058,3 +4058,24 @@ Owner requested no background on project-item hover. Removed the shared project
 row's hover/menu background classes and retained its keyboard focus ring.
 This applies to gallery and application. Verified the scoped presentation diff;
 no behavior or state changes. M13.1 remains in progress.
+
+### M13.1 — Independent workspace controls (2026-09-06)
+
+Owner request: separate device dropdown, workspace file browser and searchable
+branch selection/creation. Replaced the combined header action with three shared
+Button/Dropdown assemblies. Added a target-owned file-browser dialog with fixture
+directories, parent navigation, filtering, file preview and folder selection.
+Device changes select a directory on that device before moving only the current
+conversation; existing workspace records are reused by device/path. Offline
+devices and running/archived conversation switches are blocked.
+
+Branch data lives on the prototype workspace. Search supports existing selection,
+creation and invalid/duplicate-name feedback; the menu focuses the search input
+when opened. New workspaces start with no branch. No real Git or filesystem calls
+occur. Fixture files and in-memory branch behavior are labeled in their surfaces.
+
+Verification: browser typechecks, six scoped web tests and production build passed
+(existing large-chunk warning). Browser walkthrough confirmed branch creation and
+header update, file preview, Cloud device/folder selection, and a long branch name
+at 390px without horizontal page overflow. Branch-name coverage is documented in
+web-prototype.md. M13.1 remains in progress.

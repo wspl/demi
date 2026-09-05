@@ -49,6 +49,7 @@ export function projects(): Project[] {
       host: 'zan-mbp',
       path: '/Users/zan/Projects/demi',
       branch: 'main',
+      branches: ['main', 'codex/web-prototype', 'feature/settings'],
     },
     {
       id: 'notes',
@@ -57,6 +58,7 @@ export function projects(): Project[] {
       host: 'zan-mbp',
       path: '/Users/zan/Projects/notes',
       branch: 'writing',
+      branches: ['main', 'writing'],
     },
   ]
 }

@@ -54,6 +54,7 @@ function create() {
     host: cloud ? 'Cloud' : device!.name,
     path: cloud ? '/home/demi' : path.value.trim(),
     branch: null,
+    branches: [],
   })
   if (resources.targetMode === 'switch') select(id)
   else close()
