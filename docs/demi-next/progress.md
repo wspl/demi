@@ -4285,3 +4285,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - After project drag ends, smooth scrolling aligns the project header midpoint with the sidebar viewport midpoint, including when the header is already visible. Native scroll limits provide the closest reachable position near the list edges.
 - Web-ui typecheck passed.
+
+### M13.1 — Project chevron rotation transition (2026-09-06)
+
+- Project chevrons animate the CSS rotate property between explicit 0deg and 90deg states. Tailwind rotation uses the individual rotate property, so a transform-only transition did not animate angle changes. Hover opacity and reduced-motion behavior remain part of the shared component.
+- Web-ui typecheck passed.
