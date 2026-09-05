@@ -33,7 +33,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S9 detach on %s', (target) 
 
     const turn = driver.observe(begin)
     expect(turn.received[0]).toContain('survived')
-    const types = driver.transcript().map((block) => block.type)
+    const types = driver.transcript().filter(block => !(block.type === 'user' && block.preamble?.startsWith('[Execution context '))).map((block) => block.type)
     expect(types).toEqual(['user', 'text', 'response', 'user', 'tool_call', 'response', 'text', 'response'])
   }, 30_000)
 })

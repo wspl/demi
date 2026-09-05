@@ -11,6 +11,7 @@ import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
 import { LocalControlService, type ControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
+import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { openBackend, type TestBackend } from './session'
 
 // M6 acceptance, on the attached-hosts model: target switching at turn
@@ -84,7 +85,9 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual at
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-m6-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-m6-runner-'))
   const scripts: string[] = []
+  const fake = new FakeProvisioner()
   const backend = await openBackend({
+    managedHosts: { provisioner: fake },
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0 },
@@ -200,7 +203,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual at
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: workspace.id }, 'PATCH')).status).toBe(200)
   await client.send([{ type: 'text', text: 'still there?' }])
   expect(client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'turn 5')).toBe(true)
-  expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: null }, 'PATCH')).status).toBe(200)
+  expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: null }, 'PATCH')).status).toBe(409)
 
   // Workspace deletion: refused while bound, allowed when free.
   await control.setConversationWorkspace(conversation.id, workspace.id)
@@ -212,6 +215,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual at
   await client.close()
   await runner.stop()
   await backend.close()
+  await fake.close()
 }, 30_000)
 
 test('real→real switch: files stay, same-device note, the device attached once', async () => {

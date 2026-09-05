@@ -1,4 +1,7 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { FakeProvisioner } from './fake-provisioner'
 import { World } from './world'
 import { itemsText } from './model'
 import { model, type Target } from './driver'
@@ -8,14 +11,16 @@ import { model, type Target } from './driver'
 // the result. Parent and child share the target; a profile is a prompt, not
 // a restriction; the parent's transcript carries the subagent frames.
 
+const fake = new FakeProvisioner()
 let world: World
 
 beforeAll(async () => {
-  world = await World.create({ runners: ['alpha'] })
+  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { hostsPerUser: 30 } } })
 })
 
 afterAll(async () => {
   await world.close()
+  await fake.close()
 })
 
 describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (target) => {
@@ -46,7 +51,7 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S5 subagents on %s', (targe
     expect(childSaw).toContain('Created blocked.md')
     expect(explored.received[0]).toContain('subagentId:')
     expect(explored.received[0]).toContain('the file says 42; I wrote too')
-    expect(await driver.readFile('blocked.md')).toBe('nope\n')
+    expect(target === 'hostless' ? await readFile(join(fake.homeOf({ kind: 'conversation', id: driver.id }), 'blocked.md'), 'utf8') : await driver.readFile('blocked.md')).toBe('nope\n')
 
     // The default child writes where the parent then reads.
     world.model.scriptChild(model.shell('c3', "demi file create reply.md <<'EOF'\nfrom the child\nEOF"), model.say('wrote reply.md'))

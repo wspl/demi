@@ -390,16 +390,14 @@ A's model:   tar c . | demi host shell --host B "tar x -C /work"        (B's job
   rpc_exit ◄──────────────────────  after P_out drained ◄────────────────────────────────  job_exit
 ```
 
-A hostless caller — the backend's own tinybash runs the command, so its
-end is in-process:
+A conversation `c1` starting hostless acquires its machine `A` before any
+statement of a cross-host pipeline runs:
 
 ```
-hostless model:   demi host shell --host B "tar c -C /work ." | tar x
-
-  backend                                                             B
-  P_out minted  B → backend (sink: tinybash's pipeline, the `tar x` builtin)
-  job_start { script, stdout: P_out } ────────────────────────────►  spawn; PUT P_out ← fd 1
-  ═══ body → tar x, entry by entry into the conversation's store ═══ ◄═══
+c1: demi host shell --host B "tar c -C /work ." | tar x
+    preflight -> reserve c1 files -> provision A -> commit c1 target A
+    A bash    -> call B through the authenticated job RPC above
+    B stdout  -> P_out -> A tar x -> A home
 ```
 
 - **Streaming, both ways.** A job's stdout reaches the far end as the job
@@ -447,8 +445,8 @@ hostless model:   demi host shell --host B "tar c -C /work ." | tar x
   by nature; the wire rules keep them so.
 
 `demi host shell` forwards the caller's live stdin to the far job when
-there is no finite stdin pipe. A hostless root invocation leaves its
-finite `stdin` absent in this case and supplies `stdinStream`. Cancelling
+there is no finite stdin pipe. Its caller is a machine job: a hostless
+conversation acquires its machine before executing a cross-host script. Cancelling
 the invoking command sends SIGTERM to the far job and escalates to SIGKILL
 after five seconds if needed. The signal is the caller's throughout the
 relay and backend handler; terminating a process also closes its lifetime

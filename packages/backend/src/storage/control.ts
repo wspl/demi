@@ -103,6 +103,9 @@ export interface ControlService {
    * it, silently — no pending switch. False when it is no longer hostless.
    */
   bindConversationHost(conversationId: string, deviceId: string): Promise<boolean>
+  beginUpgrade(conversationId: string): Promise<void>
+  listUpgrades(): Promise<Array<{ conversationId: string; state: 'prepared' | 'committed' }>>
+  finishUpgrade(conversationId: string): Promise<void>
   /**
    * The attached hosts (`sessions-and-targets.md` § Attached hosts). `attachHost`
    * is idempotent: an attached device keeps its row; a new one is named from
@@ -657,6 +660,18 @@ export class LocalControlService implements ControlService {
     })
   }
 
+  async beginUpgrade(conversationId: string): Promise<void> {
+    this.db.run("INSERT INTO conversation_upgrades (conversation_id, state) VALUES (?, 'prepared')", [conversationId])
+  }
+
+  async listUpgrades(): Promise<Array<{ conversationId: string; state: 'prepared' | 'committed' }>> {
+    return this.db.all<{ conversationId: string; state: 'prepared' | 'committed' }>('SELECT conversation_id AS conversationId, state FROM conversation_upgrades')
+  }
+
+  async finishUpgrade(conversationId: string): Promise<void> {
+    this.db.run('DELETE FROM conversation_upgrades WHERE conversation_id = ?', [conversationId])
+  }
+
   async bindConversationHost(conversationId: string, deviceId: string): Promise<boolean> {
     return this.db.transaction(() => {
       this.db.run('UPDATE conversations SET host_device_id = ?, updated_at = ? WHERE id = ? AND workspace_id IS NULL AND host_device_id IS NULL', [
@@ -664,11 +679,11 @@ export class LocalControlService implements ControlService {
         new Date().toISOString(),
         conversationId,
       ])
-      return (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+      const changed = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+      if (changed) this.db.run("UPDATE conversation_upgrades SET state = 'committed' WHERE conversation_id = ?", [conversationId])
+      return changed
     })
   }
-
-
 
   async attachHost(conversationId: string, deviceId: string, name: string, cwd: string | null, announce: boolean): Promise<AttachedHostRecord> {
     return this.db.transaction(() => {

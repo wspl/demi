@@ -3927,3 +3927,43 @@ and target announcements. A test must wait for the final persistence flush after
 the client's idle frame before asserting that tree admission is free.
 
 Validation: typecheck and 302 scoped tests across 27 files passed.
+
+### Hostless admission, cutover and recovery — delivered
+
+The backend supplies root invocation eligibility to tinybash's preflight.
+Spawn/resume and cross-host execution acquire a machine before any statement;
+help and invalid invocations remain local. Root argv containing unexpanded globs
+conservatively requires a machine under this policy. Builtin globs are unchanged.
+The in-process cross-host execution branch was removed: these commands now
+require the authenticated calling machine job's pipes.
+
+Conversation file admission covers complete hostless commands, including those
+that outlive the tool observation window, and HTTP uploads. Upgrade exclusively
+drains admission before materialization; entrants resolve the committed Host.
+A 30-second drain timeout fails the new call without replaying or canceling an
+already admitted command. Explicit switches reserve both tree and file admission.
+
+Control storage records prepared and committed cutovers, with target binding and
+the committed state in one transaction. Startup recovers only those records:
+prepared attempts discard their uncommitted device and preserve source files;
+committed attempts retire source files and retain the machine. Retirement is
+idempotent and runs before serving requests.
+
+Managed idle retirement reserves owner trees, file access and borrowed-host
+commands. Registry job counts include dispatched jobs and spawns before the next
+pong. Concurrent machine wakes now join before token rotation. Multi-worker
+fencing remains outside this single-worker execution contract.
+
+New coverage includes preflight before a mutating prefix, variable/pipeline/glob
+admission, help without provisioning, parent/child reads in one script, uploads
+during a paused provision, prepared/committed restart recovery, idle-root active
+child admission, custom-profile execution context, and concurrent wake requests.
+Existing backend scenarios now provision local fake machines when starting from
+hostless with agent or cross-host commands. No real model is used.
+
+Validation before the final path cleanup: 991 passed, 6 environment-gated tests
+skipped across 91 files, plus typecheck. Final focused checks passed: 46 tests
+covering the removed cross-host branch, lifecycle/wake, upgrade and package
+boundaries. `upgrading-shell.test.ts` additionally proves a command that outlives
+its observation window holds cutover until its final file write. Typecheck and
+`git diff --check` pass.

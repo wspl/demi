@@ -60,6 +60,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Public boundary: platform-neutral agent runtime and client/server protocol from root; explicit Node-only subpath `@demicodes/agent/stdio` for stdio transport only; `MemoryAgentStore`, the in-memory `AgentTreeStore` for tests and fixtures, from `@demicodes/agent/testing`.
 - The shell behind the `shell_*` tools is the `ShellEnvironment` contract; `AgentServer` takes a required `shellEnvironment` factory per Host, so a product supplies the engine and the agent never knows which one runs (the backend: `HostlessEnvironment` for a `VirtualHost`, `RemoteShellEnvironment` for a `RemoteHost`; tests: `HostlessEnvironment` over `LocalHost`).
 - Must not: import concrete providers, Host implementations, or UI packages; must not own a shell interpreter.
+- Execution coordination: owns tree action admission, root/node identity, and per-node persisted product context independently of profile prompts (`docs/demi-next/execution-coordination.md`).
 - Runtime rule: the node assembly (`node/assemble.ts`) is the only runtime consumer that instantiates AgentSession; the supervisor asks it for a child and never builds one.
 - Assembly rule: AgentServer receives one AgentHarness, a public `Provider[]`, the `shellEnvironment` factory, the `store` factory (an `AgentTreeStore` per root session id — a product's own database, never a Host's store), and shell runtime options that do not replace the shell mechanism or the standard agent tool surface. `AgentHarness.host` receives action metadata for shell operations and returns a stable Host object for each execution target; it is never called to reach storage.
 - Media persistence rule: the agent defines the put/get `BlobStore` contract and the externalize/rehydrate mapping; where media bytes go is the tree store realization's decision — the backend's store externalizes every node's media into the conversation owner's blob namespace. AgentServer itself never sees a blob store.
@@ -171,11 +172,13 @@ Test code may depend upward for integration coverage. Production code must not.
   - `managed/firecracker/` — the Firecracker implementation of the seam: the image tools over e2fsprogs (`mke2fs -d` from a directory, shrink after hibernate, grow the backing file), the VM process in its two launch modes (direct, or the jailer through the privileged helper), the Firecracker API over its socket, the tap slots and the per-VM kernel command line. Spawning `firecracker`, the jailer and e2fsprogs is this module's transport — the intentional external-process exception; nothing else in the backend spawns.
   - New modules get sibling directories — never new files at the root.
 
+- Execution coordination: owns authenticated live-job RPC routing, target/file admission, durable cutover records and recovery, and Hostless command eligibility. Managed lifecycle reserves owner trees and borrowed-host execution before idle retirement.
+
 ### `@demicodes/host-virtual`
 
 - Status: implemented (M2; the hostless target's shell joined it in M9).
 - Production deps: `@demicodes/shell`, `@demicodes/tinybash`, `@demicodes/utils`.
-- Owns: the hostless execution target — its Host and its shell, the way `host-remote` owns a machine's. `VirtualHost`: a platform-neutral `Host` over a pluggable `VirtualFsBackend` (virtual-absolute normalized paths) with per-conversation namespace clamping, symlink containment, hardcoded per-file/per-conversation quotas and a logical cwd; no `spawn` — a hostless conversation runs no processes. `HostlessEnvironment`: the `ShellEnvironment` of a hostless conversation, tinybash over the Host with the loader's root paths and dispatcher injected — where Demi's Host contract and command ABI meet tinybash's own system interface; nothing beyond the model's view is kept. `HostlessEnvironment.outside` is the parse-first decision an embedder acts on before anything runs, and `handoverOf` what a machine's shell must be told to continue.
+- Owns: the hostless execution target — its Host and its shell, the way `host-remote` owns a machine's. `VirtualHost`: a platform-neutral `Host` over a pluggable `VirtualFsBackend` (virtual-absolute normalized paths) with per-conversation namespace clamping, symlink containment, hardcoded per-file/per-conversation quotas and a logical cwd; no `spawn` — a hostless conversation runs no processes. `HostlessEnvironment`: the `ShellEnvironment` of a hostless conversation, tinybash over the Host with the loader's root paths and dispatcher injected — where Demi's Host contract and command ABI meet tinybash's own system interface; nothing beyond the model's view is kept. `HostlessEnvironment.waitCommand` observes actual completion beyond tool timeouts. Its optional root-admission predicate is supplied by the product. `HostlessEnvironment.outside` is the parse-first decision an embedder acts on before anything runs, and `handoverOf` what a machine's shell must be told to continue.
 - Entries: `node` is `nodeFileSystem`, the Host filesystem over Node's `fs/promises` — the backing of the store-backed Host on the backend machine. `testing` is `hostlessShell` (the hostless shell composed over any Host with Bun's transpiler), `hostlessShellFactory`, the `probe` root (`hold`, `stdin`) that stands in for `sleep` and `read`, and `LocalHost`, the whole Host contract over this Node process's machine (`nodeFileSystem` plus child processes and a directory-fd cwd), which tests run against a real directory.
 - Public boundary: `VirtualHost`, `HostlessEnvironment`, quota constants from root; `nodeFileSystem` from `node`; the fixtures from `testing`, `scopedFsBackend` among them (a `VirtualFsBackend` over a real directory, for tests; the product's hostless files are the backend's files tree).
 - `ensureLayout` creates the working directory and the declared `directories` (the backend passes the hostless namespace).
@@ -185,7 +188,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented (M8; `docs/demi-next/tinybash.md`).
 - Production deps: `@demicodes/utils`.
-- Owns: the hostless shell as standalone infrastructure — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths under every shell state the script can reach), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), the closed set of GNU-faithful builtins, and its own system interface (`src/host.ts`: `TinybashFs`, `TinybashIO`, `DispatchIO`, `RootPaths`) — what it asks of an embedder, declared by tinybash the way any shell declares its system calls. Demi's Host contract and loader are adapted to it by `HostlessEnvironment` in `@demicodes/host-virtual`, never the other way round.
+- Owns: the hostless shell as standalone infrastructure — the lexer and parser for the fixed bash subset, the parse-first "inside / outside" decision (grammar, programs, flags, namespace paths under every shell state the script can reach), the executor (chains, concurrent pipelines over byte streams, redirections, session cwd and variables), the closed set of GNU-faithful builtins, and its own system interface (`src/host.ts`: `TinybashFs`, `TinybashIO`, `DispatchIO`, `RootPaths`, `RootAdmission`) — what it asks of an embedder, declared by tinybash the way any shell declares its system calls. Demi's Host contract and loader are adapted to it by `HostlessEnvironment` in `@demicodes/host-virtual`, never the other way round.
 - Public boundary: `runTinybash`, `parseTinybash`, the `OutsideReason`, the system-interface types from root; stub roots for embedders' tests from `@demicodes/tinybash/testing`.
 - Acceptance implies bash-equivalence: any script it runs means what it means in GNU bash + coreutils; anything else is `outside`, never approximated. The equivalence corpus against real bash is the guarantee's test.
 - Must not: import any Demi package but `@demicodes/utils` in production code (`@demicodes/shell` and `@demicodes/host-virtual` appear only as test dependencies for the corpus fixtures), know the backend, the manifest format or the loader, spawn processes, perform IO outside the injected `fs`, or run on real hosts.
@@ -262,14 +265,6 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: the Demi web product's browser application — the Vite-built app over `@demicodes/web-ui`, talking to `@demicodes/backend` over its REST and WebSocket API. The backend serves the built assets in deployment (M14).
 - Public boundary: the browser entry point.
 - Must not: be imported by any other production package, or carry a server.
-
-## Execution Coordination
-
-The final execution identity and admission contract is
-`docs/demi-next/execution-coordination.md`. The agent owns tree turn admission
-and root/node identity; the backend owns device authorization, target transitions
-and Hostless eligibility. Host and interpreter packages expose generic facts and
-callbacks only. Package dependency direction remains as registered above.
 
 ## Production Dependency Graph
 

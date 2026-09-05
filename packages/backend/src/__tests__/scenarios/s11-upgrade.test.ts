@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises'
+import { deferred, delay } from '@demicodes/utils'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { HOSTLESS_ENV } from '../../conversation/hostless-shell'
@@ -88,6 +90,11 @@ test('a provisioning failure is that call\'s tool error; the conversation stays 
     const still = await driver.turn({ model: [model.shell('t3', 'cat k.txt && demi host current'), model.say('still')] })
     expect(still.received[0]).toContain('keep')
     expect(still.received[0]).toContain('host: virtual')
+    const refusedSpawn = await driver.turn({ model: [model.shell('t4', "printf wrong > k.txt; demi agent spawn 'work'"), model.say('refused')] })
+    expect(refusedSpawn.received[0]).toContain('limit of 0 machines')
+    expect(await small.hostlessFile(driver.id, '/home/demi/k.txt')).toBe('keep')
+    const help = await driver.turn({ model: [model.shell('t5', 'demi agent spawn --help'), model.say('help')] })
+    expect(help.received[0]).toContain('Start an isolated child')
     expect(limited.calls).toEqual([])
   } finally {
     await small.close()
@@ -116,13 +123,15 @@ test('the shells the model holds continue on the machine: a named shell under it
   expect(moved.received[0]).toContain(`${home}\n`)
 }, 60_000)
 
-test("a subagent's outside script upgrades its root's conversation; parent and child both continue on the machine", async () => {
+test("spawn acquires the machine before the parent script runs; parent and child share its files", async () => {
   const driver = await world.conversation('hostless')
   const owner: ManagedHostOwner = { kind: 'conversation', id: driver.id }
   await driver.turn({ model: [model.shell('p1', 'mkdir -p shared && cd shared && printf parent > p.txt && echo ok'), model.say('ready')] })
-  world.model.scriptChild(model.shell('c1', 'uname > /dev/null; printf child > c.txt; echo "child in $(pwd)"'), model.say('child done'))
-  const spawned = await driver.turn({ model: [model.shell('p2', "demi agent spawn 'write c.txt' --description writer", 20_000), model.say('spawned')] })
+  world.model.scriptChild(model.shell('c1', 'printf child > c.txt; echo "child in $(pwd)"'), model.say('child done'))
+  const spawned = await driver.turn({ model: [model.shell('p2', "demi agent spawn 'write c.txt' --description writer; cat ../c.txt", 20_000), model.say('spawned')] })
   expect(spawned.received[0]).toContain('child done')
+  expect(spawned.received[0]).toContain('child')
+  expect(spawned.received[0]).not.toContain('No such file')
   const home = fake.homeOf(owner)
   const childRequests = world.model.requests.filter((request) => request.sessionId !== driver.id)
   expect(itemsText(childRequests.at(-1)!.items)).toContain(`child in ${home}`)
@@ -231,3 +240,75 @@ test('split equivalence: the sequence whole on the machine equals every split wi
     expect(await readFile(join(home, 'src', 'b.md'), 'utf8'), `b.md at split ${split}`).toBe(wholeFiles.b)
   }
 }, 180_000)
+
+class PausedProvisioner extends FakeProvisioner {
+  readonly entered = deferred<void>()
+  readonly proceed = deferred<void>()
+  override async provision(owner: ManagedHostOwner, homeDir: string, boot: BootArgs): Promise<void> {
+    this.entered.resolve()
+    await this.proceed.promise
+    return super.provision(owner, homeDir, boot)
+  }
+}
+
+test('an upload arriving after materialization waits and writes to the committed machine', async () => {
+  const paused = new PausedProvisioner()
+  const small = await World.create({ managedHosts: { provisioner: paused } })
+  try {
+    const driver = await small.conversation('hostless')
+    await driver.upload('before.txt', new TextEncoder().encode('before'))
+    const turn = driver.startTurn({ model: [model.shell('upgrade', 'uname > /dev/null'), model.say('ready')] })
+    await paused.entered.promise
+    let uploaded = false
+    const upload = driver.upload('during.txt', new TextEncoder().encode('during')).then(() => { uploaded = true })
+    await delay(20)
+    expect(uploaded).toBe(false)
+    expect(await small.hostlessFile(driver.id, '/home/demi/before.txt')).toBe('before')
+    paused.proceed.resolve()
+    await Promise.all([turn.done, upload])
+    const home = paused.homeOf({ kind: 'conversation', id: driver.id })
+    expect(await readFile(join(home, 'before.txt'), 'utf8')).toBe('before')
+    expect(await readFile(join(home, 'during.txt'), 'utf8')).toBe('during')
+    expect(await small.hostlessFile(driver.id, '/home/demi/during.txt')).toBeNull()
+  } finally {
+    paused.proceed.resolve()
+    await small.close()
+    await paused.close()
+  }
+}, 60_000)
+
+for (const state of ['prepared', 'committed'] as const) {
+  test(`restart recovers a ${state} cutover from its durable record`, async () => {
+    const provisioner = new FakeProvisioner()
+    const small = await World.create({ port: 0, managedHosts: { provisioner } })
+    const db = openSqliteDatabase(join(small.dataDir, 'control.sqlite'))
+    const store = new LocalControlService(db)
+    try {
+      const driver = await small.conversation('hostless')
+      await driver.upload('source.txt', new TextEncoder().encode('source'))
+      const owner: ManagedHostOwner = { kind: 'conversation', id: driver.id }
+      const home = await mkdtemp(join(tmpdir(), 'demi-recovery-home-'))
+      await writeFile(join(home, 'source.txt'), 'source')
+      await store.beginUpgrade(driver.id)
+      const device = await small.backend.managedHosts!.provisionFresh(owner, small.backend.session.user.id, home)
+      if (state === 'committed') expect(await store.bindConversationHost(driver.id, device.id)).toBe(true)
+      expect(await store.listUpgrades()).toEqual([{ conversationId: driver.id, state }])
+      await small.restartBackend()
+      expect(await store.listUpgrades()).toEqual([])
+      if (state === 'prepared') {
+        expect(await store.getManagedDevice(owner)).toBeNull()
+        expect(await small.hostlessFile(driver.id, '/home/demi/source.txt')).toBe('source')
+      } else {
+        expect((await store.getConversation(driver.id))?.hostDeviceId).toBe(device.id)
+        expect(await small.hostlessFile(driver.id, '/home/demi/source.txt')).toBeNull()
+        await driver.upload('next.txt', new TextEncoder().encode('next'))
+        expect(await readFile(join(home, 'source.txt'), 'utf8')).toBe('source')
+        expect(await readFile(join(home, 'next.txt'), 'utf8')).toBe('next')
+      }
+    } finally {
+      db.close()
+      await small.close()
+      await provisioner.close()
+    }
+  }, 60_000)
+}

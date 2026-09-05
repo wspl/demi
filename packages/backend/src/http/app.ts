@@ -46,7 +46,7 @@ export function createApp(options: {
   pipes: PipeBroker
   upgradeWebSocket: UpgradeWebSocket
   blobs: UserBlobStores
-  hostFor: (conversationId: string) => Promise<Host>
+  withHost: <T>(conversationId: string, operation: (host: Host) => Promise<T>, signal?: AbortSignal) => Promise<T>
   switchTarget: (conversationId: string, toWorkspaceId: string | null) => Promise<SwitchTargetResult>
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
@@ -93,7 +93,7 @@ export function createApp(options: {
     conversationRoutes({
       control: options.control,
       conversationStores: options.conversationStores,
-      hostFor: options.hostFor,
+      withHost: options.withHost,
       switchTarget: options.switchTarget,
       managedHosts: options.managedHosts,
       vault: options.vault,

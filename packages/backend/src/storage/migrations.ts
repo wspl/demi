@@ -73,6 +73,11 @@ CREATE TABLE conversations (
 );
 CREATE INDEX idx_conversations_user ON conversations(user_id, archived, updated_at);
 
+CREATE TABLE conversation_upgrades (
+  conversation_id TEXT PRIMARY KEY REFERENCES conversations(id),
+  state TEXT NOT NULL CHECK (state IN ('prepared', 'committed'))
+);
+
 CREATE TABLE conversation_hosts (
   conversation_id TEXT NOT NULL REFERENCES conversations(id),
   device_id       TEXT NOT NULL REFERENCES devices(id),

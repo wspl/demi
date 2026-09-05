@@ -10,6 +10,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import type { RunnerProtocolMessage } from '@demicodes/runner-protocol'
 import { startTinyjsRunner } from '@demicodes/runner/testing'
 import { waitFor } from '@demicodes/utils'
+import { FakeProvisioner } from './scenarios/fake-provisioner'
 import { openBackend, type TestBackend } from './session'
 
 // `demi host shell --host` between two devices (`runner.md` § Pipes). The
@@ -74,7 +75,8 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
   /** Every message per device and direction: the wire audit. */
   const frames: Array<{ deviceId: string; direction: 'in' | 'out'; message: RunnerProtocolMessage }> = []
   const scripts: string[] = []
-  const backend = await openBackend({
+  const fake = new FakeProvisioner()
+  const backend = await openBackend({ managedHosts: { provisioner: fake },
     dataDir,
     port: 0,
     runner: { pingIntervalMs: 0, trace: (deviceId, direction, message) => void frames.push({ deviceId, direction, message }) },
@@ -196,11 +198,12 @@ test('host shell --host: the job runs on the named host with the caller\'s pipes
   await client.send([{ type: 'text', text: 'peek from nowhere' }])
   const peeked = lastExited(shellEvents)
   expect(peeked?.exitCode).toBe(0)
-  expect(peeked?.stdout.delta.replace(/\s+/g, ' ').trim()).toBe(`00 1f 3e 5d 7c ${payload.length} notes.bin host: virtual (files under /home/demi)`)
+  expect(peeked?.stdout.delta.replace(/\s+/g, ' ').trim()).toStartWith(`00 1f 3e 5d 7c ${payload.length} notes.bin host: machine "cloud"`)
 
   await a.runner.stop()
   await b.runner.stop()
   await backend.close()
+  await fake.close()
 }, 120_000)
 
 test('host shell streams stderr before stdout ends, forwards shell_write, and cancels the far job from device and hostless callers', async () => {
@@ -208,7 +211,8 @@ test('host shell streams stderr before stdout ends, forwards shell_write, and ca
   const frames: Array<{ deviceId: string; direction: 'in' | 'out'; message: RunnerProtocolMessage }> = []
   let commandId = ''
   let script = ''
-  const backend = await openBackend({ dataDir, port: 0,
+  const fake = new FakeProvisioner()
+  const backend = await openBackend({ managedHosts: { provisioner: fake }, dataDir, port: 0,
     runner: { pingIntervalMs: 0, trace: (deviceId, direction, message) => { frames.push({ deviceId, direction, message }) } },
     providerTypes: { stub: { credential: 'api_key', create: ({ providerId, label }) => defineProvider({ id: providerId, displayName: label,
       createRuntime: () => new StubProvider([
@@ -267,5 +271,6 @@ test('host shell streams stderr before stdout ends, forwards shell_write, and ca
     await a.runner.stop()
     await b.runner.stop()
     await backend.close()
+  await fake.close()
   }
 }, 30_000)

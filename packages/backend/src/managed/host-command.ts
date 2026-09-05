@@ -1,5 +1,5 @@
 import { abortable, errorMessage, noop } from '@demicodes/utils'
-import { type Command, type CommandGroup, type CommandIO, type CommandRunContext, type Host, type HostStore } from '@demicodes/shell'
+import { type Command, type CommandGroup, type CommandIO, type CommandRunContext, type HostStore } from '@demicodes/shell'
 import { z } from 'zod'
 import { resolveExecutionTarget, targetDeviceId } from '../conversation/execution-target'
 import { HOSTLESS_HOME } from '../conversation/scoped-transport'
@@ -14,7 +14,6 @@ export interface HostCommandDeps {
   pipes: PipeBroker
   /** Wakes a hibernated managed host on `shell --host` (`sessions-and-targets.md` § Attached hosts); null when the backend provisions none. */
   managedHosts: ManagedHosts | null
-  virtualHostFor: (conversationId: string) => Promise<Host>
   hostStoreFor: (conversationId: string) => HostStore
 }
 
@@ -160,9 +159,8 @@ function currentCommand(deps: HostCommandDeps, conversationId: string): Command 
  * A script on another host, as one job there (`runner.md` § Pipes): the
  * caller's stdin and stdout become the job's fd 0 and fd 1, both streaming
  * while it runs. A caller on a device has its pipes already minted by the
- * relay — their far ends are simply named as the job's host, so the bytes
- * go device to device through the broker; a hostless caller's ends are this
- * process's own streams. The stderr view and the exit code pass through.
+ * relay — their far ends are named as the job's host, so the bytes
+ * go device to device through the broker. The stderr view and exit code pass through.
  */
 async function runOnHost(
   deps: HostCommandDeps,
@@ -172,102 +170,77 @@ async function runOnHost(
   ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env' | 'stdinStream' | 'signal'>,
 ): Promise<{ exitCode: number }> {
   const device = await deps.control.getDevice(target.deviceId)
-  if (device?.kind === 'managed' && deps.managedHosts) await deps.managedHosts.ensureRunning(device)
-  if (ctx.signal.aborted) return { exitCode: 130 }
-  if (!deps.registry.deviceOnline(target.deviceId)) {
-    await ctx.io.stderr(`host shell: host ${target.deviceId} is offline\n`)
-    return { exitCode: 1 }
-  }
-  const host = deps.registry.hostFor(target, conversationId, deps.hostStoreFor(conversationId))
-  const env: Record<string, string> = { DEMI_SESSION_ID: ctx.env.DEMI_SESSION_ID ?? conversationId }
-  if (ctx.env.DEMI_SHELL_ID) env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
-  const { stdin, stdout } = attachEnds(deps.pipes, ctx, target.deviceId)
-  const job = host.startJob({ script, cwd: target.path, env, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
-  const forwarding = new AbortController()
-  let killTimer: ReturnType<typeof setTimeout> | undefined
-  const abort = () => {
-    forwarding.abort()
-    void job.kill('SIGTERM').catch(noop)
-    killTimer = setTimeout(() => void job.kill('SIGKILL').catch(noop), 5_000)
-    deps.pipes.fail(stdout.id, 'command aborted')
-    if (stdin) deps.pipes.fail(stdin.id, 'command aborted')
-  }
-  ctx.signal.addEventListener('abort', abort, { once: true })
-  if (ctx.signal.aborted) abort()
-  if (!stdin) {
-    const input = ctx.stdinStream[Symbol.asyncIterator]()
-    void (async () => {
-      try {
-        for (;;) {
-          const next = await abortable(input.next(), forwarding.signal)
-          if (next.done) {
-            await job.closeStdin()
-            return
-          }
-          await job.writeStdin(next.value)
-        }
-      } finally {
-        void input.return?.().catch(noop)
-      }
-    })().catch(noop)
-  }
-  const view = (async () => {
-    for await (const chunk of job.output) {
-      if (chunk.stream === 'stderr') await ctx.io.stderr(chunk.chunk)
-    }
-  })()
-  let exit: Awaited<ReturnType<typeof job.wait>>
+  const release = device?.kind === 'managed' && deps.managedHosts ? await deps.managedHosts.enter(device, ctx.signal) : noop
   try {
-    exit = await job.wait()
-  } finally {
-    forwarding.abort()
-    ctx.signal.removeEventListener('abort', abort)
-    clearTimeout(killTimer)
-  }
-  await view.catch(noop)
-  await stdout.done.catch((error: unknown) => ctx.io.stderr(`host shell: stdout ${errorMessage(error)}\n`))
-  stdin?.done.catch(noop)
-  // Where the shell ended is where the next one on this attached host starts.
-  if (target.role === 'attached' && exit.cwd !== undefined) await deps.control.setAttachedHostCwd(conversationId, target.deviceId, exit.cwd)
-  if (exit.spawnError) {
-    await ctx.io.stderr(`host shell: ${exit.spawnError.kind}${exit.spawnError.detail ? ` — ${exit.spawnError.detail}` : ''}\n`)
-    return { exitCode: 127 }
-  }
-  return { exitCode: ctx.signal.aborted ? 130 : exit.exitCode ?? 1 }
-}
-
-/**
- * The pipes the job's ends attach to. Relayed from a device: the call's own
- * pipes, their far ends named as the job's device. In this process: a pipe
- * fed from the caller's stdin stream, and one drained into its stdout.
- */
-function attachEnds(broker: PipeBroker, ctx: Pick<CommandRunContext, 'io' | 'stdin'>, deviceId: string): { stdin: Pipe | null; stdout: Pipe } {
-  const relayed = relayedPipesOf(ctx.io)
-  if (relayed) {
-    relayed.stdin?.sinkTo(deviceId)
-    relayed.stdout.sourceFrom(deviceId)
-    return relayed
-  }
-  let stdin: Pipe | null = null
-  if (ctx.stdin) {
-    stdin = broker.open(undefined, { deviceId })
-    const writer = stdin.writer()
-    void (async () => {
-      try {
-        for await (const chunk of ctx.stdin!) await writer.write(chunk)
-        writer.end()
-      } catch (error) {
-        writer.fail(error)
+    if (ctx.signal.aborted) return { exitCode: 130 }
+    if (!deps.registry.deviceOnline(target.deviceId)) {
+      await ctx.io.stderr(`host shell: host ${target.deviceId} is offline\n`)
+      return { exitCode: 1 }
+    }
+    const host = deps.registry.hostFor(target, conversationId, deps.hostStoreFor(conversationId))
+    const env: Record<string, string> = { DEMI_SESSION_ID: ctx.env.DEMI_SESSION_ID ?? conversationId }
+    if (ctx.env.DEMI_SHELL_ID) env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
+    const { stdin, stdout } = attachEnds(ctx.io, target.deviceId)
+    const job = host.startJob({ script, cwd: target.path, env, ...(stdin ? { stdin: stdin.ref() } : {}), stdout: stdout.ref() })
+    const forwarding = new AbortController()
+    let killTimer: ReturnType<typeof setTimeout> | undefined
+    const abort = () => {
+      forwarding.abort()
+      void job.kill('SIGTERM').catch(noop)
+      killTimer = setTimeout(() => void job.kill('SIGKILL').catch(noop), 5_000)
+      deps.pipes.fail(stdout.id, 'command aborted')
+      if (stdin) deps.pipes.fail(stdin.id, 'command aborted')
+    }
+    ctx.signal.addEventListener('abort', abort, { once: true })
+    if (ctx.signal.aborted) abort()
+    if (!stdin) {
+      const input = ctx.stdinStream[Symbol.asyncIterator]()
+      void (async () => {
+        try {
+          for (;;) {
+            const next = await abortable(input.next(), forwarding.signal)
+            if (next.done) {
+              await job.closeStdin()
+              return
+            }
+            await job.writeStdin(next.value)
+          }
+        } finally {
+          void input.return?.().catch(noop)
+        }
+      })().catch(noop)
+    }
+    const view = (async () => {
+      for await (const chunk of job.output) {
+        if (chunk.stream === 'stderr') await ctx.io.stderr(chunk.chunk)
       }
     })()
-  }
-  const stdout = broker.open({ deviceId })
-  void (async () => {
+    let exit: Awaited<ReturnType<typeof job.wait>>
     try {
-      for await (const chunk of stdout.stream()) await ctx.io.stdout(chunk)
-    } catch {
-      // Reported through `done` by the caller.
+      exit = await job.wait()
+    } finally {
+      forwarding.abort()
+      ctx.signal.removeEventListener('abort', abort)
+      clearTimeout(killTimer)
     }
-  })()
-  return { stdin, stdout }
+    await view.catch(noop)
+    await stdout.done.catch((error: unknown) => ctx.io.stderr(`host shell: stdout ${errorMessage(error)}\n`))
+    stdin?.done.catch(noop)
+    // Where the shell ended is where the next one on this attached host starts.
+    if (target.role === 'attached' && exit.cwd !== undefined) await deps.control.setAttachedHostCwd(conversationId, target.deviceId, exit.cwd)
+    if (exit.spawnError) {
+      await ctx.io.stderr(`host shell: ${exit.spawnError.kind}${exit.spawnError.detail ? ` — ${exit.spawnError.detail}` : ''}\n`)
+      return { exitCode: 127 }
+    }
+    return { exitCode: ctx.signal.aborted ? 130 : exit.exitCode ?? 1 }
+  } finally { release() }
+}
+
+/** Attaches the authenticated calling job's pipes to the destination device. */
+function attachEnds(io: CommandIO, deviceId: string): { stdin: Pipe | null; stdout: Pipe } {
+  const relayed = relayedPipesOf(io)
+  if (!relayed) throw new Error('cross-host execution requires a machine job')
+  relayed.stdin?.sinkTo(deviceId)
+  relayed.stdout.sourceFrom(deviceId)
+  return relayed
 }

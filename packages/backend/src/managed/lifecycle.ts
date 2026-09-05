@@ -1,4 +1,4 @@
-import { deferred, errorMessage, noop, withTimeout, type Deferred } from '@demicodes/utils'
+import { ActivityGate, deferred, errorMessage, noop, withTimeout, type Deferred } from '@demicodes/utils'
 import { generateDeviceToken, hashDeviceToken } from '../runner/claim-codes'
 import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService, DeviceRecord, ManagedHostOwner } from '../storage/control'
@@ -42,6 +42,8 @@ export interface ManagedHostsOptions {
   backendUrl: () => string
   /** Whether any conversation of the owner has a turn in flight; the idle rule's first input. */
   turnInFlight: (owner: ManagedHostOwner) => Promise<boolean>
+  /** Reserves all existing owner trees until retirement enters the saving state. */
+  reserveIdle: (owner: ManagedHostOwner) => Promise<(() => void) | null>
   config?: Partial<ManagedHostsConfig>
   log?: (line: string) => void
   now?: () => number
@@ -67,6 +69,7 @@ export class ManagedHostError extends Error {
  * true, since its guest died with the process.
  */
 interface OwnedHost {
+  activity: ActivityGate
   owner: ManagedHostOwner
   deviceId: string
   state: 'booting' | 'running' | 'saving' | 'off'
@@ -176,8 +179,17 @@ export class ManagedHosts {
       throw new ManagedHostError('crash_loop', `the machine died ${recent.length} times in the last ${Math.round(this.config.crashLoop.windowMs / 60_000)} minutes and is not restarted automatically`)
     }
     const token = generateDeviceToken()
-    await this.options.control.rotateDeviceToken(device.id, hashDeviceToken(token))
-    await this.boot(host, () => this.options.provisioner.wake(owner, { backendUrl: this.options.backendUrl(), deviceToken: token }))
+    await this.boot(host, async () => {
+      await this.options.control.rotateDeviceToken(device.id, hashDeviceToken(token))
+      await this.options.provisioner.wake(owner, { backendUrl: this.options.backendUrl(), deviceToken: token })
+    })
+  }
+
+  /** Keeps a borrowed machine available for the lifetime of a cross-host command. */
+  async enter(device: DeviceRecord, signal?: AbortSignal): Promise<() => void> {
+    const release = await this.host(ownerOf(device), device.id).activity.enter(signal)
+    try { await this.ensureRunning(device); return release }
+    catch (error) { release(); throw error }
   }
 
   /** The guest a device row denotes, if this backend knows it as running. */
@@ -247,7 +259,7 @@ export class ManagedHosts {
     const key = ownerKey(owner)
     let host = this.hosts.get(key)
     if (!host) {
-      host = { owner, deviceId, state: 'off', boot: null, died: null, save: null, startedAt: 0, idleSince: null, lastCheckpointAt: 0, deaths: [] }
+      host = { activity: new ActivityGate(), owner, deviceId, state: 'off', boot: null, died: null, save: null, startedAt: 0, idleSince: null, lastCheckpointAt: 0, deaths: [] }
       this.hosts.set(key, host)
     }
     return host
@@ -306,7 +318,16 @@ export class ManagedHosts {
         const idle = host.idleSince !== null && now - host.idleSince >= this.config.idleMs
         const capped = !turn && now - host.startedAt >= this.config.hardCapMs
         if (idle || capped) {
-          await this.hibernate(host.owner).catch((error) => this.log(`hibernate of ${ownerKey(host.owner)} failed: ${errorMessage(error)}`))
+          const releaseMachine = host.activity.tryReserve()
+          if (!releaseMachine) { host.idleSince = null; continue }
+          try {
+            const release = await this.options.reserveIdle(host.owner)
+            if (!release) { host.idleSince = null; continue }
+            try {
+              if (!capped && this.options.registry.runningJobs(host.deviceId) > 0) { host.idleSince = null; continue }
+              await this.hibernate(host.owner).catch((error) => this.log(`hibernate of ${ownerKey(host.owner)} failed: ${errorMessage(error)}`))
+            } finally { release() }
+          } finally { releaseMachine() }
           continue
         }
         if (now - host.lastCheckpointAt >= this.config.checkpointIntervalMs) await this.checkpoint(host)

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import type { InferenceRequest } from '@demicodes/provider'
 import { delay, waitFor } from '@demicodes/utils'
+import { FakeProvisioner } from './fake-provisioner'
 import { World } from './world'
 import { model, type Target, type TurnScript } from './driver'
 
@@ -10,14 +11,16 @@ import { model, type Target, type TurnScript } from './driver'
 // stopped with shell_abort, a background job on a runner. The status machine
 // as the model sees it; nothing left running after the abort.
 
+const fake = new FakeProvisioner()
 let world: World
 
 beforeAll(async () => {
-  world = await World.create({ runners: ['alpha'] })
+  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { hostsPerUser: 30 } } })
 })
 
 afterAll(async () => {
   await world.close()
+  await fake.close()
 })
 
 /** The last tool result the model was shown. */
