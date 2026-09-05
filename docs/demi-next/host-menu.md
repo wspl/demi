@@ -8,13 +8,12 @@ header controls for the main environment.
 ```text
 Conversation c1 header: [zan-mbp +2] [demi] [main]
                          |
-                         +-- Main execution environment
-                         |     zan-mbp · Online
-                         |     Switch main environment… > devices / Cloud / Hostless
-                         +-- Attached hosts · 2
-                         |     build-01 · Offline > build-01
-                         |                  > Use as main / Detach
-                         |     studio · Online > studio
+                         +-- [computer] Main host       zan-mbp > devices / Cloud / Hostless
+                         |   ----------------------------------
+                         |   Attached hosts
+                         +-- [computer] build-01       gray dot > Use as main / Detach
+                         +-- [computer] studio        green dot > Use as main / Detach
+                         |   ----------------------------------
                          +-- Attach device… > searchable owned devices
                          +-- Connect new device… > account device settings
 ```
@@ -22,7 +21,7 @@ Conversation c1 header: [zan-mbp +2] [demi] [main]
 The trigger shows the main device and the attachment count. Cloud uses its icon;
 Hostless uses a small host-management icon and an optional count, without main
 device, workspace or branch metadata. Attaching is available in every main-host
-state. The empty attachment section explains that no additional devices are bound.
+state. The attachment section is shown when devices are attached.
 
 Attach selects an existing owned device and starts its cwd at its home. The
 picker excludes the main device and devices already attached; offline devices
@@ -32,7 +31,11 @@ new device opens the global device settings, which is separate from granting a
 particular conversation access to that device.
 
 Attachment names are generated from device names and kept unique within the
-conversation. The menu exposes device identity, online status, promotion and
+conversation. The menu uses shared `MenuItem` label/value and status-indicator presentation,
+and shared `MenuGroup` section titles. Online devices have a green dot; offline
+devices have a gray dot. Both include accessible status labels. Main host is a
+single label/value submenu row, without a section heading.
+The menu exposes device identity, online status, promotion and
 detach; it has no rename action or directory display. Directory selection and
 browsing belong to the separate workspace control. The menu contains actions and
 status only, without explanatory help paragraphs. Detach removes only the

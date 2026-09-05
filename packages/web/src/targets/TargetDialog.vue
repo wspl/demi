@@ -84,18 +84,13 @@ function create() {
             v-for="project in resources.projects"
             :key="project.id"
             :label="project.name"
+            :value="project.host"
+            :title="project.path"
             choice
             :is-selected="current?.projectId === project.id"
             :disabled="!!current?.stream"
             @select="select(project.id)"
-          >
-            <span class="flex min-w-0 flex-1 flex-col py-1">
-              <span>{{ project.name }}</span>
-              <span class="truncate text-[11px] text-fg-subtle">
-                {{ project.host }} · {{ project.path }}
-              </span>
-            </span>
-          </MenuItem>
+          ></MenuItem>
         </Menu>
         <Button :disabled="!!current?.stream" @click="showCreate = true">
           <Plus :size="14" />

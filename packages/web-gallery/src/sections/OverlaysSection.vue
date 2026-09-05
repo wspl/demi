@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Monitor } from '@lucide/vue'
 import { Copy, Pencil, Plus, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
@@ -152,9 +153,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
                 <Switch v-model="submenuFast" size="sm" @click.stop />
               </template>
             </MenuItem>
-            <MenuItem submenu-open>
-              <span class="min-w-0 flex-1 truncate">Reasoning</span>
-              <span class="max-w-[7rem] truncate text-right text-fg-muted">{{ submenuReasoningLabels[submenuReasoning] }}</span>
+            <MenuItem submenu-open label="Reasoning" :value="submenuReasoningLabels[submenuReasoning]">
               <template #submenu>
                 <Menu iconless class="min-w-[10rem]">
                   <MenuItem
@@ -167,9 +166,7 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
                 </Menu>
               </template>
             </MenuItem>
-            <MenuItem>
-              <span class="min-w-0 flex-1 truncate">Model</span>
-              <span class="max-w-[7rem] truncate text-right text-fg-muted">{{ itemLabel(submenuModel, submenuModels) }}</span>
+            <MenuItem label="Model" :value="itemLabel(submenuModel, submenuModels)">
               <template #submenu>
                 <Menu iconless class="min-w-[10rem]">
                   <MenuItem label="Claude Sonnet" choice :is-selected="submenuModel === 'sonnet'" @select="submenuModel = 'sonnet'" />
@@ -181,6 +178,25 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
           </Menu>
         </GallerySpecimen>
       </GalleryOverlayWell>
+      <GallerySpecimen variant="host menu · label/value and status">
+        <Menu class="w-72">
+          <MenuItem :icon="Monitor" label="Main host" value="zan-mbp" has-submenu>
+            <template #submenu>
+              <Menu><MenuItem :icon="Monitor" label="zan-mbp" choice is-selected /></Menu>
+            </template>
+          </MenuItem>
+          <MenuGroup label="Attached hosts">
+            <MenuItem :icon="Monitor" label="build-01" indicator="success" indicator-label="Online" has-submenu>
+              <template #submenu>
+                <Menu><MenuItem label="Detach" /></Menu>
+              </template>
+            </MenuItem>
+          </MenuGroup>
+          <MenuDivider />
+          <MenuItem label="Attach device…" />
+          <MenuItem label="Connect new device…" />
+        </Menu>
+      </GallerySpecimen>
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="tall">
           <Menu iconless class="w-56">

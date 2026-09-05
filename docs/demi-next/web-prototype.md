@@ -17,6 +17,9 @@ and `AgentMessageInput`; each caller supplies its own state and editor behavior.
 The application assembles `AgentMessageList`, `SessionSurface`,
 `SessionDock` and the shared dialog, menu and form controls. Application CSS owns
 page and settings layout only; component appearance belongs to `web-ui`.
+Menus use `MenuGroup` for section headings and `MenuItem` for rows. Its `value`
+field owns right-aligned metadata; its indicator owns status-dot size and color.
+The model menu, host menu, project picker and gallery share these row contracts.
 
 `main.ts` composes the app, router and stores, and advances a deterministic
 scripted response clock. The fixture provider's model names are illustrative.
