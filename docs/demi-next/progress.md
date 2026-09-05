@@ -4022,3 +4022,22 @@ Verification: browser typechecks and production build passed. Browser review
 confirmed metadata to the right of the title, target picker opening, and a
 390px viewport with metadata below the title and no horizontal page overflow.
 M13.1 remains in progress.
+
+### M13.1 — Stable projects and dropdown dismissal (2026-09-06)
+
+Owner corrections: creating conversations must not reorder projects, outside
+clicks dismiss dropdowns, and hostless headers omit environment metadata.
+
+Project grouping preserves the supplied project list order; conversation sorting
+continues within each group. Removed the redundant group activity timestamp.
+Dialog still supplies overlay ownership to child menus, but its own surface is
+not registered as a menu panel: including it caused clicks elsewhere in the
+dialog to be ignored by dropdown outside-click handling. Hostless views omit
+WorkspaceInfo, whose contract now requires a project.
+
+Coverage: sidebar/__tests__/group-conversations.test.ts verifies stable group
+order despite newer/pinned conversations, activity changes and empty projects.
+Browser checks confirmed notes creation leaves demi before notes, outside-click
+dismissal inside a dialog and on the page, and the hostless header's absence of
+environment metadata. Scoped web/web-ui tests, browser typechecks and production
+build are checked for this checkpoint. M13.1 remains in progress.
