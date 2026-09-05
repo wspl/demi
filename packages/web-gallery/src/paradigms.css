@@ -65,11 +65,7 @@ html[data-theme="dark"][data-shadow="hairline"] {
   --th-shadow-xl: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 4px 16px rgba(0, 0, 0, 0.28);
   --th-shadow-2xl: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 8px 28px rgba(0, 0, 0, 0.32);
   --shadow-float: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 8px 20px rgba(0, 0, 0, 0.18);
-  --shadow-overlay:
-    0 0 0 0.5px var(--line-overlay),
-    rgba(0, 0, 0, 0.125) 0 3px 8px,
-    rgba(0, 0, 0, 0.125) 0 2px 5px,
-    rgba(0, 0, 0, 0.125) 0 1px 1px;
+  --shadow-overlay: var(--th-shadow-lg);
   --shadow-btn: 0 0 0 0.5px rgba(255, 255, 255, 0.12);
   --shadow-btn-hover: 0 0 0 0.5px rgba(255, 255, 255, 0.18);
 }
@@ -81,11 +77,7 @@ html[data-theme="light"][data-shadow="hairline"] {
   --th-shadow-xl: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px rgba(0, 0, 0, 0.05);
   --th-shadow-2xl: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.06);
   --shadow-float: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 16px rgba(0, 0, 0, 0.04);
-  --shadow-overlay:
-    0 0 0 0.5px var(--line-overlay),
-    rgba(0, 0, 0, 0.06) 0 3px 8px,
-    rgba(0, 0, 0, 0.04) 0 2px 5px,
-    rgba(0, 0, 0, 0.04) 0 1px 1px;
+  --shadow-overlay: var(--th-shadow-lg);
   --shadow-btn: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
   --shadow-btn-hover: 0 0 0 0.5px rgba(0, 0, 0, 0.18);
 }
