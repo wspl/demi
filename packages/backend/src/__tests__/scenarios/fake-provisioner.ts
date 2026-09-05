@@ -31,6 +31,9 @@ export class FakeProvisioner implements ManagedHostProvisioner {
   /** How long a checkpoint holds the guest "paused". */
   checkpointMs = 0
 
+  /** Nothing to settle: the fake's guests never outlive the test process. */
+  async reconcile(): Promise<void> {}
+
   async provision(owner: ManagedHostOwner, homeDir: string, boot: BootArgs): Promise<void> {
     this.calls.push(`provision:${ownerKey(owner)}`)
     const stateDir = await mkdtemp(join(tmpdir(), 'demi-fake-vm-state-'))
