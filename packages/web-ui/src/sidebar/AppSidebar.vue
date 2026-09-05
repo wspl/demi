@@ -222,7 +222,7 @@ function selectProjectConversations(project: SidebarProject): void {
       @pointerdown="list.keyboardNav.value = false"
     >
       <section class="mb-4">
-        <div class="flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle">Conversations</div>
+        <div class="mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle">Conversations</div>
         <div v-if="plain.length === 0" class="px-2 py-1 text-[12px] leading-5 text-fg-faint">Nothing outside a project yet.</div>
         <div v-else class="flex flex-col gap-px">
           <SidebarRow
@@ -246,7 +246,7 @@ function selectProjectConversations(project: SidebarProject): void {
       </section>
 
       <section>
-        <div class="group/projects flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle">
+        <div class="group/projects mb-1.5 flex h-6 items-center px-2 text-[11px] uppercase tracking-wide text-fg-subtle">
           <span class="flex-1">Projects</span>
           <Tooltip content="Add project" placement="right">
             <IconButton :icon="FolderPlus" size="xs" variant="ghost" class="opacity-0 transition-opacity group-hover/projects:opacity-100" @click="emit('addProject')" />
