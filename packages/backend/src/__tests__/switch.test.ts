@@ -130,7 +130,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual at
   const control: ControlService = new LocalControlService(controlDb)
   let record = await control.getConversation(conversation.id)
   expect(record?.workspaceId).toBe(workspace.id)
-  expect(record?.pendingSwitch).toEqual({
+  expect(record?.lastSwitch).toEqual({
     from: { kind: 'hostless' },
     to: { kind: 'workspace', workspaceId: workspace.id, deviceId: device.id, path: runnerDir },
   })
@@ -145,13 +145,13 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual at
   expect(announcements(client)).toHaveLength(1)
   expect(announcements(client)[0]).toContain('Previous target: the virtual environment')
   expect(announcements(client)[0]).not.toContain('demi host shell')
-  expect((await control.getConversation(conversation.id))?.pendingSwitch).toBeNull()
+  expect((await control.getConversation(conversation.id))?.lastSwitch).toEqual(record?.lastSwitch)
 
   // Switch real→virtual: the departed device is attached under its name at the directory it was left at; the announcement points at `host shell --host`.
   expect((await json(backend, `/api/conversations/${conversation.id}`, { workspaceId: null }, 'PATCH')).status).toBe(200)
   record = await control.getConversation(conversation.id)
   expect(record?.workspaceId).toBeNull()
-  expect(record?.pendingSwitch?.from).toEqual({ kind: 'workspace', workspaceId: workspace.id, deviceId: device.id, path: runnerDir })
+  expect(record?.lastSwitch?.from).toEqual({ kind: 'workspace', workspaceId: workspace.id, deviceId: device.id, path: runnerDir })
   expect((await control.listAttachedHosts(conversation.id)).map((host) => [host.deviceId, host.name, host.cwd])).toEqual([[device.id, 'm6-device', runnerDir]])
   const listed = (await (await api(backend, `/api/conversations/${conversation.id}/hosts`)).json()) as { hosts: Array<{ deviceId: string; name: string; online: boolean }> }
   expect(listed.hosts.map((host) => [host.deviceId, host.name, host.online])).toEqual([[device.id, 'm6-device', true]])
@@ -179,7 +179,7 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual at
   expect((await json(backend, `/api/conversations/${conversation.id}/hosts/${managed.id}`, { name: 'm6-device' }, 'PATCH')).status).toBe(409)
   expect((await json(backend, `/api/conversations/${conversation.id}/hosts/${managed.id}`, { name: 'cloud' }, 'PATCH')).status).toBe(200)
   expect((await control.listAttachedHosts(conversation.id)).map((host) => host.name)).toEqual(['m6-device', 'cloud'])
-  expect((await control.getConversation(conversation.id))?.hostsChanged).toBe(true)
+  expect((await control.getConversation(conversation.id))?.contextVersion).toBeGreaterThan(2)
   const devices = (await (await api(backend, '/api/devices')).json()) as { devices: Array<{ id: string }> }
   expect(devices.devices.map((entry) => entry.id)).toEqual([device.id])
   expect((await api(backend, `/api/conversations/${conversation.id}/hosts/${device.id}`, { method: 'DELETE' })).status).toBe(204)
@@ -275,7 +275,7 @@ test('real→real switch: files stay, same-device note, the device attached once
   expect(await control.listAttachedHosts(conversation.id)).toEqual([])
   expect((await patch({ workspaceId: null })).status).toBe(200)
   const record = await control.getConversation(conversation.id)
-  expect(record?.pendingSwitch?.from).toEqual({ kind: 'workspace', workspaceId: workspaceB.id, deviceId: device.id, path: dirB })
+  expect(record?.lastSwitch?.from).toEqual({ kind: 'workspace', workspaceId: workspaceB.id, deviceId: device.id, path: dirB })
   expect((await control.listAttachedHosts(conversation.id)).map((host) => [host.deviceId, host.cwd])).toEqual([[device.id, dirB]])
   // Switching back onto the attached device makes it main again: the row goes.
   expect((await patch({ workspaceId: workspaceA.id })).status).toBe(200)

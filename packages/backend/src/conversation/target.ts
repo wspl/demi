@@ -1,6 +1,5 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { SessionPhase } from '@demicodes/core'
 import type { VirtualHost } from '@demicodes/host-virtual'
 import { RemoteHost } from '@demicodes/host-remote'
 import type { Host } from '@demicodes/shell'
@@ -21,8 +20,8 @@ export interface ConversationTargetsDeps {
   stores: ConversationStores
   /** Where a conversation's hostless tree is materialised for its home image: `<stagingDir>/<conversationId>`. */
   stagingDir: string
-  /** The live phase of a conversation's session; null when none is live (nothing runs). */
-  sessionPhase: (conversationId: string) => SessionPhase | null
+  /** Reserves an idle tree against every action entrance; null when active. */
+  reserveTree: (conversationId: string) => (() => void) | null
 }
 
 /** What the conversation module knows about a Host it handed the agent. */
@@ -130,25 +129,27 @@ export class ConversationTargets {
       return { outcome: 'no_hostless_entrance' }
     }
 
-    const phase = this.deps.sessionPhase(conversationId)
-    if (phase !== null && phase !== 'idle') return { outcome: 'turn_in_flight' }
+    const release = this.deps.reserveTree(conversationId)
+    if (!release) return { outcome: 'turn_in_flight' }
+    try {
 
-    const from = await resolveExecutionTarget(control, conversation)
-    const to: ExecutionTarget = toWorkspace
-      ? { kind: 'workspace', workspaceId: toWorkspace.id, deviceId: toWorkspace.deviceId, path: toWorkspace.path }
-      : { kind: 'hostless' }
-    const departedDeviceId = targetDeviceId(from)
-    const won = await control.switchConversationTarget(
-      conversationId,
-      { workspaceId: conversation.workspaceId, hostDeviceId: conversation.hostDeviceId },
-      { workspaceId: toWorkspaceId, hostDeviceId: null },
-      { from, to },
-      {
-        departed: departedDeviceId === null ? null : { deviceId: departedDeviceId, cwd: from.kind === 'workspace' ? from.path : null },
-        arrivingDeviceId: targetDeviceId(to),
-      },
-    )
-    return won ? { outcome: 'switched' } : { outcome: 'conflict' }
+      const from = await resolveExecutionTarget(control, conversation)
+      const to: ExecutionTarget = toWorkspace
+        ? { kind: 'workspace', workspaceId: toWorkspace.id, deviceId: toWorkspace.deviceId, path: toWorkspace.path }
+        : { kind: 'hostless' }
+      const departedDeviceId = targetDeviceId(from)
+      const won = await control.switchConversationTarget(
+        conversationId,
+        { workspaceId: conversation.workspaceId, hostDeviceId: conversation.hostDeviceId },
+        { workspaceId: toWorkspaceId, hostDeviceId: null },
+        { from, to },
+        {
+          departed: departedDeviceId === null ? null : { deviceId: departedDeviceId, cwd: from.kind === 'workspace' ? from.path : null },
+          arrivingDeviceId: targetDeviceId(to),
+        },
+      )
+      return won ? { outcome: 'switched' } : { outcome: 'conflict' }
+    } finally { release() }
   }
 
   /**
