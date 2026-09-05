@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight, Folder, FolderOpen, Plus } from '@lucide/vue'
+import { ChevronRight, Folder, FolderOpen, SquarePen } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -39,24 +39,28 @@ const emit = defineEmits<{
         :size="ICON_PX.in28"
         class="shrink-0 text-fg-muted"
       />
-      <span class="min-w-0 flex-1 truncate font-medium">{{ project.name }}</span>
-      <span class="min-w-0 max-w-[45%] shrink-0 truncate text-[11px] text-fg-subtle">
-        {{ project.host }}
+      <span class="flex min-w-0 flex-1 items-center gap-1.5">
+        <span class="min-w-0 truncate font-medium">{{ project.name }}</span>
+        <span class="min-w-0 max-w-[45%] truncate text-[11px] text-fg-subtle">
+          {{ project.host }}
+        </span>
       </span>
-      <Tooltip content="New conversation">
-        <IconButton
-          :icon="Plus"
-          size="sm"
-          variant="ghost"
-          aria-label="New conversation in project"
-          @click.stop="emit('create')"
+      <span class="flex shrink-0 items-center">
+        <Tooltip content="New conversation">
+          <IconButton
+            :icon="SquarePen"
+            size="sm"
+            variant="ghost"
+            aria-label="New conversation in project"
+            @click.stop="emit('create')"
+          />
+        </Tooltip>
+        <ChevronRight
+          :size="ICON_PX.in28"
+          class="shrink-0 text-fg-faint transition-transform duration-200"
+          :class="collapsed ? '' : 'rotate-90'"
         />
-      </Tooltip>
-      <ChevronRight
-        :size="ICON_PX.in28"
-        class="shrink-0 text-fg-faint transition-transform duration-200"
-        :class="collapsed ? '' : 'rotate-90'"
-      />
+      </span>
     </div>
   </Tooltip>
 </template>
