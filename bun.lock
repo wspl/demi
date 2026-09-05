@@ -242,27 +242,6 @@
       "name": "@demicodes/utils",
       "version": "0.24.0",
     },
-    "packages/web": {
-      "name": "@demicodes/web",
-      "version": "0.24.0",
-      "dependencies": {
-        "@demicodes/agent": "workspace:^",
-        "@demicodes/core": "workspace:^",
-        "@demicodes/utils": "workspace:^",
-        "@demicodes/web-ui": "workspace:^",
-        "katex": "^0.17.0",
-        "vue": "^3.5.21",
-      },
-      "devDependencies": {
-        "@tailwindcss/vite": "^4.3.1",
-        "@vitejs/plugin-vue": "^6.0.7",
-        "@vue/tsconfig": "^0.9.1",
-        "tailwindcss": "^4.3.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.0.16",
-        "vue-tsc": "^3.3.5",
-      },
-    },
     "packages/web-gallery": {
       "name": "@demicodes/web-gallery",
       "version": "0.24.0",
@@ -398,8 +377,6 @@
     "@demicodes/tinybash": ["@demicodes/tinybash@workspace:packages/tinybash"],
 
     "@demicodes/utils": ["@demicodes/utils@workspace:packages/utils"],
-
-    "@demicodes/web": ["@demicodes/web@workspace:packages/web"],
 
     "@demicodes/web-gallery": ["@demicodes/web-gallery@workspace:packages/web-gallery"],
 
