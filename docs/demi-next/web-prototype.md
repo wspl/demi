@@ -89,6 +89,6 @@ caption. Menus, dialogs, settings and the entry page omit instructional and
 prototype commentary. Simulation details belong in documentation. Settings expose
 Account, Devices, Providers and Usage. The archive button sits immediately to the
 right of the conversation title.
-The composer and archived-conversation bar transition in both directions and
-respect reduced-motion preferences. Shared typography uses macOS grayscale
+The composer appears immediately on conversation changes and restoration.
+The archived-conversation bar retains its transition and respects reduced motion. Shared typography uses macOS grayscale
 antialiasing with normal-weight interface text.
