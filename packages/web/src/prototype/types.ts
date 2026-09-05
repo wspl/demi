@@ -18,13 +18,14 @@ export interface Conversation extends SidebarConversation {
   modelId: string
   thinking: ThinkingConfig
   serviceTierId: string | null
-  attachedHosts: string[]
+  attachedHosts: { deviceId: string; name: string; cwd: string }[]
   stream: { blockId: string; remaining: string; fail: boolean } | null
 }
 export interface Device {
   id: string
   name: string
   online: boolean
+  home: string
 }
 export interface Project extends SidebarProject {
   deviceId: string
