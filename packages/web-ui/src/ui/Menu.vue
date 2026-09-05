@@ -24,6 +24,7 @@ const props = withDefaults(defineProps<{
   filterPlaceholder: 'Search...',
   emptyText: 'No items found',
   autofocus: true,
+  iconless: undefined,
 })
 
 const emit = defineEmits<{
@@ -53,7 +54,7 @@ const filteredItems = computed(() => {
 })
 
 const iconless = computed(() => {
-  if (props.iconless) return true
+  if (props.iconless != null) return props.iconless
   if (props.items == null) return false
   return props.items.every((item) => item.icon == null)
 })
