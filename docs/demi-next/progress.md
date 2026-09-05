@@ -3522,7 +3522,7 @@ Validation:
 |---|---|
 | Agent/core/utils/shell/coding-agent/command-loader/host-virtual/host-remote | 439 pass, 0 fail, 2,693 assertions across 46 files; includes architecture, nested subagents, model-aware previews, Host ownership and command execution. |
 | Backend 27-file regression | 100 cases exercised; 98 passed initially. Two S2 expectations still asserted the generic polling hint for a subagent spawn. They now require the custom no-polling guidance on both targets; the entire S2 module rerun passed all 8 cases with 46 assertions. No implementation regression remained. |
-| Running-hint and runner/protocol scoped checks | 95 pass, 0 fail, 482 assertions across 22 files, including actual tinyjs execution, pipe/control regressions, help/validation exclusions, hint-handshake cancellation and command-only SIGKILL cleanup. |
+| Running-hint and runner/protocol scoped checks | 95 pass, 0 fail, 482 assertions across 22 files, including actual tinyjs execution, pipe/control regressions, help/validation exclusions, cancellation during hint registration and command-only SIGKILL cleanup. |
 | Final static/package checks | `bun run typecheck`, staged/working `git diff --check`, frozen lockfile installation, and all 21 workspace name/version matches pass. |
 
 The subagent module includes 31 cases covering tree messaging, root-only
