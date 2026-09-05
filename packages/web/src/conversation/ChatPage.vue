@@ -105,12 +105,14 @@ const hasProvider = computed(() =>
             <div
               v-if="conversation.archived"
               key="archived"
-              class="flex items-center justify-between rounded-lg bg-surface-raised p-3 text-chrome text-fg-muted"
+              class="archived-notice flex items-center justify-between rounded-lg bg-surface-raised p-3 text-chrome text-fg-muted"
             >
               <span>This conversation is archived.</span>
               <Button @click="store.archive([conversation.id], false)">Restore conversation</Button>
             </div>
-            <ConversationComposer v-else :key="conversation.id" :conversation="conversation" />
+            <div v-else key="composer">
+              <ConversationComposer :key="conversation.id" :conversation="conversation" />
+            </div>
           </Transition>
         </SessionDock>
       </template>
@@ -127,19 +129,19 @@ const hasProvider = computed(() =>
 </template>
 
 <style scoped>
-.composer-archive-enter-active,
+.archived-notice.composer-archive-enter-active,
 .composer-archive-leave-active {
   transition:
     opacity 140ms ease,
     transform 140ms ease;
 }
-.composer-archive-enter-from,
+.archived-notice.composer-archive-enter-from,
 .composer-archive-leave-to {
   opacity: 0;
   transform: translateY(6px);
 }
 @media (prefers-reduced-motion: reduce) {
-  .composer-archive-enter-active,
+  .archived-notice.composer-archive-enter-active,
   .composer-archive-leave-active {
     transition: none;
   }
