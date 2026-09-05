@@ -6,7 +6,7 @@ import { createRunnerHost, cwd, env, fdNode, identity, onSignal, stderrWriter, s
 import { createLoader, directorySource, inMemorySource, parseManifest, type ManifestSource } from '@demicodes/command-loader'
 import { JOB_ID_VAR, JOB_STDIN_FD_VAR } from './serve/jobs'
 import { errorMessage } from '@demicodes/utils'
-import { fetchManifest, relayRpc } from './relay/client'
+import { fetchManifest, relayRpc, relayRunningHint } from './relay/client'
 
 /** The runner's state directory: `DEMI_HOME`, else `~/.demi`. */
 export function stateDir(): string {
@@ -40,6 +40,7 @@ export async function runCommandMode(root: string, args: readonly string[]): Pro
     cwd: cwd(),
     env: { ...env },
     signal: controller.signal,
+    ...(ids.jobId ? { onRunningHint: relayRunningHint(socketPath, ids.jobId, controller.signal) } : {}),
   })
 }
 

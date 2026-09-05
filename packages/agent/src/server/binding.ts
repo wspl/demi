@@ -9,6 +9,7 @@ import type { AgentServerTransport } from '../protocol/transport'
 import type { AgentHarness, AgentSessionStore, ModelSwitchApply } from '../types'
 import { loadPersistedSession, persistedSessionCheckpoint } from '../store/session-store'
 import type { BlobStore } from '../store/media'
+import type { ShellPreviewBudget } from '../tools'
 import type { LiveSession } from './live-session'
 import { assembleLiveSession } from './open-session'
 import type { SessionAttachment, SessionOwnershipRegistry } from './ownership'
@@ -23,6 +24,8 @@ export interface AgentTransportBindingOptions {
   session?: AgentServerSessionOptions
   shellEnvironment: ShellEnvironmentFactory
   notifyParentOnIdle: boolean
+  maxLiveSubagents: number
+  shellPreviewBudgetTokens: ShellPreviewBudget | null
   sessions: SessionOwnershipRegistry
   sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
   blobs: ((agentSessionId: string) => BlobStore) | null
@@ -42,6 +45,8 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
   private readonly sessionOptions: AgentServerSessionOptions
   private readonly shellEnvironment: ShellEnvironmentFactory
   private readonly notifyParentOnIdle: boolean
+  private readonly maxLiveSubagents: number
+  private readonly shellPreviewBudgetTokens: ShellPreviewBudget | null
   private readonly sessions: SessionOwnershipRegistry
   private readonly sessionStore: ((agentSessionId: string, host: Host) => AgentSessionStore<unknown>) | null
   private readonly blobs: AgentTransportBindingOptions['blobs']
@@ -57,6 +62,8 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
     this.sessionOptions = options.session ?? {}
     this.shellEnvironment = options.shellEnvironment
     this.notifyParentOnIdle = options.notifyParentOnIdle
+    this.maxLiveSubagents = options.maxLiveSubagents
+    this.shellPreviewBudgetTokens = options.shellPreviewBudgetTokens
     this.sessions = options.sessions
     this.sessionStore = options.sessionStore
     this.blobs = options.blobs
@@ -266,6 +273,8 @@ export class AgentTransportBindingImpl implements AgentTransportBinding, Session
         sessionOptions: this.sessionOptions,
         shellEnvironment: this.shellEnvironment,
         notifyParentOnIdle: this.notifyParentOnIdle,
+        maxLiveSubagents: this.maxLiveSubagents,
+        shellPreviewBudgetTokens: this.shellPreviewBudgetTokens,
         sessionStore: this.sessionStore,
         blobs: this.blobs?.(agentSessionId) ?? null,
       },

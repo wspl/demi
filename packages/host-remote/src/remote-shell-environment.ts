@@ -257,6 +257,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
   }
 
   private view(record: ShellCommandRecord): ShellCommandStatus {
+    record.runningHint = this.runningById.get(record.id)?.job.runningHint
     return commandStatusView(record, this.defaultOutputLimitBytes)
   }
 
@@ -335,4 +336,3 @@ async function settledOrElapsed(settled: Promise<unknown>, ms: number): Promise<
     timer.abort()
   }
 }
-

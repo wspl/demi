@@ -89,7 +89,9 @@ describe.each<Target>(['hostless', 'runner:alpha'])('S2 output view on %s', (tar
       ],
     })
     expect(turn.received[0]).toContain('status: running')
-    expect(turn.received[0]).toContain('next: command is still running')
+    expect(turn.received[0]).toContain('next: the child agent is still working')
+    expect(turn.received[0]).toContain('Do not poll with shell_status or timed yields')
+    expect(turn.received[0]).not.toContain('next: command is still running')
     expect(turn.received[1]).toContain('status: aborted')
     expect(turn.received[1]).toContain('next: command was intentionally stopped.')
   }, 30_000)

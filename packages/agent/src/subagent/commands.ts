@@ -5,7 +5,10 @@
 import { errorMessage } from '@demicodes/utils'
 import { z } from 'zod'
 import { isCommandGroup, type Command, type CommandGroup, type CommandIO } from '@demicodes/shell'
-import { formatDuration } from './format'
+import { flattenTree, renderTreeNode, type AgentTreeNode } from './format'
+
+const SPAWN_RUNNING_HINT =
+  "next: the child agent is still working; a long-running spawn is normal. shell_write steers it, shell_abort aborts it. Otherwise stop attending and end the turn — the child's completion returns as this command's result and wakes the session when it is idle. Do not poll with shell_status or timed yields; use `demi agent show` only to decide a steer or abort."
 
 const SPAWN_PROMPT_DESCRIPTION =
   "The child's first user message and only task brief. The child starts with an empty transcript and cannot see this conversation: do not refer to prior turns, and do not paste this conversation or the product user's message unchanged. Include the goal for this child, applicable decisions and constraints, whether to edit or only report, how to verify, and every concrete identifier it needs (paths, ids, error text, commands already tried and their key results). State the exact shape of the last assistant text it should return."
@@ -17,240 +20,219 @@ export interface AttendChildContext {
   stdinStream: AsyncIterable<Uint8Array>
 }
 
-export interface ArchivedSubagentEntry {
-  id: string
-  description: string
-  profileName: string | null
-  closedPhase: string | undefined
-  closedAt: number | undefined
-}
-
 /** What the command tree needs from the supervisor; `Job` stays opaque here. */
 export interface SubagentCommandOps<Job> {
+  canSpawn: boolean
   profileNames(): string[]
-  spawn(input: { prompt: string; profileName: string | undefined; description: string }): Promise<Job>
+  spawn(input: { prompt: string; profileName: string | undefined; description: string; isSpawnForbidden: boolean }): Promise<Job>
   resumeArchived(id: string, message: string): Promise<Job>
   attend(job: Job, ctx: AttendChildContext): Promise<{ exitCode: number }>
   getRunning(id: string): Job | null
-  steer(job: Job, message: string): Promise<void>
+  send(id: string, message: string): string
+  steer(id: string, message: string): Promise<string>
   abortSubtree(id: string): Promise<void>
-  runningJobs(): Job[]
-  listArchived(): Promise<ArchivedSubagentEntry[]>
-  snapshot(job: Job, detailed: boolean): Record<string, unknown>
-  renderListLine(job: Job): string
-  renderShow(job: Job): string
+  tree(): Promise<AgentTreeNode[]>
+  ownerId(): string
+  show(id: string): { snapshot: Record<string, unknown>; text: string } | null
 }
 
 export function subagentCommandNode<Job>(ops: SubagentCommandOps<Job>): CommandGroup {
   const profileNames = ops.profileNames()
+  const subcommands: Command[] = [
+    {
+      name: 'spawn',
+      kind: 'rpc',
+      summary:
+        'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out, then end the turn — completion wakes an idle session; do not poll. Children can spawn children of their own.',
+      successOutput:
+        'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
+      failureOutput: 'non-zero exit with the abort or failure reason on stderr',
+      input: {
+        prompt: z.string().optional().describe(SPAWN_PROMPT_DESCRIPTION),
+        profile: z
+          .string()
+          .optional()
+          .describe(`Named subagent profile configured at harness assembly; omit to inherit the parent's model, prompt, Host and commands. Available: ${profileNames.length > 0 ? profileNames.join(', ') : 'none'}.`),
+        description: z
+          .string()
+          .optional()
+          .describe('Short UI title distinguishing concurrent children.'),
+        'no-subagents': z.boolean().optional().describe('Forbid this child from spawning subagents of its own; it can still send, steer, list, and show.'),
+      },
+      positionals: ['prompt'],
+      stdinField: 'prompt',
+      output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
+      runningHint: SPAWN_RUNNING_HINT,
+      run: async ({ parsed, io, signal, stdinStream }) => {
+        const prompt = String(parsed.values.prompt ?? '').trim()
+        if (!prompt) {
+          await io.stderr('demi agent spawn: prompt must not be empty\n')
+          return { exitCode: 1 }
+        }
+        let job: Job
+        try {
+          job = await ops.spawn({
+            prompt,
+            profileName: parsed.values.profile === undefined ? undefined : String(parsed.values.profile),
+            description: parsed.values.description === undefined ? '' : String(parsed.values.description),
+            isSpawnForbidden: parsed.values['no-subagents'] === true,
+          })
+        } catch (error) {
+          await io.stderr(`demi agent spawn: ${errorMessage(error)}\n`)
+          return { exitCode: 1 }
+        }
+        return ops.attend(job, { io, isJson: parsed.json === true, signal, stdinStream })
+      },
+    },
+    {
+      name: 'send',
+      summary:
+        'Leave a message for any live agent in the tree (`demi agent list`), or `parent`. The target sees it as a new user turn at its next turn boundary, never mid-turn; a message to a finishing subagent extends its life by one turn. Fire-and-forget: queues and returns, never waits. An archived target fails — only its parent can revive it with resume.',
+      input: {
+        id: z.string().describe('Target agent id from the tree, or "parent" for the session that spawned this one'),
+        message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
+      },
+      positionals: ['id', 'message'],
+      stdinField: 'message',
+      output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
+      kind: 'rpc',
+      run: async ({ parsed, io }) => {
+        const message = String(parsed.values.message ?? '').trim()
+        if (!message) {
+          await io.stderr('demi agent send: message must not be empty\n')
+          return { exitCode: 1 }
+        }
+        try {
+          const targetId = ops.send(String(parsed.values.id), message)
+          await io.stdout(parsed.json ? `${JSON.stringify({ id: targetId, accepted: true })}\n` : `sent to ${targetId}\n`)
+          return { exitCode: 0 }
+        } catch (error) {
+          await io.stderr(`demi agent send: ${errorMessage(error)}\n`)
+          return { exitCode: 1 }
+        }
+      },
+    },
+    {
+      name: 'steer',
+      summary:
+        "Chime into a running agent's current turn: the target sees the message at its next sampling/tool boundary and continues its current work with the new information. Nothing is cancelled and the turn does not restart. Fails when the target has no running turn — use send for that. Targets any live agent in the tree, or `parent`.",
+      input: {
+        id: z.string().describe('Target agent id from the tree, or "parent" for the session that spawned this one'),
+        message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
+      },
+      positionals: ['id', 'message'],
+      stdinField: 'message',
+      output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
+      kind: 'rpc',
+      run: async ({ parsed, io }) => {
+        const message = String(parsed.values.message ?? '').trim()
+        if (!message) {
+          await io.stderr('demi agent steer: message must not be empty\n')
+          return { exitCode: 1 }
+        }
+        try {
+          const targetId = await ops.steer(String(parsed.values.id), message)
+          await io.stdout(parsed.json ? `${JSON.stringify({ id: targetId, accepted: true })}\n` : `steered ${targetId}\n`)
+          return { exitCode: 0 }
+        } catch (error) {
+          await io.stderr(`demi agent steer: ${errorMessage(error)}\n`)
+          return { exitCode: 1 }
+        }
+      },
+    },
+    {
+      name: 'abort',
+      summary: 'Abort one of your own running children and its whole subtree. Siblings are untouched; only the spawning session may abort a child.',
+      input: { id: z.string().describe('subagentId from spawn stderr') },
+      positionals: ['id'],
+      output: { json: z.object({ id: z.string(), aborted: z.boolean() }) },
+      kind: 'rpc',
+      run: async ({ parsed, io }) => {
+        const id = String(parsed.values.id)
+        if (!ops.getRunning(id)) {
+          await io.stderr(`demi agent abort: "${id}" is not one of your running children\n`)
+          return { exitCode: 1 }
+        }
+        await ops.abortSubtree(id)
+        await io.stdout(parsed.json ? `${JSON.stringify({ id, aborted: true })}\n` : `aborted ${id}\n`)
+        return { exitCode: 0 }
+      },
+    },
+    {
+      name: 'resume',
+      summary:
+        'Revive one of your own archived (finished) children with a new user message on top of its preserved transcript. Behaves like the spawn command afterwards: stays running until the child ends again, stdout is its new last assistant text, shell_write steers, shell_abort aborts. Archived ids are in `demi agent list`.',
+      input: {
+        id: z.string().describe('subagentId of an archived child'),
+        message: z.string().optional().describe('The reviving user message; positional, or stdin/heredoc when omitted.'),
+      },
+      positionals: ['id', 'message'],
+      stdinField: 'message',
+      output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
+      runningHint: SPAWN_RUNNING_HINT,
+      kind: 'rpc',
+      run: async ({ parsed, io, signal, stdinStream }) => {
+        const id = String(parsed.values.id)
+        const message = String(parsed.values.message ?? '').trim()
+        if (!message) {
+          await io.stderr('demi agent resume: message must not be empty\n')
+          return { exitCode: 1 }
+        }
+        let job: Job
+        try {
+          job = await ops.resumeArchived(id, message)
+        } catch (error) {
+          await io.stderr(`demi agent resume: ${errorMessage(error)}\n`)
+          return { exitCode: 1 }
+        }
+        return ops.attend(job, { io, isJson: parsed.json === true, signal, stdinStream })
+      },
+    },
+    {
+      name: 'list',
+      summary:
+        'Render the whole session tree from the root down, marking your own position. Live agents show phase, ages, execution, and activity; each node\'s archived (finished, revivable by its parent) children render beneath it. Every age is relative to now. A read, not a wait — not for polling loops.',
+      output: { json: z.object({ tree: z.array(z.unknown()) }) },
+      kind: 'rpc',
+      run: async ({ parsed, io }) => {
+        const nodes = await ops.tree()
+        if (parsed.json) {
+          await io.stdout(`${JSON.stringify({ tree: flattenTree(nodes, ops.ownerId()) })}\n`)
+          return { exitCode: 0 }
+        }
+        const lines: string[] = []
+        for (const node of nodes) renderTreeNode(node, '', true, ops.ownerId(), lines)
+        await io.stdout(`${lines.join('\n')}\n`)
+        return { exitCode: 0 }
+      },
+    },
+    {
+      name: 'show',
+      summary:
+        'Bounded snapshot of any live agent in the tree (root excluded): execution state, recent tool titles with durations, last assistant text. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.',
+      input: { id: z.string().describe('Agent id from the tree') },
+      positionals: ['id'],
+      output: { json: z.object({ agent: z.unknown() }) },
+      kind: 'rpc',
+      run: async ({ parsed, io }) => {
+        const id = String(parsed.values.id)
+        const entry = ops.show(id)
+        if (!entry) {
+          await io.stderr(`demi agent show: no live agent "${id}"\n`)
+          return { exitCode: 1 }
+        }
+        if (parsed.json) await io.stdout(`${JSON.stringify({ agent: entry.snapshot })}\n`)
+        else await io.stdout(entry.text)
+        return { exitCode: 0 }
+      },
+    },
+  ]
   return {
     name: 'agent',
-    summary: 'Child agent sessions: spawn one and wait for its result, steer, abort, resume, list and show them.',
-    subcommands: [
-      {
-        name: 'spawn',
-        kind: 'rpc',
-        summary:
-          'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out.',
-        successOutput:
-          'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
-        failureOutput: 'non-zero exit with the abort or failure reason on stderr',
-        input: {
-          prompt: z.string().optional().describe(SPAWN_PROMPT_DESCRIPTION),
-          profile: z
-            .string()
-            .optional()
-            .describe(`Named subagent profile configured at harness assembly. Available: ${profileNames.join(', ')}.`),
-          description: z
-            .string()
-            .optional()
-            .describe('Short UI title distinguishing concurrent children.'),
-        },
-        positionals: ['prompt'],
-        stdinField: 'prompt',
-        output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
-        run: async ({ parsed, io, signal, stdinStream }) => {
-          const prompt = String(parsed.values.prompt ?? '').trim()
-          if (!prompt) {
-            await io.stderr('demi agent spawn: prompt must not be empty\n')
-            return { exitCode: 1 }
-          }
-          let job: Job
-          try {
-            job = await ops.spawn({
-              prompt,
-              profileName: parsed.values.profile === undefined ? undefined : String(parsed.values.profile),
-              description: parsed.values.description === undefined ? '' : String(parsed.values.description),
-            })
-          } catch (error) {
-            await io.stderr(`demi agent spawn: ${errorMessage(error)}\n`)
-            return { exitCode: 1 }
-          }
-          return ops.attend(job, { io, isJson: parsed.json === true, signal, stdinStream })
-        },
-      },
-      {
-        name: 'steer',
-        summary: 'Send a user steer to a running child. Queues until the child can take it; does not wait.',
-        input: {
-          id: z.string().describe('subagentId from spawn stderr'),
-          message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
-        },
-        positionals: ['id', 'message'],
-        stdinField: 'message',
-        output: { json: z.object({ id: z.string(), accepted: z.boolean() }) },
-        kind: 'rpc',
-        run: async ({ parsed, io }) => {
-          const id = String(parsed.values.id)
-          const message = String(parsed.values.message ?? '').trim()
-          if (!message) {
-            await io.stderr('demi agent steer: message must not be empty\n')
-            return { exitCode: 1 }
-          }
-          const job = ops.getRunning(id)
-          if (!job) {
-            await io.stderr(`demi agent steer: no running subagent "${id}"\n`)
-            return { exitCode: 1 }
-          }
-          await ops.steer(job, message)
-          await io.stdout(parsed.json ? `${JSON.stringify({ id, accepted: true })}\n` : `steered ${id}\n`)
-          return { exitCode: 0 }
-        },
-      },
-      {
-        name: 'abort',
-        summary: 'Abort a running child and its subtree. Siblings are untouched.',
-        input: { id: z.string().describe('subagentId from spawn stderr') },
-        positionals: ['id'],
-        output: { json: z.object({ id: z.string(), aborted: z.boolean() }) },
-        kind: 'rpc',
-        run: async ({ parsed, io }) => {
-          const id = String(parsed.values.id)
-          if (!ops.getRunning(id)) {
-            await io.stderr(`demi agent abort: no running subagent "${id}"\n`)
-            return { exitCode: 1 }
-          }
-          await ops.abortSubtree(id)
-          await io.stdout(parsed.json ? `${JSON.stringify({ id, aborted: true })}\n` : `aborted ${id}\n`)
-          return { exitCode: 0 }
-        },
-      },
-      {
-        name: 'resume',
-        summary:
-          'Revive an archived (finished) child with a new user message on top of its preserved transcript. Behaves like the spawn command afterwards: stays running until the child ends again, stdout is its new last assistant text, shell_write steers, shell_abort aborts. Archived ids are in `demi agent list`.',
-        input: {
-          id: z.string().describe('subagentId of an archived child'),
-          message: z.string().optional().describe('The reviving user message; positional, or stdin/heredoc when omitted.'),
-        },
-        positionals: ['id', 'message'],
-        stdinField: 'message',
-        output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
-        kind: 'rpc',
-        run: async ({ parsed, io, signal, stdinStream }) => {
-          const id = String(parsed.values.id)
-          const message = String(parsed.values.message ?? '').trim()
-          if (!message) {
-            await io.stderr('demi agent resume: message must not be empty\n')
-            return { exitCode: 1 }
-          }
-          let job: Job
-          try {
-            job = await ops.resumeArchived(id, message)
-          } catch (error) {
-            await io.stderr(`demi agent resume: ${errorMessage(error)}\n`)
-            return { exitCode: 1 }
-          }
-          return ops.attend(job, { io, isJson: parsed.json === true, signal, stdinStream })
-        },
-      },
-      {
-        name: 'list',
-        summary:
-          'Snapshot roster of this session\'s running children, then its archived (finished, revivable via resume) children. One line per child with ages relative to now. A read, not a wait — not for polling loops.',
-        output: { json: z.object({ agents: z.array(z.unknown()), archived: z.array(z.unknown()) }) },
-        kind: 'rpc',
-        run: async ({ parsed, io }) => {
-          const jobs = ops.runningJobs()
-          const archived = await ops.listArchived()
-          if (parsed.json) {
-            await io.stdout(`${JSON.stringify({
-              agents: jobs.map((job) => ops.snapshot(job, false)),
-              archived: archived.map((entry) => ({
-                subagentId: entry.id,
-                description: entry.description,
-                profile: entry.profileName,
-                phase: entry.closedPhase,
-                closedAgoMs: entry.closedAt === undefined ? null : Date.now() - entry.closedAt,
-              })),
-            })}\n`)
-            return { exitCode: 0 }
-          }
-          if (jobs.length === 0) await io.stdout('no running subagents\n')
-          for (const job of jobs) await io.stdout(`${ops.renderListLine(job)}\n`)
-          if (archived.length > 0) {
-            await io.stdout('archived (revivable with `demi agent resume <id>`):\n')
-            for (const entry of archived) {
-              const closedAgo = entry.closedAt === undefined ? '' : `  closed ${formatDuration(Date.now() - entry.closedAt)} ago`
-              await io.stdout(`  ${entry.id}  ${entry.closedPhase}${closedAgo}  ${entry.description ? `"${entry.description}"` : '(no description)'}\n`)
-            }
-          }
-          return { exitCode: 0 }
-        },
-      },
-      {
-        name: 'show',
-        summary:
-          'Bounded snapshot of one running child: execution state, recent tool titles with durations, last assistant text. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.',
-        input: { id: z.string().describe('subagentId from spawn stderr') },
-        positionals: ['id'],
-        output: { json: z.object({ agent: z.unknown() }) },
-        kind: 'rpc',
-        run: async ({ parsed, io }) => {
-          const id = String(parsed.values.id)
-          const job = ops.getRunning(id)
-          if (!job) {
-            await io.stderr(`demi agent show: no running subagent "${id}"\n`)
-            return { exitCode: 1 }
-          }
-          if (parsed.json) await io.stdout(`${JSON.stringify({ agent: ops.snapshot(job, true) })}\n`)
-          else await io.stdout(ops.renderShow(job))
-          return { exitCode: 0 }
-        },
-      },
-    ],
-  }
-}
-
-/** The child-side bridge node: `demi agent send-parent` inside a child session. */
-export function childAgentNode(deliverToParent: (message: string) => void): CommandGroup {
-  return {
-    name: 'agent',
-    summary: 'Subagent bridge to the parent session.',
-    subcommands: [
-      {
-        name: 'send-parent',
-        summary:
-          'Send an interim user message to the parent session. The parent sees it only when it is not blocked waiting on this session. Your result is still the last assistant text when this session ends, not this message.',
-        input: {
-          message: z.string().optional().describe('Message body; positional, or stdin/heredoc when omitted.'),
-        },
-        positionals: ['message'],
-        stdinField: 'message',
-        output: { json: z.object({ accepted: z.boolean() }) },
-        kind: 'rpc',
-        run: async ({ parsed, io }) => {
-          const message = String(parsed.values.message ?? '').trim()
-          if (!message) {
-            await io.stderr('demi agent send-parent: message must not be empty\n')
-            return { exitCode: 1 }
-          }
-          deliverToParent(message)
-          await io.stdout(parsed.json ? `${JSON.stringify({ accepted: true })}\n` : 'sent\n')
-          return { exitCode: 0 }
-        },
-      },
-    ],
+    summary: ops.canSpawn
+      ? 'Agent tree: spawn and manage your own children; send, steer, list and show any live agent.'
+      : 'Agent tree communication: this session may not spawn subagents; send, steer, list and show any live agent.',
+    subcommands: subcommands.filter((command) => ops.canSpawn || !['spawn', 'abort', 'resume'].includes(command.name)),
   }
 }
 
@@ -265,18 +247,18 @@ export function subagentCommandShape(profileNames: string[]): CommandGroup {
     throw new Error('demi agent runs on the live session; the manifest carries its shape only')
   }
   return subagentCommandNode<never>({
+    canSpawn: true,
     profileNames: () => profileNames,
     spawn: notHere,
     resumeArchived: notHere,
     attend: notHere,
     getRunning: notHere,
+    send: notHere,
     steer: notHere,
     abortSubtree: notHere,
-    runningJobs: notHere,
-    listArchived: notHere,
-    snapshot: notHere,
-    renderListLine: notHere,
-    renderShow: notHere,
+    tree: notHere,
+    ownerId: notHere,
+    show: notHere,
   })
 }
 
