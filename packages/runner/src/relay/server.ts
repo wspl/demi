@@ -216,8 +216,9 @@ export class RelayServer {
             if (call) throw new Error('one rpc invocation per relay connection')
             if (this.calls.has(request.callId)) throw new Error('duplicate rpc call id')
             callId = request.callId
+            if (!request.jobId) throw new Error('rpc requires a backend-dispatched job')
             const { type: _type, jobId, ...rest } = request
-            call = { jobId, socket, control: null, request: { type: 'rpc_call', ...rest }, pipe: request.stdin ? new ByteChannel() : null, writes: new SerialQueue(), stdout: Promise.resolve() }
+            call = { jobId, socket, control: null, request: { type: 'rpc_call', jobId, ...rest }, pipe: request.stdin ? new ByteChannel() : null, writes: new SerialQueue(), stdout: Promise.resolve() }
             this.calls.set(callId, call)
             await this.replyCall(call, { type: 'ready' })
             break

@@ -3887,3 +3887,22 @@ Checkpoints: design record; RPC identity and scope; tree admission and node
 context; Hostless eligibility and cutover; scoped regressions and final review.
 Implementation has not yet changed runtime behavior. Multi-worker fencing is
 a scaled-deployment item.
+
+### RPC identity checkpoint — delivered
+
+Runner protocol v8 carries `jobId` through the local relay and the runner wire.
+RemoteHost keeps immutable dispatched job environments in its existing live-job
+records; RunnerRegistry resolves a callback only on the authenticated device's
+live Host/job and verifies node and shell identity before creating pipes. Exit
+and disconnect invalidate the job and cancel its outstanding callbacks. Backend
+routing now selects the invoking Host from that record, verifies the node's root
+identity, and retains only node command trees instead of a last-created Host.
+Cross-host jobs preserve the originating node id. RPC arguments pass through the
+same command input validator used by local dispatch.
+
+Validation: typecheck passed; 56 tests across the scoped backend RPC/host-shell/
+subagent scenarios, runner, protocol, remote-host and command-loader suites
+passed. New regression cases cover another authenticated device using a known
+job, forged node/shell ids, unknown/exited jobs, and child todo scope through a
+cross-host command. All model traffic is scripted. Existing cancellation tests
+continue exercising expected broken-pipe teardown paths.
