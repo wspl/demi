@@ -4217,3 +4217,9 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Added a 12px chevron immediately after the project name. It fades in/out on row hover over 150ms and rotates with the fold state, respecting reduced motion. The reserved space prevents hover layout shifts; folder and right-side device/action positions remain stable.
 - Updated the shared sidebar and final-state design. Web-ui typecheck passed.
+
+### M13.1 — Continuous one-direction sidebar marquee (2026-09-06)
+
+- Replaced back-and-forth scrolling and endpoint holds with two equal-width title copies, each including a 24px gap. The track moves left by half its width per cycle at 36px/s, so the second copy occupies the first copy's starting position at the loop boundary.
+- Retained the 500ms hover delay, synchronized edge fades and reduced-motion behavior. The duplicate is hidden from assistive technology.
+- Web-ui typecheck passed. Browser inspection confirmed two equal 187.52px copies, a 5.209s linear infinite cycle and leftward translation for the welcome title.
