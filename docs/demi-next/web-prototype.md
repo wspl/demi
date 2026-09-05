@@ -63,8 +63,9 @@ metadata until a branch is supplied. Hostless conversations omit the environment
 information control. Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
-and multi-selection actions. Project headers create conversations with the plus
-button beside the fold control. Idle conversations have a hollow status ring.
+and multi-selection actions. Project headers place hostnames after project names
+and create conversations with the new-conversation button beside the fold control.
+Idle conversations have an 8px hollow status ring.
 The composer and archived-conversation bar transition in both directions and
 respect reduced-motion preferences. Shared typography uses macOS grayscale
 antialiasing with normal-weight interface text.

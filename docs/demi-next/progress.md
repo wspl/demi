@@ -4041,3 +4041,13 @@ Browser checks confirmed notes creation leaves demi before notes, outside-click
 dismissal inside a dialog and on the page, and the hostless header's absence of
 environment metadata. Scoped web/web-ui tests, browser typechecks and production
 build are checked for this checkpoint. M13.1 remains in progress.
+
+### M13.1 — Sidebar project spacing (2026-09-06)
+
+Owner requested hostnames immediately after project names, the new-conversation
+glyph instead of plus, tighter spacing to the fold chevron, and smaller idle
+rings. Shared SidebarProjectHeader groups name/host with a 6px gap and groups
+SquarePen/chevron without an extra flex gap. Idle rings are 8px with a 1px border;
+the status column alignment and running/error indicators stay consistent.
+Browser visual review and browser package typechecks passed. Both gallery and
+application use these shared components. M13.1 remains in progress.

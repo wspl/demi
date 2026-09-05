@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Archive, Circle, Pin } from '@lucide/vue'
+import { Archive, Pin } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -111,7 +111,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
       <span v-if="dotClass" class="size-1.5 rounded-full" :class="dotClass" />
-      <Circle v-else :size="12" class="text-fg-subtle" />
+      <span v-else class="size-2 rounded-full border border-fg-subtle" />
     </span>
     <input
       v-if="renaming"
