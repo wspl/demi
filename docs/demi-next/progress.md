@@ -4095,3 +4095,25 @@ Verification: browser hover/leave checks confirmed icon opacity swaps and create
 visibility, fold interaction worked, and Cloud screenshot review confirmed icon
 alignment. Browser typechecks, 96 scoped web/web-ui tests and web production build
 passed (existing large-chunk warning). M13.1 remains in progress.
+
+### M13.1 — Main and attached host interaction (2026-09-06)
+
+Owner requested an interaction design for one main execution host plus multiple
+attached hosts, with binding entry points in the device menu. Verified the
+contract in sessions-and-targets.md and product.md before implementation.
+Standalone design: host-menu.md. HostMenu groups main environment, attached hosts,
+searchable attachment and new-device registration. Attachment rows expose cwd,
+online state, promotion, alias rename and detach. Hostless keeps a management
+icon without inventing main-device metadata. Archived bindings are read-only.
+
+Replaced ID-only prototype attachments with device/name/cwd rows. Switching main
+hosts removes the incoming attachment and retains the departed host's cwd;
+binding starts at home, deduplicates devices and creates unique aliases. Revoking
+a prototype device removes its bindings. Removed the separate checkbox binding
+UI from TargetDialog so host management has one entry point.
+
+Verification: eight scoped web tests cover main/attached identity, cwd retention,
+duplicate binding and alias collisions alongside existing conversation behavior.
+Browser walkthrough passed attach-offline, count update, submenu inspection,
+rename, detach and Hostless menu access. Browser typechecks and web build passed
+with the existing chunk-size warning. M13.1 remains in progress.
