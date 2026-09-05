@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout": "total 16\ndrwxr-xr-x 2 zan zan 4096 Jan 15  2024 .\ndrwxr-xr-x 3 zan zan 4096 Jan 15  2024 ..\n-rw-r--r-- 1 zan zan    7 Jan 15  2024 .hidden\n-rw-r--r-- 1 zan zan    5 Jan 15  2024 deep.ts\n",
+  "stderr": "",
+  "user": "zan",
+  "group": "zan"
+}

@@ -5,10 +5,12 @@
   "fixed": [
     [
       "@demicodes/agent",
-      "@demicodes/agent-eval",
+      "@demicodes/backend",
       "@demicodes/coding-agent",
+      "@demicodes/command-loader",
       "@demicodes/core",
-      "@demicodes/host-local",
+      "@demicodes/host-remote",
+      "@demicodes/host-virtual",
       "@demicodes/provider",
       "@demicodes/provider-anthropic-api",
       "@demicodes/provider-claude-code",
@@ -16,8 +18,10 @@
       "@demicodes/provider-google",
       "@demicodes/provider-grok-build",
       "@demicodes/provider-openai-api",
-      "@demicodes/repl",
+      "@demicodes/runner",
+      "@demicodes/runner-protocol",
       "@demicodes/shell",
+      "@demicodes/tinybash",
       "@demicodes/utils",
       "@demicodes/web",
       "@demicodes/web-ui"

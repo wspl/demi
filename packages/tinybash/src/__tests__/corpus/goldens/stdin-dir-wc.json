@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout": "0\n",
+  "stderr": "wc: 'standard input': Is a directory\n",
+  "user": "zan",
+  "group": "zan"
+}

@@ -100,7 +100,7 @@ test('listClaudeCodeModels uses stale cache on network failure and never returns
   resetClaudeCodeModelCatalogCacheForTests()
 })
 
-test('listClaudeCodeModels keeps cache entries isolated by minimum version', async () => {
+test('listClaudeCodeModels filters one shared models.dev snapshot per minimum version', async () => {
   resetClaudeCodeModelCatalogCacheForTests()
   const now = new Date('2026-06-20T00:00:00.000Z')
   let calls = 0
@@ -120,7 +120,7 @@ test('listClaudeCodeModels keeps cache entries isolated by minimum version', asy
     fetch: fetchFixture,
   })
 
-  expect(calls).toBe(2)
+  expect(calls).toBe(1)
   expect(defaultList.models.map((model) => model.id)).toContain('claude-sonnet-4-6')
   expect(majorFiveList.models.map((model) => model.id)).toEqual(['claude-fable-5', 'claude-newfamily-5'])
   resetClaudeCodeModelCatalogCacheForTests()
@@ -129,6 +129,8 @@ test('listClaudeCodeModels keeps cache entries isolated by minimum version', asy
 function modelsDevFixture(): unknown {
   return {
     anthropic: {
+      id: 'anthropic',
+      name: 'Anthropic',
       models: {
         // Intentionally unsorted (mimics models.dev's arbitrary key order) to exercise catalog ordering.
         'claude-fable-5': {

@@ -1,14 +1,5 @@
 export interface Host {
   defaultCwd: string
-  /**
-   * Directory where command artifacts (stdout.txt / stderr.txt / stdout.bin /
-   * meta.json) are written as plain files, laid out as
-   * `<dir>/<storageId>/<commandId>/`. Contract: the path is reachable through
-   * `fs` AND visible to processes started via `process.spawn` — one shared
-   * filesystem namespace, so any tool (portable or real) can read and search
-   * artifacts with ordinary file operations.
-   */
-  commandArtifactsDir: string
   fs: HostFileSystem
   process: HostProcess
   store: HostStore
@@ -19,6 +10,8 @@ export interface HostIdentity {
   uid: number
   gid: number
   hostname: string
+  /** The home directory of the user the Host runs as: where session-bound and granted hosts start a shell. */
+  homeDir: string
 }
 
 export interface HostFileSystem {
@@ -43,7 +36,8 @@ export interface HostFileSystem {
 }
 
 export interface HostProcess {
-  spawn(params: HostSpawnParams): Promise<HostSpawnHandle>
+  /** Absent on a Host that runs no processes (the hostless Host): a provider that needs one says so. */
+  spawn?(params: HostSpawnParams): Promise<HostSpawnHandle>
   openCwd(path: string): Promise<HostCwd>
 }
 
@@ -120,10 +114,17 @@ export interface HostProcessOutputChunk {
   chunk: Uint8Array
 }
 
+export interface HostSpawnError {
+  kind: SpawnErrorKind
+  /** Optional Host-specific guidance appended to the shell's error message
+   *  (e.g. a virtual target explaining that real programs need a device). */
+  detail?: string
+}
+
 export interface HostSpawnExit {
   exitCode: number | null
   signal?: string
-  spawnError?: { kind: SpawnErrorKind }
+  spawnError?: HostSpawnError
 }
 
 /** Path-string cwd for test doubles and Hosts that cannot hold a directory fd. */

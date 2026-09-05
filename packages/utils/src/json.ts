@@ -9,6 +9,7 @@ export type PortableJsonValue =
   | string
   | bigint
   | Uint8Array
+  | Date
   | readonly PortableJsonValue[]
   | { readonly [key: string]: PortableJsonValue }
 
@@ -56,20 +57,31 @@ export function safeJsonStringify(value: unknown): string | undefined {
 
 const BINARY_MARKER = '__demiUint8Array'
 const BIGINT_MARKER = '__demiBigInt'
+const DATE_MARKER = '__demiDate'
 
 /**
  * JSON.stringify that round-trips values plain JSON cannot: `Uint8Array` is
- * encoded as a `__demiUint8Array`-marked base64 object and `bigint` as a
- * `__demiBigInt`-marked string. Decode with `parsePortableJson`.
+ * encoded as a `__demiUint8Array`-marked base64 object, `bigint` as a
+ * `__demiBigInt`-marked string, and `Date` as a `__demiDate`-marked ISO
+ * string. Decode with `parsePortableJson`.
  */
 export function stringifyPortableJson(value: unknown, space?: number): string {
   return JSON.stringify(
     value,
-    (_key, nested) => {
-      if (nested instanceof Uint8Array) {
+    function (this: unknown, key, nested) {
+      // toJSON (Date, Node byte arrays) runs before the replacer, so these
+      // must be recovered from the holder object rather than from `nested`.
+      const original = isRecord(this) || Array.isArray(this) ? (this as Record<string, unknown>)[key] : undefined
+      if (original instanceof Date) {
+        return {
+          [DATE_MARKER]: true,
+          iso: original.toISOString(),
+        }
+      }
+      if (original instanceof Uint8Array || nested instanceof Uint8Array) {
         return {
           [BINARY_MARKER]: true,
-          base64: bytesToBase64(nested),
+          base64: bytesToBase64(original instanceof Uint8Array ? original : (nested as Uint8Array)),
         }
       }
       if (typeof nested === 'bigint') {
@@ -84,7 +96,7 @@ export function stringifyPortableJson(value: unknown, space?: number): string {
   )
 }
 
-/** Parses JSON produced by `stringifyPortableJson`, reviving marked `Uint8Array` and `bigint` values. */
+/** Parses JSON produced by `stringifyPortableJson`, reviving marked `Uint8Array`, `bigint`, and `Date` values. */
 export function parsePortableJson<T>(text: string): T {
   return JSON.parse(text, (_key, nested) => {
     if (isEncodedUint8Array(nested)) {
@@ -92,6 +104,9 @@ export function parsePortableJson<T>(text: string): T {
     }
     if (isEncodedBigInt(nested)) {
       return BigInt(nested.value)
+    }
+    if (isEncodedDate(nested)) {
+      return new Date(nested.iso)
     }
     return nested
   }) as T
@@ -103,4 +118,8 @@ function isEncodedUint8Array(value: unknown): value is { base64: string } {
 
 function isEncodedBigInt(value: unknown): value is { value: string } {
   return isRecord(value) && value[BIGINT_MARKER] === true && typeof value.value === 'string'
+}
+
+function isEncodedDate(value: unknown): value is { iso: string } {
+  return isRecord(value) && value[DATE_MARKER] === true && typeof value.iso === 'string'
 }

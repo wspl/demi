@@ -3,9 +3,9 @@ import type { Block, ModelSelection } from '@demicodes/core'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { waitFor } from '@demicodes/utils'
 import { AgentClient, TranscriptLog, applyTranscriptPatches, createInProcessTransportPair } from '../index'
-import { AgentSession } from '../session'
-import type { AgentHarnessRuntime, AgentSessionCheckpoint, AgentSessionStore } from '../types'
-import type { ClientFrame } from '../frames'
+import { AgentSession } from '../session/session'
+import type { AgentHarnessRuntime, AgentSessionCheckpoint, AgentSessionPersistUpdate, AgentSessionStore } from '../types'
+import type { ClientFrame } from '../protocol/frames'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -31,14 +31,18 @@ function createRuntime(): AgentHarnessRuntime<Record<string, never>> {
 
 class CountingStore implements AgentSessionStore<Record<string, never>> {
   saves = 0
-  last: AgentSessionCheckpoint<Record<string, never>> | null = null
+  readonly writes: AgentSessionPersistUpdate<Record<string, never>>[] = []
 
-  saveCheckpoint(snapshot: AgentSessionCheckpoint<Record<string, never>>): void {
-    this.saves += 1
-    this.last = snapshot
+  get last(): AgentSessionPersistUpdate<Record<string, never>> | null {
+    return this.writes.at(-1) ?? null
   }
 
-  loadCheckpoint(): Promise<AgentSessionCheckpoint<Record<string, never>> | null> {
+  save(update: AgentSessionPersistUpdate<Record<string, never>>): void {
+    this.saves += 1
+    this.writes.push(structuredClone(update))
+  }
+
+  load(): Promise<AgentSessionCheckpoint<Record<string, never>> | null> {
     return Promise.resolve(null)
   }
 }
@@ -74,7 +78,7 @@ test('streaming delta cost does not scale with transcript length', () => {
   expect(large).toBeLessThan(Math.max(small * 25, 250))
 })
 
-test('a turn with tool calls persists at action boundaries, not per event', async () => {
+test('a turn with tool calls persists at each tool dispatch and the action boundary, not per event', async () => {
   const store = new CountingStore()
   const provider = new StubProvider([
     [events.toolCall('tool-1', 'noop', {}), events.response()],
@@ -99,17 +103,19 @@ test('a turn with tool calls persists at action boundaries, not per event', asyn
 
   await session.send([{ type: 'text', text: 'run tools' }])
 
-  // With the persist timer effectively disabled, only the boundary flush writes.
-  expect(store.saves).toBe(1)
-  expect(store.last?.transcript.blocks.map((block) => block.type)).toEqual([
-    'user',
-    'tool_call',
-    'response',
-    'tool_call',
-    'response',
-    'text',
-    'response',
+  // With the persist timer effectively disabled, only the dispatch barriers —
+  // one before each batch of tool calls runs, the calls already `executing` —
+  // and the boundary flush write; each carries just the rows changed since.
+  expect(store.saves).toBe(3)
+  const typesOf = (update: AgentSessionPersistUpdate<Record<string, never>>) =>
+    update.changedBlocks.map(({ block }) => (block.type === 'tool_call' ? `${block.type}:${block.status}` : block.type))
+  expect(store.writes.map(typesOf)).toEqual([
+    ['user', 'tool_call:executing', 'response'],
+    ['tool_call:completed', 'tool_call:executing', 'response'],
+    ['tool_call:completed', 'text', 'response'],
   ])
+  expect(store.last?.blockCount).toBe(7)
+  expect(store.last?.phase).toBe('idle')
 })
 
 test('client resyncs with a snapshot when the patch revision stream has a gap', async () => {

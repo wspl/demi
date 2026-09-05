@@ -1,9 +1,11 @@
+import { memoryAgentStores } from '../testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
+import { hostlessShellFactory } from '@demicodes/host-virtual/testing'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { AgentServer } from '../index'
-import { createStdioServerTransport } from '../stdio-transport'
+import { createStdioServerTransport } from '../protocol/stdio-transport'
 
 const childProvider = defineProvider({
   id: 'child-stub',
@@ -11,7 +13,8 @@ const childProvider = defineProvider({
   createRuntime: () => new StubProvider([[events.text('from child'), events.response()]]),
 })
 
-const server = new AgentServer({
+const server = new AgentServer({ store: memoryAgentStores(),
+  shellEnvironment: hostlessShellFactory,
   agent: createHarness(),
   providers: [childProvider],
 })

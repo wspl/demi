@@ -1,3 +1,4 @@
+import { memoryAgentStores } from '../testing'
 import { PassThrough } from 'node:stream'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { access, mkdtemp } from 'node:fs/promises'
@@ -5,10 +6,11 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { hostlessShellFactory, probeCommand } from '@demicodes/host-virtual/testing'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ModelSelection } from '@demicodes/core'
 import type { AgentHarness } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-local'
+import { LocalHost } from '@demicodes/host-virtual/testing'
 import { defineProvider, type AgentProvider, type InferenceRequest, type Provider, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import {
@@ -17,8 +19,8 @@ import {
   type ClientSessionEvent,
   type ClientFrame,
 } from '../index'
-import { createStdioClientTransport, createStdioServerTransport } from '../stdio-transport'
-import { COMPACTION_SUMMARY_INSTRUCTION } from '../compaction-support'
+import { createStdioClientTransport, createStdioServerTransport } from '../protocol/stdio-transport'
+import { COMPACTION_SUMMARY_INSTRUCTION } from '../session/compaction'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -72,7 +74,8 @@ test('StdioTransport carries the same AgentClient/AgentServer frames over NDJSON
   const clientToServer = new PassThrough()
   const serverToClient = new PassThrough()
 
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('echo-stub', () => new StubProvider([[events.text('over stdio'), events.response()]]))],
   })
@@ -93,7 +96,8 @@ test('StdioTransport preserves complex AgentClient action convergence over NDJSO
   const serverToClient = new PassThrough()
   const provider = new StdioScenarioProvider()
 
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [runtimeProvider('stdio-scenario', provider)],
   })
@@ -148,14 +152,15 @@ test('StdioTransport close disposes shell foreground processes through AgentServ
       new StubProvider([
         [
           events.toolCall('tool-1', 'shell_exec', {
-            script: 'sh -c "sleep 0.2; printf leaked > stdio-leaked.txt"',
+            script: 'probe hold 200 && printf leaked > stdio-leaked.txt',
             timeoutMs: 1,
           }),
         ],
         [events.text('running'), events.response()],
       ]),
   )
-  const server = new AgentServer({
+  const server = new AgentServer({ store: memoryAgentStores(),
+    shellEnvironment: hostlessShellFactory,
     agent: createHarness(),
     providers: [provider],
     shell: {
@@ -211,6 +216,7 @@ function createHarness(): AgentHarness<Record<string, never>> {
   return {
     name: 'test',
     initialState: () => ({}),
+    commands: () => [probeCommand()],
     host: (ctx) => new LocalHost(ctx.cwd),
     systemPrompt: () => 'system',
   }

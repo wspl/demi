@@ -19,6 +19,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@demicodes/host-virtual": "workspace:^",
     "@demicodes/provider": "workspace:^"
   },
   "license": "Apache-2.0",

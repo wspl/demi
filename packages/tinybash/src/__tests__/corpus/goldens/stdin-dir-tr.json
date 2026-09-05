@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout": "",
+  "stderr": "tr: read error: Is a directory\n",
+  "user": "zan",
+  "group": "zan"
+}
