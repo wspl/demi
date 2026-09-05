@@ -67,6 +67,7 @@ function selectFolder(path: string) {
       name: path.split('/').filter(Boolean).at(-1) ?? '/',
       deviceId,
       host: device?.name ?? 'Cloud',
+      hostKind: deviceId === 'cloud' ? 'cloud' : 'device',
       path,
       branch: null,
       branches: [],
@@ -98,8 +99,14 @@ function createBranch() {
     >
       <template #trigger>
         <Button class="max-w-full" variant="ghost" aria-label="Switch device" :disabled="locked">
-          <Monitor :size="ICON_PX.in28" />
-          <span class="max-w-28 truncate">{{ device?.name ?? project.host }}</span>
+          <component
+            :is="project.hostKind === 'cloud' ? Cloud : Monitor"
+            :size="ICON_PX.in28"
+            class="shrink-0"
+          />
+          <span v-if="project.hostKind !== 'cloud'" class="max-w-28 truncate">
+            {{ device?.name ?? project.host }}
+          </span>
           <span
             v-if="device"
             class="size-1.5 rounded-full"
