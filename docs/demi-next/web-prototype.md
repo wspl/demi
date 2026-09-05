@@ -44,6 +44,8 @@ prototype additions are decided in M13.2.
 - `packages/core/src/__tests__/platform-entrypoints.test.ts`: workspace and browser
   package boundary enforcement.
 - Existing `packages/web-ui` tests: shared rendering and interaction contracts.
+- `packages/web/src/targets/branches.test.ts`: accepted branch names and rejected
+  reference syntax for prototype branch creation.
 - Browser walkthrough: create/switch conversations, streaming/queue/stop,
   failure/Retry, archive/restore, project creation/switch, settings, light/dark,
   mobile sidebar, attachment preview, and unknown-conversation navigation.
@@ -56,11 +58,18 @@ labels and controls are not selectable; message content, paths and editable
 fields remain selectable. Selected sidebar conversations retain normal weight.
 
 Conversation headers show the title with device name/status, workspace name and
-branch to its right. Metadata moves below the title on narrow screens. The
-environment control opens workspace selection and its tooltip shows the full
-path. Fixture branches are simulated; new workspaces display unavailable branch
-metadata until a branch is supplied. Hostless conversations omit the environment
-information control. Project groups retain the project list's order regardless
+branch to its right. Metadata moves below the title on narrow screens. Device,
+workspace and branch are independent controls. Device selection opens a directory
+chooser on the selected device; choosing a folder moves only this conversation
+to the matching workspace, creating its prototype record when needed. Offline
+devices cannot be selected. The workspace control opens a simulated file browser
+with parent navigation, filtering, file previews and folder selection. Its tooltip
+shows the full path. Branch selection supports search and creation, rejects invalid
+or duplicate names, and updates the workspace's in-memory branch list. Switching
+is disabled during a running turn or for an archived conversation, while file
+browsing remains available. Files and branches are fixtures; no real filesystem,
+Git repository or device is modified. Hostless conversations omit these controls.
+Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
 and multi-selection actions. Project headers place hostnames after project names

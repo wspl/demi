@@ -49,6 +49,7 @@ export function projects(): Project[] {
       host: 'alex-mbp',
       path: '/Users/alex/Projects/demi',
       branch: 'main',
+      branches: ['main', 'codex/web-prototype', 'feature/settings'],
     },
     {
       id: 'notes',
@@ -57,6 +58,7 @@ export function projects(): Project[] {
       host: 'alex-mbp',
       path: '/Users/alex/Projects/notes',
       branch: 'writing',
+      branches: ['main', 'writing'],
     },
   ]
 }
