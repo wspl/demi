@@ -54,3 +54,11 @@ Progress and remaining M13.1 coverage are recorded in `progress.md`.
 Navigation uses the sidebar and URL only, with no conversation tabs. Interface
 labels and controls are not selectable; message content, paths and editable
 fields remain selectable. Selected sidebar conversations retain normal weight.
+
+Conversation headers show the title with the device to its right. Sidebar rows
+offer pin and archive on hover, plus the shared context menu for rename, move
+and multi-selection actions. Project headers create conversations with the plus
+button beside the fold control. Idle conversations have a hollow status ring.
+The composer and archived-conversation bar transition in both directions and
+respect reduced-motion preferences. Shared typography uses macOS grayscale
+antialiasing with normal-weight interface text.

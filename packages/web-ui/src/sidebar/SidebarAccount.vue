@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ChevronsUpDown, CircleUser, LogOut, Settings } from '@lucide/vue'
+import { CircleUser, LogOut, Settings } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
@@ -42,7 +42,6 @@ const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCas
               <span class="truncate text-chrome text-fg">{{ account.name }}</span>
               <span class="truncate text-[11px] text-fg-subtle">{{ account.plan }}</span>
             </span>
-            <ChevronsUpDown :size="ICON_PX.in28" class="shrink-0 text-fg-faint" />
           </template>
         </div>
       </Tooltip>

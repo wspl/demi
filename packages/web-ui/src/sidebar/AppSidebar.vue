@@ -237,7 +237,7 @@ function selectProjectConversations(project: SidebarProject): void {
             :renaming="renamingId === conversation.id"
             @click="(event) => list.onRowClick(conversation.id, event)"
             @contextmenu="(event) => openRowMenu(conversation.id, event)"
-            @menu="(event) => openRowMenu(conversation.id, event)"
+            @archive="emit('archive', [conversation.id])"
             @rename-submit="(title) => submitRename(conversation.id, title)"
             @rename-cancel="renamingId = null"
             @toggle-pin="togglePin([conversation.id])"
@@ -260,6 +260,7 @@ function selectProjectConversations(project: SidebarProject): void {
             :focused="list.keyboardNav.value && list.focusedId.value === group.project.id"
             :menu-open="projectMenu.isOpen.value && menuProject?.id === group.project.id"
             @toggle="list.onProjectClick(group.project.id)"
+            @create="emit('create', group.project.id)"
             @contextmenu="(event) => openProjectMenu(group.project, event)"
           />
           <!-- The fold animates on grid rows, so the rows stay mounted and their state survives. -->
@@ -278,20 +279,11 @@ function selectProjectConversations(project: SidebarProject): void {
               :renaming="renamingId === conversation.id"
               @click="(event) => list.onRowClick(conversation.id, event)"
               @contextmenu="(event) => openRowMenu(conversation.id, event)"
-              @menu="(event) => openRowMenu(conversation.id, event)"
+              @archive="emit('archive', [conversation.id])"
               @rename-submit="(title) => submitRename(conversation.id, title)"
               @rename-cancel="renamingId = null"
               @toggle-pin="togglePin([conversation.id])"
             />
-            <div
-              v-if="group.items.length === 0"
-              role="button"
-              class="flex h-7 cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg-subtle transition-colors hover:bg-hover hover:text-fg-muted"
-              @click="emit('create', group.project.id)"
-            >
-              <SquarePen :size="ICON_PX.in28" class="shrink-0" />
-              <span class="truncate">New conversation here</span>
-            </div>
           </div>
           </div>
           </div>

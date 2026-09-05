@@ -198,8 +198,8 @@ body,
 #app {
   overflow: hidden;
   height: 100%;
-  -webkit-font-smoothing: auto;
-  -moz-osx-font-smoothing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 html {

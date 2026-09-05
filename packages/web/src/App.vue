@@ -99,13 +99,13 @@ watch(
         :plugins="[]"
         :skills="[]"
         hide-extensions
-        hide-pin
         hide-delete
         @select="open"
         @create="create"
         @add-project="addProject"
         @remove-project="removeProject"
         @rename="conversations.rename"
+        @pin="conversations.pin"
         @move-to-project="conversations.move"
         @archive="conversations.archive"
         @open-settings="resources.settingsOpen = true"

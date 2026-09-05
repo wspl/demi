@@ -3983,3 +3983,28 @@ and a 1200-character unbroken multiline value with no horizontal overflow.
 Validation: all three browser typechecks, 94 scoped web/web-ui tests and the web
 production build passed. The build retains the existing large-chunk warning.
 M13.1 remains in progress; this checkpoint addresses the owner's interaction review.
+
+### M13.1 — Shared sidebar polish (2026-09-05)
+
+Owner review requested simultaneous marquee edge fades, the conversation title
+with device information on its right, hollow idle status rings, lighter-looking
+type, no account chevron, archive/composer transitions, a project-header create
+button and pin/archive hover actions. The owner rejected unnecessarily reducing
+the gallery's available sidebar interactions in the application.
+
+Changed the shared sidebar implementation so gallery and application receive
+the same row, project and account presentation. Restored application pin handling;
+kept context menus and multi-selection for rename/move and other existing actions.
+Removed the empty-project create row. Both marquee masks now appear only during
+marquee playback, instead of the right edge preceding the left. Idle rows show
+a hollow ring; active/error indicators remain. Header and archive transition
+changes belong to the application conversation view.
+
+Typography inspection found normal 400-weight conversation text and explicit
+font-smoothing:auto in shared CSS. Changed macOS rendering to grayscale
+antialiasing rather than reducing text below normal weight.
+
+Verification: three browser typechecks, 94 scoped web/web-ui tests and the web
+production build passed (existing large-chunk warning). Browser checks cover
+pin/unpin, archive/restore, project-header creation and updated header/sidebar
+appearance. M13.1 remains in progress.
