@@ -36,7 +36,10 @@ const slots = useSlots()
 const isChoice = computed(() => props.choice === true)
 const isDisabled = computed(() => props.disabled || !!props.disabledReason)
 const tooltipContent = computed(() => props.disabledReason?.trim() || undefined)
-const menuIconless = inject(menuIconlessKey, computed(() => false))
+const menuIconless = inject(
+  menuIconlessKey,
+  computed(() => false),
+)
 const menuRoot = inject(menuRootKey, null)
 const showIconGutter = computed(() => props.iconless !== true && !menuIconless.value)
 const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
@@ -68,11 +71,13 @@ function handleClick(event: MouseEvent) {
     return
   }
   emit('select')
-  if (shouldDismissMenuTree({
-    isChoice: isChoice.value,
-    hasSubmenu: false,
-    hasSuffix: slots.suffix != null,
-  })) {
+  if (
+    shouldDismissMenuTree({
+      isChoice: isChoice.value,
+      hasSubmenu: false,
+      hasSuffix: slots.suffix != null,
+    })
+  ) {
     menuRoot?.dismiss()
   }
 }
@@ -118,7 +123,14 @@ const toneClass = computed(() => {
       @mouseleave="scheduleCloseSubmenu"
     >
       <span v-if="showIconGutter" class="flex size-4 shrink-0 items-center justify-center">
-        <component :is="icon" v-if="icon" :size="ICON_PX.in28" />
+        <span
+          v-if="indicator"
+          class="size-1.5 shrink-0 rounded-full"
+          :class="indicator === 'success' ? 'bg-on-success' : 'bg-fg-faint'"
+          role="img"
+          :aria-label="indicatorLabel"
+        />
+        <component :is="icon" v-else-if="icon" :size="ICON_PX.in28" />
       </span>
       <slot>
         <span class="min-w-0 flex-1 truncate">{{ label }}</span>
@@ -126,18 +138,8 @@ const toneClass = computed(() => {
       <span v-if="value" class="max-w-[7rem] truncate text-right text-fg-muted" :title="value">
         {{ value }}
       </span>
-      <span
-        v-if="indicator"
-        class="size-1.5 shrink-0 rounded-full"
-        :class="indicator === 'success' ? 'bg-on-success' : 'bg-fg-faint'"
-        role="img"
-        :aria-label="indicatorLabel"
-      />
       <slot name="suffix">
-        <span
-          v-if="isChoice"
-          class="flex size-3.5 shrink-0 items-center justify-center"
-        >
+        <span v-if="isChoice" class="flex size-3.5 shrink-0 items-center justify-center">
           <Check v-if="isSelected" :size="ICON_PX.in28" class="text-fg-body" />
         </span>
         <span
@@ -146,10 +148,9 @@ const toneClass = computed(() => {
         >
           <ChevronRight :size="ICON_PX.in28" />
         </span>
-        <span
-          v-else
-          class="w-7 shrink-0 text-right text-[11px] text-fg-faint"
-        >{{ shortcut ?? '' }}</span>
+        <span v-else class="w-7 shrink-0 text-right text-[11px] text-fg-faint">
+          {{ shortcut ?? '' }}
+        </span>
       </slot>
     </div>
   </Tooltip>
