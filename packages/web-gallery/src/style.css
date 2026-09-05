@@ -2,6 +2,7 @@
 @import "@demicodes/web-ui/styles/base.css";
 @import '@demicodes/web-ui/styles/product-appearance.css';
 @import "./paradigms.css";
+@import "./color-review/fixes.css";
 
 @source "../../web-ui/src";
 @source ".";
@@ -152,4 +153,11 @@ body,
 
 .input-float {
   box-shadow: var(--shadow-float);
+}
+
+/* Review stages: room for the specimen, no extra chrome. */
+.cr-stage {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
 }
