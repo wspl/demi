@@ -3885,8 +3885,7 @@ and uses tree-wide turn admission and conversation-wide cutover admission.
 
 Checkpoints: design record; RPC identity and scope; tree admission and node
 context; Hostless eligibility and cutover; scoped regressions and final review.
-Implementation has not yet changed runtime behavior. Multi-worker fencing is
-a scaled-deployment item.
+Multi-worker fencing is a scaled-deployment item.
 
 ### RPC identity checkpoint — delivered
 
@@ -3906,3 +3905,25 @@ passed. New regression cases cover another authenticated device using a known
 job, forged node/shell ids, unknown/exited jobs, and child todo scope through a
 cross-host command. All model traffic is scripted. Existing cancellation tests
 continue exercising expected broken-pipe teardown paths.
+
+### Tree admission and node context — delivered
+
+AgentServer owns one activity gate per conversation tree. All session actions
+and child assembly enter it; explicit target switches reserve an idle tree.
+Actions arriving during a reservation wait and retain their messages. Leases
+cover the final persistence flush and release on failures. Managed-host activity
+now considers every node, with atomic idle retirement still part of the cutover
+checkpoint.
+
+Execution-context revisions and the latest target switch remain in control
+storage. Each node records its own context in its persisted transcript before
+inference, including custom-profile nodes, retry, and resume. Context can be
+reconstructed after compaction. No node consumes a conversation-wide flag.
+
+Coverage: utils activity-gate tests exercise draining, queued entrants,
+cancellation and idempotent release; agent server tests exercise admission and
+persisted context; existing agent and backend switch suites verify lifecycle
+and target announcements. A test must wait for the final persistence flush after
+the client's idle frame before asserting that tree admission is free.
+
+Validation: typecheck and 302 scoped tests across 27 files passed.

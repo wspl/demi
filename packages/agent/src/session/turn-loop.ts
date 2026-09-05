@@ -332,6 +332,12 @@ export class ProviderTurnLoop<State> {
   }
 
   private async buildInferenceRequest(): Promise<InferenceRequest> {
+    const context = await this.host.runtime.context?.(this.host.promptContext())
+    if (context) {
+      this.host.transcript.pushUserTurn(this.host.currentTurnId(), this.host.model, [], context, true)
+      await this.host.commitTranscript()
+      await this.host.persistNow()
+    }
     const tools = this.currentTools().map(toToolDefinition)
     const systemPrompt = await this.host.runtime.systemPrompt(this.host.promptContext())
     return {

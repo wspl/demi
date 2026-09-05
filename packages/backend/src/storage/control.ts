@@ -94,7 +94,7 @@ export interface ControlService {
     conversationId: string,
     from: ConversationTargetPointer,
     to: ConversationTargetPointer,
-    pending: PendingSwitch,
+    transition: TargetSwitch,
     ends: { departed: { deviceId: string; cwd: string | null } | null; arrivingDeviceId: string | null },
   ): Promise<boolean>
   /**
@@ -103,8 +103,6 @@ export interface ControlService {
    * it, silently — no pending switch. False when it is no longer hostless.
    */
   bindConversationHost(conversationId: string, deviceId: string): Promise<boolean>
-  /** The announcements were injected; nothing is pending until the next switch or change to the attached hosts. */
-  clearPendingAnnouncements(conversationId: string): Promise<void>
   /**
    * The attached hosts (`sessions-and-targets.md` § Attached hosts). `attachHost`
    * is idempotent: an attached device keeps its row; a new one is named from
@@ -231,8 +229,8 @@ export interface ConversationTargetPointer {
   hostDeviceId: string | null
 }
 
-/** A switch the model has not been told about yet: consumed by the next turn's announcement. */
-export interface PendingSwitch {
+/** The latest explicit target switch, retained for every node's execution context. */
+export interface TargetSwitch {
   from: ExecutionTarget
   to: ExecutionTarget
 }
@@ -244,9 +242,9 @@ export interface ConversationRecord {
   archived: boolean
   workspaceId: string | null
   hostDeviceId: string | null
-  pendingSwitch: PendingSwitch | null
-  /** The attached hosts changed since the model last heard of them: announced at the next turn boundary. */
-  hostsChanged: boolean
+  lastSwitch: TargetSwitch | null
+  /** Monotonic revision of the target and attached-host context. */
+  contextVersion: number
   providerId: string | null
   modelId: string | null
   createdAt: string
@@ -260,8 +258,8 @@ interface ConversationRow {
   archived: number
   workspace_id: string | null
   host_device_id: string | null
-  pending_switch_json: string | null
-  hosts_changed: number
+  last_switch_json: string | null
+  context_version: number
   provider_id: string | null
   model_id: string | null
   created_at: string
@@ -269,7 +267,7 @@ interface ConversationRow {
 }
 
 const SELECT =
-  'SELECT id, user_id, title, archived, workspace_id, host_device_id, pending_switch_json, hosts_changed, provider_id, model_id, created_at, updated_at FROM conversations'
+  'SELECT id, user_id, title, archived, workspace_id, host_device_id, last_switch_json, context_version, provider_id, model_id, created_at, updated_at FROM conversations'
 
 interface UserRow {
   id: string
@@ -639,14 +637,14 @@ export class LocalControlService implements ControlService {
     conversationId: string,
     from: ConversationTargetPointer,
     to: ConversationTargetPointer,
-    pending: PendingSwitch,
+    transition: TargetSwitch,
     ends: { departed: { deviceId: string; cwd: string | null } | null; arrivingDeviceId: string | null },
   ): Promise<boolean> {
     return this.db.transaction(() => {
       const now = new Date().toISOString()
       this.db.run(
-        'UPDATE conversations SET workspace_id = ?, host_device_id = ?, pending_switch_json = ?, updated_at = ? WHERE id = ? AND workspace_id IS ? AND host_device_id IS ?',
-        [to.workspaceId, to.hostDeviceId, JSON.stringify(pending), now, conversationId, from.workspaceId, from.hostDeviceId],
+        'UPDATE conversations SET workspace_id = ?, host_device_id = ?, last_switch_json = ?, context_version = context_version + 1, updated_at = ? WHERE id = ? AND workspace_id IS ? AND host_device_id IS ?',
+        [to.workspaceId, to.hostDeviceId, JSON.stringify(transition), now, conversationId, from.workspaceId, from.hostDeviceId],
       )
       const won = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
       if (!won) return false
@@ -670,16 +668,14 @@ export class LocalControlService implements ControlService {
     })
   }
 
-  async clearPendingAnnouncements(conversationId: string): Promise<void> {
-    this.db.run('UPDATE conversations SET pending_switch_json = NULL, hosts_changed = 0 WHERE id = ?', [conversationId])
-  }
+
 
   async attachHost(conversationId: string, deviceId: string, name: string, cwd: string | null, announce: boolean): Promise<AttachedHostRecord> {
     return this.db.transaction(() => {
       const existing = this.attachedHost(conversationId, deviceId)
       if (existing) return existing
       this.insertAttachedHost(conversationId, deviceId, name, cwd, new Date().toISOString())
-      if (announce) this.db.run('UPDATE conversations SET hosts_changed = 1 WHERE id = ?', [conversationId])
+      if (announce) this.db.run('UPDATE conversations SET context_version = context_version + 1 WHERE id = ?', [conversationId])
       return this.attachedHost(conversationId, deviceId)!
     })
   }
@@ -688,7 +684,7 @@ export class LocalControlService implements ControlService {
     return this.db.transaction(() => {
       this.db.run('DELETE FROM conversation_hosts WHERE conversation_id = ? AND device_id = ?', [conversationId, deviceId])
       const removed = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
-      if (removed) this.db.run('UPDATE conversations SET hosts_changed = 1 WHERE id = ?', [conversationId])
+      if (removed) this.db.run('UPDATE conversations SET context_version = context_version + 1 WHERE id = ?', [conversationId])
       return removed
     })
   }
@@ -709,7 +705,7 @@ export class LocalControlService implements ControlService {
       const holder = this.db.get<{ device_id: string }>('SELECT device_id FROM conversation_hosts WHERE conversation_id = ? AND name = ?', [conversationId, name])
       if (holder && holder.device_id !== deviceId) return 'name_taken'
       this.db.run('UPDATE conversation_hosts SET name = ? WHERE conversation_id = ? AND device_id = ?', [name, conversationId, deviceId])
-      this.db.run('UPDATE conversations SET hosts_changed = 1 WHERE id = ?', [conversationId])
+      this.db.run('UPDATE conversations SET context_version = context_version + 1 WHERE id = ?', [conversationId])
       return 'renamed'
     })
   }
@@ -744,8 +740,8 @@ export class LocalControlService implements ControlService {
       archived: false,
       workspaceId: null,
       hostDeviceId: null,
-      pendingSwitch: null,
-      hostsChanged: false,
+      lastSwitch: null,
+      contextVersion: 0,
       providerId: null,
       modelId: null,
       createdAt: now,
@@ -930,8 +926,8 @@ function fromRow(row: ConversationRow): ConversationRecord {
     archived: row.archived !== 0,
     workspaceId: row.workspace_id,
     hostDeviceId: row.host_device_id,
-    pendingSwitch: row.pending_switch_json ? (JSON.parse(row.pending_switch_json) as PendingSwitch) : null,
-    hostsChanged: row.hosts_changed !== 0,
+    lastSwitch: row.last_switch_json ? (JSON.parse(row.last_switch_json) as TargetSwitch) : null,
+    contextVersion: row.context_version,
     providerId: row.provider_id,
     modelId: row.model_id,
     createdAt: row.created_at,

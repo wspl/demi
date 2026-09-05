@@ -1,4 +1,5 @@
 import type { CommandRegistry, Host, ShellEnvironment, ShellEnvironmentOptions } from '@demicodes/shell'
+import { ActivityGate } from '@demicodes/utils'
 import type { SessionPhase } from '@demicodes/core'
 import type { Provider } from '@demicodes/provider'
 import { AgentClient } from '../client/client'
@@ -90,6 +91,7 @@ export class AgentServer {
   private readonly deps: NodeDeps<unknown>
   private readonly store: (rootSessionId: string) => AgentTreeStore<unknown>
   private readonly bindings = new Set<AgentTransportBindingImpl>()
+  private readonly activities = new Map<string, ActivityGate>()
   private readonly sessionOwnership = new SessionOwnershipRegistry()
 
   constructor(options: AgentServerOptions) {
@@ -98,6 +100,7 @@ export class AgentServer {
       ? staticResolver(createProviderMap(options.providers))
       : options.providers
     this.deps = {
+      activity: (id) => this.activity(id),
       agent: options.agent,
       shellOptions: options.shell ?? {},
       shellEnvironment: options.shellEnvironment,
@@ -133,6 +136,19 @@ export class AgentServer {
     this.bindings.clear()
     await Promise.all(bindings.map((binding) => binding.close()))
     await this.sessionOwnership.disposeAll()
+  }
+
+  /** All action entrances in the root and its descendants share this reservation. */
+  reserveTreeMutation(rootSessionId: string): (() => void) | null {
+    return this.activity(rootSessionId).tryReserve()
+  }
+
+  treeActive(rootSessionId: string): boolean { return this.activity(rootSessionId).active }
+
+  private activity(rootSessionId: string): ActivityGate {
+    let gate = this.activities.get(rootSessionId)
+    if (!gate) { gate = new ActivityGate(); this.activities.set(rootSessionId, gate) }
+    return gate
   }
 
   /** Current phase of a live session; null when no live session exists for the id (⇒ nothing is running). */

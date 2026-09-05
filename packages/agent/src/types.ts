@@ -109,6 +109,8 @@ export interface AgentHarness<State = unknown> {
   agents?(ctx: AgentHarnessContext<State>): Promise<SubagentProfile<State>[]> | SubagentProfile<State>[]
   systemPrompt(ctx: AgentSystemPromptContext<State>): Promise<string> | string
   preamble?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
+  /** Durable product context, independently applied to every node before inference. */
+  context?(ctx: AgentPromptContext<State> & { rootSessionId: string }): Promise<string | null> | string | null
   resolveReferences?(
     ctx: AgentReferenceResolveContext<State>,
     content: UserContentBlock[],
@@ -193,10 +195,13 @@ export type AgentLifecycleEvent<State> =
     }
 
 export interface AgentHarnessRuntime<State> {
+  /** Admission for every action, including restore, retry and automatic wakeups. */
+  enterAction?(signal: AbortSignal): Promise<() => void>
   harnessName: string
   initialState(): State
   systemPrompt(ctx: AgentPromptContext<State>): Promise<string> | string
   preamble?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
+  context?(ctx: AgentPromptContext<State>): Promise<string | null> | string | null
   resolveReferences?(
     ctx: AgentReferenceResolveContext<State>,
     content: UserContentBlock[],
