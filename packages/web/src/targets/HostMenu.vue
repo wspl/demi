@@ -9,6 +9,7 @@ import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import HostPicker from './HostPicker.vue'
 import type { Conversation, Project } from '../prototype/types'
 import { useResources } from '../prototype/resources'
 import { useConversations } from '../conversation/store'
@@ -20,17 +21,11 @@ const store = useConversations()
 const open = ref(false)
 const mainLocked = computed(() => !!props.conversation.stream || props.conversation.archived)
 const available = computed(() =>
-  resources.devices
-    .filter(
-      (device) =>
-        device.id !== props.project?.deviceId &&
-        !props.conversation.attachedHosts.some((host) => host.deviceId === device.id),
-    )
-    .map((device) => ({
-      id: device.id,
-      label: device.name,
-      icon: Monitor,
-    })),
+  resources.devices.filter(
+    (device) =>
+      device.id !== props.project?.deviceId &&
+      !props.conversation.attachedHosts.some((host) => host.deviceId === device.id),
+  ),
 )
 function isOnline(deviceId: string) {
   return (
@@ -42,17 +37,15 @@ function switchMain(deviceId: string, cwd?: string) {
   open.value = false
   emit('switchMain', deviceId, cwd)
 }
+function selectMain(id: string) {
+  switchMain(id, props.conversation.attachedHosts.find((host) => host.deviceId === id)?.cwd)
+}
 function attach(id: string) {
   store.attachHost(props.conversation, id)
   open.value = false
 }
 function detach(id: string) {
   store.detachHost(props.conversation, id)
-  open.value = false
-}
-function hostless() {
-  if (mainLocked.value) return
-  store.move([props.conversation.id], null)
   open.value = false
 }
 function connect() {
@@ -89,29 +82,14 @@ function connect() {
           has-submenu
         >
           <template #submenu>
-            <Menu class="w-60">
-              <MenuItem
-                v-for="device in resources.devices"
-                :key="device.id"
-                :icon="Monitor"
-                :label="device.name"
-                :disabled="!device.online || device.id === project?.deviceId"
-                :disabled-reason="!device.online ? 'Device offline' : undefined"
-                @select="
-                  switchMain(
-                    device.id,
-                    conversation.attachedHosts.find((host) => host.deviceId === device.id)?.cwd,
-                  )
-                "
-              />
-              <MenuItem
-                :icon="Cloud"
-                label="Cloud"
-                :disabled="project?.hostKind === 'cloud'"
-                @select="switchMain('cloud')"
-              />
-              <MenuItem :icon="Unlink" label="Hostless" :disabled="!project" @select="hostless" />
-            </Menu>
+            <HostPicker
+              :devices="resources.devices"
+              include-cloud
+              require-online
+              :selected-id="project?.deviceId"
+              @select="selectMain"
+              @connect="connect"
+            />
           </template>
         </MenuItem>
         <MenuGroup v-if="conversation.attachedHosts.length" label="Attached hosts">
@@ -149,14 +127,7 @@ function connect() {
         <MenuDivider />
         <MenuItem label="Attach device…" :icon="Plus" has-submenu :disabled="conversation.archived">
           <template #submenu>
-            <Menu
-              :items="available"
-              filterable
-              filter-placeholder="Search devices…"
-              empty-text="No more devices to attach"
-              class="w-64"
-              @select="attach"
-            />
+            <HostPicker :devices="available" @select="attach" @connect="connect" />
           </template>
         </MenuItem>
         <MenuItem label="Connect new device…" :icon="Link" @select="connect" />

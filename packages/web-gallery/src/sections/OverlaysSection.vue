@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { Monitor } from '@lucide/vue'
-import { Copy, Pencil, Plus, Trash2 } from '@lucide/vue'
+import { Cloud, Copy, Monitor, Pencil, Plus, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -182,7 +181,12 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         <Menu class="w-72">
           <MenuItem :icon="Monitor" label="Main host" value="zan-mbp" has-submenu>
             <template #submenu>
-              <Menu><MenuItem :icon="Monitor" label="zan-mbp" choice is-selected /></Menu>
+              <Menu class="w-64" filterable filter-placeholder="Search hosts…" :items="[{ id: 'mac', label: 'zan-mbp', icon: Monitor }]" selected-id="mac">
+                <template #header>
+                  <MenuItem :icon="Cloud" label="Cloud" />
+                  <MenuItem :icon="Plus" label="Connect new device" />
+                </template>
+              </Menu>
             </template>
           </MenuItem>
           <MenuGroup label="Attached hosts">
@@ -193,7 +197,15 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
             </MenuItem>
           </MenuGroup>
           <MenuDivider />
-          <MenuItem label="Attach device…" />
+          <MenuItem :icon="Plus" label="Attach device…" has-submenu>
+            <template #submenu>
+              <Menu class="w-64" filterable filter-placeholder="Search hosts…" :items="[{ id: 'studio', label: 'studio', icon: Monitor }]">
+                <template #header>
+                  <MenuItem :icon="Plus" label="Connect new device" />
+                </template>
+              </Menu>
+            </template>
+          </MenuItem>
           <MenuItem label="Connect new device…" />
         </Menu>
       </GallerySpecimen>

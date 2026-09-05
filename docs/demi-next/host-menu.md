@@ -8,7 +8,7 @@ header controls for the main environment.
 ```text
 Conversation c1 header: [zan-mbp +2] [demi] [main]
                          |
-                         +-- [computer] Main host       zan-mbp > devices / Cloud / Hostless
+                         +-- [computer] Main host       zan-mbp > Cloud / Connect / search / devices
                          |   ----------------------------------
                          |   Attached hosts
                          +-- [gray dot] build-01                > Use as main / Detach
@@ -22,6 +22,12 @@ The trigger shows the main device and the attachment count. Cloud uses its icon;
 Hostless uses a small host-management icon and an optional count, without main
 device, workspace or branch metadata. Attaching is available in every main-host
 state. The attachment section is shown when devices are attached.
+
+Main host and Attach device use the same `HostPicker`: fixed top actions, a
+divider, the shared menu search field, another divider and device results. Main
+host includes Cloud then Connect new device; Attach device includes only Connect
+new device. Neither picker offers Hostless as a binding target. Search filters
+device names while the top actions remain visible.
 
 Attach selects an existing owned device and starts its cwd at its home. The
 picker excludes the main device and devices already attached; offline devices

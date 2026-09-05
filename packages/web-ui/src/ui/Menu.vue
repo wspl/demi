@@ -10,6 +10,7 @@ import { ICON_PX } from './icon-metrics'
 const props = withDefaults(defineProps<{
   items?: T[]
   selectedId?: string
+  isItemDisabled?: (item: T) => boolean
   filterable?: boolean
   filterPlaceholder?: string
   emptyText?: string
@@ -30,6 +31,7 @@ const emit = defineEmits<{
 }>()
 
 defineSlots<{
+  header(): void
   default(): void
   item(props: { item: T; query: string; isSelected: boolean }): void
 }>()
@@ -87,6 +89,8 @@ watch(filteredItems, () => {
 })
 
 function handleSelect(id: string) {
+  const item = listItems.value.find((item) => item.id === id)
+  if (item && props.isItemDisabled?.(item)) return
   emit('select', id)
 }
 
@@ -128,6 +132,9 @@ function handleKeydown(event: KeyboardEvent) {
     tabindex="-1"
     @keydown="handleKeydown"
   >
+    <div v-if="$slots.header" class="border-b border-line p-1">
+      <slot name="header" />
+    </div>
     <div v-if="filterable" class="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5 text-fg-subtle">
       <Search :size="ICON_PX.in28" class="shrink-0" />
       <input
@@ -165,6 +172,7 @@ function handleKeydown(event: KeyboardEvent) {
             :style="{ transform: `translateY(${vItem.start}px)` }"
             :label="filteredItems[vItem.index]!.label"
             :icon="filteredItems[vItem.index]!.icon"
+            :disabled="isItemDisabled?.(filteredItems[vItem.index]!)"
             choice
             :is-selected="filteredItems[vItem.index]!.id === selectedId"
             :is-focused="vItem.index === focusedIndex"
@@ -190,6 +198,7 @@ function handleKeydown(event: KeyboardEvent) {
           :key="item.id"
           :label="item.label"
           :icon="item.icon"
+          :disabled="isItemDisabled?.(item)"
           choice
           :is-selected="item.id === selectedId"
           :is-focused="index === focusedIndex"
