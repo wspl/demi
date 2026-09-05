@@ -20,6 +20,10 @@ const route = useRoute()
 const collapsed = ref(false)
 const folded = ref<string[]>([])
 const showArchived = ref(false)
+const sidebarProjects = computed(() => resources.projects.map((project) => ({
+  ...project,
+  hostOnline: project.hostKind === 'cloud' || !!resources.devices.find((device) => device.id === project.deviceId)?.online,
+})))
 const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
 const account = computed(() => ({
   name: resources.username || 'Zan',
@@ -98,7 +102,7 @@ watch(
         v-model:collapsed="collapsed"
         v-model:collapsed-projects="folded"
         :account="account"
-        :projects="resources.projects"
+        :projects="sidebarProjects"
         :conversations="conversations.items.filter((c) => !c.archived)"
         :active-id="activeId"
         :plugins="[]"
