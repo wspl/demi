@@ -193,7 +193,6 @@ function selectProjectConversations(project: SidebarProject): void {
   >
     <!-- The app, and the fold. -->
     <div class="flex h-11 shrink-0 items-center px-2.5" :class="collapsed ? 'justify-center' : 'gap-2'">
-      <span class="flex size-7 shrink-0 items-center justify-center rounded-md bg-fg text-[13px] font-semibold text-surface-base">d</span>
       <template v-if="!collapsed">
         <span class="min-w-0 flex-1 truncate text-chrome font-medium text-fg-emphasis">Demi</span>
         <Tooltip content="Collapse sidebar" placement="right">
