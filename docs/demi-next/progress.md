@@ -3701,6 +3701,17 @@ exists, while `agent/client`, `provider/testing`,
 absent from the root `test` script. `docs/demi-next/backend.md` § Packages
 named shell entries (`hostless`, `node`) that live in host-virtual.
 
+## Session proposal readability (2026-09-05) — revised for review
+
+The user found the session architecture proposal too long to evaluate.
+`session-runtime.md` now presents three decisions: uniform agent nodes,
+session-owned atomic storage independent of Host, and evidence-based
+execution recovery. Each states its rationale and a falsifiable acceptance
+example; storage and recovery also state their costs. Detailed API, schema
+and module prescriptions are left for implementation design after these
+boundaries are agreed. This is a documentation-only revision; no runtime
+tests were run. Whitespace checks passed.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
