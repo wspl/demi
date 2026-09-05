@@ -3575,6 +3575,50 @@ checkpoint. Runnable call sites and storage/protocol interfaces were read
 directly; documentation diff/whitespace checks passed. Implementation
 acceptance coverage is specified in the proposal, not reported as passing.
 
+## Review round 2 (2026-09-05)
+
+A full read of the M0–M12 implementation against the records, after the
+19-finding round above. Two kinds of finding: four groups with one root
+cause each, fixed by one mechanism per group, and a set of independent
+point fixes. Each group is a checkpoint; status below.
+
+| Group | Root cause | Findings it covers | Status |
+|---|---|---|---|
+| 1 | The managed-host lifecycle kept its state in memory only: no record of running VMs on disk, no reconciliation against processes and images, several exit paths (destroy, backend close, crash) that did not save the home. | VMs orphaned by a backend restart and a second guest booted over their image; destroy dropping the work since the last checkpoint; a failed shrink leaving an image the next wake booted anyway; a guest dying during boot failing only at the boot timeout. | delivered |
+| 2 | The hostless → machine upgrade modelled as a per-(session, Host) shell decoration in the composition root rather than a conversation-level target transition. | Named shells and running commands unusable after the upgrade; a subagent's outside script failing the upgrade; a failed upgrade's retry booting the stale first image and dropping the hostless work in between; the managed → workspace → hostless loop. | pending |
+| 3 | No single declaration of a job's environment per target kind. | `PATH=/usr/bin:/bin` forced on user hosts; `$USER` empty on managed hosts. | pending |
+| 4 | Guards and documents written twice. | The boundary test admitting `shell → tinybash`; an unused backend dependency; scripts and path mappings pointing at deleted files; stale entry names in `backend.md`. | pending |
+
+Point fixes (independent): the blob route's reflected content type; device
+revoke on a managed row; the hostless quota walk; conversation database
+handles; the provider Test on a process provider; the `open` frame's
+provider scope; web session and login-limiter growth; the offline
+placeholder identity. Status: pending.
+
+### Group 1: the guest lifecycle — delivered
+
+`FirecrackerProvisioner` keeps one invariant (`managed-hosts.md` § Home
+persistence): a working image exists only while its guest runs or until
+its save succeeded, and the store holds the current home whenever none
+exists. Every transition of one guest runs through a per-guest
+`SerialQueue`; hibernate, destroy and `close` all end in the same
+`stop → save`; `save` failing keeps the image and refuses the next boot
+until it succeeds. `startVm` writes `<runDir>/<vmId>/vm.json` (pid, owner)
+as soon as the process exists; `reconcile()` — the seam's new method,
+awaited by `createBackend` before it serves — kills every recorded process
+still alive (through the helper in jailer mode), removes its directory,
+saves every working image left behind and deletes stale checkpoint copies.
+`ManagedHosts.destroy` hibernates first; `ManagedHosts.close` hibernates
+every running guest and then closes the provisioner; the archive route
+destroys before it sets the flag. A death during boot rejects the in-flight
+boot (`guest_died`) instead of waiting for the timeout.
+
+Verification: `firecracker.test.ts` gains the reconcile and destroy cases
+over injected image tools and process control (a still-running VM killed
+and its image saved, a dead one's directory removed, a failed save kept and
+refusing the next wake, destroy saving before it forgets); S10–S12 pass
+unchanged in behaviour (the fake's `reconcile` is a no-op).
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

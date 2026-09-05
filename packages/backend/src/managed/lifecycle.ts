@@ -1,4 +1,4 @@
-import { errorMessage, withTimeout } from '@demicodes/utils'
+import { deferred, errorMessage, noop, withTimeout, type Deferred } from '@demicodes/utils'
 import { generateDeviceToken, hashDeviceToken } from '../runner/claim-codes'
 import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService, DeviceRecord, ManagedHostOwner } from '../storage/control'
@@ -47,7 +47,7 @@ export interface ManagedHostsOptions {
   now?: () => number
 }
 
-export type ManagedHostErrorCode = 'crash_loop' | 'host_limit' | 'boot_timeout' | 'not_owner'
+export type ManagedHostErrorCode = 'crash_loop' | 'host_limit' | 'boot_timeout' | 'guest_died' | 'not_owner'
 
 export class ManagedHostError extends Error {
   constructor(
@@ -72,6 +72,8 @@ interface OwnedHost {
   state: 'booting' | 'running' | 'saving' | 'off'
   /** The in-flight boot, joined by concurrent needs. */
   boot: Promise<void> | null
+  /** Rejected by a death during the boot, so the boot fails then rather than at its timeout. */
+  died: Deferred<never> | null
   /** The in-flight hibernate; a need arriving meanwhile waits for it and then wakes. */
   save: Promise<void> | null
   startedAt: number
@@ -92,7 +94,9 @@ export function ownerOf(device: DeviceRecord): ManagedHostOwner {
  * hard cap driving hibernation, wake on the next need with concurrent
  * needs joined, the periodic checkpoint with the liveness exemption, the
  * crash-loop guard and the per-user cap. Drives the provisioner seam and
- * the device rows; never touches an image.
+ * the device rows; never touches an image. Every way a guest ends — the
+ * idle rule, the owner archived or deleted, the backend closing — goes
+ * through `hibernate`, so the home is saved before the guest is gone.
  */
 export class ManagedHosts {
   private readonly config: ManagedHostsConfig
@@ -191,29 +195,43 @@ export class ManagedHosts {
     await this.options.provisioner.growHome(ownerOf(device), bytes)
   }
 
-  /** The owner is archived or deleted: the guest goes, the device row stays with the home (retention is a later item). */
+  /**
+   * The backend starting: the provisioner kills and saves what a previous
+   * process left before any guest is booted here.
+   */
+  reconcile(): Promise<void> {
+    return this.options.provisioner.reconcile()
+  }
+
+  /** The owner is archived or deleted: the guest is hibernated — its home saved — and forgotten; the device row stays with the home (retention is a later item). */
   async destroy(owner: ManagedHostOwner): Promise<void> {
     const device = await this.options.control.getManagedDevice(owner)
     if (!device) return
     const host = this.host(owner, device.id)
-    if (host.boot) await host.boot.catch(() => {})
-    if (host.save) await host.save.catch(() => {})
+    if (host.boot) await host.boot.catch(noop)
+    await this.hibernate(owner)
     host.state = 'off'
     await this.options.provisioner.destroy(owner)
     this.options.registry.disconnect(device.id)
   }
 
+  /** The backend closing: every running guest hibernated — synced, killed, saved — before the process goes. */
   async close(): Promise<void> {
     this.closed = true
     if (this.sweepTimer) clearInterval(this.sweepTimer)
     this.sweepTimer = null
+    for (const host of [...this.hosts.values()]) {
+      if (host.boot) await host.boot.catch(noop)
+      await this.hibernate(host.owner).catch((error) => this.log(`hibernate of ${ownerKey(host.owner)} at close failed: ${errorMessage(error)}`))
+    }
+    await this.options.provisioner.close()
   }
 
   private host(owner: ManagedHostOwner, deviceId: string): OwnedHost {
     const key = ownerKey(owner)
     let host = this.hosts.get(key)
     if (!host) {
-      host = { owner, deviceId, state: 'off', boot: null, save: null, startedAt: 0, idleSince: null, lastCheckpointAt: 0, deaths: [] }
+      host = { owner, deviceId, state: 'off', boot: null, died: null, save: null, startedAt: 0, idleSince: null, lastCheckpointAt: 0, deaths: [] }
       this.hosts.set(key, host)
     }
     return host
@@ -221,10 +239,14 @@ export class ManagedHosts {
 
   private async boot(host: OwnedHost, start: () => Promise<void>): Promise<void> {
     host.state = 'booting'
+    const died = deferred<never>()
+    died.promise.catch(noop)
+    host.died = died
     host.boot = (async () => {
-      await start()
       try {
-        await withTimeout(this.options.registry.whenOnline(host.deviceId), this.config.bootTimeoutMs, 'boot timeout')
+        await start()
+        // Online, or dead on the way there — a death fails the boot at once, not at its timeout.
+        await Promise.race([withTimeout(this.options.registry.whenOnline(host.deviceId), this.config.bootTimeoutMs, 'boot timeout'), died.promise])
       } catch (error) {
         host.state = 'off'
         throw errorMessage(error) === 'boot timeout' ? new ManagedHostError('boot_timeout', 'the machine did not come online in time') : error
@@ -239,6 +261,7 @@ export class ManagedHosts {
       await host.boot
     } finally {
       host.boot = null
+      host.died = null
     }
   }
 
@@ -247,6 +270,7 @@ export class ManagedHosts {
     if (!host || host.state === 'off' || host.state === 'saving') return
     host.deaths.push(this.now())
     host.state = 'off'
+    host.died?.reject(new ManagedHostError('guest_died', 'the machine died while booting'))
     this.options.registry.disconnect(host.deviceId)
     this.log(`managed host of ${ownerKey(owner)} died (${host.deaths.length} deaths recorded)`)
   }

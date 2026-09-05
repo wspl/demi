@@ -29,8 +29,8 @@ follows the write-frequency line:
   local directory at N=1, S3 at N>1. Bytes never enter a database.
 - **Home-image store** — managed hosts' home images, one **named, mutable,
   owner-bound** object per owner (`homes/<ownerId>.ext4`), overwritten in
-  place on hibernate (temp + atomic rename), streamed in and out: local
-  directory at N=1, S3 at N>1. Not the blob store: an image has one current
+  place whenever a guest ends and at every checkpoint (temp + atomic
+  rename), streamed in and out: local directory at N=1, S3 at N>1. Not the blob store: an image has one current
   version, not a history of content hashes (`managed-hosts.md`).
 - **Litestream** watches the data directory (`dir` + glob + `watch`) and
   continuously replicates every `*.sqlite` to S3: asynchronous, loses at

@@ -171,6 +171,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         turnInFlight,
       })
     : null
+  // Whatever a previous process left running or unsaved is settled before the first need can boot anything.
+  await managedHosts?.reconcile()
 
   // The execution target is resolved server-side from the conversation record
   // (`sessions-and-targets.md` § The three states): a workspace or a

@@ -68,9 +68,9 @@ export function conversationRoutes(options: {
       await control.renameConversation(conversation.id, body.title.trim())
     }
     if (body.archived !== undefined) {
-      await control.setConversationArchived(conversation.id, body.archived)
-      // An archived owner's guest is destroyed; its home stays (`managed-hosts.md` § Lifecycle).
+      // An archived owner's guest is destroyed — its home saved and kept (`managed-hosts.md` § Lifecycle); the flag follows a successful save.
       if (body.archived) await managedHosts?.destroy({ kind: 'conversation', id: conversation.id })
+      await control.setConversationArchived(conversation.id, body.archived)
     }
     if (body.providerId !== undefined || body.modelId !== undefined) {
       if (body.providerId) {
