@@ -30,7 +30,7 @@ const tabs = ['Account', 'Devices', 'Providers', 'Usage', 'Prototype']
     label="Settings"
     @close="resources.settingsOpen = false"
   >
-    <header class="flex items-center justify-between border-b border-line px-4 py-3">
+    <header class="flex select-none items-center justify-between border-b border-line px-4 py-3">
       <h2 class="text-[15px] font-medium text-fg-emphasis">Settings</h2>
       <IconButton
         :icon="X"
