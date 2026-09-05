@@ -4208,3 +4208,7 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Reduced the idle pinned mark from 16px to 12px and the pin action glyph from 14px to 12px, preserving its hit target. The pinned action shows PinOff and exposes aria-pressed; the unpinned action shows Pin.
 - Made the decorative pinned mark pointer-transparent. Browser verification toggled pin/unpin and confirmed the 12px PinOff glyph and pressed state. Shared web-ui typecheck passed.
+
+### M13.1 — Remove project-row hover tooltip (2026-09-06)
+
+- Removed the host/path tooltip wrapper from shared sidebar project rows. Web-ui typecheck passed.
