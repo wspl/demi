@@ -1,9 +1,10 @@
 import { reactive, watch } from 'vue'
+import { productAppearance } from '@demicodes/web-ui/theme/productAppearance'
 import { appThemeStore, setTheme } from '@demicodes/web-ui/theme/appTheme'
 
 type ThemeMode = 'light' | 'dark'
 
-export type ParadigmId = 'neutral' | 'hairline' | 'carved' | 'overlay'
+export type ParadigmId = 'demi' | 'neutral' | 'hairline' | 'carved' | 'overlay'
 export type ToneId = 'zinc' | 'cool' | 'warm' | 'ink'
 export type AccentId = 'steel' | 'indigo' | 'teal' | 'moss' | 'amber' | 'coral' | 'violet'
 export type DensityId = 'compact' | 'regular' | 'comfortable'
@@ -37,6 +38,7 @@ export interface Paradigm {
 }
 
 export const PARADIGMS: readonly Paradigm[] = [
+  { id: 'demi', name: 'Demi', summary: 'Product appearance: Ink, regular density, medium radius and hairline shadows.', ...productAppearance },
   {
     id: 'neutral',
     name: 'Neutral',
@@ -130,7 +132,7 @@ function readStored(): StoredGalleryState {
 const stored = readStored()
 // A stored paradigm carries its own axes; only `custom` keeps the stored axes as they are.
 const custom = stored.paradigm === 'custom'
-const base = PARADIGMS.find((item) => item.id === stored.paradigm) ?? paradigmById('neutral')
+const base = PARADIGMS.find((item) => item.id === stored.paradigm) ?? paradigmById('demi')
 
 export const galleryState = reactive<GalleryState>({
   paradigm: custom ? 'custom' : base.id,
