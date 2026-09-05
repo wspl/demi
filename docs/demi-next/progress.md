@@ -4223,3 +4223,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Replaced back-and-forth scrolling and endpoint holds with two equal-width title copies, each including a 24px gap. The track moves left by half its width per cycle at 36px/s, so the second copy occupies the first copy's starting position at the loop boundary.
 - Retained the 500ms hover delay, synchronized edge fades and reduced-motion behavior. The duplicate is hidden from assistive technology.
 - Web-ui typecheck passed. Browser inspection confirmed two equal 187.52px copies, a 5.209s linear infinite cycle and leftward translation for the welcome title.
+
+### M13.1 — Cloud naming for unbound conversations (2026-09-06)
+
+- Unbound conversations display Cloud and its icon in the host trigger and Main host row. Their picker identifies Cloud as current. Internal execution and binding contracts remain distinct from presentation naming.
+- Audited application, shared UI and gallery source for exposed Hostless labels; only an internal store test name remains. Web typecheck passed.
