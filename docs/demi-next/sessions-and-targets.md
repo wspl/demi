@@ -120,6 +120,21 @@ environment, and the backend names only the `DEMI_*` ids
 (`tinybash.md`). Hostless has no processes, no background jobs and no
 output files, so nothing else exists to move.
 
+**What the model holds stays valid.** The session's shell across the
+upgrade is one object: the shell that ran the scripts hostless keeps
+serving on the machine. Every hostless shell — the session's default and
+any the model names by id — is adopted by the machine's shell the first
+time it is used there, under its id, in the machine's counterpart of its
+directory, with the variables it had; a command started hostless is still
+reachable by its id. The upgrade is the conversation's, not a session's:
+a subagent's outside script moves its root's conversation, and root and
+subagents all continue on the machine.
+
+**A failed upgrade leaves nothing behind.** A machine that does not come
+up is destroyed with its device row, the conversation stays hostless with
+its files, the tool call reports the failure, and the next outside script
+tries again from the tree as it stands then.
+
 **Verification: split equivalence.** A sequence of tool calls is run
 twice — once entirely on a machine, once split at an arbitrary point with
 the first part hostless, the upgrade, and the rest on the machine. Every
@@ -139,7 +154,9 @@ Switching is one generic mechanism with named entrances, all
 user-initiated from the web target picker (second confirmation):
 hostless → user host, user host → user host, workspace ↔ another
 workspace, and the hostless → managed host entrance above. There is no
-managed → hostless entrance.
+managed → hostless entrance: a conversation with a machine of its own
+never returns to hostless, on whichever target it stands — its files
+live in that machine's home, and the hostless tree it left is empty.
 
 At a turn boundary the backend re-resolves the Host, **attaches the
 departed host to the conversation** (below) with its directory as the

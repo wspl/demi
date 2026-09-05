@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { HOSTLESS_ENV } from '../../conversation/hostless-shell'
-import { LocalControlService, type ControlService } from '../../storage/control'
+import { ownerKey, type BootArgs } from '../../managed/provisioner'
+import { LocalControlService, type ControlService, type ManagedHostOwner } from '../../storage/control'
 import { openSqliteDatabase } from '../../storage/database'
 import { FakeProvisioner } from './fake-provisioner'
 import { itemsText } from './model'
@@ -23,7 +24,7 @@ let controlDb: ReturnType<typeof openSqliteDatabase>
 
 beforeAll(async () => {
   fake = new FakeProvisioner()
-  world = await World.create({ managedHosts: { provisioner: fake, config: { hostsPerUser: 20, sweepMs: 60_000 } }, providerRequestsPerMinute: 10_000 })
+  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { hostsPerUser: 20, sweepMs: 60_000 } }, providerRequestsPerMinute: 10_000 })
   controlDb = openSqliteDatabase(join(world.dataDir, 'control.sqlite'))
   control = new LocalControlService(controlDb)
 })
@@ -92,6 +93,105 @@ test('a provisioning failure is that call\'s tool error; the conversation stays 
     await small.close()
     await limited.close()
   }
+}, 60_000)
+
+test('the shells the model holds continue on the machine: a named shell under its id, in its directory, with its variables; the default stays the default', async () => {
+  const driver = await world.conversation('hostless')
+  const owner: ManagedHostOwner = { kind: 'conversation', id: driver.id }
+  const first = await driver.turn({ model: [model.shell('n1', 'mkdir -p named && cd named && TOKEN=kept && echo in-named'), model.say('one')] })
+  // The shell's id as the frames carry it (a short result does not expose the handle to the model).
+  const shellId = first.shell.at(-1)!.shellId
+  // The outside script names the shell: it runs on the machine under that id, where the shell stood, with what it set.
+  const named = await driver.turn({ model: [model.tool('n2', 'shell_exec', { script: 'echo "$TOKEN in $(pwd)"', timeoutMs: 10_000, shellId }), model.say('two')] })
+  const home = fake.homeOf(owner)
+  expect(named.received[0]).toContain(`kept in ${home}/named`)
+  expect(named.shell.at(-1)!.shellId).toBe(shellId)
+  // Without a shellId the session's default is still that shell; with it, a later call still finds it.
+  const byDefault = await driver.turn({ model: [model.shell('n3', 'pwd'), model.say('three')] })
+  expect(byDefault.received[0]).toContain(`${home}/named\n`)
+  expect(byDefault.shell.at(-1)!.shellId).toBe(shellId)
+  const again = await driver.turn({ model: [model.tool('n4', 'shell_exec', { script: 'echo "still $TOKEN"; cd ..', timeoutMs: 10_000, shellId }), model.say('four')] })
+  expect(again.received[0]).toContain('still kept')
+  const moved = await driver.turn({ model: [model.shell('n5', 'pwd'), model.say('five')] })
+  expect(moved.received[0]).toContain(`${home}\n`)
+}, 60_000)
+
+test("a subagent's outside script upgrades its root's conversation; parent and child both continue on the machine", async () => {
+  const driver = await world.conversation('hostless')
+  const owner: ManagedHostOwner = { kind: 'conversation', id: driver.id }
+  await driver.turn({ model: [model.shell('p1', 'mkdir -p shared && cd shared && printf parent > p.txt && echo ok'), model.say('ready')] })
+  world.model.scriptChild(model.shell('c1', 'uname > /dev/null; printf child > c.txt; echo "child in $(pwd)"'), model.say('child done'))
+  const spawned = await driver.turn({ model: [model.shell('p2', "demi agent spawn 'write c.txt' --description writer", 20_000), model.say('spawned')] })
+  expect(spawned.received[0]).toContain('child done')
+  const home = fake.homeOf(owner)
+  const childRequests = world.model.requests.filter((request) => request.sessionId !== driver.id)
+  expect(itemsText(childRequests.at(-1)!.items)).toContain(`child in ${home}`)
+  expect((await control.getConversation(driver.id))?.hostDeviceId).not.toBeNull()
+  // The parent's default shell was left in `shared` hostless; on the machine it is there, and both files are where each wrote them.
+  const after = await driver.turn({ model: [model.shell('p3', 'pwd; cat p.txt ../c.txt; demi host current'), model.say('done')] })
+  expect(after.received[0]).toContain(`${home}/shared\n`)
+  expect(after.received[0]).toContain('parentchild')
+  expect(after.received[0]).toContain('host: machine "cloud"')
+  expect(fake.calls.filter((call) => call === `provision:${ownerKey(owner)}`)).toHaveLength(1)
+}, 60_000)
+
+/** A provisioner whose first boot fails after the device row exists — what a full backend machine looks like from above. */
+class FlakyProvisioner extends FakeProvisioner {
+  failuresLeft = 1
+
+  override async provision(owner: ManagedHostOwner, homeDir: string, boot: BootArgs): Promise<void> {
+    if (this.failuresLeft > 0) {
+      this.failuresLeft -= 1
+      this.calls.push(`provision-failed:${ownerKey(owner)}`)
+      throw new Error('no capacity right now')
+    }
+    return super.provision(owner, homeDir, boot)
+  }
+}
+
+test('a failed upgrade leaves nothing behind, and the retry moves the tree as it stands then', async () => {
+  const flaky = new FlakyProvisioner()
+  const small = await World.create({ managedHosts: { provisioner: flaky, config: { hostsPerUser: 20, sweepMs: 60_000 } } })
+  const smallDb = openSqliteDatabase(join(small.dataDir, 'control.sqlite'))
+  const smallControl = new LocalControlService(smallDb)
+  try {
+    const driver = await small.conversation('hostless')
+    const owner: ManagedHostOwner = { kind: 'conversation', id: driver.id }
+    await driver.turn({ model: [model.shell('f1', 'printf one > one.txt'), model.say('one')] })
+    const failed = await driver.turn({ model: [model.shell('f2', 'uname'), model.say('failed')] })
+    expect(failed.received[0]).toContain('no capacity right now')
+    // No device row, no binding, the files still in the tree.
+    expect(await smallControl.getManagedDevice(owner)).toBeNull()
+    expect((await smallControl.getConversation(driver.id))?.hostDeviceId).toBeNull()
+    expect(await small.hostlessFile(driver.id, '/home/demi/one.txt')).toBe('one')
+    await driver.turn({ model: [model.shell('f3', 'printf two > two.txt'), model.say('two')] })
+    const moved = await driver.turn({ model: [model.shell('f4', 'uname > /dev/null; cat one.txt two.txt'), model.say('moved')] })
+    expect(moved.received[0]).toContain('onetwo')
+    expect(await readFile(join(flaky.homeOf(owner), 'two.txt'), 'utf8')).toBe('two')
+    expect(flaky.calls.filter((call) => call.startsWith('provision'))).toEqual([`provision-failed:${ownerKey(owner)}`, `provision:${ownerKey(owner)}`])
+  } finally {
+    await small.close()
+    await flaky.close()
+    smallDb.close()
+  }
+}, 60_000)
+
+test('a conversation with a machine of its own never returns to hostless, from the machine or from a workspace', async () => {
+  const driver = await world.conversation('hostless')
+  await driver.turn({ model: [model.shell('l1', TRIGGER), model.say('moved')] })
+  const patch = (body: unknown) => world.backend.session.fetch(`/api/conversations/${driver.id}`, { method: 'PATCH', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
+  const fromMachine = await patch({ workspaceId: null })
+  expect(fromMachine.status).toBe(409)
+  expect(((await fromMachine.json()) as { code: string }).code).toBe('no_hostless_entrance')
+  // To a workspace: allowed, the machine becomes an attached host. Back to hostless from there: still refused.
+  const workspaceId = world.device('alpha').workspaceId
+  expect((await patch({ workspaceId })).status).toBe(200)
+  const fromWorkspace = await patch({ workspaceId: null })
+  expect(fromWorkspace.status).toBe(409)
+  expect(((await fromWorkspace.json()) as { code: string }).code).toBe('no_hostless_entrance')
+  const record = await control.getConversation(driver.id)
+  expect(record?.workspaceId).toBe(workspaceId)
+  expect((await control.listAttachedHosts(driver.id)).map((host) => host.name)).toEqual(['cloud'])
 }, 60_000)
 
 /** Commands inside the subset whose output is the same under BSD and GNU coreutils. */

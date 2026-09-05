@@ -11,6 +11,7 @@ import type { SubscriptionLoginFlows } from '../vault/subscription-login'
 import type { UserBlobStores } from '../storage/user-blobs'
 import type { Host } from '@demicodes/shell'
 import type { ManagedHosts } from '../managed/lifecycle'
+import type { SwitchTargetResult } from '../conversation/target'
 import type { LoginLimiter } from '../auth/login-limiter'
 import type { WebSessions } from '../auth/sessions'
 import { authenticate } from './authenticate'
@@ -46,6 +47,7 @@ export function createApp(options: {
   upgradeWebSocket: UpgradeWebSocket
   blobs: UserBlobStores
   hostFor: (conversationId: string) => Promise<Host>
+  switchTarget: (conversationId: string, toWorkspaceId: string | null) => Promise<SwitchTargetResult>
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((userId: string, name: string) => Promise<WorkspaceRecord>) | null
   sessions: WebSessions
@@ -89,8 +91,8 @@ export function createApp(options: {
     conversationRoutes({
       control: options.control,
       conversationStores: options.conversationStores,
-      agentServer: options.agentServer,
       hostFor: options.hostFor,
+      switchTarget: options.switchTarget,
       managedHosts: options.managedHosts,
       vault: options.vault,
       mode: options.mode,
