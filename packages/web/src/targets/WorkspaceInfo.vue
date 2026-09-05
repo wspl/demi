@@ -21,6 +21,13 @@ const props = defineProps<{ project?: Project; conversation: Conversation }>()
 const resources = useResources()
 const conversations = useConversations()
 const branchOpen = ref(false)
+const directoryOpen = ref(false)
+const recentDirectories = computed(() =>
+  resources.recentProjectIds
+    .flatMap((id) => resources.projects.find((item) => item.id === id) ?? [])
+    .filter((item) => item.deviceId === props.project?.deviceId)
+    .slice(0, 8),
+)
 const query = ref('')
 const branchSearch = ref<{ focus: () => void }>()
 watch(branchOpen, async (open) => {
@@ -40,12 +47,26 @@ const matches = computed(() =>
 const createError = computed(() => branchNameError(query.value))
 
 function browse(deviceId = props.project?.deviceId ?? 'cloud', cwd?: string) {
+  directoryOpen.value = false
   browserPath.value =
     cwd ??
     (deviceId === props.project?.deviceId
       ? props.project.path
       : (resources.projects.find((project) => project.deviceId === deviceId)?.path ?? '/workspace'))
   browsingDevice.value = deviceId
+}
+function selectRecent(id: string) {
+  if (locked.value) return
+  const project = resources.projects.find((item) => item.id === id)
+  if (!project || project.deviceId !== props.project?.deviceId) return
+  if (
+    project.hostKind !== 'cloud' &&
+    !resources.devices.find((item) => item.id === project.deviceId)?.online
+  )
+    return
+  conversations.move([props.conversation.id], id)
+  resources.rememberProject(id)
+  directoryOpen.value = false
 }
 function selectFolder(path: string) {
   if (locked.value || !browsingDevice.value) return
@@ -67,6 +88,7 @@ function selectFolder(path: string) {
     resources.projects.push(project)
   }
   conversations.move([props.conversation.id], project.id)
+  resources.rememberProject(project.id)
   browsingDevice.value = null
 }
 function selectBranch(branch: string) {
@@ -92,17 +114,42 @@ function createBranch() {
   <div class="flex min-w-0 max-w-full items-center gap-1">
     <HostMenu :conversation="conversation" :project="project" @switch-main="browse" />
     <template v-if="project">
-      <Tooltip class="min-w-0" :content="project.path">
-        <Button
-          class="max-w-full"
-          variant="ghost"
-          aria-label="Browse workspace files"
-          @click="browse()"
-        >
-          <Folder :size="ICON_PX.in28" />
-          <span class="max-w-32 truncate">{{ project.name }}</span>
-        </Button>
-      </Tooltip>
+      <Dropdown
+        v-model:open="directoryOpen"
+        :overlay-store="appOverlayStore"
+        class="min-w-0 [&>div]:min-w-0"
+      >
+        <template #trigger>
+          <Tooltip class="min-w-0" :content="project.path">
+            <Button class="max-w-full" variant="ghost" aria-label="Switch directory">
+              <Folder :size="ICON_PX.in28" />
+              <span class="max-w-32 truncate">{{ project.name }}</span>
+            </Button>
+          </Tooltip>
+        </template>
+        <template #content>
+          <Menu class="w-80 max-w-[calc(100vw-2rem)]">
+            <div class="max-h-64 overflow-y-auto">
+              <MenuItem
+                v-for="item in recentDirectories"
+                :key="item.id"
+                :icon="Folder"
+                :label="item.path"
+                choice
+                :is-selected="item.id === project.id"
+                :disabled="
+                  locked ||
+                  (item.hostKind !== 'cloud' &&
+                    !resources.devices.find((device) => device.id === item.deviceId)?.online)
+                "
+                @select="selectRecent(item.id)"
+              />
+            </div>
+            <MenuDivider />
+            <MenuItem :icon="Folder" label="Choose another directory…" @select="browse()" />
+          </Menu>
+        </template>
+      </Dropdown>
       <Dropdown
         class="min-w-0 [&>div]:min-w-0"
         v-model:open="branchOpen"

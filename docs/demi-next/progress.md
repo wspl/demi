@@ -4137,3 +4137,16 @@ alpha, 150ms device/create fades and a host menu without paths or help paragraph
 Browser typechecks, scoped web/web-ui tests and production build passed. Restarted
 the independent preview service after branch switching interrupted its watcher;
 the review endpoint returns HTTP 200. M13.1 remains in progress.
+
+### M13.1 — Recent directory menu (2026-09-06)
+
+Owner requested recent directories before the full browser. The directory control
+opens a menu of up to eight recent workspace paths on the current device, marks
+the current path, and places Choose another directory at the bottom. Selecting
+a recent path switches directly; choosing another opens the existing browser.
+Recency is separate from project order and updates when using a workspace.
+
+Verification: prototype/resources.test.ts checks recency deduplication without
+reordering sidebar projects. Nine scoped web tests, browser typechecks and build
+passed. Browser walkthrough confirmed direct switching, recency promotion and the
+bottom action opening the current directory. M13.1 remains in progress.
