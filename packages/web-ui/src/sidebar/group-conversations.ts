@@ -5,13 +5,13 @@ export interface ProjectGroup {
   items: SidebarConversation[]
 }
 
-/** Pinned first, then most recent first. */
+/** Pinned first, preserving the supplied manual order within each partition. */
 export function sortConversations(
   conversations: readonly SidebarConversation[],
 ): SidebarConversation[] {
   return [...conversations].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
-    return b.updatedAt.localeCompare(a.updatedAt)
+    return 0
   })
 }
 
