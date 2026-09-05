@@ -60,7 +60,7 @@ test('the first outside script moves the conversation to a machine, silently, wi
   expect(driver.transcript().some((block) => block.type === 'user' && block.preamble)).toBe(false)
   const record = await control.getConversation(driver.id)
   expect(record?.hostDeviceId).not.toBeNull()
-  expect(record?.pendingSwitch).toBeNull()
+  expect(record?.lastSwitch).toBeNull()
   // The files moved: the tree is empty, the home holds them with /tmp under .tmp.
   expect(await world.hostlessFile(driver.id, '/home/demi/work/a.txt')).toBeNull()
   expect(await readFile(join(home, 'work', 'a.txt'), 'utf8')).toBe('alpha\n')
