@@ -69,18 +69,6 @@ export const useConversations = defineStore('conversations', {
       while (c.attachedHosts.some((host) => host.name === alias)) alias = `${base}-${suffix++}`
       c.attachedHosts.push({ deviceId, name: alias, cwd: cwd ?? device!.home })
     },
-    renameHost(c: Conversation, deviceId: string, name: string): boolean {
-      const host = c.attachedHosts.find((item) => item.deviceId === deviceId)
-      if (
-        c.archived ||
-        !host ||
-        !name.trim() ||
-        c.attachedHosts.some((item) => item !== host && item.name === name.trim())
-      )
-        return false
-      host.name = name.trim()
-      return true
-    },
     detachHost(c: Conversation, deviceId: string) {
       if (!c.archived)
         c.attachedHosts = c.attachedHosts.filter((host) => host.deviceId !== deviceId)
