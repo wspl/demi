@@ -111,7 +111,6 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
       <span v-if="dotClass" class="size-1.5 rounded-full" :class="dotClass" />
-      <span v-else class="size-2 rounded-full border border-fg-subtle" />
     </span>
     <input
       v-if="renaming"

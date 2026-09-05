@@ -121,9 +121,6 @@ watch(
               @click="showArchived = !showArchived"
             />
           </div>
-          <p v-if="!collapsed" class="px-4 pt-2 text-[11px] text-fg-faint">
-            Prototype · local simulation
-          </p>
         </template>
       </AppSidebar>
     </div>

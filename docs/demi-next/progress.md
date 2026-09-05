@@ -4079,3 +4079,19 @@ Verification: browser typechecks, six scoped web tests and production build pass
 header update, file preview, Cloud device/folder selection, and a long branch name
 at 390px without horizontal page overflow. Branch-name coverage is documented in
 web-prototype.md. M13.1 remains in progress.
+
+### M13.1 — Project hover affordances and host icons (2026-09-06)
+
+Owner requested removal of idle rings and the sidebar prototype caption; project
+fold chevrons replace the left folder only on hover, and create buttons appear
+on hover. Cloud uses an icon instead of its name; devices use computer/name.
+Updated the shared project row with same-size stacked folder/chevron glyphs and
+hover-only create visibility (keyboard focus also exposes the actionable button).
+Kept active/error status marks and removed idle rings. Added explicit hostKind
+to shared project presentation data and all its producers, avoiding display-name
+inference. Cloud/device metadata uses flex centering in sidebar and header.
+
+Verification: browser hover/leave checks confirmed icon opacity swaps and create
+visibility, fold interaction worked, and Cloud screenshot review confirmed icon
+alignment. Browser typechecks, 96 scoped web/web-ui tests and web production build
+passed (existing large-chunk warning). M13.1 remains in progress.

@@ -52,6 +52,7 @@ function create() {
     name: name.value.trim(),
     deviceId: deviceId.value,
     host: cloud ? 'Cloud' : device!.name,
+    hostKind: cloud ? 'cloud' : 'device',
     path: cloud ? '/home/demi' : path.value.trim(),
     branch: null,
     branches: [],

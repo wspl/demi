@@ -53,7 +53,7 @@ function create(projectId: string | null): void {
 
 function addProject(): void {
   const id = `p-new-${nextId++}`
-  projects.value = [...projects.value, { id, name: `project-${nextId}`, host: 'zan-mbp', path: `/Users/zan/Projects/project-${nextId}` }]
+  projects.value = [...projects.value, { id, name: `project-${nextId}`, host: 'zan-mbp', hostKind: 'device', path: `/Users/zan/Projects/project-${nextId}` }]
 }
 
 function patch(id: string, change: (conversation: SidebarConversation) => SidebarConversation): void {
