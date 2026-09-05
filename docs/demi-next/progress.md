@@ -4301,3 +4301,10 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Shared floating menus size to content within viewport and 384px bounds, with compact 160px/192px plain/search minimums. Removed unused shortcut gutters and prevented search input intrinsic width from widening the panel.
 - Removed fixed widths from host, directory, model, sidebar actions/account/extensions and gallery examples. Virtualized history retains a deliberate 320px title/time layout; embedded panels explicitly fill their container.
 - Browser measurements: host menu 199px, directory menu 236px, model menu 173px, host search 192px including empty results, without horizontal overflow. Three frontend typechecks and 104 scoped web/web-ui tests passed.
+
+### M13.1 — Gallery synchronization audit (2026-09-06)
+
+- Restarted the independent gallery service on port 18933 and reopened the catalog. Added the bidirectional synchronization requirement to AGENTS.md.
+- Audit found stale collapsed-rail/row-action descriptions and incomplete host-menu specimens. Corrected descriptions, restored unread attention fixtures, and aligned host submenu actions/icons.
+- Moved HostPicker into web-ui/hosts so product and gallery use the same filtering, Cloud and bound-device rules. Product-specific store workflows remain in web; the explicit coverage boundary is recorded in web-gallery-sync.md rather than claiming full application parity.
+- All three browser typechecks passed. GitHub SSL connectivity still prevents pushing checkpoints.

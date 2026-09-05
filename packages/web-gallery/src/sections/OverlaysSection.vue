@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Cloud, Copy, Monitor, Pencil, Plus, Trash2 } from '@lucide/vue'
+import { Cloud, Copy, Link, Monitor, Pencil, Plus, Trash2, Unlink } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -16,6 +16,7 @@ import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ref } from 'vue'
+import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
@@ -181,32 +182,32 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         <Menu>
           <MenuItem :icon="Monitor" label="Main host" value="zan-mbp" has-submenu>
             <template #submenu>
-              <Menu filterable filter-placeholder="Search hosts…" :items="[{ id: 'mac', label: 'zan-mbp', icon: Monitor }]" selected-id="mac">
-                <template #header>
-                  <MenuItem :icon="Cloud" label="Cloud" />
-                  <MenuItem :icon="Plus" label="Connect new device" />
-                </template>
-              </Menu>
+              <HostPicker
+                :devices="[{ id: 'mac', name: 'zan-mbp', online: true }, { id: 'build', name: 'build-01', online: true }]"
+                include-cloud require-online selected-id="mac"
+              />
             </template>
           </MenuItem>
           <MenuGroup label="Attached hosts">
             <MenuItem label="build-01" indicator="success" indicator-label="Online" has-submenu>
               <template #submenu>
-                <Menu><MenuItem label="Detach" /></Menu>
+                <Menu>
+                  <MenuItem :icon="Monitor" label="Use as main environment…" />
+                  <MenuItem :icon="Unlink" label="Detach" />
+                </Menu>
               </template>
             </MenuItem>
           </MenuGroup>
           <MenuDivider />
           <MenuItem :icon="Plus" label="Attach device…" has-submenu>
             <template #submenu>
-              <Menu filterable filter-placeholder="Search hosts…" :items="[{ id: 'studio', label: 'studio', icon: Monitor }]">
-                <template #header>
-                  <MenuItem :icon="Plus" label="Connect new device" />
-                </template>
-              </Menu>
+              <HostPicker
+                :devices="[{ id: 'mac', name: 'zan-mbp', online: true }, { id: 'build', name: 'build-01', online: true }, { id: 'studio', name: 'studio', online: false }]"
+                :bound-ids="['mac', 'build']"
+              />
             </template>
           </MenuItem>
-          <MenuItem label="Connect new device…" />
+          <MenuItem :icon="Link" label="Connect new device…" />
         </Menu>
       </GallerySpecimen>
       <div class="specimen-row specimen-row-wide items-start">
