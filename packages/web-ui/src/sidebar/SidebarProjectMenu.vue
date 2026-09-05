@@ -3,7 +3,7 @@ import { ChevronsDownUp, ChevronsUpDown, ListChecks, SquarePen, Trash2 } from '@
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
-import type { SidebarProject } from './sidebar-data'
+import type { SidebarProject } from './types'
 
 defineProps<{
   project: SidebarProject

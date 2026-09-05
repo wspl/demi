@@ -2,7 +2,7 @@
 import { ChevronRight, Folder, FolderOpen } from '@lucide/vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SidebarProject } from './sidebar-data'
+import type { SidebarProject } from './types'
 
 /** A project row: the checkout's name and the host it is on, and the fold. */
 defineProps<{

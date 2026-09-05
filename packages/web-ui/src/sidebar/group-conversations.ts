@@ -1,4 +1,4 @@
-import type { SidebarConversation, SidebarProject } from './sidebar-data'
+import type { SidebarConversation, SidebarProject } from './types'
 
 export interface ProjectGroup {
   project: SidebarProject

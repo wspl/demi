@@ -1,0 +1,37 @@
+{
+  "extends": [
+    "../../tsconfig.json",
+    "@vue/tsconfig/tsconfig.dom.json"
+  ],
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "vite/client",
+      "bun"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@demicodes/web-ui/*": [
+        "../web-ui/src/*"
+      ],
+      "@demicodes/*": [
+        "../*/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
