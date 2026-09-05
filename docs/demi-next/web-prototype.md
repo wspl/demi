@@ -79,8 +79,8 @@ Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move
 and multi-selection actions. Project headers right-align device metadata and
-replace it with the new-conversation button on hover using a crossfade. The left folder icon becomes
-the fold chevron with the same crossfade while hovering; idle conversations have no status glyph.
+replace it with the new-conversation button on hover using a crossfade. The left folder icon stays visible
+while hovering and reflects the collapsed/expanded state; idle conversations have no status glyph.
 Cloud workspaces use a cloud icon, while device workspaces show a computer icon
 and hostname, centered beside the workspace name. The sidebar has no prototype
 caption. Menus, dialogs, settings and the entry page omit instructional and

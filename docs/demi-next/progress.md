@@ -4198,3 +4198,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Reproduced the fading hostname intercepting the create button's center hit target even at opacity zero. Made the decorative host layer pointer-transparent so clicks reach the overlaid new-conversation button.
 - Browser verification created conversations from both collapsed and expanded project rows; the route changed and the project fold state was preserved. Shared web-ui typecheck passed. The fix is shared with gallery and retains the crossfade.
+
+### M13.1 — Project folder icons without hover chevrons (2026-09-06)
+
+- Removed project hover chevrons and their crossfade. Folder icons remain visible and reflect the fold state; clicking the row still folds/unfolds the project.
+- Shared sidebar change applies to app and gallery. Web-ui typecheck passed; no new tests for the glyph-only adjustment.

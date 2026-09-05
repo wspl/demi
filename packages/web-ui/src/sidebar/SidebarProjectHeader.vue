@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight, Cloud, Folder, FolderOpen, Monitor, SquarePen } from '@lucide/vue'
+import { Cloud, Folder, FolderOpen, Monitor, SquarePen } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -31,18 +31,11 @@ const emit = defineEmits<{
       @click="emit('toggle')"
       @contextmenu.prevent="emit('contextmenu', $event)"
     >
-      <span class="relative size-3.5 shrink-0 text-fg-muted">
-        <component
-          :is="collapsed ? Folder : FolderOpen"
-          :size="ICON_PX.in28"
-          class="absolute inset-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0"
-        />
-        <ChevronRight
-          :size="ICON_PX.in28"
-          class="absolute inset-0 opacity-0 transition-[opacity,transform] duration-150 motion-reduce:transition-none group-hover/project:opacity-100"
-          :class="collapsed ? '' : 'rotate-90'"
-        />
-      </span>
+      <component
+        :is="collapsed ? Folder : FolderOpen"
+        :size="ICON_PX.in28"
+        class="shrink-0 text-fg-muted"
+      />
       <span class="min-w-0 flex-1 truncate font-medium">{{ project.name }}</span>
       <span class="grid min-w-6 max-w-[45%] items-center">
         <span
