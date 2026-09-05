@@ -4254,3 +4254,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Green completion and orange error/abort dots require unread state and disappear when the conversation is viewed. Route changes mark the current chat read; completion while already viewing it is acknowledged too. The active-turn breathing indicator remains a live status.
 - Store completion/error/abort events create a new unread result. Marking read preserves transcript and error/abort state so Retry/Resume remain available. Fixtures mark attention states unread initially.
 - Browser package typechecks and 104 scoped web/web-ui tests passed, including read acknowledgement, retained error state and fresh completion markers after retry.
+
+### M13.1 — Sidebar header brand simplification (2026-09-06)
+
+- Removed the contrasting boxed letter mark from the shared sidebar header; the expanded header retains the Demi name and collapse control.
+- Web-ui typecheck passed.
