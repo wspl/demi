@@ -255,14 +255,6 @@ Test code may depend upward for integration coverage. Production code must not.
   the web-ui boundary is enforced at the package-manifest level (no Node/adapter/provider
   dependencies declared), not by the production import-graph scan.
 
-### `@demicodes/web`
-
-- Status: the browser application; rebuilt in M13 on the backend's API (`docs/demi-next/roadmap.md`). Until then it carries the Vite scaffold only: no server of its own exists.
-- Production deps: `@demicodes/web-ui`, `@demicodes/agent`, `@demicodes/core`, `@demicodes/utils`.
-- Owns: the Demi web product's browser application — the Vite-built app over `@demicodes/web-ui`, talking to `@demicodes/backend` over its REST and WebSocket API. The backend serves the built assets in deployment (M14).
-- Public boundary: the browser entry point.
-- Must not: be imported by any other production package, or carry a server.
-
 ### `@demicodes/web-gallery`
 
 - Status: implemented.
@@ -302,14 +294,13 @@ host-remote -> runner-protocol, shell, utils
 runner -> command-loader, runner-protocol, shell, utils
 backend -> agent, coding-agent, command-loader, core, host-remote, host-virtual, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, core, utils
-web -> web-ui, agent, core, utils
 web-gallery -> web-ui, core
 ```
 
-`web-ui`, `web`, and `web-gallery` are browser/product packages built with Vite/Vue; their internal source
+`web-ui` and `web-gallery` are browser/product packages built with Vite/Vue; their internal source
 is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not scan them as
 production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
-enforced at the manifest level by that test; `web` is a product leaf like `backend`.
+enforced at the manifest level by that test..
 
 The graph is a compact view of the `Production deps` fields in the package registry; keep the
 two in lockstep. `packages/core/src/__tests__/platform-entrypoints.test.ts` reads this block

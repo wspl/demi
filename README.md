@@ -41,7 +41,7 @@ runner-protocol        the runner wire                      -> shell, utils
 host-remote            the backend's Host over a runner     -> runner-protocol, shell, utils
 runner                 the machine-side program (tinyjs)    -> command-loader, runner-protocol, shell, utils
 backend                the product server (leaf)
-web-ui, web            the browser UI (leaves)
+web-ui, web-gallery    the browser UI library and component gallery
 ```
 
 Notable design records outside `docs/demi-next/`:

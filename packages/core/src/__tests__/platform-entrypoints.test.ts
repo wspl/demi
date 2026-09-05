@@ -13,9 +13,9 @@ const workspaces = await readWorkspacePackages(rootManifest)
 const manifests = new Map([...workspaces].map(([name, pkg]) => [name, pkg.manifest]))
 const documentedDependencyGraph = await readDocumentedDependencyGraph()
 
-// `web-ui`, `web`, and `web-gallery` are Vite/Vue packages: the `.ts`-only source scans
+// `web-ui` and `web-gallery` are Vite/Vue packages: the `.ts`-only source scans
 // below do not cover them, and their boundary is enforced at the manifest level.
-const browserPackages = new Set(['@demicodes/web-ui', '@demicodes/web', '@demicodes/web-gallery'])
+const browserPackages = new Set(['@demicodes/web-ui', '@demicodes/web-gallery'])
 const productionPackageDirectories = new Map(
   [...workspaces].filter(([name]) => !browserPackages.has(name)).map(([name, pkg]) => [name, pkg.directory] as const),
 )

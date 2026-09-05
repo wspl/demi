@@ -3885,3 +3885,7 @@ the production build then passed.
   change deliberate designs (`runner.md` § Disconnect semantics,
   `managed-hosts.md`); until then a command whose process died has an
   unknown outcome by definition (`sessions-and-targets.md` § Recovery).
+
+## M13 — web package removal
+
+Removed the `packages/web` scaffold and its workspace, command, and boundary graph entries at the user’s request. `web-ui` and `web-gallery` remain. Validation: lockfile refreshed; `bun test --conditions development packages/core` passed all 30 tests, including workspace scripts and package boundary coverage.

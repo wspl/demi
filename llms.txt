@@ -23,7 +23,7 @@ TypeScript ESM with bundled `.d.ts`; install only the packages you need.
 - `@demicodes/coding-agent`: coding-agent harness, commands, and reference resolution (`createCodingAgentHarness`).
 - `@demicodes/provider-claude-code`, `@demicodes/provider-codex`, `@demicodes/provider-openai-api`, `@demicodes/provider-anthropic-api`, `@demicodes/provider-grok-build`, `@demicodes/provider-google`: concrete provider adapters.
 - `@demicodes/web-ui`: reusable Vue UI consuming an injected `AgentClient` (published as source-form).
-- `@demicodes/web`, `@demicodes/repl`, `@demicodes/agent-eval`: product leaves (web app, terminal REPL, benchmark harness).
+- `@demicodes/repl`, `@demicodes/agent-eval`: product leaves (terminal REPL, benchmark harness).
 
 ## Guides
 

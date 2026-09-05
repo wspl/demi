@@ -28,7 +28,6 @@ The fixed group contains:
 - `@demicodes/shell`
 - `@demicodes/tinybash`
 - `@demicodes/utils`
-- `@demicodes/web` (private)
 - `@demicodes/web-ui`
 
 Private workspaces participate in the shared version but are not published.
