@@ -10,12 +10,11 @@ Conversation c1 header: [zan-mbp +2] [demi] [main]
                          |
                          +-- Main execution environment
                          |     zan-mbp · Online
-                         |     /Users/zan/Projects/demi
                          |     Switch main environment… > devices / Cloud / Hostless
                          +-- Attached hosts · 2
-                         |     ci · Offline > build-01 /home/build
-                         |                  > Use as main / Rename / Detach
-                         |     design · Online > studio /Users/designer
+                         |     build-01 · Offline > build-01
+                         |                  > Use as main / Detach
+                         |     studio · Online > studio
                          +-- Attach device… > searchable owned devices
                          +-- Connect new device… > account device settings
 ```
@@ -32,17 +31,18 @@ attachment picker; it can enter the list as a departed main host. Connecting a
 new device opens the global device settings, which is separate from granting a
 particular conversation access to that device.
 
-Each attachment has a conversation-local, unique, editable name. Its submenu
-shows the underlying device identity and cwd, offers promotion through the
-directory picker, rename and detach. The cwd is displayed as execution state,
-not an access boundary. Detach removes only the conversation binding, not the
-device registration. Rename collisions keep the editor open with an error.
+Attachment names are generated from device names and kept unique within the
+conversation. The menu exposes device identity, online status, promotion and
+detach; it has no rename action or directory display. Directory selection and
+browsing belong to the separate workspace control. The menu contains actions and
+status only, without explanatory help paragraphs. Detach removes only the
+conversation binding, not the device registration.
 
 Switching main environments requires an idle, unarchived conversation. The picker
 starts at an attachment's cwd when promoting it. On completion, the incoming host
 leaves the attachment list and the departed main host joins it with its last
 directory. Switching directories on the same device creates no duplicate binding.
-Attaching, renaming and detaching remain available during a turn; their model
+Attaching and detaching remain available during a turn; their model
 announcement belongs to the next turn boundary per the execution contract.
 Archived conversations allow inspection but not binding mutations.
 
@@ -51,4 +51,4 @@ connect devices or grant real execution permissions. Store coverage in
 `packages/web/src/conversation/store.test.ts` exercises unique device identity,
 default home directories, duplicate attachment prevention, alias collision,
 main/attached exchange, retained cwd and detach. Browser verification covers the
-menu's binding, rename, detach and Hostless entry flows.
+menu's binding, detach and Hostless entry flows.

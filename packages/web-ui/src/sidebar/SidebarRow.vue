@@ -7,10 +7,10 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { SidebarConversation } from './types'
 
 /** Matches the row's hover margin transition, so the marquee measures the settled width. */
-const HOVER_SETTLE_MS = 220
+const HOVER_SETTLE_MS = 100
 /** Reading pace for the marquee: pixels per second, plus holds at both ends. */
-const MARQUEE_PX_PER_S = 24
-const MARQUEE_HOLD_MS = 1400
+const MARQUEE_PX_PER_S = 36
+const MARQUEE_HOLD_MS = 250
 
 const props = defineProps<{
   conversation: SidebarConversation
@@ -128,7 +128,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     <span
       v-else
       ref="titleClip"
-      class="sidebar-title min-w-0 flex-1 overflow-hidden whitespace-nowrap transition-[margin] duration-200 ease-out"
+      class="sidebar-title min-w-0 flex-1 overflow-hidden whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
       :class="[
         marquee ? 'is-playing' : '',
         conversation.unread && !open ? 'text-fg-emphasis' : '',
@@ -201,43 +201,55 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
   }
 }
 
-/* Both edge fades enter and leave with the marquee. */
+/* One animated value drives both edge fades. */
+@property --sidebar-edge-opacity {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+
 .sidebar-title {
   text-overflow: ellipsis;
+  --sidebar-edge-opacity: 1;
+  mask-image: linear-gradient(
+    to right,
+    rgb(0 0 0 / var(--sidebar-edge-opacity)),
+    black 1rem,
+    black calc(100% - 1rem),
+    rgb(0 0 0 / var(--sidebar-edge-opacity))
+  );
+  transition:
+    margin 80ms ease,
+    --sidebar-edge-opacity 120ms ease;
 }
 
 .sidebar-title.is-playing {
-  mask-image: linear-gradient(
-    to right,
-    transparent,
-    black 1rem,
-    black calc(100% - 1rem),
-    transparent
-  );
+  --sidebar-edge-opacity: 0;
 }
 
 .sidebar-marquee {
   will-change: transform;
-  animation: sidebar-marquee var(--marquee-ms) ease-in-out infinite;
+  animation: sidebar-marquee var(--marquee-ms) linear infinite;
 }
 
-/* Hold, glide to the end, hold, glide back. */
+/* Start moving immediately, pause briefly at the far edge, then return. */
 @keyframes sidebar-marquee {
-  0%,
-  12% {
+  0% {
     transform: translateX(0);
   }
-  44%,
-  56% {
+  45%,
+  55% {
     transform: translateX(var(--marquee-shift));
   }
-  88%,
   100% {
     transform: translateX(0);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sidebar-title {
+    transition: none;
+  }
   .sidebar-breath {
     animation: none;
   }
