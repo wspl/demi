@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { createBackend } from '../index'
 import { SESSION_COOKIE } from '../http/cookies'
+import { LoginLimiter } from '../auth/login-limiter'
 import { MASTER, login, openBackend, setupMaster, webSession } from './session'
 
 // M12 checkpoint 1: the login surface — initial setup, the cookie session
@@ -68,6 +69,20 @@ test('login, lockout after five failures, logout ends the session', async () => 
   expect((await backend.session.fetch('/api/auth/me')).status).toBe(200)
 
   await backend.close()
+})
+
+test('the limiter forgets a name after the lock window, so sprayed usernames do not accumulate', () => {
+  let now = 1_000_000
+  const limiter = new LoginLimiter({ lockAfter: 3, lockMs: 1_000, now: () => now })
+  for (const name of ['a', 'b', 'c']) limiter.failed(name)
+  limiter.failed('a')
+  limiter.failed('a')
+  expect(limiter.locked('a')).toBe(true)
+  expect(limiter.size).toBe(3)
+  now += 1_000
+  expect(limiter.locked('a')).toBe(false)
+  limiter.failed('d')
+  expect(limiter.size).toBe(1)
 })
 
 test('a user changes their own password with the current one in hand', async () => {

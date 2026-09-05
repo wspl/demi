@@ -22,7 +22,11 @@ follows the write-frequency line:
   plus session state, that conversation's `host_store` scope, and the
   **tree** of its hostless filesystem (paths and metadata; the bytes are
   in the blob store). High write rate, but each file has exactly one
-  writer and the files never contend.
+  writer and the files never contend. The process keeps an LRU of open
+  handles (64): a cold history read holds one only until other
+  conversations are touched, and a conversation in use is always the most
+  recent; the objects handed out for a conversation are stable and reopen
+  the handle on demand.
 - **Blob store** — attachment bytes, transcript media (`source.ref`) and
   the contents of hostless files, content-addressed within each user's
   namespace at `blobs/<userId>/<sha256>`:
@@ -193,7 +197,7 @@ between them:
 
 - **Before a machine** — the `files` tree plus blobs, served to tinybash
   and the root commands as `@demicodes/host-virtual`'s `Host`. Copying a
-  file copies a row; the quota counts bytes referenced by the tree.
+  file copies a row; the quota counts bytes referenced by the tree, one sum over the rows.
   Workspace files dropped into a hostless conversation land here.
   Concurrent appends to one path are serialized through the filesystem
   backend's per-path queue, including the blob read and write; independent

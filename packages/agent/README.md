@@ -27,5 +27,4 @@ await client.open(selection, cwd, sessionId)
 `sessionId` is caller-owned and required so a conversation is never silently
 un-resumable.
 
-See [Embed the UI](../../docs/guides/embed-the-ui.md). Part of
-[Demi](../../README.md). Apache-2.0.
+Part of [Demi](../../README.md). Apache-2.0.

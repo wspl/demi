@@ -24,7 +24,10 @@ export const VIRTUAL_MAX_TOTAL_BYTES = 256 * 1024 * 1024
  * their storage (a scoped local directory, object-store keys, …) and fail the
  * operations their storage cannot express.
  */
-export type VirtualFsBackend = HostFileSystem
+export interface VirtualFsBackend extends HostFileSystem {
+  /** Total bytes of the files in the namespace — the quota's measure, counted however the storage counts. */
+  usage(): Promise<number>
+}
 
 export interface VirtualHostOptions {
   backend: VirtualFsBackend
@@ -71,9 +74,9 @@ export class VirtualHost implements Host {
     for (const dir of this.directories) await this.backend.mkdir(dir, { recursive: true })
   }
 
-  /** Total quota-relevant bytes currently stored (artifact files excluded). */
-  async usage(): Promise<number> {
-    return this.usageUnder('/')
+  /** Total bytes of the namespace's files, as the backend counts them. */
+  usage(): Promise<number> {
+    return this.backend.usage()
   }
 
   /**
@@ -85,29 +88,6 @@ export class VirtualHost implements Host {
     if (isAbsolutePath(path)) return normalizePath(path)
     const base = cwd !== undefined ? normalizePath(cwd) : this.defaultCwd
     return normalizePath(`${base}/${path}`)
-  }
-
-  private async usageUnder(dir: string): Promise<number> {
-    let total = 0
-    let entries
-    try {
-      entries = await this.backend.readdir(dir, { withFileTypes: true })
-    } catch {
-      return 0
-    }
-    for (const entry of entries) {
-      const path = dir === '/' ? `/${entry.name}` : `${dir}/${entry.name}`
-      if (entry.isDirectory) {
-        total += await this.usageUnder(path)
-      } else if (entry.isFile) {
-        try {
-          total += (await this.backend.stat(path)).size
-        } catch {
-          // Removed between listing and stat — not part of usage.
-        }
-      }
-    }
-    return total
   }
 
   private async enforceQuota(path: string, incomingBytes: number, append: boolean): Promise<void> {

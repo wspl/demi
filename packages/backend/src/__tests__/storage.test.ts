@@ -10,6 +10,7 @@ import { LocalControlService } from '../storage/control'
 import { ConversationStores } from '../storage/conversation-store'
 import { DirBlobStore } from '../storage/blob-store'
 import { filesTreeBackend } from '../storage/files-tree'
+import { WebSessions } from '../auth/sessions'
 
 const model: ModelSelection = {
   providerId: 'stub',
@@ -255,6 +256,41 @@ test('host_store scopes are isolated per conversation database', async () => {
   rmSync(root, { recursive: true, force: true })
 })
 
+test('conversation handles are an LRU: a cold read holds one only until others are touched, data survives eviction', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'demi-conv-lru-'))
+  const stores = new ConversationStores(join(root, 'conversations'), () => new DirBlobStore(join(root, 'blobs')), { maxOpen: 2 })
+  const a = stores.hostStore('conv-a')
+  await a.writeJson('k', 'a')
+  await stores.hostStore('conv-b').writeJson('k', 'b')
+  expect(stores.openHandles).toBe(2)
+  expect(stores.transcriptBlocks('conv-c')).toEqual([])
+  expect(stores.openHandles).toBe(2)
+  // conv-a's handle was the oldest and is closed; the store handed out earlier still reads and writes.
+  expect(await a.readJson<string>('k')).toBe('a')
+  await a.writeJson('k', 'a2')
+  expect(await stores.hostStore('conv-a').readJson<string>('k')).toBe('a2')
+  expect(stores.openHandles).toBe(2)
+  stores.close()
+  expect(stores.openHandles).toBe(0)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('expired web sessions are swept when a session opens', async () => {
+  const db = openSqliteDatabase(':memory:')
+  migrate(db, CONTROL_MIGRATIONS)
+  const control = new LocalControlService(db)
+  const user = await control.createUser({ username: 'u', passwordHash: 'x', role: 'user' })
+  let now = Date.parse('2026-01-01T00:00:00.000Z')
+  const sessions = new WebSessions(control, { ttlMs: 1000, now: () => now })
+  await sessions.open(user!.id)
+  await sessions.open(user!.id)
+  now += 2000
+  const live = await sessions.open(user!.id)
+  expect(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM web_sessions')?.n).toBe(1)
+  expect((await sessions.resolve(live.token))?.user.id).toBe(user!.id)
+  db.close()
+})
+
 test('concurrent file appends preserve every write and recover after a failed append', async () => {
   const root = mkdtempSync(join(tmpdir(), 'demi-file-appends-'))
   const db = openSqliteDatabase(':memory:')
@@ -283,6 +319,8 @@ test('concurrent file appends preserve every write and recover after a failed ap
     expect(new TextDecoder().decode(await fs.readFile('/shared'))).toBe(`start\n${lines.join('')}recovered\n`)
     await Promise.all([fs.appendFile('/created', encode('A')), fs.appendFile('/created', encode('B'))])
     expect(new TextDecoder().decode(await fs.readFile('/created'))).toBe('AB')
+    // The quota's measure is one sum over the rows.
+    expect(await fs.usage()).toBe(`start\n${lines.join('')}recovered\n`.length + 2)
   } finally {
     db.close()
     rmSync(root, { recursive: true, force: true })
