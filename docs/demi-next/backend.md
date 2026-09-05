@@ -99,7 +99,12 @@ subagent pair): each inline media source becomes `{ type: 'ref', ref,
 mediaType }` — `ref` the blob's content hash, the same form the block rows
 hold at rest — and the page fetches `GET /api/blobs/:sha256?type=<media
 type>` (cookie-authenticated, private, `immutable`, cached for a year with
-`Vary: Cookie`). Every upload and conversation uses its owner's blob
+`Vary: Cookie`). The type is honoured only from a fixed list of the image,
+video, audio and PDF types the page renders in place; any other type is
+served as an opaque `application/octet-stream` attachment, and every
+response carries `X-Content-Type-Options: nosniff` — a blob is bytes of
+the uploader's choosing under a predictable hash, and never executes in
+the backend's origin. Every upload and conversation uses its owner's blob
 namespace; knowing another user's hash still returns 404. Providers
 still receive inline bytes: the conversation module resolves references
 before handing a message to the provider runtime. The same rule governs

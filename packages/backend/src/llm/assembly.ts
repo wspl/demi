@@ -199,6 +199,10 @@ export class ProviderAssembly {
     const resolved = await this.providerFor(providerId)
     if (!resolved) return { ok: false, message: 'Unknown provider' }
     const { entry, provider } = resolved
+    // A CLI transport runs on the conversation's execution target, never on this machine.
+    if (provider.requiresProcessCapableHost) {
+      return { ok: false, message: "This provider runs on a conversation's execution target; start a conversation to try it" }
+    }
     const modelId = (await this.modelsOf(entry, provider))[0]?.id
     if (!modelId) return { ok: false, message: 'No model available to test with' }
 

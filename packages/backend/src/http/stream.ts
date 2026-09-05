@@ -10,7 +10,9 @@ import type { UpgradeWebSocket } from 'hono/ws'
 import type { WSContext } from 'hono/ws'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
 import type { ControlService } from '../storage/control'
-import type { AuthEnv } from '../auth/identity'
+import type { AuthEnv, InstanceMode } from '../auth/identity'
+import type { ProviderVault } from '../vault/providers'
+import { visibleProvider } from '../vault/scope'
 
 /**
  * `WS /api/conversations/:id/stream` — the live frame-protocol socket.
@@ -23,8 +25,10 @@ export function streamRoutes(options: {
   agentServer: AgentServer
   upgradeWebSocket: UpgradeWebSocket
   blobsFor: (userId: string) => BlobStore
+  vault: ProviderVault
+  mode: InstanceMode
 }): Hono<AuthEnv> {
-  const { control, agentServer, upgradeWebSocket, blobsFor } = options
+  const { control, agentServer, upgradeWebSocket, blobsFor, vault, mode } = options
   const app = new Hono<AuthEnv>()
 
   app.get('/:id/stream', async (c, next) => {
@@ -36,13 +40,12 @@ export function streamRoutes(options: {
       let binding: AgentTransportBinding | null = null
       return {
         onOpen(_event, ws) {
-          const transport = conversationScopedTransport(
-            createWebSocketServerTransport(adapter.socket(ws)),
-            conversation,
+          const transport = conversationScopedTransport(createWebSocketServerTransport(adapter.socket(ws)), conversation, {
             control,
-            workspace?.path,
-            blobsFor(conversation.userId),
-          )
+            cwd: workspace?.path,
+            blobs: blobsFor(conversation.userId),
+            providerAllowed: async (providerId) => (await visibleProvider(vault, mode, conversation.userId, providerId)) !== null,
+          })
           binding = agentServer.attachTransport(transport)
         },
         onMessage(event) {

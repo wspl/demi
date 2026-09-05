@@ -3712,6 +3712,41 @@ and module prescriptions are left for implementation design after these
 boundaries are agreed. This is a documentation-only revision; no runtime
 tests were run. Whitespace checks passed.
 
+### Point fixes — delivered
+
+The single-site findings of the round, each with its test:
+
+- `GET /api/blobs/:sha256` honours `?type=` only from a fixed list of
+  render-safe image, video, audio and PDF types; anything else is an
+  `application/octet-stream` attachment, and every response is `nosniff`.
+  A blob's bytes are the uploader's under a predictable hash, so
+  `?type=text/html` was a stored XSS in the backend's origin.
+- `DELETE /api/devices/:id` answers 404 for a managed host: its row is the
+  lifecycle's and goes with destroy.
+- The hostless quota is the backend's to measure: `VirtualFsBackend.usage()`
+  is one `SUM(size)` over the files rows (a directory walk in the test
+  backend), instead of `VirtualHost` statting the whole tree on every write.
+- `ConversationStores` keeps an LRU of at most 64 open SQLite handles behind
+  stable per-conversation database objects that reopen on demand; a cold
+  history read no longer pins a file descriptor for the process's lifetime.
+- The provider Test button refuses a provider whose transport runs on the
+  execution target (`requiresProcessCapableHost`): it would have started the
+  CLI on the backend machine with the vault's token.
+- The stream's `open` and `set_provider` frames record a provider only when
+  the user may name it — the PATCH route's rule, now `visibleProvider` in
+  `vault/scope.ts`, shared by both.
+- The workspace-file drop writes into the Host's own working directory,
+  whichever target: the workspace path, the hostless home, the machine's
+  home — not a constant that happened to equal the guest's home.
+- Every login sweeps expired `web_sessions` rows; the login limiter forgets
+  a name `lockMs` after its last failure, so a spray of usernames is bounded.
+- `RemoteHost.attach` takes the runner's identity, so a Host made while its
+  runner was offline sheds the placeholder at the first hello.
+- The stray `demi` symlink at the repo root (to another user's home) is gone.
+- `scripts/build-llms.ts` named five documents that no longer exist, so the
+  `llms` CI step failed; the list and the links to the deleted guides
+  (`SECURITY.md`, the agent and shell READMEs) now name only what exists.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

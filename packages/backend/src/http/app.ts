@@ -84,6 +84,8 @@ export function createApp(options: {
       agentServer: options.agentServer,
       upgradeWebSocket: options.upgradeWebSocket,
       blobsFor: (id) => options.blobs.forUser(id),
+      vault: options.vault,
+      mode: options.mode,
     }),
   )
   app.route(

@@ -33,6 +33,8 @@ export class WebSessions {
   }
 
   async open(userId: string): Promise<{ token: string; expiresAt: Date }> {
+    // A login is the one moment the table grows; it also drops the sessions that ran out unnoticed.
+    await this.control.deleteExpiredWebSessions(new Date(this.now()).toISOString())
     const token = randomBytes(32).toString('base64url')
     const expiresAt = new Date(this.now() + this.ttlMs)
     await this.control.createWebSession({ tokenHash: hashSessionToken(token), userId, expiresAt: expiresAt.toISOString() })

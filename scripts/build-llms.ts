@@ -11,8 +11,6 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sections: Array<{ title: string; path: string }> = [
   { title: 'Overview', path: 'README.md' },
   { title: 'Guide: Add a Provider', path: 'docs/guides/add-a-provider.md' },
-  { title: 'Guide: Implement a Host', path: 'docs/guides/implement-a-host.md' },
-  { title: 'Guide: Embed the UI', path: 'docs/guides/embed-the-ui.md' },
   { title: 'Reference: Package Boundaries', path: 'docs/package-boundaries.md' },
   { title: 'Reference: Package Versioning', path: 'docs/package-versioning.md' },
   { title: 'Reference: Provider Quota', path: 'docs/provider-quota.md' },
@@ -20,13 +18,10 @@ const sections: Array<{ title: string; path: string }> = [
   { title: 'Reference: Provider / Session Clone', path: 'docs/provider-session-clone.md' },
   { title: 'Reference: Compaction Context Cache', path: 'docs/compaction-context-cache.md' },
   { title: 'Reference: Provider Errors & Retries', path: 'docs/provider-errors-and-retries.md' },
-  { title: 'Reference: Command Bridge', path: 'docs/command-bridge.md' },
-  { title: 'Reference: Shell & Yield Control', path: 'docs/shell-yield-control-plan.md' },
   { title: 'Reference: Tool Rendering Spec', path: 'docs/tool-rendering-spec.md' },
   { title: 'Reference: Session Storage & Naming', path: 'docs/session-storage-and-naming.md' },
   { title: 'Reference: Action Metadata', path: 'docs/action-metadata.md' },
   { title: 'Reference: Tool-Call Concurrency', path: 'docs/tool-call-concurrency.md' },
-  { title: 'Reference: Binary Stream Boundary', path: 'docs/binary-stream-boundary.md' },
   { title: 'Reference: Command Help', path: 'docs/command-help.md' },
   { title: 'Contributing', path: 'CONTRIBUTING.md' },
 ]

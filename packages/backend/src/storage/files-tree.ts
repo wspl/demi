@@ -165,6 +165,7 @@ export function filesTreeBackend(db: SqlDatabase, blobs: BlobStore): VirtualFsBa
   }
 
   return {
+    usage: async () => db.get<{ total: number }>("SELECT COALESCE(SUM(size), 0) AS total FROM files WHERE kind = 'file'")?.total ?? 0,
     readFile: async (path) => bytesOf(requireFile(normalizePath(path))),
     writeFile: (path, data, options) => writeBytes(normalizePath(path), data, options?.createParents ?? false),
     appendFile: async (path, data, options) => {

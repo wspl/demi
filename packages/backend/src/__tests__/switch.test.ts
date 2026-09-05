@@ -173,6 +173,8 @@ test('M6 acceptance: virtual→real switch with context block, real→virtual at
   const other = await control.createConversation(backend.session.user.id)
   const managed = await control.createDevice({ userId: backend.session.user.id, name: 'vm', platform: 'test', tokenHash: 'm', kind: 'managed', ownerConversationId: other.id })
   expect((await json(backend, `/api/conversations/${conversation.id}/hosts`, { deviceId: managed.id })).status).toBe(201)
+  // A managed host is not one of the user's devices: the device list cannot revoke it.
+  expect((await api(backend, `/api/devices/${managed.id}`, { method: 'DELETE' })).status).toBe(404)
   expect((await control.listAttachedHosts(conversation.id)).map((host) => host.name)).toEqual(['m6-device', 'vm'])
   expect((await json(backend, `/api/conversations/${conversation.id}/hosts/${managed.id}`, { name: 'm6-device' }, 'PATCH')).status).toBe(409)
   expect((await json(backend, `/api/conversations/${conversation.id}/hosts/${managed.id}`, { name: 'cloud' }, 'PATCH')).status).toBe(200)

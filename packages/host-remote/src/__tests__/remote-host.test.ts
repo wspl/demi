@@ -29,6 +29,12 @@ async function connectedPair() {
   return { dir, remote, server }
 }
 
+test('attach brings the runner identity to a Host made while its runner was offline', () => {
+  const host = new RemoteHost({ defaultCwd: '/w', identity: { uid: 0, gid: 0, hostname: 'offline', homeDir: '/w' }, store: memoryHostStore() })
+  host.attach(() => {}, { uid: 501, gid: 20, hostname: 'laptop', homeDir: '/Users/me' })
+  expect(host.identity).toEqual({ uid: 501, gid: 20, hostname: 'laptop', homeDir: '/Users/me' })
+})
+
 test('remote fs calls execute on the served Host and preserve error codes', async () => {
   const { dir, remote } = await connectedPair()
 
