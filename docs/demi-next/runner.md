@@ -318,10 +318,10 @@ streaming. Only the exit waits for the stdout stream to finish. The data
 connection is ordered, so the pipe rides it as the byte stream it is;
 the runner holds no more of it than an HTTP body in flight. The backend
 runs the leaf against the tree of the conversation `agentSessionId` names.
-The command-mode process never holds a credential. Attribution is by the
-ids the backend put into the job's environment; a process on the same
-machine that forges them can only reach the conversations already
-executing here, which it could already read and modify.
+The command-mode process never holds a credential. Attribution is by the live job the backend dispatched on this authenticated
+device connection (`execution-coordination.md`). A callback carries its job id;
+node and shell identity must match the backend's record, and the invoking Host
+comes from that job. An exited or disconnected job cannot invoke a command.
 
 ## Pipes
 
