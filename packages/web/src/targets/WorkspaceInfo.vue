@@ -5,17 +5,13 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { Device, Project } from '../prototype/types'
 
-defineProps<{ project?: Project; device?: Device }>()
+defineProps<{ project: Project; device?: Device }>()
 const emit = defineEmits<{ select: [] }>()
 </script>
 
 <template>
   <Tooltip
-    :content="
-      project
-        ? `${project.host} · ${project.path} · Branch: ${project.branch ?? 'unavailable'} (prototype)`
-        : 'Hostless workspace · Choose a working environment'
-    "
+    :content="`${project.host} · ${project.path} · Branch: ${project.branch ?? 'unavailable'} (prototype)`"
   >
     <Button
       variant="ghost"
@@ -25,7 +21,7 @@ const emit = defineEmits<{ select: [] }>()
     >
       <span class="flex min-w-0 items-center gap-1.5">
         <Monitor :size="ICON_PX.in28" class="shrink-0" />
-        <span class="max-w-28 truncate">{{ device?.name ?? project?.host ?? 'Hostless' }}</span>
+        <span class="max-w-28 truncate">{{ device?.name ?? project.host }}</span>
         <span
           v-if="device"
           class="size-1.5 shrink-0 rounded-full"
@@ -35,9 +31,9 @@ const emit = defineEmits<{ select: [] }>()
       </span>
       <span class="flex min-w-0 items-center gap-1.5">
         <Folder :size="ICON_PX.in28" class="shrink-0" />
-        <span class="max-w-32 truncate">{{ project?.name ?? 'Personal workspace' }}</span>
+        <span class="max-w-32 truncate">{{ project.name }}</span>
       </span>
-      <span v-if="project" class="flex min-w-0 items-center gap-1.5 text-fg-subtle">
+      <span class="flex min-w-0 items-center gap-1.5 text-fg-subtle">
         <GitBranch :size="ICON_PX.in28" class="shrink-0" />
         <span class="max-w-32 truncate">{{ project.branch ?? 'Branch unavailable' }}</span>
       </span>

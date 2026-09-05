@@ -49,7 +49,10 @@ function chooseTarget() {
       >
         {{ conversation.title }}
       </h1>
-      <div class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
+      <div
+        v-if="project"
+        class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1"
+      >
         <WorkspaceInfo
           :project="project"
           :device="resources.devices.find((device) => device.id === project?.deviceId)"

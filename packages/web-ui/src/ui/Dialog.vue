@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, provide, ref, watch } from 'vue'
+import { computed, inject, provide } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -20,12 +20,9 @@ const emit = defineEmits<{
 // A dialog confined to a host container never blocks the page, so it is not exclusive.
 const container = inject(overlayContainerKey, null)
 const teleportTarget = computed(() => container?.value ?? 'body')
-const panel = ref<HTMLElement>()
 const family = createOverlayFamily()
+// Child menus share ownership, but the dialog surface is outside their click boundary.
 provide(overlayFamilyKey, family)
-watch(panel, (element, _previous, onCleanup) => {
-  if (element) onCleanup(family.register(element))
-})
 onKeyStroke('Escape', (event) => {
   if (!props.isOpen || container) return
   event.preventDefault()
@@ -58,7 +55,6 @@ useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
           leave-to-class="opacity-0 scale-95"
         >
           <div
-            ref="panel"
             class="overlay-shell max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-xl"
             :class="size === 'lg' ? 'max-w-3xl' : 'max-w-md'"
             role="dialog"
