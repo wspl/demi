@@ -31,11 +31,11 @@ export function demoConversations(): SidebarConversation[] {
     { id: 'c-login', title: 'Login test after the session cookie rename', updatedAt: ago(4 * 60 * 1000), status: 'active', projectId: 'p-demi', pinned: true, unread: false },
     { id: 'c-cookie', title: 'Cookie helper refactor', updatedAt: ago(40 * 60 * 1000), status: 'done', projectId: 'p-demi', pinned: false, unread: true },
     { id: 'c-gallery', title: 'Gallery overlay wells', updatedAt: ago(3 * HOUR), status: 'idle', projectId: 'p-demi', pinned: false, unread: false },
-    { id: 'c-rate', title: 'Rate limit retry policy', updatedAt: ago(6 * HOUR), status: 'error', projectId: 'p-demi', pinned: false, unread: false },
+    { id: 'c-rate', title: 'Rate limit retry policy', updatedAt: ago(6 * HOUR), status: 'error', projectId: 'p-demi', pinned: false, unread: true },
     { id: 'c-tabs', title: 'Session tabs drag and drop', updatedAt: ago(DAY + 2 * HOUR), status: 'idle', projectId: 'p-demi', pinned: false, unread: false },
     { id: 'c-shell', title: 'Shell preview budget as a function of the context window', updatedAt: ago(3 * DAY), status: 'idle', projectId: 'p-demi', pinned: false, unread: false },
     // assetsfactory
-    { id: 'c-thumbs', title: 'Thumbnail pipeline on the new bucket', updatedAt: ago(DAY + 9 * HOUR), status: 'aborted', projectId: 'p-assets', pinned: false, unread: false },
+    { id: 'c-thumbs', title: 'Thumbnail pipeline on the new bucket', updatedAt: ago(DAY + 9 * HOUR), status: 'aborted', projectId: 'p-assets', pinned: false, unread: true },
     { id: 'c-exif', title: 'Strip EXIF before upload', updatedAt: ago(4 * DAY), status: 'idle', projectId: 'p-assets', pinned: false, unread: false },
     // dotfiles
     { id: 'c-zsh', title: 'zsh prompt shows the worktree branch', updatedAt: ago(12 * DAY), status: 'idle', projectId: 'p-dotfiles', pinned: false, unread: false },
