@@ -74,7 +74,7 @@ function attach(id: string, checked: boolean) {
     label="Working environment"
     @close="close"
   >
-    <header class="flex items-center justify-between border-b border-line px-4 py-3">
+    <header class="flex select-none items-center justify-between border-b border-line px-4 py-3">
       <h2 class="text-[15px] font-medium text-fg-emphasis">
         {{ showCreate ? 'New project' : 'Working environment' }}
       </h2>

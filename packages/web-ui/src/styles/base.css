@@ -388,7 +388,7 @@ svg.lucide {
   height: var(--composer-chip);
   max-height: none;
   margin: 0;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
   padding: 0;
   font-size: var(--agent-text);
@@ -421,6 +421,7 @@ svg.lucide {
   font-size: var(--agent-text);
   line-height: var(--composer-line);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .composer-shell-expanded .composer-editor .tiptap p {
@@ -686,4 +687,17 @@ svg.lucide {
 .markdown-body img {
   max-width: 100%;
   border-radius: 0.375rem;
+}
+
+/* Interface controls are not document text; editable fields keep native selection. */
+@layer base {
+  :where(button, [role="button"], [role="tab"], [role="menu"], nav, label, legend) {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  :where(input, textarea, [contenteditable="true"]) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
