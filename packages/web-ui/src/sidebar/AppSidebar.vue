@@ -8,7 +8,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SidebarAccount, SidebarConversation, SidebarExtension, SidebarProject } from './sidebar-data'
+import type { SidebarAccount, SidebarConversation, SidebarExtension, SidebarProject } from './types'
 import { plainConversations, projectGroups } from './group-conversations'
 import { visibleEntries } from './list-model'
 import { useSidebarList } from './useSidebarList'
@@ -33,6 +33,9 @@ const props = defineProps<{
   plugins: SidebarExtension[]
   skills: SidebarExtension[]
   /** Pinned open flyout for the catalog; the product never pins. */
+  hideExtensions?: boolean
+  hidePin?: boolean
+  hideDelete?: boolean
   pinnedFlyout?: 'plugins' | 'skills'
 }>()
 
@@ -84,6 +87,7 @@ function conversationsOf(ids: readonly string[]): SidebarConversation[] {
 }
 
 function togglePin(ids: string[]): void {
+  if (props.hidePin) return
   const targets = conversationsOf(ids)
   emit('pin', ids, !targets.every((target) => target.pinned))
 }
@@ -93,7 +97,7 @@ const list = useSidebarList(entries, computed(() => props.activeId), {
   toggleFold: (projectId) => setFolded(projectId, !isFolded(projectId)),
   fold: setFolded,
   rename: (id) => { renamingId.value = id },
-  remove: (ids) => emit('remove', ids),
+  remove: (ids) => { if (!props.hideDelete) emit('remove', ids) },
   togglePin,
 })
 
@@ -173,7 +177,7 @@ function selectProjectConversations(project: SidebarProject): void {
     <!-- The entries: one primary action, and what the agent can use. -->
     <div class="flex shrink-0 flex-col gap-px px-2.5" :class="collapsed ? 'items-center' : ''">
       <SidebarNavItem :icon="SquarePen" label="New conversation" shortcut="⌘N" :collapsed="collapsed" emphasis @click="emit('create', null)" />
-      <Dropdown :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" v-bind="pinnedFlyout === 'plugins' ? { open: true } : {}">
+      <Dropdown v-if="!hideExtensions" :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" v-bind="pinnedFlyout === 'plugins' ? { open: true } : {}">
         <template #trigger="{ isOpen }">
           <SidebarNavItem :icon="Blocks" label="Plugins" :count="collapsed ? undefined : enabledPlugins" :collapsed="collapsed" :pressed="isOpen" />
         </template>
@@ -187,7 +191,7 @@ function selectProjectConversations(project: SidebarProject): void {
           />
         </template>
       </Dropdown>
-      <Dropdown :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" v-bind="pinnedFlyout === 'skills' ? { open: true } : {}">
+      <Dropdown v-if="!hideExtensions" :overlay-store="appOverlayStore" placement="bottom-start" :offset="8" v-bind="pinnedFlyout === 'skills' ? { open: true } : {}">
         <template #trigger="{ isOpen }">
           <SidebarNavItem :icon="WandSparkles" label="Skills" :count="collapsed ? undefined : enabledSkills" :collapsed="collapsed" :pressed="isOpen" />
         </template>
@@ -202,6 +206,8 @@ function selectProjectConversations(project: SidebarProject): void {
         </template>
       </Dropdown>
     </div>
+
+    <slot name="navigation" :collapsed="collapsed" />
 
     <!-- Plain conversations first, then the projects. One focusable list; rows are not tab stops. -->
     <div
@@ -223,6 +229,7 @@ function selectProjectConversations(project: SidebarProject): void {
             v-for="conversation in plain"
             :key="conversation.id"
             :conversation="conversation"
+            :hide-pin="hidePin"
             :open="conversation.id === activeId"
             :selected="list.isSelected(conversation.id)"
             :focused="list.keyboardNav.value && list.focusedId.value === conversation.id"
@@ -263,6 +270,7 @@ function selectProjectConversations(project: SidebarProject): void {
               v-for="conversation in group.items"
               :key="conversation.id"
               :conversation="conversation"
+            :hide-pin="hidePin"
               :open="conversation.id === activeId"
               :selected="list.isSelected(conversation.id)"
               :focused="list.keyboardNav.value && list.focusedId.value === conversation.id"
@@ -315,6 +323,8 @@ function selectProjectConversations(project: SidebarProject): void {
     >
       <SidebarSelectionMenu
         :targets="menuTargets"
+        :hide-pin="hidePin"
+        :hide-delete="hideDelete"
         :projects="projects"
         @open="(id) => { rowMenu.close(); emit('select', id) }"
         @rename="(id) => { rowMenu.close(); renamingId = id }"

@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+@import '@demicodes/web-ui/styles/base.css';
+@import './settings/settings.css';
+
+@source '../../web-ui/src';
+@source '.';
+
+html,
+body,
+#app {
+  height: 100%;
+  overflow: hidden;
+}
