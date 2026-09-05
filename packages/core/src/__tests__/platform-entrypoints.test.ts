@@ -5,107 +5,55 @@ import { parseSync, Visitor } from 'oxc-parser'
 
 const repoRoot = resolve(import.meta.dir, '../../../..')
 
+// What exists and what it exports comes from the workspace manifests; what may
+// depend on what comes from `docs/package-boundaries.md` § Production Dependency
+// Graph. Both are read here so the guard and its documents cannot drift apart.
+const rootManifest = await readPackageManifest(resolveRepoPath('package.json'))
+const workspaces = await readWorkspacePackages(rootManifest)
+const manifests = new Map([...workspaces].map(([name, pkg]) => [name, pkg.manifest]))
+const documentedDependencyGraph = await readDocumentedDependencyGraph()
+
+// `web-ui` and `web` are Vite/Vue packages (`.vue` + `.ts`): the `.ts`-only source scans
+// below do not cover them, and their boundary is enforced at the manifest level.
+const browserPackages = new Set(['@demicodes/web-ui', '@demicodes/web'])
+const productionPackageDirectories = new Map(
+  [...workspaces].filter(([name]) => !browserPackages.has(name)).map(([name, pkg]) => [name, pkg.directory] as const),
+)
+
+// Every entry a package exports under its `development` condition, as the specifier
+// production code writes (`@demicodes/<pkg>` or `@demicodes/<pkg>/<subpath>`) → the
+// repo-relative source file. Wildcard exports (web-ui's source paths) are not entries.
+const workspaceEntryFiles = new Map<string, string>()
+for (const [name, pkg] of workspaces) {
+  for (const [subpath, file] of pkg.developmentExports) {
+    workspaceEntryFiles.set(subpath === '.' ? name : `${name}${subpath.slice(1)}`, `${pkg.directory}/${file.replace(/^\.\//, '')}`)
+  }
+}
+
+function entryFile(specifier: string): string {
+  const file = workspaceEntryFiles.get(specifier)
+  if (!file) throw new Error(`${specifier} is not a development export of any workspace package`)
+  return file
+}
+
+// The packages whose root entry runs on every runtime (`docs/package-boundaries.md`, each
+// registry entry's `Entries`): no Node builtin anywhere in the static closure of the root.
 const platformNeutralEntries = [
-  ['@demicodes/utils', 'packages/utils/src/index.ts'],
-  ['@demicodes/core', 'packages/core/src/index.ts'],
-  ['@demicodes/provider', 'packages/provider/src/index.ts'],
-  ['@demicodes/agent', 'packages/agent/src/index.ts'],
-  ['@demicodes/shell', 'packages/shell/src/index.ts'],
-  ['@demicodes/coding-agent', 'packages/coding-agent/src/index.ts'],
-  ['@demicodes/runner-protocol', 'packages/runner-protocol/src/index.ts'],
-  ['@demicodes/host-virtual', 'packages/host-virtual/src/index.ts'],
-  ['@demicodes/command-loader', 'packages/command-loader/src/index.ts'],
-  ['@demicodes/tinybash', 'packages/tinybash/src/index.ts'],
-  ['@demicodes/host-remote', 'packages/host-remote/src/index.ts'],
+  '@demicodes/utils',
+  '@demicodes/core',
+  '@demicodes/provider',
+  '@demicodes/agent',
+  '@demicodes/shell',
+  '@demicodes/coding-agent',
+  '@demicodes/runner-protocol',
+  '@demicodes/host-virtual',
+  '@demicodes/command-loader',
+  '@demicodes/tinybash',
+  '@demicodes/host-remote',
 ] as const
 
-const workspaceEntries = new Map<string, string>([
-  ...platformNeutralEntries,
-  ['@demicodes/provider-claude-code', 'packages/provider-claude-code/src/index.ts'],
-  ['@demicodes/provider-codex', 'packages/provider-codex/src/index.ts'],
-  ['@demicodes/provider-openai-api', 'packages/provider-openai-api/src/index.ts'],
-  ['@demicodes/provider-anthropic-api', 'packages/provider-anthropic-api/src/index.ts'],
-  ['@demicodes/provider-grok-build', 'packages/provider-grok-build/src/index.ts'],
-  ['@demicodes/provider-google', 'packages/provider-google/src/index.ts'],
-  ['@demicodes/backend', 'packages/backend/src/index.ts'],
-])
-
-const productionPackageDirectories = new Map<string, string>([
-  ['@demicodes/utils', 'packages/utils'],
-  ['@demicodes/core', 'packages/core'],
-  ['@demicodes/provider', 'packages/provider'],
-  ['@demicodes/shell', 'packages/shell'],
-  ['@demicodes/agent', 'packages/agent'],
-  ['@demicodes/coding-agent', 'packages/coding-agent'],
-  ['@demicodes/provider-claude-code', 'packages/provider-claude-code'],
-  ['@demicodes/provider-codex', 'packages/provider-codex'],
-  ['@demicodes/provider-openai-api', 'packages/provider-openai-api'],
-  ['@demicodes/provider-anthropic-api', 'packages/provider-anthropic-api'],
-  ['@demicodes/provider-grok-build', 'packages/provider-grok-build'],
-  ['@demicodes/provider-google', 'packages/provider-google'],
-  ['@demicodes/runner-protocol', 'packages/runner-protocol'],
-  ['@demicodes/runner', 'packages/runner'],
-  ['@demicodes/host-virtual', 'packages/host-virtual'],
-  ['@demicodes/command-loader', 'packages/command-loader'],
-  ['@demicodes/tinybash', 'packages/tinybash'],
-  ['@demicodes/host-remote', 'packages/host-remote'],
-  ['@demicodes/backend', 'packages/backend'],
-])
-
-const productionDependencyGraph = new Map<string, readonly string[]>([
-  ['@demicodes/utils', []],
-  ['@demicodes/core', []],
-  ['@demicodes/provider', ['@demicodes/core', '@demicodes/utils']],
-  ['@demicodes/shell', ['@demicodes/tinybash', '@demicodes/utils']],
-  ['@demicodes/agent', ['@demicodes/core', '@demicodes/provider', '@demicodes/shell', '@demicodes/utils']],
-  ['@demicodes/coding-agent', ['@demicodes/agent', '@demicodes/core', '@demicodes/shell', '@demicodes/utils']],
-  ['@demicodes/provider-claude-code', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
-  ['@demicodes/provider-codex', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
-  ['@demicodes/provider-openai-api', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
-  ['@demicodes/provider-anthropic-api', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
-  ['@demicodes/provider-grok-build', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
-  ['@demicodes/provider-google', ['@demicodes/core', '@demicodes/provider', '@demicodes/utils']],
-  ['@demicodes/runner-protocol', ['@demicodes/shell', '@demicodes/utils']],
-  ['@demicodes/host-virtual', ['@demicodes/shell', '@demicodes/tinybash', '@demicodes/utils']],
-  ['@demicodes/command-loader', ['@demicodes/shell', '@demicodes/utils']],
-  ['@demicodes/tinybash', ['@demicodes/utils']],
-  ['@demicodes/host-remote', ['@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils']],
-  [
-    '@demicodes/backend',
-    [
-      '@demicodes/agent',
-      '@demicodes/coding-agent',
-      '@demicodes/command-loader',
-      '@demicodes/core',
-      '@demicodes/host-remote',
-      '@demicodes/host-virtual',
-      '@demicodes/provider',
-      '@demicodes/provider-anthropic-api',
-      '@demicodes/provider-claude-code',
-      '@demicodes/provider-codex',
-      '@demicodes/provider-google',
-      '@demicodes/provider-grok-build',
-      '@demicodes/provider-openai-api',
-      '@demicodes/runner-protocol',
-      '@demicodes/shell',
-      '@demicodes/utils',
-    ],
-  ],
-  [
-    '@demicodes/runner',
-    ['@demicodes/command-loader', '@demicodes/runner-protocol', '@demicodes/shell', '@demicodes/utils'],
-  ],
-])
-
-const allowedWorkspaceSubpaths = new Map<string, string>([
-  ['@demicodes/shell/storage', 'packages/shell/src/storage.ts'],
-  ['@demicodes/shell/bash', 'packages/shell/src/bash.ts'],
-  ['@demicodes/shell/host-fs', 'packages/shell/src/host-fs.ts'],
-])
-
-const nodeOnlySubpaths = new Map<string, string>([
-  ['@demicodes/agent/stdio', 'packages/agent/src/protocol/stdio-transport.ts'],
-])
+// Entries that are Node adapters by design; a neutral root must not reach them.
+const nodeOnlySubpaths = new Set(['@demicodes/agent/stdio'])
 
 const forbiddenSourcePatterns = [
   ['node builtin import', /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]node:/],
@@ -125,11 +73,11 @@ const neutralPackageLeakPatterns = [
 const staticSpecifierPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g
 const dynamicSpecifierPattern = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
 
-const nodeOnlyFiles = new Set([...nodeOnlySubpaths.values()].map(resolveRepoPath))
+const nodeOnlyFiles = new Set([...nodeOnlySubpaths].map((specifier) => resolveRepoPath(entryFile(specifier))))
 
-for (const [entryName, entryPath] of platformNeutralEntries) {
+for (const entryName of platformNeutralEntries) {
   test(`${entryName} root entry has no Node-only source in its static closure`, async () => {
-    const violations = await findPlatformViolations(resolveRepoPath(entryPath))
+    const violations = await findPlatformViolations(resolveRepoPath(entryFile(entryName)))
 
     expect(violations).toEqual([])
   })
@@ -159,16 +107,7 @@ test('runtime source uses the forked bash package without embedded upstream snap
     if (await isDirectory(resolveRepoPath(directory))) existingForbiddenDirs.push(directory)
   }
 
-  const files = await listProductionSourceFiles()
-  const violations: string[] = []
-
-  for (const file of files) {
-    const source = await readFile(file, 'utf8')
-    for (const specifier of findModuleSpecifiers(source)) {
-    }
-  }
-
-  expect([...existingForbiddenDirs, ...violations]).toEqual([])
+  expect(existingForbiddenDirs).toEqual([])
 })
 
 test('@demicodes/shell does not depend on the agent runtime', async () => {
@@ -183,9 +122,7 @@ test('@demicodes/shell does not depend on the agent runtime', async () => {
   expect(violations).toEqual([])
 })
 
-test('package manifests preserve layering boundaries', async () => {
-  const manifests = await readPackageManifests()
-
+test('package manifests preserve layering boundaries', () => {
   expect(packageDependencyNames(manifests.get('@demicodes/shell')).filter((name) => name === '@demicodes/core' || name === '@demicodes/provider')).toEqual([])
 
   const platformNeutralPackages = [
@@ -275,12 +212,27 @@ test('generic quota cache metadata is independent of model catalog source labels
   expect(findNeutralPackageLeaks(resolveRepoPath('packages/provider/src/quota.ts'), source)).toEqual([])
 })
 
+test('the documented production dependency graph is the workspace manifests\' graph', () => {
+  expect([...documentedDependencyGraph.keys()].sort()).toEqual([...workspaces.keys()].sort())
+
+  const violations: string[] = []
+  for (const [name, pkg] of workspaces) {
+    const declared = productionDependencyNames(pkg.manifest).filter((dependency) => dependency.startsWith('@demicodes/'))
+    const documented = documentedDependencyGraph.get(name) ?? []
+    if (declared.join(', ') !== documented.join(', ')) {
+      violations.push(`${name} declares [${declared.join(', ')}] but docs/package-boundaries.md says [${documented.join(', ')}]`)
+    }
+  }
+
+  expect(violations).toEqual([])
+})
+
 test('production source dependency graph follows documented package boundaries', async () => {
   const edges = await collectProductionWorkspaceImportEdges()
   const violations: string[] = []
 
   for (const edge of edges) {
-    const allowed = productionDependencyGraph.get(edge.fromPackage) ?? []
+    const allowed = documentedDependencyGraph.get(edge.fromPackage) ?? []
     if (!allowed.includes(edge.toPackage)) violations.push(`${edge.file} imports ${edge.specifier} (${edge.fromPackage} -> ${edge.toPackage})`)
   }
 
@@ -289,7 +241,6 @@ test('production source dependency graph follows documented package boundaries',
 })
 
 test('production workspace imports are declared as package dependencies', async () => {
-  const manifests = await readPackageManifests()
   const edges = await collectProductionWorkspaceImportEdges()
   const violations: string[] = []
 
@@ -300,6 +251,39 @@ test('production workspace imports are declared as package dependencies', async 
   }
 
   expect([...new Set(violations)].sort()).toEqual([])
+})
+
+test('root tsconfig paths are the packages\' development exports', async () => {
+  const tsconfig = JSON.parse(await readFile(resolveRepoPath('tsconfig.json'), 'utf8')) as { compilerOptions: { paths: Record<string, string[]> } }
+  const { '@demicodes/*': roots, ...subpaths } = tsconfig.compilerOptions.paths
+
+  // Roots resolve through the wildcard, so every package's root entry is its `src/index.ts`;
+  // every other entry has its own alias, and no alias names an entry that does not exist.
+  expect(roots).toEqual(['./packages/*/src/index.ts'])
+  const expected: Record<string, string[]> = {}
+  for (const [specifier, file] of workspaceEntryFiles) {
+    const pkg = workspaces.get(specifier)
+    if (pkg) expect(file).toBe(`${pkg.directory}/src/index.ts`)
+    else expected[specifier] = [`./${file}`]
+  }
+  expect(sortedEntries(subpaths)).toEqual(sortedEntries(expected))
+})
+
+test('root scripts name existing paths and the test script covers every package with tests', async () => {
+  const missing: string[] = []
+  for (const [script, command] of Object.entries(rootManifest.scripts ?? {})) {
+    for (const path of command.match(/packages\/[\w./-]+/g) ?? []) {
+      if (!(await isFile(resolveRepoPath(path))) && !(await isDirectory(resolveRepoPath(path)))) missing.push(`${script}: ${path}`)
+    }
+  }
+  expect(missing).toEqual([])
+
+  const tested = new Set(rootManifest.scripts?.test?.match(/packages\/[\w-]+\/src/g) ?? [])
+  const untested: string[] = []
+  for (const [name, pkg] of workspaces) {
+    if (!tested.has(`${pkg.directory}/src`) && (await hasTestFiles(resolveRepoPath(`${pkg.directory}/src`)))) untested.push(name)
+  }
+  expect(untested).toEqual([])
 })
 
 test('generic helpers provided by shared packages are not re-implemented in production source', async () => {
@@ -537,7 +521,7 @@ function collectAstStrings(value: unknown, output: string[]): void {
 async function resolveImport(fromFile: string, specifier: string): Promise<string | null> {
   if (specifier.startsWith('.')) return resolveLocalModule(dirname(fromFile), specifier)
 
-  const workspaceEntry = workspaceEntries.get(specifier) ?? allowedWorkspaceSubpaths.get(specifier)
+  const workspaceEntry = workspaceEntryFiles.get(specifier)
   if (workspaceEntry) return resolveRepoPath(workspaceEntry)
 
   return null
@@ -587,18 +571,47 @@ async function listProductionSourceFiles(): Promise<string[]> {
   return files.flat()
 }
 
-async function readPackageManifests(): Promise<Map<string, PackageManifest>> {
-  const manifests = new Map<string, PackageManifest>()
-  const rootManifest = await readPackageManifest(resolveRepoPath('package.json'))
-  manifests.set(rootManifest.name, rootManifest)
-
-  // The workspaces are the packages; packages/tinyjs is a Rust crate.
-  for (const workspace of rootManifest.workspaces ?? []) {
-    const manifest = await readPackageManifest(resolveRepoPath(`${workspace}/package.json`))
-    manifests.set(manifest.name, manifest)
+// The workspaces are the packages (packages/tinyjs and packages/fc-helper are Rust crates).
+async function readWorkspacePackages(root: PackageManifest): Promise<Map<string, WorkspacePackage>> {
+  const packages = new Map<string, WorkspacePackage>()
+  for (const directory of root.workspaces ?? []) {
+    const manifest = await readPackageManifest(resolveRepoPath(`${directory}/package.json`))
+    const developmentExports = new Map<string, string>()
+    for (const [subpath, target] of Object.entries(manifest.exports ?? {})) {
+      if (subpath.includes('*')) continue
+      const file = typeof target === 'string' ? target : target.development
+      if (file) developmentExports.set(subpath, file)
+    }
+    packages.set(manifest.name, { directory, manifest, developmentExports })
   }
+  return packages
+}
 
-  return manifests
+// The ```text block under "## Production Dependency Graph": one `name -> dep, dep` line per package, `none` for a leaf.
+async function readDocumentedDependencyGraph(): Promise<Map<string, readonly string[]>> {
+  const doc = await readFile(resolveRepoPath('docs/package-boundaries.md'), 'utf8')
+  const section = doc.split(/^## Production Dependency Graph$/m)[1]
+  const block = section ? /```text\n([\s\S]*?)```/.exec(section)?.[1] : undefined
+  if (!block) throw new Error('docs/package-boundaries.md has no ```text graph under "## Production Dependency Graph"')
+
+  const graph = new Map<string, readonly string[]>()
+  for (const line of block.trim().split('\n')) {
+    const match = /^([\w-]+) -> (.+)$/.exec(line.trim())
+    if (!match) throw new Error(`Unreadable dependency graph line: ${line}`)
+    const [, name, dependencies] = match
+    graph.set(`@demicodes/${name}`, dependencies === 'none' ? [] : dependencies!.split(',').map((dependency) => `@demicodes/${dependency.trim()}`).sort())
+  }
+  return graph
+}
+
+async function hasTestFiles(directory: string): Promise<boolean> {
+  if (!(await isDirectory(directory))) return false
+  const entries = await readdir(directory, { recursive: true })
+  return entries.some((entry) => entry.endsWith('.test.ts'))
+}
+
+function sortedEntries(record: Record<string, string[]>): [string, string[]][] {
+  return Object.entries(record).sort(([a], [b]) => a.localeCompare(b))
 }
 
 async function readPackageManifest(path: string): Promise<PackageManifest> {
@@ -619,9 +632,17 @@ function packageDependencyNames(manifest: PackageManifest | undefined): string[]
   ].sort()
 }
 
+interface WorkspacePackage {
+  directory: string
+  manifest: PackageManifest
+  developmentExports: Map<string, string>
+}
+
 interface PackageManifest {
   name: string
   workspaces?: string[]
+  scripts?: Record<string, string>
+  exports?: Record<string, string | { development?: string }>
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>

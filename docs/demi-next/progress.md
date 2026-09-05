@@ -3587,7 +3587,7 @@ point fixes. Each group is a checkpoint; status below.
 | 1 | The managed-host lifecycle kept its state in memory only: no record of running VMs on disk, no reconciliation against processes and images, several exit paths (destroy, backend close, crash) that did not save the home. | VMs orphaned by a backend restart and a second guest booted over their image; destroy dropping the work since the last checkpoint; a failed shrink leaving an image the next wake booted anyway; a guest dying during boot failing only at the boot timeout. | delivered |
 | 2 | The hostless → machine upgrade modelled as a per-(session, Host) shell decoration in the composition root rather than a conversation-level target transition. | Named shells and running commands unusable after the upgrade; a subagent's outside script failing the upgrade; a failed upgrade's retry booting the stale first image and dropping the hostless work in between; the managed → workspace → hostless loop. | delivered |
 | 3 | No single declaration of a job's environment per target kind. | `PATH=/usr/bin:/bin` forced on user hosts; `$USER` empty on managed hosts. | delivered |
-| 4 | Guards and documents written twice. | The boundary test admitting `shell → tinybash`; an unused backend dependency; scripts and path mappings pointing at deleted files; stale entry names in `backend.md`. | pending |
+| 4 | Guards and documents written twice. | The boundary test admitting `shell → tinybash`; an unused backend dependency; scripts and path mappings pointing at deleted files; stale entry names in `backend.md`. | delivered |
 
 Point fixes (independent): the blob route's reflected content type; device
 revoke on a managed row; the hostless quota walk; conversation database
@@ -3677,6 +3677,29 @@ device row and the retry moves the tree as it stands then (a flaky
 provisioner); the return to hostless is refused from the machine and from
 a workspace it moved to. The M6 acceptance's attachable managed device is
 now owned by another conversation, as the case it tests requires.
+
+### Group 4: guards read their documents — delivered
+
+`platform-entrypoints.test.ts` no longer carries copies of the package
+set, the entry list and the dependency graph. It reads the root
+manifest's `workspaces` for the packages, each package's `exports`
+(`development` condition) for the entries a specifier resolves to, and
+the ```text block under `docs/package-boundaries.md` § Production
+Dependency Graph for the edges. Three checks fall out of that: the
+documented graph and the manifests' `@demicodes/*` dependencies are the
+same graph (every package has a line, each line equals its manifest), the
+root `tsconfig.json` `paths` are exactly the subpath entries (roots go
+through the wildcard, so a root entry is `src/index.ts`), and the root
+scripts name paths that exist with the `test` script covering every
+package that has tests. What the derived guards found on their first run:
+the doc's `provider -> core` line omitted utils; the backend declared
+`@demicodes/tinybash` without importing it; the `@demicodes/shell/host-fs`
+alias (tsconfig, test, shell README) pointed at a file that no longer
+exists, while `agent/client`, `provider/testing`,
+`provider/credentials-pool` and `tinybash/testing` had no alias; the
+`web:server` script ran a file that does not exist; the backend was
+absent from the root `test` script. `docs/demi-next/backend.md` § Packages
+named shell entries (`hostless`, `node`) that live in host-virtual.
 
 ## Open items (deferred, with their milestone)
 

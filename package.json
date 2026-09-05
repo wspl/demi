@@ -35,8 +35,7 @@
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
     "web:dev": "bun --filter @demicodes/web dev",
-    "web:server": "bun run packages/web/src/server/index.ts",
-    "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/tinybash/src packages/command-loader/src packages/runner-protocol/src packages/host-remote/src packages/host-virtual/src packages/runner/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/provider-google/src packages/provider-grok-build/src packages/web-ui/src packages/web/src",
+    "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/tinybash/src packages/command-loader/src packages/runner-protocol/src packages/host-remote/src packages/host-virtual/src packages/runner/src packages/backend/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/provider-google/src packages/provider-grok-build/src packages/web-ui/src packages/web/src",
     "fixtures:compaction:build": "bun run packages/agent/fixtures/compaction/build-fixture.ts",
     "fixtures:compaction:verify": "bun run packages/agent/fixtures/compaction/verify-compaction.ts",
     "fixtures:compaction:verify-switch": "bun run packages/agent/fixtures/compaction/verify-window-switch.ts"

@@ -14,16 +14,19 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "paths": {
+      "@demicodes/agent/client": ["./packages/agent/src/client-entry.ts"],
       "@demicodes/agent/stdio": ["./packages/agent/src/protocol/stdio-transport.ts"],
-      "@demicodes/shell/storage": ["./packages/shell/src/storage.ts"],
-      "@demicodes/shell/host-fs": ["./packages/shell/src/host-fs.ts"],
-      "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
       "@demicodes/command-loader/build": ["./packages/command-loader/src/build.ts"],
       "@demicodes/host-virtual/node": ["./packages/host-virtual/src/node.ts"],
       "@demicodes/host-virtual/testing": ["./packages/host-virtual/src/testing.ts"],
-      "@demicodes/runner/serve": ["./packages/runner/src/serve/index.ts"],
+      "@demicodes/provider/credentials-pool": ["./packages/provider/src/credentials-pool.ts"],
+      "@demicodes/provider/testing": ["./packages/provider/src/testing.ts"],
       "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
+      "@demicodes/runner/serve": ["./packages/runner/src/serve/index.ts"],
       "@demicodes/runner/testing": ["./packages/runner/src/testing.ts"],
+      "@demicodes/shell/storage": ["./packages/shell/src/storage.ts"],
+      "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
+      "@demicodes/tinybash/testing": ["./packages/tinybash/src/testing.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
