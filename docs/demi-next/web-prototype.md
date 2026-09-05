@@ -108,3 +108,10 @@ completed and failed shell outputs, context summaries, and recoverable error/abo
 states. `prototype/transcripts.ts` owns these typed block fixtures. New conversations
 start empty. Sidebar project and conversation action buttons share a 4px right inset
 and centered 24px targets; conversation actions have a 2px gap.
+
+## Product appearance
+
+The product uses Ink tone, Regular density, Medium radius and Hairline shadows.
+`web-ui/theme/productAppearance.ts` defines the selected axes;
+`web-ui/styles/product-appearance.css` owns their light/dark tokens. The web
+composition root applies the axes and gallery exposes the same Demi preset.

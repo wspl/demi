@@ -4314,3 +4314,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Hairline overlay shadows duplicated the default Carved overlay token in both modes. This was present in the initial gallery commit, while other shadow families remained distinct.
 - Hairline overlays now reuse their own large-surface shadow token, giving them a fine outline and shallow shadow. Carved keeps the shared product default.
 - Gallery typecheck passed. Browser switching confirmed distinct computed menu box-shadow values for Hairline and Carved in light mode.
+
+### M13.1 — Selected product appearance (2026-09-06)
+
+- Applied Ink / Regular / Medium / Hairline to web and the gallery Demi preset. Extracted the selected CSS axis definitions into web-ui so the product and catalog consume one token source, without importing gallery into the product.
+- Three browser package typechecks passed. Browser confirmed the selected gallery axes; the existing gallery page was switched to Demi through its preset control.
