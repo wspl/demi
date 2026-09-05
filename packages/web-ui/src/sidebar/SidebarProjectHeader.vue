@@ -50,14 +50,6 @@ const emit = defineEmits<{
         :aria-label="project.host"
       >
         <Cloud v-if="project.hostKind === 'cloud'" :size="ICON_PX.in20" class="shrink-0" />
-        <span v-else class="flex size-3 shrink-0 items-center justify-center">
-          <span
-            class="size-1.5 rounded-full"
-            :class="project.hostOnline ? 'bg-on-success' : 'bg-fg-faint'"
-            role="img"
-            :aria-label="project.hostOnline ? 'Online' : 'Offline'"
-          />
-        </span>
         <span v-if="project.hostKind !== 'cloud'" class="truncate">{{ project.host }}</span>
       </span>
       <span

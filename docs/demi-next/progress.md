@@ -4275,3 +4275,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Project reveal after drop or cancellation uses smooth scrolling once layout settles. Drag-start positioning stays immediate, and reduced-motion preference disables animated scrolling.
 - Web-ui typecheck passed.
+
+### M13.1 — Plain sidebar host names (2026-09-06)
+
+- Removed the project host status dot and its unused sidebar data field/mapping. Device projects show the host name; Cloud projects retain the cloud icon.
+- Web, web-ui and web-gallery typechecks passed.
