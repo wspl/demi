@@ -1,6 +1,5 @@
 import type { HostSpawnError, HostSpawnHandle } from '@demicodes/shell'
 import { errorMessage, noop } from '@demicodes/utils'
-import { deviceFallback } from './device-env'
 import { JOB_VIEW_BYTES, type BackendToRunnerMessage, type JobOutput, type PipeRef, type RunnerToBackendMessage } from '@demicodes/runner-protocol'
 import type { PipeEnds } from '../pipes'
 
@@ -45,7 +44,11 @@ export interface JobTableOptions {
     readFile(path: string): Promise<Uint8Array>
     rm(path: string): Promise<void>
   }
-  /** Device facts a job's env falls back to when the backend named none: `PATH`, `HOME`. */
+  /**
+   * The environment jobs run in underneath what the backend named: the
+   * device user's own on a user host, the guest's login table on a managed
+   * host. The backend's entries win where both name a key.
+   */
   deviceEnv: Record<string, string>
   /** Directories every job finds first in `PATH`: the root-command symlinks. */
   pathPrefix?: string[]
@@ -122,7 +125,7 @@ export class JobTable {
         args: ['-c', wrapScript(message.script)],
         cwd: message.cwd,
         env: {
-          ...withPathPrefix(deviceFallback(message.env, this.options.deviceEnv), this.options.pathPrefix ?? []),
+          ...withPathPrefix({ ...this.options.deviceEnv, ...message.env }, this.options.pathPrefix ?? []),
           ...this.options.fixedEnv,
           [JOB_CWD_FILE_VAR]: cwdFile,
           [JOB_STDIN_FD_VAR]: String(JOB_STDIN_FD),
@@ -229,7 +232,7 @@ export function wrapScript(script: string): string {
   ].join('\n')
 }
 
-/** Binary resolution and the home directory are device facts (`runner.md` § Responsibilities). */
+/** The root-command symlinks first in `PATH`, whatever `PATH` the device or the backend named (`runner.md` § Jobs and the tee). */
 function withPathPrefix(env: Record<string, string>, prefix: string[]): Record<string, string> {
   if (prefix.length === 0) return env
   const rest = (env.PATH ?? '').split(':').filter((entry) => entry !== '' && !prefix.includes(entry))

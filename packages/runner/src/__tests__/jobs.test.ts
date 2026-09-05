@@ -50,7 +50,7 @@ async function connected() {
       readFile: (path) => readFile(path),
       rm: (path) => rm(path, { force: true }),
     },
-    deviceEnv: { PATH: '/usr/bin:/bin' },
+    deviceEnv: { PATH: '/usr/bin:/bin', DEVICE_FACT: 'from the device', SHARED: 'device' },
     send,
   })
   remote.attach((message) => {
@@ -75,6 +75,15 @@ test('a job runs bash -c on the runner; its output files are the artifact direct
   expect(await readFile(join(result.outputDir!, 'stdout.txt'), 'utf8')).toBe('hello\n')
   expect(existsSync(join(result.outputDir!, 'cwd'))).toBe(false)
   expect(jobs.count).toBe(0)
+})
+
+test('a job runs in the device environment underneath the shell\'s: a device entry reaches it, a backend entry wins, DEMI_HOME is the runner\'s', async () => {
+  const { shell } = await connected()
+  const result = await shell.exec({ script: 'echo "$DEVICE_FACT|$SHARED|$PATH|${DEMI_SESSION_ID:-none}"', timeoutMs: 5_000, agentSessionId: 's1' })
+  expect(result.status === 'exited' && result.stdout.delta).toBe('from the device|device|/usr/bin:/bin|s1\n')
+  const overriding = new RemoteShellEnvironment({ host: (await connected()).remote, initialEnv: { SHARED: 'backend' } })
+  const overridden = await overriding.exec({ script: 'echo "$SHARED|$PATH"', timeoutMs: 5_000 })
+  expect(overridden.status === 'exited' && overridden.stdout.delta).toBe('backend|/usr/bin:/bin\n')
 })
 
 test('the working directory carries between jobs of a shell, an explicit exit included; env does not', async () => {
