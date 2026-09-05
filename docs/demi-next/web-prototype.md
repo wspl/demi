@@ -22,7 +22,8 @@ field owns right-aligned metadata; its indicator owns status-dot size and color.
 The model menu, host menu, project picker and gallery share these row contracts.
 
 `main.ts` composes the app, router and stores, and advances a deterministic
-scripted response clock. The fixture provider's model names are illustrative.
+scripted response clock. The fixture provider's model names are illustrative. Both seeded devices start
+online so main-host switching is available immediately.
 Conversation content and resource edits live in memory and reset on reload.
 Files stay in the browser: image previews use local object URLs, and file
 placement is simulated. No credential fields send or persist secrets.
