@@ -83,7 +83,7 @@ replace it with the new-conversation button on hover using a crossfade. The left
 while hovering and reflects the collapsed/expanded state. A chevron immediately
 after the project name fades in on hover over 150ms and rotates with the fold
 state; idle conversations have no status glyph.
-Cloud workspaces use a cloud icon, while device workspaces show a computer icon
+Cloud workspaces use a cloud icon, while device workspaces show an online/offline status dot
 and hostname, centered beside the workspace name. The sidebar has no prototype
 caption. Menus, dialogs, settings and the entry page omit instructional and
 prototype commentary. Simulation details belong in documentation. Settings expose
@@ -97,3 +97,9 @@ Sidebar ordering and motion follow `sidebar-order.md`. Projects and conversation
 can be reordered by dragging or Alt+Up/Down. The fixture contains 40 conversations
 to exercise scrolling and animation. Ordering follows the supplied arrays, with
 pinned conversations first within each project; activity does not reorder rows.
+
+Seeded conversations include multi-turn text, tables, checklists, code, thinking,
+completed and failed shell outputs, context summaries, and recoverable error/abort
+states. `prototype/transcripts.ts` owns these typed block fixtures. New conversations
+start empty. Sidebar project and conversation action buttons share a 4px right inset
+and centered 24px targets; conversation actions have a 2px gap.

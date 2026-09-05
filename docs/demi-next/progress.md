@@ -4241,3 +4241,10 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Added 40 demo conversations across three groups, including pins and long names. Browser measured 1272px content against a 547px scroll viewport. Removed the old transparent scrollbar style and verified a visible thin thumb.
 - Native HTML drag generated inconsistent dragover behavior in browser automation; implemented pointer-based dragging with the same commit-on-release model. Verified actual conversation and project pointer reorders and Alt+Down. Shared utility tests initially resolved stale compiled utils exports; rebuilt utils, then all checks passed. Restarted the independent preview service after adding the workspace dependency so Vite could resolve it.
 - Validation: 163 scoped web/web-ui/utils and architecture-boundary tests passed; all three browser package typechecks and web build passed. Existing bundle-size warning remains. Coverage and ordering contract are documented in sidebar-order.md.
+
+### M13.1 — Sidebar action alignment, device dots and rich transcripts (2026-09-06)
+
+- Replaced project device computer glyphs with 6px online/offline dots supplied from current device state; cloud projects retain their cloud icon. Gallery includes both status values.
+- Standardized project and conversation action targets to the same 4px right inset, centered their tooltip wrappers, and added a 2px conversation-action gap. Increased title clearance accordingly and aligned the idle pin mark.
+- Populated all 40 seeded conversations with typed content fixtures. Curated examples cover multi-turn text, tables, checklists, code, thinking, successful/failed tool output, context summaries, retry and resume states. New conversations remain empty. Fixture timestamps provide meaningful durations.
+- Browser verification measured identical action bounds (x=207..231) and a 2px gap, and inspected rendered reading/table and web-review/tool/code conversations. 103 scoped web/web-ui tests, browser typechecks and build passed.
