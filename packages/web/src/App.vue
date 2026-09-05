@@ -19,10 +19,6 @@ const router = useRouter()
 const route = useRoute()
 const folded = ref<string[]>([])
 const showArchived = ref(false)
-const sidebarProjects = computed(() => resources.projects.map((project) => ({
-  ...project,
-  hostOnline: project.hostKind === 'cloud' || !!resources.devices.find((device) => device.id === project.deviceId)?.online,
-})))
 const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
 watch(
   () => [activeId.value, showArchived.value, conversations.items.find((item) => item.id === activeId.value)?.unread],
@@ -107,7 +103,7 @@ watch(
       <AppSidebar
         v-model:collapsed-projects="folded"
         :account="account"
-        :projects="sidebarProjects"
+        :projects="resources.projects"
         :conversations="conversations.items.filter((c) => !c.archived)"
         :active-id="activeId"
         :plugins="[]"
