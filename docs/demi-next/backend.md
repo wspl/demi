@@ -63,8 +63,10 @@ config:
 
 Spoken of as modules, not separate services:
 
-- **Conversation module**: AgentServer/AgentSession hosting, transcript
-  persistence, session index, cold-history reads on the same rendering
+- **Conversation module**: AgentServer hosting, the session tree's
+  persistence (the agent's `AgentTreeStore` over the conversation database:
+  node rows, block rows, the three atomic commits — `subagent.md` §
+  Persistence), session index, cold-history reads on the same rendering
   path as live (a full-sync `transcript_reset`), compaction, session
   concurrency via client-owned session ids and the ownership registry;
   the conversation's execution target (`sessions-and-targets.md`) — the

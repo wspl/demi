@@ -8,12 +8,17 @@
 
 ## The session
 
-Every conversation is one AgentSession in the backend plus one metadata row
-(`storage.md`). Its **execution target** is a mutable property; the harness
-resolves the Host per action from it (`AgentHarness.host`, per-Host
-environment reuse, cross-Host handle ownership checks — an existing, tested
-mechanism). Action metadata is not checkpointed: the target comes from the
-backend's conversation record per action.
+Every conversation is one session tree in the backend — a root node and the
+subagent nodes under it, all of one kind (`subagent.md` § Runtime) — plus one
+metadata row (`storage.md`). Its **execution target** is a mutable property
+of the conversation, shared by every node of the tree; the harness resolves
+the Host per action from it (`AgentHarness.host`, per-Host environment reuse,
+cross-Host handle ownership checks — an existing, tested mechanism). Action
+metadata is not checkpointed: the target comes from the backend's
+conversation record per action. The Host is where a node's actions run and
+nothing more: what a node is and remembers lives in the conversation's
+store, injected into the agent, and is readable while the target is offline
+(§ What persists where).
 
 ## The three states
 
@@ -246,12 +251,41 @@ session itself is never lost. An offline target leaves the conversation
 fully readable and chattable, just unable to touch that machine; the user
 may switch it elsewhere.
 
+## Recovery after a backend restart
+
+The turn that was running when the process ended is finished by evidence,
+never by guesswork. The evidence is the transcript's own tool-call block:
+before a tool runs, the checkpoint carrying its `executing` block is flushed
+— the dispatch is durable before the Host is called — and the block is the
+record of the operation: its id, its input, the target the action's metadata
+named, its status.
+
+| Evidence at restore | Behaviour |
+|---|---|
+| the block is not there | the tool was never dispatched; a resume re-infers the turn from its resume point |
+| the block is `executing` | the tool was dispatched and its outcome is unknown: the process died before a result was recorded, the runner killed the job when the socket dropped (`runner.md` § Disconnect semantics) or a hostless script died with the process, and either may have taken partial effect; the call completes with an error result saying so, and **nothing re-runs it** — the model reads the result and decides |
+| the block has a result | the result stands; a resume continues after it |
+
+A subagent node resumes its interrupted turn under that rule by itself; the
+root's is its client's to resume. Commands are the only operations with
+external effect the agent dispatches; a controlled operation the backend
+performs itself — a spawn, a target switch, a file drop — is a store
+transaction, so a repeated request cannot take effect twice. What the
+framework guarantees is that an unknown outcome is never replayed
+automatically; it does not promise that every external effect happens at
+most once, which no local transaction can enclose.
+
 ## What persists where
 
-- **Conversation state** — checkpoints, subagent records, `host_store` —
-  goes through `Host.store` and is backend-local (`storage.md`). The journal
-  (block rows appended during streaming, never a whole-transcript rewrite)
-  is required design.
+- **Conversation state** — the session tree: every node's checkpoint (block
+  rows appended during streaming, never a whole-transcript rewrite), the
+  node rows with their parent links, closes and completion deliveries
+  (`subagent.md` § Persistence) — lives in the conversation's database
+  behind the `AgentTreeStore` the backend injects into the agent
+  (`storage.md`), independent of any Host. `host_store` is the same
+  database's scope for the state root commands keep per node (`demi todo`),
+  reached through the `Host.store` the backend composes into every Host it
+  hands a conversation, so a switch of target never changes who owns it.
 - **Hostless files** live as a tree in the conversation's database with
   their bytes in the blob store, and become the home image at upgrade
   (`storage.md`).

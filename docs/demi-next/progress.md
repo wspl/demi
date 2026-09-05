@@ -3747,6 +3747,53 @@ The single-site findings of the round, each with its test:
   `llms` CI step failed; the list and the links to the deleted guides
   (`SECURITY.md`, the agent and shell READMEs) now name only what exists.
 
+## Session tree (2026-09-05) — in progress
+
+The session architecture proposal (`session-runtime.md`, two revisions
+above) was reviewed against the code and accepted on all three decisions;
+the proposal file is gone and its content lives as final-state design in
+`docs/subagent.md` (§ Persistence, § Runtime), `sessions-and-targets.md`
+(§ The session, § Recovery after a backend restart, § What persists where),
+`storage.md` (the conversation schema, § Pluggability), `backend.md` and
+`package-boundaries.md`. What the review changed or bounded:
+
+- **Uniform nodes.** Verified: root and child were assembled in two places
+  (`server/open-session.ts`, `ChildSupervisor.assembleJob`) with two
+  persistence paths and two restore paths; `subagent.md` claimed AgentServer
+  was the only place instantiating `AgentSession` while the supervisor did
+  too. Final state: one assembly (`node/`), the supervisor a relationship
+  module that asks it for children; the differences are configuration and a
+  two-flag lifecycle policy (resume interrupted, close when done).
+- **Session-owned storage.** Verified: the backend's root checkpoint was one
+  SQLite transaction while children went through `hostAgentSessionStore`'s
+  per-key writes; the root needed a provisional Host to reach its store; a
+  child's close row was written after its final checkpoint with the parent's
+  wakeup living only in memory. Final state: the `AgentTreeStore` contract
+  (node rows, per-node journals, create/save/close as commits, completion
+  delivery recorded by the parent's own save), the backend's realization
+  over `nodes` and `blocks(node_id, idx)`, no Host in the storage path. The
+  proposal's "close commits the final state and the completion together" is
+  realized as two commits — the session's final flush, then the close row —
+  because the restore rule closes a quiescent live node with the same result,
+  which makes the two orders indistinguishable; cheaper than teaching the
+  session to hand its pending journal to a foreign transaction.
+- **Recovery by evidence.** Verified: `recovery.ts` already treats an
+  executing tool call as landed and `fromCheckpoint` completes it with an
+  interrupted error, so the framework never replayed; what was missing was a
+  durable dispatch — `commitTranscript` throttles, so the executing block
+  could be lost with the process. Final state: the checkpoint is flushed
+  before a tool runs. Bounded: "confirm it is still running and keep
+  observing" is impossible while the runner kills jobs on disconnect and the
+  guest reconcile kills leftover VMs; both are deliberate designs, and
+  changing them (jobs surviving a socket drop, re-adopting a running guest)
+  is a separate decision, logged under open items.
+
+Also folded: the root's queued messages are restored (they were dropped);
+children get the harness's `resolveReferences` and `lifecycle` hooks the
+root had; the `list_conversations` frame goes with the Host-store listing
+(the backend's conversation index is the list; `web-ui`'s use of it was dead
+code from the deleted local product).
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
@@ -3760,3 +3807,9 @@ The single-site findings of the round, each with its test:
 - A file named like an option matched by a glob in a builtin's operands
   reaches a flag the whitelist excludes only at run time (see the
   namespace entry above); reported as an error, not upgraded.
+- Execution evidence beyond the dispatch record: a runner job surviving a
+  socket drop and re-attached by id from its tee files, and the guest
+  reconcile re-adopting a running VM instead of killing and saving it. Both
+  change deliberate designs (`runner.md` § Disconnect semantics,
+  `managed-hosts.md`); until then a command whose process died has an
+  unknown outcome by definition (`sessions-and-targets.md` § Recovery).

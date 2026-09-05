@@ -17,12 +17,15 @@ follows the write-frequency line:
   is one ledger row per provider request), read-heavy (auth check per
   request, absorbed by a short-TTL token cache).
 - **`conversations/<id>.sqlite`** — one file per conversation, the data
-  plane: the transcript as **one row per block** (the journal — streaming
-  persists by appending block rows, never by rewriting a checkpoint JSON),
-  plus session state, that conversation's `host_store` scope, and the
-  **tree** of its hostless filesystem (paths and metadata; the bytes are
-  in the blob store). High write rate, but each file has exactly one
-  writer and the files never contend. The process keeps an LRU of open
+  plane: the session tree — one **node** row per agent (the root and every
+  subagent under it: parent link, profile, spawn metadata, close and
+  completion delivery) with each node's state row, and each node's
+  transcript as **one row per block** (the journal — streaming persists by
+  appending block rows, never by rewriting a checkpoint JSON) — that
+  conversation's `host_store` scope, and the **tree** of its hostless
+  filesystem (paths and metadata; the bytes are in the blob store). High
+  write rate, but each file has exactly one writer and the files never
+  contend. The process keeps an LRU of open
   handles (64): a cold history read holds one only until other
   conversations are touched, and a conversation in use is always the most
   recent; the objects handed out for a conversation are stable and reopen
@@ -178,17 +181,30 @@ usage_ledger            id, user_id, conversation_id, provider_id, model_id,
 attachments             id, user_id, media_type, size_bytes, sha256, created_at
 ```
 
-`conversations/<id>.sqlite` (shape owned by the agent persistence
-contract):
+`conversations/<id>.sqlite` (shape owned by the agent's `AgentTreeStore`
+contract, `subagent.md` § Persistence; the root node's id is the
+conversation id):
 
 ```
-blocks           one row per transcript block, append-only during streaming
-session state    checkpoint fields other than the transcript
+nodes            id, parent_id(NULL for the root), description, profile_name(NULL), metadata_json(NULL),
+                 spawned_at, can_spawn, closed_phase(NULL while live), closed_at, result, delivered,
+                 state_json, block_count
+                 ← state_json: the checkpoint fields other than the transcript (phase, queue, cwd, model, harness)
+                 ← delivered: the parent has taken the completion (its checkpoint carries the wakeup,
+                   the spawn command returned it, or the product took the closed frame)
+blocks           node_id, idx, block_json  ← one row per transcript block, append-only during streaming
 host_store       scope, key, value_json  ← this conversation's scope
 files            path, kind(file|dir), mode, mtime, size, sha256(NULL for dir)
                  ← the hostless filesystem's tree; bytes in the blob store by sha256;
                    emptied once the conversation has a home image
 ```
+
+Create, save and close are each one transaction (`subagent.md` §
+Persistence): a node row is inserted with its initial state and its first
+message queued; a save writes the changed block rows, the state row, and
+marks delivered every child completion the state row now carries; a close
+writes the phase, time and result. Deleting a node deletes its descendants
+and their rows.
 
 ## The hostless filesystem and the home image
 
@@ -230,11 +246,13 @@ query time.
 
 ## Pluggability
 
-- Conversation state is fully behind `HostStore` (four methods) —
-  checkpoints and subagent records. The backend implements a DB-backed
-  `HostStore` and composes it into every Host it hands the harness. The
-  DB-backed store provides atomic `writeJson` and serves `list` and bulk
-  reads efficiently.
+- Conversation state is behind the agent's `AgentTreeStore` contract: the
+  backend's realization over the conversation database, one per
+  conversation, handed to `AgentServer` by root session id. It knows no
+  Host. The `HostStore` (four methods) remains the contract for what root
+  commands keep per node: the backend's DB-backed `HostStore` over the same
+  database's `host_store` table is composed into every Host it hands the
+  harness, with atomic `writeJson` and indexed `list`.
 - The hostless filesystem is behind the `Host` fs contract
   (`@demicodes/host-virtual` over the `files` tree and the blob store).
 - The blob store is put/get by content hash within a user namespace, with
