@@ -4259,3 +4259,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Removed the contrasting boxed letter mark from the shared sidebar header; the expanded header retains the Demi name and collapse control.
 - Web-ui typecheck passed.
+
+### M13.1 — Always-expanded sidebar (2026-09-06)
+
+- Shared sidebar stays at its full width. Removed the collapse model, collapse/expand buttons, icon-rail branches in navigation/account components, and the gallery rail specimen. Project groups retain their independent fold behavior; mobile navigation uses its existing drawer.
+- Web, web-ui and web-gallery typechecks passed.
