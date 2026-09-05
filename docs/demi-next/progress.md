@@ -3843,6 +3843,29 @@ realization against the same contract, all scenarios), runner 19, core 30
 (the guard now names `node/assemble.ts`), host-virtual 32, coding-agent 32;
 `typecheck` and `typecheck:web` clean.
 
+## M13 groundwork — web-gallery integration (2026-09-05)
+
+Status: integrated the squashed web-gallery branch into demi-next. The gallery and
+shared session UI are present; M13's backend-connected web product remains planned.
+The virtual MenuItem forwards caller attributes to its row container, preserving
+absolute positioning and translation when the menu scrolls.
+
+Integration pitfalls: retain demi-next's package graph and scripts, keep the removed
+REPL and embedded web server absent, and regenerate the lockfile from the merged
+workspace manifests. Register the gallery alongside the other browser packages in
+the manifest-level boundary checks; its sample code strings are not production
+imports. The activity kind belongs to the turn-flow TypeScript contract and is
+consumed by the Vue slot component. The user requested deleting the standalone
+web-ui test coverage document. Main was restored to 92e852ea after the gallery was
+mistakenly merged there; gallery remains one squashed feature commit.
+
+Verification: root and all three browser typechecks pass; core and web-ui tests
+pass (119). The initial scoped provider/UI/core run passed 310 tests with 9 real
+provider tests skipped; its two boundary failures were resolved by the browser
+package registration and passed in the scoped rerun. The gallery build required
+refreshing the local utils build artifact to expose its current source exports;
+the production build then passed.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:

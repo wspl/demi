@@ -30,7 +30,7 @@ export function openAIApiDefaultModels(providerId = 'openai'): ProviderModelList
         supportsAttachments: true,
         supportsReasoning: true,
         supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
-        serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
+        serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage', fast: true }],
       },
       {
         id: 'gpt-5.4',
@@ -41,7 +41,7 @@ export function openAIApiDefaultModels(providerId = 'openai'): ProviderModelList
         supportsAttachments: true,
         supportsReasoning: true,
         supportedThinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
-        serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage' }],
+        serviceTiers: [{ id: 'priority', label: 'Fast', description: '1.5x speed, increased usage', fast: true }],
       },
       {
         id: 'gpt-5.4-mini',

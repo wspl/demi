@@ -32,5 +32,5 @@
     }
   },
   "include": ["packages/*/src"],
-  "exclude": ["packages/web-ui", "packages/web"]
+  "exclude": ["packages/web-ui", "packages/web", "packages/web-gallery"]
 }

@@ -42,28 +42,7 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
     }
   }
 
-  async function handleSteerSubmit(): Promise<void> {
-    const content = params.buildSubmitPayload()
-    if (!content) return
-    params.clearInput()
-    try {
-      await params.workspace.steer(params.conversationId, content)
-    } catch (error) {
-      reportError('Failed to steer turn', error, { userVisible: true })
-    }
-  }
-
-  async function handleQueueSubmit(): Promise<void> {
-    const content = params.buildSubmitPayload()
-    if (!content) return
-    params.clearInput()
-    try {
-      await params.workspace.send(params.conversationId, content)
-    } catch (error) {
-      reportError('Failed to queue message', error, { userVisible: true })
-    }
-  }
-
+  /** Service tiers are per model: the switch clears the tier, and the selector re-applies the new model's Fast tier when Fast Mode is on. */
   function handleSelectModel(providerId: string, modelId: string): void {
     const current = params.workspace.sessions[params.conversationId]?.model
     params.workspace.setModel(params.conversationId, {
@@ -80,6 +59,12 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
     params.workspace.setModel(params.conversationId, { ...current, thinkingEffort: thinkingConfigToEffort(config) })
   }
 
+  function handleChangeServiceTier(serviceTierId: string | null): void {
+    const current = params.workspace.sessions[params.conversationId]?.model
+    if (!current) return
+    params.workspace.setModel(params.conversationId, { ...current, serviceTierId })
+  }
+
   function handleAbort(): void {
     void params.workspace.abort(params.conversationId).catch((error) => {
       reportError('Failed to abort conversation', error, { userVisible: true })
@@ -92,5 +77,5 @@ export function useAgentInputActions(params: UseAgentInputActionsParams) {
     })
   }
 
-  return { handleSubmit, handleSteerSubmit, handleQueueSubmit, handleSelectModel, handleChangeThinking, handleAbort, handleCompact }
+  return { handleSubmit, handleSelectModel, handleChangeThinking, handleChangeServiceTier, handleAbort, handleCompact }
 }

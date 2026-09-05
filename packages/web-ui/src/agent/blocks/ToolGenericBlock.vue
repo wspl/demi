@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FlashLine } from '@mingcute/vue/flash'
+import { Zap } from '@lucide/vue'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
@@ -34,10 +35,10 @@ const detail = computed(() => {
     :label="block.toolName"
     :detail="detail"
     :loading="block.status === 'executing'"
-    :error="block.status === 'error'"
+    :tone="block.status === 'error' ? 'danger' : undefined"
   >
     <template #icon>
-      <FlashLine :size="16" />
+      <Zap :size="ICON_PX.in28" />
     </template>
   </FunctionalBlock>
 </template>
