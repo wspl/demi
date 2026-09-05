@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed, inject, provide, ref, watch } from 'vue'
+import { onKeyStroke } from '@vueuse/core'
+import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayContainerKey } from '../overlay/overlayContainer'
 import { useOverlay } from '../composables/useOverlay'
@@ -7,6 +9,8 @@ import { useOverlay } from '../composables/useOverlay'
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
+  size?: 'md' | 'lg'
+  label?: string
 }>()
 
 const emit = defineEmits<{
@@ -16,6 +20,17 @@ const emit = defineEmits<{
 // A dialog confined to a host container never blocks the page, so it is not exclusive.
 const container = inject(overlayContainerKey, null)
 const teleportTarget = computed(() => container?.value ?? 'body')
+const panel = ref<HTMLElement>()
+const family = createOverlayFamily()
+provide(overlayFamilyKey, family)
+watch(panel, (element, _previous, onCleanup) => {
+  if (element) onCleanup(family.register(element))
+})
+onKeyStroke('Escape', (event) => {
+  if (!props.isOpen || container) return
+  event.preventDefault()
+  emit('close')
+})
 
 useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
   if (props.isOpen) emit('close')
@@ -43,7 +58,12 @@ useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
           leave-to-class="opacity-0 scale-95"
         >
           <div
-            class="overlay-shell w-full max-w-md rounded-xl"
+            ref="panel"
+            class="overlay-shell max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-xl"
+            :class="size === 'lg' ? 'max-w-3xl' : 'max-w-md'"
+            role="dialog"
+            aria-modal="true"
+            :aria-label="label"
           >
             <slot />
           </div>

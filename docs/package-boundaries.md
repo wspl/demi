@@ -243,7 +243,7 @@ Test code may depend upward for integration coverage. Production code must not.
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
-  Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, and a
+  Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
   by supplying an `AgentClient` and a control client. External products consume the published
@@ -254,6 +254,23 @@ Test code may depend upward for integration coverage. Production code must not.
 - Enforcement: because the components are `.vue` (not scanned by the `.ts` boundary test),
   the web-ui boundary is enforced at the package-manifest level (no Node/adapter/provider
   dependencies declared), not by the production import-graph scan.
+
+### `@demicodes/web`
+
+- Status: frontend prototype in development (M13.1).
+- Production deps: `@demicodes/web-ui`, `@demicodes/core`.
+- Owns: the Vue SPA application frame, route navigation, product state and frontend
+  prototype workflows. Vue 3 + TypeScript + Vite, vue-router, Pinia and Tailwind 4.
+- Public boundary: `bun run web:dev` and `bun run web:build`; no published library API.
+- Layout: `main.ts` is the only composition root (app, router, stores and simulation
+  clock); `App.vue` is the application frame; `conversation/` owns chat state and
+  containers; `targets/` owns environment selection; `settings/` owns settings
+  containers; `auth/` owns the entry experience; `prototype/` owns local fixture
+  data and simulated resource state. Reusable UI belongs to `web-ui`.
+- Prototype boundary: the prototype uses browser-local state and scripted responses;
+  it does not import backend code, use provider transports or call real models.
+  Production backend integration belongs to M13.3.
+- Must not: import `web-gallery`, Node, Host implementations or concrete providers.
 
 ### `@demicodes/web-gallery`
 
@@ -295,9 +312,10 @@ runner -> command-loader, runner-protocol, shell, utils
 backend -> agent, coding-agent, command-loader, core, host-remote, host-virtual, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, core, utils
 web-gallery -> web-ui, core
+web -> web-ui, core
 ```
 
-`web-ui` and `web-gallery` are browser/product packages built with Vite/Vue; their internal source
+`web-ui`, `web-gallery` and `web` are browser/product packages built with Vite/Vue; their internal source
 is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not scan them as
 production source. `web-ui`'s outward boundary (no Node/adapter/provider dependencies) is
 enforced at the manifest level by that test..

@@ -3913,3 +3913,50 @@ Updated roadmap acceptance and verification coverage for all three parts,
 product delivery guidance and the backend API baseline wording. Removed stale
 product text about retaining a web-demo. Verification: documentation diff and
 cross-record consistency review; no runtime code changed or tests run.
+
+
+### M13.1 — Application prototype, first checkpoint (2026-09-05)
+
+Status: implementation in progress on `codex/web-prototype`.
+
+Owner direction: start the prototype in `packages/web`; select the stack first.
+The stack follows the product record and existing browser packages: Vue 3,
+TypeScript, Vite, vue-router, Pinia, Tailwind 4 and `web-ui`. The application
+uses in-memory fixtures and a scripted simulation clock; no backend or model
+connection. Refresh restores fixture state; appearance uses web-ui's theme store.
+
+The first checkpoint covers the app frame, shared gallery sidebar, conversation
+tabs, scripted streaming with queue/stop/retry, archive/restore, project selection
+and creation, attached-device selection, attachments, settings and a demo entry
+screen. Sidebar presentation moves into `web-ui`; fixture data stays in gallery.
+Pinning, deletion and extensions remain outside this checkpoint's product UI.
+
+Owner feedback: compressed HTML and Vue source was not acceptable. Format the
+entry HTML and source as ordinary readable multiline code before verification.
+
+Owner review identified a more significant mistake: the initial application
+invented controls and layout despite the gallery baseline. Removed the custom
+tabs, message list, composer, dialogs and generic control CSS. The app now uses
+shared AgentTabItem, AgentMessageList, SessionSurface/SessionDock and UI controls.
+Extracted SessionComposer so gallery, application and AgentMessageInput share
+the input presentation. Sidebar presentation also has one implementation in
+web-ui. The app retains domain state and wiring only.
+
+Browser review exposed an empty attachment slot affecting capsule geometry,
+optional boolean props masking draft state, and nested dropdowns dismissing
+their parent dialog. Fixed those in shared components, using the existing
+overlay family mechanism for dialog children. Checked desktop, 390px layout,
+multiline input, light/dark appearance and nested settings menus.
+
+Remaining M13.1 coverage: full setup/login/password/admin forms, directory browsing
+and creation, provider vendor/custom/subscription forms, detailed usage, attached
+host rename, interactive command stdin, steering and final baseline interaction
+review. These need prototype work before M13.1 acceptance; this checkpoint does
+not claim the milestone complete. M13.2 additions are still undecided.
+
+Verification: all three browser package typechecks and 124 scoped core/web-ui/web
+tests passed. Application and gallery production builds passed (both report the
+existing large-chunk warning); browser walkthroughs cover
+scripted send/recovery, navigation and the shared controls above. No real-model
+tests. This checkpoint remains partial M13.1 coverage pending the listed flows
+and owner review of the corrected baseline.

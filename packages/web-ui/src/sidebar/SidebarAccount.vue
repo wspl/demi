@@ -8,7 +8,7 @@ import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SidebarAccount } from './sidebar-data'
+import type { SidebarAccount } from './types'
 
 /** The signed-in user at the foot of the sidebar; the menu behind it holds settings and sign-out. */
 const props = defineProps<{

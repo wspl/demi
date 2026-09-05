@@ -23,22 +23,25 @@
     "packages/host-remote",
     "packages/runner",
     "packages/web-ui",
-    "packages/web-gallery"
+    "packages/web-gallery",
+    "packages/web"
   ],
   "scripts": {
     "check:registry": "bun run scripts/check-public-registry.ts",
     "typecheck": "tsgo --noEmit",
-    "typecheck:web": "bun --filter @demicodes/web-ui typecheck && bun --filter @demicodes/web-gallery typecheck",
+    "typecheck:web": "bun --filter @demicodes/web-ui typecheck && bun --filter @demicodes/web-gallery typecheck && bun --filter @demicodes/web typecheck",
     "build": "bun --filter '@demicodes/*' build",
     "llms": "bun run scripts/build-llms.ts",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/tinybash/src packages/command-loader/src packages/runner-protocol/src packages/host-remote/src packages/host-virtual/src packages/runner/src packages/backend/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/provider-google/src packages/provider-grok-build/src packages/web-ui/src",
+    "test": "bun test --conditions development packages/utils/src packages/core/src packages/provider/src packages/agent/src packages/shell/src packages/tinybash/src packages/command-loader/src packages/runner-protocol/src packages/host-remote/src packages/host-virtual/src packages/runner/src packages/backend/src packages/coding-agent/src packages/provider-codex/src packages/provider-claude-code/src packages/provider-openai-api/src packages/provider-anthropic-api/src packages/provider-google/src packages/provider-grok-build/src packages/web-ui/src packages/web/src",
     "fixtures:compaction:build": "bun run packages/agent/fixtures/compaction/build-fixture.ts",
     "fixtures:compaction:verify": "bun run packages/agent/fixtures/compaction/verify-compaction.ts",
     "fixtures:compaction:verify-switch": "bun run packages/agent/fixtures/compaction/verify-window-switch.ts",
-    "web:gallery": "bun --filter @demicodes/web-gallery dev"
+    "web:gallery": "bun --filter @demicodes/web-gallery dev",
+    "web:dev": "bun --filter @demicodes/web dev",
+    "web:build": "bun --filter @demicodes/web build"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",

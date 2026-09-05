@@ -4,7 +4,7 @@ import { Ellipsis, Pin } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SidebarConversation } from './sidebar-data'
+import type { SidebarConversation } from './types'
 
 /** Matches the row's hover margin transition, so the marquee measures the settled width. */
 const HOVER_SETTLE_MS = 220
@@ -23,6 +23,7 @@ const props = defineProps<{
   /** The row's menu is showing, so it stays lit and its actions stay out. */
   menuOpen: boolean
   renaming: boolean
+  hidePin?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -137,7 +138,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       :class="menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'"
     >
       <Tooltip :content="conversation.pinned ? 'Unpin' : 'Pin'">
-        <IconButton :icon="Pin" size="sm" variant="ghost" :pressed="conversation.pinned" @click.stop="emit('togglePin')" />
+        <IconButton v-if="!hidePin" :icon="Pin" size="sm" variant="ghost" :pressed="conversation.pinned" @click.stop="emit('togglePin')" />
       </Tooltip>
       <IconButton :icon="Ellipsis" size="sm" variant="ghost" :pressed="menuOpen" @click.stop="emit('menu', $event)" />
     </span>

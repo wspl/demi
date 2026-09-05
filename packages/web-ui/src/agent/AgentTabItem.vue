@@ -15,7 +15,7 @@ const TAB_TRANSITION = 'max-width 200ms ease-out, min-width 200ms ease-out, padd
 const DRAG_TRANSITION = 'transform 120ms ease'
 
 const props = defineProps<{
-  tab: ConversationState
+  tab: Pick<ConversationState, 'id' | 'title'>
   isActive: boolean
   status: ConversationStatus
   isClosing: boolean

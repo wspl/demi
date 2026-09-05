@@ -4,10 +4,12 @@ import { Archive, ArrowRight, FolderInput, Pencil, Pin, PinOff, Trash2 } from '@
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
-import type { SidebarConversation, SidebarProject } from './sidebar-data'
+import type { SidebarConversation, SidebarProject } from './types'
 
 /** The menu for whatever is selected: one row gets open and rename, any count gets pin, move, archive, delete. */
 const props = defineProps<{
+  hidePin?: boolean
+  hideDelete?: boolean
   targets: SidebarConversation[]
   projects: SidebarProject[]
 }>()
@@ -38,6 +40,7 @@ const many = computed(() => (props.targets.length > 1 ? ` ${props.targets.length
       <MenuItem :icon="Pencil" label="Rename" shortcut="F2" @select="emit('rename', single.id)" />
     </template>
     <MenuItem
+      v-if="!hidePin"
       :icon="allPinned ? PinOff : Pin"
       :label="`${allPinned ? 'Unpin' : 'Pin'}${many}`"
       shortcut="⌘⇧P"
@@ -66,7 +69,7 @@ const many = computed(() => (props.targets.length > 1 ? ` ${props.targets.length
       </template>
     </MenuItem>
     <MenuItem :icon="Archive" :label="`Archive${many}`" @select="emit('archive', ids)" />
-    <MenuDivider />
-    <MenuItem :icon="Trash2" :label="`Delete${many}`" shortcut="⌫" is-danger @select="emit('remove', ids)" />
+    <MenuDivider v-if="!hideDelete" />
+    <MenuItem v-if="!hideDelete" :icon="Trash2" :label="`Delete${many}`" shortcut="⌫" is-danger @select="emit('remove', ids)" />
   </Menu>
 </template>
