@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Blocks, FolderPlus, Settings, SquarePen, WandSparkles } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
@@ -61,10 +61,15 @@ const emit = defineEmits<{
 const collapsedProjects = defineModel<string[]>('collapsedProjects', { default: () => [] })
 const renamingId = ref<string | null>(null)
 const listRef = ref<HTMLElement>()
+const drag = useSidebarDrag(listRef, () => props.projects, () => props.conversations, (request) => emit('reorder', request))
 
 const plain = computed(() => plainConversations(props.conversations))
 const groups = computed(() => projectGroups(props.projects, props.conversations))
-const foldedSet = computed(() => new Set(collapsedProjects.value))
+const foldedSet = computed(() => new Set(
+  drag.source.value?.kind === 'project'
+    ? props.projects.map((project) => project.id)
+    : collapsedProjects.value,
+))
 const entries = computed(() => visibleEntries(plain.value, groups.value, foldedSet.value))
 const byId = computed(() => new Map(props.conversations.map((conversation) => [conversation.id, conversation])))
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
@@ -74,9 +79,28 @@ const displayEntries = computed(() => [
   { kind: 'heading' as const, id: 'projects-heading' },
   ...entries.value.filter((entry) => entry.kind === 'project' || entry.projectId !== null),
 ])
-const drag = useSidebarDrag(listRef, () => props.projects, () => props.conversations, (request) => emit('reorder', request))
 const enabledPlugins = computed(() => props.plugins.filter((plugin) => plugin.enabled).length)
 const enabledSkills = computed(() => props.skills.filter((skill) => skill.enabled).length)
+
+// Folding is transient; reveal the source again after layout has settled on drop or cancellation.
+watch(drag.source, async (source, previous, onCleanup) => {
+  const project = source?.kind === 'project' ? source : previous?.kind === 'project' ? previous : null
+  if (!project) return
+  let cancelled = false
+  onCleanup(() => { cancelled = true })
+  await nextTick()
+  const container = listRef.value
+  const row = Array.from(container?.querySelectorAll<HTMLElement>('[data-sidebar-kind="project"]') ?? [])
+    .find((element) => element.dataset.sidebarId === project.id)
+  if (!container || !row) return
+  await Promise.allSettled(row.getAnimations().map((animation) => animation.finished))
+  if (cancelled || !row.isConnected) return
+  const bounds = container.getBoundingClientRect()
+  const item = row.getBoundingClientRect()
+  const delta = item.top < bounds.top ? item.top - bounds.top
+    : item.bottom > bounds.bottom ? item.bottom - bounds.bottom : 0
+  if (delta) container.scrollBy({ top: delta, behavior: 'instant' })
+})
 
 function isFolded(projectId: string): boolean {
   return foldedSet.value.has(projectId)
@@ -364,7 +388,7 @@ function selectProjectConversations(project: SidebarProject): void {
 }
 .sidebar-items-enter-from,
 .sidebar-items-leave-to { opacity: 0; }
-.sidebar-items-leave-active { position: absolute; width: 100%; }
+.sidebar-items-leave-active { position: absolute; width: 100%; pointer-events: none; }
 .drop-before::before,
 .drop-after::after {
   content: '';

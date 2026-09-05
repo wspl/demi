@@ -4264,3 +4264,9 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Shared sidebar stays at its full width. Removed the collapse model, collapse/expand buttons, icon-rail branches in navigation/account components, and the gallery rail specimen. Project groups retain their independent fold behavior; mobile navigation uses its existing drawer.
 - Web, web-ui and web-gallery typechecks passed.
+
+### M13.1 — Temporary project folding during drag (2026-09-06)
+
+- Project drag derives an all-folded view while retaining the saved project fold preferences. Drop, Escape and pointer cancellation restore that view; after header motion settles, the dragged project is revealed in the sidebar viewport.
+- Recompute drop targets every animation frame during layout changes. Exiting rows cannot intercept pointer hit testing.
+- Web-ui typecheck and four sidebar ordering tests passed. Browser smoke check confirmed project expansion is restored after pointer release; automated short drags did not establish a successful reordered drop, so destination scrolling still needs interactive acceptance.
