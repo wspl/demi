@@ -3534,6 +3534,47 @@ implementations, Web runtime review and real-model tests stayed outside
 this synchronization's verification. The fetched main head was rechecked
 as `92e852ea` before completing the merge.
 
+## Session architecture proposal (2026-09-05) — design review pending
+
+Scope: the user selected checkpoint consistency, Host/state separation and
+execution recovery for design work. Global agent budgets, hostless upgrade
+tradeoffs and multi-worker topology are outside this proposal. The user
+requires root agents and descendants to be architecturally isomorphic,
+with shared mechanisms, explicit ownership and strong maintainability.
+
+Verified current seams before proposing changes:
+
+- `server/open-session.ts` and `subagent/supervisor.ts` each assemble
+  sessions, tools, environments and event subscriptions. `LiveSession`
+  and `ChildJob` own parallel sets of runtime resources.
+- Backend root checkpoints commit blocks and state in one SQLite
+  transaction. Child checkpoints use `hostAgentSessionStore`, whose
+  per-key writes do not make a checkpoint atomic. Child close metadata
+  is written separately from its final checkpoint.
+- Session opening resolves a provisional Host before loading state;
+  child Host resolution substitutes the root identity. Host-bound stores
+  carry conversation state even when execution occurs on another target.
+- `commitTranscript` schedules a throttled write; awaiting it is not a
+  durable pre-dispatch barrier. Restoring pending tool calls substitutes
+  interrupted errors without consulting an execution receipt.
+- Remote disconnect finishes local job handles with a synthetic failure;
+  the current shell status contract has no explicit unknown outcome.
+
+The standalone proposal is `docs/demi-next/session-runtime.md`. It defines
+one node assembly and lifecycle, explicit scope/session/parent identities,
+flat per-session rows in the conversation database, atomic domain commits,
+Host-independent storage, uniform node events, transactional message and
+completion delivery, and operation evidence for recovery. It distinguishes
+a completed tool observation from a still-running command, cancellation
+intent from confirmed termination, and atomic domain deduplication from
+arbitrary external effects. It does not promise exactly-once shell execution.
+
+Status: proposal written for user review; no runtime implementation or
+canonical package-boundary change. No tests were run for this documentation
+checkpoint. Runnable call sites and storage/protocol interfaces were read
+directly; documentation diff/whitespace checks passed. Implementation
+acceptance coverage is specified in the proposal, not reported as passing.
+
 ## Open items (deferred, with their milestone)
 
 - tinyjs CI, toolchain pinning, size and cold-start assertions (owner:
