@@ -1,3 +1,4 @@
+import { memoryAgentStores } from '../testing'
 import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -90,7 +91,7 @@ test('switching Host between turns injects a context block and keeps one continu
       ]),
   })
 
-  const server = new AgentServer({ shellEnvironment: hostlessShellFactory, agent: harness, providers: [provider] })
+  const server = new AgentServer({ store: memoryAgentStores(), shellEnvironment: hostlessShellFactory, agent: harness, providers: [provider] })
   const client = server.client()
   const shellOutputs: ClientSessionEvent[] = []
   client.subscribe((event) => {

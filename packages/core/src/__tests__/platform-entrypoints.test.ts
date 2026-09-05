@@ -91,7 +91,7 @@ test('only AgentServer imports AgentSession as a runtime value outside tests', a
     const relativeFile = formatPath(file)
     const source = await readFile(file, 'utf8')
     if (!hasRuntimeImportFromAgent(source, 'AgentSession')) continue
-    if (relativeFile !== 'packages/agent/src/server/open-session.ts') violations.push(relativeFile)
+    if (relativeFile !== 'packages/agent/src/node/assemble.ts') violations.push(relativeFile)
   }
 
   expect(violations).toEqual([])

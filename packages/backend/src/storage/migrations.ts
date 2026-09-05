@@ -124,27 +124,43 @@ CREATE TABLE attachments (
 ]
 
 /**
- * Per-conversation database: the transcript as one row per block, the session
- * state row, that conversation's host_store scope, and the hostless
- * filesystem's tree (`storage.md` § The hostless filesystem and the home
- * image) — bytes in the blob store by sha256, emptied once the conversation
- * has a home image. Media bytes never appear in block_json — they live in the
- * blob store as content-addressed refs.
+ * Per-conversation database: the session tree — one node row per agent (the
+ * root, whose id is the conversation's, and every subagent under it) with
+ * its state row, and each node's transcript as one row per block
+ * (`subagent.md` § Persistence) — that conversation's host_store scope, and
+ * the hostless filesystem's tree (`storage.md` § The hostless filesystem and
+ * the home image) — bytes in the blob store by sha256, emptied once the
+ * conversation has a home image. Media bytes never appear in block_json —
+ * they live in the blob store as content-addressed refs.
  */
 export const CONVERSATION_MIGRATIONS: Migration[] = [
   {
     id: 1,
     name: 'init',
     sql: `
-CREATE TABLE blocks (
-  idx        INTEGER PRIMARY KEY,
-  block_json TEXT NOT NULL
+CREATE TABLE nodes (
+  id            TEXT PRIMARY KEY,
+  parent_id     TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+  description   TEXT NOT NULL,
+  profile_name  TEXT,
+  metadata_json TEXT,
+  spawned_at    INTEGER NOT NULL,
+  can_spawn     INTEGER NOT NULL,
+  closed_phase  TEXT CHECK (closed_phase IN ('completed', 'aborted', 'error')),
+  closed_at     INTEGER,
+  result        TEXT,
+  failure       TEXT,
+  delivered     INTEGER NOT NULL DEFAULT 0,
+  state_json    TEXT NOT NULL,
+  block_count   INTEGER NOT NULL
 );
+CREATE INDEX idx_nodes_parent ON nodes(parent_id, spawned_at);
 
-CREATE TABLE session (
-  id          INTEGER PRIMARY KEY CHECK (id = 1),
-  state_json  TEXT NOT NULL,
-  block_count INTEGER NOT NULL
+CREATE TABLE blocks (
+  node_id    TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  idx        INTEGER NOT NULL,
+  block_json TEXT NOT NULL,
+  PRIMARY KEY (node_id, idx)
 );
 
 CREATE TABLE host_store (

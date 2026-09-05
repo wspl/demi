@@ -2229,3 +2229,34 @@ function withTimeout<T>(promise: Promise<T>): Promise<T> {
     )
   })
 }
+
+test('a tool call is in the store before its tool runs', async () => {
+  const store = new MemorySessionStore<{ toolCalls: number }>()
+  let atDispatch: string[] = []
+  const provider = new StubProvider([
+    [events.toolCall('tool-1', 'count_tool', {}), events.response()],
+    [events.text('done'), events.response()],
+  ])
+  const runtime = createRuntime({
+    tools: () => [
+      {
+        name: 'count_tool',
+        description: 'Reads what the store holds when it is called.',
+        inputSchema: { type: 'object' },
+        invoke: () => {
+          atDispatch = (store.snapshots.at(-1)?.transcript.blocks ?? []).map((block) =>
+            block.type === 'tool_call' ? `${block.type}:${block.status}` : block.type,
+          )
+          return { output: [{ type: 'text', text: 'counted' }] }
+        },
+      },
+    ],
+  })
+  // A long persist interval: only the barrier can have written the call before the tool ran.
+  const session = createSession(provider, runtime, undefined, model, { store, persistIntervalMs: 60_000 })
+
+  await session.send(text('count once'))
+
+  expect(atDispatch).toContain('tool_call:executing')
+  expect(store.snapshots.at(-1)?.phase).toBe('idle')
+})

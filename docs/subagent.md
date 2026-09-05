@@ -432,15 +432,17 @@ quiescent — idle, empty inbox, no live children — and the next restore
 closes it with the same result, so the two orders cannot be told apart.
 
 **Completion delivery.** A closed child's result reaches its parent on one
-of three paths, and the store records that it has: the parent was busy —
-blocked in the spawn, or elsewhere in a turn — and the spawn command's exit
-carries the result; the parent was idle and receives a user message whose id
-names the child, and the parent's save that carries that message, queued or
-as its user turn, marks the completion delivered in the same commit; or the
-product took it from the `closed` frame (`notifyParentOnIdle: false`, root
-level only). A restore delivers every completion still marked undelivered as
-the idle wakeup message. A completion is therefore never lost between the
-child's close and the parent's next checkpoint, and never delivered twice.
+of three paths, and the store records that it has: the parent was busy with
+the spawn command still awaiting the child in this process, and that
+command's exit carries the result; the product took it from the `closed`
+frame (`notifyParentOnIdle: false`, root level only); otherwise the parent
+receives a user message whose id names the child — now if idle, at its next
+turn boundary if busy — and the parent's save that carries that message,
+queued or as its user turn, marks the completion delivered in the same
+commit. A restore delivers every completion still marked undelivered as that
+message, and closes a quiescent live child the same way. A completion is
+therefore never lost between the child's close and the parent's next
+checkpoint, and never delivered twice.
 
 **Restore.** Reopening a root node restores its live children, each of
 which restores its own — a tree restore, one rule per node: a turn the

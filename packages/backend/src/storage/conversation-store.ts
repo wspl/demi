@@ -1,28 +1,18 @@
 import { join } from 'node:path'
-import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
 import type { Block } from '@demicodes/core'
 import type { HostStore } from '@demicodes/shell'
-import {
-  externalizeBlockMedia,
-  rehydrateBlockMedia,
-  type AgentSessionCheckpoint,
-  type AgentSessionPersistUpdate,
-  type AgentSessionStore,
-  type BlobStore,
-  type PersistedSessionState,
-} from '@demicodes/agent'
+import type { AgentTreeStore, BlobStore } from '@demicodes/agent'
 import type { VirtualFsBackend } from '@demicodes/host-virtual'
 import { openSqliteDatabase, type SqlDatabase, type SqlParams } from './database'
 import { clearFilesTree, filesTreeBackend, materializeFilesTree, type TreePlacement } from './files-tree'
 import { DbHostStore } from './host-store'
 import { CONVERSATION_MIGRATIONS, migrate } from './migrations'
-
-type PersistedState = Omit<PersistedSessionState<unknown>, 'blockCount'>
+import { readNode, sqliteAgentTreeStore } from './tree-store'
 
 /**
  * The per-conversation databases: `conversations/<id>.sqlite`, one file per
- * conversation, holding the block-row transcript, the session state row, and
- * that conversation's host_store scope. Each file has exactly one writer
+ * conversation, holding the session tree — its node rows and their block-row
+ * transcripts — and that conversation's host_store scope. Each file has exactly one writer
  * (this process). The database object handed out for a conversation is
  * stable; the SQLite handle behind it opens on first use and is one of at
  * most `maxOpen` kept open, the least recently used closed first — so a
@@ -67,47 +57,9 @@ export class ConversationStores {
     return this.handles.size
   }
 
-  sessionStore(conversationId: string): AgentSessionStore<unknown> {
-    const db = this.db(conversationId)
-    const blobs = this.blobsFor(conversationId)
-    return {
-      async save(update: AgentSessionPersistUpdate<unknown>): Promise<void> {
-        const rows = await Promise.all(
-          update.changedBlocks.map(async ({ index, block }) => ({
-            index,
-            json: stringifyPortableJson(await externalizeBlockMedia(block, blobs)),
-          })),
-        )
-        const state: PersistedState = {
-          state: update.state,
-          phase: update.phase,
-          queue: update.queue,
-          cwd: update.cwd,
-          model: update.model,
-          harnessName: update.harnessName,
-        }
-        db.transaction(() => {
-          for (const { index, json } of rows) {
-            db.run(
-              'INSERT INTO blocks (idx, block_json) VALUES (?, ?) ON CONFLICT (idx) DO UPDATE SET block_json = excluded.block_json',
-              [index, json],
-            )
-          }
-          db.run('DELETE FROM blocks WHERE idx >= ?', [update.blockCount])
-          db.run(
-            'INSERT INTO session (id, state_json, block_count) VALUES (1, ?, ?) ON CONFLICT (id) DO UPDATE SET state_json = excluded.state_json, block_count = excluded.block_count',
-            [stringifyPortableJson(state), update.blockCount],
-          )
-        })
-      },
-
-      load: async (): Promise<AgentSessionCheckpoint<unknown> | null> => {
-        const loaded = this.readSession(conversationId)
-        if (!loaded) return null
-        const blocks = await Promise.all(loaded.blocks.map((block) => rehydrateBlockMedia(block, blobs)))
-        return { ...loaded.state, transcript: { blocks } }
-      },
-    }
+  /** The conversation's session tree (`subagent.md` § Persistence); the root node's id is the conversation's. */
+  treeStore(conversationId: string): AgentTreeStore<unknown> {
+    return sqliteAgentTreeStore(this.db(conversationId), this.blobsFor(conversationId))
   }
 
   hostStore(conversationId: string): HostStore {
@@ -128,9 +80,9 @@ export class ConversationStores {
     clearFilesTree(this.db(conversationId))
   }
 
-  /** Cold transcript read: the raw rows, media left as refs. */
+  /** Cold transcript read of the root node: the raw rows, media left as refs. */
   transcriptBlocks(conversationId: string): Block[] {
-    return this.readSession(conversationId)?.blocks ?? []
+    return readNode(this.db(conversationId), conversationId)?.blocks ?? []
   }
 
   close(): void {
@@ -161,20 +113,5 @@ export class ConversationStores {
     if (!open) return
     this.handles.delete(conversationId)
     open.close()
-  }
-
-  private readSession(conversationId: string): { state: PersistedState; blocks: Block[] } | null {
-    const db = this.db(conversationId)
-    const session = db.get<{ state_json: string; block_count: number }>(
-      'SELECT state_json, block_count FROM session WHERE id = 1',
-    )
-    if (!session) return null
-    const rows = db.all<{ block_json: string }>('SELECT block_json FROM blocks WHERE idx < ? ORDER BY idx', [
-      session.block_count,
-    ])
-    return {
-      state: parsePortableJson<PersistedState>(session.state_json),
-      blocks: rows.map((row) => parsePortableJson<Block>(row.block_json)),
-    }
   }
 }

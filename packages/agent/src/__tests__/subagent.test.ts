@@ -19,6 +19,7 @@ import {
   type SubagentProfile,
 } from '../index'
 import { ChildSupervisor } from '../subagent/supervisor'
+import { MemoryAgentStore } from '../testing'
 
 type TurnScript = ConstructorParameters<typeof StubProvider>[0][number]
 
@@ -45,9 +46,12 @@ async function openHarness(options: {
   metadataLog?: (AgentMetadata | null)[]
   root?: string
   sessionId?: string
+  /** The tree store a "previous process" left; a fresh one otherwise. */
+  store?: MemoryAgentStore
   shellPreviewBudgetTokens?: ShellPreviewBudget
-}): Promise<{ client: AgentClient; seen: ClientSessionEvent[]; root: string; sessionId: string }> {
+}): Promise<{ client: AgentClient; seen: ClientSessionEvent[]; root: string; sessionId: string; store: MemoryAgentStore }> {
   const root = options.root ?? (await mkdtemp(join(tmpdir(), 'demi-subagent-')))
+  const store = options.store ?? new MemoryAgentStore()
   const hosts = new Map<string, LocalHost>()
   const harness: AgentHarness<Record<string, never>> = {
     name: 'subagent-test',
@@ -67,6 +71,7 @@ async function openHarness(options: {
     ...(options.agents ? { agents: () => options.agents! } : {}),
   }
   const server = new AgentServer({
+    store: () => store,
     shellEnvironment: hostlessShellFactory,
     agent: harness,
     providers: [defineProvider({ id: 'stub', displayName: 'stub', createRuntime: () => new StubProvider(options.turns) })],
@@ -86,7 +91,7 @@ async function openHarness(options: {
   client.subscribe((event) => seen.push(event))
   const sessionId = options.sessionId ?? globalThis.crypto.randomUUID()
   await client.open(selection, root, sessionId)
-  return { client, seen, root, sessionId }
+  return { client, seen, root, sessionId, store }
 }
 
 function itemsText(request: InferenceRequest): string {
@@ -792,6 +797,7 @@ test('closing the parent detaches live children; a reopened parent restores and 
   const second = await openHarness({
     root: first.root,
     sessionId: first.sessionId,
+    store: first.store,
     turns: [
       [events.text('recovered result'), events.response()],
       (request) => {
@@ -899,6 +905,7 @@ test('a parent restore skips archived children; the archive stays revivable', as
   const second = await openHarness({
     root: first.root,
     sessionId: first.sessionId,
+    store: first.store,
     turns: [
       [spawnCall('t2', 'demi agent list', 5_000)],
       (request) => {
@@ -946,6 +953,7 @@ test('resuming an archived child whose profile is gone fails without orphaning t
   const second = await openHarness({
     root: first.root,
     sessionId: first.sessionId,
+    store: first.store,
     agents: [{ name: 'new', description: 'replacement profile' }],
     turns: [
       [spawnCall('t2', `demi agent resume ${childId} 'again'`, 5_000)],
@@ -1008,7 +1016,7 @@ test('a harness may not declare a profile named "default"', () => {
   expect(
     () =>
       new ChildSupervisor({
-        profiles: [{ name: 'default', description: 'reserved' }],
+        tree: { profiles: [{ name: 'default', description: 'reserved' }] },
       } as unknown as ConstructorParameters<typeof ChildSupervisor>[0]),
   ).toThrow('reserved')
 })
@@ -1128,6 +1136,7 @@ test('an archived --no-subagents child stays restricted after reopening and resu
   const second = await openHarness({
     root: first.root,
     sessionId: first.sessionId,
+    store: first.store,
     turns: [
       [spawnCall('resume', `demi agent resume ${childId} 'try delegating'`, 5_000)],
       [spawnCall('nested-spawn', "demi agent spawn 'forbidden task'", 5_000)],
@@ -1165,6 +1174,7 @@ test('a reopened parent restores nested child checkpoints before the outer child
   const second = await openHarness({
     root: first.root,
     sessionId: first.sessionId,
+    store: first.store,
     turns: Array.from({ length: 6 }, () => finish),
   })
   await waitFor(
@@ -1179,4 +1189,121 @@ test('a reopened parent restores nested child checkpoints before the outer child
   expect(closed.every((event) => event.type === 'subagent' && event.job.phase === 'completed')).toBe(true)
   expect(restoredRequests.some((request) => itemsText(request).includes('inner task') && itemsText(request).includes('probe hold 5000'))).toBe(true)
   await second.client.close()
+})
+
+// The three commits across a restart (`docs/subagent.md` § Persistence): what a
+// process loses between them is repaired by the next open, never twice. The
+// store is mutated after the close so the dispose flush does not overwrite it.
+
+function childNodeOf(store: MemoryAgentStore, parentId: string, description: string) {
+  const node = [...store.nodes.values()].find((stored) => stored.record.parentId === parentId && stored.record.description === description)
+  if (!node) throw new Error(`no child "${description}" under ${parentId}`)
+  return node
+}
+
+test('a child lost before its first save still has its brief: the create commit queued it', async () => {
+  const first = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent spawn 'do the thing' --description brief", 50)],
+      [events.toolCall('c1', 'shell_exec', { script: 'probe hold 5000', timeoutMs: 10_000 })],
+      [events.text('spawned, going idle'), events.response()],
+    ],
+  })
+  await first.client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => first.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'spawned, going idle'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+  await first.client.close()
+  // What the store holds when the process ends between the create commit and the
+  // child's first save: the node row with its brief queued, no block rows.
+  const child = childNodeOf(first.store, first.sessionId, 'brief')
+  child.blocks.clear()
+  child.blockCount = 0
+  child.state = { ...child.state, phase: 'idle', queue: [{ id: 'brief', text: 'do the thing', content: [{ type: 'text', text: 'do the thing' }] }] }
+
+  let childRequest: InferenceRequest | null = null
+  let wakeText = ''
+  const second = await openHarness({
+    root: first.root,
+    sessionId: first.sessionId,
+    store: first.store,
+    turns: [
+      (request) => {
+        childRequest = request
+        return [events.text('done from the brief'), events.response()]
+      },
+      (request) => {
+        wakeText = itemsText(request)
+        return [events.text('acknowledged'), events.response()]
+      },
+    ],
+  })
+  await waitFor(() => wakeText.includes('done from the brief'), undefined, { timeoutMs: 5_000 })
+  expect(itemsText(childRequest!)).toContain('do the thing')
+  await waitFor(() => child.record.delivered, undefined, { timeoutMs: 3_000 })
+  expect(child.record.closedPhase).toBe('completed')
+  await second.client.close()
+})
+
+test('a close whose wakeup was never committed is delivered once at restore; a quiescent live child closes there', async () => {
+  const first = await openHarness({
+    turns: [
+      [spawnCall('t1', "demi agent spawn 'first' --description one", 50), spawnCall('t2', "demi agent spawn 'second' --description two", 50)],
+      [events.text('one done'), events.response()],
+      [events.text('two done'), events.response()],
+      [events.text('parent idle'), events.response()],
+    ],
+  })
+  await first.client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => first.client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent idle'),
+    undefined,
+    { timeoutMs: 5_000 },
+  )
+  await first.client.close()
+  const one = childNodeOf(first.store, first.sessionId, 'one')
+  const two = childNodeOf(first.store, first.sessionId, 'two')
+  expect([one.record.closedPhase, two.record.closedPhase]).toEqual(['completed', 'completed'])
+  // What the store holds when the process ends between the closes and the parent's
+  // checkpoint: `one` closed but its completion never taken, `two` quiescent with its
+  // final checkpoint written and its close row not yet, the parent's rows carrying neither.
+  one.record.delivered = false
+  two.record = { ...two.record, closedPhase: null, closedAt: null, result: null, delivered: false }
+  two.state = { ...two.state, phase: 'idle', queue: [] }
+  const root = first.store.nodes.get(first.sessionId)!
+  root.blocks.clear()
+  root.blockCount = 0
+  root.state = { ...root.state, phase: 'idle', queue: [] }
+
+  const wakeups: string[] = []
+  const second = await openHarness({
+    root: first.root,
+    sessionId: first.sessionId,
+    store: first.store,
+    turns: [
+      (request) => {
+        wakeups.push(itemsText(request))
+        return [events.text('ack'), events.response()]
+      },
+      (request) => {
+        wakeups.push(itemsText(request))
+        return [events.text('ack'), events.response()]
+      },
+    ],
+  })
+  await waitFor(() => wakeups.length === 2, undefined, { timeoutMs: 5_000 })
+  expect(wakeups.some((text) => text.includes('one done'))).toBe(true)
+  expect(wakeups.some((text) => text.includes('two done'))).toBe(true)
+  expect(two.record).toMatchObject({ closedPhase: 'completed', result: 'two done' })
+  await waitFor(() => one.record.delivered && two.record.delivered, undefined, { timeoutMs: 3_000 })
+  await second.client.close()
+
+  // Reopening once more delivers nothing again: both completions are in the parent's checkpoint.
+  const third = await openHarness({ root: first.root, sessionId: first.sessionId, store: first.store, turns: [] })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  expect(third.client.transcript().blocks.filter((block) => block.type === 'user')).toHaveLength(2)
+  expect(third.seen.some((event) => event.type === 'error')).toBe(false)
+  await third.client.close()
 })

@@ -259,9 +259,10 @@ query time.
   two backends (directory, S3). `UserBlobStores` resolves uploads and HTTP
   downloads by authenticated user, and session persistence, transcript
   media and hostless files by conversation owner. `ConversationStores`
-  and `AgentServer` receive a per-session BlobStore factory; child sessions
-  inherit their root's store. A hash identifies bytes within that scope
-  and grants no access to another user's namespace.
+  receives the per-conversation BlobStore factory and its tree store
+  externalizes every node's media — root and subagents alike — into that
+  namespace; the agent never sees a blob store. A hash identifies bytes
+  within that scope and grants no access to another user's namespace.
   The home-image store is streaming write/read by owner id with the
   same two backends. Both live in `@demicodes/backend`.
 

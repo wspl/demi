@@ -1,3 +1,4 @@
+import type { SessionNode } from '../node/node'
 import type { AgentSession } from '../session/session'
 import type { ChildJob, ChildSupervisor } from './supervisor'
 import type { AgentTreeNode } from './format'
@@ -9,16 +10,16 @@ import type { AgentTreeNode } from './format'
  * along the tree.
  */
 export class AgentDirectory<State = unknown> {
-  private root: { session: AgentSession<State>; supervisor: ChildSupervisor<State> } | null = null
+  private root: SessionNode<State> | null = null
   private readonly entries = new Map<string, { job: ChildJob<State>; owner: ChildSupervisor<State> }>()
 
-  attachRoot(session: AgentSession<State>, supervisor: ChildSupervisor<State>): void {
-    this.root = { session, supervisor }
+  attachRoot(node: SessionNode<State>): void {
+    this.root = node
   }
 
   rootId(): string {
     if (!this.root) throw new Error('agent directory has no root session')
-    return this.root.session.id()
+    return this.root.id
   }
 
   rootSession(): AgentSession<State> {
@@ -40,7 +41,7 @@ export class AgentDirectory<State = unknown> {
 
   /** The parent session id of a live agent; null for the root, undefined for an unknown id. */
   parentIdOf(id: string): string | null | undefined {
-    if (this.root && this.root.session.id() === id) return null
+    if (this.root && this.root.id === id) return null
     return this.entries.get(id)?.owner.ownerId()
   }
 
@@ -63,7 +64,7 @@ export class AgentDirectory<State = unknown> {
         .sort((a, b) => a.job.spawnedAt - b.job.spawnedAt)
       const children: AgentTreeNode[] = []
       for (const entry of liveChildren) {
-        children.push(await build(entry.job.id, id, entry.job, entry.owner, entry.job.ownSupervisor))
+        children.push(await build(entry.job.id, id, entry.job, entry.owner, entry.job.node.supervisor))
       }
       const now = Date.now()
       for (const archived of await supervisor.listArchivedJobs()) {
@@ -71,10 +72,10 @@ export class AgentDirectory<State = unknown> {
           id: archived.id,
           parentId: id,
           kind: 'archived',
-          description: archived.meta.description,
-          profile: archived.meta.profileName,
-          phase: archived.meta.closedPhase ?? 'completed',
-          closedAgoMs: archived.meta.closedAt === undefined ? null : now - archived.meta.closedAt,
+          description: archived.description,
+          profile: archived.profileName,
+          phase: archived.closedPhase ?? 'completed',
+          closedAgoMs: archived.closedAt === null ? null : now - archived.closedAt,
           line: null,
           children: [],
         })
@@ -104,6 +105,6 @@ export class AgentDirectory<State = unknown> {
         children,
       }
     }
-    return [await build(this.rootId(), null, null, null, this.root.supervisor)]
+    return [await build(this.root.id, null, null, null, this.root.supervisor)]
   }
 }

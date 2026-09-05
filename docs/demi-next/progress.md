@@ -3747,7 +3747,7 @@ The single-site findings of the round, each with its test:
   `llms` CI step failed; the list and the links to the deleted guides
   (`SECURITY.md`, the agent and shell READMEs) now name only what exists.
 
-## Session tree (2026-09-05) — in progress
+## Session tree (2026-09-05) — delivered
 
 The session architecture proposal (`session-runtime.md`, two revisions
 above) was reviewed against the code and accepted on all three decisions;
@@ -3793,6 +3793,55 @@ children get the harness's `resolveReferences` and `lifecycle` hooks the
 root had; the `list_conversations` frame goes with the Host-store listing
 (the backend's conversation index is the list; `web-ui`'s use of it was dead
 code from the deleted local product).
+
+### Session tree checkpoint — delivered
+
+The code followed the documents in one checkpoint:
+
+- `@demicodes/agent`: `node/assemble.ts` is the one place a node comes to
+  exist (loaded from the tree store or created with its first checkpoint;
+  supervisor, command tree, tools, harness runtime, session); `node/node.ts`
+  is the runtime aggregate with the per-Host environments and the lifecycle
+  policy (`ROOT_POLICY`, `CHILD_POLICY`); `ChildSupervisor` is the
+  relationship module and asks the assembly for children through an injected
+  `assemble`; `LiveSession` is the root node's transport view. `types.ts`
+  carries `AgentNodeRecord`, `AgentNodeClose` and `AgentTreeStore`;
+  `store/tree-store.ts` the completion-message id and which completions a
+  checkpoint carries; `testing.ts` (`@demicodes/agent/testing`) the
+  in-memory store. `hostAgentSessionStore`, `open-session.ts`, the
+  `list_conversations` frame and `AgentClient.listConversations` are gone;
+  `AgentServer` takes a required `store` factory and no blob store.
+- The session: the turn loop flushes the checkpoint before a tool batch
+  runs (`persistNow`), and the boundary flush now happens after the phase
+  turns idle, so a checkpoint saying otherwise is one the process died in
+  — the root's continuation and a child's quiescence both read that.
+- `@demicodes/backend`: `storage/tree-store.ts` realizes the contract over
+  `nodes` and `blocks(node_id, idx)` (conversation migration 001 rewritten;
+  a pre-release data directory is recreated), `ConversationStores.treeStore`
+  hands it out, the cold transcript read is the root node's rows.
+- `web-ui`: the dead server conversation list is gone with the frame.
+
+Pitfalls met: (1) with the flush moved after `setPhase('idle')`, the
+error frame of a failed action briefly followed the idle phase, and clients
+that settle an action on the phase resolved instead of rejecting — the
+error is announced before the phase turns idle again; (2) the pipeline test
+asserted one write per action, now one per tool dispatch plus the boundary;
+(3) S3's runner case asserted the child's result in the very last status
+view, while the status contract delivers stream deltas per view — the extra
+flush shifted the poll cadence enough for a poll to land between the
+runner's output and exit frames; the assertion now reads the deltas as a
+whole; (4) the first cut of completion delivery marked a completion
+delivered whenever the parent was busy, which at restore lost a child that
+closed while the parent was already handling another wakeup — the rule is
+now: the spawn command's exit carries it only while that command awaits the
+child in this process (`attended`), otherwise the parent gets the message,
+queued if busy.
+
+Verification: agent 264 (tree-store contract, the dispatch barrier, the
+three restart cases in `subagent.test.ts`), backend 130 (the SQLite
+realization against the same contract, all scenarios), runner 19, core 30
+(the guard now names `node/assemble.ts`), host-virtual 32, coding-agent 32;
+`typecheck` and `typecheck:web` clean.
 
 ## Open items (deferred, with their milestone)
 
