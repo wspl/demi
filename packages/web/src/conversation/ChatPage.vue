@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Archive, Monitor, Play, RotateCcw } from '@lucide/vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -33,13 +33,6 @@ function chooseTarget() {
   resources.targetOpen = true
 }
 
-watch(
-  () => route.params.id,
-  (id) => {
-    if (typeof id === 'string' && conversation.value && !conversation.value.archived) store.open(id)
-  },
-  { immediate: true },
-)
 </script>
 
 <template>

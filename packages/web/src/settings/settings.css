@@ -58,3 +58,9 @@
   padding-block: 1.5rem;
   color: var(--fg-subtle);
 }
+
+.settings-content h2,
+.settings-content h3 {
+  -webkit-user-select: none;
+  user-select: none;
+}
