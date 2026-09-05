@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Archive, Play, RotateCcw } from '@lucide/vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -25,6 +25,13 @@ const conversation = computed(() => store.items.find((c) => c.id === route.param
 const project = computed(() =>
   resources.projects.find((p) => p.id === conversation.value?.projectId),
 )
+watch(
+  () => project.value?.id,
+  (id) => {
+    if (id) resources.rememberProject(id)
+  },
+  { immediate: true },
+)
 const hasProvider = computed(() =>
   resources.providers.some((p) => p.id === conversation.value?.providerId && p.isAvailable),
 )
@@ -44,13 +51,8 @@ const hasProvider = computed(() =>
       >
         {{ conversation.title }}
       </h1>
-      <div
-        class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1"
-      >
-        <WorkspaceInfo
-          :project="project"
-          :conversation="conversation"
-        />
+      <div class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
+        <WorkspaceInfo :project="project" :conversation="conversation" />
       </div>
       <Tooltip content="Archive conversation" class="col-start-2 row-start-1 sm:col-start-3">
         <IconButton
