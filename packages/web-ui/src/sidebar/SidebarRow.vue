@@ -8,9 +8,9 @@ import type { SidebarConversation } from './types'
 
 /** Wait before scrolling a hovered title; the row layout has settled by then. */
 const MARQUEE_DELAY_MS = 500
-/** Reading pace for the marquee: pixels per second, plus holds at both ends. */
+/** Constant scroll speed and spacing between repeated titles. */
 const MARQUEE_PX_PER_S = 36
-const MARQUEE_HOLD_MS = 250
+const MARQUEE_GAP_PX = 24
 
 const props = defineProps<{
   conversation: SidebarConversation
@@ -74,20 +74,19 @@ const rowClass = computed(() => [
 
 // A long title plays as a marquee while hovered instead of staying cut.
 const titleClip = ref<HTMLElement>()
-const marquee = ref<{ shift: number; ms: number } | null>(null)
+const titleText = ref<HTMLElement>()
+const marquee = ref<{ ms: number } | null>(null)
 let hoverTimer: ReturnType<typeof setTimeout> | undefined
 
 function startMarquee(): void {
   clearTimeout(hoverTimer)
   hoverTimer = setTimeout(() => {
     const clip = titleClip.value
-    if (!clip) return
-    const overflow = clip.scrollWidth - clip.clientWidth
-    if (overflow <= 2) return
-    marquee.value = {
-      shift: overflow,
-      ms: (overflow / MARQUEE_PX_PER_S) * 1000 * 2 + MARQUEE_HOLD_MS * 2,
-    }
+    const text = titleText.value
+    if (!clip || !text) return
+    const width = text.getBoundingClientRect().width
+    if (width - clip.clientWidth <= 2) return
+    marquee.value = { ms: ((width + MARQUEE_GAP_PX) / MARQUEE_PX_PER_S) * 1000 }
   }, MARQUEE_DELAY_MS)
 }
 
@@ -141,12 +140,13 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     >
       <span
         v-if="marquee"
-        class="sidebar-marquee inline-block"
-        :style="{ '--marquee-shift': `${-marquee.shift}px`, '--marquee-ms': `${marquee.ms}ms` }"
+        class="sidebar-marquee inline-flex w-max"
+        :style="{ '--marquee-gap': `${MARQUEE_GAP_PX}px`, '--marquee-ms': `${marquee.ms}ms` }"
       >
-        {{ conversation.title }}
+        <span class="sidebar-marquee-copy">{{ conversation.title }}</span>
+        <span class="sidebar-marquee-copy" aria-hidden="true">{{ conversation.title }}</span>
       </span>
-      <template v-else>{{ conversation.title }}</template>
+      <span v-else ref="titleText">{{ conversation.title }}</span>
     </span>
     <span
       class="absolute inset-y-0 right-1 flex items-center transition-opacity"
@@ -234,17 +234,18 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
   animation: sidebar-marquee var(--marquee-ms) linear infinite;
 }
 
-/* Start moving immediately, pause briefly at the far edge, then return. */
+.sidebar-marquee-copy {
+  flex-shrink: 0;
+  padding-right: var(--marquee-gap);
+}
+
+/* Each half contains the same title and gap, so the loop boundary is seamless. */
 @keyframes sidebar-marquee {
-  0% {
+  from {
     transform: translateX(0);
   }
-  45%,
-  55% {
-    transform: translateX(var(--marquee-shift));
-  }
-  100% {
-    transform: translateX(0);
+  to {
+    transform: translateX(-50%);
   }
 }
 
@@ -258,7 +259,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
 
   .sidebar-marquee {
     animation: none;
-    transform: translateX(var(--marquee-shift));
+    transform: none;
   }
 }
 </style>
