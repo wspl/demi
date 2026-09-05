@@ -46,7 +46,7 @@ const emit = defineEmits<{
       <span class="min-w-0 flex-1 truncate font-medium">{{ project.name }}</span>
       <span class="grid min-w-6 max-w-[45%] items-center">
         <span
-          class="col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
+          class="pointer-events-none col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
           :aria-label="project.host"
         >
           <component
