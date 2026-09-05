@@ -4228,3 +4228,8 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Unbound conversations display Cloud and its icon in the host trigger and Main host row. Their picker identifies Cloud as current. Internal execution and binding contracts remain distinct from presentation naming.
 - Audited application, shared UI and gallery source for exposed Hostless labels; only an internal store test name remains. Web typecheck passed.
+
+### M13.1 — Composer without entrance animation (2026-09-06)
+
+- Kept the composer transition branch stable across conversation IDs so navigation only replaces its content, without running the archive transition. Entrance styles apply only to the archived notice, so the composer itself does not fade or slide in on restoration either.
+- Archived-bar transitions remain available. Web typecheck passed; no new tests for this presentation-only adjustment.
