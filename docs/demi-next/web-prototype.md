@@ -73,8 +73,8 @@ with parent navigation, filtering, file previews and folder selection. Its toolt
 shows the full path. The current branch appears as plain text beside its icon,
 without a menu, switching or creation actions. Workspace switching is disabled during a running turn or for an archived conversation, while file
 browsing remains available. Files and branches are fixtures; no real filesystem,
-Git repository or device is modified. Hostless conversations retain only the
-host-management icon and attachment count.
+Git repository or device is modified. Conversations without a device binding display Cloud, with only the cloud
+icon and attachment count in the header.
 Project groups retain the project list's order regardless
 of conversation creation or activity. Sidebar rows
 offer pin and archive on hover, plus the shared context menu for rename, move

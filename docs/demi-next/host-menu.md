@@ -18,9 +18,9 @@ Conversation c1 header: [zan-mbp +2] [demi] [main]
                          +-- Connect new device… > account device settings
 ```
 
-The trigger shows the main device and the attachment count. Cloud uses its icon;
-Hostless uses a small host-management icon and an optional count, without main
-device, workspace or branch metadata. Attaching is available in every main-host
+The trigger shows the main device and the attachment count. Cloud uses its icon. Conversations without a device binding also display Cloud
+and the cloud icon, with an optional attachment count and no device, workspace
+or branch metadata. Hostless is an internal term, never a user-facing label. Attaching is available in every main-host
 state. The attachment section is shown when devices are attached.
 
 Main host and Attach device use the same `HostPicker`: fixed top actions, a
