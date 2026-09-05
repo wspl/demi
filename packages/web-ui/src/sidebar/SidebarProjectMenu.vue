@@ -20,7 +20,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <Menu class="w-56">
+  <Menu>
     <MenuItem :icon="SquarePen" label="New conversation here" @select="emit('create')" />
     <MenuItem :icon="folded ? ChevronsUpDown : ChevronsDownUp" :label="folded ? 'Unfold' : 'Fold'" shortcut="↵" @select="emit('toggleFold')" />
     <MenuItem :icon="ListChecks" label="Select conversations" :disabled="count === 0" @select="emit('selectAll')" />
