@@ -20,13 +20,10 @@ const resources = useResources()
 const store = useConversations()
 const open = ref(false)
 const mainLocked = computed(() => !!props.conversation.stream || props.conversation.archived)
-const available = computed(() =>
-  resources.devices.filter(
-    (device) =>
-      device.id !== props.project?.deviceId &&
-      !props.conversation.attachedHosts.some((host) => host.deviceId === device.id),
-  ),
-)
+const boundIds = computed(() => [
+  ...(props.project ? [props.project.deviceId] : []),
+  ...props.conversation.attachedHosts.map((host) => host.deviceId),
+])
 function isOnline(deviceId: string) {
   return (
     deviceId === 'cloud' || !!resources.devices.find((device) => device.id === deviceId)?.online
@@ -127,7 +124,12 @@ function connect() {
         <MenuDivider />
         <MenuItem label="Attach device…" :icon="Plus" has-submenu :disabled="conversation.archived">
           <template #submenu>
-            <HostPicker :devices="available" @select="attach" @connect="connect" />
+            <HostPicker
+              :devices="resources.devices"
+              :bound-ids="boundIds"
+              @select="attach"
+              @connect="connect"
+            />
           </template>
         </MenuItem>
         <MenuItem label="Connect new device…" :icon="Link" @select="connect" />

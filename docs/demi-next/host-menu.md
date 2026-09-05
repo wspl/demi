@@ -30,7 +30,7 @@ new device. Neither picker offers Hostless as a binding target. Search filters
 device names while the top actions remain visible.
 
 Attach selects an existing owned device and starts its cwd at its home. The
-picker excludes the main device and devices already attached; offline devices
+picker shows all owned devices and disables the main device and devices already attached; offline devices
 may be attached but cannot be promoted until online. Managed Cloud is not in the
 attachment picker; it can enter the list as a departed main host. Connecting a
 new device opens the global device settings, which is separate from granting a

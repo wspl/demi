@@ -10,6 +10,7 @@ const props = defineProps<{
   includeCloud?: boolean
   selectedId?: string
   requireOnline?: boolean
+  boundIds?: string[]
 }>()
 const emit = defineEmits<{ select: [id: string]; connect: [] }>()
 const items = computed(() =>
@@ -20,13 +21,18 @@ const items = computed(() =>
   })),
 )
 function disabled(device: Device) {
-  return device.id === props.selectedId || (!!props.requireOnline && !device.online)
+  return (
+    device.id === props.selectedId ||
+    props.boundIds?.includes(device.id) ||
+    (!!props.requireOnline && !device.online)
+  )
 }
 </script>
 
 <template>
   <Menu
     :items="items"
+    :iconless="false"
     :selected-id="selectedId"
     :is-item-disabled="disabled"
     filterable

@@ -4177,3 +4177,9 @@ bottom action opening the current directory. M13.1 remains in progress.
 - Shared Menu owns the fixed header slot and separators. Its disabled-item predicate covers pointer and keyboard selection, so offline/current main devices remain visible without being selectable. Existing attachment filtering excludes the current main and already-bound devices.
 - Updated gallery specimens and the host-menu design. Verified 98 scoped web/web-ui tests, all browser typechecks and web build; repeated gallery typecheck after correcting a duplicate icon import in its specimen. Browser checks covered both picker layouts, filtering, persistent header actions and blocked keyboard selection of an offline main host.
 - Acceptance service remained running throughout the branch switch and checks.
+
+### M13.1 — Usable demo host switching and complete device lists (2026-09-06)
+
+- Both seeded devices start online so switching is immediately reviewable. Attachment selection shows every owned device, disabling already-bound devices rather than removing them.
+- Fixed Menu's explicit iconless override and let HostPicker reserve its icon gutter. Empty item lists therefore cannot hide the fixed Connect new device plus icon.
+- Verified browser switching from zan-mbp to build-01 through folder selection, complete attachment lists when all devices are bound, and the fixed header icon with empty search results. Browser typechecks, 98 scoped web/web-ui tests and production build passed.
