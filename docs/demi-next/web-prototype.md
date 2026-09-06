@@ -160,10 +160,15 @@ card whose inputs or buttons mix families.
 
 ## Colour transitions and `transparent`
 
-The `transparent` keyword is black at zero alpha. A colour transition between it
-and a light colour interpolates through dark greys, so a scrollbar thumb, ring or
-fill that fades in from `transparent` shows up black before it turns light in a
-dark theme. Whenever a colour animates, its hidden state is the same hue at zero
-alpha, written as `rgb(from <colour> r g b / 0)`, never the bare keyword and never
-a `color-mix` with 0% of the colour, which also collapses to transparent black. Gradients and masks are
-exempt: they interpolate with premultiplied alpha.
+Colour properties interpolate with premultiplied alpha in Chromium and WebKit, so a
+background, border, text colour, ring, outline, fill or stroke that fades in from
+`transparent` keeps its hue throughout; it does not pass through black. Measured in
+both engines: mid-transition values keep the target's hue at half alpha for every
+property the gallery transitions.
+
+`scrollbar-color` is the exception: Chromium interpolates it without premultiplying,
+so a thumb fading in from the `transparent` keyword (black at zero alpha) goes through
+dark greys before it turns light in a dark theme. Its hidden state is therefore the
+thumb's own hue at zero alpha, written as `rgb(from <colour> r g b / 0)`, never the
+bare keyword and never a `color-mix` with 0% of the colour, which also collapses to
+transparent black. Any new property found to behave this way gets the same treatment.

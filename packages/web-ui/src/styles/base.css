@@ -509,8 +509,9 @@ svg.lucide {
    the container marks itself active (transcript while scrolling). The fade lives in
    the base layer so an element's own transition utilities keep precedence over it.
    The hidden state is the thumb's own hue at zero alpha, never the `transparent`
-   keyword: that keyword is black at zero alpha, and a colour transition from it
-   passes through dark greys, so the thumb would fade in black and snap to white. */
+   keyword: Chromium interpolates scrollbar-color without premultiplying alpha (unlike
+   every other colour property), so from that keyword, black at zero alpha, the thumb
+   would fade in through dark greys and snap to white. */
 @layer base {
   * {
     scrollbar-width: thin;
