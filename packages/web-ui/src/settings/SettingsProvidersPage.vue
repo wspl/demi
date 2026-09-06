@@ -296,7 +296,7 @@ function saveModel(draft: SettingsModelDraft) {
                 <Segmented size="sm" v-else-if="selected.vendorId" v-model="selected.modelSource" class="ml-auto" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
               </header>
             </template>
-            <!-- The filter reads as text until hovered; its hit area is the whole row height. -->
+            <!-- The filter is bare text; its hit area is the whole row height. -->
             <div v-if="selected.kind === 'api_key'" class="flex min-h-10 items-center gap-3 px-3 py-1">
               <Checkbox
                 :model-value="visibleSelection(selected).checked"
