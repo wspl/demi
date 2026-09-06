@@ -138,8 +138,10 @@ Every control comes in height families that line up with each other: 28px
 (`Button` md, `IconButton` md, `TextInput`, `Segmented` md, `Dropdown` md), 24px
 (`sm` of each) and 20px (`xs`). A surface picks one family and every control on it
 uses that family, so a button beside an input is never a different height than
-the input. Settings cards use 28px. Smaller families belong to denser chrome: a
-rail caption's action or a hover action inside a 32px list row uses 20px.
+the input. Settings cards use 24px: a bordered 28px icon button reads heavy in a
+row, and 24px inputs hold a line of text comfortably. Chrome outside the cards
+(a dialog's search, the narrow back row) stays at 28px, and a rail caption's
+action or a hover action inside a 32px list row uses 20px.
 
 The gallery audits this: `demiAuditControlSizes()` in the browser console, and
 automatically after each gallery navigation in development, lists every settings
