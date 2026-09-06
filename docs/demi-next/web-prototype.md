@@ -115,3 +115,19 @@ The product uses Ink tone, Regular density, Medium radius and Hairline shadows.
 `web-ui/theme/productAppearance.ts` defines the selected axes;
 `web-ui/styles/product-appearance.css` owns their light/dark tokens. The web
 composition root applies the axes and gallery exposes the same Demi preset.
+
+## Scroll regions and outlines
+
+A scroll region clips both axes: `overflow-y: auto` makes `overflow-x` non-visible
+too, so anything a child draws outside its box, such as a `ring` (a box-shadow), a
+focus ring, or a corner badge, is cut off when the child sits flush with the
+region's edge. Rules:
+
+- Every scroll region carries horizontal padding of at least the widest outline
+  drawn inside it. Where the layout wants the content flush, pair the padding with
+  a matching negative margin (`-mx-1 px-1`) so the region grows instead of the
+  content shrinking.
+- Never fix a clipped outline on the child; fix the region.
+- The gallery audits this: `demiAuditClipping()` in the browser console, and
+  automatically after each gallery navigation in development, lists every
+  outlined element that a scroll region would clip.

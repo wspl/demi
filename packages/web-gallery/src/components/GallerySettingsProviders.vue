@@ -235,7 +235,7 @@ function setAll(p: MockProvider, enabled: boolean) {
           <template #leading><VendorMark :label="p.name" :src="p.logo" size="sm" /></template>
         </SettingsListItem>
         <!-- Adding belongs to this group alone, so its button sits in the group's caption. -->
-        <div class="flex h-8 select-none items-center pl-1 pr-0.5 pt-2">
+        <div class="flex h-8 select-none items-center pl-1 pt-2">
           <span class="text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">API keys</span>
           <Button size="xs" class="ml-auto" @click="addOpen = true"><Plus :size="12" /> Add</Button>
         </div>
@@ -310,7 +310,6 @@ function setAll(p: MockProvider, enabled: boolean) {
             <!-- Connection (API key) -->
             <template v-else>
             <SettingsRow label="Base URL">
-              <template #tags><Tag>{{ wireLabel(selected.wireApi) }}</Tag></template>
               <TextInput v-model="selected.baseUrl" class="w-72 max-w-full" />
             </SettingsRow>
             <SettingsRow v-if="!vendorOf(selected)" label="Protocol">
