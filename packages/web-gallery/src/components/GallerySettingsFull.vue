@@ -12,6 +12,9 @@ import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Meter from '@demicodes/web-ui/ui/Meter.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import ShortcutRecorder from '@demicodes/web-ui/ui/ShortcutRecorder.vue'
+import SwatchPicker from '@demicodes/web-ui/ui/SwatchPicker.vue'
+import { PRODUCT_ACCENTS, PRODUCT_TONES, type ProductAccent, type ProductTone } from '@demicodes/web-ui/theme/productAppearance'
+import { galleryState } from '../gallery-state'
 import Slider from '@demicodes/web-ui/ui/Slider.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
@@ -163,11 +166,12 @@ const revealed = ref<Record<string, boolean>>({})
       <SettingsRow label="Theme">
         <Segmented size="sm" v-model="s.general.theme" :options="themeOptions" />
       </SettingsRow>
-      <SettingsRow label="Density">
-        <Segmented size="sm"
-          v-model="s.general.density"
-          :options="[{ value: 'compact', label: 'Compact' }, { value: 'regular', label: 'Regular' }, { value: 'comfortable', label: 'Comfortable' }]"
-        />
+      <!-- Tone and accent change the gallery itself, the way they would change the app. -->
+      <SettingsRow label="Tone">
+        <Segmented size="sm" :model-value="galleryState.tone" :options="PRODUCT_TONES.map((t) => ({ value: t.id, label: t.label }))" @update:model-value="galleryState.tone = $event as ProductTone" />
+      </SettingsRow>
+      <SettingsRow label="Accent">
+        <SwatchPicker :model-value="galleryState.accent" :options="PRODUCT_ACCENTS" @update:model-value="galleryState.accent = $event as ProductAccent" />
       </SettingsRow>
       <SettingsRow label="Transcript text size" description="Messages only.">
         <Slider v-model="s.general.fontSize" :min="12" :max="18" :value-label="`${s.general.fontSize}px`" class="w-48" />

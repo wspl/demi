@@ -1,4 +1,5 @@
-/* Shared product appearance axes, also used by gallery controls. */
+/* Shared product appearance axes, also used by gallery controls. Tone (ink, warm) and
+   accent are the two the user chooses in settings; the rest are fixed. */
 
 html[data-density="regular"] {
   --spacing: 0.25rem;
@@ -93,4 +94,143 @@ html[data-theme="light"][data-tone="ink"] {
 
 html[data-shadow="hairline"] .input-float {
   outline-width: 0.5px;
+}
+
+/* ── tone: warm (oklch hue 107) ───────────────────────────────────── */
+
+html[data-theme="dark"][data-tone="warm"] {
+  --surface-base: oklch(23% 0.002 107);
+  --surface: oklch(24.74% 0.002 107);
+  --surface-editor: oklch(24.74% 0.002 107);
+  --surface-raised: oklch(27.2% 0.002 107);
+  --surface-float: oklch(31% 0.002 107);
+  --overlay: white;
+  --fg-emphasis: oklch(100% 0 0);
+  --fg: oklch(100% 0 0);
+  --fg-body: oklch(86.6% 0.004 106.48);
+  --fg-muted: oklch(72.34% 0.002 107);
+  --fg-subtle: oklch(60% 0.002 107);
+  --fg-faint: oklch(45% 0.002 107);
+  --fg-ghost: oklch(33% 0.004 107);
+  --hover: oklch(56.74% 0.009 106.68 / 0.12);
+  --active: oklch(56.74% 0.009 106.68 / 0.16);
+  --line-subtle: oklch(55% 0.002 107 / 0.22);
+  --line: oklch(55% 0.002 107 / 0.32);
+  --line-strong: oklch(55% 0.002 107 / 0.4);
+  --line-focus: oklch(70.62% 0.139 264.41);
+  --line-overlay: oklch(44% 0.004 107);
+}
+
+html[data-theme="light"][data-tone="warm"] {
+  --surface-base: #f4f1ea;
+  --surface: #fbf8f2;
+  --surface-editor: #fbf8f2;
+  --surface-raised: #ffffff;
+  --surface-float: #ffffff;
+  --overlay: black;
+  --fg-emphasis: oklch(18% 0.004 107);
+  --fg: oklch(22% 0.004 107);
+  --fg-body: oklch(28% 0.004 107);
+  --fg-muted: oklch(45% 0.004 107);
+  --fg-subtle: oklch(55% 0.004 107);
+  --fg-faint: oklch(68% 0.004 107);
+  --fg-ghost: oklch(86% 0.004 107);
+  --hover: oklch(20% 0.004 107 / 0.05);
+  --active: oklch(20% 0.004 107 / 0.08);
+  --line-subtle: oklch(20% 0.004 107 / 0.06);
+  --line: oklch(20% 0.004 107 / 0.1);
+  --line-strong: oklch(20% 0.004 107 / 0.16);
+  --line-focus: oklch(52% 0.24 264);
+  --line-overlay: oklch(20% 0.004 107 / 0.12);
+}
+
+/* ── accent: hue only. Same L/C recipe as steel — mid chroma, white-on-fill. ─ */
+
+html[data-theme="dark"][data-accent="steel"] {
+  --on-accent: oklch(74% 0.1 250);
+  --tint-accent: oklch(62% 0.12 250 / 0.16);
+  --line-focus: oklch(74% 0.1 250);
+}
+
+html[data-theme="light"][data-accent="steel"] {
+  --on-accent: oklch(48% 0.14 250);
+  --tint-accent: oklch(52% 0.16 250 / 0.1);
+  --line-focus: oklch(48% 0.14 250);
+}
+
+html[data-theme="dark"][data-accent="indigo"] {
+  --on-accent: oklch(72% 0.11 285);
+  --tint-accent: oklch(60% 0.13 285 / 0.16);
+  --line-focus: oklch(72% 0.11 285);
+}
+
+html[data-theme="light"][data-accent="indigo"] {
+  --on-accent: oklch(46% 0.15 285);
+  --tint-accent: oklch(50% 0.16 285 / 0.1);
+  --line-focus: oklch(46% 0.15 285);
+}
+
+html[data-theme="dark"][data-accent="teal"] {
+  --on-accent: oklch(72% 0.09 200);
+  --tint-accent: oklch(60% 0.1 200 / 0.16);
+  --line-focus: oklch(72% 0.09 200);
+}
+
+html[data-theme="light"][data-accent="teal"] {
+  --on-accent: oklch(44% 0.1 200);
+  --tint-accent: oklch(48% 0.11 200 / 0.1);
+  --line-focus: oklch(44% 0.1 200);
+}
+
+html[data-theme="dark"][data-accent="moss"] {
+  --on-accent: oklch(70% 0.09 145);
+  --tint-accent: oklch(58% 0.1 145 / 0.16);
+  --line-focus: oklch(70% 0.09 145);
+}
+
+html[data-theme="light"][data-accent="moss"] {
+  --on-accent: oklch(42% 0.11 145);
+  --tint-accent: oklch(46% 0.12 145 / 0.1);
+  --line-focus: oklch(42% 0.11 145);
+}
+
+html[data-theme="dark"][data-accent="amber"] {
+  --on-accent: oklch(74% 0.1 75);
+  --tint-accent: oklch(62% 0.11 75 / 0.16);
+  --line-focus: oklch(74% 0.1 75);
+}
+
+html[data-theme="light"][data-accent="amber"] {
+  --on-accent: oklch(50% 0.13 75);
+  --tint-accent: oklch(54% 0.14 75 / 0.1);
+  --line-focus: oklch(50% 0.13 75);
+}
+
+html[data-theme="dark"][data-accent="coral"] {
+  --on-accent: oklch(70% 0.1 28);
+  --tint-accent: oklch(58% 0.11 28 / 0.16);
+  --line-focus: oklch(70% 0.1 28);
+}
+
+html[data-theme="light"][data-accent="coral"] {
+  --on-accent: oklch(48% 0.13 28);
+  --tint-accent: oklch(52% 0.14 28 / 0.1);
+  --line-focus: oklch(48% 0.13 28);
+}
+
+html[data-theme="dark"][data-accent="violet"] {
+  --on-accent: oklch(74% 0.11 305);
+  --tint-accent: oklch(62% 0.13 305 / 0.16);
+  --line-focus: oklch(74% 0.11 305);
+}
+
+html[data-theme="light"][data-accent="violet"] {
+  --on-accent: oklch(48% 0.15 305);
+  --tint-accent: oklch(52% 0.16 305 / 0.1);
+  --line-focus: oklch(48% 0.15 305);
+}
+
+/* Accents remap --on-accent; the fill follows, darker and more saturated. */
+html[data-theme="dark"][data-accent] {
+  --accent-fill: oklch(from var(--on-accent) 55% calc(c + 0.06) h);
 }
