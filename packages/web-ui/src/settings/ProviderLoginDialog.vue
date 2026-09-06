@@ -66,7 +66,7 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <Button variant="primary" @click="emit('open', phase.url)">
-            Open {{ phase.url.replace(/^https?:\/\//, '') }}
+            Open in browser
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
           <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
@@ -78,7 +78,7 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 
       <div v-else-if="phase.kind === 'code-input'" class="flex flex-col gap-3">
         <Button class="self-start" @click="emit('open', phase.url)">
-          Open {{ phase.url.replace(/^https?:\/\//, '') }}
+          Open in browser
           <ExternalLink :size="ICON_PX.in24" />
         </Button>
         <div class="flex items-center gap-2">
