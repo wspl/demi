@@ -122,16 +122,20 @@ const container = inject(overlayContainerKey, null)
 const teleportTarget = computed(() => container?.value ?? 'body')
 const boundary = computed(() => container?.value ?? undefined)
 
+// Flip and size must agree on the edge inset: a smaller flip inset lets a panel that
+// almost fits be shrunk by size instead of flipped, and the last item gets cut off.
+const EDGE_PADDING = 16
+
 const { floatingStyles, placement: resolvedPlacement } = useFloating(virtualRef, floatingRef, {
   placement: computed(() => props.placement),
   strategy: 'fixed',
   middleware: computed(() => [
     offsetMiddleware(props.offset),
-    flip({ boundary: boundary.value }),
+    flip({ padding: EDGE_PADDING, boundary: boundary.value }),
     // Keep the panel on-screen, but stop following once the trigger scrolls away.
     shift({ padding: props.shiftPadding, limiter: limitShift(), boundary: boundary.value }),
     size({
-      padding: 16,
+      padding: EDGE_PADDING,
       boundary: boundary.value,
       apply({ availableHeight, elements }) {
         elements.floating.style.setProperty(
