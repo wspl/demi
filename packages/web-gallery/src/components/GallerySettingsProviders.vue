@@ -328,7 +328,7 @@ function setAll(p: MockProvider, enabled: boolean) {
               <header class="flex h-7 select-none items-center gap-2">
                 <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Models</h3>
                 <span v-if="selected.catalogFetched" class="text-[12px] text-fg-subtle">fetched {{ selected.catalogFetched }}</span>
-                <Tooltip content="Refresh the list"><IconButton :icon="RefreshCw" size="sm" class="ml-auto" aria-label="Refresh models" /></Tooltip>
+                <span class="ml-auto"><Tooltip content="Refresh the list"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" /></Tooltip></span>
               </header>
             </template>
             <SettingsRow
