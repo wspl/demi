@@ -161,7 +161,7 @@ const revealed = ref<Record<string, boolean>>({})
   <SettingsPage v-if="tab === 'general'" title="General" description="Language, look, and how the app starts.">
     <SettingsGroup title="Appearance">
       <template #aside><AppearancePreview :font-size="s.general.fontSize" /></template>
-      <SettingsRow label="Language" description="The app's own text. Model output is unaffected.">
+      <SettingsRow label="Language">
         <Dropdown size="sm" :overlay-store="appOverlayStore" variant="default" trigger-label="Language">
           <template #trigger>{{ s.general.language }}</template>
           <template #content="{ close }">
