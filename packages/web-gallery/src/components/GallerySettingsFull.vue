@@ -417,11 +417,8 @@ const revealed = ref<Record<string, boolean>>({})
             <Tag v-if="device.current" tone="accent">This device</Tag>
             <Tag v-if="device.version !== '1.6.2'" tone="warning">Update available</Tag>
           </template>
-          <Button size="sm" v-if="!device.current" @click="device.online = !device.online; device.seen = device.online ? 'Now' : 'Just now'">{{ device.online ? 'Go offline' : 'Connect' }}</Button>
+          <!-- Presence is the device's own doing; the only action here is to revoke it. -->
           <Tooltip content="Revoke"><IconButton size="sm" :icon="Trash2" variant="danger" :disabled="device.current" aria-label="Revoke device" @click="revokeDevice(device.id)" /></Tooltip>
-        </SettingsRow>
-        <SettingsRow inset label="Home directory">
-          <span class="font-mono text-[12px] text-fg-muted">{{ device.home }}</span>
         </SettingsRow>
       </template>
     </SettingsGroup>

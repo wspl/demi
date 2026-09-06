@@ -290,9 +290,9 @@ export function createSettingsState() {
       { id: 'sentry', name: 'sentry', transport: 'http', target: 'https://mcp.sentry.dev', state: 'disabled', enabled: false, expanded: false, tools: [] },
     ] as MockServer[],
     devices: [
-      { id: 'mac', name: 'zan-mbp', online: true, current: true, home: '/Users/zan', version: '1.6.2', seen: 'Now' },
-      { id: 'build', name: 'build-01', online: false, current: false, home: '/home/build', version: '1.5.9', seen: '3 days ago' },
-      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', online: true, current: false, home: '/home/lab', version: '1.6.2', seen: '2 minutes ago' },
+      { id: 'mac', name: 'zan-mbp', online: true, current: true, version: '1.6.2', seen: 'Now' },
+      { id: 'build', name: 'build-01', online: false, current: false, version: '1.5.9', seen: '3 days ago' },
+      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', online: true, current: false, version: '1.6.2', seen: '2 minutes ago' },
     ],
     keys: [
       { id: 'new', action: 'New conversation', keys: '⌘N' },
