@@ -119,23 +119,22 @@ function revokeDevice(id: string) {
   s.value.devices = s.value.devices.filter((d) => d.id !== id)
 }
 
-/** A new binding takes effect at once; conflicts are recomputed across the list. */
+/** A binding another action already holds is refused; the row keeps its old keys. */
 function rebind(id: string, keys: string) {
   const list = s.value.keys
   const target = list.find((b) => b.id === id)
   if (!target) return
-  target.keys = keys
-  for (const b of list) {
-    const other = list.find((o) => o.id !== b.id && o.keys === b.keys)
-    if (other) b.conflict = other.action
-    else delete b.conflict
+  const taken = keys ? list.find((b) => b.id !== id && b.keys === keys) : undefined
+  if (taken) {
+    showToast({ title: `${keys} is taken`, message: `Already bound to “${taken.action}”. Remove it there first.`, tone: 'danger' })
+    return
   }
+  target.keys = keys
 }
 
+const DEFAULT_KEYS: Record<string, string> = { new: '⌘N', send: '⏎', stop: '⎋', sidebar: '⌘B', search: '⌘K', focus: '⌘L', settings: '⌘,' }
 function resetShortcuts() {
-  for (const binding of s.value.keys) delete binding.conflict
-  const focus = s.value.keys.find((b) => b.id === 'focus')
-  if (focus) focus.keys = '⌘L'
+  for (const binding of s.value.keys) binding.keys = DEFAULT_KEYS[binding.id] ?? binding.keys
   note('Shortcuts reset')
 }
 
@@ -447,9 +446,8 @@ const revealed = ref<Record<string, boolean>>({})
   <!-- Keyboard -->
   <SettingsPage v-else-if="tab === 'keyboard'" title="Keyboard" description="Click one to change it.">
     <SettingsGroup title="Shortcuts">
-      <SettingsRow v-for="binding in s.keys" :key="binding.id" :label="binding.action" :description="binding.conflict ? `Also bound to ${binding.conflict}. The first match wins.` : undefined">
-        <template #tags><Tag v-if="binding.conflict" tone="danger">Conflict</Tag></template>
-        <ShortcutRecorder v-model="binding.keys" size="sm" @update:model-value="rebind(binding.id, $event)" />
+      <SettingsRow v-for="binding in s.keys" :key="binding.id" :label="binding.action">
+        <ShortcutRecorder :model-value="binding.keys" size="sm" @update:model-value="rebind(binding.id, $event)" />
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup>

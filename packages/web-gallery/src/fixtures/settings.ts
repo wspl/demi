@@ -18,7 +18,7 @@ import type { SettingsNavGroup, SettingsProviderAccount, SettingsProviderEntry, 
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
- * expiring auth, a crashed server, a shortcut conflict, a full quota, a disabled provider.
+ * expiring auth, a crashed server, a full quota, a disabled provider.
  */
 export const fullSettingsNav: SettingsNavGroup[] = [
   {
@@ -300,7 +300,7 @@ export function createSettingsState() {
       { id: 'stop', action: 'Stop the turn', keys: '⎋' },
       { id: 'sidebar', action: 'Toggle sidebar', keys: '⌘B' },
       { id: 'search', action: 'Search conversations', keys: '⌘K' },
-      { id: 'focus', action: 'Focus composer', keys: '⌘K', conflict: 'Search conversations' },
+      { id: 'focus', action: 'Focus composer', keys: '⌘L' },
       { id: 'settings', action: 'Open settings', keys: '⌘,' },
     ],
     data: {
