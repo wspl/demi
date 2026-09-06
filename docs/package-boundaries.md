@@ -246,7 +246,7 @@ Test code may depend upward for integration coverage. Production code must not.
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
 - Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
-  Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, and a
+  Input surfaces, shared UI primitives, markdown/theme, the conversation/tab store, shared sidebar presentation and list interaction, the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), and a
   transport-agnostic control-client interface. Consumes an injected `AgentClient`.
 - Public boundary: source-path exports (`./*`) consumed by web hosts; third parties embed it
   by supplying an `AgentClient` and a control client. External products consume the published
