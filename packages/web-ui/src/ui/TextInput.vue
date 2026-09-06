@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs, useSlots } from 'vue'
+import { Eye, EyeOff } from '@lucide/vue'
+import IconButton from './IconButton.vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -7,7 +9,11 @@ const props = defineProps<{
   modelValue?: string
   placeholder?: string
   focused?: boolean
+  /** A key or password: masked, with a built-in eye to reveal it. */
+  secret?: boolean
 }>()
+
+const revealed = ref(false)
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -41,16 +47,19 @@ defineExpose({
     </div>
     <input
       ref="inputRef"
-      type="text"
+      :type="secret && !revealed ? 'password' : 'text'"
       v-bind="inputAttrs"
       :value="modelValue"
       :placeholder="placeholder"
       class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
-      :class="slots['prefix'] ? 'pl-1.5 pr-2.5' : 'px-2.5'"
+      :class="[slots['prefix'] ? 'pl-1.5' : 'pl-2.5', secret || slots['suffix'] ? 'pr-1.5' : 'pr-2.5']"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @focus="isFocused = true"
       @blur="isFocused = false; startFocused = false"
     />
+    <div v-if="secret" class="flex shrink-0 items-center pr-1">
+      <IconButton :icon="revealed ? EyeOff : Eye" variant="ghost" size="xs" :aria-label="revealed ? 'Hide' : 'Show'" @click.stop="revealed = !revealed" />
+    </div>
     <div v-if="slots['suffix']" class="flex shrink-0 items-center pr-2">
       <slot name="suffix" />
     </div>
