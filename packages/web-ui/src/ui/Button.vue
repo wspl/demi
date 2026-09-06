@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 const props = withDefaults(defineProps<{
   size?: 'xs' | 'sm' | 'md'
-  variant?: 'default' | 'primary' | 'ghost'
+  variant?: 'default' | 'primary' | 'ghost' | 'danger'
   disabled?: boolean
   pressed?: boolean
 }>(), {
@@ -27,7 +27,9 @@ const pressed = computed(() => props.pressed === true)
           ? pressed
             ? 'font-normal bg-hover text-fg-body'
             : 'font-normal text-fg-muted hover:bg-hover hover:text-fg-body'
-          : ['btn font-medium text-fg-body', pressed ? 'text-fg-emphasis' : 'hover:text-fg-emphasis'],
+          : variant === 'danger'
+            ? 'btn font-medium text-on-danger'
+            : ['btn font-medium text-fg-body', pressed ? 'text-fg-emphasis' : 'hover:text-fg-emphasis'],
       disabled ? 'pointer-events-none opacity-40' : '',
     ]"
   >
