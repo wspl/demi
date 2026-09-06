@@ -84,18 +84,18 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
 
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
         <SettingsRow v-if="editable" label="Model id">
-          <TextInput v-model="draft.id" placeholder="model-id" class="w-64 max-w-full font-mono" :readonly="mode === 'edit'" />
+          <TextInput size="sm" v-model="draft.id" placeholder="model-id" class="w-64 max-w-full font-mono" :readonly="mode === 'edit'" />
         </SettingsRow>
         <SettingsRow label="Display name" :description="editable ? 'Optional' : undefined" :compact="!editable">
-          <TextInput v-if="editable" v-model="draft.name" :placeholder="draft.id" class="w-64 max-w-full" />
+          <TextInput size="sm" v-if="editable" v-model="draft.name" :placeholder="draft.id" class="w-64 max-w-full" />
           <span v-else class="text-chrome text-fg">{{ draft.name || '—' }}</span>
         </SettingsRow>
         <SettingsRow label="Context window" :compact="!editable">
-          <TokenInput v-if="editable" v-model="draft.contextWindow" placeholder="128" class="w-32" />
+          <TokenInput size="sm" v-if="editable" v-model="draft.contextWindow" placeholder="128" class="w-32" />
           <span v-else class="text-chrome tabular-nums text-fg">{{ formatTokens(draft.contextWindow) }}</span>
         </SettingsRow>
         <SettingsRow label="Max output" :description="editable ? 'Optional' : undefined" :compact="!editable">
-          <TokenInput v-if="editable" v-model="draft.outputLimit" placeholder="8" class="w-32" />
+          <TokenInput size="sm" v-if="editable" v-model="draft.outputLimit" placeholder="8" class="w-32" />
           <span v-else class="text-chrome tabular-nums text-fg">{{ formatTokens(draft.outputLimit) }}</span>
         </SettingsRow>
         <SettingsRow label="Reasoning" :description="editable ? 'First is the default.' : undefined" :compact="!editable">
@@ -114,7 +114,7 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
           <span v-else class="text-chrome text-fg">{{ draft.efforts.length ? draft.efforts.map(cap).join(' · ') : 'None' }}</span>
         </SettingsRow>
         <SettingsRow label="Fast tier" :description="editable ? 'Service tier id. Optional' : undefined" :compact="!editable">
-          <TextInput v-if="editable" :model-value="draft.fastTier ?? ''" placeholder="fast" class="w-32" @update:model-value="(v) => (draft.fastTier = v.trim() || null)" />
+          <TextInput size="sm" v-if="editable" :model-value="draft.fastTier ?? ''" placeholder="fast" class="w-32" @update:model-value="(v) => (draft.fastTier = v.trim() || null)" />
           <span v-else class="font-mono text-[12px] text-fg-muted">{{ draft.fastTier ?? '—' }}</span>
         </SettingsRow>
       </div>
@@ -134,8 +134,8 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
             />
           </SettingsRow>
           <SettingsRow inset label="Other extensions">
-            <TextInput v-model="customExtension" placeholder=".heic" class="w-28" @keydown.enter="addExtension" />
-            <Button :disabled="!customExtension.trim()" @click="addExtension">Add</Button>
+            <TextInput size="sm" v-model="customExtension" placeholder=".heic" class="w-28" @keydown.enter="addExtension" />
+            <Button size="sm" :disabled="!customExtension.trim()" @click="addExtension">Add</Button>
           </SettingsRow>
         </template>
         <div v-if="editable && draft.extensions.length" class="flex flex-wrap gap-1 px-4 py-3">
@@ -148,8 +148,8 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
 
       </div>
       <div v-if="editable" class="flex justify-end gap-2 p-5 pt-4">
-        <Button @click="emit('close')">Cancel</Button>
-        <Button variant="primary" :disabled="!canSave" @click="emit('save', clone(draft))">{{ mode === 'create' ? 'Add model' : 'Save' }}</Button>
+        <Button size="sm" @click="emit('close')">Cancel</Button>
+        <Button size="sm" variant="primary" :disabled="!canSave" @click="emit('save', clone(draft))">{{ mode === 'create' ? 'Add model' : 'Save' }}</Button>
       </div>
     </div>
   </Dialog>

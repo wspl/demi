@@ -9,6 +9,7 @@ import TextInput from './TextInput.vue'
 const props = defineProps<{
   modelValue: number | null
   placeholder?: string
+  size?: 'sm' | 'md'
 }>()
 
 const emit = defineEmits<{
@@ -55,7 +56,7 @@ const otherUnit = computed(() => (unit.value === 'K' ? 'M' : 'K'))
 </script>
 
 <template>
-  <TextInput :model-value="text" :placeholder="placeholder" inputmode="decimal" @update:model-value="onInput">
+  <TextInput :model-value="text" :placeholder="placeholder" :size="size" inputmode="decimal" @update:model-value="onInput">
     <template #suffix>
       <button
         type="button"

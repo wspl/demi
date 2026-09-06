@@ -1,6 +1,6 @@
 /**
  * Finds settings cards whose controls mix height families. Inputs, buttons, icon
- * buttons and segmented controls come in one family per surface (28px in settings
+ * buttons and segmented controls come in one family per surface (24px in settings
  * cards); a 24px button beside a 28px input is a mistake, not a choice. See
  * docs/demi-next/web-prototype.md.
  */
