@@ -8,6 +8,8 @@ import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import ShortcutRecorder from '@demicodes/web-ui/ui/ShortcutRecorder.vue'
+import SwatchPicker from '@demicodes/web-ui/ui/SwatchPicker.vue'
+import { PRODUCT_ACCENTS } from '@demicodes/web-ui/theme/productAppearance'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import ThemeToggle from '@demicodes/web-ui/ui/ThemeToggle.vue'
@@ -24,6 +26,7 @@ const query = ref('session cookie')
 const emptyQuery = ref('')
 const secret = ref('sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b')
 const shortcut = ref('⌘K')
+const swatch = ref('steel')
 const tokens = ref<number | null>(200_000)
 const noTokens = ref<number | null>(null)
 const enabled = ref(true)
@@ -214,6 +217,14 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
               <Search :size="14" class="text-fg-subtle" />
             </template>
           </TextInput>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection title="SwatchPicker" note="Colour swatches as a radio group; the chosen one wears a ring in its own colour.">
+      <div class="specimen-row">
+        <GallerySpecimen variant="accents">
+          <SwatchPicker v-model="swatch" :options="PRODUCT_ACCENTS" />
         </GallerySpecimen>
       </div>
     </GallerySection>

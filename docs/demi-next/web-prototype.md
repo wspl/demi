@@ -111,10 +111,12 @@ and centered 24px targets; conversation actions have a 2px gap.
 
 ## Product appearance
 
-The product uses Ink tone, Regular density, Medium radius and Hairline shadows.
-`web-ui/theme/productAppearance.ts` defines the selected axes;
-`web-ui/styles/product-appearance.css` owns their light/dark tokens. The web
-composition root applies the axes and gallery exposes the same Demi preset.
+The product uses Regular density, Medium radius and Hairline shadows; those are
+fixed. Tone (Ink or Warm) and accent are the user's to choose in settings.
+`web-ui/theme/productAppearance.ts` defines the fixed axes and the catalogs of
+tones and accents; `web-ui/styles/product-appearance.css` owns every token they
+need in light and dark. The web composition root applies the axes and the gallery
+exposes the same Demi preset, plus further tones for its own paradigms.
 
 ## Scroll regions and outlines
 

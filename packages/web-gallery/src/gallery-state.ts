@@ -1,31 +1,17 @@
 import { reactive, watch } from 'vue'
-import { productAppearance } from '@demicodes/web-ui/theme/productAppearance'
+import { PRODUCT_ACCENTS, productAppearance, type ProductAccent } from '@demicodes/web-ui/theme/productAppearance'
 import { appThemeStore, setTheme } from '@demicodes/web-ui/theme/appTheme'
 
 type ThemeMode = 'light' | 'dark'
 
 export type ParadigmId = 'demi' | 'neutral' | 'hairline' | 'carved' | 'overlay'
 export type ToneId = 'zinc' | 'cool' | 'warm' | 'ink'
-export type AccentId = 'steel' | 'indigo' | 'teal' | 'moss' | 'amber' | 'coral' | 'violet'
+export type AccentId = ProductAccent
 export type DensityId = 'compact' | 'regular' | 'comfortable'
 export type RadiusId = 'tight' | 'medium' | 'soft'
 export type ShadowId = 'hairline' | 'soft' | 'carved'
 
-export interface Accent {
-  id: AccentId
-  name: string
-  swatch: string
-}
-
-export const ACCENTS: readonly Accent[] = [
-  { id: 'steel', name: 'Steel', swatch: 'oklch(58% 0.11 250)' },
-  { id: 'indigo', name: 'Indigo', swatch: 'oklch(56% 0.12 285)' },
-  { id: 'teal', name: 'Teal', swatch: 'oklch(54% 0.09 200)' },
-  { id: 'moss', name: 'Moss', swatch: 'oklch(52% 0.09 145)' },
-  { id: 'amber', name: 'Amber', swatch: 'oklch(62% 0.11 75)' },
-  { id: 'coral', name: 'Coral', swatch: 'oklch(58% 0.11 28)' },
-  { id: 'violet', name: 'Violet', swatch: 'oklch(56% 0.12 305)' },
-]
+export const ACCENTS = PRODUCT_ACCENTS
 
 export interface Paradigm {
   id: ParadigmId
