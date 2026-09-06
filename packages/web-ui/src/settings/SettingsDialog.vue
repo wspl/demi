@@ -71,7 +71,8 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
     <div class="@container h-[36rem] min-h-0 shrink">
     <div class="flex h-full flex-col overflow-hidden @md:flex-row">
       <!-- Wide: a rail beside the page. Narrow: a compact header and the sections in one row or a picker. -->
-      <aside class="flex shrink-0 flex-col bg-surface @md:w-56 @md:gap-3 @md:overflow-y-auto @md:px-3 @md:py-3">
+      <!-- The account and the filter stay put; only the section list scrolls. -->
+      <aside class="flex shrink-0 flex-col bg-surface @md:w-56 @md:gap-3 @md:px-3 @md:py-3">
         <div class="flex h-11 select-none items-center pl-4 pr-12 @md:hidden">
           <span class="text-[15px] font-medium text-fg-emphasis">Settings</span>
         </div>
@@ -89,7 +90,7 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             <template #prefix><Search :size="ICON_PX.in24" /></template>
           </TextInput>
         </div>
-        <nav class="hidden flex-col gap-3 @md:flex" aria-label="Settings sections">
+        <nav class="-mx-1 hidden min-h-0 flex-col gap-3 overflow-y-auto px-1 @md:flex" aria-label="Settings sections">
           <div v-if="!filteredSections.length" class="select-none px-2 py-3 text-[12px] text-fg-subtle">Nothing matches.</div>
           <div v-for="(group, index) in filteredSections" :key="group.label ?? index" class="flex flex-col gap-0.5">
             <div v-if="group.label" class="select-none px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">
