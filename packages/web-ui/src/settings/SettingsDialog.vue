@@ -142,7 +142,7 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
           </Dropdown>
         </div>
       </aside>
-      <section class="relative min-w-0 flex-1 overflow-y-auto px-5 py-6 @md:px-10 @md:py-8">
+      <section class="relative min-w-0 flex-1 overflow-y-auto px-5 py-6 @md:px-8 @md:py-8">
         <div class="absolute right-3 top-3 hidden @md:block">
           <IconButton :icon="X" variant="ghost" aria-label="Close settings" @click="emit('close')" />
         </div>
