@@ -80,15 +80,6 @@ export interface SettingsSubscriptionVendor {
   logo: string
 }
 
-/** What the add-provider dialog hands back for an API-key provider. */
-export interface SettingsProviderDraft {
-  vendor: SettingsVendor | null
-  name: string
-  baseUrl: string
-  wireApi: SettingsWireApi
-  key: string
-}
-
 export const THINKING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as const
 
 export const EXTENSION_PRESETS: { id: string; label: string; extensions: string[] }[] = [
