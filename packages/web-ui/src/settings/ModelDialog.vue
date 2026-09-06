@@ -6,6 +6,7 @@ import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import SettingsRow from './SettingsRow.vue'
 import { EXTENSION_PRESETS, THINKING_EFFORTS, type SettingsModelDraft } from './types'
 
@@ -44,10 +45,6 @@ function formatTokens(n: number | null): string {
   return n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}K`
 }
 
-function numberOrNull(value: string): number | null {
-  const n = Number(value.replace(/[,\s]/g, ''))
-  return value.trim() && Number.isFinite(n) ? n : null
-}
 
 function toggleEffort(effort: string) {
   const list = draft.value.efforts
@@ -88,16 +85,16 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
         <SettingsRow v-if="editable" label="Model id" description="Exactly what the endpoint expects.">
           <TextInput v-model="draft.id" placeholder="model-id" class="w-64 max-w-full font-mono" :readonly="mode === 'edit'" />
         </SettingsRow>
-        <SettingsRow label="Display name" :description="editable ? 'Shown in the picker instead of the id.' : undefined" :compact="!editable">
-          <TextInput v-if="editable" v-model="draft.name" :placeholder="draft.id || 'Optional'" class="w-64 max-w-full" />
+        <SettingsRow label="Display name" :description="editable ? 'Shown in the picker instead of the id. (Optional)' : undefined" :compact="!editable">
+          <TextInput v-if="editable" v-model="draft.name" :placeholder="draft.id" class="w-64 max-w-full" />
           <span v-else class="text-chrome text-fg">{{ draft.name || '—' }}</span>
         </SettingsRow>
         <SettingsRow label="Context window" :description="editable ? 'Tokens. Compaction triggers near this.' : undefined" :compact="!editable">
-          <TextInput v-if="editable" :model-value="draft.contextWindow === null ? '' : String(draft.contextWindow)" placeholder="128000" class="w-32" @update:model-value="(v) => (draft.contextWindow = numberOrNull(v))" />
+          <TokenInput v-if="editable" v-model="draft.contextWindow" placeholder="128" class="w-32" />
           <span v-else class="text-chrome tabular-nums text-fg">{{ formatTokens(draft.contextWindow) }}</span>
         </SettingsRow>
-        <SettingsRow label="Max output" :description="editable ? 'Tokens per reply. Empty uses the endpoint default.' : undefined" :compact="!editable">
-          <TextInput v-if="editable" :model-value="draft.outputLimit === null ? '' : String(draft.outputLimit)" placeholder="8192" class="w-32" @update:model-value="(v) => (draft.outputLimit = numberOrNull(v))" />
+        <SettingsRow label="Max output" :description="editable ? 'Tokens per reply. Empty uses the endpoint default. (Optional)' : undefined" :compact="!editable">
+          <TokenInput v-if="editable" v-model="draft.outputLimit" placeholder="8" class="w-32" />
           <span v-else class="text-chrome tabular-nums text-fg">{{ formatTokens(draft.outputLimit) }}</span>
         </SettingsRow>
         <SettingsRow label="Reasoning" :description="editable ? 'Levels the composer offers. First is the default.' : undefined" :compact="!editable">
@@ -115,8 +112,8 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
           </template>
           <span v-else class="text-chrome text-fg">{{ draft.efforts.length ? draft.efforts.map(cap).join(' · ') : 'None' }}</span>
         </SettingsRow>
-        <SettingsRow label="Fast tier" :description="editable ? 'A service tier id the Fast switch selects.' : undefined" :compact="!editable">
-          <TextInput v-if="editable" :model-value="draft.fastTier ?? ''" placeholder="Optional" class="w-32" @update:model-value="(v) => (draft.fastTier = v.trim() || null)" />
+        <SettingsRow label="Fast tier" :description="editable ? 'A service tier id the Fast switch selects. (Optional)' : undefined" :compact="!editable">
+          <TextInput v-if="editable" :model-value="draft.fastTier ?? ''" placeholder="fast" class="w-32" @update:model-value="(v) => (draft.fastTier = v.trim() || null)" />
           <span v-else class="font-mono text-[12px] text-fg-muted">{{ draft.fastTier ?? '—' }}</span>
         </SettingsRow>
       </div>

@@ -7,6 +7,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import ThemeToggle from '@demicodes/web-ui/ui/ThemeToggle.vue'
 import ConversationStatusDot from '@demicodes/web-ui/agent/ConversationStatusDot.vue'
@@ -20,6 +21,8 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 
 const query = ref('session cookie')
 const emptyQuery = ref('')
+const tokens = ref<number | null>(200_000)
+const noTokens = ref<number | null>(null)
 const enabled = ref(true)
 const enabledOff = ref(false)
 const enabledSmOn = ref(true)
@@ -200,6 +203,23 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
               <Search :size="14" class="text-fg-subtle" />
             </template>
           </TextInput>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection title="TokenInput" note="A count in thousands or millions; the unit toggles inside the field.">
+      <div class="specimen-row">
+        <GallerySpecimen variant="empty">
+          <TokenInput v-model="noTokens" placeholder="128" class="w-32" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="filled">
+          <TokenInput v-model="tokens" class="w-32" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="readout">
+          <div class="flex items-center gap-2">
+            <TokenInput v-model="tokens" class="w-32" />
+            <span class="text-[12px] tabular-nums text-fg-subtle">{{ tokens === null ? '—' : tokens.toLocaleString() }} tokens</span>
+          </div>
         </GallerySpecimen>
       </div>
     </GallerySection>
