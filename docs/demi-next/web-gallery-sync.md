@@ -17,6 +17,7 @@ browser package typechecks and checks affected specimens in the browser.
 | Transcript blocks, markdown and tool output | Shared agent renderers | Session, Markdown and Code |
 | Settings shell, pages, groups, rows, split lists | settings/SettingsDialog, SettingsPage, SettingsGroup, SettingsRow, SettingsSplit, SettingsListItem | Settings full mock and narrow variant |
 | Models & providers: rail, provider page, add/model dialogs, login dialog | settings/SettingsProvidersPage, AddProviderDialog, ModelDialog, ProviderLoginDialog | GallerySettingsProviders over fixture state and mock handlers |
+| Account credentials: change email (address, password, code), change password | settings/ChangeEmailDialog, ChangePasswordDialog | GallerySettingsFull mock flows; standalone wells with every phase |
 | Text entry: prefix/suffix, secrets with an eye, token counts with a unit | TextInput, TokenInput | Primitives specimens |
 
 ## Product-flow coverage boundary
