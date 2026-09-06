@@ -50,6 +50,8 @@ const messages: Record<string, string> = {
   'agent.queue.sendNow': 'Steer the current turn with this',
   'agent.steer.discard': 'Discard this steer',
   'agent.steer.interrupt': 'Interrupt the current turn and send this',
+  'agent.user.copy': 'Copy message',
+  'agent.user.edit': 'Edit in the composer',
   'agent.dock.resume': 'Resume',
   'agent.input.unsupportedFiles': 'Unsupported attachment type',
   'agent.conversationList.placeholder': 'Search conversations…',

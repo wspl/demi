@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Archive, Play, RotateCcw } from '@lucide/vue'
+import type { UserContentBlock } from '@demicodes/core'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
@@ -35,6 +36,12 @@ watch(
 const hasProvider = computed(() =>
   resources.providers.some((p) => p.id === conversation.value?.providerId && p.isAvailable),
 )
+
+function editUser(content: UserContentBlock[]) {
+  if (!conversation.value) return
+  const text = content.find((part): part is Extract<UserContentBlock, { type: 'text' }> => part.type === 'text')?.text
+  conversation.value.draft = text ?? ''
+}
 </script>
 
 <template>
@@ -79,6 +86,7 @@ const hasProvider = computed(() =>
         :persisted-scroll-state="undefined"
         @delete-queued="(id) => store.removeQueued(conversation!, id)"
         @send-queued="(id) => store.sendQueued(conversation!, id)"
+        @edit-user="editUser"
       />
       <template #dock>
         <SessionDock
