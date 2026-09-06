@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { md } from '@demicodes/web-ui/markdown/md'
+import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import { isHttpUrl } from '@demicodes/web-ui/markdown/filePath'
 import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
 import { closeOpenInlineMarkdown, holdIncompleteMarkdown, visibleFrontierLength } from '@demicodes/web-ui/ui/stream-reveal'
@@ -20,8 +21,14 @@ const visible = computed(() => {
   return holdIncompleteMarkdown(shown.value).visible
 })
 
+const renderVersion = useMarkdownRenderVersion()
+
 // Closers apply to finished text too: an aborted stream leaves the same half-open markers.
-const renderedMarkdown = computed(() => md.render(visible.value + closeOpenInlineMarkdown(visible.value)))
+// The render also follows the highlighter: its arrival and the document's theme.
+const renderedMarkdown = computed(() => {
+  void renderVersion.value
+  return md.render(visible.value + closeOpenInlineMarkdown(visible.value))
+})
 
 /** The frontier spans of the current render, so clearing them is not a subtree search. */
 let inkSpans: HTMLSpanElement[] = []
