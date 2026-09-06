@@ -208,7 +208,7 @@ function saveModel(draft: SettingsModelDraft) {
             <template #header>
               <header class="select-none">
                 <div class="flex h-8 flex-wrap items-center gap-x-1.5 gap-y-2">
-                  <TextInput
+                  <TextInput size="sm"
                     v-if="renaming"
                     ref="renameInput"
                     v-model="renameDraft"
@@ -220,7 +220,7 @@ function saveModel(draft: SettingsModelDraft) {
                   />
                   <template v-else>
                     <h3 class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
-                    <Tooltip v-if="selected.kind === 'api_key'" content="Rename"><IconButton :icon="TextCursorInput" variant="ghost" aria-label="Rename provider" @click="beginRename" /></Tooltip>
+                    <Tooltip v-if="selected.kind === 'api_key'" content="Rename"><IconButton size="sm" :icon="TextCursorInput" variant="ghost" aria-label="Rename provider" @click="beginRename" /></Tooltip>
                   </template>
                   <div class="ml-auto flex items-center gap-1.5">
                     <Switch v-model="selected.enabled" size="sm" class="ml-2" />
@@ -247,22 +247,22 @@ function saveModel(draft: SettingsModelDraft) {
                     <span>{{ account.quota.week.used }}% · resets {{ account.quota.week.resets }}</span>
                   </div>
                 </template>
-                <Button v-if="!account.active" @click="emit('activateAccount', selected, account.id)">Activate</Button>
-                <Tooltip content="Remove account"><IconButton :icon="Trash2" variant="danger" aria-label="Remove account" @click="emit('removeAccount', selected, account.id)" /></Tooltip>
+                <Button size="sm" v-if="!account.active" @click="emit('activateAccount', selected, account.id)">Activate</Button>
+                <Tooltip content="Remove account"><IconButton size="sm" :icon="Trash2" variant="danger" aria-label="Remove account" @click="emit('removeAccount', selected, account.id)" /></Tooltip>
               </SettingsRow>
               <div v-if="!selected.accounts.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No account yet. Sign in to use this provider.</div>
               <SettingsRow label="Add account">
-                <Button variant="primary" @click="emit('signIn', selected)">Sign in</Button>
+                <Button size="sm" variant="primary" @click="emit('signIn', selected)">Sign in</Button>
               </SettingsRow>
             </template>
 
             <!-- Connection (API key) -->
             <template v-else>
               <SettingsRow label="Base URL">
-                <TextInput v-model="selected.baseUrl" class="w-72 max-w-full" />
+                <TextInput size="sm" v-model="selected.baseUrl" class="w-72 max-w-full" />
               </SettingsRow>
               <SettingsRow v-if="!selected.vendorId" label="Protocol">
-                <Dropdown :overlay-store="overlayStore" variant="default" trigger-label="Protocol">
+                <Dropdown size="sm" :overlay-store="overlayStore" variant="default" trigger-label="Protocol">
                   <template #trigger>{{ WIRE_API_LABELS[selected.wireApi] }}</template>
                   <template #content="{ close }">
                     <Menu>
@@ -272,13 +272,13 @@ function saveModel(draft: SettingsModelDraft) {
                 </Dropdown>
               </SettingsRow>
               <SettingsRow label="API key" :description="selected.vendorId ? undefined : 'Optional'">
-                <TextInput v-model="selected.apiKey" secret placeholder="sk-…" class="w-72 max-w-full" />
+                <TextInput size="sm" v-model="selected.apiKey" secret placeholder="sk-…" class="w-72 max-w-full" />
               </SettingsRow>
               <SettingsRow label="Test connection">
                 <span v-if="testing === selected.id" class="flex items-center gap-1.5 text-[12px] text-fg-subtle"><IndeterminateSpinner :size="ICON_PX.in24" /> Testing…</span>
                 <span v-else-if="selected.state === 'ready'" class="flex items-center gap-1 text-[12px] text-on-success"><Check :size="ICON_PX.in24" /> OK<template v-if="selected.testedIn"> · {{ selected.testedIn }}</template></span>
                 <span v-else-if="selected.detail" class="min-w-0 truncate font-mono text-[12px] text-on-danger">{{ selected.detail }}</span>
-                <Tooltip content="Test connection"><IconButton :icon="Plug" aria-label="Test connection" @click="emit('test', selected)" /></Tooltip>
+                <Tooltip content="Test connection"><IconButton size="sm" :icon="Plug" aria-label="Test connection" @click="emit('test', selected)" /></Tooltip>
               </SettingsRow>
             </template>
           </SettingsGroup>
@@ -292,8 +292,8 @@ function saveModel(draft: SettingsModelDraft) {
                 <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Models</h3>
                 <span v-if="selected.modelSource === 'catalog' && selected.catalogFetched" class="text-[12px] text-fg-subtle">fetched {{ selected.catalogFetched }}</span>
                 <Tag v-if="selected.stale" tone="warning">Stale</Tag>
-                <span v-if="selected.kind === 'subscription'" class="ml-auto"><Tooltip content="Refresh the list"><IconButton :icon="RefreshCw" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip></span>
-                <Segmented v-else-if="selected.vendorId" v-model="selected.modelSource" class="ml-auto" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
+                <span v-if="selected.kind === 'subscription'" class="ml-auto"><Tooltip content="Refresh the list"><IconButton size="sm" :icon="RefreshCw" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip></span>
+                <Segmented size="sm" v-else-if="selected.vendorId" v-model="selected.modelSource" class="ml-auto" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
               </header>
             </template>
             <div v-if="selected.kind === 'api_key'" class="flex items-center gap-3 px-3 py-2">
@@ -304,11 +304,11 @@ function saveModel(draft: SettingsModelDraft) {
                 aria-label="Enable every listed model"
                 @update:model-value="(on) => setAll(selected!, on)"
               />
-              <TextInput v-model="modelFilter" placeholder="Filter models" class="min-w-0 flex-1">
+              <TextInput size="sm" v-model="modelFilter" placeholder="Filter models" class="min-w-0 flex-1">
                 <template #prefix><Search :size="ICON_PX.in24" /></template>
               </TextInput>
-              <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>
-              <Tooltip v-else content="Refresh the catalog"><IconButton :icon="RefreshCw" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
+              <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton size="sm" :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>
+              <Tooltip v-else content="Refresh the catalog"><IconButton size="sm" :icon="RefreshCw" aria-label="Refresh models" @click="emit('refresh', selected)" /></Tooltip>
             </div>
             <SettingsRow v-for="m in visibleModels(selected)" :key="m.id" :label="m.name || m.id" compact :class="m.enabled ? '' : 'opacity-60'">
               <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" :aria-label="`Enable ${m.name || m.id}`" /></template>
@@ -320,10 +320,10 @@ function saveModel(draft: SettingsModelDraft) {
                 <Tooltip v-if="m.fastTier" content="Has a fast tier"><Tag><Zap :size="12" /></Tag></Tooltip>
               </template>
               <template v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'">
-                <Tooltip content="Edit"><IconButton :icon="SlidersHorizontal" aria-label="Edit model" @click="openModel('edit', m)" /></Tooltip>
-                <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" aria-label="Remove model" @click="emit('removeModel', selected, m)" /></Tooltip>
+                <Tooltip content="Edit"><IconButton size="sm" :icon="SlidersHorizontal" aria-label="Edit model" @click="openModel('edit', m)" /></Tooltip>
+                <Tooltip content="Remove"><IconButton size="sm" :icon="Trash2" variant="danger" aria-label="Remove model" @click="emit('removeModel', selected, m)" /></Tooltip>
               </template>
-              <Tooltip v-else content="Details"><IconButton :icon="Info" aria-label="Model details" @click="openModel('view', m)" /></Tooltip>
+              <Tooltip v-else content="Details"><IconButton size="sm" :icon="Info" aria-label="Model details" @click="openModel('view', m)" /></Tooltip>
             </SettingsRow>
             <div v-if="!visibleModels(selected).length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
               {{ modelFilter ? 'No model matches.' : selected.kind === 'subscription' ? 'Sign in to see what this account can use.' : 'No models yet.' }}

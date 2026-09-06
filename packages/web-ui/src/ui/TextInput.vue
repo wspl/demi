@@ -11,6 +11,8 @@ const props = defineProps<{
   focused?: boolean
   /** A key or password: masked, with a built-in eye to reveal it. */
   secret?: boolean
+  /** Height family: md is 28px, sm is 24px. Match the surface's other controls. */
+  size?: 'sm' | 'md'
 }>()
 
 const revealed = ref(false)
@@ -38,8 +40,8 @@ defineExpose({
 <template>
   <div
     v-bind="frameAttrs"
-    class="flex h-7 min-w-0 items-center rounded-md bg-surface-raised ring-1 transition-shadow duration-200 ease-out"
-    :class="[attrs['class'] ? '' : 'w-full', startFocused || isFocused ? 'ring-line-focus' : 'ring-line']"
+    class="flex min-w-0 items-center rounded-md bg-surface-raised ring-1 transition-shadow duration-200 ease-out"
+    :class="[size === 'sm' ? 'h-6' : 'h-7', attrs['class'] ? '' : 'w-full', startFocused || isFocused ? 'ring-line-focus' : 'ring-line']"
     @click="inputRef?.focus()"
   >
     <div v-if="slots['prefix']" class="flex shrink-0 items-center pl-2 text-fg-subtle">
@@ -52,7 +54,7 @@ defineExpose({
       :value="modelValue"
       :placeholder="placeholder"
       class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
-      :class="[slots['prefix'] ? 'pl-1.5' : 'pl-2.5', secret || slots['suffix'] ? 'pr-1.5' : 'pr-2.5']"
+      :class="[slots['prefix'] ? 'pl-1.5' : size === 'sm' ? 'pl-2' : 'pl-2.5', secret || slots['suffix'] ? 'pr-1.5' : size === 'sm' ? 'pr-2' : 'pr-2.5']"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @focus="isFocused = true"
       @blur="isFocused = false; startFocused = false"
