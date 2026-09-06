@@ -310,7 +310,7 @@ function setAll(p: MockProvider, enabled: boolean) {
                 </template>
               </Dropdown>
             </SettingsRow>
-            <SettingsRow label="API key" :description="selected.keyHint ? undefined : 'Local endpoints usually need none.'">
+            <SettingsRow label="API key" :description="selected.vendorId ? undefined : 'Local endpoints usually need none. (Optional)'">
               <TextInput :model-value="selected.keyHint ? 'sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b' : ''" type="password" placeholder="sk-…" class="w-72 max-w-full" />
             </SettingsRow>
             <SettingsRow label="Test connection">
