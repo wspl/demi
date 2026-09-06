@@ -49,7 +49,7 @@ defineExpose({ scrollToEnd, isAtBottom })
         <div
           ref="scrollRef"
           class="h-full overflow-y-auto pt-4"
-          :style="{ paddingBottom: `${(surfaceRef?.dockHeight ?? 0) + COMPOSER_CLEARANCE_PX}px` }"
+          :style="{ paddingBottom: `${(surfaceRef?.dockHeight ?? 0) + COMPOSER_CLEARANCE_PX}px`, scrollbarGutter: 'stable' }"
           @scroll="updateAtBottom"
         >
           <slot />

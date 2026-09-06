@@ -98,7 +98,7 @@ defineExpose({
       ref="scrollContainer"
       class="h-full overflow-y-auto"
       :class="isScrolling ? 'scrollbar-active' : ''"
-      style="overflow-anchor: none;"
+      style="overflow-anchor: none; scrollbar-gutter: stable;"
       @scroll="onScroll"
     >
       <div v-if="renderBlocks.length === 0" class="grid h-full place-items-center">

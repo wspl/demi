@@ -37,7 +37,9 @@ function wrapFrontier(el: HTMLElement, charCount: number): void {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
   for (let node = walker.lastChild() as Text | null; node && remaining > 0; node = walker.previousNode() as Text | null) {
     const text = node.textContent ?? ''
-    if (!text || node.parentElement?.closest('pre')) continue
+    // Whitespace between blocks (the newline marked emits after each paragraph) carries no
+    // ink; wrapping it makes an extra line that vanishes when the marks clear.
+    if (!text.trim() || node.parentElement?.closest('pre')) continue
     const take = Math.min(remaining, text.length)
     const rest = node.splitText(text.length - take)
     const span = document.createElement('span')
