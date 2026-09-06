@@ -114,11 +114,11 @@ main {
 
 /* Room for a settings-sized dialog; the narrow one is a phone-width host. */
 .gallery-overlay-well-tall {
-  min-height: 37rem;
+  min-height: 39rem;
 }
 
 .gallery-overlay-well-narrow {
-  min-height: 42rem;
+  min-height: 44rem;
   max-width: 22rem;
 }
 
