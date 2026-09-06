@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChevronDown, CircleUser, Gauge, Monitor, Sparkles } from '@lucide/vue'
+import { computed, ref } from 'vue'
+import { ChevronDown, CircleUser, Gauge, Monitor, Search, Sparkles } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -8,8 +8,9 @@ import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
+import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { SettingsAccountInfo, SettingsNavGroup, SettingsTab } from './types'
+import type { SettingsAccountInfo, SettingsNavGroup, SettingsNavItem, SettingsTab } from './types'
 
 /**
  * The settings surface: one large dialog with a section rail and one page at a time.
@@ -42,6 +43,20 @@ const emit = defineEmits<{
 }>()
 
 const items = computed(() => props.sections.flatMap((group) => group.items))
+
+// The rail filter narrows the sections by label or keyword; Enter opens the first hit.
+const query = ref('')
+const matches = (item: SettingsNavItem) => {
+  const q = query.value.trim().toLowerCase()
+  return !q || item.label.toLowerCase().includes(q) || (item.keywords ?? []).some((k) => k.toLowerCase().includes(q))
+}
+const filteredSections = computed(() =>
+  props.sections.map((group) => ({ ...group, items: group.items.filter(matches) })).filter((group) => group.items.length),
+)
+function openFirstMatch() {
+  const first = filteredSections.value[0]?.items[0]
+  if (first) tab.value = first.id
+}
 const current = computed(() => items.value.find((item) => item.id === tab.value) ?? items.value[0])
 // Few sections split one row evenly; a long rail becomes a picker so nothing scrolls off.
 const narrowAsRow = computed(() => items.value.length <= 4)
@@ -69,8 +84,14 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             <span class="truncate text-[11px] text-fg-subtle">{{ account.plan }}</span>
           </span>
         </div>
+        <div class="hidden h-8 items-center px-1 @md:flex">
+          <TextInput v-model="query" placeholder="Filter settings" bare size="sm" aria-label="Filter settings" @keydown.enter="openFirstMatch">
+            <template #prefix><Search :size="ICON_PX.in24" /></template>
+          </TextInput>
+        </div>
         <nav class="hidden flex-col gap-3 @md:flex" aria-label="Settings sections">
-          <div v-for="(group, index) in sections" :key="group.label ?? index" class="flex flex-col gap-0.5">
+          <div v-if="!filteredSections.length" class="select-none px-2 py-3 text-[12px] text-fg-subtle">Nothing matches.</div>
+          <div v-for="(group, index) in filteredSections" :key="group.label ?? index" class="flex flex-col gap-0.5">
             <div v-if="group.label" class="select-none px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">
               {{ group.label }}
             </div>
