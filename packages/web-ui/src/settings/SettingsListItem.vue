@@ -32,7 +32,7 @@ const emit = defineEmits<{
       </slot>
       <span
         v-if="badge"
-        class="absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-surface"
+        class="absolute -bottom-px -right-px size-1.5 rounded-full ring-1 ring-surface"
         :class="badge === 'danger' ? 'bg-on-danger' : 'bg-on-warning'"
       />
     </span>
