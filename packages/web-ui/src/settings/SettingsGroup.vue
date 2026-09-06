@@ -20,11 +20,11 @@ defineProps<{
       </header>
     </slot>
     <!-- An aside (a preview, a legend) sits beside the card where there is room, under it where not. -->
-    <div class="@container flex flex-col gap-4 @lg:flex-row @lg:items-start">
+    <div class="@container flex flex-col gap-4 @lg:flex-row @lg:items-stretch">
       <div class="settings-card @container min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-float">
         <slot />
       </div>
-      <div v-if="$slots.aside" class="shrink-0">
+      <div v-if="$slots.aside" class="flex shrink-0">
         <slot name="aside" />
       </div>
     </div>
