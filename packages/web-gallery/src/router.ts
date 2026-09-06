@@ -6,6 +6,7 @@ import MotionSection from './sections/MotionSection.vue'
 import OverlaysSection from './sections/OverlaysSection.vue'
 import SessionSection from './sections/SessionSection.vue'
 import SidebarSection from './sections/SidebarSection.vue'
+import SettingsSection from './sections/SettingsSection.vue'
 import MarkdownSection from './sections/MarkdownSection.vue'
 import CodeSection from './sections/CodeSection.vue'
 import RoadmapSection from './sections/RoadmapSection.vue'
@@ -20,6 +21,7 @@ export const NAV: { path: string; label: string }[] = [
   { path: '/overlays', label: 'Overlays' },
   { path: '/session', label: 'Session' },
   { path: '/sidebar', label: 'Sidebar' },
+  { path: '/settings', label: 'Settings' },
   { path: '/markdown', label: 'Markdown' },
   { path: '/code', label: 'Code' },
   { path: '/roadmap', label: 'Roadmap' },
@@ -36,6 +38,7 @@ export const router = createRouter({
     { path: '/overlays', component: OverlaysSection, meta: { layout: 'catalog' } },
     { path: '/session', component: SessionSection, meta: { layout: 'session' } },
     { path: '/sidebar', component: SidebarSection, meta: { layout: 'catalog' } },
+    { path: '/settings', component: SettingsSection, meta: { layout: 'catalog' } },
     { path: '/markdown', component: MarkdownSection, meta: { layout: 'preview' } },
     { path: '/code', component: CodeSection, meta: { layout: 'preview' } },
     { path: '/roadmap', component: RoadmapSection, meta: { layout: 'catalog' } },

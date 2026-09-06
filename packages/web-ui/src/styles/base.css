@@ -4,6 +4,7 @@
   --color-surface-editor: var(--surface-editor);
   --color-surface-raised: var(--surface-raised);
   --color-surface-float: var(--surface-float);
+  --color-surface-dialog: var(--surface-dialog);
   --color-overlay: var(--overlay);
   --color-fg-emphasis: var(--fg-emphasis);
   --color-fg: var(--fg);
@@ -54,6 +55,8 @@
   --surface-editor: #1e1e1e;
   --surface-raised: #262626;
   --surface-float: #303030;
+  /* Large modal panels sit one step above the page, not on the menu layer. */
+  --surface-dialog: var(--surface-raised);
   --overlay: white;
   --fg-emphasis: #f5f5f5;
   --fg: #e5e5e5;
@@ -134,6 +137,7 @@
   --surface-editor: #f9fafb;
   --surface-raised: #edeef3;
   --surface-float: #ffffff;
+  --surface-dialog: var(--surface-float);
   --overlay: black;
   --fg-emphasis: #1a1d24;
   --fg: #2e3138;

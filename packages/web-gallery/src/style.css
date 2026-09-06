@@ -112,6 +112,16 @@ main {
   min-width: 28rem;
 }
 
+/* Room for a settings-sized dialog; the narrow one is a phone-width host. */
+.gallery-overlay-well-tall {
+  min-height: 37rem;
+}
+
+.gallery-overlay-well-narrow {
+  min-height: 42rem;
+  max-width: 22rem;
+}
+
 .gallery-specimen {
   display: flex;
   min-width: 0;

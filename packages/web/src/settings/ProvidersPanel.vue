@@ -1,24 +1,32 @@
 <script setup lang="ts">
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
-
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import SettingsProviders from '@demicodes/web-ui/settings/SettingsProviders.vue'
 import { useResources } from '../prototype/resources'
 import { useConversations } from '../conversation/store'
 import { providers } from '../prototype/fixtures'
 
 const resources = useResources()
 const conversations = useConversations()
-const label = ref('')
 const message = ref('')
 
-function add() {
-  if (!label.value.trim()) return
-  const provider = providers()[0]!
-  resources.providers.push({ ...provider, id: crypto.randomUUID(), label: label.value.trim() })
-  label.value = ''
+const rows = computed(() =>
+  resources.providers.map((p) => ({ id: p.id, label: p.label, modelCount: p.models.length, isAvailable: p.isAvailable })),
+)
+
+function add(label: string) {
+  const template = providers()[0]!
+  resources.providers.push({ ...template, id: crypto.randomUUID(), label })
   message.value = 'Provider added.'
+}
+
+function test(id: string) {
+  const provider = resources.providers.find((p) => p.id === id)
+  message.value = provider?.isAvailable ? 'Connection successful.' : 'Connection failed.'
+}
+
+function setAvailable(id: string, available: boolean) {
+  const provider = resources.providers.find((p) => p.id === id)
+  if (provider) provider.isAvailable = available
 }
 
 function remove(id: string) {
@@ -31,38 +39,12 @@ function remove(id: string) {
 </script>
 
 <template>
-  <h3>Providers</h3>
-  <div v-for="provider in resources.providers" :key="provider.id" class="provider-card">
-    <div class="resource-row">
-      <div class="resource-description">
-        <strong>{{ provider.label }}</strong>
-        <span>
-          {{ provider.models.length }} models ·
-          {{ provider.isAvailable ? 'Available' : 'Unavailable' }}
-        </span>
-      </div>
-      <Button
-        @click="
-          message = provider.isAvailable
-            ? 'Connection successful.'
-            : 'Connection failed.'
-        "
-      >
-        Test
-      </Button>
-      <Button @click="remove(provider.id)">Remove</Button>
-    </div>
-    <Checkbox v-model="provider.isAvailable" label="Available for conversations" />
-  </div>
-  <p v-if="!resources.providers.length" class="empty-note">
-    No providers.
-  </p>
-  <form class="add-resource" @submit.prevent="add">
-    <label>
-      New provider
-      <TextInput v-model="label" placeholder="Provider name" required maxlength="64" />
-    </label>
-    <Button @click="add" :disabled="!label.trim()">Add provider</Button>
-  </form>
-  <p v-if="message" role="status" class="hint">{{ message }}</p>
+  <SettingsProviders
+    :providers="rows"
+    :message="message"
+    @test="test"
+    @remove="remove"
+    @set-available="setAvailable"
+    @add="add"
+  />
 </template>

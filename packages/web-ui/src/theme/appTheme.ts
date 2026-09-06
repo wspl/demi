@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { createThemeStore, type ThemeStoreState } from './themeStore'
 
-type ThemeMode = ThemeStoreState['mode']
+export type ThemeMode = ThemeStoreState['mode']
 
 const STORAGE_KEY = 'demi-theme-mode'
 

@@ -44,7 +44,7 @@ useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
     >
       <div
         v-if="isOpen"
-        class="fixed inset-0 z-50 grid place-items-center bg-black/50"
+        class="fixed inset-0 z-50 grid place-items-center bg-black/40"
         @click.self="emit('close')"
       >
         <Transition
@@ -55,7 +55,7 @@ useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
           leave-to-class="opacity-0 scale-95"
         >
           <div
-            class="overlay-shell max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-xl"
+            class="max-h-[calc(100%-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-xl bg-surface-dialog shadow-2xl"
             :class="size === 'lg' ? 'max-w-3xl' : 'max-w-md'"
             role="dialog"
             aria-modal="true"

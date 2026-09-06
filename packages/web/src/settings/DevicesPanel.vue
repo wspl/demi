@@ -1,27 +1,21 @@
 <script setup lang="ts">
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-
 import { ref } from 'vue'
-import { Monitor, Plus } from '@lucide/vue'
+import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import { useResources } from '../prototype/resources'
 import { useConversations } from '../conversation/store'
 
 const resources = useResources()
 const conversations = useConversations()
-const name = ref('')
 const message = ref('')
 
-function claim() {
-  if (!name.value.trim()) return
-  resources.devices.push({
-    id: crypto.randomUUID(),
-    name: name.value.trim(),
-    online: true,
-    home: '/home/demo',
-  })
-  name.value = ''
+function claim(name: string) {
+  resources.devices.push({ id: crypto.randomUUID(), name, online: true, home: '/home/demo' })
   message.value = 'Device connected.'
+}
+
+function toggleOnline(id: string) {
+  const device = resources.devices.find((d) => d.id === id)
+  if (device) device.online = !device.online
 }
 
 function revoke(id: string) {
@@ -37,28 +31,11 @@ function revoke(id: string) {
 </script>
 
 <template>
-  <h3>Your devices</h3>
-  <div v-for="device in resources.devices" :key="device.id" class="resource-row">
-    <Monitor :size="17" />
-    <div class="resource-description">
-      <strong>{{ device.name }}</strong>
-      <span>{{ device.online ? 'Online' : 'Offline' }}</span>
-    </div>
-    <Button @click="device.online = !device.online">
-      {{ device.online ? 'Go offline' : 'Connect' }}
-    </Button>
-    <Button @click="revoke(device.id)">Revoke</Button>
-  </div>
-  <p v-if="!resources.devices.length" class="empty-note">No devices connected.</p>
-  <form class="add-resource" @submit.prevent="claim">
-    <label>
-      Device name
-      <TextInput v-model="name" placeholder="My laptop" required maxlength="64" />
-    </label>
-    <Button @click="claim" :disabled="!name.trim()">
-      <Plus :size="14" />
-      Add device
-    </Button>
-  </form>
-  <p v-if="message" role="status" class="hint">{{ message }}</p>
+  <SettingsDevices
+    :devices="resources.devices"
+    :message="message"
+    @toggle-online="toggleOnline"
+    @revoke="revoke"
+    @add="claim"
+  />
 </template>
