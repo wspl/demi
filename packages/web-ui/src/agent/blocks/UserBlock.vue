@@ -111,7 +111,7 @@ useResizeObserver(contentRef, () => {
     <div class="relative max-w-[80%] rounded-xl bg-surface-raised p-2.5">
       <div
         v-if="actions.length > 0"
-        class="absolute left-0 top-1/2 flex -translate-x-[calc(100%+6px)] -translate-y-1/2 items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100"
+        class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100"
         :class="actionsPinned ? 'opacity-100' : 'opacity-0'"
       >
         <Tooltip v-for="action in actions" :key="action.key" :content="action.hint" class="inline-flex">
@@ -150,6 +150,11 @@ useResizeObserver(contentRef, () => {
 </template>
 
 <style scoped>
+/* Sits on the last text line: the bubble's bottom padding plus one line box, buttons centered in it. */
+.user-actions {
+  height: calc(var(--agent-text) * var(--agent-leading));
+}
+
 .user-sticky::after {
   content: '';
   position: absolute;
