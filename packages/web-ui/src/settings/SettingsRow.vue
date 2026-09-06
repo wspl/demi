@@ -2,19 +2,30 @@
 /**
  * Label and explanation on the left, the control on the right. In a narrow card the
  * control drops under the text and keeps its right alignment. An inset row belongs to
- * the row above it (a server's tools, an agent's permissions).
+ * the row above it (a server's tools, an agent's permissions). A compact row is for
+ * lists of like items (models, accounts); an interactive one opens on click.
  */
 defineProps<{
   label: string
   description?: string
   inset?: boolean
+  compact?: boolean
+  interactive?: boolean
+}>()
+
+const emit = defineEmits<{
+  click: []
 }>()
 </script>
 
 <template>
   <div
-    class="flex items-center gap-x-4 gap-y-2 py-3 @sm:flex-nowrap"
-    :class="inset ? 'min-h-11 flex-nowrap bg-overlay/[0.025] pl-9 pr-4' : 'min-h-14 flex-wrap px-4'"
+    class="flex items-center gap-y-2 @sm:flex-nowrap"
+    :class="[
+      inset ? 'min-h-9 flex-nowrap gap-x-3 bg-overlay/[0.025] py-1.5 pl-9 pr-3' : compact ? 'min-h-10 flex-wrap gap-x-3 px-3 py-1.5' : 'min-h-14 flex-wrap gap-x-4 px-4 py-3',
+      interactive ? 'cursor-default transition-colors duration-200 ease-out hover:bg-overlay/[0.03]' : '',
+    ]"
+    @click="interactive && emit('click')"
   >
     <div v-if="$slots.leading" class="flex shrink-0 self-start pt-[3px] text-fg-muted @sm:self-center @sm:pt-0">
       <slot name="leading" />

@@ -14,7 +14,7 @@ const tone = computed(() => (ratio.value >= 1 ? 'bg-on-danger' : ratio.value >= 
 
 <template>
   <div
-    class="h-1.5 w-full overflow-hidden rounded-full bg-overlay/8"
+    class="h-1 w-full overflow-hidden rounded-full bg-overlay/8"
     role="meter"
     :aria-valuenow="value"
     :aria-valuemin="0"
