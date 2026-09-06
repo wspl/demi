@@ -84,8 +84,8 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
           :options="[{ value: 'compact', label: 'Compact' }, { value: 'regular', label: 'Regular' }, { value: 'comfortable', label: 'Comfortable' }]"
         />
       </SettingsRow>
-      <SettingsRow label="Transcript text size" :description="`${s.general.fontSize}px`">
-        <Slider v-model="s.general.fontSize" :min="12" :max="18" class="w-40" />
+      <SettingsRow label="Transcript text size" description="Messages only. The rest of the app keeps its size.">
+        <Slider v-model="s.general.fontSize" :min="12" :max="18" :value-label="`${s.general.fontSize}px`" class="w-48" />
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Composer">
@@ -241,8 +241,8 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       <SettingsRow label="Reasoning" description="Default thinking effort for models that support it.">
         <Segmented v-model="s.defaults.reasoning" :options="[{ value: 'off', label: 'Off' }, { value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }]" />
       </SettingsRow>
-      <SettingsRow label="Temperature" :description="s.defaults.temperature.toFixed(1)">
-        <Slider v-model="s.defaults.temperature" :min="0" :max="1" :step="0.1" class="w-40" />
+      <SettingsRow label="Temperature" description="Lower is steadier; higher explores more.">
+        <Slider v-model="s.defaults.temperature" :min="0" :max="1" :step="0.1" :value-label="s.defaults.temperature.toFixed(1)" class="w-48" />
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Add a provider">
