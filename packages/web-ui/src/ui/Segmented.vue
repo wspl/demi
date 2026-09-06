@@ -1,15 +1,19 @@
 <script setup lang="ts" generic="T extends string">
+import { computed } from 'vue'
 import type { Component } from 'vue'
 import { ICON_PX } from './icon-metrics'
 
-/** One of a few exclusive choices, all visible. Same thumb as ToggleSwitch. */
+/**
+ * One of a few exclusive choices, all visible. Segments share one width so the
+ * thumb is a single element that slides to the chosen one instead of re-appearing.
+ */
 export interface SegmentedOption<T extends string> {
   value: T
   label: string
   icon?: Component
 }
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   options: readonly SegmentedOption<T>[]
   size?: 'sm' | 'md'
 }>(), {
@@ -17,19 +21,32 @@ withDefaults(defineProps<{
 })
 
 const model = defineModel<T>({ required: true })
+
+const selectedIndex = computed(() => Math.max(0, props.options.findIndex((option) => option.value === model.value)))
 </script>
 
 <template>
-  <div class="inline-flex w-fit shrink-0 items-stretch rounded-md bg-overlay/6 p-[2px]" role="radiogroup">
+  <div
+    class="relative grid w-fit shrink-0 auto-cols-fr grid-flow-col rounded-md bg-overlay/6 p-[2px]"
+    role="radiogroup"
+  >
+    <span
+      aria-hidden="true"
+      class="segmented-thumb pointer-events-none absolute inset-y-[2px] left-[2px] rounded-[5px] transition-transform duration-200 ease-out motion-reduce:transition-none"
+      :style="{
+        width: `calc((100% - 4px) / ${options.length})`,
+        transform: `translateX(${selectedIndex * 100}%)`,
+      }"
+    />
     <span
       v-for="option in options"
       :key="option.value"
       role="radio"
       :aria-checked="model === option.value"
-      class="inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-[color,background-color,box-shadow] duration-200 ease-out"
+      class="relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
       :class="[
         size === 'sm' ? 'px-1.5 py-0.5 text-[11px] leading-4' : 'h-6 px-2 text-[12px]',
-        model === option.value ? 'segmented-thumb text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
+        model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
       ]"
       @click="model = option.value"
     >
