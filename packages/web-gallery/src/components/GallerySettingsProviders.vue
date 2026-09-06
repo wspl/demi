@@ -232,7 +232,7 @@ function setAll(p: MockProvider, enabled: boolean) {
 
       <template #detail>
         <!-- New provider: pick -->
-        <div v-if="draft?.step === 'pick'" class="flex flex-col gap-5 p-5">
+        <div v-if="draft?.step === 'pick'" class="flex flex-col gap-5">
           <header class="select-none">
             <h3 class="text-[15px] font-medium text-fg-emphasis">Add a provider</h3>
             <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A vendor from models.dev brings its endpoint and model catalog. A custom endpoint takes any compatible server.</p>
@@ -274,7 +274,7 @@ function setAll(p: MockProvider, enabled: boolean) {
         </div>
 
         <!-- New provider: form -->
-        <div v-else-if="draft?.step === 'form'" class="flex flex-col gap-6 p-5">
+        <div v-else-if="draft?.step === 'form'" class="flex flex-col gap-6">
           <header class="flex items-center gap-3">
             <VendorMark :label="draft.vendor?.name ?? 'Custom'" :src="draft.vendor?.logo" />
             <div class="min-w-0 select-none">
@@ -311,7 +311,7 @@ function setAll(p: MockProvider, enabled: boolean) {
         </div>
 
         <!-- Existing provider -->
-        <div v-else-if="selected" class="flex flex-col gap-6 p-5">
+        <div v-else-if="selected" class="flex flex-col gap-6">
           <header class="flex flex-wrap items-center gap-x-3 gap-y-2">
             <VendorMark :label="selected.name" :src="selected.logo" />
             <h3 class="min-w-0 flex-1 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
