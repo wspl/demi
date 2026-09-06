@@ -66,7 +66,8 @@ export interface MockModel {
   contextWindow: number | null
   outputLimit: number | null
   tools: boolean | null
-  attachments: boolean | null
+  /** Accepted attachment extensions; empty is text only. */
+  extensions: string[]
   efforts: string[]
   defaultEffort: string | null
   fastTier: string | null
@@ -143,7 +144,7 @@ function model(partial: Partial<MockModel> & Pick<MockModel, 'id'>): MockModel {
     contextWindow: null,
     outputLimit: null,
     tools: null,
-    attachments: null,
+    extensions: [],
     efforts: [],
     defaultEffort: null,
     fastTier: null,
@@ -210,16 +211,16 @@ export function mockProviders(): MockProvider[] {
       ],
       catalogFetched: '2 min ago',
       models: [
-        model({ id: 'claude-opus-4-1', name: 'Claude Opus 4.1', contextWindow: 200_000, outputLimit: 32_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'high' }),
-        model({ id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 1_000_000, outputLimit: 64_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'medium', fastTier: 'fast' }),
-        model({ id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200_000, outputLimit: 64_000, tools: true, attachments: true, efforts: [], enabled: false }),
+        model({ id: 'claude-opus-4-1', name: 'Claude Opus 4.1', contextWindow: 200_000, outputLimit: 32_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'high' }),
+        model({ id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 1_000_000, outputLimit: 64_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'medium', fastTier: 'fast' }),
+        model({ id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200_000, outputLimit: 64_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: [], enabled: false }),
       ],
     }),
     provider({
       id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex', state: 'signed-out', logo: '/logos/openai.svg',
       catalogFetched: null,
       models: [
-        model({ id: 'gpt-5-codex', name: 'GPT-5 Codex', contextWindow: 400_000, outputLimit: 128_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' }),
+        model({ id: 'gpt-5-codex', name: 'GPT-5 Codex', contextWindow: 400_000, outputLimit: 128_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' }),
       ],
     }),
     provider({
@@ -227,10 +228,10 @@ export function mockProviders(): MockProvider[] {
       baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', keyHint: 'sk-ant-…3f2a',
       catalogFetched: '14 min ago',
       models: [
-        model({ id: 'claude-opus-4-1', name: 'Claude Opus 4.1', contextWindow: 200_000, outputLimit: 32_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'high' }),
-        model({ id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 1_000_000, outputLimit: 64_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' }),
-        model({ id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200_000, outputLimit: 64_000, tools: true, attachments: true, efforts: [] }),
-        model({ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', contextWindow: 200_000, outputLimit: 8_192, tools: true, attachments: true, efforts: [], enabled: false }),
+        model({ id: 'claude-opus-4-1', name: 'Claude Opus 4.1', contextWindow: 200_000, outputLimit: 32_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'medium', 'high'], defaultEffort: 'high' }),
+        model({ id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 1_000_000, outputLimit: 64_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' }),
+        model({ id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200_000, outputLimit: 64_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: [] }),
+        model({ id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', contextWindow: 200_000, outputLimit: 8_192, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: [], enabled: false }),
       ],
     }),
     provider({
@@ -238,8 +239,8 @@ export function mockProviders(): MockProvider[] {
       baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', keyHint: 'sk-proj-…91ce',
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: '3 days ago', stale: true,
       models: [
-        model({ id: 'gpt-5', name: 'GPT-5', contextWindow: 400_000, outputLimit: 128_000, tools: true, attachments: true, efforts: ['minimal', 'low', 'medium', 'high'], defaultEffort: 'medium', fastTier: 'priority' }),
-        model({ id: 'gpt-5-mini', name: 'GPT-5 mini', contextWindow: 400_000, outputLimit: 128_000, tools: true, attachments: true, efforts: ['minimal', 'low', 'medium', 'high'], defaultEffort: 'low' }),
+        model({ id: 'gpt-5', name: 'GPT-5', contextWindow: 400_000, outputLimit: 128_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['minimal', 'low', 'medium', 'high'], defaultEffort: 'medium', fastTier: 'priority' }),
+        model({ id: 'gpt-5-mini', name: 'GPT-5 mini', contextWindow: 400_000, outputLimit: 128_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['minimal', 'low', 'medium', 'high'], defaultEffort: 'low' }),
       ],
     }),
     provider({
@@ -247,7 +248,7 @@ export function mockProviders(): MockProvider[] {
       baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', keyHint: 'sk-…8c1d',
       modelSource: 'manual',
       models: [
-        model({ id: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', contextWindow: 256_000, outputLimit: 32_000, tools: true, attachments: false, efforts: ['low', 'high'], defaultEffort: 'high' }),
+        model({ id: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', contextWindow: 256_000, outputLimit: 32_000, tools: true, extensions: [], efforts: ['low', 'high'], defaultEffort: 'high' }),
         model({ id: 'kimi-k2-turbo-preview' }),
       ],
     }),
@@ -255,13 +256,13 @@ export function mockProviders(): MockProvider[] {
       id: 'ollama', name: 'Ollama', kind: 'api_key', family: 'openai', vendorId: null,
       baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', keyHint: '',
       modelSource: 'manual', state: 'unreachable', detail: 'connect ECONNREFUSED 127.0.0.1:11434',
-      models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, attachments: false })],
+      models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, extensions: [] })],
     }),
     provider({
       id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex', logo: '/logos/google-vertex.svg',
       baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', keyHint: 'ya29.…', state: 'disabled', enabled: false,
       catalogFetched: '1 h ago',
-      models: [model({ id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1_000_000, outputLimit: 65_536, tools: true, attachments: true, efforts: ['low', 'high'] })],
+      models: [model({ id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1_000_000, outputLimit: 65_536, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'high'] })],
     }),
   ]
 }
