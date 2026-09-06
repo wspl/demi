@@ -23,7 +23,7 @@ import type { SettingsNavGroup, SettingsProviderAccount, SettingsProviderEntry, 
 export const fullSettingsNav: SettingsNavGroup[] = [
   {
     items: [
-      { id: 'general', label: 'General', icon: Settings2, keywords: ['language', 'theme', 'density', 'font size', 'send with', 'open at login', 'update channel'] },
+      { id: 'general', label: 'General', icon: Settings2, keywords: ['language', 'theme', 'tone', 'accent', 'font size', 'send with', 'open at login', 'update channel'] },
       { id: 'account', label: 'Account', icon: CircleUser, keywords: ['avatar', 'display name', 'email', 'plan', 'billing', 'sign out', 'delete account'] },
       { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['sound', 'quiet hours', 'approval'] },
     ],
@@ -222,8 +222,6 @@ export function createSettingsState() {
     general: {
       language: 'English',
       theme: 'system' as 'light' | 'dark' | 'system',
-      accent: 'Blue',
-      density: 'regular' as 'compact' | 'regular' | 'comfortable',
       fontSize: 15,
       sendWith: 'enter' as 'enter' | 'cmdEnter',
       openAtLogin: true,
