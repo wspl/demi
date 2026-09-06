@@ -148,7 +148,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     </SettingsGroup>
     <SettingsGroup title="Danger zone">
       <SettingsRow label="Delete account" description="Removes your account, devices and every conversation. This cannot be undone.">
-        <Button variant="danger">Delete account…</Button>
+        <Button variant="danger">Delete account</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -212,14 +212,14 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
             <Tag>mcp · ask</Tag>
           </SettingsRow>
           <SettingsRow inset label="System prompt" description="Appended after the global instructions.">
-            <Button size="sm">Edit prompt…</Button>
+            <Button size="sm">Edit prompt</Button>
           </SettingsRow>
         </template>
       </template>
     </SettingsGroup>
     <SettingsGroup>
       <SettingsRow label="Create an agent" description="Starts from Build's settings.">
-        <Button>New agent…</Button>
+        <Button>New agent</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -276,7 +276,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <Button size="sm">Manage</Button>
       </SettingsRow>
       <SettingsRow label="Clear memory" description="Forgets everything saved so far. Conversations are kept.">
-        <Button variant="danger">Clear…</Button>
+        <Button variant="danger">Clear</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -402,7 +402,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     </SettingsGroup>
     <SettingsGroup title="Danger zone">
       <SettingsRow label="Delete all conversations" description="On every device. Projects and settings stay.">
-        <Button variant="danger">Delete all…</Button>
+        <Button variant="danger">Delete all</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
