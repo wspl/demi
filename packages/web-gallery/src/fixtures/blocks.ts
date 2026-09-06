@@ -1,5 +1,5 @@
 import type { Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
-import type { MessageListBlock } from '@demicodes/web-ui/agent/pending-steers'
+import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 
 export const demoModel: ModelSelection = {
@@ -139,7 +139,15 @@ export const errorTool = toolCall({
   output: [{ type: 'text', text: 'exit 1\npermission denied: /tmp/locked\n' }],
 })
 
-export function transcriptDemoBlocks(): MessageListBlock[] {
+/** A steer typed while the turn runs. Renders after every transcript block, never among them. */
+export const pendingSteerDemo: PendingSteerRenderBlock = {
+  type: 'pending_steer',
+  id: 'pending-steer-1',
+  pendingSteerId: 'pending-1',
+  content: steerPrompt,
+}
+
+export function transcriptDemoBlocks(): Block[] {
   const thinkingStartedAt = iso(18_000)
   const thinkingEndedAt = iso(10_000)
 
@@ -219,12 +227,6 @@ export function transcriptDemoBlocks(): MessageListBlock[] {
         providerCode: 'rate_limit_error',
         clientRequestId: 'req_01J8Y3Q6ZKX4',
       },
-    },
-    {
-      type: 'pending_steer',
-      id: 'pending-steer-1',
-      pendingSteerId: 'pending-1',
-      content: steerPrompt,
     },
     {
       type: 'user',

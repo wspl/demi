@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
-import { useResizeObserver } from '@vueuse/core'
-import { X, ArrowUp, ChevronsUp } from '@lucide/vue'
+import { useClipboard, useResizeObserver } from '@vueuse/core'
+import { ArrowUp, Check, ChevronsUp, Copy, Pencil, X } from '@lucide/vue'
 import type { UserContentBlock } from '@demicodes/core'
 import { md } from '@demicodes/web-ui/markdown/md'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -27,29 +27,44 @@ const emit = defineEmits<{
   delete: []
   sendNow: []
   interrupt: []
+  /** Load this message back into the composer. */
+  edit: []
 }>()
 
+const { copy, copied } = useClipboard({ copiedDuring: 1500 })
+
 interface BubbleAction {
+  key: string
   hint: string
   icon: Component
   emit: () => void
 }
-
-const actions = computed<BubbleAction[]>(() => {
-  const list: BubbleAction[] = []
-  if (props.deletable) {
-    list.push({ hint: props.sendable ? t('agent.queue.remove') : t('agent.steer.discard'), icon: X, emit: () => emit('delete') })
-  }
-  if (props.sendable) list.push({ hint: t('agent.queue.sendNow'), icon: ArrowUp, emit: () => emit('sendNow') })
-  if (props.interruptible) list.push({ hint: t('agent.steer.interrupt'), icon: ChevronsUp, emit: () => emit('interrupt') })
-  return list
-})
 
 const userText = computed(() => {
   const firstText = props.content.find(
     (b): b is Extract<UserContentBlock, { type: 'text' }> => b.type === 'text',
   )
   return firstText?.text ?? ''
+})
+
+// Sent messages get copy and edit; pending ones get the queue and steer controls instead.
+const actions = computed<BubbleAction[]>(() => {
+  const list: BubbleAction[] = []
+  if (!props.pending) {
+    list.push({
+      key: 'copy',
+      hint: copied.value ? t('common.copied') : t('agent.user.copy'),
+      icon: copied.value ? Check : Copy,
+      emit: () => void copy(userText.value),
+    })
+    list.push({ key: 'edit', hint: t('agent.user.edit'), icon: Pencil, emit: () => emit('edit') })
+  }
+  if (props.deletable) {
+    list.push({ key: 'delete', hint: props.sendable ? t('agent.queue.remove') : t('agent.steer.discard'), icon: X, emit: () => emit('delete') })
+  }
+  if (props.sendable) list.push({ key: 'send', hint: t('agent.queue.sendNow'), icon: ArrowUp, emit: () => emit('sendNow') })
+  if (props.interruptible) list.push({ key: 'interrupt', hint: t('agent.steer.interrupt'), icon: ChevronsUp, emit: () => emit('interrupt') })
+  return list
 })
 
 const imageBlocks = computed(() =>
@@ -99,7 +114,7 @@ useResizeObserver(contentRef, () => {
         class="absolute left-0 top-1/2 flex -translate-x-[calc(100%+6px)] -translate-y-1/2 items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100"
         :class="actionsPinned ? 'opacity-100' : 'opacity-0'"
       >
-        <Tooltip v-for="action in actions" :key="action.hint" :content="action.hint" class="inline-flex">
+        <Tooltip v-for="action in actions" :key="action.key" :content="action.hint" class="inline-flex">
           <button
             type="button"
             :aria-label="action.hint"

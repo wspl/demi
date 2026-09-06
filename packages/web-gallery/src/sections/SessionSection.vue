@@ -8,8 +8,8 @@ import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
-import type { ThinkingConfig } from '@demicodes/core'
-import type { MessageListBlock } from '@demicodes/web-ui/agent/pending-steers'
+import type { Block, ThinkingConfig, UserContentBlock } from '@demicodes/core'
+import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
 import { queuedMessagesToRenderBlocks } from '@demicodes/web-ui/agent/queued-messages'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -19,6 +19,7 @@ import {
   demoImageUrl,
   demoModel,
   longUserText,
+  pendingSteerDemo,
   steerPrompt,
   transcriptDemoBlocks,
 } from '../fixtures/blocks'
@@ -33,13 +34,16 @@ import GalleryTabBar from '../components/GalleryTabBar.vue'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
 
 const hiddenIds = ref(new Set<string>())
-const extras = ref<MessageListBlock[]>([])
+const extras = ref<Block[]>([])
+// Pending steers sit after every transcript block, like AgentMessageList orders them.
+const pendingSteers = ref<PendingSteerRenderBlock[]>([pendingSteerDemo])
 const compacting = ref(false)
 const queue = ref([
   { id: 'q1', text: 'Also add a case for the expired cookie.' },
   { id: 'q2', text: 'Keep the light-mode screenshot in the same PR.' },
 ])
 const fullPane = ref<{ scrollToEnd: () => void }>()
+const fullComposer = ref<{ setDraft: (text: string) => void }>()
 const turnPane = ref<{ scrollToEnd: () => void }>()
 let nextQueue = 3
 let nextSent = 1
@@ -80,6 +84,7 @@ const sessionBlocks = computed(() => [
   ...transcriptDemoBlocks().filter((block) => !hiddenIds.value.has(block.id)),
   ...extras.value.filter((block) => !hiddenIds.value.has(block.id)),
   ...sessionFlowBlocks.value,
+  ...pendingSteers.value,
   ...queuedMessagesToRenderBlocks(queue.value),
 ])
 
@@ -121,21 +126,19 @@ function hideBlock(id: string): void {
   hiddenIds.value = new Set(hiddenIds.value).add(id)
 }
 
+function takePendingSteer(pendingSteerId: string): PendingSteerRenderBlock | undefined {
+  const block = pendingSteers.value.find((candidate) => candidate.pendingSteerId === pendingSteerId)
+  pendingSteers.value = pendingSteers.value.filter((candidate) => candidate !== block)
+  return block
+}
+
 function deletePendingSteer(pendingSteerId: string): void {
-  const block = sessionBlocks.value.find(
-    (candidate): candidate is Extract<MessageListBlock, { type: 'pending_steer' }> =>
-      candidate.type === 'pending_steer' && candidate.pendingSteerId === pendingSteerId,
-  )
-  if (block) hideBlock(block.id)
+  takePendingSteer(pendingSteerId)
 }
 
 function interruptPendingSteer(pendingSteerId: string): void {
-  const block = sessionBlocks.value.find(
-    (candidate): candidate is Extract<MessageListBlock, { type: 'pending_steer' }> =>
-      candidate.type === 'pending_steer' && candidate.pendingSteerId === pendingSteerId,
-  )
+  const block = takePendingSteer(pendingSteerId)
   if (!block) return
-  hideBlock(block.id)
   const text = block.content.find((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')?.text
   if (text) {
     extras.value = [
@@ -170,8 +173,8 @@ function sendNow(id: string): void {
   const item = queue.value.find((entry) => entry.id === id)
   if (!item) return
   queue.value = queue.value.filter((entry) => entry.id !== id)
-  extras.value = [
-    ...extras.value,
+  pendingSteers.value = [
+    ...pendingSteers.value,
     {
       type: 'pending_steer',
       id: `pending-steer:gallery-${nextSent}`,
@@ -180,6 +183,11 @@ function sendNow(id: string): void {
     },
   ]
   fullPane.value?.scrollToEnd()
+}
+
+function editUser(content: UserContentBlock[]): void {
+  const text = content.find((part): part is Extract<UserContentBlock, { type: 'text' }> => part.type === 'text')?.text
+  fullComposer.value?.setDraft(text ?? '')
 }
 
 function compact(): void {
@@ -349,6 +357,11 @@ onMounted(() => {
             <UserBlock :content="userBubble" />
           </div>
         </GallerySpecimen>
+        <GallerySpecimen variant="user · actions" wide>
+          <div class="gallery-frame gallery-user-frame gallery-user-frame-actions bg-surface">
+            <UserBlock :content="userBubble" actions-pinned />
+          </div>
+        </GallerySpecimen>
         <GallerySpecimen variant="attachments" wide>
           <div class="gallery-frame gallery-user-frame bg-surface">
             <UserBlock :content="attachmentBubble" />
@@ -484,6 +497,7 @@ onMounted(() => {
         @interrupt-pending-steer="interruptPendingSteer"
         @delete-queued="removeQueued"
         @send-queued="sendNow"
+        @edit-user="editUser"
       />
       <template #dock="{ showScrollToBottom, scrollToEnd }">
         <SessionDock
@@ -502,6 +516,7 @@ onMounted(() => {
             </SessionDockChip>
           </template>
           <GalleryComposer
+            ref="fullComposer"
             placeholder="Ask Demi about the failing login test…"
             conversation-id="demo"
             :running="sessionRunning"
