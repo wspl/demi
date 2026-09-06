@@ -62,7 +62,7 @@ function add() {
     <SettingsGroup title="Add a device" description="Claim a machine by name; it appears above once it connects.">
       <form @submit.prevent="add">
         <SettingsRow label="Device name">
-          <TextInput v-model="name" placeholder="My laptop" maxlength="64" class="w-56" />
+          <TextInput v-model="name" placeholder="My laptop" maxlength="64" class="w-56 max-w-full" />
           <Button :disabled="!name.trim()" @click="add">Add device</Button>
         </SettingsRow>
       </form>
