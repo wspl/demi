@@ -502,21 +502,24 @@ svg.lucide {
 }
 
 /* Scrollbars stay out of the way: transparent until the pointer is inside the scroller
-   or the container marks itself active (transcript while scrolling). */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  transition: scrollbar-color 250ms ease;
-}
+   or the container marks itself active (transcript while scrolling). The fade lives in
+   the base layer so an element's own transition utilities keep precedence over it. */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 250ms ease;
+  }
 
-@media (hover: hover) {
-  *:hover {
+  @media (hover: hover) {
+    *:hover {
+      scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
+    }
+  }
+
+  .scrollbar-active {
     scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
   }
-}
-
-.scrollbar-active {
-  scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
 }
 
 .thinking-shimmer {
