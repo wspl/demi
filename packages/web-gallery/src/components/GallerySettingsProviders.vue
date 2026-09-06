@@ -377,7 +377,7 @@ function setAll(p: MockProvider, enabled: boolean) {
             </SettingsRow>
             <div v-if="!selected.accounts.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No account yet. Sign in to use this provider.</div>
             <SettingsRow label="Add an account" description="Signs in with the vendor's own login.">
-              <Button variant="primary" size="sm" @click="beginLogin(selected!)">Sign in…</Button>
+              <Button variant="primary" size="sm" @click="beginLogin(selected!)">Sign in</Button>
             </SettingsRow>
             </template>
 
