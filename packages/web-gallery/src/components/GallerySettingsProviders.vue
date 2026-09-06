@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { Brain, Check, Image, Info, Plug, Plus, RefreshCw, Search, SlidersHorizontal, Terminal, TextCursorInput, Trash2, TriangleAlert, Zap } from '@lucide/vue'
+import { Brain, Check, Image, Info, Plug, Plus, RefreshCw, Search, SlidersHorizontal, TextCursorInput, Trash2, TriangleAlert, Zap } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
@@ -19,13 +19,14 @@ import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
-import type { SettingsModelDraft } from '@demicodes/web-ui/settings/types'
+import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsProviderDraft, type SettingsSubscriptionVendor } from '@demicodes/web-ui/settings/types'
+import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsListItem from '@demicodes/web-ui/settings/SettingsListItem.vue'
 import SettingsPage from '@demicodes/web-ui/settings/SettingsPage.vue'
 import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import SettingsSplit from '@demicodes/web-ui/settings/SettingsSplit.vue'
-import { mockVendors, subscriptionVendors, type MockModel, type MockProvider, type MockVendor, type SettingsState, type WireApi } from '../fixtures/settings'
+import { mockVendors, provider, subscriptionVendors, type MockModel, type MockProvider, type SettingsState, type WireApi } from '../fixtures/settings'
 
 /**
  * Models & providers as a list beside the selected provider. An API-key entry edits
@@ -60,14 +61,11 @@ function commitRename() {
 const selected = computed(() => s.value.providers.find((p) => p.id === s.value.selectedProviderId) ?? null)
 const vendorOf = (p: MockProvider) => mockVendors.find((v) => v.id === p.vendorId) ?? null
 
-/** Adding a provider: first pick where it comes from, then fill the form. */
-type Draft =
-  | { step: 'pick'; query: string }
-  | { step: 'form'; vendor: MockVendor | null; name: string; baseUrl: string; wireApi: WireApi; key: string }
-const draft = ref<Draft | null>(null)
+/** Adding a provider happens in its own dialog; the page only learns the result. */
+const addOpen = ref(false)
 
 const detailOpen = computed({
-  get: () => s.value.providerDetailOpen && (draft.value !== null || selected.value !== null),
+  get: () => s.value.providerDetailOpen && selected.value !== null,
   set: (value: boolean) => {
     s.value.providerDetailOpen = value
   },
@@ -79,47 +77,42 @@ const modelDialog = ref<{ mode: 'create' | 'edit' | 'view'; model: SettingsModel
 const modelDialogOpen = ref(false)
 const testing = ref<string | null>(null)
 
-const stateTone = { ready: 'success', error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: 'neutral' } as const
-const stateWord = { ready: 'Connected', error: 'Key rejected', unreachable: 'Unreachable', 'signed-out': 'Signed out', disabled: 'Off' } as const
-const wireOptions: { value: WireApi; label: string }[] = [
-  { value: 'anthropic-messages', label: 'Anthropic Messages' },
-  { value: 'openai-responses', label: 'OpenAI Responses' },
-  { value: 'openai-chat', label: 'OpenAI Chat Completions' },
-]
-const wireLabel = (w: WireApi) => wireOptions.find((o) => o.value === w)?.label ?? w
-
-const pickResults = computed(() => {
-  if (draft.value?.step !== 'pick') return mockVendors
-  const q = draft.value.query.trim().toLowerCase()
-  return q ? mockVendors.filter((v) => v.name.toLowerCase().includes(q) || v.id.includes(q)) : mockVendors
-})
+/** Only trouble is marked on the rail; a healthy provider carries no badge. */
+const stateBadge = { ready: undefined, error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: undefined } as const
+const wireOptions = (Object.keys(WIRE_API_LABELS) as WireApi[]).map((value) => ({ value, label: WIRE_API_LABELS[value] }))
+const wireLabel = (w: WireApi) => WIRE_API_LABELS[w]
 
 function select(id: string) {
-  draft.value = null
   s.value.selectedProviderId = id
   s.value.providerDetailOpen = true
 }
 
-function startDraft() {
-  draft.value = { step: 'pick', query: '' }
-  s.value.selectedProviderId = null
-  s.value.providerDetailOpen = true
+function addProvider(draft: SettingsProviderDraft) {
+  const id = `p-${Date.now()}`
+  s.value.providers.push(provider({
+    id,
+    name: draft.name.trim(),
+    kind: 'api_key',
+    family: draft.vendor?.id ?? 'custom',
+    vendorId: draft.vendor?.id ?? null,
+    baseUrl: draft.baseUrl.trim() || draft.vendor?.baseUrl || '',
+    wireApi: draft.wireApi,
+    keyHint: draft.key ? `…${draft.key.slice(-4)}` : '',
+    modelSource: draft.vendor ? 'catalog' : 'manual',
+    catalogFetched: draft.vendor ? 'just now' : null,
+    logo: draft.vendor?.logo ?? null,
+  }))
+  addOpen.value = false
+  select(id)
 }
 
-function pickVendor(vendor: MockVendor | null) {
-  draft.value = {
-    step: 'form',
-    vendor,
-    name: vendor?.name ?? '',
-    baseUrl: vendor?.baseUrl ?? '',
-    wireApi: vendor?.wireApi ?? 'openai-chat',
-    key: '',
-  }
-}
-
-function cancelDraft() {
-  draft.value = null
-  s.value.providerDetailOpen = false
+function addSubscription(vendor: SettingsSubscriptionVendor) {
+  const id = `p-${Date.now()}`
+  const p = provider({ id, name: vendor.name, kind: 'subscription', family: vendor.id, logo: vendor.logo, state: 'signed-out' })
+  s.value.providers.push(p)
+  addOpen.value = false
+  select(id)
+  beginLogin(p)
 }
 
 function formatTokens(n: number | null): string {
@@ -217,15 +210,15 @@ function setAll(p: MockProvider, enabled: boolean) {
 
 <template>
   <SettingsPage wide title="Models & providers" description="Where conversations get their models. Pick a provider to edit its connection and the models it offers.">
-    <SettingsSplit v-model:detail-open="detailOpen" :detail-title="draft ? 'New provider' : selected?.name">
+    <SettingsSplit v-model:detail-open="detailOpen" :detail-title="selected?.name">
       <template #list>
         <div class="select-none px-1 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Subscriptions</div>
         <SettingsListItem
           v-for="p in subscriptions"
           :key="p.id"
           :label="p.name"
-          :selected="!draft && p.id === s.selectedProviderId"
-          :dot="stateTone[p.state]"
+          :selected="p.id === s.selectedProviderId"
+          :badge="stateBadge[p.state]"
           :muted="!p.enabled"
           @select="select(p.id)"
         >
@@ -236,100 +229,21 @@ function setAll(p: MockProvider, enabled: boolean) {
           v-for="p in apiKeys"
           :key="p.id"
           :label="p.name"
-          :selected="!draft && p.id === s.selectedProviderId"
-          :dot="stateTone[p.state]"
+          :selected="p.id === s.selectedProviderId"
+          :badge="stateBadge[p.state]"
           :muted="!p.enabled"
           @select="select(p.id)"
         >
           <template #leading><VendorMark :label="p.name" :src="p.logo" size="sm" /></template>
         </SettingsListItem>
         <div class="mt-2 border-t border-line-subtle pt-2">
-          <SettingsListItem label="Add provider" :icon="Plus" :selected="!!draft" @select="startDraft" />
+          <SettingsListItem label="Add provider" :icon="Plus" @select="addOpen = true" />
         </div>
       </template>
 
       <template #detail>
-        <!-- New provider: pick -->
-        <div v-if="draft?.step === 'pick'" class="flex flex-col gap-5">
-          <header class="select-none">
-            <h3 class="text-[15px] font-medium text-fg-emphasis">Add a provider</h3>
-            <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A vendor from models.dev brings its endpoint and model catalog. A custom endpoint takes any compatible server.</p>
-          </header>
-          <div class="flex items-center gap-2">
-            <Search :size="ICON_PX.in24" class="shrink-0 text-fg-subtle" />
-            <TextInput v-model="draft.query" placeholder="Search vendors" class="w-64 max-w-full" />
-          </div>
-          <div class="settings-card overflow-hidden rounded-xl border border-line">
-            <div
-              v-for="v in pickResults"
-              :key="v.id"
-              role="button"
-              class="flex h-12 cursor-default select-none items-center gap-3 px-3 hover:bg-hover"
-              @click="pickVendor(v)"
-            >
-              <VendorMark :label="v.name" :src="v.logo" />
-              <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ v.name }}</span>
-              <Tag>{{ wireLabel(v.wireApi) }}</Tag>
-            </div>
-            <div v-if="!pickResults.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No vendor matches. Add it as a custom endpoint.</div>
-            <div role="button" class="flex h-12 cursor-default select-none items-center gap-3 px-3 hover:bg-hover" @click="pickVendor(null)">
-              <span class="inline-flex size-7 items-center justify-center rounded-md bg-overlay/8 text-fg-muted"><Terminal :size="ICON_PX.in28" /></span>
-              <span class="min-w-0 flex-1 truncate text-chrome text-fg">Custom endpoint</span>
-              <Tag>Any protocol</Tag>
-            </div>
-          </div>
-          <div class="select-none text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Subscriptions</div>
-          <div class="settings-card overflow-hidden rounded-xl border border-line">
-            <div v-for="v in subscriptionVendors" :key="v.id" role="button" class="flex h-12 cursor-default select-none items-center gap-3 px-3 hover:bg-hover">
-              <VendorMark :label="v.name" :src="v.logo" />
-              <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ v.name }}</span>
-              <Tag>Sign in</Tag>
-            </div>
-          </div>
-          <div class="flex justify-end">
-            <Button @click="cancelDraft">Cancel</Button>
-          </div>
-        </div>
-
-        <!-- New provider: form -->
-        <div v-else-if="draft?.step === 'form'" class="flex flex-col gap-6">
-          <header class="flex items-center gap-3">
-            <VendorMark :label="draft.vendor?.name ?? 'Custom'" :src="draft.vendor?.logo" />
-            <div class="min-w-0 select-none">
-              <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ draft.vendor ? draft.vendor.name : 'Custom endpoint' }}</h3>
-              <p class="text-[12px] text-fg-subtle">{{ draft.vendor ? `${wireLabel(draft.wireApi)} · catalog from models.dev` : 'You name the protocol and the models.' }}</p>
-            </div>
-            <Button size="sm" class="ml-auto" @click="draft = { step: 'pick', query: '' }">Change vendor</Button>
-          </header>
-          <div class="settings-card overflow-hidden rounded-xl border border-line">
-            <SettingsRow label="Name" description="How it appears in the model picker.">
-              <TextInput v-model="draft.name" placeholder="My provider" class="w-56 max-w-full" />
-            </SettingsRow>
-            <SettingsRow label="Base URL" :description="draft.vendor && !draft.vendor.baseUrl ? 'Leave empty for the vendor default, or point it at a proxy.' : undefined">
-              <TextInput v-model="draft.baseUrl" :placeholder="draft.vendor ? 'Vendor default' : 'https://api.example.com/v1'" class="w-72 max-w-full" />
-            </SettingsRow>
-            <SettingsRow v-if="!draft.vendor" label="Protocol" description="The API format the endpoint speaks.">
-              <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Protocol">
-                <template #trigger>{{ wireLabel(draft.wireApi) }}</template>
-                <template #content="{ close }">
-                  <Menu>
-                    <MenuItem v-for="w in wireOptions" :key="w.value" :label="w.label" choice :is-selected="draft.wireApi === w.value" @select="draft!.step === 'form' && (draft.wireApi = w.value); close()" />
-                  </Menu>
-                </template>
-              </Dropdown>
-            </SettingsRow>
-            <SettingsRow label="API key" description="Kept in the keychain of this device.">
-              <TextInput v-model="draft.key" placeholder="sk-…" class="w-56 max-w-full" />
-            </SettingsRow>
-          </div>
-          <div class="flex items-center justify-end gap-2">
-            <Button @click="cancelDraft">Cancel</Button>
-            <Button variant="primary" :disabled="!draft.name.trim() || (!draft.vendor && !draft.baseUrl.trim())">Add provider</Button>
-          </div>
-        </div>
-
         <!-- Existing provider -->
-        <div v-else-if="selected" class="flex flex-col gap-6">
+        <div v-if="selected" class="flex flex-col gap-6">
           <!-- The rail carries the mark; the first card's header names the provider, edits that
                name in place, and holds its actions. -->
           <SettingsGroup>
@@ -455,6 +369,15 @@ function setAll(p: MockProvider, enabled: boolean) {
       </template>
     </SettingsSplit>
 
+    <AddProviderDialog
+      :is-open="addOpen"
+      :overlay-store="appOverlayStore"
+      :vendors="mockVendors"
+      :subscription-vendors="subscriptionVendors"
+      @close="addOpen = false"
+      @add="addProvider"
+      @sign-in="addSubscription"
+    />
     <ModelDialog
       v-if="modelDialog"
       :is-open="modelDialogOpen"

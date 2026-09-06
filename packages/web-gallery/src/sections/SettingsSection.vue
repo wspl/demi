@@ -21,7 +21,7 @@ const anatomy: [string, string][] = [
   ['Readouts', 'A value the control produces (a size, a temperature) reads out beside the control, never in the explanation under the label.'],
   ['Account', 'Display name, appearance, and the session.'],
   ['Devices', 'Every claimed device with its presence, plus the form that claims another. Outcomes of an action land under the form.'],
-  ['Providers', 'In the full mock: a bare rail of providers beside the selected one, with no surface of its own. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Signing in and adding or editing a model open dialogs.'],
+  ['Providers', 'In the full mock: a bare rail of providers beside the selected one, with no surface of its own. Only trouble is badged on a mark. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider, signing in, and adding or editing a model open dialogs.'],
   ['Usage', 'Three totals. The host formats the cost.'],
 ]
 
