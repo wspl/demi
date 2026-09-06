@@ -287,6 +287,58 @@ svg.lucide {
   margin-top: 1px;
 }
 
+/* Menu columns. The list is one grid — icon gutter, label, value, suffix — and every row
+   is a subgrid of it, so labels start on one line and values, shortcuts, checks and
+   submenu arrows end on another, the way native menus measure all items at once.
+   Column spacing lives on the cells so absent cells add no width. Virtualised rows are
+   absolutely positioned and cannot subgrid; they carry the same template themselves. */
+.overlay-menu-scroll {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-content: start;
+}
+
+.overlay-menu-scroll > *,
+.menu-group > * {
+  grid-column: 1 / -1;
+}
+
+.menu-group,
+[data-menu-item]:not(.absolute),
+[data-menu-item]:not(.absolute) > .menu-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+}
+
+[data-menu-item].absolute > .menu-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.menu-cell-gutter {
+  grid-column: 1;
+  margin-right: 0.5rem;
+}
+
+.menu-cell-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  grid-column: 2;
+}
+
+.menu-cell-value {
+  grid-column: 3;
+  max-width: 12rem;
+  margin-left: 0.75rem;
+}
+
+.menu-cell-suffix {
+  grid-column: 4;
+  margin-left: 0.5rem;
+}
+
 .input-float {
   box-shadow: var(--shadow-float);
 }

@@ -43,6 +43,8 @@ const menuIconless = inject(
 const menuRoot = inject(menuRootKey, null)
 const showIconGutter = computed(() => props.iconless !== true && !menuIconless.value)
 const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
+// The suffix column only exists when something renders in it, so empty rows add no width.
+const hasSuffix = computed(() => slots.suffix != null || isChoice.value || showsSubmenu.value || !!props.shortcut)
 
 const triggerRef = ref<HTMLElement | null>(null)
 const submenuOpen = defineModel<boolean>('submenuOpen', { default: false })
@@ -113,7 +115,7 @@ const toneClass = computed(() => {
     <div
       ref="triggerRef"
       role="menuitem"
-      class="flex h-full w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome transition-colors duration-200 ease-out"
+      class="menu-row h-full w-full cursor-default select-none items-center rounded-md px-2 text-chrome transition-colors duration-200 ease-out"
       :class="toneClass"
       :aria-checked="isChoice ? isSelected : undefined"
       :aria-haspopup="showsSubmenu ? 'menu' : undefined"
@@ -122,7 +124,7 @@ const toneClass = computed(() => {
       @mouseenter="openSubmenu"
       @mouseleave="scheduleCloseSubmenu"
     >
-      <span v-if="showIconGutter" class="flex size-4 shrink-0 items-center justify-center">
+      <span v-if="showIconGutter" class="menu-cell-gutter flex size-4 shrink-0 items-center justify-center">
         <span
           v-if="indicator"
           class="size-1.5 shrink-0 rounded-full"
@@ -132,26 +134,30 @@ const toneClass = computed(() => {
         />
         <component :is="icon" v-else-if="icon" :size="ICON_PX.in28" />
       </span>
-      <slot>
-        <span class="min-w-0 flex-1 truncate">{{ label }}</span>
-      </slot>
-      <span v-if="value" class="max-w-[7rem] truncate text-right text-fg-muted" :title="value">
+      <span class="menu-cell-label">
+        <slot>
+          <span class="min-w-0 flex-1 truncate">{{ label }}</span>
+        </slot>
+      </span>
+      <span v-if="value" class="menu-cell-value truncate text-right text-fg-muted" :title="value">
         {{ value }}
       </span>
-      <slot name="suffix">
-        <span v-if="isChoice" class="flex size-3.5 shrink-0 items-center justify-center">
-          <Check v-if="isSelected" :size="ICON_PX.in28" class="text-fg-body" />
-        </span>
-        <span
-          v-else-if="showsSubmenu"
-          class="flex size-3.5 shrink-0 items-center justify-center text-fg-faint"
-        >
-          <ChevronRight :size="ICON_PX.in28" />
-        </span>
-        <span v-else-if="shortcut" class="shrink-0 text-right text-[11px] text-fg-subtle">
-          {{ shortcut }}
-        </span>
-      </slot>
+      <span v-if="hasSuffix" class="menu-cell-suffix flex items-center justify-end">
+        <slot name="suffix">
+          <span v-if="isChoice" class="flex size-3.5 shrink-0 items-center justify-center">
+            <Check v-if="isSelected" :size="ICON_PX.in28" class="text-fg-body" />
+          </span>
+          <span
+            v-else-if="showsSubmenu"
+            class="flex size-3.5 shrink-0 items-center justify-center text-fg-faint"
+          >
+            <ChevronRight :size="ICON_PX.in28" />
+          </span>
+          <span v-else-if="shortcut" class="shrink-0 text-right text-[11px] text-fg-subtle">
+            {{ shortcut }}
+          </span>
+        </slot>
+      </span>
     </div>
   </Tooltip>
   <Popover
