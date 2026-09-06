@@ -8,6 +8,12 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayContainerKey } from '../overlay/overlayContainer'
 import { useOverlay } from '../composables/useOverlay'
 
+/**
+ * Scrolling: a dialog's header, search and footer stay put; only its body scrolls.
+ * The panel is a flex column capped at the host's height, so content declares one
+ * root with `flex min-h-0 flex-col` and marks the body `min-h-0 overflow-y-auto`.
+ * Content without that root simply scrolls as a whole.
+ */
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
