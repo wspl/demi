@@ -219,7 +219,7 @@ function setAll(p: MockProvider, enabled: boolean) {
   <SettingsPage wide title="Models & providers" description="Where conversations get their models. Pick a provider to edit its connection and the models it offers.">
     <SettingsSplit v-model:detail-open="detailOpen" :detail-title="draft ? 'New provider' : selected?.name">
       <template #list>
-        <div class="select-none px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Subscriptions</div>
+        <div class="select-none px-1 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Subscriptions</div>
         <SettingsListItem
           v-for="p in subscriptions"
           :key="p.id"
@@ -231,7 +231,7 @@ function setAll(p: MockProvider, enabled: boolean) {
         >
           <template #leading><VendorMark :label="p.name" :src="p.logo" size="sm" /></template>
         </SettingsListItem>
-        <div class="select-none px-2 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">API keys</div>
+        <div class="select-none px-1 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">API keys</div>
         <SettingsListItem
           v-for="p in apiKeys"
           :key="p.id"
@@ -334,7 +334,7 @@ function setAll(p: MockProvider, enabled: boolean) {
                name in place, and holds its actions. -->
           <SettingsGroup>
             <template #header>
-              <header class="flex flex-col gap-0.5 select-none">
+              <header class="select-none">
                 <div class="flex h-8 flex-wrap items-center gap-x-1.5 gap-y-2">
                   <TextInput
                     v-if="renaming"
@@ -355,7 +355,6 @@ function setAll(p: MockProvider, enabled: boolean) {
                     <Switch v-model="selected.enabled" size="sm" class="ml-2" />
                   </div>
                 </div>
-                <p v-if="selected.kind === 'subscription'" class="text-[13px] leading-5 text-fg-muted">One account is active at a time; every conversation on this provider uses it.</p>
               </header>
             </template>
 
@@ -410,10 +409,7 @@ function setAll(p: MockProvider, enabled: boolean) {
           </SettingsGroup>
 
           <!-- Models -->
-          <SettingsGroup
-            title="Models"
-            :description="selected.kind === 'subscription' ? `What the vendor serves this account right now${selected.catalogFetched ? ` · fetched ${selected.catalogFetched}` : ''}.` : undefined"
-          >
+          <SettingsGroup title="Models">
             <SettingsRow
               v-if="selected.kind === 'api_key'"
               label="Model list"

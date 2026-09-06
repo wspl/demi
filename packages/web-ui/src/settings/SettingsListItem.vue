@@ -22,7 +22,7 @@ const emit = defineEmits<{
   <div
     role="button"
     :aria-pressed="selected"
-    class="flex h-11 cursor-default select-none items-center gap-2.5 rounded-md px-2 transition-colors duration-200 ease-out"
+    class="flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 transition-colors duration-200 ease-out"
     :class="[selected ? 'bg-active' : 'hover:bg-hover', muted ? 'opacity-60' : '']"
     @click="emit('select')"
   >
