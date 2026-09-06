@@ -61,6 +61,12 @@ function selectModel(provider: string, model: string) {
 onBeforeUnmount(() => {
   while (attached.value.length) remove(0)
 })
+
+defineExpose({
+  setDraft(text: string) {
+    draft.value = text
+  },
+})
 </script>
 
 <template>

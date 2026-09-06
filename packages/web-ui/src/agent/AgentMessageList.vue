@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useScroll } from '@vueuse/core'
-import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { Block, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { getVisibleBlocks } from './visible-blocks'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
@@ -29,6 +29,7 @@ const emit = defineEmits<{
   interruptPendingSteer: [id: string]
   deleteQueued: [id: string]
   sendQueued: [id: string]
+  editUser: [content: UserContentBlock[]]
 }>()
 
 const visibleTranscriptBlocks = computed(() => getVisibleBlocks(props.blocks))
@@ -128,6 +129,7 @@ defineExpose({
               @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
               @delete-queued="(id) => emit('deleteQueued', id)"
               @send-queued="(id) => emit('sendQueued', id)"
+              @edit-user="(content) => emit('editUser', content)"
             />
           </div>
         </div>
