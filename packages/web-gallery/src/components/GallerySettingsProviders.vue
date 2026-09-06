@@ -322,8 +322,15 @@ function setAll(p: MockProvider, enabled: boolean) {
             </template>
           </SettingsGroup>
 
-          <!-- Models -->
+          <!-- Models. A subscription's list is whatever the vendor serves, so its only control is a refresh. -->
           <SettingsGroup title="Models">
+            <template v-if="selected.kind === 'subscription'" #header>
+              <header class="flex h-7 select-none items-center gap-2">
+                <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Models</h3>
+                <span v-if="selected.catalogFetched" class="text-[12px] text-fg-subtle">fetched {{ selected.catalogFetched }}</span>
+                <Tooltip content="Refresh the list"><IconButton :icon="RefreshCw" size="sm" class="ml-auto" aria-label="Refresh models" /></Tooltip>
+              </header>
+            </template>
             <SettingsRow
               v-if="selected.kind === 'api_key'"
               label="Source"
