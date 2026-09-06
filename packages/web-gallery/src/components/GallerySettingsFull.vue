@@ -23,6 +23,8 @@ import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AppearancePreview from '@demicodes/web-ui/settings/AppearancePreview.vue'
+import ChangeEmailDialog, { type ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
+import ChangePasswordDialog, { type ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsNote from '@demicodes/web-ui/settings/SettingsNote.vue'
 import SettingsPage from '@demicodes/web-ui/settings/SettingsPage.vue'
@@ -76,6 +78,65 @@ const note = (title: string, message?: string) => showToast({ title, message })
 function copyText(text: string, what: string) {
   void navigator.clipboard?.writeText(text)
   note(`${what} copied`)
+}
+
+// Email: the code goes out after a beat; 000000 is the one code that is wrong.
+const emailOpen = ref(false)
+const emailPhase = ref<ChangeEmailPhase>({ kind: 'form', currentEmail: '' })
+let emailTimer = 0
+function openChangeEmail() {
+  window.clearTimeout(emailTimer)
+  emailPhase.value = { kind: 'form', currentEmail: s.value.account.email }
+  emailOpen.value = true
+}
+function submitEmail(email: string, password: string) {
+  if (emailPhase.value.kind !== 'form') return
+  if (password === 'wrong') {
+    emailPhase.value = { ...emailPhase.value, error: 'That is not your current password.' }
+    return
+  }
+  emailPhase.value = { ...emailPhase.value, busy: true, error: undefined }
+  emailTimer = window.setTimeout(() => {
+    emailPhase.value = { kind: 'verify', email }
+  }, 700)
+}
+function verifyEmail(code: string) {
+  if (emailPhase.value.kind !== 'verify') return
+  const { email } = emailPhase.value
+  emailPhase.value = { kind: 'verify', email, busy: true }
+  emailTimer = window.setTimeout(() => {
+    if (code === '000000') {
+      emailPhase.value = { kind: 'verify', email, error: 'That code is not right. Check the newest message.' }
+      return
+    }
+    s.value.account.email = email
+    emailPhase.value = { kind: 'done', email }
+  }, 600)
+}
+function resendEmailCode() {
+  if (emailPhase.value.kind !== 'verify') return
+  note('Code sent again', `A new code went to ${emailPhase.value.email}.`)
+}
+
+// Password: "wrong" is the one current password that is not accepted.
+const passwordOpen = ref(false)
+const passwordPhase = ref<ChangePasswordPhase>({ kind: 'form' })
+let passwordTimer = 0
+function openChangePassword() {
+  window.clearTimeout(passwordTimer)
+  passwordPhase.value = { kind: 'form' }
+  passwordOpen.value = true
+}
+function submitPassword(current: string) {
+  passwordPhase.value = { kind: 'form', busy: true }
+  passwordTimer = window.setTimeout(() => {
+    if (current === 'wrong') {
+      passwordPhase.value = { kind: 'form', error: 'That is not your current password.' }
+      return
+    }
+    s.value.account.passwordChanged = 'just now'
+    passwordPhase.value = { kind: 'done' }
+  }, 600)
 }
 
 const newPattern = ref('')
@@ -191,9 +252,14 @@ const revealed = ref<Record<string, boolean>>({})
       <SettingsRow label="Email">
         <template #tags><Tag tone="success">Verified</Tag></template>
         <span class="text-chrome text-fg-muted">{{ s.account.email }}</span>
-        <Button size="sm" @click="note('Check your inbox', `A confirmation link went to ${s.account.email}.`)">Change</Button>
+        <Button size="sm" @click="openChangeEmail">Change</Button>
+      </SettingsRow>
+      <SettingsRow label="Password" :description="`Last changed ${s.account.passwordChanged}.`">
+        <Button size="sm" @click="openChangePassword">Change</Button>
       </SettingsRow>
     </SettingsGroup>
+    <ChangeEmailDialog :is-open="emailOpen" :overlay-store="appOverlayStore" :phase="emailPhase" @close="emailOpen = false" @submit="submitEmail" @verify="verifyEmail" @resend="resendEmailCode" />
+    <ChangePasswordDialog :is-open="passwordOpen" :overlay-store="appOverlayStore" :phase="passwordPhase" @close="passwordOpen = false" @submit="submitPassword" />
     <SettingsGroup title="Plan">
       <SettingsRow :label="`${s.account.plan} plan`" :description="`Renews ${s.account.renews}. Cancel any time before then.`">
         <template #tags><Tag tone="accent">Current</Tag></template>

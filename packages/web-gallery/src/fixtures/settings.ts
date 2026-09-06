@@ -24,7 +24,7 @@ export const fullSettingsNav: SettingsNavGroup[] = [
   {
     items: [
       { id: 'general', label: 'General', icon: Settings2, keywords: ['language', 'theme', 'tone', 'accent', 'font size'] },
-      { id: 'account', label: 'Account', icon: CircleUser, keywords: ['avatar', 'display name', 'email', 'plan', 'billing', 'sign out', 'delete account'] },
+      { id: 'account', label: 'Account', icon: CircleUser, keywords: ['avatar', 'display name', 'email', 'password', 'plan', 'billing', 'sign out', 'delete account'] },
       { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['sound', 'quiet hours', 'approval'] },
     ],
   },
@@ -236,6 +236,7 @@ export function createSettingsState() {
     account: {
       name: 'Zan',
       email: 'zan@example.com',
+      passwordChanged: '3 months ago',
       plan: 'Pro',
       renews: 'Oct 12',
       creditsUsed: 8_640,
