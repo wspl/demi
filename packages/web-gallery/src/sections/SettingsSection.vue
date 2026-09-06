@@ -26,6 +26,7 @@ const name = ref('Zan')
 const account = { name: 'Zan', plan: 'Personal workspace' }
 const theme = ref<ThemeMode>('dark')
 const accountTab = ref<SettingsTab>('Account')
+const narrowTab = ref<SettingsTab>('Devices')
 
 const devices = ref<SettingsDevice[]>([
   { id: 'mac', name: 'zan-mbp', online: true },
@@ -184,10 +185,27 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
       </GalleryOverlayWell>
     </GallerySection>
 
-    <GallerySection title="Narrow" note="Phone width: the tabs become a row above the panel.">
+    <GallerySection title="Narrow" note="Phone width: a compact header, the sections split evenly in a row, and row controls drop under their text.">
       <GalleryOverlayWell size="narrow">
-        <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore" :account="account">
-          <SettingsDevices :devices="devices" @toggle-online="toggleDevice(devices, $event)" />
+        <SettingsDialog v-model:tab="narrowTab" :is-open="true" :overlay-store="appOverlayStore" :account="account">
+          <SettingsAccount
+            v-if="narrowTab === 'Account'"
+            v-model:name="name"
+            :overlay-store="appOverlayStore"
+            :theme="theme"
+            @change-theme="theme = $event"
+          />
+          <SettingsDevices
+            v-else-if="narrowTab === 'Devices'"
+            :devices="devices"
+            @toggle-online="toggleDevice(devices, $event)"
+          />
+          <SettingsProviders
+            v-else-if="narrowTab === 'Providers'"
+            :providers="providers"
+            @set-available="(id, value) => setAvailable(providers, id, value)"
+          />
+          <SettingsUsage v-else :usage="usage" />
         </SettingsDialog>
       </GalleryOverlayWell>
     </GallerySection>

@@ -56,7 +56,7 @@ function add() {
     <SettingsGroup title="Add a provider">
       <form @submit.prevent="add">
         <SettingsRow label="Provider name">
-          <TextInput v-model="label" placeholder="Anthropic" maxlength="64" class="w-56" />
+          <TextInput v-model="label" placeholder="Anthropic" maxlength="64" class="w-56 max-w-full" />
           <Button :disabled="!label.trim()" @click="add">Add provider</Button>
         </SettingsRow>
       </form>

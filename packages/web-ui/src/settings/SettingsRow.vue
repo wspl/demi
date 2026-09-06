@@ -11,7 +11,7 @@ defineProps<{
 
 <template>
   <div class="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 @sm:flex-nowrap">
-    <div v-if="$slots.leading" class="flex shrink-0 items-center text-fg-muted">
+    <div v-if="$slots.leading" class="flex shrink-0 self-start pt-[3px] text-fg-muted @sm:self-center @sm:pt-0">
       <slot name="leading" />
     </div>
     <div class="min-w-0 flex-1 select-none">
