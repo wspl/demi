@@ -80,12 +80,14 @@ function editUser(content: UserContentBlock[]) {
         :conversation-id="conversation.id"
         :blocks="conversation.blocks"
         :queue="conversation.queue"
-        :pending-steers="[]"
+        :pending-steers="conversation.pendingSteers"
         :phase="conversation.stream ? 'running' : 'idle'"
         :bottom-offset="surface?.dockHeight ?? 0"
         :persisted-scroll-state="undefined"
         @delete-queued="(id) => store.removeQueued(conversation!, id)"
         @send-queued="(id) => store.sendQueued(conversation!, id)"
+        @delete-pending-steer="(id) => store.removePendingSteer(conversation!, id)"
+        @interrupt-pending-steer="(id) => store.interruptWithSteer(conversation!, id)"
         @edit-user="editUser"
       />
       <template #dock>

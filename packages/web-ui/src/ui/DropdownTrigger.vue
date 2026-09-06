@@ -10,6 +10,7 @@ withDefaults(defineProps<{
   isOpen: boolean
   variant?: DropdownVariant
   size?: DropdownSize
+  ariaLabel?: string
 }>(), {
   variant: 'default',
   size: 'md',
@@ -19,6 +20,7 @@ withDefaults(defineProps<{
 <template>
   <Button
     v-if="variant === 'default'"
+    :aria-label="ariaLabel"
     :size="size"
     :pressed="isOpen"
   >
@@ -32,6 +34,7 @@ withDefaults(defineProps<{
   <span
     v-else
     role="button"
+    :aria-label="ariaLabel"
     class="inline-flex cursor-default select-none items-center gap-0.5 rounded-md text-chrome transition-colors duration-200 ease-out"
     :class="[
       size === 'sm' ? 'h-6 pl-1.5 pr-0.5 text-[12px]' : 'h-7 pl-2 pr-1',

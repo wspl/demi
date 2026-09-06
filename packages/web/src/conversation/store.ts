@@ -1,9 +1,16 @@
 import { defineStore } from 'pinia'
 import { moveBefore } from '@demicodes/utils'
 import type { Block, UserContentBlock } from '@demicodes/core'
+import { createPendingSteerMessage } from '@demicodes/web-ui/agent/pending-steers'
 import { conversation, conversations, modelSelection } from '../prototype/fixtures'
 import type { Conversation } from '../prototype/types'
 import { useResources } from '../prototype/resources'
+
+const REPLY =
+  'Here’s a way to approach this.\n\n1. **Make the outcome concrete.** Describe what a useful result looks like.\n2. **Work through one piece at a time.** Keep the next step small enough to review.\n3. **Check the result together.** Adjust what needs attention before moving on.\n\nYou can keep this conversation open while you explore another project. This response is a scripted preview of the conversation experience.'
+
+const STEER_REPLY =
+  'Got it. I’ll fold that into the plan before going further.\n\nThe steps above still hold; the next pass takes your note as the first constraint and adjusts the rest around it.'
 
 function meta(c: Conversation) {
   return {
@@ -122,20 +129,32 @@ export const useConversations = defineStore('conversations', {
       c.files = []
       this.start(c)
     },
-    start(c: Conversation) {
+    start(c: Conversation, script = REPLY) {
       if (c.stream || c.archived) return
+      // Retry replaces the failed attempt; Resume continues after the abort marker.
+      const last = c.blocks.at(-1)
+      if (c.status === 'error' && last?.type === 'error') c.blocks.pop()
+      if (c.paused !== null) {
+        script = c.paused
+        c.paused = null
+        if (last?.type === 'abort') last.isResumed = true
+      }
       const block: Block = { ...meta(c), type: 'text', text: '' }
       c.blocks.push(block)
       c.status = 'active'
       c.unread = false
       c.updatedAt = new Date().toISOString()
-      c.stream = {
-        blockId: block.id,
-        remaining:
-          'Here’s a way to approach this.\n\n1. **Make the outcome concrete.** Describe what a useful result looks like.\n2. **Work through one piece at a time.** Keep the next step small enough to review.\n3. **Check the result together.** Adjust what needs attention before moving on.\n\nYou can keep this conversation open while you explore another project. This response is a scripted preview of the conversation experience.',
-        fail: this.failNext,
-      }
+      c.stream = { blockId: block.id, remaining: script, fail: this.failNext }
       this.failNext = false
+    },
+    /** A steer joins the transcript once the current output ends, then gets its own reply. */
+    materializeSteers(c: Conversation): boolean {
+      if (!c.pendingSteers.length) return false
+      for (const pending of c.pendingSteers) {
+        c.blocks.push({ ...meta(c), type: 'steer', turnId: c.stream?.blockId ?? '', content: pending.content })
+      }
+      c.pendingSteers = []
+      return true
     },
     advance() {
       for (const c of this.items) {
@@ -158,10 +177,15 @@ export const useConversations = defineStore('conversations', {
         if (block?.type === 'text') block.text += stream.remaining.slice(0, 9)
         stream.remaining = stream.remaining.slice(9)
         if (stream.remaining) continue
+        const steered = this.materializeSteers(c)
         c.stream = null
         c.status = 'done'
         c.unread = true
         c.updatedAt = new Date().toISOString()
+        if (steered) {
+          this.start(c, STEER_REPLY)
+          continue
+        }
         const queued = c.queue.shift()
         if (queued) {
           c.blocks.push({
@@ -183,12 +207,7 @@ export const useConversations = defineStore('conversations', {
       if (!item || c.archived) return
       this.removeQueued(c, id)
       if (c.stream) {
-        c.blocks.push({
-          ...meta(c),
-          type: 'steer',
-          turnId: c.stream.blockId,
-          content: item.content,
-        })
+        c.pendingSteers.push(createPendingSteerMessage(crypto.randomUUID(), item.content, c.blocks))
       } else {
         c.blocks.push({
           ...meta(c),
@@ -200,8 +219,21 @@ export const useConversations = defineStore('conversations', {
         this.start(c)
       }
     },
+    removePendingSteer(c: Conversation, id: string) {
+      c.pendingSteers = c.pendingSteers.filter((item) => item.id !== id)
+    },
+    /** Cut the running output short and answer the steer right away. */
+    interruptWithSteer(c: Conversation, id: string) {
+      const pending = c.pendingSteers.find((item) => item.id === id)
+      if (!pending || !c.stream) return
+      this.removePendingSteer(c, id)
+      c.blocks.push({ ...meta(c), type: 'steer', turnId: c.stream.blockId, content: pending.content })
+      c.stream = null
+      this.start(c, STEER_REPLY)
+    },
     stop(c: Conversation) {
       if (!c.stream) return
+      c.paused = c.stream.remaining
       c.stream = null
       c.status = 'aborted'
       c.unread = true

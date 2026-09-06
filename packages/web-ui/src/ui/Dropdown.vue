@@ -13,6 +13,8 @@ const props = withDefaults(defineProps<{
   anchorInset?: number
   shiftPadding?: number
   variant?: DropdownVariant
+  /** Accessible name for a built-in trigger whose visible text is a value, not a label. */
+  triggerLabel?: string
   size?: DropdownSize
 }>(), {
   placement: 'bottom-start',
@@ -56,7 +58,7 @@ defineExpose({ open, close })
 <template>
   <div class="relative inline-flex">
     <div ref="triggerRef" class="cursor-default" @click="handleClick">
-      <DropdownTrigger v-if="props.variant" :is-open="isOpen" :variant="props.variant" :size="props.size">
+      <DropdownTrigger v-if="props.variant" :is-open="isOpen" :variant="props.variant" :size="props.size" :aria-label="props.triggerLabel">
         <slot name="trigger" :is-open="isOpen" />
       </DropdownTrigger>
       <slot v-else name="trigger" :is-open="isOpen" />
