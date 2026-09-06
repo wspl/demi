@@ -85,12 +85,14 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             <span class="truncate text-[11px] text-fg-subtle">{{ account.plan }}</span>
           </span>
         </div>
-        <div class="hidden @md:block">
+        <!-- The filter reserves the same scrollbar gutter as the list below, so both end on one line. -->
+        <div class="hidden overflow-y-hidden py-px [scrollbar-gutter:stable] @md:-mx-3 @md:block @md:px-3">
           <TextInput v-model="query" placeholder="Filter settings" aria-label="Filter settings" @keydown.enter="openFirstMatch">
             <template #prefix><Search :size="ICON_PX.in24" /></template>
           </TextInput>
         </div>
-        <nav class="-mx-1 hidden min-h-0 flex-col gap-3 overflow-y-auto px-1 @md:flex" aria-label="Settings sections">
+        <!-- The list spans the rail edge to edge so its scrollbar hugs the rail, not the padding. -->
+        <nav class="hidden min-h-0 flex-col gap-3 overflow-y-auto [scrollbar-gutter:stable] @md:-mx-3 @md:flex @md:px-3" aria-label="Settings sections">
           <div v-if="!filteredSections.length" class="select-none px-2 py-3 text-[12px] text-fg-subtle">Nothing matches.</div>
           <div v-for="(group, index) in filteredSections" :key="group.label ?? index" class="flex flex-col gap-0.5">
             <div v-if="group.label" class="select-none px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">
