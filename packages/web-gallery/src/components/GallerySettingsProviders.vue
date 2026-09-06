@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Check, Plus, RefreshCw, Search, Sparkles, Terminal } from '@lucide/vue'
+import { Brain, Check, ChevronDown, Image, LogOut, Pencil, Plug, Plus, RefreshCw, Search, Sparkles, Terminal, Trash2, TriangleAlert, Zap } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
+import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
+import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
@@ -102,19 +104,11 @@ function cancelDraft() {
 
 function formatTokens(n: number | null): string {
   if (n === null) return '—'
-  return n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}k`
+  return n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}K`
 }
 
-function capabilityTags(m: MockModel): { text: string; tone: 'neutral' | 'warning' }[] {
-  if (m.tools === null && m.attachments === null && m.contextWindow === null) return [{ text: 'Capabilities unknown', tone: 'warning' }]
-  const tags: { text: string; tone: 'neutral' | 'warning' }[] = []
-  if (m.contextWindow !== null) tags.push({ text: `${formatTokens(m.contextWindow)} ctx`, tone: 'neutral' })
-  if (m.tools) tags.push({ text: 'tools', tone: 'neutral' })
-  if (m.attachments) tags.push({ text: 'files', tone: 'neutral' })
-  if (m.efforts.length) tags.push({ text: 'reasoning', tone: 'neutral' })
-  if (m.fastTier) tags.push({ text: 'fast', tone: 'neutral' })
-  return tags
-}
+/** What a model can do, as marks: a context size, then icons with tooltips. */
+const isUnknown = (m: MockModel) => m.tools === null && m.attachments === null && m.contextWindow === null
 
 function visibleModels(p: MockProvider): MockModel[] {
   const q = modelFilter.value.trim().toLowerCase()
@@ -300,10 +294,10 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
               <Tag v-else-if="vendorOf(selected)">{{ vendorOf(selected)!.name }}</Tag>
               <Tag v-else>Custom endpoint</Tag>
             </div>
-            <div class="ml-auto flex items-center gap-2">
-              <Button size="sm">Rename</Button>
-              <Button size="sm">Remove</Button>
-              <Switch v-model="selected.enabled" size="sm" class="ml-1" />
+            <div class="ml-auto flex items-center gap-1">
+              <Tooltip content="Rename"><IconButton :icon="Pencil" variant="ghost" size="xs" aria-label="Rename provider" /></Tooltip>
+              <Tooltip content="Remove"><IconButton :icon="Trash2" variant="ghost" size="xs" aria-label="Remove provider" /></Tooltip>
+              <Switch v-model="selected.enabled" size="sm" class="ml-2" />
             </div>
           </header>
 
@@ -317,7 +311,7 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
             >
               <template #tags><Tag v-if="account.active" tone="accent">Active</Tag><Tag v-if="account.quota && account.quota.used >= 100" tone="danger">Limit reached</Tag></template>
               <Button v-if="!account.active" size="sm" @click="setActive(selected!, account.id)">Use</Button>
-              <Button size="sm">Sign out</Button>
+              <Tooltip content="Sign out"><IconButton :icon="LogOut" variant="ghost" size="xs" aria-label="Sign out" /></Tooltip>
             </SettingsRow>
             <div v-for="account in selected.accounts.filter((a) => a.active && a.quota)" :key="`m-${account.id}`" class="px-4 pb-3">
               <Meter :value="account.quota!.used" :max="account.quota!.max" label="Rate window" />
@@ -344,19 +338,14 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
                 </template>
               </Dropdown>
             </SettingsRow>
-            <SettingsRow label="API key" :description="selected.keyHint ? 'Kept in the keychain of this device, never in the config file.' : 'No key. Local endpoints usually need none.'">
-              <span v-if="selected.keyHint" class="font-mono text-[12px] text-fg-muted">{{ selected.keyHint }}</span>
-              <Button size="sm">{{ selected.keyHint ? 'Replace' : 'Add key' }}</Button>
+            <SettingsRow label="API key" :description="selected.keyHint ? undefined : 'Local endpoints usually need none.'">
+              <TextInput :model-value="selected.keyHint ? 'sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b' : ''" type="password" placeholder="sk-…" class="w-72 max-w-full" />
             </SettingsRow>
-            <SettingsRow label="Test connection" description="Sends one tiny request with the key above.">
-              <template #tags><Tag v-if="selected.state === 'error' || selected.state === 'unreachable'" tone="danger">Failed</Tag></template>
-              <template #description>
-                <span v-if="selected.detail" class="font-mono text-on-danger">{{ selected.detail }}</span>
-                <span v-else>Sends one tiny request with the key above.</span>
-              </template>
+            <SettingsRow label="Test connection">
               <span v-if="testing === selected.id" class="flex items-center gap-1.5 text-[12px] text-fg-subtle"><IndeterminateSpinner :size="ICON_PX.in24" /> Testing…</span>
               <span v-else-if="selected.state === 'ready'" class="flex items-center gap-1 text-[12px] text-on-success"><Check :size="ICON_PX.in24" /> OK · 412 ms</span>
-              <Button size="sm" @click="test(selected!)">Test</Button>
+              <span v-else-if="selected.detail" class="min-w-0 truncate font-mono text-[12px] text-on-danger">{{ selected.detail }}</span>
+              <Tooltip content="Test connection"><IconButton :icon="Plug" variant="ghost" size="xs" aria-label="Test connection" @click="test(selected!)" /></Tooltip>
             </SettingsRow>
           </SettingsGroup>
 
@@ -371,7 +360,7 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
               :description="selected.modelSource === 'catalog' ? `From the vendor catalog · fetched ${selected.catalogFetched}` : 'Ids you enter. Fill in what a model can do so the composer offers the right controls.'"
             >
               <template #tags><Tag v-if="selected.stale" tone="warning">Stale</Tag></template>
-              <Button v-if="selected.modelSource === 'catalog'" size="sm"><RefreshCw :size="ICON_PX.in24" /> Refresh</Button>
+              <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh the catalog"><IconButton :icon="RefreshCw" variant="ghost" size="xs" aria-label="Refresh models" /></Tooltip>
               <Segmented v-model="selected.modelSource" size="sm" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
             </SettingsRow>
             <div v-if="selected.models.length > 3" class="flex items-center gap-2 px-4 py-2">
@@ -379,15 +368,21 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
               <TextInput v-model="modelFilter" placeholder="Filter models" class="w-56 max-w-full" />
             </div>
             <template v-for="m in visibleModels(selected)" :key="m.id">
-              <SettingsRow :label="m.name || m.id" :description="m.name ? m.id : undefined" :class="m.enabled ? '' : 'opacity-60'">
+              <SettingsRow :label="m.name || m.id" :class="m.enabled ? '' : 'opacity-60'">
                 <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" /></template>
                 <template #tags>
-                  <Tag v-if="selected.defaultModelId === m.id" tone="accent">Default</Tag>
-                  <Tag v-for="t in capabilityTags(m)" :key="t.text" :tone="t.tone">{{ t.text }}</Tag>
+                  <Tooltip v-if="isUnknown(m)" content="Capabilities unknown. Edit to fill them in."><Tag tone="warning"><TriangleAlert :size="12" /></Tag></Tooltip>
+                  <Tag v-if="m.contextWindow !== null">{{ formatTokens(m.contextWindow) }}</Tag>
+                  <Tooltip v-if="m.attachments" content="Accepts images and files"><Tag><Image :size="12" /></Tag></Tooltip>
+                  <Tooltip v-if="m.efforts.length" :content="`Reasoning · ${m.efforts.join(', ')}`"><Tag><Brain :size="12" /></Tag></Tooltip>
+                  <Tooltip v-if="m.fastTier" content="Has a fast tier"><Tag><Zap :size="12" /></Tag></Tooltip>
                 </template>
-                <Button v-if="selected.kind === 'api_key' && selected.defaultModelId !== m.id" size="sm" @click="selected!.defaultModelId = m.id">Make default</Button>
-                <Button v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'" size="sm" @click="expandedModelId = expandedModelId === m.id ? null : m.id">{{ expandedModelId === m.id ? 'Done' : 'Edit' }}</Button>
-                <Button v-else size="sm" @click="expandedModelId = expandedModelId === m.id ? null : m.id">{{ expandedModelId === m.id ? 'Less' : 'Details' }}</Button>
+                <Tooltip v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'" :content="expandedModelId === m.id ? 'Done' : 'Edit'">
+                  <IconButton :icon="expandedModelId === m.id ? Check : Pencil" variant="ghost" size="xs" aria-label="Edit model" @click="expandedModelId = expandedModelId === m.id ? null : m.id" />
+                </Tooltip>
+                <Tooltip v-else content="Details">
+                  <IconButton :icon="ChevronDown" variant="ghost" size="xs" aria-label="Model details" :class="expandedModelId === m.id ? 'rotate-180' : ''" @click="expandedModelId = expandedModelId === m.id ? null : m.id" />
+                </Tooltip>
               </SettingsRow>
               <template v-if="expandedModelId === m.id && selected.kind === 'api_key' && selected.modelSource === 'manual'">
                 <SettingsRow inset label="Display name" description="Shown in the picker instead of the id.">
@@ -424,7 +419,7 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
                   <TextInput :model-value="m.fastTier ?? ''" placeholder="priority" class="w-32" @update:model-value="(v) => (m.fastTier = v || null)" />
                 </SettingsRow>
                 <SettingsRow inset label="Remove this model">
-                  <Button size="sm" @click="selected!.models = selected!.models.filter((x) => x.id !== m.id); expandedModelId = null">Remove</Button>
+                  <Tooltip content="Remove"><IconButton :icon="Trash2" variant="ghost" size="xs" aria-label="Remove model" @click="selected!.models = selected!.models.filter((x) => x.id !== m.id); expandedModelId = null" /></Tooltip>
                 </SettingsRow>
               </template>
               <template v-else-if="expandedModelId === m.id">
@@ -445,32 +440,6 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
         </div>
       </template>
     </SettingsSplit>
-
-    <SettingsGroup title="Defaults" description="New conversations start here. Each conversation can still switch.">
-      <SettingsRow label="Chat model" description="The primary agent's model.">
-        <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Chat model">
-          <template #trigger>{{ s.defaults.chat }}</template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem v-for="m in ['Claude Sonnet 4.5', 'Claude Opus 4.1', 'GPT-5', 'Kimi K2 Thinking']" :key="m" :label="m" choice :is-selected="s.defaults.chat === m" @select="s.defaults.chat = m; close()" />
-            </Menu>
-          </template>
-        </Dropdown>
-      </SettingsRow>
-      <SettingsRow label="Fast model" description="Titles, summaries and quick lookups.">
-        <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Fast model">
-          <template #trigger>{{ s.defaults.fast }}</template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem v-for="m in ['Claude Haiku 4.5', 'GPT-5 mini']" :key="m" :label="m" choice :is-selected="s.defaults.fast === m" @select="s.defaults.fast = m; close()" />
-            </Menu>
-          </template>
-        </Dropdown>
-      </SettingsRow>
-      <SettingsRow label="Reasoning" description="Default thinking effort for models that support it.">
-        <Segmented v-model="s.defaults.reasoning" :options="[{ value: 'off', label: 'Off' }, { value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }]" />
-      </SettingsRow>
-    </SettingsGroup>
 
     <ProviderLoginDialog
       v-if="login"
