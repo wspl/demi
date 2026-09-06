@@ -73,13 +73,6 @@ export interface SettingsVendor {
   logo: string
 }
 
-/** A vendor whose subscription is used through its own login. */
-export interface SettingsSubscriptionVendor {
-  id: string
-  name: string
-  logo: string
-}
-
 export const THINKING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as const
 
 export const EXTENSION_PRESETS: { id: string; label: string; extensions: string[] }[] = [

@@ -7,25 +7,24 @@ import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { WIRE_API_LABELS, type SettingsSubscriptionVendor, type SettingsVendor } from './types'
+import { WIRE_API_LABELS, type SettingsVendor } from './types'
 
 /**
- * Adding a provider is one pick. A vendor arrives with its endpoint and catalog, a
- * custom endpoint with defaults; both are then configured on the provider's own
- * page, so nothing here repeats it. A subscription hands off to the vendor's login.
+ * Adding an API-key provider is one pick. A vendor arrives with its endpoint and
+ * catalog, a custom endpoint with defaults; both are then configured on the
+ * provider's own page, so nothing here repeats it. Subscriptions are not added:
+ * every supported one is always listed and signs in from its own page.
  */
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   vendors: SettingsVendor[]
-  subscriptionVendors: SettingsSubscriptionVendor[]
 }>()
 
 const emit = defineEmits<{
   close: []
   /** Null is a custom endpoint. */
   add: [vendor: SettingsVendor | null]
-  signIn: [vendor: SettingsSubscriptionVendor]
 }>()
 
 const query = ref('')
@@ -53,7 +52,6 @@ const results = computed(() => {
       </TextInput>
       <div class="flex flex-col gap-3">
         <div>
-          <div class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">API keys</div>
           <div class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float">
             <div
               v-for="v in results"
@@ -74,24 +72,7 @@ const results = computed(() => {
             </div>
           </div>
         </div>
-        <div v-if="!query.trim()">
-          <div class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Subscriptions</div>
-          <div class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float">
-            <div
-              v-for="v in subscriptionVendors"
-              :key="v.id"
-              role="button"
-              class="flex h-10 cursor-default select-none items-center gap-3 px-3 hover:bg-hover"
-              @click="emit('signIn', v)"
-            >
-              <VendorMark :label="v.name" :src="v.logo" size="sm" />
-              <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ v.name }}</span>
-              <Tag>Sign in</Tag>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
-
   </Dialog>
 </template>
