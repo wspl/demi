@@ -14,9 +14,9 @@ const props = defineProps<{
   /** Height family: md is 28px, sm is 24px. Match the surface's other controls. */
   size?: 'sm' | 'md'
   /**
-   * No frame at rest: the value reads as text in its row. The hit area stretches to
-   * its container's height so it fills the row's content box, hover shows it, and
-   * focus brings the frame back.
+   * No frame in any state: the value reads as text in its row, and the caret is the
+   * only sign of focus. The hit area stretches to its container's height so it fills
+   * the row's content box, and the prefix sits flush with the left edge.
    */
   bare?: boolean
 }>()
@@ -50,16 +50,12 @@ defineExpose({
     :class="[
       bare ? (size === 'sm' ? 'min-h-6 self-stretch' : 'min-h-7 self-stretch') : size === 'sm' ? 'h-6' : 'h-7',
       attrs['class'] ? '' : 'w-full',
-      bare
-        ? startFocused || isFocused
-          ? 'bg-surface-raised ring-line-focus'
-          : 'bg-transparent ring-transparent hover:bg-hover'
-        : ['bg-surface-raised', startFocused || isFocused ? 'ring-line-focus' : 'ring-line'],
+      bare ? 'bg-transparent ring-transparent' : ['bg-surface-raised', startFocused || isFocused ? 'ring-line-focus' : 'ring-line'],
     ]"
     :data-bare="bare ? true : undefined"
     @click="inputRef?.focus()"
   >
-    <div v-if="slots['prefix']" class="flex shrink-0 items-center pl-2 text-fg-subtle">
+    <div v-if="slots['prefix']" class="flex shrink-0 items-center text-fg-subtle" :class="bare ? '' : 'pl-2'">
       <slot name="prefix" />
     </div>
     <input
@@ -69,7 +65,7 @@ defineExpose({
       :value="modelValue"
       :placeholder="placeholder"
       class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
-      :class="[slots['prefix'] ? 'pl-1.5' : size === 'sm' ? 'pl-2' : 'pl-2.5', secret || slots['suffix'] ? 'pr-1.5' : size === 'sm' ? 'pr-2' : 'pr-2.5']"
+      :class="[slots['prefix'] ? 'pl-1.5' : bare ? 'pl-0' : size === 'sm' ? 'pl-2' : 'pl-2.5', secret || slots['suffix'] ? 'pr-1.5' : bare ? 'pr-0' : size === 'sm' ? 'pr-2' : 'pr-2.5']"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @focus="isFocused = true"
       @blur="isFocused = false; startFocused = false"
