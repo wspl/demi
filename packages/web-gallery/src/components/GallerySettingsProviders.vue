@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Brain, Check, ChevronDown, Image, Plug, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Terminal, TextCursorInput, Trash2, TriangleAlert, Zap } from '@lucide/vue'
+import { Brain, Check, Image, Info, Plug, Plus, RefreshCw, Search, SlidersHorizontal, Terminal, TextCursorInput, Trash2, TriangleAlert, Zap } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -16,7 +17,9 @@ import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
+import type { SettingsModelDraft } from '@demicodes/web-ui/settings/types'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsListItem from '@demicodes/web-ui/settings/SettingsListItem.vue'
 import SettingsPage from '@demicodes/web-ui/settings/SettingsPage.vue'
@@ -52,9 +55,9 @@ const detailOpen = computed({
   },
 })
 
-const expandedModelId = ref<string | null>('kimi-k2-turbo-preview')
 const modelFilter = ref('')
-const newModelId = ref('')
+/** The model dialog: create or edit a manual model, or view a catalog one. */
+const modelDialog = ref<{ mode: 'create' | 'edit' | 'view'; model: SettingsModelDraft; original: MockModel | null } | null>(null)
 const testing = ref<string | null>(null)
 
 const stateTone = { ready: 'success', error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: 'neutral' } as const
@@ -76,7 +79,6 @@ function select(id: string) {
   draft.value = null
   s.value.selectedProviderId = id
   s.value.providerDetailOpen = true
-  expandedModelId.value = null
 }
 
 function startDraft() {
@@ -107,24 +109,42 @@ function formatTokens(n: number | null): string {
 }
 
 /** What a model can do, as marks: a context size, then icons with tooltips. */
-const isUnknown = (m: MockModel) => m.tools === null && m.attachments === null && m.contextWindow === null
+const isUnknown = (m: MockModel) => m.contextWindow === null
 
 function visibleModels(p: MockProvider): MockModel[] {
   const q = modelFilter.value.trim().toLowerCase()
   return q ? p.models.filter((m) => m.id.includes(q) || m.name.toLowerCase().includes(q)) : p.models
 }
 
-function addModel(p: MockProvider) {
-  const id = newModelId.value.trim()
-  if (!id || p.models.some((m) => m.id === id)) return
-  p.models.push({ id, name: '', contextWindow: null, outputLimit: null, tools: null, attachments: null, efforts: [], defaultEffort: null, fastTier: null, enabled: true })
-  newModelId.value = ''
-  expandedModelId.value = id
+function toDraft(m: MockModel): SettingsModelDraft {
+  return { id: m.id, name: m.name, contextWindow: m.contextWindow, outputLimit: m.outputLimit, efforts: [...m.efforts], extensions: [...m.extensions], fastTier: m.fastTier }
 }
 
-function toggleEffort(m: MockModel, effort: string) {
-  m.efforts = m.efforts.includes(effort) ? m.efforts.filter((e) => e !== effort) : [...m.efforts, effort]
-  if (m.defaultEffort && !m.efforts.includes(m.defaultEffort)) m.defaultEffort = m.efforts[0] ?? null
+function openModel(mode: 'create' | 'edit' | 'view', m: MockModel | null) {
+  modelDialog.value = {
+    mode,
+    original: m,
+    model: m ? toDraft(m) : { id: '', name: '', contextWindow: null, outputLimit: null, efforts: [], extensions: [], fastTier: null },
+  }
+}
+
+function saveModel(draft: SettingsModelDraft) {
+  const p = selected.value
+  const dialog = modelDialog.value
+  if (!p || !dialog) return
+  if (dialog.original) {
+    Object.assign(dialog.original, { name: draft.name, contextWindow: draft.contextWindow, outputLimit: draft.outputLimit, efforts: draft.efforts, extensions: draft.extensions, fastTier: draft.fastTier })
+  } else if (!p.models.some((m) => m.id === draft.id)) {
+    p.models.push({ ...draft, tools: true, defaultEffort: draft.efforts[0] ?? null, enabled: true })
+  }
+  modelDialog.value = null
+}
+
+/** The header checkbox over the visible models: all, none, or some of them on. */
+function visibleSelection(p: MockProvider): { checked: boolean; partial: boolean } {
+  const visible = visibleModels(p)
+  const on = visible.filter((m) => m.enabled).length
+  return { checked: visible.length > 0 && on === visible.length, partial: on > 0 && on < visible.length }
 }
 
 function setActive(p: MockProvider, id: string) {
@@ -166,7 +186,6 @@ function closeLogin() {
   login.value = null
 }
 
-const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
 const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
 
 function setAll(p: MockProvider, enabled: boolean) {
@@ -363,80 +382,51 @@ function setAll(p: MockProvider, enabled: boolean) {
               <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh the catalog"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" /></Tooltip>
               <Segmented v-model="selected.modelSource" size="sm" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
             </SettingsRow>
-            <div v-if="selected.kind === 'api_key' && selected.models.length > 1" class="flex items-center gap-2 px-3 py-2">
+            <div v-if="selected.kind === 'api_key'" class="flex items-center gap-3 px-3 py-2">
+              <Checkbox
+                :model-value="visibleSelection(selected).checked"
+                :partial="visibleSelection(selected).partial"
+                label=""
+                aria-label="Enable every listed model"
+                @update:model-value="(on) => setAll(selected!, on)"
+              />
               <TextInput v-model="modelFilter" placeholder="Filter models" class="min-w-0 flex-1">
                 <template #prefix><Search :size="ICON_PX.in24" /></template>
               </TextInput>
-              <Button size="sm" @click="setAll(selected!, true)">All</Button>
-              <Button size="sm" @click="setAll(selected!, false)">None</Button>
+              <Button v-if="selected.modelSource === 'manual'" size="sm" @click="openModel('create', null)"><Plus :size="ICON_PX.in24" /> Add model</Button>
             </div>
-            <template v-for="m in visibleModels(selected)" :key="m.id">
-              <SettingsRow :label="m.name || m.id" compact interactive :class="m.enabled ? '' : 'opacity-60'" @click="expandedModelId = expandedModelId === m.id ? null : m.id">
-                <template v-if="selected.kind === 'api_key'" #leading><span @click.stop><Switch v-model="m.enabled" size="sm" /></span></template>
-                <template #tags>
-                  <Tooltip v-if="isUnknown(m)" content="Capabilities unknown. Open to fill them in."><Tag tone="warning"><TriangleAlert :size="12" /></Tag></Tooltip>
-                  <Tag v-if="m.contextWindow !== null">{{ formatTokens(m.contextWindow) }}</Tag>
-                  <Tooltip v-if="m.attachments" content="Accepts images and files"><Tag><Image :size="12" /></Tag></Tooltip>
-                  <Tooltip v-if="m.efforts.length" :content="`Reasoning · ${m.efforts.map(cap).join(', ')}`"><Tag><Brain :size="12" /></Tag></Tooltip>
-                  <Tooltip v-if="m.fastTier" content="Has a fast tier"><Tag><Zap :size="12" /></Tag></Tooltip>
-                </template>
-                <component :is="selected.kind === 'api_key' && selected.modelSource === 'manual' ? SlidersHorizontal : ChevronDown" :size="ICON_PX.in24" class="text-fg-subtle transition-transform duration-200 ease-out" :class="expandedModelId === m.id && selected.modelSource !== 'manual' ? 'rotate-180' : ''" />
-              </SettingsRow>
-              <template v-if="expandedModelId === m.id && selected.kind === 'api_key' && selected.modelSource === 'manual'">
-                <SettingsRow inset label="Display name" description="Shown in the picker instead of the id.">
-                  <TextInput v-model="m.name" :placeholder="m.id" class="w-56 max-w-full" />
-                </SettingsRow>
-                <SettingsRow inset label="Context window" description="Tokens. Compaction triggers near this.">
-                  <TextInput :model-value="m.contextWindow === null ? '' : String(m.contextWindow)" placeholder="128000" class="w-32" @update:model-value="(v) => (m.contextWindow = v ? Number(v) : null)" />
-                </SettingsRow>
-                <SettingsRow inset label="Max output" description="Tokens per reply. Leave empty to use the endpoint's default.">
-                  <TextInput :model-value="m.outputLimit === null ? '' : String(m.outputLimit)" placeholder="8192" class="w-32" @update:model-value="(v) => (m.outputLimit = v ? Number(v) : null)" />
-                </SettingsRow>
-                <SettingsRow inset label="Tool calling" description="Off keeps the agent from offering it tools.">
-                  <Switch :model-value="m.tools === true" size="sm" @update:model-value="(v) => (m.tools = v)" />
-                </SettingsRow>
-                <SettingsRow inset label="Images and files" description="Attachments in the composer.">
-                  <Switch :model-value="m.attachments === true" size="sm" @update:model-value="(v) => (m.attachments = v)" />
-                </SettingsRow>
-                <SettingsRow inset label="Reasoning efforts" description="Which levels the composer offers. The first one is the default.">
-                  <button
-                    v-for="effort in EFFORTS"
-                    :key="effort"
-                    type="button"
-                    class="h-6 cursor-default select-none rounded-md px-2 text-[12px] transition-colors duration-200 ease-out"
-                    :class="m.efforts.includes(effort) ? 'bg-tint-accent text-on-accent' : 'bg-hover text-fg-muted hover:text-fg'"
-                    @click="toggleEffort(m, effort)"
-                  >
-                    {{ cap(effort) }}
-                  </button>
-                </SettingsRow>
-                <SettingsRow inset label="Fast tier" description="A service tier id the Fast switch selects, if the endpoint has one.">
-                  <TextInput :model-value="m.fastTier ?? ''" placeholder="priority" class="w-32" @update:model-value="(v) => (m.fastTier = v || null)" />
-                </SettingsRow>
-                <SettingsRow inset label="Remove this model">
-                  <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove model" @click="selected!.models = selected!.models.filter((x) => x.id !== m.id); expandedModelId = null" /></Tooltip>
-                </SettingsRow>
+            <SettingsRow v-for="m in visibleModels(selected)" :key="m.id" :label="m.name || m.id" compact :class="m.enabled ? '' : 'opacity-60'">
+              <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" :aria-label="`Enable ${m.name || m.id}`" /></template>
+              <template #tags>
+                <Tooltip v-if="isUnknown(m)" content="Capabilities unknown. Edit to fill them in."><Tag tone="warning"><TriangleAlert :size="12" /></Tag></Tooltip>
+                <Tag v-if="m.contextWindow !== null">{{ formatTokens(m.contextWindow) }}</Tag>
+                <Tooltip v-if="m.extensions.length" :content="`Accepts ${m.extensions.join(' ')}`"><Tag><Image :size="12" /></Tag></Tooltip>
+                <Tooltip v-if="m.efforts.length" :content="`Reasoning · ${m.efforts.map(cap).join(', ')}`"><Tag><Brain :size="12" /></Tag></Tooltip>
+                <Tooltip v-if="m.fastTier" content="Has a fast tier"><Tag><Zap :size="12" /></Tag></Tooltip>
               </template>
-              <template v-else-if="expandedModelId === m.id">
-                <SettingsRow inset label="Model id"><span class="font-mono text-[12px] text-fg-muted">{{ m.id }}</span></SettingsRow>
-                <SettingsRow inset label="Context window"><span class="text-[12px] tabular-nums text-fg-muted">{{ formatTokens(m.contextWindow) }}</span></SettingsRow>
-                <SettingsRow inset label="Max output"><span class="text-[12px] tabular-nums text-fg-muted">{{ formatTokens(m.outputLimit) }}</span></SettingsRow>
-                <SettingsRow inset label="Reasoning"><span class="text-[12px] text-fg-muted">{{ m.efforts.length ? m.efforts.map(cap).join(' · ') : 'None' }}</span></SettingsRow>
-                <SettingsRow v-if="m.fastTier" inset label="Fast tier"><span class="font-mono text-[12px] text-fg-muted">{{ m.fastTier }}</span></SettingsRow>
+              <template v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'">
+                <Tooltip content="Edit"><IconButton :icon="SlidersHorizontal" size="sm" aria-label="Edit model" @click="openModel('edit', m)" /></Tooltip>
+                <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove model" @click="selected!.models = selected!.models.filter((x) => x.id !== m.id)" /></Tooltip>
               </template>
-            </template>
+              <Tooltip v-else content="Details"><IconButton :icon="Info" size="sm" aria-label="Model details" @click="openModel('view', m)" /></Tooltip>
+            </SettingsRow>
             <div v-if="!visibleModels(selected).length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
               {{ modelFilter ? 'No model matches.' : selected.kind === 'subscription' ? 'Sign in to see what this account can use.' : 'No models yet.' }}
             </div>
-            <SettingsRow v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'" label="Add a model" description="The id the endpoint expects. You can fill in its capabilities after.">
-              <Button size="sm"><Sparkles :size="ICON_PX.in24" /> Fetch from endpoint</Button>
-              <TextInput v-model="newModelId" placeholder="model-id" class="w-48 max-w-full" @keydown.enter="addModel(selected!)" />
-              <Button :disabled="!newModelId.trim()" @click="addModel(selected!)">Add</Button>
-            </SettingsRow>
           </SettingsGroup>
         </div>
       </template>
     </SettingsSplit>
+
+    <ModelDialog
+      v-if="modelDialog"
+      :is-open="true"
+      :overlay-store="appOverlayStore"
+      :mode="modelDialog.mode"
+      :model="modelDialog.model"
+      @close="modelDialog = null"
+      @save="saveModel"
+    />
 
     <ProviderLoginDialog
       v-if="login"
