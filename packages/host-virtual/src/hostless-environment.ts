@@ -26,7 +26,7 @@ import {
   type ShellStatusInput,
   type ShellWriteInput,
 } from '@demicodes/shell'
-import { parseTinybash, runTinybash, type RootPaths, type ShellState, type TinybashOutside } from '@demicodes/tinybash'
+import { parseTinybash, runTinybash, type RootAdmission, type RootPaths, type ShellState, type TinybashOutside } from '@demicodes/tinybash'
 import { ByteQueue, concatBytes, delay, errorMessage, isAbsolutePath, toBytes } from '@demicodes/utils'
 
 /** A hostless shell as a machine's shell takes it over (`sessions-and-targets.md` § What moves). */
@@ -41,6 +41,7 @@ export interface ShellHandover {
 }
 
 export interface HostlessEnvironmentOptions extends ShellEnvironmentOptions {
+  admitRoot?: RootAdmission
   /** The conversation's store-backed Host. */
   host: Host
   /** Root names → the path-typed arguments of an invocation, from the trees' path marks (`rootPaths` in the loader). */
@@ -86,6 +87,7 @@ const ABORT_GRACE_MS = 2_000
  */
 export class HostlessEnvironment implements ShellEnvironment {
   private readonly host: Host
+  private readonly admitRoot?: RootAdmission
   private readonly roots: ReadonlyMap<string, RootPaths>
   private readonly dispatch: (root: string, argv: string[], io: DispatchIO) => Promise<number>
   private readonly home: string
@@ -103,6 +105,7 @@ export class HostlessEnvironment implements ShellEnvironment {
   private readonly runningById = new Map<string, RunningCommand>()
 
   constructor(options: HostlessEnvironmentOptions) {
+    this.admitRoot = options.admitRoot
     this.host = options.host
     this.roots = options.roots
     this.dispatch = options.dispatch
@@ -121,6 +124,11 @@ export class HostlessEnvironment implements ShellEnvironment {
     return this.shells.get(shellId) ?? null
   }
 
+  /** Resolves after the actual script completes, independent of observation timeouts. */
+  async waitCommand(commandId: string): Promise<void> {
+    await this.runningById.get(commandId)?.settled
+  }
+
   hasCommand(commandId: string): boolean {
     return this.commandsById.has(commandId)
   }
@@ -133,7 +141,7 @@ export class HostlessEnvironment implements ShellEnvironment {
    * outside script to a machine.
    */
   async outside(input: ShellExecInput): Promise<TinybashOutside | null> {
-    const parsed = await parseTinybash(input.script, this.roots, this.namespace, this.stateFor(input), this.host.fs)
+    const parsed = await parseTinybash(input.script, this.roots, this.namespace, this.stateFor(input), this.host.fs, this.admitRoot)
     return parsed.kind === 'outside' ? parsed : null
   }
 
@@ -289,6 +297,7 @@ export class HostlessEnvironment implements ShellEnvironment {
     const run = runTinybash({
       script,
       roots: this.roots,
+      admitRoot: this.admitRoot,
       namespace: this.namespace,
       dispatch: async (root, argv, io) => {
         const invocation = Symbol()

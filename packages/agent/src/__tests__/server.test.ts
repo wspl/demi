@@ -41,6 +41,35 @@ const model: ModelSelection = {
   thinking: null,
 }
 
+test('tree mutation queues admitted actions and execution context persists per node', async () => {
+  const roots: string[] = []
+  const { client, server } = createAgentClientHarness({
+    providerTurns: [[events.text('done'), events.response()]],
+    harness: {
+      ...createTextHarness(),
+      context: ctx => {
+        roots.push(ctx.rootSessionId)
+        return ctx.transcript.blocks.some(block => block.type === 'user' && block.preamble === 'current target') ? null : 'current target'
+      },
+    },
+  })
+  const id = globalThis.crypto.randomUUID()
+  await client.open(providerConfig([]), '/workspace', id)
+  const release = server.reserveTreeMutation(id)!
+  expect(release).toBeFunction()
+  const sending = client.send([{ type: 'text', text: 'hi' }])
+  await Promise.resolve()
+  expect(roots).toEqual([])
+  expect(server.reserveTreeMutation(id)).toBeNull()
+  release()
+  await sending
+  expect(roots).toEqual([id])
+  expect(client.transcript().blocks.some(block => block.type === 'user' && block.preamble === 'current target')).toBe(true)
+  await waitFor(() => !server.treeActive(id))
+  server.reserveTreeMutation(id)!()
+  await server.close()
+})
+
 test('AgentClient.open and send run through InProcessTransport and emit transcript/phase frames', async () => {
   const turns: ConstructorParameters<typeof StubProvider>[0] = [
     [

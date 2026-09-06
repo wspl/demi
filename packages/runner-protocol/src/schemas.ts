@@ -176,6 +176,7 @@ export const runnerToBackendMessageSchema = z.union([
    */
   z.object({
     type: z.literal('rpc_call'),
+    jobId: z.string(),
     callId: z.string(),
     agentSessionId: z.string(),
     shellId: z.string(),
