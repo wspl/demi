@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useClipboard } from '@vueuse/core'
 import { Check, Copy, ExternalLink, TriangleAlert } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -30,9 +31,13 @@ defineProps<{
 const emit = defineEmits<{
   close: []
   submitCode: [code: string]
+  /** The host opens the vendor's page the way it opens any external link. */
+  open: [url: string]
+  retry: []
 }>()
 
 const pasted = ref('')
+const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 </script>
 
 <template>
@@ -57,10 +62,10 @@ const pasted = ref('')
       <div v-else-if="phase.kind === 'device'" class="flex flex-col gap-4">
         <div class="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3">
           <span class="select-all font-mono text-[22px] tracking-[0.25em] text-fg-emphasis">{{ phase.code }}</span>
-          <IconButton :icon="Copy" variant="ghost" aria-label="Copy code" />
+          <IconButton :icon="copied ? Check : Copy" variant="ghost" :aria-label="copied ? 'Copied' : 'Copy code'" @click="copy(phase.code)" />
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <Button variant="primary">
+          <Button variant="primary" @click="emit('open', phase.url)">
             Open {{ phase.url.replace(/^https?:\/\//, '') }}
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
@@ -72,7 +77,7 @@ const pasted = ref('')
       </div>
 
       <div v-else-if="phase.kind === 'code-input'" class="flex flex-col gap-3">
-        <Button class="self-start">
+        <Button class="self-start" @click="emit('open', phase.url)">
           Open {{ phase.url.replace(/^https?:\/\//, '') }}
           <ExternalLink :size="ICON_PX.in24" />
         </Button>
@@ -96,7 +101,7 @@ const pasted = ref('')
         <Button v-if="phase.kind === 'done'" variant="primary" @click="emit('close')">Done</Button>
         <template v-else>
           <Button variant="ghost" @click="emit('close')">Cancel</Button>
-          <Button v-if="phase.kind === 'failed'">Try again</Button>
+          <Button v-if="phase.kind === 'failed'" @click="emit('retry')">Try again</Button>
         </template>
       </div>
     </div>

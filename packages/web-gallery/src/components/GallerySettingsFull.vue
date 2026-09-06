@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { showToast } from '@demicodes/web-ui/infra/toast'
 import { Check, Copy, ExternalLink, Laptop, Monitor, Moon, Plug, Server, Sun, Terminal } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -58,6 +59,78 @@ const tools = [
 function pick<T extends string>(current: T, values: readonly T[], set: (value: T) => void) {
   return { current, values, set }
 }
+
+// Actions the mock cannot perform say what the product would do.
+const note = (title: string, message?: string) => showToast({ title, message })
+function copyText(text: string, what: string) {
+  void navigator.clipboard?.writeText(text)
+  note(`${what} copied`)
+}
+
+const checking = ref(false)
+function checkUpdates() {
+  checking.value = true
+  window.setTimeout(() => {
+    checking.value = false
+    note(`Demi ${s.value.general.version} is up to date`)
+  }, 900)
+}
+
+const newPattern = ref('')
+function addPattern() {
+  const value = newPattern.value.trim()
+  if (!value) return
+  if (!s.value.permissions.allowlist.includes(value)) s.value.permissions.allowlist.push(value)
+  newPattern.value = ''
+}
+
+function resetPermissions() {
+  Object.assign(s.value.permissions, { edit: 'ask', shell: 'ask', read: 'allow', web: 'allow', mcp: 'ask' })
+  note('Permissions reset')
+}
+
+function createAgent() {
+  const n = s.value.agents.length + 1
+  s.value.agents.push({ id: `agent-${n}`, name: `Agent ${n}`, model: 'Claude Sonnet', mode: 'primary', summary: 'Full tool access · edits, shell, web', enabled: true, expanded: true })
+}
+
+const newServer = ref({ transport: 'stdio' as 'stdio' | 'http', target: '', name: '' })
+function addServer() {
+  const { transport, target, name } = newServer.value
+  if (!target.trim() || !name.trim()) return
+  s.value.servers.push({ id: `server-${Date.now()}`, name: name.trim(), transport, target: target.trim(), state: 'connected', enabled: true, expanded: false, tools: [] })
+  newServer.value = { transport: 'stdio', target: '', name: '' }
+}
+
+function restartServer(server: SettingsState['servers'][number]) {
+  server.state = 'connected'
+  server.detail = undefined
+  note(`${server.name} restarted`)
+}
+
+function signInServer(server: SettingsState['servers'][number]) {
+  server.state = 'connected'
+  server.detail = undefined
+  note(`Signed in to ${server.name}`)
+}
+
+function revokeDevice(id: string) {
+  s.value.devices = s.value.devices.filter((d) => d.id !== id)
+}
+
+function resetShortcuts() {
+  for (const binding of s.value.keys) delete binding.conflict
+  const focus = s.value.keys.find((b) => b.id === 'focus')
+  if (focus) focus.keys = '⌘L'
+  note('Shortcuts reset')
+}
+
+function clearMemory() {
+  s.value.instructions.memories = 0
+  note('Memory cleared')
+}
+
+const revealed = ref<Record<string, boolean>>({})
 </script>
 
 <template>
@@ -98,7 +171,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       </SettingsRow>
       <SettingsRow label="Update channel" description="Beta builds arrive about a week early.">
         <template #tags><Tag>{{ s.general.version }} · up to date</Tag></template>
-        <Button size="sm">Check now</Button>
+        <Button size="sm" :disabled="checking" @click="checkUpdates">{{ checking ? 'Checking…' : 'Check now' }}</Button>
         <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Update channel">
           <template #trigger>{{ s.general.channel }}</template>
           <template #content="{ close }">
@@ -116,7 +189,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     <SettingsGroup title="Profile">
       <SettingsRow label="Avatar">
         <span class="flex size-8 items-center justify-center rounded-full bg-tint-accent text-[13px] font-medium text-on-accent">Z</span>
-        <Button size="sm">Change</Button>
+        <Button size="sm" @click="note('Choose a picture', 'The product opens a file picker here.')">Change</Button>
       </SettingsRow>
       <SettingsRow label="Display name">
         <TextInput v-model="s.account.name" class="w-56 max-w-full" />
@@ -124,13 +197,13 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       <SettingsRow label="Email">
         <template #tags><Tag tone="success">Verified</Tag></template>
         <span class="text-chrome text-fg-muted">{{ s.account.email }}</span>
-        <Button size="sm">Change</Button>
+        <Button size="sm" @click="note('Check your inbox', `A confirmation link went to ${s.account.email}.`)">Change</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Plan">
       <SettingsRow :label="`${s.account.plan} plan`" :description="`Renews ${s.account.renews}. Cancel any time before then.`">
         <template #tags><Tag tone="accent">Current</Tag></template>
-        <Button>Manage billing</Button>
+        <Button @click="note('Opening the billing portal')">Manage billing</Button>
       </SettingsRow>
       <div class="flex flex-col gap-2 px-4 py-3">
         <div class="flex items-baseline justify-between text-[12px]">
@@ -143,12 +216,12 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     </SettingsGroup>
     <SettingsGroup title="Session">
       <SettingsRow label="Sign out" description="Conversations stay on the server.">
-        <Button>Sign out</Button>
+        <Button @click="note('Signed out', 'The product returns to the login page.')">Sign out</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Danger zone">
       <SettingsRow label="Delete account" description="Removes your account, devices and every conversation. This cannot be undone.">
-        <Button variant="danger">Delete account</Button>
+        <Button variant="danger" @click="note('Delete your account?', 'The product asks you to type your email to confirm.')">Delete account</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -170,7 +243,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     </SettingsGroup>
     <SettingsGroup title="Quiet hours">
       <SettingsRow label="Silence notifications" :description="s.notifications.quietHours ? `Between ${s.notifications.quietRange}. Approvals still come through.` : undefined">
-        <Button v-if="s.notifications.quietHours" size="sm">{{ s.notifications.quietRange }}</Button>
+        <Button v-if="s.notifications.quietHours" size="sm" @click="note('Pick the hours', 'The product opens a time-range picker.')">{{ s.notifications.quietRange }}</Button>
         <Switch v-model="s.notifications.quietHours" />
       </SettingsRow>
     </SettingsGroup>
@@ -212,14 +285,14 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
             <Tag>mcp · ask</Tag>
           </SettingsRow>
           <SettingsRow inset label="System prompt" description="Appended after the global instructions.">
-            <Button size="sm">Edit prompt</Button>
+            <Button size="sm" @click="note('Prompt editor', 'The product opens the prompt in an editor dialog.')">Edit prompt</Button>
           </SettingsRow>
         </template>
       </template>
     </SettingsGroup>
     <SettingsGroup>
       <SettingsRow label="New agent" description="Starts from Build's settings.">
-        <Button>Create</Button>
+        <Button @click="createAgent">Create</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -237,8 +310,8 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <Button size="sm" @click="s.permissions.allowlist = s.permissions.allowlist.filter((p) => p !== pattern)">Remove</Button>
       </SettingsRow>
       <SettingsRow label="Add a pattern" description="Glob syntax. `git *` matches every git command.">
-        <TextInput placeholder="docker compose *" class="w-56 max-w-full" />
-        <Button disabled>Add</Button>
+        <TextInput v-model="newPattern" placeholder="docker compose *" class="w-56 max-w-full" @keydown.enter="addPattern" />
+        <Button :disabled="!newPattern.trim()" @click="addPattern">Add</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Scope">
@@ -246,7 +319,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <Segmented v-model="s.permissions.scope" :options="[{ value: 'project', label: 'This project' }, { value: 'everywhere', label: 'Everywhere' }]" />
       </SettingsRow>
       <SettingsRow label="Reset to defaults" description="Ask for edits and shell, allow reads and web.">
-        <Button size="sm">Reset</Button>
+        <Button size="sm" @click="resetPermissions">Reset</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -258,14 +331,14 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <TextArea v-model="s.instructions.global" :rows="4" placeholder="How should the agent work with you?" />
         <div class="mt-2 flex items-center justify-between text-[12px] text-fg-subtle">
           <span class="select-none">{{ s.instructions.global.length }} characters · about {{ Math.ceil(s.instructions.global.length / 4) }} tokens</span>
-          <Button size="sm">Preview prompt</Button>
+          <Button size="sm" @click="note('System prompt preview', `${s.instructions.global.length} characters of global instructions, then the project files.`)">Preview prompt</Button>
         </div>
       </div>
     </SettingsGroup>
     <SettingsGroup title="Project instructions" description="AGENTS.md files the agent reads from the working directory up to the checkout root.">
       <SettingsRow v-for="file in s.instructions.files" :key="file.path" :label="file.path" :description="file.found ? 'Read at the start of every turn.' : 'Not found. Create it to give this project its own rules.'">
         <template #tags><Tag :tone="file.found ? 'success' : 'neutral'">{{ file.found ? 'Found' : 'Missing' }}</Tag></template>
-        <Button size="sm">{{ file.found ? 'Open' : 'Create' }}</Button>
+        <Button size="sm" @click="file.found ? note('Opening in your editor', file.path) : (file.found = true)">{{ file.found ? 'Open' : 'Create' }}</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Memory">
@@ -273,10 +346,10 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <Switch v-model="s.instructions.memory" />
       </SettingsRow>
       <SettingsRow label="Saved memories" :description="`${s.instructions.memories} entries · last added yesterday`">
-        <Button size="sm">Manage</Button>
+        <Button size="sm" @click="note('Saved memories', 'The product lists them in a dialog with a remove button each.')">Manage</Button>
       </SettingsRow>
       <SettingsRow label="Clear memory" description="Forgets everything saved so far. Conversations are kept.">
-        <Button variant="danger">Clear</Button>
+        <Button variant="danger" :disabled="!s.instructions.memories" @click="clearMemory">Clear</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -295,10 +368,10 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
             <span class="font-mono">{{ server.target }}</span>
             <span v-if="server.detail" class="block" :class="server.state === 'crashed' ? 'font-mono text-on-danger' : 'text-on-warning'">{{ server.detail }}</span>
           </template>
-          <template v-if="server.state === 'auth'"><Button size="sm">Sign in</Button></template>
+          <template v-if="server.state === 'auth'"><Button size="sm" @click="signInServer(server)">Sign in</Button></template>
           <template v-else-if="server.state === 'crashed'">
-            <Button size="sm">Logs</Button>
-            <Button size="sm">Restart</Button>
+            <Button size="sm" @click="note(`${server.name} logs`, server.detail)">Logs</Button>
+            <Button size="sm" @click="restartServer(server)">Restart</Button>
           </template>
           <template v-else-if="server.state === 'connected'">
             <Button size="sm" @click="server.expanded = !server.expanded">{{ server.expanded ? 'Hide tools' : 'Tools' }}</Button>
@@ -315,14 +388,14 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     </SettingsGroup>
     <SettingsGroup title="Add a server">
       <SettingsRow label="Transport">
-        <Segmented model-value="stdio" :options="[{ value: 'stdio', label: 'Command' }, { value: 'http', label: 'URL' }]" />
+        <Segmented v-model="newServer.transport" :options="[{ value: 'stdio', label: 'Command' }, { value: 'http', label: 'URL' }]" />
       </SettingsRow>
-      <SettingsRow label="Command" description="Run from the project root. Environment variables from Developer are passed through.">
-        <TextInput placeholder="npx -y @modelcontextprotocol/server-memory" class="w-72 max-w-full" />
+      <SettingsRow :label="newServer.transport === 'stdio' ? 'Command' : 'URL'" :description="newServer.transport === 'stdio' ? 'Run from the project root. Environment variables from Developer are passed through.' : undefined">
+        <TextInput v-model="newServer.target" :placeholder="newServer.transport === 'stdio' ? 'npx -y @modelcontextprotocol/server-memory' : 'https://mcp.example.com'" class="w-72 max-w-full" />
       </SettingsRow>
       <SettingsRow label="Name" description="How tools show up: name_tool.">
-        <TextInput placeholder="memory" class="w-40 max-w-full" />
-        <Button disabled>Add server</Button>
+        <TextInput v-model="newServer.name" placeholder="memory" class="w-40 max-w-full" @keydown.enter="addServer" />
+        <Button :disabled="!newServer.target.trim() || !newServer.name.trim()" @click="addServer">Add server</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -342,8 +415,8 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
             <Tag v-if="device.current" tone="accent">This device</Tag>
             <Tag v-if="device.version !== '1.6.2'" tone="warning">Update available</Tag>
           </template>
-          <Button v-if="!device.current" size="sm">{{ device.online ? 'Go offline' : 'Connect' }}</Button>
-          <Button size="sm" :class="device.current ? 'pointer-events-none opacity-40' : ''">Revoke</Button>
+          <Button v-if="!device.current" size="sm" @click="device.online = !device.online; device.seen = device.online ? 'Now' : 'Just now'">{{ device.online ? 'Go offline' : 'Connect' }}</Button>
+          <Button size="sm" :disabled="device.current" @click="revokeDevice(device.id)">Revoke</Button>
         </SettingsRow>
         <SettingsRow inset label="Home directory">
           <span class="font-mono text-[12px] text-fg-muted">{{ device.home }}</span>
@@ -353,7 +426,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     <SettingsGroup title="Add a device" description="Install Demi on the machine and paste this code; it appears above once it connects.">
       <SettingsRow label="Pairing code" description="Expires in 9 minutes.">
         <span class="font-mono text-[15px] tracking-[0.2em] text-fg">7KQ-42M</span>
-        <IconButton :icon="Copy" variant="ghost" aria-label="Copy pairing code" />
+        <IconButton :icon="Copy" variant="ghost" aria-label="Copy pairing code" @click="copyText('7KQ-42M', 'Pairing code')" />
       </SettingsRow>
     </SettingsGroup>
     <SettingsNote text="Remove the projects using a device before revoking it." />
@@ -365,12 +438,12 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       <SettingsRow v-for="binding in s.keys" :key="binding.id" :label="binding.action" :description="binding.conflict ? `Also bound to ${binding.conflict}. The first match wins.` : undefined">
         <template #tags><Tag v-if="binding.conflict" tone="danger">Conflict</Tag></template>
         <KeyCap :keys="binding.keys" />
-        <Button size="sm">Change</Button>
+        <Button size="sm" @click="note('Press the new shortcut', `Recording for “${binding.action}”. Escape cancels.`)">Change</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup>
       <SettingsRow label="Reset all shortcuts">
-        <Button size="sm">Reset</Button>
+        <Button size="sm" @click="resetShortcuts">Reset</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -392,7 +465,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <Switch v-model="s.data.shareLinks" />
       </SettingsRow>
       <SettingsRow label="Export everything" description="Transcripts, settings and memories as a zip. Ready in a few minutes.">
-        <Button>Request export</Button>
+        <Button @click="note('Export requested', 'A download link arrives by email in a few minutes.')">Request export</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Diagnostics">
@@ -402,7 +475,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     </SettingsGroup>
     <SettingsGroup title="Danger zone">
       <SettingsRow label="Delete all conversations" description="On every device. Projects and settings stay.">
-        <Button variant="danger">Delete all</Button>
+        <Button variant="danger" @click="note('Delete every conversation?', 'The product asks you to confirm once more.')">Delete all</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -411,8 +484,8 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
   <SettingsPage v-else-if="tab === 'usage'" title="Usage & billing" description="This month, across every provider.">
     <SettingsGroup title="Plan">
       <SettingsRow :label="`${s.account.plan} plan`" :description="`Next invoice ${s.account.renews} · credits reset ${s.usage.resets}`">
-        <Button size="sm">Invoices</Button>
-        <Button>Manage billing</Button>
+        <Button size="sm" @click="note('Opening your invoices')">Invoices</Button>
+        <Button @click="note('Opening the billing portal')">Manage billing</Button>
       </SettingsRow>
       <div class="flex flex-col gap-2 px-4 py-3">
         <div class="flex items-baseline justify-between text-[12px]">
@@ -448,7 +521,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         </Dropdown>
       </SettingsRow>
       <SettingsRow label="Open log folder">
-        <Button size="sm">
+        <Button size="sm" @click="note('Opening the log folder', '~/Library/Logs/Demi')">
           Open
           <ExternalLink :size="ICON_PX.in24" />
         </Button>
@@ -457,12 +530,12 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     <SettingsGroup title="Configuration">
       <SettingsRow label="Config file" description="Edits made here are written back; edits made there reload live.">
         <span class="font-mono text-[12px] text-fg-muted">{{ s.developer.configPath }}</span>
-        <IconButton :icon="Copy" variant="ghost" aria-label="Copy config path" />
-        <Button size="sm">Open</Button>
+        <IconButton :icon="Copy" variant="ghost" aria-label="Copy config path" @click="copyText(s.developer.configPath, 'Path')" />
+        <Button size="sm" @click="note('Opening in your editor', s.developer.configPath)">Open</Button>
       </SettingsRow>
       <SettingsRow v-for="entry in s.developer.env" :key="entry.key" inset :label="entry.key">
-        <span class="font-mono text-[12px] text-fg-muted">{{ entry.value }}</span>
-        <Button size="sm">Reveal</Button>
+        <span class="font-mono text-[12px] text-fg-muted">{{ revealed[entry.key] ? entry.value.replace(/•+/, '3f2a9c1d7e5b4a6f8c2d1e9b') : entry.value }}</span>
+        <Button size="sm" @click="revealed[entry.key] = !revealed[entry.key]">{{ revealed[entry.key] ? 'Hide' : 'Reveal' }}</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Experiments" description="May change or disappear. Feedback welcome.">
