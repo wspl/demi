@@ -7,11 +7,11 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import KeyCap from '@demicodes/web-ui/ui/KeyCap.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Meter from '@demicodes/web-ui/ui/Meter.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import ShortcutRecorder from '@demicodes/web-ui/ui/ShortcutRecorder.vue'
 import Slider from '@demicodes/web-ui/ui/Slider.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
@@ -117,6 +117,19 @@ function signInServer(server: SettingsState['servers'][number]) {
 
 function revokeDevice(id: string) {
   s.value.devices = s.value.devices.filter((d) => d.id !== id)
+}
+
+/** A new binding takes effect at once; conflicts are recomputed across the list. */
+function rebind(id: string, keys: string) {
+  const list = s.value.keys
+  const target = list.find((b) => b.id === id)
+  if (!target) return
+  target.keys = keys
+  for (const b of list) {
+    const other = list.find((o) => o.id !== b.id && o.keys === b.keys)
+    if (other) b.conflict = other.action
+    else delete b.conflict
+  }
 }
 
 function resetShortcuts() {
@@ -436,8 +449,7 @@ const revealed = ref<Record<string, boolean>>({})
     <SettingsGroup title="Shortcuts">
       <SettingsRow v-for="binding in s.keys" :key="binding.id" :label="binding.action" :description="binding.conflict ? `Also bound to ${binding.conflict}. The first match wins.` : undefined">
         <template #tags><Tag v-if="binding.conflict" tone="danger">Conflict</Tag></template>
-        <KeyCap :keys="binding.keys" />
-        <Button size="sm" @click="note('Press the new shortcut', `Recording for “${binding.action}”. Escape cancels.`)">Change</Button>
+        <ShortcutRecorder v-model="binding.keys" size="sm" @update:model-value="rebind(binding.id, $event)" />
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup>
