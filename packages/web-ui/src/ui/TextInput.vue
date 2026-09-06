@@ -36,13 +36,17 @@ defineExpose({
     :class="[attrs['class'] ? '' : 'w-full', startFocused || isFocused ? 'ring-line-focus' : 'ring-line']"
     @click="inputRef?.focus()"
   >
+    <div v-if="slots['prefix']" class="flex shrink-0 items-center pl-2 text-fg-subtle">
+      <slot name="prefix" />
+    </div>
     <input
       ref="inputRef"
       type="text"
       v-bind="inputAttrs"
       :value="modelValue"
       :placeholder="placeholder"
-      class="h-full min-w-0 flex-1 bg-transparent px-2.5 text-chrome text-fg outline-none placeholder:text-fg-subtle"
+      class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
+      :class="slots['prefix'] ? 'pl-1.5 pr-2.5' : 'px-2.5'"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @focus="isFocused = true"
       @blur="isFocused = false; startFocused = false"

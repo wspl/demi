@@ -47,7 +47,7 @@ const glyphPx = computed(() => {
                 ? 'bg-hover text-fg-body'
                 : 'text-fg-muted hover:bg-hover hover:text-fg-body'
             : variant === 'danger'
-              ? ['btn text-fg-body', pressed ? 'text-on-danger' : 'hover:text-on-danger']
+              ? 'btn text-on-danger'
               : 'btn text-fg-body',
     ]"
   >

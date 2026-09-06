@@ -73,13 +73,19 @@ export interface MockModel {
   enabled: boolean
 }
 
+export interface QuotaWindow {
+  used: number
+  max: number
+  resets: string
+}
+
 export interface MockAccount {
   id: string
   label: string
   plan: string
   active: boolean
-  /** Rate-window quota, when the vendor exposes one. */
-  quota: { used: number; max: number; resets: string } | null
+  /** Rate-window quotas, when the vendor exposes them. */
+  quota: { hour: QuotaWindow; week: QuotaWindow } | null
 }
 
 export type MockProviderState = 'ready' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
@@ -199,8 +205,8 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code', logo: '/logos/claude.svg',
       accounts: [
-        { id: 'a1', label: 'zan@example.com', plan: 'Max 5×', active: true, quota: { used: 62, max: 100, resets: 'in 2 h 10 min' } },
-        { id: 'a2', label: 'zan@work.example', plan: 'Pro', active: false, quota: { used: 100, max: 100, resets: 'in 4 h' } },
+        { id: 'a1', label: 'zan@example.com', plan: 'Max 5×', active: true, quota: { hour: { used: 62, max: 100, resets: 'in 2 h 10 min' }, week: { used: 31, max: 100, resets: 'Monday' } } },
+        { id: 'a2', label: 'zan@work.example', plan: 'Pro', active: false, quota: { hour: { used: 100, max: 100, resets: 'in 4 h' }, week: { used: 88, max: 100, resets: 'Thursday' } } },
       ],
       catalogFetched: '2 min ago',
       models: [

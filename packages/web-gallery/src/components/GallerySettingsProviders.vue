@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Brain, Check, ChevronDown, Image, Pencil, Plug, Plus, RefreshCw, Search, Sparkles, Terminal, Trash2, TriangleAlert, Zap } from '@lucide/vue'
+import { Brain, Check, ChevronDown, Image, Plug, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Terminal, TextCursorInput, Trash2, TriangleAlert, Zap } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -161,13 +160,18 @@ function closeLogin() {
   if (login.value?.phase.kind === 'done') {
     const p = login.value.provider
     for (const a of p.accounts) a.active = false
-    p.accounts.push({ id: `a-${Date.now()}`, label: 'zan@example.com', plan: 'Plus', active: true, quota: { used: 4, max: 100, resets: 'in 4 h 58 min' } })
+    p.accounts.push({ id: `a-${Date.now()}`, label: 'zan@example.com', plan: 'Plus', active: true, quota: { hour: { used: 4, max: 100, resets: 'in 4 h 58 min' }, week: { used: 4, max: 100, resets: 'Monday' } } })
     p.state = 'ready'
   }
   login.value = null
 }
 
 const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
+const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
+
+function setAll(p: MockProvider, enabled: boolean) {
+  for (const m of visibleModels(p)) m.enabled = enabled
+}
 </script>
 
 <template>
@@ -287,34 +291,34 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
         <div v-else-if="selected" class="flex flex-col gap-6 p-5">
           <header class="flex flex-wrap items-center gap-x-3 gap-y-2">
             <VendorMark :label="selected.name" :src="selected.logo" />
-            <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <h3 class="max-w-full truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
-              <Tag :tone="stateTone[selected.state]">{{ stateWord[selected.state] }}</Tag>
-              <Tag v-if="selected.kind === 'subscription'">Subscription</Tag>
-              <Tag v-else-if="vendorOf(selected)">{{ vendorOf(selected)!.name }}</Tag>
-              <Tag v-else>Custom endpoint</Tag>
-            </div>
-            <div class="ml-auto flex items-center gap-1">
-              <Tooltip content="Rename"><IconButton :icon="Pencil" size="xs" aria-label="Rename provider" /></Tooltip>
-              <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="xs" aria-label="Remove provider" /></Tooltip>
+            <h3 class="min-w-0 flex-1 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
+            <div class="ml-auto flex items-center gap-1.5">
+              <Tooltip content="Rename"><IconButton :icon="TextCursorInput" size="sm" aria-label="Rename provider" /></Tooltip>
+              <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove provider" /></Tooltip>
               <Switch v-model="selected.enabled" size="sm" class="ml-2" />
             </div>
           </header>
 
           <!-- Accounts (subscription) -->
           <SettingsGroup v-if="selected.kind === 'subscription'" title="Accounts" description="One account is active at a time; every conversation on this provider uses it.">
-            <SettingsRow v-for="account in selected.accounts" :key="account.id" :label="account.label">
-              <template #tags><Tag v-if="account.active" tone="accent">Active</Tag><Tag v-if="account.quota && account.quota.used >= 100" tone="danger">Limit reached</Tag></template>
+            <SettingsRow v-for="account in selected.accounts" :key="account.id" :label="account.label" compact>
+              <template #tags><Tag v-if="account.active" tone="accent">Active</Tag><Tag v-if="account.quota && account.quota.hour.used >= 100" tone="danger">Limit reached</Tag></template>
               <template #description>
-                <span>{{ account.plan }}<template v-if="account.quota"> · {{ account.quota.used }}% of the 5-hour window · resets {{ account.quota.resets }}</template></span>
-                <Meter v-if="account.quota" :value="account.quota.used" :max="account.quota.max" label="Rate window" class="mt-2 max-w-64" />
+                <span>{{ account.plan }}</span>
+                <div v-if="account.quota" class="mt-1.5 grid max-w-72 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11px] tabular-nums">
+                  <span>5 h</span>
+                  <Meter :value="account.quota.hour.used" :max="account.quota.hour.max" label="5-hour window" />
+                  <span>{{ account.quota.hour.used }}% · resets {{ account.quota.hour.resets }}</span>
+                  <span>Week</span>
+                  <Meter :value="account.quota.week.used" :max="account.quota.week.max" label="Weekly window" />
+                  <span>{{ account.quota.week.used }}% · resets {{ account.quota.week.resets }}</span>
+                </div>
               </template>
               <Button v-if="!account.active" size="sm" @click="setActive(selected!, account.id)">Use</Button>
-              <Tooltip content="Remove account"><IconButton :icon="Trash2" variant="danger" size="xs" aria-label="Remove account" /></Tooltip>
+              <Tooltip content="Remove account"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove account" /></Tooltip>
             </SettingsRow>
             <div v-if="!selected.accounts.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No account yet. Sign in to use this provider.</div>
-            <SettingsRow label="Add an account" description="Signs in with the vendor's own login, or imports one the CLI already has.">
-              <Button size="sm">Import from CLI</Button>
+            <SettingsRow label="Add an account" description="Signs in with the vendor's own login.">
               <Button variant="primary" size="sm" @click="beginLogin(selected!)">Sign in…</Button>
             </SettingsRow>
           </SettingsGroup>
@@ -341,7 +345,7 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
               <span v-if="testing === selected.id" class="flex items-center gap-1.5 text-[12px] text-fg-subtle"><IndeterminateSpinner :size="ICON_PX.in24" /> Testing…</span>
               <span v-else-if="selected.state === 'ready'" class="flex items-center gap-1 text-[12px] text-on-success"><Check :size="ICON_PX.in24" /> OK · 412 ms</span>
               <span v-else-if="selected.detail" class="min-w-0 truncate font-mono text-[12px] text-on-danger">{{ selected.detail }}</span>
-              <Tooltip content="Test connection"><IconButton :icon="Plug" size="xs" aria-label="Test connection" @click="test(selected!)" /></Tooltip>
+              <Tooltip content="Test connection"><IconButton :icon="Plug" size="sm" aria-label="Test connection" @click="test(selected!)" /></Tooltip>
             </SettingsRow>
           </SettingsGroup>
 
@@ -356,29 +360,27 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
               :description="selected.modelSource === 'catalog' ? `From the vendor catalog · fetched ${selected.catalogFetched}` : 'Ids you enter. Fill in what a model can do so the composer offers the right controls.'"
             >
               <template #tags><Tag v-if="selected.stale" tone="warning">Stale</Tag></template>
-              <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh the catalog"><IconButton :icon="RefreshCw" size="xs" aria-label="Refresh models" /></Tooltip>
+              <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh the catalog"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" /></Tooltip>
               <Segmented v-model="selected.modelSource" size="sm" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
             </SettingsRow>
-            <div v-if="selected.models.length > 3" class="flex items-center gap-2 px-4 py-2">
-              <Search :size="ICON_PX.in24" class="shrink-0 text-fg-subtle" />
-              <TextInput v-model="modelFilter" placeholder="Filter models" class="w-56 max-w-full" />
+            <div v-if="selected.kind === 'api_key' && selected.models.length > 1" class="flex items-center gap-2 px-3 py-2">
+              <TextInput v-model="modelFilter" placeholder="Filter models" class="min-w-0 flex-1">
+                <template #prefix><Search :size="ICON_PX.in24" /></template>
+              </TextInput>
+              <Button size="sm" @click="setAll(selected!, true)">All</Button>
+              <Button size="sm" @click="setAll(selected!, false)">None</Button>
             </div>
             <template v-for="m in visibleModels(selected)" :key="m.id">
-              <SettingsRow :label="m.name || m.id" :class="m.enabled ? '' : 'opacity-60'">
-                <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" /></template>
+              <SettingsRow :label="m.name || m.id" compact interactive :class="m.enabled ? '' : 'opacity-60'" @click="expandedModelId = expandedModelId === m.id ? null : m.id">
+                <template v-if="selected.kind === 'api_key'" #leading><span @click.stop><Switch v-model="m.enabled" size="sm" /></span></template>
                 <template #tags>
-                  <Tooltip v-if="isUnknown(m)" content="Capabilities unknown. Edit to fill them in."><Tag tone="warning"><TriangleAlert :size="12" /></Tag></Tooltip>
+                  <Tooltip v-if="isUnknown(m)" content="Capabilities unknown. Open to fill them in."><Tag tone="warning"><TriangleAlert :size="12" /></Tag></Tooltip>
                   <Tag v-if="m.contextWindow !== null">{{ formatTokens(m.contextWindow) }}</Tag>
                   <Tooltip v-if="m.attachments" content="Accepts images and files"><Tag><Image :size="12" /></Tag></Tooltip>
-                  <Tooltip v-if="m.efforts.length" :content="`Reasoning · ${m.efforts.join(', ')}`"><Tag><Brain :size="12" /></Tag></Tooltip>
+                  <Tooltip v-if="m.efforts.length" :content="`Reasoning · ${m.efforts.map(cap).join(', ')}`"><Tag><Brain :size="12" /></Tag></Tooltip>
                   <Tooltip v-if="m.fastTier" content="Has a fast tier"><Tag><Zap :size="12" /></Tag></Tooltip>
                 </template>
-                <Tooltip v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'" :content="expandedModelId === m.id ? 'Done' : 'Edit'">
-                  <IconButton :icon="expandedModelId === m.id ? Check : Pencil" size="xs" aria-label="Edit model" @click="expandedModelId = expandedModelId === m.id ? null : m.id" />
-                </Tooltip>
-                <Tooltip v-else content="Details">
-                  <IconButton :icon="ChevronDown" size="xs" aria-label="Model details" :class="expandedModelId === m.id ? 'rotate-180' : ''" @click="expandedModelId = expandedModelId === m.id ? null : m.id" />
-                </Tooltip>
+                <component :is="selected.kind === 'api_key' && selected.modelSource === 'manual' ? SlidersHorizontal : ChevronDown" :size="ICON_PX.in24" class="text-fg-subtle transition-transform duration-200 ease-out" :class="expandedModelId === m.id && selected.modelSource !== 'manual' ? 'rotate-180' : ''" />
               </SettingsRow>
               <template v-if="expandedModelId === m.id && selected.kind === 'api_key' && selected.modelSource === 'manual'">
                 <SettingsRow inset label="Display name" description="Shown in the picker instead of the id.">
@@ -396,7 +398,7 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
                 <SettingsRow inset label="Images and files" description="Attachments in the composer.">
                   <Switch :model-value="m.attachments === true" size="sm" @update:model-value="(v) => (m.attachments = v)" />
                 </SettingsRow>
-                <SettingsRow inset label="Reasoning efforts" description="Which levels the composer offers. None means no reasoning control.">
+                <SettingsRow inset label="Reasoning efforts" description="Which levels the composer offers. The first one is the default.">
                   <button
                     v-for="effort in EFFORTS"
                     :key="effort"
@@ -405,22 +407,21 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
                     :class="m.efforts.includes(effort) ? 'bg-tint-accent text-on-accent' : 'bg-hover text-fg-muted hover:text-fg'"
                     @click="toggleEffort(m, effort)"
                   >
-                    {{ effort }}
+                    {{ cap(effort) }}
                   </button>
-                </SettingsRow>
-                <SettingsRow v-if="m.efforts.length" inset label="Default effort">
-                  <Segmented :model-value="m.defaultEffort ?? m.efforts[0]!" size="sm" :options="m.efforts.map((e) => ({ value: e, label: e }))" @update:model-value="(v) => (m.defaultEffort = v)" />
                 </SettingsRow>
                 <SettingsRow inset label="Fast tier" description="A service tier id the Fast switch selects, if the endpoint has one.">
                   <TextInput :model-value="m.fastTier ?? ''" placeholder="priority" class="w-32" @update:model-value="(v) => (m.fastTier = v || null)" />
                 </SettingsRow>
                 <SettingsRow inset label="Remove this model">
-                  <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="xs" aria-label="Remove model" @click="selected!.models = selected!.models.filter((x) => x.id !== m.id); expandedModelId = null" /></Tooltip>
+                  <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove model" @click="selected!.models = selected!.models.filter((x) => x.id !== m.id); expandedModelId = null" /></Tooltip>
                 </SettingsRow>
               </template>
               <template v-else-if="expandedModelId === m.id">
-                <SettingsRow inset label="Context · output"><span class="text-[12px] tabular-nums text-fg-muted">{{ formatTokens(m.contextWindow) }} · {{ formatTokens(m.outputLimit) }}</span></SettingsRow>
-                <SettingsRow inset label="Reasoning"><span class="text-[12px] text-fg-muted">{{ m.efforts.length ? `${m.efforts.join(' · ')} · default ${m.defaultEffort}` : 'None' }}</span></SettingsRow>
+                <SettingsRow inset label="Model id"><span class="font-mono text-[12px] text-fg-muted">{{ m.id }}</span></SettingsRow>
+                <SettingsRow inset label="Context window"><span class="text-[12px] tabular-nums text-fg-muted">{{ formatTokens(m.contextWindow) }}</span></SettingsRow>
+                <SettingsRow inset label="Max output"><span class="text-[12px] tabular-nums text-fg-muted">{{ formatTokens(m.outputLimit) }}</span></SettingsRow>
+                <SettingsRow inset label="Reasoning"><span class="text-[12px] text-fg-muted">{{ m.efforts.length ? m.efforts.map(cap).join(' · ') : 'None' }}</span></SettingsRow>
                 <SettingsRow v-if="m.fastTier" inset label="Fast tier"><span class="font-mono text-[12px] text-fg-muted">{{ m.fastTier }}</span></SettingsRow>
               </template>
             </template>
