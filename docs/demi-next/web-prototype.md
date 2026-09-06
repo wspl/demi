@@ -130,6 +130,11 @@ region's edge. Rules:
   a matching negative margin (`-mx-1 px-1`) so the region grows instead of the
   content shrinking.
 - Never fix a clipped outline on the child; fix the region.
+- Product scroll regions are `ScrollArea`s: the native bar is hidden and a thumb is
+  drawn over the content at the right edge, so the bar takes no room and the
+  content keeps symmetric padding whether or not it overflows. Padding for rings
+  goes on the viewport (`viewportClass`); the region itself is a `min-h-0` flex
+  item. The thumb shows on hover or while scrolling and can be dragged.
 - The gallery audits this: `demiAuditClipping()` in the browser console, and
   automatically after each gallery navigation in development, lists every
   outlined element that a scroll region would clip.

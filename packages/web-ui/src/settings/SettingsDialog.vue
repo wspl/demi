@@ -8,6 +8,7 @@ import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { SettingsAccountInfo, SettingsNavGroup, SettingsNavItem, SettingsTab } from './types'
@@ -85,14 +86,14 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             <span class="truncate text-[11px] text-fg-subtle">{{ account.plan }}</span>
           </span>
         </div>
-        <!-- The filter reserves the same scrollbar gutter as the list below, so both end on one line. -->
-        <div class="hidden overflow-y-hidden py-px [scrollbar-gutter:stable] @md:-mx-3 @md:block @md:px-3">
+        <div class="hidden @md:block">
           <TextInput v-model="query" placeholder="Filter settings" aria-label="Filter settings" @keydown.enter="openFirstMatch">
             <template #prefix><Search :size="ICON_PX.in24" /></template>
           </TextInput>
         </div>
-        <!-- The list spans the rail edge to edge so its scrollbar hugs the rail, not the padding. -->
-        <nav class="hidden min-h-0 flex-col gap-3 overflow-y-auto [scrollbar-gutter:stable] @md:-mx-3 @md:flex @md:px-3" aria-label="Settings sections">
+        <!-- The list spans the rail edge to edge; its thumb is drawn over the content, taking no room. -->
+        <ScrollArea class="hidden min-h-0 flex-1 @md:-mx-3 @md:block" viewport-class="@md:px-3">
+        <nav class="flex flex-col gap-3" aria-label="Settings sections">
           <div v-if="!filteredSections.length" class="select-none px-2 py-3 text-[12px] text-fg-subtle">Nothing matches.</div>
           <div v-for="(group, index) in filteredSections" :key="group.label ?? index" class="flex flex-col gap-0.5">
             <div v-if="group.label" class="select-none px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">
@@ -108,6 +109,7 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             />
           </div>
         </nav>
+        </ScrollArea>
         <nav v-if="narrowAsRow" class="grid grid-cols-4 gap-1 px-2 pb-2 @md:hidden" aria-label="Settings sections">
           <button
             v-for="item in items"
@@ -166,9 +168,9 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
           </Dropdown>
         </div>
       </aside>
-      <section class="relative flex min-w-0 flex-1 flex-col overflow-y-auto px-5 py-6 @md:px-8 @md:py-8">
+      <ScrollArea class="relative min-w-0 flex-1" viewport-class="flex flex-col px-5 py-6 @md:px-8 @md:py-8">
         <slot />
-      </section>
+      </ScrollArea>
     </div>
     </div>
   </Dialog>
