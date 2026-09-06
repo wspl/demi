@@ -1,5 +1,5 @@
 import { reactive, watch } from 'vue'
-import { PRODUCT_ACCENTS, productAppearance, type ProductAccent } from '@demicodes/web-ui/theme/productAppearance'
+import { DEFAULT_ACCENT, PRODUCT_ACCENTS, productAppearance, type ProductAccent } from '@demicodes/web-ui/theme/productAppearance'
 import { appThemeStore, setTheme } from '@demicodes/web-ui/theme/appTheme'
 
 type ThemeMode = 'light' | 'dark'
@@ -28,7 +28,7 @@ export const PARADIGMS: readonly Paradigm[] = [
   {
     id: 'neutral',
     name: 'Neutral',
-    summary: 'Demi’s own achromatic work surface: near-black / paper layers, carved shadow, 8/12 radius, steel accent used sparingly.',
+    summary: 'Demi’s own achromatic work surface: near-black / paper layers, carved shadow, 8/12 radius, a blue accent used sparingly.',
     tone: 'zinc',
     density: 'compact',
     radius: 'medium',
@@ -102,7 +102,7 @@ interface StoredGalleryState {
 
 function resolveAccent(id: unknown): AccentId {
   if (typeof id === 'string' && ACCENTS.some((item) => item.id === id)) return id as AccentId
-  return 'steel'
+  return DEFAULT_ACCENT
 }
 
 function readStored(): StoredGalleryState {
