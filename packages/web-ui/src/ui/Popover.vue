@@ -116,16 +116,23 @@ const virtualRef = computed(() => {
   }
 })
 
+// A panel confined to a host container never owns the page, so it is not exclusive, and the
+// container stands in for the viewport: the panel stays inside it the way it stays on screen.
+const container = inject(overlayContainerKey, null)
+const teleportTarget = computed(() => container?.value ?? 'body')
+const boundary = computed(() => container?.value ?? undefined)
+
 const { floatingStyles, placement: resolvedPlacement } = useFloating(virtualRef, floatingRef, {
   placement: computed(() => props.placement),
   strategy: 'fixed',
   middleware: computed(() => [
     offsetMiddleware(props.offset),
-    flip(),
+    flip({ boundary: boundary.value }),
     // Keep the panel on-screen, but stop following once the trigger scrolls away.
-    shift({ padding: props.shiftPadding, limiter: limitShift() }),
+    shift({ padding: props.shiftPadding, limiter: limitShift(), boundary: boundary.value }),
     size({
       padding: 16,
+      boundary: boundary.value,
       apply({ availableHeight, elements }) {
         elements.floating.style.setProperty(
           '--overlay-available-height',
@@ -150,9 +157,6 @@ const family = inheritedFamily ?? createOverlayFamily()
 const nested = inheritedFamily != null
 provide(overlayFamilyKey, family)
 
-// A panel confined to a host container never owns the page, so it is not exclusive.
-const container = inject(overlayContainerKey, null)
-const teleportTarget = computed(() => container?.value ?? 'body')
 
 watch(floatingRef, (el, _prev, onCleanup) => {
   if (!el) return
