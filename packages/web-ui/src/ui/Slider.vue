@@ -8,6 +8,8 @@ const props = withDefaults(defineProps<{
   max?: number
   step?: number
   disabled?: boolean
+  /** The current value, formatted by the host, read out beside the track. */
+  valueLabel?: string
 }>(), {
   min: 0,
   max: 100,
@@ -91,13 +93,15 @@ function onKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
+  <!-- Size the whole control from outside; the track takes what the readout leaves. -->
+  <span class="inline-flex w-20 items-center gap-2" :class="disabled ? 'pointer-events-none opacity-40' : ''">
   <span
-    class="slider inline-flex h-7 w-20 cursor-default items-center px-1.5 select-none"
-    :class="disabled ? 'pointer-events-none opacity-40' : ''"
+    class="slider inline-flex h-7 min-w-0 flex-1 cursor-default items-center px-1.5 select-none"
     role="slider"
     :aria-valuemin="min"
     :aria-valuemax="max"
     :aria-valuenow="modelValue"
+    :aria-valuetext="valueLabel"
     :aria-disabled="disabled || undefined"
     tabindex="0"
     @pointerdown="onPointerDown"
@@ -115,6 +119,11 @@ function onKeydown(event: KeyboardEvent) {
         :style="{ left: `${progress * 100}%` }"
       />
     </span>
+  </span>
+  <!-- Fixed width so the track does not shift as digits change. -->
+  <span v-if="valueLabel !== undefined" class="min-w-9 select-none text-right text-[12px] tabular-nums text-fg-muted">
+    {{ valueLabel }}
+  </span>
   </span>
 </template>
 
