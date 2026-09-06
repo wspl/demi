@@ -89,7 +89,8 @@ export interface MockAccount {
   quota: { hour: QuotaWindow; week: QuotaWindow } | null
 }
 
-export type MockProviderState = 'ready' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
+/** `unconfigured` is a fresh entry that still needs its key or login. */
+export type MockProviderState = 'ready' | 'unconfigured' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
 
 export interface MockProvider {
   id: string
