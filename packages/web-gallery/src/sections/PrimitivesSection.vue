@@ -187,7 +187,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="TextInput" note="Empty, filled, focus, a secret with its eye, and a suffix.">
+    <GallerySection title="TextInput" note="Empty, filled, focus, bare (frame only on hover and focus), a secret with its eye, and a suffix.">
       <div class="specimen-row">
         <GallerySpecimen variant="empty">
           <TextInput v-model="emptyQuery" placeholder="Search files" />
@@ -197,6 +197,9 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
         </GallerySpecimen>
         <GallerySpecimen variant="focused">
           <TextInput v-model="query" placeholder="Search files" focused />
+        </GallerySpecimen>
+        <GallerySpecimen variant="bare">
+          <TextInput v-model="query" placeholder="Search files" bare />
         </GallerySpecimen>
         <GallerySpecimen variant="secret">
           <TextInput v-model="secret" placeholder="sk-…" secret />

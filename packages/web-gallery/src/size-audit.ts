@@ -23,6 +23,8 @@ export function auditControlSizes(root: ParentNode = document.body): SizeFinding
       // A control inside an input's frame (the eye on a secret) belongs to the input, not the row.
       if (el.tagName !== 'INPUT' && el.closest(':has(> input)')) continue
       const box = el.tagName === 'INPUT' ? (el.parentElement ?? el) : el
+      // A bare input fills its row's content box on purpose; its height is not a family.
+      if (box.hasAttribute('data-bare')) continue
       const h = Math.round(box.getBoundingClientRect().height)
       if (!FAMILIES.includes(h)) continue
       seen.set(h, [...(seen.get(h) ?? []), el])

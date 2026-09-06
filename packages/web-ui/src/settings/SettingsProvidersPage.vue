@@ -296,7 +296,8 @@ function saveModel(draft: SettingsModelDraft) {
                 <Segmented size="sm" v-else-if="selected.vendorId" v-model="selected.modelSource" class="ml-auto" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
               </header>
             </template>
-            <div v-if="selected.kind === 'api_key'" class="flex items-center gap-3 px-3 py-2">
+            <!-- The filter reads as text until hovered; its hit area is the whole row height. -->
+            <div v-if="selected.kind === 'api_key'" class="flex min-h-10 items-center gap-3 px-3 py-1">
               <Checkbox
                 :model-value="visibleSelection(selected).checked"
                 :partial="visibleSelection(selected).partial"
@@ -304,7 +305,7 @@ function saveModel(draft: SettingsModelDraft) {
                 aria-label="Enable every listed model"
                 @update:model-value="(on) => setAll(selected!, on)"
               />
-              <TextInput size="sm" v-model="modelFilter" placeholder="Filter models" class="min-w-0 flex-1">
+              <TextInput size="sm" v-model="modelFilter" placeholder="Filter models" bare class="min-w-0 flex-1">
                 <template #prefix><Search :size="ICON_PX.in24" /></template>
               </TextInput>
               <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton size="sm" :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>

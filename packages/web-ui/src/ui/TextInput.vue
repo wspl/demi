@@ -13,6 +13,12 @@ const props = defineProps<{
   secret?: boolean
   /** Height family: md is 28px, sm is 24px. Match the surface's other controls. */
   size?: 'sm' | 'md'
+  /**
+   * No frame at rest: the value reads as text in its row. The hit area stretches to
+   * its container's height so it fills the row's content box, hover shows it, and
+   * focus brings the frame back.
+   */
+  bare?: boolean
 }>()
 
 const revealed = ref(false)
@@ -40,8 +46,17 @@ defineExpose({
 <template>
   <div
     v-bind="frameAttrs"
-    class="flex min-w-0 items-center rounded-md bg-surface-raised ring-1 transition-shadow duration-200 ease-out"
-    :class="[size === 'sm' ? 'h-6' : 'h-7', attrs['class'] ? '' : 'w-full', startFocused || isFocused ? 'ring-line-focus' : 'ring-line']"
+    class="flex min-w-0 items-center rounded-md ring-1 transition-[box-shadow,background-color] duration-200 ease-out"
+    :class="[
+      bare ? (size === 'sm' ? 'min-h-6 self-stretch' : 'min-h-7 self-stretch') : size === 'sm' ? 'h-6' : 'h-7',
+      attrs['class'] ? '' : 'w-full',
+      bare
+        ? startFocused || isFocused
+          ? 'bg-surface-raised ring-line-focus'
+          : 'bg-transparent ring-transparent hover:bg-hover'
+        : ['bg-surface-raised', startFocused || isFocused ? 'ring-line-focus' : 'ring-line'],
+    ]"
+    :data-bare="bare ? true : undefined"
     @click="inputRef?.focus()"
   >
     <div v-if="slots['prefix']" class="flex shrink-0 items-center pl-2 text-fg-subtle">

@@ -39,10 +39,11 @@ const emit = defineEmits<{
         <slot name="description">{{ description }}</slot>
       </div>
     </div>
-    <!-- Beside the text the controls may take up to two thirds; inputs shrink, buttons never wrap. -->
+    <!-- Beside the text the controls may take up to two thirds; inputs shrink, buttons never wrap.
+         The container spans the row's content box so a bare input can stretch to it. -->
     <div
       v-if="$slots.default"
-      class="flex min-w-0 items-center justify-end gap-2 @sm:basis-auto @sm:max-w-[66%]"
+      class="flex min-w-0 items-center justify-end gap-2 self-stretch @sm:basis-auto @sm:max-w-[66%]"
       :class="inset ? 'shrink-0' : 'basis-full'"
     >
       <slot />
