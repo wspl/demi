@@ -72,10 +72,15 @@ function test(p: SettingsProviderEntry) {
   }, 1200)
 }
 
+const refreshing = ref<string | null>(null)
 function refresh(p: SettingsProviderEntry) {
-  p.catalogFetched = 'just now'
-  p.stale = false
-  showToast({ title: `${p.name} refreshed`, message: `${p.models.length} models listed.` })
+  refreshing.value = p.id
+  window.setTimeout(() => {
+    refreshing.value = null
+    p.catalogFetched = 'just now'
+    p.stale = false
+    showToast({ title: `${p.name} refreshed`, message: `${p.models.length} models listed.` })
+  }, 1400)
 }
 
 function activateAccount(p: SettingsProviderEntry, id: string) {
@@ -143,6 +148,7 @@ function closeLogin() {
     :vendors="mockVendors"
     :overlay-store="appOverlayStore"
     :testing="testing"
+    :refreshing="refreshing"
     @add="addProvider"
     @add-endpoint="addEndpoint"
     @remove="removeProvider"
