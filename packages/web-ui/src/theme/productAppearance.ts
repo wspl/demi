@@ -13,7 +13,7 @@ export const PRODUCT_TONES: readonly { id: ProductTone; label: string }[] = [
   { id: 'warm', label: 'Warm' },
 ]
 
-export type ProductAccent = 'steel' | 'indigo' | 'teal' | 'moss' | 'amber' | 'coral' | 'violet'
+export type ProductAccent = 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple'
 
 export interface ProductAccentOption {
   id: ProductAccent
@@ -22,12 +22,15 @@ export interface ProductAccentOption {
   swatch: string
 }
 
+/** Seven hues evenly around the wheel, so every common colour has a home. */
 export const PRODUCT_ACCENTS: readonly ProductAccentOption[] = [
-  { id: 'steel', name: 'Steel', swatch: 'oklch(58% 0.11 250)' },
-  { id: 'indigo', name: 'Indigo', swatch: 'oklch(56% 0.12 285)' },
-  { id: 'teal', name: 'Teal', swatch: 'oklch(54% 0.09 200)' },
-  { id: 'moss', name: 'Moss', swatch: 'oklch(52% 0.09 145)' },
-  { id: 'amber', name: 'Amber', swatch: 'oklch(62% 0.11 75)' },
-  { id: 'coral', name: 'Coral', swatch: 'oklch(58% 0.11 28)' },
-  { id: 'violet', name: 'Violet', swatch: 'oklch(56% 0.12 305)' },
+  { id: 'red', name: 'Red', swatch: 'oklch(60% 0.14 25)' },
+  { id: 'orange', name: 'Orange', swatch: 'oklch(60% 0.14 55)' },
+  { id: 'yellow', name: 'Yellow', swatch: 'oklch(60% 0.14 95)' },
+  { id: 'green', name: 'Green', swatch: 'oklch(60% 0.14 145)' },
+  { id: 'cyan', name: 'Cyan', swatch: 'oklch(60% 0.14 200)' },
+  { id: 'blue', name: 'Blue', swatch: 'oklch(60% 0.14 250)' },
+  { id: 'purple', name: 'Purple', swatch: 'oklch(60% 0.14 300)' },
 ]
+
+export const DEFAULT_ACCENT: ProductAccent = 'blue'
