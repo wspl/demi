@@ -19,7 +19,7 @@ import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
-import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsProviderDraft, type SettingsSubscriptionVendor } from '@demicodes/web-ui/settings/types'
+import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsSubscriptionVendor, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsListItem from '@demicodes/web-ui/settings/SettingsListItem.vue'
@@ -87,20 +87,19 @@ function select(id: string) {
   s.value.providerDetailOpen = true
 }
 
-function addProvider(draft: SettingsProviderDraft) {
+function addProvider(vendor: SettingsVendor | null) {
   const id = `p-${Date.now()}`
   s.value.providers.push(provider({
     id,
-    name: draft.name.trim(),
+    name: vendor?.name ?? 'Custom endpoint',
     kind: 'api_key',
-    family: draft.vendor?.id ?? 'custom',
-    vendorId: draft.vendor?.id ?? null,
-    baseUrl: draft.baseUrl.trim() || draft.vendor?.baseUrl || '',
-    wireApi: draft.wireApi,
-    keyHint: draft.key ? `…${draft.key.slice(-4)}` : '',
-    modelSource: draft.vendor ? 'catalog' : 'manual',
-    catalogFetched: draft.vendor ? 'just now' : null,
-    logo: draft.vendor?.logo ?? null,
+    family: vendor?.id ?? 'custom',
+    vendorId: vendor?.id ?? null,
+    baseUrl: vendor?.baseUrl ?? '',
+    wireApi: vendor?.wireApi ?? 'openai-chat',
+    modelSource: vendor ? 'catalog' : 'manual',
+    catalogFetched: vendor ? 'just now' : null,
+    logo: vendor?.logo ?? null,
   }))
   addOpen.value = false
   select(id)
@@ -209,7 +208,7 @@ function setAll(p: MockProvider, enabled: boolean) {
 </script>
 
 <template>
-  <SettingsPage wide title="Models & providers" description="Where conversations get their models. Pick a provider to edit its connection and the models it offers.">
+  <SettingsPage wide fill title="Models & providers" description="Where conversations get their models. Pick a provider to edit its connection and the models it offers.">
     <SettingsSplit v-model:detail-open="detailOpen" :detail-title="selected?.name">
       <template #list>
         <div class="select-none px-1 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Subscriptions</div>
