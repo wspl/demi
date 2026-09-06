@@ -144,90 +144,90 @@ html[data-theme="light"][data-tone="warm"] {
   --line-overlay: oklch(20% 0.004 107 / 0.12);
 }
 
-/* ── accent: seven hues, evenly spread. One L/C recipe, the hue substituted. ─ */
-
-html[data-theme="dark"][data-accent="red"] {
-  --on-accent: oklch(74% 0.11 25);
-  --tint-accent: oklch(62% 0.13 25 / 0.16);
-  --line-focus: oklch(74% 0.11 25);
-}
-
-html[data-theme="light"][data-accent="red"] {
-  --on-accent: oklch(48% 0.15 25);
-  --tint-accent: oklch(52% 0.16 25 / 0.1);
-  --line-focus: oklch(48% 0.15 25);
-}
-
-html[data-theme="dark"][data-accent="orange"] {
-  --on-accent: oklch(74% 0.11 55);
-  --tint-accent: oklch(62% 0.13 55 / 0.16);
-  --line-focus: oklch(74% 0.11 55);
-}
-
-html[data-theme="light"][data-accent="orange"] {
-  --on-accent: oklch(48% 0.15 55);
-  --tint-accent: oklch(52% 0.16 55 / 0.1);
-  --line-focus: oklch(48% 0.15 55);
-}
-
-html[data-theme="dark"][data-accent="yellow"] {
-  --on-accent: oklch(74% 0.11 95);
-  --tint-accent: oklch(62% 0.13 95 / 0.16);
-  --line-focus: oklch(74% 0.11 95);
-}
-
-html[data-theme="light"][data-accent="yellow"] {
-  --on-accent: oklch(48% 0.15 95);
-  --tint-accent: oklch(52% 0.16 95 / 0.1);
-  --line-focus: oklch(48% 0.15 95);
-}
-
-html[data-theme="dark"][data-accent="green"] {
-  --on-accent: oklch(74% 0.11 145);
-  --tint-accent: oklch(62% 0.13 145 / 0.16);
-  --line-focus: oklch(74% 0.11 145);
-}
-
-html[data-theme="light"][data-accent="green"] {
-  --on-accent: oklch(48% 0.15 145);
-  --tint-accent: oklch(52% 0.16 145 / 0.1);
-  --line-focus: oklch(48% 0.15 145);
-}
-
-html[data-theme="dark"][data-accent="cyan"] {
-  --on-accent: oklch(74% 0.11 200);
-  --tint-accent: oklch(62% 0.13 200 / 0.16);
-  --line-focus: oklch(74% 0.11 200);
-}
-
-html[data-theme="light"][data-accent="cyan"] {
-  --on-accent: oklch(48% 0.15 200);
-  --tint-accent: oklch(52% 0.16 200 / 0.1);
-  --line-focus: oklch(48% 0.15 200);
-}
+/* ── accent: seven UI-friendly hues, one L/C recipe with the hue substituted. ─ */
 
 html[data-theme="dark"][data-accent="blue"] {
-  --on-accent: oklch(74% 0.11 250);
-  --tint-accent: oklch(62% 0.13 250 / 0.16);
-  --line-focus: oklch(74% 0.11 250);
+  --on-accent: oklch(76% 0.15 255);
+  --tint-accent: oklch(66% 0.17 255 / 0.18);
+  --line-focus: oklch(76% 0.15 255);
 }
 
 html[data-theme="light"][data-accent="blue"] {
-  --on-accent: oklch(48% 0.15 250);
-  --tint-accent: oklch(52% 0.16 250 / 0.1);
-  --line-focus: oklch(48% 0.15 250);
+  --on-accent: oklch(52% 0.2 255);
+  --tint-accent: oklch(56% 0.2 255 / 0.12);
+  --line-focus: oklch(52% 0.2 255);
 }
 
 html[data-theme="dark"][data-accent="purple"] {
-  --on-accent: oklch(74% 0.11 300);
-  --tint-accent: oklch(62% 0.13 300 / 0.16);
-  --line-focus: oklch(74% 0.11 300);
+  --on-accent: oklch(76% 0.15 295);
+  --tint-accent: oklch(66% 0.17 295 / 0.18);
+  --line-focus: oklch(76% 0.15 295);
 }
 
 html[data-theme="light"][data-accent="purple"] {
-  --on-accent: oklch(48% 0.15 300);
-  --tint-accent: oklch(52% 0.16 300 / 0.1);
-  --line-focus: oklch(48% 0.15 300);
+  --on-accent: oklch(52% 0.2 295);
+  --tint-accent: oklch(56% 0.2 295 / 0.12);
+  --line-focus: oklch(52% 0.2 295);
+}
+
+html[data-theme="dark"][data-accent="pink"] {
+  --on-accent: oklch(76% 0.15 350);
+  --tint-accent: oklch(66% 0.17 350 / 0.18);
+  --line-focus: oklch(76% 0.15 350);
+}
+
+html[data-theme="light"][data-accent="pink"] {
+  --on-accent: oklch(52% 0.2 350);
+  --tint-accent: oklch(56% 0.2 350 / 0.12);
+  --line-focus: oklch(52% 0.2 350);
+}
+
+html[data-theme="dark"][data-accent="red"] {
+  --on-accent: oklch(76% 0.15 25);
+  --tint-accent: oklch(66% 0.17 25 / 0.18);
+  --line-focus: oklch(76% 0.15 25);
+}
+
+html[data-theme="light"][data-accent="red"] {
+  --on-accent: oklch(52% 0.2 25);
+  --tint-accent: oklch(56% 0.2 25 / 0.12);
+  --line-focus: oklch(52% 0.2 25);
+}
+
+html[data-theme="dark"][data-accent="orange"] {
+  --on-accent: oklch(76% 0.15 55);
+  --tint-accent: oklch(66% 0.17 55 / 0.18);
+  --line-focus: oklch(76% 0.15 55);
+}
+
+html[data-theme="light"][data-accent="orange"] {
+  --on-accent: oklch(52% 0.2 55);
+  --tint-accent: oklch(56% 0.2 55 / 0.12);
+  --line-focus: oklch(52% 0.2 55);
+}
+
+html[data-theme="dark"][data-accent="green"] {
+  --on-accent: oklch(76% 0.15 150);
+  --tint-accent: oklch(66% 0.17 150 / 0.18);
+  --line-focus: oklch(76% 0.15 150);
+}
+
+html[data-theme="light"][data-accent="green"] {
+  --on-accent: oklch(52% 0.2 150);
+  --tint-accent: oklch(56% 0.2 150 / 0.12);
+  --line-focus: oklch(52% 0.2 150);
+}
+
+html[data-theme="dark"][data-accent="teal"] {
+  --on-accent: oklch(76% 0.15 190);
+  --tint-accent: oklch(66% 0.17 190 / 0.18);
+  --line-focus: oklch(76% 0.15 190);
+}
+
+html[data-theme="light"][data-accent="teal"] {
+  --on-accent: oklch(52% 0.2 190);
+  --tint-accent: oklch(56% 0.2 190 / 0.12);
+  --line-focus: oklch(52% 0.2 190);
 }
 
 /* Accents remap --on-accent; the fill follows, darker and more saturated. */
