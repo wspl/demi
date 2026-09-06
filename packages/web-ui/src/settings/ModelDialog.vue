@@ -135,7 +135,7 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
           </SettingsRow>
           <SettingsRow inset label="Other extensions">
             <TextInput v-model="customExtension" placeholder=".heic" class="w-28" @keydown.enter="addExtension" />
-            <Button size="sm" :disabled="!customExtension.trim()" @click="addExtension">Add</Button>
+            <Button :disabled="!customExtension.trim()" @click="addExtension">Add</Button>
           </SettingsRow>
         </template>
         <div v-if="editable && draft.extensions.length" class="flex flex-wrap gap-1 px-4 py-3">
