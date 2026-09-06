@@ -211,6 +211,24 @@ function itemLabel(id: string, list: { id: string; label: string }[] = items) {
         </Menu>
       </GallerySpecimen>
       <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen variant="label/value · columns">
+          <Menu iconless>
+            <MenuItem label="Reasoning" value="Medium" has-submenu />
+            <MenuItem label="Model" value="Claude Sonnet 4.5" has-submenu />
+            <MenuItem label="A much longer label" value="On" />
+            <MenuItem label="Provider" value="Anthropic" />
+          </Menu>
+        </GallerySpecimen>
+        <GallerySpecimen variant="shortcuts · columns">
+          <Menu iconless>
+            <MenuItem label="Rename" shortcut="↵" />
+            <MenuItem label="Duplicate conversation" shortcut="⌘D" />
+            <MenuItem label="Pin" shortcut="⌘⇧P" />
+            <MenuItem label="Archive" />
+          </Menu>
+        </GallerySpecimen>
+      </div>
+      <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="tall">
           <Menu iconless>
             <MenuItem v-for="label in tallActions" :key="label" :label="label" />
