@@ -25,6 +25,8 @@ const thumbHeight = ref(0)
 const overflowing = ref(false)
 const scrolling = ref(false)
 const dragging = ref(false)
+// Hover is tracked here, not with a CSS group: nested areas would light up together.
+const hovered = ref(false)
 let scrollTimer = 0
 let observer: ResizeObserver | undefined
 
@@ -107,7 +109,7 @@ onBeforeUnmount(() => {
 // Content that mounts later (a v-if page) is picked up on the next measurement.
 watch(() => props.viewportClass, measure)
 
-const thumbVisible = computed(() => overflowing.value && (scrolling.value || dragging.value))
+const thumbVisible = computed(() => overflowing.value && (hovered.value || scrolling.value || dragging.value))
 
 defineExpose({
   /** The scrolling element, for scrollTop and scrollTo. */
@@ -117,7 +119,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="scroll-area group/scroll relative min-h-0 overflow-hidden">
+  <div class="scroll-area relative min-h-0 overflow-hidden" @pointerenter="hovered = true" @pointerleave="hovered = false">
     <div ref="viewport" class="scroll-area-viewport h-full overflow-y-auto" :class="viewportClass" @scroll.passive="onScroll">
       <slot />
     </div>
@@ -129,7 +131,7 @@ defineExpose({
     >
       <div
         class="scroll-area-thumb absolute inset-x-0 rounded-full transition-[opacity,background-color] duration-250 ease-out"
-        :class="[thumbVisible ? 'opacity-100' : 'opacity-0 group-hover/scroll:opacity-100', dragging ? 'bg-overlay/25' : 'bg-overlay/12 hover:bg-overlay/25']"
+        :class="[thumbVisible ? 'opacity-100' : 'opacity-0', dragging ? 'bg-overlay/25' : 'bg-overlay/12 hover:bg-overlay/25']"
         :style="{ top: `${thumbTop}px`, height: `${thumbHeight}px` }"
         @pointerdown="onThumbDown"
         @pointermove="onThumbMove"
