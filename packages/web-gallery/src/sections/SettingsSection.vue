@@ -80,7 +80,7 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
 
     <GallerySection
       title="Full agent settings"
-      note="A stress test: everything a coding agent might ask for, in its worst states at once. Expiring auth, an unreachable local model, a crashed MCP server, a shortcut conflict, a quota nearly spent, disabled entries, nested rows, long paths."
+      note="A stress test: everything a coding agent might ask for, in its worst states at once. Expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths."
     >
       <GalleryOverlayWell size="tall">
         <SettingsDialog v-model:tab="fullTab" :is-open="true" :overlay-store="appOverlayStore" :account="account" :sections="fullSettingsNav">
