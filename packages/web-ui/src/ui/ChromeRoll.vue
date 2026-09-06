@@ -120,10 +120,13 @@ onBeforeUnmount(clearRollTimer)
   overflow: hidden;
 }
 
+/* A face centres whatever it carries, so a bare label sits on the icon's axis. */
 .chrome-roll-face {
+  display: flex;
   height: calc(var(--spacing) * 7);
   max-height: calc(var(--spacing) * 7);
   min-height: 0;
+  align-items: center;
   overflow: hidden;
 }
 
