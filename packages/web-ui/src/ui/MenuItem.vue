@@ -6,7 +6,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import Popover from './Popover.vue'
 import Tooltip from './Tooltip.vue'
 import { ICON_PX } from './icon-metrics'
-import { menuIconlessKey, menuRootKey, shouldDismissMenuTree } from './menu-context'
+import { createSubmenuController, menuIconlessKey, menuRootKey, menuSubmenuKey, shouldDismissMenuTree } from './menu-context'
 
 defineOptions({ inheritAttrs: false })
 
@@ -47,20 +47,28 @@ const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
 const hasSuffix = computed(() => slots.suffix != null || isChoice.value || showsSubmenu.value || !!props.shortcut)
 
 const triggerRef = ref<HTMLElement | null>(null)
-const submenuOpen = defineModel<boolean>('submenuOpen', { default: false })
-let closeTimer = 0
+/** Pins the submenu open regardless of hover (gallery specimens). */
+const pinnedOpen = defineModel<boolean>('submenuOpen', { default: false })
+// The enclosing Menu arbitrates which row's submenu is open; a row rendered outside a
+// Menu gets a controller of its own.
+const injectedSubmenus = inject(menuSubmenuKey, null)
+const ownSubmenus = injectedSubmenus ? null : createSubmenuController()
+const submenus = injectedSubmenus ?? ownSubmenus!
+const submenuId = Symbol('submenu')
+const submenuOpen = computed(() => pinnedOpen.value || submenus.activeId.value === submenuId)
 
 function openSubmenu() {
   if (!showsSubmenu.value || isDisabled.value) return
-  window.clearTimeout(closeTimer)
-  submenuOpen.value = true
+  submenus.open(submenuId)
 }
 
 function scheduleCloseSubmenu() {
-  window.clearTimeout(closeTimer)
-  closeTimer = window.setTimeout(() => {
-    submenuOpen.value = false
-  }, 120)
+  submenus.scheduleClose(submenuId)
+}
+
+function closeSubmenu() {
+  pinnedOpen.value = false
+  submenus.close(submenuId)
 }
 
 function handleClick(event: MouseEvent) {
@@ -85,7 +93,8 @@ function handleClick(event: MouseEvent) {
 }
 
 onBeforeUnmount(() => {
-  window.clearTimeout(closeTimer)
+  submenus.close(submenuId)
+  ownSubmenus?.dispose()
 })
 
 const toneClass = computed(() => {
@@ -164,10 +173,11 @@ const toneClass = computed(() => {
     v-if="showsSubmenu"
     :overlay-store="appOverlayStore"
     :is-open="submenuOpen"
+    :instant="submenus.instant.value"
     :anchor-el="triggerRef"
     placement="right-start"
     :offset="6"
-    @close="submenuOpen = false"
+    @close="closeSubmenu"
   >
     <div @mouseenter="openSubmenu" @mouseleave="scheduleCloseSubmenu">
       <slot name="submenu" />

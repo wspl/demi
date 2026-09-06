@@ -1,10 +1,10 @@
 <script setup lang="ts" generic="T extends { id: string; label: string; icon?: import('vue').Component }">
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Search, CircleX } from '@lucide/vue'
 import HighlightText from './HighlightText.vue'
 import MenuItem from './MenuItem.vue'
-import { menuIconlessKey } from './menu-context'
+import { createSubmenuController, menuIconlessKey, menuSubmenuKey } from './menu-context'
 import { ICON_PX } from './icon-metrics'
 
 const props = withDefaults(defineProps<{
@@ -60,6 +60,10 @@ const iconless = computed(() => {
 })
 
 provide(menuIconlessKey, iconless)
+
+const submenus = createSubmenuController()
+provide(menuSubmenuKey, submenus)
+onBeforeUnmount(submenus.dispose)
 
 const isVirtual = computed(() => props.items != null && props.itemHeight != null && props.itemHeight > 0)
 const rowHeight = computed(() => props.itemHeight ?? 28)

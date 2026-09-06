@@ -25,6 +25,8 @@ const props = withDefaults(defineProps<{
   offset?: number
   shiftPadding?: number
   ignoreEls?: HTMLElement[]
+  /** Skip enter/leave motion, e.g. when one submenu replaces a sibling. */
+  instant?: boolean
 }>(), {
   anchorInset: 0,
   anchorX: 0,
@@ -180,7 +182,7 @@ const overlayMotion = {
 
 <template>
   <Teleport :to="teleportTarget">
-    <Transition v-bind="overlayMotion">
+    <Transition v-bind="overlayMotion" :css="!instant">
       <div
         v-if="isOpen"
         ref="floatingRef"
