@@ -3,7 +3,7 @@ import GallerySection from '../components/GallerySection.vue'
 
 const shipped = [
   ['Button / IconButton', '28px hit. default, primary, ghost; send is the accent disc.'],
-  ['Switch / Checkbox', 'On product surfaces. ToggleSwitch and Slider stay in the library.'],
+  ['Switch / Checkbox', 'On product surfaces. Segmented and Slider stay in the library.'],
   ['TextInput', 'Single-line 28px field.'],
   ['Dropdown + Menu', 'Dropdown owns open/close; Menu is the panel.'],
   ['Dialog / ContextMenu / Tooltip / Popover', 'One overlay family.'],
