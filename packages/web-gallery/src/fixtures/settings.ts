@@ -189,7 +189,7 @@ export const mockVendors: MockVendor[] = [
 ]
 
 export const subscriptionVendors = [
-  { id: 'claude-code', name: 'Claude Code', logo: '/logos/anthropic.svg' },
+  { id: 'claude-code', name: 'Claude Code', logo: '/logos/claude.svg' },
   { id: 'codex', name: 'Codex', logo: '/logos/openai.svg' },
   { id: 'grok-build', name: 'Grok Build', logo: '/logos/xai.svg' },
 ]
@@ -197,7 +197,7 @@ export const subscriptionVendors = [
 export function mockProviders(): MockProvider[] {
   return [
     provider({
-      id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code', logo: '/logos/anthropic.svg',
+      id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code', logo: '/logos/claude.svg',
       accounts: [
         { id: 'a1', label: 'zan@example.com', plan: 'Max 5×', active: true, quota: { used: 62, max: 100, resets: 'in 2 h 10 min' } },
         { id: 'a2', label: 'zan@work.example', plan: 'Pro', active: false, quota: { used: 100, max: 100, resets: 'in 4 h' } },
