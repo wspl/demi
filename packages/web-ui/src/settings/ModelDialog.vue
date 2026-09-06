@@ -83,22 +83,22 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
       <div class="flex min-h-0 flex-col gap-4 overflow-y-auto px-5" :class="editable ? '' : 'pb-5'">
 
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-        <SettingsRow v-if="editable" label="Model id" description="Exactly what the endpoint expects.">
+        <SettingsRow v-if="editable" label="Model id">
           <TextInput v-model="draft.id" placeholder="model-id" class="w-64 max-w-full font-mono" :readonly="mode === 'edit'" />
         </SettingsRow>
-        <SettingsRow label="Display name" :description="editable ? 'Shown in the picker instead of the id. (Optional)' : undefined" :compact="!editable">
+        <SettingsRow label="Display name" :description="editable ? 'Optional' : undefined" :compact="!editable">
           <TextInput v-if="editable" v-model="draft.name" :placeholder="draft.id" class="w-64 max-w-full" />
           <span v-else class="text-chrome text-fg">{{ draft.name || '—' }}</span>
         </SettingsRow>
-        <SettingsRow label="Context window" :description="editable ? 'Tokens. Compaction triggers near this.' : undefined" :compact="!editable">
+        <SettingsRow label="Context window" :compact="!editable">
           <TokenInput v-if="editable" v-model="draft.contextWindow" placeholder="128" class="w-32" />
           <span v-else class="text-chrome tabular-nums text-fg">{{ formatTokens(draft.contextWindow) }}</span>
         </SettingsRow>
-        <SettingsRow label="Max output" :description="editable ? 'Tokens per reply. Empty uses the endpoint default. (Optional)' : undefined" :compact="!editable">
+        <SettingsRow label="Max output" :description="editable ? 'Optional' : undefined" :compact="!editable">
           <TokenInput v-if="editable" v-model="draft.outputLimit" placeholder="8" class="w-32" />
           <span v-else class="text-chrome tabular-nums text-fg">{{ formatTokens(draft.outputLimit) }}</span>
         </SettingsRow>
-        <SettingsRow label="Reasoning" :description="editable ? 'Levels the composer offers. First is the default.' : undefined" :compact="!editable">
+        <SettingsRow label="Reasoning" :description="editable ? 'First is the default.' : undefined" :compact="!editable">
           <template v-if="editable">
             <button
               v-for="effort in THINKING_EFFORTS"
@@ -113,14 +113,14 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
           </template>
           <span v-else class="text-chrome text-fg">{{ draft.efforts.length ? draft.efforts.map(cap).join(' · ') : 'None' }}</span>
         </SettingsRow>
-        <SettingsRow label="Fast tier" :description="editable ? 'A service tier id the Fast switch selects. (Optional)' : undefined" :compact="!editable">
+        <SettingsRow label="Fast tier" :description="editable ? 'Service tier id. Optional' : undefined" :compact="!editable">
           <TextInput v-if="editable" :model-value="draft.fastTier ?? ''" placeholder="fast" class="w-32" @update:model-value="(v) => (draft.fastTier = v.trim() || null)" />
           <span v-else class="font-mono text-[12px] text-fg-muted">{{ draft.fastTier ?? '—' }}</span>
         </SettingsRow>
       </div>
 
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-        <SettingsRow label="Accepted files" :description="editable ? 'What the composer lets you attach. Text is always accepted.' : undefined" :compact="!editable">
+        <SettingsRow label="Accepted files" :description="editable ? 'Text is always accepted.' : undefined" :compact="!editable">
           <span v-if="!editable && !draft.extensions.length" class="text-chrome text-fg">Text only</span>
           <span v-else-if="!editable" class="flex flex-wrap justify-end gap-1"><Tag v-for="ext in draft.extensions" :key="ext">{{ ext }}</Tag></span>
         </SettingsRow>
