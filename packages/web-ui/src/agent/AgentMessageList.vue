@@ -96,7 +96,7 @@ defineExpose({
   <div class="relative h-full">
     <div
       ref="scrollContainer"
-      class="h-full overflow-y-auto scrollbar-hidden"
+      class="h-full overflow-y-auto"
       :class="isScrolling ? 'scrollbar-active' : ''"
       style="overflow-anchor: none;"
       @scroll="onScroll"

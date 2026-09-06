@@ -31,6 +31,7 @@
   --color-on-accent: var(--on-accent);
   --color-on-highlight: var(--on-highlight);
   --color-on-violet: var(--on-violet);
+  --color-accent-fill: var(--accent-fill);
   --shadow-sm: var(--th-shadow-sm);
   --shadow-md: var(--th-shadow-md);
   --shadow-lg: var(--th-shadow-lg);
@@ -81,6 +82,8 @@
   --on-accent: #60a5fa;
   --on-highlight: #fde68a;
   --on-violet: #a78bfa;
+  /* Solid accent fill for primary controls; --on-accent stays a text color. */
+  --accent-fill: #2b74dc;
   --th-shadow-sm:
     rgba(119, 119, 113, 0.35) 0 0 0 0.5px,
     rgba(0, 0, 0, 0.16) 0 0 0 1px,
@@ -159,6 +162,7 @@
   --on-accent: #2563eb;
   --on-highlight: #92400e;
   --on-violet: #7c3aed;
+  --accent-fill: var(--on-accent);
   --th-shadow-sm: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
   --th-shadow-md:
     inset 0 0.5px 0 rgba(255, 255, 255, 0.8),
@@ -241,7 +245,7 @@ svg.lucide {
 }
 
 .btn-primary {
-  background: var(--on-accent);
+  background: var(--accent-fill);
 }
 
 /* Floating shell: one step above raised + a hairline brighter
@@ -445,17 +449,21 @@ svg.lucide {
   );
 }
 
+/* Scrollbars stay out of the way: transparent until the pointer is inside the scroller
+   or the container marks itself active (transcript while scrolling). */
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
-}
-
-.scrollbar-hidden {
   scrollbar-color: transparent transparent;
-  transition: scrollbar-color 0.3s ease;
+  transition: scrollbar-color 250ms ease;
 }
 
-.scrollbar-hidden.scrollbar-active {
+@media (hover: hover) {
+  *:hover {
+    scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
+  }
+}
+
+.scrollbar-active {
   scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
 }
 
@@ -532,8 +540,8 @@ svg.lucide {
 .markdown-body a.file-link {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.85em;
-  color: rgb(160 200 255);
-  background: rgb(160 200 255 / 0.12);
+  color: var(--on-accent);
+  background: var(--tint-accent);
   padding: 0.15em 0.35em;
   border-radius: 4px;
   text-decoration: underline;
@@ -542,11 +550,11 @@ svg.lucide {
 }
 
 .markdown-body a.file-link:hover {
-  color: rgb(190 220 255);
-  background: rgb(160 200 255 / 0.18);
+  color: var(--on-accent);
+  background: color-mix(in srgb, var(--on-accent) 22%, transparent);
   text-decoration: underline;
   text-decoration-style: dotted;
-  text-decoration-color: rgb(160 200 255 / 0.4);
+  text-decoration-color: color-mix(in srgb, var(--on-accent) 40%, transparent);
 }
 
 .markdown-body code {
@@ -625,7 +633,7 @@ svg.lucide {
 .markdown-body th,
 .markdown-body td {
   padding: 0.4em 0.75em;
-  border: 1px solid var(--fg-ghost);
+  border: 1px solid color-mix(in srgb, var(--color-overlay) 12%, transparent);
 }
 
 .markdown-body th {
@@ -663,8 +671,8 @@ svg.lucide {
 .checkbox-mark[data-state="checked"],
 .checkbox-mark[data-state="partial"],
 .markdown-body li > input[type="checkbox"]:checked {
-  border-color: var(--on-accent);
-  background-color: var(--on-accent);
+  border-color: var(--accent-fill);
+  background-color: var(--accent-fill);
 }
 
 .checkbox-mark[data-state="checked"],

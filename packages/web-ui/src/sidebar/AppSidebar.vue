@@ -382,7 +382,6 @@ function selectProjectConversations(project: SidebarProject): void {
 
 <style scoped>
 .sidebar-scroll {
-  scrollbar-color: var(--fg-faint) transparent;
   scrollbar-gutter: stable;
 }
 
