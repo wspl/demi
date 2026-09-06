@@ -5,8 +5,9 @@ import KeyCap from './KeyCap.vue'
 
 /**
  * A shortcut shown as key caps, with a Change button that records a new one in
- * place. While recording, the caps show whatever is held right now; a key pressed
- * with its modifiers commits, Escape cancels, and so does losing focus.
+ * place. While recording the button stays pressed and the caps show whatever is
+ * held right now; a key pressed with its modifiers commits, Escape, losing focus
+ * or clicking Change again cancels. Nothing else changes shape.
  */
 const props = defineProps<{
   modelValue: string
@@ -88,17 +89,16 @@ const shown = computed(() => (recording.value ? held.value : props.modelValue))
     <span
       ref="field"
       tabindex="-1"
-      class="inline-flex h-6 min-w-16 items-center justify-center rounded-md px-1 outline-none transition-[box-shadow,background-color] duration-200 ease-out"
-      :class="recording ? 'bg-surface-raised ring-1 ring-line-focus' : ''"
+      class="inline-flex h-6 items-center justify-end outline-none"
       :aria-label="recording ? 'Recording shortcut' : undefined"
       @keydown="recording && onKeydown($event)"
       @keyup="onKeyup"
       @blur="stop"
     >
       <KeyCap v-if="shown" :keys="shown" />
-      <span v-else class="select-none text-[11px] text-fg-subtle">Press keys</span>
+      <span v-else class="select-none text-[11px] text-fg-subtle">Press keys…</span>
     </span>
     <!-- mousedown would blur the field and stop recording before the click lands. -->
-    <span @mousedown.prevent><Button :size="size" @click="recording ? stop() : start()">{{ recording ? 'Cancel' : 'Change' }}</Button></span>
+    <span @mousedown.prevent><Button :size="size" :pressed="recording" @click="recording ? stop() : start()">Change</Button></span>
   </span>
 </template>
