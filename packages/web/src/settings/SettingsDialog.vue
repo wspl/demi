@@ -31,7 +31,13 @@ const usage = computed(() => ({
 </script>
 
 <template>
-  <SettingsDialog v-model:tab="tab" :is-open="true" :overlay-store="appOverlayStore" @close="resources.settingsOpen = false">
+  <SettingsDialog
+    v-model:tab="tab"
+    :is-open="true"
+    :overlay-store="appOverlayStore"
+    :account="{ name: resources.username || 'Zan', plan: 'Personal workspace' }"
+    @close="resources.settingsOpen = false"
+  >
     <SettingsAccount
       v-if="tab === 'Account'"
       v-model:name="resources.username"

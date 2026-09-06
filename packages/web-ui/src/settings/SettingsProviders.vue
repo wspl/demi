@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
+import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import SettingsGroup from './SettingsGroup.vue'
+import SettingsNote from './SettingsNote.vue'
+import SettingsPage from './SettingsPage.vue'
+import SettingsRow from './SettingsRow.vue'
 import type { SettingsProvider } from './types'
 
 defineProps<{
@@ -28,31 +32,35 @@ function add() {
 </script>
 
 <template>
-  <h3>Providers</h3>
-  <div v-for="provider in providers" :key="provider.id">
-    <div class="resource-row">
-      <div class="resource-description">
-        <strong>{{ provider.label }}</strong>
-        <span>{{ provider.modelCount }} models · {{ provider.isAvailable ? 'Available' : 'Unavailable' }}</span>
+  <SettingsPage title="Providers" description="Where conversations get their models. Off keeps a provider configured but out of the picker.">
+    <SettingsGroup title="Providers">
+      <SettingsRow
+        v-for="provider in providers"
+        :key="provider.id"
+        :label="provider.label"
+        :description="`${provider.modelCount} ${provider.modelCount === 1 ? 'model' : 'models'} · ${provider.isAvailable ? 'Available' : 'Unavailable'}`"
+      >
+        <Button variant="ghost" size="sm" @click="emit('test', provider.id)">Test</Button>
+        <Button variant="ghost" size="sm" @click="emit('remove', provider.id)">Remove</Button>
+        <Switch
+          :model-value="provider.isAvailable"
+          size="sm"
+          class="ml-1"
+          @update:model-value="(value) => emit('setAvailable', provider.id, value)"
+        />
+      </SettingsRow>
+      <div v-if="!providers.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
+        No providers yet.
       </div>
-      <div class="resource-actions">
-        <Button @click="emit('test', provider.id)">Test</Button>
-        <Button @click="emit('remove', provider.id)">Remove</Button>
-      </div>
-    </div>
-    <Checkbox
-      :model-value="provider.isAvailable"
-      label="Available for conversations"
-      @update:model-value="(value) => emit('setAvailable', provider.id, value)"
-    />
-  </div>
-  <p v-if="!providers.length" class="empty-note">No providers.</p>
-  <form class="add-resource" @submit.prevent="add">
-    <label>
-      New provider
-      <TextInput v-model="label" placeholder="Provider name" required maxlength="64" />
-    </label>
-    <Button :disabled="!label.trim()" @click="add">Add provider</Button>
-  </form>
-  <p v-if="message" role="status" class="hint">{{ message }}</p>
+    </SettingsGroup>
+    <SettingsGroup title="Add a provider">
+      <form @submit.prevent="add">
+        <SettingsRow label="Provider name">
+          <TextInput v-model="label" placeholder="Anthropic" maxlength="64" class="w-56" />
+          <Button :disabled="!label.trim()" @click="add">Add provider</Button>
+        </SettingsRow>
+      </form>
+    </SettingsGroup>
+    <SettingsNote v-if="message" :text="message" />
+  </SettingsPage>
 </template>
