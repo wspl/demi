@@ -8,6 +8,8 @@ export interface SettingsNavItem {
   id: SettingsTab
   label: string
   icon: Component
+  /** What the rail filter also matches: names of settings the section holds. */
+  keywords?: string[]
 }
 
 /** Sections grouped under a small caption, the way a long rail is read. */

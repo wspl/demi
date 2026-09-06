@@ -23,33 +23,33 @@ import type { SettingsNavGroup, SettingsProviderAccount, SettingsProviderEntry, 
 export const fullSettingsNav: SettingsNavGroup[] = [
   {
     items: [
-      { id: 'general', label: 'General', icon: Settings2 },
-      { id: 'account', label: 'Account', icon: CircleUser },
-      { id: 'notifications', label: 'Notifications', icon: Bell },
+      { id: 'general', label: 'General', icon: Settings2, keywords: ['language', 'theme', 'density', 'font size', 'send with', 'open at login', 'update channel'] },
+      { id: 'account', label: 'Account', icon: CircleUser, keywords: ['avatar', 'display name', 'email', 'plan', 'billing', 'sign out', 'delete account'] },
+      { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['sound', 'quiet hours', 'approval'] },
     ],
   },
   {
     label: 'Agent',
     items: [
-      { id: 'models', label: 'Models & providers', icon: Sparkles },
-      { id: 'agents', label: 'Agents', icon: Bot },
-      { id: 'permissions', label: 'Permissions', icon: ShieldCheck },
-      { id: 'instructions', label: 'Instructions & memory', icon: BookOpen },
-      { id: 'mcp', label: 'MCP servers', icon: Plug },
+      { id: 'models', label: 'Models & providers', icon: Sparkles, keywords: ['api key', 'anthropic', 'openai', 'claude code', 'codex', 'base url', 'catalog'] },
+      { id: 'agents', label: 'Agents', icon: Bot, keywords: ['model', 'mode', 'subagent', 'system prompt', 'tools'] },
+      { id: 'permissions', label: 'Permissions', icon: ShieldCheck, keywords: ['edit files', 'shell', 'allowlist', 'ask', 'scope'] },
+      { id: 'instructions', label: 'Instructions & memory', icon: BookOpen, keywords: ['agents.md', 'global instructions', 'memory', 'system prompt'] },
+      { id: 'mcp', label: 'MCP servers', icon: Plug, keywords: ['tools', 'transport', 'stdio', 'server'] },
     ],
   },
   {
     label: 'Workspace',
     items: [
-      { id: 'devices', label: 'Devices', icon: Monitor },
-      { id: 'keyboard', label: 'Keyboard', icon: Keyboard },
-      { id: 'data', label: 'Data & privacy', icon: Database },
-      { id: 'usage', label: 'Usage & billing', icon: Gauge },
+      { id: 'devices', label: 'Devices', icon: Monitor, keywords: ['pairing code', 'revoke', 'machine'] },
+      { id: 'keyboard', label: 'Keyboard', icon: Keyboard, keywords: ['shortcut', 'hotkey', 'binding'] },
+      { id: 'data', label: 'Data & privacy', icon: Database, keywords: ['transcripts', 'retention', 'share links', 'export', 'usage data', 'delete'] },
+      { id: 'usage', label: 'Usage & billing', icon: Gauge, keywords: ['plan', 'credits', 'invoices', 'spend', 'tokens'] },
     ],
   },
   {
     label: 'Advanced',
-    items: [{ id: 'developer', label: 'Developer', icon: Code }],
+    items: [{ id: 'developer', label: 'Developer', icon: Code, keywords: ['logs', 'log level', 'config file', 'environment', 'experiments'] }],
   },
 ]
 
