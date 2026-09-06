@@ -343,8 +343,9 @@ function setAll(p: MockProvider, enabled: boolean) {
                 <span class="ml-auto"><Tooltip content="Refresh the list"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" /></Tooltip></span>
               </header>
             </template>
+            <!-- Only a models.dev vendor has a catalog; a bare endpoint lists what you add. -->
             <SettingsRow
-              v-if="selected.kind === 'api_key'"
+              v-if="selected.kind === 'api_key' && selected.vendorId"
               label="Source"
               :description="selected.modelSource === 'catalog' ? `Fetched ${selected.catalogFetched}` : undefined"
             >
