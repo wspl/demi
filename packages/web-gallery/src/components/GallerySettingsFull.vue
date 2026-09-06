@@ -124,7 +124,7 @@ function rebind(id: string, keys: string) {
   const list = s.value.keys
   const target = list.find((b) => b.id === id)
   if (!target) return
-  const taken = keys ? list.find((b) => b.id !== id && b.keys === keys) : undefined
+  const taken = list.find((b) => b.id !== id && b.keys === keys)
   if (taken) {
     showToast({ title: `${keys} is taken`, message: `Already bound to “${taken.action}”. Remove it there first.`, tone: 'danger' })
     return
