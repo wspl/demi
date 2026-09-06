@@ -1,52 +1,41 @@
 <script setup lang="ts">
-import { Folder, MessageSquare, Plus, Search, Settings } from '@lucide/vue'
+import { Check } from '@lucide/vue'
+import Switch from '@demicodes/web-ui/ui/Switch.vue'
+import Tag from '@demicodes/web-ui/ui/Tag.vue'
 
 /**
- * A miniature of the app, drawn from the live theme tokens, so the appearance rows
- * beside it show their effect at once: surfaces from the tone, the selected row,
- * the send button and the focus ring from the accent, text at the chosen size.
+ * What the appearance rows change, shown as itself rather than as a miniature app:
+ * a passage at the chosen text size, the tone's stack of surfaces, and the controls
+ * that take the accent. Everything reads the live tokens, so it follows each choice.
  */
 defineProps<{
-  /** Transcript text size in px, as the setting would apply it. */
+  /** Transcript text size in px. */
   fontSize?: number
 }>()
 </script>
 
 <template>
-  <div class="flex aspect-[3/4] w-56 select-none overflow-hidden rounded-xl border border-line bg-surface-base text-fg" aria-hidden="true">
-    <!-- Sidebar -->
-    <div class="flex w-[38%] shrink-0 flex-col gap-1 border-r border-line bg-surface p-2">
-      <div class="flex h-5 items-center gap-1 rounded bg-surface-raised px-1.5 text-[8px] text-fg-subtle ring-1 ring-line">
-        <Search :size="8" />
-        <span>Search</span>
-      </div>
-      <div class="mt-1 flex h-5 items-center gap-1 rounded px-1.5 text-[8px] text-fg-muted">
-        <Plus :size="8" />
-        <span>New</span>
-      </div>
-      <div class="px-1.5 pt-1 text-[7px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Projects</div>
-      <div class="flex h-5 items-center gap-1 rounded px-1.5 text-[8px] text-fg-muted"><Folder :size="8" /><span class="truncate">demi</span></div>
-      <div class="flex h-5 items-center gap-1 rounded bg-active px-1.5 text-[8px] text-fg-emphasis"><MessageSquare :size="8" /><span class="truncate">Providers page</span></div>
-      <div class="flex h-5 items-center gap-1 rounded px-1.5 text-[8px] text-fg-muted"><MessageSquare :size="8" /><span class="truncate">Scroll areas</span></div>
-      <div class="flex h-5 items-center gap-1 rounded px-1.5 text-[8px] text-fg-muted"><MessageSquare :size="8" /><span class="truncate">Accent palette</span></div>
-      <div class="mt-auto flex h-5 items-center gap-1 rounded px-1.5 text-[8px] text-fg-muted"><Settings :size="8" /><span>Settings</span></div>
+  <div class="flex aspect-[3/4] w-56 select-none flex-col gap-3 rounded-xl border border-line bg-surface p-4 text-fg" aria-hidden="true">
+    <!-- Text at size -->
+    <div class="flex min-h-0 flex-1 flex-col gap-1.5">
+      <div class="font-medium leading-none text-fg-emphasis" :style="{ fontSize: `${(fontSize ?? 15) * 1.6}px` }">Aa</div>
+      <p class="line-clamp-4 text-fg-body" :style="{ fontSize: `${fontSize ?? 15}px`, lineHeight: 1.5 }">
+        The quick brown fox jumps over the lazy dog while the model streams its reply.
+      </p>
     </div>
-    <!-- Transcript and composer -->
-    <div class="flex min-w-0 flex-1 flex-col bg-surface-base">
-      <div class="flex flex-1 flex-col gap-2 p-2.5" :style="{ fontSize: `${(fontSize ?? 15) * 0.55}px`, lineHeight: 1.45 }">
-        <div class="ml-auto max-w-[85%] rounded-lg bg-surface-raised px-2 py-1 text-fg">Make the accent follow the settings.</div>
-        <div class="max-w-[95%] text-fg-body">
-          Done. The sidebar selection, the send button and focus rings now take the accent; surfaces follow the tone.
-        </div>
-        <div class="flex items-center gap-1 text-fg-subtle" :style="{ fontSize: '0.8em' }">
-          <span class="inline-block size-1.5 rounded-full bg-on-success" />
-          <span>Edited 2 files</span>
-        </div>
-      </div>
-      <div class="m-2 mt-0 flex h-9 items-end justify-between rounded-lg bg-surface-raised p-1.5 ring-1 ring-line-focus">
-        <span class="text-[8px] text-fg-subtle">Reply…</span>
-        <span class="btn-primary flex size-4 items-center justify-center rounded-md text-[8px] text-white">↑</span>
-      </div>
+    <!-- Tone: the surfaces stacked -->
+    <div class="flex gap-1.5">
+      <div class="h-12 flex-1 rounded-md bg-surface-base ring-1 ring-line-subtle" />
+      <div class="h-12 flex-1 rounded-md bg-surface ring-1 ring-line-subtle" />
+      <div class="h-12 flex-1 rounded-md bg-surface-raised ring-1 ring-line-subtle" />
+      <div class="h-12 flex-1 rounded-md bg-surface-float ring-1 ring-line-subtle" />
     </div>
+    <!-- Accent: the controls that carry it -->
+    <div class="flex items-center gap-2">
+      <span class="btn-primary inline-flex h-6 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-white"><Check :size="12" /> Send</span>
+      <Tag tone="accent">Selected</Tag>
+      <Switch :model-value="true" size="sm" class="ml-auto" />
+    </div>
+    <div class="flex h-7 items-center rounded-md bg-surface-raised px-2 text-[12px] text-fg-subtle ring-1 ring-line-focus">Focused</div>
   </div>
 </template>
