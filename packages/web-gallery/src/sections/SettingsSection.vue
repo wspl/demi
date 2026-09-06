@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import ChangeEmailDialog, { type ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
+import ChangePasswordDialog, { type ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
@@ -16,6 +18,7 @@ const anatomy: [string, string][] = [
   ['Dialogs', 'A dialog that opens from a page keeps its title, search and buttons in place; only the list or form between them scrolls.'],
   ['Readouts', 'A value the control produces (a size, a temperature) reads out beside the control, never in the explanation under the label.'],
   ['Providers', 'A bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed and dotted green once signed in, red when broken; an API key is dotted only while it needs attention. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider, signing in, and adding or editing a model open dialogs.'],
+  ['Credentials', 'Changing the email asks for the new address and the current password, then a code sent to the new address. Changing the password asks for the current one and the new one twice; length and the match are checked in the dialog, the current password by the server.'],
   ['Sign-in', 'Each subscription signs in the way its vendor does. Claude Code prints a token from its own CLI, so the dialog walks through install, command and paste. Codex confirms a device code in the browser while the dialog waits. Grok Build shows a code the user copies back.'],
 ]
 
@@ -44,6 +47,21 @@ const claudePhase = ref('token')
 const codexPhase = ref('device')
 const grokPhase = ref('code-input')
 const phaseOf = (list: { value: string; phase: ProviderLoginPhase }[], value: string) => list.find((p) => p.value === value)!.phase
+
+const emailPhases: { value: string; label: string; phase: ChangeEmailPhase }[] = [
+  { value: 'form', label: 'Form', phase: { kind: 'form', currentEmail: 'zan@example.com' } },
+  { value: 'form-error', label: 'Wrong password', phase: { kind: 'form', currentEmail: 'zan@example.com', error: 'That is not your current password.' } },
+  { value: 'verify', label: 'Verify', phase: { kind: 'verify', email: 'zan@demi.codes' } },
+  { value: 'verify-error', label: 'Wrong code', phase: { kind: 'verify', email: 'zan@demi.codes', error: 'That code is not right. Check the newest message.' } },
+  { value: 'done', label: 'Done', phase: { kind: 'done', email: 'zan@demi.codes' } },
+]
+const emailPhase = ref('form')
+const passwordPhases: { value: string; label: string; phase: ChangePasswordPhase }[] = [
+  { value: 'form', label: 'Form', phase: { kind: 'form' } },
+  { value: 'error', label: 'Wrong password', phase: { kind: 'form', error: 'That is not your current password.' } },
+  { value: 'done', label: 'Done', phase: { kind: 'done' } },
+]
+const passwordPhase = ref('form')
 </script>
 
 <template>
@@ -73,6 +91,20 @@ const phaseOf = (list: { value: string; phase: ProviderLoginPhase }[], value: st
         <SettingsDialog v-model:tab="fullNarrowTab" :is-open="true" :overlay-store="appOverlayStore" :account="account" :sections="fullSettingsNav">
           <GallerySettingsFull :tab="fullNarrowTab" :state="full" />
         </SettingsDialog>
+      </GalleryOverlayWell>
+    </GallerySection>
+
+    <GallerySection title="Change email" note="The new address and the current password, then the code that proves the address is reachable.">
+      <div class="mb-3"><Segmented v-model="emailPhase" :options="emailPhases" /></div>
+      <GalleryOverlayWell size="lg">
+        <ChangeEmailDialog :is-open="true" :overlay-store="appOverlayStore" :phase="emailPhases.find((p) => p.value === emailPhase)!.phase" />
+      </GalleryOverlayWell>
+    </GallerySection>
+
+    <GallerySection title="Change password" note="The current password and the new one twice.">
+      <div class="mb-3"><Segmented v-model="passwordPhase" :options="passwordPhases" /></div>
+      <GalleryOverlayWell size="lg">
+        <ChangePasswordDialog :is-open="true" :overlay-store="appOverlayStore" :phase="passwordPhases.find((p) => p.value === passwordPhase)!.phase" />
       </GalleryOverlayWell>
     </GallerySection>
 
