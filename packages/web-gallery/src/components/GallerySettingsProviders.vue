@@ -61,7 +61,6 @@ const modelDialog = ref<{ mode: 'create' | 'edit' | 'view'; model: SettingsModel
 const modelDialogOpen = ref(false)
 const testing = ref<string | null>(null)
 
-const stateLabel = { ready: 'Connected', error: 'Key rejected', unreachable: 'Endpoint unreachable', 'signed-out': 'Signed out', disabled: 'Off' } as const
 const stateTone = { ready: 'success', error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: 'neutral' } as const
 const stateWord = { ready: 'Connected', error: 'Key rejected', unreachable: 'Unreachable', 'signed-out': 'Signed out', disabled: 'Off' } as const
 const wireOptions: { value: WireApi; label: string }[] = [
@@ -313,22 +312,11 @@ function setAll(p: MockProvider, enabled: boolean) {
 
         <!-- Existing provider -->
         <div v-else-if="selected" class="flex flex-col gap-6">
-          <!-- The rail already names the provider; the header states how it is doing. -->
-          <header class="flex h-8 flex-wrap items-center gap-x-3 gap-y-2">
-            <span class="flex min-w-0 flex-1 select-none items-center gap-2 text-[13px] text-fg-muted">
-              <span
-                class="size-1.5 shrink-0 rounded-full"
-                :class="{
-                  'bg-on-success': stateTone[selected.state] === 'success',
-                  'bg-on-warning': stateTone[selected.state] === 'warning',
-                  'bg-on-danger': stateTone[selected.state] === 'danger',
-                  'bg-fg-ghost': stateTone[selected.state] === 'neutral',
-                }"
-              />
-              <span class="truncate">{{ stateLabel[selected.state] }}</span>
-            </span>
+          <!-- The rail already carries the mark; the header names the provider and holds its actions. -->
+          <header class="flex h-8 flex-wrap items-center gap-x-1.5 gap-y-2">
+            <h3 class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
+            <Tooltip content="Rename"><IconButton :icon="TextCursorInput" variant="ghost" size="sm" aria-label="Rename provider" /></Tooltip>
             <div class="ml-auto flex items-center gap-1.5">
-              <Tooltip content="Rename"><IconButton :icon="TextCursorInput" size="sm" aria-label="Rename provider" /></Tooltip>
               <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove provider" /></Tooltip>
               <Switch v-model="selected.enabled" size="sm" class="ml-2" />
             </div>
@@ -337,10 +325,9 @@ function setAll(p: MockProvider, enabled: boolean) {
           <!-- Accounts (subscription) -->
           <SettingsGroup v-if="selected.kind === 'subscription'" title="Accounts" description="One account is active at a time; every conversation on this provider uses it.">
             <SettingsRow v-for="account in selected.accounts" :key="account.id" :label="account.label" compact>
-              <template #tags><Tag v-if="account.active" tone="accent">Active</Tag><Tag v-if="account.quota && account.quota.hour.used >= 100" tone="danger">Limit reached</Tag></template>
-              <template #description>
-                <span>{{ account.plan }}</span>
-                <div v-if="account.quota" class="mt-1.5 grid max-w-72 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11px] tabular-nums">
+              <template #tags><Tag>{{ account.plan }}</Tag><Tag v-if="account.active" tone="accent">Active</Tag><Tag v-if="account.quota && account.quota.hour.used >= 100" tone="danger">Limit reached</Tag></template>
+              <template v-if="account.quota" #description>
+                <div class="mt-1 grid max-w-72 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11px] tabular-nums">
                   <span>5 h</span>
                   <Meter :value="account.quota.hour.used" :max="account.quota.hour.max" label="5-hour window" />
                   <span>{{ account.quota.hour.used }}% · resets {{ account.quota.hour.resets }}</span>
