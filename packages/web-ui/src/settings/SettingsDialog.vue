@@ -51,7 +51,9 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
 <template>
   <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="xl" label="Settings" @close="emit('close')">
     <!-- The query container must be an ancestor of what it sizes, so it wraps the row. -->
-    <div class="@container h-[36rem] max-h-full">
+    <!-- min-h-0 lets the body shrink to the panel's cap, so the rail and the page scroll
+         on their own instead of the whole dialog. -->
+    <div class="@container h-[36rem] min-h-0 shrink">
     <div class="flex h-full flex-col overflow-hidden @md:flex-row">
       <!-- Wide: a rail beside the page. Narrow: a compact header and the sections in one row or a picker. -->
       <aside class="flex shrink-0 flex-col bg-surface @md:w-56 @md:gap-3 @md:overflow-y-auto @md:px-3 @md:py-3">
@@ -140,7 +142,7 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
           </Dropdown>
         </div>
       </aside>
-      <section class="relative min-w-0 flex-1 overflow-y-auto px-5 py-6 @md:px-8 @md:py-8">
+      <section class="relative flex min-w-0 flex-1 flex-col overflow-y-auto px-5 py-6 @md:px-8 @md:py-8">
         <slot />
       </section>
     </div>
