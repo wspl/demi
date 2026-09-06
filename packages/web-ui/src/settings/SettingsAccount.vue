@@ -27,7 +27,7 @@ const emit = defineEmits<{
   <SettingsPage title="Account" description="How you appear, and how the app looks to you.">
     <SettingsGroup title="Profile">
       <SettingsRow label="Display name" description="Shown on your messages and in the sidebar.">
-        <TextInput v-model="name" maxlength="50" class="w-56" />
+        <TextInput v-model="name" maxlength="50" class="w-56 max-w-full" />
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Appearance">
