@@ -391,3 +391,8 @@ html[data-theme="light"][data-accent="violet"] {
   --tint-accent: oklch(52% 0.16 305 / 0.1);
   --line-focus: oklch(48% 0.15 305);
 }
+
+/* Gallery accents remap --on-accent; the fill follows, darker and more saturated. */
+html[data-theme="dark"][data-accent] {
+  --accent-fill: oklch(from var(--on-accent) 55% calc(c + 0.06) h);
+}
