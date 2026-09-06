@@ -108,7 +108,7 @@ function onKeydown(event: KeyboardEvent) {
       <span class="absolute inset-0 rounded-full bg-overlay/10" />
       <span
         class="absolute inset-y-0 left-0 rounded-full"
-        :style="{ width: `${progress * 100}%`, background: 'var(--on-accent)' }"
+        :style="{ width: `${progress * 100}%`, background: 'var(--accent-fill)' }"
       />
       <span
         class="slider-thumb absolute top-1/2 size-3 rounded-full bg-white shadow-sm ring-1 ring-line"
