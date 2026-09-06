@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { X } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
@@ -79,12 +78,9 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
 <template>
   <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" :label="title" @close="emit('close')">
     <div class="flex flex-col gap-4 p-5">
-      <header class="flex select-none items-center justify-between gap-3">
-        <div class="min-w-0">
-          <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
-          <p v-if="mode === 'view'" class="mt-0.5 font-mono text-[12px] text-fg-subtle">{{ draft.id }}</p>
-        </div>
-        <Button v-if="mode === 'view'" size="sm" @click="emit('close')"><X :size="14" /></Button>
+      <header class="min-w-0 select-none pr-10">
+        <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
+        <p v-if="mode === 'view'" class="mt-0.5 font-mono text-[12px] text-fg-subtle">{{ draft.id }}</p>
       </header>
 
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
