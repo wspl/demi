@@ -18,6 +18,7 @@ import { createSettingsState, fullSettingsNav } from '../fixtures/settings'
 const anatomy: [string, string][] = [
   ['Shell', 'One large dialog. The rail sits on the page surface with the account on top, the page on the dialog surface, so it reads like the app itself. Below a phone width the rail becomes a row.'],
   ['Page', 'A title, one line under it, then titled groups. A group is a card of rows: label and explanation left, the control right.'],
+  ['Dialogs', 'A dialog that opens from a page keeps its title, search and buttons in place; only the list or form between them scrolls.'],
   ['Readouts', 'A value the control produces (a size, a temperature) reads out beside the control, never in the explanation under the label.'],
   ['Account', 'Display name, appearance, and the session.'],
   ['Devices', 'Every claimed device with its presence, plus the form that claims another. Outcomes of an action land under the form.'],
