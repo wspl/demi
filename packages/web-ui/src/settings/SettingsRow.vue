@@ -22,7 +22,7 @@ const emit = defineEmits<{
   <div
     class="flex items-center gap-y-2 @sm:flex-nowrap"
     :class="[
-      inset ? 'min-h-9 flex-nowrap gap-x-3 bg-overlay/[0.025] py-1.5 pl-9 pr-3' : compact ? 'min-h-10 flex-wrap gap-x-3 px-3 py-1.5' : 'min-h-14 flex-wrap gap-x-4 px-4 py-3',
+      inset ? 'min-h-9 flex-nowrap gap-x-3 bg-overlay/[0.025] py-1.5 pl-7 pr-4' : compact ? 'min-h-10 flex-wrap gap-x-3 px-3 py-1.5' : 'min-h-14 flex-wrap gap-x-4 px-4 py-3',
       interactive ? 'cursor-default transition-colors duration-200 ease-out hover:bg-overlay/[0.03]' : '',
     ]"
     @click="interactive && emit('click')"
