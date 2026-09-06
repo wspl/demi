@@ -73,6 +73,59 @@ export interface SettingsVendor {
   logo: string
 }
 
+/** `unconfigured` is a fresh entry that still needs its key or login. */
+export type SettingsProviderState = 'ready' | 'unconfigured' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
+
+/** A model a provider offers, as the page lists and toggles it. */
+export interface SettingsProviderModel extends SettingsModelDraft {
+  enabled: boolean
+}
+
+export interface SettingsQuotaWindow {
+  used: number
+  max: number
+  resets: string
+}
+
+export interface SettingsProviderAccount {
+  id: string
+  label: string
+  plan: string
+  active: boolean
+  /** Rate-window quotas, when the vendor exposes them. */
+  quota: { hour: SettingsQuotaWindow; week: SettingsQuotaWindow } | null
+}
+
+/**
+ * A provider as the settings page shows and edits it. The page edits fields in
+ * place (name, endpoint, key, enabled, model toggles) and emits everything that
+ * needs the host: adding, removing, signing in, testing, refreshing, saving a model.
+ */
+export interface SettingsProviderEntry {
+  id: string
+  name: string
+  kind: 'api_key' | 'subscription'
+  /** models.dev vendor; null for a bare endpoint. */
+  vendorId: string | null
+  baseUrl: string
+  wireApi: SettingsWireApi
+  apiKey: string
+  /** Where the model list comes from: the vendor catalog, or ids the user typed. */
+  modelSource: 'catalog' | 'manual'
+  catalogFetched: string | null
+  stale: boolean
+  state: SettingsProviderState
+  /** What went wrong, from the last test or request. */
+  detail?: string
+  /** How long the last successful test took, formatted by the host. */
+  testedIn?: string
+  enabled: boolean
+  models: SettingsProviderModel[]
+  accounts: SettingsProviderAccount[]
+  /** The vendor mark; null falls back to an initial. */
+  logo: string | null
+}
+
 export const THINKING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as const
 
 export const EXTENSION_PRESETS: { id: string; label: string; extensions: string[] }[] = [
