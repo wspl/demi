@@ -104,6 +104,17 @@ function addProvider(vendor: SettingsVendor) {
   select(id)
 }
 
+function removeProvider(id: string) {
+  const list = s.value.providers
+  const index = list.findIndex((p) => p.id === id)
+  if (index < 0) return
+  list.splice(index, 1)
+  if (s.value.selectedProviderId === id) {
+    const next = list.find((p) => p.kind === 'api_key') ?? list[0]
+    s.value.selectedProviderId = next?.id ?? null
+  }
+}
+
 function addEndpoint(wireApi: WireApi) {
   const id = `p-${Date.now()}`
   s.value.providers.push(provider({
@@ -208,7 +219,7 @@ function setAll(p: MockProvider, enabled: boolean) {
 </script>
 
 <template>
-  <SettingsPage wide fill title="Models & providers" description="Where conversations get their models. Pick a provider to edit its connection and the models it offers.">
+  <SettingsPage wide fill title="Models & providers">
     <SettingsSplit v-model:detail-open="detailOpen" :detail-title="selected?.name">
       <template #list>
         <div class="select-none px-1 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Subscriptions</div>
@@ -235,7 +246,9 @@ function setAll(p: MockProvider, enabled: boolean) {
           :selected="p.id === s.selectedProviderId"
           :badge="apiKeyBadge[p.state]"
           :muted="!p.enabled"
+          removable
           @select="select(p.id)"
+          @remove="removeProvider(p.id)"
         >
           <template #leading><VendorMark :label="p.name" :src="p.logo" size="sm" /></template>
         </SettingsListItem>
@@ -265,7 +278,6 @@ function setAll(p: MockProvider, enabled: boolean) {
                     <Tooltip v-if="selected.kind === 'api_key'" content="Rename"><IconButton :icon="TextCursorInput" variant="ghost" size="sm" aria-label="Rename provider" @click="beginRename" /></Tooltip>
                   </template>
                   <div class="ml-auto flex items-center gap-1.5">
-                    <Tooltip v-if="selected.kind === 'api_key'" content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove provider" /></Tooltip>
                     <Switch v-model="selected.enabled" size="sm" class="ml-2" />
                   </div>
                 </div>
@@ -290,14 +302,15 @@ function setAll(p: MockProvider, enabled: boolean) {
               <Tooltip content="Remove account"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove account" /></Tooltip>
             </SettingsRow>
             <div v-if="!selected.accounts.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No account yet. Sign in to use this provider.</div>
-            <SettingsRow label="Add account" description="Signs in with the vendor's own login.">
+            <SettingsRow label="Add account">
               <Button variant="primary" size="sm" @click="beginLogin(selected!)">Sign in</Button>
             </SettingsRow>
             </template>
 
             <!-- Connection (API key) -->
             <template v-else>
-            <SettingsRow label="Base URL" :description="vendorOf(selected) ? `${vendorOf(selected)!.name} on models.dev · ${wireLabel(selected.wireApi)}` : 'Custom endpoint'">
+            <SettingsRow label="Base URL">
+              <template #tags><Tag>{{ wireLabel(selected.wireApi) }}</Tag></template>
               <TextInput v-model="selected.baseUrl" class="w-72 max-w-full" />
             </SettingsRow>
             <SettingsRow v-if="!vendorOf(selected)" label="Protocol">
@@ -310,7 +323,7 @@ function setAll(p: MockProvider, enabled: boolean) {
                 </template>
               </Dropdown>
             </SettingsRow>
-            <SettingsRow label="API key" :description="selected.vendorId ? undefined : 'Local endpoints usually need none. (Optional)'">
+            <SettingsRow label="API key" :description="selected.vendorId ? undefined : 'Optional'">
               <TextInput :model-value="selected.keyHint ? 'sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b' : ''" type="password" placeholder="sk-…" class="w-72 max-w-full" />
             </SettingsRow>
             <SettingsRow label="Test connection">
@@ -334,7 +347,7 @@ function setAll(p: MockProvider, enabled: boolean) {
             <SettingsRow
               v-if="selected.kind === 'api_key'"
               label="Source"
-              :description="selected.modelSource === 'catalog' ? `From the vendor catalog · fetched ${selected.catalogFetched}` : 'Models you add by id. Fill in their capabilities so the composer offers the right controls.'"
+              :description="selected.modelSource === 'catalog' ? `Fetched ${selected.catalogFetched}` : undefined"
             >
               <template #tags><Tag v-if="selected.stale" tone="warning">Stale</Tag></template>
               <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh the catalog"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" /></Tooltip>

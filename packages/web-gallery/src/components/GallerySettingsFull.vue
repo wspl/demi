@@ -64,7 +64,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
   <!-- General -->
   <SettingsPage v-if="tab === 'general'" title="General" description="Language, look, and how the app starts.">
     <SettingsGroup title="Appearance">
-      <SettingsRow label="Language" description="Menus and messages from the app. Model output is unaffected.">
+      <SettingsRow label="Language" description="The app's own text. Model output is unaffected.">
         <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Language">
           <template #trigger>{{ s.general.language }}</template>
           <template #content="{ close }">
@@ -74,16 +74,16 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
           </template>
         </Dropdown>
       </SettingsRow>
-      <SettingsRow label="Theme" description="System follows the OS and switches with it.">
+      <SettingsRow label="Theme">
         <Segmented v-model="s.general.theme" :options="themeOptions" />
       </SettingsRow>
-      <SettingsRow label="Density" description="Spacing of lists, rows and the transcript.">
+      <SettingsRow label="Density">
         <Segmented
           v-model="s.general.density"
           :options="[{ value: 'compact', label: 'Compact' }, { value: 'regular', label: 'Regular' }, { value: 'comfortable', label: 'Comfortable' }]"
         />
       </SettingsRow>
-      <SettingsRow label="Transcript text size" description="Messages only. The rest of the app keeps its size.">
+      <SettingsRow label="Transcript text size" description="Messages only.">
         <Slider v-model="s.general.fontSize" :min="12" :max="18" :value-label="`${s.general.fontSize}px`" class="w-48" />
       </SettingsRow>
     </SettingsGroup>
@@ -93,7 +93,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Startup & updates">
-      <SettingsRow label="Open at login" description="Start Demi when you sign in to this Mac.">
+      <SettingsRow label="Open at login">
         <Switch v-model="s.general.openAtLogin" />
       </SettingsRow>
       <SettingsRow label="Update channel" description="Beta builds arrive about a week early.">
@@ -114,14 +114,14 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
   <!-- Account -->
   <SettingsPage v-else-if="tab === 'account'" title="Account" description="Who you are here, and what your plan covers.">
     <SettingsGroup title="Profile">
-      <SettingsRow label="Avatar" description="Shown in the sidebar and on shared transcripts.">
+      <SettingsRow label="Avatar">
         <span class="flex size-8 items-center justify-center rounded-full bg-tint-accent text-[13px] font-medium text-on-accent">Z</span>
         <Button size="sm">Change</Button>
       </SettingsRow>
       <SettingsRow label="Display name">
         <TextInput v-model="s.account.name" class="w-56 max-w-full" />
       </SettingsRow>
-      <SettingsRow label="Email" description="Sign-in and receipts go here.">
+      <SettingsRow label="Email">
         <template #tags><Tag tone="success">Verified</Tag></template>
         <span class="text-chrome text-fg-muted">{{ s.account.email }}</span>
         <Button size="sm">Change</Button>
@@ -142,7 +142,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       </div>
     </SettingsGroup>
     <SettingsGroup title="Session">
-      <SettingsRow label="Sign out" description="Ends this browser's session. Conversations stay on the server.">
+      <SettingsRow label="Sign out" description="Conversations stay on the server.">
         <Button>Sign out</Button>
       </SettingsRow>
     </SettingsGroup>
@@ -156,10 +156,10 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
   <!-- Notifications -->
   <SettingsPage v-else-if="tab === 'notifications'" title="Notifications" description="When the agent needs you, or is done.">
     <SettingsGroup title="Delivery">
-      <SettingsRow label="Desktop notifications" description="Through the system notification center.">
+      <SettingsRow label="Desktop notifications">
         <Switch v-model="s.notifications.desktop" />
       </SettingsRow>
-      <SettingsRow label="Sound" description="Plays once per event while the window is in the background.">
+      <SettingsRow label="Sound" description="Only while the window is in the background.">
         <Switch v-model="s.notifications.sound" :class="s.notifications.desktop ? '' : 'pointer-events-none opacity-40'" />
       </SettingsRow>
     </SettingsGroup>
@@ -360,7 +360,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
   </SettingsPage>
 
   <!-- Keyboard -->
-  <SettingsPage v-else-if="tab === 'keyboard'" title="Keyboard" description="Shortcuts across the app. Click one to change it.">
+  <SettingsPage v-else-if="tab === 'keyboard'" title="Keyboard" description="Click one to change it.">
     <SettingsGroup title="Shortcuts">
       <SettingsRow v-for="binding in s.keys" :key="binding.id" :label="binding.action" :description="binding.conflict ? `Also bound to ${binding.conflict}. The first match wins.` : undefined">
         <template #tags><Tag v-if="binding.conflict" tone="danger">Conflict</Tag></template>
@@ -369,7 +369,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup>
-      <SettingsRow label="Reset all shortcuts" description="Back to the defaults above.">
+      <SettingsRow label="Reset all shortcuts">
         <Button size="sm">Reset</Button>
       </SettingsRow>
     </SettingsGroup>

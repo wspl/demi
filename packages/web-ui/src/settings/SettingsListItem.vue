@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
+import { X } from '@lucide/vue'
+import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /** One entry in a SettingsSplit list: a mark or icon, the name, and a dot when its state matters. */
@@ -11,10 +13,13 @@ defineProps<{
   /** A dot on the mark's corner. Omit it when there is nothing to say. */
   badge?: 'success' | 'warning' | 'danger'
   muted?: boolean
+  /** Shows a remove button on hover; the entry's page carries no such action. */
+  removable?: boolean
 }>()
 
 const emit = defineEmits<{
   select: []
+  remove: []
 }>()
 </script>
 
@@ -22,7 +27,7 @@ const emit = defineEmits<{
   <div
     role="button"
     :aria-pressed="selected"
-    class="flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 transition-colors duration-200 ease-out"
+    class="group flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 transition-colors duration-200 ease-out"
     :class="[selected ? 'bg-active' : 'hover:bg-hover', muted ? 'opacity-60' : '']"
     @click="emit('select')"
   >
@@ -39,6 +44,9 @@ const emit = defineEmits<{
     <span class="flex min-w-0 flex-1 flex-col leading-4">
       <span class="truncate text-chrome" :class="selected ? 'text-fg-emphasis' : 'text-fg'">{{ label }}</span>
       <span v-if="detail" class="truncate text-[11px] text-fg-subtle">{{ detail }}</span>
+    </span>
+    <span v-if="removable" class="hidden shrink-0 group-hover:flex">
+      <IconButton :icon="X" variant="danger" size="xs" aria-label="Remove" @click.stop="emit('remove')" />
     </span>
   </div>
 </template>
