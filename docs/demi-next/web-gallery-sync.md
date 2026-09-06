@@ -15,13 +15,16 @@ browser package typechecks and checks affected specimens in the browser.
 | Host search, Cloud option and bound-device disabling | hosts/HostPicker | Main and attached picker specimens in Overlays |
 | Composer, model menu, attachments and input layout | SessionComposer, ModelMenu | GalleryComposer in Session |
 | Transcript blocks, markdown and tool output | Shared agent renderers | Session, Markdown and Code |
+| Settings shell, pages, groups, rows, split lists | settings/SettingsDialog, SettingsPage, SettingsGroup, SettingsRow, SettingsSplit, SettingsListItem | Settings full mock and narrow variant |
+| Models & providers: rail, provider page, add/model dialogs, login dialog | settings/SettingsProvidersPage, AddProviderDialog, ModelDialog, ProviderLoginDialog | GallerySettingsProviders over fixture state and mock handlers |
+| Text entry: prefix/suffix, secrets with an eye, token counts with a unit | TextInput, TokenInput | Primitives specimens |
 
 ## Product-flow coverage boundary
 
 The gallery is a component catalog, not a second application with copied stores.
 Host binding persistence, recent-directory selection and its file browser,
-archive/composer switching, routing, provider settings and the rich seeded
-conversation scenarios are assembled in `web`. Their complete workflows must be
+archive/composer switching, routing and the rich seeded conversation
+scenarios are assembled in `web`. Their complete workflows must be
 accepted in `web`; the gallery does not currently reproduce these composed
 workflows. A component specimen alone does not establish end-to-end parity.
 
@@ -29,4 +32,9 @@ The host menu composition in Overlays demonstrates the current row structure;
 its search picker is the actual shared component. The specimen does not connect
 devices or mutate application bindings. When a product composition becomes a
 reusable UI contract, extract it to `web-ui` and supply separate fixture/store
-adapters in each consumer instead of copying the implementation.
+adapters in each consumer instead of copying the implementation. This is the
+rule for every behavior, not only compositions: a control's affordance or a
+page's interaction built for one surface is generalized into `web-ui` before
+the checkpoint. The gallery's providers page is the model: `web-ui` owns the
+page and its dialogs over `SettingsProviderEntry` models, and the gallery only
+holds fixtures and mock handlers.

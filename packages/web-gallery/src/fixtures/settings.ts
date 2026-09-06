@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from '@lucide/vue'
-import type { SettingsNavGroup, SettingsVendor, SettingsWireApi } from '@demicodes/web-ui/settings/types'
+import type { SettingsNavGroup, SettingsProviderAccount, SettingsProviderEntry, SettingsProviderModel, SettingsProviderState, SettingsQuotaWindow, SettingsVendor, SettingsWireApi } from '@demicodes/web-ui/settings/types'
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
@@ -59,61 +59,20 @@ export type ServerState = 'connected' | 'auth' | 'crashed' | 'disabled'
 /** Wire protocols the openai family can speak; the others have one each. */
 export type WireApi = SettingsWireApi
 
-export interface MockModel {
-  id: string
-  /** Empty when the id is all we know. */
-  name: string
-  contextWindow: number | null
-  outputLimit: number | null
+/** The shared model plus what the mock knows but the page does not show. */
+export interface MockModel extends SettingsProviderModel {
   tools: boolean | null
-  /** Accepted attachment extensions; empty is text only. */
-  extensions: string[]
-  efforts: string[]
   defaultEffort: string | null
-  fastTier: string | null
-  enabled: boolean
 }
 
-export interface QuotaWindow {
-  used: number
-  max: number
-  resets: string
-}
+export type QuotaWindow = SettingsQuotaWindow
+export type MockAccount = SettingsProviderAccount
+export type MockProviderState = SettingsProviderState
 
-export interface MockAccount {
-  id: string
-  label: string
-  plan: string
-  active: boolean
-  /** Rate-window quotas, when the vendor exposes them. */
-  quota: { hour: QuotaWindow; week: QuotaWindow } | null
-}
-
-/** `unconfigured` is a fresh entry that still needs its key or login. */
-export type MockProviderState = 'ready' | 'unconfigured' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
-
-export interface MockProvider {
-  id: string
-  name: string
-  kind: 'api_key' | 'subscription'
+export interface MockProvider extends SettingsProviderEntry {
   /** Runtime family; subscriptions name their CLI vendor. */
   family: string
-  /** models.dev vendor; null for a custom endpoint. */
-  vendorId: string | null
-  baseUrl: string
-  wireApi: WireApi
-  keyHint: string
-  /** Where the model list comes from: the vendor catalog, or ids the user typed. */
-  modelSource: 'catalog' | 'manual'
-  catalogFetched: string | null
-  stale: boolean
-  state: MockProviderState
-  detail?: string
-  enabled: boolean
   models: MockModel[]
-  accounts: MockAccount[]
-  /** The vendor mark; null falls back to an initial. */
-  logo: string | null
 }
 
 export interface MockServer {
@@ -159,7 +118,7 @@ export function provider(partial: Partial<MockProvider> & Pick<MockProvider, 'id
     vendorId: null,
     baseUrl: '',
     wireApi: 'openai-chat',
-    keyHint: '',
+    apiKey: '',
     modelSource: 'catalog',
     catalogFetched: null,
     stale: false,
@@ -216,7 +175,7 @@ export function mockProviders(): MockProvider[] {
     provider({ id: 'grok-build', name: 'Grok Build', kind: 'subscription', family: 'grok-build', state: 'signed-out', logo: '/logos/xai.svg' }),
     provider({
       id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic', logo: '/logos/anthropic.svg',
-      baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', keyHint: 'sk-ant-…3f2a',
+      baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', apiKey: 'sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b', testedIn: '412 ms',
       catalogFetched: '14 min ago',
       models: [
         model({ id: 'claude-opus-4-1', name: 'Claude Opus 4.1', contextWindow: 200_000, outputLimit: 32_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'medium', 'high'], defaultEffort: 'high' }),
@@ -227,7 +186,7 @@ export function mockProviders(): MockProvider[] {
     }),
     provider({
       id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai', logo: '/logos/openai.svg',
-      baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', keyHint: 'sk-proj-…91ce',
+      baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', apiKey: 'sk-proj-91ce4a7b2d8f6e1c3a5b9d7f',
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: '3 days ago', stale: true,
       models: [
         model({ id: 'gpt-5', name: 'GPT-5', contextWindow: 400_000, outputLimit: 128_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['minimal', 'low', 'medium', 'high'], defaultEffort: 'medium', fastTier: 'priority' }),
@@ -236,7 +195,7 @@ export function mockProviders(): MockProvider[] {
     }),
     provider({
       id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: 'moonshotai', logo: '/logos/moonshotai.svg',
-      baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', keyHint: 'sk-…8c1d',
+      baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', apiKey: 'sk-8c1d5e2f9a7b3c6d4e1f0a9b', testedIn: '412 ms',
       modelSource: 'manual',
       models: [
         model({ id: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', contextWindow: 256_000, outputLimit: 32_000, tools: true, extensions: [], efforts: ['low', 'high'], defaultEffort: 'high' }),
@@ -245,13 +204,13 @@ export function mockProviders(): MockProvider[] {
     }),
     provider({
       id: 'ollama', name: 'Ollama', kind: 'api_key', family: 'openai', vendorId: null,
-      baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', keyHint: '',
+      baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', apiKey: '',
       modelSource: 'manual', state: 'unreachable', detail: 'connect ECONNREFUSED 127.0.0.1:11434',
       models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, extensions: [] })],
     }),
     provider({
       id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex', logo: '/logos/google-vertex.svg',
-      baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', keyHint: 'ya29.…', state: 'disabled', enabled: false,
+      baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', apiKey: 'ya29.a0AfB_byC1d2E3f4G5h6', state: 'disabled', enabled: false,
       catalogFetched: '1 h ago',
       models: [model({ id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1_000_000, outputLimit: 65_536, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'high'] })],
     }),

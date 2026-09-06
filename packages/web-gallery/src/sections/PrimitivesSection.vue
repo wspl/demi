@@ -21,6 +21,7 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 
 const query = ref('session cookie')
 const emptyQuery = ref('')
+const secret = ref('sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b')
 const tokens = ref<number | null>(200_000)
 const noTokens = ref<number | null>(null)
 const enabled = ref(true)
@@ -186,7 +187,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       </div>
     </GallerySection>
 
-    <GallerySection title="TextInput" note="Empty, filled, focus, and suffix.">
+    <GallerySection title="TextInput" note="Empty, filled, focus, a secret with its eye, and a suffix.">
       <div class="specimen-row">
         <GallerySpecimen variant="empty">
           <TextInput v-model="emptyQuery" placeholder="Search files" />
@@ -196,6 +197,9 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
         </GallerySpecimen>
         <GallerySpecimen variant="focused">
           <TextInput v-model="query" placeholder="Search files" focused />
+        </GallerySpecimen>
+        <GallerySpecimen variant="secret">
+          <TextInput v-model="secret" placeholder="sk-…" secret />
         </GallerySpecimen>
         <GallerySpecimen variant="suffix">
           <TextInput v-model="query" placeholder="With suffix">
