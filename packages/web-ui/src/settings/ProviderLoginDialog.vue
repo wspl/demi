@@ -38,7 +38,7 @@ const pasted = ref('')
 <template>
   <Dialog :is-open="isOpen" :overlay-store="overlayStore" :label="`Sign in to ${vendorName}`" @close="emit('close')">
     <div class="flex flex-col gap-5 p-5">
-      <header class="select-none">
+      <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Sign in to {{ vendorName }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           <template v-if="phase.kind === 'device'">Enter this code on the vendor's page. Demi keeps waiting here.</template>

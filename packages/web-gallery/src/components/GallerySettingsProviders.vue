@@ -58,6 +58,7 @@ const detailOpen = computed({
 const modelFilter = ref('')
 /** The model dialog: create or edit a manual model, or view a catalog one. */
 const modelDialog = ref<{ mode: 'create' | 'edit' | 'view'; model: SettingsModelDraft; original: MockModel | null } | null>(null)
+const modelDialogOpen = ref(false)
 const testing = ref<string | null>(null)
 
 const stateTone = { ready: 'success', error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: 'neutral' } as const
@@ -121,6 +122,7 @@ function toDraft(m: MockModel): SettingsModelDraft {
 }
 
 function openModel(mode: 'create' | 'edit' | 'view', m: MockModel | null) {
+  modelDialogOpen.value = true
   modelDialog.value = {
     mode,
     original: m,
@@ -137,7 +139,7 @@ function saveModel(draft: SettingsModelDraft) {
   } else if (!p.models.some((m) => m.id === draft.id)) {
     p.models.push({ ...draft, tools: true, defaultEffort: draft.efforts[0] ?? null, enabled: true })
   }
-  modelDialog.value = null
+  modelDialogOpen.value = false
 }
 
 /** The header checkbox over the visible models: all, none, or some of them on. */
@@ -160,10 +162,12 @@ function test(p: MockProvider) {
 
 // Sign-in runs in its own dialog; the mock walks the device-code flow to completion.
 const login = ref<{ provider: MockProvider; phase: ProviderLoginPhase } | null>(null)
+const loginOpen = ref(false)
 let loginTimer = 0
 
 function beginLogin(p: MockProvider) {
   window.clearTimeout(loginTimer)
+  loginOpen.value = true
   login.value = { provider: p, phase: { kind: 'starting' } }
   loginTimer = window.setTimeout(() => {
     if (!login.value) return
@@ -183,7 +187,7 @@ function closeLogin() {
     p.accounts.push({ id: `a-${Date.now()}`, label: 'zan@example.com', plan: 'Plus', active: true, quota: { hour: { used: 4, max: 100, resets: 'in 4 h 58 min' }, week: { used: 4, max: 100, resets: 'Monday' } } })
     p.state = 'ready'
   }
-  login.value = null
+  loginOpen.value = false
 }
 
 const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
@@ -393,7 +397,7 @@ function setAll(p: MockProvider, enabled: boolean) {
               <TextInput v-model="modelFilter" placeholder="Filter models" class="min-w-0 flex-1">
                 <template #prefix><Search :size="ICON_PX.in24" /></template>
               </TextInput>
-              <Button v-if="selected.modelSource === 'manual'" size="sm" @click="openModel('create', null)"><Plus :size="ICON_PX.in24" /> Add model</Button>
+              <Tooltip v-if="selected.modelSource === 'manual'" content="Add model"><IconButton :icon="Plus" aria-label="Add model" @click="openModel('create', null)" /></Tooltip>
             </div>
             <SettingsRow v-for="m in visibleModels(selected)" :key="m.id" :label="m.name || m.id" compact :class="m.enabled ? '' : 'opacity-60'">
               <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" :aria-label="`Enable ${m.name || m.id}`" /></template>
@@ -420,17 +424,17 @@ function setAll(p: MockProvider, enabled: boolean) {
 
     <ModelDialog
       v-if="modelDialog"
-      :is-open="true"
+      :is-open="modelDialogOpen"
       :overlay-store="appOverlayStore"
       :mode="modelDialog.mode"
       :model="modelDialog.model"
-      @close="modelDialog = null"
+      @close="modelDialogOpen = false"
       @save="saveModel"
     />
 
     <ProviderLoginDialog
       v-if="login"
-      :is-open="true"
+      :is-open="loginOpen"
       :overlay-store="appOverlayStore"
       :vendor-name="login.provider.name"
       :phase="login.phase"

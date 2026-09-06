@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ChevronDown, CircleUser, Gauge, Monitor, Sparkles, X } from '@lucide/vue'
+import { ChevronDown, CircleUser, Gauge, Monitor, Sparkles } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
-import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
@@ -56,9 +55,8 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
     <div class="flex h-full flex-col overflow-hidden @md:flex-row">
       <!-- Wide: a rail beside the page. Narrow: a compact header and the sections in one row or a picker. -->
       <aside class="flex shrink-0 flex-col bg-surface @md:w-56 @md:gap-3 @md:overflow-y-auto @md:px-3 @md:py-3">
-        <div class="flex h-11 select-none items-center justify-between pl-4 pr-2 @md:hidden">
+        <div class="flex h-11 select-none items-center pl-4 pr-12 @md:hidden">
           <span class="text-[15px] font-medium text-fg-emphasis">Settings</span>
-          <IconButton :icon="X" variant="ghost" aria-label="Close settings" @click="emit('close')" />
         </div>
         <div v-if="account" class="hidden h-9 select-none items-center gap-2 px-1.5 @md:flex">
           <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent">
@@ -143,9 +141,6 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
         </div>
       </aside>
       <section class="relative min-w-0 flex-1 overflow-y-auto px-5 py-6 @md:px-8 @md:py-8">
-        <div class="absolute right-3 top-3 hidden @md:block">
-          <IconButton :icon="X" variant="ghost" aria-label="Close settings" @click="emit('close')" />
-        </div>
         <slot />
       </section>
     </div>
