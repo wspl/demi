@@ -324,31 +324,34 @@ export class ChildSupervisor<State = unknown> {
    * subtree, and the settle loop that closes it when it is done.
    */
   private async startChild(record: AgentNodeRecord, profile: SubagentProfile<State>, firstMessage: QueuedMessage | null): Promise<ChildJob<State>> {
-    const parent = this.requireParent()
-    const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
-    let job: ChildJob<State> | null = null
-    const { node } = await this.options.assemble({
-      record,
-      cwd: this.options.cwd,
-      provider: parent.cloneProviderRuntime(),
-      model: profile.model ?? structuredClone(parent.modelSelection),
-      prompt: {
-        systemPrompt: profile.systemPrompt?.bind(this.options.deps.agent) ?? this.options.prompt.systemPrompt,
-        preamble: profile.systemPrompt ? undefined : this.options.prompt.preamble,
-      },
-      preambleSuffix: this.subagentPreamble(record.id, record.canSpawnSubagents),
-      commands: () => inherited,
-      shellEnv: { DEMI_SUBAGENT_ID: record.id, DEMI_PARENT_SESSION_ID: this.options.ownerId },
-      policy: CHILD_POLICY,
-      firstMessage,
-      onJobsChanged: () => job?.wake?.(),
-    })
-    job = this.attachNode(node, record)
-    const tracked = job
-    node.continue((turn) => this.trackTurn(tracked, turn))
-    await node.supervisor.restore()
-    void this.settleJob(job)
-    return job
+    const release = await this.options.deps.activity(this.options.tree.hostSessionId).enter()
+    try {
+      const parent = this.requireParent()
+      const inherited = profile.commands ? profile.commands([...this.options.parentCommands]) : [...this.options.parentCommands]
+      let job: ChildJob<State> | null = null
+      const { node } = await this.options.assemble({
+        record,
+        cwd: this.options.cwd,
+        provider: parent.cloneProviderRuntime(),
+        model: profile.model ?? structuredClone(parent.modelSelection),
+        prompt: {
+          systemPrompt: profile.systemPrompt?.bind(this.options.deps.agent) ?? this.options.prompt.systemPrompt,
+          preamble: profile.systemPrompt ? undefined : this.options.prompt.preamble,
+        },
+        preambleSuffix: this.subagentPreamble(record.id, record.canSpawnSubagents),
+        commands: () => inherited,
+        shellEnv: { DEMI_SUBAGENT_ID: record.id, DEMI_PARENT_SESSION_ID: this.options.ownerId },
+        policy: CHILD_POLICY,
+        firstMessage,
+        onJobsChanged: () => job?.wake?.(),
+      })
+      job = this.attachNode(node, record)
+      const tracked = job
+      node.continue((turn) => this.trackTurn(tracked, turn))
+      await node.supervisor.restore()
+      void this.settleJob(job)
+      return job
+    } finally { release() }
   }
 
   private attachNode(node: SessionNode<State>, record: AgentNodeRecord): ChildJob<State> {

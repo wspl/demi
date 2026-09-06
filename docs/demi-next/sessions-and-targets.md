@@ -47,8 +47,12 @@ In the hostless state the tool call runs in tinybash (`tinybash.md`), the
 backend's small shell: a GNU-faithful subset of bash and coreutils over the
 store-backed filesystem, plus the root commands dispatched through the
 in-process loader (`commands.md`): `demi file`, `demi todo`, `demi agent`
-and the rest work against `@demicodes/host-virtual`, a `Host` whose files
+and local observational leaves work against `@demicodes/host-virtual`, a `Host` whose files
 live in the conversation's store.
+
+Hostless eligibility and the synchronized cutover follow
+`execution-coordination.md`. Scripts that spawn/resume agents or execute on an
+attached Host acquire a machine before any statement runs.
 
 **The upgrade is silent, always.** The `bash` tool is described to the
 model as bash and nothing else; the model is never told about tinybash,
@@ -163,7 +167,7 @@ managed → hostless entrance: a conversation with a machine of its own
 never returns to hostless, on whichever target it stands — its files
 live in that machine's home, and the hostless tree it left is empty.
 
-At a turn boundary the backend re-resolves the Host, **attaches the
+With the whole conversation tree idle and file admission reserved, the backend re-resolves the Host, **attaches the
 departed host to the conversation** (below) with its directory as the
 attachment's working directory, and injects a context block stating the
 previous and new target and directory. Files are never moved by code
@@ -205,11 +209,9 @@ PRIMARY KEY (conversation_id, device_id)      UNIQUE (conversation_id, name)
   permission and draws no boundary — it is the same thing the main host
   carries between jobs, kept once per attached host.
 
-The attachment set is independent of the main host's state. A hostless,
-user-host, workspace or managed main host reaches its attached hosts the
-same way, attaching is offered in every state, and nothing in the product
-or the backend narrows the combination — a hostless conversation with
-attached hosts is not the expected shape, but it is a supported one.
+The attachment set is independent of the main host's state. Attaching is
+offered in every state. A hostless conversation may list attached hosts;
+executing on one acquires its own machine before the script starts.
 
 Attaching is the user's act alone: switching the target automatically
 attaches the departed host; the user attaches and detaches hosts on the
@@ -236,8 +238,8 @@ idiom over a pipe (`runner.md` § Pipes): `tar c . | demi host shell
 --host ci "tar x"` pushes, `demi host shell --host ci "tar c ." | tar x`
 pulls; there is no separate copy verb, `tar` already defines the
 semantics and the pipe carries it byte for byte. `tar` is a tinybash
-builtin (`tinybash.md` § Builtins), so a hostless conversation copies to
-and from its attached hosts without acquiring a machine.
+builtin (`tinybash.md` § Builtins). A cross-host pipeline acquires a machine
+before the script runs, following `execution-coordination.md`.
 
 The attachment set is the trust asymmetry's first answer inside the
 product (`overview.md`): the datacenter side reaches only the hosts a

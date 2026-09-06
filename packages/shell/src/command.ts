@@ -270,7 +270,7 @@ function parseArgs(
   return {
     path: [...path],
     help: false,
-    values: validateInput(input, values),
+    values: validateCommandValues(input, values),
     json,
   }
 }
@@ -486,7 +486,7 @@ function setParsedValue(values: Record<string, unknown>, field: string, value: u
   values[field] = [values[field], value]
 }
 
-function validateInput(input: CommandInputSpec, values: Record<string, unknown>): Record<string, unknown> {
+export function validateCommandValues(input: CommandInputSpec, values: Record<string, unknown>): Record<string, unknown> {
   const parsed: Record<string, unknown> = {}
   for (const [field, schema] of Object.entries(input)) {
     const candidate = coerceValue(schema, values[field])

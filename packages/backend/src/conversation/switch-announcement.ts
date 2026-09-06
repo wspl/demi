@@ -10,22 +10,29 @@ import { HOSTLESS_HOME } from './scoped-transport'
  * targets and directories, that no files were moved, and the departed host
  * under the name it stays attached as; after a change to the attached
  * hosts, the set as it now stands. Either block lists every attached host
- * with its directory. One announcement per change — pending state is
- * cleared on injection.
+ * with its directory. Each node observes the context revision in its own persisted transcript;
+ * no shared announcement is consumed.
  */
-export function switchAnnouncementPreamble(control: ControlService, registry: RunnerRegistry): AgentHarness<CodingState>['preamble'] {
+export function switchAnnouncementPreamble(control: ControlService, registry: RunnerRegistry): AgentHarness<CodingState>['context'] {
   return async (ctx) => {
-    const conversation = await control.getConversation(ctx.agentSessionId)
+    const conversation = await control.getConversation(ctx.rootSessionId)
     if (!conversation) return null
-    if (!conversation.pendingSwitch && !conversation.hostsChanged) return null
+    if (!conversation.contextVersion) return null
+    const marker = `[Execution context ${conversation.contextVersion}]`
+    if (ctx.transcript.blocks.some(block => block.type === 'user' && block.preamble?.includes(marker))) return null
     const attached = await control.listAttachedHosts(conversation.id)
-    const lines: string[] = []
+    const lines: string[] = [marker]
 
-    if (conversation.pendingSwitch) {
-      const { from, to } = conversation.pendingSwitch
+    const switchDescription = conversation.lastSwitch
+      ? `Previous target: ${await describe(control, conversation.lastSwitch.from)}. Current target: ${await describe(control, conversation.lastSwitch.to)}. New shells start in ${targetDirectory(conversation.lastSwitch.to, registry)}.`
+      : null
+    const previousSwitch = [...ctx.transcript.blocks].reverse().find(block => block.type === 'user' && block.preamble?.includes('[Execution target switched]'))
+    const switchObserved = switchDescription !== null && previousSwitch?.type === 'user' && previousSwitch.preamble?.includes(switchDescription)
+    if (conversation.lastSwitch && !switchObserved) {
+      const { from, to } = conversation.lastSwitch
       lines.push(
         '[Execution target switched]',
-        `Previous target: ${await describe(control, from)}. Current target: ${await describe(control, to)}. New shells start in ${targetDirectory(to, registry)}.`,
+        switchDescription!,
         'No files were moved: everything created earlier lives on the previous target, and file paths from before the switch — including the full outputs of earlier commands — are stale here.',
       )
       const departed = from.kind === 'hostless' ? null : attached.find((host) => host.deviceId === from.deviceId)
@@ -43,7 +50,6 @@ export function switchAnnouncementPreamble(control: ControlService, registry: Ru
     }
     lines.push(attachedHostsLine(attached, registry))
 
-    await control.clearPendingAnnouncements(conversation.id)
     return lines.join('\n')
   }
 }

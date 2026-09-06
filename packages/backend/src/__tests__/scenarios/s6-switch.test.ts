@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
+import { FakeProvisioner } from './fake-provisioner'
 import { World } from './world'
 import { itemsText } from './model'
 import { model } from './driver'
@@ -9,14 +10,16 @@ import { model } from './driver'
 // each, files are where each target keeps them, and the departed runner is
 // granted to the conversation.
 
+const fake = new FakeProvisioner()
 let world: World
 
 beforeAll(async () => {
-  world = await World.create({ runners: ['alpha'] })
+  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { hostsPerUser: 30 } } })
 })
 
 afterAll(async () => {
   await world.close()
+  await fake.close()
 })
 
 test('hostless → runner → hostless, files staying with their target', async () => {

@@ -4319,3 +4319,119 @@ bottom action opening the current directory. M13.1 remains in progress.
 
 - Applied Ink / Regular / Medium / Hairline to web and the gallery Demi preset. Extracted the selected CSS axis definitions into web-ui so the product and catalog consume one token source, without importing gallery into the product.
 - Three browser package typechecks passed. Browser confirmed the selected gallery axes; the existing gallery page was switched to Demi through its preset control.
+
+## Execution contracts (2026-09-05) — delivered
+
+Worktree: `/Users/zan/Projects/demi-worktrees/execution-contracts`; branch
+`codex/execution-contracts`, created from main and merged with the reviewed
+Demi Next baseline `f7ef6272`. The Web product work stays in its original tree.
+
+The audit ran 15 existing scoped backend tests (all passed) and five isolated
+scripted-provider probes. Reproduced: a different user's runner adding a todo
+to a known live session despite the HTTP route returning 404; target switch
+accepted while a child runs; an acknowledged upload lost during upgrade; a
+parent script reading the old filesystem after a child's upgrade; a cross-host
+child todo landing in the root's scope.
+
+Design: `execution-coordination.md`. Accepted early machine admission for
+spawn/resume and cross-host execution. Waiting for every old shell before a
+child-triggered upgrade was rejected: the parent shell may be awaiting that child.
+The final protocol binds callbacks to existing live jobs, preserves node scope,
+and uses tree-wide turn admission and conversation-wide cutover admission.
+
+Checkpoints: design record; RPC identity and scope; tree admission and node
+context; Hostless eligibility and cutover; scoped regressions and final review.
+Multi-worker fencing is a scaled-deployment item.
+
+### RPC identity checkpoint — delivered
+
+Runner protocol v8 carries `jobId` through the local relay and the runner wire.
+RemoteHost keeps immutable dispatched job environments in its existing live-job
+records; RunnerRegistry resolves a callback only on the authenticated device's
+live Host/job and verifies node and shell identity before creating pipes. Exit
+and disconnect invalidate the job and cancel its outstanding callbacks. Backend
+routing now selects the invoking Host from that record, verifies the node's root
+identity, and retains only node command trees instead of a last-created Host.
+Cross-host jobs preserve the originating node id. RPC arguments pass through the
+same command input validator used by local dispatch.
+
+Validation: typecheck passed; 56 tests across the scoped backend RPC/host-shell/
+subagent scenarios, runner, protocol, remote-host and command-loader suites
+passed. New regression cases cover another authenticated device using a known
+job, forged node/shell ids, unknown/exited jobs, and child todo scope through a
+cross-host command. All model traffic is scripted. Existing cancellation tests
+continue exercising expected broken-pipe teardown paths.
+
+### Tree admission and node context — delivered
+
+AgentServer owns one activity gate per conversation tree. All session actions
+and child assembly enter it; explicit target switches reserve an idle tree.
+Actions arriving during a reservation wait and retain their messages. Leases
+cover the final persistence flush and release on failures. Managed-host activity
+now considers every node, with atomic idle retirement still part of the cutover
+checkpoint.
+
+Execution-context revisions and the latest target switch remain in control
+storage. Each node records its own context in its persisted transcript before
+inference, including custom-profile nodes, retry, and resume. Context can be
+reconstructed after compaction. No node consumes a conversation-wide flag.
+
+Coverage: utils activity-gate tests exercise draining, queued entrants,
+cancellation and idempotent release; agent server tests exercise admission and
+persisted context; existing agent and backend switch suites verify lifecycle
+and target announcements. A test must wait for the final persistence flush after
+the client's idle frame before asserting that tree admission is free.
+
+Validation: typecheck and 302 scoped tests across 27 files passed.
+
+### Hostless admission, cutover and recovery — delivered
+
+The backend supplies root invocation eligibility to tinybash's preflight.
+Spawn/resume and cross-host execution acquire a machine before any statement;
+help and invalid invocations remain local. Root argv containing unexpanded globs
+conservatively requires a machine under this policy. Builtin globs are unchanged.
+The in-process cross-host execution branch was removed: these commands now
+require the authenticated calling machine job's pipes.
+
+Conversation file admission covers complete hostless commands, including those
+that outlive the tool observation window, and HTTP uploads. Upgrade exclusively
+drains admission before materialization; entrants resolve the committed Host.
+A 30-second drain timeout fails the new call without replaying or canceling an
+already admitted command. Explicit switches reserve both tree and file admission.
+
+Control storage records prepared and committed cutovers, with target binding and
+the committed state in one transaction. Startup recovers only those records:
+prepared attempts discard their uncommitted device and preserve source files;
+committed attempts retire source files and retain the machine. Retirement is
+idempotent and runs before serving requests.
+
+Managed idle retirement reserves owner trees, file access and borrowed-host
+commands. Registry job counts include dispatched jobs and spawns before the next
+pong. Concurrent machine wakes now join before token rotation. Multi-worker
+fencing remains outside this single-worker execution contract.
+
+New coverage includes preflight before a mutating prefix, variable/pipeline/glob
+admission, help without provisioning, parent/child reads in one script, uploads
+during a paused provision, prepared/committed restart recovery, idle-root active
+child admission, custom-profile execution context, and concurrent wake requests.
+Existing backend scenarios now provision local fake machines when starting from
+hostless with agent or cross-host commands. No real model is used.
+
+Validation before the final path cleanup: 991 passed, 6 environment-gated tests
+skipped across 91 files, plus typecheck. Final focused checks passed: 46 tests
+covering the removed cross-host branch, lifecycle/wake, upgrade and package
+boundaries. `upgrading-shell.test.ts` additionally proves a command that outlives
+its observation window holds cutover until its final file write. Typecheck and
+`git diff --check` pass.
+
+### Execution contracts — demi-next integration (2026-09-06)
+
+Merged `codex/execution-contracts` into `feat/demi-next` at its current baseline
+`4852477f`. Conflict resolution retains the current AGENTS.md Web/gallery
+synchronization rule, both implementation logs, and both utils exports (`reorder`
+and `activity-gate`).
+
+Validation on the merged tree: root typecheck and all three Web package
+typechecks passed; 993 tests passed, 6 gated tests skipped, 0 failed across 93
+files covering agent, backend, tinybash, Hosts, runner/protocol, command-loader,
+core, utils and coding-agent. Real-model test gates were unset.

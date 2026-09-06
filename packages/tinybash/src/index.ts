@@ -1,5 +1,5 @@
 import { shareByteStream } from '@demicodes/utils'
-import type { DispatchIO, RootPaths, TinybashFs, TinybashIO } from './host'
+import type { DispatchIO, RootAdmission, RootPaths, TinybashFs, TinybashIO } from './host'
 import type { Script } from './grammar/ast'
 import { parseScript } from './grammar/parser'
 import { checkScript } from './outside/check'
@@ -7,11 +7,12 @@ import { OutsideError, type OutsideReason, refusalMessage } from './outside/reas
 import { type ShellState, executeScript } from './exec/executor'
 
 export type { OutsideReason, ShellState }
-export type { DispatchIO, RootPaths, TinybashDirent, TinybashFs, TinybashIO, TinybashStat, TinybashWriter } from './host'
+export type { DispatchIO, RootAdmission, RootPaths, TinybashDirent, TinybashFs, TinybashIO, TinybashStat, TinybashWriter } from './host'
 export type { Script } from './grammar/ast'
 export { refusalMessage } from './outside/reasons'
 
 export interface TinybashInput {
+  admitRoot?: RootAdmission
   script: string
   /** Root names → the path-typed arguments of an invocation (argv without the root name). */
   roots: ReadonlyMap<string, RootPaths>
@@ -43,10 +44,10 @@ export type ParseResult = { kind: 'script'; script: Script } | TinybashOutside
  * that nothing before it could have affected, so fewer scripts are handed to
  * a machine for a `..` after a `cd` that plainly succeeds.
  */
-export async function parseTinybash(script: string, roots: ReadonlyMap<string, RootPaths>, namespace: readonly string[], state: Readonly<ShellState>, fs?: TinybashFs): Promise<ParseResult> {
+export async function parseTinybash(script: string, roots: ReadonlyMap<string, RootPaths>, namespace: readonly string[], state: Readonly<ShellState>, fs?: TinybashFs, admitRoot?: RootAdmission): Promise<ParseResult> {
   try {
     const parsed = parseScript(script)
-    await checkScript(parsed, { roots, namespace, scope: { home: state.home, cwd: state.cwd, vars: state.vars }, fs })
+    await checkScript(parsed, { roots, namespace, scope: { home: state.home, cwd: state.cwd, vars: state.vars }, fs, admitRoot })
     return { kind: 'script', script: parsed }
   } catch (error) {
     if (error instanceof OutsideError) return { kind: 'outside', reason: error.reason, message: refusalMessage(error.reason) }
@@ -55,7 +56,7 @@ export async function parseTinybash(script: string, roots: ReadonlyMap<string, R
 }
 
 export async function runTinybash(input: TinybashInput): Promise<TinybashResult> {
-  const parsed = await parseTinybash(input.script, input.roots, input.namespace, input.state, input.fs)
+  const parsed = await parseTinybash(input.script, input.roots, input.namespace, input.state, input.fs, input.admitRoot)
   if (parsed.kind === 'outside') return parsed
   const exitCode = await executeScript(parsed.script, {
     fs: input.fs,

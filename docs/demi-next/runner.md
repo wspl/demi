@@ -188,7 +188,7 @@ Relay and outputs:
 
 | Direction | Message | Purpose |
 |---|---|---|
-| r → b | `rpc_call { callId, agentSessionId, shellId, root, path, argv, args, json, cwd, env, stdin: boolean }` | an `rpc` command of some root invoked on this target; `stdin` says whether the process has a pipe on fd 0 |
+| r → b | `rpc_call { callId, jobId, agentSessionId, shellId, root, path, argv, args, json, cwd, env, stdin: boolean }` | an `rpc` command of some root invoked on this target; `stdin` says whether the process has a pipe on fd 0 |
 | b → r | `rpc_pipes { callId, stdin?, stdout }` | the call's pipe ends, sent before anything else for the call: the runner `PUT`s the process's pipe into `stdin` and `GET`s `stdout` into the process (§ Pipes) |
 | r → b | `rpc_stdin { callId, bytes }` / `rpc_stdin_end { callId }` | the live stdin the command is steered with (`shell_write`); never the pipe |
 | r → b | `rpc_cancel { callId }` | the invoking process or owning job ended; abort the backend handler, close its live stdin and fail its pipes |
@@ -318,10 +318,10 @@ streaming. Only the exit waits for the stdout stream to finish. The data
 connection is ordered, so the pipe rides it as the byte stream it is;
 the runner holds no more of it than an HTTP body in flight. The backend
 runs the leaf against the tree of the conversation `agentSessionId` names.
-The command-mode process never holds a credential. Attribution is by the
-ids the backend put into the job's environment; a process on the same
-machine that forges them can only reach the conversations already
-executing here, which it could already read and modify.
+The command-mode process never holds a credential. Attribution is by the live job the backend dispatched on this authenticated
+device connection (`execution-coordination.md`). A callback carries its job id;
+node and shell identity must match the backend's record, and the invoking Host
+comes from that job. An exited or disconnected job cannot invoke a command.
 
 ## Pipes
 
@@ -390,16 +390,14 @@ A's model:   tar c . | demi host shell --host B "tar x -C /work"        (B's job
   rpc_exit ◄──────────────────────  after P_out drained ◄────────────────────────────────  job_exit
 ```
 
-A hostless caller — the backend's own tinybash runs the command, so its
-end is in-process:
+A conversation `c1` starting hostless acquires its machine `A` before any
+statement of a cross-host pipeline runs:
 
 ```
-hostless model:   demi host shell --host B "tar c -C /work ." | tar x
-
-  backend                                                             B
-  P_out minted  B → backend (sink: tinybash's pipeline, the `tar x` builtin)
-  job_start { script, stdout: P_out } ────────────────────────────►  spawn; PUT P_out ← fd 1
-  ═══ body → tar x, entry by entry into the conversation's store ═══ ◄═══
+c1: demi host shell --host B "tar c -C /work ." | tar x
+    preflight -> reserve c1 files -> provision A -> commit c1 target A
+    A bash    -> call B through the authenticated job RPC above
+    B stdout  -> P_out -> A tar x -> A home
 ```
 
 - **Streaming, both ways.** A job's stdout reaches the far end as the job
@@ -447,8 +445,8 @@ hostless model:   demi host shell --host B "tar c -C /work ." | tar x
   by nature; the wire rules keep them so.
 
 `demi host shell` forwards the caller's live stdin to the far job when
-there is no finite stdin pipe. A hostless root invocation leaves its
-finite `stdin` absent in this case and supplies `stdinStream`. Cancelling
+there is no finite stdin pipe. Its caller is a machine job: a hostless
+conversation acquires its machine before executing a cross-host script. Cancelling
 the invoking command sends SIGTERM to the far job and escalates to SIGKILL
 after five seconds if needed. The signal is the caller's throughout the
 relay and backend handler; terminating a process also closes its lifetime

@@ -100,7 +100,10 @@ test('provision and bind, idle → hibernate, the next turn wakes with a fresh t
   expect(frames.map((frame) => `${frame.direction}:${frame.message.type}`)).toEqual(['out:sync', 'in:sync_done'])
   expect(fake.guests.get(ownerKey(owner))!.reports).toEqual([false])
 
-  // The next action needing the host wakes it: same home, new token.
+  // Simultaneous needs join one wake, including token rotation.
+  await Promise.all([world.backend.managedHosts!.ensureRunning(device), world.backend.managedHosts!.ensureRunning(device)])
+  expect(calls(owner, 'wake')).toBe(1)
+  // The next action uses the same home with the new token.
   const second = await driver.turn({ model: [model.shell('t2', 'cat note.txt'), model.say('two')] })
   expect(second.received[0]).toContain('hi')
   expect(calls(owner, 'wake')).toBe(1)

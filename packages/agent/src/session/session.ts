@@ -800,56 +800,60 @@ export class AgentSession<State> {
         this.activeMetadata = action.metadata
         this.abortRecorded = false
 
-        let outcome: { kind: 'done' } | { kind: 'aborted' } | { kind: 'failed'; error: Error }
+        let leaveAction = noop
         try {
-          await this.executeAction(action)
-          outcome = { kind: 'done' }
-        } catch (error) {
-          if (isAbortError(error)) {
-            await this.recordAbort()
-            outcome = { kind: 'aborted' }
-          } else {
-            try {
-              await this.materializePendingSteersForCurrentTurn()
-            } catch (materializeError) {
-              this.emit({ type: 'error', error: asError(materializeError) })
-            }
-            const normalized = asError(error)
-            // Announced before the phase turns idle: observers settle the action on the phase.
-            this.emit({ type: 'error', error: normalized })
-            outcome = { kind: 'failed', error: normalized }
-          }
-        } finally {
-          this.discardPendingSteersForCurrentTurn()
-          this.activeTurnPhase = 'finalizing'
-          this.activeProviderRun = null
-          this.activeMetadata = null
-          this.currentAbortController = null
-          this.activeTurnId = null
-          this.activeTurnPhase = null
-          this.steerQueue.clearCanceled()
-          this.abortRecorded = false
-          this.setPhase('idle')
-          this.yields.arm()
-        }
-        // The boundary flush, after the phase is idle: the checkpoint says the
-        // action ended before its caller learns so, and a checkpoint that says
-        // otherwise is one the process died in (`docs/subagent.md` § Persistence).
-        if (outcome.kind === 'done') {
+          let outcome: { kind: 'done' } | { kind: 'aborted' } | { kind: 'failed'; error: Error }
           try {
-            await this.flushPersist()
-          } catch (flushError) {
-            const normalized = asError(flushError)
-            this.emit({ type: 'error', error: normalized })
-            outcome = { kind: 'failed', error: normalized }
+            leaveAction = (await this.runtime.enterAction?.(this.currentAbortController.signal)) ?? noop
+            await this.executeAction(action)
+            outcome = { kind: 'done' }
+          } catch (error) {
+            if (isAbortError(error)) {
+              await this.recordAbort()
+              outcome = { kind: 'aborted' }
+            } else {
+              try {
+                await this.materializePendingSteersForCurrentTurn()
+              } catch (materializeError) {
+                this.emit({ type: 'error', error: asError(materializeError) })
+              }
+              const normalized = asError(error)
+              // Announced before the phase turns idle: observers settle the action on the phase.
+              this.emit({ type: 'error', error: normalized })
+              outcome = { kind: 'failed', error: normalized }
+            }
+          } finally {
+            this.discardPendingSteersForCurrentTurn()
+            this.activeTurnPhase = 'finalizing'
+            this.activeProviderRun = null
+            this.activeMetadata = null
+            this.currentAbortController = null
+            this.activeTurnId = null
+            this.activeTurnPhase = null
+            this.steerQueue.clearCanceled()
+            this.abortRecorded = false
+            this.setPhase('idle')
+            this.yields.arm()
           }
-        } else {
-          await this.flushPersist().catch((flushError: unknown) => {
-            this.emit({ type: 'error', error: asError(flushError) })
-          })
-        }
-        if (outcome.kind === 'failed') action.reject(outcome.error)
-        else action.resolve()
+          // The boundary flush, after the phase is idle: the checkpoint says the
+          // action ended before its caller learns so, and a checkpoint that says
+          // otherwise is one the process died in (`docs/subagent.md` § Persistence).
+          if (outcome.kind === 'done') {
+            try {
+              await this.flushPersist()
+            } catch (flushError) {
+              const normalized = asError(flushError)
+              this.emit({ type: 'error', error: normalized })
+              outcome = { kind: 'failed', error: normalized }
+            }
+          } else {
+            await this.flushPersist().catch((flushError: unknown) => {
+              this.emit({ type: 'error', error: asError(flushError) })
+            })
+          }
+          if (outcome.kind === 'failed') action.reject(outcome.error)
+          else action.resolve()
+        } finally { leaveAction() }
       }
     } finally {
       this.workerRunning = false

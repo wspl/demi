@@ -1,4 +1,4 @@
-import type { RootPaths, TinybashFs } from '../host'
+import type { RootAdmission, RootPaths, TinybashFs } from '../host'
 import type { Command, Script } from '../grammar/ast'
 import { type ExpansionScope, type Piece, expandSingle, expandToFields, fieldText } from '../grammar/expand'
 import { hasGlobChars } from '../grammar/glob'
@@ -8,6 +8,7 @@ import { insideNamespace, resolvePath } from './namespace'
 import { outside } from './reasons'
 
 export interface CheckContext {
+  admitRoot?: RootAdmission
   roots: ReadonlyMap<string, RootPaths>
   namespace: readonly string[]
   scope: ExpansionScope
@@ -93,6 +94,9 @@ export async function checkScript(script: Script, context: CheckContext): Promis
       } else {
         const root = context.roots.get(name)
         if (!root) outside({ kind: 'program', name, line })
+        if (context.admitRoot && (fields.some(entry => hasGlobChars(entry.field)) || !context.admitRoot(name, argv.slice(1)))) {
+          outside({ kind: 'admission', name, line })
+        }
         paths = root(argv.slice(1))
         reshaped = true
       }

@@ -64,14 +64,19 @@ CREATE TABLE conversations (
   archived      INTEGER NOT NULL DEFAULT 0,
   workspace_id  TEXT REFERENCES workspaces(id),
   host_device_id TEXT REFERENCES devices(id),
-  pending_switch_json TEXT,
-  hosts_changed INTEGER NOT NULL DEFAULT 0,
+  last_switch_json TEXT,
+  context_version INTEGER NOT NULL DEFAULT 0,
   provider_id TEXT,
   model_id      TEXT,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );
 CREATE INDEX idx_conversations_user ON conversations(user_id, archived, updated_at);
+
+CREATE TABLE conversation_upgrades (
+  conversation_id TEXT PRIMARY KEY REFERENCES conversations(id),
+  state TEXT NOT NULL CHECK (state IN ('prepared', 'committed'))
+);
 
 CREATE TABLE conversation_hosts (
   conversation_id TEXT NOT NULL REFERENCES conversations(id),

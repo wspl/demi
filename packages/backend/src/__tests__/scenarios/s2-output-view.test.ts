@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { JOB_VIEW_BYTES } from '@demicodes/runner-protocol'
+import { FakeProvisioner } from './fake-provisioner'
 import { World } from './world'
 import { expected, model, type Target } from './driver'
 
@@ -8,14 +9,16 @@ import { expected, model, type Target } from './driver'
 // window. What the model receives follows the boundary rules; on a runner
 // the wire bytes are the view (the teardown audit).
 
+const fake = new FakeProvisioner()
 let world: World
 
 beforeAll(async () => {
-  world = await World.create({ runners: ['alpha'] })
+  world = await World.create({ runners: ['alpha'], managedHosts: { provisioner: fake, config: { hostsPerUser: 30 } } })
 })
 
 afterAll(async () => {
   await world.close()
+  await fake.close()
 })
 
 /** Text past the runner's head+tail view and the model's preview, within the hostless capture limit. */

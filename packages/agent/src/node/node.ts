@@ -146,7 +146,7 @@ export class SessionNode<State = unknown> {
     const pending = this.pendingEnvironmentsByHost.get(host)
     if (pending) return pending
     const creation = Promise.resolve(
-      this.shellEnvironment({ agentSessionId: this.id, host, commands: this.commandRegistry, shell: this.shellOptions }),
+      this.shellEnvironment({ rootSessionId: this.hostSessionId, agentSessionId: this.id, host, commands: this.commandRegistry, shell: this.shellOptions }),
     )
     this.pendingEnvironmentsByHost.set(host, creation)
     try {

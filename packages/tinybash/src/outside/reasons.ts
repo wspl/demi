@@ -4,6 +4,8 @@
  * without a machine shows, with exit code 2.
  */
 export type OutsideReason =
+  /** An invocation requires another execution environment under the embedder policy. */
+  | { kind: 'admission'; name: string; line: number }
   /** A construct the grammar does not admit: substitution, control flow, job control, brace expansion. */
   | { kind: 'grammar'; found: string; why: string; wayOut: string; line: number }
   /** A command word that is neither a builtin nor a root. */
@@ -47,6 +49,8 @@ const REFUSED_PROGRAMS: Record<string, string> = {
 export function refusalMessage(reason: OutsideReason): string {
   const at = `tinybash: line ${reason.line}:`
   switch (reason.kind) {
+    case 'admission':
+      return `${at} ${reason.name}: this invocation requires a machine`
     case 'grammar':
       return `${at} ${reason.found}: ${reason.why}; ${reason.wayOut}`
     case 'program': {

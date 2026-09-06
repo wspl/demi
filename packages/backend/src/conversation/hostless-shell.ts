@@ -1,5 +1,5 @@
 import { buildManifest, createLoader, inMemorySource, inProcessRpc, rootPaths } from '@demicodes/command-loader'
-import { AgentSessionCommandStorage, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
+import { AgentSessionCommandStorage, parseCommandInput, type CommandRegistry, type Host, type ShellEnvironmentOptions } from '@demicodes/shell'
 import { HostlessEnvironment } from '@demicodes/host-virtual'
 import { HOSTLESS_HOME, HOSTLESS_NAMESPACE } from './scoped-transport'
 
@@ -55,6 +55,16 @@ export async function createHostlessShell(ctx: {
     ...ctx.shell,
     host: ctx.host,
     roots: rootPaths(loader.roots),
+    admitRoot: (name, argv) => {
+      const root = roots.find(command => command.name === name)
+      if (!root) return true
+      try {
+        const parsed = parseCommandInput(root, [name, ...argv])
+        if (parsed.help) return true
+        const path = parsed.path.join(' ')
+        return path !== 'demi agent spawn' && path !== 'demi agent resume' && path !== 'demi host shell'
+      } catch { return true }
+    },
     dispatch: (root, argv, io) => loader.dispatch(root, argv, io),
     home: HOSTLESS_HOME,
     namespace: HOSTLESS_NAMESPACE,

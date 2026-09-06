@@ -73,3 +73,6 @@ export interface DispatchIO {
  * can be checked against the namespace (`tinybash.md` § Interface).
  */
 export type RootPaths = (argv: readonly string[]) => readonly string[]
+
+/** Product policy for an expanded root invocation, before any statement executes. */
+export type RootAdmission = (root: string, argv: string[]) => boolean
