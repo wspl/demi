@@ -329,7 +329,7 @@ function selectProjectConversations(project: SidebarProject): void {
     <div class="flex shrink-0 items-center gap-1 border-t border-line px-2.5 py-2">
       <SidebarAccountRow :account="account" @open-settings="emit('openSettings')" @sign-out="emit('signOut')" />
       <Tooltip content="Settings" placement="right">
-        <IconButton :icon="Settings" variant="ghost" @click="emit('openSettings')" />
+        <IconButton :icon="Settings" variant="ghost" aria-label="Settings" @click="emit('openSettings')" />
       </Tooltip>
     </div>
 

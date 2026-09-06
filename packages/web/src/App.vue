@@ -144,25 +144,33 @@ watch(
         />
         <span class="px-2 text-chrome text-fg-muted">Demi</span>
       </div>
-      <section v-if="showArchived" class="flex-1 overflow-auto bg-surface p-6">
-        <h1 class="mb-2 select-none text-[18px] font-medium">Archived conversations</h1>
-        <p
-          v-if="!conversations.items.some((c) => c.archived)"
-          class="py-8 text-chrome text-fg-faint"
-        >
-          No archived conversations.
-        </p>
-        <div
-          v-for="c in conversations.items.filter((c) => c.archived)"
-          :key="c.id"
-          class="flex items-center justify-between border-b border-line py-3"
-        >
-          <span>{{ c.title }}</span>
-          <Button @click="restore(c.id)">Restore</Button>
+      <section
+        v-if="showArchived"
+        class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-xl bg-surface"
+      >
+        <header class="flex shrink-0 items-center px-3 py-2">
+          <h1 class="select-none text-chrome font-normal text-fg">Archived conversations</h1>
+        </header>
+        <div class="min-h-0 flex-1 overflow-y-auto px-[var(--agent-pad-x,2rem)] pb-8 pt-2">
+          <p
+            v-if="!conversations.items.some((c) => c.archived)"
+            class="grid h-full place-items-center text-conversation text-fg-faint"
+          >
+            No archived conversations.
+          </p>
+          <ul v-else class="flex flex-col gap-0.5">
+            <li
+              v-for="c in conversations.items.filter((c) => c.archived)"
+              :key="c.id"
+              class="flex h-9 items-center gap-3 rounded-md px-2 hover:bg-hover"
+            >
+              <span class="min-w-0 flex-1 truncate text-conversation text-fg-body">{{ c.title }}</span>
+              <Button variant="ghost" size="sm" @click="restore(c.id)">
+                Restore
+              </Button>
+            </li>
+          </ul>
         </div>
-        <Button class="mt-4" variant="ghost" @click="showArchived = false">
-          Back to conversations
-        </Button>
       </section>
       <template v-else>
         <RouterView />

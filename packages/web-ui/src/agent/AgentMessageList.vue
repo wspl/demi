@@ -77,11 +77,14 @@ onBeforeUnmount(() => {
 
 const { isScrolling } = useScroll(scrollContainer, { idle: 1500 })
 
+// A taller dock (a Retry chip, a growing draft) covers the tail; a reader at the bottom stays there.
 watch(
   () => props.bottomOffset,
   () => {
+    const wasAtBottom = isAtBottom.value
     nextTick(() => {
       scrollOffset.value = scrollContainer.value?.scrollTop ?? 0
+      if (wasAtBottom) scrollToBottom()
     })
   },
   { flush: 'post' },

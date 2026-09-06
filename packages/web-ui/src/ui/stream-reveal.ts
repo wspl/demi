@@ -87,6 +87,40 @@ export function holdIncompleteMarkdown(text: string): { visible: string; held: s
   return { visible: text, held: '' }
 }
 
+const INLINE_DELIMITER = /(\*{1,3}|_{1,3}|~~|`)/g
+
+/**
+ * Closers for emphasis / strikethrough / code left open in the last paragraph, so a
+ * half-written `**bold` renders bold instead of showing its asterisks until it closes.
+ * Render `text + closers`; the closers add no text, so frontier tracking is unaffected.
+ */
+export function closeOpenInlineMarkdown(text: string): string {
+  const paragraphStart = text.lastIndexOf('\n\n')
+  const paragraph = paragraphStart < 0 ? text : text.slice(paragraphStart + 2)
+  if (paragraph.startsWith('```') || paragraph.startsWith('~~~')) return ''
+  const open: string[] = []
+  for (const match of paragraph.matchAll(INLINE_DELIMITER)) {
+    const run = match[0]
+    const at = match.index
+    const before = paragraph[at - 1] ?? '\n'
+    const after = paragraph[at + run.length] ?? ''
+    if (run === '`') {
+      const top = open.at(-1)
+      if (top === '`') open.pop()
+      else open.push('`')
+      continue
+    }
+    if (open.at(-1) === '`') continue
+    const listMarker = (before === '\n') && /\s/.test(after) && run.length === 1
+    const spaced = /\s/.test(before) && /\s/.test(after)
+    if (listMarker || spaced) continue
+    const top = open.at(-1)
+    if (top && top[0] === run[0] && top.length === run.length) open.pop()
+    else open.push(run)
+  }
+  return open.reverse().join('')
+}
+
 /** How much of `frontier` is actually at the end of the rendered visible string. */
 export function visibleFrontierLength(visible: string, frontier: string): number {
   if (!frontier || !visible) return 0

@@ -20,6 +20,7 @@ const emit = defineEmits<{
 <template>
   <div
     role="button"
+    :aria-label="label"
     class="flex h-7 cursor-default select-none items-center gap-2 rounded-md text-chrome transition-colors duration-200 ease-out"
     :class="[
       'px-2',
@@ -39,6 +40,6 @@ const emit = defineEmits<{
     >
       {{ count }}
     </span>
-    <span v-else-if="shortcut" class="text-[11px] text-fg-faint">{{ shortcut }}</span>
+    <span v-else-if="shortcut" class="text-[11px] text-fg-faint [@media(hover:none)]:hidden">{{ shortcut }}</span>
   </div>
 </template>

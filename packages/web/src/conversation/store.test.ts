@@ -155,3 +155,46 @@ test('reading clears the result marker without clearing error recovery state', (
   store.markRead(conversation.id)
   expect(conversation.unread).toBe(false)
 })
+
+test('a steer waits for the current output, joins the transcript, and gets its own reply', () => {
+  const { store, conversation } = newConversation()
+  conversation.draft = 'First'
+  store.send(conversation)
+  store.advance()
+  conversation.draft = 'Steer'
+  store.send(conversation)
+  const queued = conversation.queue[0]!
+  store.sendQueued(conversation, queued.id)
+  expect(conversation.pendingSteers).toHaveLength(1)
+  expect(conversation.blocks.some((b) => b.type === 'steer')).toBe(false)
+  finish(store)
+  const types = conversation.blocks.map((b) => b.type)
+  expect(types).toEqual(['user', 'text', 'steer', 'text'])
+  expect(conversation.pendingSteers).toHaveLength(0)
+  expect(conversation.status).toBe('done')
+})
+
+test('resume continues the interrupted output and retry replaces the error', () => {
+  const { store, conversation } = newConversation()
+  conversation.draft = 'Hello'
+  store.send(conversation)
+  store.advance()
+  store.stop(conversation)
+  const partial = conversation.blocks.find((b) => b.type === 'text')!
+  store.start(conversation)
+  finish(store)
+  const texts = conversation.blocks.filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
+  expect(texts).toHaveLength(2)
+  expect(partial.type === 'text' && texts[1]!.text.startsWith(partial.text)).toBe(false)
+  expect(texts[0]!.text + texts[1]!.text).toContain('scripted preview')
+  expect(conversation.blocks.find((b) => b.type === 'abort')).toMatchObject({ isResumed: true })
+
+  store.failNext = true
+  conversation.draft = 'Again'
+  store.send(conversation)
+  store.advance()
+  expect(conversation.blocks.at(-1)?.type).toBe('error')
+  store.start(conversation)
+  finish(store)
+  expect(conversation.blocks.some((b) => b.type === 'error')).toBe(false)
+})

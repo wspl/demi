@@ -34,6 +34,7 @@ const fast = computed(() => isFastMode(selected.value?.model, props.serviceTierI
     v-if="selected"
     :overlay-store="appOverlayStore"
     variant="ghost"
+    trigger-label="Model"
   >
     <template #trigger>
       <span class="inline-flex min-w-0 items-center gap-1">

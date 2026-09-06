@@ -27,6 +27,7 @@ const initials = computed(() => props.account.name.trim().slice(0, 1).toUpperCas
     <template #trigger="{ isOpen }">
       <div
         role="button"
+        aria-label="Account"
         class="flex h-9 cursor-default select-none items-center gap-2 rounded-md transition-colors duration-200 ease-out"
         :class="['w-full px-1.5', isOpen ? 'bg-hover' : 'hover:bg-hover']"
       >
