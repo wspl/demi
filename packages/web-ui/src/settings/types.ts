@@ -1,12 +1,19 @@
 /** Presentation models for the settings surfaces. Hosts map their own state onto these. */
 import type { Component } from 'vue'
 
-export type SettingsTab = 'Account' | 'Devices' | 'Providers' | 'Usage'
+/** A section id. Hosts choose their own set; the built-in four cover the product today. */
+export type SettingsTab = string
 
 export interface SettingsNavItem {
   id: SettingsTab
   label: string
   icon: Component
+}
+
+/** Sections grouped under a small caption, the way a long rail is read. */
+export interface SettingsNavGroup {
+  label?: string
+  items: SettingsNavItem[]
 }
 
 export interface SettingsAccountInfo {

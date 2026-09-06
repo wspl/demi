@@ -12,6 +12,8 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
+import GallerySettingsFull from '../components/GallerySettingsFull.vue'
+import { createSettingsState, fullSettingsNav } from '../fixtures/settings'
 
 const anatomy: [string, string][] = [
   ['Shell', 'One large dialog. The rail sits on the page surface with the account on top, the page on the dialog surface, so it reads like the app itself. Below a phone width the rail becomes a row.'],
@@ -27,6 +29,9 @@ const account = { name: 'Zan', plan: 'Personal workspace' }
 const theme = ref<ThemeMode>('dark')
 const accountTab = ref<SettingsTab>('Account')
 const narrowTab = ref<SettingsTab>('Devices')
+const full = createSettingsState()
+const fullTab = ref<SettingsTab>('models')
+const fullNarrowTab = ref<SettingsTab>('mcp')
 
 const devices = ref<SettingsDevice[]>([
   { id: 'mac', name: 'zan-mbp', online: true },
@@ -69,6 +74,25 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
           <dd class="text-fg-muted">{{ detail }}</dd>
         </template>
       </dl>
+    </GallerySection>
+
+    <GallerySection
+      title="Full agent settings"
+      note="A stress test: everything a coding agent might ask for, in its worst states at once. Expiring auth, an unreachable local model, a crashed MCP server, a shortcut conflict, a quota nearly spent, disabled entries, nested rows, long paths."
+    >
+      <GalleryOverlayWell size="tall">
+        <SettingsDialog v-model:tab="fullTab" :is-open="true" :overlay-store="appOverlayStore" :account="account" :sections="fullSettingsNav">
+          <GallerySettingsFull :tab="fullTab" :state="full" />
+        </SettingsDialog>
+      </GalleryOverlayWell>
+    </GallerySection>
+
+    <GallerySection title="Full · narrow" note="The long rail becomes a picker; nested rows and tags survive the width.">
+      <GalleryOverlayWell size="narrow">
+        <SettingsDialog v-model:tab="fullNarrowTab" :is-open="true" :overlay-store="appOverlayStore" :account="account" :sections="fullSettingsNav">
+          <GallerySettingsFull :tab="fullNarrowTab" :state="full" />
+        </SettingsDialog>
+      </GalleryOverlayWell>
     </GallerySection>
 
     <GallerySection title="Live" note="Opens over the page like the product does.">
