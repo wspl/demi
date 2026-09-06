@@ -169,7 +169,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       <SettingsRow label="A turn fails"><Checkbox v-model="s.notifications.onError" label="" /></SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Quiet hours">
-      <SettingsRow label="Silence notifications" :description="s.notifications.quietHours ? `Between ${s.notifications.quietRange}. Approvals still come through.` : 'Off.'">
+      <SettingsRow label="Silence notifications" :description="s.notifications.quietHours ? `Between ${s.notifications.quietRange}. Approvals still come through.` : undefined">
         <Button v-if="s.notifications.quietHours" size="sm">{{ s.notifications.quietRange }}</Button>
         <Switch v-model="s.notifications.quietHours" />
       </SettingsRow>
@@ -218,8 +218,8 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       </template>
     </SettingsGroup>
     <SettingsGroup>
-      <SettingsRow label="Create an agent" description="Starts from Build's settings.">
-        <Button>New agent</Button>
+      <SettingsRow label="New agent" description="Starts from Build's settings.">
+        <Button>Create</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -242,7 +242,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Scope">
-      <SettingsRow label="These rules apply to" description="Project rules live in .demi/permissions.json and travel with the checkout.">
+      <SettingsRow label="Apply rules to" description="Project rules live in .demi/permissions.json and travel with the checkout.">
         <Segmented v-model="s.permissions.scope" :options="[{ value: 'project', label: 'This project' }, { value: 'everywhere', label: 'Everywhere' }]" />
       </SettingsRow>
       <SettingsRow label="Reset to defaults" description="Ask for edits and shell, allow reads and web.">
@@ -378,7 +378,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
   <!-- Data & privacy -->
   <SettingsPage v-else-if="tab === 'data'" title="Data & privacy" description="What is kept, for how long, and who can see it.">
     <SettingsGroup title="Conversations">
-      <SettingsRow label="Keep transcripts" description="Older conversations are deleted from every device.">
+      <SettingsRow label="Keep transcripts for" description="Older conversations are deleted from every device.">
         <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Retention">
           <template #trigger>{{ s.data.retention }}</template>
           <template #content="{ close }">

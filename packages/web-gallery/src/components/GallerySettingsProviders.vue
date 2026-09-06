@@ -299,16 +299,16 @@ function setAll(p: MockProvider, enabled: boolean) {
               <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ draft.vendor ? draft.vendor.name : 'Custom endpoint' }}</h3>
               <p class="text-[12px] text-fg-subtle">{{ draft.vendor ? `${wireLabel(draft.wireApi)} · catalog from models.dev` : 'You name the protocol and the models.' }}</p>
             </div>
-            <Button size="sm" class="ml-auto" @click="draft = { step: 'pick', query: '' }">Change</Button>
+            <Button size="sm" class="ml-auto" @click="draft = { step: 'pick', query: '' }">Change vendor</Button>
           </header>
           <div class="settings-card overflow-hidden rounded-xl border border-line">
             <SettingsRow label="Name" description="How it appears in the model picker.">
               <TextInput v-model="draft.name" placeholder="My provider" class="w-56 max-w-full" />
             </SettingsRow>
-            <SettingsRow label="Base URL" :description="draft.vendor && !draft.vendor.baseUrl ? 'The vendor default. Change it for a proxy.' : undefined">
+            <SettingsRow label="Base URL" :description="draft.vendor && !draft.vendor.baseUrl ? 'Leave empty for the vendor default, or point it at a proxy.' : undefined">
               <TextInput v-model="draft.baseUrl" :placeholder="draft.vendor ? 'Vendor default' : 'https://api.example.com/v1'" class="w-72 max-w-full" />
             </SettingsRow>
-            <SettingsRow v-if="!draft.vendor" label="Protocol" description="What the endpoint speaks.">
+            <SettingsRow v-if="!draft.vendor" label="Protocol" description="The API format the endpoint speaks.">
               <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Protocol">
                 <template #trigger>{{ wireLabel(draft.wireApi) }}</template>
                 <template #content="{ close }">
@@ -372,18 +372,18 @@ function setAll(p: MockProvider, enabled: boolean) {
                   <span>{{ account.quota.week.used }}% · resets {{ account.quota.week.resets }}</span>
                 </div>
               </template>
-              <Button v-if="!account.active" size="sm" @click="setActive(selected!, account.id)">Use</Button>
+              <Button v-if="!account.active" size="sm" @click="setActive(selected!, account.id)">Activate</Button>
               <Tooltip content="Remove account"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove account" /></Tooltip>
             </SettingsRow>
             <div v-if="!selected.accounts.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No account yet. Sign in to use this provider.</div>
-            <SettingsRow label="Add an account" description="Signs in with the vendor's own login.">
+            <SettingsRow label="Add account" description="Signs in with the vendor's own login.">
               <Button variant="primary" size="sm" @click="beginLogin(selected!)">Sign in</Button>
             </SettingsRow>
             </template>
 
             <!-- Connection (API key) -->
             <template v-else>
-            <SettingsRow label="Base URL" :description="vendorOf(selected) ? `${vendorOf(selected)!.name} on models.dev · ${wireLabel(selected.wireApi)}` : 'A custom endpoint. Protocol below.'">
+            <SettingsRow label="Base URL" :description="vendorOf(selected) ? `${vendorOf(selected)!.name} on models.dev · ${wireLabel(selected.wireApi)}` : 'Custom endpoint'">
               <TextInput v-model="selected.baseUrl" class="w-72 max-w-full" />
             </SettingsRow>
             <SettingsRow v-if="!vendorOf(selected)" label="Protocol">
@@ -412,8 +412,8 @@ function setAll(p: MockProvider, enabled: boolean) {
           <SettingsGroup title="Models">
             <SettingsRow
               v-if="selected.kind === 'api_key'"
-              label="Model list"
-              :description="selected.modelSource === 'catalog' ? `From the vendor catalog · fetched ${selected.catalogFetched}` : 'Ids you enter. Fill in what a model can do so the composer offers the right controls.'"
+              label="Source"
+              :description="selected.modelSource === 'catalog' ? `From the vendor catalog · fetched ${selected.catalogFetched}` : 'Models you add by id. Fill in their capabilities so the composer offers the right controls.'"
             >
               <template #tags><Tag v-if="selected.stale" tone="warning">Stale</Tag></template>
               <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh the catalog"><IconButton :icon="RefreshCw" size="sm" aria-label="Refresh models" /></Tooltip>
