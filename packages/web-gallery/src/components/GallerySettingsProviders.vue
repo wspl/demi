@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Brain, Check, Image, Info, Plug, Plus, RefreshCw, Search, SlidersHorizontal, Terminal, TextCursorInput, Trash2, TriangleAlert, Zap } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -39,6 +39,24 @@ const props = defineProps<{
 const s = computed(() => props.state)
 const subscriptions = computed(() => s.value.providers.filter((p) => p.kind === 'subscription'))
 const apiKeys = computed(() => s.value.providers.filter((p) => p.kind === 'api_key'))
+const renaming = ref(false)
+const renameDraft = ref('')
+const renameInput = ref<InstanceType<typeof TextInput>>()
+function beginRename() {
+  if (!selected.value) return
+  renameDraft.value = selected.value.name
+  renaming.value = true
+  void nextTick(() => {
+    renameInput.value?.focus()
+    renameInput.value?.select()
+  })
+}
+function commitRename() {
+  if (!renaming.value) return
+  renaming.value = false
+  const name = renameDraft.value.trim()
+  if (name && selected.value) selected.value.name = name
+}
 const selected = computed(() => s.value.providers.find((p) => p.id === s.value.selectedProviderId) ?? null)
 const vendorOf = (p: MockProvider) => mockVendors.find((v) => v.id === p.vendorId) ?? null
 
@@ -312,18 +330,37 @@ function setAll(p: MockProvider, enabled: boolean) {
 
         <!-- Existing provider -->
         <div v-else-if="selected" class="flex flex-col gap-6">
-          <!-- The rail already carries the mark; the header names the provider and holds its actions. -->
-          <header class="flex h-8 flex-wrap items-center gap-x-1.5 gap-y-2">
-            <h3 class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
-            <Tooltip content="Rename"><IconButton :icon="TextCursorInput" variant="ghost" size="sm" aria-label="Rename provider" /></Tooltip>
-            <div class="ml-auto flex items-center gap-1.5">
-              <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove provider" /></Tooltip>
-              <Switch v-model="selected.enabled" size="sm" class="ml-2" />
-            </div>
-          </header>
+          <!-- The rail carries the mark; the first card's header names the provider, edits that
+               name in place, and holds its actions. -->
+          <SettingsGroup>
+            <template #header>
+              <header class="flex flex-col gap-0.5 select-none">
+                <div class="flex h-8 flex-wrap items-center gap-x-1.5 gap-y-2">
+                  <TextInput
+                    v-if="renaming"
+                    ref="renameInput"
+                    v-model="renameDraft"
+                    class="w-56 max-w-full"
+                    aria-label="Provider name"
+                    @keydown.enter.prevent="commitRename"
+                    @keydown.escape.prevent="renaming = false"
+                    @blur="commitRename"
+                  />
+                  <template v-else>
+                    <h3 class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
+                    <Tooltip content="Rename"><IconButton :icon="TextCursorInput" variant="ghost" size="sm" aria-label="Rename provider" @click="beginRename" /></Tooltip>
+                  </template>
+                  <div class="ml-auto flex items-center gap-1.5">
+                    <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove provider" /></Tooltip>
+                    <Switch v-model="selected.enabled" size="sm" class="ml-2" />
+                  </div>
+                </div>
+                <p v-if="selected.kind === 'subscription'" class="text-[13px] leading-5 text-fg-muted">One account is active at a time; every conversation on this provider uses it.</p>
+              </header>
+            </template>
 
-          <!-- Accounts (subscription) -->
-          <SettingsGroup v-if="selected.kind === 'subscription'" title="Accounts" description="One account is active at a time; every conversation on this provider uses it.">
+            <!-- Accounts (subscription) -->
+            <template v-if="selected.kind === 'subscription'">
             <SettingsRow v-for="account in selected.accounts" :key="account.id" :label="account.label" compact>
               <template #tags><Tag>{{ account.plan }}</Tag><Tag v-if="account.active" tone="accent">Active</Tag><Tag v-if="account.quota && account.quota.hour.used >= 100" tone="danger">Limit reached</Tag></template>
               <template v-if="account.quota" #description>
@@ -343,10 +380,10 @@ function setAll(p: MockProvider, enabled: boolean) {
             <SettingsRow label="Add an account" description="Signs in with the vendor's own login.">
               <Button variant="primary" size="sm" @click="beginLogin(selected!)">Sign in…</Button>
             </SettingsRow>
-          </SettingsGroup>
+            </template>
 
-          <!-- Connection (API key) -->
-          <SettingsGroup v-else title="Connection">
+            <!-- Connection (API key) -->
+            <template v-else>
             <SettingsRow label="Base URL" :description="vendorOf(selected) ? `${vendorOf(selected)!.name} on models.dev · ${wireLabel(selected.wireApi)}` : 'A custom endpoint. Protocol below.'">
               <TextInput v-model="selected.baseUrl" class="w-72 max-w-full" />
             </SettingsRow>
@@ -369,6 +406,7 @@ function setAll(p: MockProvider, enabled: boolean) {
               <span v-else-if="selected.detail" class="min-w-0 truncate font-mono text-[12px] text-on-danger">{{ selected.detail }}</span>
               <Tooltip content="Test connection"><IconButton :icon="Plug" size="sm" aria-label="Test connection" @click="test(selected!)" /></Tooltip>
             </SettingsRow>
+            </template>
           </SettingsGroup>
 
           <!-- Models -->
