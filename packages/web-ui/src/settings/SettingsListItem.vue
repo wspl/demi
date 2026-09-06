@@ -2,7 +2,7 @@
 import type { Component } from 'vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
-/** One entry in a SettingsSplit list: icon, name, a word under it, and a presence dot. */
+/** One entry in a SettingsSplit list: a mark or icon, the name, and a presence dot. */
 defineProps<{
   label: string
   detail?: string
@@ -26,7 +26,9 @@ const emit = defineEmits<{
     :class="[selected ? 'bg-active' : 'hover:bg-hover', muted ? 'opacity-60' : '']"
     @click="emit('select')"
   >
-    <component :is="icon" v-if="icon" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+    <slot name="leading">
+      <component :is="icon" v-if="icon" :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+    </slot>
     <span class="flex min-w-0 flex-1 flex-col leading-4">
       <span class="truncate text-chrome" :class="selected ? 'text-fg-emphasis' : 'text-fg'">{{ label }}</span>
       <span v-if="detail" class="truncate text-[11px] text-fg-subtle">{{ detail }}</span>

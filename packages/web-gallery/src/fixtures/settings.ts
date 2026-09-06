@@ -105,8 +105,8 @@ export interface MockProvider {
   defaultModelId: string | null
   models: MockModel[]
   accounts: MockAccount[]
-  /** A device-code login in flight. */
-  login: { url: string; code: string; expires: string } | null
+  /** The vendor mark; null falls back to an initial. */
+  logo: string | null
 }
 
 export interface MockServer {
@@ -161,15 +161,45 @@ function provider(partial: Partial<MockProvider> & Pick<MockProvider, 'id' | 'na
     defaultModelId: null,
     models: [],
     accounts: [],
-    login: null,
+    logo: null,
     ...partial,
   }
 }
 
+/** models.dev vendors one of Demi's runtimes can speak to, with their marks. */
+export interface MockVendor {
+  id: string
+  name: string
+  family: 'anthropic' | 'openai' | 'google'
+  wireApi: WireApi
+  baseUrl: string | null
+  logo: string
+}
+
+export const mockVendors: MockVendor[] = [
+  { id: 'anthropic', name: 'Anthropic', family: 'anthropic', wireApi: 'anthropic-messages', baseUrl: null, logo: '/logos/anthropic.svg' },
+  { id: 'openai', name: 'OpenAI', family: 'openai', wireApi: 'openai-responses', baseUrl: null, logo: '/logos/openai.svg' },
+  { id: 'google', name: 'Google', family: 'google', wireApi: 'openai-chat', baseUrl: null, logo: '/logos/google.svg' },
+  { id: 'google-vertex', name: 'Vertex', family: 'google', wireApi: 'openai-chat', baseUrl: null, logo: '/logos/google-vertex.svg' },
+  { id: 'deepseek', name: 'DeepSeek', family: 'openai', wireApi: 'openai-chat', baseUrl: 'https://api.deepseek.com', logo: '/logos/deepseek.svg' },
+  { id: 'moonshotai', name: 'Moonshot AI', family: 'openai', wireApi: 'openai-chat', baseUrl: 'https://api.moonshot.ai/v1', logo: '/logos/moonshotai.svg' },
+  { id: 'zhipuai', name: 'Zhipu AI', family: 'openai', wireApi: 'openai-chat', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', logo: '/logos/zhipuai.svg' },
+  { id: 'minimax', name: 'MiniMax', family: 'anthropic', wireApi: 'anthropic-messages', baseUrl: 'https://api.minimax.io/anthropic/v1', logo: '/logos/minimax.svg' },
+  { id: 'fireworks-ai', name: 'Fireworks AI', family: 'openai', wireApi: 'openai-chat', baseUrl: 'https://api.fireworks.ai/inference/v1', logo: '/logos/fireworks-ai.svg' },
+  { id: 'alibaba', name: 'Alibaba', family: 'openai', wireApi: 'openai-chat', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', logo: '/logos/alibaba.svg' },
+  { id: 'openrouter', name: 'OpenRouter', family: 'openai', wireApi: 'openai-chat', baseUrl: 'https://openrouter.ai/api/v1', logo: '/logos/openrouter.svg' },
+]
+
+export const subscriptionVendors = [
+  { id: 'claude-code', name: 'Claude Code', logo: '/logos/anthropic.svg' },
+  { id: 'codex', name: 'Codex', logo: '/logos/openai.svg' },
+  { id: 'grok-build', name: 'Grok Build', logo: '/logos/xai.svg' },
+]
+
 export function mockProviders(): MockProvider[] {
   return [
     provider({
-      id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code',
+      id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code', logo: '/logos/anthropic.svg',
       accounts: [
         { id: 'a1', label: 'zan@example.com', plan: 'Max 5×', active: true, quota: { used: 62, max: 100, resets: 'in 2 h 10 min' } },
         { id: 'a2', label: 'zan@work.example', plan: 'Pro', active: false, quota: { used: 100, max: 100, resets: 'in 4 h' } },
@@ -183,15 +213,14 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex', state: 'signed-out',
-      login: { url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expires: '9 min' },
+      id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex', state: 'signed-out', logo: '/logos/openai.svg',
       catalogFetched: null,
       models: [
         model({ id: 'gpt-5-codex', name: 'GPT-5 Codex', contextWindow: 400_000, outputLimit: 128_000, tools: true, attachments: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' }),
       ],
     }),
     provider({
-      id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic',
+      id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic', logo: '/logos/anthropic.svg',
       baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', keyHint: 'sk-ant-…3f2a',
       catalogFetched: '14 min ago', defaultModelId: 'claude-sonnet-4-5',
       models: [
@@ -202,7 +231,7 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai',
+      id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai', logo: '/logos/openai.svg',
       baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', keyHint: 'sk-proj-…91ce',
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: '3 days ago', stale: true,
       models: [
@@ -211,7 +240,7 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: null,
+      id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: 'moonshotai', logo: '/logos/moonshotai.svg',
       baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', keyHint: 'sk-…8c1d',
       modelSource: 'manual', defaultModelId: 'kimi-k2-thinking',
       models: [
@@ -226,7 +255,7 @@ export function mockProviders(): MockProvider[] {
       models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, attachments: false })],
     }),
     provider({
-      id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex',
+      id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex', logo: '/logos/google-vertex.svg',
       baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', keyHint: 'ya29.…', state: 'disabled', enabled: false,
       catalogFetched: '1 h ago',
       models: [model({ id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1_000_000, outputLimit: 65_536, tools: true, attachments: true, efforts: ['low', 'high'] })],

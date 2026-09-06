@@ -98,7 +98,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       </SettingsRow>
       <SettingsRow label="Update channel" description="Beta builds arrive about a week early.">
         <template #tags><Tag>{{ s.general.version }} · up to date</Tag></template>
-        <Button variant="ghost" size="sm">Check now</Button>
+        <Button size="sm">Check now</Button>
         <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Update channel">
           <template #trigger>{{ s.general.channel }}</template>
           <template #content="{ close }">
@@ -116,7 +116,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     <SettingsGroup title="Profile">
       <SettingsRow label="Avatar" description="Shown in the sidebar and on shared transcripts.">
         <span class="flex size-8 items-center justify-center rounded-full bg-tint-accent text-[13px] font-medium text-on-accent">Z</span>
-        <Button variant="ghost" size="sm">Change</Button>
+        <Button size="sm">Change</Button>
       </SettingsRow>
       <SettingsRow label="Display name">
         <TextInput v-model="s.account.name" class="w-56 max-w-full" />
@@ -124,7 +124,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       <SettingsRow label="Email" description="Sign-in and receipts go here.">
         <template #tags><Tag tone="success">Verified</Tag></template>
         <span class="text-chrome text-fg-muted">{{ s.account.email }}</span>
-        <Button variant="ghost" size="sm">Change</Button>
+        <Button size="sm">Change</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Plan">
@@ -170,7 +170,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     </SettingsGroup>
     <SettingsGroup title="Quiet hours">
       <SettingsRow label="Silence notifications" :description="s.notifications.quietHours ? `Between ${s.notifications.quietRange}. Approvals still come through.` : 'Off.'">
-        <Button v-if="s.notifications.quietHours" variant="ghost" size="sm">{{ s.notifications.quietRange }}</Button>
+        <Button v-if="s.notifications.quietHours" size="sm">{{ s.notifications.quietRange }}</Button>
         <Switch v-model="s.notifications.quietHours" />
       </SettingsRow>
     </SettingsGroup>
@@ -188,7 +188,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
             <Tag v-if="agent.isDefault" tone="accent">Default</Tag>
             <Tag v-if="agent.mode === 'subagent'">Subagent</Tag>
           </template>
-          <Button variant="ghost" size="sm" @click="agent.expanded = !agent.expanded">{{ agent.expanded ? 'Done' : 'Edit' }}</Button>
+          <Button size="sm" @click="agent.expanded = !agent.expanded">{{ agent.expanded ? 'Done' : 'Edit' }}</Button>
           <Switch v-model="agent.enabled" size="sm" class="ml-1" />
         </SettingsRow>
         <template v-if="agent.expanded">
@@ -212,7 +212,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
             <Tag>mcp · ask</Tag>
           </SettingsRow>
           <SettingsRow inset label="System prompt" description="Appended after the global instructions.">
-            <Button variant="ghost" size="sm">Edit prompt…</Button>
+            <Button size="sm">Edit prompt…</Button>
           </SettingsRow>
         </template>
       </template>
@@ -234,7 +234,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
     <SettingsGroup title="Shell allowlist" description="Commands matching a pattern run without asking, whatever the rule above says.">
       <SettingsRow v-for="pattern in s.permissions.allowlist" :key="pattern" inset :label="pattern">
         <template #leading><Terminal :size="ICON_PX.in24" /></template>
-        <Button variant="ghost" size="sm" @click="s.permissions.allowlist = s.permissions.allowlist.filter((p) => p !== pattern)">Remove</Button>
+        <Button size="sm" @click="s.permissions.allowlist = s.permissions.allowlist.filter((p) => p !== pattern)">Remove</Button>
       </SettingsRow>
       <SettingsRow label="Add a pattern" description="Glob syntax. `git *` matches every git command.">
         <TextInput placeholder="docker compose *" class="w-56 max-w-full" />
@@ -246,7 +246,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <Segmented v-model="s.permissions.scope" :options="[{ value: 'project', label: 'This project' }, { value: 'everywhere', label: 'Everywhere' }]" />
       </SettingsRow>
       <SettingsRow label="Reset to defaults" description="Ask for edits and shell, allow reads and web.">
-        <Button variant="ghost" size="sm">Reset</Button>
+        <Button size="sm">Reset</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -258,14 +258,14 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <TextArea v-model="s.instructions.global" :rows="4" placeholder="How should the agent work with you?" />
         <div class="mt-2 flex items-center justify-between text-[12px] text-fg-subtle">
           <span class="select-none">{{ s.instructions.global.length }} characters · about {{ Math.ceil(s.instructions.global.length / 4) }} tokens</span>
-          <Button variant="ghost" size="sm">Preview prompt</Button>
+          <Button size="sm">Preview prompt</Button>
         </div>
       </div>
     </SettingsGroup>
     <SettingsGroup title="Project instructions" description="AGENTS.md files the agent reads from the working directory up to the checkout root.">
       <SettingsRow v-for="file in s.instructions.files" :key="file.path" :label="file.path" :description="file.found ? 'Read at the start of every turn.' : 'Not found. Create it to give this project its own rules.'">
         <template #tags><Tag :tone="file.found ? 'success' : 'neutral'">{{ file.found ? 'Found' : 'Missing' }}</Tag></template>
-        <Button variant="ghost" size="sm">{{ file.found ? 'Open' : 'Create' }}</Button>
+        <Button size="sm">{{ file.found ? 'Open' : 'Create' }}</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Memory">
@@ -273,7 +273,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         <Switch v-model="s.instructions.memory" />
       </SettingsRow>
       <SettingsRow label="Saved memories" :description="`${s.instructions.memories} entries · last added yesterday`">
-        <Button variant="ghost" size="sm">Manage</Button>
+        <Button size="sm">Manage</Button>
       </SettingsRow>
       <SettingsRow label="Clear memory" description="Forgets everything saved so far. Conversations are kept.">
         <Button variant="danger">Clear…</Button>
@@ -297,11 +297,11 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
           </template>
           <template v-if="server.state === 'auth'"><Button size="sm">Sign in</Button></template>
           <template v-else-if="server.state === 'crashed'">
-            <Button variant="ghost" size="sm">Logs</Button>
+            <Button size="sm">Logs</Button>
             <Button size="sm">Restart</Button>
           </template>
           <template v-else-if="server.state === 'connected'">
-            <Button variant="ghost" size="sm" @click="server.expanded = !server.expanded">{{ server.expanded ? 'Hide tools' : 'Tools' }}</Button>
+            <Button size="sm" @click="server.expanded = !server.expanded">{{ server.expanded ? 'Hide tools' : 'Tools' }}</Button>
           </template>
           <Switch v-model="server.enabled" size="sm" class="ml-1" />
         </SettingsRow>
@@ -342,8 +342,8 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
             <Tag v-if="device.current" tone="accent">This device</Tag>
             <Tag v-if="device.version !== '1.6.2'" tone="warning">Update available</Tag>
           </template>
-          <Button v-if="!device.current" variant="ghost" size="sm">{{ device.online ? 'Go offline' : 'Connect' }}</Button>
-          <Button variant="ghost" size="sm" :class="device.current ? 'pointer-events-none opacity-40' : ''">Revoke</Button>
+          <Button v-if="!device.current" size="sm">{{ device.online ? 'Go offline' : 'Connect' }}</Button>
+          <Button size="sm" :class="device.current ? 'pointer-events-none opacity-40' : ''">Revoke</Button>
         </SettingsRow>
         <SettingsRow inset label="Home directory">
           <span class="font-mono text-[12px] text-fg-muted">{{ device.home }}</span>
@@ -365,12 +365,12 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       <SettingsRow v-for="binding in s.keys" :key="binding.id" :label="binding.action" :description="binding.conflict ? `Also bound to ${binding.conflict}. The first match wins.` : undefined">
         <template #tags><Tag v-if="binding.conflict" tone="danger">Conflict</Tag></template>
         <KeyCap :keys="binding.keys" />
-        <Button variant="ghost" size="sm">Change</Button>
+        <Button size="sm">Change</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup>
       <SettingsRow label="Reset all shortcuts" description="Back to the defaults above.">
-        <Button variant="ghost" size="sm">Reset</Button>
+        <Button size="sm">Reset</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -411,7 +411,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
   <SettingsPage v-else-if="tab === 'usage'" title="Usage & billing" description="This month, across every provider.">
     <SettingsGroup title="Plan">
       <SettingsRow :label="`${s.account.plan} plan`" :description="`Next invoice ${s.account.renews} · credits reset ${s.usage.resets}`">
-        <Button variant="ghost" size="sm">Invoices</Button>
+        <Button size="sm">Invoices</Button>
         <Button>Manage billing</Button>
       </SettingsRow>
       <div class="flex flex-col gap-2 px-4 py-3">
@@ -448,7 +448,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
         </Dropdown>
       </SettingsRow>
       <SettingsRow label="Open log folder">
-        <Button variant="ghost" size="sm">
+        <Button size="sm">
           Open
           <ExternalLink :size="ICON_PX.in24" />
         </Button>
@@ -458,11 +458,11 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
       <SettingsRow label="Config file" description="Edits made here are written back; edits made there reload live.">
         <span class="font-mono text-[12px] text-fg-muted">{{ s.developer.configPath }}</span>
         <IconButton :icon="Copy" variant="ghost" aria-label="Copy config path" />
-        <Button variant="ghost" size="sm">Open</Button>
+        <Button size="sm">Open</Button>
       </SettingsRow>
       <SettingsRow v-for="entry in s.developer.env" :key="entry.key" inset :label="entry.key">
         <span class="font-mono text-[12px] text-fg-muted">{{ entry.value }}</span>
-        <Button variant="ghost" size="sm">Reveal</Button>
+        <Button size="sm">Reveal</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Experiments" description="May change or disappear. Feedback welcome.">

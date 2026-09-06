@@ -1,33 +1,32 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Check, Copy, ExternalLink, KeyRound, Plus, RefreshCw, Search, Sparkles, UserRound } from '@lucide/vue'
+import { Check, Plus, RefreshCw, Search, Sparkles, Terminal } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
-import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
-import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
-import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Meter from '@demicodes/web-ui/ui/Meter.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsListItem from '@demicodes/web-ui/settings/SettingsListItem.vue'
 import SettingsPage from '@demicodes/web-ui/settings/SettingsPage.vue'
 import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import SettingsSplit from '@demicodes/web-ui/settings/SettingsSplit.vue'
-import type { MockModel, MockProvider, SettingsState, WireApi } from '../fixtures/settings'
+import { mockVendors, subscriptionVendors, type MockModel, type MockProvider, type MockVendor, type SettingsState, type WireApi } from '../fixtures/settings'
 
 /**
  * Models & providers as a list beside the selected provider. An API-key entry edits
  * its endpoint, key and model list in place; a subscription entry manages accounts
- * and logins. Nothing here opens a further dialog: a model expands into its own rows.
+ * and its models are whatever the vendor serves. Signing in opens its own dialog.
  */
 const props = defineProps<{
   state: SettingsState
@@ -37,10 +36,14 @@ const s = computed(() => props.state)
 const subscriptions = computed(() => s.value.providers.filter((p) => p.kind === 'subscription'))
 const apiKeys = computed(() => s.value.providers.filter((p) => p.kind === 'api_key'))
 const selected = computed(() => s.value.providers.find((p) => p.id === s.value.selectedProviderId) ?? null)
-/** A draft for "Add provider"; null while an existing entry is shown. */
-const draft = ref<{ vendorId: string | null; name: string; baseUrl: string; wireApi: WireApi } | null>(null)
+const vendorOf = (p: MockProvider) => mockVendors.find((v) => v.id === p.vendorId) ?? null
 
-// Narrow hosts open the detail only when there is one to show; the flag itself is shared state.
+/** Adding a provider: first pick where it comes from, then fill the form. */
+type Draft =
+  | { step: 'pick'; query: string }
+  | { step: 'form'; vendor: MockVendor | null; name: string; baseUrl: string; wireApi: WireApi; key: string }
+const draft = ref<Draft | null>(null)
+
 const detailOpen = computed({
   get: () => s.value.providerDetailOpen && (draft.value !== null || selected.value !== null),
   set: (value: boolean) => {
@@ -60,27 +63,13 @@ const wireOptions: { value: WireApi; label: string }[] = [
   { value: 'openai-responses', label: 'OpenAI Responses' },
   { value: 'openai-chat', label: 'OpenAI Chat Completions' },
 ]
-const vendors = [
-  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages' as WireApi },
-  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses' as WireApi },
-  { id: 'google', name: 'Google AI Studio', baseUrl: 'https://generativelanguage.googleapis.com', wireApi: 'openai-chat' as WireApi },
-  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', wireApi: 'openai-chat' as WireApi },
-  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', wireApi: 'openai-chat' as WireApi },
-  { id: 'zhipu', name: 'Zhipu BigModel', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', wireApi: 'openai-chat' as WireApi },
-]
+const wireLabel = (w: WireApi) => wireOptions.find((o) => o.value === w)?.label ?? w
 
-function dotOf(p: MockProvider) {
-  return p.state === 'disabled' ? 'neutral' : stateTone[p.state]
-}
-
-function listDetail(p: MockProvider): string {
-  if (p.kind === 'subscription') {
-    const active = p.accounts.find((a) => a.active)
-    return active ? `${active.plan} · ${active.label}` : p.login ? 'Signing in…' : 'Not signed in'
-  }
-  const on = p.models.filter((m) => m.enabled).length
-  return p.vendorId ? `${on} of ${p.models.length} models` : `Custom · ${p.models.length} models`
-}
+const pickResults = computed(() => {
+  if (draft.value?.step !== 'pick') return mockVendors
+  const q = draft.value.query.trim().toLowerCase()
+  return q ? mockVendors.filter((v) => v.name.toLowerCase().includes(q) || v.id.includes(q)) : mockVendors
+})
 
 function select(id: string) {
   draft.value = null
@@ -90,18 +79,25 @@ function select(id: string) {
 }
 
 function startDraft() {
-  draft.value = { vendorId: null, name: '', baseUrl: '', wireApi: 'openai-chat' }
+  draft.value = { step: 'pick', query: '' }
   s.value.selectedProviderId = null
   s.value.providerDetailOpen = true
 }
 
-function pickVendor(id: string | null) {
-  if (!draft.value) return
-  const vendor = vendors.find((v) => v.id === id)
-  draft.value.vendorId = id
-  draft.value.name = vendor?.name ?? ''
-  draft.value.baseUrl = vendor?.baseUrl ?? ''
-  draft.value.wireApi = vendor?.wireApi ?? 'openai-chat'
+function pickVendor(vendor: MockVendor | null) {
+  draft.value = {
+    step: 'form',
+    vendor,
+    name: vendor?.name ?? '',
+    baseUrl: vendor?.baseUrl ?? '',
+    wireApi: vendor?.wireApi ?? 'openai-chat',
+    key: '',
+  }
+}
+
+function cancelDraft() {
+  draft.value = null
+  s.value.providerDetailOpen = false
 }
 
 function formatTokens(n: number | null): string {
@@ -149,6 +145,34 @@ function test(p: MockProvider) {
   }, 1200)
 }
 
+// Sign-in runs in its own dialog; the mock walks the device-code flow to completion.
+const login = ref<{ provider: MockProvider; phase: ProviderLoginPhase } | null>(null)
+let loginTimer = 0
+
+function beginLogin(p: MockProvider) {
+  window.clearTimeout(loginTimer)
+  login.value = { provider: p, phase: { kind: 'starting' } }
+  loginTimer = window.setTimeout(() => {
+    if (!login.value) return
+    login.value.phase = { kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresIn: '10 min' }
+    loginTimer = window.setTimeout(() => {
+      if (!login.value) return
+      login.value.phase = { kind: 'done', account: 'zan@example.com · Plus' }
+    }, 4000)
+  }, 900)
+}
+
+function closeLogin() {
+  window.clearTimeout(loginTimer)
+  if (login.value?.phase.kind === 'done') {
+    const p = login.value.provider
+    for (const a of p.accounts) a.active = false
+    p.accounts.push({ id: `a-${Date.now()}`, label: 'zan@example.com', plan: 'Plus', active: true, quota: { used: 4, max: 100, resets: 'in 4 h 58 min' } })
+    p.state = 'ready'
+  }
+  login.value = null
+}
+
 const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
 </script>
 
@@ -161,96 +185,127 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
           v-for="p in subscriptions"
           :key="p.id"
           :label="p.name"
-          :detail="listDetail(p)"
-          :icon="UserRound"
           :selected="!draft && p.id === s.selectedProviderId"
-          :dot="dotOf(p)"
+          :dot="stateTone[p.state]"
           :muted="!p.enabled"
           @select="select(p.id)"
-        />
+        >
+          <template #leading><VendorMark :label="p.name" :src="p.logo" size="sm" /></template>
+        </SettingsListItem>
         <div class="select-none px-2 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">API keys</div>
         <SettingsListItem
           v-for="p in apiKeys"
           :key="p.id"
           :label="p.name"
-          :detail="listDetail(p)"
-          :icon="KeyRound"
           :selected="!draft && p.id === s.selectedProviderId"
-          :dot="dotOf(p)"
+          :dot="stateTone[p.state]"
           :muted="!p.enabled"
           @select="select(p.id)"
-        />
+        >
+          <template #leading><VendorMark :label="p.name" :src="p.logo" size="sm" /></template>
+        </SettingsListItem>
         <div class="mt-2 border-t border-line-subtle pt-2">
           <SettingsListItem label="Add provider" :icon="Plus" :selected="!!draft" @select="startDraft" />
         </div>
       </template>
 
       <template #detail>
-        <!-- New provider -->
-        <div v-if="draft" class="flex flex-col gap-6 p-5">
+        <!-- New provider: pick -->
+        <div v-if="draft?.step === 'pick'" class="flex flex-col gap-5 p-5">
           <header class="select-none">
-            <h3 class="text-[15px] font-medium text-fg-emphasis">New provider</h3>
-            <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">Pick a vendor to prefill its endpoint, or describe a custom one. Subscriptions sign in instead.</p>
+            <h3 class="text-[15px] font-medium text-fg-emphasis">Add a provider</h3>
+            <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A vendor from models.dev brings its endpoint and model catalog. A custom endpoint takes any compatible server.</p>
+          </header>
+          <div class="flex items-center gap-2">
+            <Search :size="ICON_PX.in24" class="shrink-0 text-fg-subtle" />
+            <TextInput v-model="draft.query" placeholder="Search vendors" class="w-64 max-w-full" />
+          </div>
+          <div class="settings-card overflow-hidden rounded-xl border border-line">
+            <div
+              v-for="v in pickResults"
+              :key="v.id"
+              role="button"
+              class="flex h-12 cursor-default select-none items-center gap-3 px-3 hover:bg-hover"
+              @click="pickVendor(v)"
+            >
+              <VendorMark :label="v.name" :src="v.logo" />
+              <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ v.name }}</span>
+              <Tag>{{ wireLabel(v.wireApi) }}</Tag>
+            </div>
+            <div v-if="!pickResults.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No vendor matches. Add it as a custom endpoint.</div>
+            <div role="button" class="flex h-12 cursor-default select-none items-center gap-3 px-3 hover:bg-hover" @click="pickVendor(null)">
+              <span class="inline-flex size-7 items-center justify-center rounded-md bg-overlay/8 text-fg-muted"><Terminal :size="ICON_PX.in28" /></span>
+              <span class="min-w-0 flex-1 truncate text-chrome text-fg">Custom endpoint</span>
+              <Tag>Any protocol</Tag>
+            </div>
+          </div>
+          <div class="select-none text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Subscriptions</div>
+          <div class="settings-card overflow-hidden rounded-xl border border-line">
+            <div v-for="v in subscriptionVendors" :key="v.id" role="button" class="flex h-12 cursor-default select-none items-center gap-3 px-3 hover:bg-hover">
+              <VendorMark :label="v.name" :src="v.logo" />
+              <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ v.name }}</span>
+              <Tag>Sign in</Tag>
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <Button @click="cancelDraft">Cancel</Button>
+          </div>
+        </div>
+
+        <!-- New provider: form -->
+        <div v-else-if="draft?.step === 'form'" class="flex flex-col gap-6 p-5">
+          <header class="flex items-center gap-3">
+            <VendorMark :label="draft.vendor?.name ?? 'Custom'" :src="draft.vendor?.logo" />
+            <div class="min-w-0 select-none">
+              <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ draft.vendor ? draft.vendor.name : 'Custom endpoint' }}</h3>
+              <p class="text-[12px] text-fg-subtle">{{ draft.vendor ? `${wireLabel(draft.wireApi)} · catalog from models.dev` : 'You name the protocol and the models.' }}</p>
+            </div>
+            <Button size="sm" class="ml-auto" @click="draft = { step: 'pick', query: '' }">Change</Button>
           </header>
           <div class="settings-card overflow-hidden rounded-xl border border-line">
-            <SettingsRow label="Vendor" description="Known vendors bring their model catalog along.">
-              <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Vendor">
-                <template #trigger>{{ vendors.find((v) => v.id === draft?.vendorId)?.name ?? 'Custom endpoint' }}</template>
-                <template #content="{ close }">
-                  <Menu>
-                    <MenuItem label="Custom endpoint" choice :is-selected="draft.vendorId === null" @select="pickVendor(null); close()" />
-                    <MenuDivider />
-                    <MenuItem v-for="v in vendors" :key="v.id" :label="v.name" choice :is-selected="draft.vendorId === v.id" @select="pickVendor(v.id); close()" />
-                    <MenuGroup label="Subscriptions">
-                      <MenuItem label="Claude Code" />
-                      <MenuItem label="Codex" />
-                      <MenuItem label="Grok Build" />
-                    </MenuGroup>
-                  </Menu>
-                </template>
-              </Dropdown>
-            </SettingsRow>
             <SettingsRow label="Name" description="How it appears in the model picker.">
               <TextInput v-model="draft.name" placeholder="My provider" class="w-56 max-w-full" />
             </SettingsRow>
-            <SettingsRow label="Base URL">
-              <TextInput v-model="draft.baseUrl" placeholder="https://api.example.com/v1" class="w-72 max-w-full" />
+            <SettingsRow label="Base URL" :description="draft.vendor && !draft.vendor.baseUrl ? 'The vendor default. Change it for a proxy.' : undefined">
+              <TextInput v-model="draft.baseUrl" :placeholder="draft.vendor ? 'Vendor default' : 'https://api.example.com/v1'" class="w-72 max-w-full" />
             </SettingsRow>
-            <SettingsRow v-if="!draft.vendorId" label="Protocol" description="What the endpoint speaks.">
+            <SettingsRow v-if="!draft.vendor" label="Protocol" description="What the endpoint speaks.">
               <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Protocol">
-                <template #trigger>{{ wireOptions.find((w) => w.value === draft?.wireApi)?.label }}</template>
+                <template #trigger>{{ wireLabel(draft.wireApi) }}</template>
                 <template #content="{ close }">
                   <Menu>
-                    <MenuItem v-for="w in wireOptions" :key="w.value" :label="w.label" choice :is-selected="draft.wireApi === w.value" @select="draft!.wireApi = w.value; close()" />
+                    <MenuItem v-for="w in wireOptions" :key="w.value" :label="w.label" choice :is-selected="draft.wireApi === w.value" @select="draft!.step === 'form' && (draft.wireApi = w.value); close()" />
                   </Menu>
                 </template>
               </Dropdown>
             </SettingsRow>
-            <SettingsRow label="API key" description="Kept in this device's keychain.">
-              <TextInput placeholder="sk-…" class="w-56 max-w-full" />
+            <SettingsRow label="API key" description="Kept in the keychain of this device.">
+              <TextInput v-model="draft.key" placeholder="sk-…" class="w-56 max-w-full" />
             </SettingsRow>
           </div>
           <div class="flex items-center justify-end gap-2">
-            <Button variant="ghost" @click="draft = null; s.providerDetailOpen = false">Cancel</Button>
-            <Button variant="primary" :disabled="!draft.name.trim() || !draft.baseUrl.trim()">Add provider</Button>
+            <Button @click="cancelDraft">Cancel</Button>
+            <Button variant="primary" :disabled="!draft.name.trim() || (!draft.vendor && !draft.baseUrl.trim())">Add provider</Button>
           </div>
         </div>
 
         <!-- Existing provider -->
         <div v-else-if="selected" class="flex flex-col gap-6 p-5">
           <header class="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <VendorMark :label="selected.name" :src="selected.logo" />
             <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <h3 class="max-w-full truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
               <Tag :tone="stateTone[selected.state]">{{ stateWord[selected.state] }}</Tag>
               <Tag v-if="selected.kind === 'subscription'">Subscription</Tag>
+              <Tag v-else-if="vendorOf(selected)">{{ vendorOf(selected)!.name }}</Tag>
+              <Tag v-else>Custom endpoint</Tag>
             </div>
             <div class="ml-auto flex items-center gap-2">
-              <Button variant="ghost" size="sm">Rename</Button>
-              <Button variant="ghost" size="sm">Remove</Button>
+              <Button size="sm">Rename</Button>
+              <Button size="sm">Remove</Button>
               <Switch v-model="selected.enabled" size="sm" class="ml-1" />
             </div>
           </header>
-          <p v-if="selected.detail" class="-mt-3 select-none text-[12px]" :class="selected.state === 'unreachable' ? 'font-mono text-on-danger' : 'text-on-danger'">{{ selected.detail }}</p>
 
           <!-- Accounts (subscription) -->
           <SettingsGroup v-if="selected.kind === 'subscription'" title="Accounts" description="One account is active at a time; every conversation on this provider uses it.">
@@ -261,42 +316,27 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
               :description="account.quota ? `${account.plan} · ${account.quota.used}% of the 5-hour window · resets ${account.quota.resets}` : account.plan"
             >
               <template #tags><Tag v-if="account.active" tone="accent">Active</Tag><Tag v-if="account.quota && account.quota.used >= 100" tone="danger">Limit reached</Tag></template>
-              <Button v-if="!account.active" variant="ghost" size="sm" @click="setActive(selected!, account.id)">Use</Button>
-              <Button variant="ghost" size="sm">Sign out</Button>
+              <Button v-if="!account.active" size="sm" @click="setActive(selected!, account.id)">Use</Button>
+              <Button size="sm">Sign out</Button>
             </SettingsRow>
             <div v-for="account in selected.accounts.filter((a) => a.active && a.quota)" :key="`m-${account.id}`" class="px-4 pb-3">
               <Meter :value="account.quota!.used" :max="account.quota!.max" label="Rate window" />
             </div>
-            <div v-if="selected.login" class="flex flex-col gap-3 px-4 py-4">
-              <div class="flex items-center gap-2 text-chrome text-fg">
-                <IndeterminateSpinner :size="ICON_PX.in24" />
-                Waiting for you to confirm in the browser
-              </div>
-              <div class="flex flex-wrap items-center gap-3">
-                <span class="font-mono text-[18px] tracking-[0.2em] text-fg-emphasis">{{ selected.login.code }}</span>
-                <IconButton :icon="Copy" variant="ghost" aria-label="Copy code" />
-                <Button size="sm">
-                  Open {{ selected.login.url.replace('https://', '') }}
-                  <ExternalLink :size="ICON_PX.in24" />
-                </Button>
-                <span class="text-[12px] text-fg-subtle">Code expires in {{ selected.login.expires }}</span>
-              </div>
-              <Button variant="ghost" size="sm" class="self-start" @click="selected!.login = null">Cancel</Button>
-            </div>
-            <SettingsRow v-else label="Add an account" description="Signs in with the vendor's own login. Also imports a login the CLI already has.">
-              <Button variant="ghost" size="sm">Import from CLI</Button>
-              <Button @click="selected!.login = { url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expires: '10 min' }">Sign in…</Button>
+            <div v-if="!selected.accounts.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No account yet. Sign in to use this provider.</div>
+            <SettingsRow label="Add an account" description="Signs in with the vendor's own login, or imports one the CLI already has.">
+              <Button size="sm">Import from CLI</Button>
+              <Button variant="primary" size="sm" @click="beginLogin(selected!)">Sign in…</Button>
             </SettingsRow>
           </SettingsGroup>
 
           <!-- Connection (API key) -->
           <SettingsGroup v-else title="Connection">
-            <SettingsRow label="Base URL" :description="selected.vendorId ? `${selected.vendorId} on models.dev · protocol comes with the vendor` : 'A custom endpoint. Protocol below.'">
+            <SettingsRow label="Base URL" :description="vendorOf(selected) ? `${vendorOf(selected)!.name} on models.dev · ${wireLabel(selected.wireApi)}` : 'A custom endpoint. Protocol below.'">
               <TextInput v-model="selected.baseUrl" class="w-72 max-w-full" />
             </SettingsRow>
-            <SettingsRow v-if="!selected.vendorId" label="Protocol">
+            <SettingsRow v-if="!vendorOf(selected)" label="Protocol">
               <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Protocol">
-                <template #trigger>{{ wireOptions.find((w) => w.value === selected?.wireApi)?.label }}</template>
+                <template #trigger>{{ wireLabel(selected.wireApi) }}</template>
                 <template #content="{ close }">
                   <Menu>
                     <MenuItem v-for="w in wireOptions" :key="w.value" :label="w.label" choice :is-selected="selected.wireApi === w.value" @select="selected!.wireApi = w.value; close()" />
@@ -304,26 +344,34 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
                 </template>
               </Dropdown>
             </SettingsRow>
-            <SettingsRow label="API key" :description="selected.keyHint ? 'Stored in the keychain of this device, never in the config file.' : 'No key. Local endpoints usually need none.'">
+            <SettingsRow label="API key" :description="selected.keyHint ? 'Kept in the keychain of this device, never in the config file.' : 'No key. Local endpoints usually need none.'">
               <span v-if="selected.keyHint" class="font-mono text-[12px] text-fg-muted">{{ selected.keyHint }}</span>
-              <Button variant="ghost" size="sm">{{ selected.keyHint ? 'Replace' : 'Add key' }}</Button>
+              <Button size="sm">{{ selected.keyHint ? 'Replace' : 'Add key' }}</Button>
             </SettingsRow>
             <SettingsRow label="Test connection" description="Sends one tiny request with the key above.">
+              <template #tags><Tag v-if="selected.state === 'error' || selected.state === 'unreachable'" tone="danger">Failed</Tag></template>
+              <template #description>
+                <span v-if="selected.detail" class="font-mono text-on-danger">{{ selected.detail }}</span>
+                <span v-else>Sends one tiny request with the key above.</span>
+              </template>
               <span v-if="testing === selected.id" class="flex items-center gap-1.5 text-[12px] text-fg-subtle"><IndeterminateSpinner :size="ICON_PX.in24" /> Testing…</span>
               <span v-else-if="selected.state === 'ready'" class="flex items-center gap-1 text-[12px] text-on-success"><Check :size="ICON_PX.in24" /> OK · 412 ms</span>
-              <Button variant="ghost" size="sm" @click="test(selected!)">Test</Button>
+              <Button size="sm" @click="test(selected!)">Test</Button>
             </SettingsRow>
           </SettingsGroup>
 
           <!-- Models -->
-          <SettingsGroup title="Models" :description="selected.kind === 'subscription' ? 'What the vendor offers this account. Off hides a model from the picker.' : undefined">
+          <SettingsGroup
+            title="Models"
+            :description="selected.kind === 'subscription' ? `What the vendor serves this account right now${selected.catalogFetched ? ` · fetched ${selected.catalogFetched}` : ''}.` : undefined"
+          >
             <SettingsRow
               v-if="selected.kind === 'api_key'"
               label="Model list"
               :description="selected.modelSource === 'catalog' ? `From the vendor catalog · fetched ${selected.catalogFetched}` : 'Ids you enter. Fill in what a model can do so the composer offers the right controls.'"
             >
               <template #tags><Tag v-if="selected.stale" tone="warning">Stale</Tag></template>
-              <Button v-if="selected.modelSource === 'catalog'" variant="ghost" size="sm"><RefreshCw :size="ICON_PX.in24" /> Refresh</Button>
+              <Button v-if="selected.modelSource === 'catalog'" size="sm"><RefreshCw :size="ICON_PX.in24" /> Refresh</Button>
               <Segmented v-model="selected.modelSource" size="sm" :options="[{ value: 'catalog', label: 'Catalog' }, { value: 'manual', label: 'Manual' }]" />
             </SettingsRow>
             <div v-if="selected.models.length > 3" class="flex items-center gap-2 px-4 py-2">
@@ -332,16 +380,16 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
             </div>
             <template v-for="m in visibleModels(selected)" :key="m.id">
               <SettingsRow :label="m.name || m.id" :description="m.name ? m.id : undefined" :class="m.enabled ? '' : 'opacity-60'">
-                <template #leading><Checkbox v-model="m.enabled" label="" /></template>
+                <template v-if="selected.kind === 'api_key'" #leading><Checkbox v-model="m.enabled" label="" /></template>
                 <template #tags>
                   <Tag v-if="selected.defaultModelId === m.id" tone="accent">Default</Tag>
                   <Tag v-for="t in capabilityTags(m)" :key="t.text" :tone="t.tone">{{ t.text }}</Tag>
                 </template>
-                <Button v-if="selected.defaultModelId !== m.id" variant="ghost" size="sm" @click="selected!.defaultModelId = m.id">Make default</Button>
-                <Button v-if="selected.modelSource === 'manual'" variant="ghost" size="sm" @click="expandedModelId = expandedModelId === m.id ? null : m.id">{{ expandedModelId === m.id ? 'Done' : 'Edit' }}</Button>
-                <Button v-else variant="ghost" size="sm" @click="expandedModelId = expandedModelId === m.id ? null : m.id">{{ expandedModelId === m.id ? 'Less' : 'Details' }}</Button>
+                <Button v-if="selected.kind === 'api_key' && selected.defaultModelId !== m.id" size="sm" @click="selected!.defaultModelId = m.id">Make default</Button>
+                <Button v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'" size="sm" @click="expandedModelId = expandedModelId === m.id ? null : m.id">{{ expandedModelId === m.id ? 'Done' : 'Edit' }}</Button>
+                <Button v-else size="sm" @click="expandedModelId = expandedModelId === m.id ? null : m.id">{{ expandedModelId === m.id ? 'Less' : 'Details' }}</Button>
               </SettingsRow>
-              <template v-if="expandedModelId === m.id && selected.modelSource === 'manual'">
+              <template v-if="expandedModelId === m.id && selected.kind === 'api_key' && selected.modelSource === 'manual'">
                 <SettingsRow inset label="Display name" description="Shown in the picker instead of the id.">
                   <TextInput v-model="m.name" :placeholder="m.id" class="w-56 max-w-full" />
                 </SettingsRow>
@@ -376,7 +424,7 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
                   <TextInput :model-value="m.fastTier ?? ''" placeholder="priority" class="w-32" @update:model-value="(v) => (m.fastTier = v || null)" />
                 </SettingsRow>
                 <SettingsRow inset label="Remove this model">
-                  <Button variant="ghost" size="sm" @click="selected!.models = selected!.models.filter((x) => x.id !== m.id); expandedModelId = null">Remove</Button>
+                  <Button size="sm" @click="selected!.models = selected!.models.filter((x) => x.id !== m.id); expandedModelId = null">Remove</Button>
                 </SettingsRow>
               </template>
               <template v-else-if="expandedModelId === m.id">
@@ -386,10 +434,10 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
               </template>
             </template>
             <div v-if="!visibleModels(selected).length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
-              {{ modelFilter ? 'No model matches.' : 'No models yet.' }}
+              {{ modelFilter ? 'No model matches.' : selected.kind === 'subscription' ? 'Sign in to see what this account can use.' : 'No models yet.' }}
             </div>
             <SettingsRow v-if="selected.kind === 'api_key' && selected.modelSource === 'manual'" label="Add a model" description="The id the endpoint expects. You can fill in its capabilities after.">
-              <Button variant="ghost" size="sm"><Sparkles :size="ICON_PX.in24" /> Fetch from endpoint</Button>
+              <Button size="sm"><Sparkles :size="ICON_PX.in24" /> Fetch from endpoint</Button>
               <TextInput v-model="newModelId" placeholder="model-id" class="w-48 max-w-full" @keydown.enter="addModel(selected!)" />
               <Button :disabled="!newModelId.trim()" @click="addModel(selected!)">Add</Button>
             </SettingsRow>
@@ -423,5 +471,14 @@ const EFFORTS = ['minimal', 'low', 'medium', 'high', 'max']
         <Segmented v-model="s.defaults.reasoning" :options="[{ value: 'off', label: 'Off' }, { value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }]" />
       </SettingsRow>
     </SettingsGroup>
+
+    <ProviderLoginDialog
+      v-if="login"
+      :is-open="true"
+      :overlay-store="appOverlayStore"
+      :vendor-name="login.provider.name"
+      :phase="login.phase"
+      @close="closeLogin"
+    />
   </SettingsPage>
 </template>
