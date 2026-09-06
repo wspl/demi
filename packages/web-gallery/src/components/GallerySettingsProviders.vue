@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { showToast } from '@demicodes/web-ui/infra/toast'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsProviderEntry, type SettingsProviderModel, type SettingsVendor, type SettingsWireApi } from '@demicodes/web-ui/settings/types'
@@ -52,11 +53,29 @@ function removeProvider(id: string) {
   }
 }
 
+/** The mock judges a connection by its inputs: no key is rejected, localhost is unreachable. */
 function test(p: SettingsProviderEntry) {
   testing.value = p.id
   window.setTimeout(() => {
     testing.value = null
+    if (p.vendorId && !p.apiKey) {
+      p.state = 'error'
+      p.detail = '401 · No API key provided'
+    } else if (/localhost|127\.0\.0\.1/.test(p.baseUrl)) {
+      p.state = 'unreachable'
+      p.detail = `connect ECONNREFUSED ${p.baseUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}`
+    } else {
+      p.state = 'ready'
+      p.detail = undefined
+      p.testedIn = `${180 + Math.round(Math.random() * 400)} ms`
+    }
   }, 1200)
+}
+
+function refresh(p: SettingsProviderEntry) {
+  p.catalogFetched = 'just now'
+  p.stale = false
+  showToast({ title: `${p.name} refreshed`, message: `${p.models.length} models listed.` })
 }
 
 function activateAccount(p: SettingsProviderEntry, id: string) {
@@ -100,6 +119,10 @@ function beginLogin(p: SettingsProviderEntry) {
   }, 900)
 }
 
+function openUrl(url: string) {
+  window.open(url, '_blank', 'noopener')
+}
+
 function closeLogin() {
   window.clearTimeout(loginTimer)
   if (login.value?.phase.kind === 'done') {
@@ -125,6 +148,7 @@ function closeLogin() {
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"
+    @refresh="refresh"
     @activate-account="activateAccount"
     @remove-account="removeAccount"
     @save-model="saveModel"
@@ -137,5 +161,7 @@ function closeLogin() {
     :vendor-name="login.provider.name"
     :phase="login.phase"
     @close="closeLogin"
+    @open="openUrl"
+    @retry="beginLogin(login.provider)"
   />
 </template>
