@@ -99,5 +99,6 @@ declare global {
 
 export function installClipAudit(afterNavigation: (run: () => void) => void): void {
   window.demiAuditClipping = auditClipping
-  if (import.meta.env.DEV) afterNavigation(() => window.setTimeout(() => reportClipping(), 600))
+  // Dialogs finish appearing well within this; auditing mid-transition reports their scale.
+  if (import.meta.env.DEV) afterNavigation(() => window.setTimeout(() => reportClipping(), 1500))
 }

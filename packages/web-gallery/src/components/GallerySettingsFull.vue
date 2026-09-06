@@ -171,7 +171,7 @@ const revealed = ref<Record<string, boolean>>({})
       </SettingsRow>
       <SettingsRow label="Update channel" description="Beta builds arrive about a week early.">
         <template #tags><Tag>{{ s.general.version }} · up to date</Tag></template>
-        <Button size="sm" :disabled="checking" @click="checkUpdates">{{ checking ? 'Checking…' : 'Check now' }}</Button>
+        <Button :disabled="checking" @click="checkUpdates">{{ checking ? 'Checking…' : 'Check now' }}</Button>
         <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Update channel">
           <template #trigger>{{ s.general.channel }}</template>
           <template #content="{ close }">
@@ -189,7 +189,7 @@ const revealed = ref<Record<string, boolean>>({})
     <SettingsGroup title="Profile">
       <SettingsRow label="Avatar">
         <span class="flex size-8 items-center justify-center rounded-full bg-tint-accent text-[13px] font-medium text-on-accent">Z</span>
-        <Button size="sm" @click="note('Choose a picture', 'The product opens a file picker here.')">Change</Button>
+        <Button @click="note('Choose a picture', 'The product opens a file picker here.')">Change</Button>
       </SettingsRow>
       <SettingsRow label="Display name">
         <TextInput v-model="s.account.name" class="w-56 max-w-full" />
@@ -197,7 +197,7 @@ const revealed = ref<Record<string, boolean>>({})
       <SettingsRow label="Email">
         <template #tags><Tag tone="success">Verified</Tag></template>
         <span class="text-chrome text-fg-muted">{{ s.account.email }}</span>
-        <Button size="sm" @click="note('Check your inbox', `A confirmation link went to ${s.account.email}.`)">Change</Button>
+        <Button @click="note('Check your inbox', `A confirmation link went to ${s.account.email}.`)">Change</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Plan">
@@ -243,7 +243,7 @@ const revealed = ref<Record<string, boolean>>({})
     </SettingsGroup>
     <SettingsGroup title="Quiet hours">
       <SettingsRow label="Silence notifications" :description="s.notifications.quietHours ? `Between ${s.notifications.quietRange}. Approvals still come through.` : undefined">
-        <Button v-if="s.notifications.quietHours" size="sm" @click="note('Pick the hours', 'The product opens a time-range picker.')">{{ s.notifications.quietRange }}</Button>
+        <Button v-if="s.notifications.quietHours" @click="note('Pick the hours', 'The product opens a time-range picker.')">{{ s.notifications.quietRange }}</Button>
         <Switch v-model="s.notifications.quietHours" />
       </SettingsRow>
     </SettingsGroup>
@@ -261,7 +261,7 @@ const revealed = ref<Record<string, boolean>>({})
             <Tag v-if="agent.isDefault" tone="accent">Default</Tag>
             <Tag v-if="agent.mode === 'subagent'">Subagent</Tag>
           </template>
-          <Button size="sm" @click="agent.expanded = !agent.expanded">{{ agent.expanded ? 'Done' : 'Edit' }}</Button>
+          <Button @click="agent.expanded = !agent.expanded">{{ agent.expanded ? 'Done' : 'Edit' }}</Button>
           <Switch v-model="agent.enabled" size="sm" class="ml-1" />
         </SettingsRow>
         <template v-if="agent.expanded">
@@ -276,7 +276,7 @@ const revealed = ref<Record<string, boolean>>({})
             </Dropdown>
           </SettingsRow>
           <SettingsRow inset label="Mode" description="A primary agent is picked per conversation; a subagent is delegated to.">
-            <Segmented v-model="agent.mode" size="sm" :options="[{ value: 'primary', label: 'Primary' }, { value: 'subagent', label: 'Subagent' }]" />
+            <Segmented v-model="agent.mode" :options="[{ value: 'primary', label: 'Primary' }, { value: 'subagent', label: 'Subagent' }]" />
           </SettingsRow>
           <SettingsRow inset label="Tools">
             <Tag tone="success">edit</Tag>
@@ -285,7 +285,7 @@ const revealed = ref<Record<string, boolean>>({})
             <Tag>mcp · ask</Tag>
           </SettingsRow>
           <SettingsRow inset label="System prompt" description="Appended after the global instructions.">
-            <Button size="sm" @click="note('Prompt editor', 'The product opens the prompt in an editor dialog.')">Edit prompt</Button>
+            <Button @click="note('Prompt editor', 'The product opens the prompt in an editor dialog.')">Edit prompt</Button>
           </SettingsRow>
         </template>
       </template>
@@ -301,13 +301,13 @@ const revealed = ref<Record<string, boolean>>({})
   <SettingsPage v-else-if="tab === 'permissions'" title="Permissions" description="What the agent may do without asking. Ask pauses the turn until you answer.">
     <SettingsGroup title="Tools">
       <SettingsRow v-for="tool in tools" :key="tool.key" :label="tool.label" :description="tool.description">
-        <Segmented v-model="s.permissions[tool.key]" size="sm" :options="permissionOptions" />
+        <Segmented v-model="s.permissions[tool.key]" :options="permissionOptions" />
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Shell allowlist" description="Commands matching a pattern run without asking, whatever the rule above says.">
       <SettingsRow v-for="pattern in s.permissions.allowlist" :key="pattern" inset :label="pattern">
         <template #leading><Terminal :size="ICON_PX.in24" /></template>
-        <Button size="sm" @click="s.permissions.allowlist = s.permissions.allowlist.filter((p) => p !== pattern)">Remove</Button>
+        <Button @click="s.permissions.allowlist = s.permissions.allowlist.filter((p) => p !== pattern)">Remove</Button>
       </SettingsRow>
       <SettingsRow label="Add a pattern" description="Glob syntax. `git *` matches every git command.">
         <TextInput v-model="newPattern" placeholder="docker compose *" class="w-56 max-w-full" @keydown.enter="addPattern" />
@@ -319,7 +319,7 @@ const revealed = ref<Record<string, boolean>>({})
         <Segmented v-model="s.permissions.scope" :options="[{ value: 'project', label: 'This project' }, { value: 'everywhere', label: 'Everywhere' }]" />
       </SettingsRow>
       <SettingsRow label="Reset to defaults" description="Ask for edits and shell, allow reads and web.">
-        <Button size="sm" @click="resetPermissions">Reset</Button>
+        <Button @click="resetPermissions">Reset</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -331,14 +331,14 @@ const revealed = ref<Record<string, boolean>>({})
         <TextArea v-model="s.instructions.global" :rows="4" placeholder="How should the agent work with you?" />
         <div class="mt-2 flex items-center justify-between text-[12px] text-fg-subtle">
           <span class="select-none">{{ s.instructions.global.length }} characters · about {{ Math.ceil(s.instructions.global.length / 4) }} tokens</span>
-          <Button size="sm" @click="note('System prompt preview', `${s.instructions.global.length} characters of global instructions, then the project files.`)">Preview prompt</Button>
+          <Button @click="note('System prompt preview', `${s.instructions.global.length} characters of global instructions, then the project files.`)">Preview prompt</Button>
         </div>
       </div>
     </SettingsGroup>
     <SettingsGroup title="Project instructions" description="AGENTS.md files the agent reads from the working directory up to the checkout root.">
       <SettingsRow v-for="file in s.instructions.files" :key="file.path" :label="file.path" :description="file.found ? 'Read at the start of every turn.' : 'Not found. Create it to give this project its own rules.'">
         <template #tags><Tag :tone="file.found ? 'success' : 'neutral'">{{ file.found ? 'Found' : 'Missing' }}</Tag></template>
-        <Button size="sm" @click="file.found ? note('Opening in your editor', file.path) : (file.found = true)">{{ file.found ? 'Open' : 'Create' }}</Button>
+        <Button @click="file.found ? note('Opening in your editor', file.path) : (file.found = true)">{{ file.found ? 'Open' : 'Create' }}</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Memory">
@@ -346,7 +346,7 @@ const revealed = ref<Record<string, boolean>>({})
         <Switch v-model="s.instructions.memory" />
       </SettingsRow>
       <SettingsRow label="Saved memories" :description="`${s.instructions.memories} entries · last added yesterday`">
-        <Button size="sm" @click="note('Saved memories', 'The product lists them in a dialog with a remove button each.')">Manage</Button>
+        <Button @click="note('Saved memories', 'The product lists them in a dialog with a remove button each.')">Manage</Button>
       </SettingsRow>
       <SettingsRow label="Clear memory" description="Forgets everything saved so far. Conversations are kept.">
         <Button variant="danger" :disabled="!s.instructions.memories" @click="clearMemory">Clear</Button>
@@ -368,13 +368,13 @@ const revealed = ref<Record<string, boolean>>({})
             <span class="font-mono">{{ server.target }}</span>
             <span v-if="server.detail" class="block" :class="server.state === 'crashed' ? 'font-mono text-on-danger' : 'text-on-warning'">{{ server.detail }}</span>
           </template>
-          <template v-if="server.state === 'auth'"><Button size="sm" @click="signInServer(server)">Sign in</Button></template>
+          <template v-if="server.state === 'auth'"><Button @click="signInServer(server)">Sign in</Button></template>
           <template v-else-if="server.state === 'crashed'">
-            <Button size="sm" @click="note(`${server.name} logs`, server.detail)">Logs</Button>
-            <Button size="sm" @click="restartServer(server)">Restart</Button>
+            <Button @click="note(`${server.name} logs`, server.detail)">Logs</Button>
+            <Button @click="restartServer(server)">Restart</Button>
           </template>
           <template v-else-if="server.state === 'connected'">
-            <Button size="sm" @click="server.expanded = !server.expanded">{{ server.expanded ? 'Hide tools' : 'Tools' }}</Button>
+            <Button @click="server.expanded = !server.expanded">{{ server.expanded ? 'Hide tools' : 'Tools' }}</Button>
           </template>
           <Switch v-model="server.enabled" size="sm" class="ml-1" />
         </SettingsRow>
@@ -415,8 +415,8 @@ const revealed = ref<Record<string, boolean>>({})
             <Tag v-if="device.current" tone="accent">This device</Tag>
             <Tag v-if="device.version !== '1.6.2'" tone="warning">Update available</Tag>
           </template>
-          <Button v-if="!device.current" size="sm" @click="device.online = !device.online; device.seen = device.online ? 'Now' : 'Just now'">{{ device.online ? 'Go offline' : 'Connect' }}</Button>
-          <Button size="sm" :disabled="device.current" @click="revokeDevice(device.id)">Revoke</Button>
+          <Button v-if="!device.current" @click="device.online = !device.online; device.seen = device.online ? 'Now' : 'Just now'">{{ device.online ? 'Go offline' : 'Connect' }}</Button>
+          <Button :disabled="device.current" @click="revokeDevice(device.id)">Revoke</Button>
         </SettingsRow>
         <SettingsRow inset label="Home directory">
           <span class="font-mono text-[12px] text-fg-muted">{{ device.home }}</span>
@@ -438,12 +438,12 @@ const revealed = ref<Record<string, boolean>>({})
       <SettingsRow v-for="binding in s.keys" :key="binding.id" :label="binding.action" :description="binding.conflict ? `Also bound to ${binding.conflict}. The first match wins.` : undefined">
         <template #tags><Tag v-if="binding.conflict" tone="danger">Conflict</Tag></template>
         <KeyCap :keys="binding.keys" />
-        <Button size="sm" @click="note('Press the new shortcut', `Recording for “${binding.action}”. Escape cancels.`)">Change</Button>
+        <Button @click="note('Press the new shortcut', `Recording for “${binding.action}”. Escape cancels.`)">Change</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup>
       <SettingsRow label="Reset all shortcuts">
-        <Button size="sm" @click="resetShortcuts">Reset</Button>
+        <Button @click="resetShortcuts">Reset</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
@@ -484,7 +484,7 @@ const revealed = ref<Record<string, boolean>>({})
   <SettingsPage v-else-if="tab === 'usage'" title="Usage & billing" description="This month, across every provider.">
     <SettingsGroup title="Plan">
       <SettingsRow :label="`${s.account.plan} plan`" :description="`Next invoice ${s.account.renews} · credits reset ${s.usage.resets}`">
-        <Button size="sm" @click="note('Opening your invoices')">Invoices</Button>
+        <Button @click="note('Opening your invoices')">Invoices</Button>
         <Button @click="note('Opening the billing portal')">Manage billing</Button>
       </SettingsRow>
       <div class="flex flex-col gap-2 px-4 py-3">
@@ -521,7 +521,7 @@ const revealed = ref<Record<string, boolean>>({})
         </Dropdown>
       </SettingsRow>
       <SettingsRow label="Open log folder">
-        <Button size="sm" @click="note('Opening the log folder', '~/Library/Logs/Demi')">
+        <Button @click="note('Opening the log folder', '~/Library/Logs/Demi')">
           Open
           <ExternalLink :size="ICON_PX.in24" />
         </Button>
@@ -531,11 +531,11 @@ const revealed = ref<Record<string, boolean>>({})
       <SettingsRow label="Config file" description="Edits made here are written back; edits made there reload live.">
         <span class="font-mono text-[12px] text-fg-muted">{{ s.developer.configPath }}</span>
         <IconButton :icon="Copy" variant="ghost" aria-label="Copy config path" @click="copyText(s.developer.configPath, 'Path')" />
-        <Button size="sm" @click="note('Opening in your editor', s.developer.configPath)">Open</Button>
+        <Button @click="note('Opening in your editor', s.developer.configPath)">Open</Button>
       </SettingsRow>
       <SettingsRow v-for="entry in s.developer.env" :key="entry.key" inset :label="entry.key">
         <span class="font-mono text-[12px] text-fg-muted">{{ revealed[entry.key] ? entry.value.replace(/•+/, '3f2a9c1d7e5b4a6f8c2d1e9b') : entry.value }}</span>
-        <Button size="sm" @click="revealed[entry.key] = !revealed[entry.key]">{{ revealed[entry.key] ? 'Hide' : 'Reveal' }}</Button>
+        <Button @click="revealed[entry.key] = !revealed[entry.key]">{{ revealed[entry.key] ? 'Hide' : 'Reveal' }}</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Experiments" description="May change or disappear. Feedback welcome.">

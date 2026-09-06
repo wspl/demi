@@ -131,3 +131,16 @@ region's edge. Rules:
 - The gallery audits this: `demiAuditClipping()` in the browser console, and
   automatically after each gallery navigation in development, lists every
   outlined element that a scroll region would clip.
+
+## Control size families
+
+Every control comes in height families that line up with each other: 28px
+(`Button` md, `IconButton` md, `TextInput`, `Segmented` md, `Dropdown` md), 24px
+(`sm` of each) and 20px (`xs`). A surface picks one family and every control on it
+uses that family, so a button beside an input is never a different height than
+the input. Settings cards use 28px. Smaller families belong to denser chrome: a
+rail caption's action or a hover action inside a 32px list row uses 20px.
+
+The gallery audits this: `demiAuditControlSizes()` in the browser console, and
+automatically after each gallery navigation in development, lists every settings
+card whose controls mix families.
