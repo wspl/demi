@@ -96,10 +96,28 @@ const textClass = computed(() => props.pending ? 'text-fg-subtle' : 'text-fg-bod
 
 const contentRef = ref<HTMLElement>()
 const isOverflowing = ref(false)
+/** Clip height for a long message: ends on a line box, so the hover actions can sit on the last visible line. */
+const clipHeight = ref<number | null>(null)
+
+const MAX_CONTENT_PX = 192
 
 useResizeObserver(contentRef, () => {
-  if (!contentRef.value) return
-  isOverflowing.value = contentRef.value.scrollHeight > contentRef.value.clientHeight
+  const el = contentRef.value
+  if (!el) return
+  const top = el.getBoundingClientRect().top
+  const lineHeight = Number.parseFloat(getComputedStyle(el.firstElementChild ?? el).lineHeight) || 0
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  let lastFit = 0
+  let overflow = false
+  for (const rect of range.getClientRects()) {
+    // Client rects are glyph boxes; extend to the line box so the clip does not cut descenders.
+    const bottom = Math.round(rect.bottom - top + Math.max(0, (lineHeight - rect.height) / 2))
+    if (bottom <= MAX_CONTENT_PX) lastFit = Math.max(lastFit, bottom)
+    else overflow = true
+  }
+  isOverflowing.value = overflow
+  clipHeight.value = overflow ? lastFit : null
 })
 </script>
 
@@ -140,8 +158,8 @@ useResizeObserver(contentRef, () => {
       </div>
       <div
         ref="contentRef"
-        class="max-h-48 overflow-hidden"
-        :style="isOverflowing ? { maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)' } : undefined"
+        class="overflow-hidden"
+        :style="isOverflowing ? { height: `${clipHeight}px`, maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)' } : undefined"
       >
         <div v-if="userText" class="markdown-body select-text text-conversation" :class="textClass" v-html="renderedMarkdown" />
       </div>
