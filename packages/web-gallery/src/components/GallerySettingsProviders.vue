@@ -363,11 +363,11 @@ function setAll(p: MockProvider, enabled: boolean) {
             <SettingsRow v-for="account in selected.accounts" :key="account.id" :label="account.label" compact>
               <template #tags><Tag>{{ account.plan }}</Tag><Tag v-if="account.active" tone="accent">Active</Tag><Tag v-if="account.quota && account.quota.hour.used >= 100" tone="danger">Limit reached</Tag></template>
               <template v-if="account.quota" #description>
-                <div class="mt-1 grid max-w-72 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11px] tabular-nums">
-                  <span>5 h</span>
+                <div class="mt-1 grid max-w-72 grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11px] tabular-nums">
+                  <span>5-hour</span>
                   <Meter :value="account.quota.hour.used" :max="account.quota.hour.max" label="5-hour window" />
                   <span>{{ account.quota.hour.used }}% · resets {{ account.quota.hour.resets }}</span>
-                  <span>Week</span>
+                  <span>Weekly</span>
                   <Meter :value="account.quota.week.used" :max="account.quota.week.max" label="Weekly window" />
                   <span>{{ account.quota.week.used }}% · resets {{ account.quota.week.resets }}</span>
                 </div>
