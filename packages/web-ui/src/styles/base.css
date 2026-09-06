@@ -505,13 +505,16 @@ svg.lucide {
   );
 }
 
-/* Scrollbars stay out of the way: transparent until the pointer is inside the scroller
-   or the container marks itself active (transcript while scrolling). The fade lives in
-   the base layer so an element's own transition utilities keep precedence over it. */
+/* Scrollbars stay out of the way: hidden until the pointer is inside the scroller or
+   the container marks itself active (transcript while scrolling). The fade lives in
+   the base layer so an element's own transition utilities keep precedence over it.
+   The hidden state is the thumb's own hue at zero alpha, never the `transparent`
+   keyword: that keyword is black at zero alpha, and a colour transition from it
+   passes through dark greys, so the thumb would fade in black and snap to white. */
 @layer base {
   * {
     scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
+    scrollbar-color: rgb(from var(--color-overlay) r g b / 0) transparent;
     transition: scrollbar-color 250ms ease;
   }
 
