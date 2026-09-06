@@ -61,9 +61,7 @@ function connect() {
           :size="ICON_PX.in28"
           class="shrink-0"
         />
-        <span v-if="project?.hostKind === 'device'" class="max-w-28 truncate">
-          {{ project.host }}
-        </span>
+        <span class="max-w-28 truncate">{{ project?.host ?? 'Cloud' }}</span>
         <span v-if="conversation.attachedHosts.length" class="text-[11px] text-fg-subtle">
           +{{ conversation.attachedHosts.length }}
         </span>

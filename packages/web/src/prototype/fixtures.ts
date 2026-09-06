@@ -81,12 +81,14 @@ export function conversation(
     draft: '',
     files: [],
     queue: [],
+    pendingSteers: [],
     providerId: 'demo',
     modelId: 'balanced',
     thinking: { type: 'effort', effort: 'medium', summary: null },
     serviceTierId: null,
     attachedHosts: [],
     stream: null,
+    paused: null,
   }
 }
 export function conversations(): Conversation[] {

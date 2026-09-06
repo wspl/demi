@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
   alignShown,
+  closeOpenInlineMarkdown,
   holdIncompleteMarkdown,
   nextShownText,
   segmentStreamUnits,
@@ -70,4 +71,16 @@ test('visibleFrontierLength only counts frontier that made it into the visible s
   expect(visibleFrontierLength('hello ', ' **')).toBe(0)
   expect(visibleFrontierLength('hello', 'lo')).toBe(2)
   expect(visibleFrontierLength('hello', 'xyz')).toBe(0)
+})
+
+test('closeOpenInlineMarkdown closes what the last paragraph left open', () => {
+  expect(closeOpenInlineMarkdown('2. **Work')).toBe('**')
+  expect(closeOpenInlineMarkdown('2. **Work through** one')).toBe('')
+  expect(closeOpenInlineMarkdown('a *b **c')).toBe('***')
+  expect(closeOpenInlineMarkdown('use `code')).toBe('`')
+  expect(closeOpenInlineMarkdown('use `**not bold')).toBe('`')
+  expect(closeOpenInlineMarkdown('done **here**\n\n* item\n* other')).toBe('')
+  expect(closeOpenInlineMarkdown('2 * 3 = 6')).toBe('')
+  expect(closeOpenInlineMarkdown('```ts\nconst a = 1')).toBe('')
+  expect(closeOpenInlineMarkdown('~~gone')).toBe('~~')
 })

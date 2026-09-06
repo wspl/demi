@@ -35,7 +35,7 @@ function remove(id: string) {
   <div v-for="provider in resources.providers" :key="provider.id" class="provider-card">
     <div class="resource-row">
       <div class="resource-description">
-        <TextInput v-model="provider.label" aria-label="Provider label" />
+        <strong>{{ provider.label }}</strong>
         <span>
           {{ provider.models.length }} models ·
           {{ provider.isAvailable ? 'Available' : 'Unavailable' }}
@@ -59,8 +59,8 @@ function remove(id: string) {
   </p>
   <form class="add-resource" @submit.prevent="add">
     <label>
-      Provider label
-      <TextInput v-model="label" placeholder="My provider" required maxlength="64" />
+      New provider
+      <TextInput v-model="label" placeholder="Provider name" required maxlength="64" />
     </label>
     <Button @click="add" :disabled="!label.trim()">Add provider</Button>
   </form>
