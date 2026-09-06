@@ -5,7 +5,8 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
  * A list beside the thing it selects, inside one settings page. Wide hosts show
- * both; narrow ones show the list, then the detail behind a back button.
+ * both; narrow ones show the list, then the detail behind a back button. The list
+ * has no surface of its own, so it reads as a rail beside the page, not a nested page.
  */
 defineProps<{
   /** Title of the open detail, for the narrow back row. */
@@ -17,15 +18,16 @@ const detailOpen = defineModel<boolean>('detailOpen', { default: false })
 
 <template>
   <div class="@container">
-    <div class="grid overflow-hidden rounded-xl border border-line bg-surface-float @md:grid-cols-[12rem_minmax(0,1fr)]">
+    <!-- The list is a bare rail, not a card: only the detail's own groups draw surfaces. -->
+    <div class="grid gap-x-8 gap-y-4 @md:grid-cols-[11rem_minmax(0,1fr)]">
       <aside
-        class="flex flex-col gap-0.5 border-line bg-surface/60 p-2 @md:border-r"
+        class="flex flex-col gap-0.5 self-start"
         :class="detailOpen ? 'hidden @md:flex' : 'flex'"
       >
         <slot name="list" />
       </aside>
       <section class="min-w-0" :class="detailOpen ? 'block' : 'hidden @md:block'">
-        <div class="flex h-10 items-center gap-1 border-b border-line-subtle px-2 @md:hidden">
+        <div class="-mx-2 mb-3 flex h-10 items-center gap-1 @md:hidden">
           <Button variant="ghost" size="sm" @click="detailOpen = false">
             <ChevronLeft :size="ICON_PX.in24" />
             Back
