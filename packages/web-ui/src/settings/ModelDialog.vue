@@ -75,11 +75,12 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
 <template>
   <!-- Reading is a short list of facts; editing needs room for descriptions. -->
   <Dialog :is-open="isOpen" :overlay-store="overlayStore" :size="editable ? 'lg' : 'md'" :label="title" @close="emit('close')">
-    <div class="flex flex-col gap-4 p-5">
-      <header class="min-w-0 select-none pr-10">
+    <div class="flex min-h-0 flex-col">
+      <header class="min-w-0 select-none p-5 pb-4 pr-10">
         <h3 class="truncate text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
         <p v-if="mode === 'view'" class="mt-0.5 font-mono text-[12px] text-fg-subtle">{{ draft.id }}</p>
       </header>
+      <div class="flex min-h-0 flex-col gap-4 overflow-y-auto px-5" :class="editable ? '' : 'pb-5'">
 
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
         <SettingsRow v-if="editable" label="Model id" description="Exactly what the endpoint expects.">
@@ -145,7 +146,8 @@ const canSave = computed(() => draft.value.id.trim().length > 0)
         </div>
       </div>
 
-      <div v-if="editable" class="flex justify-end gap-2">
+      </div>
+      <div v-if="editable" class="flex justify-end gap-2 p-5 pt-4">
         <Button @click="emit('close')">Cancel</Button>
         <Button variant="primary" :disabled="!canSave" @click="emit('save', clone(draft))">{{ mode === 'create' ? 'Add model' : 'Save' }}</Button>
       </div>

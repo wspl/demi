@@ -93,20 +93,22 @@ function select(id: string) {
   s.value.providerDetailOpen = true
 }
 
-function addProvider(vendor: SettingsVendor | null) {
+function addProvider(vendor: SettingsVendor) {
   const id = `p-${Date.now()}`
   s.value.providers.push(provider({
-    id,
-    name: vendor?.name ?? 'Custom endpoint',
-    kind: 'api_key',
-    family: vendor?.id ?? 'custom',
-    vendorId: vendor?.id ?? null,
-    baseUrl: vendor?.baseUrl ?? '',
-    wireApi: vendor?.wireApi ?? 'openai-chat',
-    modelSource: vendor ? 'catalog' : 'manual',
-    catalogFetched: vendor ? 'just now' : null,
-    logo: vendor?.logo ?? null,
-    state: 'unconfigured',
+    id, name: vendor.name, kind: 'api_key', family: vendor.id, vendorId: vendor.id,
+    baseUrl: vendor.baseUrl ?? '', wireApi: vendor.wireApi, modelSource: 'catalog', catalogFetched: 'just now',
+    logo: vendor.logo, state: 'unconfigured',
+  }))
+  addOpen.value = false
+  select(id)
+}
+
+function addEndpoint(wireApi: WireApi) {
+  const id = `p-${Date.now()}`
+  s.value.providers.push(provider({
+    id, name: `${WIRE_API_LABELS[wireApi]} API`, kind: 'api_key', family: 'custom', vendorId: null,
+    wireApi, modelSource: 'manual', state: 'unconfigured',
   }))
   addOpen.value = false
   select(id)
@@ -380,6 +382,7 @@ function setAll(p: MockProvider, enabled: boolean) {
       :vendors="mockVendors"
       @close="addOpen = false"
       @add="addProvider"
+      @add-endpoint="addEndpoint"
     />
     <ModelDialog
       v-if="modelDialog"

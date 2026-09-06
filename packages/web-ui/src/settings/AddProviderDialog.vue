@@ -7,13 +7,13 @@ import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { WIRE_API_LABELS, type SettingsVendor } from './types'
+import { WIRE_API_LABELS, type SettingsVendor, type SettingsWireApi } from './types'
 
 /**
- * Adding an API-key provider is one pick. A vendor arrives with its endpoint and
- * catalog, a custom endpoint with defaults; both are then configured on the
- * provider's own page, so nothing here repeats it. Subscriptions are not added:
- * every supported one is always listed and signs in from its own page.
+ * Adding an API-key provider is one pick. The three protocols Demi speaks come
+ * first, for any endpoint; a models.dev vendor below brings its endpoint and
+ * catalog. Either is then configured on the provider's own page, so nothing here
+ * repeats it. Subscriptions are not added: every supported one is always listed.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -23,8 +23,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  /** Null is a custom endpoint. */
-  add: [vendor: SettingsVendor | null]
+  add: [vendor: SettingsVendor]
+  /** A bare endpoint speaking one of the protocols Demi implements. */
+  addEndpoint: [wireApi: SettingsWireApi]
 }>()
 
 const query = ref('')
@@ -33,25 +34,41 @@ watch(() => props.isOpen, (open) => {
   if (open) query.value = ''
 })
 
-const results = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  return q ? props.vendors.filter((v) => v.name.toLowerCase().includes(q) || v.id.includes(q)) : props.vendors
-})
+const q = computed(() => query.value.trim().toLowerCase())
+const protocols = (Object.keys(WIRE_API_LABELS) as SettingsWireApi[]).map((value) => ({ value, label: `${WIRE_API_LABELS[value]} API` }))
+const protocolResults = computed(() => (q.value ? protocols.filter((p) => p.label.toLowerCase().includes(q.value)) : protocols))
+const results = computed(() => (q.value ? props.vendors.filter((v) => v.name.toLowerCase().includes(q.value) || v.id.includes(q.value)) : props.vendors))
 </script>
 
 <template>
-  <!-- The vendor list reads fine narrow; the form wants room beside its descriptions. -->
   <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="md" label="Add provider" @close="emit('close')">
-    <!-- Pick -->
-    <div class="flex flex-col gap-4 p-5">
-      <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add provider</h3>
-      </header>
-      <TextInput v-model="query" placeholder="Search vendors" focused>
-        <template #prefix><Search :size="ICON_PX.in24" /></template>
-      </TextInput>
-      <div class="flex flex-col gap-3">
-        <div>
+    <div class="flex min-h-0 flex-col">
+      <div class="flex flex-col gap-4 p-5 pb-3">
+        <header class="select-none pr-10">
+          <h3 class="text-[15px] font-medium text-fg-emphasis">Add provider</h3>
+        </header>
+        <TextInput v-model="query" placeholder="Search" focused>
+          <template #prefix><Search :size="ICON_PX.in24" /></template>
+        </TextInput>
+      </div>
+      <div class="flex min-h-0 flex-col gap-4 overflow-y-auto px-5 pb-5 pt-2">
+        <div v-if="protocolResults.length">
+          <div class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Any endpoint</div>
+          <div class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float">
+            <div
+              v-for="p in protocolResults"
+              :key="p.value"
+              role="button"
+              class="flex h-10 cursor-default select-none items-center gap-3 px-3 hover:bg-hover"
+              @click="emit('addEndpoint', p.value)"
+            >
+              <span class="inline-flex size-6 items-center justify-center rounded-md bg-overlay/8 text-fg-muted"><Terminal :size="ICON_PX.in24" /></span>
+              <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ p.label }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="results.length">
+          <div class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Vendors on models.dev</div>
           <div class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float">
             <div
               v-for="v in results"
@@ -64,14 +81,9 @@ const results = computed(() => {
               <span class="min-w-0 flex-1 truncate text-chrome text-fg">{{ v.name }}</span>
               <Tag>{{ WIRE_API_LABELS[v.wireApi] }}</Tag>
             </div>
-            <div v-if="!results.length" class="select-none px-4 py-5 text-center text-[13px] text-fg-subtle">No vendor matches. Add it as a custom endpoint.</div>
-            <div role="button" class="flex h-10 cursor-default select-none items-center gap-3 px-3 hover:bg-hover" @click="emit('add', null)">
-              <span class="inline-flex size-6 items-center justify-center rounded-md bg-overlay/8 text-fg-muted"><Terminal :size="ICON_PX.in24" /></span>
-              <span class="min-w-0 flex-1 truncate text-chrome text-fg">Custom endpoint</span>
-              <Tag>Any protocol</Tag>
-            </div>
           </div>
         </div>
+        <div v-if="!protocolResults.length && !results.length" class="select-none py-6 text-center text-[13px] text-fg-subtle">Nothing matches.</div>
       </div>
     </div>
   </Dialog>
