@@ -7,6 +7,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import ShortcutRecorder from '@demicodes/web-ui/ui/ShortcutRecorder.vue'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import ThemeToggle from '@demicodes/web-ui/ui/ThemeToggle.vue'
@@ -22,6 +23,7 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 const query = ref('session cookie')
 const emptyQuery = ref('')
 const secret = ref('sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b')
+const shortcut = ref('⌘K')
 const tokens = ref<number | null>(200_000)
 const noTokens = ref<number | null>(null)
 const enabled = ref(true)
@@ -212,6 +214,20 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
               <Search :size="14" class="text-fg-subtle" />
             </template>
           </TextInput>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection title="ShortcutRecorder" note="Caps beside a Change button; recording shows what is held, a key commits, Escape cancels.">
+      <div class="specimen-row">
+        <GallerySpecimen variant="bound">
+          <ShortcutRecorder v-model="shortcut" size="sm" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="readout">
+          <div class="flex items-center gap-3">
+            <ShortcutRecorder v-model="shortcut" size="sm" />
+            <span class="text-[12px] text-fg-subtle">{{ shortcut }}</span>
+          </div>
         </GallerySpecimen>
       </div>
     </GallerySection>
