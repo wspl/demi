@@ -2,14 +2,14 @@
 import type { Component } from 'vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
-/** One entry in a SettingsSplit list: a mark or icon, the name, and a badge when something is wrong. */
+/** One entry in a SettingsSplit list: a mark or icon, the name, and a dot when its state matters. */
 defineProps<{
   label: string
   detail?: string
   icon?: Component
   selected?: boolean
-  /** A trouble badge on the mark's corner. Healthy entries show nothing. */
-  badge?: 'warning' | 'danger'
+  /** A dot on the mark's corner. Omit it when there is nothing to say. */
+  badge?: 'success' | 'warning' | 'danger'
   muted?: boolean
 }>()
 
@@ -33,7 +33,7 @@ const emit = defineEmits<{
       <span
         v-if="badge"
         class="absolute -bottom-px -right-px size-1.5 rounded-full ring-1 ring-surface"
-        :class="badge === 'danger' ? 'bg-on-danger' : 'bg-on-warning'"
+        :class="{ 'bg-on-success': badge === 'success', 'bg-on-warning': badge === 'warning', 'bg-on-danger': badge === 'danger' }"
       />
     </span>
     <span class="flex min-w-0 flex-1 flex-col leading-4">
