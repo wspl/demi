@@ -2,6 +2,7 @@
 import { computed, inject, provide } from 'vue'
 import { X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
+import ScrollArea from './ScrollArea.vue'
 import { onKeyStroke } from '@vueuse/core'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -11,8 +12,8 @@ import { useOverlay } from '../composables/useOverlay'
 /**
  * Scrolling: a dialog's header, search and footer stay put; only its body scrolls.
  * The panel is a flex column capped at the host's height, so content declares one
- * root with `flex min-h-0 flex-col` and marks the body `min-h-0 overflow-y-auto`.
- * Content without that root simply scrolls as a whole.
+ * root with `flex min-h-0 flex-col` and puts the body in a `ScrollArea`. Content
+ * without that root simply scrolls as a whole.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -55,7 +56,7 @@ useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
         @click.self="emit('close')"
       >
         <div
-          class="dialog-panel relative flex max-h-[calc(100%-2rem)] w-[calc(100%-2rem)] flex-col overflow-y-auto rounded-xl bg-surface-dialog shadow-2xl"
+          class="dialog-panel relative flex max-h-[calc(100%-2rem)] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl"
           :class="size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : 'max-w-md'"
           role="dialog"
           aria-modal="true"
@@ -64,7 +65,10 @@ useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
           <div v-if="!hideClose" class="absolute right-3 top-3 z-10">
             <IconButton :icon="X" variant="ghost" aria-label="Close" @click="emit('close')" />
           </div>
-          <slot />
+          <!-- Content with its own scrolling body shrinks inside; anything else scrolls as a whole. -->
+          <ScrollArea class="min-h-0" viewport-class="flex flex-col">
+            <slot />
+          </ScrollArea>
         </div>
       </div>
     </Transition>

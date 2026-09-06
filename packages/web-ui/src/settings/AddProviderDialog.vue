@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Search, Terminal } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
@@ -51,7 +52,7 @@ const results = computed(() => (q.value ? props.vendors.filter((v) => v.name.toL
           <template #prefix><Search :size="ICON_PX.in24" /></template>
         </TextInput>
       </div>
-      <div class="flex min-h-0 flex-col gap-4 overflow-y-auto px-5 pb-5 pt-2">
+      <ScrollArea class="min-h-0" viewport-class="flex flex-col gap-4 px-5 pb-5 pt-2">
         <div v-if="protocolResults.length">
           <div class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">Any endpoint</div>
           <div class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float">
@@ -84,7 +85,7 @@ const results = computed(() => (q.value ? props.vendors.filter((v) => v.name.toL
           </div>
         </div>
         <div v-if="!protocolResults.length && !results.length" class="select-none py-6 text-center text-[13px] text-fg-subtle">Nothing matches.</div>
-      </div>
+      </ScrollArea>
     </div>
   </Dialog>
 </template>

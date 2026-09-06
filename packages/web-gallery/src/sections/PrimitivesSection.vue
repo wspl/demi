@@ -7,6 +7,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import ShortcutRecorder from '@demicodes/web-ui/ui/ShortcutRecorder.vue'
 import SwatchPicker from '@demicodes/web-ui/ui/SwatchPicker.vue'
 import { PRODUCT_ACCENTS } from '@demicodes/web-ui/theme/productAppearance'
@@ -225,6 +226,21 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
       <div class="specimen-row">
         <GallerySpecimen variant="accents">
           <SwatchPicker v-model="swatch" :options="PRODUCT_ACCENTS" />
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection title="ScrollArea" note="The bar takes no room: a thumb drawn over the content, shown on hover or while scrolling, draggable.">
+      <div class="specimen-row">
+        <GallerySpecimen variant="overflowing">
+          <ScrollArea class="h-40 w-64 rounded-md ring-1 ring-line" viewport-class="flex flex-col gap-1 p-2">
+            <div v-for="n in 24" :key="n" class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover">Row {{ n }}</div>
+          </ScrollArea>
+        </GallerySpecimen>
+        <GallerySpecimen variant="fits">
+          <ScrollArea class="h-40 w-64 rounded-md ring-1 ring-line" viewport-class="flex flex-col gap-1 p-2">
+            <div v-for="n in 3" :key="n" class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover">Row {{ n }}</div>
+          </ScrollArea>
         </GallerySpecimen>
       </div>
     </GallerySection>

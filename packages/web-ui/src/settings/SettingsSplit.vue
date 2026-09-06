@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ChevronLeft } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
@@ -22,13 +23,14 @@ const detailOpen = defineModel<boolean>('detailOpen', { default: false })
          Each side scrolls on its own when the host gives the split a height. -->
     <div class="grid h-full grid-rows-[minmax(0,1fr)] gap-x-8 gap-y-4 @md:grid-cols-[11rem_minmax(0,1fr)]">
       <!-- Scroll regions clip both axes; the -mx/px pair leaves room for rings at the edges. -->
-      <aside
-        class="-mx-1 flex min-h-0 flex-col gap-0.5 overflow-y-auto px-1"
-        :class="detailOpen ? 'hidden @md:flex' : 'flex'"
+      <ScrollArea
+        class="-mx-1 min-h-0"
+        :class="detailOpen ? 'hidden @md:block' : 'block'"
+        viewport-class="flex flex-col gap-0.5 px-1"
       >
         <slot name="list" />
-      </aside>
-      <section class="-mx-1 min-h-0 min-w-0 overflow-y-auto px-1" :class="detailOpen ? 'block' : 'hidden @md:block'">
+      </ScrollArea>
+      <ScrollArea class="-mx-1 min-h-0 min-w-0" :class="detailOpen ? 'block' : 'hidden @md:block'" viewport-class="px-1">
         <div class="-mx-2 mb-3 flex h-10 items-center gap-1 @md:hidden">
           <Button variant="ghost" size="sm" @click="detailOpen = false">
             <ChevronLeft :size="ICON_PX.in24" />
@@ -37,7 +39,7 @@ const detailOpen = defineModel<boolean>('detailOpen', { default: false })
           <span class="min-w-0 truncate text-chrome text-fg">{{ detailTitle }}</span>
         </div>
         <slot name="detail" />
-      </section>
+      </ScrollArea>
     </div>
   </div>
 </template>
