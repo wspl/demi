@@ -39,7 +39,12 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
     <!-- The query container must be an ancestor of what it sizes, so it wraps the row. -->
     <div class="@container h-[36rem] max-h-full">
     <div class="flex h-full flex-col overflow-hidden @md:flex-row">
-      <aside class="flex shrink-0 flex-col gap-2 bg-surface px-2 py-2 @md:w-48 @md:px-3 @md:py-3">
+      <!-- Wide: a rail beside the page. Narrow: a compact header and an evenly split section row. -->
+      <aside class="flex shrink-0 flex-col bg-surface @md:w-48 @md:gap-2 @md:px-3 @md:py-3">
+        <div class="flex h-11 select-none items-center justify-between pl-4 pr-2 @md:hidden">
+          <span class="text-[15px] font-medium text-fg-emphasis">Settings</span>
+          <IconButton :icon="X" variant="ghost" aria-label="Close settings" @click="emit('close')" />
+        </div>
         <div v-if="account" class="hidden h-9 select-none items-center gap-2 px-1.5 @md:flex">
           <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent">
             {{ initials }}
@@ -49,26 +54,34 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             <span class="truncate text-[11px] text-fg-subtle">{{ account.plan }}</span>
           </span>
         </div>
-        <nav class="flex gap-0.5 overflow-x-auto @md:flex-col" aria-label="Settings sections">
+        <nav class="hidden flex-col gap-0.5 @md:flex" aria-label="Settings sections">
           <SidebarNavItem
             v-for="item in NAV"
             :key="item.id"
             :icon="item.icon"
             :label="item.label"
             :pressed="tab === item.id"
-            class="shrink-0"
             @click="tab = item.id"
           />
         </nav>
+        <nav class="grid grid-cols-4 gap-1 px-2 pb-2 @md:hidden" aria-label="Settings sections">
+          <button
+            v-for="item in NAV"
+            :key="item.id"
+            type="button"
+            class="flex h-7 cursor-default select-none items-center justify-center rounded-md text-[12px] transition-colors duration-200 ease-out"
+            :class="tab === item.id ? 'bg-active text-fg-emphasis' : 'text-fg-muted hover:bg-hover hover:text-fg'"
+            :aria-pressed="tab === item.id"
+            @click="tab = item.id"
+          >
+            {{ item.label }}
+          </button>
+        </nav>
       </aside>
-      <section class="relative min-w-0 flex-1 overflow-y-auto px-8 py-6 @md:px-10 @md:py-8">
-        <IconButton
-          :icon="X"
-          variant="ghost"
-          aria-label="Close settings"
-          class="absolute right-3 top-3"
-          @click="emit('close')"
-        />
+      <section class="relative min-w-0 flex-1 overflow-y-auto px-5 py-6 @md:px-10 @md:py-8">
+        <div class="absolute right-3 top-3 hidden @md:block">
+          <IconButton :icon="X" variant="ghost" aria-label="Close settings" @click="emit('close')" />
+        </div>
         <slot />
       </section>
     </div>
