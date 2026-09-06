@@ -1,10 +1,9 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { SessionPhase } from '@demicodes/core'
 import type { VirtualHost } from '@demicodes/host-virtual'
 import { RemoteHost } from '@demicodes/host-remote'
 import type { Host } from '@demicodes/shell'
-import { noop } from '@demicodes/utils'
+import { ActivityGate } from '@demicodes/utils'
 import { ManagedHostError, type ManagedHosts, ownerOf } from '../managed/lifecycle'
 import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService, DeviceKind, ExecutionTarget, WorkspaceRecord } from '../storage/control'
@@ -21,8 +20,8 @@ export interface ConversationTargetsDeps {
   stores: ConversationStores
   /** Where a conversation's hostless tree is materialised for its home image: `<stagingDir>/<conversationId>`. */
   stagingDir: string
-  /** The live phase of a conversation's session; null when none is live (nothing runs). */
-  sessionPhase: (conversationId: string) => SessionPhase | null
+  /** Reserves an idle tree against every action entrance; null when active. */
+  reserveTree: (conversationId: string) => (() => void) | null
 }
 
 /** What the conversation module knows about a Host it handed the agent. */
@@ -56,10 +55,46 @@ export type SwitchTargetResult =
  * whichever session (root or subagent) asks.
  */
 export class ConversationTargets {
+  private readonly fileActivity = new Map<string, ActivityGate>()
   private readonly hosts = new WeakMap<Host, HostInfo>()
   private readonly upgrades = new Map<string, Promise<MachineTarget>>()
 
   constructor(private readonly deps: ConversationTargetsDeps) {}
+
+  files(conversationId: string): ActivityGate {
+    let gate = this.fileActivity.get(conversationId)
+    if (!gate) { gate = new ActivityGate(); this.fileActivity.set(conversationId, gate) }
+    return gate
+  }
+
+  async withHost<T>(conversationId: string, operation: (host: Host) => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const release = await this.files(conversationId).enter(signal)
+    try { return await operation(await this.hostFor(conversationId)) }
+    finally { release() }
+  }
+
+  /** Completes only transitions explicitly recorded by this implementation. */
+  async recoverUpgrades(): Promise<void> {
+    for (const transition of await this.deps.control.listUpgrades()) {
+      await this.recoverUpgrade(transition.conversationId, transition.state)
+    }
+  }
+
+  private async recoverUpgrade(conversationId: string, state: 'prepared' | 'committed'): Promise<void> {
+    const { control, managedHosts, stores } = this.deps
+    if (state === 'committed') {
+      stores.clearFiles(conversationId)
+    } else {
+      const owner = { kind: 'conversation' as const, id: conversationId }
+      const device = await control.getManagedDevice(owner)
+      if (device) {
+        if (!managedHosts) throw new Error('recovering a prepared upgrade requires the machine provisioner')
+        await managedHosts.destroy(owner)
+        await control.deleteDevice(device.id)
+      }
+    }
+    await control.finishUpgrade(conversationId)
+  }
 
   /** The resolution order of § The three states over the conversation's record. */
   async resolve(conversationId: string): Promise<ExecutionTarget> {
@@ -130,25 +165,29 @@ export class ConversationTargets {
       return { outcome: 'no_hostless_entrance' }
     }
 
-    const phase = this.deps.sessionPhase(conversationId)
-    if (phase !== null && phase !== 'idle') return { outcome: 'turn_in_flight' }
+    const release = this.deps.reserveTree(conversationId)
+    if (!release) return { outcome: 'turn_in_flight' }
+    const releaseFiles = this.files(conversationId).tryReserve()
+    if (!releaseFiles) { release(); return { outcome: 'turn_in_flight' } }
+    try {
 
-    const from = await resolveExecutionTarget(control, conversation)
-    const to: ExecutionTarget = toWorkspace
-      ? { kind: 'workspace', workspaceId: toWorkspace.id, deviceId: toWorkspace.deviceId, path: toWorkspace.path }
-      : { kind: 'hostless' }
-    const departedDeviceId = targetDeviceId(from)
-    const won = await control.switchConversationTarget(
-      conversationId,
-      { workspaceId: conversation.workspaceId, hostDeviceId: conversation.hostDeviceId },
-      { workspaceId: toWorkspaceId, hostDeviceId: null },
-      { from, to },
-      {
-        departed: departedDeviceId === null ? null : { deviceId: departedDeviceId, cwd: from.kind === 'workspace' ? from.path : null },
-        arrivingDeviceId: targetDeviceId(to),
-      },
-    )
-    return won ? { outcome: 'switched' } : { outcome: 'conflict' }
+      const from = await resolveExecutionTarget(control, conversation)
+      const to: ExecutionTarget = toWorkspace
+        ? { kind: 'workspace', workspaceId: toWorkspace.id, deviceId: toWorkspace.deviceId, path: toWorkspace.path }
+        : { kind: 'hostless' }
+      const departedDeviceId = targetDeviceId(from)
+      const won = await control.switchConversationTarget(
+        conversationId,
+        { workspaceId: conversation.workspaceId, hostDeviceId: conversation.hostDeviceId },
+        { workspaceId: toWorkspaceId, hostDeviceId: null },
+        { from, to },
+        {
+          departed: departedDeviceId === null ? null : { deviceId: departedDeviceId, cwd: from.kind === 'workspace' ? from.path : null },
+          arrivingDeviceId: targetDeviceId(to),
+        },
+      )
+      return won ? { outcome: 'switched' } : { outcome: 'conflict' }
+    } finally { releaseFiles(); release() }
   }
 
   /**
@@ -163,7 +202,11 @@ export class ConversationTargets {
   upgrade(conversationId: string): Promise<MachineTarget> {
     let pending = this.upgrades.get(conversationId)
     if (!pending) {
-      pending = this.upgradeOnce(conversationId)
+      pending = (async () => {
+        const release = await this.files(conversationId).reserve(AbortSignal.timeout(30_000))
+        try { return await this.upgradeOnce(conversationId) }
+        finally { release() }
+      })()
       this.upgrades.set(conversationId, pending)
       pending.catch(() => {
         if (this.upgrades.get(conversationId) === pending) this.upgrades.delete(conversationId)
@@ -178,23 +221,31 @@ export class ConversationTargets {
     const conversation = await control.getConversation(conversationId)
     if (!conversation) throw new Error(`no conversation ${conversationId}`)
     if (conversation.workspaceId !== null || conversation.hostDeviceId !== null) throw new Error('the conversation is no longer hostless')
-    const owner = { kind: 'conversation' as const, id: conversationId }
-    const home = join(this.deps.stagingDir, conversationId)
-    // A tree left by an earlier attempt would merge with this one.
-    await rm(home, { recursive: true, force: true })
-    await stores.materializeFiles(conversationId, [
-      { from: HOSTLESS_HOME, to: home },
-      { from: '/tmp', to: join(home, '.tmp') },
-    ])
-    const device = await managedHosts.provisionFresh(owner, conversation.userId, home)
-    if (!(await control.bindConversationHost(conversationId, device.id))) {
-      await managedHosts.destroy(owner).catch(noop)
-      await control.deleteDevice(device.id).catch(noop)
-      throw new Error('the conversation left the hostless state meanwhile')
+    const previous = (await control.listUpgrades()).find(item => item.conversationId === conversationId)
+    if (previous) await this.recoverUpgrade(conversationId, previous.state)
+    await control.beginUpgrade(conversationId)
+    try {
+      const owner = { kind: 'conversation' as const, id: conversationId }
+      const home = join(this.deps.stagingDir, conversationId)
+      // A tree left by an earlier attempt would merge with this one.
+      await rm(home, { recursive: true, force: true })
+      await stores.materializeFiles(conversationId, [
+        { from: HOSTLESS_HOME, to: home },
+        { from: '/tmp', to: join(home, '.tmp') },
+      ])
+      const device = await managedHosts.provisionFresh(owner, conversation.userId, home)
+      if (!(await control.bindConversationHost(conversationId, device.id))) {
+        throw new Error('the conversation left the hostless state meanwhile')
+      }
+      stores.clearFiles(conversationId)
+      await control.finishUpgrade(conversationId)
+      const host = await this.hostFor(conversationId)
+      if (!(host instanceof RemoteHost)) throw new Error('the conversation is bound to a machine but resolves elsewhere')
+      return { host, home: host.identity.homeDir }
+    } catch (error) {
+      const transition = (await control.listUpgrades()).find(item => item.conversationId === conversationId)
+      if (transition) await this.recoverUpgrade(conversationId, transition.state)
+      throw error
     }
-    stores.clearFiles(conversationId)
-    const host = await this.hostFor(conversationId)
-    if (!(host instanceof RemoteHost)) throw new Error('the conversation is bound to a machine but resolves elsewhere')
-    return { host, home: host.identity.homeDir }
   }
 }

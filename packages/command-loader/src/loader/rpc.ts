@@ -1,6 +1,7 @@
 import {
   isCommandGroup,
   resolveCommand,
+  validateCommandValues,
   type Command,
   type CommandIO,
   type CommandResult,
@@ -43,7 +44,7 @@ export function inProcessRpc(roots: readonly Command[], deps: { storage: Command
     if (isCommandGroup(leaf) || leaf.kind !== 'rpc') throw new Error(`rpc: "${invocation.path.join(' ')}" is not an rpc leaf`)
     return leaf.run({
       argv: invocation.argv,
-      parsed: { path: invocation.path, help: false, values: invocation.args, json: invocation.json },
+      parsed: { path: invocation.path, help: false, values: validateCommandValues(leaf.input ?? {}, invocation.args), json: invocation.json },
       stdin: invocation.stdin,
       env: invocation.env,
       cwd: invocation.cwd,

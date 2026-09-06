@@ -49,7 +49,7 @@ test('runner messages round-trip through the MessagePack wire', () => {
   expect([...decodedOutput.bytes]).toEqual([0, 255, 10])
 
   // Pipes carry references only: an id and an origin-relative URL per end; the bytes go over HTTP.
-  const rpcCall: RunnerProtocolMessage = { type: 'rpc_call', callId: 'c9', agentSessionId: 'a', shellId: 's', root: 'demi', path: ['demi', 'file', 'write'], argv: ['demi', 'file', 'write', 'x'], args: { path: 'x' }, json: false, cwd: '/work', env: {}, stdin: true }
+  const rpcCall: RunnerProtocolMessage = { type: 'rpc_call', jobId: 'j1', callId: 'c9', agentSessionId: 'a', shellId: 's', root: 'demi', path: ['demi', 'file', 'write'], argv: ['demi', 'file', 'write', 'x'], args: { path: 'x' }, json: false, cwd: '/work', env: {}, stdin: true }
   expect(roundTrip(rpcCall)).toEqual(rpcCall)
   const cancel: RunnerProtocolMessage = { type: 'rpc_cancel', callId: 'c9' }
   expect(roundTrip(cancel)).toEqual(cancel)
