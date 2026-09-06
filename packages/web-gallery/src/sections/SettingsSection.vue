@@ -1,70 +1,49 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
-import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
-import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
-import SettingsProviders from '@demicodes/web-ui/settings/SettingsProviders.vue'
-import SettingsUsage from '@demicodes/web-ui/settings/SettingsUsage.vue'
-import type { SettingsDevice, SettingsProvider, SettingsTab } from '@demicodes/web-ui/settings/types'
-import type { ThemeMode } from '@demicodes/web-ui/theme/appTheme'
-import Button from '@demicodes/web-ui/ui/Button.vue'
+import type { SettingsTab } from '@demicodes/web-ui/settings/types'
+import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
-import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import { createSettingsState, fullSettingsNav } from '../fixtures/settings'
 
 const anatomy: [string, string][] = [
-  ['Shell', 'One large dialog. The rail sits on the page surface with the account on top, the page on the dialog surface, so it reads like the app itself. Below a phone width the rail becomes a row.'],
+  ['Shell', 'One large dialog. The rail sits on the page surface with the account on top and a filter under it, the page on the dialog surface, so it reads like the app itself. Below a phone width the rail becomes a row.'],
   ['Page', 'A title, one line under it, then titled groups. A group is a card of rows: label and explanation left, the control right.'],
   ['Dialogs', 'A dialog that opens from a page keeps its title, search and buttons in place; only the list or form between them scrolls.'],
   ['Readouts', 'A value the control produces (a size, a temperature) reads out beside the control, never in the explanation under the label.'],
-  ['Account', 'Display name, appearance, and the session.'],
-  ['Devices', 'Every claimed device with its presence, plus the form that claims another. Outcomes of an action land under the form.'],
-  ['Providers', 'In the full mock: a bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed and dotted green once signed in, red when broken; an API key is dotted only while it needs attention. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider, signing in, and adding or editing a model open dialogs.'],
-  ['Usage', 'Three totals. The host formats the cost.'],
+  ['Providers', 'A bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed and dotted green once signed in, red when broken; an API key is dotted only while it needs attention. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider, signing in, and adding or editing a model open dialogs.'],
+  ['Sign-in', 'Each subscription signs in the way its vendor does. Claude Code prints a token from its own CLI, so the dialog walks through install, command and paste. Codex confirms a device code in the browser while the dialog waits. Grok Build shows a code the user copies back.'],
 ]
 
-const name = ref('Zan')
 const account = { name: 'Zan', plan: 'Personal workspace' }
-const theme = ref<ThemeMode>('dark')
-const accountTab = ref<SettingsTab>('Account')
-const narrowTab = ref<SettingsTab>('Devices')
 const full = createSettingsState()
 const fullTab = ref<SettingsTab>('models')
 const fullNarrowTab = ref<SettingsTab>('mcp')
 
-const devices = ref<SettingsDevice[]>([
-  { id: 'mac', name: 'zan-mbp', online: true },
-  { id: 'build', name: 'build-01', online: false },
-  { id: 'lab', name: 'lab-workstation-with-a-long-hostname', online: true },
-])
-const deviceMessage = ref('Remove the projects using this device before revoking it.')
-const noDevices = ref<SettingsDevice[]>([])
-
-const providers = ref<SettingsProvider[]>([
-  { id: 'anthropic', label: 'Anthropic', modelCount: 3, isAvailable: true },
-  { id: 'openai', label: 'OpenAI', modelCount: 2, isAvailable: false },
-  { id: 'local', label: 'Local runner', modelCount: 1, isAvailable: true },
-])
-const providerMessage = ref('Connection failed.')
-const noProviders = ref<SettingsProvider[]>([])
-
-const usage = { conversations: 41, messages: 77, cost: '$0.00' }
-
-const liveOpen = ref(false)
-const liveTab = ref<SettingsTab>('Account')
-
-function toggleDevice(list: SettingsDevice[], id: string): void {
-  const device = list.find((item) => item.id === id)
-  if (device) device.online = !device.online
-}
-
-function setAvailable(list: SettingsProvider[], id: string, available: boolean): void {
-  const provider = list.find((item) => item.id === id)
-  if (provider) provider.isAvailable = available
-}
+/** Every phase of each vendor's flow, pinned open and switchable. */
+const claudePhases: { value: string; label: string; phase: ProviderLoginPhase }[] = [
+  { value: 'token', label: 'Token', phase: { kind: 'token', command: 'claude setup-token', install: { label: 'Get Claude Code', url: 'https://docs.anthropic.com/en/docs/claude-code/setup' }, prefix: 'sk-ant-oat01-' } },
+  { value: 'done', label: 'Done', phase: { kind: 'done', account: 'zan@example.com · Max 5×' } },
+  { value: 'failed', label: 'Failed', phase: { kind: 'failed', message: 'That token was revoked. Run the command again for a fresh one.' } },
+]
+const codexPhases: { value: string; label: string; phase: ProviderLoginPhase }[] = [
+  { value: 'starting', label: 'Starting', phase: { kind: 'starting' } },
+  { value: 'device', label: 'Device code', phase: { kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresIn: '10 min' } },
+  { value: 'done', label: 'Done', phase: { kind: 'done', account: 'zan@example.com · Plus' } },
+  { value: 'failed', label: 'Failed', phase: { kind: 'failed', message: 'The code expired before it was entered.' } },
+]
+const grokPhases: { value: string; label: string; phase: ProviderLoginPhase }[] = [
+  { value: 'code-input', label: 'Paste code', phase: { kind: 'code-input', url: 'https://accounts.x.ai/device' } },
+  { value: 'done', label: 'Done', phase: { kind: 'done', account: 'zan@example.com · SuperGrok' } },
+]
+const claudePhase = ref('token')
+const codexPhase = ref('device')
+const grokPhase = ref('code-input')
+const phaseOf = (list: { value: string; phase: ProviderLoginPhase }[], value: string) => list.find((p) => p.value === value)!.phase
 </script>
 
 <template>
@@ -97,142 +76,24 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
       </GalleryOverlayWell>
     </GallerySection>
 
-    <GallerySection title="Live" note="Opens over the page like the product does.">
-      <Button size="md" @click="liveOpen = true">Open settings</Button>
-      <SettingsDialog v-model:tab="liveTab" :is-open="liveOpen" :overlay-store="appOverlayStore" @close="liveOpen = false">
-        <SettingsAccount
-          v-if="liveTab === 'Account'"
-          v-model:name="name"
-          :overlay-store="appOverlayStore"
-          :theme="theme"
-          @change-theme="theme = $event"
-          @sign-out="liveOpen = false"
-        />
-        <SettingsDevices
-          v-else-if="liveTab === 'Devices'"
-          :devices="devices"
-          @toggle-online="toggleDevice(devices, $event)"
-          @revoke="devices = devices.filter((item) => item.id !== $event)"
-          @add="devices.push({ id: `d-${devices.length}`, name: $event, online: true })"
-        />
-        <SettingsProviders
-          v-else-if="liveTab === 'Providers'"
-          :providers="providers"
-          @set-available="(id, value) => setAvailable(providers, id, value)"
-          @remove="providers = providers.filter((item) => item.id !== $event)"
-          @add="providers.push({ id: `p-${providers.length}`, label: $event, modelCount: 1, isAvailable: true })"
-        />
-        <SettingsUsage v-else :usage="usage" />
-      </SettingsDialog>
-    </GallerySection>
-
-    <GallerySection title="Account" note="Name, appearance, session.">
+    <GallerySection title="Sign in · Claude Code" note="A token from the vendor's own CLI: install, run, paste.">
+      <div class="mb-3"><Segmented v-model="claudePhase" :options="claudePhases" /></div>
       <GalleryOverlayWell size="tall">
-        <SettingsDialog v-model:tab="accountTab" :is-open="true" :overlay-store="appOverlayStore" :account="account">
-          <SettingsAccount
-            v-if="accountTab === 'Account'"
-            v-model:name="name"
-            :overlay-store="appOverlayStore"
-            :theme="theme"
-            @change-theme="theme = $event"
-          />
-          <SettingsDevices
-            v-else-if="accountTab === 'Devices'"
-            :devices="devices"
-            @toggle-online="toggleDevice(devices, $event)"
-          />
-          <SettingsProviders
-            v-else-if="accountTab === 'Providers'"
-            :providers="providers"
-            @set-available="(id, value) => setAvailable(providers, id, value)"
-          />
-          <SettingsUsage v-else :usage="usage" />
-        </SettingsDialog>
+        <ProviderLoginDialog :is-open="true" :overlay-store="appOverlayStore" vendor-name="Claude Code" :phase="phaseOf(claudePhases, claudePhase)" />
       </GalleryOverlayWell>
     </GallerySection>
 
-    <GallerySection title="Devices" note="Online and offline, a long hostname, a refused revoke; then none.">
-      <div class="specimen-stack specimen-stack-loose">
-        <GallerySpecimen variant="mixed · message" wide>
-          <GalleryOverlayWell size="tall">
-            <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore" :account="account">
-              <SettingsDevices
-                :devices="devices"
-                :message="deviceMessage"
-                @toggle-online="toggleDevice(devices, $event)"
-              />
-            </SettingsDialog>
-          </GalleryOverlayWell>
-        </GallerySpecimen>
-        <GallerySpecimen variant="empty" wide>
-          <GalleryOverlayWell size="tall">
-            <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore" :account="account">
-              <SettingsDevices
-                :devices="noDevices"
-                @add="noDevices.push({ id: `n-${noDevices.length}`, name: $event, online: true })"
-              />
-            </SettingsDialog>
-          </GalleryOverlayWell>
-        </GallerySpecimen>
-      </div>
-    </GallerySection>
-
-    <GallerySection title="Providers" note="Available and unavailable, a failed test; then none.">
-      <div class="specimen-stack specimen-stack-loose">
-        <GallerySpecimen variant="mixed · message" wide>
-          <GalleryOverlayWell size="tall">
-            <SettingsDialog tab="Providers" :is-open="true" :overlay-store="appOverlayStore" :account="account">
-              <SettingsProviders
-                :providers="providers"
-                :message="providerMessage"
-                @set-available="(id, value) => setAvailable(providers, id, value)"
-              />
-            </SettingsDialog>
-          </GalleryOverlayWell>
-        </GallerySpecimen>
-        <GallerySpecimen variant="empty" wide>
-          <GalleryOverlayWell size="tall">
-            <SettingsDialog tab="Providers" :is-open="true" :overlay-store="appOverlayStore" :account="account">
-              <SettingsProviders
-                :providers="noProviders"
-                @add="noProviders.push({ id: `n-${noProviders.length}`, label: $event, modelCount: 1, isAvailable: true })"
-              />
-            </SettingsDialog>
-          </GalleryOverlayWell>
-        </GallerySpecimen>
-      </div>
-    </GallerySection>
-
-    <GallerySection title="Usage" note="Three totals.">
-      <GalleryOverlayWell size="tall">
-        <SettingsDialog tab="Usage" :is-open="true" :overlay-store="appOverlayStore" :account="account">
-          <SettingsUsage :usage="usage" />
-        </SettingsDialog>
+    <GallerySection title="Sign in · Codex" note="A device code confirmed in the browser while the dialog waits.">
+      <div class="mb-3"><Segmented v-model="codexPhase" :options="codexPhases" /></div>
+      <GalleryOverlayWell size="lg">
+        <ProviderLoginDialog :is-open="true" :overlay-store="appOverlayStore" vendor-name="Codex" :phase="phaseOf(codexPhases, codexPhase)" />
       </GalleryOverlayWell>
     </GallerySection>
 
-    <GallerySection title="Narrow" note="Phone width: a compact header, the sections split evenly in a row, and row controls drop under their text.">
-      <GalleryOverlayWell size="narrow">
-        <SettingsDialog v-model:tab="narrowTab" :is-open="true" :overlay-store="appOverlayStore" :account="account">
-          <SettingsAccount
-            v-if="narrowTab === 'Account'"
-            v-model:name="name"
-            :overlay-store="appOverlayStore"
-            :theme="theme"
-            @change-theme="theme = $event"
-          />
-          <SettingsDevices
-            v-else-if="narrowTab === 'Devices'"
-            :devices="devices"
-            @toggle-online="toggleDevice(devices, $event)"
-          />
-          <SettingsProviders
-            v-else-if="narrowTab === 'Providers'"
-            :providers="providers"
-            @set-available="(id, value) => setAvailable(providers, id, value)"
-          />
-          <SettingsUsage v-else :usage="usage" />
-        </SettingsDialog>
+    <GallerySection title="Sign in · Grok Build" note="A code shown in the browser and pasted back.">
+      <div class="mb-3"><Segmented v-model="grokPhase" :options="grokPhases" /></div>
+      <GalleryOverlayWell size="lg">
+        <ProviderLoginDialog :is-open="true" :overlay-store="appOverlayStore" vendor-name="Grok Build" :phase="phaseOf(grokPhases, grokPhase)" />
       </GalleryOverlayWell>
     </GallerySection>
   </div>
