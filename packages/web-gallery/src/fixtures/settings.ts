@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from '@lucide/vue'
-import type { SettingsNavGroup, SettingsSubscriptionVendor, SettingsVendor, SettingsWireApi } from '@demicodes/web-ui/settings/types'
+import type { SettingsNavGroup, SettingsVendor, SettingsWireApi } from '@demicodes/web-ui/settings/types'
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
@@ -191,12 +191,6 @@ export const mockVendors: MockVendor[] = [
   { id: 'openrouter', name: 'OpenRouter', family: 'openai', wireApi: 'openai-chat', baseUrl: 'https://openrouter.ai/api/v1', logo: '/logos/openrouter.svg' },
 ]
 
-export const subscriptionVendors: SettingsSubscriptionVendor[] = [
-  { id: 'claude-code', name: 'Claude Code', logo: '/logos/claude.svg' },
-  { id: 'codex', name: 'Codex', logo: '/logos/openai.svg' },
-  { id: 'grok-build', name: 'Grok Build', logo: '/logos/xai.svg' },
-]
-
 export function mockProviders(): MockProvider[] {
   return [
     provider({
@@ -219,6 +213,7 @@ export function mockProviders(): MockProvider[] {
         model({ id: 'gpt-5-codex', name: 'GPT-5 Codex', contextWindow: 400_000, outputLimit: 128_000, tools: true, extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'], efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' }),
       ],
     }),
+    provider({ id: 'grok-build', name: 'Grok Build', kind: 'subscription', family: 'grok-build', state: 'signed-out', logo: '/logos/xai.svg' }),
     provider({
       id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic', logo: '/logos/anthropic.svg',
       baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', keyHint: 'sk-ant-…3f2a',

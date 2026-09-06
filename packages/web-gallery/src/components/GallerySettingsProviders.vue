@@ -19,14 +19,14 @@ import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
-import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsSubscriptionVendor, type SettingsVendor } from '@demicodes/web-ui/settings/types'
+import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsListItem from '@demicodes/web-ui/settings/SettingsListItem.vue'
 import SettingsPage from '@demicodes/web-ui/settings/SettingsPage.vue'
 import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import SettingsSplit from '@demicodes/web-ui/settings/SettingsSplit.vue'
-import { mockVendors, provider, subscriptionVendors, type MockModel, type MockProvider, type SettingsState, type WireApi } from '../fixtures/settings'
+import { mockVendors, provider, type MockModel, type MockProvider, type SettingsState, type WireApi } from '../fixtures/settings'
 
 /**
  * Models & providers as a list beside the selected provider. An API-key entry edits
@@ -77,8 +77,14 @@ const modelDialog = ref<{ mode: 'create' | 'edit' | 'view'; model: SettingsModel
 const modelDialogOpen = ref(false)
 const testing = ref<string | null>(null)
 
-/** The rail badges only what needs attention: yellow still needs setting up, red failed its test. */
-const stateBadge = { ready: undefined, unconfigured: 'warning', error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: undefined } as const
+/**
+ * Rail dots. A subscription is always listed, so its dot says whether it is set up:
+ * none until an account exists, green once one works, red when it stopped working.
+ * An API key is listed because it was added, so it is dotted only when it needs
+ * attention: yellow until configured, red when its test failed.
+ */
+const subscriptionBadge = { ready: 'success', unconfigured: undefined, error: 'danger', unreachable: 'danger', 'signed-out': undefined, disabled: undefined } as const
+const apiKeyBadge = { ready: undefined, unconfigured: 'warning', error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: undefined } as const
 const wireOptions = (Object.keys(WIRE_API_LABELS) as WireApi[]).map((value) => ({ value, label: WIRE_API_LABELS[value] }))
 const wireLabel = (w: WireApi) => WIRE_API_LABELS[w]
 
@@ -104,15 +110,6 @@ function addProvider(vendor: SettingsVendor | null) {
   }))
   addOpen.value = false
   select(id)
-}
-
-function addSubscription(vendor: SettingsSubscriptionVendor) {
-  const id = `p-${Date.now()}`
-  const p = provider({ id, name: vendor.name, kind: 'subscription', family: vendor.id, logo: vendor.logo, state: 'signed-out' })
-  s.value.providers.push(p)
-  addOpen.value = false
-  select(id)
-  beginLogin(p)
 }
 
 function formatTokens(n: number | null): string {
@@ -218,7 +215,7 @@ function setAll(p: MockProvider, enabled: boolean) {
           :key="p.id"
           :label="p.name"
           :selected="p.id === s.selectedProviderId"
-          :badge="stateBadge[p.state]"
+          :badge="subscriptionBadge[p.state]"
           :muted="!p.enabled"
           @select="select(p.id)"
         >
@@ -230,7 +227,7 @@ function setAll(p: MockProvider, enabled: boolean) {
           :key="p.id"
           :label="p.name"
           :selected="p.id === s.selectedProviderId"
-          :badge="stateBadge[p.state]"
+          :badge="apiKeyBadge[p.state]"
           :muted="!p.enabled"
           @select="select(p.id)"
         >
@@ -244,8 +241,8 @@ function setAll(p: MockProvider, enabled: boolean) {
       <template #detail>
         <!-- Existing provider -->
         <div v-if="selected" class="flex flex-col gap-6">
-          <!-- The rail carries the mark; the first card's header names the provider, edits that
-               name in place, and holds its actions. -->
+          <!-- The rail carries the mark; the first card's header names the provider and holds its
+               actions. An API key can be renamed and removed; a subscription is a fixture. -->
           <SettingsGroup>
             <template #header>
               <header class="select-none">
@@ -262,10 +259,10 @@ function setAll(p: MockProvider, enabled: boolean) {
                   />
                   <template v-else>
                     <h3 class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
-                    <Tooltip content="Rename"><IconButton :icon="TextCursorInput" variant="ghost" size="sm" aria-label="Rename provider" @click="beginRename" /></Tooltip>
+                    <Tooltip v-if="selected.kind === 'api_key'" content="Rename"><IconButton :icon="TextCursorInput" variant="ghost" size="sm" aria-label="Rename provider" @click="beginRename" /></Tooltip>
                   </template>
                   <div class="ml-auto flex items-center gap-1.5">
-                    <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove provider" /></Tooltip>
+                    <Tooltip v-if="selected.kind === 'api_key'" content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove provider" /></Tooltip>
                     <Switch v-model="selected.enabled" size="sm" class="ml-2" />
                   </div>
                 </div>
@@ -380,10 +377,8 @@ function setAll(p: MockProvider, enabled: boolean) {
       :is-open="addOpen"
       :overlay-store="appOverlayStore"
       :vendors="mockVendors"
-      :subscription-vendors="subscriptionVendors"
       @close="addOpen = false"
       @add="addProvider"
-      @sign-in="addSubscription"
     />
     <ModelDialog
       v-if="modelDialog"
