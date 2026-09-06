@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { X } from '@lucide/vue'
+import { Trash2 } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
@@ -46,7 +46,7 @@ const emit = defineEmits<{
       <span v-if="detail" class="truncate text-[11px] text-fg-subtle">{{ detail }}</span>
     </span>
     <span v-if="removable" class="hidden shrink-0 group-hover:flex">
-      <IconButton :icon="X" variant="danger" size="xs" aria-label="Remove" @click.stop="emit('remove')" />
+      <IconButton :icon="Trash2" variant="danger" size="xs" aria-label="Remove" @click.stop="emit('remove')" />
     </span>
   </div>
 </template>
