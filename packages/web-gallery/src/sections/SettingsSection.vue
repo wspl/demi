@@ -96,14 +96,14 @@ const passwordPhase = ref('form')
 
     <GallerySection title="Change email" note="The new address and the current password, then the code that proves the address is reachable.">
       <div class="mb-3"><Segmented v-model="emailPhase" :options="emailPhases" /></div>
-      <GalleryOverlayWell size="lg">
+      <GalleryOverlayWell size="tall">
         <ChangeEmailDialog :is-open="true" :overlay-store="appOverlayStore" :phase="emailPhases.find((p) => p.value === emailPhase)!.phase" />
       </GalleryOverlayWell>
     </GallerySection>
 
     <GallerySection title="Change password" note="The current password and the new one twice.">
       <div class="mb-3"><Segmented v-model="passwordPhase" :options="passwordPhases" /></div>
-      <GalleryOverlayWell size="lg">
+      <GalleryOverlayWell size="tall">
         <ChangePasswordDialog :is-open="true" :overlay-store="appOverlayStore" :phase="passwordPhases.find((p) => p.value === passwordPhase)!.phase" />
       </GalleryOverlayWell>
     </GallerySection>
