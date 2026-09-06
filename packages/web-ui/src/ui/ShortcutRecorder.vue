@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { X } from '@lucide/vue'
 import Button from './Button.vue'
-import IconButton from './IconButton.vue'
 import KeyCap from './KeyCap.vue'
-import Tooltip from './Tooltip.vue'
 
 /**
  * A shortcut shown as key caps, with a Change button that records a new one in
  * place. While recording the button stays pressed and the caps show whatever is
  * held right now; a key pressed with its modifiers commits, Escape, losing focus
- * or clicking Change again cancels. Nothing else changes shape. An empty value is
- * "None"; the clear button beside Change, or Backspace while recording, unbinds.
+ * or clicking Change again cancels. Nothing else changes shape.
  */
 const props = defineProps<{
   modelValue: string
@@ -72,11 +68,6 @@ function onKeydown(event: KeyboardEvent) {
     stop()
     return
   }
-  if ((event.key === 'Backspace' || event.key === 'Delete') && !modifiers(event)) {
-    emit('update:modelValue', '')
-    stop()
-    return
-  }
   const cap = keyCap(event)
   held.value = modifiers(event) + cap
   if (cap) {
@@ -105,9 +96,8 @@ const shown = computed(() => (recording.value ? held.value : props.modelValue))
       @blur="stop"
     >
       <KeyCap v-if="shown" :keys="shown" />
-      <span v-else class="select-none text-[11px] text-fg-subtle">{{ recording ? 'Press keys…' : 'None' }}</span>
+      <span v-else class="select-none text-[11px] text-fg-subtle">Press keys…</span>
     </span>
-    <Tooltip v-if="modelValue && !recording" content="Remove shortcut"><IconButton :icon="X" :size="size" aria-label="Remove shortcut" @click="emit('update:modelValue', '')" /></Tooltip>
     <!-- mousedown would blur the field and stop recording before the click lands. -->
     <span @mousedown.prevent><Button :size="size" :pressed="recording" @click="recording ? stop() : start()">Change</Button></span>
   </span>
