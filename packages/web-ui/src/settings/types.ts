@@ -54,6 +54,41 @@ export interface SettingsModelDraft {
   fastTier: string | null
 }
 
+/** The API format an endpoint speaks. */
+export type SettingsWireApi = 'anthropic-messages' | 'openai-responses' | 'openai-chat'
+
+export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
+  'anthropic-messages': 'Anthropic Messages',
+  'openai-responses': 'OpenAI Responses',
+  'openai-chat': 'OpenAI Chat Completions',
+}
+
+/** A models.dev vendor an API key can be added for. */
+export interface SettingsVendor {
+  id: string
+  name: string
+  wireApi: SettingsWireApi
+  /** Null when the runtime knows the vendor's endpoint itself. */
+  baseUrl: string | null
+  logo: string
+}
+
+/** A vendor whose subscription is used through its own login. */
+export interface SettingsSubscriptionVendor {
+  id: string
+  name: string
+  logo: string
+}
+
+/** What the add-provider dialog hands back for an API-key provider. */
+export interface SettingsProviderDraft {
+  vendor: SettingsVendor | null
+  name: string
+  baseUrl: string
+  wireApi: SettingsWireApi
+  key: string
+}
+
 export const THINKING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as const
 
 export const EXTENSION_PRESETS: { id: string; label: string; extensions: string[] }[] = [

@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from '@lucide/vue'
-import type { SettingsNavGroup } from '@demicodes/web-ui/settings/types'
+import type { SettingsNavGroup, SettingsSubscriptionVendor, SettingsVendor, SettingsWireApi } from '@demicodes/web-ui/settings/types'
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
@@ -57,7 +57,7 @@ export type Permission = 'allow' | 'ask' | 'deny'
 export type ServerState = 'connected' | 'auth' | 'crashed' | 'disabled'
 
 /** Wire protocols the openai family can speak; the others have one each. */
-export type WireApi = 'anthropic-messages' | 'openai-responses' | 'openai-chat'
+export type WireApi = SettingsWireApi
 
 export interface MockModel {
   id: string
@@ -153,7 +153,7 @@ function model(partial: Partial<MockModel> & Pick<MockModel, 'id'>): MockModel {
   }
 }
 
-function provider(partial: Partial<MockProvider> & Pick<MockProvider, 'id' | 'name' | 'kind' | 'family'>): MockProvider {
+export function provider(partial: Partial<MockProvider> & Pick<MockProvider, 'id' | 'name' | 'kind' | 'family'>): MockProvider {
   return {
     vendorId: null,
     baseUrl: '',
@@ -172,13 +172,8 @@ function provider(partial: Partial<MockProvider> & Pick<MockProvider, 'id' | 'na
 }
 
 /** models.dev vendors one of Demi's runtimes can speak to, with their marks. */
-export interface MockVendor {
-  id: string
-  name: string
+export interface MockVendor extends SettingsVendor {
   family: 'anthropic' | 'openai' | 'google'
-  wireApi: WireApi
-  baseUrl: string | null
-  logo: string
 }
 
 export const mockVendors: MockVendor[] = [
@@ -195,7 +190,7 @@ export const mockVendors: MockVendor[] = [
   { id: 'openrouter', name: 'OpenRouter', family: 'openai', wireApi: 'openai-chat', baseUrl: 'https://openrouter.ai/api/v1', logo: '/logos/openrouter.svg' },
 ]
 
-export const subscriptionVendors = [
+export const subscriptionVendors: SettingsSubscriptionVendor[] = [
   { id: 'claude-code', name: 'Claude Code', logo: '/logos/claude.svg' },
   { id: 'codex', name: 'Codex', logo: '/logos/openai.svg' },
   { id: 'grok-build', name: 'Grok Build', logo: '/logos/xai.svg' },
