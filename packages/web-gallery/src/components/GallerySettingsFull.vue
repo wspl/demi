@@ -192,7 +192,7 @@ const revealed = ref<Record<string, boolean>>({})
         <Button size="sm" @click="note('Choose a picture', 'The product opens a file picker here.')">Change</Button>
       </SettingsRow>
       <SettingsRow label="Display name">
-        <TextInput size="sm" v-model="s.account.name" class="w-56 max-w-full" />
+        <TextInput v-model="s.account.name" class="w-56 max-w-full" />
       </SettingsRow>
       <SettingsRow label="Email">
         <template #tags><Tag tone="success">Verified</Tag></template>
@@ -310,7 +310,7 @@ const revealed = ref<Record<string, boolean>>({})
         <Button size="sm" @click="s.permissions.allowlist = s.permissions.allowlist.filter((p) => p !== pattern)">Remove</Button>
       </SettingsRow>
       <SettingsRow label="Add a pattern" description="Glob syntax. `git *` matches every git command.">
-        <TextInput size="sm" v-model="newPattern" placeholder="docker compose *" class="w-56 max-w-full" @keydown.enter="addPattern" />
+        <TextInput v-model="newPattern" placeholder="docker compose *" class="w-56 max-w-full" @keydown.enter="addPattern" />
         <Button size="sm" :disabled="!newPattern.trim()" @click="addPattern">Add</Button>
       </SettingsRow>
     </SettingsGroup>
@@ -391,10 +391,10 @@ const revealed = ref<Record<string, boolean>>({})
         <Segmented size="sm" v-model="newServer.transport" :options="[{ value: 'stdio', label: 'Command' }, { value: 'http', label: 'URL' }]" />
       </SettingsRow>
       <SettingsRow :label="newServer.transport === 'stdio' ? 'Command' : 'URL'" :description="newServer.transport === 'stdio' ? 'Run from the project root. Environment variables from Developer are passed through.' : undefined">
-        <TextInput size="sm" v-model="newServer.target" :placeholder="newServer.transport === 'stdio' ? 'npx -y @modelcontextprotocol/server-memory' : 'https://mcp.example.com'" class="w-72 max-w-full" />
+        <TextInput v-model="newServer.target" :placeholder="newServer.transport === 'stdio' ? 'npx -y @modelcontextprotocol/server-memory' : 'https://mcp.example.com'" class="w-72 max-w-full" />
       </SettingsRow>
       <SettingsRow label="Name" description="How tools show up: name_tool.">
-        <TextInput size="sm" v-model="newServer.name" placeholder="memory" class="w-40 max-w-full" @keydown.enter="addServer" />
+        <TextInput v-model="newServer.name" placeholder="memory" class="w-40 max-w-full" @keydown.enter="addServer" />
         <Button size="sm" :disabled="!newServer.target.trim() || !newServer.name.trim()" @click="addServer">Add server</Button>
       </SettingsRow>
     </SettingsGroup>

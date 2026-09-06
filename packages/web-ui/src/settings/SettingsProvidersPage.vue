@@ -208,7 +208,7 @@ function saveModel(draft: SettingsModelDraft) {
             <template #header>
               <header class="select-none">
                 <div class="flex h-8 flex-wrap items-center gap-x-1.5 gap-y-2">
-                  <TextInput size="sm"
+                  <TextInput
                     v-if="renaming"
                     ref="renameInput"
                     v-model="renameDraft"
@@ -259,7 +259,7 @@ function saveModel(draft: SettingsModelDraft) {
             <!-- Connection (API key) -->
             <template v-else>
               <SettingsRow label="Base URL">
-                <TextInput size="sm" v-model="selected.baseUrl" class="w-72 max-w-full" />
+                <TextInput v-model="selected.baseUrl" class="w-72 max-w-full" />
               </SettingsRow>
               <SettingsRow v-if="!selected.vendorId" label="Protocol">
                 <Dropdown size="sm" :overlay-store="overlayStore" variant="default" trigger-label="Protocol">
@@ -272,7 +272,7 @@ function saveModel(draft: SettingsModelDraft) {
                 </Dropdown>
               </SettingsRow>
               <SettingsRow label="API key" :description="selected.vendorId ? undefined : 'Optional'">
-                <TextInput size="sm" v-model="selected.apiKey" secret placeholder="sk-…" class="w-72 max-w-full" />
+                <TextInput v-model="selected.apiKey" secret placeholder="sk-…" class="w-72 max-w-full" />
               </SettingsRow>
               <SettingsRow label="Test connection">
                 <span v-if="testing === selected.id" class="flex items-center gap-1.5 text-[12px] text-fg-subtle"><IndeterminateSpinner :size="ICON_PX.in24" /> Testing…</span>

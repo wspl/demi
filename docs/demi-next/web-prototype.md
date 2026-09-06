@@ -136,15 +136,17 @@ region's edge. Rules:
 
 Every control comes in height families that line up with each other: 28px
 (`Button` md, `IconButton` md, `TextInput`, `Segmented` md, `Dropdown` md), 24px
-(`sm` of each) and 20px (`xs`). A surface picks one family and every control on it
-uses that family, so a button beside an input is never a different height than
-the input. Settings cards use 24px: a bordered 28px icon button reads heavy in a
-row, and 24px inputs hold a line of text comfortably. Chrome outside the cards
-(a dialog's search, the narrow back row) stays at 28px, and a rail caption's
-action or a hover action inside a 32px list row uses 20px. A bare input (no
-frame in any state) is the exception: its hit area stretches to the row's content box,
-28px in a compact row and 32px in a regular one, so the value is easy to click into.
+(`sm` of each) and 20px (`xs`). A surface picks one family per kind of control and
+keeps to it: all of its text inputs one height, all of its buttons another. In
+settings cards text inputs are 28px, since a line of text wants that room, and
+buttons, icon buttons, segmented and dropdown controls are 24px, since a bordered
+28px icon button reads heavy in a row. Two buttons of different heights in one
+card, or two inputs, is a mistake. Chrome outside the cards (a dialog's search,
+the narrow back row) stays at 28px, and a rail caption's action or a hover action
+inside a 32px list row uses 20px. A bare input (no frame in any state) is the
+exception: its hit area stretches to the row's content box, 28px in a compact row
+and 32px in a regular one, so the value is easy to click into.
 
 The gallery audits this: `demiAuditControlSizes()` in the browser console, and
 automatically after each gallery navigation in development, lists every settings
-card whose controls mix families.
+card whose inputs or buttons mix families.
