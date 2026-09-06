@@ -61,6 +61,7 @@ const modelDialog = ref<{ mode: 'create' | 'edit' | 'view'; model: SettingsModel
 const modelDialogOpen = ref(false)
 const testing = ref<string | null>(null)
 
+const stateLabel = { ready: 'Connected', error: 'Key rejected', unreachable: 'Endpoint unreachable', 'signed-out': 'Signed out', disabled: 'Off' } as const
 const stateTone = { ready: 'success', error: 'danger', unreachable: 'danger', 'signed-out': 'warning', disabled: 'neutral' } as const
 const stateWord = { ready: 'Connected', error: 'Key rejected', unreachable: 'Unreachable', 'signed-out': 'Signed out', disabled: 'Off' } as const
 const wireOptions: { value: WireApi; label: string }[] = [
@@ -312,9 +313,20 @@ function setAll(p: MockProvider, enabled: boolean) {
 
         <!-- Existing provider -->
         <div v-else-if="selected" class="flex flex-col gap-6">
-          <header class="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <VendorMark :label="selected.name" :src="selected.logo" />
-            <h3 class="min-w-0 flex-1 truncate text-[15px] font-medium text-fg-emphasis">{{ selected.name }}</h3>
+          <!-- The rail already names the provider; the header states how it is doing. -->
+          <header class="flex h-8 flex-wrap items-center gap-x-3 gap-y-2">
+            <span class="flex min-w-0 flex-1 select-none items-center gap-2 text-[13px] text-fg-muted">
+              <span
+                class="size-1.5 shrink-0 rounded-full"
+                :class="{
+                  'bg-on-success': stateTone[selected.state] === 'success',
+                  'bg-on-warning': stateTone[selected.state] === 'warning',
+                  'bg-on-danger': stateTone[selected.state] === 'danger',
+                  'bg-fg-ghost': stateTone[selected.state] === 'neutral',
+                }"
+              />
+              <span class="truncate">{{ stateLabel[selected.state] }}</span>
+            </span>
             <div class="ml-auto flex items-center gap-1.5">
               <Tooltip content="Rename"><IconButton :icon="TextCursorInput" size="sm" aria-label="Rename provider" /></Tooltip>
               <Tooltip content="Remove"><IconButton :icon="Trash2" variant="danger" size="sm" aria-label="Remove provider" /></Tooltip>
