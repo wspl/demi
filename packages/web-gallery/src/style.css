@@ -13,6 +13,12 @@ body,
   overflow: hidden;
 }
 
+/* The catalog scroller must not anchor on nodes inside a live session pane: every
+   height change in the pane would otherwise nudge the whole page by a few pixels. */
+main {
+  overflow-anchor: none;
+}
+
 .gallery-frame {
   border: 1px solid var(--line);
   background: var(--surface);
