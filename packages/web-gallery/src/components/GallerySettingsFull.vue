@@ -78,15 +78,6 @@ function copyText(text: string, what: string) {
   note(`${what} copied`)
 }
 
-const checking = ref(false)
-function checkUpdates() {
-  checking.value = true
-  window.setTimeout(() => {
-    checking.value = false
-    note(`Demi ${s.value.general.version} is up to date`)
-  }, 900)
-}
-
 const newPattern = ref('')
 function addPattern() {
   const value = newPattern.value.trim()
@@ -158,7 +149,7 @@ const revealed = ref<Record<string, boolean>>({})
 
 <template>
   <!-- General -->
-  <SettingsPage v-if="tab === 'general'" title="General" description="Language, look, and how the app starts.">
+  <SettingsPage v-if="tab === 'general'" title="General" description="Language and look.">
     <SettingsGroup title="Appearance">
       <template #aside><AppearancePreview :font-size="s.general.fontSize" /></template>
       <SettingsRow label="Language">
@@ -183,28 +174,6 @@ const revealed = ref<Record<string, boolean>>({})
       </SettingsRow>
       <SettingsRow label="Transcript text size" description="Messages only.">
         <Slider v-model="s.general.fontSize" :min="12" :max="18" :value-label="`${s.general.fontSize}px`" class="w-48" />
-      </SettingsRow>
-    </SettingsGroup>
-    <SettingsGroup title="Composer">
-      <SettingsRow label="Send message with" description="The other combination inserts a line break.">
-        <Segmented size="sm" v-model="s.general.sendWith" :options="[{ value: 'enter', label: 'Enter' }, { value: 'cmdEnter', label: '⌘ Enter' }]" />
-      </SettingsRow>
-    </SettingsGroup>
-    <SettingsGroup title="Startup & updates">
-      <SettingsRow label="Open at login">
-        <Switch v-model="s.general.openAtLogin" />
-      </SettingsRow>
-      <SettingsRow label="Update channel" description="Beta builds arrive about a week early.">
-        <template #tags><Tag>{{ s.general.version }} · up to date</Tag></template>
-        <Button size="sm" :disabled="checking" @click="checkUpdates">{{ checking ? 'Checking…' : 'Check now' }}</Button>
-        <Dropdown size="sm" :overlay-store="appOverlayStore" variant="default" trigger-label="Update channel">
-          <template #trigger>{{ s.general.channel }}</template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem v-for="ch in ['Stable', 'Beta']" :key="ch" :label="ch" choice :is-selected="s.general.channel === ch" @select="s.general.channel = ch; close()" />
-            </Menu>
-          </template>
-        </Dropdown>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>
