@@ -99,7 +99,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // names — a conversation or a subagent — against the tree and the Host its
   // shell was built with.
   let manifest: Promise<Manifest> | null = null
-  const sessionShells = new Map<string, { host: Host; commands: CommandRegistry }>()
+  const sessionCommands = new Map<string, { rootSessionId: string; commands: CommandRegistry }>()
   const pipes = new PipeBroker()
   const runnerRegistry = new RunnerRegistry({
     control,
@@ -115,12 +115,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         const roots = injectSubagentCommand(commandsFor(''), subagentCommandShape(profiles.map((profile) => profile.name)))
         return buildManifest(roots, { transpile: transpileCommandModule })
       })()),
-    rpc: async (call, io) => {
-      const shell = sessionShells.get(call.agentSessionId)
-      if (!shell) throw new Error(`no live session ${call.agentSessionId} behind this job`)
+    rpc: async (call, io, execution) => {
+      const shell = sessionCommands.get(call.agentSessionId)
+      if (!shell || shell.rootSessionId !== execution.conversationId) throw new Error(`no authorized session ${call.agentSessionId} behind this job`)
       const transport = inProcessRpc(shell.commands.list(), {
-        storage: new AgentSessionCommandStorage(shell.host.store, call.agentSessionId),
-        host: shell.host,
+        storage: new AgentSessionCommandStorage(execution.host.store, call.agentSessionId),
+        host: execution.host,
       })
       const result = await transport({
         root: call.root,
@@ -133,7 +133,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         // write them here.
         stdin: io.stdin?.stream() ?? null,
         cwd: call.cwd,
-        env: call.env,
+        env: { ...call.env, DEMI_SESSION_ID: call.agentSessionId, DEMI_SHELL_ID: call.shellId },
         io: io.commandIO(),
         signal: io.signal,
         stdinStream: io.stdinStream,
@@ -156,10 +156,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   // first input. A workspace host counts turns across all its conversations.
   const turnInFlight = async (owner: ManagedHostOwner): Promise<boolean> => {
     const ids = owner.kind === 'conversation' ? [owner.id] : await control.listConversationIdsInWorkspace(owner.id)
-    return ids.some((id) => {
-      const phase = agentServer.sessionPhase(id)
-      return phase !== null && phase !== 'idle'
-    })
+    return ids.some((id) => agentServer.treeActive(id))
   }
   const managedHosts = options.managedHosts
     ? new ManagedHosts({
@@ -169,6 +166,18 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         config: options.managedHosts.config,
         backendUrl: () => options.publicUrl ?? url,
         turnInFlight,
+        reserveIdle: async owner => {
+          const ids = owner.kind === 'conversation' ? [owner.id] : await control.listConversationIdsInWorkspace(owner.id)
+          const releases: Array<() => void> = []
+          for (const id of ids) {
+            for (const reserve of [() => agentServer.reserveTreeMutation(id), () => targets.files(id).tryReserve()]) {
+              const release = reserve()
+              if (!release) { for (const held of releases) held(); return null }
+              releases.push(release)
+            }
+          }
+          return () => { for (const release of releases) release() }
+        },
       })
     : null
   // Whatever a previous process left running or unsaved is settled before the first need can boot anything.
@@ -184,8 +193,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     virtualHostFor,
     stores: conversationStores,
     stagingDir: join(options.dataDir, 'staging'),
-    sessionPhase: (conversationId) => agentServer.sessionPhase(conversationId),
+    reserveTree: (conversationId) => agentServer.reserveTreeMutation(conversationId),
   })
+  await targets.recoverUpgrades()
   const hostFor = (conversationId: string): Promise<Host> => targets.hostFor(conversationId)
 
   const hostCommandDeps = {
@@ -193,7 +203,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     registry: runnerRegistry,
     pipes,
     managedHosts,
-    virtualHostFor: (conversationId: string): Promise<Host> => virtualHostFor(conversationId),
     hostStoreFor: (conversationId: string) => conversationStores.hostStore(conversationId),
   }
   const commandsFor = (agentSessionId: string): Command[] => [
@@ -204,7 +213,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     // session-less contexts get their own scratch namespace.
     host: (ctx): Promise<Host> => ('agentSessionId' in ctx ? hostFor(ctx.agentSessionId) : virtualHostFor('lobby')),
     commands: (ctx) => commandsFor(ctx.agentSessionId),
-    preamble: switchAnnouncementPreamble(control, runnerRegistry),
+    context: switchAnnouncementPreamble(control, runnerRegistry),
   })
 
   // The environment a shell starts with (`sessions-and-targets.md` § What
@@ -233,7 +242,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     if (!environment) {
       const sessionHosts = bySession
       environment = (async (): Promise<ShellEnvironment> => {
-        sessionShells.set(ctx.agentSessionId, { host: ctx.host, commands: ctx.commands })
+        sessionCommands.set(ctx.agentSessionId, { rootSessionId: ctx.rootSessionId, commands: ctx.commands })
         const shell = shellOptionsFor(ctx)
         const info = targets.hostInfo(ctx.host)
         if (ctx.host instanceof VirtualHost) {
@@ -247,6 +256,12 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
               await shellEnvironmentFor({ ...ctx, host: machine.host })
             },
             HOSTLESS_HOME,
+            targets.files(conversationId),
+            async () => {
+              if ((await targets.resolve(conversationId)).kind !== 'hostless') {
+                await shellEnvironmentFor({ ...ctx, host: await targets.hostFor(conversationId) })
+              }
+            },
           )
         }
         if (ctx.host instanceof RemoteHost) {
@@ -289,7 +304,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     pipes,
     upgradeWebSocket,
     blobs,
-    hostFor,
+    withHost: (id, operation, signal) => targets.withHost(id, operation, signal),
     switchTarget: (conversationId, toWorkspaceId) => targets.switch(conversationId, toWorkspaceId),
     managedHosts,
     createCloudWorkspace: managedHosts

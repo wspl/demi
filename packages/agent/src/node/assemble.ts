@@ -4,6 +4,7 @@ import { CommandRegistry, RESERVED_COMMAND_NAMES, type Command, type ShellEnviro
 import type { ServerFrame } from '../protocol/frames'
 import type { AgentServerSessionOptions, ShellEnvironmentFactory } from '../server/server'
 import { AgentSession } from '../session/session'
+import type { ActivityGate } from '@demicodes/utils'
 import type { AgentDirectory } from '../subagent/directory'
 import { ChildSupervisor, injectSubagentCommand } from '../subagent/supervisor'
 import { createStandardAgentTools, type ShellPreviewBudget } from '../tools'
@@ -13,6 +14,7 @@ import { SessionNode, type NodePolicy } from './node'
 /** What every node of a server shares: the harness and the assembly options. */
 export interface NodeDeps<State> {
   agent: AgentHarness<State>
+  activity(rootSessionId: string): ActivityGate
   shellOptions: ShellEnvironmentOptions
   shellEnvironment: ShellEnvironmentFactory
   sessionOptions: AgentServerSessionOptions
@@ -120,6 +122,8 @@ export async function assembleNode<State>(
     ...(shellPreviewBudgetTokens === null ? {} : { previewBudgetTokens: shellPreviewBudgetTokens }),
   })
   const runtime: AgentHarnessRuntime<State> = {
+    context: (ctx) => agent.context?.({ ...ctx, rootSessionId: tree.hostSessionId }) ?? null,
+    enterAction: (signal) => deps.activity(tree.hostSessionId).enter(signal),
     harnessName: agent.name,
     initialState: () => agent.initialState(),
     systemPrompt: (ctx) => params.prompt.systemPrompt({ ...ctx, commandsPrompt }),

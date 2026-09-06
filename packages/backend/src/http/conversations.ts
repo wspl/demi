@@ -26,7 +26,7 @@ const patchConversationBodySchema = z.object({
 export function conversationRoutes(options: {
   control: ControlService
   conversationStores: ConversationStores
-  hostFor: (conversationId: string) => Promise<Host>
+  withHost: <T>(conversationId: string, operation: (host: Host) => Promise<T>, signal?: AbortSignal) => Promise<T>
   /** The target switch (`conversation/target.ts`): the domain decides, the route maps the outcome. */
   switchTarget: (conversationId: string, toWorkspaceId: string | null) => Promise<SwitchTargetResult>
   managedHosts: ManagedHosts | null
@@ -35,7 +35,7 @@ export function conversationRoutes(options: {
   /** Whether a device has a live runner socket, for the host list. */
   deviceOnline: (deviceId: string) => boolean
 }): Hono<AuthEnv> {
-  const { control, conversationStores, hostFor, switchTarget, managedHosts, vault, mode, deviceOnline } = options
+  const { control, conversationStores, withHost, switchTarget, managedHosts, vault, mode, deviceOnline } = options
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -164,9 +164,11 @@ export function conversationRoutes(options: {
     }
     // The Host's own working directory: the workspace path, the hostless home, or the machine's home.
     try {
-      const host = await hostFor(conversation.id)
-      await host.fs.writeFile(name, bytes, { cwd: host.defaultCwd, createParents: true })
-      return c.json({ path: `${host.defaultCwd.replace(/\/+$/, '')}/${name}` }, 201)
+      const path = await withHost(conversation.id, async host => {
+        await host.fs.writeFile(name, bytes, { cwd: host.defaultCwd, createParents: true })
+        return `${host.defaultCwd.replace(/\/+$/, '')}/${name}`
+      }, c.req.raw.signal)
+      return c.json({ path }, 201)
     } catch (error) {
       return c.json({ code: 'write_failed', message: errorMessage(error) }, 409)
     }

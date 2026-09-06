@@ -19,6 +19,7 @@ export interface CodingAgentHarnessOptions {
   commands?: Command[] | CodingCommandsBuilder
   /** Per-round context injection (`AgentHarness.preamble` signature). */
   preamble?: AgentHarness<CodingState>['preamble']
+  context?: AgentHarness<CodingState>['context']
 }
 
 export interface CodingCommandRegistryOptions {
@@ -45,6 +46,7 @@ export function createCodingAgentHarness(options: CodingAgentHarnessOptions): Ag
     initialState: () => ({}),
     host: resolveHost,
     commands: buildCommands,
+    ...(options.context ? { context: options.context } : {}),
     ...(options.preamble ? { preamble: options.preamble } : {}),
     agents: () => [
       {
