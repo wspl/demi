@@ -22,6 +22,7 @@ import SettingsNote from '@demicodes/web-ui/settings/SettingsNote.vue'
 import SettingsPage from '@demicodes/web-ui/settings/SettingsPage.vue'
 import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import type { Permission, SettingsState } from '../fixtures/settings'
+import GallerySettingsProviders from './GallerySettingsProviders.vue'
 
 /** One page of the full mock, chosen by the dialog's tab. All state lives in the fixture. */
 const props = defineProps<{
@@ -43,8 +44,6 @@ const themeOptions = [
   { value: 'system', label: 'System', icon: Monitor },
 ] as const
 
-const providerTone = { connected: 'success', expiring: 'warning', unreachable: 'danger', incomplete: 'neutral', disabled: 'neutral' } as const
-const providerWord = { connected: 'Connected', expiring: 'Expiring', unreachable: 'Unreachable', incomplete: 'Needs region', disabled: 'Off' } as const
 const serverTone = { connected: 'success', auth: 'warning', crashed: 'danger', disabled: 'neutral' } as const
 const serverWord = { connected: 'Connected', auth: 'Sign in', crashed: 'Crashed', disabled: 'Off' } as const
 
@@ -178,90 +177,7 @@ function pick<T extends string>(current: T, values: readonly T[], set: (value: T
   </SettingsPage>
 
   <!-- Models & providers -->
-  <SettingsPage v-else-if="tab === 'models'" title="Models & providers" description="Where conversations get their models, and which one they start with.">
-    <SettingsGroup title="Providers" description="Off keeps a provider configured but out of the model picker.">
-      <SettingsRow
-        v-for="provider in s.providers"
-        :key="provider.id"
-        :label="provider.name"
-        :class="provider.enabled ? '' : 'opacity-60'"
-      >
-        <template #tags><Tag :tone="providerTone[provider.state]">{{ providerWord[provider.state] }}</Tag></template>
-        <template #description>
-          <span>{{ provider.auth }} · {{ provider.models ? `${provider.models} models` : 'no models yet' }}</span>
-          <span v-if="provider.detail" class="block" :class="provider.state === 'unreachable' ? 'font-mono text-on-danger' : 'text-on-warning'">{{ provider.detail }}</span>
-        </template>
-        <template v-if="provider.state === 'expiring'"><Button size="sm">Reauthorize</Button></template>
-        <template v-else-if="provider.state === 'unreachable'"><Button variant="ghost" size="sm">Retry</Button></template>
-        <template v-else-if="provider.state === 'incomplete'">
-          <Dropdown :overlay-store="appOverlayStore" variant="default" size="sm" trigger-label="Region">
-            <template #trigger>{{ provider.region }}</template>
-            <template #content="{ close }">
-              <Menu>
-                <MenuItem v-for="r in ['us-east-1', 'us-west-2', 'eu-central-1']" :key="r" :label="r" choice :is-selected="provider.region === r" @select="provider.region = r; provider.state = 'connected'; provider.models = 5; close()" />
-              </Menu>
-            </template>
-          </Dropdown>
-        </template>
-        <template v-else><Button variant="ghost" size="sm">Test</Button></template>
-        <Switch v-model="provider.enabled" size="sm" class="ml-1" />
-      </SettingsRow>
-    </SettingsGroup>
-    <SettingsGroup title="Defaults" description="New conversations start here. Each conversation can still switch.">
-      <SettingsRow label="Chat model" description="The primary agent's model.">
-        <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Chat model">
-          <template #trigger>{{ s.defaults.chat }}</template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem v-for="m in ['Claude Sonnet', 'Claude Opus', 'GPT-5']" :key="m" :label="m" choice :is-selected="s.defaults.chat === m" @select="s.defaults.chat = m; close()" />
-            </Menu>
-          </template>
-        </Dropdown>
-      </SettingsRow>
-      <SettingsRow label="Fast model" description="Titles, summaries and quick lookups.">
-        <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Fast model">
-          <template #trigger>{{ s.defaults.fast }}</template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem v-for="m in ['Claude Haiku', 'GPT-5 mini']" :key="m" :label="m" choice :is-selected="s.defaults.fast === m" @select="s.defaults.fast = m; close()" />
-            </Menu>
-          </template>
-        </Dropdown>
-      </SettingsRow>
-      <SettingsRow label="Subagent model" description="Explore and Review run on this unless they say otherwise.">
-        <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Subagent model">
-          <template #trigger>{{ s.defaults.subagent }}</template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem v-for="m in ['GPT-5 mini', 'Claude Haiku']" :key="m" :label="m" choice :is-selected="s.defaults.subagent === m" @select="s.defaults.subagent = m; close()" />
-            </Menu>
-          </template>
-        </Dropdown>
-      </SettingsRow>
-      <SettingsRow label="Reasoning" description="Default thinking effort for models that support it.">
-        <Segmented v-model="s.defaults.reasoning" :options="[{ value: 'off', label: 'Off' }, { value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }]" />
-      </SettingsRow>
-      <SettingsRow label="Temperature" description="Lower is steadier; higher explores more.">
-        <Slider v-model="s.defaults.temperature" :min="0" :max="1" :step="0.1" :value-label="s.defaults.temperature.toFixed(1)" class="w-48" />
-      </SettingsRow>
-    </SettingsGroup>
-    <SettingsGroup title="Add a provider">
-      <SettingsRow label="Kind">
-        <Dropdown :overlay-store="appOverlayStore" variant="default" trigger-label="Provider kind">
-          <template #trigger>Anthropic API</template>
-          <template #content>
-            <Menu>
-              <MenuItem v-for="k in ['Anthropic API', 'OpenAI API', 'Ollama', 'AWS Bedrock', 'Google Vertex', 'OpenAI-compatible']" :key="k" :label="k" />
-            </Menu>
-          </template>
-        </Dropdown>
-      </SettingsRow>
-      <SettingsRow label="API key" description="Stored in this device's keychain, never in the config file.">
-        <TextInput placeholder="sk-ant-…" class="w-56 max-w-full" />
-        <Button disabled>Add</Button>
-      </SettingsRow>
-    </SettingsGroup>
-  </SettingsPage>
+  <GallerySettingsProviders v-else-if="tab === 'models'" :state="state" />
 
   <!-- Agents -->
   <SettingsPage v-else-if="tab === 'agents'" title="Agents" description="Named setups the picker offers: a model, a mode and what it may touch.">

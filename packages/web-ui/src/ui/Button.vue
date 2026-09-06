@@ -17,7 +17,7 @@ const pressed = computed(() => props.pressed === true)
 <template>
   <span
     role="button"
-    class="inline-flex cursor-default items-center justify-center gap-1 rounded-md transition-[color,background-color,box-shadow,filter] duration-200 ease-out select-none"
+    class="inline-flex cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow,filter] duration-200 ease-out select-none"
     :data-pressed="!disabled && pressed ? true : undefined"
     :class="[
       size === 'md' ? 'h-7 px-2.5 text-chrome' : size === 'xs' ? 'h-5 px-1.5 text-[11px]' : 'h-6 px-2 text-[12px]',

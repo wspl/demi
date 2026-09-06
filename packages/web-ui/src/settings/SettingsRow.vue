@@ -20,17 +20,18 @@ defineProps<{
       <slot name="leading" />
     </div>
     <div class="min-w-0 flex-1 select-none">
-      <div class="flex min-w-0 items-center gap-2" :class="inset ? 'text-[12px] text-fg-body' : 'text-chrome text-fg'">
-        <span class="min-w-0 truncate">{{ label }}</span>
+      <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" :class="inset ? 'text-[12px] text-fg-body' : 'text-chrome text-fg'">
+        <span class="max-w-full truncate">{{ label }}</span>
         <slot name="tags" />
       </div>
       <div v-if="description || $slots.description" class="mt-0.5 text-[12px] leading-4 text-fg-subtle">
         <slot name="description">{{ description }}</slot>
       </div>
     </div>
+    <!-- Beside the text the controls may take up to two thirds; inputs shrink, buttons never wrap. -->
     <div
       v-if="$slots.default"
-      class="flex items-center justify-end gap-2 @sm:basis-auto @sm:shrink-0 [&>*]:shrink-0"
+      class="flex min-w-0 items-center justify-end gap-2 @sm:basis-auto @sm:max-w-[66%]"
       :class="inset ? 'shrink-0' : 'basis-full'"
     >
       <slot />

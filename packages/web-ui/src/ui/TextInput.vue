@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, useSlots } from 'vue'
+import { computed, ref, useAttrs, useSlots } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -14,6 +14,10 @@ const emit = defineEmits<{
 }>()
 
 const slots = useSlots()
+// Sizing classes belong to the frame; everything else (placeholder rules, maxlength) to the input.
+const attrs = useAttrs()
+const frameAttrs = computed(() => ({ class: attrs['class'], style: attrs['style'] }))
+const inputAttrs = computed(() => Object.fromEntries(Object.entries(attrs).filter(([key]) => key !== 'class' && key !== 'style')))
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
 const startFocused = ref(props.focused ?? false)
@@ -27,13 +31,14 @@ defineExpose({
 
 <template>
   <div
-    class="flex h-7 w-full items-center rounded-md bg-surface-raised ring-1 transition-shadow duration-200 ease-out"
-    :class="startFocused || isFocused ? 'ring-line-focus' : 'ring-line'"
+    v-bind="frameAttrs"
+    class="flex h-7 min-w-0 items-center rounded-md bg-surface-raised ring-1 transition-shadow duration-200 ease-out"
+    :class="[attrs['class'] ? '' : 'w-full', startFocused || isFocused ? 'ring-line-focus' : 'ring-line']"
     @click="inputRef?.focus()"
   >
     <input
       ref="inputRef"
-      v-bind="$attrs"
+      v-bind="inputAttrs"
       type="text"
       :value="modelValue"
       :placeholder="placeholder"

@@ -56,7 +56,7 @@ useOverlay(props.overlayStore, () => (container ? false : props.isOpen), () => {
         >
           <div
             class="max-h-[calc(100%-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-xl bg-surface-dialog shadow-2xl"
-            :class="size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-3xl' : 'max-w-md'"
+            :class="size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : 'max-w-md'"
             role="dialog"
             aria-modal="true"
             :aria-label="label"
