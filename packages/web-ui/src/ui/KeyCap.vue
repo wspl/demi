@@ -13,7 +13,7 @@ const caps = computed(() => {
 </script>
 
 <template>
-  <span class="inline-flex select-none items-center gap-0.5">
+  <span class="inline-flex select-none items-center gap-1">
     <kbd
       v-for="(cap, index) in caps"
       :key="index"
