@@ -14,7 +14,8 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 
 const anatomy: [string, string][] = [
-  ['Shell', 'One large dialog on the dialog surface: a step above the page, never on the menu layer. Section tabs on the left; below a phone width they become a row.'],
+  ['Shell', 'One large dialog. The rail sits on the page surface with the account on top, the page on the dialog surface, so it reads like the app itself. Below a phone width the rail becomes a row.'],
+  ['Page', 'A title, one line under it, then titled groups. A group is a card of rows: label and explanation left, the control right.'],
   ['Account', 'Display name, appearance, and the session.'],
   ['Devices', 'Every claimed device with its presence, plus the form that claims another. Outcomes of an action land under the form.'],
   ['Providers', 'Each provider with its model count and availability toggle; a separate form adds one.'],
@@ -22,6 +23,7 @@ const anatomy: [string, string][] = [
 ]
 
 const name = ref('Zan')
+const account = { name: 'Zan', plan: 'Personal workspace' }
 const theme = ref<ThemeMode>('dark')
 const accountTab = ref<SettingsTab>('Account')
 
@@ -99,7 +101,7 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
 
     <GallerySection title="Account" note="Name, appearance, session.">
       <GalleryOverlayWell size="tall">
-        <SettingsDialog v-model:tab="accountTab" :is-open="true" :overlay-store="appOverlayStore">
+        <SettingsDialog v-model:tab="accountTab" :is-open="true" :overlay-store="appOverlayStore" :account="account">
           <SettingsAccount
             v-if="accountTab === 'Account'"
             v-model:name="name"
@@ -126,7 +128,7 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
       <div class="specimen-stack specimen-stack-loose">
         <GallerySpecimen variant="mixed · message" wide>
           <GalleryOverlayWell size="tall">
-            <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore">
+            <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore" :account="account">
               <SettingsDevices
                 :devices="devices"
                 :message="deviceMessage"
@@ -137,7 +139,7 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
         </GallerySpecimen>
         <GallerySpecimen variant="empty" wide>
           <GalleryOverlayWell size="tall">
-            <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore">
+            <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore" :account="account">
               <SettingsDevices
                 :devices="noDevices"
                 @add="noDevices.push({ id: `n-${noDevices.length}`, name: $event, online: true })"
@@ -152,7 +154,7 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
       <div class="specimen-stack specimen-stack-loose">
         <GallerySpecimen variant="mixed · message" wide>
           <GalleryOverlayWell size="tall">
-            <SettingsDialog tab="Providers" :is-open="true" :overlay-store="appOverlayStore">
+            <SettingsDialog tab="Providers" :is-open="true" :overlay-store="appOverlayStore" :account="account">
               <SettingsProviders
                 :providers="providers"
                 :message="providerMessage"
@@ -163,7 +165,7 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
         </GallerySpecimen>
         <GallerySpecimen variant="empty" wide>
           <GalleryOverlayWell size="tall">
-            <SettingsDialog tab="Providers" :is-open="true" :overlay-store="appOverlayStore">
+            <SettingsDialog tab="Providers" :is-open="true" :overlay-store="appOverlayStore" :account="account">
               <SettingsProviders
                 :providers="noProviders"
                 @add="noProviders.push({ id: `n-${noProviders.length}`, label: $event, modelCount: 1, isAvailable: true })"
@@ -176,7 +178,7 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
 
     <GallerySection title="Usage" note="Three totals.">
       <GalleryOverlayWell size="tall">
-        <SettingsDialog tab="Usage" :is-open="true" :overlay-store="appOverlayStore">
+        <SettingsDialog tab="Usage" :is-open="true" :overlay-store="appOverlayStore" :account="account">
           <SettingsUsage :usage="usage" />
         </SettingsDialog>
       </GalleryOverlayWell>
@@ -184,7 +186,7 @@ function setAvailable(list: SettingsProvider[], id: string, available: boolean):
 
     <GallerySection title="Narrow" note="Phone width: the tabs become a row above the panel.">
       <GalleryOverlayWell size="narrow">
-        <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore">
+        <SettingsDialog tab="Devices" :is-open="true" :overlay-store="appOverlayStore" :account="account">
           <SettingsDevices :devices="devices" @toggle-online="toggleDevice(devices, $event)" />
         </SettingsDialog>
       </GalleryOverlayWell>
