@@ -84,7 +84,7 @@ const initials = computed(() => props.account?.name.trim().slice(0, 1).toUpperCa
             <span class="truncate text-[11px] text-fg-subtle">{{ account.plan }}</span>
           </span>
         </div>
-        <div class="hidden px-1 @md:block">
+        <div class="hidden @md:block">
           <TextInput v-model="query" placeholder="Filter settings" aria-label="Filter settings" @keydown.enter="openFirstMatch">
             <template #prefix><Search :size="ICON_PX.in24" /></template>
           </TextInput>
