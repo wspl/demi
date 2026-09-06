@@ -150,3 +150,13 @@ and 32px in a regular one, so the value is easy to click into.
 The gallery audits this: `demiAuditControlSizes()` in the browser console, and
 automatically after each gallery navigation in development, lists every settings
 card whose inputs or buttons mix families.
+
+## Colour transitions and `transparent`
+
+The `transparent` keyword is black at zero alpha. A colour transition between it
+and a light colour interpolates through dark greys, so a scrollbar thumb, ring or
+fill that fades in from `transparent` shows up black before it turns light in a
+dark theme. Whenever a colour animates, its hidden state is the same hue at zero
+alpha, written as `rgb(from <colour> r g b / 0)`, never the bare keyword and never
+a `color-mix` with 0% of the colour, which also collapses to transparent black. Gradients and masks are
+exempt: they interpolate with premultiplied alpha.
